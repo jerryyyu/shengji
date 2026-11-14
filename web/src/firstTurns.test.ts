@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HandCard, Trump } from "./protocol";
 import {
-  COACH_KEY, COACH_PLAYS, PLAYS_KEY, coachFor, coachSetting, coachShows, forgetSessionCoach, isNewcomer, playsMade,
-  recordPlay, setCoachSetting, subscribeCoach,
+  COACH_KEY, COACH_PLAYS, NEWCOMER_ROUNDS, PLAYS_KEY, accountNewcomer, coachFor, coachSetting, coachShows,
+  forgetSessionCoach, isNewcomer, playsMade, recordPlay, setCoachSetting, subscribeCoach,
 } from "./firstTurns";
 
 const hand = (codes: string[]): HandCard[] => codes.map((code, i) => ({ id: i + 1, code }));
@@ -31,6 +31,32 @@ describe("who is a newcomer", () => {
   it("reads a garbled count as a newcomer", () => {
     localStorage.setItem(PLAYS_KEY, "nope");
     expect(playsMade()).toBe(0);
+  });
+});
+
+describe("a signed-in account", () => {
+  const user = (rounds: number | null) => ({
+    name: "J", email: "j@x", picture: null, display_name: null, name_shown: "J", rounds_played: rounds });
+
+  it("is new only while it has sat in fewer than NEWCOMER_ROUNDS rounds", () => {
+    expect(accountNewcomer({ status: "in", user: user(0) })).toBe(true);
+    expect(accountNewcomer({ status: "in", user: user(NEWCOMER_ROUNDS - 1) })).toBe(true);
+    expect(accountNewcomer({ status: "in", user: user(NEWCOMER_ROUNDS) })).toBe(false);
+  });
+
+  it("leaves a guest, an unanswered sign-in and a server without a count to the browser", () => {
+    for (const status of ["loading", "off", "error", "out"] as const) {
+      expect(accountNewcomer({ status, user: null })).toBe(true);
+    }
+    expect(accountNewcomer({ status: "in", user: user(null) })).toBe(true);
+  });
+
+  it("auto coaches only when both the account and the browser are new; on and off win", () => {
+    expect(coachShows("auto", 0, false)).toBe(false);
+    expect(coachShows("auto", 0, true)).toBe(true);
+    expect(coachShows("auto", COACH_PLAYS, true)).toBe(false);
+    expect(coachShows("on", COACH_PLAYS, false)).toBe(true);
+    expect(coachShows("off", 0, true)).toBe(false);
   });
 });
 

@@ -311,7 +311,7 @@ def test_login_creates_a_user_sets_the_cookie_and_me_reads_it_back(accounts_on, 
     assert resp.status_code == 200
     assert resp.json() == {"name": "Jerry Yu", "email": "jerry@example.com",
                            "picture": "https://img.example/jy.png",
-                           "display_name": None, "name_shown": "Jerry"}
+                           "display_name": None, "name_shown": "Jerry", "rounds_played": 0}
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith("sj_session=")
     low = cookie.lower()
@@ -740,7 +740,7 @@ def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, cl
     assert _login(client, _sign(private_pem, _claims(name="Jerome Yu"))).status_code == 200
     assert client.get("/api/me", headers=session).json() == {
         "name": "Jerome Yu", "email": "jerry@example.com", "picture": "https://img.example/jy.png",
-        "display_name": "Cap", "name_shown": "Cap"}
+        "display_name": "Cap", "name_shown": "Cap", "rounds_played": 0}
 
 
 def test_patch_me_is_rate_limited_per_ip(accounts_on, keypair, client, monkeypatch):

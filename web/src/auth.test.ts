@@ -65,20 +65,21 @@ describe("the API wrappers", () => {
     routes.set("GET /api/me", { status: 401, body: { detail: "Not signed in." } });
     expect(await fetchMe()).toBeNull();
     routes.set("GET /api/me", { status: 200, body: { name: "Jerry Yu", email: "j@x", picture: null } });
-    // an older server (no display-name fields) still yields a complete user
+    // an older server (no display-name fields, no round count) still yields a complete user
     expect(await fetchMe()).toEqual({
       name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
+      rounds_played: null,
     });
     routes.set("GET /api/me", { status: 200, body: {
-      name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" } });
-    expect(await fetchMe()).toMatchObject({ display_name: "Cap", name_shown: "Cap" });
+      name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap", rounds_played: 12 } });
+    expect(await fetchMe()).toMatchObject({ display_name: "Cap", name_shown: "Cap", rounds_played: 12 });
     expect(calls.every((c) => c.init?.credentials === "same-origin")).toBe(true);
   });
   it("login posts JSON with the credential and nonce; a refusal throws its detail", async () => {
     routes.set("POST /api/auth/google", { status: 200, body: {
-      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J" } });
+      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J", rounds_played: 0 } });
     expect(await loginWithGoogle("tok", "n1")).toEqual({
-      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J" });
+      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J", rounds_played: 0 });
     const post = calls.find((c) => c.init?.method === "POST")!;
     expect(JSON.parse(post.init!.body as string)).toEqual({ credential: "tok", nonce: "n1" });
     expect((post.init!.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
@@ -134,7 +135,7 @@ describe("display names", () => {
     expect(effectiveName({ name: "Jerry Yu", email: "", picture: null, display_name: null, name_shown: "" })).toBe("Jerry");
   });
   it("updateDisplayName PATCHes JSON; a 400 rejects with the reason's message; updated() notifies", async () => {
-    const user = { name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" };
+    const user = { name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap", rounds_played: 5 };
     routes.set("PATCH /api/me", { status: 200, body: user });
     expect(await updateDisplayName("Cap")).toEqual(user);
     const patch = calls.find((c) => c.init?.method === "PATCH")!;

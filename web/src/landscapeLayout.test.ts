@@ -465,7 +465,10 @@ describe("phone controls", () => {
     expect(rule(block, ".opponent.pos-top")["--top-w"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
     expect([text.overflow, text["text-overflow"], text["white-space"], text["min-width"]])
-      .toEqual(["hidden", "ellipsis", "nowrap", "0"]);
+      .toEqual(["hidden", "ellipsis", "nowrap", "min(3em, 100%)"]);
+    // the status tags beside the name give way before it does
+    const tags = rule(block, ".opponent .opp-name > :is(.away-tag, .off-tag)");
+    expect([tags["flex-shrink"], tags["min-width"]]).toEqual(["100", "0"]);
     // a long name steps down once, never below 12px
     expect(px(rule(block, ".opp-name")["font-size"])).toBe(13);
     expect(px(rule(block, '.opponent[data-name-len="m"] .opp-name, .opponent[data-name-len="l"] .opp-name')["font-size"])).toBe(12);

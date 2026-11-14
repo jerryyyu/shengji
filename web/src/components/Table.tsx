@@ -22,7 +22,7 @@ import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
 import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
-import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
+import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { TOAST_MS, makeToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
@@ -164,11 +164,12 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         {/* the phone pill carries the team as a dot and the turn as a gold
             fill ending in "…" */}
         <span className={`seat-dot t${player.team}`} aria-hidden="true" />
-        {player.is_banker ? <span className="banker-crown" aria-hidden="true">👑</span> : null}
+        {/* the crown alone marks the banker; its label says so in words */}
+        {player.is_banker ? (
+          <span className="banker-crown" role="img" aria-label={bankerText(player, state.you)}>👑</span>
+        ) : null}
         {/* a seat whose owner left is the bot's now: "Bot (Alice left)" is its name */}
         <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : player.name}</span>
-        {/* the crown alone is easy to miss: "Sam banks" in words */}
-        {player.is_banker ? <span className="bank-tag">banks</span> : null}
         {/* always drawn, so the label's width never changes with the turn */}
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         <TimerRing left={moveClock} total={MOVE_SECS} thin />
@@ -428,8 +429,9 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // A newcomer's turn says what to tap, lights the cards that follow the
   // lead, and after NUDGE_MS with nothing chosen nudges once more.
   // The switch in the menu pins the coach on or off; untouched, it follows
-  // the newcomer count. Flipping it says so in a toast.
+  // the newcomer count and the account's rounds. Flipping it says so in a toast.
   const coachSwitch = useCoachSetting();
+  const newAccount = useAccountNewcomer();
   const [coachToast, setCoachToast] = useState<Toast | null>(null);
   useEffect(() => subscribeCoach((s) => {
     telemetry.tap(s === "on" ? "coach_on" : "coach_off");
@@ -440,7 +442,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     const t = window.setTimeout(() => setCoachToast(null), TOAST_MS);
     return () => window.clearTimeout(t);
   }, [coachToast]);
-  const coach = state.phase === "play" && myTurn && pending === null && coachShows(coachSwitch, plays)
+  const coach = state.phase === "play" && myTurn && pending === null && coachShows(coachSwitch, plays, newAccount)
     ? coachFor(state.hand, lead, state.trump)
     : null;
   const coaching = coach !== null;
@@ -664,9 +666,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           {/* your name and your controls; a phone centres them as one row */}
           <div className="you-row">
           <div className={`you-tagline team${me?.team ?? 0}${myTurn ? " on-turn" : ""}`}>
-            {iAmBanker ? <span className="banker-crown" aria-hidden="true">👑</span> : null}
+            {iAmBanker && me ? (
+              <span className="banker-crown" role="img" aria-label={bankerText(me, state.you)}>👑</span>
+            ) : null}
             <span className="you-name">{me?.name ?? "You"}</span>
-            {iAmBanker && me ? <span className="bank-tag you-bank">{bankerText(me, state.you)}</span> : null}
             {myTurn ? <span className="your-turn-tag">your turn</span> : null}
             {state.phase === "declare" && state.passed.includes(state.you) ? (
               <span className="ready-tag">ready</span>

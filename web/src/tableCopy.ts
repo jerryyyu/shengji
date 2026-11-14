@@ -26,9 +26,10 @@ export function pointsLabel(state: GameState): string {
   return attack === null ? "Attackers" : teamWord(attack, state);
 }
 
-/** "You bank" for your own seat, "Sam banks" for anyone else. */
+/** The banker's crown in words, for screen readers: "You, banker" for your
+ *  own seat, "Sam, banker" for anyone else. */
 export function bankerText(player: StatePlayer, you: number): string {
-  return player.seat === you ? "You bank" : `${player.name} banks`;
+  return `${player.seat === you ? "You" : player.name}, banker`;
 }
 
 /** "You declared" / "Sam declared", for the tag under a declaration. */

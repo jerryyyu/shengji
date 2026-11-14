@@ -18,10 +18,12 @@ export interface AuthUser {
   display_name: string | null;
   /** What the player is called: `display_name`, else the Google first name. */
   name_shown: string;
+  /** Rounds the account has sat in; null or absent when the server does not say. */
+  rounds_played?: number | null;
 }
 
 /** The `/api/me` body as the server sends it; older servers lack the two
- *  display-name fields, so both are filled in here. */
+ *  display-name fields and the round count, so those are filled in here. */
 function toUser(body: Partial<AuthUser> & { name: string; email: string }): AuthUser {
   return {
     name: body.name,
@@ -29,6 +31,7 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     picture: body.picture ?? null,
     display_name: body.display_name ?? null,
     name_shown: body.name_shown ?? firstName(body.name),
+    rounds_played: typeof body.rounds_played === "number" ? body.rounds_played : null,
   };
 }
 

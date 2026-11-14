@@ -334,7 +334,8 @@ textarea:focus-visible {
 }
 
 /* The one connection pill, in the lobby and at the table: gold while the
-   socket reconnects on its own, with Retry inside once the wait is long. */
+   socket reconnects on its own, with Retry inside once the wait is long.
+   At the table the same pill says a bot holds your seat, with I'm back. */
 .reconnect-banner {
   position: fixed;
   top: 60px;
@@ -2262,7 +2263,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   vertical-align: middle;
 }
 
-/* you are away: the bot plays every decision until you are back */
+/* joining after this trick: the bot plays your seat until the handover */
 .away-pill {
   position: fixed;
   left: 50%;
@@ -2293,22 +2294,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   font-size: var(--fs-16);
   font-weight: 600;
   color: #fff;
-}
-
-.away-pill-text span {
-  font-size: var(--fs-12);
-  color: var(--text-dim);
-}
-
-.btn.away-back {
-  min-height: 40px;
-  padding: 0 18px;
-  border: 1.5px solid #d6a22c;
-  border-radius: 14px;
-  background: linear-gradient(#8a6a22, #6b5219);
-  color: #ffd77a;
-  font-size: var(--fs-16);
-  font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4049,14 +4034,24 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     top: 40px;
   }
 
-  /* the header row's right end, left of the … menu: the HUD strip and the
-     top seat's label take the rest of that row, the side seats the row under it */
+  /* the felt's top-left corner under the header row, the last trick
+     control's place, which steps down while the pill shows: the header row
+     has no room for "A bot holds your seat" beside the partner and chat */
   .app:has(.table-screen) .reconnect-banner {
     --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
-    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
-    top: calc(var(--safe-t) + 6px);
-    left: auto;
-    right: calc(var(--safe-r) + 52px);
+    --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
+    top: calc(var(--safe-t) + 6px + var(--header-h, 32px) + 6px);
+    left: calc(var(--safe-l) + 8px);
+    right: auto;
+    padding: 5px 14px;
+  }
+
+  .app:has(.table-screen) .reconnect-banner.with-retry {
+    padding: 3px 3px 3px 12px;
+  }
+
+  .app:has(.table-screen) .reconnect-retry {
+    min-height: 26px;
   }
 }
 
@@ -6846,6 +6841,16 @@ dialog.leave-sheet-backdrop {
   left: calc(var(--safe-l, 0px) + 8px);
   min-height: 28px;
   padding: 2px 10px;
+}
+
+/* the connection pill holds the felt's top-left corner while it shows:
+   the last trick control steps down below it */
+.app:has(.reconnect-banner) .table-screen .last-trick-btn {
+  top: 56px;
+}
+
+:where(.phone-landscape) .app:has(.reconnect-banner) .table-screen .last-trick-btn {
+  top: calc(var(--header-h, 32px) + 12px + 42px);
 }
 
 .last-trick-panel {

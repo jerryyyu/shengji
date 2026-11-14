@@ -5,6 +5,7 @@ import ChatPanel from "../components/ChatPanel";
 import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
+import { useAnyTapIsBack } from "../components/seatHeld";
 import type { LeaveContext } from "../components/leaveCopy";
 import { seatPos } from "../components/TrickArea";
 import { codeLink } from "../codes";
@@ -281,11 +282,12 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
     const move = canMove(q);
     const seats = sharedSeats(t, now, move, q.pending !== null);
     if (q.stillHereUntil !== null) {
-      // a table with no timer asks before it drops a seat nobody is at
+      // a table with no timer asks before it drops a seat nobody is at; the
+      // same I’m back as a game's held seat, and any tap counts
       return {
         title: sharedTitle(t), status: { text: stillHereLine(q.stillHereUntil, now), warn: true },
         seats, you: t.you,
-        primary: { label: "I'm here", disabled: false, onClick: () => queue.here() },
+        primary: { label: "I’m back", disabled: false, onClick: () => queue.here() },
         secondary: leave,
       };
     }
@@ -307,7 +309,7 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
   if (kind === "elsewhere") {
     return {
       title: "Your table is open on another device.", seats: null, you: 0,
-      primary: { label: "Move it here", disabled: q.pending !== null, onClick: () => queue.join() },
+      primary: { label: "I’m back", disabled: q.pending !== null, onClick: () => queue.join() },
       secondary: q.leader ? leave : null,
     };
   }
@@ -385,6 +387,8 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const kind = panelKind(q);
   const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
   const [asking, setAsking] = useState(false);
+  // "still here?": any tap or key on the page answers it, as at a held seat
+  useAnyTapIsBack(kind === "shared" && q.stillHereUntil !== null, () => queue.here());
   const base = parts(q, kind, now, () => setAsking(true));
   if (!base) return null;
   const casual = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere";

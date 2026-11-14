@@ -70,7 +70,7 @@ const JOIN_SITES = [
   "components/Lobby.tsx", // the code box and the Join panel a link opens
   "intent.ts", // the join_room a saved intent resumes with
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
-  "queue/TablePanel.tsx", // Move it here (an offer for another table)
+  "queue/TablePanel.tsx", // I’m back (your table, moved here from another device)
 ];
 
 /** The files that render the panel frame: the one table UI. */

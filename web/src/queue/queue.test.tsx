@@ -1737,7 +1737,7 @@ describe("the search on screen is the server's", () => {
     expect(q(".q-find")).toBeNull();
     await pastGuard();
     expect(Boolean(button("Leave", panel()!))).toBe(leader);
-    click(button("Move it here", panel()!));
+    click(button("I’m back", panel()!));
     expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
     say({ type: "queue_state", queued: false, count: 1 });
     expect(panel()).toBeNull();
@@ -2100,24 +2100,24 @@ describe("the unified table on the client", () => {
     expect(q(".q-toast")?.textContent).toBe("!Alice moved to the other team.");
   });
 
-  it("still here?: the prompt, a countdown and I'm here; the automatic check is not an answer", async () => {
+  it("still here?: a countdown and I’m back; the automatic check is not an answer", async () => {
     await renderApp();
     fakeClock();
     const table = [seat("Jerry", { you: true }), seat("Alice"), null, null];
     say(atTable(table, {}, { still_here_until: nowSecs() + 30 }));
     const p = panel()!;
-    expect(lines()).toEqual(["Still here? You leave the table in 0:30."]);
-    expect(p.querySelector(".tp-line.warn")?.textContent).toBe("Still here? You leave the table in 0:30.");
+    expect(lines()).toEqual(["You leave the table in 0:30."]);
+    expect(p.querySelector(".tp-line.warn")?.textContent).toBe("You leave the table in 0:30.");
     expect(p.querySelector(".tp-hint")).toBeNull();
-    expect(live()?.textContent).toBe("Still here? Tap I'm here to stay at the table.");
+    expect(live()?.textContent).toBe("Tap I’m back to stay at the table.");
     tick(GUARD_MS + 10);
-    expect(primary()?.textContent).toBe("I'm here");
+    expect(primary()?.textContent).toBe("I’m back");
     tick(15_000);
-    expect(lines()).toEqual(["Still here? You leave the table in 0:15."]);
+    expect(lines()).toEqual(["You leave the table in 0:15."]);
     // the periodic check went out, and the prompt is still up
     expect(sentOf("queue_status").length).toBeGreaterThan(0);
     expect(sentOf("table_here")).toHaveLength(0);
-    expect(primary()?.textContent).toBe("I'm here");
+    expect(primary()?.textContent).toBe("I’m back");
     click(primary());
     expect(lastSent()).toEqual({ type: "table_here" });
     say(atTable(table, {}, { still_here_until: null }));
@@ -2127,6 +2127,22 @@ describe("the unified table on the client", () => {
     expect(primary()?.disabled).toBe(true);
     tick(GUARD_MS + 10);
     expect(primary()?.disabled).toBe(false);
+  });
+
+  it("still here?: any tap or key on the page counts as I’m back, once; a lone modifier does not", async () => {
+    await renderApp();
+    const table = [seat("Jerry", { you: true }), seat("Alice"), null, null];
+    say(atTable(table, {}, { still_here_until: nowSecs() + 30 }));
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Shift" })); });
+    expect(sentOf("table_here")).toHaveLength(0);
+    act(() => { document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    expect(sentOf("table_here")).toHaveLength(1);
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "a" })); });
+    expect(sentOf("table_here")).toHaveLength(1);
+    // with no prompt up, a tap sends nothing
+    say(atTable(table, {}, { still_here_until: null }));
+    act(() => { document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    expect(sentOf("table_here")).toHaveLength(1);
   });
 
   it("panel_seq goes back with Start with bots, Start and Join; panel_changed refreshes quietly", async () => {
@@ -2156,7 +2172,7 @@ describe("the unified table on the client", () => {
     expect(lastSent()).toEqual({ type: "open_table_join", room: "OPEN", seat: 2, panel_seq: 9 });
   });
 
-  it("account_in_game with a room on this device: the message in Play's place and Return to your game", async () => {
+  it("account_in_game with a room on this device: the message in Play's place and I’m back", async () => {
     await renderApp();
     localStorage.setItem("shengji.room", "GAME");
     await pastGuard();
@@ -2165,7 +2181,7 @@ describe("the unified table on the client", () => {
     expect(q(".play-in-game-line")?.textContent).toBe("You are already in a game on another device.");
     expect(document.body.textContent?.match(/already in a game/g)?.length).toBe(1);   // no toast as well
     expect(q(".q-find")).toBeNull();
-    click(button("Return to your game"));
+    click(button("I’m back"));
     expect(lastSent()).toMatchObject({ type: "join_room", room: "GAME" });
     expect(findBtn().textContent).toBe("Play");
   });
@@ -2176,7 +2192,7 @@ describe("the unified table on the client", () => {
     click(findBtn());
     say({ type: "error", code: "account_in_game", message: "You are already in a game on another device." });
     expect(q(".play-in-game-line")?.textContent).toBe("You are already in a game on another device.");
-    expect(button("Return to your game")).toBeUndefined();
+    expect(button("I’m back")).toBeUndefined();
     click(button("OK"));
     expect(q(".play-in-game")).toBeNull();
     expect(findBtn().textContent).toBe("Play");
@@ -2191,7 +2207,7 @@ describe("the unified table on the client", () => {
     click(findBtn());
     say({ type: "error", code: "account_in_game", message: "Sign in again to return to your game." });
     expect(q(".play-in-game-line")?.textContent).toBe("Sign in again to return to your game.");
-    expect(button("Return to your game")).toBeUndefined();
+    expect(button("I’m back")).toBeUndefined();
   });
 });
 

@@ -85,7 +85,7 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
       <div className="play-ranked-row">
         {canReturn ? (
           <button type="button" className="btn gold play-main" disabled={!online} onClick={() => queue.returnToGame()}>
-            Return to your game
+            I’m back
           </button>
         ) : null}
         <button type="button" className={canReturn ? "btn play-duo" : "btn play-main"}
@@ -134,7 +134,7 @@ export function RankedSection({ online, room = null }: {
   const q = useQueue();
   const account = useAuth();
   const kind = panelKind(q);
-  // "I'm here" and Start share the primary place: the guard covers each swap
+  // "I’m back" and Start share the primary place: the guard covers each swap
   const guarded = useKindGuard(kind === "shared" && q.stillHereUntil !== null ? "still_here" : kind);
   const now = useNow(q.cooldownUntil !== null, 500);
 

@@ -258,7 +258,7 @@ describe("a guest", () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
-    expect(host.querySelector(".me-sub")?.textContent).toBe("Guest · not ranked");
+    expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
     expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
     const card = host.querySelector(".signin-card")!;
     expect(card.querySelector(".google-signin")).not.toBeNull();
@@ -276,7 +276,7 @@ describe("a guest", () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const card = host.querySelector(".signin-card")!;
-    expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked and keep your games");
+    expect(card.querySelector("h3")?.textContent).toBe("Sign in");
     expect(card.querySelector("p")).toBeNull();
     expect(card.querySelector(".me-rated-link")).toBeNull();
   });
@@ -286,7 +286,7 @@ describe("a guest", () => {
     await render();
     const card = host.querySelector(".signin-card")!;
     expect(card).not.toBeNull();
-    expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked and keep your games");
+    expect(card.querySelector("h3")?.textContent).toBe("Sign in");
     const btn = card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toBe("Sign in with Google");

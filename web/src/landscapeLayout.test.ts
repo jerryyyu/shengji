@@ -569,7 +569,7 @@ describe("phone controls", () => {
     expect(block.includes(".hand::before")).toBe(false);
     expect(/box-shadow:[^;]*(gold|242, 193, 78)/.test(block)).toBe(false);
     expect(rule(block, ".banker-crown").filter).toBe("none");
-    expect(rule(block, ".victory-crown").filter).toBe("none");
+    expect(rule(block, ".game-won-crown").filter).toBe("none");
     expect(rule(block, ".level-chip.level-up").animation).toBe("none");
     expect(rule(block, ".opponent.on-turn")["box-shadow"]).toBe("none");
     expect(block.includes(".opponent.on-turn::after")).toBe(false);
@@ -732,9 +732,10 @@ describe("the phone hand", () => {
 
 describe("the header row on a phone", () => {
   // The level-and-points strip's width as drawn in Chromium: levels 10/J with
-  // 65 points, levels 10/10 with 105 points, the same with games-won stars
-  // (3 and 2), and the first and last at the 1.3x text cap.
-  const STRIPS = { "10/J 65": 259, "10/10 105": 287, "10/10 105 stars": 350, "1.3x text": 290, "1.3x stars": 400 };
+  // 65 points, levels 10/10 with 105 points, the same with the games score
+  // (Games 3–2), and the first and last at the 1.3x text cap. The games chip
+  // draws 25px (31px at 1.3x) wider than a star on each level chip did.
+  const STRIPS = { "10/J 65": 259, "10/10 105": 287, "10/10 105 games": 375, "1.3x text": 290, "1.3x games": 431 };
   const top = rule(block, ".opponent.pos-top");
   const chat = rule(block, ".table-screen .chat-launch");
   /** The top label at its widest, the strip and Chat, for a strip `stripW` wide. */

@@ -6,7 +6,7 @@ import RoundEndModal from "./RoundEndModal";
 import { auth } from "../auth";
 
 const sent: unknown[] = [];
-vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, leaveToLobby: () => {} } }));
+vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); } } }));
 
 function makePlayer(seat: number, name: string, team: 0 | 1): StatePlayer {
   return {
@@ -98,6 +98,50 @@ describe("round end modal", () => {
   it("shows the running games-won tally once a game has been won", () => {
     const text = renderModal(makeResult({ point_scored: true, games_won: [2, 1] }));
     expect(text).toContain("Games won");
+  });
+
+  it("a game won says so up front: the game in the title, the games score, Next game and Leave", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0], winner_team: 0 }));
+    const h2 = host.querySelector("h2")!;
+    expect(h2.textContent).toBe("You & Sam win the game");
+    expect(host.querySelector(".modal.game-won")).not.toBeNull();
+    expect(host.querySelector(".game-won-crown")!.getAttribute("aria-hidden")).toBe("true");
+    // the score sits in the main view, outside Details
+    const games = host.querySelector(".result-games")!;
+    expect(games.closest("details")).toBeNull();
+    expect(games.textContent).toBe("Games: Us 1 · Them 0");
+    const buttons = [...host.querySelectorAll("button")].map((b) => b.textContent);
+    expect(buttons).toContain("Next game");
+    expect(buttons).not.toContain("Next round");
+    expect(buttons).toContain("Leave game");
+    expect(buttons).not.toContain("Back to lobby");
+    const next = [...host.querySelectorAll("button")].find((b) => b.textContent === "Next game")!;
+    act(() => next.click());
+    expect(sent).toEqual([{ type: "next_round" }]);
+  });
+
+  it("the games score puts your team first, and a loss names your side", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [2, 3], winner_team: 1 }),
+                { ...state, you: 1 });
+    expect(host.querySelector("h2")!.textContent).toBe("You & Ada win the game");
+    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 3 · Them 2");
+    renderModal(makeResult({ point_scored: true, games_won: [0, 1], winner_team: 1 }));
+    expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the game");
+    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 0 · Them 1");
+  });
+
+  it("an ordinary round keeps Next round and no games score", () => {
+    renderModal(makeResult());
+    expect(host.querySelector(".result-games")).toBeNull();
+    expect(host.querySelector(".game-won-crown")).toBeNull();
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toContain("Next round");
+  });
+
+  it("has no game-over card: even a result marked game_over is a round end with Next game", () => {
+    renderModal(makeResult({ point_scored: true, game_over: true, games_won: [1, 0] }));
+    expect(host.querySelector(".victory")).toBeNull();
+    expect(host.textContent).not.toContain("Back to lobby");
+    expect([...host.querySelectorAll("button")].map((b) => b.textContent)).toContain("Next game");
   });
 
   it("titles the round with the winners and a plural verb, never a colour", () => {
@@ -221,21 +265,17 @@ describe("round end rating line", () => {
     expect(line.querySelector(".rating-game")!.textContent).toBe("+31 this game");
   });
 
-  it("shows the game total on the game-over screen", () => {
-    renderModal(makeResult({ game_over: true, rating: { rating: 1740, delta: 12, game_delta: 55 } }), ranked);
-    expect(host.querySelector(".victory .rating-line")!.textContent).toContain("+55 this game");
-  });
 
-  it("tells a guest seat its rounds are not ranked, from the result's unranked: guest", () => {
+  it("tells a guest seat it plays as a guest, from the result's unranked: guest", () => {
     renderModal(makeResult({ unranked: "guest" }), ranked);
-    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest · not ranked");
+    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest");
     expect(host.querySelector(".rating-delta")).toBeNull();
     expect(host.querySelector(".google-signin-slot")).toBeNull();
   });
 
   it("or from the state's guest at a ranked table", () => {
     renderModal(makeResult(), { ...ranked, guest: true });
-    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest · not ranked");
+    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest");
   });
 
   it("a signed-out viewer with neither field sees no guest note", async () => {
@@ -290,14 +330,16 @@ describe("headline first, details behind a disclosure", () => {
     expect(leave && details.contains(leave)).toBe(false);
   });
 
-  it("says one level, and a won game, in the headline", () => {
+  it("says one level in the headline; a won game's headline is the games score alone", () => {
     renderModal(makeResult({ level_change: 1 }));
     expect(host.querySelector(".result-team-line.gained")!.textContent).toContain("+1 level");
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
-    expect(host.querySelector(".result-team-line.gained")!.textContent).toContain("game won");
-    expect(host.querySelector(".result-headline")!.textContent).toContain("Levels restart at");
+    expect(host.querySelector(".result-team-line")).toBeNull();
+    expect(host.querySelector(".result-headline")!.textContent).toBe("Games: Us 1 · Them 0");
+    // the level restart is still told, behind Details
+    expect(host.querySelector("details")!.textContent).toContain("Levels restart at");
   });
 
   it("leads with your team when the attackers win, names who attacked, and never relies on colour", () => {

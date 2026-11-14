@@ -702,10 +702,11 @@ textarea:focus-visible {
   min-width: 96px;
 }
 
-.games-won {
-  margin-left: 6px;
+.games-chip {
   font-weight: 700;
   color: var(--gold, #d9a441);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .signin-upsell {
@@ -927,7 +928,6 @@ textarea:focus-visible {
   cursor: pointer;
 }
 .room-ranked-text { display: flex; flex-direction: column; gap: 2px; }
-.room-ranked-note { font-size: var(--fs-13); color: var(--text-dim); }
 
 .room-code-row {
   display: flex;
@@ -2337,13 +2337,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-size: 24px;
 }
 
-.modal-title.team0,
-.victory-title.team0 {
+.modal-title.team0 {
   color: var(--team0);
 }
 
-.modal-title.team1,
-.victory-title.team1 {
+.modal-title.team1 {
   color: var(--team1);
 }
 
@@ -2487,23 +2485,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   margin-left: -14px;
 }
 
-.victory {
-  align-items: center;
-}
-
-.victory-crown {
-  font-size: 56px;
+/* a round that wins a game: the crown over the title and the games score
+   in the outcome's place */
+.game-won-crown {
+  align-self: center;
+  font-size: 44px;
+  line-height: 1;
   filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.8));
 }
 
-.victory-title {
-  margin: 0;
-  font-size: 28px;
-}
-
-.victory-sub {
-  margin: 0;
-  color: var(--text-dim);
+.result-games {
+  font-weight: 700;
+  color: var(--gold, #d9a441);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ============ Mobile landscape (short viewports) ============ */
@@ -2994,7 +2988,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     animation: none;
   }
 
-  .victory-crown {
+  .game-won-crown {
     filter: none;
   }
 
@@ -3873,16 +3867,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin: 0 auto 12px;
   }
 
-  .victory-crown {
-    font-size: 38px;
-  }
-
-  .victory-title {
-    font-size: 20px;
-  }
-
-  .victory-sub {
-    font-size: 13px;
+  .game-won-crown {
+    font-size: 30px;
   }
 
   /* off the table, an error passes in the header band */
@@ -4383,7 +4369,7 @@ button.room-chip:active { background-color: #394452; }
 .field > span, .result-label, .ready-status { font-size: var(--fs-14); }
 .field input, .field select, .chat-input input { font-size: var(--fs-16); }
 .chat-log, .result-value, .result-verdict { font-size: var(--fs-15); }
-.modal-title, .victory-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.modal-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 .result-grid { min-width: 0; }
 .result-grid > * { min-width: 0; overflow-wrap: anywhere; }
 
@@ -6136,12 +6122,10 @@ button[role="switch"]:active .ios-switch {
   background: linear-gradient(rgba(79, 178, 122, 0.16), rgba(79, 178, 122, 0.08)), #171b22;
   color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.25; text-align: left;
 }
-.tp-kicker { font-size: var(--fs-11, 11px); font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #4fb27a; }
 .tp-title {
-  margin: -4px 0 0; font-size: var(--fs-20); font-weight: 700; color: #fff;
+  margin: 0; font-size: var(--fs-20); font-weight: 700; color: #fff;
   overflow-wrap: anywhere;
 }
-.tp-lines { display: flex; flex-direction: column; gap: 3px; }
 .tp-line { margin: 0; font-size: var(--fs-14); color: #c3cad6; }
 .tp-line.warn { color: var(--gold); }
 .tp-teams {
@@ -6180,7 +6164,6 @@ button.tp-seat { cursor: pointer; }
 @media (max-width: 359px) { .tp:not(.tp-wide) .tp-av { display: none; } }
 button.tp-seat:disabled { opacity: 0.6; cursor: default; }
 button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.tp-hint { margin: 0; text-align: center; font-size: var(--fs-12); color: #8a93a3; }
 .tp-row {
   appearance: none; display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px;
   padding: 0 12px; border-radius: 12px; border: 1px solid rgba(214, 162, 44, 0.6);

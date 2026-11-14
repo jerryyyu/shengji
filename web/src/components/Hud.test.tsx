@@ -259,6 +259,34 @@ describe("level chip", () => {
   });
 });
 
+describe("games score", () => {
+  it("is absent until a game is won, then reads Games Us–Them with your team first", () => {
+    const view = render(makeState());
+    expect(view.host.querySelector(".games-chip")).toBeNull();
+    expect(view.host.textContent).not.toContain("Games");
+    view.rerender(makeState({ games_won: [1, 0] }));
+    const chip = () => view.host.querySelector(".games-chip")!;
+    expect(chip().textContent).toBe("Games 1–0");
+    expect(chip().getAttribute("aria-label")).toBe("Games: Us 1, Them 0");
+    // the level chips carry no star of their own
+    expect(view.host.querySelector(".level-chip.team0")!.textContent).not.toMatch(/★/);
+    // seen from the other team, Us is that team
+    view.rerender(makeState({ you: 1, games_won: [1, 0],
+                              players: [makePlayer({ seat: 0, name: "Robin", team: 0 }),
+                                        makePlayer({ seat: 1, name: "You", team: 1 })] }));
+    expect(chip().textContent).toBe("Games 0–1");
+    expect(chip().getAttribute("aria-label")).toBe("Games: Us 0, Them 1");
+    view.unmount();
+  });
+
+  it("sits with the levels, after the other team's chip", () => {
+    const view = render(makeState({ games_won: [2, 3] }));
+    const group = view.host.querySelector(".level-chip.team1")!.parentElement!;
+    expect(group.lastElementChild?.className).toContain("games-chip");
+    view.unmount();
+  });
+});
+
 describe("points pop", () => {
   it("floats the gain by the counter when the attackers score, then goes", () => {
     vi.useFakeTimers();

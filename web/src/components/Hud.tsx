@@ -149,11 +149,17 @@ function LevelChip({ team, level, gamesWon, word }: {
           title={word === "Us" ? "Your team's level" : "The other team's level"}>
       <span className={`team-dot t${team}`} aria-hidden="true" />
       <span className="team-word">{word}</span> <span className="level-value">{shown}</span>
-      {gamesWon ? (
-        <span className="games-won" title="Games won">
-          ★{gamesWon}
-        </span>
-      ) : null}
+    </span>
+  );
+}
+
+/** The games score, your team first, once either team has won a game: the
+ *  table never ends, so this is the running tally of the session. */
+export function GamesChip({ us, them }: { us: number; them: number }) {
+  if (us + them === 0) return null;
+  return (
+    <span className="chip games-chip" role="group" aria-label={`Games: Us ${us}, Them ${them}`}>
+      <span aria-hidden="true">Games {us}–{them}</span>
     </span>
   );
 }
@@ -291,6 +297,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           <LevelChip team={us} word="Us" level={state.levels[us]} gamesWon={state.games_won[us]} />
           <TrumpChip state={state} />
           <LevelChip team={them} word="Them" level={state.levels[them]} gamesWon={state.games_won[them]} />
+          <GamesChip us={state.games_won[us]} them={state.games_won[them]} />
         </div>
 
         <div className="hud-group">

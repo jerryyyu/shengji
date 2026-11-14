@@ -300,7 +300,7 @@ function GuestMe({ clientId, unreachable, standalone }: {
           </ul>
           {clientId || unreachable ? (
             <div className="signin-card">
-              <h3>Sign in to be ranked and keep your games</h3>
+              <h3>Sign in</h3>
               {clientId ? <GoogleSignIn clientId={clientId} /> : <SignInUnavailable />}
             </div>
           ) : null}

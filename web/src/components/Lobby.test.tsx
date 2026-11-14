@@ -163,7 +163,7 @@ describe("the lobby with sign-in ON", () => {
     const name = chip.querySelector(".account-pill-name")!.textContent!;
     expect(name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
     expect(chip.querySelector(".avatar")?.textContent).toBe(name.slice(0, 1));
-    expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("Guest · not ranked");
+    expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("Guest");
     expect(chip.querySelector(".guest-pill-edit")).not.toBeNull();
     const row = [...host.querySelectorAll<HTMLButtonElement>(".play-ranked-row button")];
     expect(row.map((b) => b.textContent)).toEqual(["Play", "Duo"]);

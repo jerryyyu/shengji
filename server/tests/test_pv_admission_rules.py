@@ -749,10 +749,12 @@ def _singleton_candidate(rnd, *, greedy=False, budget=None, evaluator=None):
     return candidate, control, target
 
 
+@pytest.mark.parametrize('prefix_cache', [False, True])
 @pytest.mark.parametrize('greedy', [False, True])
-def test_singleton_challenger_reaches_full_world_scoring_and_real_reducer(greedy):
+def test_singleton_challenger_reaches_full_world_scoring_and_real_reducer(greedy, prefix_cache):
     rnd = state(); seat = rnd.turn
     candidate, control, target = _singleton_candidate(rnd, greedy=greedy)
+    candidate.singleton_prefix_cache = prefix_cache
     original = Counter(rnd.hands[seat])
 
     class TargetEvaluator(ZeroEvaluator):

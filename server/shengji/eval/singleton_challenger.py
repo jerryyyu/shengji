@@ -15,6 +15,8 @@ from shengji.train import pv_search_policy as pv
 class _SingletonChallenger:
     """Dedicated research bot with unchanged construction and serving deadlines."""
 
+    singleton_prefix_cache = False
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.admit_forced_single or self.finish_lead_admission or self.small_joker_guard:
@@ -39,6 +41,12 @@ class _SingletonChallenger:
         sums = np.zeros(len(indices), dtype=np.float64)
         pending, slots = [], []
         evaluations = 0
+        prefix = None
+        if self.singleton_prefix_cache:
+            from shengji.train.pv_encode_prefix import HistoryPrefix
+            prefix = HistoryPrefix.of(
+                rnd, batched=getattr(self, "encode_batch_fast", False),
+                native=getattr(self, "encode_native", False))
 
         def flush():
             nonlocal evaluations
@@ -46,7 +54,14 @@ class _SingletonChallenger:
                 return
             if check_budget:
                 check_budget()
-            values = np.asarray(self.evaluator.score(pending, seat), dtype=np.float64)
+            if self.singleton_prefix_cache:
+                from shengji.train.pv_encode_prefix import score_leaves
+                scored = score_leaves(
+                    self.evaluator, pending, seat, prefix,
+                    batched=getattr(self, "encode_batch_fast", False))
+            else:
+                scored = self.evaluator.score(pending, seat)
+            values = np.asarray(scored, dtype=np.float64)
             if values.shape != (len(pending),) or not np.isfinite(values).all():
                 raise ValueError('singleton probe requires finite root-team values')
             np.add.at(sums, slots, values)

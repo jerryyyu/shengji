@@ -1352,7 +1352,8 @@ _EXACT_WORLD_SUBSET_REQUIRES = (
     "(SHENGJI_PV_EXACT_WORLD_SUBSET below SHENGJI_PV_WORLDS needs "
     "SHENGJI_PV_EXACT_LEAD_ENDGAME=1 or SHENGJI_PV_EXACT_FOLLOW=1)")
 #: the latency switches (module docstring): ``0`` or ``1``, unset (or empty) is off
-LATENCY_SWITCH_ENV = {"encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
+LATENCY_SWITCH_ENV = {"singleton_prefix_cache": "SHENGJI_PV_SINGLETON_PREFIX_CACHE",
+                      "encode_prefix_cache": "SHENGJI_PV_ENCODE_PREFIX_CACHE",
                       "single_candidate_fast": "SHENGJI_PV_SINGLE_CANDIDATE_FAST",
                       "leaf_greedy_stream": "SHENGJI_PV_LEAF_GREEDY_STREAM",
                       "encode_batch_fast": "SHENGJI_PV_ENCODE_BATCH_FAST",

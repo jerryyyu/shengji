@@ -112,6 +112,10 @@ it("Play opens your table with three bots, marked Offline, and Start deals under
   expect(panel()!.querySelector(".tp-line")!.textContent).toBe("Offline");
   expect(panel()!.querySelector(".tp-title")!.textContent).toBe("You and 3 bots");
   expect(panel()!.querySelectorAll(".tp-seat.bot").length).toBe(3);
+  // the table's chat row is in its place, greyed: chat needs the server
+  const chat = panel()!.querySelector<HTMLButtonElement>(".tp-chat")!;
+  expect(chat.disabled).toBe(true);
+  expect(chat.getAttribute("aria-label")).toBe("Chat needs a connection");
   await startGame();
   expect(host.querySelector(".lobby-screen, .tp-room")).toBeNull();
   expect(host.querySelector(".hud-bar .mode-chip")!.textContent).toBe("Offline");

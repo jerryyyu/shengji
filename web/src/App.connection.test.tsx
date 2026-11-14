@@ -107,9 +107,9 @@ it("at the table a drop shows the pill, Retry at 10 s, the full screen at 60 s, 
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
   expect(banner()).toBeNull();
   expect(lost()?.querySelector("h1")?.textContent).toBe("No connection");
-  expect(lost()?.textContent).toContain("a bot in your seat");
-  // in a game, the full screen offers no way out of it
-  expect(host.querySelector(".conn-lost-bots")).toBeNull();
+  expect(lost()?.textContent).toContain("A bot holds your seat.");
+  // in a game too, the full screen offers the bots on this device
+  expect(host.querySelector(".conn-lost-bots")?.textContent).toBe("Play offline with the bots");
   expect(host.querySelector(".conn-lost-retry")?.textContent).toBe("Retry");
 
   // back online: the saved seat is asked for by its token, and every surface clears
@@ -138,7 +138,7 @@ it("in the lobby the same pill shows, and the full screen offers Retry and bots 
   expect(retryIn()).not.toBeNull();
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS - RETRY_AFTER_MS); });
   expect(lost()).not.toBeNull();
-  expect(lost()?.textContent).not.toContain("bot in your seat");
+  expect(lost()?.textContent).not.toContain("A bot holds your seat");
 
   // Retry from the full screen goes back to the pill and starts the wait over
   act(() => host.querySelector<HTMLButtonElement>(".conn-lost-retry")!.click());
@@ -146,7 +146,7 @@ it("in the lobby the same pill shows, and the full screen offers Retry and bots 
   expect(banner()?.textContent).toBe("Reconnecting…");
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
   const offline = host.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
-  expect(offline.textContent).toBe("Play offline");
+  expect(offline.textContent).toBe("Play offline with the bots");
   // straight to the offline table: the page reloads in offline mode with it open
   act(() => offline.click());
   expect(assign).toHaveBeenCalledWith("?offline=1&table=1");
@@ -208,7 +208,7 @@ it("the full screen is modal: Retry has focus, Tab stays inside, the page behind
   expect(document.activeElement).toBe(howto);
 });
 
-it("Retry from the full screen gives focus back too, and a modal at the table holds a single Tab stop", async () => {
+it("Retry from the full screen gives focus back too, and Tab stays inside its two buttons at the table", async () => {
   const { ws, LOST_AFTER_MS } = await mount();
   ws.saveName("Me");
   act(() => latest().open());
@@ -218,10 +218,12 @@ it("Retry from the full screen gives focus back too, and a modal at the table ho
   act(() => latest().close());
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
   const retry = lost()!.querySelector<HTMLButtonElement>(".conn-lost-retry")!;
+  const bots = lost()!.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
   expect(document.activeElement).toBe(retry);
-  tab();
-  expect(document.activeElement).toBe(retry);
+  // Tab and Shift+Tab wrap at its ends (between them the browser moves focus)
   tab(true);
+  expect(document.activeElement).toBe(bots);
+  tab();
   expect(document.activeElement).toBe(retry);
   act(() => retry.click());
   expect(lost()).toBeNull();

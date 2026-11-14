@@ -58,15 +58,12 @@ const state = (matched: boolean) => ({
   attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
 }) as unknown as GameState;
 
-it("the strip ends after the points; a ranked game publishes the mode chip's width instead", () => {
-  act(() => root.render(<Hud state={state(false)} practice={false} />));
-  // group 10..160, points 170..240 -> 230 + 1 rounding px
-  expect(host.style.getPropertyValue("--hud-strip-w")).toBe("231px");
-  expect(host.style.getPropertyValue("--hud-mode-w")).toBe("");
-  act(() => root.render(<Hud state={state(true)} practice={false} />));
-  expect(host.querySelector(".mode-chip")).not.toBeNull();
-  expect(host.style.getPropertyValue("--hud-strip-w")).toBe("231px");
-  expect(host.style.getPropertyValue("--hud-mode-w")).toBe("81px");
-  act(() => root.render(<Hud state={state(false)} practice={false} />));
-  expect(host.style.getPropertyValue("--hud-mode-w")).toBe("");
+it("the strip ends after the points, and every game, casual or ranked, publishes the mode chip's width", () => {
+  for (const matched of [false, true]) {
+    act(() => root.render(<Hud state={state(matched)} practice={false} />));
+    expect(host.querySelector(".mode-chip")).not.toBeNull();
+    // group 10..160, points 170..240 -> 230 + 1 rounding px
+    expect(host.style.getPropertyValue("--hud-strip-w")).toBe("231px");
+    expect(host.style.getPropertyValue("--hud-mode-w")).toBe("81px");
+  }
 });

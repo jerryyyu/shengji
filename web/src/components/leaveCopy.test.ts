@@ -8,18 +8,18 @@ import type { LeaveContext } from "./leaveCopy";
 const line = (ctx: LeaveContext, joined = false) => leaveCopy(ctx, joined).line;
 
 describe("one consequence line per place a leave starts", () => {
-  it("the Play table before a game is free, and names who stays", () => {
-    expect(line({ kind: "queue", others: [] })).toBe("Free.");
-    expect(line({ kind: "queue", others: ["Alice"] })).toBe("Free. Alice stays at the table.");
-    expect(line({ kind: "queue", others: ["Alice", "Li"] })).toBe("Free. Alice & Li stay at the table.");
+  it("the Play table before a game has no line alone, and names who stays", () => {
+    expect(line({ kind: "queue", others: [] })).toBeNull();
+    expect(line({ kind: "queue", others: ["Alice"] })).toBe("Alice stays at the table.");
+    expect(line({ kind: "queue", others: ["Alice", "Li"] })).toBe("Alice & Li stay at the table.");
     expect(leaveCopy({ kind: "queue", others: [] }).title).toBe("Leave the table?");
   });
 
-  it("a room is free; the host's controls pass on, and an empty room closes", () => {
+  it("a room's host controls pass on, and an empty room closes", () => {
     expect(line({ kind: "room", others: ["Alice", "Li"], host: true }))
-      .toBe("Free. The table stays open; Alice can start it.");
-    expect(line({ kind: "room", others: ["Alice"], host: false })).toBe("Free. The table stays open.");
-    expect(line({ kind: "room", others: [], host: true })).toBe("Free. The room closes.");
+      .toBe("The table stays open; Alice can start it.");
+    expect(line({ kind: "room", others: ["Alice"], host: false })).toBe("The table stays open.");
+    expect(line({ kind: "room", others: [], host: true })).toBe("The room closes.");
     expect(leaveCopy({ kind: "room", others: [], host: true }).title).toBe("Leave the room?");
   });
 
@@ -45,8 +45,11 @@ describe("one consequence line per place a leave starts", () => {
     expect(line({ kind: "game", ranked: false }, true)).toBe("A bot takes your seat and the others keep playing.");
   });
 
-  it("a round end is free, and practice says the game ends", () => {
-    expect(line({ kind: "game", ranked: true, betweenRounds: true }, true)).toBe("Free. This round's result is kept.");
+  it("a free leave never says Free: a round end keeps its result, and practice says the game ends", () => {
+    expect(line({ kind: "game", ranked: true, betweenRounds: true }, true)).toBe("This round's result is kept.");
+    for (const ctx of [{ kind: "queue", others: ["Alice"] }, { kind: "room", others: [], host: true }] as LeaveContext[]) {
+      expect(line(ctx)).not.toMatch(/Free/);
+    }
     expect(line({ kind: "game", ranked: false, practice: true })).toBe("This offline game ends.");
     expect(leaveCopy({ kind: "game", ranked: true }).title).toBe("Leave the game?");
   });

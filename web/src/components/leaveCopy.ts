@@ -61,24 +61,25 @@ export function inJoinedRound(): boolean {
 
 const stays = (names: string[]) => (names.length === 1 ? "stays" : "stay");
 
-/** The sheet's title and its one line. `joined`: the round in play was
- *  joined from an open table. Only a ranked table charges the join wait;
- *  a casual one, and any round end, let you go for free. */
-export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; line: string } {
+/** The sheet's title and its one line, or no line when leaving costs
+ *  nothing and changes nothing for anyone else. `joined`: the round in play
+ *  was joined from an open table. Only a ranked table charges the join wait;
+ *  a casual one, and any round end, let you go for free, and a free leave is
+ *  not announced as free. */
+export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; line: string | null } {
   if (ctx.kind === "queue") {
     const names = ctx.others.map(shortName);
-    return { title: "Leave the table?",
-             line: names.length ? `Free. ${nameList(names)} ${stays(names)} at the table.` : "Free." };
+    return { title: "Leave the table?", line: names.length ? `${nameList(names)} ${stays(names)} at the table.` : null };
   }
   if (ctx.kind === "room") {
-    if (ctx.others.length === 0) return { title: "Leave the room?", line: "Free. The room closes." };
+    if (ctx.others.length === 0) return { title: "Leave the room?", line: "The room closes." };
     const line = ctx.host
-      ? `Free. The table stays open; ${shortName(ctx.others[0])} can start it.`
-      : "Free. The table stays open.";
+      ? `The table stays open; ${shortName(ctx.others[0])} can start it.`
+      : "The table stays open.";
     return { title: "Leave the room?", line };
   }
   if (ctx.practice) return { title: "Leave the game?", line: "This offline game ends." };
-  if (ctx.betweenRounds) return { title: "Leave the game?", line: "Free. This round's result is kept." };
+  if (ctx.betweenRounds) return { title: "Leave the game?", line: "This round's result is kept." };
   if (joined && ctx.ranked) return { title: "Leave the game?", line: `You'll wait ${JOIN_WAIT} to play again.` };
   if (ctx.ranked && !ctx.guest) {
     return { title: "Leave the game?", line: "A bot takes your seat. This round counts as at best a draw for you." };

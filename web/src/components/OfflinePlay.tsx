@@ -37,6 +37,10 @@ function OfflineTable({ ready, starting, onStart, onLeave }: {
       <h2 className="tp-title" id={titleId}>You and 3 bots</h2>
       <p className="tp-line">Offline</p>
       {wide ? <MiniTable seats={SEATS} you={0} /> : <TeamColumns seats={SEATS} you={0} />}
+      {/* the table's chat row in its place, greyed: chat needs the server */}
+      <button type="button" className="tp-chat" disabled aria-label="Chat needs a connection">
+        <span className="tp-chat-label" aria-hidden="true">Chat</span>
+      </button>
       <div className="tp-acts">
         <button type="button" className="tp-primary" disabled={!ready || starting}
                 aria-busy={starting || undefined} onClick={onStart}>

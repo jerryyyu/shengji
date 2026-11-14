@@ -19,6 +19,9 @@ import type { DroppedSeat } from "../seatTakeover";
 import { codes, useCodes } from "../codeJoin";
 import type { TableKind } from "../codeJoin";
 import { normalizeCode } from "../codes";
+import { WIDE } from "../home/route";
+import { useMediaQuery } from "../phoneLayout";
+import { offlineGame } from "./offlineGame";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -315,6 +318,13 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   // for App's leave-first question; once that table is left, it goes on.
   const { queued, tableCode } = useQueue();
   const seated = room !== null || queued;
+  const wide = useMediaQuery(WIDE);
+  const screenRef = useRef<HTMLDivElement | null>(null);
+  // a panel that opens puts the page back at its top, where the panel is
+  const panelUp = seated && !stalled;
+  useEffect(() => {
+    if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
+  }, [panelUp]);
   // a ?room= link names a room; a ?code= link names what its lookup said
   const invitedKind: TableKind = invited !== null && invited === linkRoom ? linkKind : "room";
   useEffect(() => {
@@ -385,11 +395,14 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
       </li>
     </ul>
   ) : null;
+  // A phone's panel sits right under the chip and the mode switch, with the
+  // art gone, so its buttons are on screen; wide screens keep the art beside it.
+  const showArt = wide || !panelUp;
   const ranked = account.status === "error" && !room
     ? <RankedUnavailable /> : <RankedSection online={status === "open"} room={room} />;
 
   return (
-    <div className={`screen lobby-screen play-tab${stalled ? " play-offline" : ""}`}>
+    <div ref={screenRef} className={`screen lobby-screen play-tab${stalled ? " play-offline" : ""}${panelUp ? " play-table-up" : ""}`}>
       <div className="panel lobby-panel">
         {/* one column on a phone; on desktop and iPad the controls and the
             table panel sit beside the art */}
@@ -397,7 +410,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
           <h1 className="game-title">
             升级 <span className="game-title-en">Sheng Ji</span>
           </h1>
-          <LobbyPreview />
+          {showArt ? <LobbyPreview /> : null}
         </div>
         <div className="play-side">
         {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
@@ -446,7 +459,8 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
             ) : ranked}
             {testRoom}
 
-            {room ? null : <div className="join-row">
+            {/* at a table the panel is the page: no code box until you leave it */}
+            {seated ? null : <div className="join-row">
               <input
                 className="room-input"
                 value={roomCode}
@@ -477,12 +491,20 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
               </button>
             </div>}
             {/* a code that names nothing answers the Join tap, so it is said where the code was typed */}
-            {codeView.playError ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
+            {codeView.playError && !seated ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
           </>
         )}
 
         <p className="howto-entry">
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
+          {/* the bots on this device, on purpose: a game started here stays
+              offline when the network comes back */}
+          {stalled || seated ? null : (
+            <>
+              <span className="howto-sep" aria-hidden="true">·</span>
+              <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>Play offline</button>
+            </>
+          )}
         </p>
         </div>
       </div>

@@ -136,6 +136,7 @@
   text-align: left;
   cursor: pointer;
 }
+.tp-chat:disabled { opacity: 0.45; cursor: default; }
 .tp-chat-label { flex: none; font-size: var(--fs-14, 14px); font-weight: 700; }
 .tp-chat-last {
   flex: 1;

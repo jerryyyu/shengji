@@ -5775,21 +5775,72 @@ body.keyboard-open .tabbar { display: none; }
 .play-grp .grp-row { min-height: 50px; }
 .play-grp .grp-row:disabled { color: #7a8494; }
 .play-tab .howto-entry { font-size: var(--fs-15); }
+/* How to play and Play offline, two quiet links on one line, each tapped as 44px */
+.play-tab .howto-sep { margin: 0 14px; color: #6b7484; }
 
-/* A phone's Play tab fits 390x844 at rest, Join and How to play above the
-   tab bar: the title starts at the status-bar inset, smaller, and the
-   preview is a wider band of the same 1200x630 stage, trimmed evenly top
-   and bottom. */
+/* A phone's Play tab fits its first view at rest: everything from the title
+   to How to play sits between the status bar and the tab bar. The panel is
+   the screen's height, and the preview takes what is left, 120 to 200px,
+   shrinking before anything else does. The whole 1200x630 stage is drawn
+   inside it, scaled to fit and centred, so no card meets the felt's edge. */
 .home-narrow .play-tab > .lobby-panel:has(.lobby-preview) { padding-top: 0; }
 .home-narrow .play-tab .game-title { font-size: 44px; line-height: 1.1; }
 .home-narrow .play-tab .game-title-en { font-size: 15px; margin-top: 2px; }
-.home-narrow .play-tab .lobby-preview { aspect-ratio: 1200 / 500; margin-top: 0; }
+.home-narrow .play-tab:not(.play-table-up) > .lobby-panel { align-self: stretch; margin-bottom: 0; }
+.home-narrow .play-tab:not(.play-table-up) .lobby-panel > :not(.lobby-preview),
+.home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview),
+.home-narrow .play-tab:not(.play-table-up) .play-side > * { flex-shrink: 0; }
+.home-narrow .play-tab .lobby-preview {
+  aspect-ratio: auto;
+  margin-top: 0;
+  flex: 1 1 200px;
+  min-height: 120px;
+  max-height: 200px;
+  container-type: size;
+}
 .home-narrow .play-tab .lp-stage {
+  --u: min(100cqw / 1200, 100cqh / 630);
   inset: auto;
-  left: 0;
-  top: calc(100cqw / 1200 * -65);
-  width: 100%;
-  height: calc(100cqw / 1200 * 630);
+  left: calc(50% - var(--u) * 600);
+  top: calc(50% - var(--u) * 315);
+  width: calc(var(--u) * 1200);
+  height: calc(var(--u) * 630);
+}
+/* short phones give the title a little less room */
+@media (max-height: 740px) {
+  .home-narrow .play-tab .game-title { font-size: 38px; }
+  .home-narrow .play-tab .game-title-en { font-size: 13px; }
+  .home-narrow .play-tab:not(.play-table-up) > .lobby-panel { gap: 12px; }
+}
+/* A phone at a table: the panel is the page, from the name chip down, and
+   it fits above the tab bar. Its rows are compact (40px to the eye, 44px to
+   the finger), and the button row sticks just above the tab bar whenever the
+   panel is taller than the screen, so Start and Leave are never under it. */
+.home-narrow .play-tab.play-table-up .game-title { display: none; }
+.home-narrow .play-tab.play-table-up > .lobby-panel { gap: 10px; padding-top: 0; }
+.home-narrow .play-table-up .tp { gap: 8px; padding: 12px; }
+.home-narrow .play-table-up .tp-seat { min-height: 48px; padding: 4px 7px; }
+.home-narrow .play-table-up .tp .q-wait,
+.home-narrow .play-table-up .tp-chat,
+.home-narrow .play-table-up .tp-set { position: relative; min-height: 40px; }
+.home-narrow .play-table-up .tp .q-wait::before,
+.home-narrow .play-table-up .tp-chat::before {
+  content: ""; position: absolute; inset: -2px 0;
+}
+.home-narrow .play-table-up .tp .q-switch { width: 44px; height: 26px; border-radius: 13px; }
+.home-narrow .play-table-up .tp .q-switch::after { width: 22px; height: 22px; }
+.home-narrow .play-table-up .tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(18px); }
+.home-narrow .play-table-up .tp-acts,
+.home-narrow .play-table-up .tp-led {
+  position: sticky;
+  /* the screen's bottom padding already clears the tab bar, and a sticky
+     box keeps inside that padding */
+  bottom: 0;
+  z-index: 2;
+  margin: -6px -6px 0;
+  padding: 6px;
+  border-radius: 16px;
+  background: #1b2729;
 }
 
 /* The Play tab starts at the top like the other tabs, at every width. */
@@ -6427,6 +6478,8 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 }
 .tp-secondary:disabled { opacity: 0.45; cursor: default; }
 .tp-led { margin: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; color: #bfe9cf; font-size: var(--fs-15); }
+/* the bots' countdown for the Duo member who does not lead */
+.tp-led .timer-ring { --size: 32px; --band: 2.5px; margin-right: 10px; }
 /* Wide screens: the seats around the mini table, you at the bottom. */
 .tp-clock { row-gap: 28px; padding: 14px 10px; }
 .tp-clock .tp-seat { justify-self: stretch; }
@@ -6573,7 +6626,7 @@ span.q-party-main { cursor: default; }
 /* The header's mode chip: gold with a trophy for a ranked game, grey for practice. */
 .mode-chip { gap: 5px; }
 .mode-chip.ranked { color: var(--gold); }
-.mode-chip.practice { color: #c3cad6; }
+.mode-chip.practice, .mode-chip.casual { color: #c3cad6; }
 .mode-chip-icon { flex: none; }
 
 /* Wide screens: every pill in the top bar is one height. */

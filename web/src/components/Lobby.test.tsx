@@ -470,6 +470,22 @@ describe("no connection", () => {
     }
   });
 
+  it("connected, Play offline beside How to play opens the offline table; the server is not asked", async () => {
+    const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
+    try {
+      authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+      await renderAt("open");
+      const entry = host.querySelector(".howto-entry")!;
+      const link = [...entry.querySelectorAll("button")].find((b) => b.textContent === "Play offline")!;
+      expect(link.className).toContain("howto-link");
+      act(() => link.click());
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(sent).toHaveLength(0);
+    } finally {
+      start.mockRestore();
+    }
+  });
+
   it("connected, Play queues online (never the offline game)", async () => {
     const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
     try {
@@ -528,7 +544,7 @@ describe("the lobby preview and the How to play entry", () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const entry = host.querySelector(".howto-entry")!;
-    expect(entry.textContent).toBe("How to play");
+    expect(entry.textContent).toBe("How to play·Play offline");
     try {
       act(() => entry.querySelector<HTMLButtonElement>("button")!.click());
       expect(window.location.hash).toBe("#/howto");
@@ -545,7 +561,7 @@ describe("help and policy links", () => {
       authState.current = current;
       if (host) { act(() => root.unmount()); host.remove(); }
       await render();
-      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play");
+      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play·Play offline");
       expect(host.querySelector(".info-links")).toBeNull();
       expect(host.querySelector("a[href='/privacy'], a[href='/support']")).toBeNull();
     }

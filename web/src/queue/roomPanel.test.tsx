@@ -155,7 +155,7 @@ describe("a room is a kind of the table panel on Play", () => {
     expect(allSent().length).toBe(before);
     const sheet = q("[role='alertdialog']")!;
     expect(sheet.querySelector("h2")?.textContent).toBe("Leave the room?");
-    expect(sheet.querySelector("p")?.textContent).toBe("Free. The room closes.");
+    expect(sheet.querySelector("p")?.textContent).toBe("The room closes.");
     click(button("Stay", sheet));
     expect(q("[role='alertdialog']")).toBeNull();
     click(button("Leave", p));

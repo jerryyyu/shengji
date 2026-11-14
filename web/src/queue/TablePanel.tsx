@@ -12,10 +12,10 @@ import { RANKS } from "../protocol";
 import { onRoomLeaveAsk } from "../roomBack";
 import { conn } from "../ws";
 import { useInlineQueue } from "./QueueBar";
-import { BOTS_WARN_MS, partnerName, queue, useNow } from "./store";
+import { BOTS_WARN_MS, BOT_FILL_MS, partnerName, queue, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, START_NOW_SECS, announcement, joinLabel, joinTitle, ownTimerLine,
+  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, START_NOW_SECS, announcement, joinLabel, joinTitle, ownBotsAt,
   panelKind, roomReadyLine, roomTitle, roomWaitingLabel, sharedStatusLine, sharedTitle, shortName, startLabel,
   stillHereLine,
 } from "./tableText";
@@ -146,9 +146,9 @@ export function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) 
   const theirs = [(you + 1) % 4, (you + 3) % 4].map((at) => seats[at]);
   return (
     <div className="tp-teams">
-      <span className="tp-team-label ours" aria-hidden="true">Your team</span>
+      <span className="tp-team-label ours" aria-hidden="true">Us</span>
       <span aria-hidden="true" />
-      <span className="tp-team-label theirs" aria-hidden="true">Opponents</span>
+      <span className="tp-team-label theirs" aria-hidden="true">Them</span>
       <div className="tp-col">{ours.map((s) => <Seat key={s.at} s={s} team={0} />)}</div>
       <span className="tp-vs" aria-hidden="true">VS</span>
       <div className="tp-col">{theirs.map((s) => <Seat key={s.at} s={s} team={1} />)}</div>
@@ -194,10 +194,17 @@ interface PanelParts {
   led?: string;
 }
 
+/** The bots' countdown as the ring on a table's primary button, while it
+ *  runs: the panel's only timer. */
+function botsRing(at: number | null, now: number): ReactNode {
+  if (at === null || at - now <= 0) return null;
+  return <TimerRing left={(at - now) / 1000} total={BOT_FILL_MS / 1000} />;
+}
+
 function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void): PanelParts | null {
   const partner = q.partyId ? partnerName(q.party) : null;
   const led = q.leader ? undefined : `${shortName(partner ?? "Your partner")} leads`;
-  const leave = { label: "Leave table", disabled: q.pending === "leave", onClick: askLeave };
+  const leave = { label: "Leave", disabled: q.pending === "leave", onClick: askLeave };
   if (kind === "join" && q.offer) {
     const o = q.offer;
     const busy = q.pending !== null;
@@ -212,7 +219,6 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
     };
   }
   if (kind === "own") {
-    const timer = ownTimerLine(q, now);
     const n = q.openTables;
     const extra = (
       <>
@@ -227,10 +233,11 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
       </>
     );
     return {
-      title: "Waiting for players", status: timer ? { text: timer } : undefined,
+      title: "Your table",
       seats: ownSeats(q), you: 0, extra, led,
       primary: { label: q.pending === "bots" ? "Starting…" : "Start with bots", disabled: q.pending !== null,
-                 onClick: () => queue.startBots() },
+                 onClick: () => queue.startBots(),
+                 ring: q.pending === "bots" ? null : botsRing(ownBotsAt(q), now) },
       secondary: leave,
     };
   }
@@ -239,11 +246,6 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
     const extra = (
       <>
         <QueueTableRows q={q} />
-        {!t.timer && q.leader ? (
-          <button type="button" className="tp-row" disabled={q.pending !== null} onClick={() => queue.allowBots()}>
-            Add bots in 1:00
-          </button>
-        ) : null}
         <ChatRow messages={q.tableChat} you={t.you} onSend={(text) => queue.tableChat(text)} />
       </>
     );
@@ -259,10 +261,11 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
       };
     }
     return {
-      title: sharedTitle(t), status: { text: sharedStatusLine(t, now) },
+      title: sharedTitle(t), status: { text: sharedStatusLine(t) },
       seats, you: t.you, extra, led,
       primary: { label: q.pending === "start" ? "Starting…" : startLabel(t),
-                 disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart() },
+                 disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart(),
+                 ring: q.pending === "start" ? null : botsRing(t.timer?.at ?? null, now) },
       secondary: leave,
     };
   }
@@ -278,7 +281,7 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
 
 /** Enter presses the primary button while focus is on nothing else that
  *  takes it (a button, a field, an open sheet). Escape does nothing: the
- *  panel is part of the page, and leaving is only ever Leave table. */
+ *  panel is part of the page, and leaving is only ever Leave. */
 function useEnterIsPrimary(primary: RefObject<HTMLButtonElement | null>, box: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
@@ -312,7 +315,7 @@ function PanelView({ p, kind, guarded, sheet }: { p: PanelParts; kind: string; g
       {p.status ? <p className={`tp-line${p.status.warn ? " warn" : ""}`}>{p.status.text}</p> : null}
       {p.seats ? (wide ? <MiniTable seats={p.seats} you={p.you} /> : <TeamColumns seats={p.seats} you={p.you} />) : null}
       {p.extra}
-      {p.led ? <p className="tp-led">{p.led}</p> : (
+      {p.led ? <p className="tp-led">{p.primary?.ring}{p.led}</p> : (
         <div className="tp-acts">
           {p.primary ? (
             <button ref={primaryRef} type="button" className="tp-primary"

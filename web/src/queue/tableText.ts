@@ -59,22 +59,18 @@ export function joinLabel(o: OfferView): string {
   return o.partner ? "Join together" : "Join";
 }
 
-/** Your own table's one status line: the bots' countdown, and nothing
- *  while you wait for people or an open table holds your timer still. */
-export function ownTimerLine(q: QueueView, now: number): string | null {
-  if (q.waitPlayers || q.botsPaused || q.botsAt === null) return null;
-  const left = q.botsAt - now;
-  return left <= 0 ? "Adding bots…" : `Bots in ${clock(left, true)}`;
+/** When your own table's bots sit, as a local time: never while you wait
+ *  for people or an open table holds your timer still. Its countdown is the
+ *  ring on Start with bots. */
+export function ownBotsAt(q: QueueView): number | null {
+  if (q.waitPlayers || q.botsPaused) return null;
+  return q.botsAt;
 }
 
-/** A shared table's one status line: who is ready, then the bots'
- *  countdown when the table has one. Whose timer it is does not matter to
- *  anyone at the table, so it is not said. */
-export function sharedStatusLine(t: TableView, now: number): string {
-  const ready = `${t.ready} of ${t.of} ready`;
-  if (!t.timer) return ready;
-  const left = t.timer.at - now;
-  return `${ready} · ${left <= 0 ? "Adding bots…" : `Bots in ${clock(left, true)}`}`;
+/** A shared table's one status line: who is ready. The bots' countdown is
+ *  the ring on the Start button, never a line. */
+export function sharedStatusLine(t: TableView): string {
+  return `${t.ready} of ${t.of} ready`;
 }
 
 /** "You and Alice", "You, Alice and Li". */
@@ -116,10 +112,10 @@ export function roomWaitingLabel(room: RoomMsg): string {
   return `Waiting for ${w.length} players`;
 }
 
-/** The Start button's words: Start now until you tap it, then who the
- *  table is waiting for. */
+/** The Start button's words: Start until you tap it, then who the table is
+ *  waiting for. */
 export function startLabel(t: TableView): string {
-  if (!t.youReady) return "Start now";
+  if (!t.youReady) return "Start";
   const w = t.waitingFor;
   if (w.length === 0) return "Starting…";
   if (w.length === 1) return `Waiting for ${shortName(w[0])}`;

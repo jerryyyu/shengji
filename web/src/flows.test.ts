@@ -104,3 +104,48 @@ it("the table panel's frame is rendered only from TablePanel.tsx", () => {
   const panel = files.find((f) => f.rel === "queue/TablePanel.tsx")!;
   expect(panel.code, "PanelView stays private to TablePanel.tsx").not.toMatch(/export[^;\n]*\bPanelView\b/);
 });
+
+/** The one file that draws a toast: every message off the hand line passes through it. */
+const TOAST_VIEW_SITES = ["components/Toast.tsx"];
+
+/** Every file that shows a toast, and what it says there. */
+const TOAST_SITES = [
+  "App.tsx", // the server's errors and notices
+  "components/Hud.tsx", // a failed throw and the engine's table messages
+  "components/Lobby.tsx", // a link's table that is gone, a code that names nothing
+  "components/Table.tsx", // Coach on/off, a newcomer joining the table
+  "queue/QueueLayer.tsx", // the queue's notices
+];
+
+/** The one line between the trick and your hand is drawn only by the table. */
+const HAND_LINE_SITES = ["components/Table.tsx"];
+
+/** The message surfaces the one toast and the hand line replaced. They stay gone. */
+const RETIRED_CLASSES = ["q-toast", "join-error", "hud-notice", "hud-message", "follow-hint", "phase-help",
+  "coach-cue", "action-hint", "join-notice"];
+
+it("one toast component draws every toast, and the listed files are the ones that show one", () => {
+  expect(matching(/className=\{?["'`][^"'`]*\btoast\b/),
+    "A toast is drawn only by components/Toast.tsx, in its one spot; call showToast instead (FLOWS.md, one toast).")
+    .toEqual(TOAST_VIEW_SITES);
+  expect(matching(/\bshowToast\(/, (rel) => rel === "toast.ts"),
+    "A new toast source names its row here; a removed one shrinks TOAST_SITES.")
+    .toEqual([...TOAST_SITES].sort());
+  expect(matching(/<HandLine\b/), "The hand line is the table's one line above your hand.").toEqual(HAND_LINE_SITES);
+});
+
+it("the retired message surfaces stay gone, in code and in CSS", () => {
+  const cssFiles = (function css(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      return statSync(p).isDirectory() ? css(p) : name.endsWith(".css") ? [p] : [];
+    });
+  })(SRC);
+  const texts = [...files.map((f) => ({ rel: f.rel, text: f.code })),
+    ...cssFiles.map((p) => ({ rel: relative(SRC, p).split(sep).join("/"), text: readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "") }))];
+  const found = texts.flatMap(({ rel, text }) =>
+    RETIRED_CLASSES.filter((c) => new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(text)).map((c) => `${rel}: ${c}`));
+  expect(found).toEqual([]);
+  // the lobby's own error box went with them; page-load errors elsewhere keep theirs
+  expect(files.find((f) => f.rel === "components/Lobby.tsx")!.code).not.toMatch(/lobby-error/);
+});

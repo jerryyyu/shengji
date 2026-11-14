@@ -374,10 +374,14 @@ describe("Your turn on a lead", () => {
 });
 
 
-it("draws the error toast inside the table, where its rows are", () => {
-  act(() => root.render(<Table state={state({ turn: 0 })} toast={{ id: 1, text: "You must follow suit." }} />));
-  expect(host.querySelector(".table-screen > .toast")?.textContent).toBe("You must follow suit.");
-  act(() => root.render(<Table state={state({ turn: 0 })} toast={null} />));
+it("draws the one toast inside the table, in its at-table spot", async () => {
+  const { showToast, clearToast } = await import("../toast");
+  render(state({ turn: 0 }));
+  act(() => { showToast("You must follow suit."); });
+  const t = host.querySelector(".table-screen > .toast.at-table")!;
+  expect(t.textContent).toBe("You must follow suit.");
+  expect([t.getAttribute("role"), t.getAttribute("aria-live")]).toEqual(["status", "assertive"]);
+  act(() => { clearToast(); });
   expect(host.querySelector(".toast")).toBeNull();
 });
 
@@ -499,12 +503,12 @@ describe("following", () => {
     haptics.length = 0;
     expect(host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.disabled).toBe(true);
     act(() => wrap().click());
-    expect(host.querySelector(".follow-hint")?.textContent).toBe("Follow ♠: play 2 cards");
+    expect(host.querySelector(".hand-line")?.textContent).toBe("Follow ♠: play 2 cards");
     expect(haptics).toEqual(["error"]);
     expect(sent).toEqual([]);
     // choosing another card clears it
     act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[1].click());
-    expect(host.querySelector(".follow-hint")).toBeNull();
+    expect(host.querySelector(".hand-line")).toBeNull();
   });
 
   it("an enabled Play sends without a hint, and a hint fades on its own", () => {
@@ -512,15 +516,15 @@ describe("following", () => {
     try {
       render(following());
       act(() => wrap().click());
-      expect(host.querySelector(".follow-hint")).not.toBeNull();
+      expect(host.querySelector(".hand-line")).not.toBeNull();
       act(() => { vi.advanceTimersByTime(3000); });
-      expect(host.querySelector(".follow-hint")).toBeNull();
+      expect(host.querySelector(".hand-line")).toBeNull();
       act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
       act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[9].click());
       haptics.length = 0;
       act(() => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!.click());
       expect(sent).toHaveLength(1);
-      expect(host.querySelector(".follow-hint")).toBeNull();
+      expect(host.querySelector(".hand-line")).toBeNull();
       expect(haptics).not.toContain("error");
     } finally { vi.useRealTimers(); }
   });
@@ -528,7 +532,7 @@ describe("following", () => {
   it("leading, a tap on an empty Play asks for cards", () => {
     render(state({ turn: 0, trick: { leader: 0, plays: [] } }));
     act(() => wrap().click());
-    expect(host.querySelector(".follow-hint")?.textContent).toBe("Choose the cards to lead");
+    expect(host.querySelector(".hand-line")?.textContent).toBe("Choose the cards to lead");
   });
 });
 
@@ -787,7 +791,7 @@ describe("Play waits on an off-suit follow", () => {
     render(following());
     choose(1, 3);
     expect(play().disabled).toBe(true);
-    const hint = host.querySelector(".follow-hint");
+    const hint = host.querySelector(".hand-line");
     expect(hint?.textContent).toBe("Follow ♠: play 2 cards");
     // the hint stands outside your row, so it cannot push the action bar
     expect(hint!.closest(".you-row")).toBeNull();
@@ -802,7 +806,7 @@ describe("Play waits on an off-suit follow", () => {
     render(following());
     choose(1, 2);
     expect(play().disabled).toBe(false);
-    expect(host.querySelector(".follow-hint")).toBeNull();
+    expect(host.querySelector(".hand-line")).toBeNull();
     act(() => play().click());
     expect(sent).toHaveLength(1);
   });
@@ -812,7 +816,7 @@ describe("Play waits on an off-suit follow", () => {
       trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }] } }));
     choose(1, 7);
     expect(play().disabled).toBe(false);
-    expect(host.querySelector(".follow-hint")).toBeNull();
+    expect(host.querySelector(".hand-line")).toBeNull();
   });
 
   it("a tap on the waiting Play still counts as a disabled-Play tap", async () => {
@@ -824,7 +828,7 @@ describe("Play waits on an off-suit follow", () => {
       choose(1, 3);
       act(() => host.querySelector<HTMLElement>(".play-wrap")!.click());
       expect(notice).toHaveBeenCalledWith("follow_hint", "table");
-      expect(host.querySelectorAll(".follow-hint")).toHaveLength(1);
+      expect(host.querySelectorAll(".hand-line")).toHaveLength(1);
       render(state({ turn: 1, hand: hand.slice(2), trump: { suit: "H", rank: "J", declarer: 1 },
         trick: { leader: 1, plays: [{ seat: 1, cards: ["SK", "SK"] }, { seat: 0, cards: ["S3", "S7"] }] } }));
       expect(done).toHaveBeenCalledTimes(1);

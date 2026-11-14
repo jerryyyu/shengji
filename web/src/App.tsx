@@ -24,9 +24,8 @@ import HomeShell from "./home/HomeShell";
 import { openTab, useHomeRoute } from "./home/route";
 import { haptic, hideSplash, lockFor, setBackGesture, setGameMode, startShell } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
-import { TOAST_MS, makeToast } from "./toast";
-import type { Toast } from "./toast";
-import ToastView from "./components/ToastView";
+import { showToast as toastShow, useToast } from "./toast";
+import Toast from "./components/Toast";
 import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
 import { othersAt, queue, useQueue } from "./queue/store";
@@ -64,14 +63,12 @@ export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
-  const [toast, setToast] = useState<Toast | null>(null);
   // A room link opened while this socket sits at another table: the code,
   // held until the player says whether to leave that table first.
   const [linkPrompt, setLinkPrompt] = useState<string | null>(null);
   const [linkDropped, setLinkDropped] = useState(0);
   // Leave was tapped: the question goes, and the link waits for the seat to go.
   const [linkLeaving, setLinkLeaving] = useState(false);
-  const toastTimer = useRef<number | null>(null);
   // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
   // each lobby `room` message advances the fill-with-bots-then-start chain.
   const autoFill = useRef(false);
@@ -91,14 +88,8 @@ export default function App() {
 
   useEffect(() => {
     const showToast = (message: string, info = false) => {
-      // a fresh id per showing: the same error again is shown again
-      setToast(makeToast(message, info));
+      toastShow(message, { info });
       haptic(info ? "declare" : "error");
-      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-      toastTimer.current = window.setTimeout(() => {
-        toastTimer.current = null;
-        setToast(null);
-      }, TOAST_MS);
     };
 
     // Common teardown when leaving a game: drop game state, reset the
@@ -186,6 +177,10 @@ export default function App() {
             // changed under a tap) refreshes without a word
             break;
           }
+          if (msg.code === "table_full") {
+            // the Join panel says "Table is full" itself: one status, not two
+            break;
+          }
           if (msg.code === "start_failed") {
             // a queue game with bots that failed to start was unwound on the server
             resetToLobby();
@@ -248,7 +243,6 @@ export default function App() {
     return () => {
       unsubStatus();
       unsubMsg();
-      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     };
   }, []);
 
@@ -273,6 +267,9 @@ export default function App() {
 
   const inRoom = room !== null || game !== null;
   const q = useQueue();
+  // the offline Play tab hears of an error to free its buttons; the toast says it
+  const shownToast = useToast();
+  const toastText = shownToast?.text ?? null;
   const seatedAnywhere = inRoom || q.queued;
   useEffect(() => {
     if (linkLeaving && !seatedAnywhere) {
@@ -302,8 +299,8 @@ export default function App() {
     : <MePage section={homeRoute.section} />;
 
   let screen: ReactNode;
-  // the Play tab's lobby shows the toast in its own error line
-  let lobbyShown = false;
+  // exactly one toast is mounted: the table's, else this one at the page's top
+  let screenIsTable = false;
   if (infoRoute) {
     screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
   } else if (howtoRoute) {
@@ -318,21 +315,21 @@ export default function App() {
       </HomeShell>
     );
   } else if (game) {
-    // at the table the toast is placed against the table's own rows
-    screen = <Table state={game} toast={toast} />;
+    // the table draws the one toast in its own spot, under the top seat
+    screenIsTable = true;
+    screen = <Table state={game} />;
   } else if (OFFLINE) {
     // the offline table's room is filled with bots and dealt from the Play tab
     screen = (
       <Suspense fallback={null}>
-        <OfflineHome status={status} error={toast?.text ?? null} room={room?.room ?? null}
+        <OfflineHome status={status} error={toastText} room={room?.room ?? null}
                      onArmAutoFill={() => { autoFill.current = true; }} />
       </Suspense>
     );
   } else {
-    lobbyShown = true;
     screen = (
       <HomeShell active="play">
-        <Lobby status={status} error={toast?.text ?? null} room={room} holdInvite={linkPrompt !== null}
+        <Lobby status={status} room={room} holdInvite={linkPrompt !== null}
                onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped} />
       </HomeShell>
     );
@@ -342,7 +339,7 @@ export default function App() {
     <div className={`app${rotated ? " rotated" : ""}${OFFLINE ? " offline" : ""}`}>
       {screen}
       {OFFLINE && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
-      {toast && inRoom && !atTable && !lobbyShown ? <ToastView key={toast.id} toast={toast} /> : null}
+      {screenIsTable ? null : <Toast />}
       {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link
         <LeaveSheet context={linkLeaveContext(game, room, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}

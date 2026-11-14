@@ -16,14 +16,14 @@ import ChatBubbles from "./ChatBubbles";
 import OpponentActions from "./OpponentActions";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
-import type { Toast } from "../toast";
-import ToastView from "./ToastView";
+import Toast from "./Toast";
+import HandLine from "./HandLine";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
 import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
-import { TOAST_MS, makeToast } from "../toast";
+import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
 import LastTrickPanel from "./LastTrickPanel";
@@ -228,22 +228,27 @@ function useTableHaptics(state: GameState) {
   }, [hadResult, wonRound]);
 }
 
-/** The table's corner line about an open-table newcomer: "Alice joins next
- *  trick" until the handover, "Alice joins next round" when they were seated
- *  at the round end. Not shown to the newcomer itself. */
-export function JoinNotices({ state }: { state: GameState }) {
+/** The joins still outstanding at each room, once told, so a remount of the
+ *  table (How to play and back) tells none of them again. A join that is no
+ *  longer listed is forgotten, so the same join later is news. */
+const toldJoins = new Map<string, Set<string>>();
+
+/** An open-table newcomer is told once, as a toast: "Alice joins next trick"
+ *  before the handover, "Alice joins next round" when seated at the round
+ *  end. The newcomer itself is not told. */
+function useJoinToasts(state: GameState) {
   const lines = (state.joining ?? []).filter((j) => j.seat !== state.you && !state.joining_you);
-  if (lines.length === 0) return null;
-  return (
-    <div className="join-notice" role="status">
-      {lines.map((j) => (
-        <span key={`${j.seat}-${j.when}`}>
-          <i className={`join-dot team${j.seat % 2}`} aria-hidden="true" />
-          {j.name} joins next {j.when === "round" ? "round" : "trick"}
-        </span>
-      ))}
-    </div>
-  );
+  const keys = lines.map((j) => `${j.seat}:${j.when}:${j.name}`);
+  useEffect(() => {
+    const told = toldJoins.get(state.room) ?? new Set<string>();
+    toldJoins.set(state.room, new Set(keys));
+    lines.forEach((j, i) => {
+      if (told.has(keys[i])) return;
+      showToast(`${j.name} joins next ${j.when === "round" ? "round" : "trick"}`, { info: true, dot: (j.seat % 2) as 0 | 1 });
+    });
+    // told on a new key only; the lines are read with it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.room, keys.join("|")]);
 }
 
 /** The decision whose clock is running, kept across a remount of the
@@ -267,7 +272,7 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
   );
 }
 
-export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
+export default function Table({ state }: { state: GameState }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -438,16 +443,11 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // the newcomer count and the account's rounds. Flipping it says so in a toast.
   const coachSwitch = useCoachSetting();
   const newAccount = useAccountNewcomer();
-  const [coachToast, setCoachToast] = useState<Toast | null>(null);
   useEffect(() => subscribeCoach((s) => {
     telemetry.tap(s === "on" ? "coach_on" : "coach_off");
-    setCoachToast(makeToast(s === "on" ? "Coach on" : "Coach off"));
+    showToast(s === "on" ? "Coach on" : "Coach off", { info: true });
   }), []);
-  useEffect(() => {
-    if (!coachToast) return;
-    const t = window.setTimeout(() => setCoachToast(null), TOAST_MS);
-    return () => window.clearTimeout(t);
-  }, [coachToast]);
+  useJoinToasts(state);
   const coach = state.phase === "play" && myTurn && pending === null && coachShows(coachSwitch, plays, newAccount)
     ? coachFor(state.hand, lead, state.trump)
     : null;
@@ -537,7 +537,9 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       : null;
 
   let actionBar: ReactNode = null;
-  let inlineHint: string | null = null;
+  // the hand line's parts that the phase sets: why Play waits, and the phase's help
+  let blocked: string | null = null;
+  let phaseHelp: string | null = null;
   if (watching) {
     actionBar = null;
   } else if (state.phase === "deal" || state.phase === "declare") {
@@ -545,7 +547,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     // during the short declare window afterwards. No Pass while dealing.
     const canDeclare = state.declare_options.length > 0;
     const iPassed = state.passed.includes(state.you);
-    if (canDeclare) inlineHint = declareHelp(state);
+    if (canDeclare) phaseHelp = declareHelp(state);
     actionBar = (
       <>
         {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
@@ -567,15 +569,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
             {iPassed ? "Passed" : "Pass"}
           </button>
         ) : null}
-        {!canDeclare ? (
-          <span className="action-hint">
-            {state.phase === "deal" ? "Dealing cards…" : "Waiting for declarations…"}
-          </span>
-        ) : null}
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
-    inlineHint = BURY_HELP;
+    phaseHelp = BURY_HELP;
     actionBar = (
       <>
       <TimerRing left={clock} total={MOVE_SECS} />
@@ -611,7 +608,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
       haptic("error");
     };
-    if (offSuit && lead) inlineHint = followHint(lead, state.trump);
+    if (offSuit && lead) blocked = followHint(lead, state.trump);
     actionBar = (
       <>
         <TimerRing left={clock} total={MOVE_SECS} />
@@ -636,9 +633,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
         </button>
       </>
     );
-  } else if (state.turn !== null && !myTurn) {
-    const turnPlayer = state.players.find((p) => p.seat === state.turn);
-    actionBar = <span className="action-hint">Waiting for {turnPlayer?.name ?? "…"}</span>;
   }
 
   return (
@@ -683,13 +677,9 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           </div>
           <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{actionBar}</div>
           </div>
-          {hint ? (
-            <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
-          ) : inlineHint ? (
-            <div className={`follow-hint${state.phase === "play" ? "" : " phase-help"}`} role="status">{inlineHint}</div>
-          ) : coach && nothingChosen ? (
-            <div className={`follow-hint coach-cue${nudge ? " nudge" : ""}`} role="status">{coach.text}</div>
-          ) : null}
+          {/* the one line between the trick and your hand */}
+          <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
+                    tap={hint?.n ?? 0} nudge={nudge} />
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
                 rects={handRects} lit={coach?.follow ?? null} fromKitty={fromKitty} />
         </div>
@@ -709,7 +699,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       <ChatBubbles state={state} open={chatOpen} onOpen={() => setChatOpen(true)} />
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
-      <JoinNotices state={state} />
       {watching ? (
         <div className="away-pill join-pill" role="status">
           <span className="away-pill-text">
@@ -719,8 +708,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
         </div>
       ) : null}
       {held ? <SeatHeldPill onBack={back} /> : null}
-      {toast ? <ToastView key={toast.id} toast={toast} />
-        : coachToast ? <ToastView key={`coach-${coachToast.id}`} toast={coachToast} info /> : null}
+      <Toast place="table" />
     </div>
   );
 }

@@ -109,7 +109,7 @@ describe("declaring", () => {
     const ring = view.host.querySelector(".action-bar .timer-ring");
     expect(ring).not.toBeNull();
     expect(ring!.getAttribute("aria-label")).toBe("4 seconds left");
-    expect(view.host.querySelector(".follow-hint.phase-help")!.textContent)
+    expect(view.host.querySelector(".hand-line.help")!.textContent)
       .toBe("Declaring picks trump and makes you banker. A pair outbids a single.");
     expect(view.host.querySelector(".declare-tag")!.textContent).toBe("You declared ♥2");
     view.unmount();
@@ -158,7 +158,7 @@ describe("burying", () => {
     });
     click(100); click(101); click(2);
     expect(view.host.querySelector(".bury-points")!.textContent).toBe("Burying 25 points");
-    expect(view.host.querySelector(".follow-hint.phase-help")!.textContent).toContain("count double for them (×4 on a pair lead)");
+    expect(view.host.querySelector(".hand-line.help")!.textContent).toContain("count double for them (×4 on a pair lead)");
     // once the bury is in, the marks go
     const play = withBanker(makeState({ phase: "play", turn: 0, hand: before }), 0);
     view.rerender(<Table state={play} />);

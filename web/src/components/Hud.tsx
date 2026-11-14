@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { GameState, Notice } from "../protocol";
+import type { GameState } from "../protocol";
 import { RANKS } from "../protocol";
 import { DUR, prefersReducedMotion } from "../motion";
 import { useCountUp } from "../useCountUp";
@@ -10,6 +10,7 @@ import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { OFFLINE } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
+import { showToast } from "../toast";
 
 function TrumpChip({ state }: { state: GameState }) {
   const trump = state.trump;
@@ -38,46 +39,41 @@ function TrumpChip({ state }: { state: GameState }) {
   );
 }
 
-function NoticeBanner({ notice, state }: { notice: Notice; state: GameState }) {
-  // Dismissal is keyed by the notice id, not by a boolean: the next failed
-  // throw must appear even if you dismissed the last one.
-  const [dismissed, setDismissed] = useState<number | null>(null);
-  // The notice is about one trick: it stays through the trick it happened in and one more, then goes.
-  const tricks = useRef<{ id: number; last: string; ended: number }>({ id: notice.id, last: "", ended: 0 });
-  const lastKey = JSON.stringify(state.last_trick);
-  if (tricks.current.id !== notice.id) tricks.current = { id: notice.id, last: lastKey, ended: 0 };
-  else if (tricks.current.last === "") tricks.current.last = lastKey;
-  else if (lastKey !== tricks.current.last) {
-    tricks.current = { ...tricks.current, last: lastKey, ended: tricks.current.ended + 1 };
-  }
-  if (dismissed === notice.id || tricks.current.ended >= 2) return null;
-  const who = notice.seat === state.you
-    ? "You"
-    : state.players.find((p) => p.seat === notice.seat)?.name ?? "A player";
-  return (
-    <div className="hud-notice" role="status" aria-live="polite">
-      <div className="hud-notice-body">
-        <b>Throw failed.</b>{" "}
-        {who} threw{" "}
-        <span className="hud-notice-cards">
-          {notice.attempted.map(shortLabel).join(" ")}
-        </span>{" "}
-        and had to play{" "}
-        <span className="hud-notice-cards forced">
-          {notice.forced.map(shortLabel).join(" ")}
-        </span>
-        .
-      </div>
-      <button
-        className="hud-notice-close"
-        onClick={() => setDismissed(notice.id)}
-        aria-label="Dismiss this notice"
-        title="Dismiss"
-      >
-        ×
-      </button>
-    </div>
-  );
+/** The notice and message on the table now, once told, so a remount of the
+ *  table (How to play and back) tells neither again while it stands. */
+const told = { notice: "", message: "" };
+
+/** A failed throw and the engine's table messages are told once, as the one
+ *  toast. A declaration is not: its tag under the declared cards tells it.
+ *  `message` restates a failed throw for one play, so the notice is told
+ *  instead of it. */
+function useTableToasts(state: GameState) {
+  const notice = state.notice && state.phase === "play" ? state.notice : null;
+  const noticeKey = notice ? `${state.room}:${notice.id}` : "";
+  useEffect(() => {
+    // a round numbers its notices afresh, so once no notice stands the next
+    // one is news even with the same id; a remount while it stands is not
+    if (!notice) { told.notice = ""; return; }
+    if (told.notice === noticeKey) return;
+    told.notice = noticeKey;
+    const who = notice.seat === state.you
+      ? "You"
+      : state.players.find((p) => p.seat === notice.seat)?.name ?? "A player";
+    showToast(`Throw failed. ${who} threw ${notice.attempted.map(shortLabel).join(" ")} and had to play ${notice.forced.map(shortLabel).join(" ")}.`,
+              { info: true });
+    // told on a new notice only; the rest is read with it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noticeKey]);
+  const message = state.message && !state.notice && !isDeclareMessage(state.message) ? state.message : null;
+  const messageKey = message ? `${state.room}:${message}` : "";
+  useEffect(() => {
+    // the next play clears a message, so the same line later is news again
+    if (message === null) { told.message = ""; return; }
+    if (told.message === messageKey) return;
+    told.message = messageKey;
+    showToast(formatTableMessage(message, state.players, state.you), { info: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageKey]);
 }
 
 /** How long a "+10" floats by the points counter. */
@@ -219,6 +215,7 @@ function modeWord(mode: Mode, guest: boolean): "Ranked" | "Casual" | undefined {
 export default function Hud({ state, practice = OFFLINE }: { state: GameState; practice?: boolean }) {
   const barRef = useRef<HTMLDivElement | null>(null);
   useStripWidth(barRef);
+  useTableToasts(state);
   const mode = gameMode(state, practice);
   // a guest is never ranked: the seat's own flag, or no account on this device
   const account = useAuth().status;
@@ -264,17 +261,6 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
                    opener={state.opener === state.you} />
         </div>
       </div>
-      {/* the notice belongs to a trick of this round: it closes when the round ends */}
-      {state.notice && state.phase === "play" ? (
-        <NoticeBanner notice={state.notice} state={state} key={state.notice.id} />
-      ) : null}
-      {/* `message` restates the notice for one play; showing both would
-          double up, so the notice wins while it is on screen. */}
-      {state.message && !state.notice ? (
-        <div className={`hud-message${isDeclareMessage(state.message) ? " declare-message" : ""}`} key={state.message}>
-          {formatTableMessage(state.message, state.players, state.you)}
-        </div>
-      ) : null}
     </div>
   );
 }

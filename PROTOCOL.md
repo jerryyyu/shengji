@@ -16,8 +16,8 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | type | fields | when |
 |------|--------|------|
 | `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`) | anytime before joining |
-| `set_start_level` | `start_level` (same values) | host (the opener), lobby only; refused once the game has started. A real change clears every Start tap (`lobby_ready`) |
-| `set_ranked` | `on: boolean` | host (the opener), lobby only, created rooms only: whether the room is ranked (see "Ranked rooms"); refused once the game has started. A real change clears every Start tap |
+| `set_start_level` | `start_level` (same values) | host (the opener), lobby only; refused once the game has started, and in a ranked room ("A ranked table starts at level 2."): every rated game starts at `"2"`. A real change clears every Start tap (`lobby_ready`) |
+| `set_ranked` | `on: boolean` | host (the opener), lobby only, created rooms only: whether the room is ranked (see "Ranked rooms"); refused once the game has started. On sets `start_level` back to `"2"`. A real change clears every Start tap |
 | `swap_seats` | `a`, `b` (seat positions), optional `expect` | lobby: the host exchanges any two positions; anyone else moves themselves (one of `a`, `b` is their own seat, the other empty) until they tap Start |
 | `remove_player` | `seat`, optional `expect` | host, lobby: that occupant leaves the room |
 | `allow_joiners` | `on: boolean` | anyone seated at an ordinary room, ranked or casual (lobby or in play): whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
@@ -90,7 +90,11 @@ game included) starts unranked; its host may send `set_ranked {on}` until the
 game starts, and `room` and `state` then carry `ranked: true` (absent when
 off) to every seat. Once the game starts the mode is fixed for it. `set_ranked`
 is refused for anyone but the host, after the game has started, and in a
-queue or test room.
+queue or test room. A ranked room starts at level `"2"`, fixed, so every
+rated game is the same game: `set_ranked {on: true}` sets `start_level` back
+to `"2"`, `set_start_level` is refused while the room is ranked, and the
+game starts at `"2"` whatever the room held. A casual room keeps its host's
+level.
 
 A created ranked room keeps the open join of any created room: guests may sit
 and join by code or invite link, and the queue-only refusals
@@ -217,10 +221,11 @@ server, so one player dismissing does not blank it for anyone else.
 
 ## Codes
 
-Room codes and pair codes are one space: 4 characters from
-`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `I`, `O`, `0` or `1`). A new room's
-code is never the code of a live pair, and a new pair's code is never the code
-of a live room, so a code names at most one thing. Codes are compared after
+Room codes, pair codes and table codes are one space: 4 characters from
+`ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `I`, `O`, `0` or `1`). A new code is
+never the code of a live room, pair or queued table, so a code names at most
+one thing. A queued table's code becomes its room's code when the table
+starts (see "Table codes"). Codes are compared after
 trimming and uppercasing.
 
 A client that does not know which kind a code is sends
@@ -230,6 +235,8 @@ A client that does not know which kind a code is sends
 - `"room"`: a live room. Continue with `peek_room` / `join_room`.
 - `"party"`: a live pair. Continue with `party_join`, which needs sign-in (a
   guest gets `signed_in_only`).
+- `"table"`: a queued table that has not started (see "Table codes").
+  Continue with `queue_join {code}`. An older client reads it as no code.
 - `"none"`: nothing live has that code (or it is not 4 letters and digits).
 
 The lookup changes nothing on the server, works from a seat or the lobby,
@@ -263,7 +270,9 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 
 | type | fields | effect |
 |------|--------|--------|
-| `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`) | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode |
+| `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`), optional `code`, optional `allow_joiners` (default `true`), optional `start_level` (default `"2"`) | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode. `allow_joiners` and `start_level` are your own table's settings (see "Table codes"); a ranked table refuses any level but `"2"` with `ranked_level_fixed`. With `code`, sit at that queued table instead, in its mode and with its settings (the other three fields are ignored) |
+| `table_allow_joiners` | `on: boolean` | your table's Allow joiners, alone or at a waiting table; anyone seated (a pair's leader) may switch it, and the whole table takes it. 20 per account per minute (with `table_move`) |
+| `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change clears every Start at the table |
 | `queue_leave` | — | leave the queue (leader only for a pair); at a waiting table this frees your seat |
 | `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready for good; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
 | `table_move` | `seat` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. 20 per account per minute |
@@ -291,22 +300,29 @@ not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
 joined, see "Open tables"), `no_offer`, `bad_seat`, `seat_taken` (another
 newcomer confirmed that seat first; the offer is re-sent without it, or the
 seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
-`already_ready`, `panel_changed` (a fresh `queue_state` follows). A signed-in
+`already_ready`, `panel_changed` (a fresh `queue_state` follows),
+`table_not_found` (no queued table has that `code`), `own_table`,
+`table_full`, `same_device` (a device of yours already sits at that table),
+`not_opener`, `ranked_level_fixed`, `bad_start_level`, `bad_setting`. A signed-in
 account with a connected seat in a ranked game in play is refused
 `queue_join`, `queue_start_bots`, `party_create`, `party_join` and `open_table_join` from any
 other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?}`:
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, opener?}`:
   your entry, after every change to it or to its table, and on reconnect.
-  `mode` is the search's mode (`"ranked"` or `"casual"`).
+  `mode` is the search's mode (`"ranked"` or `"casual"`). `code`,
+  `allow_joiners` and `start_level` are your table's, alone or at a waiting
+  table (see "Table codes"); `opener` is true when you opened it (always,
+  alone), so you set its level.
   `bots_at` is when this entry's own timer starts a bot game (60 s after
   joining, or after `queue_allow_bots`); it is null and `wait_players` is true
   while the switch is on. `front` marks an entry put back at the front after
   its room failed to start. `table` is null while you are alone in the queue,
   else your waiting table:
-  `{id, seats, you, timer, ready, of, you_ready, waiting_for}`. `seats` has
+  `{id, code, opener, seats, you, timer, ready, of, you_ready, waiting_for}`
+  (`code` the table's code, `opener` the opener's seat). `seats` has
   four items in seat order (team 0 at seats 0+2), `null` for an empty seat (a
   bot plays it), else `{name, you, ready, reconnecting, since, pair, leader}`;
   `you` is your seat; `timer` is `{at, name, you}` (the earliest `bots_at`
@@ -413,6 +429,32 @@ has not tapped Start and sent nothing for 2 minutes is dropped with
 not seated while it may still come back. `create_room` or `join_room` that
 seats the socket ends its queue entry (and frees its seat); a failed join
 leaves it queued.
+
+### Table codes
+
+Every queued entry has a table code, from the moment it joins: alone, the
+code of its own table (`queue_state.code`, with `table` still null, so an
+older client sees no change); at a waiting table, the table's code is its
+opener's (the first arrival still there), and every seated entry's own code
+still leads to that table. When the table (or the lone entry's bot game)
+starts, the room takes the table's code, so an invite link `/?code=CODE`
+made before the game still opens the room after it. A code is released when
+its entry leaves the queue.
+
+`queue_join {code}` (the link, or a typed code that `code_lookup` calls
+`"table"`) seats you at that table: opening it with its host when the host is
+alone, in the table's mode and with its settings, outside the rating window
+and whatever Allow joiners says. Every other queue rule holds: the cooldown,
+the account-in-game refusals, one device per table (`same_device`), a full
+table (`table_full`); a guest joins a ranked table at the guest rating, as
+from Play. Already queued elsewhere: `in_queue`.
+
+A table's settings are the room's when it starts. Allow joiners (default
+on): off, Play seats no stranger with the table and offers it no open
+table, and the room starts with Allow joiners off; its code still works.
+Starting level: a ranked table starts at `"2"`, fixed; a casual table's
+opener picks it (`queue_join start_level`, `table_start_level`). The
+settings belong to the whole table, so they stay when its opener leaves.
 
 ### Open tables
 

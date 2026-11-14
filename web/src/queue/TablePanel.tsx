@@ -1,6 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
+import { effectiveName, useAuth } from "../auth";
 import ChatPanel from "../components/ChatPanel";
+import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import { seatPos } from "../components/TrickArea";
@@ -102,10 +104,21 @@ function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): S
   });
 }
 
+/** The initial of the name you play under: the account's, or a guest's own. */
+function useMyInitial(): string {
+  const account = useAuth();
+  const guest = useGuestName();
+  const name = account.status === "in" && account.user ? effectiveName(account.user) : guest.name.trim();
+  return name.slice(0, 1).toUpperCase();
+}
+
 function SeatBody({ s }: { s: SeatItem }) {
+  const mine = useMyInitial();
+  const av = s.look === "open" ? "+" : s.look === "bot" ? "·"
+    : s.look === "you" ? mine || "·" : s.name.slice(0, 2).toUpperCase();
   return (
     <>
-      <span className="tp-av" aria-hidden="true">{s.look === "open" ? "+" : s.look === "bot" ? "·" : s.name.slice(0, 2).toUpperCase()}</span>
+      <span className="tp-av" aria-hidden="true">{av}</span>
       <span className="tp-seat-text" aria-hidden="true">
         <span className="tp-seat-name">{s.name}{s.tick ? <span className="tp-tick"> ✓</span> : null}</span>
         {s.sub ? <span className="tp-seat-sub">{s.sub}</span> : null}

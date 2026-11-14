@@ -13,6 +13,9 @@ import { RankedSection, TrophyIcon } from "../queue/Ranked";
 import { queue, useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
+import SeatTakeover from "./SeatTakeover";
+import { takeoverSeats } from "../seatTakeover";
+import type { DroppedSeat } from "../seatTakeover";
 import { codes, useCodes } from "../codeJoin";
 import type { TableKind } from "../codeJoin";
 import { normalizeCode } from "../codes";
@@ -140,6 +143,11 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   const looking = codeView.pending !== null && codeView.pending.from !== "pair";
   const autoJoined = useRef(false);
   const peekGen = useRef<number | null>(null);
+  // The room last peeked: a choose_seat or seat_unavailable answer asks again.
+  const lastPeek = useRef<string | null>(null);
+  // A full room whose open seats belong to dropped players: taking one is
+  // the player's deliberate choice, never the client's.
+  const [takeover, setTakeover] = useState<{ room: string; seats: DroppedSeat[] } | null>(null);
   // A ranked table's invite that cannot be taken here: no bot seat is left.
   // Guests take a ranked table's seats as accounts do, unrated.
   const [tableFull, setTableFull] = useState(false);
@@ -182,10 +190,31 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
         clearInvite();
         return;
       }
+      const dropped = takeoverSeats(m);
+      if (dropped.length) {
+        // only dropped players' seats are open: ask which, then confirm
+        setStarting(null);
+        setTakeover({ room: m.room, seats: dropped });
+        return;
+      }
+      setTakeover(null);
       // the server seats you: a lobby's next seat (move in the panel), or a
       // game's first bot seat
       joinSeat(undefined, m.room);
       return;
+    }
+    // A join that needs a seat named (every open seat is a dropped
+    // player's), or whose seat was just taken: look again and offer the
+    // seats there are.
+    if (m?.type === "error" && (m.code === "choose_seat" || m.code === "seat_unavailable")) {
+      const again = inviting.current ?? lastPeek.current;
+      if (again) {
+        inviting.current = null;
+        lastPeek.current = again;
+        peekGen.current = conn.generation;
+        conn.send({ type: "peek_room", room: again });
+        return;
+      }
     }
     if (m?.type === "error" && m.code === "table_full") setTableFull(true);
     // An invite that went nowhere leaves the page on Play, saying why; the
@@ -232,6 +261,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   // Ask who's sitting where first; the subscriber shows a picker when
   // needsSeatPicker() says so, otherwise joins straight through.
   const peek = useCallback((code: string) => {
+    lastPeek.current = code;
     peekGen.current = conn.generation;   // this transaction belongs to this socket
     if (conn.send({ type: "peek_room", room: code })) {
       setStarting({ kind: "join", generation: conn.generation });
@@ -409,7 +439,11 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
             server waits; the chip, How to play and an open sheet stay put. */}
         {stalled && !room ? <OfflineControls local={false} status={status} /> : (
           <>
-            {ranked}
+            {takeover && !room ? (
+              <SeatTakeover room={takeover.room} seats={takeover.seats} busy={starting !== null}
+                            onCancel={() => { setTakeover(null); clearInvite(); }}
+                            onTake={(seat) => { const r = takeover.room; setTakeover(null); joinSeat(seat, r); }} />
+            ) : ranked}
             {testRoom}
 
             {room ? null : <div className="join-row">

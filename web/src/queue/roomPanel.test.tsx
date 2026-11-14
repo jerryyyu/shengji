@@ -262,10 +262,8 @@ describe("room links land in the panel", () => {
     await renderApp();
     expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
     say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [
-      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false },
-      { seat: 1, name: "", is_bot: false, connected: false, team: 1, claimable: true },
-      { seat: 2, name: "", is_bot: false, connected: false, team: 0, claimable: true },
-      { seat: 3, name: "", is_bot: false, connected: false, team: 1, claimable: true }] });
+      // before the game the peek lists only taken seats
+      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false }] });
     expect(document.body.textContent).not.toContain("Take a seat");
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
     expect(lastSent()).not.toHaveProperty("seat");
@@ -404,6 +402,8 @@ describe("every Play table has a code", () => {
     await renderApp();
     say(own());
     const p = q(".tp-own")!;
+    // your seat shows your own initial, not the first letters of "You"
+    expect(p.querySelector(".tp-seat.you .tp-av")?.textContent).toBe("J");
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
     click(button("Invite link", p));
     await settle();
@@ -493,5 +493,75 @@ describe("every Play table has a code", () => {
     await settle();
     expect(q("[role='alertdialog']")).toBeNull();
     expect(sentOf("queue_join")).toHaveLength(0);
+  });
+});
+
+describe("a full room's dropped seats are taken only on purpose", () => {
+  const seats = (inGame: boolean) => ({
+    type: "room_seats", room: "WXYZ", in_game: inGame, seats: [
+      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 1, name: "Alice", is_bot: false, connected: false, team: 1, claimable: true, controller: "bot_cover", reserved_secs: null },
+      { seat: 2, name: "Sam", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 3, name: "Li", is_bot: false, connected: true, team: 1, claimable: false, controller: "human", reserved_secs: null }],
+  });
+  const joinBox = (code: string) => {
+    const input = q("input[aria-label='Room or duo code']") as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, code); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    click(button("Join"));
+    say({ type: "code_kind", code, kind: "room" });
+  };
+
+  for (const inGame of [false, true]) {
+    it(`${inGame ? "in game" : "before the game"}: peek → Take Alice's seat → confirm → join_room {seat}`, async () => {
+      await renderApp();
+      joinBox("WXYZ");
+      expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+      say(seats(inGame));
+      await settle();
+      // nothing joined by itself
+      expect(sentOf("join_room")).toHaveLength(0);
+      const panelEl = q(".tp-takeover")!;
+      expect(panelEl.querySelector(".tp-title")?.textContent).toBe("WXYZ is full");
+      click(button("Take Alice’s seat", panelEl));
+      const sheet = q("[role='alertdialog']")!;
+      expect(sheet.querySelector("h2")?.textContent).toBe("Alice dropped out. Take their seat?");
+      expect(sheet.querySelector("p")).toBeNull();
+      // Cancel takes nothing
+      click(button("Cancel", sheet));
+      expect(q("[role='alertdialog']")).toBeNull();
+      expect(sentOf("join_room")).toHaveLength(0);
+      click(button("Take Alice’s seat", q(".tp-takeover")!));
+      click(button("Take seat", q("[role='alertdialog']")!));
+      expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", seat: 1 });
+    });
+  }
+
+  it("a choose_seat answer looks again and offers the dropped seats; it never picks one", async () => {
+    await renderApp();
+    joinBox("WXYZ");
+    // a bot seat at the peek, gone by the join
+    const withBot = seats(true);
+    withBot.seats[3] = { ...withBot.seats[3], name: "Bot 3", is_bot: true, claimable: true, controller: "bot" };
+    say(withBot);
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ" });
+    expect(lastSent()).not.toHaveProperty("seat");
+    say({ type: "error", code: "choose_seat", message: "Every seat is taken, but a player is offline." });
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    say(seats(true));
+    await settle();
+    expect(sentOf("join_room")).toHaveLength(1);
+    expect(button("Take Alice’s seat", q(".tp-takeover")!)).toBeDefined();
+  });
+
+  it("Cancel puts Play back", async () => {
+    await renderApp();
+    joinBox("WXYZ");
+    say(seats(false));
+    await settle();
+    click(button("Cancel", q(".tp-takeover")!));
+    expect(q(".tp-takeover")).toBeNull();
+    expect(q("button.play-main")).not.toBeNull();
+    expect(sentOf("join_room")).toHaveLength(0);
   });
 });

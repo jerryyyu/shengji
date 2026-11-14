@@ -4402,28 +4402,35 @@ def test_the_party_flow_still_makes_a_pair_with_its_own_code():
 
 
 
-def test_a_duo_split_at_a_strangers_table_goes_back_to_hold_the_seat_at_its_own():
+def test_a_duo_split_at_a_strangers_table_stays_seated_there_with_nothing_held():
     async def go():
         env = Env()
         await env.join(5, allow_joiners=False)      # in line first, waiting for its code
-        code = await _duo_table(env, 1, friend=2)
+        await _duo_table(env, 1, friend=2)
         await env.send(5, "table_allow_joiners", on=True)
         (t,) = env.mm.tables.values()
         assert t.seats == [5, 1, None, 2] and t.entries[0] is env.mm._entry(5)
+        host_code = env.mm._entry(5).code
         await env.send(2, "queue_leave")
-        # back at its own table, which the stranger joins: the holder opens it
-        (t,) = env.mm.tables.values()
+        # nobody moves: the opener stays at Cy's table as a single
+        assert env.mm.tables == {t.id: t} and t.seats == [5, 1, None, None]
         e = env.mm._entry(1)
-        assert t.entries[0] is e and e.hold and t.seats == [1, 5, None, None]
-        assert t.held_seats() == [2] and env.conns[5].last("queue_state")["code"] == code
-        assert all(o.hold is False for o in t.entries[1:])
-        await env.join(8)                           # a stranger takes the free seat only
-        assert t.seats == [1, 5, None, 8]
+        assert not e.hold and e.size == 1 and t.held_seats() == []
+        state = env.conns[1].last("queue_state")
+        assert state["held_seat"] is None and state["duo"] is False
+        assert state["table"]["held_seat"] is None and state["code"] == host_code
+        await env.join(8)                           # any free seat is a stranger's
+        assert t.seats == [5, 1, 8, None]
         for uid in (1, 5, 8):
             await env.send(uid, "table_start")
         (_, slots), = env.started
-        assert [s.user_id for s in slots] == [1, 5, None, 8]
-        assert env.rooms[-1]["code"] == code and env.rooms[-1]["friend_seat"] == 2
+        assert [s.user_id for s in slots] == [5, 1, 8, None]
+        assert env.rooms[-1]["code"] == host_code and "friend_seat" not in env.rooms[-1]
+        # split at its own table, the opener holds the seat again (as before)
+        env = Env()
+        await _duo_table(env, 1, friend=3, strangers=(2,))
+        await env.send(3, "queue_leave")
+        assert env.mm._entry(1).hold and next(iter(env.mm.tables.values())).held_seats() == [2]
     run(go())
 
 

@@ -3440,7 +3440,7 @@ def test_ws_a_duo_that_starts_without_its_friend_keeps_the_held_seat_for_the_fri
                 assert _drain(c, "state", tries=80)["you"] == 1  # the usual first bot seat
 
 
-def test_ws_a_duo_split_at_a_strangers_table_keeps_its_held_seat_and_code_into_the_room(
+def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_no_seat(
         client, duo_queue):
     srv, ((ann, ha), (bo, hb), (cy, hc), (di, hd)) = duo_queue
     with client.websocket_connect("/ws", headers=ha) as a, \
@@ -3448,33 +3448,36 @@ def test_ws_a_duo_split_at_a_strangers_table_keeps_its_held_seat_and_code_into_t
             client.websocket_connect("/ws", headers=hc) as c, \
             client.websocket_connect("/ws", headers=hd) as d:
         c.send_json({"type": "queue_join", "allow_joiners": False})   # first in line, private
-        _next_where(c, "queue_state", lambda m: m.get("queued"))
+        cy_code = _next_where(c, "queue_state", lambda m: m.get("queued"))["code"]
         a.send_json({"type": "queue_join", "duo": True})
         code = _next_where(a, "queue_state", lambda m: m.get("queued"))["code"]
         b.send_json({"type": "queue_join", "code": code})
         _next_where(b, "queue_state", lambda m: m.get("duo"))
         c.send_json({"type": "table_allow_joiners", "on": True})     # the pair sits at Cy's table
-        _next_where(a, "queue_state", lambda m: m.get("table") and m["table"]["code"] != code)
+        at_cy = _next_where(a, "queue_state", lambda m: m.get("table") and m["table"]["code"] == cy_code)
         b.send_json({"type": "queue_leave"})
-        mine = _next_where(a, "queue_state", lambda m: m.get("table") and m["table"]["code"] == code)
-        assert mine["held_seat"] == 2 and mine["opener"] is True
+        mine = _next_where(a, "queue_state", lambda m: m.get("table") and not m.get("duo"))
+        assert mine["table"]["id"] == at_cy["table"]["id"]            # Ann stays where she is
+        assert mine["held_seat"] is None and mine["table"]["held_seat"] is None
+        assert mine["table"]["you"] == at_cy["table"]["you"]
         d.send_json({"type": "queue_join"})
         _next_where(d, "queue_state", lambda m: m.get("table"))
         for ws in (a, c, d):
             ws.send_json({"type": "table_start"})
         started = _drain(a, "match_started", tries=80)
-        assert started["room"] == code                     # the holder's code is the room's
+        assert started["room"] == cy_code                  # the opener's code is the room's
         _drain(a, "state", tries=80)
-        room = srv.rooms[code]
-        assert room.friend_seat == 2 and room.seats[2].is_bot
-        # the late friend's invite link takes the held seat
+        room = srv.rooms[cy_code]
+        assert room.friend_seat is None
+        (open_seat,) = [i for i, sd in enumerate(room.seats) if sd.is_bot]
+        # Ann's own code ended with the table; Bo joins the room the usual way
         b.send_json({"type": "code_lookup", "code": code})
-        assert _drain(b, "code_kind")["kind"] == "room"
-        b.send_json({"type": "join_room", "room": code, "name": "Bo"})
+        assert _drain(b, "code_kind")["kind"] == "none"
+        b.send_json({"type": "join_room", "room": cy_code, "name": "Bo"})
         for _ in range(80):
-            pj = room.pending_joins.get(2)
-            if (pj is not None and pj.uid == bo) or room.seats[2].user_id == bo:
+            pj = room.pending_joins.get(open_seat)
+            if (pj is not None and pj.uid == bo) or room.seats[open_seat].user_id == bo:
                 break
             _drain(a, "state", tries=5)
         else:
-            raise AssertionError("the friend did not take the held seat")
+            raise AssertionError("Bo did not take the open seat")

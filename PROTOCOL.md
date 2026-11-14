@@ -495,10 +495,12 @@ Before the game, one Leave (`queue_leave` or `party_leave`, from either
 member) ends the Duo for the leaver only; the other is told with
 `party_closed {by}` and keeps the table, its seat and its code. When the
 partner leaves (or signs in from a guest, takes a seat elsewhere or stays
-away), its seat is held again for the opener (the Duo's taps are cleared)
-at the opener's own table: a pair seated at another's table goes back to
-its own, so a held seat is always its table opener's and its invite code is
-the code the room takes; when the opener leaves, the partner keeps the opener's code and, at
+away), the Duo's taps are cleared and nobody moves: at a table the opener
+opened (or alone), its seat is held again for the opener; at someone
+else's table the opener stays on as a single with nothing held, and no late
+friend is promised a seat (its code, like any non-opener's, ends with the
+table). A held seat is always its table opener's, so its invite code is
+the code the room takes. When the opener leaves, the partner keeps the opener's code and, at
 its own table, becomes the opener, and nothing is held. After the game the
 pair stays paired, as a party pair does.
 

@@ -1317,11 +1317,12 @@ class Matchmaker:
 
     def _split(self, e: Entry, uid: int, reason: str) -> None:
         """``uid`` leaves its table Duo before the game: the Duo ends and
-        the other keeps its seat and its code. A partner's leave holds its
-        seat again for the opener, at its own table: a pair seated at
-        another's table goes back to its own, since a held seat and its
-        invite code belong to the table they open (and so to its room). The
-        opener's leave makes the partner the opener, with no seat held."""
+        the other keeps its seat and its code, and nobody moves. A partner's
+        leave holds its seat again for the opener at a table the opener
+        opened; at another's table the opener stays on as a single with
+        nothing held, since a held seat and its invite code reach the room
+        only as its opener's. The opener's leave makes the partner the
+        opener, with no seat held."""
         stay = next(u for u in e.members if u != uid)
         t = self._table(e)
         if t is not None:
@@ -1335,11 +1336,8 @@ class Matchmaker:
         e.member_ratings.pop(uid, None)
         if self.entry_of.get(uid) == e.id:
             del self.entry_of[uid]
-        e.hold = uid != e.leader
+        e.hold = uid != e.leader and (t is None or t.entries[0] is e)
         e.leader = stay
-        if e.hold and t is not None and t.entries[0] is not e:
-            self._unseat(e)
-            t = None
         p = self.parties.get(e.party_id) if e.party_id is not None else None
         e.party_id = None
         self._qlog("leave", None, who=self._kind(uid), size=1, reason=reason, duo=True)

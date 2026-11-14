@@ -317,3 +317,23 @@ describe("leaving a ranked table", () => {
     guest.unmount();
   });
 });
+
+describe("the kitty's count", () => {
+  it("is marked for the phone's header only while the kitty is being buried", () => {
+    const view = render(makeState({ phase: "bury" }));
+    const chip = () => view.host.querySelector(".kitty-chip")!;
+    expect(chip().textContent).toBe("8");
+    expect(chip().classList.contains("burying")).toBe(true);
+    view.rerender(makeState({ phase: "play" }));
+    expect(chip().classList.contains("burying")).toBe(false);
+    view.unmount();
+  });
+
+  it("the phone's CSS hides it except during the bury", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
+    const phone = css.slice(css.indexOf(":where(.phone-landscape) {"));
+    expect(phone).toMatch(/\.kitty-chip,\s*\n\s*\.hud-bar \.mute-btn/);
+    expect(phone).toMatch(/\.hud-bar \.kitty-chip\.burying \{\s*\n\s*display: inline-flex;/);
+  });
+});

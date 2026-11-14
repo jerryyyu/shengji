@@ -1,11 +1,13 @@
 import { useId } from "react";
-import { guestName, useGuestName } from "../guestName";
+import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
 import Sheet from "../queue/Sheet";
 
 /** A guest's chip, in the signed-in chip's place: the name's initial, the
- *  name and "Guest" where a rating would be. A tap opens the name editor. */
-export default function GuestChip() {
+ *  name, the guest line where a rating would be, and a pencil, since a tap
+ *  opens the name editor on every tab. `compact` (the wide top bar) says
+ *  "Guest" alone. */
+export default function GuestChip({ compact = false }: { compact?: boolean }) {
   const { name } = useGuestName();
   const shown = name.trim() || "Guest";
   return (
@@ -13,14 +15,16 @@ export default function GuestChip() {
             aria-label={`${shown}, guest, edit name`}>
       <span className="avatar avatar-sm" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>
       <span className="account-pill-name">{shown}</span>
-      <span className="account-pill-rating">Guest</span>
+      <span className="account-pill-rating">{compact ? "Guest" : GUEST_LINE}</span>
+      {compact ? null : <span className="guest-pill-edit" aria-hidden="true">✎</span>}
     </button>
   );
 }
 
 /** The guest's name editor: the name field with its random-name die, and
  *  Done, which keeps the name for next time. Rendered once, by the Play tab
- *  or the wide top bar, whichever holds the chip. */
+ *  or by the home frame on every other tab (or by Me shown over a game), so
+ *  the chip and Me's Edit name open the same sheet. */
 export function GuestNameSheet() {
   const { name, editing } = useGuestName();
   const id = useId();

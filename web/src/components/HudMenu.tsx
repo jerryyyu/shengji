@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useMenuKeys } from "../useMenuKeys";
-import { useMuted } from "../useMuted";
-import { useCoach } from "../firstTurns";
 import { usePresence } from "../usePresence";
 import { OFFLINE } from "../offlineMode";
 import { codeLink } from "../codes";
@@ -9,10 +7,14 @@ import LeaveAlert from "./LeaveAlert";
 import { offlineGame } from "./offlineGame";
 import { useOnline } from "../useOnline";
 import { conn } from "../ws";
+import { SettingsMenuRows } from "./SettingsList";
 
-/** The phone's `…` overflow: kitty count, sound, the coach switch, invite
- * link and leave — none of them a mid-trick decision, so on a small screen
- * they share one button instead of five chips. Desktop keeps its chips (this
+/** The phone's `…` overflow: the player's settings (the same list as Me's:
+ * Coach, Sound, Haptics in the app, How to play), then the table's actions
+ * (invite link, Allow joiners, leave) — none of them a mid-trick decision, so
+ * on a small screen they share one button instead of a row of chips. The
+ * kitty's count is information, not a setting: the HUD shows it during the
+ * bury. Desktop keeps its chips (this
  * is hidden by CSS there). Account rows (name, saved games, sign out) live on the Me tab, so
  * this stays a table menu for signed-in players and guests alike. Leave
  * closes the menu and opens the leave alert, which waits for Keep playing or
@@ -22,14 +24,12 @@ import { conn } from "../ws";
  * Keyboard: opening moves focus to the first actionable row, ArrowUp and
  * ArrowDown move between rows (wrapping), Home and End go to the ends, and
  * Escape closes the menu and returns focus to the `…` button. */
-export default function HudMenu({ room, kittyCount, ranked = false, offline = OFFLINE, allowJoiners }: {
-  room: string; kittyCount: number; ranked?: boolean; offline?: boolean;
+export default function HudMenu({ room, ranked = false, offline = OFFLINE, allowJoiners }: {
+  room: string; ranked?: boolean; offline?: boolean;
   /** A ranked table's "Allow joiners" switch; undefined elsewhere. */
   allowJoiners?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [muted, toggleSound] = useMuted();
-  const [coachOn, toggleCoach] = useCoach();
   const [asking, setAsking] = useState(false);
   const online = useOnline();
   const [copied, setCopied] = useState(false);
@@ -40,7 +40,7 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
   const focusNext = useRef<"first" | "last" | null>(null);
   const presence = usePresence(open);
 
-  // the rows a keyboard can act on, in order: the kitty row is information only
+  // the rows a keyboard can act on, in order
   const { items, onKeyDown: onMenuKey } = useMenuKeys(
     menuRef, "[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox']");
 
@@ -96,7 +96,7 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="More"
-        title="Kitty, sound, coach, invite, leave"
+        title="Settings, invite, leave"
         onClick={() => {
           if (open) { close(); return; }
           focusNext.current = "first";
@@ -116,15 +116,8 @@ export default function HudMenu({ room, kittyCount, ranked = false, offline = OF
         <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
              aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
              ref={menuRef} onKeyDown={onMenuKey}>
-          <div className="hud-menu-row" role="menuitem" aria-disabled="true">
-            <span>Kitty</span><span className="hud-menu-k">{kittyCount} cards</span>
-          </div>
-          <button className="hud-menu-row" role="menuitemcheckbox" aria-checked={!muted} onClick={toggleSound}>
-            <span>Sound</span><span className="hud-menu-k">{muted ? "off" : "on"}</span>
-          </button>
-          <button className="hud-menu-row coach-row" role="menuitemcheckbox" aria-checked={coachOn} onClick={toggleCoach}>
-            <span>Coach</span><span className="hud-menu-k">{coachOn ? "on" : "off"}</span>
-          </button>
+          <SettingsMenuRows onOpenPage={close} />
+          <div className="hud-menu-sep" role="separator" />
           {offline ? null : (
             <button className="hud-menu-row" role="menuitem" onClick={copyInvite}>
               <span>{copied ? "Link copied" : "Copy invite link"}</span>

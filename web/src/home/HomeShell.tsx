@@ -8,16 +8,23 @@ import { WIDE, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
 import { useTabSwipe } from "./useTabSwipe";
 import type { MeSection, Tab } from "./route";
+import { useGuestName } from "../guestName";
 import QueueBar, { QueuePill, QueueStrip, useInlineQueue } from "../queue/QueueBar";
 import AccountChip from "../components/AccountChip";
 import GuestChip, { GuestNameSheet } from "../components/GuestChip";
 
 export { WIDE };
 
-/** The account's picture, or its initial on a plain disc. */
-export function Avatar({ user, size = "sm" }: { user: AuthUser | null; size?: "sm" | "lg" }) {
+/** The account's picture, or its initial on a plain disc; a guest's disc
+ *  carries the initial of the name they play under. */
+export function Avatar({ user, size = "sm", guestName = "" }: {
+  user: AuthUser | null; size?: "sm" | "lg"; guestName?: string;
+}) {
   const cls = `avatar avatar-${size}`;
-  if (!user) return <span className={`${cls} avatar-guest`} aria-hidden="true">?</span>;
+  if (!user) {
+    const initial = guestName.trim().slice(0, 1).toUpperCase();
+    return <span className={`${cls} avatar-guest`} aria-hidden="true">{initial || "?"}</span>;
+  }
   if (user.picture) {
     return <img className={cls} src={user.picture} alt="" referrerPolicy="no-referrer" />;
   }
@@ -66,20 +73,23 @@ function goTab(tab: Tab, active: Tab): void {
   else openTab(tab);
 }
 
-/** The Me tab's icon when signed in: the account's picture, or its initial
- *  drawn by CSS so the tab's text stays "Me". */
-function TabAvatar({ user }: { user: AuthUser }) {
-  if (user.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
-  const shown = effectiveName(user) || user.email;
+/** The Me tab's icon: the account's picture, or the initial of the name
+ *  played under (an account's or a guest's), drawn by CSS so the tab's text
+ *  stays "Me". */
+function TabAvatar({ user, guest }: { user: AuthUser | null; guest: string }) {
+  if (user?.picture) return <img className="avatar" src={user.picture} alt="" referrerPolicy="no-referrer" />;
+  const shown = user ? effectiveName(user) || user.email : guest.trim();
   return <span className="avatar tabbar-initial" aria-hidden="true" data-initial={shown.slice(0, 1).toUpperCase()} />;
 }
 
 /** A phone's tab bar: a floating glass pill over the page, above the home
  *  indicator, with a lighter capsule under the active tab that slides to the
- *  tab tapped. Signed in, Me shows the account's picture or initial. */
+ *  tab tapped. Me shows the player's picture or initial once there is one. */
 export function TabBar({ active }: { active: Tab }) {
   const account = useAuth();
+  const { name: guest } = useGuestName();
   const user = account.status === "in" ? account.user : null;
+  const known = user !== null || (account.status !== "loading" && guest.trim() !== "");
   const index = TABS.findIndex((t) => t.tab === active);
   return (
     <nav className="tabbar" aria-label="Main" style={{ "--tab-index": index } as CSSProperties}>
@@ -87,7 +97,7 @@ export function TabBar({ active }: { active: Tab }) {
       {TABS.map(({ tab, label, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
                 aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
-          {tab === "me" && user ? <TabAvatar user={user} /> : <Icon />}
+          {tab === "me" && known ? <TabAvatar user={user} guest={guest} /> : <Icon />}
           <span>{label}</span>
         </button>
       ))}
@@ -95,19 +105,11 @@ export function TabBar({ active }: { active: Tab }) {
   );
 }
 
-/** The wide layout's four tabs: Me's two sections are tabs of their own. */
-const WIDE_TABS: { tab: Tab; section?: MeSection; label: string }[] = [
-  { tab: "play", label: "Play" },
-  { tab: "leaderboard", label: "Leaderboard" },
-  { tab: "me", section: "stats", label: "Stats" },
-  { tab: "me", section: "games", label: "Games" },
-];
-
 /** The wide layout's top bar: the wordmark (except on Play, whose page
- *  carries the title), Play, Leaderboard, Stats and Games centred, and the
- *  account chip (a guest's chip and Sign in) at the end, after the search's pill on a tab
+ *  carries the title), the phone's three tabs centred, and the account chip
+ *  (a guest's chip and Sign in) at the end, after the search's pill on a tab
  *  other than Play. */
-export function TopBar({ active, section = "stats" }: { active: Tab; section?: MeSection }) {
+export function TopBar({ active }: { active: Tab }) {
   const account = useAuth();
   const inlineQueue = useInlineQueue();
   const user = account.status === "in" ? account.user : null;
@@ -115,23 +117,15 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
   if (user) {
     end = <AccountChip user={user} />;
   } else if (account.status !== "loading") {
-    // a guest's chip opens their name editor, which the Play tab holds
-    // itself; elsewhere the bar holds it
     end = (
       <>
-        <GuestChip />
+        <GuestChip compact />
         {account.status === "out" ? (
           <button type="button" className="btn topbar-signin" onClick={() => openTab("me", "stats")}>Sign in</button>
         ) : null}
-        {active === "play" ? null : <GuestNameSheet />}
       </>
     );
   }
-  const on = (t: (typeof WIDE_TABS)[number]) => t.tab === active && (t.tab !== "me" || t.section === section);
-  const go = (t: (typeof WIDE_TABS)[number]) => {
-    if (on(t)) scrollActiveTabToTop();
-    else openTab(t.tab, t.section);
-  };
   return (
     <header className="topbar">
       {/* Play shows the title itself */}
@@ -141,9 +135,9 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
         </button>
       )}
       <nav className="topbar-tabs" aria-label="Main">
-        {WIDE_TABS.map((t) => (
-          <button key={t.label} type="button" className={`topbar-tab${on(t) ? " on" : ""}`}
-                  aria-current={on(t) ? "page" : undefined} onClick={() => go(t)}>
+        {TABS.map((t) => (
+          <button key={t.tab} type="button" className={`topbar-tab${t.tab === active ? " on" : ""}`}
+                  aria-current={t.tab === active ? "page" : undefined} onClick={() => goTab(t.tab, active)}>
             {t.label}
           </button>
         ))}
@@ -156,8 +150,7 @@ export function TopBar({ active, section = "stats" }: { active: Tab; section?: M
 /** How long a newly opened tab's page fades in. */
 export const TAB_FADE_MS = 150;
 
-/** Fades the new page in when the tab (or the wide layout's Me section)
- *  changes by a tap. A swipe has already slid the page in, so it does not
+/** Fades the new page in when the tab (or Me's section) changes by a tap. A swipe has already slid the page in, so it does not
  *  fade too, and nothing fades on first load or under Reduce Motion. */
 function useTabFade(body: { current: HTMLElement | null }, key: string): void {
   const last = useRef(key);
@@ -179,6 +172,8 @@ export default function HomeShell({ active, section, children }: {
 }) {
   const wide = useMediaQuery(WIDE);
   const inlineQueue = useInlineQueue();
+  const account = useAuth();
+  const guest = account.status !== "in" && account.status !== "loading";
   // Play holds the table panel itself; the other tabs keep a way back to it
   const away = active !== "play";
   const body = useRef<HTMLDivElement | null>(null);
@@ -186,11 +181,14 @@ export default function HomeShell({ active, section, children }: {
   useTabFade(body, `${active}/${section ?? ""}`);
   return (
     <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
-      {wide ? <TopBar active={active} section={section} /> : null}
+      {wide ? <TopBar active={active} /> : null}
       {wide && !inlineQueue && away ? <QueueStrip /> : null}
       <div className="home-body" ref={body}>{children}</div>
       {!wide && away ? <QueueBar /> : null}
       {wide ? null : <TabBar active={active} />}
+      {/* one name editor for a guest's chip and Me's Edit name: the Play tab
+          holds its own, every other tab this one */}
+      {guest && away ? <GuestNameSheet /> : null}
     </div>
   );
 }

@@ -21,25 +21,28 @@ function render(props: { ranked?: boolean; offline?: boolean } = {}) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  act(() => root.render(<HudMenu room="ABCD" kittyCount={8} {...props} />));
+  act(() => root.render(<HudMenu room="ABCD" {...props} />));
   return { host, unmount: () => act(() => root.unmount()) };
 }
 const btn = (host: HTMLElement) => host.querySelector<HTMLButtonElement>(".hud-more-btn")!;
 const rows = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>(".hud-menu-row"));
 
 describe("the phone overflow menu (#651)", () => {
-  it("is closed until tapped, then lists kitty, sound, coach, invite and leave", () => {
+  it("is closed until tapped, then lists the settings (Coach, Sound, How to play), invite and leave", () => {
     const v = render();
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     expect(btn(v.host).getAttribute("aria-expanded")).toBe("false");
     act(() => btn(v.host).click());
     expect(btn(v.host).getAttribute("aria-expanded")).toBe("true");
     const text = rows(v.host).map((r) => r.textContent);
-    expect(text[0]).toContain("Kitty"); expect(text[0]).toContain("8 cards");
+    expect(text[0]).toContain("Coach");
     expect(text[1]).toContain("Sound");
-    expect(text[2]).toContain("Coach");
+    expect(text[2]).toBe("How to play");
     expect(text[3]).toContain("Copy invite link");
     expect(text[4]).toContain("Leave game");
+    // the kitty's count is no longer a menu row, and a browser has no Haptics
+    expect(text.some((t) => t.includes("Kitty"))).toBe(false);
+    expect(text.some((t) => t.includes("Haptics"))).toBe(false);
     v.unmount();
   });
 
@@ -86,9 +89,9 @@ describe("a signed-in player's menu", () => {
     act(() => btn(v.host).click());
     const text = rows(v.host).map((r) => r.textContent ?? "");
     expect(text).toHaveLength(5);
-    expect(text[0]).toContain("Kitty");
+    expect(text[0]).toContain("Coach");
     expect(text[1]).toContain("Sound");
-    expect(text[2]).toContain("Coach");
+    expect(text[2]).toContain("How to play");
     expect(text[3]).toContain("Copy invite link");
     expect(text[4]).toContain("Leave game");
     for (const gone of ["Edit name", "My games", "Sign out", "Cap"]) {
@@ -105,7 +108,7 @@ describe("mute state is shared between controls (Codex, #653)", () => {
     const host = document.createElement("div");
     document.body.appendChild(host);
     const root = createRoot(host);
-    act(() => root.render(<><MuteButton /><HudMenu room="ABCD" kittyCount={8} /></>));
+    act(() => root.render(<><MuteButton /><HudMenu room="ABCD" /></>));
     const chip = () => host.querySelector<HTMLButtonElement>(".mute-btn")!;
     act(() => btn(host).click());
     const sound = () => rows(host)[1] as HTMLButtonElement;
@@ -132,19 +135,21 @@ describe("keyboard focus in the menu", () => {
     const trigger = btn(v.host);
     trigger.focus();
     act(() => trigger.click());
-    expect(focused()).toContain("Sound");             // the kitty row is information only
-    key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Coach");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("Sound");
+    key(document.activeElement!, "ArrowDown");
+    expect(focused()).toContain("How to play");
     key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Copy invite link");
     key(document.activeElement!, "ArrowDown");
     expect(focused()).toContain("Leave game");
     key(document.activeElement!, "ArrowDown");
-    expect(focused()).toContain("Sound");             // wraps
+    expect(focused()).toContain("Coach");             // wraps
     key(document.activeElement!, "ArrowUp");
     expect(focused()).toContain("Leave game");
     key(document.activeElement!, "Home");
-    expect(focused()).toContain("Sound");
+    expect(focused()).toContain("Coach");
     key(document.activeElement!, "End");
     expect(focused()).toContain("Leave game");
     v.unmount();
@@ -155,7 +160,7 @@ describe("keyboard focus in the menu", () => {
     btn(v.host).focus();
     key(btn(v.host), "ArrowDown");
     expect(v.host.querySelector(".hud-menu")).not.toBeNull();
-    expect(focused()).toContain("Sound");
+    expect(focused()).toContain("Coach");
     key(document.activeElement!, "Escape");
     key(btn(v.host), "ArrowUp");
     expect(focused()).toContain("Leave game");

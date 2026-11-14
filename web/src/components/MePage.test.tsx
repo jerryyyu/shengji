@@ -23,6 +23,9 @@ import { openNameEditor } from "../home/route";
 import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 import { hapticsEnabled, setHapticsEnabled } from "../native";
 import { isMuted, setMuted } from "../audio";
+import { guestName } from "../guestName";
+import { coachSetting, setCoachSetting } from "../firstTurns";
+import HudMenu from "./HudMenu";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
@@ -44,6 +47,7 @@ let calls: { url: string; method: string }[];
 let deleteStatus = 204;
 beforeEach(() => {
   forgetHomeSession();
+  guestName.reset();
   calls = [];
   deleteStatus = 204;
   signOut.mockClear();
@@ -70,6 +74,8 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+// a guest's name as Play would have kept it: the store loads first, then takes the name
+const nameGuest = (name: string) => { guestName.getSnapshot(); guestName.setName(name); };
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 async function render(section: "stats" | "games" = "stats") {
   host = document.createElement("div");
@@ -93,7 +99,7 @@ describe("signed in", () => {
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
-      "Sound", "Show me on the leaderboard", "Edit name", "How to play", "Privacy policy",
+      "Coach", "Sound", "How to play", "Show me on the leaderboard", "Edit name", "Privacy policy",
       "Support", "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
@@ -118,7 +124,7 @@ describe("signed in", () => {
 
   it("the account's settings and help rows sit under Games too, below the games", async () => {
     await render("games");
-    expect(rowLabels()).toEqual(["Sound", "Show me on the leaderboard", "Edit name", "How to play",
+    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Show me on the leaderboard", "Edit name",
       "Privacy policy", "Support", "Sign out", "Delete account"]);
     const list = host.querySelector(".games-day-row")!;
     const settings = host.querySelector(".me-visible")!;
@@ -246,17 +252,21 @@ describe("signed in", () => {
 });
 
 describe("a guest", () => {
-  it("sees the sign-in card with Google only, and the help rows", async () => {
+  beforeEach(() => { nameGuest("Gentle Tractor"); });
+
+  it("sees their name and initial, Edit name, the sign-in card with Google only, the settings and the help rows", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    expect(host.querySelector(".me-name")?.textContent).toBe("Guest");
-    expect(host.querySelector(".me-sub")?.textContent).toBe("Unranked");
+    expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
+    expect(host.querySelector(".me-sub")?.textContent).toBe("Guest · not ranked");
+    expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
     const card = host.querySelector(".signin-card")!;
     expect(card.querySelector(".google-signin")).not.toBeNull();
     expect(card.querySelector(".apple-signin")).toBeNull();
     expect(card.querySelectorAll("button:disabled")).toHaveLength(0);
     expect(card.textContent).not.toContain("Apple");
-    expect(rowLabels()).toEqual(["Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowLabels()).toEqual(["Edit name", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowNamed("Edit name").querySelector(".grp-value")?.textContent).toBe("Gentle Tractor");
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
@@ -266,7 +276,7 @@ describe("a guest", () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const card = host.querySelector(".signin-card")!;
-    expect(card.querySelector("h3")?.textContent).toBe("Sign in to keep your games");
+    expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked and keep your games");
     expect(card.querySelector("p")).toBeNull();
     expect(card.querySelector(".me-rated-link")).toBeNull();
   });
@@ -276,18 +286,64 @@ describe("a guest", () => {
     await render();
     const card = host.querySelector(".signin-card")!;
     expect(card).not.toBeNull();
-    expect(card.querySelector("h3")?.textContent).toBe("Sign in to keep your games");
+    expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked and keep your games");
     const btn = card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toBe("Sign in with Google");
     expect(card.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
-    expect(rowLabels()).toEqual(["Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowLabels()).toEqual(["Edit name", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
   });
 
   it("with sign-in off there is no card at all", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
     expect(host.querySelector(".signin-card")).toBeNull();
+  });
+
+  it("Edit name opens the guest's name sheet; Done keeps the new name, shown at once", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    // the home frame holds the sheet; Me over a game holds its own
+    expect(guestName.getSnapshot().editing).toBe(false);
+    act(() => rowNamed("Edit name").click());
+    expect(guestName.getSnapshot().editing).toBe(true);
+    act(() => guestName.setName("Mei"));
+    expect(host.querySelector(".me-name")?.textContent).toBe("Mei");
+    expect(host.querySelector(".me-who .avatar")?.textContent).toBe("M");
+    act(() => guestName.close());
+  });
+
+  it("over a game (no home frame), Me holds the name sheet itself", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => { root.render(<MePage section="stats" onBack={() => {}} />); });
+    await settle();
+    expect(document.querySelector(".guest-name-sheet")).toBeNull();
+    act(() => rowNamed("Edit name").click());
+    const input = document.querySelector<HTMLInputElement>(".guest-name-sheet input")!;
+    expect(input.value).toBe("Gentle Tractor");
+    act(() => document.querySelector<HTMLButtonElement>(".guest-name-sheet .btn.gold")!.click());
+    expect(guestName.getSnapshot().editing).toBe(false);
+  });
+
+  it("a guest who opens Me before Play gets a name, not a blank", async () => {
+    guestName.reset();
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    const shown = host.querySelector(".me-name")?.textContent ?? "";
+    expect(shown).not.toBe("");
+    expect(shown).not.toBe("Guest");
+    expect(guestName.name).toBe(shown);
+  });
+
+  it("is the signed-in page minus rating, leaderboard and saved games: no switch, no leaderboard row", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    expect(host.querySelector(".segmented")).toBeNull();
+    expect(host.querySelector(".me-visible")).toBeNull();
+    expect(host.querySelector(".me-delete")).toBeNull();
   });
 });
 
@@ -334,8 +390,9 @@ describe("account changes", () => {
 
   it("guest to account: the account's own stats load", async () => {
     authState.current = OUT;
+    nameGuest("Gentle Tractor");
     await render();
-    expect(host.querySelector(".me-name")?.textContent).toBe("Guest");
+    expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
     await as(IN(JERRY));
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
     expect(sub()).toContain("1532");
@@ -550,13 +607,51 @@ describe("the Settings group", () => {
   const group = () => host.querySelector("ul.me-settings")!;
   const groupLabels = () => [...group().querySelectorAll(".grp-label")].map((e) => e.textContent);
 
-  it("in the app: Sound, Haptics, the leaderboard switch and Edit name, under a Settings heading", async () => {
+  it("in the app: Coach, Sound, Haptics and How to play under a Settings heading; the account's rows follow", async () => {
     native(true);
     authState.current = { status: "in", clientId: "cid", user: JERRY };
     await render();
     expect(head()?.textContent).toBe("Settings");
     expect(group().getAttribute("aria-labelledby")).toBe("me-settings-head");
-    expect(groupLabels()).toEqual(["Sound", "Haptics", "Show me on the leaderboard", "Edit name"]);
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Haptics", "How to play"]);
+    const account = [...host.querySelectorAll("ul.me-account .grp-label")].map((e) => e.textContent);
+    expect(account).toEqual(["Show me on the leaderboard", "Edit name"]);
+  });
+
+  it("How to play opens the guide", async () => {
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    act(() => host.querySelector<HTMLButtonElement>(".me-howto")!.click());
+    expect(window.location.hash).toBe("#/howto");
+  });
+
+  it("Me and the table's menu show the same list, in the same order, on one shared state", async () => {
+    native(true);
+    setCoachSetting("on");
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    const menuHost = document.createElement("div");
+    document.body.appendChild(menuHost);
+    const menuRoot = createRoot(menuHost);
+    act(() => menuRoot.render(<HudMenu room="ABCD" />));
+    act(() => menuHost.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+    const menuRows = () => [...menuHost.querySelectorAll<HTMLButtonElement>(".hud-menu-row")];
+    const menuLabels = menuRows().map((r) => r.querySelector("span")?.textContent);
+    expect(menuLabels.slice(0, 4)).toEqual(groupLabels());
+    const coachInMenu = () => menuRows().find((r) => r.textContent?.startsWith("Coach"))!;
+    const coachInMe = () => host.querySelector<HTMLButtonElement>(".me-coach")!;
+    expect(coachInMe().getAttribute("aria-checked")).toBe("true");
+    expect(coachInMenu().getAttribute("aria-checked")).toBe("true");
+    act(() => coachInMe().click());                       // off from Me...
+    expect(coachSetting()).toBe("off");
+    expect(coachInMenu().getAttribute("aria-checked")).toBe("false");   // ...the menu follows
+    act(() => coachInMenu().click());                     // on from the menu...
+    expect(coachInMe().getAttribute("aria-checked")).toBe("true");      // ...Me follows
+    const hapticsInMenu = () => menuRows().find((r) => r.textContent?.startsWith("Haptics"))!;
+    act(() => hapticsInMenu().click());
+    expect(host.querySelector(".me-haptics")?.getAttribute("aria-checked")).toBe("false");
+    act(() => menuRoot.unmount());
+    menuHost.remove();
   });
 
   it("Haptics is a switch that turns haptic() off and is remembered", async () => {
@@ -587,15 +682,15 @@ describe("the Settings group", () => {
     expect(sw().getAttribute("aria-checked")).toBe("true");
   });
 
-  it("a browser has no Haptics row; a guest gets the device rows only", async () => {
+  it("a browser has no Haptics row; a guest gets the same settings list as an account", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    expect(groupLabels()).toEqual(["Sound"]);
+    expect(groupLabels()).toEqual(["Coach", "Sound", "How to play"]);
     native(true);
     act(() => root.unmount());
     host.remove();
     await render();
-    expect(groupLabels()).toEqual(["Sound", "Haptics"]);
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Haptics", "How to play"]);
   });
 
 });

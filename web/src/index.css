@@ -2754,6 +2754,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     display: none;
   }
 
+  /* the kitty's count is wanted while it is being buried, so it shows then
+     as a header pill, and the rest of the time stays out of the way */
+  .hud-bar .kitty-chip.burying {
+    display: inline-flex;
+    height: var(--header-h);
+    padding: 0 10px;
+    border: 0;
+    background: var(--pill-bg);
+  }
+
   .leave-btn {
     font-size: var(--fs-10);
     padding: 3px 9px;
@@ -2864,6 +2874,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
   .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
   .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  /* the settings end here; the table's own actions follow */
+  .hud-menu-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
 
   /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {
@@ -5377,7 +5389,7 @@ body.keyboard-open .tabbar { display: none; }
 .topbar-tab.on { color: var(--gold); background: rgba(255, 255, 255, 0.1); font-weight: 600; }
 .topbar-end { grid-column: 3; justify-self: end; display: flex; align-items: center; min-width: 0; }
 .topbar-end > .topbar-tab { height: 56px; }
-.topbar-signin { min-height: 36px; }
+.topbar-signin { min-height: 36px; white-space: nowrap; }
 
 .avatar {
   width: 28px;
@@ -5582,6 +5594,10 @@ button.play-conn { cursor: pointer; }
 .account-pill::before { content: ""; position: absolute; inset: -2px 0; }
 .account-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-pill-rating { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+/* a guest's line stays on one line; the name gives way first */
+.guest-pill { gap: 7px; padding-right: 12px; font-size: var(--fs-14); }
+.guest-pill .account-pill-rating { flex: none; white-space: nowrap; font-size: var(--fs-12); font-weight: 500; }
+.guest-pill-edit { flex: none; color: var(--text-dim); font-size: var(--fs-13); }
 
 /* The Duo sheet's ranked mark under its title. */
 .ranked-chip {
@@ -5627,6 +5643,15 @@ button.play-conn { cursor: pointer; }
   color: #eef1f6;
 }
 .me-page .home-col { max-width: 560px; }
+/* Me's two parts flow as one column, like every other page */
+.me-cols, .me-col { display: contents; }
+/* a wide enough page (an iPad sideways, a desktop window) sets the settings
+   beside who you are and your stats, so neither is a long scroll away */
+@media (min-width: 960px) {
+  .home-wide .me-page .home-col { max-width: 940px; }
+  .home-wide .me-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; align-items: start; }
+  .home-wide .me-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+}
 .home-back { margin: 0 0 -8px -8px; }
 .large-title {
   margin: 4px 0 0;

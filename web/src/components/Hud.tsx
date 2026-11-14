@@ -318,7 +318,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
             </span>
           </span>
           <ModeChip mode={mode === "ranked" && guest ? null : mode} />
-          <span className="chip kitty-chip" title="Kitty (face-down)">
+          {/* a phone shows the kitty's count only while it is being buried */}
+          <span className={`chip kitty-chip${state.phase === "bury" ? " burying" : ""}`} title="Kitty (face-down)">
             <span className="kitty-icon" />
             {state.kitty_count}
           </span>
@@ -326,7 +327,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           <CoachChip />
           {/* a guest is never rated, so its leave warning is the casual one even at a ranked table */}
           <LeaveButton ranked={mode === "ranked" && !guest} practice={practice} />
-          <HudMenu room={state.room} kittyCount={state.kitty_count} ranked={mode === "ranked" && !guest} offline={practice}
+          <HudMenu room={state.room} ranked={mode === "ranked" && !guest} offline={practice}
                    allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined} />
         </div>
       </div>

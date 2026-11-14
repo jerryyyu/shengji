@@ -182,7 +182,7 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
       </div>
       {frame.kind === "end" ? <ResultPanel replay={replay} frame={frame} /> : null}
       {!replay.complete ? (
-        <p className="replay-note">This round did not finish; only the cards played are shown.</p>
+        <p className="replay-note">This round did not finish.</p>
       ) : null}
       {allKnown ? (
         <div className="replay-all">

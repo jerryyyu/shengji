@@ -1,0 +1,77 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import type { Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import Toast from "./Toast";
+import { TOAST_MS, clearToast, currentToast, showToast } from "../toast";
+
+let host: HTMLDivElement;
+let root: Root;
+beforeEach(() => {
+  vi.useFakeTimers();
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+afterEach(() => {
+  act(() => clearToast());
+  act(() => root.unmount());
+  host.remove();
+  vi.useRealTimers();
+});
+
+const shown = () => [...host.querySelectorAll<HTMLElement>(".toast")];
+
+describe("the one toast", () => {
+  it("shows one toast at a time, and the newest wins", () => {
+    act(() => root.render(<Toast />));
+    expect(shown()).toHaveLength(0);
+    act(() => { showToast("That game has ended."); });
+    act(() => { showToast("Alice left the table.", { info: true }); });
+    expect(shown()).toHaveLength(1);
+    expect(shown()[0].textContent).toBe("Alice left the table.");
+  });
+
+  it("reads an error at once and a notice politely, both as a status", () => {
+    act(() => root.render(<Toast />));
+    act(() => { showToast("No game or pair has that code."); });
+    const err = shown()[0];
+    expect([err.getAttribute("role"), err.getAttribute("aria-live")]).toEqual(["status", "assertive"]);
+    expect(err.classList.contains("toast-info")).toBe(false);
+    act(() => { showToast("Coach on", { info: true }); });
+    const info = shown()[0];
+    expect([info.getAttribute("role"), info.getAttribute("aria-live")]).toEqual(["status", "polite"]);
+    expect(info.classList.contains("toast-info")).toBe(true);
+  });
+
+  it("goes by itself after TOAST_MS, and a newer toast gets its full time", () => {
+    act(() => root.render(<Toast />));
+    act(() => { showToast("First"); });
+    act(() => { vi.advanceTimersByTime(TOAST_MS - 100); });
+    act(() => { showToast("Second"); });
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(shown()[0]?.textContent).toBe("Second");
+    act(() => { vi.advanceTimersByTime(TOAST_MS); });
+    expect(shown()).toHaveLength(0);
+    expect(currentToast()).toBeNull();
+  });
+
+  it("remounts for each showing, so the same words again fade in again", () => {
+    act(() => root.render(<Toast />));
+    act(() => { showToast("Same"); });
+    const first = shown()[0];
+    act(() => { showToast("Same"); });
+    expect(shown()[0]).not.toBe(first);
+    expect(shown()[0].style.getPropertyValue("--toast-ms")).toBe(`${TOAST_MS}ms`);
+  });
+
+  it("draws a second line and a team's dot, and marks the table's spot", () => {
+    act(() => root.render(<Toast place="table" />));
+    act(() => { showToast("That seat was just taken.", { info: true, sub: "Pick another." }); });
+    expect(shown()[0].textContent).toBe("That seat was just taken.Pick another.");
+    expect(shown()[0].querySelector("small")?.textContent).toBe("Pick another.");
+    expect(shown()[0].classList.contains("at-table")).toBe(true);
+    act(() => { showToast("Mei joins next trick", { info: true, dot: 1 }); });
+    expect(shown()[0].querySelector(".toast-dot.team1")).not.toBeNull();
+  });
+});

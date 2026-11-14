@@ -127,7 +127,7 @@ shows the bots' countdown, not elapsed time.
 - Guardrails: yes, all of them. That includes moving this spec and the mocks into the repo (`docs/design/`).
 - Duo: the Duo button stays and holds a partner seat; otherwise the panel is the same as Play's.
 - In-game: mute, Coach and Leave live only in the overflow menu. The icon is ⋯ (decided 2026-11-14 on the simplify mock, "Yes for all the simplification paths").
-  - The header, phone and desktop alike, holds game state only: Us / trump / Them levels, the points, the mode chip, then Chat and ⋯. No mute, Coach, Leave, code, phase or kitty chip.
+  - The header, phone and desktop alike, holds game state only: Us / trump / Them levels and the points ("35/80" with a dot in the attackers' colour), then Chat and ⋯; the mode is a label at the top of ⋯. No mute, Coach, Leave, code, phase or kitty chip.
   - Partner seat on phones: in the header row's middle (Jerry 11-14, 'Player in header is fine'); a row of its own would shrink the trick cards; desktop/iPad below the header; side pills at the edges.
   - ⋯ opens one menu (`HudMenu.tsx`) in this order: the code with Invite link, Allow joiners (the opener's seat only, from the state's `opener`), then Coach, Sound, How to play, then a red Leave game that opens the one Leave sheet. The opener's controls pass to the next person when the opener leaves, in the lobby or mid-game.
 - Server merge (one Table object): yes, planned after Duo lands.

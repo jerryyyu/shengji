@@ -139,6 +139,8 @@ interface GameState {
     takeover_in: number | null;   // seconds before the bot covers a dropped human
     reserved_for: string | null;  // the dropped owner's name while a bot covers the seat
     reserved_secs: number | null; // seconds the seat stays reserved for its owner
+    left?: true;                  // the owner pressed Leave: the bot plays the seat at once
+                                  // (takeover_in is null); absent otherwise
   }[];
   hand: { id: number; code: string }[];   // your cards, sorted server-side
   levels: [string, string];       // rank symbol per team, e.g. ["2","5"]
@@ -151,6 +153,7 @@ interface GameState {
   declare_options: number[][];    // arrays of your card ids forming valid declarations, [] if you can't beat the current one
   current_declaration: { seat: number; cards: string[] } | null;
   passed: number[];               // seats done with the declare window (cleared when someone declares)
+  declare_deadline: number | null; // seconds left in the post-deal declare window, to a tenth; null outside it
   // --- play phase ---
   trick: { leader: number; plays: { seat: number; cards: string[] }[] } | null;
   last_trick: { leader: number; plays: { seat: number; cards: string[] }[]; winner: number; points: number } | null;

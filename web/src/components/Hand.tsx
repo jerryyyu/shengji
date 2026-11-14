@@ -37,6 +37,8 @@ interface HandProps {
   rects?: RefObject<HandRects>;
   /** When set, the cards that can make the play: the others are dimmed. */
   lit?: Set<number> | null;
+  /** The banker's cards that came from the kitty, marked until the bury. */
+  fromKitty?: Set<number> | null;
 }
 
 interface SlotProps {
@@ -47,16 +49,19 @@ interface SlotProps {
   pressed: boolean;
   /** "lit": one of the cards that can make the play; "dim": not one. */
   mark: "" | "lit" | "dim";
+  /** Came from the kitty: a small gold badge on the card. */
+  kitty: boolean;
   onToggle: ((id: number) => void) | undefined;
 }
 
 /** One card in the hand. Props are primitives plus the stable onToggle, so a
  *  server update or a tap re-renders only the slots whose card or selection
  *  changed, not all 25. */
-const HandSlot = memo(function HandSlot({ id, code, selected, pressed, mark, onToggle }: SlotProps) {
+const HandSlot = memo(function HandSlot({ id, code, selected, pressed, mark, kitty, onToggle }: SlotProps) {
   return (
-    <div className={`hand-slot${pressed ? " pressed" : ""}${mark ? ` ${mark}` : ""}`} data-id={id}>
+    <div className={`hand-slot${pressed ? " pressed" : ""}${mark ? ` ${mark}` : ""}${kitty ? " from-kitty" : ""}`} data-id={id}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
+      {kitty ? <span className="kitty-badge" title="From the kitty"><span className="tc-sr">from the kitty</span></span> : null}
     </div>
   );
 });
@@ -110,7 +115,7 @@ interface Drag {
   moved: boolean;
 }
 
-export default function Hand({ hand, selected, selectable, onToggle, rects, lit = null }: HandProps) {
+export default function Hand({ hand, selected, selectable, onToggle, rects, lit = null, fromKitty = null }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
   // The card under a finger that is down lifts at once, before the tap's
   // click commits the choice on release; a slide carries the lift along.
@@ -280,6 +285,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
                   pressed={selectable && pressed === c.id}
                   mark={lit === null ? "" : lit.has(c.id) ? "lit" : "dim"}
+                  kitty={fromKitty?.has(c.id) ?? false}
                   onToggle={selectable ? onToggle : undefined} />
       ))}
     </div>

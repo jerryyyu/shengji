@@ -6,6 +6,7 @@ import { DUR, EASE, canAnimate, centerDelta, clamp, flightKeyframes, sweepKeyfra
 import Card from "./Card";
 import { winningSeat } from "../followRules";
 import type { HandRects } from "./Hand";
+import { declarationWhat, declaredBy } from "../tableCopy";
 
 type SidePos = "bottom" | "left" | "top" | "right";
 
@@ -88,7 +89,6 @@ function handOrigin(rects: HandRects | undefined, codes: string[], inHand: Set<n
 }
 
 export default function TrickArea({ state, trick, winner, declaration, handRects, sweepAfterMs = null }: TrickAreaProps) {
-  const nameOf = (seat: number) => state.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat}`;
   const areaRef = useRef<HTMLDivElement>(null);
   // Plays already on the table at the last non-empty render; only a play not
   // in this set flies in. Null until the first render, so a table restored
@@ -189,7 +189,7 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
             ))}
           </div>
           <div className="trick-tag">
-            <span className="declare-tag">{nameOf(declaration.seat)} declares</span>
+            <span className="declare-tag">{declaredBy(declaration.seat, state)} {declarationWhat(declaration.cards)}</span>
           </div>
         </div>
       ) : null}

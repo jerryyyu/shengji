@@ -8,6 +8,7 @@ import { OFFLINE } from "../offlineMode";
 import { MoveRing } from "./MoveClock";
 import { RING_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
+import { myTeam, nextBankerText, pointsOf, roundLines, teamMembers, teamWord } from "../tableCopy";
 
 /** Leave below Next round, the same in every room. The round is over and
  *  recorded and the next has not started, so leaving costs nothing and goes
@@ -44,33 +45,20 @@ interface RoundEndModalProps {
   clock?: number | null;
 }
 
-/** Name the actual players, not the seat numbers: "Blue team (seats 0 & 2)"
- *  makes you work out who that was, and "you" should be obvious. */
-function teamName(team: 0 | 1, state?: GameState): string {
-  const colour = team === 0 ? "Blue" : "Orange";
+/** Name the actual players, not seat numbers or a colour: "Us (You & Sam)". */
+function teamName(team: 0 | 1, state: GameState): string {
   const members = teamMembers(team, state);
-  return members ? `${colour} team (${members})` : `${colour} team`;
+  const word = teamWord(team, state);
+  return members ? `${word} (${members})` : word;
 }
 
-/** "You & Bot 2": the team's players, you first; empty when unknown. */
-function teamMembers(team: 0 | 1, state?: GameState): string {
-  if (!state) return "";
-  return state.players
-    .filter((p) => p.team === team)
-    .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat)
-    .map((p) => (p.seat === state.you ? "You" : p.name))
-    .join(" & ");
-}
-
-/** "Blue team · You & Bot 2 win the round"; the members take a plural verb,
- *  and phones drop the colour prefix (the title is already in team colour). */
+/** "You & Bot 2 win the round"; the members take a plural verb. */
 function TeamTitle({ team, state, what, verb = "win" }: {
   team: 0 | 1; state: GameState; what: string; verb?: "win" | "lose";
 }) {
-  const colour = team === 0 ? "Blue" : "Orange";
   const members = teamMembers(team, state);
-  if (!members) return <>{colour} team {verb}s {what}</>;
-  return <><span className="title-team">{colour} team · </span>{members} {verb} {what}</>;
+  if (!members) return <>{teamWord(team, state)} {verb} {what}</>;
+  return <>{members} {verb} {what}</>;
 }
 
 /** The viewer's team when it lost the round, else null (a win, or a viewer
@@ -123,26 +111,16 @@ export function RatingLine({ result, total, ranked, guest = false }: {
   return <div className="rating-line rating-unranked rating-guest-note"><span>Guest · not ranked</span></div>;
 }
 
-/** Card points: 5s are worth 5, 10s and kings 10, everything else 0. */
-function cardPoints(code: string): number {
-  const rank = code.slice(1);
-  if (rank === "5") return 5;
-  if (rank === "10" || rank === "K") return 10;
-  return 0;
-}
-
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
   useScreen("round_end");
   const ranked = !!(state.matched || state.ranked);
-  const nextBankerName =
-    state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
   // attacker_points is the final total (kitty bonus already included);
   // kitty_points is the kitty portion of that total.
   const total = result.attacker_points;
   const trickPoints = result.attacker_points - result.kitty_points;
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
-  const buriedPoints = result.kitty_cards.reduce((sum, code) => sum + cardPoints(code), 0);
+  const buriedPoints = pointsOf(result.kitty_cards);
   const bankerName =
     state.banker === null
       ? null
@@ -159,7 +137,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             <TeamTitle team={result.winner_team} state={state} what="the game!" />
           </h2>
           <p className="victory-sub">
-            Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
+            Final levels — Us: {result.new_levels[myTeam(state)]} · Them: {result.new_levels[1 - myTeam(state)]}
           </p>
           <RatingLine result={result} total ranked={ranked} guest={state.guest === true} />
           <button
@@ -173,8 +151,10 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
     );
   }
 
-  const levels = result.level_change === 1 ? "level" : "levels";
   const lostTeam = losingViewerTeam(state, result.winner_team);
+  const climb = result.level_change > 0
+    ? `go up ${result.level_change} level${result.level_change === 1 ? "" : "s"}`
+    : "take the deal with no level change";
   return (
     <ResultDialog titleId={titleId}>
       <div className="panel modal">
@@ -184,17 +164,26 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             : <TeamTitle team={result.winner_team} state={state} what="the round" />}
         </h2>
 
-        {/* the outcome first; how it was scored waits behind Details */}
-        <div className="result-headline">
-          <span className={`result-change team${result.winner_team}`}>
-            {result.point_scored ? "Game won" : `+${result.level_change} ${levels}`}
-          </span>
+        {/* the outcome first, your team first and in words; how it was
+            scored waits behind Details */}
+        <div className="result-headline result-teams">
+          <div className="result-team-lines">
+            {roundLines(state, result).map((line) => (
+              <div key={line.team} className={`result-team-line team${line.team}${line.won ? " gained" : ""}`}>
+                <span className={`team-dot t${line.team}`} aria-hidden="true" />
+                <b className="result-team-word">{line.word}</b>
+                <span className="result-team-members">({line.members})</span>
+                <span className="result-team-what">
+                  {line.role ? `${line.role} · ` : ""}{line.outcome}
+                </span>
+              </div>
+            ))}
+          </div>
           <span className="result-levels">
-            {result.point_scored ? "Levels restart at " : "Now "}
-            <span className="team-dot t0" /> {result.new_levels[0]}
-            <span className="team-dot t1" /> {result.new_levels[1]}
+            {result.point_scored ? "Levels restart at " : "Levels now "}
+            Us {result.new_levels[myTeam(state)]} · Them {result.new_levels[1 - myTeam(state)]}
           </span>
-          <span className="result-score">Attackers {total} of 80</span>
+          <span className="result-next-banker">{nextBankerText(state, result)}</span>
         </div>
 
         <RatingLine result={result} total={result.point_scored} ranked={ranked} guest={state.guest === true} />
@@ -235,17 +224,15 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             </span>
             <span className="result-value">
               {result.point_scored
-                ? `${teamName(result.winner_team, state)} wins the game`
-                : `+${result.level_change}`}
+                ? `${teamName(result.winner_team, state)} win the game`
+                : result.level_change > 0 ? `+${result.level_change}` : "None"}
             </span>
 
             {result.point_scored ? (
               <>
                 <span className="result-label">Games won</span>
                 <span className="result-value">
-                  <span className="team-dot t0" /> {result.games_won[0]}
-                  <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
-                  {result.games_won[1]}
+                  Us {result.games_won[myTeam(state)]} · Them {result.games_won[1 - myTeam(state)]}
                 </span>
               </>
             ) : null}
@@ -254,20 +241,17 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
               {result.point_scored ? "Levels restart at" : "New levels"}
             </span>
             <span className="result-value">
-              <span className="team-dot t0" /> {result.new_levels[0]}
-              <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
+              Us {result.new_levels[myTeam(state)]} · Them {result.new_levels[1 - myTeam(state)]}
             </span>
 
-            <span className="result-label">Next banker</span>
-            <span className="result-value">{nextBankerName}</span>
           </div>
 
           <p className="result-verdict">
             {result.point_scored
-              ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
+              ? `${teamName(result.winner_team, state)} held Ace and win the game — levels restart at ${result.new_levels[0]} and play continues.`
               : total >= 80
-              ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
-              : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
+              ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} ${climb}.`
+              : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} ${climb}.`}
           </p>
         </details>
 

@@ -136,6 +136,9 @@ export interface StatePlayer {
   /** The move timer ran out too often: the bot is playing every decision for
    *  this present player until they are back. Absent where turn_deadline is. */
   away?: boolean;
+  /** The owner pressed Leave: a bot plays the seat at once, and the table
+   *  names it "Bot (Alice left)". Sent only while true. */
+  left?: boolean;
 }
 
 export interface Trump {
@@ -241,6 +244,9 @@ export interface GameState {
   declare_options: number[][]; // your valid declarations right now; [] if you can't beat the current one
   current_declaration: Declaration | null;
   passed: number[]; // seats done with the declare window (cleared when someone declares)
+  /** Seconds left in the post-deal declare window; null outside it. Tick it
+   *  down locally, like turn_deadline. */
+  declare_deadline?: number | null;
   // play phase
   trick: Trick | null;
   last_trick: LastTrick | null;

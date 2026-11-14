@@ -113,6 +113,8 @@ export class LocalRoom {
   actions: ActionEntry[] = [];
   pumping = false;
   closed = false;
+  /** Clock time at which the post-deal declare window closes; null outside it. */
+  declareUntil: number | null = null;
   readonly code: string;
   startLevel: string;
   readonly decks: DeckRng;
@@ -247,7 +249,14 @@ function controller(seat: Seat): string {
   return seat.connected ? "human" : "bot_cover";
 }
 
-export function stateFor(room: LocalRoom, seat: number): Json {
+/** Seconds left in the declare window, to a tenth, rounded as server.py's
+ *  _declare_deadline rounds the same double. */
+function declareDeadline(room: LocalRoom, phase: string, now: number): number | null {
+  if (phase !== "declare" || room.declareUntil === null) return null;
+  return Math.max(0, Math.floor((room.declareUntil - now) * 10 + 0.5)) / 10;
+}
+
+export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
   const game = room.game!;
   const rnd = game.round!;
   room.syncKitty();
@@ -296,6 +305,7 @@ export function stateFor(room: LocalRoom, seat: number): Json {
     turn: rnd.turn,
     declare_options: declareOptions(rnd, seat).map((opt) => room.idsForCodes(seat, opt)),
     passed: [...rnd.passed].sort((a, b) => a - b),
+    declare_deadline: declareDeadline(room, phase, now),
     current_declaration: rnd.declaration ? { seat: rnd.declaration.seat, cards: rnd.declaration.cards } : null,
     trick: trickJson(rnd.trick, ordering),
     last_trick: trickJson(rnd.lastTrick, ordering),
@@ -414,7 +424,7 @@ export class LocalServer {
   broadcast(room: LocalRoom): void {
     room.seats.forEach((seat, i) => {
       if (seat.connected && !seat.isBot) {
-        this.enqueue(seat, room.game && room.round ? stateFor(room, i) : roomJson(room, i));
+        this.enqueue(seat, room.game && room.round ? stateFor(room, i, this.clock.now()) : roomJson(room, i));
       }
     });
   }
@@ -627,12 +637,18 @@ export class LocalServer {
   /** Stream the deal card by card, then run the declare grace window. */
   private async runDeal(room: LocalRoom): Promise<void> {
     const rnd = room.round!;
+    room.declareUntil = null;
     for (;;) {
       if (room.closed || room.round !== rnd) return;
       if (rnd.phase !== "deal") break;
       const dealt = this.clock.now();
       const [seat, idx, code] = dealNext(rnd);
       room.ids[seat].set(idx, code);
+      if ((rnd.phase as string) === "declare") {
+        // provisional, so the frames before the window opens (the last card,
+        // the bots' last declarations) already count down
+        room.declareUntil = this.clock.now() + DECLARE_GRACE;
+      }
       room.logDeal(rnd.dealPos);
       const declared = this.declares(room, [seat], false);
       if (declared instanceof Promise) {
@@ -651,8 +667,9 @@ export class LocalServer {
     for (let s = 0; s < 4; s++) {
       if (this.drives(room, s) && !needsResponse) room.addPass(s);
     }
-    this.broadcast(room);
     let deadline = this.clock.now() + DECLARE_GRACE;
+    room.declareUntil = deadline;
+    this.broadcast(room);
     let lastDeclaration = rnd.declaration;
     for (;;) {
       await sleep(this.clock, DECLARE_POLL);
@@ -678,13 +695,20 @@ export class LocalServer {
         }
       }
       const humans = room.seats.flatMap((s, i) => (!s.isBot && s.connected ? [i] : []));
-      if (humans.every((i) => rnd.passed.includes(i)) || this.clock.now() >= deadline) {
-        finalizeDeclare(rnd);
-        room.logAction(["finalize"]);
-        this.broadcast(room);
-        this.kickBots(room);
-        return;
+      if (!(humans.every((i) => rnd.passed.includes(i)) || this.clock.now() >= deadline)) {
+        if (deadline !== room.declareUntil) {
+          // a new declaration bought more time: the countdown shows it
+          room.declareUntil = deadline;
+          this.broadcast(room);
+        }
+        continue;
       }
+      room.declareUntil = null;
+      finalizeDeclare(rnd);
+      room.logAction(["finalize"]);
+      this.broadcast(room);
+      this.kickBots(room);
+      return;
     }
   }
 

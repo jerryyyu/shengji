@@ -9,7 +9,8 @@ export const BUZZ_SECS = 5;
 /** Seconds left on your move timer, ticked locally between server states.
  *  `stamp` is the state the number came with: every state restarts the count
  *  from the server's own figure, so the two never drift apart. */
-export function useMoveClock(seconds: number | null | undefined, stamp: unknown): number | null {
+export function useMoveClock(seconds: number | null | undefined, stamp: unknown,
+                             buzz = true): number | null {
   const [left, setLeft] = useState<number | null>(seconds ?? null);
   useEffect(() => {
     if (seconds === null || seconds === undefined) {
@@ -31,8 +32,8 @@ export function useMoveClock(seconds: number | null | undefined, stamp: unknown)
     }
     if (!buzzed.current) {
       buzzed.current = true;
-      haptic("clock");
+      if (buzz) haptic("clock");
     }
-  }, [left]);
+  }, [left, buzz]);
   return left;
 }

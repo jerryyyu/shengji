@@ -960,6 +960,40 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
         assert room.ratings.left == {1: 0}
 
 
+def test_a_deliberate_leave_keeps_every_rating_and_penalty_rule(env, keypair, monkeypatch):
+    """Leave hands the seat to the bot at once, but what a leave costs is
+    unchanged: the round is recorded as left, the leaver is rated as an
+    abandon whether or not the seat is marked as left, and no carried cap or
+    queue cooldown is added for an ordinary seat."""
+    from shengji.api import ratings
+
+    srv, store, client = env
+    private_pem, _ = keypair
+    ratings.CARRIED_CAPS.clear()
+    cooldowns = []
+    monkeypatch.setattr(srv.MATCHMAKER, "left_open_table", lambda *a: cooldowns.append(a))
+    cookie = _session_cookie(srv.accounts, client, private_pem)
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        code = _drain(a, "room")["room"]
+        for _ in range(3):
+            a.send_json({"type": "add_bot"})
+        a.send_json({"type": "set_ranked", "on": True})
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        room = srv.rooms[code]
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=200)
+        seat = room.seats[0]
+        assert seat.left_by_choice and not seat.is_bot
+        assert room.ratings.left == {1: 0}
+        marked = ratings.participants(room, room.ratings)
+        seat.left_by_choice = False
+        unmarked = ratings.participants(room, room.ratings)
+        assert marked == unmarked
+        assert [(p.user_id, p.abandoned) for p in marked] == [(1, True)]
+    assert ratings.CARRIED_CAPS == set() and cooldowns == []
+
 
 def _wait_until(pred, timeout=60.0):
     deadline = time.monotonic() + timeout

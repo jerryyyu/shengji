@@ -400,8 +400,8 @@ class Table:
         return None
 
     def held_seats(self) -> list[int]:
-        """Every held seat. A Duo table's opener holds one; a table Duo
-        whose partner left at another's table holds its own again."""
+        """Every held seat: at most one, its opener's, since an entry that
+        holds a seat opens its own table and never sits at another's."""
         return sorted(s for e in self.entries if (s := self.held_for(e)) is not None)
 
     def held_seat(self) -> int | None:
@@ -1317,9 +1317,11 @@ class Matchmaker:
 
     def _split(self, e: Entry, uid: int, reason: str) -> None:
         """``uid`` leaves its table Duo before the game: the Duo ends and
-        the other keeps the table, its seat and its code. A partner's leave
-        holds its seat again for the opener; the opener's makes the partner
-        the table's opener, with no seat held."""
+        the other keeps its seat and its code. A partner's leave holds its
+        seat again for the opener, at its own table: a pair seated at
+        another's table goes back to its own, since a held seat and its
+        invite code belong to the table they open (and so to its room). The
+        opener's leave makes the partner the opener, with no seat held."""
         stay = next(u for u in e.members if u != uid)
         t = self._table(e)
         if t is not None:
@@ -1335,6 +1337,9 @@ class Matchmaker:
             del self.entry_of[uid]
         e.hold = uid != e.leader
         e.leader = stay
+        if e.hold and t is not None and t.entries[0] is not e:
+            self._unseat(e)
+            t = None
         p = self.parties.get(e.party_id) if e.party_id is not None else None
         e.party_id = None
         self._qlog("leave", None, who=self._kind(uid), size=1, reason=reason, duo=True)
@@ -1744,7 +1749,8 @@ class Matchmaker:
         # The first arrival still here is the opener: its code and settings
         # are the room's (``entries`` keeps arrival order).
         opener = entries[0]
-        friend = t.held_for(opener) if opener.leader in t.seats else None
+        # only the opener can hold a seat, and its code is the room's
+        friend = t.held_for(opener)
         slots = []
         for u in t.seats:
             e = by_user.get(u) if u is not None else None

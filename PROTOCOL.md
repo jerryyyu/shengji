@@ -326,8 +326,8 @@ other socket with `account_in_game`.
   else your waiting table:
   `{id, code, opener, held_seat, held_seats, seats, you, timer, ready, of, you_ready, waiting_for}`
   (`code` the table's code, `opener` the opener's seat, `held_seats` the
-  empty seats held for a Duo opener's friend and `held_seat` the first of
-  them, else null). `seats` has
+  empty seats held for a Duo opener's friend, at most one, and `held_seat`
+  that seat, else null). `seats` has
   four items in seat order (team 0 at seats 0+2), `null` for an empty seat (a
   bot plays it), else `{name, you, ready, reconnecting, since, pair, leader}`;
   `you` is your seat; `timer` is `{at, name, you}` (the earliest `bots_at`
@@ -495,8 +495,10 @@ Before the game, one Leave (`queue_leave` or `party_leave`, from either
 member) ends the Duo for the leaver only; the other is told with
 `party_closed {by}` and keeps the table, its seat and its code. When the
 partner leaves (or signs in from a guest, takes a seat elsewhere or stays
-away), its seat is held again for the opener (the Duo's taps are cleared), at whichever table the pair
-sits; when the opener leaves, the partner keeps the opener's code and, at
+away), its seat is held again for the opener (the Duo's taps are cleared)
+at the opener's own table: a pair seated at another's table goes back to
+its own, so a held seat is always its table opener's and its invite code is
+the code the room takes; when the opener leaves, the partner keeps the opener's code and, at
 its own table, becomes the opener, and nothing is held. After the game the
 pair stays paired, as a party pair does.
 

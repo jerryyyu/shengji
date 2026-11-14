@@ -167,8 +167,8 @@ export interface WaitingTableMsg {
   code?: string;
   /** The opener's seat. */
   opener?: number;
-  /** The empty seats held for a Duo opener's friend, and the first of
-   *  them (null when none). */
+  /** The empty seat held for the table opener's friend (at most one; null
+   *  when none), also as a list. */
   held_seat?: number | null;
   held_seats?: number[];
   seats: (TableSeatMsg | null)[];

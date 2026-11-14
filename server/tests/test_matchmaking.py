@@ -4402,7 +4402,7 @@ def test_the_party_flow_still_makes_a_pair_with_its_own_code():
 
 
 
-def test_a_duo_split_at_a_strangers_table_holds_the_openers_seat_there():
+def test_a_duo_split_at_a_strangers_table_goes_back_to_hold_the_seat_at_its_own():
     async def go():
         env = Env()
         await env.join(5, allow_joiners=False)      # in line first, waiting for its code
@@ -4411,20 +4411,20 @@ def test_a_duo_split_at_a_strangers_table_holds_the_openers_seat_there():
         (t,) = env.mm.tables.values()
         assert t.seats == [5, 1, None, 2] and t.entries[0] is env.mm._entry(5)
         await env.send(2, "queue_leave")
-        assert t.seats == [5, 1, None, None] and t.held_seats() == [3]
-        assert env.conns[1].last("queue_state")["held_seat"] == 3
-        assert env.conns[5].last("queue_state")["table"]["held_seats"] == [3]
+        # back at its own table, which the stranger joins: the holder opens it
+        (t,) = env.mm.tables.values()
+        e = env.mm._entry(1)
+        assert t.entries[0] is e and e.hold and t.seats == [1, 5, None, None]
+        assert t.held_seats() == [2] and env.conns[5].last("queue_state")["code"] == code
+        assert all(o.hold is False for o in t.entries[1:])
         await env.join(8)                           # a stranger takes the free seat only
-        assert t.seats == [5, 1, 8, None]
-        await env.join(9)
-        assert env.mm._entry(9).table_id is None
-        env.player(10)
-        await env.send(10, "queue_join", code=code)  # the opener's code takes it
+        assert t.seats == [1, 5, None, 8]
+        for uid in (1, 5, 8):
+            await env.send(uid, "table_start")
         (_, slots), = env.started
-        assert [s.user_id for s in slots] == [5, 1, 8, 10]
-        assert slots[1].group == slots[3].group is not None
+        assert [s.user_id for s in slots] == [1, 5, None, 8]
+        assert env.rooms[-1]["code"] == code and env.rooms[-1]["friend_seat"] == 2
     run(go())
-
 
 
 def test_each_duo_member_taps_start_and_the_pair_is_ready_once_both_have():

@@ -308,3 +308,36 @@ def test_parse_time_forms():
     assert md.parse_time("7d", now=1794528000.0) == 1794528000.0 - 7 * 86400
     assert md.parse_exact("off") is None
     assert md.parse_exact("cap=100") == dict(cap=100, k=7)
+
+
+@pytest.mark.parametrize('damage', ['partial', 'controller', 'replay'])
+@pytest.mark.parametrize('bad_first', [True, False])
+def test_overlapping_snapshots_keep_the_valid_round(tmp_path, damage, bad_first):
+    raw = _rounds(_raw_prod())[0]
+    bad = json.loads(json.dumps(raw))
+    if damage == 'partial':
+        bad = [o for o in bad if o['e'] != 'round_end']
+    elif damage == 'controller':
+        next(o for o in bad if o['e'] == 'play').pop('bot')
+    else:
+        trick = next(o for o in bad if o['e'] == 'trick')
+        trick['winner'] = (trick['winner'] + 1) % 4
+    valid = _write(tmp_path, raw, 'complete.jsonl')
+    damaged = _write(tmp_path, bad, 'older.jsonl')
+    baseline = md.run('prod', [valid])
+    js, out = tmp_path / 'overlap.json', tmp_path / 'overlap.md'
+    paths = [damaged, valid] if bad_first else [valid, damaged]
+    md.main(['--source', 'prod', '--input', *paths, '--json', str(js), '--out', str(out)])
+    result = json.loads(js.read_text())
+    assert result['rounds'] == baseline['rounds'] == 1
+    assert result['totals'] == baseline['totals']
+    assert result['per_round'] == baseline['per_round']
+    assert 'Mistake dashboard' in out.read_text()
+
+
+def test_two_complete_snapshots_count_one_round(tmp_path):
+    raw = _rounds(_raw_prod())[0]
+    paths = [_write(tmp_path, raw, name) for name in ('first.jsonl', 'second.jsonl')]
+    result = md.run('prod', paths)
+    assert result['rounds'] == 1
+    assert result['checks']['duplicate rounds'] == 1

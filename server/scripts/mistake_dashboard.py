@@ -147,8 +147,8 @@ def _played(tricks):
 
 
 def load_prod(paths, since=None, until=None):
-    """Complete rounds from production room logs; duplicates across files are dropped."""
-    rounds, seen = [], set()
+    """Complete round candidates; duplicates are dropped after engine validation."""
+    rounds = []
     notes = collections.Counter({f"rounds excluded: {why}": 0 for why in (
         "seat map is not seats 0-3", "an event has no controller flag", "a seat changed controller mid-round")})
     for path in paths:
@@ -184,11 +184,6 @@ def load_prod(paths, since=None, until=None):
             t = float(st["t"])
             if (since is not None and t < since) or (until is not None and t >= until):
                 continue
-            key = (st.get("room"), st.get("t"))
-            if key in seen:
-                notes["duplicate rounds"] += 1
-                continue
-            seen.add(key)
             if "end" not in rec or "trump" not in rec or "bury" not in rec:
                 notes["incomplete rounds"] += 1
                 continue
@@ -549,11 +544,18 @@ def summarise(rounds, source, exact=None):
     checks = collections.Counter({"rounds excluded: engine replay disagrees with the log": 0})
     level_rows = []
     kept = []
+    seen = set()
     for r in rounds:
+        key = (r["game"], r["t"]) if source == "prod" else None
+        if source == "prod" and key in seen:
+            checks["duplicate rounds"] += 1
+            continue
         bad = replay_check(r, eng)
         if bad:
             checks["rounds excluded: engine replay disagrees with the log"] += 1
             continue
+        if source == "prod":
+            seen.add(key)
         kept.append(r)
         ev = analyse_round(r, eng)
         checks["failed throws not matched to a lead"] += ev["unmatched_fails"]

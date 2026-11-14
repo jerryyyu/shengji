@@ -1104,6 +1104,22 @@ VALUE_DECLARE_PARAMS = {"VALUE_DECLARE_WORLDS": "value_declare_worlds",
                         "VALUE_DECLARE_MARGIN": "value_declare_margin"}
 #: the record a value-declare decision leaves in ``last_declare_record``
 VALUE_DECLARE_RECORD_SCHEMA = "pv-value-declare-decision-v1"
+#: ``SHENGJI_PV_PARTNER_DECLARE_MARGIN=<margin in levels>``
+#: (``partner_declare_margin_milli``, token ``pdm<milli>`` after the declare
+#: tokens; requires ``value_declare``): unset, empty or 0 is off.  When the
+#: current declaration is the seat's partner's, the value declaration keeps the
+#: partner's outcome (PASS is the incumbent, whatever the heuristic chose) unless
+#: the best other outcome's mean beats it by at least the margin
+#: (`partner_declare_choice`).  The declare head's gain over PASS is about 3.7x
+#: its realised gain, so a small predicted gain over a partner's suit is noise.
+PARTNER_DECLARE_MARGIN_ENV = "PARTNER_DECLARE_MARGIN"
+PARTNER_DECLARE_MARGIN_TOKEN = "pdm"
+PARTNER_DECLARE_MARGIN_RULE_ID = "partner-declaration-incumbent-overcall-needs-margin-over-pass"
+#: the margin's range in thousandths of a signed level (the value head's units)
+PARTNER_DECLARE_MARGIN_MILLI_RANGE = (1, 2000)
+_PARTNER_DECLARE_MARGIN_REQUIRES = ("partner_declare_margin requires value_declare "
+                                    "(SHENGJI_PV_PARTNER_DECLARE_MARGIN needs "
+                                    "SHENGJI_PV_VALUE_DECLARE=1)")
 #: its first-round gate widening (requires ``value_declare``; module docstring)
 VALUE_DECLARE_EVERY_FIRST_RULE = {"VALUE_DECLARE_EVERY_FIRST": "value_declare_every_first"}
 VALUE_DECLARE_EVERY_FIRST_DEFAULTS = dict(value_declare_every_first=False)
@@ -1594,6 +1610,9 @@ class PVSearchConfig:
     value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+    # the partner-declaration margin in milli-levels (requires ``value_declare``):
+    # 0 is off and ABSENT from the payload
+    partner_declare_margin_milli: int = 0
     # its first-round gate widening (requires ``value_declare``); the same contract
     value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     # the served bury in its worlds (requires ``value_declare`` and, checked where
@@ -1632,6 +1651,67 @@ def _check_value_declare_params(worlds, margin):
         raise PVSearchPolicyError("value_declare_worlds must be a positive int")
     if type(margin) not in (int, float) or not math.isfinite(margin) or margin < 0:
         raise PVSearchPolicyError("value_declare_margin must be a finite number >= 0")
+
+
+def _check_partner_declare_margin(config) -> int:
+    """The partner-declaration margin in milli-levels, 0 when off; refuses a
+    malformed value and one without ``value_declare``."""
+    milli = config.partner_declare_margin_milli
+    lo, hi = PARTNER_DECLARE_MARGIN_MILLI_RANGE
+    if isinstance(milli, bool) or type(milli) is not int or not (milli == 0 or lo <= milli <= hi):
+        raise PVSearchPolicyError(
+            f"partner_declare_margin_milli must be 0 (off) or an int in [{lo}, {hi}]")
+    if milli and not config.value_declare:
+        raise PVSearchPolicyError(_PARTNER_DECLARE_MARGIN_REQUIRES)
+    return milli
+
+
+def partner_declare_choice(rnd, seat, outcomes, decided, best, margin):
+    """Under ``partner_declare_margin``: ``(switch, index, partner)`` for a value
+    declaration whose candidates are ``outcomes`` (`value_declare.candidate_outcomes`)
+    and whose decided means are ``decided``.  ``partner`` is False (and the caller
+    keeps its own rule) unless the current declaration is the seat's partner's:
+    same team, another seat.  Then the incumbent is the outcome PASS reaches (the
+    partner's banker and trump), and ``best`` replaces it only when
+    ``decided[best] - decided[incumbent] >= margin``; ``index`` is the outcome
+    played, ``switch`` whether it differs from the incumbent."""
+    current = rnd.declaration
+    if current is None or current["seat"] == seat or current["seat"] % 2 != seat % 2:
+        return False, best, False
+    keep = value_declare_model.outcome_key(rnd, seat, None)
+    incumbent = next(i for i, (key, _) in enumerate(outcomes) if key == keep)
+    switch = best != incumbent and float(decided[best]) - float(decided[incumbent]) >= margin
+    return switch, best if switch else incumbent, True
+
+
+def cards_of(option) -> str:
+    """A declare choice as the records write it (PASS for None)."""
+    return value_declare_model.PASS if option is None else " ".join(option)
+
+
+def _partner_declare_override(rnd, seat, outcomes, decided, best, heuristic, milli):
+    """The ``partner_declare_margin`` decision (`partner_declare_choice`) as a
+    record dict with the option ``played``; None where the rule does not apply.
+    Kept: PASS, or the heuristic's own choice when it already reaches the
+    partner's outcome (a reinforcement), never another option."""
+    switch, index, partner = partner_declare_choice(rnd, seat, outcomes, decided, best,
+                                                    milli / 1000.0)
+    if not partner:
+        return None
+    keep = value_declare_model.outcome_key(rnd, seat, None)
+    incumbent = next(i for i, (key, _) in enumerate(outcomes) if key == keep)
+    if switch:
+        played = outcomes[index][1]
+    elif heuristic is not None and value_declare_model.outcome_key(rnd, seat, heuristic) == keep:
+        played = heuristic
+    else:
+        played = None
+    return {"played": played, "partner_seat": int(rnd.declaration["seat"]),
+            "margin": milli / 1000.0, "incumbent_mean": float(decided[incumbent]),
+            "best": cards_of(outcomes[best][1]),
+            "gain": float(decided[best]) - float(decided[incumbent]),
+            "overcall_kept": bool(switch),
+            "changed": cards_of(played) != cards_of(heuristic)}
 
 
 def _check_exact_deep_cards(cards) -> None:
@@ -2053,6 +2133,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
                        adaptive_worlds_start_fraction=ADAPTIVE_WORLDS_START_FRACTION,
                        adaptive_worlds_soft_fraction=ADAPTIVE_WORLDS_SOFT_FRACTION)
     _check_value_declare_params(config.value_declare_worlds, config.value_declare_margin)
+    partner_margin = _check_partner_declare_margin(config)
+    del payload["partner_declare_margin_milli"]
+    if partner_margin:
+        payload["partner_declare_margin"] = {"margin_milli": partner_margin,
+                                             "rule": PARTNER_DECLARE_MARGIN_RULE_ID}
     if config.value_declare:
         payload["value_declare_margin"] = float(config.value_declare_margin)
         payload["value_declare_model"] = (value_declare_model.MODEL_POLICY_FIRST_TRICK
@@ -2120,6 +2205,13 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
         tokens.insert(last + 1, f"{LEAF_GREEDY_TOP_TOKEN}{top}")
     if config.wide_lead_admission and _check_wide_lead_k(config) != WIDE_LEAD_K:
         tokens[tokens.index("wla")] = f"wla{config.wide_lead_k}"
+    partner_margin = _check_partner_declare_margin(config)
+    if partner_margin:
+        # right after the value declaration's own tokens (it requires ``vd``)
+        declare_tokens = {"vd", "vdef", declare_served_bury.TOKEN, declare_pass_worlds.TOKEN,
+                          declare_wait.TOKEN}
+        last = max(i for i, t in enumerate(tokens) if t in declare_tokens)
+        tokens.insert(last + 1, f"{PARTNER_DECLARE_MARGIN_TOKEN}{partner_margin}")
     rules = "".join(f"-{token}" for token in tokens)
     # the soft oracle's token after the rule tokens; "" while off
     if config.exact_deep_cards:
@@ -2301,6 +2393,7 @@ class PVSearchBot(PolicyValueBot):
     value_declare = VALUE_DECLARE_DEFAULTS["value_declare"]
     value_declare_worlds = VALUE_DECLARE_DEFAULTS["value_declare_worlds"]
     value_declare_margin = VALUE_DECLARE_DEFAULTS["value_declare_margin"]
+    partner_declare_margin_milli = 0
     value_declare_every_first = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"]
     value_declare_served_bury = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"]
     value_declare_pass_worlds = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"]
@@ -2589,6 +2682,9 @@ class PVSearchBot(PolicyValueBot):
             self.value_declare = True
             self.value_declare_worlds = config.value_declare_worlds
             self.value_declare_margin = float(config.value_declare_margin)
+        partner_margin = _check_partner_declare_margin(config)
+        if partner_margin:
+            self.partner_declare_margin_milli = partner_margin
         for key in ("value_declare_every_first", "value_declare_served_bury",
                     "value_declare_pass_worlds", "value_declare_wait",
                     "declare_asap_first"):
@@ -2996,7 +3092,7 @@ class PVSearchBot(PolicyValueBot):
                                        "worlds": 0, "attempts": 0, "fallbacks": 0}
         stage = OptionalStage(self, (), hard_check=check_budget,
                               budget_errors=PVSearchBudgetExceeded, abandon_on=Exception)
-        means = best = None
+        means = best = partner = None
         decided = None      # the means the argmax and margin used (``vdsb``: adjusted)
         served = None       # the ``vdsb`` record, only with the rule on
         with stage:
@@ -3010,9 +3106,15 @@ class PVSearchBot(PolicyValueBot):
                                                        stage.guard, served)
             switch = bool(decided[best] - decided[0] > self.value_declare_margin)
             played = outcomes[best][1] if switch else heuristic
+            if self.partner_declare_margin_milli:
+                partner = _partner_declare_override(rnd, seat, outcomes, decided, best, heuristic,
+                                                    self.partner_declare_margin_milli)
+                if partner is not None:
+                    played = partner["played"]
+                    switch = cards_of(played) != cards_of(heuristic)
             stage.publish(changed=switch)
         if stage.abandoned:
-            played, best, means, decided = heuristic, None, None, None
+            played, best, means, decided, partner = heuristic, None, None, None, None
         wait = None         # the ``vdw`` record, only with the rule on
         if (self.value_declare_wait and not final and not stage.abandoned
                 and played is not None):
@@ -3050,6 +3152,11 @@ class PVSearchBot(PolicyValueBot):
         if self.value_declare_pass_worlds:
             # only with the rule on: a flag-off record's key set is unchanged
             record["pass_worlds"] = dict(progress["pass_worlds"])
+        if self.partner_declare_margin_milli:
+            # only with the rule on: None where the current declaration is not
+            # the partner's or the evaluation was abandoned
+            record["partner_declare"] = (None if partner is None else
+                                         {k: v for k, v in partner.items() if k != "played"})
         if self.value_declare_wait:
             # likewise; None where the wait pass did not run (the grace window,
             # an abandoned evaluation, or a value choice that already passes)
@@ -4922,6 +5029,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                        value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                        value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
+                       partner_declare_margin_milli: int = 0,
                        value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
                        value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
                        value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
@@ -5012,6 +5120,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
+                            partner_declare_margin_milli=partner_declare_margin_milli,
                             value_declare_every_first=value_declare_every_first,
                             value_declare_served_bury=value_declare_served_bury,
                             value_declare_pass_worlds=value_declare_pass_worlds,
@@ -5155,6 +5264,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         value_declare: bool = VALUE_DECLARE_DEFAULTS["value_declare"],
                         value_declare_worlds: int = VALUE_DECLARE_DEFAULTS["value_declare_worlds"],
                         value_declare_margin: float = VALUE_DECLARE_DEFAULTS["value_declare_margin"],
+                        partner_declare_margin_milli: int = 0,
                         value_declare_every_first: bool = VALUE_DECLARE_EVERY_FIRST_DEFAULTS["value_declare_every_first"],
                         value_declare_served_bury: bool = VALUE_DECLARE_SERVED_BURY_DEFAULTS["value_declare_served_bury"],
                         value_declare_pass_worlds: bool = VALUE_DECLARE_PASS_WORLDS_DEFAULTS["value_declare_pass_worlds"],
@@ -5226,6 +5336,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             value_declare=value_declare,
                             value_declare_worlds=value_declare_worlds,
                             value_declare_margin=value_declare_margin,
+                            partner_declare_margin_milli=partner_declare_margin_milli,
                             value_declare_every_first=value_declare_every_first,
                             value_declare_served_bury=value_declare_served_bury,
                             value_declare_pass_worlds=value_declare_pass_worlds,
@@ -5362,6 +5473,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                value_declare=config.value_declare,
                                value_declare_worlds=config.value_declare_worlds,
                                value_declare_margin=config.value_declare_margin,
+                               partner_declare_margin_milli=config.partner_declare_margin_milli,
                                value_declare_every_first=config.value_declare_every_first,
                                value_declare_served_bury=config.value_declare_served_bury,
                                value_declare_pass_worlds=config.value_declare_pass_worlds,
@@ -5671,6 +5783,22 @@ def pv_env_recipe(environ=None) -> dict:
                                     value if key == "value_declare_margin"
                                     else VALUE_DECLARE_DEFAULTS["value_declare_margin"])
         recipe[key] = value
+    # the partner-declaration margin in signed levels: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + PARTNER_DECLARE_MARGIN_ENV)
+    if raw not in (None, "", "0"):
+        try:
+            margin = float(raw)
+        except ValueError:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{PARTNER_DECLARE_MARGIN_ENV} is not a number: {raw!r}") from None
+        milli = round(margin * 1000) if math.isfinite(margin) else None
+        if milli is None or abs(margin * 1000 - milli) > 1e-6:
+            raise PVSearchPolicyError(f"{ENV_PREFIX}{PARTNER_DECLARE_MARGIN_ENV} must be levels "
+                                      f"in whole thousandths: {raw!r}")
+        _check_partner_declare_margin(PVSearchConfig(
+            checkpoint_sha256=recipe["sha256"], value_declare=bool(recipe.get("value_declare")),
+            partner_declare_margin_milli=int(milli)))
+        recipe["partner_declare_margin_milli"] = int(milli)
     tree = tree_env(env, ENV_PREFIX)   # SHENGJI_PV_TREE_SIMS (+ _CONT / _EPS / _ZMIN / ...)
     if tree is not None:
         recipe["tree"] = tree

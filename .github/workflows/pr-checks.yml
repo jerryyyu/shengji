@@ -717,6 +717,7 @@ jobs:
             tests/test_pv_single_candidate_fast.py \
             tests/test_pv_declare_first_round.py \
             tests/test_pv_declare_wait.py \
+            tests/test_pv_partner_declare_margin.py \
             tests/test_model_ids_stamp.py \
             tests/test_endgame.py \
             tests/test_endgame_compact.py

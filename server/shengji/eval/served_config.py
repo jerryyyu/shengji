@@ -45,6 +45,9 @@ NAMED_OVERRIDES: dict[str, dict[str, str]] = {
     "wla24": {"SHENGJI_PV_WIDE_LEAD_ADMISSION": "1", "SHENGJI_PV_WIDE_LEAD_K": "24"},
     "lcc32": {"SHENGJI_PV_LEAD_CONFIRM": "32"},
     "lgft3": {"SHENGJI_PV_LEAF_GREEDY_TOP": "3"},
+    # the value declaration keeps a partner's declaration unless an overcall's predicted
+    # gain over PASS is at least 0.20 levels (the S102 break-even); off in fly.toml
+    "pdm200": {"SHENGJI_PV_PARTNER_DECLARE_MARGIN": "0.2"},
 }
 
 #: Keys that name where the server writes; a harness replaces them (they enter no bot).

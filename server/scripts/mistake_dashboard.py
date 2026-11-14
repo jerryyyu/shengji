@@ -24,8 +24,11 @@ Classes (each counted for both sides, by the seat that made the decision):
   dummy, node-capped; off by default because it is slow).
 
 Sides: shengji.org runs compare our seats (default 0 and 2) with the site's
-bots; production compares bot seats with human seats, and the level line uses
-rounds where exactly one team is all bots.  Output names seats and teams only,
+bots; production compares bot-controlled seats with human-controlled seats, by
+each seat's own play, declare and bury events (a round where a seat changes
+hands or an event has no controller flag is excluded and counted), and the
+level line uses rounds where exactly one team is bot-controlled throughout and
+the other has a human-controlled seat.  Output names seats and teams only,
 never players.
 
 The engine is imported inside the run so the module imports with the standard
@@ -145,7 +148,9 @@ def _played(tricks):
 
 def load_prod(paths, since=None, until=None):
     """Complete rounds from production room logs; duplicates across files are dropped."""
-    rounds, seen, notes = [], set(), collections.Counter()
+    rounds, seen = [], set()
+    notes = collections.Counter({f"rounds excluded: {why}": 0 for why in (
+        "seat map is not seats 0-3", "an event has no controller flag", "a seat changed controller mid-round")})
     for path in paths:
         cur = None
         recs = []
@@ -189,15 +194,23 @@ def load_prod(paths, since=None, until=None):
                 continue
             tricks = [dict(plays=[[int(p["seat"]), list(p["cards"])] for p in tr["plays"]], winner=int(tr["winner"]))
                       for tr in rec["tricks"]]
+            roster = st.get("players") or []
+            seats = [p.get("seat") for p in roster]
+            if (not all(_seat_ok(x) for x in seats) or sorted(seats) != [0, 1, 2, 3]
+                    or not all(_seat_ok(x) for x in _tricks_seats(tricks))):
+                notes["rounds excluded: seat map is not seats 0-3"] += 1
+                continue
             played = _played(tricks)
             deck = list(st["deck"])
             if len(deck) != 108 or not all(len(v) == 25 for v in played.values()):
                 notes["incomplete rounds"] += 1
                 continue
-            players = {int(p["seat"]): bool(p.get("is_bot")) for p in st.get("players") or []}
-            if len(players) != 4:
-                notes["rounds without a seat map"] += 1
+            control, why = _controllers(rec)
+            if control is None:
+                notes[f"rounds excluded: {why}"] += 1
                 continue
+            if any(bool(p.get("is_bot")) != (control[int(p["seat"])] == "bot") for p in roster):
+                notes["rounds where a seat's controller differs from its round-start roster entry"] += 1
             failed, nplay = {}, 0
             for p in rec["plays"]:
                 if p.get("engine_resolution") == "failed_throw_forced" and p.get("attempted_cards"):
@@ -208,18 +221,47 @@ def load_prod(paths, since=None, until=None):
             banker = int(tr["banker"])
             win, gain = int(end["winner_team"]), int(end["level_change"])
             team_delta = [gain if win == 0 else -gain, gain if win == 1 else -gain]
-            bot_teams = [tm for tm in (0, 1) if players[tm] and players[tm + 2]]
-            human_teams = [tm for tm in (0, 1) if not (players[tm] and players[tm + 2])]
+            bot_teams = [tm for tm in (0, 1) if control[tm] == control[tm + 2] == "bot"]
+            human_teams = [tm for tm in (0, 1) if "human" in (control[tm], control[tm + 2])]
             rounds.append(dict(
                 game=str(st.get("room")), label=int(st.get("round") or 0), deal_key=f"{st.get('room')}:{st.get('t')}",
                 t=t, level=str(tr.get("rank") or st.get("trump_rank")), trump=tr.get("suit") or "NT", banker=banker,
                 tricks=tricks, kitty_bottom=list(rec["bury"]["cards"]), kitty_in=deck[100:],
                 bids=[[int(d["seat"]), list(d["cards"])] for d in rec["decl"]], failed=failed,
                 dealt={s: deck[s:100:4] for s in range(4)},
-                side={s: ("bot" if players[s] else "human") for s in range(4)}, team_delta=team_delta,
+                side=control, team_delta=team_delta,
                 total_attack=int(end["attacker_points"]), kitty_bonus=int(end.get("kitty_points") or 0),
                 bid_refusals=None, level_team=(bot_teams[0] if len(bot_teams) == 1 and len(human_teams) == 1 else None)))
     return rounds, notes
+
+
+def _seat_ok(seat):
+    return type(seat) is int and 0 <= seat <= 3
+
+
+def _tricks_seats(tricks):
+    return [seat for t in tricks for seat, _ in t["plays"]]
+
+
+def _controllers(rec):
+    """Each seat's controller for the whole round from its own play, declare and bury events.
+
+    A seat is "bot" or "human" only when every one of its events carries the same
+    ``bot`` flag; the round-start roster is not evidence, because a bot covers a
+    disconnected human's seat and a human can reclaim a bot's seat mid-game.
+    Returns (None, reason) when a flag is missing or a seat changes hands."""
+    flags = {s: set() for s in range(4)}
+    for kind in ("plays", "decl"):
+        for o in rec[kind]:
+            flags.setdefault(o.get("seat"), set()).add(o.get("bot"))
+    flags.setdefault(rec["bury"].get("seat"), set()).add(rec["bury"].get("bot"))
+    if set(flags) != {0, 1, 2, 3}:
+        return None, "seat map is not seats 0-3"
+    if any(not f or not f <= {True, False} for f in flags.values()):
+        return None, "an event has no controller flag"
+    if any(len(f) > 1 for f in flags.values()):
+        return None, "a seat changed controller mid-round"
+    return {s: ("bot" if True in f else "human") for s, f in flags.items()}, None
 
 
 def _sjorg_code(card):

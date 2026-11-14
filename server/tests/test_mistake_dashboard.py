@@ -6,7 +6,8 @@ trick history and round result of each deal, plus our seats' bury and bid-refusa
 records.  Its expected values are the pilot report's per-round table and the
 pilot audit's exact-endgame decisions, not this module's own output.  The
 production fixture holds six room-log rounds with player names replaced by seat
-labels and decision payloads and chat removed.
+labels and decision payloads and chat removed; two of them have a bot covering a
+human seat for part of the round, as production logs record it.
 """
 
 import importlib.util
@@ -114,41 +115,148 @@ def _raw_prod():
     return [json.loads(line) for line in open(PROD)]
 
 
-def test_prod_fixture_counts_agree_with_the_raw_log(prod):
-    raw = _raw_prod()
-    starts = [o for o in raw if o["e"] == "round_start"]
-    assert prod["rounds"] == len(starts) == 6
-    assert prod["checks"]["rounds excluded: engine replay disagrees with the log"] == 0
-    bots = {}
-    failed = {"bot": 0, "human": 0}
-    kitty = {"bot": [0, 0], "human": [0, 0]}
-    banker = None
+def _rounds(raw):
+    out = []
     for o in raw:
         if o["e"] == "round_start":
-            bots = {p["seat"]: p["is_bot"] for p in o["players"]}
-        elif o["e"] == "trump":
-            banker = o["banker"]
-        elif o["e"] == "play" and o.get("engine_resolution") == "failed_throw_forced":
-            failed["bot" if bots[o["seat"]] else "human"] += 1
-        elif o["e"] == "round_end" and o["kitty_points"]:
-            side = "bot" if bots[banker] else "human"
-            kitty[side][0] += 1
-            kitty[side][1] += o["kitty_points"]
+            out.append([])
+        out[-1].append(o)
+    return out
+
+
+def _write(tmp_path, raw, name="rounds.jsonl"):
+    path = tmp_path / name
+    path.write_text("".join(json.dumps(o) + "\n" for o in raw))
+    return str(path)
+
+
+def _cli(tmp_path, raw):
+    """Loader -> summary -> emitted JSON and markdown, as a user runs it."""
+    js, out = tmp_path / "o.json", tmp_path / "t.md"
+    md.main(["--source", "prod", "--input", _write(tmp_path, raw), "--json", str(js), "--out", str(out)])
+    return json.loads(js.read_text()), out.read_text()
+
+
+CONTROLLED = ("play", "declare", "bury")
+EXCLUDED_MIXED = "rounds excluded: a seat changed controller mid-round"
+EXCLUDED_UNKNOWN = "rounds excluded: an event has no controller flag"
+EXCLUDED_SEATS = "rounds excluded: seat map is not seats 0-3"
+
+
+def test_prod_fixture_counts_agree_with_the_raw_log(prod):
+    """Sides come from each event's own ``bot`` flag; the fixture's ROOM3 and ROOM5
+    have a bot covering seat 0 for part of the round, and ROOM2's roster says a
+    human holds a seat a bot played throughout."""
+    failed = {"bot": 0, "human": 0}
+    kitty = {"bot": [0, 0], "human": [0, 0]}
+    kept = 0
+    for rnd in _rounds(_raw_prod()):
+        flags = {}
+        for o in rnd:
+            if o["e"] in CONTROLLED:
+                flags.setdefault(o["seat"], set()).add(o["bot"])
+        if any(len(f) > 1 for f in flags.values()):
+            continue
+        kept += 1
+        for o in rnd:
+            if o["e"] == "play" and o.get("engine_resolution") == "failed_throw_forced":
+                failed["bot" if o["bot"] else "human"] += 1
+            if o["e"] == "bury":
+                bury_side = "bot" if o["bot"] else "human"
+            if o["e"] == "round_end" and o["kitty_points"]:
+                kitty[bury_side][0] += 1
+                kitty[bury_side][1] += o["kitty_points"]
+    assert prod["rounds"] == kept == 4
+    assert prod["checks"][EXCLUDED_MIXED] == 2
+    assert prod["checks"][EXCLUDED_UNKNOWN] == prod["checks"][EXCLUDED_SEATS] == 0
+    assert prod["checks"]["rounds where a seat's controller differs from its round-start roster entry"] == 1
+    assert prod["checks"]["rounds excluded: engine replay disagrees with the log"] == 0
     for side in ("bot", "human"):
         t = prod["totals"][side]
         assert t.get("throws_failed", 0) == failed[side]
         assert [t.get("kitty_rounds", 0), t.get("kitty_pts", 0)] == kitty[side]
-    assert prod["checks"]["no-bid rounds"] == sum(not o["declared"] for o in raw if o["e"] == "trump")
-    assert prod["levels"]["rounds"] == 5  # the room with three humans has no all-bot team
+    assert prod["checks"]["no-bid rounds"] == 1
+    assert prod["levels"]["rounds"] == 4
 
 
 def test_prod_regression_table(prod):
     bot, human = prod["totals"]["bot"], prod["totals"]["human"]
-    assert (bot["throws"], bot["throws_risky"], bot["throws_failed"]) == (8, 6, 6)
-    assert (human["throws"], human["throws_risky"], human["throws_failed"]) == (6, 3, 1)
-    assert (bot["side_leads"], bot["hidden_void_leads"], bot["hidden_void_lost"], bot["hidden_void_lost_pts"]) == (35, 9, 8, 95)
-    assert (human["no_feeds"], human["no_feed_pts"]) == (4, 25)
+    assert (bot["throws"], bot["throws_risky"], bot["throws_failed"]) == (6, 5, 4)
+    assert (human["throws"], human["throws_risky"], human.get("throws_failed", 0)) == (4, 1, 0)
+    assert (bot["side_leads"], bot["hidden_void_leads"], bot["hidden_void_lost"], bot["hidden_void_lost_pts"]) == (25, 8, 7, 70)
+    assert (human["no_feeds"], human["no_feed_pts"]) == (3, 20)
     assert human["partner_overcalls_nt"] == 1
+
+
+def test_all_bot_control_gives_no_human_events(tmp_path):
+    raw = [dict(o, bot=True) if o["e"] in CONTROLLED else o for o in _raw_prod()]
+    res, text = _cli(tmp_path, raw)
+    assert res["rounds"] == 6
+    assert res["checks"][EXCLUDED_MIXED] == 0
+    human = res["totals"]["human"]
+    assert all(human.get(k, 0) == 0 for k in ("throws", "side_leads", "last_seat_partner_winning",
+                                              "banker_rounds", "partner_overcalls", "no_bid_held"))
+    assert res["levels"]["rounds"] == 0  # no team has a human-controlled seat
+    assert "| Risky throws | " in text and "| 0 / 0 | n/a |" in text
+    assert "no round has exactly one all-bot team" in text
+
+
+def test_takeover_and_reclaim_mid_round_exclude_the_round(tmp_path):
+    rounds = _rounds(_raw_prod())
+    kept = _cli(tmp_path, _raw_prod())[0]["rounds"]
+    # ROOM1: a bot takes over the human seat 0 after its tenth play
+    n = 0
+    for o in rounds[0]:
+        if o["e"] == "play" and o["seat"] == 0:
+            n += 1
+            if n > 10:
+                o["bot"] = True
+    # ROOM4: the human reclaims bot seat 1 after its tenth play
+    n = 0
+    for o in rounds[3]:
+        if o["e"] == "play" and o["seat"] == 1:
+            n += 1
+            if n > 10:
+                o["bot"] = False
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["rounds"] == kept - 2
+    assert res["checks"][EXCLUDED_MIXED] == 4
+    assert f"- {EXCLUDED_MIXED}: 4" in text
+    assert {r["game"] for r in res["per_round"]} == {"ROOM2", "ROOM6"}
+
+
+def test_whole_round_reclaim_counts_as_human(tmp_path):
+    base = {r["game"]: r for r in _cli(tmp_path, _raw_prod())[0]["per_round"]}["ROOM4"]["classes"]
+    rounds = _rounds(_raw_prod())
+    for o in rounds[3]:
+        if o["e"] in CONTROLLED and o["seat"] == 1:
+            o["bot"] = False
+    res, _ = _cli(tmp_path, [o for r in rounds for o in r])
+    got = {r["game"]: r for r in res["per_round"]}["ROOM4"]["classes"]
+    acts = ("side_leads", "last_seat_partner_winning", "throws", "banker_rounds")
+    moved = sum(got["human"].get(k, 0) - base["human"].get(k, 0) for k in acts)
+    assert moved > 0
+    assert sum(got["bot"].get(k, 0) for k in acts) == sum(base["bot"].get(k, 0) for k in acts) - moved
+    assert res["checks"]["rounds where a seat's controller differs from its round-start roster entry"] == 2
+
+
+def test_missing_controller_flag_excludes_the_round(tmp_path):
+    rounds = _rounds(_raw_prod())
+    next(o for o in rounds[0] if o["e"] == "play").pop("bot")
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["checks"][EXCLUDED_UNKNOWN] == 1
+    assert "ROOM1" not in {r["game"] for r in res["per_round"]}
+    assert f"- {EXCLUDED_UNKNOWN}: 1" in text
+
+
+def test_seat_map_outside_0_to_3_is_skipped_not_a_crash(tmp_path):
+    rounds = _rounds(_raw_prod())
+    start = rounds[0][0]
+    start["players"] = [dict(p, seat=p["seat"] + 1) for p in start["players"]]
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["checks"][EXCLUDED_SEATS] == 1
+    assert "ROOM1" not in {r["game"] for r in res["per_round"]}
+    assert f"- {EXCLUDED_SEATS}: 1" in text
 
 
 def test_output_names_seats_not_players(prod, tmp_path):
@@ -163,7 +271,7 @@ def test_cli_writes_table_and_json_and_filters_by_time(tmp_path):
     out, js = tmp_path / "t.md", tmp_path / "o.json"
     assert md.main(["--source", "prod", "--input", PROD, "--out", str(out), "--json", str(js)]) == 0
     assert out.read_text().startswith("# Mistake dashboard (prod)")
-    assert json.loads(js.read_text())["rounds"] == 6
+    assert json.loads(js.read_text())["rounds"] == 4
     # every fixture round started before 2026-11-14
     assert md.main(["--source", "prod", "--input", PROD, "--since", "2026-11-14", "--out", str(out)]) == 1
 

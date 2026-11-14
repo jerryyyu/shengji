@@ -164,3 +164,108 @@ it("a short blip clears before Retry ever shows", async () => {
   expect(banner()).toBeNull();
   expect(lost()).toBeNull();
 });
+
+const tab = (shift = false) => act(() => {
+  (document.activeElement ?? document.body).dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Tab", shiftKey: shift, bubbles: true, cancelable: true }));
+});
+const focusables = () => [...host.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), a[href]")];
+
+it("the full screen is modal: Retry has focus, Tab stays inside, the page behind is inert, and recovery gives focus back", async () => {
+  const { LOST_AFTER_MS } = await mount();
+  act(() => latest().open());
+  const howto = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "How to play")!;
+  act(() => howto.focus());
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+
+  const modal = lost()!;
+  const retry = modal.querySelector<HTMLButtonElement>(".conn-lost-retry")!;
+  const bots = modal.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
+  expect(modal.tagName).toBe("DIALOG");
+  expect(modal.hasAttribute("open")).toBe(true);
+  expect(document.activeElement).toBe(retry);
+  // Tab and Shift+Tab wrap at its ends (between them the browser moves focus)
+  tab(true);
+  expect(document.activeElement).toBe(bots);
+  tab();
+  expect(document.activeElement).toBe(retry);
+  // every control outside it sits under an inert ancestor
+  const outside = focusables().filter((el) => !modal.contains(el));
+  expect(outside.length).toBeGreaterThan(0);
+  expect(outside.every((el) => el.closest("[inert]") !== null)).toBe(true);
+  expect(modal.closest("[inert]")).toBeNull();
+  // Escape does not dismiss it
+  act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  expect(lost()).not.toBeNull();
+
+  act(() => latest().open());
+  expect(lost()).toBeNull();
+  expect(host.querySelector("[inert]")).toBeNull();
+  expect(document.activeElement).toBe(howto);
+});
+
+it("Retry from the full screen gives focus back too, and a modal at the table holds a single Tab stop", async () => {
+  const { ws, LOST_AFTER_MS } = await mount();
+  ws.saveName("Me");
+  act(() => latest().open());
+  act(() => latest().deliver(playing));
+  const more = host.querySelector<HTMLButtonElement>(".hud-more-btn")!;
+  act(() => more.focus());
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+  const retry = lost()!.querySelector<HTMLButtonElement>(".conn-lost-retry")!;
+  expect(document.activeElement).toBe(retry);
+  tab();
+  expect(document.activeElement).toBe(retry);
+  tab(true);
+  expect(document.activeElement).toBe(retry);
+  act(() => retry.click());
+  expect(lost()).toBeNull();
+  expect(document.activeElement).toBe(more);
+});
+
+it("with a sheet already open, the full screen sits above it and Retry is reachable", async () => {
+  const { LOST_AFTER_MS } = await mount();
+  act(() => latest().open());
+  act(() => host.querySelector<HTMLButtonElement>(".guest-pill")!.click());
+  const sheet = host.querySelector<HTMLElement>(".q-sheet")!;
+  expect(sheet).not.toBeNull();
+  expect(sheet.contains(document.activeElement)).toBe(true);
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+
+  const modal = lost()!;
+  const retry = modal.querySelector<HTMLButtonElement>(".conn-lost-retry")!;
+  expect(document.activeElement).toBe(retry);
+  expect(sheet.closest("[inert]")).not.toBeNull();
+  // the sheet's own Tab trap and Escape never see keys pressed in the modal
+  tab();
+  expect(modal.contains(document.activeElement)).toBe(true);
+  tab();
+  expect(document.activeElement).toBe(retry);
+  act(() => { retry.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+  expect(host.querySelector(".q-sheet")).not.toBeNull();
+  expect(document.activeElement).toBe(retry);
+
+  act(() => latest().open());
+  expect(lost()).toBeNull();
+  expect(sheet.closest("[inert]")).toBeNull();
+  expect(sheet.contains(document.activeElement)).toBe(true);
+});
+
+it("with the leave alert open at the table, the full screen still takes focus", async () => {
+  const { ws, LOST_AFTER_MS } = await mount();
+  ws.saveName("Me");
+  act(() => latest().open());
+  act(() => latest().deliver(playing));
+  act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+  act(() => host.querySelector<HTMLButtonElement>(".hud-menu-row.leave")!.click());
+  const alert = host.querySelector<HTMLElement>(".leave-alert-backdrop")!;
+  expect(alert.contains(document.activeElement)).toBe(true);
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+  const retry = lost()!.querySelector<HTMLButtonElement>(".conn-lost-retry")!;
+  expect(document.activeElement).toBe(retry);
+  expect(alert.closest("[inert]")).not.toBeNull();
+});

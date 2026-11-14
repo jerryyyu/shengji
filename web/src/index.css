@@ -447,6 +447,12 @@ textarea:focus-visible {
   position: fixed;
   inset: 0;
   z-index: 1000;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -457,6 +463,9 @@ textarea:focus-visible {
   color: var(--text);
   text-align: center;
 }
+
+dialog.conn-lost:not([open]) { display: none; }
+dialog.conn-lost::backdrop { background: var(--chrome); }
 
 .conn-lost-mark {
   display: flex;
@@ -4082,6 +4091,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* A dialog opened with showModal() lives in the browser's top layer, which
    ignores the .app transform, so it takes the same quarter turn itself and
    reads the same turned frame. */
+.app.rotated dialog.conn-lost:modal,
 .app.rotated dialog.modal-backdrop:modal {
   inset: auto;
   top: 0;

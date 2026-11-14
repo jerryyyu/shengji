@@ -27,6 +27,7 @@ import { TOAST_MS, makeToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
 import LastTrickPanel from "./LastTrickPanel";
+import LeaveSheet from "./LeaveSheet";
 
 /** The declare window's full length, for the countdown ring (server.py DECLARE_GRACE). */
 const DECLARE_WINDOW_SECS = 5;
@@ -245,6 +246,23 @@ export function JoinNotices({ state }: { state: GameState }) {
 /** The decision whose clock is running, kept across a remount of the
  *  table (opening How to play and coming back is the same decision). */
 let openTurn: { key: string; clock: TurnClock; watched: boolean } | null = null;
+
+/** The joining pill's Leave: the seat is not yours until this trick ends,
+ *  but leaving still costs what leaving the joined round costs, so it asks
+ *  through the leave sheet like every other leave. */
+function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button className="btn join-leave" onClick={() => setAsking(true)}>Leave</button>
+      {asking ? (
+        <LeaveSheet context={{ kind: "game", ranked, guest }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
+      ) : null}
+    </>
+  );
+}
 
 export default function Table({ state, toast = null }: { state: GameState; toast?: Toast | null }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -689,9 +707,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
             <b>Joining after this trick</b>
             <span>A bot plays your seat until then</span>
           </span>
-          <button className="btn join-leave" onClick={() => conn.send({ type: "leave_room" })}>
-            Leave
-          </button>
+          <JoinPillLeave ranked={!!(state.matched || state.ranked)} guest={state.guest === true} />
         </div>
       ) : null}
       {away && !watching ? (

@@ -337,11 +337,14 @@ describe("leaving a ranked table", () => {
   it("warns a signed-in player about the result but gives a guest the casual warning", () => {
     const signedIn = render(makeState({ matched: true }));
     act(() => signedIn.host.querySelector<HTMLButtonElement>(".leave-btn")!.click());
-    expect(signedIn.host.querySelector("[role='alertdialog'] h2")!.textContent).toBe("Leave this ranked game?");
+    expect(signedIn.host.querySelector("[role='alertdialog'] p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
     signedIn.unmount();
     const guest = render(makeState({ matched: true, guest: true }));
     act(() => guest.host.querySelector<HTMLButtonElement>(".leave-btn")!.click());
-    expect(guest.host.querySelector("[role='alertdialog'] h2")!.textContent).toBe("Leave this game?");
+    // a guest sees no ranked words
+    expect(guest.host.querySelector("[role='alertdialog'] p")!.textContent)
+      .toBe("A bot takes your seat and the others keep playing.");
+    expect(guest.host.querySelector("[role='alertdialog']")!.textContent).not.toMatch(/rank|draw/i);
     guest.unmount();
   });
 });

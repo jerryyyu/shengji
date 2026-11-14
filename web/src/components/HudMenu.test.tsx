@@ -46,16 +46,16 @@ describe("the phone overflow menu (#651)", () => {
     v.unmount();
   });
 
-  it("Leave game closes the menu and opens the leave alert; Leave sends leave_room", () => {
+  it("Leave game closes the menu and opens the leave sheet; Leave sends leave_room", () => {
     const v = render();
     act(() => btn(v.host).click());
     act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     expect(sent).toEqual([]);
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     const alert = v.host.querySelector("[role='alertdialog']")!;
-    expect(alert.textContent).toContain("Leave this game?");
+    expect(alert.textContent).toContain("Leave the game?");
     expect(alert.textContent).toContain("A bot takes your seat and the others keep playing.");
-    act(() => alert.querySelector<HTMLButtonElement>(".leave-alert-leave")!.click());
+    act(() => alert.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
     expect(sent).toEqual([{ type: "leave_room" }]);
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     v.unmount();
@@ -177,12 +177,12 @@ describe("keyboard focus in the menu", () => {
     v.unmount();
   });
 
-  it("the leave alert focuses Keep playing; Keep playing returns focus to the More button", () => {
+  it("the leave sheet focuses Stay; Stay returns focus to the More button", () => {
     const v = render();
     act(() => btn(v.host).click());
     key(document.activeElement!, "End");
     act(() => (document.activeElement as HTMLButtonElement).click());
-    expect(focused()).toBe("Keep playing");
+    expect(focused()).toBe("Stay");
     act(() => (document.activeElement as HTMLButtonElement).click());
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     expect(document.activeElement).toBe(btn(v.host));
@@ -248,15 +248,15 @@ describe("the menu's scale-and-fade", () => {
   });
 });
 
-describe("a ranked game's leave alert", () => {
+describe("a ranked game's leave sheet", () => {
   it("names the ranked game and its result", () => {
     const v = render({ ranked: true });
     act(() => btn(v.host).click());
     act(() => (rows(v.host)[4] as HTMLButtonElement).click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
-    expect(alert.querySelector("h2")!.textContent).toBe("Leave this ranked game?");
-    expect(alert.querySelector("p")!.textContent).toBe("A bot takes your seat, and this round counts as at best a draw.");
-    expect(Array.from(alert.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["Keep playing", "Leave"]);
+    expect(alert.querySelector("h2")!.textContent).toBe("Leave the game?");
+    expect(alert.querySelector("p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
+    expect(Array.from(alert.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
     v.unmount();
   });
 
@@ -291,21 +291,21 @@ describe("the offline menu", () => {
     act(() => btn(v.host).click());
     act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
-    expect(alert.querySelector("h2")!.textContent).toBe("Leave this game?");
-    expect(alert.querySelector("p")!.textContent).toBe("This practice game ends.");
+    expect(alert.querySelector("h2")!.textContent).toBe("Leave the game?");
+    expect(alert.querySelector("p")!.textContent).toBe("This offline game ends.");
     expect(goOnline).not.toHaveBeenCalled();
-    act(() => alert.querySelector<HTMLButtonElement>(".leave-alert-leave")!.click());
+    act(() => alert.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
     expect(sent).toEqual([{ type: "leave_room" }]);
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     v.unmount();
   });
 
-  it("Keep playing stays in the practice game", () => {
+  it("Stay keeps you in the offline game", () => {
     goOnline.mockClear();
     const v = render({ offline: true });
     act(() => btn(v.host).click());
     act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
-    act(() => v.host.querySelector<HTMLButtonElement>(".leave-alert-keep")!.click());
+    act(() => v.host.querySelector<HTMLButtonElement>(".leave-sheet-stay")!.click());
     expect(sent).toEqual([]);
     expect(goOnline).not.toHaveBeenCalled();
     v.unmount();

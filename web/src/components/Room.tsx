@@ -8,6 +8,8 @@ import MuteButton from "./MuteButton";
 import { codeLink } from "../codes";
 import { seatPos } from "./TrickArea";
 import { RankedChip } from "../queue/Ranked";
+import LeaveSheet from "./LeaveSheet";
+import { onRoomLeaveAsk } from "../roomBack";
 
 /** Movement before a press on a seat becomes a drag; less stays a tap. */
 const SEAT_DRAG_START = 8;
@@ -320,8 +322,18 @@ function SeatClock({ room, isHost, onInvite }: { room: RoomMsg; isHost: boolean;
  *  (only then can it be ranked), and a ranked room's Allow joiners. */
 type RoomFrame = RoomMsg & { rankable?: boolean; allow_joiners?: boolean };
 
+/** The people who stay when you leave the room, in seat order: the first
+ *  of them takes the opener's controls, as the server hands them on. */
+function staying(room: RoomMsg): string[] {
+  return room.players.filter((p) => !p.is_bot && p.seat !== room.you)
+    .sort((a, b) => a.seat - b.seat).map((p) => p.name);
+}
+
 export default function Room({ room }: { room: RoomFrame }) {
   const [copied, setCopied] = useState(false);
+  const [asking, setAsking] = useState(false);
+  // back (or the edge swipe) opens the same sheet as Leave
+  useEffect(() => onRoomLeaveAsk(() => setAsking(true)), []);
   const isHost = room.you === room.host;
   // a queue room is always ranked; a created one when its host switched it on
   const ranked = !!(room.matched || room.ranked);
@@ -351,7 +363,7 @@ export default function Room({ room }: { room: RoomFrame }) {
     <div className="screen room-screen">
       <div className="panel room-panel">
         <div className="room-head">
-          <button type="button" className="room-leave" onClick={() => conn.send({ type: "leave_room" })}>
+          <button type="button" className="room-leave" onClick={() => setAsking(true)}>
             <svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor"
                  strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M9 3l-6 7 6 7" /></svg>
             Leave
@@ -435,6 +447,11 @@ export default function Room({ room }: { room: RoomFrame }) {
           <div className="room-hint">Waiting for the host to start…</div>
         )}
       </div>
+      {asking ? (
+        <LeaveSheet context={{ kind: "room", others: staying(room), host: isHost }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
+      ) : null}
     </div>
   );
 }

@@ -214,18 +214,29 @@ describe("leaving from the round-end screen", () => {
     expect(leaveButton()!.disabled).toBe(false);
   });
 
-  it("leaves at once: the round is over, so there is nothing to confirm", () => {
-    renderModal(makeResult(), waiting);
-    act(() => { leaveButton()!.click(); });
-    expect(host.querySelector("[role='alertdialog']")).toBeNull();
-    expect(sent).toEqual([{ type: "leave_room" }]);
-  });
+  const sheet = () => host.querySelector<HTMLDialogElement>("[role='alertdialog']");
+  const sheetText = () => `${sheet()!.querySelector("h2")!.textContent} / ${sheet()!.querySelector("p")!.textContent}`;
 
-  it("a ranked game leaves at once too, with no penalty alert", () => {
+  for (const [kind, shown] of [["casual", waiting], ["ranked", { ...waiting, matched: true }],
+                               ["guest at a ranked", { ...waiting, matched: true, guest: true }]] as const) {
+    it(`asks through the leave sheet, which says it is free, in a ${kind} game`, () => {
+      renderModal(makeResult(), shown);
+      act(() => { leaveButton()!.click(); });
+      expect(sent).toEqual([]);
+      expect(sheetText()).toBe("Leave the game? / Free. This round's result is kept.");
+      expect([...sheet()!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
+      act(() => { sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click(); });
+      expect(sent).toEqual([{ type: "leave_room" }]);
+      expect(sheet()).toBeNull();
+    });
+  }
+
+  it("Stay closes the sheet and sends nothing", () => {
     renderModal(makeResult(), { ...state, matched: true });
     act(() => { leaveButton()!.click(); });
-    expect(host.querySelector("[role='alertdialog']")).toBeNull();
-    expect(sent).toEqual([{ type: "leave_room" }]);
+    act(() => { sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-stay")!.click(); });
+    expect(sheet()).toBeNull();
+    expect(sent).toEqual([]);
   });
 });
 

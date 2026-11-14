@@ -1436,19 +1436,31 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   font-size: var(--fs-16);
 }
 
+/* "35/80": the number and its dot in the attacking team's colour; before a
+   banker the number is plain and there is no dot */
 .points-chip {
-  border-color: rgba(255, 157, 77, 0.45);
+  gap: 5px;
 }
 
 .points-big {
-  font-size: var(--fs-20);
+  font-size: var(--fs-16);
   font-weight: 800;
-  color: var(--team1);
+  color: var(--text);
 }
 
-.points-bar {
-  display: none; /* phone only */
+.points-chip.team0 .points-big { color: var(--team0); }
+.points-chip.team1 .points-big { color: var(--team1); }
+
+.points-dot {
+  display: none;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
+
+.points-dot.t0 { display: inline-block; background: var(--team0); }
+.points-dot.t1 { display: inline-block; background: var(--team1); }
 
 /* The table's one ⋯ menu, phone and desktop alike: the table's rows, the
    settings, then a red Leave game. Every row is a 44px target. */
@@ -1565,6 +1577,7 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
 .hud-menu-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
 
 .points-target {
+  margin-left: -3px;
   color: #c4ccd8;
   font-size: var(--fs-12);
 }
@@ -2776,10 +2789,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      Every size derives from the viewport through the tokens on .table-screen,
      so a wider phone gets bigger cards instead of empty felt. The regions:
        - a header row (y 6..38): one strip with levels, trump and points at the
-         left, the top seat's label in the middle, the `…` menu at the right;
+         left, the top seat's label in the middle, Chat and the `…` menu at
+         the right;
        - the trick cross between the header and the hand: each slot is its
          cards plus a tag line under them, a gap apart; each side seat's label
-         stands outside its slot;
+         stands at its edge of the felt, level with the cross's centre;
        - in play your slot is also your row: Play (with "Your turn") sits where
          your cards will land, just above the hand; while declaring and burying
          the row sits under the cross;
@@ -2820,14 +2834,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        play your slot is the row (see .phase-play). */
     --row-reserve: var(--row-h);
     /* The felt between the header and the hand (less the row, if any) holds
-       the cross: two footprints and three equal gaps. The cards are as large
-       as the felt allows: the width-based size unless that leaves gaps under
-       --space-s, or leaves a side seat's label under 64px beside a
-       four-card throw. */
+       the cross: two footprints and three equal gaps. The cards
+       are as large as the felt allows: the width-based size unless that
+       leaves gaps under --space-s, or leaves a side seat's label, between
+       the safe edge and a four-card throw, under 100px. */
     --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom) - var(--row-reserve));
     --trick-cw: min(clamp(48px, calc(var(--view-w) * 0.075), 72px),
       calc((var(--cross-avail) - 3 * var(--space-s) - 2 * var(--tag-s)) / 2.8),
-      calc((var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--space-xs) - 2 * var(--space-s) - 70px) / 4.2));
+      calc((var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - 3 * var(--space-s) - 100px) / 4.2));
     --trick-ch: calc(var(--trick-cw) * 1.4);
     --foot: calc(var(--trick-ch) + var(--tag-s));
     --gap-v: calc((var(--cross-avail) - 2 * var(--foot)) / 3);
@@ -2835,15 +2849,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
        growing inward that still clears a four-card throw in the top or your
        slot (4 cards span 2.8 card widths at a 60% pitch) */
     --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
-    /* A side seat's label is centred over its slot's first card. Inward it
-       stops short of where the widest top play can reach: half of 2.8 card
-       widths in play, half of a two-card declaration while setting up.
-       Outward it stops short of the safe edge. */
-    --top-reach: calc(var(--trick-cw) * 1.4);
+    /* A side seat's label stands a gap in from the safe edge and stops a
+       gap short of its slot's outer edge, so no play reaches it. */
     --pill-max: min(200px,
-      calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw)),
-      calc(2 * (var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - var(--space-s))
-        + var(--trick-cw)));
+      calc(var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - 2 * var(--space-s)));
     /* card centres from the cross's centre: the top slot's footprint ends a
        half gap above it, yours starts a half gap below; side cards sit so
        their footprint is centred */
@@ -2873,13 +2882,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* in play your slot is your row, so nothing is reserved under the cross */
   .table-screen.phase-play {
     --row-reserve: 0px;
-  }
-
-  /* while setting up the top slot holds a declaration, two cards at most */
-  .table-screen.phase-deal,
-  .table-screen.phase-declare,
-  .table-screen.phase-bury {
-    --top-reach: calc(var(--trick-cw) * 0.8);
   }
 
   /* The banker's 33 cards fit one row by drawing smaller, as large as the
@@ -2983,32 +2985,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     height: var(--header-h);
     border: 0;
     border-radius: 0 999px 999px 0;
-    padding: 0 14px 0 10px;
+    padding: 0 14px 0 6px;
     line-height: 1;
     background: var(--pill-bg);
-    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.1);   /* the divider */
-  }
-
-  .points-chip .points-bar {
-    position: absolute;
-    left: 10px;
-    right: 14px;
-    bottom: 4px;
-    height: 2px;
-  }
-
-  .points-bar {
-    display: block;
-    border-radius: 2px;
-    background: rgba(0, 0, 0, 0.4);
-    overflow: hidden;
-  }
-
-  .points-bar > span {
-    display: block;
-    height: 100%;
-    background: var(--team1);
-    transition: width 0.5s ease;
   }
 
   .hud-more {
@@ -3039,28 +3018,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     content: "";
     position: absolute;
     inset: -8px -6px;
-  }
-
-  /* The mode chip stands at the right of the header, before Chat and the
-     menu: the same height, fill and radius as every header pill. Chat is
-     placed on its own (fixed), so the chip keeps Chat's slot and a gap
-     clear; offline there is no Chat and it sits a gap from the menu. */
-  .hud-bar .mode-chip {
-    height: var(--header-h);
-    margin-left: auto;
-    margin-right: calc(var(--chat-w) + var(--space-s));
-    padding: 0 12px;
-    border: 0;
-    background: var(--pill-bg);
-    font-size: var(--fs-13);
-  }
-
-  .hud-bar .mode-chip ~ .hud-more {
-    margin-left: 0;
-  }
-
-  .table-screen:has(.mode-chip) {
-    --mode-gap: var(--space-s);
   }
 
   /* a phone's menu: the header's height above it, and the rest of the
@@ -3234,13 +3191,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   /* The top seat's label shares the header row. Its stretch runs from a gap
      past the level strip (the strip's measured width, --hud-strip-w, from
-     the safe edge) to a gap before the mode chip, or Chat. It is centred over its slot when
+     the safe edge) to a gap before Chat. It is centred over its slot when
      the stretch allows; otherwise it takes up to 96px of the stretch off
      centre, and the name ends in an ellipsis. */
   .opponent.pos-top {
     --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
-    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w)
-      - var(--hud-mode-w, 0px) - var(--mode-gap, 0px));
+    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w));
     --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
       min(96px, calc(var(--top-to) - var(--top-from)))));
     top: calc(6px + var(--safe-t));
@@ -3257,25 +3213,20 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-xs);
   }
 
-  /* A side seat's label stands centred over its slot's first card, a small
-     gap above where its cards' tops are (the slot's centre less half a card),
-     and never higher than just under the header. A play grows inward and
-     downward from there, so no play reaches it. Its width keeps it short of
-     the widest top play inward and of the safe edge outward. Long names step
-     down a size, then end in an ellipsis; a tap or long press shows the
-     whole name. */
+  /* A side seat's label stands at its edge of the felt, a gap in from the
+     safe edge, level with its slot's cards.
+     A play grows inward from the slot's outer edge, so no play reaches it.
+     Long names step down a size, then end in an ellipsis; a tap or long
+     press shows the whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
-    top: max(calc(var(--header-bottom) + var(--space-xs)),
-      calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy)
-        - var(--trick-ch) / 2 - var(--space-s) - var(--header-h)));
-    right: auto;
+    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy));
     max-width: var(--pill-max);
-    transform: translate(-50%, 0);
+    transform: translate(0, -50%);
   }
 
-  .opponent.pos-left { left: calc(50% - var(--side-out) + var(--trick-cw) / 2); }
-  .opponent.pos-right { left: calc(50% + var(--side-out) - var(--trick-cw) / 2); }
+  .opponent.pos-left { left: calc(var(--safe-l) + var(--space-s)); right: auto; }
+  .opponent.pos-right { left: auto; right: calc(var(--safe-r) + var(--space-s)); }
 
   .opp-name-text {
     min-width: 0;
@@ -6502,11 +6453,14 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .q-toast small { display: block; font-size: var(--fs-13); font-weight: 400; color: #9aa3b2; }
 .q-toast-i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #3f3415; color: var(--gold); font-size: 13px; }
 
-/* The header's mode chip: gold with a trophy for a ranked game, grey for practice. */
-.mode-chip { gap: 5px; }
-.mode-chip.ranked { color: var(--gold); }
-.mode-chip.practice, .mode-chip.casual { color: #c3cad6; }
-.mode-chip-icon { flex: none; }
+/* The game's mode at the top of the ⋯ menu: a label, not a row to tap. */
+.hud-menu-mode {
+  padding: 8px 10px 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  font-weight: 700;
+}
+.hud-menu-mode.ranked { color: var(--gold); }
 
 /* Wide screens: every pill in the top bar is one height. */
 :root:not(.phone-landscape) .hud-bar .chip {
@@ -6748,12 +6702,36 @@ dialog.leave-sheet-backdrop {
   .chat-bubble { animation: none; }
 }
 
-/* Wide screens: the game's state reads from the left (levels and trump,
-   points, mode) and Chat and ⋯ stand at the right end, as on a phone.
-   The last group takes the free space so ⋯ reaches the end. */
+/* Wide screens: the game's state reads from the left as one quiet bar
+   (levels and trump, then the points, with no divider) and Chat and ⋯
+   stand at the right end, as on a phone. The last group takes the free
+   space so ⋯ reaches the end. */
 :root:not(.phone-landscape) .hud-bar { justify-content: flex-start; }
 :root:not(.phone-landscape) .hud-bar > .hud-group:empty { display: none; }
 :root:not(.phone-landscape) .hud-bar > .hud-group:last-child { flex: 1 1 auto; min-width: max-content; }
+:root:not(.phone-landscape) .hud-bar > .hud-group:nth-child(2) {
+  gap: 2px;
+  height: 34px;
+  padding: 0 0 0 6px;
+  border-radius: 999px 0 0 999px;
+  background: #10131a;
+}
+:root:not(.phone-landscape) .hud-bar > .hud-group:nth-child(2) .chip,
+:root:not(.phone-landscape) .hud-bar .points-chip {
+  border-color: transparent;
+  background: transparent;
+  font-size: var(--fs-13);
+}
+:root:not(.phone-landscape) .hud-bar > .hud-group:nth-child(2) + .hud-group { margin-left: -12px; }
+:root:not(.phone-landscape) .hud-bar .points-chip {
+  border-radius: 0 999px 999px 0;
+  padding-left: 8px;
+  background: #10131a;
+}
+:root:not(.phone-landscape) .hud-bar .trump-chip { font-size: var(--fs-14); }
+:root:not(.phone-landscape) .hud-bar .trump-suit.red,
+:root:not(.phone-landscape) .hud-bar .trump-suit.black { font-size: var(--fs-16); }
+:root:not(.phone-landscape) .hud-bar .trump-rank { font-size: var(--fs-15); }
 
 /* Chat sits in the header, left of ⋯, and its panel opens under it
    (the extra class outranks the base rules). */
@@ -6801,19 +6779,6 @@ dialog.leave-sheet-backdrop {
   font-weight: 700;
 }
 
-.points-chip .points-label {
-  font-size: var(--fs-11);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-right: 4px;
-  white-space: nowrap;
-}
-
-.points-chip.attack-us .points-label { color: var(--gold); }
-
-:where(.phone-landscape) .points-chip .points-label-long { display: none; }
 
 .bank-tag {
   margin-left: 6px;

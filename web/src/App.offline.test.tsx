@@ -118,7 +118,9 @@ it("Play opens your table with three bots, marked Offline, and Start deals under
   expect(chat.getAttribute("aria-label")).toBe("Chat needs a connection");
   await startGame();
   expect(host.querySelector(".lobby-screen, .tp-room")).toBeNull();
-  expect(host.querySelector(".hud-bar .mode-chip")!.textContent).toBe("Offline");
+  // offline is plain from the screen: no mode in the header, none in ⋯
+  expect(host.querySelector(".hud-bar")!.textContent).not.toMatch(/Ranked|Casual/);
+  expect(host.querySelector(".hud-menu-mode")).toBeNull();
   expect(host.textContent).toContain("Cheerful Tractor");
   expect(host.querySelectorAll(".opponent").length).toBe(3);
   expect(assign).not.toHaveBeenCalled();

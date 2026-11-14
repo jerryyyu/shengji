@@ -208,8 +208,6 @@ describe("points chip", () => {
       const mid = Number(view.host.querySelector(".points-big")!.textContent);
       expect(mid).toBeGreaterThan(0);
       expect(mid).toBeLessThan(40);
-      // the meter reports the real score while the number rolls
-      expect(view.host.querySelector(".points-bar")!.getAttribute("aria-valuenow")).toBe("40");
       act(() => { vi.advanceTimersByTime(DUR.count); });
       expect(view.host.querySelector(".points-big")!.textContent).toBe("40");
       view.rerender(makeState({ attacker_points: 0 }));
@@ -364,11 +362,51 @@ describe("the header holds the game's state only", () => {
     expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More"]);
     expect(bar.textContent).not.toContain("TEST");
     expect(bar.textContent).not.toMatch(/Leave|Coach|Burying/);
-    // the state that stays: levels, trump, points, the mode chip
+    // the state that stays: levels, trump, points; the mode lives in ⋯
     expect(bar.querySelectorAll(".level-chip")).toHaveLength(2);
     expect(bar.querySelector(".trump-chip")).not.toBeNull();
     expect(bar.querySelector(".points-chip")).not.toBeNull();
-    expect(bar.querySelector(".mode-chip")!.textContent).toBe("Ranked");
+    expect(bar.textContent).not.toMatch(/Ranked|Casual/);
+    view.unmount();
+  });
+
+  it("is one quiet strip: no divider, no mode chip, and points read N/80 with no team word", () => {
+    const view = render(makeState({ matched: true, attacker_points: 35, banker: 1 }));
+    const bar = view.host.querySelector(".hud-bar")!;
+    expect(bar.querySelector(".hud-divider, .points-divider, [role='separator']")).toBeNull();
+    expect(bar.querySelector(".mode-chip")).toBeNull();
+    expect(bar.querySelector(".points-label, .points-bar")).toBeNull();
+    const points = bar.querySelector(".points-chip")!;
+    expect(points.textContent).toBe("35/80");
+    expect(points.textContent).not.toMatch(/them|attackers|us/i);
+    view.unmount();
+  });
+
+  it("dots the points in the attacking team's colour once a banker exists, and not before", () => {
+    // you sit at seat 0, team 0: seat 1 banks, so your team attacks
+    const view = render(makeState({ attacker_points: 20, banker: 1 }));
+    const dot = () => view.host.querySelector(".points-chip .points-dot")!;
+    expect(dot().className).toBe("points-dot t0");
+    expect(dot().getAttribute("aria-hidden")).toBe("true");
+    expect(view.host.querySelector(".points-chip")!.classList.contains("team0")).toBe(true);
+    view.rerender(makeState({ attacker_points: 20, banker: 0 }));
+    expect(dot().className).toBe("points-dot t1");
+    view.rerender(makeState({ attacker_points: 0, banker: null, phase: "declare" }));
+    expect(dot().className).toBe("points-dot");
+    expect(view.host.querySelector(".points-chip")!.textContent).toBe("0/80");
+    view.unmount();
+  });
+
+  it("the ⋯ menu opens with the mode as a plain label: Ranked or Casual", () => {
+    const view = render(makeState({ matched: true }));
+    act(() => view.host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+    const mode = view.host.querySelector(".hud-menu")!.firstElementChild!;
+    expect(mode.className).toBe("hud-menu-mode ranked");
+    expect(mode.textContent).toBe("Ranked");
+    expect(mode.getAttribute("role")).toBe("none");
+    expect(mode.tagName).toBe("DIV");
+    view.rerender(makeState({ matched: false }));
+    expect(view.host.querySelector(".hud-menu-mode")!.textContent).toBe("Casual");
     view.unmount();
   });
 

@@ -61,18 +61,22 @@ describe("the HUD says who attacks and marks your team", () => {
     view.unmount();
   });
 
-  it("labels the points counter Attackers before a banker, then Us or Them", () => {
+  it("marks the points with the attacking team's dot: none before a banker, then Us or Them by colour and title", () => {
     const view = render(<Hud state={makeState({ attacker_points: 40 })} practice={false} />);
-    const label = () => view.host.querySelector(".points-label")!.textContent;
-    expect(label()).toBe("Attackers");
+    const chip = () => view.host.querySelector<HTMLElement>(".points-chip")!;
+    const dot = () => chip().querySelector(".points-dot")!;
+    expect(dot().classList.contains("t0") || dot().classList.contains("t1")).toBe(false);
+    expect(chip().title).toBe("Points the attackers have captured");
     // Bot 1 banks: their team defends, so Us attacks
     view.rerender(<Hud state={withBanker(makeState({ attacker_points: 40 }), 1)} practice={false} />);
-    expect(label()).toBe("Attackers · Us");
-    expect(view.host.querySelector(".points-chip")!.classList.contains("attack-us")).toBe(true);
+    expect(chip().classList.contains("attack-us")).toBe(true);
+    expect(dot().classList.contains("t0")).toBe(true);
+    expect(chip().title).toBe("Points your team has captured");
     // Sam (your partner) banks: Them attacks
     view.rerender(<Hud state={withBanker(makeState({ attacker_points: 40 }), 2)} practice={false} />);
-    expect(label()).toBe("Attackers · Them");
-    expect(view.host.querySelector(".points-chip")!.textContent).toContain("40");
+    expect(dot().classList.contains("t1")).toBe(true);
+    expect(chip().title).toBe("Points the other team has captured");
+    expect(chip().textContent).toBe("40/80");
     view.unmount();
   });
 

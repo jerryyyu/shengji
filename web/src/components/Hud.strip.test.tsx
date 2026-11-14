@@ -1,7 +1,6 @@
 // The phone header publishes the width of its level-and-points strip as
-// --hud-strip-w and the mode chip's as --hud-mode-w, so the top seat's label
-// is placed clear of both. The mode chip stands at the right, so it never
-// widens the strip.
+// --hud-strip-w, so the top seat's label in the header row is placed clear
+// of it. There is no mode chip to measure.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
@@ -12,7 +11,6 @@ import type { GameState } from "../protocol";
 const BOX: Record<string, [number, number]> = {
   "hud-group": [10, 150],      // left, width of the level/trump group
   "points-chip": [170, 70],
-  "mode-chip": [600, 80],
 };
 const proto = HTMLElement.prototype;
 const saved = {
@@ -58,12 +56,12 @@ const state = (matched: boolean) => ({
   attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
 }) as unknown as GameState;
 
-it("the strip ends after the points, and every game, casual or ranked, publishes the mode chip's width", () => {
+it("the strip ends after the points, casual or ranked, and no mode width is published", () => {
   for (const matched of [false, true]) {
     act(() => root.render(<Hud state={state(matched)} practice={false} />));
-    expect(host.querySelector(".mode-chip")).not.toBeNull();
+    expect(host.querySelector(".mode-chip")).toBeNull();
     // group 10..160, points 170..240 -> 230 + 1 rounding px
     expect(host.style.getPropertyValue("--hud-strip-w")).toBe("231px");
-    expect(host.style.getPropertyValue("--hud-mode-w")).toBe("81px");
+    expect(host.style.getPropertyValue("--hud-mode-w")).toBe("");
   }
 });

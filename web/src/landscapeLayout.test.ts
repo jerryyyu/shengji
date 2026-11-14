@@ -243,7 +243,7 @@ function geometry(vp: Viewport, vars0: Record<string, string>, phase: "play" | "
   const row: Rect = { x0: rowCentre - 44, x1: rowCentre + 44 + 84, y0: rowY0, y1: rowB };
   const crown: Rect = { x0: rowCentre - 44 - 8 - 28, x1: rowCentre - 44 - 8, y0: rowB - 25 - 14, y1: rowB - 25 + 14 };
   const header = 6 + vp.top + L("--header-h");
-  return { tcw, cx, cy, cards: cardsAt, tags, slots, pills: { left: pill(".opponent.pos-left"), right: pill(".opponent.pos-right") },
+  return { tcw, cx, cy, sideDy, cards: cardsAt, tags, slots, pills: { left: pill(".opponent.pos-left"), right: pill(".opponent.pos-right") },
     pillW, topLabelBottom: header, row, crown, rowCentre, header, liftLine, crossBottom,
     zoneTop: vp.h - L("--zone-bottom"), handTop: vp.h - L("--hand-h"), safeW: L("--safe-w"), handCw: L("--hand-cw") };
 }
@@ -286,8 +286,14 @@ describe("phone table geometry", () => {
     expect([crown["grid-column"], crown["justify-self"], crown.width]).toEqual(["1", "end", "28px"]);
     expect(tokens["--cross-bottom"]).toBe("calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v))");
     expect(rule(block, ".table-screen.phase-play")["--row-reserve"]).toBe("0px");
+    // side seats' labels stand at the felt's edges, level with their cards
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right").top)
-      .toBe("max(calc(var(--header-bottom) + var(--space-xs)), calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy) - var(--trick-ch) / 2 - var(--space-s) - var(--header-h)))");
+      .toBe("calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy))");
+    expect(rule(block, ".opponent.pos-left, .opponent.pos-right").transform).toBe("translate(0, -50%)");
+    expect(rule(block, ".opponent.pos-left").left).toBe("calc(var(--safe-l) + var(--space-s))");
+    expect(rule(block, ".opponent.pos-left").right).toBe("auto");
+    expect(rule(block, ".opponent.pos-right").right).toBe("calc(var(--safe-r) + var(--space-s))");
+    expect(rule(block, ".opponent.pos-right").left).toBe("auto");
   });
 
   it("reserves exactly the hand's height: lift above, card, 16px under the home indicator", () => {
@@ -313,28 +319,25 @@ describe("phone table geometry", () => {
         for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) {
           expect(gap(slots[i], slots[j])).toBeGreaterThanOrEqual(8 - 0.01);
         }
-        // side labels: centred over their slot's first card, above its
-        // cards; at their widest 8pt clear of the top and bottom slots, your
-        // row and the safe-area edges, and under the header
-        expect((g.pills.left.x0 + g.pills.left.x1) / 2).toBeCloseTo(g.cards.left.x0 + g.tcw / 2, 5);
-        expect((g.pills.right.x0 + g.pills.right.x1) / 2).toBeCloseTo(g.cards.right.x1 - g.tcw / 2, 5);
-        for (const [p, s] of [[g.pills.left, g.cards.left], [g.pills.right, g.cards.right]] as const) {
-          expect(p.y1).toBeLessThanOrEqual(s.y0 + 0.01);
-        }
+        // side labels: 8pt in from the safe edges, level with their slot's
+        // cards; at their widest 8pt clear of every slot (its cards and its
+        // tag line, each on its own), your row and the hand, and under the
+        // header
+        expect(g.pills.left.x0).toBeCloseTo(vp.left + 8, 5);
+        expect(g.pills.right.x1).toBeCloseTo(vp.w - vp.right - 8, 5);
         for (const p of pills) {
+          expect((p.y0 + p.y1) / 2).toBeCloseTo(g.cy + g.sideDy, 5);
           expect(p.y0).toBeGreaterThanOrEqual(g.header + 4 - 0.01);
-          // the cards and the tag line under them, each on its own
-          for (const k of ["top", "bottom"]) {
-            expect(gap(p, g.cards[k])).toBeGreaterThanOrEqual(8 - 0.01);
-            expect(gap(p, g.tags[k])).toBeGreaterThanOrEqual(8 - 0.01);
+          for (const k of ["top", "bottom", "left", "right"]) {
+            expect(gap(p, g.cards[k]), `pill and ${k} cards`).toBeGreaterThanOrEqual(8 - 0.01);
+            expect(gap(p, g.tags[k]), `pill and ${k} tag`).toBeGreaterThanOrEqual(8 - 0.01);
           }
           expect(gap(p, g.row)).toBeGreaterThanOrEqual(8 - 0.01);
-          expect(p.x0).toBeGreaterThanOrEqual(vp.left + 4 - 0.01);
-          expect(p.x1).toBeLessThanOrEqual(vp.w - vp.right - 4 + 0.01);
+          expect(p.y1).toBeLessThanOrEqual(g.handTop - 8);
         }
-        // a label has room for a crown and a 13-letter name (138px); the
-        // 13 mini, narrow between its insets, for about 11 letters
-        expect(g.pillW).toBeGreaterThanOrEqual(name.includes("mini") ? 120 : 138);
+        // a label has room for a crown and an 8-letter name beside a
+        // four-card throw (100px), and grows where the width allows
+        expect(g.pillW).toBeGreaterThanOrEqual(100 - 0.01);
         // your row: centred, above the hand's lift, clear of the side slots
         expect(Math.abs(g.rowCentre - g.cx)).toBeLessThanOrEqual(2);
         for (const r of [g.row, g.crown]) {
@@ -383,12 +386,10 @@ describe("phone table geometry", () => {
         }
       });
 
-      it("keeps a side seat's label above its cards, never closer than the top seat's label is to its own", () => {
+      it("keeps a side seat's label at its edge, outside its slot, a gap from where its cards start", () => {
         for (const g of [play, setup]) {
-          const top = Math.min(8, g.cards.top.y0 - g.topLabelBottom);
-          for (const [p, c] of [[g.pills.left, g.cards.left], [g.pills.right, g.cards.right]] as const) {
-            expect(c.y0 - p.y1).toBeGreaterThanOrEqual(Math.min(4, top) - 0.01);
-          }
+          expect(g.cards.left.x0 - g.pills.left.x1).toBeGreaterThanOrEqual(8 - 0.01);
+          expect(g.pills.right.x0 - g.cards.right.x1).toBeGreaterThanOrEqual(8 - 0.01);
         }
       });
 
@@ -459,7 +460,7 @@ describe("phone controls", () => {
   });
 
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
-    expect(tokens["--pill-max"]).toContain("calc(2 * (var(--side-out) - var(--top-reach) - var(--space-s)) - var(--trick-cw))");
+    expect(tokens["--pill-max"]).toContain("calc(var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - 2 * var(--space-s))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
     expect(rule(block, ".opponent.pos-top")["--top-w"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
@@ -756,6 +757,15 @@ describe("the header row on a phone", () => {
     [" inset left only", { ...vp, right: 0 }],
     [" inset right only", { ...vp, left: 0 }],
   ];
+
+  it("draws the levels and the points as one strip, with no divider and no mode chip", () => {
+    const points = rule(block, ".points-chip");
+    expect(points["box-shadow"]).toBeUndefined();
+    expect(points.background).toBe("var(--pill-bg)");
+    expect(block.includes("points-bar")).toBe(false);
+    expect(block.includes("mode-chip")).toBe(false);
+    expect(css.includes("--hud-mode-w")).toBe(false);
+  });
 
   it("places the top label from the measured strip, inside its own stretch", () => {
     expect(top["max-width"]).toBe("var(--top-w)");

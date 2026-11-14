@@ -1,12 +1,17 @@
-// The header's mode chip: Ranked (gold, trophy) for a matched game or a
-// created room switched to Ranked, Offline
-// for offline play on this device, Casual for every other game. It sits
-// right of the points, before the menu.
+// The game's mode: a plain label at the top of the ⋯ menu, Ranked (gold) for
+// a matched game or a created room switched to Ranked, Casual for every other
+// online game, and none offline. The header carries no mode chip.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import Hud from "./Hud";
 import type { GameState } from "../protocol";
+
+// a tap unlocks the audio module's AudioContext, which jsdom lacks
+beforeAll(() => {
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
+});
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -31,37 +36,44 @@ const state = (matched: boolean) => ({
   current_declaration: null, passed: [], trick: { leader: 1, plays: [] }, last_trick: null,
   attacker_points: 15, kitty_count: 8, message: null, notice: null, round_result: null,
 }) as unknown as GameState;
-const chip = () => host.querySelector<HTMLElement>(".hud-bar .mode-chip");
+const openMenu = () => act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+const label = () => host.querySelector<HTMLElement>(".hud-menu .hud-menu-mode");
 
-it("a matched game shows a gold Ranked chip with a trophy", () => {
+it("a matched game says Ranked, in gold, at the top of the menu", () => {
   act(() => root.render(<Hud state={state(true)} practice={false} />));
-  expect(chip()!.textContent).toBe("Ranked");
-  expect(chip()!.classList.contains("ranked")).toBe(true);
-  expect(chip()!.querySelector("svg.mode-chip-icon")).not.toBeNull();
+  openMenu();
+  expect(label()!.textContent).toBe("Ranked");
+  expect(label()!.classList.contains("ranked")).toBe(true);
+  expect(host.querySelector(".hud-menu")!.firstElementChild).toBe(label());
 });
 
-it("a created room its host switched to Ranked shows the same Ranked chip", () => {
+it("a created room its host switched to Ranked says the same", () => {
   act(() => root.render(<Hud state={{ ...state(false), ranked: true }} practice={false} />));
-  expect(chip()!.textContent).toBe("Ranked");
-  expect(chip()!.classList.contains("ranked")).toBe(true);
+  openMenu();
+  expect(label()!.textContent).toBe("Ranked");
 });
 
-it("offline play shows a grey Offline chip", () => {
+it("offline play has no mode label: it is plain from the screen", () => {
   act(() => root.render(<Hud state={state(false)} practice />));
-  expect(chip()!.textContent).toBe("Offline");
-  expect(chip()!.classList.contains("practice")).toBe(true);
+  openMenu();
+  expect(host.querySelector(".hud-menu")).not.toBeNull();
+  expect(label()).toBeNull();
+  expect(host.textContent).not.toMatch(/Ranked|Casual|Offline/);
 });
 
-it("a casual game shows a grey Casual chip, as Ranked shows for a ranked one", () => {
+it("a casual game says Casual, and never Ranked", () => {
   act(() => root.render(<Hud state={state(false)} practice={false} />));
-  expect(chip()!.textContent).toBe("Casual");
-  expect(chip()!.classList.contains("casual")).toBe(true);
+  openMenu();
+  expect(label()!.textContent).toBe("Casual");
+  expect(label()!.classList.contains("casual")).toBe(true);
   expect(host.textContent).not.toContain("Ranked");
-  expect(host.textContent).not.toContain("Offline");
 });
 
-it("the chip sits after the points and before the menu", () => {
+it("the label is not a row to tap, and the header carries no mode chip", () => {
   act(() => root.render(<Hud state={state(true)} practice={false} />));
-  const order = Array.from(host.querySelectorAll(".points-chip, .mode-chip, .hud-more")).map((e) => e.className.split(" ")[1] ?? e.className);
-  expect(order).toEqual(["points-chip", "mode-chip", "hud-more"]);
+  expect(host.querySelector(".mode-chip")).toBeNull();
+  expect(host.querySelector(".hud-bar")!.textContent).not.toMatch(/Ranked|Casual/);
+  openMenu();
+  expect(label()!.getAttribute("role")).toBe("none");
+  expect(label()!.matches("button, [role='menuitem']")).toBe(false);
 });

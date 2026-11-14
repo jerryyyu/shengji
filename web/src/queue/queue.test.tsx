@@ -1058,15 +1058,17 @@ describe("the table", () => {
     attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
   });
 
-  it("a matched room shows a Ranked chip in the top bar; a casual room a Casual one", async () => {
+  it("a matched room says Ranked at the top of the ⋯ menu, not in the top bar; a casual room Casual", async () => {
     await renderApp();
     say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
     say(state(true));
-    const chip = q(".table-screen .hud-bar .mode-chip");
-    expect(chip?.textContent).toBe("Ranked");
-    expect(chip?.classList.contains("ranked")).toBe(true);
+    expect(q(".table-screen .hud-bar")!.textContent).not.toMatch(/Ranked|Casual/);
+    act(() => q(".hud-more-btn")!.click());
+    const mode = q(".table-screen .hud-menu .hud-menu-mode");
+    expect(mode?.textContent).toBe("Ranked");
+    expect(mode?.classList.contains("ranked")).toBe(true);
     say(state(false));
-    expect(q(".mode-chip")?.textContent).toBe("Casual");
+    expect(q(".hud-menu-mode")?.textContent).toBe("Casual");
   });
 });
 
@@ -1848,10 +1850,12 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     expect(q(".ranked-chip")).toBeNull();
     say({ type: "match_started", match_id: "m1", room: "OPEN", rated: false, guest: true });
     say(state({ guest: true }));
-    expect(q(".table-screen .mode-chip")).toBeNull();
-    // a table that is not rated at all sends no guest flag: still no chip for a signed-out player
+    act(() => q(".hud-more-btn")!.click());
+    expect(q(".table-screen .hud-menu")).not.toBeNull();
+    expect(q(".table-screen .hud-menu-mode")).toBeNull();
+    // a table that is not rated at all sends no guest flag: still no Ranked for a signed-out player
     say(state());
-    expect(q(".table-screen .mode-chip")).toBeNull();
+    expect(q(".table-screen .hud-menu-mode")?.textContent ?? "").not.toBe("Ranked");
   });
 
   it("a cooldown says why, and holds Play and Duo until it ends", async () => {

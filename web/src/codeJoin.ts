@@ -1,7 +1,8 @@
-// Every join box and the `?code=` link take a room code or a pair code: the
+// Every join box and the `?code=` link take a room, table or pair code: the
 // code is looked up first (PROTOCOL.md "Codes"), then the room flow (peek,
-// seat picker, join_room) or the pair flow (party_join, which needs sign-in)
-// runs as it always has.
+// join_room), the table flow (queue_join with the code; a table code is no
+// room until its game starts) or the pair flow (party_join, which needs
+// sign-in).
 
 import { useSyncExternalStore } from "react";
 import { CODE_LEN, NO_CODE, normalizeCode } from "./codes";
@@ -14,11 +15,16 @@ import { conn } from "./ws";
 /** Where a lookup started: the Play box, the pair sheet's box, or a link. */
 export type CodeFrom = "play" | "pair" | "link";
 
+/** What a code the Play screen opens names: a room (peek_room, join_room)
+ *  or a queued table (queue_join with its code). */
+export type TableKind = "room" | "table";
+
 export interface CodeView {
   /** The lookup waiting for its code_kind. */
   pending: { code: string; from: CodeFrom } | null;
-  /** A room code for the Play screen to open; it may not be mounted yet. */
-  room: { code: string; from: CodeFrom; at: number } | null;
+  /** A room or table code for the Play screen to open; it may not be
+   *  mounted yet. */
+  room: { code: string; from: CodeFrom; at: number; kind: TableKind } | null;
   /** Why the Play box's (or a link's) code went nowhere. */
   playError: string | null;
 }
@@ -142,13 +148,13 @@ export class CodeStore {
     }
     if (msg.type !== "code_kind" || msg.code !== p.code) return;
     this.set({ pending: null });
-    if (p.from === "link" && msg.kind !== "room") dropParam("code");
-    if (msg.kind === "room") {
+    if (p.from === "link" && msg.kind !== "room" && msg.kind !== "table") dropParam("code");
+    if (msg.kind === "room" || msg.kind === "table") {
       if (p.from === "pair") {
         queue.closeSheet();
         openTab("play");
       }
-      this.set({ room: { code: p.code, from: p.from, at: Date.now() } });
+      this.set({ room: { code: p.code, from: p.from, at: Date.now(), kind: msg.kind } });
     } else if (msg.kind === "party") {
       this.party(p.code, p.from);
     } else if (p.from === "pair") {

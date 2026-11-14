@@ -102,13 +102,13 @@ describe("back from the room screen", () => {
     const ws = await mountFromMe();
     act(() => ws.deliver(roomMsg));
     await flush();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     const before = ws.sent.length;
 
     await back();
 
     expect(ws.sent.slice(before)).toEqual([]);
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(sheetText()).toBe("Leave the room? / Free. The room closes.");
     tapIn(".leave-sheet-leave");
     expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["leave_room"]);
@@ -117,7 +117,7 @@ describe("back from the room screen", () => {
     expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Back to game")).toBe(false);
     act(() => ws.deliver({ type: "left" }));
     await flush();
-    expect(host.querySelector(".room-screen")).toBeNull();
+    expect(host.querySelector(".tp-room")).toBeNull();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
   });
 
@@ -156,12 +156,12 @@ describe("back from the room screen", () => {
     expect(sheetText()).toBe("Leave the room? / Free. The table stays open; Alice can start it.");
     tapIn(".leave-sheet-stay");
     expect(sheet()).toBeNull();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(host.querySelector(".me-page")).toBeNull();
 
     await back();
     expect(sheet()).not.toBeNull();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(ws.sent.slice(before)).toEqual([]);
   });
 
@@ -172,13 +172,13 @@ describe("back from the room screen", () => {
     const { openTab } = await import("./home/route");
     act(() => openTab("leaderboard"));
     await flush();
-    expect(host.querySelector(".room-screen")).toBeNull();
+    expect(host.querySelector(".tp-room")).toBeNull();
     const before = ws.sent.length;
 
     await back();
 
     expect(ws.sent.slice(before)).toEqual([]);
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
   });
 
   it("does not leave a game in progress", async () => {

@@ -175,15 +175,19 @@ export interface PresenceMsg {
   ranked?: number; casual?: number;
 }
 
-/** A line of your waiting table's chat; you get your own lines too. `id`
- *  counts up per table; `seat` is the sender's seat there. */
+/** A line of your table's chat; you get your own lines too. `id` counts up
+ *  per table; `seat` is the sender's seat there (alone: the seat you take
+ *  against bots). */
 export interface TableChatMsg {
-  type: "table_chat"; table: string; id: number; seat: number; name: string; text: string; t: number;
+  /** The waiting table's id, or null while you wait alone at your own table. */
+  type: "table_chat"; table: string | null; id: number; seat: number; name: string; text: string; t: number;
 }
 
-/** The waiting table's chat so far, when you sit down or come back. */
+/** Your table's chat so far, replacing what you hold: when you sit down at
+ *  a table that has some, when a newcomer's lines from alone merge in, or
+ *  when you come back (`table` null: your own table, alone). */
 export interface TableChatHistoryMsg {
-  type: "table_chat_history"; table: string;
+  type: "table_chat_history"; table: string | null;
   messages: Omit<TableChatMsg, "type" | "table">[];
 }
 

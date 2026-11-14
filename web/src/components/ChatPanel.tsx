@@ -13,11 +13,14 @@ export default function ChatPanel({
   you,
   open,
   onClose,
+  onSend,
 }: {
   messages: ChatMsg[];
   you: number;
   open: boolean;
   onClose: () => void;
+  /** Where a line goes: room chat unless a waiting table sends its own. */
+  onSend?: (text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
@@ -45,7 +48,8 @@ export default function ChatPanel({
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    conn.send({ type: "chat", text });
+    if (onSend) onSend(text);
+    else conn.send({ type: "chat", text });
     setDraft("");
   };
 

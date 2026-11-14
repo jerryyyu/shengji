@@ -251,13 +251,14 @@ def _controllers(rec):
     disconnected human's seat and a human can reclaim a bot's seat mid-game.
     Returns (None, reason) when a flag is missing or a seat changes hands."""
     flags = {s: set() for s in range(4)}
-    for kind in ("plays", "decl"):
-        for o in rec[kind]:
-            flags.setdefault(o.get("seat"), set()).add(o.get("bot"))
-    flags.setdefault(rec["bury"].get("seat"), set()).add(rec["bury"].get("bot"))
-    if set(flags) != {0, 1, 2, 3}:
-        return None, "seat map is not seats 0-3"
-    if any(not f or not f <= {True, False} for f in flags.values()):
+    for o in (*rec["plays"], *rec["decl"], rec["bury"]):
+        seat, bot = o.get("seat"), o.get("bot")
+        if not _seat_ok(seat):
+            return None, "seat map is not seats 0-3"
+        if type(bot) is not bool:
+            return None, "an event has no controller flag"
+        flags[seat].add(bot)
+    if any(not f for f in flags.values()):
         return None, "an event has no controller flag"
     if any(len(f) > 1 for f in flags.values()):
         return None, "a seat changed controller mid-round"

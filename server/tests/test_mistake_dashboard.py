@@ -249,6 +249,32 @@ def test_missing_controller_flag_excludes_the_round(tmp_path):
     assert f"- {EXCLUDED_UNKNOWN}: 1" in text
 
 
+@pytest.mark.parametrize("kind", CONTROLLED)
+@pytest.mark.parametrize("invalid", [0, 1, 0.0, 1.0, "true", [], {}])
+def test_non_boolean_controller_is_excluded_in_emitted_report(tmp_path, kind, invalid):
+    rounds = _rounds(_raw_prod())
+    rnd = next(r for r in rounds if any(o["e"] == kind for o in r)
+               and r[0]["room"] in {"ROOM1", "ROOM2", "ROOM4", "ROOM6"})
+    room = rnd[0]["room"]
+    next(o for o in rnd if o["e"] == kind)["bot"] = invalid
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["checks"][EXCLUDED_UNKNOWN] == 1
+    assert res["rounds"] == 3
+    assert room not in {r["game"] for r in res["per_round"]}
+    assert f"- {EXCLUDED_UNKNOWN}: 1" in text
+
+
+@pytest.mark.parametrize("invalid", [True, 1.0, [], {}])
+def test_invalid_controller_seat_is_excluded_in_emitted_report(tmp_path, invalid):
+    rounds = _rounds(_raw_prod())
+    next(o for o in rounds[0] if o["e"] == "play")["seat"] = invalid
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["checks"][EXCLUDED_SEATS] == 1
+    assert res["rounds"] == 3
+    assert "ROOM1" not in {r["game"] for r in res["per_round"]}
+    assert f"- {EXCLUDED_SEATS}: 1" in text
+
+
 def test_seat_map_outside_0_to_3_is_skipped_not_a_crash(tmp_path):
     rounds = _rounds(_raw_prod())
     start = rounds[0][0]

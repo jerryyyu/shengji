@@ -9,7 +9,7 @@ import HudMenu from "./HudMenu";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { OFFLINE } from "../offlineMode";
 import { useAuth } from "../auth";
-import { attackingTeam, myTeam, pointsLabel } from "../tableCopy";
+import { attackingTeam, myTeam } from "../tableCopy";
 
 function TrumpChip({ state }: { state: GameState }) {
   const trump = state.trump;
@@ -162,13 +162,12 @@ function offsetIn(el: HTMLElement, frame: HTMLElement): number | null {
   return x;
 }
 
-/** Publishes the widths the top seat's label must keep clear of on the
- *  phone header: the level-and-points strip on the left as `--hud-strip-w`,
- *  and the mode chip on the right as `--hud-mode-w` (with its gap), whatever
- *  the levels, score and text size make them. The strip starts at the safe
- *  edge, which CSS adds, so turning the phone the other way round needs no
- *  new measurement. */
-function useStripWidth(bar: RefObject<HTMLDivElement | null>, mode: Mode) {
+/** Publishes the width of the phone header's level-and-points strip as
+ *  `--hud-strip-w`, whatever the levels, score and text size make it, so the
+ *  top seat's label in the header row keeps clear of it. The strip starts at
+ *  the safe edge, which CSS adds, so turning the phone the other way round
+ *  needs no new measurement. */
+function useStripWidth(bar: RefObject<HTMLDivElement | null>) {
   useLayoutEffect(() => {
     const el = bar.current;
     const frame = el?.closest<HTMLElement>(".table-screen");
@@ -187,19 +186,15 @@ function useStripWidth(bar: RefObject<HTMLDivElement | null>, mode: Mode) {
       // offsets are whole px, the drawn edges are not: 1px more absorbs the rounding
       if (end > start) frame.style.setProperty("--hud-strip-w", `${Math.ceil(end - start) + 1}px`);
       else frame.style.removeProperty("--hud-strip-w");
-      const chip = el.querySelector<HTMLElement>(".mode-chip");
-      if (chip && chip.offsetWidth > 0) frame.style.setProperty("--hud-mode-w", `${chip.offsetWidth + 1}px`);
-      else frame.style.removeProperty("--hud-mode-w");
     };
     measure();
     if (typeof ResizeObserver !== "function") return;
     const ro = new ResizeObserver(measure);
-    for (const part of [el.querySelector(".hud-group:nth-child(2)"), el.querySelector(".points-chip"),
-                        el.querySelector(".mode-chip"), frame]) {
+    for (const part of [el.querySelector(".hud-group:nth-child(2)"), el.querySelector(".points-chip"), frame]) {
       if (part) ro.observe(part);
     }
     return () => ro.disconnect();
-  }, [bar, mode]);
+  }, [bar]);
 }
 
 /** What kind of game the table is: a matched game from the queue is ranked,
@@ -211,38 +206,23 @@ export function gameMode(state: GameState, practice: boolean): Mode {
   return state.matched || state.ranked ? "ranked" : "casual";
 }
 
-/** The header's short mode chip: gold with a trophy for a ranked game, grey
- *  for a casual one and for offline play on this device. */
-export function ModeChip({ mode }: { mode: Mode }) {
-  if (mode === "ranked") {
-    return (
-      <span className="chip mode-chip ranked" title="Ranked game">
-        <svg className="mode-chip-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M8 4h8v5a4 4 0 0 1-8 0z" />
-          <path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6" />
-        </svg>
-        Ranked
-      </span>
-    );
-  }
-  if (mode === "casual") {
-    return <span className="chip mode-chip casual" title="Casual game">Casual</span>;
-  }
-  if (mode === "practice") {
-    return <span className="chip mode-chip practice" title="Bots on this device">Offline</span>;
-  }
-  return null;
+/** The mode's word for the top of the ⋯ menu: "Ranked" or "Casual". The
+ *  header carries no mode; offline play is plain from the screen, and a
+ *  guest at a ranked table is not rated, so neither gets a word. */
+function modeWord(mode: Mode, guest: boolean): "Ranked" | "Casual" | undefined {
+  if (mode === "ranked") return guest ? undefined : "Ranked";
+  if (mode === "casual") return "Casual";
+  return undefined;
 }
 
 /** `practice` is offline play on this device; it defaults to the page's mode. */
 export default function Hud({ state, practice = OFFLINE }: { state: GameState; practice?: boolean }) {
   const barRef = useRef<HTMLDivElement | null>(null);
+  useStripWidth(barRef);
   const mode = gameMode(state, practice);
   // a guest is never ranked: the seat's own flag, or no account on this device
   const account = useAuth().status;
   const guest = state.guest === true || account === "out" || account === "off";
-  useStripWidth(barRef, mode);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
   const us = myTeam(state);
   const them = (1 - us) as 0 | 1;
@@ -267,32 +247,18 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
         </div>
 
         <div className="hud-group">
-          <span className={`chip points-chip${attackers === null ? "" : attackers === us ? " attack-us" : " attack-them"}`}
-                title="Points captured by the attacking team">
-            {/* who attacks, in words: "Attackers" before a banker, then Us or Them */}
-            <span className="points-label">
-              {attackers !== null ? <span className="points-label-long">Attackers · </span> : null}
-              {pointsLabel(state)}
-            </span>
+          {/* "35/80": the dot's colour says whose points, grey before a banker */}
+          <span className={`chip points-chip${attackers === null ? "" : ` team${attackers}${attackers === us ? " attack-us" : " attack-them"}`}`}
+                title={attackers === null ? "Points the attackers have captured"
+                  : attackers === us ? "Points your team has captured" : "Points the other team has captured"}>
+            <span className={`points-dot${attackers === null ? "" : ` t${attackers}`}`} aria-hidden="true" />
             {/* keyed so a new score is a new box: WebKit would keep the old width */}
             <span className="points-big" key={shownPoints}>{shownPoints}</span>
-            <span className="points-target">/ 80</span>
+            <span className="points-target">/80</span>
             <PointsPop points={state.attacker_points} />
-            {/* the phone draws progress to 80 as a bar under the number; hidden on desktop */}
-            <span
-              className="points-bar"
-              role="meter"
-              aria-label="Attacker points toward 80"
-              aria-valuemin={0}
-              aria-valuemax={80}
-              aria-valuenow={Math.min(80, state.attacker_points)}
-            >
-              <span style={{ width: `${Math.min(100, (state.attacker_points / 80) * 100)}%` }} />
-            </span>
           </span>
-          <ModeChip mode={mode === "ranked" && guest ? null : mode} />
           {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table */}
-          <HudMenu room={state.room} ranked={mode === "ranked"} guest={guest} offline={practice}
+          <HudMenu room={state.room} mode={modeWord(mode, guest)} ranked={mode === "ranked"} guest={guest} offline={practice}
                    allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined}
                    opener={state.opener === state.you} />
         </div>

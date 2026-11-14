@@ -20,7 +20,8 @@ function shareInvite(code: string): Promise<boolean> {
 }
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
- *  beside it holds only the game's state. Its rows, in order: the table's
+ *  beside it holds only the game's state. Its rows, in order: the game's
+ *  mode as a label (Ranked or Casual, not a switch), the table's
  *  own rows as the table panel draws them (the code with its Invite link,
  *  then Allow joiners for the table's opener), the player's settings (the
  *  same list as Me's: Coach, Sound, Haptics in the app, How to play), then
@@ -31,8 +32,10 @@ function shareInvite(code: string): Promise<boolean> {
  *  Keyboard: Enter or Space on `⋯` opens it with focus on the first row,
  *  ArrowUp and ArrowDown move between rows (wrapping), Home and End go to
  *  the ends, and Escape closes it and returns focus to `⋯`. */
-export default function HudMenu({ room, ranked = false, guest = false, offline = OFFLINE, allowJoiners, opener = true }: {
+export default function HudMenu({ room, mode, ranked = false, guest = false, offline = OFFLINE, allowJoiners, opener = true }: {
   room: string; ranked?: boolean; offline?: boolean;
+  /** The game's mode, a plain label at the top of the menu; the header carries none. */
+  mode?: "Ranked" | "Casual";
   /** A guest seat: the leave sheet speaks of no ranking. */
   guest?: boolean;
   /** The table's "Allow joiners" switch; undefined at a table without one. */
@@ -130,6 +133,7 @@ export default function HudMenu({ room, ranked = false, guest = false, offline =
         <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
              aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
              ref={menuRef} onKeyDown={onMenuKey}>
+          {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode}</div> : null}
           {offline ? null : (
             <div className="hud-menu-code" role="none">
               <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}>{room}</span>

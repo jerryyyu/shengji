@@ -16,6 +16,7 @@ vi.mock("./ws", () => ({
 }));
 
 import { codes } from "./codeJoin";
+import { NO_CODE } from "./codes";
 import { queue } from "./queue/store";
 
 const say = (m: unknown) => { for (const fn of [...link.msg]) fn(m); };
@@ -44,14 +45,6 @@ describe("a refused lookup", () => {
     expect(codes.view).toMatchObject({ pending: null, playError: LIMITED.message });
   });
 
-  it("from the pair sheet is the sheet's error, not the Play box's", () => {
-    queue.openSheet("party");
-    codes.lookup("WXYZ", "pair");
-    say(LIMITED);
-    expect(queue.view.partyError).toBe(LIMITED.message);
-    expect(codes.view.playError).toBeNull();
-  });
-
   it("a queue or pair message's own rate_limited leaves the lookup waiting", () => {
     codes.lookup("WXYZ", "play");
     say({ type: "error", code: "rate_limited", message: "Too many requests; wait a minute." });
@@ -61,8 +54,7 @@ describe("a refused lookup", () => {
   });
 
   it("a queue or pair message's own rate_limited is not taken for a cancelled lookup's reply", () => {
-    queue.openSheet("party");
-    codes.lookup("WXYZ", "pair");
+    codes.lookup("WXYZ", "play");
     codes.cancel();
     say({ type: "error", code: "rate_limited", message: "Too many requests; wait a minute." });
     codes.lookup("WXYZ", "play");
@@ -103,36 +95,18 @@ describe("a ?code= link across reconnects", () => {
 
 describe("a cancelled lookup", () => {
   it("ignores its late answer: no join, no room, no error", () => {
-    queue.openSheet("party");
-    codes.lookup("FG3K", "pair");
+    codes.lookup("FG3K", "play");
     codes.cancel();
     expect(codes.view.pending).toBeNull();
     say({ type: "code_kind", code: "FG3K", kind: "party" });
     say({ type: "code_kind", code: "FG3K", kind: "room" });
     expect(sent).toEqual([{ type: "code_lookup", code: "FG3K" }]);
     expect(codes.view.room).toBeNull();
-    expect(queue.view.partyError).toBeNull();
-  });
-
-  it("is what closing the pair sheet does to a pair-sheet lookup", () => {
-    queue.openSheet("party");
-    codes.lookup("FG3K", "pair");
-    queue.closeSheet();
-    expect(codes.view.pending).toBeNull();
-    say({ type: "code_kind", code: "FG3K", kind: "room" });
-    expect(codes.view.room).toBeNull();
-  });
-
-  it("leaves a Play-box lookup alone when the pair sheet closes", () => {
-    queue.openSheet("party");
-    codes.lookup("WXYZ", "play");
-    queue.closeSheet();
-    expect(codes.view.pending).toEqual({ code: "WXYZ", from: "play" });
+    expect(codes.view.playError).toBeNull();
   });
 
   it("drops only its own answer: a fresh lookup after it is answered", () => {
-    queue.openSheet("party");
-    codes.lookup("FG3K", "pair");
+    codes.lookup("FG3K", "play");
     codes.cancel();
     codes.lookup("WXYZ", "play");
     say({ type: "code_kind", code: "FG3K", kind: "party" });
@@ -142,8 +116,7 @@ describe("a cancelled lookup", () => {
   });
 
   it("the same code asked again after a cancel takes the second answer", () => {
-    queue.openSheet("party");
-    codes.lookup("WXYZ", "pair");
+    codes.lookup("WXYZ", "play");
     codes.cancel();
     codes.lookup("WXYZ", "play");
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
@@ -153,11 +126,34 @@ describe("a cancelled lookup", () => {
   });
 
   it("a refused cancelled lookup is dropped too", () => {
-    queue.openSheet("party");
-    codes.lookup("FG3K", "pair");
+    codes.lookup("FG3K", "play");
     codes.cancel();
     say(LIMITED);
-    expect(queue.view.partyError).toBeNull();
     expect(codes.view.playError).toBeNull();
+    expect(codes.view.playError).toBeNull();
+  });
+});
+
+describe("an older ?party= link", () => {
+  it("is an alias of ?code=: the code is looked up and the address reads ?code=", () => {
+    window.history.replaceState(null, "", "/?party=FG3K");
+    status("open");
+    expect(sent).toEqual([{ type: "code_lookup", code: "FG3K" }]);
+    expect(window.location.search).toBe("?code=FG3K");
+    say({ type: "code_kind", code: "FG3K", kind: "table" });
+    expect(codes.view.room).toMatchObject({ code: "FG3K", from: "link", kind: "table" });
+  });
+
+  it("names no table when its code is an old pair's or nothing's, and joins no pair", () => {
+    for (const kind of ["party", "none"]) {
+      codes.reset();
+      sent.length = 0;
+      window.history.replaceState(null, "", "/?party=FG3K");
+      status("open");
+      say({ type: "code_kind", code: "FG3K", kind });
+      expect(codes.view.playError).toBe(NO_CODE);
+      expect(NO_CODE).toBe("No table has that code.");
+      expect(sent.some((m) => m.type === "party_join")).toBe(false);
+    }
   });
 });

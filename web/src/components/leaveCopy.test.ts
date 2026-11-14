@@ -15,6 +15,14 @@ describe("one consequence line per place a leave starts", () => {
     expect(leaveCopy({ kind: "queue", others: [] }).title).toBe("Leave the table?");
   });
 
+  it("a Duo made at the Play table: Leave the Duo?, and the partner keeps the table (its code too, from the opener)", () => {
+    expect(leaveCopy({ kind: "duo", partner: "Jerry", opener: false }))
+      .toEqual({ title: "Leave the Duo?", line: "Jerry keeps the table." });
+    expect(leaveCopy({ kind: "duo", partner: "Alice", opener: true }))
+      .toEqual({ title: "Leave the Duo?", line: "Alice keeps the table and its code." });
+    expect(line({ kind: "duo", partner: "Alexandrina Smith", opener: false })).toBe("Alexandrin… keeps the table.");
+  });
+
   it("a room's host controls pass on, and an empty room closes", () => {
     expect(line({ kind: "room", others: ["Alice", "Li"], host: true }))
       .toBe("The table stays open; Alice can start it.");

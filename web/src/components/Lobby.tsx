@@ -132,7 +132,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   );
   const [w32Selected, setW32Selected] = useState(false);
   const [testAccessKey, setTestAccessKey] = useState("");
-  // A ?room= link, or a ?code= link (a room or a pair code), prefills the box.
+  // A ?room= link, or a ?code= link (a room or a table code), prefills the box.
   const [roomCode, setRoomCode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return normalizeCode(params.get("room") ?? params.get("code") ?? "");
@@ -143,7 +143,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   const [linkRoom, setLinkRoom] = useState<string | null>(null);
   const [linkKind, setLinkKind] = useState<TableKind>("room");
   // A Play-box or link lookup still waiting for its answer holds Join.
-  const looking = codeView.pending !== null && codeView.pending.from !== "pair";
+  const looking = codeView.pending !== null;
   const autoJoined = useRef(false);
   const peekGen = useRef<number | null>(null);
   // The room last peeked: a choose_seat or seat_unavailable answer asks again.
@@ -180,7 +180,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
       peekGen.current = null;
       return;
     }
-    // a code that named a pair or nothing: the box is free again
+    // a code that named nothing: the box is free again
     if (m?.type === "code_kind" && m.kind !== "room") {
       setStarting(null);
       return;
@@ -271,8 +271,8 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
     }
   }, []);
 
-  // The box takes a room code or a pair code: look it up, then a room is
-  // peeked here (below) and a pair is joined by the queue.
+  // The box takes a room or table code: look it up, then a room is peeked
+  // here (below) and a table is joined by the queue.
   const join = () => {
     const code = normalizeCode(roomCode);
     if (!ready || looking || code.length !== 4) return;
@@ -280,7 +280,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
     if (codes.lookup(code, "play")) begin("join");
   };
 
-  // A room code from this box, the pair sheet's box or a ?code= link.
+  // A room or table code from this box or a ?code= link.
   useEffect(() => {
     if (!codeView.room || status !== "open") return;
     const r = codes.takeRoom();

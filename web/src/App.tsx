@@ -364,7 +364,7 @@ export default function App() {
                       dropRoomLink();
                     }} />
       ) : null}
-      <QueueLayer status={status} />
+      <QueueLayer />
     </div>
   );
 }

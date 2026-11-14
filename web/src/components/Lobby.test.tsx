@@ -282,18 +282,18 @@ describe("signed in, the player plays under the account name", () => {
     answered();
     // Play joins the ranked queue with no sheet in between
     act(() => buttonNamed("Play").click());
-    expect(queue.view.sheet).toBeNull();
+    expect(document.querySelector(".q-sheet")).toBeNull();
     expect(sent.map((m) => (m as { type: string }).type)).toEqual(["code_lookup", "peek_room", "join_room", "queue_join"]);
     expect(sentName(0)).toBe("Captain");
     expect(sent[3]).toEqual({ type: "queue_join", mode: "ranked" });
   });
 
-  it("Duo opens the pair sheet", async () => {
+  it("Duo opens your own table as a Duo: no sheet and no Duo code", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await render();
     act(() => buttonNamed("Duo").click());
-    expect(queue.view.sheet).toBe("party");
-    expect(sent).toEqual([{ type: "party_create" }]);
+    expect(document.querySelector(".q-sheet")).toBeNull();
+    expect(sent).toEqual([{ type: "queue_join", mode: "ranked", duo: true }]);
   });
 
   it("without a display name the first name is used, and a rename is followed at once", async () => {
@@ -622,7 +622,7 @@ describe("starting a game waits for the server", () => {
     act(() => button(/^Join$/).click());
     serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
     expect(button(/^Join$/).disabled).toBe(false);
-    expect(host.querySelector(".join-error")?.textContent).toBe("No game or pair has that code.");
+    expect(host.querySelector(".join-error")?.textContent).toBe("No table has that code.");
     // inline under the code box it answers, not in the lobby's error box or the connection pill
     expect(host.querySelector(".lobby-error")).toBeNull();
     const err = host.querySelector(".join-error")!;

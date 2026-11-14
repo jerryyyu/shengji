@@ -14,6 +14,9 @@ export const JOIN_WAIT = "1 minute";
 export type LeaveContext =
   /** The Play tab's table before a game; `others` are the people staying. */
   | { kind: "queue"; others: string[] }
+  /** The Play tab's table before a game, in a Duo made there. `partner`
+   *  keeps the table; `opener`: you opened it, so its code goes with it. */
+  | { kind: "duo"; partner: string; opener: boolean }
   /** A created room's lobby. `others` are the people staying, in seat order;
    *  `host`: you hold the opener's controls, which pass to the first of them. */
   | { kind: "room"; others: string[]; host: boolean }
@@ -70,6 +73,10 @@ export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; l
   if (ctx.kind === "queue") {
     const names = ctx.others.map(shortName);
     return { title: "Leave the table?", line: names.length ? `${nameList(names)} ${stays(names)} at the table.` : null };
+  }
+  if (ctx.kind === "duo") {
+    const who = shortName(ctx.partner);
+    return { title: "Leave the Duo?", line: ctx.opener ? `${who} keeps the table and its code.` : `${who} keeps the table.` };
   }
   if (ctx.kind === "room") {
     if (ctx.others.length === 0) return { title: "Leave the room?", line: "The room closes." };

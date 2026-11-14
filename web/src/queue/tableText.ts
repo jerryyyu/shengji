@@ -54,9 +54,10 @@ export function joinTitle(o: OfferView): string {
   return people.length ? `Join ${nameList(people)}` : "Join this table";
 }
 
-/** The Join button's words; the offer's clock is the ring beside them. */
-export function joinLabel(o: OfferView): string {
-  return o.partner ? "Join together" : "Join";
+/** The Join button's words; the offer's clock is the ring beside them. A
+ *  Duo's Join takes both seats, which the seats already show. */
+export function joinLabel(_o: OfferView): string {
+  return "Join";
 }
 
 /** When your own table's bots sit, as a local time: never while you wait
@@ -65,6 +66,20 @@ export function joinLabel(o: OfferView): string {
 export function ownBotsAt(q: QueueView): number | null {
   if (q.waitPlayers || q.botsPaused) return null;
   return q.botsAt;
+}
+
+/** Your own table's title: "Your table", "Your Duo" while the partner
+ *  seat is held, or "You and Alice" once your Duo partner sits. */
+export function ownTitle(q: QueueView, partner: string | null): string {
+  if (partner) return `You and ${shortName(partner)}`;
+  return q.duo && q.heldSeat !== null ? "Your Duo" : "Your table";
+}
+
+/** A Duo's own-table button: Start until you tap it, then who it waits
+ *  for, then the search the pair is in. */
+export function duoStartLabel(q: QueueView, partner: string): string {
+  if (!q.youReady) return "Start";
+  return (q.duoReady ?? 0) >= 2 ? "Finding a table" : `Waiting for ${shortName(partner)}`;
 }
 
 /** A shared table's one status line: who is ready. The bots' countdown is
@@ -134,8 +149,12 @@ export function announcement(q: QueueView): string {
   if (kind === "join" && q.offer) {
     return `Table with people. ${joinTitle(q.offer)}.`;
   }
+  if (kind === "own" && q.duoReady !== null && q.partyId) {
+    const partner = q.party?.members.find((m) => !m.you)?.name ?? null;
+    return `${ownTitle(q, partner)}. ${q.duoReady} of 2 ready.`;
+  }
   if (kind === "own") {
-    const who = q.partyId ? "Your Duo's table" : "Your table";
+    const who = q.partyId ? "Your Duo's table" : q.duo && q.heldSeat !== null ? "Your Duo" : "Your table";
     return `${who}. Waiting for players.${q.waitPlayers ? " No timer." : ""}`;
   }
   if (kind === "shared" && q.table && q.stillHereUntil !== null) {

@@ -147,13 +147,33 @@ it("in the lobby the same pill shows, and the full screen offers Retry and bots 
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
   const offline = host.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
   expect(offline.textContent).toBe("Play offline with the bots");
-  // straight to the offline table: the page reloads in offline mode with it open
-  act(() => offline.click());
-  expect(assign).toHaveBeenCalledWith("?offline=1&table=1");
 
   act(() => latest().open());
   expect(lost()).toBeNull();
   expect(banner()).toBeNull();
+});
+
+it("the full screen's Play offline with the bots opens the offline table on this page, with no reload", async () => {
+  const { LOST_AFTER_MS } = await mount();
+  act(() => latest().open());
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+  const sockets = FakeWS.all.length;
+  const dropped = latest();
+  act(() => host.querySelector<HTMLButtonElement>(".conn-lost-bots")!.click());
+  await vi.waitFor(async () => {
+    await act(async () => { vi.advanceTimersByTime(10); });
+    expect(host.querySelector(".tp-offline")).not.toBeNull();
+  });
+  expect(assign).not.toHaveBeenCalled();
+  expect(lost()).toBeNull();
+  expect(banner()).toBeNull();
+  expect(host.querySelector(".tp-offline .tp-title")?.textContent).toBe("You and 3 bots");
+  // the network's backoff stops: no new socket to the game server, and a late open of the old one is cut off
+  act(() => { vi.advanceTimersByTime(30_000); });
+  expect(FakeWS.all.length).toBe(sockets);
+  act(() => dropped.open());
+  expect(dropped.sent).toEqual([]);
 });
 
 it("a short blip clears before Retry ever shows", async () => {

@@ -128,6 +128,15 @@ class Connection {
   /** Opens the transport: the game server's WebSocket, or offline the
    *  in-page server's look-alike (set once its module has loaded). */
   private makeSocket: () => WebSocket = () => new WebSocket(socketUrl());
+  /** Which server the socket talks to. "local" is set as soon as offline play
+   *  is asked for, while the on-device server's module may still be loading;
+   *  browser wake events never open the network socket then. */
+  private transport: "remote" | "local" = "remote";
+  /** Bumped on every transport request, so a module load that finishes after
+   *  a later request changes nothing. */
+  private transportSeq = 0;
+  /** A socket has been opened on this page: a swap after that ends its room. */
+  private opened = false;
   private stopHeartbeat: (() => void) | null = null;
   /** Ping now with a short deadline (the socket's heartbeat, if it has one). */
   private probe: (() => void) | null = null;
@@ -152,17 +161,11 @@ class Connection {
   start(): void {
     if (this.started) return;
     this.started = true;
-    if (OFFLINE) {
-      void import("./offline/server").then((m) => {
-        this.makeSocket = () => new m.LocalSocket() as unknown as WebSocket;
-        this.open();
-      });
-      return;
-    }
     // A browser wake can end an outage before the retry timer expires.
     // Preserve healthy sockets and handshakes that are already in progress.
+    // The on-device server has no outages to end.
     const wake = () => {
-      if (this.status === "closed") this.reconnect();
+      if (this.transport === "remote" && this.status === "closed") this.reconnect();
     };
     window.addEventListener("online", wake);
     window.addEventListener("pageshow", wake);
@@ -171,7 +174,70 @@ class Connection {
       if (this.status === "open") this.probe?.();
       else wake();
     });
-    this.open();
+    if (OFFLINE) void this.useLocalServer().catch(() => {});
+    else this.open();
+  }
+
+  /** Play on the on-device server from now on, in place: the game server's
+   *  socket is cut at once, the in-page server's module loads (it is not in
+   *  the online bundle), and its socket opens. If the module cannot load, the
+   *  game server's socket opens again and the promise rejects. */
+  async useLocalServer(): Promise<void> {
+    const seq = ++this.transportSeq;
+    if (this.transport === "local") return;
+    this.transport = "local";
+    this.retireTransport();
+    let m: typeof import("./offline/server");
+    try {
+      m = await import("./offline/server");
+    } catch (e) {
+      if (seq === this.transportSeq) this.useGameServer();
+      throw e;
+    }
+    if (seq !== this.transportSeq) return;
+    this.makeSocket = () => new m.LocalSocket() as unknown as WebSocket;
+    if (this.started) this.open();
+  }
+
+  /** Back to the game server, in place. */
+  useGameServer(): void {
+    this.transportSeq += 1;
+    if (this.transport === "remote") return;
+    this.transport = "remote";
+    this.retireTransport();
+    this.makeSocket = () => new WebSocket(socketUrl());
+    if (this.started) this.open();
+  }
+
+  /** End the current transport so nothing crosses to the next one: the
+   *  socket's handlers are cut before it closes, a pending leave, probe or
+   *  reconnect is dropped, and the room it held is forgotten (the other
+   *  server has never heard of it), so listeners get {type:"left"} as from
+   *  a leave. The next socket opens as a fresh page's would. */
+  private retireTransport(): void {
+    this.stopHeartbeat?.();
+    this.stopHeartbeat = null;
+    this.probe = null;
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.endLeave();
+    const old = this.ws;
+    this.ws = null;
+    if (old) {
+      old.onopen = null;
+      old.onmessage = null;
+      old.onclose = null;
+      old.onerror = null;
+      try { old.close(); } catch { /* already closed */ }
+    }
+    this.backoff = 500;
+    this.immediate = false;
+    if (this.opened) {
+      clearSavedRoom();
+      this.clearChat();
+      this.emit({ type: "left" });
+    }
+    this.setStatus("connecting");
   }
 
   /** Sends when the socket is open; returns whether it did, so a caller can
@@ -269,6 +335,7 @@ class Connection {
   }
 
   private open(): void {
+    this.opened = true;
     this.setStatus("connecting");
     const ws = this.makeSocket();
     this.ws = ws;

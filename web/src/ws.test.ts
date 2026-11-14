@@ -471,3 +471,54 @@ describe("the device key", () => {
     } finally { get.mockRestore(); }
   });
 });
+
+describe("transport swap: the game server's socket and the on-device one share nothing", () => {
+  it("cuts the old socket, forgets its room, chat and pending leave, and opens the other in place", async () => {
+    const { conn, saveRoom, saveResumeToken, getSavedRoom, getResumeToken } = await load();
+    const seen: any[] = [];
+    const statuses: string[] = [];
+    conn.subscribe((m: any) => seen.push(m));
+    conn.subscribeStatus((s: string) => statuses.push(s));
+    conn.start();
+    const network = FakeWS.last!;
+    network.onopen?.();
+    network.deliver({ type: "chat_history", room: "ABCD", through_id: 1,
+                      messages: [{ type: "chat", room: "ABCD", id: 1, seat: 0, name: "a", text: "hi", t: 1 }] });
+    saveRoom("ABCD");
+    saveResumeToken("tok");
+    conn.leaveToLobby();            // a leave still waiting for the server's "left"
+    seen.length = 0;
+
+    await conn.useLocalServer();
+    expect(network.readyState).toBe(3);
+    expect(network.onmessage).toBeNull();
+    expect(network.onclose).toBeNull();
+    expect(conn.chatHistory()).toEqual([]);
+    expect(getSavedRoom()).toBeNull();
+    expect(getResumeToken()).toBeNull();
+    expect(seen).toEqual([{ type: "left" }]);
+    expect(statuses.at(-1)).toBe("connecting");
+    // the on-device socket opens; the old one's late traffic reaches no one
+    await vi.waitFor(() => expect(conn.status).toBe("open"));
+    const count = FakeWS.count;
+    network.deliver({ type: "room", room: "ABCD", players: [], you: 0, host: 0 });
+    expect(seen).toEqual([{ type: "left" }]);
+    // the game server's own messages go nowhere offline: no error comes back
+    expect(conn.send({ type: "queue_status" } as any)).toBe(true);
+    expect(conn.send({ type: "create_room", name: "Me" })).toBe(true);
+    await vi.waitFor(() => expect(seen.some((m) => m.type === "room")).toBe(true));
+    expect(seen.filter((m) => m.type === "error")).toEqual([]);
+    expect(FakeWS.count).toBe(count);
+
+    // and back: a fresh game-server socket, the offline room forgotten
+    seen.length = 0;
+    conn.useGameServer();
+    expect(seen).toEqual([{ type: "left" }]);
+    expect(FakeWS.count).toBe(count + 1);
+    expect(FakeWS.last).not.toBe(network);
+    expect(getSavedRoom()).toBeNull();
+    FakeWS.last!.onopen?.();
+    expect(conn.status).toBe("open");
+    expect(FakeWS.last!.sent).toEqual([]);
+  });
+});

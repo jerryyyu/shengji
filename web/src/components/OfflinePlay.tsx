@@ -1,19 +1,18 @@
 // The Play tab with no game server: the same page, Casual the only mode, and
 // a Play that opens your table with three bots on this device. Ranked, Duo
 // and the code box need the server, so they stay in their places, disabled.
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+// The online Play tab draws these in place of its own controls, both while
+// its connection is down and once the page plays offline.
+import { useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getSavedName } from "../ws";
-import { openHowto } from "../howto/route";
 import { effectiveName, useAuth } from "../auth";
 import { useOnline } from "../useOnline";
 import { useInlineQueue } from "../queue/QueueBar";
 import { MiniTable, ModeTag, TeamColumns } from "../queue/TablePanel";
 import type { SeatItem } from "../queue/TablePanel";
-import AccountChip from "./AccountChip";
-import GuestChip, { GuestNameSheet } from "./GuestChip";
-import LobbyPreview from "./LobbyPreview";
-import { offlineGame } from "./offlineGame";
+import { useToast } from "../toast";
+import { offlineGame, useOfflineTable } from "./offlineGame";
 import "./OfflinePlay.css";
 
 /** You at the bottom, Bot 2 across as your partner, Bots 1 and 3 opposite,
@@ -54,29 +53,24 @@ function OfflineTable({ ready, starting, onStart, onLeave }: {
 
 interface OfflineControlsProps {
   /** This page plays on the device (offline mode). Without it the page still
-   *  belongs to the game server, which cannot be reached, and Play reloads
-   *  the page in offline mode with the table open. */
+   *  belongs to the game server, which cannot be reached, and Play swaps the
+   *  socket to the on-device server with the table open. */
   local: boolean;
   status: ConnStatus;
-  error?: string | null;
   /** The room Start made, while bots fill it and the deal starts. */
   room?: string | null;
   /** Arm App's fill-with-bots-then-start chain before creating the room. */
   onArmAutoFill?: () => void;
 }
 
-/** Whether the offline table is up on this page's Play tab. */
-function useOfflineTable(local: boolean): boolean {
-  const table = useSyncExternalStore((l) => offlineGame.subscribe(l), () => offlineGame.tableOpen);
-  return local && table;
-}
-
 /** The Play tab's controls with no connection, between the name chip and How
  *  to play: the mode switch, then Play, Duo, the presence line and the code
  *  box, or the offline table in their place. The online Play tab shows these
  *  in place of its own, so what surrounds them stays mounted. */
-export function OfflineControls({ local, status, error = null, room = null, onArmAutoFill }: OfflineControlsProps) {
+export function OfflineControls({ local, status, room = null, onArmAutoFill }: OfflineControlsProps) {
   const showTable = useOfflineTable(local);
+  // an error frees Start; the toast says it
+  const error = useToast()?.text ?? null;
   const online = useOnline();
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -95,11 +89,10 @@ export function OfflineControls({ local, status, error = null, room = null, onAr
 
   // An offline game stays offline: nothing moves the page online while its
   // table is up or its game is on (this screen is not shown then). Once the
-  // table is left, a page with a network goes online again. A browser tab has
-  // no other way to get its online Play tab back, so it goes whenever it is
-  // here with a network; the app's bundled page waits for the network to
-  // return or the table to be left, since its shell brings this page back
-  // whenever the live site cannot load.
+  // table is left, the page goes online again as soon as the device has a
+  // network, in place. The app's bundled page loads the live site for it, so
+  // at a launch whose live site did not load it waits for the network to
+  // return or the table to be left; the shell would only bring it back.
   const inApp = typeof location !== "undefined" && location.protocol === "capacitor:";
   const wasOnline = useRef(online);
   useEffect(() => {
@@ -155,33 +148,5 @@ export function OfflineControls({ local, status, error = null, room = null, onAr
         </>
       )}
     </>
-  );
-}
-
-/** The whole Play tab of a page in offline mode. */
-export default function OfflinePlay(props: OfflineControlsProps & { local: true }) {
-  const showTable = useOfflineTable(true);
-  const account = useAuth();
-  const signedIn = account.status === "in" && account.user ? account.user : null;
-  return (
-    <div className="screen lobby-screen play-tab play-offline">
-      <div className="panel lobby-panel">
-        {/* the table takes the picture's place, so Start is on screen without a scroll */}
-        {showTable ? null : (
-          <>
-            <h1 className="game-title">
-              升级 <span className="game-title-en">Sheng Ji</span>
-            </h1>
-            <LobbyPreview />
-          </>
-        )}
-        {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
-        <OfflineControls {...props} />
-        <p className="howto-entry">
-          <button className="howto-link" onClick={() => openHowto()}>How to play</button>
-        </p>
-      </div>
-      {signedIn ? null : <GuestNameSheet />}
-    </div>
   );
 }

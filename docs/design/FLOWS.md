@@ -81,7 +81,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 ## Offline (Jerry 2026-11-14: "we should just keep offline, dont go online")
 - With no connection, Play opens your table with 3 bots on the device: the same panel, "Offline · not rated", Casual only (Ranked disabled with "Ranked needs a connection"). Duo, rooms and chat are disabled with a one-line reason.
 - The presence line becomes a grey "Offline · you'll play the bots on this device".
-- **An offline game stays offline.** When the connection returns there is no automatic switch and no mid-game prompt. The game continues on the device. Today's `offlineGame.goOnline()` on reconnect (`offline/server/ui.tsx:51-56`) must not move an ongoing offline game. After you leave the offline table, Play is online again as normal.
+- **An offline game stays offline.** When the connection returns there is no automatic switch and no mid-game prompt. The game continues on the device. `offlineGame.goOnline()` runs only once the offline table is left (`components/OfflinePlay.tsx`). After you leave the offline table, Play is online again as normal, in place (simplification 7).
 - The section 4 full-screen connection state offers "Play offline with the bots" next to Retry, replacing today's silent switch inside "Play bots" (`Lobby.tsx:244-247`).
 - Offline games in local stats: not decided.
 - Offline games do NOT count in Me's stats (Jerry 2026-11-14).
@@ -150,6 +150,23 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      help (declaring, burying), else the newcomer coach's cue. The status line in the button row ("Waiting
      for Li", "Dealing cards…") is gone: the seat on turn glows and says "their turn", and the hand fills
      as it is dealt.
+7. **Offline without a reload.** Offline is a state of the one Play page, not a page of its own. Play on
+   the greyed Play tab (no connection), the Play offline link beside How to play, and the full-screen
+   connection state's "Play offline with the bots" all swap the socket to the on-device server in place
+   (`conn.useLocalServer()` in `ws.ts`, through `offlineGame.startFromPlay()`) and open the same offline
+   table panel ("You and 3 bots", Start, Leave) on the same Play page. Leaving the table, or the game,
+   swaps back to the game server in place (`conn.useGameServer()`) and the socket reconnects; with no
+   network the Play tab stays offline until the network returns. Nothing reloads or navigates, except the
+   app's bundled page (shown when the live site could not load at launch), which has no game server and
+   loads the live site to go online.
+   - The swap carries nothing across: the old socket's handlers are cut before it closes, its room,
+     resume token, chat and any pending leave or reconnect are dropped (listeners get `left`), the queue
+     store and the toast reset, and the on-device socket passes on only the messages its server answers
+     (the queue, presence, code lookups, telemetry and heartbeats go nowhere).
+   - An online page loads the on-device server once it is connected and idle, so Play offline still works
+     after the network has gone. The separate offline page shell (`offline/server/ui.tsx`, OfflinePlay's
+     whole-page component) and the `?offline=0` / `?offline=1&table=1` reloads are removed; `?offline=1`
+     still opens a page offline (tests and development).
 
 ## Grammar: Us/Them are labels, sentences say we/they (Jerry 2026-11-14)
 - "Us" and "Them" are labels only: team heads, HUD chips, "Them 15 / 80", "Games: Us 1 · Them 0".

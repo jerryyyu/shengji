@@ -13,6 +13,7 @@ import { RankedSection, TrophyIcon } from "../queue/Ranked";
 import { queue, useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
+import { useOffline } from "../offlineMode";
 import JoinPanel from "./JoinPanel";
 import { joinSeat as plainSeat, tableFull, takeoverSeats } from "../joinSeats";
 import { codes, useCodes } from "../codeJoin";
@@ -20,7 +21,7 @@ import type { TableKind } from "../codeJoin";
 import { normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
-import { offlineGame } from "./offlineGame";
+import { offlineGame, useOfflineTable } from "./offlineGame";
 import { showToast } from "../toast";
 
 interface LobbyProps {
@@ -33,6 +34,8 @@ interface LobbyProps {
   onSeatedInvite?: (code: string) => void;
   /** Counts the times that question was answered Stay: the link is dropped. */
   inviteDropped?: number;
+  /** Offline, Start arms App's fill-with-bots-then-start chain before creating the room. */
+  onArmAutoFill?: () => void;
 }
 
 /** After this long without a connection the Play tab shows its offline state. */
@@ -84,8 +87,12 @@ function RankedUnavailable() {
 }
 
 export default function Lobby({ status, room = null, holdInvite = false,
-                                onSeatedInvite, inviteDropped = 0 }: LobbyProps) {
+                                onSeatedInvite, inviteDropped = 0, onArmAutoFill }: LobbyProps) {
   const stalled = useStalled(status);
+  // Offline, the socket talks to the on-device server: Play's controls are
+  // the offline ones, and links, peeks and the Join panel wait for the game server.
+  const offline = useOffline();
+  const offlineTable = useOfflineTable(offline);
   // The test room's Create and Join each send one request and then wait:
   // the button says so at once and every start button holds until the room
   // arrives (the lobby goes away), an error comes back, the connection the
@@ -399,15 +406,15 @@ export default function Lobby({ status, room = null, holdInvite = false,
   const wide = useMediaQuery(WIDE);
   const screenRef = useRef<HTMLDivElement | null>(null);
   // a panel that opens puts the page back at its top, where the panel is
-  const joinUp = joinView !== null && !seated;
-  const panelUp = (seated || joinUp) && !stalled;
+  const joinUp = joinView !== null && !seated && !offline;
+  const panelUp = offline ? offlineTable : (seated || joinUp) && !stalled;
   useEffect(() => {
     if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
   }, [panelUp]);
   // A socket that drops takes its unanswered peeks with it; an open room
   // panel still without its seats asks again on the next one.
   useEffect(() => {
-    if (status !== "open") {
+    if (status !== "open" || offline) {
       peeks.current = [];
       return;
     }
@@ -415,7 +422,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
     if (v && v.kind === "room" && v.peek === null && !peeks.current.some((a) => a.live && a.for === "panel")) {
       sendPeek(v.code, "panel");
     }
-  }, [status, sendPeek]);
+  }, [status, offline, sendPeek]);
   // once you sit, the panel's job is done
   useEffect(() => {
     if (!seated) return;
@@ -423,7 +430,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
     if (joinRef.current) setJoinView(null);
   }, [seated, setJoinView]);
   useEffect(() => {
-    if (linkOpened.current || status !== "open" || !linkRoom || holdInvite) return;
+    if (linkOpened.current || status !== "open" || offline || !linkRoom || holdInvite) return;
     if (seated) {
       // your own table's link changes nothing; another table's asks first
       if ((room?.room ?? tableCode) !== linkRoom) onSeatedInvite?.(linkRoom);
@@ -435,7 +442,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
     }
     linkOpened.current = true;
     openJoin(linkRoom, linkKind);
-  }, [status, linkRoom, linkKind, holdInvite, seated, room, tableCode, onSeatedInvite, openJoin]);
+  }, [status, offline, linkRoom, linkKind, holdInvite, seated, room, tableCode, onSeatedInvite, openJoin]);
 
   // The test controls' room: a created room for the W32 policy, reached
   // only from ?test_shortlist=1. Every other table comes from Play.
@@ -457,7 +464,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
     ? <RankedUnavailable /> : <RankedSection online={status === "open"} room={room} />;
 
   return (
-    <div ref={screenRef} className={`screen lobby-screen play-tab${stalled ? " play-offline" : ""}${panelUp ? " play-table-up" : ""}`}>
+    <div ref={screenRef} className={`screen lobby-screen play-tab${stalled || offline ? " play-offline" : ""}${panelUp ? " play-table-up" : ""}`}>
       <div className="panel lobby-panel">
         {/* one column on a phone; on desktop and iPad the controls and the
             table panel sit beside the art */}
@@ -499,7 +506,9 @@ export default function Lobby({ status, room = null, holdInvite = false,
 
         {/* With no connection Play plays on this device, and what needs the
             server waits; the chip, How to play and an open sheet stay put. */}
-        {stalled && !room ? <OfflineControls local={false} status={status} /> : (
+        {offline ? (
+          <OfflineControls local status={status} room={room?.room ?? null} onArmAutoFill={onArmAutoFill} />
+        ) : stalled && !room ? <OfflineControls local={false} status={status} /> : (
           <>
             {joinUp && joinView ? (
               <JoinPanel code={joinView.code} kind={joinView.kind} peek={joinView.peek} full={joinView.full}
@@ -547,7 +556,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
           {/* the bots on this device, on purpose: a game started here stays
               offline when the network comes back */}
-          {stalled || seated || joinUp ? null : (
+          {stalled || offline || seated || joinUp ? null : (
             <>
               <span className="howto-sep" aria-hidden="true">·</span>
               <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>Play offline</button>

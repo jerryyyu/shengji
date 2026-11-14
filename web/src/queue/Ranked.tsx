@@ -1,7 +1,9 @@
 import { useId, useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
-import { QueueCard, useInlineQueue } from "./QueueBar";
+import TablePanel, { TableAnnouncer } from "./TablePanel";
+import { useKindGuard } from "./useKindGuard";
+import { panelKind } from "./tableText";
 import { clock, partnerName, queue, useNow, useQueue } from "./store";
 
 /** The ranked mark: a trophy. */
@@ -77,9 +79,9 @@ function GuestLine({ online }: { online: boolean }) {
  *  that joins the queue at once (as the pair when one is formed and you lead
  *  it) and Duo, which opens the pair sheet. An account sees it under a Ranked
  *  heading; a guest, whose rounds are not rated, sees no heading and a line
- *  under the buttons that offers sign-in. Searching alone on an iPad or a
- *  desktop window, the queue's card takes the buttons' place. While sign-in
- *  is still loading nothing shows. */
+ *  under the buttons that offers sign-in. While queued, the table panel takes
+ *  the buttons' place on every screen. While sign-in is still loading nothing
+ *  shows. */
 export function RankedSection({ online }: {
   /** The socket is open; without it every queue control is disabled. */
   online: boolean;
@@ -87,30 +89,46 @@ export function RankedSection({ online }: {
   const q = useQueue();
   const account = useAuth();
   const labelId = useId();
-  const inlineQueue = useInlineQueue();
+  const kind = panelKind(q);
+  const guarded = useKindGuard(kind);
   const now = useNow(q.cooldownUntil !== null, 500);
   if (account.status === "loading" || account.status === "error") return null;
   const guest = account.status !== "in";
 
   const pair = q.party && q.party.members.length === 2 ? q.party : null;
-  const searching = q.queued || q.pending === "join";
+  const joining = q.pending === "join";
+  const cooling = q.cooldownUntil !== null && q.cooldownUntil > now;
   let label = "Play";
-  let disabled = !online;
-  if (searching) { label = "Searching…"; disabled = true; }
-  else if (q.cooldownUntil !== null && q.cooldownUntil > now) {
+  let disabled = !online || guarded;
+  if (joining) disabled = true;
+  else if (cooling) {
     // a table you joined and left: Play counts the queue cooldown down
-    label = `Play in ${clock(q.cooldownUntil - now, true)}`;
+    label = `Play in ${clock(q.cooldownUntil! - now, true)}`;
     disabled = true;
   } else if (pair && !pair.you_lead) disabled = true;
-  const body = inlineQueue && q.queued && !q.table ? <><PartyChip /><QueueCard /></> : (
+  // first in every branch, so the live region stays mounted as the panel changes kind
+  const announcer = <TableAnnouncer q={q} />;
+  if (kind !== "play") {
+    return (
+      <>
+        {announcer}
+        <div className="play-section play-table">
+          <PartyChip />
+          <TablePanel q={q} guarded={guarded} />
+        </div>
+      </>
+    );
+  }
+  const body = (
     <>
       <PartyChip />
+      {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}
       <div className="play-ranked-row">
-        <button type="button" className={`btn gold play-main q-find${searching ? " searching" : ""}`}
-                disabled={disabled} aria-busy={searching || undefined} onClick={() => queue.join()}>
+        <button type="button" className={`btn gold play-main q-find${joining ? " searching" : ""}`}
+                disabled={disabled} aria-busy={joining || undefined} onClick={() => queue.join()}>
           {label}
         </button>
-        <button type="button" className="btn play-duo" disabled={!online} onClick={() => queue.openParty()}>
+        <button type="button" className="btn play-duo" disabled={!online || cooling} onClick={() => queue.openParty()}>
           Duo
         </button>
       </div>
@@ -118,16 +136,22 @@ export function RankedSection({ online }: {
   );
   if (guest) {
     return (
-      <section className="play-section play-guest" aria-label="Play">
-        {body}
-        <GuestLine online={online} />
-      </section>
+      <>
+        {announcer}
+        <section className="play-section play-guest" aria-label="Play">
+          {body}
+          <GuestLine online={online} />
+        </section>
+      </>
     );
   }
   return (
-    <section className="play-section" aria-labelledby={labelId}>
-      <h2 className="play-label ranked" id={labelId}><TrophyIcon />Ranked</h2>
-      {body}
-    </section>
+    <>
+      {announcer}
+      <section className="play-section" aria-labelledby={labelId}>
+        <h2 className="play-label ranked" id={labelId}><TrophyIcon />Ranked</h2>
+        {body}
+      </section>
+    </>
   );
 }

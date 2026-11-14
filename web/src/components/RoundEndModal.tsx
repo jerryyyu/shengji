@@ -8,9 +8,10 @@ import { OFFLINE } from "../offlineMode";
 import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
-import { myTeam, nextBankerText, pointsOf, roundLines, teamMembers, teamWord } from "../tableCopy";
+import { attackingTeam, myTeam, nextBankerText, pointsOf, teamMembers, teamWord } from "../tableCopy";
+import RoundEndLastTrick from "./RoundEndLastTrick";
 
-/** Leave below Next round (Next game), the same in every room. It asks through the one
+/** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
  *  the sheet says it is free; an offline game on this device ends with it.
  *  The modal dialog makes the HUD's own Leave control unreachable here. */
@@ -20,7 +21,7 @@ function RoundEndLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
     <>
       <button
         type="button"
-        className="btn subtle danger dialog-leave-btn"
+        className="btn danger big dialog-leave-btn"
         onClick={() => {
           telemetry.tap("round_end_leave");
           setAsking(true);
@@ -42,13 +43,6 @@ interface RoundEndModalProps {
   result: RoundResult;
   /** Seconds left on your move timer for Next (ranked tables), else null. */
   clock?: number | null;
-}
-
-/** Name the actual players, not seat numbers or a colour: "Us (You & Sam)". */
-function teamName(team: 0 | 1, state: GameState): string {
-  const members = teamMembers(team, state);
-  const word = teamWord(team, state);
-  return members ? `${word} (${members})` : word;
 }
 
 /** "You & Bot 2 win the round"; the members take a plural verb. */
@@ -110,14 +104,55 @@ export function RatingLine({ result, total, ranked, guest = false }: {
   return <div className="rating-line rating-unranked rating-guest-note"><span>Guest</span></div>;
 }
 
+/** "+12", "−4" or "±0": a rating change short enough for the result line. */
+function shortDelta(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  if (delta < 0) return `−${Math.abs(delta)}`;
+  return "±0";
+}
+
+/** The round in one line: "Them took 35 of 80. Us go up 1, to 3". The
+ *  attackers' total already includes any kitty bonus. */
+function resultSentences(state: GameState, result: RoundResult): { took: string; climb: string } {
+  const attack = attackingTeam(state);
+  const attackers = attack === null ? "Attackers" : teamWord(attack, state);
+  const winner = teamWord(result.winner_team, state);
+  const n = result.level_change;
+  return {
+    took: `${attackers} took ${result.attacker_points} of 80.`,
+    climb: n > 0
+      ? `${winner} go up ${n}, to ${result.new_levels[result.winner_team]}`
+      : `${winner} take the deal, no level change`,
+  };
+}
+
+/** The kitty's multiplier, read back from the bonus the server applied
+ *  (bonus = buried points x multiplier); null when there was no bonus. */
+function kittyMultiplier(result: RoundResult): number | null {
+  const buried = pointsOf(result.kitty_cards);
+  if (result.kitty_points <= 0 || buried <= 0 || result.kitty_points % buried !== 0) return null;
+  return result.kitty_points / buried;
+}
+
+/** Why the kitty paid what it did, in one line. */
+function kittyBonusText(state: GameState, result: RoundResult): string {
+  const attack = attackingTeam(state);
+  const attackers = attack === null ? "the attackers" : teamWord(attack, state);
+  const mult = kittyMultiplier(result);
+  if (result.kitty_points > 0) {
+    return mult !== null ? `×${mult} · +${result.kitty_points} to ${attackers}` : `+${result.kitty_points} to ${attackers}`;
+  }
+  const last = state.last_trick;
+  if (attack !== null && last && last.winner % 2 !== attack) {
+    return `No bonus: ${teamWord((1 - attack) as 0 | 1, state)} took the last trick`;
+  }
+  return "No bonus";
+}
+
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
   useScreen("round_end");
   const ranked = !!(state.matched || state.ranked);
-  // attacker_points is the final total (kitty bonus already included);
-  // kitty_points is the kitty portion of that total.
-  const total = result.attacker_points;
-  const trickPoints = result.attacker_points - result.kitty_points;
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
   const buriedPoints = pointsOf(result.kitty_cards);
   const bankerName =
@@ -132,12 +167,20 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   // both teams' levels restart. The table goes on, so this is Next game.
   const gameWon = result.point_scored;
   const what = gameWon ? "the game" : "the round";
-  const climb = result.level_change > 0
-    ? `go up ${result.level_change} level${result.level_change === 1 ? "" : "s"}`
-    : "take the deal with no level change";
+  const us = myTeam(state);
+  const them = (1 - us) as 0 | 1;
+  const rating = ranked ? result.rating : undefined;
+  const ratingTone = rating ? (rating.delta > 0 ? "delta-up" : rating.delta < 0 ? "delta-dn" : "delta-flat") : "";
+  const ratingBit = rating
+    ? <span className={`result-rating ${ratingTone}`}> · {shortDelta(rating.delta)}</span>
+    : null;
+  const { took, climb } = resultSentences(state, result);
+  // Everyone reviews the round at their own pace: the server only advances
+  // once every connected human has confirmed.
+  const iAmReady = (state.ready ?? []).includes(state.you);
   return (
     <ResultDialog titleId={titleId}>
-      <div className={`panel modal${gameWon ? " game-won" : ""}`}>
+      <div className={`panel modal round-end${gameWon ? " game-won" : ""}`}>
         {gameWon ? <div className="game-won-crown" aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
           {lostTeam !== null
@@ -145,134 +188,51 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             : <TeamTitle team={result.winner_team} state={state} what={what} />}
         </h2>
 
-        {/* the outcome first, your team first and in words; how it was
-            scored waits behind Details */}
         {gameWon ? (
-          <div className="result-headline result-games">
-            Games: Us {result.games_won[myTeam(state)]} · Them {result.games_won[1 - myTeam(state)]}
-          </div>
+          <p className="result-headline result-games">
+            Games: Us {result.games_won[us]} · Them {result.games_won[them]}{ratingBit}
+          </p>
         ) : (
-        <div className="result-headline result-teams">
-          <div className="result-team-lines">
-            {roundLines(state, result).map((line) => (
-              <div key={line.team} className={`result-team-line team${line.team}${line.won ? " gained" : ""}`}>
-                <span className={`team-dot t${line.team}`} aria-hidden="true" />
-                <b className="result-team-word">{line.word}</b>
-                <span className="result-team-members">({line.members})</span>
-                <span className="result-team-what">
-                  {line.role ? `${line.role} · ` : ""}{line.outcome}
-                </span>
-              </div>
-            ))}
-          </div>
-          <span className="result-levels">
-            {result.point_scored ? "Levels restart at " : "Levels now "}
-            Us {result.new_levels[myTeam(state)]} · Them {result.new_levels[1 - myTeam(state)]}
-          </span>
-          <span className="result-next-banker">{nextBankerText(state, result)}</span>
-        </div>
+          <p className="result-headline result-line">
+            <span>{took} {climb}{ratingBit}.</span>
+            <span className="result-next-banker">{nextBankerText(state, result)}.</span>
+          </p>
         )}
 
-        <RatingLine result={result} total={result.point_scored} ranked={ranked} guest={state.guest === true} />
+        <div className="round-end-actions">
+          <button
+            className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
+            disabled={iAmReady}
+            onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
+          >
+            {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
+            {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
+          </button>
+          <RoundEndLeave ranked={ranked} guest={state.guest === true} />
+        </div>
 
         <details className="result-details">
           <summary>Details</summary>
           {result.kitty_cards.length > 0 && (
             <div className="kitty-reveal">
               <div className="kitty-reveal-label">
-                {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
+                Kitty{bankerName ? ` · buried by ${bankerName}` : ""} · {buriedPoints} pts
               </div>
               <div className="kitty-cards">
                 {result.kitty_cards.map((code, i) => (
                   <Card key={i} code={code} />
                 ))}
               </div>
+              <div className="kitty-bonus">{kittyBonusText(state, result)}</div>
             </div>
           )}
-
-          <div className="result-grid">
-            <span className="result-label">Trick points</span>
-            <span className="result-value">{trickPoints}</span>
-
-            {result.kitty_points > 0 && (
-              <>
-                <span className="result-label">Kitty bonus</span>
-                <span className="result-value">+{result.kitty_points}</span>
-              </>
-            )}
-
-            <span className="result-label total">Total</span>
-            <span className="result-value total">
-              {total} <span className="result-note">(80 needed)</span>
-            </span>
-
-            <span className="result-label">
-              {result.point_scored ? "Result" : "Level change"}
-            </span>
-            <span className="result-value">
-              {result.point_scored
-                ? `${teamName(result.winner_team, state)} win the game`
-                : result.level_change > 0 ? `+${result.level_change}` : "None"}
-            </span>
-
-            {result.point_scored ? (
-              <>
-                <span className="result-label">Games won</span>
-                <span className="result-value">
-                  Us {result.games_won[myTeam(state)]} · Them {result.games_won[1 - myTeam(state)]}
-                </span>
-              </>
-            ) : null}
-
-            <span className="result-label">
-              {result.point_scored ? "Levels restart at" : "New levels"}
-            </span>
-            <span className="result-value">
-              Us {result.new_levels[myTeam(state)]} · Them {result.new_levels[1 - myTeam(state)]}
-            </span>
-
+          {state.last_trick ? <RoundEndLastTrick state={state} trick={state.last_trick} /> : null}
+          <div className="result-levels-line">
+            {gameWon ? "Levels restart at " : "Levels now "}
+            Us {result.new_levels[us]} · Them {result.new_levels[them]}
           </div>
-
-          <p className="result-verdict">
-            {result.point_scored
-              ? `${teamName(result.winner_team, state)} held Ace and win the game — levels restart at ${result.new_levels[0]} and play continues.`
-              : total >= 80
-              ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} ${climb}.`
-              : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} ${climb}.`}
-          </p>
+          <RatingLine result={result} total={gameWon} ranked={ranked} guest={state.guest === true} />
         </details>
-
-        {(() => {
-          // Everyone reviews the round at their own pace: the server only
-          // advances once EVERY connected human has confirmed.
-          // Only CONNECTED humans are counted — a player who drops during
-          // the round-end screen is taken off the tally server-side too.
-          const humans = state.players.filter((p) => !p.is_bot && p.connected);
-          const ready = state.ready ?? [];
-          const iAmReady = ready.includes(state.you);
-          const waiting = humans.filter((p) => !ready.includes(p.seat));
-          return (
-            <>
-              <button
-                className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
-                disabled={iAmReady}
-                onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
-              >
-                {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
-                {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
-              </button>
-              {humans.length > 1 && (
-                <div className="ready-status">
-                  {ready.length}/{humans.length} ready
-                  {waiting.length > 0 && iAmReady && (
-                    <> — waiting for {waiting.map((p) => p.name).join(", ")}</>
-                  )}
-                </div>
-              )}
-              <RoundEndLeave ranked={ranked} guest={state.guest === true} />
-            </>
-          );
-        })()}
       </div>
     </ResultDialog>
   );

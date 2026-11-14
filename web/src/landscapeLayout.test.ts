@@ -436,9 +436,8 @@ describe("phone controls", () => {
     expect(more.height).toBe("var(--header-h)");
     expect(px(tokens["--header-h"])).toBe(32);
     expect(px(rule(block, ".hud-menu-row")["min-height"])).toBeGreaterThanOrEqual(44);
-    const modalBtn = rule(block, ".modal > .btn.big");
-    expect(modalBtn.position).toBe("sticky");
-    expect(px(modalBtn["min-height"])).toBeGreaterThanOrEqual(44);
+    expect(rule(block, ".modal > .round-end-actions").position).toBe("sticky");
+    expect(px(rule(block, ".round-end-actions > .btn.big")["min-height"])).toBeGreaterThanOrEqual(44);
     // a card's tap area runs the full card height plus 16px above the hand
     expect(rule(block, ".hand .card::after").top).toBe("calc(-1 * var(--lift))");
   });
@@ -786,11 +785,15 @@ describe("the header row on a phone", () => {
 });
 
 describe("the round-end card on a phone", () => {
-  it("spaces Next round and Leave by the card's gap and keeps Leave 12px off the bottom", () => {
+  it("keeps Next round and Leave in one row pinned in view, with 12px padding all round the card", () => {
     const block = phoneBlock();
-    expect(rule(block, ".modal > .btn.big")["margin-bottom"]).toBeUndefined();
     expect(rule(block, ".modal").gap).toBe("8px");
-    expect(rule(block, ".modal > .dialog-leave-btn").margin).toBe("0 auto 12px");
+    expect(rule(block, ".modal").padding).toBe("12px 16px");
+    const row = rule(block, ".modal > .round-end-actions");
+    expect(row.position).toBe("sticky");
+    expect(row.top).toBe("0");
+    expect(rule(css, ".round-end-actions").display).toBe("flex");
+    expect(rule(css, ".round-end-actions > .dialog-leave-btn").margin).toBe("0");
   });
 });
 

@@ -332,4 +332,4 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
                 log.warning("apple code exchange failed (%s)", type(exc).__name__)
     token = await store.run(store.create_session, user["id"])
     accounts._set_session_cookie(response, request, token)   # noqa: SLF001
-    return accounts.public_user(user)
+    return await accounts.account_payload(store, user)

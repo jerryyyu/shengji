@@ -733,3 +733,27 @@ def test_old_games_show_each_accounts_current_name_and_no_account_id(api):
     t2.act()
     rounds = {n: _round(client, owner_h, t2.game_id, n).json()["players"] for n in (1, 2)}
     assert rounds == {1: ["Captain", "P1", "P2", "P3"], 2: ["Captain", "Mate", "P2", "P3"]}
+
+
+def test_me_counts_the_rounds_the_account_sat_in(api):
+    """``rounds_played`` on ``/api/me``: the rounds of every link, hidden
+    games included, and never a round the seat was a guest for."""
+    from shengji.api import saved_games
+
+    srv, store, client = api
+    owner, owner_h = _user(store, "owner")
+    late, late_h = _user(store, "late")
+    assert client.get("/api/me", headers=owner_h).json()["rounds_played"] == 0
+    t = Table(srv, code="CNT1", users=(owner, None, None, None))
+    t.start_round(first=True)
+    t.act()
+    for _ in range(2):
+        t.start_round()
+        t.act()
+    t.sign(1, late)
+    t.start_round()
+    saved_games.flush()
+    assert client.get("/api/me", headers=owner_h).json()["rounds_played"] == 4
+    assert client.get("/api/me", headers=late_h).json()["rounds_played"] == 1
+    assert client.delete(f"/api/me/games/{t.game_id}", headers=owner_h).status_code == 204
+    assert client.get("/api/me", headers=owner_h).json()["rounds_played"] == 4

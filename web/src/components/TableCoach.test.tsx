@@ -44,7 +44,10 @@ const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) 
 
 const { default: Table } = await import("./Table");
 const { TOAST_MS } = await import("../toast");
-const { NUDGE_MS, PLAYS_KEY, COACH_PLAYS, COACH_KEY, forgetSessionCoach } = await import("../firstTurns");
+const { NUDGE_MS, PLAYS_KEY, COACH_PLAYS, COACH_KEY, NEWCOMER_ROUNDS, forgetSessionCoach } = await import("../firstTurns");
+const { auth } = await import("../auth");
+const signIn = (rounds: number | null) => act(() => auth.signedIn({
+  name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry", rounds_played: rounds }));
 
 function player(seat: number, over: Partial<StatePlayer> = {}): StatePlayer {
   return { seat, name: seat ? `Bot ${seat}` : "You", is_bot: seat !== 0, connected: true,
@@ -211,6 +214,75 @@ describe("newcomer coach", () => {
     render(firstFollow());
     openMenu();
     expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
+  });
+
+  describe("signed in, on a fresh store", () => {
+    afterEach(() => auth.reset());
+
+    it("does not coach an account that has played, and the switch reads off", () => {
+      signIn(40);
+      render(firstFollow());
+      expect(cue()).toBeNull();
+      expect(dim()).toBe(0);
+      openMenu();
+      expect(coachRow()!.getAttribute("aria-checked")).toBe("false");
+    });
+
+    it("coaches a new account's first plays, and the switch reads on", () => {
+      signIn(NEWCOMER_ROUNDS - 1);
+      render(firstFollow());
+      expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards (lit up), then Play");
+      openMenu();
+      expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
+      act(() => root.unmount());
+      root = createRoot(host);
+      localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
+      render(firstFollow());
+      expect(cue()).toBeNull();
+    });
+
+    it("stops coaching when the account's count arrives mid-turn", () => {
+      signIn(0);
+      render(firstFollow());
+      expect(cue()).not.toBeNull();
+      signIn(NEWCOMER_ROUNDS);
+      expect(cue()).toBeNull();
+    });
+
+    it("leaves it to the browser when the server sends no count", () => {
+      signIn(null);
+      render(firstFollow());
+      expect(cue()).not.toBeNull();
+    });
+
+    it("switched on, coaches a veteran account; switched off, a new one stays quiet", () => {
+      signIn(40);
+      localStorage.setItem(COACH_KEY, "on");
+      render(firstFollow());
+      expect(cue()).not.toBeNull();
+      act(() => root.unmount());
+      root = createRoot(host);
+      signIn(0);
+      localStorage.setItem(COACH_KEY, "off");
+      render(firstFollow());
+      expect(cue()).toBeNull();
+    });
+
+    it("flipping the menu row on a veteran account turns the coach on", () => {
+      signIn(40);
+      render(firstFollow());
+      openMenu();
+      act(() => coachRow()!.click());
+      expect(localStorage.getItem(COACH_KEY)).toBe("on");
+      expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
+      expect(cue()).not.toBeNull();
+    });
+  });
+
+  it("coaches a guest on a fresh store", () => {
+    act(() => auth.reset());
+    render(firstFollow());
+    expect(cue()).not.toBeNull();
   });
 
   it("switched on, coaches a player past the coach's plays", () => {

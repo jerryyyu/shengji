@@ -3315,11 +3315,19 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opponent.pos-left { left: calc(50% - var(--side-out) + var(--trick-cw) / 2); }
   .opponent.pos-right { left: calc(50% + var(--side-out) - var(--trick-cw) / 2); }
 
+  /* the name keeps a readable floor; the tags beside it give way first,
+     and only then does the name end in an ellipsis */
   .opp-name-text {
-    min-width: 0;
+    min-width: min(3em, 100%);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .opponent .opp-name > :is(.away-tag, .off-tag) {
+    flex-shrink: 100;
+    min-width: 0;
+    overflow: hidden;
   }
 
   /* a long name steps down once, to 12px, then ends in an ellipsis */
@@ -6918,21 +6926,8 @@ dialog.leave-sheet-backdrop {
 
 :where(.phone-landscape) .points-chip .points-label-long { display: none; }
 
-.bank-tag {
-  margin-left: 6px;
-  font-size: var(--fs-11);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--gold);
-  white-space: nowrap;
-}
-
-.opponent.on-turn .bank-tag { color: inherit; }
-
-.you-tagline .you-bank { text-transform: uppercase; font-size: var(--fs-10); letter-spacing: 0.08em; }
-
-/* the phone shows "👑 You bank" as a pill left of the actions, not a bare
-   crown, and also while others play */
+/* the phone shows your crown as a pill left of the actions, also while
+   others play */
 :where(.phone-landscape) .table-screen:not(.phase-bury) .you-row .you-tagline:has(.banker-crown) {
   display: flex;
   grid-column: 1;
@@ -6948,14 +6943,6 @@ dialog.leave-sheet-backdrop {
   background: rgba(8, 20, 14, 0.72);
   box-shadow: none;
   pointer-events: auto;
-}
-
-:where(.phone-landscape) .you-tagline .you-bank {
-  display: inline;
-  margin-left: 0;
-  text-transform: none;
-  font-size: var(--fs-12);
-  letter-spacing: 0;
 }
 
 .opp-name-text.left-tag {

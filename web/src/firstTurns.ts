@@ -1,8 +1,11 @@
 // The coach for a newcomer's first turns: what to tap and how many, the cards
 // that follow the lead, and a nudge when the turn sits idle. A newcomer is a
-// browser that has made fewer than COACH_PLAYS plays of its own; a play the
-// bot made for an absent player does not count.
+// browser that has made fewer than COACH_PLAYS plays of its own (a play the
+// bot made for an absent player does not count), and, when signed in, an
+// account that has sat in fewer than NEWCOMER_ROUNDS rounds anywhere, so a
+// fresh store on a new device does not coach a player the account knows.
 import { useEffect, useState } from "react";
+import { type AuthState, useAuth } from "./auth";
 import type { HandCard, Trump } from "./protocol";
 import { leadSuit } from "./followRules";
 import { type EffSuit, orderingFor } from "./offline/engine";
@@ -37,6 +40,19 @@ export function recordPlay(): number {
 
 export function isNewcomer(plays: number): boolean {
   return plays < COACH_PLAYS;
+}
+
+/** Rounds an account has sat in after which it is no newcomer. */
+export const NEWCOMER_ROUNDS = 3;
+
+/** Whether the account side lets auto coach: a signed-in account only while
+ *  it has sat in fewer than NEWCOMER_ROUNDS rounds; anyone else (a guest,
+ *  sign-in off, unreachable or not yet answered) leaves it to the browser's
+ *  count, as does a server that sends no round count. */
+export function accountNewcomer(auth: Pick<AuthState, "status" | "user">): boolean {
+  if (auth.status !== "in" || auth.user === null) return true;
+  const rounds = auth.user.rounds_played;
+  return rounds === null || rounds === undefined || rounds < NEWCOMER_ROUNDS;
 }
 
 /** The player's coach switch: "on" coaches every turn, "off" never, and
@@ -78,9 +94,15 @@ export function forgetSessionCoach(): void {
   sessionSetting = null;
 }
 
-/** Whether your turns get the coach, given the switch and your plays. */
-export function coachShows(setting: CoachSetting, plays: number): boolean {
-  return setting === "auto" ? isNewcomer(plays) : setting === "on";
+/** Whether your turns get the coach, given the switch, your plays here and
+ *  whether the account is new (`accountNewcomer`); "on" and "off" win. */
+export function coachShows(setting: CoachSetting, plays: number, newAccount = true): boolean {
+  return setting === "auto" ? newAccount && isNewcomer(plays) : setting === "on";
+}
+
+/** Whether the signed-in account (or the guest) still counts as new. */
+export function useAccountNewcomer(): boolean {
+  return accountNewcomer(useAuth());
 }
 
 /** The live coach switch, shared by the table and the menu row that flips it. */
@@ -92,7 +114,7 @@ export function useCoachSetting(): CoachSetting {
 
 /** Whether the coach is on now, and a flip that pins it the other way. */
 export function useCoach(): [boolean, () => void] {
-  const on = coachShows(useCoachSetting(), playsMade());
+  const on = coachShows(useCoachSetting(), playsMade(), useAccountNewcomer());
   return [on, () => setCoachSetting(on ? "off" : "on")];
 }
 

@@ -29,9 +29,9 @@ describe("table copy", () => {
     expect(pointsLabel({ ...base, banker: 3 })).toBe("Them");
   });
 
-  it("says who banks in words", () => {
-    expect(bankerText(p(1, "Me"), 1)).toBe("You bank");
-    expect(bankerText(p(3, "Sam"), 1)).toBe("Sam banks");
+  it("names the banker in words for the crown's label", () => {
+    expect(bankerText(p(1, "Me"), 1)).toBe("You, banker");
+    expect(bankerText(p(3, "Sam"), 1)).toBe("Sam, banker");
   });
 
   it("explains declaring by whether the banker is already fixed", () => {

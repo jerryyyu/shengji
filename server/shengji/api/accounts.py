@@ -756,6 +756,21 @@ class Store:
                 (to_round, game_id, user_id, seat))
             return cur.rowcount
 
+    def rounds_played(self, user_id: int) -> int:
+        """Rounds the account has sat in: its saved-game rounds (each link's
+        interval, an open one up to the game's last round started, hidden
+        games included), or its rated rounds when those are more, since a
+        purged game drops its links but not the rating count."""
+        with closing(self._open()) as conn:
+            rated = conn.execute("SELECT rated_rounds FROM users WHERE id = ?",
+                                 (user_id,)).fetchone()
+            linked = conn.execute(
+                """SELECT COALESCE(SUM(MAX(0, MIN(COALESCE(p.to_round, g.last_round), g.last_round)
+                                           - MAX(1, p.from_round) + 1)), 0) AS n
+                   FROM game_players p JOIN games g ON g.id = p.game_id
+                   WHERE p.user_id = ?""", (user_id,)).fetchone()
+        return max(int(rated["rated_rounds"]) if rated else 0, int(linked["n"]))
+
     def record_round_start(self, game_id: str, round_no: int) -> None:
         with closing(self._open()) as conn:
             conn.execute("UPDATE games SET last_round = MAX(last_round, ?) WHERE id = ?",
@@ -1179,12 +1194,19 @@ def effective_name(row: Mapping[str, Any]) -> str:
     return row.get("display_name") or first_name(row.get("name"))
 
 
-def public_user(row: Mapping[str, Any]) -> dict:
+def public_user(row: Mapping[str, Any], rounds_played: int = 0) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
-    (null when none) and ``name_shown``, the effective name."""
+    (null when none), ``name_shown``, the effective name, and
+    ``rounds_played`` (``Store.rounds_played``), which tells the client
+    whether the account is still new."""
     return {"name": row.get("name") or "", "email": row.get("email") or "",
             "picture": row.get("picture"), "display_name": row.get("display_name"),
-            "name_shown": effective_name(row)}
+            "name_shown": effective_name(row), "rounds_played": int(rounds_played)}
+
+
+async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
+    """``public_user`` with the account's rounds played read off the loop."""
+    return public_user(row, await store.run(store.rounds_played, int(row["id"])))
 
 
 def _cookie_secure(request: Request) -> bool:
@@ -1223,7 +1245,7 @@ async def auth_google(body: GoogleLogin, request: Request, response: Response) -
     user = await STORE.run(STORE.upsert_user, claims)
     token = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, token)
-    return public_user(user)
+    return await account_payload(STORE, user)
 
 
 @router.get("/me")
@@ -1231,7 +1253,7 @@ async def me(request: Request) -> dict:
     user = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
     if user is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
-    return public_user(user)
+    return await account_payload(STORE, user)
 
 
 @router.patch("/me")
@@ -1259,7 +1281,7 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
             hook(int(updated["id"]), shown)
         except Exception:           # noqa: BLE001 - the rename is stored either way
             log.exception("account-rename hook failed")
-    return public_user(updated)
+    return await account_payload(STORE, updated)
 
 
 # Called on the event loop with the id and the new effective name, after the

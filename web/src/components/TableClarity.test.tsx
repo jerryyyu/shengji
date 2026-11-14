@@ -76,14 +76,21 @@ describe("the HUD says who attacks and marks your team", () => {
     view.unmount();
   });
 
-  it("says in words who banks: You bank, Sam banks", () => {
+  it("marks the banker with the crown alone, named for screen readers: You, banker; Sam, banker", () => {
     const mine = render(<Table state={withBanker(makeState({ turn: 0, hand: hand(["S3"]) }), 0)} />);
-    expect(mine.host.querySelector(".you-tagline .you-bank")!.textContent).toBe("You bank");
+    const tagline = mine.host.querySelector(".you-tagline")!;
+    expect(tagline.querySelector(".banker-crown")!.getAttribute("aria-label")).toBe("You, banker");
+    expect(tagline.querySelector(".banker-crown")!.getAttribute("role")).toBe("img");
+    expect(tagline.textContent).not.toMatch(/bank/i);
     mine.unmount();
     const partner = render(<Table state={withBanker(makeState(), 2)} />);
     const pill = [...partner.host.querySelectorAll(".opponent")].find((o) => o.textContent?.includes("Sam"))!;
-    expect(pill.querySelector(".bank-tag")!.textContent).toBe("banks");
-    expect(pill.querySelector(".opp-name")!.textContent).toContain("Sam");
+    const name = pill.querySelector(".opp-name")!;
+    expect(name.querySelector(".opp-name-text")!.textContent).toBe("Sam");
+    expect(name.querySelector(".banker-crown")!.textContent).toBe("👑");
+    expect(name.querySelector(".banker-crown")!.getAttribute("aria-label")).toBe("Sam, banker");
+    for (const o of partner.host.querySelectorAll(".opponent")) expect(o.textContent).not.toMatch(/banks?\b/i);
+    expect(partner.host.querySelectorAll(".opponent .banker-crown")).toHaveLength(1);
     partner.unmount();
   });
 });

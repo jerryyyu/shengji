@@ -2048,22 +2048,29 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 /* The one timer ring: it drains from full over the whole window, with the
    seconds left in its centre, and turns red for the last ten. The band is a
-   masked conic gradient, so the ring reads on felt, buttons and pills alike. */
+   masked conic gradient, so the ring reads on felt, buttons and pills alike.
+   A size sets only --size and --band: the font follows from them, so the
+   widest number ("60") always clears the band by 2px with room to spare.
+   The 1.4 is above the widest bold tabular pair's width per em (1.32 in SF)
+   and its line box (1.18 em); timerRingCss.test.ts checks every size. The
+   font is in px, not the text-size scale, because the ring does not grow
+   with it. */
 .timer-ring {
   --ring: var(--gold);
   --track: rgba(255, 255, 255, 0.18);
+  --size: 44px;
   --band: 4px;
   position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: var(--size);
+  height: var(--size);
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.35);
   color: var(--ring);
-  font-size: var(--fs-16);
+  font-size: calc((var(--size) - 4 * var(--band) - 4px) / 1.4);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -2089,12 +2096,10 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 /* someone else's clock: a thin ring on their seat pill */
 .timer-ring.thin {
-  --band: 2px;
-  width: 22px;
-  height: 22px;
+  --size: 26px;
+  --band: 1.5px;
+  margin-block: -4px;
   background: none;
-  font-size: var(--fs-10);
-  font-weight: 800;
 }
 
 .action-bar.clock-low .btn.primary,
@@ -2103,12 +2108,10 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 .btn.big .timer-ring {
-  --band: 3px;
-  width: 28px;
-  height: 28px;
-  margin: -4px 10px -4px -8px;
+  --size: 32px;
+  --band: 2.5px;
+  margin: -6px 10px -6px -8px;
   vertical-align: middle;
-  font-size: var(--fs-12);
 }
 
 /* you are away: the bot plays every decision until you are back */
@@ -6074,9 +6077,7 @@ button[role="switch"]:active .ios-switch {
 }
 .q-bar-time { flex: none; display: inline-flex; font-size: var(--fs-17); color: #fff; }
 /* the bots' countdown on the strip, pill and chip: the table ring, small */
-.q-bar .timer-ring, .q-pill .timer-ring, .q-chip .timer-ring {
-  --band: 3px; width: 32px; height: 32px; font-size: var(--fs-13);
-}
+.q-bar .timer-ring, .q-pill .timer-ring, .q-chip .timer-ring { --size: 32px; --band: 2.5px; }
 .q-bar.warn, .q-chip.warn { background: #3f3415; border-color: #9a6f12; }
 .q-wait {
   appearance: none; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
@@ -6174,9 +6175,13 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* the offer's clock on Join */
-.tp-primary .timer-ring {
-  --band: 3px; width: 30px; height: 30px; margin: -4px 10px -4px 0; vertical-align: middle; font-size: var(--fs-13);
-}
+.tp-primary .timer-ring { --size: 32px; --band: 2.5px; margin: -6px 10px -6px 0; vertical-align: middle; }
+/* Join never squeezes its ring over its word: in a narrow column (a sideways
+   phone) Keep looking takes the next line instead; on one line Join keeps
+   most of the room */
+.tp-acts:has(.tp-primary .timer-ring) { flex-wrap: wrap; }
+.tp-acts:has(.tp-primary .timer-ring) .tp-primary { flex: 3 0 auto; }
+.tp-acts:has(.tp-primary .timer-ring) .tp-secondary { flex: 1 0 auto; }
 .tp-primary:disabled { background: #2a2f38; border-color: #3a4250; color: #8a929f; cursor: default; }
 .tp-secondary {
   appearance: none; flex: none; min-height: 52px; padding: 0 14px; border-radius: 14px;

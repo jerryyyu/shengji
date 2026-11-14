@@ -1,11 +1,16 @@
 import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import LeaveButton from "./LeaveButton";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import HudMenu from "./HudMenu";
 
 const sent: unknown[] = [];
-vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); } } }));
+vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
+
+beforeAll(() => {
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
+});
 
 let root: ReturnType<typeof createRoot>;
 let host: HTMLDivElement;
@@ -33,7 +38,11 @@ afterEach(() => {
   }
 });
 
-const pill = () => host.querySelector<HTMLButtonElement>(".leave-btn")!;
+/** Opens the ⋯ menu and returns its Leave game row. */
+const pill = () => {
+  act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+  return host.querySelector<HTMLButtonElement>(".hud-menu-row.leave")!;
+};
 const alert = () => host.querySelector<HTMLDialogElement>("[role='alertdialog']");
 const keep = () => alert()!.querySelector<HTMLButtonElement>(".leave-sheet-stay")!;
 
@@ -51,9 +60,9 @@ function press(el: HTMLElement, key: string) {
   });
 }
 
-describe("the HUD Leave pill in a ranked round in play", () => {
+describe("Leave game in a ranked round in play", () => {
   it("still warns what leaving does to the result", () => {
-    act(() => root.render(<LeaveButton ranked practice={false} />));
+    act(() => root.render(<HudMenu room="ABCD" ranked offline={false} />));
     tap(pill());
     expect(alert()!.querySelector("h2")!.textContent).toBe("Leave the game?");
     expect(alert()!.querySelector("p")!.textContent)
@@ -65,7 +74,7 @@ describe("the HUD Leave pill in a ranked round in play", () => {
 describe("the leave sheet's first focus", () => {
   it("opened by a tap: focus is inside the dialog, with no focus ring", () => {
     const focus = vi.spyOn(HTMLElement.prototype, "focus");
-    act(() => root.render(<LeaveButton ranked practice={false} />));
+    act(() => root.render(<HudMenu room="ABCD" ranked offline={false} />));
     tap(pill());
     expect(document.activeElement).toBe(keep());
     expect(alert()!.contains(document.activeElement)).toBe(true);
@@ -74,7 +83,7 @@ describe("the leave sheet's first focus", () => {
   });
 
   it("a key pressed inside a tapped-open alert brings the ring back", () => {
-    act(() => root.render(<LeaveButton ranked practice={false} />));
+    act(() => root.render(<HudMenu room="ABCD" ranked offline={false} />));
     tap(pill());
     act(() => { keep().dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })); });
     expect(alert()!.hasAttribute("data-pointer-open")).toBe(false);
@@ -82,7 +91,7 @@ describe("the leave sheet's first focus", () => {
 
   it("opened from the keyboard: the ring shows from the start", () => {
     const focus = vi.spyOn(HTMLElement.prototype, "focus");
-    act(() => root.render(<LeaveButton ranked practice={false} />));
+    act(() => root.render(<HudMenu room="ABCD" ranked offline={false} />));
     press(pill(), "Enter");
     expect(document.activeElement).toBe(keep());
     expect(focus).toHaveBeenCalledWith({ focusVisible: true });

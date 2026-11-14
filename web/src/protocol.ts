@@ -243,6 +243,9 @@ export interface GameState {
   ranked?: boolean;
   /** This viewer sits as a guest: their rounds are not ranked. */
   guest?: boolean;
+  /** The seat holding the table's opener controls: only it switches Allow
+   *  joiners. Passes to the next person round the table when it leaves. */
+  opener?: number;
   /** Tables that take joiners, ranked or casual: whether newcomers may be
    *  offered a bot seat. */
   allow_joiners?: boolean;

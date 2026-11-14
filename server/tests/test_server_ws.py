@@ -3022,6 +3022,37 @@ def test_one_of_two_humans_leaving_leaves_the_game_running(client):
         assert seat["reserved_secs"] is not None and srv._reserved(room, want)
 
 
+def test_allow_joiners_in_game_is_the_openers_and_passes_when_the_opener_leaves(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        assert srv._takes_joiners(room)
+        opener = room.host
+        assert room.seats[opener].name and not room.seats[opener].is_bot
+        with client.websocket_connect("/ws") as b:
+            want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            st = _drain(b, "state", tries=60)
+            # every seat's state names the opener's seat
+            assert st["opener"] == opener and srv.state_for(room, opener)["opener"] == opener
+            # a person who is not the opener is refused, and nothing changes
+            b.send_json({"type": "allow_joiners", "on": False})
+            err = _drain(b, "error", tries=200)
+            assert err["code"] == "not_opener"
+            assert room.allow_joiners is True
+            # the opener's switch works
+            a.send_json({"type": "allow_joiners", "on": False})
+            _wait_for(lambda: room.allow_joiners is False)
+            # the opener leaves mid-game: the controls pass to the next person
+            a.send_json({"type": "leave_room"})
+            _drain(a, "left", tries=200)
+            _wait_for(lambda: room.host == want)
+            assert srv.state_for(room, want)["opener"] == want
+            b.send_json({"type": "allow_joiners", "on": True})
+            _wait_for(lambda: room.allow_joiners is True)
+
+
 def test_only_the_served_pace_slows_an_empty_room(monkeypatch):
     """A caller's explicit minimum (tests and harnesses pass 0) is never
     stretched by the empty-room wait; only the served default is."""

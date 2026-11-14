@@ -1,28 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { GameState, Notice, Phase } from "../protocol";
+import type { GameState, Notice } from "../protocol";
 import { RANKS } from "../protocol";
 import { DUR, prefersReducedMotion } from "../motion";
 import { useCountUp } from "../useCountUp";
 import { SUIT_SYMBOL, shortLabel } from "./Card";
-import MuteButton from "./MuteButton";
-import LeaveButton from "./LeaveButton";
 import HudMenu from "./HudMenu";
-import { useCoach } from "../firstTurns";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
-import { codeLink } from "../codes";
 import { OFFLINE } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam, pointsLabel } from "../tableCopy";
-
-const PHASE_LABEL: Record<Phase, string> = {
-  deal: "Dealing",
-  declare: "Declaring trump",
-  bury: "Burying the kitty",
-  play: "Playing",
-  round_end: "Round over",
-  game_over: "Game over",
-};
 
 function TrumpChip({ state }: { state: GameState }) {
   const trump = state.trump;
@@ -260,36 +247,12 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
   const us = myTeam(state);
   const them = (1 - us) as 0 | 1;
   const attackers = attackingTeam(state);
-  // Tapping the room chip mid-game copies a full invite link, so you can
-  // pull someone into a game already in progress — they land on a bot's
-  // seat.
-  const [copied, setCopied] = useState(false);
-  const copyInvite = () => {
-    const url = codeLink(state.room);
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1400);
-      })
-      .catch(() => {
-        /* clipboard blocked (non-https / permissions); leave the chip as-is */
-      });
-  };
 
   return (
     <div className="hud">
       <div className="hud-bar" ref={barRef}>
+        {/* game state only: the table's code, the settings and Leave live in the ⋯ menu */}
         <div className="hud-group">
-          <button
-            className={"chip room-chip" + (copied ? " copied" : "")}
-            onClick={copyInvite}
-            title="Copy invite link — share this to let someone join this game"
-            data-tip="Copy invite link"
-          >
-            {copied ? "Link copied" : state.room}
-          </button>
-          <span className="chip phase-chip">{PHASE_LABEL[state.phase]}</span>
           {state.experimental_policy === "w32" ? (
             <span className="chip experimental-marker">Experimental W32</span>
           ) : null}
@@ -328,17 +291,10 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
             </span>
           </span>
           <ModeChip mode={mode === "ranked" && guest ? null : mode} />
-          {/* a phone shows the kitty's count only while it is being buried */}
-          <span className={`chip kitty-chip${state.phase === "bury" ? " burying" : ""}`} title="Kitty (face-down)">
-            <span className="kitty-icon" />
-            {state.kitty_count}
-          </span>
-          <MuteButton />
-          <CoachChip />
           {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table */}
-          <LeaveButton ranked={mode === "ranked"} guest={guest} practice={practice} />
           <HudMenu room={state.room} ranked={mode === "ranked"} guest={guest} offline={practice}
-                   allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined} />
+                   allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined}
+                   opener={state.opener === state.you} />
         </div>
       </div>
       {/* the notice belongs to a trick of this round: it closes when the round ends */}
@@ -353,16 +309,5 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
         </div>
       ) : null}
     </div>
-  );
-}
-
-/** Desktop's coach switch, beside Sound; phones flip it from the `…` menu. */
-function CoachChip() {
-  const [on, toggle] = useCoach();
-  return (
-    <button className="coach-chip" aria-pressed={on} onClick={toggle}
-            title={on ? "Turn the coach off" : "Turn the coach on"}>
-      Coach <span className="coach-chip-state">{on ? "on" : "off"}</span>
-    </button>
   );
 }

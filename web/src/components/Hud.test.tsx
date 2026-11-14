@@ -334,13 +334,17 @@ it("says plainly that no trump is declared yet, with no placeholder mark", () =>
 });
 
 describe("leaving a ranked table", () => {
+  const leave = (host: HTMLElement) => {
+    act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+    act(() => host.querySelector<HTMLButtonElement>(".hud-menu-row.leave")!.click());
+  };
   it("warns a signed-in player about the result but gives a guest the casual warning", () => {
     const signedIn = render(makeState({ matched: true }));
-    act(() => signedIn.host.querySelector<HTMLButtonElement>(".leave-btn")!.click());
+    leave(signedIn.host);
     expect(signedIn.host.querySelector("[role='alertdialog'] p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
     signedIn.unmount();
     const guest = render(makeState({ matched: true, guest: true }));
-    act(() => guest.host.querySelector<HTMLButtonElement>(".leave-btn")!.click());
+    leave(guest.host);
     // a guest sees no ranked words
     expect(guest.host.querySelector("[role='alertdialog'] p")!.textContent)
       .toBe("A bot takes your seat and the others keep playing.");
@@ -349,22 +353,52 @@ describe("leaving a ranked table", () => {
   });
 });
 
-describe("the kitty's count", () => {
-  it("is marked for the phone's header only while the kitty is being buried", () => {
-    const view = render(makeState({ phase: "bury" }));
-    const chip = () => view.host.querySelector(".kitty-chip")!;
-    expect(chip().textContent).toBe("8");
-    expect(chip().classList.contains("burying")).toBe(true);
-    view.rerender(makeState({ phase: "play" }));
-    expect(chip().classList.contains("burying")).toBe(false);
+describe("the header holds the game's state only", () => {
+  it("has no mute, Coach, Leave, code, phase or kitty chip: those live in ⋯", () => {
+    const view = render(makeState({ matched: true, phase: "bury", allow_joiners: true }));
+    const bar = view.host.querySelector(".hud-bar")!;
+    for (const gone of [".mute-btn", ".coach-chip", ".leave-btn", ".room-chip", ".phase-chip", ".kitty-chip"]) {
+      expect(bar.querySelector(gone)).toBeNull();
+    }
+    const buttons = [...bar.querySelectorAll("button")];
+    expect(buttons.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["More"]);
+    expect(bar.textContent).not.toContain("TEST");
+    expect(bar.textContent).not.toMatch(/Leave|Coach|Burying/);
+    // the state that stays: levels, trump, points, the mode chip
+    expect(bar.querySelectorAll(".level-chip")).toHaveLength(2);
+    expect(bar.querySelector(".trump-chip")).not.toBeNull();
+    expect(bar.querySelector(".points-chip")).not.toBeNull();
+    expect(bar.querySelector(".mode-chip")!.textContent).toBe("Ranked");
     view.unmount();
   });
 
-  it("the phone's CSS hides it except during the bury", async () => {
+  it("the ⋯ menu carries the code, the settings and Leave game", () => {
+    const view = render(makeState({ matched: true, allow_joiners: true, opener: 0 }));
+    act(() => view.host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+    const menu = view.host.querySelector(".hud-menu")!;
+    expect(menu.querySelector(".hud-menu-code-text")!.textContent).toBe("TEST");
+    expect([...menu.querySelectorAll(".hud-menu-row")].map((r) => r.textContent))
+      .toEqual(["Invite link", "Allow joiners", "Coach", "Sound", "How to play›", "Leave game"]);
+    view.unmount();
+  });
+
+  it("Allow joiners is in the menu only for the table's opener", () => {
+    const rows = (opener: number) => {
+      const view = render(makeState({ matched: true, allow_joiners: true, opener }));
+      act(() => view.host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+      const text = [...view.host.querySelectorAll(".hud-menu-row")].map((r) => r.textContent);
+      view.unmount();
+      return text;
+    };
+    expect(rows(0)).toContain("Allow joiners");
+    expect(rows(1)).not.toContain("Allow joiners");
+  });
+
+  it("the stylesheet keeps no rules for the chips that left the bar", async () => {
     const { readFileSync } = await import("node:fs");
     const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
-    const phone = css.slice(css.indexOf(":where(.phone-landscape) {"));
-    expect(phone).toMatch(/\.kitty-chip,\s*\n\s*\.hud-bar \.mute-btn/);
-    expect(phone).toMatch(/\.hud-bar \.kitty-chip\.burying \{\s*\n\s*display: inline-flex;/);
+    for (const gone of [".mute-btn", ".coach-chip", "button.room-chip", ".phase-chip", ".kitty-chip", ".hud-bar .leave-btn"]) {
+      expect(css).not.toContain(gone);
+    }
   });
 });

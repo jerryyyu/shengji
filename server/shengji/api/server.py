@@ -923,6 +923,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "message": rnd.message,
         "notice": rnd.notice,
         **({"matched": True} if room.matched else {}),
+        # the seat holding the opener's controls (Allow joiners)
+        "opener": room.host,
         **({"allow_joiners": room.allow_joiners, "joining": _join_notices(room)}
            if _takes_joiners(room) else {}),
         **({"ranked": True} if room.ranked else {}),
@@ -934,6 +936,24 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "joined_round": (me.joined_round == game.round_no and rnd.phase != "round_end"
                          and ratings.ranked(room)),
     }
+
+
+class NotOpener(IllegalPlay):
+    """A setting only the table's opener may change."""
+    code = "not_opener"
+
+
+def _pass_opener_mid_game(room: Room, gone: int) -> None:
+    """The opener's controls pass to the next person round the table when
+    the opener leaves a game in progress, whether the seat stays theirs for a
+    bot to cover or goes back to a bot; with nobody left they stay."""
+    if gone != room.host:
+        return
+    for k in range(1, 4):
+        sd = room.seats[(gone + k) % 4]
+        if sd is not None and not sd.is_bot and not sd.left_by_choice:
+            room.host = (gone + k) % 4
+            return
 
 
 def _takes_joiners(room: Room) -> bool:
@@ -2387,11 +2407,12 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "remove_player":
         _remove_player(room, seat, msg)
     elif t == "allow_joiners":
-        # Any person at a table that takes joiners, ranked or casual, may
-        # switch it either way, a created room's people from its lobby on; a
-        # Join already waiting for its trick goes ahead.
+        # The table's opener switches it either way, ranked or casual, from
+        # the lobby on; a Join already waiting for its trick goes ahead.
         if not _takes_joiners(room) or room.seats[seat].is_bot:
             raise IllegalPlay("This table takes no joiners.")
+        if seat != room.host:
+            raise NotOpener("Only the table's opener sets Allow joiners.")
         room.allow_joiners = msg.get("on") is True
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
@@ -3068,8 +3089,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # a deliberate Leave: the bot covers the seat now,
                         # with no disconnect grace to wait out
                         me.left_by_choice = True
+                        _pass_opener_mid_game(room, room.seats.index(me))
                     if joined_leave:
-                        _revert_to_bot(room, room.seats.index(me))
+                        gone = room.seats.index(me)
+                        _revert_to_bot(room, gone)
+                        # a newcomer holding the opener's controls hands them on
+                        _pass_opener_mid_game(room, gone)
                         _joined_leave_penalty(room, *leaver)
                         kick_bots(room)
                     if room.game is None:
@@ -3138,7 +3163,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 except IllegalPlay as e:
                     if t == "play":
                         _log_play_refused(room, seat_idx, msg, e)
-                    enqueue(me, {"type": "error", "message": str(e)})
+                    code = getattr(e, "code", None)
+                    enqueue(me, {"type": "error", **({"code": code} if code else {}),
+                                 "message": str(e)})
                 except Exception:  # malformed input must not kill the socket
                     enqueue(me, {"type": "error", "message": "Invalid request."})
     except WebSocketDisconnect:

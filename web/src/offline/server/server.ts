@@ -330,6 +330,7 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
       : null,
     message: rnd.message,
     notice: rnd.notice,
+    opener: room.host,
     allow_joiners: room.allowJoiners,
     // a solo table never seats an open-table joiner
     joining: [],
@@ -763,6 +764,7 @@ export class LocalServer {
       }
       room.startLevel = level;
     } else if (t === "allow_joiners") {
+      if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets Allow joiners.");
       room.allowJoiners = msg.on === true;
     } else if (t === "lobby_ready" && msg.on === false) {
       if (room.game) throw new IllegalPlay("Game already started.");

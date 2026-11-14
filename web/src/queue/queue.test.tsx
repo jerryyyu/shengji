@@ -1286,11 +1286,28 @@ describe("a code lookup that is interrupted or refused", () => {
     await settle();
     const peeks = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "peek_room");
     expect(peeks()).toHaveLength(1);
+    say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [] });
+    await settle();
     reconnect();
     await settle();
     expect(lookups()).toHaveLength(1);
     expect(peeks()).toHaveLength(1);
     expect(sentTypes()).not.toContain("join_room");
+  });
+
+  it("an open room panel whose peek died with the socket asks again, and Join waits for it", async () => {
+    signedIn = false;
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    await renderApp();
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    reconnect();
+    await settle();
+    expect(ws().sent).toEqual([{ type: "peek_room", room: "WXYZ" }]);
+    expect(button("Join", q(".tp-join-code")!)?.disabled).toBe(true);
+    say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [] });
+    await settle();
+    expect(button("Join", q(".tp-join-code")!)?.disabled).toBe(false);
   });
 
   it("a rate-limited Play lookup says so under the Play box", async () => {

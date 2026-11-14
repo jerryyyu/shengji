@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { RoomSeats } from "../protocol";
+import type { TableKind } from "../codeJoin";
 import { hostName, joinSeat, takeoverSeats } from "../joinSeats";
 import type { DroppedSeat } from "../joinSeats";
 import { useInlineQueue } from "../queue/QueueBar";
@@ -73,10 +74,11 @@ function roomSeats(peek: RoomSeats, you: number, busy: boolean, ask: (s: Dropped
  *  room the code box cannot seat you at at once) shows its table, Join and
  *  Not now. A full table shows the same panel with Join disabled. A seat a
  *  dropped player left is taken only by tapping it and confirming. */
-export default function JoinPanel({ code, peek, full, busy, onJoin, onTake, onCancel }: {
+export default function JoinPanel({ code, kind, peek, full, busy, onJoin, onTake, onCancel }: {
   code: string;
-  /** The room's seats, from peek_room; null for a Play table, whose seats
-   *  the server shows once you sit. */
+  kind: TableKind;
+  /** A room's seats, from peek_room (null until it answers); always null
+   *  for a Play table, whose seats the server shows once you sit. */
   peek: RoomSeats | null;
   full: boolean;
   busy: boolean;
@@ -92,7 +94,9 @@ export default function JoinPanel({ code, peek, full, busy, onJoin, onTake, onCa
   const you = plain ?? (peek ? takeoverSeats(peek)[0]?.seat : undefined) ?? 0;
   const seats = peek ? roomSeats(peek, you, busy, setAsking) : null;
   const who = peek ? hostName(peek) : null;
-  const canJoin = !full && !busy && (peek === null || plain !== null);
+  // a room's Join waits for its seats and needs a plain one open; a Play
+  // table has no peek, and the server answers table_full when it is full
+  const canJoin = !full && !busy && (kind === "table" || (peek !== null && plain !== null));
   return (
     <section className={`tp tp-join-code${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
       <h2 className="tp-title" id={titleId}>Join {who ? shortName(who) : code}</h2>

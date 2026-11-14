@@ -637,6 +637,13 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", seat: 1 });
   });
 
+  it("a room link waits for its peek before it can send a plain Join", async () => {
+    await viaLink();
+    const join = button("Join", q(".tp-join-code")!);
+    expect(join?.disabled).toBe(true);
+    expect(sentOf("join_room")).toHaveLength(0);
+  });
+
   it("a choose_seat answer looks again and offers the dropped seats; it never picks one", async () => {
     await renderApp();
     joinBox("WXYZ");
@@ -707,6 +714,38 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     click(button("Not now", q(".tp-join-code")!));
     expect(q(".tp-join-code")).toBeNull();
     expect(q("button.play-main")).not.toBeNull();
+    expect(sentOf("join_room")).toHaveLength(0);
+  });
+
+  it("a cancelled peek's late answer goes to it, not to the next ask for the same room", async () => {
+    await viaLink();
+    click(button("Not now", q(".tp-join-code")!));
+    // the code box asks for the same room before the panel's answer lands
+    joinBox("WXYZ");
+    expect(sentOf("peek_room")).toHaveLength(2);
+    const away = { type: "room_seats", room: "WXYZ", in_game: true, seats: [
+      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 1, name: "Alice", is_bot: false, connected: false, team: 1, claimable: true, controller: "bot_cover", reserved_secs: null },
+      { seat: 2, name: "Sam", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 3, name: "Li", is_bot: false, connected: true, team: 1, claimable: false, controller: "human", reserved_secs: null }] };
+    say(away);   // the cancelled panel's answer: nothing
+    await settle();
+    expect(q(".tp-join-code")).toBeNull();
+    say(away);   // the box's answer: only away seats, so the panel asks
+    await settle();
+    expect(sentOf("join_room")).toHaveLength(0);
+    expect(button(/Alice \(away\)$/u, q(".tp-join-code")!)).toBeDefined();
+  });
+
+  it("Not now ignores the room peek that was already in flight", async () => {
+    await viaLink();
+    click(button("Not now", q(".tp-join-code")!));
+    say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [
+      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false,
+        controller: "human", reserved_secs: null },
+    ] });
+    await settle();
+    expect(q(".tp-join-code")).toBeNull();
     expect(sentOf("join_room")).toHaveLength(0);
   });
 });

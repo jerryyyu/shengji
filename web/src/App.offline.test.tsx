@@ -297,6 +297,26 @@ it("Leave on the offline table before Start puts online Play back in place", asy
   expectNoReload();
 });
 
+it("cancelling Start before its local room reply cannot fill a later online room with bots", async () => {
+  await mountOnline();
+  act(() => playOfflineLink()!.click());
+  await until(() => panel() !== null && button("Start")?.disabled === false);
+  // The local server answers create_room on a timer. Leave while that reply
+  // is still pending, then return to the remote transport.
+  act(() => button("Start")!.click());
+  act(() => button("Leave")!.click());
+  await until(() => FakeWS.all.length === 2);
+  const remote = latestWS();
+  act(() => remote.open());
+  await until(() => host.querySelector(".play-offline") === null);
+
+  act(() => remote.onmessage?.({ data: JSON.stringify({
+    type: "room", room: "WXYZ", you: 0, host: 0, start_level: "2", ready: [],
+    players: [{ seat: 0, name: "Cheerful Tractor", is_bot: false, connected: true }],
+  }) }));
+  expect(remote.sent.filter((m) => m.type === "add_bot" || m.type === "start_game")).toEqual([]);
+});
+
 it("a page opened offline in a browser goes online in place once its table is left", async () => {
   await mount();
   await until(() => panel() !== null);

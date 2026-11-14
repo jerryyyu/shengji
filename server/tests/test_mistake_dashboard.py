@@ -249,6 +249,32 @@ def test_missing_controller_flag_excludes_the_round(tmp_path):
     assert f"- {EXCLUDED_UNKNOWN}: 1" in text
 
 
+@pytest.mark.parametrize("kind", CONTROLLED)
+@pytest.mark.parametrize("invalid", [0, 1, 0.0, 1.0, "true", [], {}])
+def test_non_boolean_controller_is_excluded_in_emitted_report(tmp_path, kind, invalid):
+    rounds = _rounds(_raw_prod())
+    rnd = next(r for r in rounds if any(o["e"] == kind for o in r)
+               and r[0]["room"] in {"ROOM1", "ROOM2", "ROOM4", "ROOM6"})
+    room = rnd[0]["room"]
+    next(o for o in rnd if o["e"] == kind)["bot"] = invalid
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["checks"][EXCLUDED_UNKNOWN] == 1
+    assert res["rounds"] == 3
+    assert room not in {r["game"] for r in res["per_round"]}
+    assert f"- {EXCLUDED_UNKNOWN}: 1" in text
+
+
+@pytest.mark.parametrize("invalid", [True, 1.0, [], {}])
+def test_invalid_controller_seat_is_excluded_in_emitted_report(tmp_path, invalid):
+    rounds = _rounds(_raw_prod())
+    next(o for o in rounds[0] if o["e"] == "play")["seat"] = invalid
+    res, text = _cli(tmp_path, [o for r in rounds for o in r])
+    assert res["checks"][EXCLUDED_SEATS] == 1
+    assert res["rounds"] == 3
+    assert "ROOM1" not in {r["game"] for r in res["per_round"]}
+    assert f"- {EXCLUDED_SEATS}: 1" in text
+
+
 def test_seat_map_outside_0_to_3_is_skipped_not_a_crash(tmp_path):
     rounds = _rounds(_raw_prod())
     start = rounds[0][0]
@@ -282,3 +308,36 @@ def test_parse_time_forms():
     assert md.parse_time("7d", now=1794528000.0) == 1794528000.0 - 7 * 86400
     assert md.parse_exact("off") is None
     assert md.parse_exact("cap=100") == dict(cap=100, k=7)
+
+
+@pytest.mark.parametrize('damage', ['partial', 'controller', 'replay'])
+@pytest.mark.parametrize('bad_first', [True, False])
+def test_overlapping_snapshots_keep_the_valid_round(tmp_path, damage, bad_first):
+    raw = _rounds(_raw_prod())[0]
+    bad = json.loads(json.dumps(raw))
+    if damage == 'partial':
+        bad = [o for o in bad if o['e'] != 'round_end']
+    elif damage == 'controller':
+        next(o for o in bad if o['e'] == 'play').pop('bot')
+    else:
+        trick = next(o for o in bad if o['e'] == 'trick')
+        trick['winner'] = (trick['winner'] + 1) % 4
+    valid = _write(tmp_path, raw, 'complete.jsonl')
+    damaged = _write(tmp_path, bad, 'older.jsonl')
+    baseline = md.run('prod', [valid])
+    js, out = tmp_path / 'overlap.json', tmp_path / 'overlap.md'
+    paths = [damaged, valid] if bad_first else [valid, damaged]
+    md.main(['--source', 'prod', '--input', *paths, '--json', str(js), '--out', str(out)])
+    result = json.loads(js.read_text())
+    assert result['rounds'] == baseline['rounds'] == 1
+    assert result['totals'] == baseline['totals']
+    assert result['per_round'] == baseline['per_round']
+    assert 'Mistake dashboard' in out.read_text()
+
+
+def test_two_complete_snapshots_count_one_round(tmp_path):
+    raw = _rounds(_raw_prod())[0]
+    paths = [_write(tmp_path, raw, name) for name in ('first.jsonl', 'second.jsonl')]
+    result = md.run('prod', paths)
+    assert result['rounds'] == 1
+    assert result['checks']['duplicate rounds'] == 1

@@ -66,3 +66,37 @@ it("returns focus to the launcher when chat closes", () => {
     expect(document.activeElement).toBe(launcher);
   } finally { launcher.remove(); }
 });
+
+it("scales and fades in and out, and does neither under Reduce Motion", () => {
+  vi.useFakeTimers();
+  const mm = window.matchMedia;
+  const had = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "animate");
+  Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, value: () => ({}) });
+  const setReduce = (on: boolean) => {
+    window.matchMedia = ((q: string) => ({ matches: on && q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+  };
+  const panel = () => host.querySelector<HTMLElement>(".chat-panel");
+  const show = (open: boolean) => act(() => root.render(<ChatPanel messages={[]} you={0} open={open} onClose={() => {}} />));
+  try {
+    setReduce(false);
+    show(false);
+    act(() => { vi.advanceTimersByTime(200); });
+    show(true);
+    expect(panel()!.classList.contains("pop-in")).toBe(true);
+    show(false);
+    expect(panel()!.classList.contains("pop-out")).toBe(true);
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(panel()).toBeNull();
+
+    setReduce(true);
+    show(true);
+    expect(panel()!.className).toBe("chat-panel");
+    show(false);
+    expect(panel()).toBeNull();
+  } finally {
+    window.matchMedia = mm;
+    if (had) Object.defineProperty(HTMLElement.prototype, "animate", had);
+    else Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    vi.useRealTimers();
+  }
+});

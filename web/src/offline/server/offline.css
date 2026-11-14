@@ -1,0 +1,9 @@
+/* Offline play: no chat to open. */
+.app.offline .chat-launch {
+  display: none;
+}
+
+/* no Chat in the header: the mode chip takes its slot */
+.app.offline .table-screen {
+  --chat-w: 0px;
+}

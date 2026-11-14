@@ -414,13 +414,10 @@ describe("your own table", () => {
     expect(ringSecs()).toBe("60");
   });
 
-  it("a table you skipped that still has a seat is one row away", async () => {
+  it("your own table has no row for a table you skipped: code, switches and chat only", async () => {
     await renderApp();
-    say(queued({ open_tables: 1 }));
-    click(button(/^1 table has a seat · View$/, panel()!));
-    expect(lastSent()).toEqual({ type: "open_table_show" });
     say(queued({ open_tables: 2 }));
-    expect(button(/^2 tables have a seat · View$/, panel()!)).toBeDefined();
+    expect(panel()!.textContent).not.toMatch(/table(s)? ha(s|ve) a seat|View/);
   });
 
   it("a Duo's table: the partner sits across; only the leader has the buttons", async () => {
@@ -814,6 +811,30 @@ describe("a shared table", () => {
     expect(lastSent()).toEqual({ type: "table_start" });
     expect(primary()?.disabled).toBe(true);
     expect(q(".tabbar")).not.toBeNull();
+  });
+
+  it("the opener gets Start now 30 s after the latest arrival; everyone else keeps Start", async () => {
+    await renderApp();
+    fakeClock();
+    const unlock = { start_now_at: nowSecs() + 30 };
+    say(atTable([seat("Jerry", { you: true }), seat("Alice", { since: nowSecs() }), null, null], unlock));
+    expect(words(primary()!)).toBe("Start");
+    tick(29_000);
+    expect(words(primary()!)).toBe("Start");
+    tick(1_500);
+    expect(words(primary()!)).toBe("Start now");
+    expect(primary()?.disabled).toBe(false);
+    click(primary());
+    expect(lastSent()).toEqual({ type: "table_start_now" });
+    expect(words(primary()!)).toBe("Starting…");
+    say({ type: "error", code: "too_soon", message: "Start now opens 30 seconds after the last person sits." });
+    // after your own Start, Start now still starts it at once
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null], unlock));
+    expect(words(primary()!)).toBe("Start now");
+    expect(primary()?.disabled).toBe(false);
+    // a joiner's button is Start, past the unlock too
+    say(atTable([seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1, ...unlock }, { opener: false }));
+    expect(words(primary()!)).toBe("Start");
   });
 
   it("after your Start the button waits for the others by name; a newcomer keeps your tick", async () => {
@@ -1353,14 +1374,17 @@ describe("open tables", () => {
     expect(panel()?.textContent).not.toMatch(/minute/);
   });
 
-  it("the title names the people staying, cut to ten characters; an away seat is open, not named", async () => {
+  it("the title names the people staying, cut to ten characters; an away seat is open, with no sub-line", async () => {
     await open();
     tell(queued({ offer: offer({ pick: 1, seats: [offerSeat("Mei", false, false), offerSeat("Bot 1", true, true),
                                                   offerSeat("Samantha-Rose", false, false), offerSeat("Li", false, true)] }),
                   bots_paused: true, bots_at: null }));
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Mei & Samantha-R…");
-    const away = [...panel()!.querySelectorAll(".tp-seat")].find((s) => s.textContent?.includes("away"));
+    // the away seat is an open seat by its name alone; only its label says whose it was
+    const away = [...panel()!.querySelectorAll(".tp-seat")].find((s) => s.getAttribute("aria-label")?.includes("away"));
     expect(away?.getAttribute("aria-label")).toBe("Open seat, your team, Li is away. Sit here");
+    expect(away?.textContent).toBe("+Open seat");
+    expect(away?.querySelector(".tp-seat-sub")).toBeNull();
     tell(queued({ offer: offer({ seats: [offerSeat("Mei", false, false), offerSeat("Sam", false, false),
                                          offerSeat("Bot 2", true, true), offerSeat("Li", false, false)] }),
                   bots_paused: true, bots_at: null }));
@@ -1383,7 +1407,7 @@ describe("open tables", () => {
     expect(primary()?.disabled).toBe(false);
   });
 
-  it("O6: Keep looking; your table comes back with the row that shows the offer again", async () => {
+  it("O6: Keep looking; your table comes back, and a re-sent offer shows again", async () => {
     await open();
     tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
     expect(panel()?.textContent).not.toMatch(/Bots paused/);
@@ -1392,8 +1416,7 @@ describe("open tables", () => {
     tell(queued({ offer: null, open_tables: 1, bots_paused: false, bots_at: nowSecs() + 35 }));
     expect(panel()?.classList.contains("tp-own")).toBe(true);
     expect(ringSecs()).toMatch(/^3[56]$/);
-    click(button(/^1 table has a seat · View$/));
-    expect(sentLast()).toEqual({ type: "open_table_show" });
+    expect(button(/table has a seat/)).toBeUndefined();   // the panel has no row back
     tell(queued({ offer: offer(), open_tables: 0, bots_paused: true, bots_at: null }));
     expect(panel()?.classList.contains("tp-join")).toBe(true);
     expect(button(/table has a seat/)).toBeUndefined();
@@ -1432,11 +1455,11 @@ describe("open tables", () => {
     expect(panel()).toBeNull();
     tell(state({ you: 2, joining_you: true, turn: 2, joining: [{ seat: 2, name: "Jerry Yu", when: "trick" }] }));
     expect(q(".join-pill")?.textContent).toContain("Joining after this trick");
-    expect(q(".join-pill")?.textContent).toContain("A bot plays your seat until then");
+    expect(q(".join-pill .away-pill-text")?.textContent).toBe("Joining after this trick");   // no sub-line
     expect(q(".join-notice")).toBeNull();
     expect(button(/^Play/)).toBeUndefined();
     click(button("Leave", q(".join-pill")!));
-    expect(leaveSheetText()).toBe("Leave the game? / You'll wait 1 minute to play again.");
+    expect(leaveSheetText()).toBe("Leave the game? / Stay until this round ends, or wait 1 minute to play again.");
     expect(sentLast()).not.toEqual({ type: "leave_room" });
     confirmLeave();
     expect(sentLast()).toEqual({ type: "leave_room" });
@@ -1747,12 +1770,12 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     say(state({ joining_you: true }));
     say(state());
     expect(leaveAlertText()).toBe(
-      "Leave the game? / You'll wait 1 minute to play again.");
+      "Leave the game? / Stay until this round ends, or wait 1 minute to play again.");
     // the round over, the next one is an ordinary ranked round
     say(state({ phase: "round_end" }));
     say(state({ phase: "deal" }));
     expect(leaveAlertText()).toBe(
-      "Leave the game? / A bot takes your seat. This round counts as at best a draw for you.");
+      "Leave the game? / This round counts as at best a draw.");
   });
 
   it("after a reload, state frames alone (no match_started) carry the joined round's warning", async () => {
@@ -1760,12 +1783,12 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     await renderApp();
     say(state({ joined_round: true }));
     expect(leaveAlertText()).toBe(
-      "Leave the game? / You'll wait 1 minute to play again.");
+      "Leave the game? / Stay until this round ends, or wait 1 minute to play again.");
     // the server omits the flag once the round is over; the round end clears it
     say(state({ phase: "round_end" }));
     say(state({ phase: "deal" }));
     expect(leaveAlertText()).toBe(
-      "Leave the game? / A bot takes your seat. This round counts as at best a draw for you.");
+      "Leave the game? / This round counts as at best a draw.");
   });
 
   it("review: reconnect after the joined round ends clears its warning", async () => {
@@ -1781,7 +1804,7 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     // client never received the previous round_end frame.
     say(state({ phase: "play", levels: ["3", "2"] }));
     expect(leaveAlertText()).toBe(
-      "Leave the game? / A bot takes your seat. This round counts as at best a draw for you.");
+      "Leave the game? / This round counts as at best a draw.");
   });
 
   it("after a reconnect, the new socket's joined_round frame keeps the joined round's warning", async () => {
@@ -1792,7 +1815,7 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 1600)); });
     expect(ws()).not.toBe(first);
     say(state({ joined_round: true }));
-    expect(leaveAlertText()).toMatch(/You'll wait 1 minute to play again/);
+    expect(leaveAlertText()).toMatch(/Stay until this round ends, or wait 1 minute to play again/);
   });
 
   it("a seat taken at a round end, or a server flag saying otherwise, gets the ranked warning", async () => {
@@ -1801,12 +1824,12 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     say(state({ joining_you: true, phase: "round_end" }));
     say(state({ phase: "round_end" }));
     say(state({ phase: "deal" }));
-    expect(leaveAlertText()).toMatch(/at best a draw for you\.$/);
+    expect(leaveAlertText()).toMatch(/at best a draw\.$/);
     say({ type: "match_started", match_id: null, room: "OPEN", rated: true, joining: true, seat: 2 });
     say(state({ joined_round: false }));
-    expect(leaveAlertText()).toMatch(/at best a draw for you\.$/);
+    expect(leaveAlertText()).toMatch(/at best a draw\.$/);
     say(state({ joined_round: true }));
-    expect(leaveAlertText()).toMatch(/You'll wait 1 minute/);
+    expect(leaveAlertText()).toMatch(/wait 1 minute to play again/);
   });
 
   it("Leave table on another device: the holder says the table was closed there", async () => {
@@ -1883,11 +1906,11 @@ describe("the unified table on the client", () => {
     expect(presence()?.querySelector(".play-presence-dot")?.getAttribute("aria-hidden")).toBe("true");
     expect(presence()?.closest("button")).toBeNull();
     say({ type: "presence", tables: 2, playing: 3, waiting: 0, ranked: 2, casual: 0 });
-    expect(presence()?.textContent).toBe("2 ranked tables have a seat · 3 people playing");
+    expect(presence()?.textContent).toBe("2 ranked tables have a seat · 3 playing");
     say({ type: "presence", tables: 1, playing: 1, waiting: 0, ranked: 0, casual: 1 });
-    expect(presence()?.textContent).toBe("1 casual table has a seat · 1 person playing");
+    expect(presence()?.textContent).toBe("1 casual table has a seat · 1 playing");
     say({ type: "presence", tables: 3, playing: 5, waiting: 0, ranked: 2, casual: 1 });
-    expect(presence()?.textContent).toBe("3 tables have a seat · 2 ranked, 1 casual · 5 people playing");
+    expect(presence()?.textContent).toBe("3 tables have a seat · 2 ranked, 1 casual · 5 playing");
     expect(presence()?.querySelector(".play-presence-hl")?.textContent).toBe("2 ranked");
     say({ type: "presence", tables: 1, playing: 1, waiting: 1, ranked: 1, casual: 0 });
     expect(presence()?.textContent).toBe("1 person is waiting for a game");
@@ -1895,7 +1918,7 @@ describe("the unified table on the client", () => {
     expect(presence()?.textContent).toBe("3 people are waiting for a game");
     // an older server sends no split
     say({ type: "presence", tables: 2, playing: 4, waiting: 0 });
-    expect(presence()?.textContent).toBe("2 tables have a seat · 4 people playing");
+    expect(presence()?.textContent).toBe("2 tables have a seat · 4 playing");
     say({ type: "presence", tables: 0, playing: 0, waiting: 0 });
     expect(presence()?.textContent).toBe("Nobody is playing right now");
     // the panel takes Play's place, and the line with it
@@ -1906,7 +1929,7 @@ describe("the unified table on the client", () => {
   it("the presence line splits by mode only when both have tables, the selected mode's count lit", async () => {
     await renderApp();
     say({ type: "presence", tables: 2, playing: 3, waiting: 0, ranked: 1, casual: 1 });
-    expect(presence()?.textContent).toBe("2 tables have a seat · 1 ranked, 1 casual · 3 people playing");
+    expect(presence()?.textContent).toBe("2 tables have a seat · 1 ranked, 1 casual · 3 playing");
     expect([...presence()!.querySelectorAll(".play-presence-hl")].map((b) => b.textContent)).toEqual(["1 ranked"]);
     click(button("Casual", q(".play-mode")!));
     expect([...presence()!.querySelectorAll(".play-presence-hl")].map((b) => b.textContent)).toEqual(["1 casual"]);
@@ -1918,7 +1941,7 @@ describe("the unified table on the client", () => {
     signedIn = false;
     await renderApp();
     say({ type: "presence", tables: 1, playing: 2, waiting: 0, ranked: 1, casual: 0 });
-    expect(presence()?.textContent).toBe("1 ranked table has a seat · 2 people playing");
+    expect(presence()?.textContent).toBe("1 ranked table has a seat · 2 playing");
   });
 
   it("the presence line hides during a cooldown and on a reconnect forgets old counts", async () => {
@@ -1948,6 +1971,19 @@ describe("the unified table on the client", () => {
     say(queued({ mode: "casual" }));
     expect(modeBtn("Casual").disabled).toBe(true);
     expect(modeBtn("Casual").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a casual table's panel carries the Casual tag above its title; a ranked one has none", async () => {
+    await renderApp();
+    say(queued({ mode: "casual" }));
+    expect(panel()!.querySelector(".tp-tag")?.textContent).toBe("Casual");
+    expect(panel()!.querySelector(".tp-tag + .tp-title")?.textContent).toBe("Your table");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { mode: "casual" }));
+    expect(panel()!.querySelector(".tp-tag")?.textContent).toBe("Casual");
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { mode: "ranked" }));
+    expect(panel()!.querySelector(".tp-tag")).toBeNull();
+    say(queued({ mode: "ranked" }));
+    expect(panel()!.querySelector(".tp-tag")).toBeNull();
   });
 
   it("a stored Casual choice is read back on a fresh page, and blocked storage reads as Ranked", async () => {

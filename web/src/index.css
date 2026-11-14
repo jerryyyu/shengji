@@ -2633,8 +2633,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   margin-left: -14px;
 }
 
-/* a round that wins a game: the crown over the title and the games score
-   in the outcome's place */
+/* a round that wins a game: the crown over the title, and the games score
+   as a label under the result line */
 .game-won-crown {
   align-self: center;
   font-size: 44px;
@@ -2643,6 +2643,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 }
 
 .result-games {
+  font-size: var(--fs-14);
   font-weight: 700;
   color: var(--gold, #d9a441);
   font-variant-numeric: tabular-nums;
@@ -2650,7 +2651,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 /* round end: the result in one line, then Next round and Leave in one row */
 .result-headline.result-line,
-.result-headline.result-games {
+.result-games {
   margin: 0;
 }
 
@@ -6267,6 +6268,11 @@ button[role="switch"]:active .ios-switch {
   overflow-wrap: anywhere;
 }
 .tp-line { margin: 0; font-size: var(--fs-14); color: #c3cad6; }
+/* the mode tag sits tight above the title */
+.tp-tag {
+  margin: 0 0 -6px; font-size: var(--fs-11); font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #4fb27a;
+}
 .tp-line.warn { color: var(--gold); }
 .tp-teams {
   display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); column-gap: 6px; row-gap: 6px;
@@ -6308,12 +6314,6 @@ button.tp-seat { cursor: pointer; }
 @media (max-width: 359px) { .tp:not(.tp-wide) .tp-av { display: none; } }
 button.tp-seat:disabled { opacity: 0.6; cursor: default; }
 button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-.tp-row {
-  appearance: none; display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px;
-  padding: 0 12px; border-radius: 12px; border: 1px solid rgba(214, 162, 44, 0.6);
-  background: rgba(242, 193, 78, 0.1); color: #ffd77a; font: inherit; font-size: var(--fs-14); cursor: pointer;
-}
-.tp-row:disabled { opacity: 0.5; cursor: default; }
 .tp .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); color: #fff; }
 .tp .q-wait-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tp .q-switch { width: 51px; height: 31px; border-radius: 16px; }

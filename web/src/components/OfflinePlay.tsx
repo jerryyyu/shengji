@@ -8,7 +8,7 @@ import { openHowto } from "../howto/route";
 import { effectiveName, useAuth } from "../auth";
 import { useOnline } from "../useOnline";
 import { useInlineQueue } from "../queue/QueueBar";
-import { MiniTable, TeamColumns } from "../queue/TablePanel";
+import { MiniTable, ModeTag, TeamColumns } from "../queue/TablePanel";
 import type { SeatItem } from "../queue/TablePanel";
 import AccountChip from "./AccountChip";
 import GuestChip, { GuestNameSheet } from "./GuestChip";
@@ -25,8 +25,8 @@ const SEATS: SeatItem[] = [
   { at: 3, look: "bot", name: "Bot 3", sub: "", label: "Bot 3, other team" },
 ];
 
-/** Your offline table in Play's place: the queue's green panel, its one
- *  line saying Offline. Start deals at once; Leave puts Play back. */
+/** Your offline table in Play's place: the queue's green panel, its mode
+ *  tag saying Offline. Start deals at once; Leave puts Play back. */
 function OfflineTable({ ready, starting, onStart, onLeave }: {
   ready: boolean; starting: boolean; onStart: () => void; onLeave: () => void;
 }) {
@@ -34,8 +34,8 @@ function OfflineTable({ ready, starting, onStart, onLeave }: {
   const titleId = useId();
   return (
     <section className={`tp tp-offline${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
+      <ModeTag tag="Offline" />
       <h2 className="tp-title" id={titleId}>You and 3 bots</h2>
-      <p className="tp-line">Offline</p>
       {wide ? <MiniTable seats={SEATS} you={0} /> : <TeamColumns seats={SEATS} you={0} />}
       {/* the table's chat row in its place, greyed: chat needs the server */}
       <button type="button" className="tp-chat" disabled aria-label="Chat needs a connection">

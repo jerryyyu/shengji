@@ -55,7 +55,7 @@ describe("the table's ⋯ menu", () => {
     expect(v.host.querySelector(".hud-menu")).toBeNull();
     const alert = v.host.querySelector("[role='alertdialog']")!;
     expect(alert.textContent).toContain("Leave the game?");
-    expect(alert.textContent).toContain("A bot takes your seat and the others keep playing.");
+    expect(alert.querySelector("p")).toBeNull();   // a casual round costs nothing
     act(() => alert.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
     expect(sent).toEqual([{ type: "leave_room" }]);
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
@@ -290,7 +290,7 @@ describe("a ranked game's leave sheet", () => {
     act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
     const alert = v.host.querySelector("[role='alertdialog']")!;
     expect(alert.querySelector("h2")!.textContent).toBe("Leave the game?");
-    expect(alert.querySelector("p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
+    expect(alert.querySelector("p")!.textContent).toBe("This round counts as at best a draw.");
     expect(Array.from(alert.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
     v.unmount();
   });

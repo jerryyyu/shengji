@@ -257,9 +257,10 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
             <span className="points-target">/80</span>
             <PointsPop points={state.attacker_points} />
           </span>
-          {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table */}
+          {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table;
+              Allow joiners is at every table that takes joiners (the frame carries it), ranked or casual */}
           <HudMenu room={state.room} mode={modeWord(mode, guest)} ranked={mode === "ranked"} guest={guest} offline={practice}
-                   allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined}
+                   allowJoiners={!state.joining_you ? state.allow_joiners : undefined}
                    opener={state.opener === state.you} />
         </div>
       </div>

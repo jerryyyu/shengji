@@ -120,8 +120,9 @@ describe("a room is a kind of the table panel on Play", () => {
     const p = panel()!;
     expect(p).not.toBeNull();
     expect(q(".room-screen")).toBeNull();
-    // no kicker: the mode switch above says the mode
+    // no kicker; a casual table's mode tag sits above the title
     expect(p.querySelector(".tp-kicker")).toBeNull();
+    expect(p.querySelector(".tp-tag")?.textContent).toBe("Casual");
     expect(p.querySelector(".tp-title")?.textContent).toBe("Your table");
     // alone there is no status line
     expect(p.querySelector(".tp-line")).toBeNull();
@@ -154,7 +155,7 @@ describe("a room is a kind of the table panel on Play", () => {
     click(button("Leave", p));
     expect(allSent().length).toBe(before);
     const sheet = q("[role='alertdialog']")!;
-    expect(sheet.querySelector("h2")?.textContent).toBe("Leave the room?");
+    expect(sheet.querySelector("h2")?.textContent).toBe("Leave the table?");
     expect(sheet.querySelector("p")?.textContent).toBe("The room closes.");
     click(button("Stay", sheet));
     expect(q("[role='alertdialog']")).toBeNull();
@@ -174,6 +175,7 @@ describe("a room is a kind of the table panel on Play", () => {
     const p = panel()!;
     expect(p.querySelector("select")).toBeNull();
     expect(p.textContent).not.toContain("Starting level");
+    expect(p.querySelector(".tp-tag")).toBeNull();     // a ranked table has no mode tag
     expect(p.querySelector(".tp-code")?.textContent).toBe("WXYZ");
     expect(button("Ranked", q(".play-mode")!)!.getAttribute("aria-pressed")).toBe("true");
   });

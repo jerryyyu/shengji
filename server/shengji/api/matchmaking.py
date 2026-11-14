@@ -44,7 +44,10 @@ A table starts (``tick``, and at once after the event that makes it due):
 * at the table's timer: the earliest ``bots_at`` among its entries. An entry
   whose switch is on ("Only tables with people", ``queue_wait_players``)
   has no ``bots_at`` and rides another entry's timer; with every switch on
-  the table has no timer.
+  the table has no timer;
+* on the opener's Start now (``table_start_now``, its leader only), once
+  ``START_NOW_SECS`` have passed since the latest arrival
+  (``start_now_at``), bots taking the empty seats.
 
 The first two wait while a member is reconnecting (``TABLE_AWAY_SECS``); the
 timer does not, and starts without an entry whose socket is still gone.
@@ -193,6 +196,10 @@ PAIR_SEATS = ((0, 2), (1, 3))
 # leaving a ranked table one joined before its first ranked round there.
 OFFER_SECS = 20.0
 JOIN_COOLDOWN_SECS = 60.0
+# The opener's Start now unlocks this long after the latest person sat at a
+# waiting table, as a room's does (server.START_NOW_SECS), so a newcomer
+# gets time to tap Start before the table starts without them.
+START_NOW_SECS = 30.0
 PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
@@ -218,6 +225,7 @@ QUEUE_MESSAGES = frozenset({
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
     "party_leave", "open_table_join", "open_table_wait", "open_table_show",
     "table_move", "table_here", "table_chat", "table_allow_joiners", "table_start_level",
+    "table_start_now",
 })
 SAME_DEVICE = "Someone on this device is already at that table."
 RANKED_LEVEL = "A ranked table starts at level 2."
@@ -383,6 +391,8 @@ class Table:
     # log, and the room's first scrollback when the table starts.
     chat: list[dict] = field(default_factory=list)
     chat_seq: int = 0
+    # The opener's Start now landed: the table is due at once.
+    forced: bool = False
 
     @property
     def humans(self) -> int:
@@ -392,6 +402,11 @@ class Table:
     def rating(self) -> float:
         rs = [r for e in self.entries for r in e.member_ratings.values()]
         return sum(rs) / len(rs)
+
+    def start_now_at(self) -> float:
+        """When the opener's Start now unlocks: ``START_NOW_SECS`` after the
+        latest arrival (the second one is when the table formed)."""
+        return max(self.seated_at.values(), default=0.0) + START_NOW_SECS
 
     def held_for(self, e: Entry) -> int | None:
         """The seat ``e`` holds for its friend: opposite its opener."""
@@ -768,7 +783,7 @@ class Matchmaker:
         return {
             "id": t.id, "seats": seats, "code": opener.code,
             "opener": t.seats.index(opener.leader), "held_seat": t.held_seat(),
-            "held_seats": t.held_seats(),
+            "held_seats": t.held_seats(), "start_now_at": t.start_now_at(),
             "you": t.seats.index(uid) if uid in t.seats else None,
             "timer": (None if timer is None else
                       {"at": timer[0], "name": self._name(timer[1].leader),
@@ -1146,6 +1161,10 @@ class Matchmaker:
                     if e is not None:
                         self._check_panel(e, msg)
                     await self._start_bots(queue_id)
+                elif t == "table_start_now":
+                    if e is not None:
+                        self._check_panel(e, msg)
+                    await self._table_start_now(queue_id)
                 elif t == "table_move":
                     if not self.move_limiter.allow(str(queue_id), now):
                         raise QueueError("rate_limited", "Too many requests; wait a minute.")
@@ -1508,6 +1527,21 @@ class Matchmaker:
             self._send_table(t)
         await self._start_due()
 
+    async def _table_start_now(self, uid: int) -> None:
+        """The opener's Start now: the waiting table starts at once, bots in
+        its empty seats. Only the opener's leader may, and only from
+        ``start_now_at``; everyone else's Start is ``table_start``."""
+        e = self._entry(uid)
+        t = self._table(e)
+        if e is None or t is None:
+            raise QueueError("not_seated", "You are not at a waiting table.")
+        if self._opener(e) is not e or e.leader != uid:
+            raise QueueError("not_opener", "Only the table's opener can start now.")
+        if self.clock() < t.start_now_at():
+            raise QueueError("too_soon", "Start now opens 30 seconds after the last person sits.")
+        t.forced = True
+        await self._start_due()
+
     def _table_move(self, uid: int, msg: dict) -> None:
         """A single at a waiting table moves itself to an empty seat, until
         it taps Start; a pair's seats never move. Everyone at the table sees
@@ -1696,6 +1730,8 @@ class Matchmaker:
 
     # ------------------------------------------------------------- starts
     def _due(self, t: Table, now: float) -> bool:
+        if t.forced:
+            return True
         timer = t.timer()
         if timer is not None and now >= timer[0]:
             return True

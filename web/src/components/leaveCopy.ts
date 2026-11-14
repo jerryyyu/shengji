@@ -68,7 +68,7 @@ const stays = (names: string[]) => (names.length === 1 ? "stays" : "stay");
  *  nothing and changes nothing for anyone else. `joined`: the round in play
  *  was joined from an open table. Only a ranked table charges the join wait;
  *  a casual one, and any round end, let you go for free, and a free leave is
- *  not announced as free. */
+ *  not announced as free: a casual round has no line at all. */
 export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; line: string | null } {
   if (ctx.kind === "queue") {
     const names = ctx.others.map(shortName);
@@ -79,17 +79,18 @@ export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; l
     return { title: "Leave the Duo?", line: ctx.opener ? `${who} keeps the table and its code.` : `${who} keeps the table.` };
   }
   if (ctx.kind === "room") {
-    if (ctx.others.length === 0) return { title: "Leave the room?", line: "The room closes." };
+    if (ctx.others.length === 0) return { title: "Leave the table?", line: "The room closes." };
     const line = ctx.host
       ? `The table stays open; ${shortName(ctx.others[0])} can start it.`
       : "The table stays open.";
-    return { title: "Leave the room?", line };
+    return { title: "Leave the table?", line };
   }
   if (ctx.practice) return { title: "Leave the game?", line: "This offline game ends." };
   if (ctx.betweenRounds) return { title: "Leave the game?", line: "This round's result is kept." };
-  if (joined && ctx.ranked) return { title: "Leave the game?", line: `You'll wait ${JOIN_WAIT} to play again.` };
-  if (ctx.ranked && !ctx.guest) {
-    return { title: "Leave the game?", line: "A bot takes your seat. This round counts as at best a draw for you." };
+  if (joined && ctx.ranked) {
+    return { title: "Leave the game?", line: `Stay until this round ends, or wait ${JOIN_WAIT} to play again.` };
   }
-  return { title: "Leave the game?", line: "A bot takes your seat and the others keep playing." };
+  if (ctx.ranked && !ctx.guest) return { title: "Leave the game?", line: "This round counts as at best a draw." };
+  // a casual round, and a guest's ranked one, cost nothing
+  return { title: "Leave the game?", line: null };
 }

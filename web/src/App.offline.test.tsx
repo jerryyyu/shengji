@@ -109,7 +109,10 @@ it("Play opens your table with three bots, marked Offline, and Start deals under
   await mount();
   await until(() => host.querySelector(".play-offline") !== null);
   act(() => button("Play")!.click());
-  expect(panel()!.querySelector(".tp-line")!.textContent).toBe("Offline");
+  // Offline is the mode tag above the title, not a status line
+  expect(panel()!.querySelector(".tp-tag")!.textContent).toBe("Offline");
+  expect(panel()!.querySelector(".tp-tag + .tp-title")).not.toBeNull();
+  expect(panel()!.querySelector(".tp-line")).toBeNull();
   expect(panel()!.querySelector(".tp-title")!.textContent).toBe("You and 3 bots");
   expect(panel()!.querySelectorAll(".tp-seat.bot").length).toBe(3);
   // the table's chat row is in its place, greyed: chat needs the server

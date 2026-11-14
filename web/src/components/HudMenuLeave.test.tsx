@@ -66,7 +66,7 @@ describe("Leave game in a ranked round in play", () => {
     tap(pill());
     expect(alert()!.querySelector("h2")!.textContent).toBe("Leave the game?");
     expect(alert()!.querySelector("p")!.textContent)
-      .toBe("A bot takes your seat. This round counts as at best a draw for you.");
+      .toBe("This round counts as at best a draw.");
     expect(sent).toEqual([]);
   });
 });

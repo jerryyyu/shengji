@@ -37,6 +37,12 @@ const CUT = [
   "Your game goes on with a bot in your seat",
   "before you can play again",
   "Friends join by code",
+  "at best a draw for you",
+  "A bot takes your seat",
+  "the others keep playing",
+  "A bot plays your seat until then",
+  "· away",
+  "Leave the room?",
 ];
 
 const SRC = fileURLToPath(new URL(".", import.meta.url));
@@ -67,7 +73,3 @@ it("no copy the copy rule cut comes back, in a string or JSX text", () => {
   expect(hits, "This line was cut by the copy rule (docs/design/COPY_CUTS.md); explanations belong in How to play")
     .toEqual([]);
 });
-
-// Cut by COPY_CUTS.md and still on main; each is a docs/design/GAPS row.
-it.todo("GAPS #21: the ranked leave line is 'This round counts as at best a draw.' (cut: 'at best a draw for you')");
-it.todo("GAPS #23: a casual mid-round leave is free (cut: 'A bot takes your seat and the others keep playing.')");

@@ -52,9 +52,9 @@ function offerSeats(o: OfferView, busy: boolean): SeatItem[] {
                label: `${o.partner.name}, your Duo partner` };
     }
     if (s.open && !o.partner) {
-      const holder = s.bot ? "" : `${shortName(s.name)} · away`;
+      // whose seat it was is the screen reader's only; the seat shows a name alone
       const away = s.bot ? "" : `, ${s.name} is away`;
-      return { at, look: "open", name: "Open seat", sub: holder, busy,
+      return { at, look: "open", name: "Open seat", sub: "", busy,
                label: `Open seat, ${teamWord(ours)}${away}. Sit here`, pick: () => queue.offerPick(at) };
     }
     if (s.bot || s.open) return { at, look: "bot", name: "Bot", sub: "", label: `Bot, ${teamWord(ours)}` };
@@ -202,6 +202,8 @@ function WaitSwitch({ q }: { q: QueueView }) {
 /** A panel is its title, its seats, at most one live status line and its
  *  buttons; explanations live in How to play and the coach. */
 interface PanelParts {
+  /** The mode tag above the title: "Casual" or "Offline"; a ranked table has none. */
+  tag?: "Casual" | "Offline";
   title: string;
   status?: { text: string; warn?: boolean };
   seats: SeatItem[] | null;
@@ -239,15 +241,9 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
     };
   }
   if (kind === "own") {
-    const n = q.openTables;
     const extra = (
       <>
         <QueueTableRows q={q} />
-        {n > 0 ? (
-          <button type="button" className="tp-row" onClick={() => queue.offerShow()}>
-            {n === 1 ? "1 table has a seat" : `${n} tables have a seat`} · <b>View</b>
-          </button>
-        ) : null}
         {q.leader ? <WaitSwitch q={q} /> : null}
         <ChatRow messages={q.tableChat} you={q.leader ? 0 : 2} onSend={(text) => queue.tableChat(text)} />
       </>
@@ -293,12 +289,18 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
         secondary: leave,
       };
     }
+    const ring = q.pending === "start" ? null : botsRing(t.timer?.at ?? null, now);
+    // the opener's Start now, 30 s after the latest arrival, as in a room;
+    // everyone else's button stays Start
+    const startNow = q.opener && t.startNowAt !== null && now >= t.startNowAt;
     return {
       title: sharedTitle(t), status: { text: sharedStatusLine(t) },
       seats, you: t.you, extra, led,
-      primary: { label: q.pending === "start" ? "Starting…" : startLabel(t),
-                 disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart(),
-                 ring: q.pending === "start" ? null : botsRing(t.timer?.at ?? null, now) },
+      primary: startNow
+        ? { label: q.pending === "start" ? "Starting…" : "Start now", disabled: q.pending !== null,
+            onClick: () => queue.tableStartNow(), ring }
+        : { label: q.pending === "start" ? "Starting…" : startLabel(t),
+            disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart(), ring },
       secondary: leave,
     };
   }
@@ -333,6 +335,11 @@ function useEnterIsPrimary(primary: RefObject<HTMLButtonElement | null>, box: Re
   }, [primary, box]);
 }
 
+/** The small mode tag above a panel's title, set in capitals by CSS. */
+export function ModeTag({ tag }: { tag: "Casual" | "Offline" }) {
+  return <p className="tp-tag">{tag}</p>;
+}
+
 /** The panel's frame, the same for every kind: the title, at most one
  *  status line, the seats (team columns on a phone, the mini table on wide
  *  screens), extra rows, the buttons, and the leave sheet when it is up. */
@@ -344,6 +351,7 @@ function PanelView({ p, kind, guarded, sheet }: { p: PanelParts; kind: string; g
   useEnterIsPrimary(primaryRef, box);
   return (
     <section ref={box} className={`tp tp-${kind}${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
+      {p.tag ? <ModeTag tag={p.tag} /> : null}
       <h2 className="tp-title" id={titleId}>{p.title}</h2>
       {p.status ? <p className={`tp-line${p.status.warn ? " warn" : ""}`}>{p.status.text}</p> : null}
       {p.seats ? (wide ? <MiniTable seats={p.seats} you={p.you} /> : <TeamColumns seats={p.seats} you={p.you} />) : null}
@@ -377,8 +385,10 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const kind = panelKind(q);
   const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
   const [asking, setAsking] = useState(false);
-  const p = parts(q, kind, now, () => setAsking(true));
-  if (!p) return null;
+  const base = parts(q, kind, now, () => setAsking(true));
+  if (!base) return null;
+  const casual = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere";
+  const p: PanelParts = casual ? { ...base, tag: "Casual" } : base;
   // the people a shared table keeps when you go; your own table has nobody
   // else, but for a Duo partner, who keeps it
   const others = kind === "shared" && q.table
@@ -586,6 +596,7 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
     </>
   );
   const p: PanelParts = {
+    tag: ranked ? undefined : "Casual",
     title: roomTitle(room),
     status: readyLine ? { text: readyLine } : undefined,
     seats: roomSeats(room, ready, !youReady),

@@ -708,7 +708,6 @@ export default function Table({ state, toast = null }: { state: GameState; toast
         <div className="away-pill join-pill" role="status">
           <span className="away-pill-text">
             <b>Joining after this trick</b>
-            <span>A bot plays your seat until then</span>
           </span>
           <JoinPillLeave ranked={!!(state.matched || state.ranked)} guest={state.guest === true} />
         </div>

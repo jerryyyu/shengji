@@ -163,17 +163,15 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             : <TeamTitle team={result.winner_team} state={state} what={what} />}
         </h2>
 
+        {/* one result line, the same on every round end; a won game says the
+            levels restart where another round says the climb */}
+        <p className="result-headline result-line">
+          <span>{took} {gameWon ? `Levels restart at ${result.new_levels[us]}` : climb}{ratingBit}.</span>
+          <span className="result-next-banker">{nextBankerText(state, result)}.</span>
+        </p>
         {gameWon ? (
-          <p className="result-headline result-games">
-            <span>Games: Us {result.games_won[us]} · Them {result.games_won[them]}{ratingBit}</span>
-            <span className="result-next-banker">Levels restart at {result.new_levels[us]}.</span>
-          </p>
-        ) : (
-          <p className="result-headline result-line">
-            <span>{took} {climb}{ratingBit}.</span>
-            <span className="result-next-banker">{nextBankerText(state, result)}.</span>
-          </p>
-        )}
+          <p className="result-games">Games: Us {result.games_won[us]} · Them {result.games_won[them]}</p>
+        ) : null}
         {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
 
         {hasDetails ? (
@@ -195,12 +193,13 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
         ) : null}
 
         <div className="round-end-actions">
+          {/* Next game carries no ring (FLOWS.md game over); Next round shows the move clock */}
           <button
-            className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
+            className={`btn primary big${!iAmReady && !gameWon && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
             disabled={iAmReady}
             onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
           >
-            {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
+            {iAmReady || gameWon ? null : <TimerRing left={clock} total={MOVE_SECS} />}
             {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
           </button>
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />

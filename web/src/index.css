@@ -5365,10 +5365,6 @@ button.games-row { cursor: pointer; }
 .home-narrow .home-col { padding-bottom: var(--tabbar-clear); }
 /* a pinned row sticks just above the pill, not under it */
 .home-narrow .lb-pin { bottom: calc(var(--tabbar-h) + var(--tabbar-bottom)); }
-/* the queue bar rides just above the pill */
-.home-narrow > .q-bar { margin-bottom: calc(var(--tabbar-h) + var(--tabbar-bottom) + 8px); }
-.home-narrow:has(> .q-bar) .home-body > .screen { padding-bottom: 12px; }
-.home-narrow:has(> .q-bar) .home-col { padding-bottom: 16px; }
 .tabbar {
   position: absolute;
   z-index: 40;
@@ -5810,7 +5806,6 @@ body.keyboard-open .tabbar { display: none; }
   .home-wide .me-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; align-items: start; }
   .home-wide .me-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 }
-.home-back { margin: 0 0 -8px -8px; }
 .large-title {
   margin: 4px 0 0;
   font-size: clamp(34px, calc(34 * var(--tu)), 40px);
@@ -6208,28 +6203,6 @@ button[role="switch"]:active .ios-switch {
 }
 @keyframes q-spin { to { transform: rotate(360deg); } }
 
-/* A phone's strip back to the table from another tab: one line, just above
-   the tab bar. */
-.q-bar {
-  flex: none; margin: 0 8px 8px; border-radius: 16px; background: #1f4a33; border: 1px solid #2f7a52;
-  color: #eafbea; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); font-variant-numeric: tabular-nums;
-}
-.q-bar-go {
-  appearance: none; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px;
-  padding: 0 16px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
-}
-.q-bar-dot {
-  width: 10px; height: 10px; flex: none; border-radius: 50%;
-  background: var(--gold); box-shadow: 0 0 0 4px rgba(242, 193, 78, 0.2);
-}
-.q-bar-title {
-  flex: 1; min-width: 0; text-align: left; font-size: var(--fs-17); font-weight: 600; color: #fff;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.q-bar-time { flex: none; display: inline-flex; font-size: var(--fs-17); color: #fff; }
-/* the bots' countdown on the strip, pill and chip: the table ring, small */
-.q-bar .timer-ring, .q-pill .timer-ring, .q-chip .timer-ring { --size: 32px; --band: 2.5px; }
-.q-bar.warn, .q-chip.warn { background: #3f3415; border-color: #9a6f12; }
 .q-wait {
   appearance: none; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
   padding: 2px 0; border: 0; background: none; color: #fff;
@@ -6359,44 +6332,34 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 }
 .phone-landscape .tp:not(.tp-wide) > .tp-teams { grid-column: 1; grid-row: 1 / span 8; }
 .phone-landscape .tp:not(.tp-wide) > :not(.tp-teams) { grid-column: 2; }
-/* the top bar's pill back to Play while searching from another tab */
-.q-pill {
-  appearance: none; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 44px;
-  margin-right: 12px; padding: 0 16px; border-radius: 22px; background: #1f4a33; border: 1px solid #2f7a52;
+/* The Your table pill on a tab other than Play: in the top bar's end on a
+   wide layout, at the end of the large title's row on a phone. */
+.table-pill {
+  appearance: none; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 40px;
+  margin-right: 12px; padding: 0 16px 0 14px; border-radius: 20px; background: #1f4a33; border: 1px solid #2f7a52;
   color: #fff; font: inherit; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums;
-  white-space: nowrap; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); cursor: pointer;
-}
-.q-pill.warn { background: #3f3415; border-color: #9a6f12; }
-/* While the pill shows, a narrow top bar makes room for it: the pill keeps
-   its dot and time (still 44px tall), then the account chip drops its name,
-   then its rating, leaving the avatar. */
-@media (max-width: 1199px) {
-  .topbar .q-pill { gap: 0; padding: 0 14px; min-width: 44px; }
-  .topbar .q-pill .q-bar-dot { margin-right: 8px; }
-  .topbar .q-pill-label { display: none; }
-}
-@media (max-width: 959px) {
-  .topbar:has(.q-pill) .account-pill-name { display: none; }
-}
-@media (max-width: 767px) {
-  .topbar:has(.q-pill) .account-pill-rating { display: none; }
-  .topbar:has(.q-pill) .account-pill { padding: 0 5px; }
-}
-
-/* a sideways phone's one-line chip, on a strip under its top bar */
-.q-chip {
-  appearance: none; display: flex; align-items: center; gap: 10px; min-width: 0; height: 44px; padding: 0 16px;
-  border-radius: 10px; background: #1f5d3a; border: 1px solid #2f8a57; color: #eafbea;
-  font: inherit; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums;
   white-space: nowrap; cursor: pointer;
 }
-.q-strip {
-  flex: none; display: flex; justify-content: center;
-  padding: 6px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px));
-  background: #161a22; border-bottom: 0.5px solid var(--grp-line);
+.table-pill:has(.timer-ring) { padding-right: 4px; }
+.table-pill.warn { background: #3f3415; border-color: #9a6f12; }
+.table-pill-dot {
+  width: 8px; height: 8px; flex: none; border-radius: 50%;
+  background: #4fb27a; box-shadow: 0 0 0 3px rgba(79, 178, 122, 0.25);
 }
-.q-strip .q-chip { margin: 0; max-width: 100%; }
-.q-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.table-pill.warn .table-pill-dot { background: var(--gold); box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.25); }
+.table-pill .timer-ring { --size: 32px; --band: 2.5px; }
+.large-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.large-title-row .large-title { min-width: 0; }
+.large-title-row .table-pill { margin: 4px 0 0; }
+/* While the pill shows, a narrow top bar makes room for it: the account chip
+   drops its name, then its rating, leaving the avatar. */
+@media (max-width: 1199px) {
+  .topbar:has(.table-pill) .account-pill-name { display: none; }
+}
+@media (max-width: 959px) {
+  .topbar:has(.table-pill) .account-pill-rating { display: none; }
+  .topbar:has(.table-pill) .account-pill { padding: 0 5px; }
+}
 
 .q-layer { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; }
 .q-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
@@ -6448,11 +6411,10 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .q-center { text-align: center; }
 
 
-/* Above the tab bar, and above the queue bar while it shows (QueueBar sets
-   --q-bar-clear). */
+/* Above the tab bar. */
 .q-toast {
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: max(calc(130px + env(safe-area-inset-bottom, 0px)), var(--q-bar-clear, 0px));
+  bottom: calc(130px + env(safe-area-inset-bottom, 0px));
   z-index: 75; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: calc(100vw - 32px);
   padding: 12px 16px; border-radius: 12px; background: #262d38; border: 1px solid #3d4556; color: #fff;
   font-size: var(--fs-15); font-weight: 600; line-height: 1.3; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);

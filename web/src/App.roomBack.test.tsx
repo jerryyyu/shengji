@@ -97,6 +97,30 @@ const sheet = () => host.querySelector<HTMLDialogElement>("[role='alertdialog']"
 const sheetText = () => `${sheet()!.querySelector("h2")!.textContent} / ${sheet()!.querySelector("p")!.textContent}`;
 const tapIn = (cls: string) => act(() => sheet()!.querySelector<HTMLButtonElement>(cls)!.click());
 
+describe("the Your table pill at a room", () => {
+  it("shows on Leaderboard and Me while you sit in a room's panel, and a tap opens the panel on Play", async () => {
+    const ws = await mountFromMe();
+    const { openTab } = await import("./home/route");
+    act(() => openTab("leaderboard"));
+    await flush();
+    expect(host.querySelector(".table-pill")).toBeNull();
+    act(() => openTab("play"));
+    act(() => ws.deliver(roomMsg));
+    await flush();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
+    for (const tab of ["leaderboard", "me"] as const) {
+      act(() => openTab(tab));
+      await flush();
+      expect(host.querySelector(".large-title-row .table-pill")?.textContent).toBe("Your table");
+    }
+    act(() => host.querySelector<HTMLButtonElement>(".table-pill")!.click());
+    await flush();
+    expect(window.location.hash).toBe("");
+    expect(host.querySelector(".tp-room")).not.toBeNull();
+    expect(host.querySelector(".table-pill")).toBeNull();
+  });
+});
+
 describe("back from the room screen", () => {
   it("asks through the leave sheet; Leave leaves the room and lands on Play, not Me", async () => {
     const ws = await mountFromMe();

@@ -1,4 +1,5 @@
 import type { ReactNode, RefObject } from "react";
+import YourTablePill from "../queue/YourTablePill";
 import { useLargeTitle } from "./useLargeTitle";
 import { usePullToRefresh } from "./usePullToRefresh";
 
@@ -16,10 +17,12 @@ function Spinner() {
  *  title drawn large at the top. On a phone (`phone`) the title collapses
  *  into a sticky compact bar as the page scrolls, and pulling down at the
  *  top calls `onRefresh`. Otherwise the page is the plain scroller and
- *  title, with no bar and no pull. `before` sits above the large title. */
-export default function LargeTitlePage({ className, scroller, title, phone, onRefresh, before, children }: {
+ *  title, with no bar and no pull. A
+ *  phone's title row ends with the Your table pill (the top bar holds it on
+ *  a wide layout). */
+export default function LargeTitlePage({ className, scroller, title, phone, onRefresh, children }: {
   className: string; scroller: RefObject<HTMLDivElement | null>; title: string; phone: boolean;
-  onRefresh: () => Promise<unknown>; before?: ReactNode; children: ReactNode;
+  onRefresh: () => Promise<unknown>; children: ReactNode;
 }) {
   const { bar, title: titleRef, collapsed } = useLargeTitle(scroller, phone);
   const { phase, animate } = usePullToRefresh(scroller, onRefresh, phone);
@@ -46,8 +49,12 @@ export default function LargeTitlePage({ className, scroller, title, phone, onRe
         </div>
       ) : null}
       <div className="home-col">
-        {before}
-        <h1 className="large-title" ref={titleRef}>{title}</h1>
+        {phone ? (
+          <div className="large-title-row">
+            <h1 className="large-title" ref={titleRef}>{title}</h1>
+            <YourTablePill />
+          </div>
+        ) : <h1 className="large-title" ref={titleRef}>{title}</h1>}
         {children}
       </div>
     </div>

@@ -71,8 +71,8 @@ the ⋯ menu. "Kitty 8 cards" moves out of ⋯.
 guest's name and initial with "Guest · not ranked".
 
 **Section 9, timers.** One ring component with one rule, including a thin ring on other players' turns.
-**The ring shows the seconds left as a number** (Jerry). Your own ring runs the whole move time. The queue strip
-shows the bots' countdown, not elapsed time.
+**The ring shows the seconds left as a number** (Jerry). Your own ring runs the whole move time. The Your table
+pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-14, simplification 6).
 
 ## Not decided (do not build)
 - Section 8, game over / Next game.
@@ -130,5 +130,10 @@ shows the bots' countdown, not elapsed time.
   - The header, phone and desktop alike, holds game state only: Us / trump / Them levels and the points ("35/80" with a dot in the attackers' colour), then Chat and ⋯; the mode is a label at the top of ⋯. No mute, Coach, Leave, code, phase or kitty chip.
   - Partner seat on phones: in the header row's middle (Jerry 11-14, 'Player in header is fine'); a row of its own would shrink the trick cards; desktop/iPad below the header; side pills at the edges.
   - ⋯ opens one menu (`HudMenu.tsx`) in this order: the code with Invite link, Allow joiners (the opener's seat only, from the state's `opener`), then Coach, Sound, How to play, then a red Leave game that opens the one Leave sheet. The opener's controls pass to the next person when the opener leaves, in the lobby or mid-game.
+- Way back to your table (simplification 6, approved on the simplify mock): one "Your table" pill on Leaderboard and Me, in the
+  top bar's end on a wide layout and at the end of the large title's row on a phone. It shows while you are queued, at a waiting
+  table, in a room's panel or in a game: a dot, "Your table" ("Your game" in a game), then the bots' ring while it runs; a tap
+  opens Play, which holds the panel or the game. Nothing shows when you sit nowhere. It replaces the phone's strip above the tab
+  bar, the top-bar pill, the sideways phone's chip strip and "‹ Back to game"; over a game the tab pages keep the tab bars.
 - Server merge (one Table object): yes, planned after Duo lands.
 - Start rule (no auto-start alone): Jerry asked for more explanation. It goes to a mock with both variants before any decision.

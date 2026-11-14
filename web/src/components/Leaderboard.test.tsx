@@ -155,17 +155,6 @@ it("a guest reads the board, with a sign-in card where their own row would be", 
   expect(card.previousElementSibling?.classList.contains("lb-list")).toBe(true);
 });
 
-it("over a game it offers the way back", async () => {
-  const back = vi.fn();
-  host = document.createElement("div");
-  document.body.appendChild(host);
-  root = createRoot(host);
-  await act(async () => { root.render(<Leaderboard onBack={back} />); });
-  const btn = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "‹ Back to game")!;
-  act(() => btn.click());
-  expect(back).toHaveBeenCalledTimes(1);
-});
-
 it("review: account change must not reuse another viewer's personalized board", async () => {
   auth.signedIn({name:"Jerry",email:"j@x",picture:null,display_name:null,name_shown:"Jerry"});
   await render();

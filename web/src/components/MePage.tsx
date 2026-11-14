@@ -17,7 +17,6 @@ import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
 import { useScreen } from "../telemetry";
 import { SettingsGroup } from "./SettingsList";
-import { GuestNameSheet } from "./GuestChip";
 import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
 
@@ -273,11 +272,8 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
  *  its initial and Edit name, which opens the same sheet as the chip, one
  *  sign-in card, the settings and the help rows. `unreachable`: the server
  *  could not be asked, so the card shows its buttons unavailable rather than
- *  disappearing. `standalone`: Me is over a game, with no home frame to hold
- *  the name editor, so Me holds it. */
-function GuestMe({ clientId, unreachable, standalone }: {
-  clientId: string | null; unreachable: boolean; standalone: boolean;
-}) {
+ *  disappearing. */
+function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachable: boolean }) {
   const { name } = useGuestName();
   // a guest who opens Me first gets the same random name Play would give
   useEffect(() => {
@@ -310,7 +306,6 @@ function GuestMe({ clientId, unreachable, standalone }: {
         <>
           <SettingsGroup />
           <InfoRows />
-          {standalone ? <GuestNameSheet /> : null}
         </>
       )}
     />
@@ -334,7 +329,7 @@ function MeColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
  *  account's rows beside or below either. Leaving and coming back keeps the
  *  section, the scroll position and the last stats while fresh ones load;
  *  a different viewer or session starts from nothing. */
-export default function MePage({ section, onBack }: { section: MeSection; onBack?: () => void }) {
+export default function MePage({ section }: { section: MeSection }) {
   useScreen(section === "games" ? "games" : "me");
   const wide = useMediaQuery(WIDE);
   const account = useAuth();
@@ -362,7 +357,7 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
   if (account.status === "loading") body = <p className="lb-note" role="status">Loading…</p>;
   else if (!user) {
     body = <GuestMe clientId={account.status === "out" ? account.clientId : null}
-                    unreachable={account.status === "error"} standalone={onBack !== undefined} />;
+                    unreachable={account.status === "error"} />;
   }
   else {
     let content: ReactNode;
@@ -390,8 +385,7 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
   }
   return (
     <LargeTitlePage className="me-page" scroller={scroller} title="Me"
-                    phone={!wide} onRefresh={refresh}
-                    before={onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}>
+                    phone={!wide} onRefresh={refresh}>
       {body}
     </LargeTitlePage>
   );

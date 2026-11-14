@@ -1,22 +1,27 @@
 import { useRef } from "react";
+import type { ReactNode } from "react";
+import { TimerRing } from "../components/MoveClock";
 import { WIDE, openTab } from "../home/route";
 import { SHORT_VIEWPORT, useMediaQuery } from "../phoneLayout";
-import { BOTS_WARN_MS, clock, useNow, useQueue } from "./store";
+import { BOTS_WARN_MS, BOT_FILL_MS, useNow, useQueue } from "./store";
 import type { QueueView } from "./store";
 import { stripLabel } from "./tableText";
 import { useBarClearance } from "./useBarClearance";
 
-interface StripText { label: string; time: string; warn: boolean }
+interface StripText { label: string; time: ReactNode; warn: boolean }
 
-/** The way back to the table from another tab: what it is and how long you
- *  have waited, or Join while a table with a seat is offered. Amber in the
- *  last ten seconds before bots fill it. */
+/** The way back to the table from another tab: what it is and the bots'
+ *  countdown as a ring, or Join while a table with a seat is offered. Amber
+ *  in the last ten seconds before bots fill it. A table with no bot timer
+ *  shows no clock. */
 function stripText(q: QueueView, now: number): StripText {
   const label = stripLabel(q);
   if (label === "Table with a seat") return { label, time: "Join", warn: false };
-  const at = q.table ? q.table.timer?.at ?? null : q.waitPlayers ? null : q.botsAt;
-  const warn = at !== null && !q.elsewhere && at - now <= BOTS_WARN_MS;
-  return { label, time: q.since !== null ? clock(now - q.since) : "0:00", warn };
+  const at = q.elsewhere ? null : q.table ? q.table.timer?.at ?? null : q.waitPlayers ? null : q.botsAt;
+  const warn = at !== null && at - now <= BOTS_WARN_MS;
+  const time = at === null ? null
+    : <TimerRing left={Math.max(0, at - now) / 1000} total={BOT_FILL_MS / 1000} />;
+  return { label, time, warn };
 }
 
 function useStrip(): StripText | null {
@@ -47,15 +52,15 @@ export default function QueueBar() {
               onClick={() => openTab("play")}>
         <span className="q-bar-dot" aria-hidden="true" />
         <b className="q-bar-title">{text.label}</b>
-        <span className="q-bar-time" aria-hidden="true">{text.time}</span>
+        {text.time !== null ? <span className="q-bar-time" aria-hidden="true">{text.time}</span> : null}
       </button>
     </div>
   );
 }
 
 /** The top bar's way back to the table from another tab on an iPad or a
- *  desktop window: "Your table · 0:24"; a narrow top bar keeps only the dot
- *  and the time. */
+ *  desktop window: "Your table" and the bots' ring; a narrow top bar keeps
+ *  only the dot and the ring. */
 export function QueuePill() {
   const text = useStrip();
   if (!text) return null;
@@ -63,7 +68,8 @@ export function QueuePill() {
     <button type="button" className={`q-pill${text.warn ? " warn" : ""}`}
             aria-label={`${text.label}, back to Play`} onClick={() => openTab("play")}>
       <span className="q-bar-dot" aria-hidden="true" />
-      <span><span className="q-pill-label">{text.label} · </span>{text.time}</span>
+      <span className="q-pill-label">{text.label}</span>
+      {text.time}
     </button>
   );
 }
@@ -77,7 +83,8 @@ export function QueueStrip() {
       <button type="button" className={`q-chip${text.warn ? " warn" : ""}`}
               aria-label={`${text.label}, back to Play`} onClick={() => openTab("play")}>
         <span className="q-bar-dot" aria-hidden="true" />
-        <span className="q-chip-text">{text.label} · {text.time}</span>
+        <span className="q-chip-text">{text.label}</span>
+        {text.time}
       </button>
     </div>
   );

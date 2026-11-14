@@ -388,7 +388,7 @@ describe("your own table", () => {
     expect(button("Wait for people", p)).toBeUndefined();
   });
 
-  it("on other tabs a phone keeps a one-line strip back to Play, amber in the last ten seconds", async () => {
+  it("on other tabs a phone keeps a one-line strip back to Play: the bots' countdown ring, amber in the last ten seconds", async () => {
     await renderApp();
     fakeClock();
     say(queued());
@@ -398,10 +398,17 @@ describe("your own table", () => {
     const bar = q(".q-bar")!;
     expect(bar.parentElement?.className).toContain("home-narrow");
     expect(bar.querySelector(".q-bar-title")?.textContent).toBe("Your table");
-    expect(bar.querySelector(".q-bar-time")?.textContent).toBe("0:00");
+    // the bots' countdown, never the time waited
+    const ring = () => q(".q-bar .q-bar-time .timer-ring");
+    expect(ring()?.textContent).toBe("60");
+    expect(ring()?.getAttribute("style")).toContain("--ring-deg: 360deg");
     tick(49_000);
+    expect(ring()?.textContent).toBe("11");
+    expect(ring()?.className).not.toContain("low");
     expect(q(".q-bar")?.className).not.toContain("warn");
     tick(1_000);
+    expect(ring()?.textContent).toBe("10");
+    expect(ring()?.className).toContain("low");
     expect(q(".q-bar")?.className).toContain("warn");
     // notices are lifted over the strip while it shows
     expect(document.documentElement.style.getPropertyValue("--q-bar-clear")).toMatch(/^\d+px$/);
@@ -427,9 +434,10 @@ describe("your own table", () => {
     for (const go of [() => openTab("leaderboard"), () => openTab("me", "stats"), () => openTab("me", "games")]) {
       act(go);
       const pill = q(".topbar .topbar-end .q-pill")!;
-      expect(pill.textContent).toBe("Your table · 0:24");
-      // a narrow top bar hides this label and keeps the time (topBarFitCss.test.ts)
-      expect(pill.querySelector(".q-pill-label")?.textContent).toBe("Your table · ");
+      // the bots' countdown, 36 s left, not the 24 s waited
+      expect(pill.querySelector(".timer-ring")?.textContent).toBe("36");
+      // a narrow top bar hides this label and keeps the ring (topBarFitCss.test.ts)
+      expect(pill.querySelector(".q-pill-label")?.textContent).toBe("Your table");
       expect(pill.nextElementSibling?.className).toContain("account-pill");
       expect(q(".q-strip")).toBeNull();
     }
@@ -447,7 +455,8 @@ describe("your own table", () => {
     expect(q(".q-strip")).toBeNull();
     const { openTab } = await import("../home/route");
     act(() => openTab("leaderboard"));
-    expect(q(".q-strip .q-chip")?.textContent).toBe("Your table · 0:24");
+    expect(q(".q-strip .q-chip .q-chip-text")?.textContent).toBe("Your table");
+    expect(q(".q-strip .q-chip .timer-ring")?.textContent).toBe("36");
     expect(q(".q-pill")).toBeNull();
     expect(q(".q-bar")).toBeNull();
   });
@@ -469,7 +478,7 @@ describe("the panel's primary button", () => {
     say(queued({ offer: { room: "OPEN", pick: 2, expires_at: nowSecs() + 10, round_end: false,
                           seats: [0, 1, 2, 3].map((i) => ({ name: i === 0 ? "Mei" : `Bot ${i}`, bot: i !== 0, open: i !== 0 })) },
                  bots_paused: true, bots_at: null }));
-    expect(primary()?.textContent).toMatch(/^Join/);
+    expect(primary()?.textContent).toMatch(/Join$/);
     expect(primary()?.disabled).toBe(true);
     tick(GUARD_MS + 10);
     expect(primary()?.disabled).toBe(false);
@@ -1248,7 +1257,7 @@ describe("open tables", () => {
   const seatLabels = (col: number) =>
     [...(panel()?.querySelectorAll(".tp-col")[col]?.querySelectorAll(".tp-seat") ?? [])].map((s) => s.getAttribute("aria-label"));
 
-  it("O1: Join Mei: both teams, your partner seat picked, the penalty line; the clock only in the last ten seconds", async () => {
+  it("O1: Join Mei: both teams, your partner seat picked, the penalty line; the offer's ring on Join from its first second", async () => {
     await open();
     fakeClock();
     tell(queued({ offer: offer({ expires_at: nowSecs() + 20,
@@ -1265,12 +1274,18 @@ describe("open tables", () => {
     expect(p.querySelector(".tp-seat.you .tp-seat-sub")?.textContent).toBe("Mei's partner");
     expect(seatLabels(1)).toEqual(["Open seat, other team. Sit here", "Open seat, other team. Sit here"]);
     expect(p.querySelector(".tp-hint")?.textContent).toBe("Tap a green seat to sit there");
+    const ring = () => primary()?.querySelector(".timer-ring");
+    expect(ring()?.textContent).toBe("20");
+    expect(ring()?.getAttribute("style")).toContain("--ring-deg: 360deg");
     tick(GUARD_MS + 10);
-    expect(primary()?.textContent).toBe("Join");
+    expect(primary()?.textContent).toBe(`${ring()?.textContent}Join`);
+    expect(ring()?.className).not.toContain("low");
     tick(9300);                          // 10 s left
-    expect(primary()?.textContent).toBe("Join · 0:10");
+    expect(ring()?.textContent).toBe("10");
+    expect(ring()?.className).toContain("low");
+    expect(ring()?.getAttribute("style")).toContain("--ring-deg: 180deg");
     tick(3000);
-    expect(primary()?.textContent).toBe("Join · 0:07");
+    expect(ring()?.textContent).toBe("7");
     // tap a green seat on the other team: you move there
     click(p.querySelectorAll<HTMLElement>(".tp-col")[1].querySelector<HTMLElement>("button.tp-seat"));
     expect(seatLabels(0)).toEqual(["Open seat, your team. Sit here", "You, your team"]);
@@ -1532,7 +1547,8 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     // either member may join; the leader's buttons rule does not apply to Join
     await act(async () => { await new Promise((r) => setTimeout(r, 720)); });
     const join = p.querySelector<HTMLButtonElement>(".tp-primary")!;
-    expect(join.textContent).toMatch(/^Join together · 0:(09|10)$/);
+    expect(join.textContent).toMatch(/^(9|10)Join together$/);
+    expect(join.querySelector(".timer-ring")?.textContent).toMatch(/^(9|10)$/);
     click(join);
     expect(lastSent()).toEqual({ type: "open_table_join", room: "OPEN", seat: 3 });
   });

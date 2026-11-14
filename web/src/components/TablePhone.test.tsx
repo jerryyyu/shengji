@@ -560,19 +560,55 @@ describe("move timer", () => {
     [player(0, over), player(1), player(2), player(3)];
   afterEach(() => { vi.useRealTimers(); });
 
-  it("shows nothing until ten seconds are left, then a ring with the seconds", () => {
+  it("shows your ring from the first second, with the seconds counting down, red in the last ten", () => {
     vi.useFakeTimers();
-    render(state({ turn: 0, players: mine({ turn_deadline: 12 }) }));
-    expect(host.querySelector(".move-ring")).toBeNull();
-    expect(host.querySelector(".action-bar")!.classList.contains("clock-low")).toBe(false);
+    render(state({ turn: 0, players: mine({ turn_deadline: 60 }) }));
+    const ring = () => host.querySelector(".action-bar .timer-ring");
+    expect(ring()).not.toBeNull();
+    expect(ring()!.getAttribute("role")).toBe("timer");
+    expect(ring()!.textContent).toBe("60");
+    expect(ring()!.getAttribute("aria-label")).toBe("60 seconds left");
+    expect(ring()!.getAttribute("style")).toContain("--ring-deg: 360deg");
+    expect(ring()!.className).not.toContain("thin");
+    expect(ring()!.className).not.toContain("low");
     act(() => { vi.advanceTimersByTime(2500); });
-    const ring = host.querySelector(".move-ring");
-    expect(ring).not.toBeNull();
-    expect(ring!.getAttribute("role")).toBe("timer");
-    expect(ring!.textContent).toBe("10");
+    expect(ring()!.textContent).toBe("58");
+    act(() => { vi.advanceTimersByTime(27_500); });
+    expect(ring()!.textContent).toBe("30");
+    expect(ring()!.getAttribute("style")).toContain("--ring-deg: 180deg");
+    expect(host.querySelector(".action-bar")!.classList.contains("clock-low")).toBe(false);
+    act(() => { vi.advanceTimersByTime(20_000); });
+    expect(ring()!.textContent).toBe("10");
+    expect(ring()!.className).toContain("low");
     expect(host.querySelector(".action-bar")!.classList.contains("clock-low")).toBe(true);
     act(() => { vi.advanceTimersByTime(3000); });
-    expect(host.querySelector(".move-ring")!.textContent).toBe("7");
+    expect(ring()!.textContent).toBe("7");
+    // your own clock is never drawn on an opponent's pill
+    expect(host.querySelector(".opponent .timer-ring")).toBeNull();
+  });
+
+  it("shows a thin ring with the seconds on the deciding seat's pill, and none on yours", () => {
+    vi.useFakeTimers();
+    const li = { is_bot: false, controller: "human" as const, turn_deadline: 42 };
+    render(state({ turn: 1, players: [player(0), player(1, li), player(2), player(3)] }));
+    const rings = () => [...host.querySelectorAll(".opponent .timer-ring")];
+    expect(rings()).toHaveLength(1);
+    const ring = rings()[0];
+    expect(ring.closest(".opponent")!.className).toContain("on-turn");
+    expect(ring.className).toContain("thin");
+    expect(ring.textContent).toBe("42");
+    expect(host.querySelector(".action-bar .timer-ring")).toBeNull();
+    haptics.length = 0;
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(rings()[0].textContent).toBe("39");
+    act(() => { vi.advanceTimersByTime(35_000); });
+    expect(rings()[0].textContent).toBe("4");
+    expect(rings()[0].className).toContain("low");
+    // another seat's clock never buzzes your phone
+    expect(haptics).toEqual([]);
+    // the turn moves on: the next state carries no clock for that seat
+    render(state({ turn: 2, players: [player(0), player(1, { ...li, turn_deadline: null }), player(2), player(3)] }));
+    expect(rings()).toHaveLength(0);
   });
 
   it("buzzes once at five seconds and not before", () => {
@@ -594,7 +630,7 @@ describe("move timer", () => {
     render(state({ turn: 0 }));
     haptics.length = 0;
     act(() => { vi.advanceTimersByTime(70_000); });
-    expect(host.querySelector(".move-ring")).toBeNull();
+    expect(host.querySelector(".timer-ring")).toBeNull();
     expect(haptics).toEqual([]);
   });
 

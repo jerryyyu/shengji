@@ -5,8 +5,8 @@ import { useId, useState } from "react";
 import ResultDialog from "./ResultDialog";
 import LeaveAlert from "./LeaveAlert";
 import { OFFLINE } from "../offlineMode";
-import { MoveRing } from "./MoveClock";
-import { RING_SECS } from "../useMoveClock";
+import { TimerRing } from "./MoveClock";
+import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
 import { myTeam, nextBankerText, pointsOf, roundLines, teamMembers, teamWord } from "../tableCopy";
 
@@ -267,11 +267,11 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           return (
             <>
               <button
-                className={`btn primary big${!iAmReady && clock !== null && clock <= RING_SECS ? " clock-low" : ""}`}
+                className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
                 disabled={iAmReady}
                 onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
               >
-                {iAmReady ? null : <MoveRing left={clock} />}
+                {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
                 {iAmReady ? "Waiting for others…" : "Next round"}
               </button>
               {humans.length > 1 && (

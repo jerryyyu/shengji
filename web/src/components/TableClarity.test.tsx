@@ -95,13 +95,28 @@ describe("declaring", () => {
       current_declaration: { seat: 0, cards: ["H2"] },
     });
     const view = render(<Table state={state} />);
-    const ring = view.host.querySelector(".action-bar .move-ring");
+    const ring = view.host.querySelector(".action-bar .timer-ring");
     expect(ring).not.toBeNull();
     expect(ring!.getAttribute("aria-label")).toBe("4 seconds left");
     expect(view.host.querySelector(".follow-hint.phase-help")!.textContent)
       .toBe("Declaring picks trump and makes you banker. A pair outbids a single.");
     expect(view.host.querySelector(".declare-tag")!.textContent).toBe("You declared ♥2");
     view.unmount();
+  });
+
+  it("runs the declare ring down from full, with its seconds, red throughout its five", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(<Table state={makeState({ phase: "declare", hand: hand(["S5"]), declare_deadline: 5 })} />);
+      const ring = () => view.host.querySelector(".action-bar .timer-ring");
+      expect(ring()!.textContent).toBe("5");
+      expect(ring()!.getAttribute("style")).toContain("--ring-deg: 360deg");
+      expect(ring()!.className).toContain("low");
+      act(() => { vi.advanceTimersByTime(2000); });
+      expect(ring()!.textContent).toBe("3");
+      expect(ring()!.getAttribute("style")).toContain("--ring-deg: 216deg");
+      view.unmount();
+    } finally { vi.useRealTimers(); }
   });
 
   it("names another player's declaration in the past tense, and drops the ring once you are done", () => {
@@ -111,7 +126,7 @@ describe("declaring", () => {
     }), 1);
     const view = render(<Table state={state} />);
     expect(view.host.querySelector(".declare-tag")!.textContent).toBe("Sam declared ♦2 pair");
-    expect(view.host.querySelector(".action-bar .move-ring")).toBeNull();
+    expect(view.host.querySelector(".action-bar .timer-ring")).toBeNull();
     view.unmount();
   });
 });

@@ -1,12 +1,13 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 import { useAuth } from "../auth";
+import { TimerRing } from "../components/MoveClock";
 import { seatPos } from "../components/TrickArea";
 import { useInlineQueue } from "./QueueBar";
 import { BOTS_WARN_MS, partnerName, queue, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_CLOCK_MS, announcement, joinLabel, joinLines, joinTitle, ownTimerLine, panelKind,
+  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, announcement, joinLabel, joinLines, joinTitle, ownTimerLine, panelKind,
   sharedTimerLine, sharedTitle, shortName, startLabel, stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
@@ -172,7 +173,7 @@ interface PanelParts {
   you: number;
   hint?: string;
   extra?: ReactNode;
-  primary: { label: string; disabled: boolean; onClick: () => void } | null;
+  primary: { label: string; disabled: boolean; onClick: () => void; ring?: ReactNode } | null;
   secondary: { label: string; disabled: boolean; onClick: () => void } | null;
   /** A Duo's other member: who presses the buttons instead. */
   led?: string;
@@ -189,8 +190,10 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
     return {
       kicker: "Table with people", title: joinTitle(o), lines: joinLines(o, guest), seats, you: o.pick,
       hint: seats.some((s) => s.pick) ? "Tap a green seat to sit there" : undefined,
-      primary: { label: q.pending === "offer" ? "Joining…" : joinLabel(o, now), disabled: busy,
-                 onClick: () => queue.offerJoin() },
+      primary: { label: q.pending === "offer" ? "Joining…" : joinLabel(o), disabled: busy,
+                 onClick: () => queue.offerJoin(),
+                 ring: q.pending === "offer" ? null
+                   : <TimerRing left={Math.max(0, o.expiresAt - now) / 1000} total={OFFER_SECS} /> },
       secondary: { label: "Keep looking", disabled: busy, onClick: () => queue.offerWait() },
     };
   }
@@ -312,6 +315,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
           {p.primary ? (
             <button ref={primaryRef} type="button" className="tp-primary"
                     disabled={p.primary.disabled || guarded} onClick={p.primary.onClick}>
+              {p.primary.ring}
               {p.primary.label}
             </button>
           ) : null}

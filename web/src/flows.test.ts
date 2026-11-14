@@ -48,7 +48,6 @@ const SURFACES = [
   "components/OpponentActions.tsx", // a player's options at the table
   "components/ResultDialog.tsx", // the round end's modal frame
   "components/SeatTakeover.tsx", // the dropped-seat picker on a code join
-  "queue/PartySheet.tsx", // the Ranked and Duo sheets
   "queue/Sheet.tsx", // the queue sheet frame every Sheet uses
 ];
 
@@ -72,8 +71,7 @@ const LEAVE_SITES = [
 const JOIN_SITES = [
   "components/Lobby.tsx", // the code box and room links
   "intent.ts", // the join_room a saved intent resumes with
-  "queue/PartySheet.tsx", // Solo and Play in the Duo sheet
-  "queue/Ranked.tsx", // Play
+  "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
   "queue/TablePanel.tsx", // Move it here (an offer for another table)
 ];
 

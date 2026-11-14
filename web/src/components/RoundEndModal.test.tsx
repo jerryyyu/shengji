@@ -473,14 +473,16 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 1 · Them 0");
   });
 
-  it("Next game and Leave game share one row, and Next game has no ring; Next round keeps it", () => {
+  it("Next game and Leave game share one row; on a timed table Next game carries the same ring as Next round", () => {
     renderModal(makeResult({ point_scored: true, games_won: [1, 0] }), ranked, 20);
     const row = host.querySelector(".round-end-actions")!;
-    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Next game", "Leave game"]);
-    expect(row.querySelector(".timer-ring")).toBeNull();
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent?.replace(/^\d+/, "")))
+      .toEqual(["Next game", "Leave game"]);
+    const gameRing = row.querySelector(".btn.primary .timer-ring")?.outerHTML;
+    expect(gameRing).toBeDefined();
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult(), ranked, 20);
-    expect(host.querySelector(".round-end-actions .timer-ring")).not.toBeNull();
+    expect(host.querySelector(".round-end-actions .btn.primary .timer-ring")?.outerHTML).toBe(gameRing);
   });
 });

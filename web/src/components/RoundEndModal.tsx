@@ -193,13 +193,12 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
         ) : null}
 
         <div className="round-end-actions">
-          {/* Next game carries no ring (FLOWS.md game over); Next round shows the move clock */}
           <button
-            className={`btn primary big${!iAmReady && !gameWon && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
+            className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
             disabled={iAmReady}
             onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
           >
-            {iAmReady || gameWon ? null : <TimerRing left={clock} total={MOVE_SECS} />}
+            {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
             {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
           </button>
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />

@@ -42,12 +42,19 @@ export type ClientMsg =
    *  (its rounds rated). A room starts unranked. */
   | { type: "set_ranked"; on: boolean }
   | { type: "remove_bot" }
-  /** Host only, before the game starts: exchange the occupants of two taken seats. */
-  /** `expect`: who the host saw at a and b (null: empty); the server refuses if either changed. */
+  /** Before the game starts: the host exchanges the occupants of any two
+   *  seats; anyone else moves themselves (one of a, b is their seat) to an
+   *  empty seat, until they tap Start (`lobby_ready`). */
+  /** `expect`: who the sender saw at a and b (null: empty); the server refuses if either changed. */
   | { type: "swap_seats"; a: number; b: number; expect?: [SeatOccupant | null, SeatOccupant | null] }
   /** Host only, before the game starts: send the person in this seat out of the room. */
   | { type: "remove_player"; seat: number; expect?: SeatOccupant }
+  /** The opener's Start: the game starts at once. With others seated the
+   *  room panel offers it as "Start now" once `start_now_in` reaches 0. */
   | { type: "start_game" }
+  /** A created room's Start, anyone seated, before the game: the game starts
+   *  when every connected person has tapped it. `on: false` takes it back. */
+  | { type: "lobby_ready"; on?: boolean }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
   | { type: "bury"; card_ids: number[] }
@@ -55,7 +62,8 @@ export type ClientMsg =
   | { type: "next_round" }
   /** Ranked table: the player is back after the move timer marked them away. */
   | { type: "im_back" }
-  /** Ranked table: whether newcomers may be offered a bot seat; anyone seated may switch it. */
+  /** Any ordinary table, ranked or casual: whether newcomers may be offered
+   *  a bot seat; anyone seated may switch it, a created room from its lobby. */
   | { type: "allow_joiners"; on: boolean }
   | { type: "chat"; text: string }
   /** Report another seat's player; the server answers report_received or a coded error. */
@@ -107,6 +115,19 @@ export interface RoomMsg {
   matched?: boolean;
   /** A created room its host switched to Ranked: its rounds are rated. */
   ranked?: boolean;
+  /** The opener: the same seat as `host`. Only it sets the starting level
+   *  and Ranked, and may Start now. */
+  opener?: number;
+  /** Whether newcomers may be offered a bot seat once the game is in play
+   *  (any ordinary room; on at creation). Absent on a test room. */
+  allow_joiners?: boolean;
+  /** A signed-in player is seated, so the opener may switch Ranked on. */
+  rankable?: boolean;
+  /** The seats that tapped Start (`lobby_ready`). */
+  ready?: number[];
+  /** With someone besides the opener seated: seconds until the opener is
+   *  offered Start now (0 once it is). Tick it down locally. */
+  start_now_in?: number;
 }
 
 export interface StatePlayer {
@@ -222,9 +243,10 @@ export interface GameState {
   ranked?: boolean;
   /** This viewer sits as a guest: their rounds are not ranked. */
   guest?: boolean;
-  /** Ranked tables: whether newcomers may be offered a bot seat. */
+  /** Tables that take joiners, ranked or casual: whether newcomers may be
+   *  offered a bot seat. */
   allow_joiners?: boolean;
-  /** Ranked tables: newcomers taking a seat (see JoinNotice). */
+  /** Tables that take joiners: newcomers taking a seat (see JoinNotice). */
   joining?: JoinNotice[];
   /** Sent only to a newcomer waiting for its handover: `you` is the seat it
    *  takes, which the bot plays until the trick ends. */

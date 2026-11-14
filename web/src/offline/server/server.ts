@@ -101,6 +101,9 @@ class Seat {
 export class LocalRoom {
   seats: Seat[] = [];
   host = 0;
+  /** The room frame's Allow joiners, as server.py keeps it; nobody can
+   *  reach a table on the device, so it changes nothing else. */
+  allowJoiners = true;
   game: GameState | null = null;
   ready = new Set<number>();
   chatSeq = 0;
@@ -327,7 +330,9 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
       : null,
     message: rnd.message,
     notice: rnd.notice,
+    allow_joiners: room.allowJoiners,
     // a solo table never seats an open-table joiner
+    joining: [],
     joined_round: false,
   };
 }
@@ -338,8 +343,11 @@ export function roomJson(room: LocalRoom, seat: number): Json {
     room: room.code,
     you: seat,
     host: room.host,
+    opener: room.host,
     start_level: room.startLevel,
-    ready: [...room.ready].sort((a, b) => a - b),
+    allow_joiners: room.allowJoiners,
+    // the lobby's Start taps: a solo table starts on the one it gets
+    ready: [],
     players: room.seats.map((s, i) => ({ seat: i, name: s.name, is_bot: s.isBot, connected: s.connected || s.isBot })),
   };
 }
@@ -754,8 +762,12 @@ export class LocalServer {
         throw new IllegalPlay("Unknown starting level.");
       }
       room.startLevel = level;
-    } else if (t === "start_game") {
-      if (seat !== room.host) throw new IllegalPlay("Only the host can start.");
+    } else if (t === "allow_joiners") {
+      room.allowJoiners = msg.on === true;
+    } else if (t === "lobby_ready" && msg.on === false) {
+      if (room.game) throw new IllegalPlay("Game already started.");
+    } else if (t === "start_game" || (t === "lobby_ready" && msg.on !== false)) {
+      if (t === "start_game" && seat !== room.host) throw new IllegalPlay("Only the host can start.");
       if (room.seats.length !== 4) throw new IllegalPlay("Need exactly 4 players.");
       if (room.game) throw new IllegalPlay("Game already started.");
       // gamesToWin null: a table keeps playing; holding A scores a point

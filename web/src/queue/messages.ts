@@ -6,7 +6,10 @@
 export type QueueClientMsg = { name?: string } & (
   /** What the queue holds for this socket; answered with queue_state. */
   | { type: "queue_status" }
-  | { type: "queue_join"; party_id?: string }
+  /** `mode` (default "ranked"): which tables to sit at, join or open.
+   *  Casual tables are unrated and never seat a ranked searcher, or the
+   *  reverse. Guests may queue in either. */
+  | { type: "queue_join"; party_id?: string; mode?: QueueMode }
   | { type: "queue_leave" }
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
    *  since changed is refused with `panel_changed`. */
@@ -17,6 +20,10 @@ export type QueueClientMsg = { name?: string } & (
   | { type: "table_move"; seat: number }
   /** Answer the "still here?" prompt (`still_here_until`). */
   | { type: "table_here" }
+  /** A chat line to everyone at your waiting table (<=300 chars, trimmed;
+   *  30 a minute). Never logged; it becomes the room's chat when the table
+   *  starts. */
+  | { type: "table_chat"; text: string }
   | { type: "queue_wait_players" }
   | { type: "queue_allow_bots" }
   | { type: "party_create" }
@@ -30,9 +37,13 @@ export type QueueClientMsg = { name?: string } & (
   /** The bar's open-table chip: the offer again, with a fresh clock. */
   | { type: "open_table_show"; room?: string });
 
+export type QueueMode = "ranked" | "casual";
+
 export interface QueueStateMsg {
   type: "queue_state";
   queued: boolean;
+  /** Queued: the mode the search is in. */
+  mode?: QueueMode;
   count: number;
   since?: number;
   front?: boolean;
@@ -126,8 +137,24 @@ export interface WaitingTableMsg {
 export interface QueueCountMsg { type: "queue_count"; count: number }
 
 /** The Play tab's presence line, to every lobby socket on change. Counts
- *  only: open ranked tables, connected people at them, people queued. */
-export interface PresenceMsg { type: "presence"; tables: number; playing: number; waiting: number }
+ *  only: open tables, connected people at them, people queued, and the open
+ *  tables split by mode (`ranked` + `casual` = `tables`). */
+export interface PresenceMsg {
+  type: "presence"; tables: number; playing: number; waiting: number;
+  ranked?: number; casual?: number;
+}
+
+/** A line of your waiting table's chat; you get your own lines too. `id`
+ *  counts up per table; `seat` is the sender's seat there. */
+export interface TableChatMsg {
+  type: "table_chat"; table: string; id: number; seat: number; name: string; text: string; t: number;
+}
+
+/** The waiting table's chat so far, when you sit down or come back. */
+export interface TableChatHistoryMsg {
+  type: "table_chat_history"; table: string;
+  messages: Omit<TableChatMsg, "type" | "table">[];
+}
 
 /** Someone else at your waiting table moved to `seat` (the queue_state
  *  with the new seats arrives just before it). */
@@ -191,6 +218,8 @@ export type QueueServerMsg =
   | QueueStateMsg
   | QueueCountMsg
   | PresenceMsg
+  | TableChatMsg
+  | TableChatHistoryMsg
   | TableMovedMsg
   | FirstJoinerMsg
   | MatchStartedMsg
@@ -205,7 +234,7 @@ export type QueueErrorCode =
   | "not_queued" | "not_seated" | "no_match" | "start_failed"
   | "party_not_found" | "party_full" | "party_busy" | "in_queue" | "in_party"
   | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed"
-  | "pair_seats_fixed" | "already_ready" | "panel_changed";
+  | "pair_seats_fixed" | "already_ready" | "panel_changed" | "bad_mode";
 
 export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "signed_in_only", "in_room", "rate_limited", "not_leader",
@@ -213,5 +242,5 @@ export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "not_queued", "not_seated", "no_match", "start_failed",
   "party_not_found", "party_full", "party_busy", "in_queue", "in_party",
   "not_in_party", "cooldown", "no_offer", "bad_seat", "seat_taken", "table_closed",
-  "pair_seats_fixed", "already_ready", "panel_changed",
+  "pair_seats_fixed", "already_ready", "panel_changed", "bad_mode",
 ]);

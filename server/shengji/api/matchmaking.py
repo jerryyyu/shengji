@@ -14,6 +14,11 @@ player twice: a table leaves ``tables`` and its entries leave the queue
 before its room is built, and a second ``table_start`` for it then finds
 nothing.
 
+Every entry has a mode (``queue_join``'s ``mode``: "ranked", the default, or
+"casual"). An entry shares a waiting table and is offered open tables of its
+own mode only, and its table or bot game starts a room of that mode: a casual
+room is unrated and has no move timer.
+
 Seating (``seat_waiting``, on every join and every ``tick``):
 
 1. waiting entries (not yet at a table) are ordered front-of-line first,
@@ -52,6 +57,10 @@ Start and sent nothing for ``TABLE_IDLE_SECS`` leaves; at a table with no
 timer it is asked "still here?" first (``still_here_until``) and leaves
 ``STILL_HERE_SECS`` later unless any message (``table_here``) answers.
 
+The people at a waiting table may chat (``table_chat``): validated as room
+chat is, rate-limited, held in memory only, and handed to the room as its
+first scrollback when the table starts.
+
 Each entry's ``queue_state`` carries ``panel_seq``, which changes whenever
 its panel changes kind or target (alone, an offer of one room, a waiting
 table). A Start or Join that sends back an older ``panel_seq`` is refused
@@ -70,7 +79,7 @@ the table id (``None`` for a game started alone) and the four seats in seat
 order (bots as ``Slot`` with ``user_id=None``).
 
 Open tables (``open_tables`` and ``join_table`` are injected by the server):
-a ranked game in play with a seat a newcomer may take. A single entry alone
+a game in play, ranked or casual, with a seat a newcomer may take. A single entry alone
 in the queue (after ``seat_waiting``, so a waiting table always comes first)
 is offered the open table with the most people, for ``OFFER_SECS``: it picks
 a seat and joins, or keeps looking. A table it passed on (or let lapse) is
@@ -78,9 +87,9 @@ not offered to it again by itself in this search, but stays one tap away on
 the bar while it is joinable; a fresh ``queue_join`` forgets those. The
 entry's bot timer is paused only while an offer is up, and runs on after
 Wait. Leaving a table it joined, before its
-first ranked round there, costs a ``JOIN_COOLDOWN_SECS`` queue cooldown and
-that table is never offered to it again (``barred``, which a fresh
-``queue_join`` keeps). A game started alone stays an open table; the server
+first full round there, means that table is never offered to it again
+(``barred``, which a fresh ``queue_join`` keeps), and at a ranked table also
+costs a ``JOIN_COOLDOWN_SECS`` queue cooldown. A game started alone stays an open table; the server
 tells its people once when the first newcomer's Join lands
 (``first_joiner``).
 """
@@ -152,15 +161,23 @@ STILL_HERE_SECS = 30.0
 SEAT_ORDER = (0, 2, 1, 3)
 PAIR_SEATS = ((0, 2), (1, 3))
 # How long an open-table offer stays up, and the queue cooldown after
-# leaving a table one joined before its first ranked round there.
+# leaving a ranked table one joined before its first ranked round there.
 OFFER_SECS = 20.0
-JOIN_COOLDOWN_SECS = 300.0
+JOIN_COOLDOWN_SECS = 60.0
 PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
 PARTY_LIMIT = (20, 60.0)     # party_* per account per window
 LOOKUP_LIMIT = (30, 60.0)    # code_lookup per account (a guest: per socket) per window
 MOVE_LIMIT = (20, 60.0)      # table_move per account per window
+CHAT_LIMIT = (30, 60.0)      # table_chat per account per window
+# A waiting table's chat keeps a room chat's limits (server.CHAT_MAX_LEN,
+# server.CHAT_KEEP): it becomes the room's scrollback when the table starts.
+CHAT_MAX_LEN = 300
+CHAT_KEEP = 50
+# The queue's two modes: ranked tables rate their rounds, casual ones never;
+# an entry is seated and offered tables of its own mode only.
+MODES = ("ranked", "casual")
 # Room and pair codes share one space: no live room and live pair ever hold
 # the same code, so one join box takes either. No I, O, 0 or 1, which read
 # alike.
@@ -171,7 +188,7 @@ QUEUE_MESSAGES = frozenset({
     "queue_status", "queue_join", "queue_leave", "table_start", "match_accept", "match_decline",
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
     "party_leave", "open_table_join", "open_table_wait", "open_table_show",
-    "table_move", "table_here",
+    "table_move", "table_here", "table_chat",
 })
 SAME_DEVICE = "Someone on this device is already at that table."
 # The only queue messages a seated socket may send: leaving a pair, and
@@ -282,6 +299,8 @@ class Entry:
     # never becomes an irrevocable Start.
     panel_key: tuple = ()
     panel_seq: int = 0
+    # "ranked" or "casual" (``queue_join``'s ``mode``).
+    mode: str = "ranked"
 
     @property
     def size(self) -> int:
@@ -301,6 +320,11 @@ class Table:
     entries: list[Entry] = field(default_factory=list)   # arrival order
     ready: set[str] = field(default_factory=set)          # entry ids that tapped Start
     seated_at: dict[int, float] = field(default_factory=dict)
+    mode: str = "ranked"
+    # ``table_chat`` lines, the last CHAT_KEEP: in memory only, never in a
+    # log, and the room's first scrollback when the table starts.
+    chat: list[dict] = field(default_factory=list)
+    chat_seq: int = 0
 
     @property
     def humans(self) -> int:
@@ -410,7 +434,9 @@ async def _store_rating(user_id: int) -> float | None:
 
 
 # ------------------------------------------------------------- the queue
-StartRoom = Callable[[str | None, list[Slot], dict[int, Conn]], Awaitable[Any]]
+# (table id, slots, sockets, *, mode, chat): ``mode`` is the entries' mode
+# and ``chat`` the waiting table's chat lines (empty for a game started alone).
+StartRoom = Callable[..., Awaitable[Any]]
 # (room code, seat, account, name, socket) -> None when the seat is the
 # newcomer's (pending until the handover), else a refusal code.
 JoinTable = Callable[[str, int, int, str, Conn], Awaitable[str | None]]
@@ -429,7 +455,7 @@ class Matchmaker:
                  open_tables: Callable[[], list[dict]] | None = None,
                  join_table: JoinTable | None = None,
                  join_pair: JoinPair | None = None,
-                 presence: Callable[[], tuple[int, int]] | None = None,
+                 presence: Callable[[], tuple[int, int, int, int]] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -438,16 +464,16 @@ class Matchmaker:
         # Whether a code names a live room: pair codes avoid them, and
         # code_lookup answers with them.
         self.room_live = room_live or (lambda code: False)
-        # The open tables as the server sees them (``{"code", "seats",
+        # The open tables as the server sees them (``{"code", "seats", "mode",
         # "round_end"}``; a seat is ``{"name", "bot", "open", "queue_id",
         # "device", "team"}``), and the server's join of one seat for one
         # queue id.
         self.open_tables = open_tables or (lambda: [])
         self.join_table = join_table
         self.join_pair = join_pair
-        # (open tables, connected humans seated at them) for the presence
-        # line; by default read off ``open_tables`` (seats neither bot nor
-        # open count as people).
+        # (open tables, connected humans seated at them, ranked tables,
+        # casual tables) for the presence line; by default read off
+        # ``open_tables`` (seats neither bot nor open count as people).
         self.presence = presence or self._presence_from_open_tables
         self.autorun = autorun
         self._task: asyncio.Task | None = None
@@ -479,11 +505,12 @@ class Matchmaker:
         self.party_limiter = accounts.RateLimiter(*PARTY_LIMIT)
         self.lookup_limiter = accounts.RateLimiter(*LOOKUP_LIMIT)
         self.move_limiter = accounts.RateLimiter(*MOVE_LIMIT)
+        self.chat_limiter = accounts.RateLimiter(*CHAT_LIMIT)
         self._seq = count(1)
         self._panel = count(1)
         self._count_sent = 0
         self._count_sent_at = -math.inf
-        self._presence_sent: tuple[int, int, int] = (0, 0, 0)
+        self._presence_sent: tuple[int, ...] = (0, 0, 0, 0, 0)
         self._presence_sent_at = -math.inf
         self._last_tick = -math.inf
 
@@ -598,20 +625,22 @@ class Matchmaker:
         for c in list(self.lobby):
             c.push({"type": "queue_count", "count": n})
 
-    def _presence_from_open_tables(self) -> tuple[int, int]:
+    def _presence_from_open_tables(self) -> tuple[int, int, int, int]:
         tables = [t for t in self.open_tables() if t.get("seats")]
+        ranked = sum(1 for t in tables if t.get("mode", "ranked") == "ranked")
         return len(tables), sum(1 for t in tables for st in t["seats"]
-                                if not st.get("bot") and not st.get("open"))
+                                if not st.get("bot") and not st.get("open")), ranked, len(tables) - ranked
 
     def presence_payload(self) -> dict:
-        """Counts only: no names, codes or ids reach an idle Play tab."""
+        """Counts only: no names, codes or ids reach an idle Play tab.
+        ``tables`` is every open table; ``ranked`` and ``casual`` split it."""
         try:
-            tables, playing = self.presence()
+            tables, playing, ranked, casual = self.presence()
         except Exception:      # noqa: BLE001 - the line is cosmetic; the queue goes on
             log.exception("presence count failed")
-            tables, playing = 0, 0
+            tables, playing, ranked, casual = 0, 0, 0, 0
         return {"type": "presence", "tables": tables, "playing": playing,
-                "waiting": self.count()}
+                "waiting": self.count(), "ranked": ranked, "casual": casual}
 
     def _flush_presence(self) -> None:
         """Every lobby socket hears the presence counts when they change, at
@@ -620,7 +649,7 @@ class Matchmaker:
         if now - self._presence_sent_at < COUNT_DEBOUNCE:
             return
         p = self.presence_payload()
-        key = (p["tables"], p["playing"], p["waiting"])
+        key = (p["tables"], p["playing"], p["waiting"], p["ranked"], p["casual"])
         if key == self._presence_sent:
             return
         self._presence_sent, self._presence_sent_at = key, now
@@ -693,7 +722,7 @@ class Matchmaker:
                 "bots_paused": e.paused is not None,
                 "table": self.table_payload(t, uid) if t is not None else None,
                 "offer": self._offer_payload(e.offer, uid, e) if e.offer is not None else None,
-                "open_tables": len(e.open_codes)}
+                "open_tables": len(e.open_codes), "mode": e.mode}
 
     def _panel_seq(self, e: Entry) -> int:
         """The entry's panel sequence number, advanced when what its panel
@@ -917,6 +946,7 @@ class Matchmaker:
         t = self._table(e)
         if t is not None:              # back from reconnecting: everyone sees it
             self._send_table(t)
+            self._send_chat_history(t, [uid])
         else:
             self._send(uid, self.queue_state(uid))
 
@@ -994,6 +1024,10 @@ class Matchmaker:
                     if e is None or e.table_id is None:
                         raise QueueError("not_seated", "You are not at a waiting table.")
                     answered = True
+                elif t == "table_chat":
+                    if not self.chat_limiter.allow(str(queue_id), now):
+                        raise QueueError("rate_limited", "Too many messages; wait a minute.")
+                    self._table_chat(queue_id, msg)
                 elif t in ("queue_wait_players", "queue_allow_bots"):
                     self._set_bot_fill(queue_id, t == "queue_allow_bots")
                 elif t == "open_table_join":
@@ -1014,6 +1048,10 @@ class Matchmaker:
         if uid in self.entry_of:              # already queued: this socket holds it now
             self._resync(uid)
             return
+        # absent is ranked: an older client knows only the ranked queue
+        mode = msg.get("mode", "ranked")
+        if mode not in MODES:
+            raise QueueError("bad_mode", "Pick Ranked or Casual.")
         want = msg.get("party_id")
         party = self._party(uid)
         members, pid = [uid], None
@@ -1055,11 +1093,11 @@ class Matchmaker:
         since = self.clock()
         e = Entry(id=secrets.token_hex(6), seq=next(self._seq), members=members,
                   leader=uid, member_ratings=member_ratings, since=since,
-                  party_id=pid, bots_at=since + BOT_FILL_SECS)
+                  party_id=pid, bots_at=since + BOT_FILL_SECS, mode=mode)
         self.entries[e.id] = e
         for m in members:
             self.entry_of[m] = e.id
-        self._qlog("join", e)
+        self._qlog("join", e, mode=mode)
         self.seat_waiting()
         self._offer_open_tables(self.clock(), quiet={e.id})
         if e.table_id is None:
@@ -1145,6 +1183,34 @@ class Matchmaker:
                 self._send(u, {"type": "table_moved", "name": self._name(uid), "seat": seat,
                                "your_team": mine % 2 == seat % 2})
 
+    def _table_chat(self, uid: int, msg: dict) -> None:
+        """A line from a seated entry to everyone at its waiting table,
+        itself included, validated as a room chat line is. Held in memory
+        only: never in the queue log, telemetry or a game log."""
+        e = self._entry(uid)
+        t = self._table(e)
+        if e is None or t is None:
+            raise QueueError("not_seated", "You are not at a waiting table.")
+        text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
+        if not text:
+            return
+        t.chat_seq += 1
+        line = {"id": t.chat_seq, "seat": t.seats.index(uid), "name": self._name(uid),
+                "text": text, "t": self.clock()}
+        t.chat.append(line)
+        del t.chat[:-CHAT_KEEP]
+        for o in t.entries:
+            for u in o.members:
+                self._send(u, {"type": "table_chat", "table": t.id, **line})
+
+    def _send_chat_history(self, t: Table, members: list[int]) -> None:
+        """The table's chat so far, to members who just sat or came back."""
+        if not t.chat:
+            return
+        for u in members:
+            self._send(u, {"type": "table_chat_history", "table": t.id,
+                           "messages": list(t.chat)})
+
     # ----------------------------------------------------------- seating
     def seat_waiting(self) -> None:
         """Seat every waiting entry that can sit: first at an existing waiting
@@ -1168,7 +1234,8 @@ class Matchmaker:
             seated = False
             for e in pool:
                 fits = [t for t in self.tables.values()
-                        if t.places_for(e) is not None and near(e, t.rating)
+                        if t.mode == e.mode
+                        and t.places_for(e) is not None and near(e, t.rating)
                         and not self._devices(e) & self._table_devices(t)]
                 if fits:
                     t = min(fits, key=lambda t: (gap(e, t.rating), t.seq))
@@ -1178,12 +1245,13 @@ class Matchmaker:
             if seated:
                 continue
             for e in pool:
-                others = [o for o in pool if o is not e and near(e, o.rating)
+                others = [o for o in pool if o is not e and o.mode == e.mode
+                          and near(e, o.rating)
                           and not self._devices(e) & self._devices(o)]
                 if not others:
                     continue
                 o = min(others, key=lambda o: (gap(e, o.rating), not o.front, o.since, o.seq))
-                t = Table(id=secrets.token_hex(6), seq=next(self._seq))
+                t = Table(id=secrets.token_hex(6), seq=next(self._seq), mode=e.mode)
                 self.tables[t.id] = t
                 self._sit(t, e, now)
                 self._sit(t, o, now)
@@ -1214,6 +1282,7 @@ class Matchmaker:
         e.offer, e.open_codes = None, []
         if e.paused is not None:
             e.bots_at, e.paused = now + e.paused, None
+        self._send_chat_history(t, e.members)
 
     # ------------------------------------------------------------- starts
     def _due(self, t: Table, now: float) -> bool:
@@ -1278,7 +1347,7 @@ class Matchmaker:
         self._qlog("start", table=True, humans=sum(not s.is_bot for s in slots),
                    max_wait=round(max(self.clock() - e.since for e in entries), 1))
         self._flush_count()
-        await self._start_room_for(t.id, slots, entries)
+        await self._start_room_for(t.id, slots, entries, mode=t.mode, chat=list(t.chat))
 
     async def _launch_alone(self, e: Entry) -> None:
         """An entry alone in the queue whose own timer ran out: it plays the
@@ -1286,7 +1355,7 @@ class Matchmaker:
         self._remove(e, "bots_timer")
         self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
         self._flush_count()
-        await self._start_room_for(None, self._bot_slots(e), [e])
+        await self._start_room_for(None, self._bot_slots(e), [e], mode=e.mode)
 
     def _bot_slots(self, e: Entry) -> list[Slot]:
         bot = Slot(None, "", ratings.BOT_RATING)
@@ -1295,12 +1364,13 @@ class Matchmaker:
                 else [people[0], bot, people[1], bot])
 
     async def _start_room_for(self, table_id: str | None, slots: list[Slot],
-                              entries: list[Entry]) -> bool:
+                              entries: list[Entry], *, mode: str = "ranked",
+                              chat: list[dict] | None = None) -> bool:
         """Start the room; on failure every entry goes back in the queue at
         the front, unseated, and is told. Never strands a player."""
         conns = {s.user_id: self.conns[s.user_id] for s in slots if s.user_id is not None}
         try:
-            await self._start(table_id, slots, conns)
+            await self._start(table_id, slots, conns, mode=mode, chat=chat or [])
             return True
         except Exception:          # noqa: BLE001 - players go back, never stranded
             log.exception("queued room failed to start")
@@ -1317,10 +1387,11 @@ class Matchmaker:
             return False
 
     async def _start(self, table_id: str | None, slots: list[Slot],
-                     conns: dict[int, Conn]) -> Any:
+                     conns: dict[int, Conn], *, mode: str = "ranked",
+                     chat: list[dict] | None = None) -> Any:
         if self.start_room is None:
             raise RuntimeError("no room factory")
-        return await self.start_room(table_id, slots, conns)
+        return await self.start_room(table_id, slots, conns, mode=mode, chat=chat or [])
 
     async def _start_bots(self, uid: int) -> None:
         e = self._entry(uid)
@@ -1337,7 +1408,7 @@ class Matchmaker:
         slots = self._bot_slots(e)
         conns = {u: self.conns[u] for u in e.members}
         try:
-            await self._start(None, slots, conns)
+            await self._start(None, slots, conns, mode=e.mode)
         except Exception:          # noqa: BLE001
             log.exception("bot game failed to start")
             err = QueueError("start_failed", "Could not start the game.")
@@ -1378,7 +1449,10 @@ class Matchmaker:
         return None
 
     def _fits(self, t: dict, e: Entry) -> bool:
-        """A single fits any open seat; a pair only two open partner seats."""
+        """A table of the entry's own mode: a single fits any open seat; a
+        pair only two open partner seats."""
+        if t.get("mode", "ranked") != e.mode:
+            return False
         if not all(self._usable(t, u) for u in e.members):
             return False
         return e.size == 1 or self._pair_seats(t["seats"]) is not None
@@ -1578,15 +1652,18 @@ class Matchmaker:
         """The server seated a newcomer at its open table."""
         self.joining.pop(uid, None)
 
-    def join_ended(self, uid: int, *, back_in_line: bool, penalty: bool = False) -> None:
+    def join_ended(self, uid: int, *, back_in_line: bool, penalty: bool = False,
+                   cooldown: bool = True) -> None:
         """A Join that never reached its seat: the owner reclaimed it or the
         table closed (``back_in_line``: the entry returns to the front of the
-        queue), the newcomer left (``penalty``), or its socket went."""
+        queue), the newcomer left (``penalty``; with ``cooldown`` off, at a
+        casual table, the table is barred and nothing else), or its socket
+        went."""
         code, e = self.joining.pop(uid, (None, None))
         if code is None:
             return
         if penalty:
-            self._bar(uid, code)
+            self._bar(uid, code, cooldown=cooldown)
         else:
             self.declined.setdefault(uid, set()).add(code)
         if (e is None or not back_in_line or uid in self.entry_of
@@ -1605,23 +1682,25 @@ class Matchmaker:
         self._flush_count()
         self.ensure_running()
 
-    def _bar(self, uid: int, code: str) -> None:
-        """A queue cooldown, and this table is never offered again; the
-        account's lobby sockets are told now (a socket still in the room is
-        told as it returns, in ``return_to_lobby``)."""
+    def _bar(self, uid: int, code: str, *, cooldown: bool = True) -> None:
+        """This table is never offered again, and with ``cooldown`` a queue
+        cooldown starts; the account's lobby sockets are told now (a socket
+        still in the room is told as it returns, in ``return_to_lobby``)."""
         self.barred.setdefault(uid, set()).add(code)
+        if not cooldown:
+            return
         self.cooldowns[uid] = self.clock() + JOIN_COOLDOWN_SECS
         if uid not in self.entry_of:
             for c in list(self.socks.get(uid, ())):
                 if not c.closed and not c.in_room:
                     c.push(self._idle_state(uid))
 
-    def left_open_table(self, uid: int, code: str) -> None:
+    def left_open_table(self, uid: int, code: str, *, cooldown: bool = True) -> None:
         """A newcomer left the table it joined before its first ranked round
-        there: a queue cooldown, and that table is never offered to it
-        again."""
+        there: that table is never offered to it again, and at a ranked table
+        (``cooldown``) a queue cooldown starts."""
         self.joining.pop(uid, None)
-        self._bar(uid, code)
+        self._bar(uid, code, cooldown=cooldown)
 
     # ------------------------------------------------------------- parties
     def has_party_code(self, code: str) -> bool:

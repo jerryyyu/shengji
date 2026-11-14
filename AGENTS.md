@@ -76,6 +76,10 @@ progress, and keep every material node resumable.
   no freeze, packet, rebind, marker, confirmation or reconstruction.
 - Keep correctness, performance, calibration and gameplay strength as separate
   claims. No diagnostic or capacity receipt authorizes deployment.
+- A UI review ask states the entry points touched, surfaces added (expect 0)
+  and removed, visible strings added under controls (expect 0), and the
+  flow-map row; the reviewer HOLDs a new surface, timer, message type or
+  leave/join path that duplicates an existing one.
 
 ## Native Codex orchestration
 
@@ -174,6 +178,9 @@ against a rule marked *none* counts as a repeat.
 | inconclusive reads are not written as absolute claims; docs name the current comparator | `check_doc_claims.py` on the lines a PR adds to `AI_POLICIES.md`, `RL_PLAN.md`, `README.md`, `DEPLOY.md`; a line keeps such text only with `claim-ok: <reason>` | CI `comment-provenance` |
 | never `git add .`; preserve unrelated changes | none | judgement |
 | a cleanup deletes only through `server/scripts/safe_rm.py` (live links, in-use, launcher, keep and packet pins refuse); the fleet copy equals the repo copy | `tests/test_safe_rm.py` | CI `server` |
+| every dialog, sheet and modal layer is a listed surface; every leave and join send site is listed; the table panel's frame renders only from `TablePanel.tsx` | `web/src/flows.test.ts` (literal lists: a new one fails, a removed one must shrink its list) | CI `frontend` |
+| the copy rule: switches and setting rows take a label only, one status line per panel, the ring is the clock; cut copy stays cut | `web/src/queue/copyRule.test.tsx` on every panel kind; `web/src/copyCuts.test.ts` on the `docs/design/COPY_CUTS.md` strings | CI `frontend` |
+| a new component under `web/src/{components,queue,home}` or a changed `flows.test.ts` list edits `docs/design/FLOWS.md` or `docs/design/mocks/core.py` | `check_flow_map.py`; waived by `flow-ok: <reason>` in the PR body or a commit message | CI `comment-provenance` |
 
 ## Project records
 
@@ -187,6 +194,7 @@ does not validate provenance or authorize opening sealed scientific results.
 |---|---|
 | open questions, ordered work | board issue #1263 (successor to #1075 and #707) and its topic issues; finished items become closed paragraphs there |
 | technical roadmap, compute and measurement rules | `RL_PLAN.md` |
+| player flows and UI decisions | `docs/design/FLOWS.md`; mock `docs/design/mocks/core.py` (a reversal edits the old line) |
 | measured policy evidence, evidence standard | `AI_POLICIES.md` (the ladder table) |
 | releases, deploy checklist, rollback | `DEPLOY.md` |
 | process failures | `incidents/` |

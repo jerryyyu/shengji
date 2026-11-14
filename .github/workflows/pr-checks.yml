@@ -212,6 +212,14 @@ jobs:
       - name: Check added doc lines for absolute claims and stale comparators
         if: ${{ !cancelled() }}
         run: python3 server/scripts/check_doc_claims.py --base ${{ github.event.pull_request.base.sha }}
+      # A branch that adds a component under web/src/{components,queue,home} or changes a list in
+      # web/src/flows.test.ts also edits docs/design/FLOWS.md or the core mock, unless the PR body
+      # or a commit message says 'flow-ok: <reason>'. The body goes through env, never into the script.
+      - name: Check UI flow changes against the flow map
+        if: ${{ !cancelled() }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 server/scripts/check_flow_map.py --base ${{ github.event.pull_request.base.sha }} --body-env PR_BODY
 
   server:
     needs: changes
@@ -314,6 +322,7 @@ jobs:
           tests/test_served_config.py
           tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
+          tests/test_check_flow_map.py
           tests/test_check_doc_claims.py
           tests/test_check_lane_scripts.py
           tests/test_lane_lib.py

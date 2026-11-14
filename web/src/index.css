@@ -5687,12 +5687,35 @@ body.keyboard-open .tabbar { display: none; }
   .home-narrow .play-tab .game-title-en { font-size: 13px; }
   .home-narrow .play-tab:not(.play-table-up) > .lobby-panel { gap: 12px; }
 }
-/* A short phone at a table: the panel takes the title's room too, so its
-   buttons sit above the tab bar. */
-@media (max-height: 740px) {
-  .home-narrow .play-tab.play-table-up .game-title { display: none; }
-  .home-narrow .play-tab.play-table-up > .lobby-panel { gap: 12px; }
-  .home-narrow .play-tab.play-table-up .tp { gap: 8px; }
+/* A phone at a table: the panel is the page, from the name chip down, and
+   it fits above the tab bar. Its rows are compact (40px to the eye, 44px to
+   the finger), and the button row sticks just above the tab bar whenever the
+   panel is taller than the screen, so Start and Leave are never under it. */
+.home-narrow .play-tab.play-table-up .game-title { display: none; }
+.home-narrow .play-tab.play-table-up > .lobby-panel { gap: 10px; padding-top: 0; }
+.home-narrow .play-table-up .tp { gap: 8px; padding: 12px; }
+.home-narrow .play-table-up .tp-seat { min-height: 48px; padding: 4px 7px; }
+.home-narrow .play-table-up .tp .q-wait,
+.home-narrow .play-table-up .tp-chat,
+.home-narrow .play-table-up .tp-set { position: relative; min-height: 40px; }
+.home-narrow .play-table-up .tp .q-wait::before,
+.home-narrow .play-table-up .tp-chat::before {
+  content: ""; position: absolute; inset: -2px 0;
+}
+.home-narrow .play-table-up .tp .q-switch { width: 44px; height: 26px; border-radius: 13px; }
+.home-narrow .play-table-up .tp .q-switch::after { width: 22px; height: 22px; }
+.home-narrow .play-table-up .tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(18px); }
+.home-narrow .play-table-up .tp-acts,
+.home-narrow .play-table-up .tp-led {
+  position: sticky;
+  /* the screen's bottom padding already clears the tab bar, and a sticky
+     box keeps inside that padding */
+  bottom: 0;
+  z-index: 2;
+  margin: -6px -6px 0;
+  padding: 6px;
+  border-radius: 16px;
+  background: #1b2729;
 }
 
 /* The Play tab starts at the top like the other tabs, at every width. */

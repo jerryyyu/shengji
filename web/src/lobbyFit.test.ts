@@ -122,4 +122,23 @@ describe("the Play tab on a phone", () => {
     expect(art["container-type"]).toBe("size");
     expect(rule(".home-narrow .play-tab .lp-stage")["--u"]).toBe("min(100cqw / 1200, 100cqh / 630)");
   });
+
+  it("a phone's table panel fits above the tab bar: no title, compact rows with 44px hit areas, a sticky button row", () => {
+    expect(rule(".home-narrow .play-tab.play-table-up .game-title").display).toBe("none");
+    expect(rule(".home-narrow .play-table-up .tp").gap).toBe("8px");
+    expect(rule(".home-narrow .play-table-up .tp-seat")["min-height"]).toBe("48px");
+    const rows = rule(".home-narrow .play-table-up .tp .q-wait, .home-narrow .play-table-up .tp-chat, "
+                      + ".home-narrow .play-table-up .tp-set");
+    expect(rows["min-height"]).toBe("40px");
+    // a 40px row is a 44px target: its hit area reaches 2px past each edge
+    const hit = rule(".home-narrow .play-table-up .tp .q-wait::before, .home-narrow .play-table-up .tp-chat::before");
+    expect(hit.position).toBe("absolute");
+    expect(hit.inset).toBe("-2px 0");
+    // Start and Leave stick to the bottom of the screen's content box, which
+    // ends --tabbar-clear above the screen's bottom: never under the pill
+    const acts = rule(".home-narrow .play-table-up .tp-acts, .home-narrow .play-table-up .tp-led");
+    expect(acts.position).toBe("sticky");
+    expect(acts.bottom).toBe("0");
+    expect(rule(".home-narrow .home-body > .screen")["padding-bottom"]).toBe("var(--tabbar-clear)");
+  });
 });

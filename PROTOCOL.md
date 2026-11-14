@@ -277,7 +277,7 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready for good; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
 | `table_move` | `seat` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. 20 per account per minute |
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
-| `table_chat` | `text` | a chat line to everyone at your waiting table (`not_seated` when you sit at none), validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log, and the room's opening scrollback (`chat_history`) when the table starts |
+| `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
 | `queue_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` (what an older client's bar button sends) |
 | `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`bots_at: null`, `wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
 | `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now (a new `bots_at`); the wait itself is kept |
@@ -350,12 +350,15 @@ other socket with `account_in_game`.
   connected), ranked or casual; `ranked` and `casual` split `tables` by mode;
   `playing`: connected people seated at those tables. Counts only, no names
   or codes.
-- `table_chat {table, id, seat, name, text, t}`: a line of your waiting
-  table's chat, to everyone there, the sender included; `id` counts up per
-  table, `seat` is the sender's seat, `t` Unix seconds.
+- `table_chat {table, id, seat, name, text, t}`: a line of your table's
+  chat, to everyone there, the sender included; `table` is the waiting
+  table's id, or null while you wait alone; `id` counts up per table, `seat`
+  is the sender's seat (alone: the seat you take against bots), `t` Unix
+  seconds.
 - `table_chat_history {table, messages}`: the table's chat so far (each
-  `{id, seat, name, text, t}`), when you sit down at a table that has some or
-  come back to it.
+  `{id, seat, name, text, t}`), replacing what you hold: when you sit down at
+  a table that has some, when a newcomer's lines from alone merge in (to
+  everyone there; every line then takes a new id), or when you come back.
 - `table_moved {name, seat, your_team}`: to everyone else at your waiting
   table when `name` moved to `seat`; `your_team` says whether that seat is on
   your team. It comes right after the `queue_state` that shows the new seats.

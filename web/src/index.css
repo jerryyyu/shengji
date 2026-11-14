@@ -2627,13 +2627,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   margin: -8px auto;
 }
 
+/* the opened card grows to fit the widest last trick (four 5-card throws
+   come to about 700px), never past the screen less a 12px margin a side */
 .modal.round-end.details-open {
-  width: 560px;
-  max-width: 100%;
+  width: max-content;
+  min-width: min(560px, 100%);
+  max-width: min(100%, calc(100vw - 24px));
 }
 
 .round-end-details {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   margin-top: 4px;
   padding: 10px;
@@ -2671,8 +2675,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   margin-left: -15px;
 }
 
+/* each play overlaps like a hand: an 18px step keeps every rank readable */
 .round-end-play-cards .card + .card {
-  margin-left: -20px;
+  margin-left: -16px;
 }
 
 .kitty-bonus {
@@ -2685,7 +2690,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   margin: 0;
   padding: 0;
   display: flex;
-  gap: 6px;
+  gap: 10px;
 }
 
 .round-end-play {

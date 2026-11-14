@@ -87,12 +87,18 @@ function shortDelta(delta: number): string {
   return "±0";
 }
 
-/** The round in one line: "Them took 35 of 80. Us go up 1, to 3". The
+/** A team as the subject of a sentence: "We" or "They". Labels keep Us
+ *  and Them; prose on the card speaks as the player would. */
+function teamSubject(team: 0 | 1, state: GameState): "We" | "They" {
+  return teamWord(team, state) === "Us" ? "We" : "They";
+}
+
+/** The round in one line: "They took 35 of 80. We go up 1, to 3". The
  *  attackers' total already includes any kitty bonus. */
 function resultSentences(state: GameState, result: RoundResult): { took: string; climb: string } {
   const attack = attackingTeam(state);
-  const attackers = attack === null ? "Attackers" : teamWord(attack, state);
-  const winner = teamWord(result.winner_team, state);
+  const attackers = attack === null ? "Attackers" : teamSubject(attack, state);
+  const winner = teamSubject(result.winner_team, state);
   const n = result.level_change;
   return {
     took: `${attackers} took ${result.attacker_points} of 80.`,
@@ -102,7 +108,7 @@ function resultSentences(state: GameState, result: RoundResult): { took: string;
   };
 }
 
-/** "Them won the last trick: ×2, +30" when the attackers took the last
+/** "They won the last trick: ×2, +30" when the attackers took the last
  *  trick, else null. The multiplier is read back from the bonus the server
  *  applied (bonus = buried points x multiplier); with nothing buried to
  *  multiply it is the engine's 2 x the cards in the lead. */
@@ -115,7 +121,7 @@ function kittyBonusText(state: GameState, result: RoundResult): string | null {
     ? result.kitty_points / buried
     : buried === 0 ? 2 * (last.plays[0]?.cards.length ?? 1) : null;
   const times = mult !== null ? `×${mult}, ` : "";
-  return `${teamWord(attack, state)} won the last trick: ${times}+${result.kitty_points}`;
+  return `${teamSubject(attack, state)} won the last trick: ${times}+${result.kitty_points}`;
 }
 
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {

@@ -89,8 +89,10 @@ async function renderApp() {
 
 const q = (sel: string) => document.querySelector<HTMLElement>(sel);
 const buttons = (scope: ParentNode = document) => [...scope.querySelectorAll<HTMLButtonElement>("button")];
+/** A button's words, without the seconds of a timer ring inside it. */
+const words = (b: Element) => (b.textContent ?? "").slice(b.querySelector(".timer-ring")?.textContent?.length ?? 0);
 const button = (text: string | RegExp, scope: ParentNode = document) => buttons(scope).find((b) => {
-  const t = b.textContent ?? "";
+  const t = words(b);
   return typeof text === "string" ? t === text : text.test(t);
 });
 const click = (b: HTMLElement | null | undefined) => {
@@ -306,13 +308,18 @@ const live = () => q(".sr-only[aria-live='polite']");
 /** The open leave sheet's title and line. */
 const leaveSheetText = () => {
   const d = q("[role='alertdialog']");
-  return d ? `${d.querySelector("h2")!.textContent} / ${d.querySelector("p")!.textContent}` : null;
+  if (!d) return null;
+  const line = d.querySelector("p");
+  return line ? `${d.querySelector("h2")!.textContent} / ${line.textContent}` : d.querySelector("h2")!.textContent;
 };
+/** The seconds on the panel's timer ring: on the primary button, or by the
+ *  line that says who leads a Duo. */
+const ringSecs = () => panel()?.querySelector(".tp-primary .timer-ring, .tp-led .timer-ring")?.textContent ?? null;
 /** Taps Leave in the open leave sheet. */
 const confirmLeave = () => click(q("[role='alertdialog'] .leave-sheet-leave"));
 
 describe("your own table", () => {
-  it("Play turns into your table in Play's place: seats, the bot countdown, Start with bots and Leave table", async () => {
+  it("Play turns into your table in Play's place: seats, Start with bots with the bots' ring, and Leave", async () => {
     await renderApp();
     fakeClock();
     say(queued());
@@ -320,8 +327,12 @@ describe("your own table", () => {
     expect(q(".q-find")).toBeNull();                       // the panel replaces Play and Duo
     expect(button("Duo", q(".lobby-panel")!)).toBeUndefined();
     expect(p.classList.contains("tp-own")).toBe(true);
-    expect(p.querySelector(".tp-title")?.textContent).toBe("Waiting for players");
-    expect(lines()).toEqual(["Bots in 1:00"]);
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Your table");
+    // the bots' countdown is the ring on Start with bots, never a line
+    expect(lines()).toEqual([]);
+    expect(ringSecs()).toBe("60");
+    expect(p.textContent).not.toContain("Bots in");
+    expect([...p.querySelectorAll(".tp-team-label")].map((l) => l.textContent)).toEqual(["Us", "Them"]);
     // the app draws the table: you, then three open seats, as two teams
     const [ours, theirs] = [...p.querySelectorAll(".tp-col")];
     expect([...ours.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
@@ -330,9 +341,10 @@ describe("your own table", () => {
     expect(p.querySelector(".tp-seat.open")?.tagName).toBe("DIV");   // nothing to move to alone
     expect(button("Wait for people", p)?.getAttribute("aria-checked")).toBe("false");
     tick(6000);
-    expect(lines()).toEqual(["Bots in 0:54"]);
-    expect(p.querySelector(".tp-secondary")?.textContent).toBe("Leave table");
-    expect(primary()?.textContent).toBe("Start with bots");
+    expect(lines()).toEqual([]);
+    expect(ringSecs()).toBe("54");
+    expect(p.querySelector(".tp-secondary")?.textContent).toBe("Leave");
+    expect(words(primary()!)).toBe("Start with bots");
     click(primary());
     expect(lastSent()).toEqual({ type: "queue_start_bots" });
     expect(primary()?.textContent).toBe("Starting…");
@@ -340,14 +352,41 @@ describe("your own table", () => {
     expect(panel()).toBeNull();
     say(queued());
     tick(GUARD_MS + 10);
-    click(button("Leave table", panel()!));
-    expect(leaveSheetText()).toBe("Leave the table? / Free.");
+    click(button("Leave", panel()!));
+    // leaving your own table costs nothing, so the sheet has no line
+    expect(leaveSheetText()).toBe("Leave the table?");
+    expect(q("[role='alertdialog']")!.textContent).not.toContain("Free");
     expect(lastSent()).not.toEqual({ type: "queue_leave" });
     confirmLeave();
     expect(lastSent()).toEqual({ type: "queue_leave" });
     say({ type: "queue_state", queued: false, count: 0 });
     expect(panel()).toBeNull();
     expect(findBtn().textContent).toBe("Play");
+  });
+
+  it("on a phone the panel takes the art's place and the code box goes; wide screens keep the art beside it", async () => {
+    await renderApp();
+    expect(q(".lobby-preview")).not.toBeNull();
+    expect(q(".join-row")).not.toBeNull();
+    expect(button("Play offline")).toBeDefined();
+    say(queued());
+    expect(panel()).not.toBeNull();
+    expect(q(".lobby-preview")).toBeNull();
+    expect(q(".play-tab")!.classList.contains("play-table-up")).toBe(true);
+    // seated, the panel is the page: no code box and no way to the offline table
+    expect(q(".join-row")).toBeNull();
+    expect(button("Play offline")).toBeUndefined();
+    say({ type: "queue_state", queued: false, count: 0 });
+    expect(q(".lobby-preview")).not.toBeNull();
+    expect(q(".join-row")).not.toBeNull();
+  });
+
+  it("the panel opening puts the Play page back at its top", async () => {
+    await renderApp();
+    const page = q(".play-tab")!;
+    page.scrollTop = 300;
+    say(queued());
+    expect(page.scrollTop).toBe(0);
   });
 
   it("no word a player reads says queue, searching, host or Leave queue", async () => {
@@ -367,13 +406,15 @@ describe("your own table", () => {
     expect(lastSent()).toEqual({ type: "queue_wait_players" });
     expect(sw().getAttribute("aria-checked")).toBe("true");
     expect(lines()).toEqual([]);
+    expect(ringSecs()).toBeNull();
     say(queued({ bots_at: null, wait_players: true }));
     tick(120_000);
     expect(lines()).toEqual([]);
+    expect(ringSecs()).toBeNull();
     click(sw());
     expect(lastSent()).toEqual({ type: "queue_allow_bots" });
     say(queued({ bots_at: nowSecs() + 60, wait_players: false }));
-    expect(lines()).toEqual(["Bots in 1:00"]);
+    expect(ringSecs()).toBe("60");
   });
 
   it("a table you skipped that still has a seat is one row away", async () => {
@@ -392,9 +433,10 @@ describe("your own table", () => {
     say(queued({ party_id: "p1", leader: false }));
     const p = panel()!;
     expect(p.classList.contains("tp-own")).toBe(true);
-    expect(lines()).toEqual(["Bots in 1:00"]);
+    expect(lines()).toEqual([]);
+    expect(ringSecs()).toBe("60");
     expect(p.querySelector(".tp-seat.friend")?.getAttribute("aria-label")).toBe("Kai, your Duo partner");
-    expect(p.querySelector(".tp-led")?.textContent).toBe("Kai leads");
+    expect(words(p.querySelector(".tp-led")!)).toBe("Kai leads");
     expect(primary()).toBeNull();
     expect(button("Wait for people", p)).toBeUndefined();
   });
@@ -479,7 +521,7 @@ describe("the panel's primary button", () => {
     fakeClock();
     click(findBtn());
     say(queued());
-    expect(primary()?.textContent).toBe("Start with bots");
+    expect(words(primary()!)).toBe("Start with bots");
     expect(primary()?.disabled).toBe(true);
     tick(GUARD_MS - 50);
     expect(primary()?.disabled).toBe(true);
@@ -551,7 +593,7 @@ const TABLE_STATE = {
 };
 
 describe("a shared table", () => {
-  it("a second person makes it shared: both teams, the timer, the ready count and Start now", async () => {
+  it("a second person makes it shared: both teams, the ready count, and Start with the bots' ring", async () => {
     await renderApp();
     fakeClock();
     say(queued());
@@ -560,7 +602,9 @@ describe("a shared table", () => {
     const p = panel()!;
     expect(p.classList.contains("tp-shared")).toBe(true);
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
-    expect(lines()).toEqual(["0 of 2 ready · Bots in 0:42"]);
+    // one status, the ready count; the bots' countdown is the ring on Start
+    expect(lines()).toEqual(["0 of 2 ready"]);
+    expect(ringSecs()).toBe("42");
     const [ours, theirs] = [...p.querySelectorAll(".tp-col")];
     expect([...ours.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
       .toEqual(["Open seat, your team. Move here", "You"]);
@@ -569,8 +613,9 @@ describe("a shared table", () => {
     expect(p.querySelector(".tp-hint")).toBeNull();          // the open seat's label says Move here
     tick(6000);
     expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, other team");
-    expect(lines()).toEqual(["0 of 2 ready · Bots in 0:36"]);
-    expect(primary()?.textContent).toBe("Start now");
+    expect(lines()).toEqual(["0 of 2 ready"]);
+    expect(ringSecs()).toBe("36");
+    expect(words(primary()!)).toBe("Start");
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start" });
     expect(primary()?.disabled).toBe(true);
@@ -588,29 +633,31 @@ describe("a shared table", () => {
                 { timer: { at: nowSecs() + 18, name: "Alice", you: false } }));
     expect(button("Waiting for 2 players", panel()!)?.disabled).toBe(true);
     expect(panel()!.querySelector(".tp-title")?.textContent).toBe("You, Alice and Bobby Tabl…");
-    expect(lines()[0]).toMatch(/^1 of 3 ready · Bots in 0:1[789]$/);
+    expect(lines()).toEqual(["1 of 3 ready"]);
+    // the ring stays on the waiting button: the bots still come
+    expect(ringSecs()).toMatch(/^1[789]$/);
     const names = [...panel()!.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label"));
     expect(names).toContain("Alice, Reconnecting, other team");
     expect(names).toContain("Bobby Tables The Third, Just joined, your team");
   });
 
-  it("with every switch on there is no timer; Add bots brings one back", async () => {
+  it("with every switch on there is no timer: no ring, no line and no Add bots row", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice")], {}, { bots_at: null, wait_players: true }));
     expect(lines()).toEqual(["0 of 2 ready"]);
-    click(button("Add bots in 1:00", panel()!));
-    expect(lastSent()).toEqual({ type: "queue_allow_bots" });
+    expect(ringSecs()).toBeNull();
+    expect(panel()!.textContent).not.toMatch(/Add bots|Bots in/);
     say(atTable([seat("Jerry", { you: true }), seat("Alice")], { timer: { at: nowSecs() + 30, name: "Jerry", you: true } }));
-    expect(lines()[0]).toMatch(/^0 of 2 ready · Bots in 0:(29|30|31)$/);
-    expect(button("Add bots in 1:00", panel()!)).toBeUndefined();
+    expect(lines()).toEqual(["0 of 2 ready"]);
+    expect(ringSecs()).toMatch(/^(29|30|31)$/);
   });
 
-  it("Leave table frees your seat and puts you back on Play", async () => {
+  it("Leave frees your seat and puts you back on Play", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     const before = sentCount();
-    click(button("Leave table", panel()!));
-    expect(leaveSheetText()).toBe("Leave the table? / Free. Alice stays at the table.");
+    click(button("Leave", panel()!));
+    expect(leaveSheetText()).toBe("Leave the table? / Alice stays at the table.");
     expect(sentCount()).toBe(before);
     confirmLeave();
     expect(lastSent()).toEqual({ type: "queue_leave" });
@@ -662,8 +709,8 @@ describe("a shared table", () => {
     expect([...ours.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
       .toEqual(["Sam, your Duo partner, your team", "You"]);
     expect(primary()).toBeNull();
-    expect(button("Leave table", p)).toBeUndefined();
-    expect(p.querySelector(".tp-led")?.textContent).toBe("Sam leads");
+    expect(button("Leave", p)).toBeUndefined();
+    expect(words(p.querySelector(".tp-led")!)).toBe("Sam leads");
   });
 
   it("server_error after the room's frames: back to the lobby, at your table again", async () => {
@@ -698,6 +745,15 @@ describe("a shared table", () => {
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("on a desktop or an iPad the art stays beside the panel", async () => {
+    viewport(true);
+    await renderApp();
+    say(queued());
+    expect(panel()).not.toBeNull();
+    expect(q(".lobby-preview")).not.toBeNull();
+    expect(q(".join-row")).toBeNull();
+  });
+
   it("on a desktop or an iPad the shared table is the same inline panel with the mini table", async () => {
     viewport(true);
     await renderApp();
@@ -711,7 +767,8 @@ describe("a shared table", () => {
     expect(p.querySelector(".seat-clock .tp-seat.pos-top")?.tagName).toBe("BUTTON");
     expect(q(".home-body")?.className).not.toContain("wt-behind");
     expect(q("[inert]")).toBeNull();
-    expect(lines()).toEqual(["0 of 2 ready · Bots in 0:42"]);
+    expect(lines()).toEqual(["0 of 2 ready"]);
+    expect(ringSecs()).toBe("42");
   });
 });
 
@@ -747,8 +804,9 @@ describe("with a friend", () => {
     tick(12_000);
     expect(panel()?.classList.contains("tp-own")).toBe(true);
     expect(panel()?.querySelector(".tp-seat.friend")?.getAttribute("aria-label")).toBe("Sam, your Duo partner");
-    expect(lines()).toEqual(["Bots in 0:48"]);
-    expect(primary()?.textContent).toBe("Start with bots");
+    expect(lines()).toEqual([]);
+    expect(ringSecs()).toBe("48");
+    expect(words(primary()!)).toBe("Start with bots");
   });
 
   it("joins a friend's pair by code from Duo; the member cannot start or cancel", async () => {
@@ -770,8 +828,8 @@ describe("with a friend", () => {
     expect(findBtn().textContent).toBe("Play");
     expect((findBtn() as HTMLButtonElement).disabled).toBe(true);
     say(queued({ party_id: "p1", leader: false }));
-    expect(button("Leave table", panel()!)).toBeUndefined();
-    expect(panel()?.querySelector(".tp-led")?.textContent).toBe("Sam leads");
+    expect(button("Leave", panel()!)).toBeUndefined();
+    expect(words(panel()!.querySelector(".tp-led")!)).toBe("Sam leads");
     expect(button("Start with bots", panel()!)).toBeUndefined();
     expect(button("Wait for people")).toBeUndefined();
     say(queued({ party_id: "p1", leader: false, bots_at: null, wait_players: true }));
@@ -879,7 +937,7 @@ describe("the table", () => {
     attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
   });
 
-  it("a matched room shows a Ranked chip in the top bar; an invite room does not", async () => {
+  it("a matched room shows a Ranked chip in the top bar; a casual room a Casual one", async () => {
     await renderApp();
     say({ type: "match_started", match_id: "m1", room: "ABCD", rated: true });
     say(state(true));
@@ -887,7 +945,7 @@ describe("the table", () => {
     expect(chip?.textContent).toBe("Ranked");
     expect(chip?.classList.contains("ranked")).toBe(true);
     say(state(false));
-    expect(q(".mode-chip")).toBeNull();
+    expect(q(".mode-chip")?.textContent).toBe("Casual");
   });
 });
 
@@ -1363,7 +1421,7 @@ describe("open tables", () => {
     expect(sentLast()).toEqual({ type: "open_table_wait" });
     tell(queued({ offer: null, open_tables: 1, bots_paused: false, bots_at: nowSecs() + 35 }));
     expect(panel()?.classList.contains("tp-own")).toBe(true);
-    expect(lines()[0]).toMatch(/^Bots in 0:3[56]$/);
+    expect(ringSecs()).toMatch(/^3[56]$/);
     click(button(/^1 table has a seat · View$/));
     expect(sentLast()).toEqual({ type: "open_table_show" });
     tell(queued({ offer: offer(), open_tables: 0, bots_paused: true, bots_at: null }));
@@ -1627,7 +1685,7 @@ describe("the search on screen is the server's", () => {
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Your table is open on another device.");
     expect(q(".q-find")).toBeNull();
     await pastGuard();
-    expect(Boolean(button("Leave table", panel()!))).toBe(leader);
+    expect(Boolean(button("Leave", panel()!))).toBe(leader);
     click(button("Move it here", panel()!));
     expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
     say({ type: "queue_state", queued: false, count: 1 });
@@ -2023,14 +2081,14 @@ describe("the unified table on the client", () => {
     expect(lastSent()).toEqual({ type: "table_here" });
     say(atTable(table, {}, { still_here_until: null }));
     expect(lines()).toEqual(["0 of 2 ready"]);
-    // Start now takes the place under a fresh guard: a second tap cannot start
-    expect(primary()?.textContent).toBe("Start now");
+    // Start takes the place under a fresh guard: a second tap cannot start
+    expect(primary()?.textContent).toBe("Start");
     expect(primary()?.disabled).toBe(true);
     tick(GUARD_MS + 10);
     expect(primary()?.disabled).toBe(false);
   });
 
-  it("panel_seq goes back with Start with bots, Start now and Join; panel_changed refreshes quietly", async () => {
+  it("panel_seq goes back with Start with bots, Start and Join; panel_changed refreshes quietly", async () => {
     await renderApp();
     say(queued({ panel_seq: 7 }));
     await pastGuard();
@@ -2041,7 +2099,7 @@ describe("the unified table on the client", () => {
     expect(q(".q-toast")).toBeNull();
     expect(q(".lobby-error")).toBeNull();
     expect(sentOf("queue_status").length).toBe(before + 1);
-    expect(primary()?.textContent).toBe("Start with bots");
+    expect(words(primary()!)).toBe("Start with bots");
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { panel_seq: 8 }));
     await pastGuard();
     click(primary());

@@ -17,7 +17,7 @@ interface LeaveSheetProps {
 }
 
 /** The one confirm every leave goes through: a title, one line of what
- *  leaving costs here, then Stay and Leave. It is a modal dialog, so focus
+ *  leaving costs here (none when it costs nothing), then Stay and Leave. It is a modal dialog, so focus
  *  stays inside it and the page under it is inert; Stay is focused first and
  *  Escape stays. Before a game (the Play table, a room) it rises from the
  *  bottom of a phone; at the table it is a centred card that leaves the
@@ -52,7 +52,7 @@ export default function LeaveSheet({ context, onLeave, onStay, title: ask }: Lea
 
   return (
     <dialog ref={ref} className={`modal-backdrop leave-sheet-backdrop leave-sheet-${place}`} role="alertdialog" aria-modal="true"
-            aria-labelledby={titleId} aria-describedby={lineId}
+            aria-labelledby={titleId} aria-describedby={line ? lineId : undefined}
             data-pointer-open={pointerOpen ? "" : undefined}
             onCancel={(e) => { e.preventDefault(); onStay(); }}
             onClick={(e) => { if (e.target === e.currentTarget) onStay(); }}
@@ -65,7 +65,7 @@ export default function LeaveSheet({ context, onLeave, onStay, title: ask }: Lea
       <div className="leave-sheet">
         <div className="leave-sheet-text">
           <h2 id={titleId} className="leave-sheet-title">{title}</h2>
-          <p id={lineId} className="leave-sheet-line">{line}</p>
+          {line ? <p id={lineId} className="leave-sheet-line">{line}</p> : null}
         </div>
         <div className="leave-sheet-actions">
           <button ref={stayRef} type="button" className="leave-sheet-stay" onClick={onStay}>Stay</button>

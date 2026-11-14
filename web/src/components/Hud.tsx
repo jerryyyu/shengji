@@ -217,15 +217,15 @@ function useStripWidth(bar: RefObject<HTMLDivElement | null>, mode: Mode) {
 
 /** What kind of game the table is: a matched game from the queue is ranked,
  *  a game on this device is practice, and a room among friends is neither. */
-export type Mode = "ranked" | "practice" | null;
+export type Mode = "ranked" | "casual" | "practice" | null;
 
 export function gameMode(state: GameState, practice: boolean): Mode {
   if (practice) return "practice";
-  return state.matched || state.ranked ? "ranked" : null;
+  return state.matched || state.ranked ? "ranked" : "casual";
 }
 
 /** The header's short mode chip: gold with a trophy for a ranked game, grey
- *  for practice, nothing for a room. */
+ *  for a casual one and for offline play on this device. */
 export function ModeChip({ mode }: { mode: Mode }) {
   if (mode === "ranked") {
     return (
@@ -238,6 +238,9 @@ export function ModeChip({ mode }: { mode: Mode }) {
         Ranked
       </span>
     );
+  }
+  if (mode === "casual") {
+    return <span className="chip mode-chip casual" title="Casual game">Casual</span>;
   }
   if (mode === "practice") {
     return <span className="chip mode-chip practice" title="Bots on this device">Offline</span>;

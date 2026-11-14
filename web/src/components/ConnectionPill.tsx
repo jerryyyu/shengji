@@ -47,7 +47,7 @@ interface Props {
 export default function ConnectionPill({ status, inRoom, inGame }: Props) {
   const [phase, retry] = useConnPhase(status);
   if (phase === "open") return null;
-  if (phase === "lost") return <ConnectionLost inRoom={inRoom} inGame={inGame} onRetry={retry} />;
+  if (phase === "lost") return <ConnectionLost inGame={inGame} onRetry={retry} />;
   // the first connect of a page load is not a drop: no socket has opened yet
   const label = conn.generation > 0 ? "Reconnecting…" : "Connecting…";
   return (
@@ -99,7 +99,7 @@ function restoreFocus(previous: Element | null): void {
  *  alerts included. Retry has focus, Tab stays inside, the page behind is
  *  inert, and Escape does not dismiss it, since only a connection or Retry
  *  ends it. On closing, focus goes back to where it was. */
-function ConnectionLost({ inRoom, inGame, onRetry }: { inRoom: boolean; inGame: boolean; onRetry: () => void }) {
+function ConnectionLost({ inGame, onRetry }: { inGame: boolean; onRetry: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -121,7 +121,7 @@ function ConnectionLost({ inRoom, inGame, onRetry }: { inRoom: boolean; inGame: 
   }, []);
   return (
     <dialog ref={ref} className="conn-lost" role="alertdialog" aria-modal="true"
-            aria-labelledby={titleId} aria-describedby={bodyId}
+            aria-labelledby={titleId} aria-describedby={inGame ? bodyId : undefined}
             onCancel={(e) => e.preventDefault()}
             onKeyDown={(e) => {
               // a sheet underneath listens on the document for Tab and Escape
@@ -131,17 +131,11 @@ function ConnectionLost({ inRoom, inGame, onRetry }: { inRoom: boolean; inGame: 
             }}>
       <div className="conn-lost-mark" aria-hidden="true">!</div>
       <h1 className="conn-lost-title" id={titleId}>No connection</h1>
-      <p className="conn-lost-body" id={bodyId}>
-        {inGame
-          ? "Your game goes on with a bot in your seat. You return to it when you are back online."
-          : "The server cannot be reached. It keeps trying in the background."}
-      </p>
+      {inGame ? <p className="conn-lost-body" id={bodyId}>A bot holds your seat.</p> : null}
       <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>Retry</button>
-      {inRoom ? null : (
-        <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
-          Play offline
-        </button>
-      )}
+      <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
+        Play offline with the bots
+      </button>
     </dialog>
   );
 }

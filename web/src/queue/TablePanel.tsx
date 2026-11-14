@@ -14,7 +14,7 @@ import type { PanelKind } from "./tableText";
 /** One seat as the panel draws it, on a phone's team columns or on the
  *  wide screens' mini table. The seats carry names and live status only;
  *  which seat is your partner's the layout already shows. */
-interface SeatItem {
+export interface SeatItem {
   at: number;
   look: "you" | "friend" | "person" | "open" | "bot";
   name: string;
@@ -120,7 +120,7 @@ function Seat({ s, team, cls = "" }: { s: SeatItem; team: 0 | 1; cls?: string })
 
 /** A phone's seats: your team on the left, partner above you, the other
  *  team on the right. */
-function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
+export function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
   const ours = [(you + 2) % 4, you].map((at) => seats[at]);
   const theirs = [(you + 1) % 4, (you + 3) % 4].map((at) => seats[at]);
   return (
@@ -136,7 +136,7 @@ function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
 }
 
 /** Wide screens: the seats around a green table, you at the bottom. */
-function MiniTable({ seats, you }: { seats: SeatItem[]; you: number }) {
+export function MiniTable({ seats, you }: { seats: SeatItem[]; you: number }) {
   return (
     <div className="seat-clock still tp-clock">
       {seats.map((s) => (

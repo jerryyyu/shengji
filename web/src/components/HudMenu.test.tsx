@@ -9,7 +9,7 @@ import { auth } from "../auth";
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
 const goOnline = vi.fn();
-vi.mock("./offlineGame", () => ({ offlineGame: { start: () => {}, goOnline: () => goOnline() } }));
+vi.mock("./offlineGame", () => ({ offlineGame: { startFromPlay: () => {}, goOnline: () => goOnline() } }));
 
 beforeAll(() => {
   class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
@@ -311,29 +311,16 @@ describe("the offline menu", () => {
     v.unmount();
   });
 
-  it("has no invite link; Play online appears while the device is online", () => {
+  it("has no invite link and no Play online, with the network up or coming back", () => {
     goOnline.mockClear();
     const v = render({ offline: true });
     act(() => btn(v.host).click());
-    const text = rows(v.host).map((r) => r.textContent ?? "");
-    expect(text.some((t) => t.includes("Copy invite link"))).toBe(false);
-    expect(text).toContain("Play online");
-    act(() => rows(v.host).find((r) => r.textContent === "Play online")!.click());
-    expect(goOnline).toHaveBeenCalledTimes(1);
+    const text = () => rows(v.host).map((r) => r.textContent ?? "");
+    expect(text().some((t) => t.includes("Copy invite link"))).toBe(false);
+    expect(text()).not.toContain("Play online");
+    act(() => { window.dispatchEvent(new Event("online")); });
+    expect(text()).not.toContain("Play online");
+    expect(goOnline).not.toHaveBeenCalled();
     v.unmount();
-  });
-
-  it("hides Play online while the device is offline", () => {
-    const had = Object.getOwnPropertyDescriptor(Navigator.prototype, "onLine");
-    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
-    try {
-      const v = render({ offline: true });
-      act(() => btn(v.host).click());
-      expect(rows(v.host).map((r) => r.textContent)).not.toContain("Play online");
-      v.unmount();
-    } finally {
-      Reflect.deleteProperty(navigator, "onLine");
-      if (had) Object.defineProperty(Navigator.prototype, "onLine", had);
-    }
   });
 });

@@ -420,38 +420,45 @@ describe("no connection", () => {
     await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
   }
 
-  it("shows no connection row of its own: App's one pill speaks for the socket", async () => {
+  it("shows no connection row of its own, and after 4 s shows the Play tab's offline state", async () => {
     vi.useFakeTimers();
     authState.current = { status: "off", clientId: null, user: null };
-    reconnects.n = 0;
     await renderAt("connecting");
+    // App's one pill speaks for the socket
     const rows = () => host.querySelector(".play-conn, .reconnect-banner, .conn-lost");
     expect(rows()).toBeNull();
     expect(host.textContent).not.toContain("Connecting…");
     expect(buttonNamed("Play bots").disabled).toBe(true);    // not yet known to be offline
-    await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+    await act(async () => { vi.advanceTimersByTime(STALL_MS - 1); });
+    expect(host.querySelector(".play-offline")).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(host.querySelector(".play-offline")).not.toBeNull();
+    expect(host.querySelector(".play-presence.offline")?.textContent).toBe("Offline");
     expect(rows()).toBeNull();
-    expect(host.textContent).not.toContain("No connection");
-    expect(buttonNamed("Play bots").disabled).toBe(false);   // plays on this device now
     expect(reconnects.n).toBe(0);
+    // a connection brings the online Play tab back at once, and says nothing while all is well
     await renderAt("open");
+    expect(host.querySelector(".play-offline")).toBeNull();
     expect(host.textContent).not.toContain("Connected");
   });
 
-  it("with no connection Play bots stays gold and plays on this device; the rest is disabled", async () => {
+  it("with no connection Casual is the only mode, and Play opens the offline table; the rest is disabled", async () => {
     vi.useFakeTimers();
-    const start = vi.spyOn(offlineGame, "start").mockImplementation(() => {});
+    const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
     try {
       authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
       await renderAt("closed");
       await act(async () => { vi.advanceTimersByTime(STALL_MS); });
-      const bots = buttonNamed("Play bots");
-      expect(bots.className).toContain("gold");               // the main button, signed in too
-      expect(bots.disabled).toBe(false);
-      for (const label of ["Play", "Duo", "Create room", "Join"]) expect(buttonNamed(label).disabled).toBe(true);
+      expect(buttonNamed("Ranked").disabled).toBe(true);
+      expect(buttonNamed("Casual").getAttribute("aria-pressed")).toBe("true");
+      for (const label of ["Duo", "Join"]) expect(buttonNamed(label).disabled).toBe(true);
       expect(host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!.disabled).toBe(true);
-      expect(host.querySelector(".play-label")?.textContent).toBe("Ranked");   // same layout, greyed
-      act(() => bots.click());
+      expect(host.textContent).not.toContain("Play bots");
+      expect(host.textContent).not.toContain("Create room");
+      const play = buttonNamed("Play");
+      expect(play.className).toContain("gold");
+      expect(play.disabled).toBe(false);
+      act(() => play.click());
       expect(start).toHaveBeenCalledTimes(1);
       expect(sent).toHaveLength(0);
     } finally {
@@ -460,7 +467,7 @@ describe("no connection", () => {
   });
 
   it("connected, Play bots plays online (never the offline game)", async () => {
-    const start = vi.spyOn(offlineGame, "start").mockImplementation(() => {});
+    const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
     try {
       authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
       await renderAt("open");

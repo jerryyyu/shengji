@@ -4,8 +4,6 @@ import { usePresence } from "../usePresence";
 import { OFFLINE } from "../offlineMode";
 import { codeLink } from "../codes";
 import LeaveAlert from "./LeaveAlert";
-import { offlineGame } from "./offlineGame";
-import { useOnline } from "../useOnline";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
 
@@ -18,8 +16,8 @@ import { SettingsMenuRows } from "./SettingsList";
  * is hidden by CSS there). Account rows (name, saved games, sign out) live on the Me tab, so
  * this stays a table menu for signed-in players and guests alike. Leave
  * closes the menu and opens the leave alert, which waits for Keep playing or
- * Leave. Offline there is no invite link; Play online appears instead while
- * the device has a connection.
+ * Leave. Offline there is no invite link, and nothing here moves the game
+ * online: an offline game plays to its end on this device.
  *
  * Keyboard: opening moves focus to the first actionable row, ArrowUp and
  * ArrowDown move between rows (wrapping), Home and End go to the ends, and
@@ -31,7 +29,6 @@ export default function HudMenu({ room, ranked = false, offline = OFFLINE, allow
 }) {
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false);
-  const online = useOnline();
   const [copied, setCopied] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -129,11 +126,6 @@ export default function HudMenu({ room, ranked = false, offline = OFFLINE, allow
               <span>Allow joiners</span><span className="hud-menu-k">{allowJoiners ? "on" : "off"}</span>
             </button>
           )}
-          {offline && online ? (
-            <button className="hud-menu-row" role="menuitem" onClick={() => offlineGame.goOnline()}>
-              <span>Play online</span>
-            </button>
-          ) : null}
           <button className="hud-menu-row leave" role="menuitem" onClick={askLeave}>
             <span>Leave game</span>
           </button>

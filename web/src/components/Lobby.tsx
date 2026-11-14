@@ -12,7 +12,7 @@ import GuestChip, { GuestNameSheet } from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
 import { RankedSection, TrophyIcon } from "../queue/Ranked";
 import { guestName, useGuestName } from "../guestName";
-import { offlineGame } from "./offlineGame";
+import { OfflineControls } from "./OfflinePlay";
 import { codes, useCodes } from "../codeJoin";
 import { normalizeCode } from "../codes";
 
@@ -23,7 +23,7 @@ interface LobbyProps {
   onArmAutoFill: () => void;
 }
 
-/** After this long without a connection Play bots plays on this device. */
+/** After this long without a connection the Play tab shows its offline state. */
 export const STALL_MS = 4000;
 
 /** Whether `status` has stayed short of "open" for STALL_MS. */
@@ -235,10 +235,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   };
 
   const playBots = () => {
-    if (stalled) {
-      offlineGame.start();
-      return;
-    }
     if (!ready || !testReady) return;
     const trimmed = nameOrRandom();
     const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
@@ -390,23 +386,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     );
   }
 
-  // Play bots needs no server once the connection has been gone a while:
-  // it then plays on this device. Everything else waits for the socket.
-  const botsReady = stalled || (ready && testReady);
+  const botsReady = ready && testReady;
   const botsLabel = starting?.kind === "bots" ? STARTING_LABEL.bots : "Play bots";
   const createLabel = starting?.kind === "create" ? STARTING_LABEL.create : "Create room";
-  // Without a connection Play bots is the one gold button, since it plays on
-  // this device; online it is a row under Create room for everyone.
-  const botsPrimary = stalled;
   const casual = (
     <section className="play-section" aria-labelledby={`${nameId}-casual`}>
       <h2 className="play-label" id={`${nameId}-casual`}>Casual</h2>
-      {botsPrimary ? (
-        <button type="button" className="btn gold play-main" disabled={!botsReady} onClick={playBots}
-                aria-busy={starting?.kind === "bots" || undefined}>
-          {botsLabel}
-        </button>
-      ) : null}
       <ul className="grp play-grp">
         <li>
           <button type="button" className="grp-row" disabled={!ready || !testReady} onClick={create}
@@ -414,14 +399,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
             <span className="grp-label">{createLabel}</span><span className="grp-value chev" />
           </button>
         </li>
-        {botsPrimary ? null : (
-          <li>
-            <button type="button" className="grp-row" disabled={!botsReady} onClick={playBots}
-                    aria-busy={starting?.kind === "bots" || undefined}>
-              <span className="grp-label">{botsLabel}</span><span className="grp-value chev" />
-            </button>
-          </li>
-        )}
+        <li>
+          <button type="button" className="grp-row" disabled={!botsReady} onClick={playBots}
+                  aria-busy={starting?.kind === "bots" || undefined}>
+            <span className="grp-label">{botsLabel}</span><span className="grp-value chev" />
+          </button>
+        </li>
       </ul>
     </section>
   );
@@ -429,7 +412,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     ? <RankedUnavailable /> : <RankedSection online={status === "open"} />;
 
   return (
-    <div className="screen lobby-screen play-tab">
+    <div className={`screen lobby-screen play-tab${stalled ? " play-offline" : ""}`}>
       <div className="panel lobby-panel">
         <h1 className="game-title">
           升级 <span className="game-title-en">Sheng Ji</span>
@@ -470,41 +453,47 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
           <div className="lobby-error" role="alert">{inviteError ?? error}</div>
         ) : null}
 
-        {ranked}
-        {casual}
+        {/* With no connection Play plays on this device, and what needs the
+            server waits; the chip, How to play and an open sheet stay put. */}
+        {stalled ? <OfflineControls local={false} status={status} /> : (
+          <>
+            {ranked}
+            {casual}
 
-        <div className="join-row">
-          <input
-            className="room-input"
-            value={roomCode}
-            maxLength={4}
-            placeholder="CODE"
-            aria-label="Room or duo code"
-            disabled={status !== "open"}
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="go"
-            onChange={(e) => {
-              setRoomCode(e.target.value.toUpperCase());
-              codes.clearPlayError();
-              setInviteError(null);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") join();
-            }}
-          />
-          <button
-            className="btn"
-            disabled={!ready || looking || roomCode.trim().length !== 4}
-            onClick={join}
-            aria-busy={starting?.kind === "join" || looking || undefined}
-          >
-            {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
-          </button>
-        </div>
-        {/* a code that names nothing answers the Join tap, so it is said where the code was typed */}
-        {codeView.playError ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
+            <div className="join-row">
+              <input
+                className="room-input"
+                value={roomCode}
+                maxLength={4}
+                placeholder="CODE"
+                aria-label="Room or duo code"
+                disabled={status !== "open"}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="go"
+                onChange={(e) => {
+                  setRoomCode(e.target.value.toUpperCase());
+                  codes.clearPlayError();
+                  setInviteError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") join();
+                }}
+              />
+              <button
+                className="btn"
+                disabled={!ready || looking || roomCode.trim().length !== 4}
+                onClick={join}
+                aria-busy={starting?.kind === "join" || looking || undefined}
+              >
+                {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
+              </button>
+            </div>
+            {/* a code that names nothing answers the Join tap, so it is said where the code was typed */}
+            {codeView.playError ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
+          </>
+        )}
 
         <p className="howto-entry">
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>

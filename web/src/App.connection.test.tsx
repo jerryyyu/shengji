@@ -145,8 +145,11 @@ it("in the lobby the same pill shows, and the full screen offers Retry and bots 
   expect(lost()).toBeNull();
   expect(banner()?.textContent).toBe("Reconnecting…");
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
-  act(() => host.querySelector<HTMLButtonElement>(".conn-lost-bots")!.click());
-  expect(assign).toHaveBeenCalledWith("?offline=1");
+  const offline = host.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
+  expect(offline.textContent).toBe("Play offline");
+  // straight to the offline table: the page reloads in offline mode with it open
+  act(() => offline.click());
+  expect(assign).toHaveBeenCalledWith("?offline=1&table=1");
 
   act(() => latest().open());
   expect(lost()).toBeNull();

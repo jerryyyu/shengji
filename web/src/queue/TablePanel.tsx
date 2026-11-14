@@ -223,6 +223,7 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
           </button>
         ) : null}
         {q.leader ? <WaitSwitch q={q} /> : null}
+        <ChatRow messages={q.tableChat} you={q.leader ? 0 : 2} onSend={(text) => queue.tableChat(text)} />
       </>
     );
     return {

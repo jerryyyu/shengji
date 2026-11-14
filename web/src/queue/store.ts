@@ -148,8 +148,8 @@ export interface QueueView {
   playMode: QueueMode;
   /** The mode of the search the server holds (queue_state.mode). */
   queueMode: QueueMode | null;
-  /** The waiting table's chat, as room chat lines (`room` is the table id);
-   *  empty away from a table. */
+  /** Your table's chat, as room chat lines (`room` is the waiting table's
+   *  id, empty alone at your own table); empty when not queued. */
   tableChat: ChatMsg[];
   /** Queued: your table's code (your own alone, the opener's at a waiting
    *  table); null when not queued. */
@@ -191,6 +191,9 @@ export class QueueStore {
   /** Server clock minus local clock, ms. */
   private skew = 0;
   private joinSentAt: number | null = null;
+  /** A table's chat history that came before the queue_state seating you
+   *  there (the server sends it as you sit): taken up when that state lands. */
+  private chatAhead: { table: string | null; lines: ChatMsg[] } | null = null;
   private droppedWhileQueued = false;
   private resyncTimer: number | null = null;
   /** After a reconnect, how long the server has to hand the pair back. */
@@ -367,15 +370,20 @@ export class QueueStore {
                                ranked: msg.ranked, casual: msg.casual } });
         break;
       case "table_chat_history": {
-        const t = this.view.table;
-        if (!t || t.id !== msg.table) break;
-        this.set({ tableChat: msg.messages.slice(-100).map((m) => ({ ...m, type: "chat", room: msg.table })) });
+        const lines = msg.messages.slice(-100).map((m): ChatMsg => ({ ...m, type: "chat", room: msg.table ?? "" }));
+        if (this.view.queued && (this.view.table?.id ?? null) === msg.table) {
+          this.chatAhead = null;
+          this.set({ tableChat: lines });
+        } else {
+          this.chatAhead = { table: msg.table, lines };
+        }
         break;
       }
       case "table_chat": {
-        const t = this.view.table;
-        if (!t || t.id !== msg.table || this.view.tableChat.some((m) => m.id === msg.id)) break;
-        const line: ChatMsg = { type: "chat", id: msg.id, room: msg.table, seat: msg.seat, name: msg.name,
+        // the waiting table's line, or (table null) your own table's while alone
+        if (!this.view.queued || (this.view.table?.id ?? null) !== msg.table
+            || this.view.tableChat.some((m) => m.id === msg.id)) break;
+        const line: ChatMsg = { type: "chat", id: msg.id, room: msg.table ?? "", seat: msg.seat, name: msg.name,
                                 text: msg.text, t: msg.t };
         this.set({ tableChat: [...this.view.tableChat, line].slice(-100) });
         break;
@@ -429,8 +437,13 @@ export class QueueStore {
           : this.view.pending === "start" && table && !table.youReady ? "start" : null;
         const offer = msg.offer ? this.offerView(msg.offer) : null;
         if (offer && !this.view.offer) haptic("declare");
-        // a table's chat belongs to that table: another table starts empty
-        const tableChat = table && this.view.table?.id === table.id ? this.view.tableChat : [];
+        // a table's chat belongs to that table: another table starts empty,
+        // or with the history the server sent as you sat down
+        const tableId = table?.id ?? null;
+        const same = this.view.queued && (this.view.table?.id ?? null) === tableId;
+        let tableChat = same ? this.view.tableChat : [];
+        if (this.chatAhead && this.chatAhead.table === tableId) tableChat = this.chatAhead.lines;
+        this.chatAhead = null;
         this.set({
           queueMode: msg.mode ?? this.view.queueMode ?? "ranked", tableChat,
           tableCode: msg.code ?? null, allowJoiners: msg.allow_joiners !== false,
@@ -618,7 +631,7 @@ export class QueueStore {
   /** A line to everyone at your waiting table; the server echoes it back. */
   tableChat(text: string): boolean {
     const line = text.trim();
-    if (!line || !this.view.table) return false;
+    if (!line || !this.view.queued) return false;
     return this.send({ type: "table_chat", text: line });
   }
 

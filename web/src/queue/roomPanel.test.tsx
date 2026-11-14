@@ -2,8 +2,8 @@
 // and Invite link, Starting level, Allow joiners, the chat row, seats you
 // move between until your Start, and the opener's Start now. Room links land
 // in it, and a link opened while seated elsewhere asks to leave first. Play
-// tables get the same rows: every one has a code with its Invite link, and a
-// shared one the chat row before its game.
+// tables get the same rows: every one has a code with its Invite link and
+// the chat row before its game, alone too.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -374,11 +374,43 @@ describe("a Play table's chat before the game", () => {
     expect(row().textContent).not.toContain("Alice:");
   });
 
-  it("your own table, alone, has no chat row: the server keeps no table for it", async () => {
+  it("alone at your own table: the chat row sends table_chat, and lines with table null show", async () => {
     await renderApp();
     say({ type: "queue_state", queued: true, count: 1, since: nowSecs(), leader: true, bots_at: nowSecs() + 60 });
-    expect(q(".tp-own")).not.toBeNull();
-    expect(q(".tp-chat")).toBeNull();
+    const row = () => q(".tp-own .tp-chat")!;
+    expect(row()).not.toBeNull();
+    click(row());
+    const sheet = q(".chat-panel")!;
+    const input = sheet.querySelector<HTMLInputElement>("input")!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, "anyone?"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    click(button("Send", sheet));
+    expect(lastSent()).toEqual({ type: "table_chat", text: "anyone?" });
+    say({ type: "table_chat", table: null, id: 1, seat: 0, name: "Jerry", text: "anyone?", t: nowSecs() });
+    expect([...sheet.querySelectorAll(".chat-msg")].filter((m) => m.textContent?.includes("anyone?"))).toHaveLength(1);
+    // a waiting table's line is not your own table's
+    say({ type: "table_chat", table: "t9", id: 2, seat: 1, name: "Zed", text: "nope", t: nowSecs() });
+    expect(sheet.textContent).not.toContain("nope");
+  });
+
+  it("sitting down: the merged history the server sends ahead of the new table's state shows", async () => {
+    await renderApp();
+    say({ type: "queue_state", queued: true, count: 1, since: nowSecs(), leader: true, bots_at: nowSecs() + 60 });
+    say({ type: "table_chat", table: null, id: 1, seat: 0, name: "Jerry", text: "anyone?", t: nowSecs() });
+    // the server sends the merged log as you sit, then the queue_state with the table
+    say({ type: "table_chat_history", table: "t1", messages: [
+      { id: 1, seat: 0, name: "Jerry", text: "anyone?", t: nowSecs() - 5 },
+      { id: 2, seat: 1, name: "Alice", text: "me!", t: nowSecs() }] });
+    say(table());
+    expect(q(".tp-shared .tp-chat")!.textContent).toContain("Alice: me!");
+  });
+
+  it("a lone entry's log on a reconnect, sent before its queue_state, shows", async () => {
+    await renderApp();
+    say({ type: "table_chat_history", table: null, messages: [
+      { id: 1, seat: 0, name: "Jerry", text: "back", t: nowSecs() }] });
+    say({ type: "queue_state", queued: true, count: 1, since: nowSecs(), leader: true, bots_at: nowSecs() + 60 });
+    expect(q(".tp-own .tp-chat")!.textContent).toContain("Jerry: back");
   });
 });
 

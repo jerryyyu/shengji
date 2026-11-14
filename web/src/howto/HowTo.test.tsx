@@ -57,35 +57,44 @@ describe("parseHowto", () => {
 });
 
 describe("the stepped guide", () => {
-  it("#/howto opens step 1 with Back disabled", async () => {
+  it("#/howto opens step 1 under a nav bar with the title after ‹ Back", async () => {
     await open("#/howto");
     expect(title()).toBe("Climb from 2 to Ace");
     expect(counter()).toBe("1 of 10");
-    expect(button("Back")!.disabled).toBe(true);
+    const bar = [...host.querySelector(".howto-head")!.children];
+    expect(bar.map((el) => el.textContent)).toEqual(["‹ Back", "How to play", "1 of 10"]);
+    expect(bar[1].tagName).toBe("H1");
     expect(host.querySelectorAll(".howto-dot")).toHaveLength(10);
-    expect(host.querySelector(".howto-dot.on")!.getAttribute("aria-current")).toBe("step");
+    expect(host.querySelectorAll(".howto-dot.on")).toHaveLength(1);
   });
 
-  it("Next and Back walk the steps through the hash", async () => {
+  it("Next walks forward through the hash and is the only button under the step", async () => {
     await open("#/howto");
     await click(button("Next"));
     expect(window.location.hash).toBe("#/howto/2");
     expect(title()).toBe("Trump beats everything");
     await click(button("Next"));
     expect(counter()).toBe("3 of 10");
-    await click(button("Back"));
-    expect(window.location.hash).toBe("#/howto/2");
-    await click(button("Back"));
-    expect(window.location.hash).toBe("#/howto");
-    expect(title()).toBe("Climb from 2 to Ace");
+    expect([...host.querySelectorAll(".howto-nav button")].map((b) => b.textContent)).toEqual(["Next"]);
+    expect(button("Back")).toBeUndefined();
   });
 
-  it("a dot jumps straight to its step", async () => {
-    await open("#/howto/2");
-    await click(host.querySelector<HTMLButtonElement>("button[aria-label='Step 9']"));
-    expect(window.location.hash).toBe("#/howto/9");
-    expect(title()).toBe("Scoring a round");
-    expect(host.querySelectorAll(".howto-dot.on")).toHaveLength(1);
+  it("the header's ‹ Back is the only way out on every step", async () => {
+    for (const step of [1, 5, 10]) {
+      if (step > 1) { act(() => root.unmount()); host.remove(); }
+      await open(`#/howto/${step}`);
+      const backs = [...host.querySelectorAll("button")].filter((b) => /Back/.test(b.textContent ?? ""));
+      expect(backs.map((b) => b.textContent)).toEqual(["‹ Back"]);
+    }
+  });
+
+  it("the dots show the step and are not buttons", async () => {
+    await open("#/howto/9");
+    const dots = [...host.querySelectorAll(".howto-dot")];
+    expect(dots.findIndex((d) => d.classList.contains("on"))).toBe(8);
+    expect(host.querySelector(".howto-dots")!.getAttribute("aria-hidden")).toBe("true");
+    expect(host.querySelector(".howto-dots button")).toBeNull();
+    expect(counter()).toBe("9 of 10");
   });
 
   it("an out-of-range step clamps to the last step, which offers Start playing", async () => {
@@ -109,9 +118,10 @@ describe("the stepped guide", () => {
     expect(title()).toBe("Banker and kitty");
   });
 
-  it("‹ Lobby leaves the guide", async () => {
+  it("‹ Back leaves the guide; it opens from Play, Me or the menu, so it names no one tab", async () => {
     await open("#/howto/5");
-    await click(button("‹ Lobby"));
+    expect(host.querySelector(".howto-head .games-back")!.textContent).toBe("‹ Back");
+    await click(button("‹ Back"));
     expect(window.location.hash).toBe("");
     expect(host.querySelector(".no-guide")).not.toBeNull();
   });
@@ -143,5 +153,39 @@ it("only a horizontal single-finger swipe changes the guide step", async () => {
   touch("touchstart", 200, 100);
   touch("touchend", 100, 110);
   await tick();
+  expect(counter()).toBe("3 of 10");
+});
+
+it("a swipe anywhere on the guide's screen turns the page, not only on the slide", async () => {
+  await open("#/howto/2");
+  const swipe = async (surface: Element, x0: number, y0: number, x1: number, y1: number) => {
+    const fire = (type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true });
+      const points = [{ clientX: x, clientY: y }];
+      Object.defineProperties(event, { touches: { value: points }, changedTouches: { value: points } });
+      act(() => surface.dispatchEvent(event));
+    };
+    fire("touchstart", x0, y0);
+    fire("touchend", x1, y1);
+    await tick();
+  };
+  const head = host.querySelector(".howto-head")!;
+  const nav = host.querySelector(".howto-nav")!;
+  const screen = host.querySelector(".howto-screen")!;
+  expect(head.closest(".howto-step")).toBeNull();
+  expect(nav.closest(".howto-step")).toBeNull();
+
+  await swipe(head, 200, 20, 100, 30);
+  expect(counter()).toBe("3 of 10");
+  await swipe(nav, 100, 600, 220, 610);
+  expect(counter()).toBe("2 of 10");
+  await swipe(screen, 300, 300, 200, 300);
+  expect(counter()).toBe("3 of 10");
+
+  // Mostly vertical is a scroll, even when it also moves far sideways.
+  await swipe(head, 200, 20, 120, 300);
+  expect(counter()).toBe("3 of 10");
+  // A touch from the left edge is the system's back gesture.
+  await swipe(screen, 10, 300, 200, 300);
   expect(counter()).toBe("3 of 10");
 });

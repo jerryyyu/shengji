@@ -274,6 +274,9 @@ primary_region = 'ewr'
   # Python if the .so is missing, so this is safe to set unconditionally.
   SHENGJI_FAST = '1'
   SHENGJI_LOG_DIR = '/data/logs'
+  # UI telemetry (api/telemetry.py): anonymous client events, a separate sink that
+  # refuses to sit inside the game logs. Unset = telemetry off.
+  SHENGJI_TELEMETRY_DIR = '/data/telemetry'
   # Accounts database (optional Google sign-in, docs/accounts.md) lives on the volume.
   SHENGJI_DATA_DIR = '/data'
   # Optional Google sign-in: the public OAuth client id (type Web) from the Google

@@ -4068,8 +4068,12 @@ def test_allow_joiners_off_hides_the_table_from_play_but_not_from_its_code():
         assert t.seats == [1, None, 3, None]
         await env.mm.tick()
         assert env.mm._entry(2).table_id is None    # still not offered the private table
-        # on again: Play seats the stranger there
+        # the switch is the opener's: the joiner's tap is refused
         await env.send(3, "table_allow_joiners", on=True)
+        assert env.conns[3].last("error")["code"] == "not_opener"
+        assert t.seats == [1, None, 3, None]
+        # on again: Play seats the stranger there
+        await env.send(1, "table_allow_joiners", on=True)
         assert t.seats == [1, 2, 3, None]
     run(go())
 
@@ -4140,3 +4144,283 @@ def test_ws_a_casual_tables_starting_level_reaches_its_room(wsenv):
         assert code == state["code"]
         room = srv.rooms[code]
         assert room.start_level == "5" and room.game.levels == ("5", "5")
+
+
+# ------------------------------------------------------------ Duo tables
+OPEN_TABLE = {"code": "OPEN", "mode": "ranked", "round_end": False, "seats": [
+    {"name": "Ann", "bot": False, "open": False, "queue_id": 50, "device": None},
+    {"name": "Bot 1", "bot": True, "open": True},
+    {"name": "Bot 2", "bot": True, "open": True},
+    {"name": "Bot 3", "bot": True, "open": True}]}
+
+
+async def _duo_table(env, opener=1, friend=None, strangers=()):
+    """A Duo table: ``opener`` opens it, ``strangers`` sit there from Play,
+    and ``friend`` (if any) joins by the table's code."""
+    await env.join(opener, duo=True)
+    code = env.conns[opener].last("queue_state")["code"]
+    for uid in strangers:
+        await env.join(uid)
+    if friend is not None:
+        env.player(friend)
+        await env.send(friend, "queue_join", code=code)
+    return code
+
+
+def test_a_duo_open_holds_the_partner_seat_with_the_tables_code_as_its_invite():
+    async def go():
+        env = Env()
+        await env.join(1, duo=True)
+        state = env.conns[1].last("queue_state")
+        assert state["queued"] and state["duo"] is True and state["held_seat"] == 2
+        assert state["table"] is None and state["opener"] is True
+        e = env.mm._entry(1)
+        assert e.hold and e.size == 1 and e.party_id is None
+        assert env.mm.entry_codes == {state["code"]: e.id}
+        assert env.mm.party_codes == {} and env.mm.parties == {}
+        lookup = env.mm.code_lookup(env.conns[1], {"code": state["code"]}, 1)
+        assert lookup["kind"] == "table"
+        # a lone open party is folded in: the table's code is the only invite
+        env.player(5)
+        await env.send(5, "party_create")
+        assert env.mm.party_codes
+        await env.send(5, "queue_join", duo=True)
+        assert env.mm.party_codes == {} and env.mm._entry(5).hold
+        await env.send(6, "queue_join", conn=env.player(6), duo="yes")
+        assert env.conns[6].last("error")["code"] == "bad_setting"
+    run(go())
+
+
+def test_a_strangers_play_never_takes_the_held_seat():
+    async def go():
+        env = Env()
+        await env.join(2)                    # waiting before the Duo opens
+        await _duo_table(env, 1, strangers=(3,))
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, 3] and t.held_seat() == 2
+        assert t.entries[0] is env.mm._entry(1)           # the Duo opener's table
+        table = env.conns[2].last("queue_state")["table"]
+        assert table["held_seat"] == 2 and table["code"] == env.conns[1].last("queue_state")["code"]
+        assert table["opener"] == 0
+        await env.join(4)                    # only the held seat is empty
+        assert env.mm._entry(4).table_id is None and 4 not in t.seats
+        # a code joiner by a stranger's code is a stranger to the held seat
+        await env.send(2, "queue_leave")
+        stranger_code = env.mm._entry(3).code
+        assert stranger_code != t.entries[0].code
+        env.player(7)
+        await env.send(7, "queue_join", code=stranger_code)
+        assert t.seats[2] is None and 7 in t.seats
+        # nor can a seated stranger move into it
+        await env.send(3, "table_move", seat=2)
+        assert env.conns[3].last("error")["code"] == "seat_taken" and t.seats[2] is None
+        # two Duo openers never share a table
+        env2 = Env()
+        await env2.join(1, duo=True)
+        await env2.join(2, duo=True)
+        assert env2.mm.tables == {}
+    run(go())
+
+
+def test_an_open_table_offer_skips_a_duo_opener_waiting_for_its_friend():
+    async def go():
+        env = Env()
+        env.mm.open_tables = lambda: [OPEN_TABLE]
+        await env.join(1, duo=True)
+        await env.mm.tick()
+        state = env.conns[1].last("queue_state")
+        assert state["offer"] is None and state["open_tables"] == 0
+        await env.send(1, "open_table_show", room="OPEN")
+        assert env.conns[1].last("error")["code"] == "table_closed"
+        # once paired it is offered two partner seats, as any pair
+        env.player(2)
+        await env.send(2, "queue_join", code=state["code"])
+        offer = env.conns[1].last("queue_state")["offer"]
+        assert offer["room"] == "OPEN" and (offer["pick"], offer["partner"]["seat"]) == (1, 3)
+    run(go())
+
+
+def test_the_first_code_joiner_takes_the_held_seat_and_the_two_become_one_paired_entry():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=3, strangers=(2,))
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, 3, None] and t.held_seat() is None
+        e = env.mm._entry(1)
+        assert e is env.mm._entry(3) and e.size == 2 and e.members == [1, 3] and not e.hold
+        p = env.mm._party(1)
+        assert p is env.mm._party(3) and p.table and p.members == [1, 3]
+        assert env.mm.party_codes == {}
+        state = env.conns[3].last("queue_state")
+        assert state["table"]["you"] == 2 and state["duo"] is True and state["held_seat"] is None
+        assert state["leader"] is False and state["table"]["seats"][2]["pair"]
+        party = env.conns[3].last("party")
+        assert party["table"] is True and party["code"] == e.code
+        # a second code joiner is an ordinary joiner
+        env.player(4)
+        await env.send(4, "queue_join", code=e.code)
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, 3, 4]
+        # lone, the pair is one entry with no table
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        assert env.mm.tables == {} and env.mm._entry(2) is env.mm._entry(1)
+        assert env.conns[2].last("queue_state")["held_seat"] is None
+    run(go())
+
+
+def test_a_duo_pair_is_matched_as_a_unit_into_two_seats_together():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.join(3)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 3, 2, None]
+        await env.join(4)
+        (table_id, slots), = env.started
+        assert table_id == t.id and [s.user_id for s in slots] == [1, 3, 2, 4]
+        # a pair whose waiting table has no two partner seats waits for one
+        env = Env()
+        for uid in (5, 6, 7):
+            await env.join(uid)
+        await _duo_table(env, 1, friend=2)
+        (t,) = env.mm.tables.values()
+        assert 1 not in t.seats and env.mm._entry(1).table_id is None
+    run(go())
+
+
+def test_a_ranked_duo_is_rated_as_a_pair():
+    async def go():
+        env = Env()
+        env.ratings.update({1: 1000.0})
+        await _duo_table(env, 1, friend=2)
+        env.ratings[2] = 1200.0
+        e = env.mm._entry(1)
+        e.member_ratings[2] = 1200.0
+        assert e.rating == 1100.0 and env.mm.count() == 2
+        await env.send(1, "queue_start_bots")
+        (table_id, slots), = env.started
+        assert env.modes == ["ranked"]
+        assert [s.user_id for s in slots] == [1, None, 2, None]
+        assert slots[0].group == slots[2].group == e.id
+    run(go())
+
+
+def test_a_partner_leaving_before_the_game_holds_its_seat_again():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=3, strangers=(2,))
+        (t,) = env.mm.tables.values()
+        await env.send(1, "table_start")
+        await env.send(3, "queue_leave")
+        assert t.seats == [1, 2, None, None] and t.held_seat() == 2
+        e = env.mm._entry(1)
+        assert e.hold and e.members == [1] and e.party_id is None and e.id not in t.ready
+        assert env.mm._entry(3) is None and env.mm.parties == {} and env.mm.party_of == {}
+        assert env.conns[3].last("queue_state")["queued"] is False
+        assert env.conns[1].last("party_closed")["by"] == "P3"
+        assert env.conns[1].last("queue_state")["held_seat"] == 2
+        await env.join(4)                    # a stranger takes the other seat
+        assert t.seats == [1, 2, None, 4]
+        # the held seat is the next code joiner's
+        env.player(5)
+        await env.send(5, "queue_join", code=e.code)
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, 2, 5, 4]
+        # party_leave from the partner ends it the same way, lone
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(2, "party_leave")
+        assert env.mm._entry(1).hold and env.mm._entry(2) is None
+        assert env.conns[1].last("queue_state")["held_seat"] == 2
+    run(go())
+
+
+def test_an_opener_leaving_before_the_game_hands_the_table_and_its_code_to_the_partner():
+    async def go():
+        env = Env()
+        code = await _duo_table(env, 1, friend=3, strangers=(2,))
+        (t,) = env.mm.tables.values()
+        await env.send(1, "queue_leave")
+        assert t.seats == [None, 2, 3, None] and t.held_seat() is None
+        e = env.mm._entry(3)
+        assert e.leader == 3 and e.members == [3] and not e.hold and e.code == code
+        assert t.entries[0] is e and env.mm.parties == {}
+        state = env.conns[3].last("queue_state")
+        assert state["opener"] is True and state["code"] == code and state["duo"] is False
+        assert state["table"]["opener"] == 2
+        assert env.conns[1].last("queue_state")["queued"] is False
+        await env.send(3, "table_allow_joiners", on=False)
+        assert env.conns[3].last("queue_state")["allow_joiners"] is False
+        # lone: the partner keeps its own table under the same code
+        env = Env()
+        code = await _duo_table(env, 1, friend=2)
+        await env.send(1, "queue_leave")
+        e = env.mm._entry(2)
+        assert e.leader == 2 and e.code == code and not e.hold
+        assert env.conns[2].last("queue_state")["held_seat"] is None
+    run(go())
+
+
+def test_allow_joiners_from_anyone_but_the_tables_opener_is_refused():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.join(2)
+        await env.send(2, "table_allow_joiners", on=False)
+        assert env.conns[2].last("error")["code"] == "not_opener"
+        assert env.conns[1].last("queue_state")["allow_joiners"] is True
+        await env.send(1, "table_allow_joiners", on=False)
+        assert env.conns[2].last("queue_state")["allow_joiners"] is False
+        # a Duo's partner is not the opener either
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(2, "table_allow_joiners", on=False)
+        assert env.conns[2].last("error")["code"] == "not_opener"
+    run(go())
+
+
+def test_the_party_flow_still_makes_a_pair_with_its_own_code():
+    async def go():
+        env = Env()
+        p = await env.pair(1, 2)
+        assert not p.table and env.mm.party_codes == {p.code: p.id}
+        assert env.conns[2].last("party")["table"] is False
+        assert env.mm.code_lookup(env.conns[3] if 3 in env.conns else env.player(3),
+                                  {"code": p.code}, 3)["kind"] == "party"
+        await env.send(1, "queue_join", party_id=p.id)
+        state = env.conns[2].last("queue_state")
+        assert state["duo"] is False and state["held_seat"] is None
+        await env.send(2, "queue_leave")
+        assert env.conns[2].last("error")["code"] == "not_leader"
+        await env.join(4)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 4, 2, None] and t.held_seat() is None
+        await env.send(2, "party_leave")
+        assert env.mm._entry(1) is None and env.mm._party(1) is None
+    run(go())
+
+
+
+def test_a_duo_split_at_a_strangers_table_holds_the_openers_seat_there():
+    async def go():
+        env = Env()
+        await env.join(5, allow_joiners=False)      # in line first, waiting for its code
+        code = await _duo_table(env, 1, friend=2)
+        await env.send(5, "table_allow_joiners", on=True)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [5, 1, None, 2] and t.entries[0] is env.mm._entry(5)
+        await env.send(2, "queue_leave")
+        assert t.seats == [5, 1, None, None] and t.held_seats() == [3]
+        assert env.conns[1].last("queue_state")["held_seat"] == 3
+        assert env.conns[5].last("queue_state")["table"]["held_seats"] == [3]
+        await env.join(8)                           # a stranger takes the free seat only
+        assert t.seats == [5, 1, 8, None]
+        await env.join(9)
+        assert env.mm._entry(9).table_id is None
+        env.player(10)
+        await env.send(10, "queue_join", code=code)  # the opener's code takes it
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [5, 1, 8, 10]
+        assert slots[1].group == slots[3].group is not None
+    run(go())

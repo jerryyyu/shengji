@@ -1899,7 +1899,7 @@ describe("the unified table on the client", () => {
   it("the presence line splits by mode only when both have tables, the selected mode's count lit", async () => {
     await renderApp();
     say({ type: "presence", tables: 2, playing: 3, waiting: 0, ranked: 1, casual: 1 });
-    expect(presence()?.textContent).toBe("2 tables · 1 ranked, 1 casual · 3 playing");
+    expect(presence()?.textContent).toBe("2 tables have a seat · 1 ranked, 1 casual · 3 people playing");
     expect([...presence()!.querySelectorAll(".play-presence-hl")].map((b) => b.textContent)).toEqual(["1 ranked"]);
     click(button("Casual", q(".play-mode")!));
     expect([...presence()!.querySelectorAll(".play-presence-hl")].map((b) => b.textContent)).toEqual(["1 casual"]);
@@ -1911,7 +1911,7 @@ describe("the unified table on the client", () => {
     signedIn = false;
     await renderApp();
     say({ type: "presence", tables: 1, playing: 2, waiting: 0, ranked: 1, casual: 0 });
-    expect(presence()?.textContent).toBe("1 ranked table · 2 playing");
+    expect(presence()?.textContent).toBe("1 ranked table has a seat · 2 people playing");
   });
 
   it("the presence line hides during a cooldown and on a reconnect forgets old counts", async () => {
@@ -1921,7 +1921,7 @@ describe("the unified table on the client", () => {
     say({ type: "queue_state", queued: false, count: 0, cooldown_until: nowSecs() + 30 });
     expect(presence()).toBeNull();
     tick(31_000);
-    expect(presence()?.textContent).toBe("2 waiting");
+    expect(presence()?.textContent).toBe("2 people are waiting for a game");
     act(() => ws().close());
     act(() => { vi.advanceTimersByTime(5000); });
     act(() => ws().onopen?.());

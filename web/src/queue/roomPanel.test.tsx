@@ -2,7 +2,8 @@
 // and Invite link, Starting level, Allow joiners, the chat row, seats you
 // move between until your Start, and the opener's Start now. Room links land
 // in it, and a link opened while seated elsewhere asks to leave first. Play
-// tables get the same chat row before their game.
+// tables get the same rows: every one has a code with its Invite link, and a
+// shared one the chat row before its game.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -119,7 +120,8 @@ describe("a room is a kind of the table panel on Play", () => {
     const p = panel()!;
     expect(p).not.toBeNull();
     expect(q(".room-screen")).toBeNull();
-    expect(p.querySelector(".tp-kicker")?.textContent).toBe("Casual");
+    // no kicker: the mode switch above says the mode
+    expect(p.querySelector(".tp-kicker")).toBeNull();
     expect(p.querySelector(".tp-title")?.textContent).toBe("Your table");
     // alone there is no status line
     expect(p.querySelector(".tp-line")).toBeNull();
@@ -147,7 +149,17 @@ describe("a room is a kind of the table panel on Play", () => {
     expect(primary().textContent).toBe("Start with bots");
     click(primary());
     expect(lastSent()).toEqual({ type: "lobby_ready", on: true });
+    // Leave asks through the leave sheet first
+    const before = allSent().length;
     click(button("Leave", p));
+    expect(allSent().length).toBe(before);
+    const sheet = q("[role='alertdialog']")!;
+    expect(sheet.querySelector("h2")?.textContent).toBe("Leave the room?");
+    expect(sheet.querySelector("p")?.textContent).toBe("Free. The room closes.");
+    click(button("Stay", sheet));
+    expect(q("[role='alertdialog']")).toBeNull();
+    click(button("Leave", p));
+    click(button("Leave", q("[role='alertdialog']")!));
     expect(lastSent()).toEqual({ type: "leave_room" });
     // the Play tab around it: the mode switch shows the table's mode, held still; no code box
     const casual = button("Casual", q(".play-mode")!)!;
@@ -160,7 +172,6 @@ describe("a room is a kind of the table panel on Play", () => {
     await renderApp();
     say(room({ ranked: true }, [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }]));
     const p = panel()!;
-    expect(p.querySelector(".tp-kicker")?.textContent).toBe("Ranked");
     expect(p.querySelector("select")).toBeNull();
     expect(p.textContent).not.toContain("Starting level");
     expect(p.querySelector(".tp-code")?.textContent).toBe("WXYZ");
@@ -370,5 +381,117 @@ describe("a Play table's chat before the game", () => {
     say({ type: "queue_state", queued: true, count: 1, since: nowSecs(), leader: true, bots_at: nowSecs() + 60 });
     expect(q(".tp-own")).not.toBeNull();
     expect(q(".tp-chat")).toBeNull();
+  });
+});
+
+describe("every Play table has a code", () => {
+  const own = (over: Record<string, unknown> = {}) => ({
+    type: "queue_state", queued: true, count: 1, since: nowSecs(), leader: true, bots_at: nowSecs() + 60,
+    mode: "ranked", code: "4N5Z", allow_joiners: true, start_level: "2", opener: true, ...over,
+  });
+  const shared = (over: Record<string, unknown> = {}) => own({
+    count: 2, code: "4N5Z", opener: false,
+    table: { id: "t1", code: "4N5Z", opener: 0, you: 2, timer: null, ready: 0, of: 2, you_ready: false,
+             waiting_for: ["Mei"],
+             seats: [{ name: "Mei", you: false, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+                     null,
+                     { name: "Jerry", you: true, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
+                     null] },
+    ...over,
+  });
+
+  it("a lone Play table shows the code and Invite link, and Allow joiners; a ranked one has no Starting level", async () => {
+    await renderApp();
+    say(own());
+    const p = q(".tp-own")!;
+    expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
+    click(button("Invite link", p));
+    await settle();
+    expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
+    // ranked starts at 2: no row
+    expect(p.textContent).not.toContain("Starting level");
+    expect(p.querySelector("select")).toBeNull();
+    const joiners = [...p.querySelectorAll<HTMLButtonElement>("[role='switch']")]
+      .find((b) => b.textContent === "Allow joiners")!;
+    expect(joiners.getAttribute("aria-checked")).toBe("true");
+    click(joiners);
+    expect(lastSent()).toEqual({ type: "table_allow_joiners", on: false });
+    // labels only, no sub-lines
+    expect(p.querySelector(".tp-hint, .tp-kicker")).toBeNull();
+  });
+
+  it("a casual table's opener sets the Starting level; others read it", async () => {
+    await renderApp();
+    say(own({ mode: "casual", start_level: "4" }));
+    const level = q(".tp-own select[aria-label='Starting level']") as HTMLSelectElement;
+    expect(level.value).toBe("4");
+    act(() => {
+      level.value = "7";
+      level.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(lastSent()).toEqual({ type: "table_start_level", start_level: "7" });
+    say(shared({ mode: "casual", start_level: "7" }));
+    const p = q(".tp-shared")!;
+    expect(p.querySelector("select")).toBeNull();
+    expect(p.querySelector(".tp-set-val")?.textContent).toBe("7");
+    expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
+  });
+
+  it("a ranked shared table hides Starting level too", async () => {
+    await renderApp();
+    say(shared());
+    const p = q(".tp-shared")!;
+    expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
+    expect(p.textContent).not.toContain("Starting level");
+  });
+
+  it("a table code from a link is looked up, then joined with queue_join {code}", async () => {
+    window.history.replaceState(null, "", "/?code=4n5z");
+    await renderApp();
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
+    expect(sentOf("join_room")).toHaveLength(0);
+    expect(sentOf("peek_room")).toHaveLength(0);
+    expect(window.location.search).toBe("");
+  });
+
+  it("a table code typed in the code box joins that table", async () => {
+    await renderApp();
+    const input = q("input[aria-label='Room or duo code']") as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, "4n5z"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    click(button("Join"));
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
+  });
+
+  it("a table link opened while at another Play table asks to leave it first", async () => {
+    window.history.replaceState(null, "", "/?code=4N5Z");
+    await renderApp();
+    say(own({ code: "ABCD" }));
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    const alert = q("[role='alertdialog']")!;
+    expect(alert.querySelector("h2")?.textContent).toBe("Leave to join 4N5Z?");
+    expect(sentOf("queue_join").filter((m) => m.code)).toHaveLength(0);
+    click(button("Leave", alert));
+    expect(lastSent()).toEqual({ type: "queue_leave" });
+    say({ type: "queue_state", queued: false, count: 0 });
+    await settle();
+    expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
+  });
+
+  it("your own table's link opened at that table changes nothing", async () => {
+    window.history.replaceState(null, "", "/?code=4N5Z");
+    await renderApp();
+    say(own());
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    expect(q("[role='alertdialog']")).toBeNull();
+    expect(sentOf("queue_join")).toHaveLength(0);
   });
 });

@@ -160,7 +160,9 @@ describe("the lobby with sign-in ON", () => {
     expect(host.textContent).not.toContain("Your name");
     // the chip sits where an account's does: initial, name, the guest line for the rating, and a pencil
     const chip = host.querySelector<HTMLButtonElement>(".guest-pill")!;
-    expect(chip.previousElementSibling?.className).toBe("lobby-preview");
+    // first beside the art, which ends with the preview
+    expect(chip.previousElementSibling).toBeNull();
+    expect(chip.parentElement?.previousElementSibling?.lastElementChild?.className).toBe("lobby-preview");
     const name = chip.querySelector(".account-pill-name")!.textContent!;
     expect(name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
     expect(chip.querySelector(".avatar")?.textContent).toBe(name.slice(0, 1));
@@ -199,7 +201,9 @@ describe("the lobby with sign-in ON", () => {
     await render();
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     const chip = host.querySelector<HTMLButtonElement>(".account-pill")!;
-    expect(chip.previousElementSibling?.className).toBe("lobby-preview");
+    // first beside the art, which ends with the preview
+    expect(chip.previousElementSibling).toBeNull();
+    expect(chip.parentElement?.previousElementSibling?.lastElementChild?.className).toBe("lobby-preview");
     expect(chip.querySelector("img.avatar")?.getAttribute("src")).toBe("https://img/j.png");
     expect(chip.querySelector(".account-pill-name")?.textContent).toBe("Jerry");
     expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("1,532");

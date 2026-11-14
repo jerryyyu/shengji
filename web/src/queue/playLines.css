@@ -62,6 +62,10 @@
 .play-mode-opt.on { background: #2f3a4d; color: #fff; }
 .play-mode-opt:disabled { cursor: default; }
 .play-mode-opt:disabled:not(.on) { opacity: 0.5; }
+/* held at a table's mode: not unavailable, so not struck through as the
+   offline Ranked is; the table's own mode keeps its colour */
+.play-section .play-mode-opt:disabled { text-decoration: none; }
+.play-section .play-mode-opt.on:disabled { color: #fff; }
 .play-mode-opt:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
 /* A room's rows in the table panel: the code with its Invite link, the

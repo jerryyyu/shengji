@@ -10,10 +10,11 @@ import AccountChip from "./AccountChip";
 import GuestChip, { GuestNameSheet } from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
 import { RankedSection, TrophyIcon } from "../queue/Ranked";
-import { useQueue } from "../queue/store";
+import { queue, useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
 import { codes, useCodes } from "../codeJoin";
+import type { TableKind } from "../codeJoin";
 import { normalizeCode } from "../codes";
 
 interface LobbyProps {
@@ -131,8 +132,10 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
     return normalizeCode(params.get("room") ?? params.get("code") ?? "");
   });
   const codeView = useCodes();
-  // A ?code= link that the lookup found to be a room: handled as ?room= is.
+  // A ?code= link that the lookup found to be a room (handled as ?room= is)
+  // or a Play table (joined through the queue), with which it was.
   const [linkRoom, setLinkRoom] = useState<string | null>(null);
+  const [linkKind, setLinkKind] = useState<TableKind>("room");
   // A Play-box or link lookup still waiting for its answer holds Join.
   const looking = codeView.pending !== null && codeView.pending.from !== "pair";
   const autoJoined = useRef(false);
@@ -250,8 +253,14 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
     const r = codes.takeRoom();
     if (!r || Date.now() - r.at > START_TIMEOUT_MS) return;
     setRoomCode(r.code);
-    if (r.from === "link") setLinkRoom(r.code);
-    else peek(r.code);
+    if (r.from === "link") {
+      setLinkRoom(r.code);
+      setLinkKind(r.kind);
+    } else if (r.kind === "table") {
+      // a friend's Play table: sit there through the queue
+      setRoomCode("");
+      queue.join(r.code);
+    } else peek(r.code);
   }, [codeView.room, status, peek]);
 
   // Invite links prefill the room code and focus the NAME field — they do
@@ -274,18 +283,23 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   }, [inviteDropped]);
   // Sitting at a table already (a room here, or the queue's) the link waits
   // for App's leave-first question; once that table is left, it goes on.
-  const queued = useQueue().queued;
+  const { queued, tableCode } = useQueue();
   const seated = room !== null || queued;
+  // a ?room= link names a room; a ?code= link names what its lookup said
+  const invitedKind: TableKind = invited !== null && invited === linkRoom ? linkKind : "room";
   useEffect(() => {
     if (autoJoined.current || status !== "open" || !invited || invited.length !== 4) return;
     const code = invited.toUpperCase();
     if (holdInvite) return;
     if (seated) {
-      if (room?.room !== code) onSeatedInvite?.(code);
-      else clearInvite();
+      if ((room?.room ?? tableCode) !== code) onSeatedInvite?.(code);
+      else {
+        clearInvite();
+        setLinkRoom(null);
+      }
       return;
     }
-    if (invitedName && invitedName.trim()) {
+    if (invitedName && invitedName.trim() && invitedKind === "room") {
       autoJoined.current = true;
       const joinAs = signedIn ? accountName : invitedName.trim();
       if (!signedIn) guestName.keep(joinAs);
@@ -303,11 +317,18 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
     if (editing) return;
     autoJoined.current = true;
     if (!signedIn) guestName.keep(playerName);
+    if (invitedKind === "table") {
+      clearInvite();
+      setLinkRoom(null);
+      setRoomCode("");
+      queue.join(code);
+      return;
+    }
     inviting.current = code;
     setInviteError(null);
     peek(code);
   }, [status, invited, invitedName, signedIn, accountName, accountKnown, hadName, editing,
-      playerName, peek, holdInvite, seated, room, onSeatedInvite]);
+      playerName, peek, holdInvite, seated, room, tableCode, invitedKind, onSeatedInvite]);
 
   if (tableFull) {
     return (
@@ -340,10 +361,15 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   return (
     <div className={`screen lobby-screen play-tab${stalled ? " play-offline" : ""}`}>
       <div className="panel lobby-panel">
-        <h1 className="game-title">
-          升级 <span className="game-title-en">Sheng Ji</span>
-        </h1>
-        <LobbyPreview />
+        {/* one column on a phone; on desktop and iPad the controls and the
+            table panel sit beside the art */}
+        <div className="play-art">
+          <h1 className="game-title">
+            升级 <span className="game-title-en">Sheng Ji</span>
+          </h1>
+          <LobbyPreview />
+        </div>
+        <div className="play-side">
         {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
 
         {testControlsVisible ? (
@@ -424,6 +450,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
         <p className="howto-entry">
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
         </p>
+        </div>
       </div>
       {signedIn ? null : <GuestNameSheet />}
     </div>

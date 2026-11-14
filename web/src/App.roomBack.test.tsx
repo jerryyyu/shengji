@@ -108,7 +108,7 @@ describe("back from the room screen", () => {
     await back();
 
     expect(ws.sent.slice(before)).toEqual([]);
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(sheetText()).toBe("Leave the room? / Free. The room closes.");
     tapIn(".leave-sheet-leave");
     expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["leave_room"]);
@@ -156,12 +156,12 @@ describe("back from the room screen", () => {
     expect(sheetText()).toBe("Leave the room? / Free. The table stays open; Alice can start it.");
     tapIn(".leave-sheet-stay");
     expect(sheet()).toBeNull();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(host.querySelector(".me-page")).toBeNull();
 
     await back();
     expect(sheet()).not.toBeNull();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(ws.sent.slice(before)).toEqual([]);
   });
 

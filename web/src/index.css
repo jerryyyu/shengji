@@ -5548,6 +5548,31 @@ body.keyboard-open .tabbar { display: none; }
   padding: 24px 0;
 }
 .home-wide .play-tab .account-pill { display: none; }
+/* The art and the controls are one column on a phone. On desktop and iPad
+   the controls, and the table panel in Play's place, sit beside the art. */
+.play-art, .play-side { display: contents; }
+.home-wide .play-tab > .lobby-panel:has(.play-side) {
+  width: min(1180px, 100%);
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 32px;
+}
+.home-wide .play-tab .play-art {
+  display: flex;
+  flex: 1.4 1 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 12px;
+}
+.home-wide .play-tab .play-side {
+  display: flex;
+  flex: 0 0 400px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
 .topbar-end:has(.guest-pill) { gap: 10px; }
 .play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
 .play-label {

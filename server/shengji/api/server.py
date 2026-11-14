@@ -132,6 +132,9 @@ MOVE_TIMER = 60.0
 AWAY_IN_A_ROW = 2
 AWAY_PER_ROUND = 3
 MOVE_TIMER_POLL = 1.0      # watchdog period in a room with the move timer
+# A created room starts when every person at it tapped Start; the opener's
+# Start now is offered this long after the latest person sat down.
+START_NOW_SECS = 30.0
 # Game logs (full hands!). Prod sets SHENGJI_LOG_DIR=/data/logs and those
 # files are fetched into logs/ as the HUMAN CORPUS, so a dev server must not
 # write there: local multiplayer testing would otherwise be mined as real
@@ -294,6 +297,9 @@ class Seat:
     # reservation window and every rating and penalty rule stay as for a
     # disconnect. Cleared when any socket takes the seat again.
     left_by_choice: bool = False
+    # Tapped Start in a created room's lobby (``lobby_ready``). On the Seat,
+    # not the position, so a seat move carries it.
+    lobby_ready: bool = False
 
 
 @dataclass
@@ -304,6 +310,9 @@ class Room:
     # entry; start_game seats a bot in every empty position, so once a game
     # exists the list is four Seats and nothing past the lobby sees a None.
     seats: list[Seat | None] = field(default_factory=list)
+    # The opener: the creator, then the next person round the table when the
+    # opener leaves the lobby. Only the opener sets the starting level and
+    # Ranked and may start before everyone tapped Start.
     host: int = 0
     game: Game | None = None
     # Rank both teams start at. Chosen by the creator; applied when the game
@@ -398,6 +407,13 @@ class Room:
     # creator's account was given, applied once at ``start_game`` (both
     # teams' levels and the first banker). Server-only.
     resume: dict | None = field(default=None, repr=False)
+    # Built by the matchmaking queue, ranked (``matched``) or casual: a game
+    # one entry started alone tells its people of its first newcomer.
+    queued: bool = field(default=False, repr=False)
+    # ``now()`` when the latest person sat down in the lobby: the opener is
+    # offered Start now START_NOW_SECS later, so a newcomer gets time to
+    # pick a seat and tap Start before the table starts without them.
+    arrived_at: float = field(default_factory=lambda: now(), repr=False)
 
     def __post_init__(self) -> None:
         if self.bot is None:
@@ -895,35 +911,65 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "point_scored": result.point_scored,
             **ratings.round_payload(room, seat),
             # took this seat mid-round from an open table: not ranked for it;
-            # a guest is not ranked at all
-            **({"unranked": "joined"} if me.joined_round == game.round_no
+            # a guest is not ranked at all; a casual round ranks nobody
+            **({"unranked": "joined"} if (me.joined_round == game.round_no
+                                          and ratings.ranked(room))
                else {"unranked": "guest"} if guest else {}),
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,
         **({"matched": True} if room.matched else {}),
         **({"allow_joiners": room.allow_joiners, "joining": _join_notices(room)}
-           if room.matched or room.ranked else {}),
+           if _takes_joiners(room) else {}),
         **({"ranked": True} if room.ranked else {}),
         **({"guest": True} if guest_seat else {}),
         # took this seat from an open table during this round: the round is
-        # not ranked for them, and leaving it costs a queue wait. Always sent,
-        # so a client that missed the round end (reconnect) clears its warning.
-        "joined_round": me.joined_round == game.round_no and rnd.phase != "round_end",
+        # not ranked for them, and leaving it costs a queue wait (a casual
+        # table's leave is free, so it is never set there). Always sent, so a
+        # client that missed the round end (reconnect) clears its warning.
+        "joined_round": (me.joined_round == game.round_no and rnd.phase != "round_end"
+                         and ratings.ranked(room)),
     }
 
 
+def _takes_joiners(room: Room) -> bool:
+    """A room that can become an open table: any ordinary room, ranked or
+    casual. A test or evaluation room never seats a stranger."""
+    return ratings.eligible(room)
+
+
+def _lobby_humans(room: Room) -> list[int]:
+    """The lobby positions a person holds."""
+    return [i for i, sd in enumerate(room.seats) if sd is not None and not sd.is_bot]
+
+
+def _lobby_ready(room: Room) -> list[int]:
+    return [i for i in _lobby_humans(room) if room.seats[i].lobby_ready]
+
+
+def _start_now_in(room: Room) -> float:
+    """Seconds until the opener's Start now unlocks (0 once it has)."""
+    return round(max(0.0, room.arrived_at + START_NOW_SECS - now()), 1)
+
+
 def room_json(room: Room, seat: int) -> dict:
+    others = [i for i in _lobby_humans(room) if i != room.host]
     return {
         "type": "room", "room": room.code, "you": seat, "host": room.host,
+        # the same seat as ``host``, named for what it is in the room panel
+        "opener": room.host,
         "start_level": room.start_level,
         **({"experimental_policy": room.experimental_policy}
            if room.experimental_policy else {}),
         **({"matched": True} if room.matched else {}),
-        **({"ranked": True, "allow_joiners": room.allow_joiners} if room.ranked else {}),
+        **({"ranked": True} if room.ranked else {}),
+        **({"allow_joiners": room.allow_joiners} if _takes_joiners(room) else {}),
         # a signed-in player is seated: only then can the host switch Ranked on
         **({"rankable": True} if _account_seated(room) else {}),
-        "ready": sorted(room.ready),
+        # the lobby's Start taps: the seats that are ready
+        "ready": _lobby_ready(room),
+        # with someone else at the table, when the opener's Start now unlocks
+        **({"start_now_in": _start_now_in(room)} if others else {}),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
                     for i, s in enumerate(room.seats) if s is not None],
@@ -2150,8 +2196,9 @@ def _check_expected(room: Room, position: int, expected: Any) -> None:
 
 
 def _swap_seats(room: Room, seat: int, msg: dict) -> None:
-    """Host-only lobby move: exchange what is in two seat positions, a
-    person, a bot or nothing.
+    """Lobby move: the host exchanges what is in any two seat positions, a
+    person, a bot or nothing; anyone else moves themselves to an empty seat
+    until they tap Start.
 
     Everything a connection owns (socket, queue, writer, generation, resume
     token, account) lives on the ``Seat`` object, and a socket finds its seat
@@ -2162,8 +2209,6 @@ def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     numbers, and an evaluation room fixes its seating, so neither can be
     rearranged.
     """
-    if seat != room.host:
-        raise IllegalPlay("Only the host can move seats.")
     if room.game:
         raise IllegalPlay("Seats are fixed once the game has started.")
     if room.resume is not None or room.evaluation is not None:
@@ -2172,6 +2217,13 @@ def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     if (type(a) is not int or type(b) is not int or a == b
             or not (0 <= a < 4 and 0 <= b < 4)):
         raise IllegalPlay("Invalid seats.")
+    if seat != room.host:
+        if seat not in (a, b):
+            raise IllegalPlay("Only the host can move other players.")
+        if room.seats[seat].lobby_ready:
+            raise IllegalPlay("You tapped Start, so your seat is set.")
+        if _occupant(room, b if seat == a else a) is not None:
+            raise IllegalPlay("Pick an empty seat.")
     if "expect" in msg:
         expect = msg["expect"]
         if not isinstance(expect, list) or len(expect) != 2:
@@ -2223,6 +2275,48 @@ def _remove_player(room: Room, seat: int, msg: dict) -> None:
         chat_system(room, f"{gone.name} was removed by the host")
 
 
+def _clear_lobby_ready(room: Room) -> None:
+    for sd in room.seats:
+        if sd is not None:
+            sd.lobby_ready = False
+
+
+def _start_game(room: Room) -> None:
+    """Start the room's game (caller holds the lock and checked who may)."""
+    if (room.matched or room.ranked) and _same_device_humans(room):
+        raise SameDevice("Two players here share one device; a ranked game "
+                         "needs one device per player.")
+    # A bot plays every seat nobody took, in that seat.
+    room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
+                  for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
+    validate_human_evaluation_start(room)
+    if not room.matched:
+        # An open table names its people by queue id, so the queue never
+        # offers a seat here to someone already sitting at it.
+        for sd in room.seats:
+            if not sd.is_bot and sd.queue_id is None:
+                sd.queue_id = (sd.user_id if sd.user_id is not None
+                               else guest_queue_id(sd.device) if sd.device else None)
+    # games_to_win=None: a table keeps playing. Holding A scores a
+    # point and the levels restart, rather than ending the session.
+    room.game = Game(start_level=room.start_level, games_to_win=None)
+    if room.resume is not None:
+        # The engine reads a game's levels and banker only through these
+        # two fields, so setting them before the first round starts the
+        # table exactly where the saved game left off.
+        room.game.level_idx = [RANKS.index(level) for level in room.resume["levels"]]
+        room.game.banker = room.resume["banker"]
+    ACTIVITY.games_started += 1
+    room.game.start_round()
+    room.index_round()
+    _round_timeouts_reset(room)
+    saved_games.start(room, _log_round_start(room), LOG_DIR)
+    ratings.start(room)
+    _spawn_room_task(room, "deal_task", run_deal(room))
+    if room.watchdog_task is None or room.watchdog_task.done():
+        room.watchdog_task = asyncio.create_task(watchdog(room))
+
+
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
     if room.evaluation is not None and room.evaluation_invalidated:
@@ -2256,11 +2350,11 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "remove_player":
         _remove_player(room, seat, msg)
     elif t == "allow_joiners":
-        # Any person at a ranked table may switch it either way, a created
-        # room's people from its lobby on; a Join already waiting for its
-        # trick goes ahead.
-        if not (room.matched or room.ranked) or room.seats[seat].is_bot:
-            raise IllegalPlay("Only a ranked table takes joiners.")
+        # Any person at a table that takes joiners, ranked or casual, may
+        # switch it either way, a created room's people from its lobby on; a
+        # Join already waiting for its trick goes ahead.
+        if not _takes_joiners(room) or room.seats[seat].is_bot:
+            raise IllegalPlay("This table takes no joiners.")
         room.allow_joiners = msg.get("on") is True
     elif t == "set_start_level":
         # Jerry 09-26: the selector lives in the room screen, not the lobby.
@@ -2274,6 +2368,8 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         level = msg.get("start_level")
         if level not in RANKS:
             raise IllegalPlay("Unknown starting level.")
+        if level != room.start_level:
+            _clear_lobby_ready(room)     # a Start agreed to the old level
         room.start_level = level
     elif t == "set_ranked":
         # A created room's Ranked switch: host-only, lobby-only (start_game
@@ -2299,44 +2395,35 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         elif not on and room.ranked:
             room.move_timer = bool(room.casual_move_timer)
             room.casual_move_timer = None
+        if on != room.ranked:
+            _clear_lobby_ready(room)     # a Start agreed to the other mode
         room.ranked = on
     elif t == "start_game":
+        # The opener's Start (Start now once others sit): the game starts at
+        # once, as it always has. START_NOW_SECS only times when a client
+        # offers it (``start_now_in``), so a client that knows nothing of the
+        # ready set still starts its own room.
         if seat != room.host:
             raise IllegalPlay("Only the host can start.")
         if room.game:
             raise IllegalPlay("Game already started.")
-        if (room.matched or room.ranked) and _same_device_humans(room):
-            raise SameDevice("Two players here share one device; a ranked game "
-                             "needs one device per player.")
-        # A bot plays every seat nobody took, in that seat.
-        room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
-                      for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
-        validate_human_evaluation_start(room)
-        if room.ranked and not room.matched:
-            # An open table names its people by queue id, so the queue never
-            # offers a seat here to someone already sitting at it.
-            for sd in room.seats:
-                if not sd.is_bot and sd.queue_id is None:
-                    sd.queue_id = (sd.user_id if sd.user_id is not None
-                                   else guest_queue_id(sd.device) if sd.device else None)
-        # games_to_win=None: a table keeps playing. Holding A scores a
-        # point and the levels restart, rather than ending the session.
-        room.game = Game(start_level=room.start_level, games_to_win=None)
-        if room.resume is not None:
-            # The engine reads a game's levels and banker only through these
-            # two fields, so setting them before the first round starts the
-            # table exactly where the saved game left off.
-            room.game.level_idx = [RANKS.index(level) for level in room.resume["levels"]]
-            room.game.banker = room.resume["banker"]
-        ACTIVITY.games_started += 1
-        room.game.start_round()
-        room.index_round()
-        _round_timeouts_reset(room)
-        saved_games.start(room, _log_round_start(room), LOG_DIR)
-        ratings.start(room)
-        _spawn_room_task(room, "deal_task", run_deal(room))
-        if room.watchdog_task is None or room.watchdog_task.done():
-            room.watchdog_task = asyncio.create_task(watchdog(room))
+        _start_game(room)
+    elif t == "lobby_ready":
+        # A created room's Start: the game starts once every connected person
+        # at the table has tapped it. ``on: false`` takes the tap back.
+        if room.game:
+            raise IllegalPlay("Game already started.")
+        me = room.seats[seat]
+        on = msg.get("on", True) is not False
+        me.lobby_ready = on
+        waiting = [i for i in _lobby_humans(room)
+                   if room.seats[i].connected and not room.seats[i].lobby_ready]
+        if on and not waiting:
+            try:
+                _start_game(room)
+            except IllegalPlay:
+                me.lobby_ready = False
+                raise
     elif game is None or rnd is None:
         raise IllegalPlay("Game not started.")
     elif t == "im_back":
@@ -2588,7 +2675,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                                 "message": "That game can't be continued."})
                                 continue
                         room = Room(code=new_code(), start_level=start_level, resume=resume,
-                                    allow_joiners=False, **options)
+                                    **options)
                         rooms[room.code] = room
                         ACTIVITY.rooms_created += 1
                         # Through _attach like every other path: hand-rolling the
@@ -2634,9 +2721,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                        # a dropped human's seat can be taken too.
                                        "claimable": (i in ranked_open
                                                      if ranked_open is not None
-                                                     else sd.is_bot or (
+                                                     else i not in target.pending_joins
+                                                     and (sd.is_bot or (
                                            not sd.connected
-                                           and not _reserved(target, i))),
+                                           and not _reserved(target, i)))),
                                        "reserved_secs": (_takeover_in(target, i)
                                                          if _reserved(target, i)
                                                          else None),
@@ -2763,6 +2851,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                   and (free := _joiner_position(target)) is not None):
                                 me = Seat(name=name, user_id=account_id(), device=device)
                                 _seat_at(target, free, me)
+                                target.arrived_at = now()
                             else:
                                 # Take over a BOT's seat, mid-game if need be —
                                 # the hand already exists, so a late arrival can
@@ -2777,15 +2866,18 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 # offline reported "room full" and NOBODY could
                                 # take the seat — not even that player under a
                                 # different name.
+                                # a bot seat a queue newcomer's Join holds is
+                                # theirs at the handover, not up for a claim
                                 botseats = [i for i, sd in enumerate(target.seats)
-                                            if sd.is_bot]
+                                            if sd.is_bot and i not in target.pending_joins]
                                 # A dropped seat is RESERVED for its owner during
                                 # the grace window, so nobody can claim it the
                                 # instant a player blips. After the window
                                 # the bot is covering and the seat is open to all.
                                 dropped = [i for i, sd in enumerate(target.seats)
                                            if not sd.is_bot and not sd.connected
-                                           and not _reserved(target, i)]
+                                           and not _reserved(target, i)
+                                           and i not in target.pending_joins]
                                 claimable = botseats + dropped
                                 if isinstance(want, bool) or not (
                                         want is None or isinstance(want, int)):
@@ -2845,6 +2937,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                 me.name = name
                                 me.user_id = account_id()
                                 me.device = device
+                                # the queue's name for them, so an open-table
+                                # offer never brings them back to this seat
+                                me.queue_id = qid
                                 saved_games.seat_changed(target, pick)
                                 target.log_event("seat_claimed", seat=pick,
                                                  name=name, bot=False)
@@ -2950,7 +3045,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                             rooms.pop(room.code, None)
                         else:
                             if _occupant(room, room.host) is None:
-                                room.host = humans[0]
+                                # the opener's controls pass to the next
+                                # person round the table; the table stays
+                                room.host = next(
+                                    (room.host + k) % 4 for k in range(1, 4)
+                                    if (room.host + k) % 4 in humans)
                             _unrank_without_account(room)
                             await broadcast(room)
                     else:
@@ -3054,9 +3153,14 @@ async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -
 
 
 async def start_matched_room(match_id: str | None, slots: list,
-                             conns: dict) -> str:
+                             conns: dict, *, mode: str = "ranked",
+                             chat: Any = ()) -> str:
     """Build, seat and start the room for a waiting table (``match_id`` is
     the table's id) or an entry that starts alone with bots (``None``).
+    ``mode`` "ranked" builds a rated matched room; "casual" an unrated room
+    with no move timer, open to casual joiners. ``chat`` is the waiting
+    table's chat, which becomes the room's first scrollback (unlogged, as it
+    was at the table).
     Slots arrive in seat order; every
     human's socket is bound to its seat here, before anything awaits, so the
     socket's receive loop adopts the room on its next message.
@@ -3065,8 +3169,15 @@ async def start_matched_room(match_id: str | None, slots: list,
     registered, the room is unregistered and aborted, every attached seat is
     detached and every socket is back in the lobby with no adoption pending,
     before the error reaches the matchmaker that requeues these players."""
-    room = Room(code=new_code(), matched=True, move_timer=True, waiting_table=match_id,
+    ranked = mode != "casual"
+    room = Room(code=new_code(), matched=ranked, move_timer=ranked, queued=True,
+                waiting_table=match_id,
                 table_humans=sum(1 for slot in slots if slot.user_id is not None))
+    for line in chat:
+        room.chat_seq += 1
+        room.chat.append({"seat": line["seat"], "name": line["name"], "text": line["text"],
+                          "t": line["t"], "id": room.chat_seq, "room": room.code})
+    del room.chat[:-CHAT_KEEP]
     rooms[room.code] = room
     attached: list[tuple[Seat, Any, int]] = []
     try:
@@ -3089,7 +3200,7 @@ async def start_matched_room(match_id: str | None, slots: list,
                 conn.adopted = (room, seat, gen)
                 MATCHMAKER.enter_room(conn)
                 enqueue(seat, {"type": "match_started", "match_id": match_id,
-                               "room": room.code, "rated": ratings.eligible(room),
+                               "room": room.code, "rated": ratings.ranked(room),
                                **({"guest": True} if seat.user_id is None else {})})
             await broadcast(room)
             await handle_action(room, room.host, {"type": "start_game"})
@@ -3139,11 +3250,12 @@ class PendingJoin:
 
 
 def _joinable(room: Room, invite: bool = False) -> bool:
-    """A ranked game in play (queue-matched, or a created ranked room) that
-    takes joiners and still has a person connected at it. An invite link is the table's own consent, so it does
-    not need Allow joiners."""
+    """A game in play, ranked (queue-matched, or a created ranked room) or
+    casual (a created room, or one the casual queue built), that takes
+    joiners and still has a person connected at it. An invite link is the
+    table's own consent, so it does not need Allow joiners."""
     game = room.game
-    return ((room.matched or room.ranked) and not room.aborted and rooms.get(room.code) is room
+    return (_takes_joiners(room) and not room.aborted and rooms.get(room.code) is room
             and (room.allow_joiners or invite) and room.evaluation is None
             and game is not None and room.round is not None and not game.game_over
             and any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats))
@@ -3169,23 +3281,26 @@ def _open_seats(room: Room, invite: bool = False) -> list[int]:
             if i not in room.pending_joins and (sd.is_bot or _away_offerable(room, i))]
 
 
-def presence_counts() -> tuple[int, int]:
-    """The presence line: open tables (ranked games in play with a seat a
-    newcomer may take and someone connected) and the connected humans
-    seated at them."""
-    tables = playing = 0
+def presence_counts() -> tuple[int, int, int, int]:
+    """The presence line: open tables (games in play with a seat a newcomer
+    may take and someone connected), the connected humans seated at them,
+    and how many of those tables are ranked and how many casual."""
+    tables = playing = ranked = 0
     for room in list(rooms.values()):
         if not _open_seats(room):
             continue
         tables += 1
+        ranked += ratings.ranked(room)
         playing += sum(1 for sd in room.seats if sd is not None and not sd.is_bot and sd.connected)
-    return tables, playing
+    return tables, playing, ranked, tables - ranked
 
 
 def open_tables() -> list[dict]:
-    """Every open table as the matchmaker sees it: its code, whether it is
-    at a round end (a newcomer then plays, ranked, from the next round), and
-    the four seats with who holds them and which a newcomer may take."""
+    """Every open table as the matchmaker sees it: its code, its mode
+    ("ranked" or "casual"; the queue offers a table only to its own mode),
+    whether it is at a round end (a newcomer then plays, ranked, from the
+    next round), and the four seats with who holds them and which a newcomer
+    may take."""
     out = []
     for room in list(rooms.values()):
         seats = _open_seats(room)
@@ -3201,6 +3316,7 @@ def open_tables() -> list[dict]:
                          "queue_id": pj.uid if pj else sd.queue_id,
                          "device": pj.conn.device if pj else sd.device})
         out.append({"code": room.code, "seats": view,
+                    "mode": "ranked" if ratings.ranked(room) else "casual",
                     "round_end": room.round.phase == "round_end"})
     return out
 
@@ -3325,7 +3441,7 @@ async def _claim_open_seat(room: Room, seat: int, uid: int, name: str, conn: Any
     conn.joining = (room, seat)
     MATCHMAKER.enter_room(conn)
     conn.push({"type": "match_started", "match_id": None, "room": room.code,
-               "rated": ratings.eligible(room), "joining": True, "seat": seat,
+               "rated": ratings.ranked(room), "joining": True, "seat": seat,
                **({"guest": True} if uid < 0 else {})})
     _tell_first_joiner(room, seat, name or "Player")
     if announce:
@@ -3337,7 +3453,7 @@ def _tell_first_joiner(room: Room, seat: int, name: str) -> None:
     """A game someone started alone gets its first joiner: the people
     already playing hear it once (who, which seat, and that the move clock
     runs from now), so a solo game that turns shared is never a surprise."""
-    if room.first_joiner_told or not room.matched or room.waiting_table is not None:
+    if room.first_joiner_told or not room.queued or room.waiting_table is not None:
         return
     room.first_joiner_told = True
     payload = {"type": "first_joiner", "name": name, "seat": seat,
@@ -3413,7 +3529,7 @@ async def join_by_invite(room: Room, seat: Any, uid: int, name: str, conn: Any) 
 
 
 INVITE_REFUSALS = {
-    "cooldown": "You left a table you joined. You can join again in 5 minutes.",
+    "cooldown": "You left a table you joined. You can join again in 1 minute.",
     "table_left": "You left this table, so you can't join it again.",
     "table_full": "Table is full.",
     "seat_unavailable": "That seat was just taken — pick another.",
@@ -3457,7 +3573,9 @@ def _drop_join(room: Room, seat: int, *, back_in_line: bool, penalty: bool = Fal
     if reason is not None:
         pj.conn.push({"type": "left", "reason": reason, "message": message})
     MATCHMAKER.return_to_lobby(pj.conn)
-    MATCHMAKER.join_ended(pj.uid, back_in_line=back_in_line, penalty=penalty)
+    # leaving a casual table is free: the table is barred, with no cooldown
+    MATCHMAKER.join_ended(pj.uid, back_in_line=back_in_line, penalty=penalty,
+                          cooldown=ratings.ranked(room))
 
 
 async def end_pending_join(conn: Any, *, penalty: bool) -> None:
@@ -3589,14 +3707,16 @@ def _revert_to_bot(room: Room, seat: int) -> None:
 
 
 def _joined_leave_penalty(room: Room, uid: int | None, qid: int | None) -> None:
-    """Leaving (or abandoning) the round one joined mid-way: the leaver cap
-    moves to the account's (``uid``) next rated round, and for the account
-    or guest (queue id ``qid``) a queue cooldown starts and this table is
-    never offered again."""
-    if uid is not None:
+    """Leaving (or abandoning) the round one joined mid-way: this table is
+    never offered again to the account or guest (queue id ``qid``). At a
+    ranked table the leaver cap also moves to the account's (``uid``) next
+    rated round and a queue cooldown starts; a casual table's leave is
+    otherwise free."""
+    ranked = ratings.ranked(room)
+    if uid is not None and ranked:
         ratings.carry_leaver_cap(uid)
     if qid is not None:
-        MATCHMAKER.left_open_table(qid, room.code)
+        MATCHMAKER.left_open_table(qid, room.code, cooldown=ranked)
 
 
 def _joined_round_ended(room: Room) -> None:

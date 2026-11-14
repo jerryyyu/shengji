@@ -65,12 +65,16 @@ class Env:
         self.ratings: dict[int, float] = {}
         self.started: list[tuple[str | None, list[mm.Slot]]] = []
         self.conns: dict[int, FakeConn] = {}
+        self.modes: list[str] = []
+        self.chats: list[list[dict]] = []
 
         async def rating_of(uid):
             return self.ratings.get(uid)
 
-        async def start_room(match_id, slots, conns):
+        async def start_room(match_id, slots, conns, mode="ranked", chat=()):
             self.started.append((match_id, slots))
+            self.modes.append(mode)
+            self.chats.append(list(chat))
             for c in conns.values():
                 self.mm.enter_room(c)
             return "ROOM"
@@ -557,7 +561,7 @@ def test_start_bots_failure_reaches_both_members_of_a_pair():
     async def go():
         env = Env()
 
-        async def boom(match_id, slots, conns):
+        async def boom(match_id, slots, conns, **kw):
             raise RuntimeError("no room")
         env.mm.start_room = boom
         await env.pair(1, 2)
@@ -611,7 +615,7 @@ def test_a_failed_table_start_puts_everyone_back_at_the_front():
     async def go():
         env = Env()
 
-        async def boom(match_id, slots, conns):
+        async def boom(match_id, slots, conns, **kw):
             raise RuntimeError("no room")
         env.mm.start_room = boom
         for uid in (1, 2, 3, 4):
@@ -729,7 +733,7 @@ def test_a_cooldown_is_pushed_to_the_lobby_and_counted_down_by_queue_state():
         assert env.conns[1].last("queue_state")["cooldown_until"] == until
         await env.send(1, "queue_join")
         err = env.conns[1].last("error")
-        assert err["code"] == "cooldown" and err["message"].endswith("Play again in 4:12.")
+        assert err["code"] == "cooldown" and err["message"].endswith("Play again in 0:12.")
         env.clock.advance(mm.JOIN_COOLDOWN_SECS)
         await env.send(1, "queue_status")
         assert "cooldown_until" not in env.conns[1].last("queue_state")
@@ -1357,9 +1361,9 @@ class Tables:
         env.mm.open_tables = self
         env.mm.join_table = self.join
 
-    def add(self, code, seats, round_end=False):
+    def add(self, code, seats, round_end=False, mode="ranked"):
         """``seats``: an int is a person's account, "bot" a bot seat."""
-        self.tables[code] = {"code": code, "round_end": round_end, "seats": [
+        self.tables[code] = {"code": code, "round_end": round_end, "mode": mode, "seats": [
             {"name": "Bot", "bot": True, "open": True, "queue_id": None, "team": i % 2}
             if s == "bot" else
             {"name": f"P{s}", "bot": False, "open": False, "queue_id": s, "team": i % 2}
@@ -1691,6 +1695,7 @@ def test_open_tables_are_ranked_games_in_play_with_bot_seats_and_joiners_allowed
         t.first_round()
         (view,) = srv.open_tables()
         assert view["code"] == "OPEN" and view["round_end"] is False
+        assert view["mode"] == "ranked"
         assert [s["open"] for s in view["seats"]] == [False, True, True, True]
         assert srv.state_for(t.room, 0)["allow_joiners"] is True
         await srv.handle_action(t.room, 0, {"type": "allow_joiners", "on": False})
@@ -1699,12 +1704,16 @@ def test_open_tables_are_ranked_games_in_play_with_bot_seats_and_joiners_allowed
             await srv.handle_action(t.room, 1, {"type": "allow_joiners", "on": True})
         await srv.handle_action(t.room, 0, {"type": "allow_joiners", "on": True})
         assert len(srv.open_tables()) == 1
-        # nobody connected, a casual room, four people: none is open
+        # nobody connected, a test room, four people: none is open
         t.room.seats[0].connected = False
         assert srv.open_tables() == []
         t.room.seats[0].connected = True
-        t.room.matched = False
+        t.room.experimental_policy = "w32"
         assert srv.open_tables() == []
+        t.room.experimental_policy = None
+        # a casual room is an open table of the casual queue
+        t.room.matched = False
+        assert [v["mode"] for v in srv.open_tables()] == ["casual"]
         t.room.matched = True
         for i in (1, 2, 3):
             t.room.seats[i] = srv.Seat(name=f"Q{i}", user_id=900 + i, connected=True)
@@ -2934,7 +2943,7 @@ def test_ws_ranked_shows_once_a_signed_in_player_sits_and_goes_off_when_they_lea
             _drain(f, "room")
             assert _next(h, "room", lambda m: len(m["players"]) == 2)["rankable"] is True
             h.send_json({"type": "set_ranked", "on": True})
-            assert _next(h, "room", lambda m: m.get("ranked") is True)["allow_joiners"] is False
+            assert _next(h, "room", lambda m: m.get("ranked") is True)["allow_joiners"] is True
             f.send_json({"type": "leave_room"})
             st = _next(h, "room", lambda m: len(m["players"]) == 1)
         assert "ranked" not in st and "rankable" not in st
@@ -2975,6 +2984,8 @@ def test_ws_a_ranked_room_left_with_joiners_off_is_not_an_open_table(wsenv, monk
         code = _drain(h, "room")["room"]
         h.send_json({"type": "set_ranked", "on": True})
         _next(h, "room", lambda m: m.get("ranked") is True)
+        h.send_json({"type": "allow_joiners", "on": False})
+        _next(h, "room", lambda m: m.get("allow_joiners") is False)
         h.send_json({"type": "start_game"})
         assert _drain(h, "state", tries=400)["allow_joiners"] is False
         assert not [t for t in srv.open_tables() if t["code"] == code]
@@ -3342,14 +3353,14 @@ def test_presence_counts_open_tables_their_people_and_the_queue_debounced_and_wi
         tables.add("OPEN", [50, "bot", 51, "bot"])
         await env.mm.pump()
         assert watcher.of("presence") == [{"type": "presence", "tables": 1, "playing": 2,
-                                           "waiting": 0}]
+                                           "waiting": 0, "ranked": 1, "casual": 0}]
         await env.join(1)
         await env.mm.pump()                           # inside the debounce: held back
         assert len(watcher.of("presence")) == 1
         env.clock.advance(mm.COUNT_DEBOUNCE)
         await env.mm.pump()
         assert watcher.last("presence") == {"type": "presence", "tables": 1, "playing": 2,
-                                            "waiting": 1}
+                                            "waiting": 1, "ranked": 1, "casual": 0}
         env.clock.advance(mm.COUNT_DEBOUNCE)
         await env.mm.pump()                           # no change: no message
         assert len(watcher.of("presence")) == 2
@@ -3369,14 +3380,14 @@ def test_ws_presence_counts_a_solo_ranked_game_and_its_connected_player(wsenv, m
         h.send_json({"type": "queue_start_bots"})
         room = srv.rooms[_drain(h, "match_started")["room"]]
         _wait_until(lambda: room.round is not None)
-        assert srv.presence_counts() == (1, 1)
+        assert srv.presence_counts() == (1, 1, 1, 0)
         with client.websocket_connect(f"/ws?device={DEVICE_B}") as w:
             assert _drain(w, "presence") == {"type": "presence", "tables": 1, "playing": 1,
-                                             "waiting": 0}
+                                             "waiting": 0, "ranked": 1, "casual": 0}
         room.allow_joiners = False                    # not joinable: not counted
-        assert srv.presence_counts() == (0, 0)
+        assert srv.presence_counts() == (0, 0, 0, 0)
         room.allow_joiners = True
-    _wait_until(lambda: srv.presence_counts() == (0, 0))   # nobody connected
+    _wait_until(lambda: srv.presence_counts() == (0, 0, 0, 0))   # nobody connected
 
 
 def test_a_start_sent_against_a_panel_that_changed_is_refused():
@@ -3427,7 +3438,7 @@ def test_queue_events_reach_the_telemetry_sink_without_identity(tmp_path, monkey
 
         failing = Env()
 
-        async def broken(match_id, slots, conns):
+        async def broken(match_id, slots, conns, **kw):
             raise RuntimeError("injected")
         failing.mm.start_room = broken
         await failing.join(103)
@@ -3474,3 +3485,289 @@ def test_ws_the_first_joiner_of_a_game_started_alone_is_announced_once(wsenv, mo
         assert room.first_joiner_told
         log = (srv.LOG_DIR / f"{room.code}.jsonl").read_text()
         assert "first_joiner" not in log
+
+
+# ---------------------------------------- modes, table chat, the relaxed join rule
+def test_the_join_cooldown_is_one_minute_and_the_invite_copy_says_so():
+    from shengji.api import server as srv
+    assert mm.JOIN_COOLDOWN_SECS == 60.0
+    assert srv.INVITE_REFUSALS["cooldown"].endswith("join again in 1 minute.")
+
+
+def test_casual_entries_never_share_a_table_with_ranked_ones():
+    async def go():
+        env = Env()
+        await env.join(1)                              # ranked: no mode is ranked
+        await env.join(2, mode="casual")
+        assert env.mm.tables == {}                     # alone in each mode
+        assert env.conns[2].last("queue_state")["mode"] == "casual"
+        assert env.conns[1].last("queue_state")["mode"] == "ranked"
+        await env.join(3, mode="casual")
+        await env.join(4, mode="ranked")
+        by_mode = {t.mode: sorted(u for u in t.seats if u is not None)
+                   for t in env.mm.tables.values()}
+        assert by_mode == {"casual": [2, 3], "ranked": [1, 4]}
+        await env.join(5, mode="casual")
+        await env.join(6, mode="casual")               # four casual: that table starts
+        assert env.modes == ["casual"]
+        assert sorted(humans_of(env.started[0][1])) == [2, 3, 5, 6]
+        await env.send(1, "table_start")
+        await env.send(4, "table_start")
+        assert env.modes == ["casual", "ranked"]
+        assert sorted(humans_of(env.started[1][1])) == [1, 4]
+    run(go())
+
+
+def test_a_casual_entry_alone_starts_a_casual_game_with_bots():
+    async def go():
+        env = Env()
+        await env.join(1, mode="casual")
+        await env.send(1, "queue_start_bots")
+        await env.join(2, mode="casual")
+        env.clock.advance(mm.BOT_FILL_SECS + 1)
+        await env.mm.tick()                            # its own timer
+        assert env.modes == ["casual", "casual"]
+        await env.send(3, "queue_join", conn=env.player(3), mode="speed")
+        assert env.conns[3].last("error")["code"] == "bad_mode"
+        assert env.mm._entry(3) is None
+    run(go())
+
+
+def test_open_table_offers_are_of_the_entrys_own_mode():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        tables.add("RANK", [50, "bot", "bot", "bot"])
+        tables.add("CASU", [60, "bot", "bot", "bot"], mode="casual")
+        await env.join(1)
+        assert env.conns[1].last("queue_state")["offer"]["room"] == "RANK"
+        await env.join(2, mode="casual")
+        assert env.conns[2].last("queue_state")["offer"]["room"] == "CASU"
+        # a casual searcher is never offered a ranked table, even the only one
+        del tables.tables["CASU"]
+        await env.mm.tick()
+        assert env.conns[2].last("queue_state")["offer"] is None
+        await env.send(2, "open_table_show", room="RANK")
+        assert env.conns[2].last("error")["code"] == "table_closed"
+        await env.send(2, "open_table_join", room="RANK", seat=1)
+        assert env.conns[2].last("error")["code"] == "no_offer"
+        assert tables.joins == []
+    run(go())
+
+
+def test_presence_splits_open_tables_into_ranked_and_casual():
+    async def go():
+        env = Env()
+        tables = Tables(env)
+        watcher = env.player(9)
+        tables.add("RANK", [50, "bot", 51, "bot"])
+        tables.add("CAS1", [60, "bot", "bot", "bot"], mode="casual")
+        tables.add("CAS2", [70, "bot", "bot", "bot"], mode="casual")
+        await env.mm.pump()
+        assert watcher.last("presence") == {"type": "presence", "tables": 3, "playing": 4,
+                                            "waiting": 0, "ranked": 1, "casual": 2}
+        del tables.tables["CAS1"]
+        env.clock.advance(mm.COUNT_DEBOUNCE)
+        await env.mm.pump()
+        assert watcher.last("presence")["casual"] == 1
+    run(go())
+
+
+def test_table_chat_reaches_everyone_at_the_waiting_table_and_carries_into_the_room(monkeypatch):
+    from shengji.api import telemetry
+
+    events = []
+    monkeypatch.setattr(telemetry, "queue_event", lambda conn, ev, **f: events.append((ev, f)))
+    records = []
+
+    class Grab(__import__("logging").Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    grab = Grab()
+    mm.qlog.addHandler(grab)
+    try:
+        async def go():
+            env = Env()
+            await env.join(1)
+            await env.send(1, "table_chat", text="anyone?")
+            assert env.conns[1].last("error")["code"] == "not_seated"
+            await env.join(2)
+            await env.send(2, "table_chat", text="  hi there  ")
+            for uid in (1, 2):
+                line = env.conns[uid].last("table_chat")
+                assert {k: line[k] for k in ("id", "seat", "name", "text")} == {
+                    "id": 1, "seat": 2, "name": "P2", "text": "hi there"}
+            await env.send(1, "table_chat", text="   ")          # empty: nothing
+            await env.send(1, "table_chat", text="x" * 500)
+            assert env.conns[2].last("table_chat")["text"] == "x" * 300
+            await env.join(3)                                    # sits: hears the log so far
+            history = env.conns[3].last("table_chat_history")
+            assert [m["text"] for m in history["messages"]] == ["hi there", "x" * 300]
+            for uid in (1, 2, 3):
+                await env.send(uid, "table_start")
+            (chat,) = env.chats
+            assert [(m["seat"], m["text"]) for m in chat] == [(2, "hi there"), (0, "x" * 300)]
+        run(go())
+    finally:
+        mm.qlog.removeHandler(grab)
+    assert records and not any("hi there" in r or "xxx" in r for r in records)
+    assert not any("hi there" in str(f) for _, f in events)
+
+
+def test_table_chat_is_rate_limited():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.join(2)
+        for i in range(mm.CHAT_LIMIT[0]):
+            await env.send(1, "table_chat", text=f"m{i}")
+        assert env.conns[1].last("error") is None
+        await env.send(1, "table_chat", text="one too many")
+        assert env.conns[1].last("error")["code"] == "rate_limited"
+        assert env.conns[2].last("table_chat")["text"] == f"m{mm.CHAT_LIMIT[0] - 1}"
+        await env.send(2, "table_chat", text="still mine")   # per person
+        assert env.conns[1].last("table_chat")["text"] == "still mine"
+    run(go())
+
+
+def test_table_chat_limits_match_room_chat():
+    from shengji.api import server as srv
+    assert (mm.CHAT_MAX_LEN, mm.CHAT_KEEP) == (srv.CHAT_MAX_LEN, srv.CHAT_KEEP)
+
+
+def test_ws_table_chat_becomes_the_rooms_scrollback_and_is_never_logged(wsenv):
+    srv, store, client, clock = wsenv
+    (u1, h1), (u2, h2) = _user(store, "c1", "One"), _user(store, "c2", "Two")
+    with client.websocket_connect("/ws", headers=h1) as a, \
+            client.websocket_connect("/ws", headers=h2) as b:
+        a.send_json({"type": "queue_join", "mode": "casual"})
+        _drain(a, "queue_state")
+        b.send_json({"type": "queue_join", "mode": "casual"})
+        assert _drain(b, "queue_state")["table"]["of"] == 2
+        b.send_json({"type": "table_chat", "text": "secret-table-line"})
+        assert _drain(a, "table_chat")["text"] == "secret-table-line"
+        a.send_json({"type": "table_start"})
+        b.send_json({"type": "table_start"})
+        seen = _until(a, "state", tries=200)
+        started = next(m for m in seen if m["type"] == "match_started")
+        assert started["rated"] is False
+        history = next(m for m in seen if m["type"] == "chat_history")
+        assert [(m["seat"], m["name"], m["text"]) for m in history["messages"]] == [
+            (2, "Two", "secret-table-line")]
+        room = srv.rooms[started["room"]]
+        assert not room.matched and not room.ranked and not room.move_timer
+        assert [s.user_id for s in room.seats] == [u1, None, u2, None]
+    logs = [p for p in srv.LOG_DIR.rglob("*") if p.is_file()]
+    assert logs, "the room wrote its round log"
+    assert not any("secret-table-line" in p.read_text(errors="replace") for p in logs)
+
+
+def test_ws_a_casual_created_room_is_an_open_table_of_the_casual_queue_only(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    _, h1 = _user(store, "own", "Owner")
+    _, h2 = _user(store, "cas", "Casual")
+    _, h3 = _user(store, "rnk", "Ranked")
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=h1) as o:
+        o.send_json({"type": "create_room", "name": "Owner"})
+        first = _drain(o, "room")
+        code = first["room"]
+        assert first["allow_joiners"] is True and "ranked" not in first
+        o.send_json({"type": "lobby_ready"})
+        _drain(o, "state", tries=400)
+        room = srv.rooms[code]
+        _wait_until(lambda: room.round is not None)
+        [view] = [t for t in srv.open_tables() if t["code"] == code]
+        assert view["mode"] == "casual"
+        assert [s["open"] for s in view["seats"]] == [False, True, True, True]
+        assert srv.presence_counts() == (1, 1, 0, 1)
+        with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=h3) as r:
+            r.send_json({"type": "queue_join"})
+            assert _drain(r, "queue_state")["offer"] is None
+        with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=h2) as c:
+            c.send_json({"type": "queue_join", "mode": "casual"})
+            assert _drain(c, "queue_state")["offer"]["room"] == code
+
+
+def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred(
+        wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    ratings.CARRIED_CAPS.clear()
+    host, host_headers = _user(store, "host", "Host")
+    alice, alice_headers = _user(store, "alice", "Alice")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=alice_headers) as a:
+        h.send_json({"type": "queue_join", "mode": "casual"})
+        _drain(h, "queue_state")
+        h.send_json({"type": "queue_start_bots"})
+        started = _drain(h, "match_started")
+        assert started["rated"] is False
+        room = srv.rooms[started["room"]]
+        code = room.code
+        # the bot plays the host's seat too: away needs the move timer, which
+        # a casual room keeps off, so the test turns it on for the host alone
+        room.move_timer = True
+        room.seats[0].away = True
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        a.send_json({"type": "queue_join", "mode": "casual"})
+        offer = _drain(a, "queue_state")["offer"]
+        assert offer["room"] == code and offer["pick"] == 2
+        a.send_json({"type": "open_table_join", "room": code, "seat": 2})
+        assert _drain(a, "match_started")["rated"] is False
+        _wait_until(lambda: room.seats[2].user_id == alice)
+        assert room.seats[2].joined_round == room.game.round_no
+        # the frame's leave warning is a ranked table's only
+        assert srv.state_for(room, 2)["joined_round"] is False
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=400)
+        assert room.seats[2].is_bot and alice not in ratings.CARRIED_CAPS
+        assert alice not in srv.MATCHMAKER.cooldowns
+        assert code in srv.MATCHMAKER.barred[alice]
+        a.send_json({"type": "queue_join", "mode": "casual"})
+        state = _drain(a, "queue_state", tries=400)
+        assert state["queued"] and state["offer"] is None
+    ratings.CARRIED_CAPS.clear()
+
+
+def test_leaving_a_casual_table_before_the_handover_is_free(otenv):
+    srv, store, env = otenv
+    host, _ = _user(store, "host")
+    new, _ = _user(store, "alice", "Alice")
+
+    async def go():
+        t = OpenRoom(srv, [host, "bot", "bot", "bot"])
+        t.room.matched = False                        # a casual room
+        t.first_round(banker=2)                       # seat 2 buries: the Join waits
+        conn = env.player(new, name="Alice")
+        conn.ws = _FakeWS()
+        await env.send(new, "queue_join", mode="casual")
+        await env.send(new, "open_table_join", room="OPEN", seat=2)
+        assert 2 in t.room.pending_joins
+        await srv.end_pending_join(conn, penalty=True)
+        assert "OPEN" in env.mm.barred[new] and new not in env.mm.cooldowns
+    run(go())
+
+
+def test_ws_a_seat_a_queue_join_holds_is_not_claimable_by_code(wsenv, monkeypatch):
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    monkeypatch.setattr(srv, "_settle_joins", lambda room: None)   # the Join stays pending
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as o, \
+            client.websocket_connect(f"/ws?device={DEVICE_B}") as f:
+        o.send_json({"type": "create_room", "name": "Owner"})
+        code = _drain(o, "room")["room"]
+        o.send_json({"type": "lobby_ready"})
+        room = srv.rooms[code]
+        _wait_until(lambda: room.round is not None)
+        room.pending_joins[2] = srv.PendingJoin(uid=77, name="Queued", conn=mm.Conn(None, 77))
+        f.send_json({"type": "peek_room", "room": code})
+        assert [s["claimable"] for s in _drain(f, "room_seats")["seats"]] == [
+            False, True, False, True]
+        f.send_json({"type": "join_room", "room": code, "name": "Friend", "seat": 2})
+        assert _drain(f, "error")["code"] == "seat_unavailable"
+        f.send_json({"type": "join_room", "room": code, "name": "Friend"})
+        _wait_until(lambda: room.seats[1].name == "Friend")
+        assert room.seats[2].is_bot

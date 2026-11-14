@@ -1,4 +1,4 @@
-import type { RoomMsg, ServerMsg } from "../protocol";
+import type { RoomMsg, RoomSeats, ServerMsg } from "../protocol";
 import { openHowto } from "../howto/route";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
@@ -13,9 +13,8 @@ import { RankedSection, TrophyIcon } from "../queue/Ranked";
 import { queue, useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
-import SeatTakeover from "./SeatTakeover";
-import { takeoverSeats } from "../seatTakeover";
-import type { DroppedSeat } from "../seatTakeover";
+import JoinPanel from "./JoinPanel";
+import { tableFull, takeoverSeats } from "../joinSeats";
 import { codes, useCodes } from "../codeJoin";
 import type { TableKind } from "../codeJoin";
 import { normalizeCode } from "../codes";
@@ -28,9 +27,9 @@ interface LobbyProps {
   error: string | null;
   /** The room this socket sits in before its game: its panel takes Play's place. */
   room?: RoomMsg | null;
-  /** A room link waits while App asks whether to leave the table you sit at. */
+  /** A link waits while App asks whether to leave the table you sit at. */
   holdInvite?: boolean;
-  /** A room link opened while you sit at a table: App asks to leave it first. */
+  /** A link opened while you sit at another table: App asks to leave it first. */
   onSeatedInvite?: (code: string) => void;
   /** Counts the times that question was answered Stay: the link is dropped. */
   inviteDropped?: number;
@@ -57,6 +56,10 @@ type Starting = { kind: "create" | "join"; generation: number };
 /** If neither a room nor an error has come back by then, the buttons wake up again. */
 export const START_TIMEOUT_MS = 15000;
 const STARTING_LABEL: Record<Starting["kind"], string> = { create: "Creating…", join: "Joining…" };
+
+/** The Join panel's table: the code, its kind, a room's seats once peeked,
+ *  and whether no seat is left. */
+interface JoinView { code: string; kind: TableKind; peek: RoomSeats | null; full: boolean }
 
 /** The Ranked block while the server cannot say whether sign-in exists:
  *  Play and Duo in their places, unavailable. */
@@ -94,12 +97,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
     if (msg?.type === "error") setStarting(null);
   }), []);
-  const { name, editing } = useGuestName();
-  // Whether this device had a guest name before this page load: an invitee
-  // who has one goes straight into the room, a first-timer names themselves.
-  const [hadName] = useState(() => {
-    try { return getSavedName().trim() !== ""; } catch { return false; }
-  });
+  const { name } = useGuestName();
   const setName = (next: string) => guestName.setName(next);
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -132,40 +130,48 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   );
   const [w32Selected, setW32Selected] = useState(false);
   const [testAccessKey, setTestAccessKey] = useState("");
-  // A ?room= link, or a ?code= link (a room or a table code), prefills the box.
+  // A ?code= link prefills the box (an older ?room= link reads as one).
   const [roomCode, setRoomCode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return normalizeCode(params.get("room") ?? params.get("code") ?? "");
+    return normalizeCode(params.get("code") ?? params.get("room") ?? "");
   });
   const codeView = useCodes();
-  // A ?code= link that the lookup found to be a room (handled as ?room= is)
-  // or a Play table (joined through the queue), with which it was.
+  // A ?code= link that the lookup found to be a room or a Play table, and
+  // which it was.
   const [linkRoom, setLinkRoom] = useState<string | null>(null);
   const [linkKind, setLinkKind] = useState<TableKind>("room");
   // A Play-box or link lookup still waiting for its answer holds Join.
   const looking = codeView.pending !== null;
-  const autoJoined = useRef(false);
+  // The link has been opened (or dropped): it opens the panel once.
+  const linkOpened = useRef(false);
   const peekGen = useRef<number | null>(null);
   // The room last peeked: a choose_seat or seat_unavailable answer asks again.
   const lastPeek = useRef<string | null>(null);
-  // A full room whose open seats belong to dropped players: taking one is
-  // the player's deliberate choice, never the client's.
-  const [takeover, setTakeover] = useState<{ room: string; seats: DroppedSeat[] } | null>(null);
-  // A ranked table's invite that cannot be taken here: no bot seat is left.
-  // Guests take a ranked table's seats as accounts do, unrated.
-  const [tableFull, setTableFull] = useState(false);
-  // The room an invite link is taking this page into, until the server
-  // answers; and why it could not, said on Play.
+  // The one invite path: a link's table, or a room the code box cannot seat
+  // you at at once, shows the Join panel in Play's place. Join is the
+  // player's tap; a dropped player's seat is taken only by tapping it and
+  // confirming; a full table shows the same panel with Join disabled.
+  const [joinView, setJoinViewState] = useState<JoinView | null>(null);
+  const joinRef = useRef<JoinView | null>(null);
+  const setJoinView = useCallback((v: JoinView | null) => {
+    joinRef.current = v;
+    setJoinViewState(v);
+  }, []);
+  // The table the last Join went to, so a table_full answer shows its panel.
+  const lastJoin = useRef<{ code: string; kind: TableKind } | null>(null);
+  // The room a link's panel peeked, until the server answers; and why it
+  // could not, said on Play.
   const inviting = useRef<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   // Declared before the subscriber and memoised so the effect can list it as
   // a dependency instead of silencing the warning: it closes over `name` and
   // `roomCode`, and a stale copy would join with the wrong name.
-  const joinSeat = useCallback((seat: number | undefined, code?: string) => {
+  const joinSeat = useCallback((seat: number | undefined, code?: string, as?: string) => {
     const target = (code ?? roomCode).trim().toUpperCase();
-    const trimmed = playerName;
+    const trimmed = as ?? playerName;
     rememberName(trimmed);
     clearInvite();
+    lastJoin.current = { code: target, kind: "room" };
     const token = getResumeToken();
     if (conn.send({ type: "join_room", room: target, name: trimmed, seat,
                     ...(token ? { token } : {}) })) {
@@ -186,21 +192,19 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
       return;
     }
     if (m?.type === "room_seats") {
-      if (m.ranked && m.full) {
+      const open = joinRef.current;
+      if (open && open.code === m.room) {
+        // the panel's seats, or a Join that came back to look again
         setStarting(null);
-        setTableFull(true);
-        inviting.current = null;
-        clearInvite();
+        setJoinView({ ...open, peek: m, full: tableFull(m) });
         return;
       }
-      const dropped = takeoverSeats(m);
-      if (dropped.length) {
-        // only dropped players' seats are open: ask which, then confirm
+      if (tableFull(m) || takeoverSeats(m).length) {
+        // the code box: no seat to give at once, so the panel says why
         setStarting(null);
-        setTakeover({ room: m.room, seats: dropped });
+        setJoinView({ code: m.room, kind: "room", peek: m, full: tableFull(m) });
         return;
       }
-      setTakeover(null);
       // the server seats you: a lobby's next seat (move in the panel), or a
       // game's first bot seat
       joinSeat(undefined, m.room);
@@ -219,16 +223,31 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
         return;
       }
     }
-    if (m?.type === "error" && m.code === "table_full") setTableFull(true);
+    if (m?.type === "error" && m.code === "table_full") {
+      const open = joinRef.current;
+      const last = lastJoin.current;
+      if (open) setJoinView({ ...open, full: true });
+      else if (last) setJoinView({ ...last, peek: null, full: true });
+      return;
+    }
+    if (m?.type === "error" && joinRef.current?.kind === "table"
+        && (m.code === "table_not_found" || m.code === "table_closed" || m.code === "own_table")) {
+      setJoinView(null);
+      if (m.code !== "table_closed") setInviteError(m.message);
+      return;
+    }
     // An invite that went nowhere leaves the page on Play, saying why; the
     // server's own words do for the rest (full, one device, ranked).
     if (m?.type === "error" && inviting.current) {
       const code = inviting.current;
       inviting.current = null;
       clearInvite();
-      if (m.code === "room_not_found") setInviteError(`No room ${code}. It may have closed.`);
+      if (m.code === "room_not_found") {
+        setJoinView(null);
+        setInviteError(`No room ${code}. It may have closed.`);
+      }
     }
-  }), [joinSeat]);
+  }), [joinSeat, setJoinView]);
 
   // An empty name never blocks a start: the test room's Create and Join
   // each fill the field with a random name and go, the same as the dice.
@@ -280,107 +299,107 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
     if (codes.lookup(code, "play")) begin("join");
   };
 
-  // A room or table code from this box or a ?code= link.
+  // A room or table code from this box or a ?code= link. A link's answer
+  // waits while a game is on (this screen is not up), for as long as the
+  // address still holds the link.
   useEffect(() => {
     if (!codeView.room || status !== "open") return;
     const r = codes.takeRoom();
-    if (!r || Date.now() - r.at > START_TIMEOUT_MS) return;
-    setRoomCode(r.code);
+    if (!r) return;
     if (r.from === "link") {
+      const still = normalizeCode(new URLSearchParams(window.location.search).get("code") ?? "");
+      if (still !== r.code) return;
       setLinkRoom(r.code);
       setLinkKind(r.kind);
-    } else if (r.kind === "table") {
+      return;
+    }
+    if (Date.now() - r.at > START_TIMEOUT_MS) return;
+    setRoomCode(r.code);
+    if (r.kind === "table") {
       // a friend's Play table: sit there through the queue
       setRoomCode("");
+      lastJoin.current = { code: r.code, kind: "table" };
       queue.join(r.code);
     } else peek(r.code);
   }, [codeView.room, status, peek]);
 
-  // Invite links prefill the room code and focus the NAME field — they do
-  // not auto-submit, because a returning player has a saved name and would
-  // otherwise be thrown into the room before they could change it. Auto-join
-  // only when the link carries a name too, which is
-  // an explicit choice by whoever built the link; a signed-in player still
-  // joins under their account name. A guest's name editor opens instead.
-  const invited = new URLSearchParams(window.location.search).get("room") ?? linkRoom;
-  const invitedName = new URLSearchParams(window.location.search).get("name");
-  // An invite goes into the room: at once for a signed-in player or a guest
-  // with a saved name, else once a first-time guest has named themselves
-  // (the editor's Done, or closing it on the name it offered).
-  const nameAsked = useRef(false);
-  const accountKnown = account.status !== "loading";
+  // The panel opens on a code: a room's seats are peeked for it (the server
+  // shows a Play table's seats once you sit).
+  const openJoin = useCallback((code: string, kind: TableKind) => {
+    setInviteError(null);
+    setJoinView({ code, kind, peek: null, full: false });
+    if (kind !== "room") return;
+    inviting.current = code;
+    lastPeek.current = code;
+    peekGen.current = conn.generation;
+    conn.send({ type: "peek_room", room: code });
+  }, [setJoinView]);
+
+  // Not now: the panel goes and the link with it; Play is back.
+  const closeJoin = () => {
+    setJoinView(null);
+    setLinkRoom(null);
+    setRoomCode("");
+    inviting.current = null;
+    clearInvite();
+  };
+
+  // The panel's Join: under the name the chip shows (a guest's random one
+  // until they edit it), a room by join_room, a Play table through the queue.
+  const joinFromPanel = () => {
+    const v = joinRef.current;
+    if (!v || v.full) return;
+    const as = nameOrRandom();
+    if (v.kind === "table") {
+      rememberName(as);
+      clearInvite();
+      setLinkRoom(null);
+      lastJoin.current = { code: v.code, kind: "table" };
+      queue.join(v.code);
+      return;
+    }
+    joinSeat(undefined, v.code, as);
+  };
+
+  // A ?code= link opens the Join panel and never joins by itself: the
+  // player taps Join, under the name the chip shows.
   useEffect(() => {
     if (inviteDropped === 0) return;
-    autoJoined.current = true;
+    linkOpened.current = true;
     setLinkRoom(null);
   }, [inviteDropped]);
   // Sitting at a table already (a room here, or the queue's) the link waits
   // for App's leave-first question; once that table is left, it goes on.
-  const { queued, tableCode } = useQueue();
+  const { queued, tableCode, pending: queuePending } = useQueue();
   const seated = room !== null || queued;
   const wide = useMediaQuery(WIDE);
   const screenRef = useRef<HTMLDivElement | null>(null);
   // a panel that opens puts the page back at its top, where the panel is
-  const panelUp = seated && !stalled;
+  const joinUp = joinView !== null && !seated;
+  const panelUp = (seated || joinUp) && !stalled;
   useEffect(() => {
     if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
   }, [panelUp]);
-  // a ?room= link names a room; a ?code= link names what its lookup said
-  const invitedKind: TableKind = invited !== null && invited === linkRoom ? linkKind : "room";
+  // once you sit, the panel's job is done
   useEffect(() => {
-    if (autoJoined.current || status !== "open" || !invited || invited.length !== 4) return;
-    const code = invited.toUpperCase();
-    if (holdInvite) return;
+    if (!seated) return;
+    lastJoin.current = null;
+    if (joinRef.current) setJoinView(null);
+  }, [seated, setJoinView]);
+  useEffect(() => {
+    if (linkOpened.current || status !== "open" || !linkRoom || holdInvite) return;
     if (seated) {
-      if ((room?.room ?? tableCode) !== code) onSeatedInvite?.(code);
+      // your own table's link changes nothing; another table's asks first
+      if ((room?.room ?? tableCode) !== linkRoom) onSeatedInvite?.(linkRoom);
       else {
         clearInvite();
         setLinkRoom(null);
       }
       return;
     }
-    if (invitedName && invitedName.trim() && invitedKind === "room") {
-      autoJoined.current = true;
-      const joinAs = signedIn ? accountName : invitedName.trim();
-      if (!signedIn) guestName.keep(joinAs);
-      clearInvite();
-      inviting.current = code;
-      conn.send({ type: "join_room", room: code, name: joinAs });
-      return;
-    }
-    if (!accountKnown) return;
-    if (!signedIn && !hadName && !nameAsked.current) {
-      nameAsked.current = true;
-      guestName.open();
-      return;
-    }
-    if (editing) return;
-    autoJoined.current = true;
-    if (!signedIn) guestName.keep(playerName);
-    if (invitedKind === "table") {
-      clearInvite();
-      setLinkRoom(null);
-      setRoomCode("");
-      queue.join(code);
-      return;
-    }
-    inviting.current = code;
-    setInviteError(null);
-    peek(code);
-  }, [status, invited, invitedName, signedIn, accountName, accountKnown, hadName, editing,
-      playerName, peek, holdInvite, seated, room, tableCode, invitedKind, onSeatedInvite]);
-
-  if (tableFull) {
-    return (
-      <div className="screen lobby-screen">
-        <div className="lobby-card ranked-gate" role="dialog" aria-label="Table is full">
-          <h2>Table is full</h2>
-          <p className="seat-hint">Every seat at this ranked table has a player.</p>
-          <button className="btn" onClick={() => setTableFull(false)}>OK</button>
-        </div>
-      </div>
-    );
-  }
+    linkOpened.current = true;
+    openJoin(linkRoom, linkKind);
+  }, [status, linkRoom, linkKind, holdInvite, seated, room, tableCode, onSeatedInvite, openJoin]);
 
   // The test controls' room: a created room for the W32 policy, reached
   // only from ?test_shortlist=1. Every other table comes from Play.
@@ -444,7 +463,8 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
 
         {/* above the sections, so it is on screen at rest; a phone's tab bar
             covers the bottom of the column */}
-        {inviteError || error ? (
+        {/* a full table's panel says so itself: one status, not two */}
+        {(inviteError || error) && !(joinUp && joinView?.full) ? (
           <div className="lobby-error" role="alert">{inviteError ?? error}</div>
         ) : null}
 
@@ -452,15 +472,16 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
             server waits; the chip, How to play and an open sheet stay put. */}
         {stalled && !room ? <OfflineControls local={false} status={status} /> : (
           <>
-            {takeover && !room ? (
-              <SeatTakeover room={takeover.room} seats={takeover.seats} busy={starting !== null}
-                            onCancel={() => { setTakeover(null); clearInvite(); }}
-                            onTake={(seat) => { const r = takeover.room; setTakeover(null); joinSeat(seat, r); }} />
+            {joinUp && joinView ? (
+              <JoinPanel code={joinView.code} peek={joinView.peek} full={joinView.full}
+                         busy={starting?.kind === "join" || queuePending === "join"}
+                         onJoin={joinFromPanel} onCancel={closeJoin}
+                         onTake={(seat) => joinSeat(seat, joinView.code, nameOrRandom())} />
             ) : ranked}
             {testRoom}
 
             {/* at a table the panel is the page: no code box until you leave it */}
-            {seated ? null : <div className="join-row">
+            {seated || joinUp ? null : <div className="join-row">
               <input
                 className="room-input"
                 value={roomCode}
@@ -499,7 +520,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
           {/* the bots on this device, on purpose: a game started here stays
               offline when the network comes back */}
-          {stalled || seated ? null : (
+          {stalled || seated || joinUp ? null : (
             <>
               <span className="howto-sep" aria-hidden="true">·</span>
               <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>Play offline</button>

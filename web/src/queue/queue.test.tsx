@@ -1161,7 +1161,9 @@ describe("one code for rooms and tables", () => {
     expect(sentTypes()).not.toContain("party_join");
   });
 
-  it("a ?code= link for a room goes into the room", async () => {
+  const joinPanel = () => q(".tp-join-code");
+
+  it("a ?code= link for a room opens its Join panel, and Join goes into the room", async () => {
     window.history.replaceState(null, "", "/?code=wxyz");
     await renderApp();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
@@ -1169,25 +1171,44 @@ describe("one code for rooms and tables", () => {
     await settle();
     expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
     say(seats("WXYZ"));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ" });
+    await settle();
+    expect(sentTypes()).not.toContain("join_room");
+    expect(joinPanel()?.querySelector(".tp-title")?.textContent).toBe("Join Host");
+    click(button("Join", joinPanel()!));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
   });
 
-  it("a ?code= link for a room with a name joins it, as ?room= does", async () => {
+  it("an older ?room= link reads as ?code=, and its ?name= is dropped: the guest joins under the chip's name", async () => {
     signedIn = false;
-    window.history.replaceState(null, "", "/?code=WXYZ&name=Ann");
+    window.history.replaceState(null, "", "/?room=WXYZ&name=Ann");
     await renderApp();
+    expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
+    expect(window.location.search).toBe("?code=WXYZ");
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    expect(lastSent()).toEqual({ type: "join_room", room: "WXYZ", name: "Ann" });
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    say(seats("WXYZ"));
+    await settle();
+    expect(sentTypes()).not.toContain("join_room");
+    // no name sheet: the chip already shows a random name
+    expect(q(".q-layer:not(.q-out) .q-sheet")).toBeNull();
+    const chipName = localStorage.getItem("shengji.name");
+    expect(chipName).toBeTruthy();
+    click(button("Join", joinPanel()!));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: chipName });
+    expect(lastSent()).not.toMatchObject({ name: "Ann" });
   });
 
-  it("an older ?party= link is a ?code= link: a Duo's table code seats you at that table", async () => {
+  it("an older ?party= link is a ?code= link: a Duo's table code opens its Join panel", async () => {
     window.history.replaceState(null, "", "/?party=4n5z");
     await renderApp();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
     expect(q(".q-sheet")).toBeNull();
     say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
+    expect(sentTypes()).not.toContain("queue_join");
+    expect(joinPanel()?.querySelector(".tp-title")?.textContent).toBe("Join 4N5Z");
+    click(button("Join", joinPanel()!));
     expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
     expect(sentTypes()).not.toContain("party_join");
   });
@@ -1208,13 +1229,6 @@ describe("one code for rooms and tables", () => {
     await settle();
     expect(q(".join-error")?.textContent).toBe("No table has that code.");
     expect(window.location.search).toBe("");
-  });
-
-  it("an old ?room= link still prefills Join without a lookup", async () => {
-    window.history.replaceState(null, "", "/?room=WXYZ");
-    await renderApp();
-    expect(playBox().value).toBe("WXYZ");
-    expect(sentTypes()).not.toContain("code_lookup");
   });
 
   it("share links are ?code= links, for a Duo's table and for a room", async () => {
@@ -1249,9 +1263,9 @@ describe("a code lookup that is interrupted or refused", () => {
     vi.useRealTimers();
   };
 
-  it("a ?code= link whose lookup died with the socket is asked once more, then joins", async () => {
+  it("a ?code= link whose lookup died with the socket is asked once more, then opens its panel", async () => {
     signedIn = false;
-    window.history.replaceState(null, "", "/?code=WXYZ&name=Ann");
+    window.history.replaceState(null, "", "/?code=WXYZ");
     await renderApp();
     expect(lookups()).toHaveLength(1);
     reconnect();
@@ -1260,21 +1274,23 @@ describe("a code lookup that is interrupted or refused", () => {
     expect(ws().sent).toEqual([{ type: "code_lookup", code: "WXYZ" }]);
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    expect(lastSent()).toEqual({ type: "join_room", room: "WXYZ", name: "Ann" });
+    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    expect(q(".tp-join-code")).not.toBeNull();
   });
 
-  it("a ?code= link already answered and joined is not looked up or joined again on reconnect", async () => {
+  it("a ?code= link already answered and opened is not looked up or opened again on reconnect", async () => {
     signedIn = false;
-    window.history.replaceState(null, "", "/?code=WXYZ&name=Ann");
+    window.history.replaceState(null, "", "/?code=WXYZ");
     await renderApp();
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    const joins = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "join_room");
-    expect(joins()).toHaveLength(1);
+    const peeks = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "peek_room");
+    expect(peeks()).toHaveLength(1);
     reconnect();
     await settle();
     expect(lookups()).toHaveLength(1);
-    expect(joins()).toHaveLength(1);
+    expect(peeks()).toHaveLength(1);
+    expect(sentTypes()).not.toContain("join_room");
   });
 
   it("a rate-limited Play lookup says so under the Play box", async () => {
@@ -1561,12 +1577,20 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(document.body.textContent).toContain("Someone on this device is already at that table.");
   });
 
-  it("a ranked table with no bot seat says Table is full", async () => {
+  it("a ranked table with no bot seat shows its Join panel with Join disabled", async () => {
     await open();
     viaPlayBox();
     tell(rankedSeats(true));
-    expect(q(".ranked-gate h2")?.textContent).toBe("Table is full");
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Join Host");
+    expect(p.querySelector(".tp-line")?.textContent).toBe("Table is full");
+    expect(button("Join", p)?.disabled).toBe(true);
+    expect(q(".ranked-gate")).toBeNull();
     expect(sentTypes()).not.toContain("join_room");
+    click(button("Not now", p));
+    expect(q(".tp-join-code")).toBeNull();
+    expect(q("button.play-main")).not.toBeNull();
   });
 
   it("a ranked table's menu has both Copy invite link and Allow joiners", async () => {

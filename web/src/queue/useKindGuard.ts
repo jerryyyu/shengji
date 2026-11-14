@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
-import type { PanelKind } from "./tableText";
-
 /** After the panel changes kind its primary button waits this long, so a
  *  tap aimed at Join or Play never lands on an irrevocable Start. */
 export const GUARD_MS = 700;
 
-/** True for GUARD_MS after `kind` changes (not on first render). */
-export function useKindGuard(kind: PanelKind): boolean {
-  const [seen, setSeen] = useState<{ kind: PanelKind; at: number }>({ kind, at: 0 });
+/** True for GUARD_MS after `kind` changes (not on first render). `kind` is
+ *  the panel's kind, or any key that names what its primary button does. */
+export function useKindGuard(kind: string): boolean {
+  const [seen, setSeen] = useState<{ kind: string; at: number }>({ kind, at: 0 });
   const [, rerender] = useState(0);
   let current = seen;
   if (seen.kind !== kind) {

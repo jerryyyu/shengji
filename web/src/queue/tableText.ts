@@ -1,6 +1,7 @@
 // What the table panel says, as plain functions of the queue's state.
 import { clock } from "./store";
-import type { OfferView, QueueView, TableView } from "./store";
+import type { OfferView, Presence, QueueView, TableView } from "./store";
+import type { FirstJoinerMsg } from "./messages";
 
 /** A seat taken this recently reads "Just joined". */
 export const JUST_JOINED_MS = 5000;
@@ -123,6 +124,9 @@ export function announcement(q: QueueView, guest: boolean): string {
     const who = q.partyId ? "Your Duo's table" : "Your table";
     return `${who}. Waiting for players.${q.waitPlayers ? " No timer." : ""}`;
   }
+  if (kind === "shared" && q.table && q.stillHereUntil !== null) {
+    return "Still here? Tap I'm here to stay at the table.";
+  }
   if (kind === "shared" && q.table) {
     const t = q.table;
     const after = t.youReady ? ` ${startLabel(t)}.` : "";
@@ -130,4 +134,30 @@ export function announcement(q: QueueView, guest: boolean): string {
   }
   if (kind === "elsewhere") return "Your table is open on another device.";
   return "";
+}
+
+/** The Play tab's line under Play and Duo, first match wins. It is global,
+ *  so it promises no seat; with no counts from the server, nobody is about. */
+export function presenceLine(p: Presence | null): string {
+  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+  if (p && p.waiting >= 1) {
+    return `${n(p.waiting, "person is", "people are")} waiting for a game · Play to join them`;
+  }
+  if (p && p.tables >= 1) {
+    return `${n(p.tables, "table has", "tables have")} a seat · ${n(p.playing, "person", "people")} playing`;
+  }
+  return "Nobody is playing right now · Press Play and the next person can join you";
+}
+
+/** The one toast a game started alone gets when its first newcomer sits. */
+export function firstJoinerText(m: Pick<FirstJoinerMsg, "name" | "move_secs" | "round_end">): string {
+  const who = m.round_end ? `${m.name} joins your table from next round.` : `${m.name} joined your table.`;
+  if (m.move_secs === null) return who;
+  return m.round_end ? `${who} Moves are timed from next round, ${m.move_secs} s each.`
+    : `${who} Moves are now timed, ${m.move_secs} s each.`;
+}
+
+/** The "still here?" countdown line. */
+export function stillHereLine(until: number, now: number): string {
+  return `You leave the table in ${clock(Math.max(0, until - now), true)}.`;
 }

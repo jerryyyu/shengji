@@ -8,10 +8,11 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { auth, effectiveName } from "../auth";
 import { guestName } from "../guestName";
 import type { ConnStatus } from "../ws";
-import { conn } from "../ws";
+import { conn, getResumeToken, getSavedName, getSavedRoom } from "../ws";
+import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ServerMsg } from "../protocol";
-import type { OfferSeatMsg, OpenTableOfferMsg, PartyMsg, QueueClientMsg, WaitingTableMsg } from "./messages";
+import type { OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, WaitingTableMsg } from "./messages";
 import { QUEUE_ERROR_CODES } from "./messages";
 
 /** From this long before the bot fill the bar turns amber. */
@@ -68,6 +69,13 @@ export type Sheet = null | "solo" | "party";
 
 export interface QueueNote { id: number; title: string; sub?: string }
 
+/** The Play tab's counts: open ranked tables, people at them, people queued. */
+export type Presence = Omit<PresenceMsg, "type">;
+
+/** Play was refused because the account already plays a ranked game: the
+ *  server's words, and whether this device knows the room to go back to. */
+export interface InGame { message: string; canReturn: boolean }
+
 export interface QueueView {
   count: number;
   queued: boolean;
@@ -103,12 +111,22 @@ export interface QueueView {
   /** A pair code from an invite link or typed in, not yet joined. */
   joinCode: string;
   note: QueueNote | null;
+  /** The last presence counts; null until the server sends any, which it
+   *  does only while some count is above zero. */
+  presence: Presence | null;
+  /** The server's id for what the panel shows; sent back with a Start or a
+   *  Join so a tap aimed at one panel never acts on the next. */
+  panelSeq: number | null;
+  /** Local ms you leave the table unless you answer "still here?". */
+  stillHereUntil: number | null;
+  inGame: InGame | null;
 }
 
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
   partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
   cooldownUntil: null, cooldownTold: false, party: null, partyError: null, sheet: null, joinCode: "", note: null,
+  presence: null, panelSeq: null, stillHereUntil: null, inGame: null,
 };
 
 /** The name you play under: the account's, or a guest's own. */
@@ -179,7 +197,7 @@ export class QueueStore {
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
     this.findAfterSignIn = false;
-    this.set({ ...EMPTY, count: this.view.count, note: null });
+    this.set({ ...EMPTY, count: this.view.count, presence: this.view.presence, note: null });
     if (searching) this.notify("Signed in. Press Play to find a table.");
   }
 
@@ -268,6 +286,8 @@ export class QueueStore {
     }
     // Pairs live in the server's memory: a restart forgets them, and a
     // reconnect that gets no pair back means this one is gone.
+    // a new socket hears the counts again only when some count is above zero
+    if (s === "open" && was !== "open" && this.view.presence) this.set({ presence: null });
     if (s === "open" && was !== "open" && this.view.party) {
       const id = this.view.party.party_id;
       this.clearPartyResync();
@@ -301,6 +321,17 @@ export class QueueStore {
       case "queue_count":
         this.set({ count: msg.count });
         break;
+      case "presence":
+        this.set({ presence: { tables: msg.tables, playing: msg.playing, waiting: msg.waiting } });
+        break;
+      case "table_moved":
+        this.notify(`${msg.name} moved to ${msg.your_team ? "your team" : "the other team"}.`);
+        break;
+      case "room":
+      case "state":
+        // in a room: whatever refused Play no longer stands
+        if (this.view.inGame) this.set({ inGame: null });
+        break;
       case "queue_state": {
         this.clearResync();
         if (!msg.queued) {
@@ -309,7 +340,7 @@ export class QueueStore {
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
                      pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
                      cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null,
-                     cooldownTold: false });
+                     cooldownTold: false, panelSeq: null, stillHereUntil: null });
           if (msg.replaced && wasQueued) {
             const there = msg.by === "window" ? "window" : "device";
             this.notify(msg.stopped ? `Your table was closed from another ${there}.` : `Your table moved to another ${there}.`);
@@ -325,7 +356,8 @@ export class QueueStore {
                      since: msg.since !== undefined ? this.local(msg.since) : now,
                      botsAt: null, waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
                      partyId: msg.party_id ?? null, pending: null, table: null, offer: null,
-                     openTables: 0, botsPaused: false, cooldownUntil: null });
+                     openTables: 0, botsPaused: false, cooldownUntil: null, inGame: null,
+                     panelSeq: msg.panel_seq ?? null, stillHereUntil: null });
           break;
         }
         if (this.joinSentAt !== null && !msg.front && msg.since !== undefined) {
@@ -348,7 +380,8 @@ export class QueueStore {
           waitPlayers: msg.wait_players === true,
           front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
           pending, table, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
-          elsewhere: false, cooldownUntil: null,
+          elsewhere: false, cooldownUntil: null, inGame: null, panelSeq: msg.panel_seq ?? null,
+          stillHereUntil: table && msg.still_here_until != null ? this.local(msg.still_here_until) : null,
         });
         if (left.length === 1) this.notify(`${left[0]} left the table.`);
         else if (left.length > 1) this.notify(`${left.join(" and ")} left the table.`);
@@ -357,7 +390,8 @@ export class QueueStore {
       case "match_started":
         this.clearResync();
         this.set({ queued: false, table: null, pending: null, sheet: null, offer: null, openTables: 0, botsPaused: false,
-                   since: null, botsAt: null, waitPlayers: false, front: false, note: null, elsewhere: false });
+                   since: null, botsAt: null, waitPlayers: false, front: false, note: null, elsewhere: false,
+                   panelSeq: null, stillHereUntil: null, inGame: null });
         break;
       case "match_cancelled":
         this.set({ pending: null });
@@ -370,7 +404,8 @@ export class QueueStore {
         const me = myName();
         const by = msg.by && msg.by !== me ? msg.by : null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false,
-                   front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false });
+                   front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
+                   panelSeq: null, stillHereUntil: null });
         if (msg.reason === "idle") {
           this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
         } else if (msg.reason === "away") {
@@ -406,6 +441,15 @@ export class QueueStore {
           this.set({ partyError: msg.message });
           break;
         }
+        if (msg.code === "account_in_game") {
+          // One person holds one seat: Play's place says so, with the way
+          // back when this device knows the room.
+          this.joinSentAt = null;
+          const canReturn = auth.state?.status === "in" && getSavedRoom() !== null;
+          this.set({ pending: null, inGame: { message: msg.message, canReturn },
+                     partyError: this.view.sheet === "party" ? msg.message : this.view.partyError });
+          break;
+        }
         if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) {
           // An error the queue does not name may still be the answer to a
           // Play: never keep searching on it; the server says what it holds.
@@ -433,6 +477,19 @@ export class QueueStore {
         } else if (msg.code === "table_closed" || msg.code === "no_offer") {
           this.set({ pending: null, offer: null });
           this.notify("That table is no longer open.");
+        } else if (msg.code === "panel_changed") {
+          // the fresh panel is on its way; the tap was for the old one
+          this.set({ pending: null });
+          this.askStatus();
+        } else if (msg.code === "pair_seats_fixed") {
+          this.set({ pending: null });
+          this.notify("A Duo's seats stay together.");
+        } else if (msg.code === "already_ready") {
+          this.set({ pending: null });
+          this.notify("You tapped Start, so your seat is set.");
+        } else if (msg.code === "bad_seat") {
+          this.set({ pending: null });
+          this.notify("Pick one of the open seats.");
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
           this.set({ pending: null, queued: false, table: null, since: null, botsAt: null, waitPlayers: false,
@@ -460,7 +517,7 @@ export class QueueStore {
       return;
     }
     this.joinSentAt = Date.now();
-    this.set({ pending: "join", sheet: null });
+    this.set({ pending: "join", sheet: null, inGame: null });
     this.clearConfirm();
     // Searching shows only once the server confirms; a Play lost on a dead
     // socket reverts instead of searching forever.
@@ -483,8 +540,13 @@ export class QueueStore {
     if (this.send({ type: "queue_leave" })) this.set({ pending: "leave" });
   }
 
+  /** The panel the tap was aimed at, for a Start or a Join. */
+  private seq(): { panel_seq?: number } {
+    return this.view.panelSeq !== null ? { panel_seq: this.view.panelSeq } : {};
+  }
+
   startBots(): void {
-    if (this.send({ type: "queue_start_bots" })) this.set({ pending: "bots" });
+    if (this.send({ type: "queue_start_bots", ...this.seq() })) this.set({ pending: "bots" });
   }
 
   /** Turn the bot fill off; the server's queue_state confirms it. */
@@ -503,14 +565,44 @@ export class QueueStore {
   tableStart(): void {
     const t = this.view.table;
     if (!t || t.youReady || this.view.pending !== null) return;
-    if (this.send({ type: "table_start" })) this.set({ pending: "start" });
+    if (this.send({ type: "table_start", ...this.seq() })) this.set({ pending: "start" });
+  }
+
+  /** A single at a shared table moves to an empty seat before its Start;
+   *  the server's queue_state shows the new seats. */
+  tableMove(seat: number): void {
+    const t = this.view.table;
+    if (!t || t.youReady || this.view.partyId || this.view.pending !== null || t.seats[seat] !== null) return;
+    this.send({ type: "table_move", seat });
+  }
+
+  /** Answer "still here?". Only a tap does: the periodic queue_status is
+   *  read-only and never keeps a seat. */
+  here(): void {
+    if (this.view.stillHereUntil === null) return;
+    if (this.send({ type: "table_here" })) this.set({ stillHereUntil: null });
+  }
+
+  /** Back to the ranked game this device last sat in, through the same
+   *  join_room a reload's resume sends. */
+  returnToGame(): void {
+    const intent = decideIntent({ savedRoom: getSavedRoom(), savedName: getSavedName() || "Player",
+                                  savedToken: getResumeToken() });
+    const join = intentToJoin(intent);
+    if (intent.kind === "resume" && join) conn.send(join as never);
+    this.set({ inGame: null });
+  }
+
+  /** Put Play back after an in-game refusal. */
+  dismissInGame(): void {
+    this.set({ inGame: null });
   }
 
   /** Take the seat you picked at the offered table. */
   offerJoin(): void {
     const o = this.view.offer;
     if (!o || this.view.pending !== null) return;
-    if (this.send({ type: "open_table_join", room: o.room, seat: o.pick })) this.set({ pending: "offer" });
+    if (this.send({ type: "open_table_join", room: o.room, seat: o.pick, ...this.seq() })) this.set({ pending: "offer" });
   }
 
   /** Pick another open seat at the offered table. */

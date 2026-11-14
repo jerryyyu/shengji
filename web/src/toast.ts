@@ -7,11 +7,13 @@ export const TOAST_MS = 4000;
 export interface Toast {
   id: number;
   text: string;
+  /** A neutral notice, read politely, not an error. */
+  info?: boolean;
 }
 
 let nextId = 0;
 
-export function makeToast(text: string): Toast {
+export function makeToast(text: string, info = false): Toast {
   nextId += 1;
-  return { id: nextId, text };
+  return info ? { id: nextId, text, info } : { id: nextId, text };
 }

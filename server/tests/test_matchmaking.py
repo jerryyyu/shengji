@@ -1958,6 +1958,56 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
     ratings.CARRIED_CAPS.clear()
 
 
+def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, monkeypatch):
+    """The opener leaves mid-game and the controls pass to Bob, who joined this
+    round; Bob then leaves the round he joined (his seat is a bot's again), and
+    the controls pass on to Cara, who can then switch Allow joiners."""
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    ratings.CARRIED_CAPS.clear()
+    host, host_headers = _user(store, "host", "Host")
+    bob, bob_headers = _user(store, "bob", "Bob")
+    cara, cara_headers = _user(store, "cara", "Cara")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=bob_headers) as b, \
+            client.websocket_connect("/ws", headers=cara_headers) as c:
+        h.send_json({"type": "queue_join"})
+        _drain(h, "queue_state")
+        h.send_json({"type": "queue_start_bots"})
+        code = _drain(h, "match_started")["room"]
+        room = srv.rooms[code]
+        room.seats[0].away = True                    # the bot plays the host's seat too
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        assert room.host == 0
+        for ws, uid, seat in ((b, bob, 1), (c, cara, 2)):
+            ws.send_json({"type": "queue_join"})
+            assert _drain(ws, "queue_state")["offer"]["room"] == code
+            ws.send_json({"type": "open_table_join", "room": code, "seat": seat})
+            _drain(ws, "match_started")
+            _wait_until(lambda uid=uid, seat=seat: room.seats[seat].user_id == uid)
+            # the bot plays Bob's cards until Cara is seated after the next trick
+            room.seats[seat].away = True
+            client.portal.call(srv.kick_bots, room)
+        # both back at their seats: the round waits on their turns, so it is
+        # still the round they joined when they leave
+        room.seats[1].away = room.seats[2].away = False
+        assert room.seats[1].joined_round == room.seats[2].joined_round == room.game.round_no
+        assert room.round.phase == "play"
+        h.send_json({"type": "leave_room"})
+        _drain(h, "left", tries=400)
+        _wait_until(lambda: room.host == 1)
+        b.send_json({"type": "leave_room"})
+        _drain(b, "left", tries=400)
+        assert room.seats[1].is_bot
+        _wait_until(lambda: room.host == 2)
+        assert srv.state_for(room, 2)["opener"] == 2
+        on = room.allow_joiners
+        c.send_json({"type": "allow_joiners", "on": not on})
+        _wait_until(lambda: room.allow_joiners is (not on))
+    ratings.CARRIED_CAPS.clear()
+
+
 def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
         wsenv, monkeypatch):
     """The round joined mid-way was played out: Leave on its round-end screen

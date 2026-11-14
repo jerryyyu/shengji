@@ -945,7 +945,8 @@ class NotOpener(IllegalPlay):
 
 def _pass_opener_mid_game(room: Room, gone: int) -> None:
     """The opener's controls pass to the next person round the table when
-    the opener leaves a game in progress; with nobody left they stay."""
+    the opener leaves a game in progress, whether the seat stays theirs for a
+    bot to cover or goes back to a bot; with nobody left they stay."""
     if gone != room.host:
         return
     for k in range(1, 4):
@@ -3090,7 +3091,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         me.left_by_choice = True
                         _pass_opener_mid_game(room, room.seats.index(me))
                     if joined_leave:
-                        _revert_to_bot(room, room.seats.index(me))
+                        gone = room.seats.index(me)
+                        _revert_to_bot(room, gone)
+                        # a newcomer holding the opener's controls hands them on
+                        _pass_opener_mid_game(room, gone)
                         _joined_leave_penalty(room, *leaver)
                         kick_bots(room)
                     if room.game is None:

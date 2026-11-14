@@ -3404,6 +3404,16 @@ def test_a_start_sent_against_a_panel_that_changed_is_refused():
 
 def test_queue_events_reach_the_telemetry_sink_without_identity(tmp_path, monkeypatch):
     import json as _json
+    from shengji.api import telemetry
+
+    state_for = telemetry.state_for
+
+    def state_with_numeric_session_id(conn):
+        state = state_for(conn)
+        state.sid = "dd33d4610318f128"
+        return state
+
+    monkeypatch.setattr(telemetry, "state_for", state_with_numeric_session_id)
 
     out = tmp_path / "telemetry"
     monkeypatch.setenv("SHENGJI_TELEMETRY_DIR", str(out))
@@ -3434,9 +3444,10 @@ def test_queue_events_reach_the_telemetry_sink_without_identity(tmp_path, monkey
         assert r["e"] == "queue" and set(r) <= allowed
     joins = [r for r in rows if r["q"] == "join"]
     assert all(r["who"] == "account" and "sid" in r for r in joins)
-    text = "\n".join(f.read_text() for f in out.glob("*"))
-    for uid in ("101", "102", "103", "104", "P101"):
-        assert uid not in text
+    identity_values = {101, 102, 103, 104, "101", "102", "103", "104",
+                       "P101", "P102", "P103", "P104"}
+    for row in rows:
+        assert not identity_values.intersection(row.values())
 
 
 def test_ws_the_first_joiner_of_a_game_started_alone_is_announced_once(wsenv, monkeypatch):

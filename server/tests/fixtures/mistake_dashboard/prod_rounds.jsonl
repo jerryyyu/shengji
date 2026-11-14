@@ -1,0 +1,591 @@
+{"t": 1794595636.949, "room": "ROOM1", "round": 4, "e": "round_start", "deck": ["LJ", "H4", "SQ", "HA", "D9", "C4", "D10", "C8", "C10", "S10", "S4", "H7", "D6", "S6", "C5", "H9", "CQ", "HA", "C7", "S6", "S5", "C9", "H10", "S3", "D4", "H10", "S9", "H9", "C7", "HK", "CK", "C2", "H2", "D10", "S8", "H5", "LJ", "DQ", "H6", "DK", "CJ", "H3", "S10", "DA", "S7", "C4", "S9", "H2", "HK", "CJ", "CQ", "C10", "HJ", "D8", "CA", "SJ", "H4", "D7", "D7", "S2", "D3", "DQ", "SA", "HJ", "S7", "SA", "DA", "SQ", "H8", "DJ", "D5", "D3", "C3", "S3", "D5", "D2", "C5", "CA", "S2", "C9", "H7", "C6", "CK", "BJ", "C2", "S5", "DK", "SJ", "D9", "H5", "D6", "S8", "S4", "HQ", "C8", "SK", "D8", "SK", "H8", "C3", "BJ", "DJ", "HQ", "C6", "D2", "H6", "H3", "D4"], "banker": 0, "trump_rank": "5", "levels": ["5", "2"], "players": [{"seat": 0, "name": "Seat 0", "is_bot": false}, {"seat": 1, "name": "Seat 1", "is_bot": true}, {"seat": 2, "name": "Seat 2", "is_bot": true}, {"seat": 3, "name": "Seat 3", "is_bot": true}]}
+{"t": 1794595650.04, "room": "ROOM1", "round": 4, "e": "declare", "seat": 2, "cards": ["D5", "D5"], "bot": true}
+{"t": 1794595651.447, "room": "ROOM1", "round": 4, "e": "declare", "seat": 0, "cards": ["LJ", "LJ"], "bot": false}
+{"t": 1794595655.91, "room": "ROOM1", "round": 4, "e": "trump", "suit": "NT", "rank": "5", "banker": 0, "declared": true}
+{"t": 1794595684.36, "room": "ROOM1", "round": 4, "e": "bury", "seat": 0, "cards": ["S4", "S7", "S7", "C2", "C3", "C6", "C7", "C10"], "bot": false}
+{"t": 1794595693.86, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["LJ", "LJ"], "bot": false}
+{"t": 1794595694.56, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["H5", "S5"], "bot": true}
+{"t": 1794595695.261, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["D5", "D5"], "bot": true}
+{"t": 1794595695.961, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["BJ", "H5"], "bot": true}
+{"t": 1794595695.962, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 25, "plays": [{"seat": 0, "cards": ["LJ", "LJ"]}, {"seat": 1, "cards": ["H5", "S5"]}, {"seat": 2, "cards": ["D5", "D5"]}, {"seat": 3, "cards": ["BJ", "H5"]}]}
+{"t": 1794595704.44, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["D9", "D9"], "bot": false}
+{"t": 1794595705.141, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["DQ", "DQ"], "bot": true}
+{"t": 1794595705.843, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["D6", "D7"], "bot": true}
+{"t": 1794595706.544, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["D2", "DK"], "bot": true}
+{"t": 1794595706.544, "room": "ROOM1", "round": 4, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 0, "cards": ["D9", "D9"]}, {"seat": 1, "cards": ["DQ", "DQ"]}, {"seat": 2, "cards": ["D6", "D7"]}, {"seat": 3, "cards": ["D2", "DK"]}]}
+{"t": 1794595707.471, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["D10"], "bot": true}
+{"t": 1794595708.172, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["DA"], "bot": true}
+{"t": 1794595708.874, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["D3"], "bot": true}
+{"t": 1794595711.802, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["D2"], "bot": false}
+{"t": 1794595711.802, "room": "ROOM1", "round": 4, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 1, "cards": ["D10"]}, {"seat": 2, "cards": ["DA"]}, {"seat": 3, "cards": ["D3"]}, {"seat": 0, "cards": ["D2"]}]}
+{"t": 1794595712.633, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["CK", "CK"], "bot": true}
+{"t": 1794595713.334, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["C2", "C3"], "bot": true}
+{"t": 1794595718.8, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["CJ", "CQ"], "bot": false}
+{"t": 1794595719.502, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["C4", "C4"], "bot": true}
+{"t": 1794595719.502, "room": "ROOM1", "round": 4, "e": "trick", "winner": 2, "points": 20, "plays": [{"seat": 2, "cards": ["CK", "CK"]}, {"seat": 3, "cards": ["C2", "C3"]}, {"seat": 0, "cards": ["CJ", "CQ"]}, {"seat": 1, "cards": ["C4", "C4"]}]}
+{"t": 1794595720.263, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["C5"], "bot": true}
+{"t": 1794595720.965, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["S2"], "bot": true}
+{"t": 1794595726.202, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["BJ"], "bot": false}
+{"t": 1794595726.903, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["S6"], "bot": true}
+{"t": 1794595726.903, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 2, "cards": ["C5"]}, {"seat": 3, "cards": ["S2"]}, {"seat": 0, "cards": ["BJ"]}, {"seat": 1, "cards": ["S6"]}]}
+{"t": 1794595734.161, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["D4", "D4"], "bot": false}
+{"t": 1794595734.862, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["D7", "D8"], "bot": true}
+{"t": 1794595735.563, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["D10", "DK"], "bot": true}
+{"t": 1794595736.265, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["DA", "H7"], "bot": true}
+{"t": 1794595736.265, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 0, "cards": ["D4", "D4"]}, {"seat": 1, "cards": ["D7", "D8"]}, {"seat": 2, "cards": ["D10", "DK"]}, {"seat": 3, "cards": ["DA", "H7"]}]}
+{"t": 1794595739.38, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["DJ"], "bot": false}
+{"t": 1794595740.082, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["DJ"], "bot": true}
+{"t": 1794595740.783, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["H10"], "bot": true}
+{"t": 1794595741.486, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["C8"], "bot": true}
+{"t": 1794595741.486, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 0, "cards": ["DJ"]}, {"seat": 1, "cards": ["DJ"]}, {"seat": 2, "cards": ["H10"]}, {"seat": 3, "cards": ["C8"]}]}
+{"t": 1794595743.602, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["D8"], "bot": false}
+{"t": 1794595744.303, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["H3"], "bot": true}
+{"t": 1794595745.004, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["H8"], "bot": true}
+{"t": 1794595745.705, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["HJ"], "bot": true}
+{"t": 1794595745.705, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 0, "cards": ["D8"]}, {"seat": 1, "cards": ["H3"]}, {"seat": 2, "cards": ["H8"]}, {"seat": 3, "cards": ["HJ"]}]}
+{"t": 1794595748.942, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["D3", "D6"], "bot": false}
+{"t": 1794595749.644, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["H4", "S3"], "bot": true}
+{"t": 1794595750.345, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["H6", "S10"], "bot": true}
+{"t": 1794595751.046, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["S3", "S6"], "bot": true}
+{"t": 1794595751.046, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 0, "cards": ["D3", "D6"]}, {"seat": 1, "cards": ["H4", "S3"]}, {"seat": 2, "cards": ["H6", "S10"]}, {"seat": 3, "cards": ["S3", "S6"]}]}
+{"t": 1794595755.343, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["HQ"], "bot": false}
+{"t": 1794595756.044, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["HK"], "bot": true}
+{"t": 1794595756.746, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["C7"], "bot": true}
+{"t": 1794595757.447, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["H2"], "bot": true}
+{"t": 1794595757.447, "room": "ROOM1", "round": 4, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 0, "cards": ["HQ"]}, {"seat": 1, "cards": ["HK"]}, {"seat": 2, "cards": ["C7"]}, {"seat": 3, "cards": ["H2"]}]}
+{"t": 1794595758.148, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["C9"], "bot": true}
+{"t": 1794595758.849, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["CQ"], "bot": true}
+{"t": 1794595759.549, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["C9"], "bot": true}
+{"t": 1794595764.923, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["HK"], "bot": false}
+{"t": 1794595764.923, "room": "ROOM1", "round": 4, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 1, "cards": ["C9"]}, {"seat": 2, "cards": ["CQ"]}, {"seat": 3, "cards": ["C9"]}, {"seat": 0, "cards": ["HK"]}]}
+{"t": 1794595765.627, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["CA"], "bot": true}
+{"t": 1794595766.327, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["C10"], "bot": true}
+{"t": 1794595768.6, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["H2"], "bot": false}
+{"t": 1794595769.301, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["C6"], "bot": true}
+{"t": 1794595769.302, "room": "ROOM1", "round": 4, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 2, "cards": ["CA"]}, {"seat": 3, "cards": ["C10"]}, {"seat": 0, "cards": ["H2"]}, {"seat": 1, "cards": ["C6"]}]}
+{"t": 1794595770.032, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["C8"], "bot": true}
+{"t": 1794595770.733, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["S8"], "bot": true}
+{"t": 1794595776.253, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["H3"], "bot": false}
+{"t": 1794595776.954, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["CJ"], "bot": true}
+{"t": 1794595776.955, "room": "ROOM1", "round": 4, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 2, "cards": ["C8"]}, {"seat": 3, "cards": ["S8"]}, {"seat": 0, "cards": ["H3"]}, {"seat": 1, "cards": ["CJ"]}]}
+{"t": 1794595778.67, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["SK"], "bot": true, "attempted_cards": ["SA", "SK"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794595780.272, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["SA"], "bot": true}
+{"t": 1794595780.974, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["SQ"], "bot": true}
+{"t": 1794595782.391, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["H4"], "bot": false}
+{"t": 1794595782.391, "room": "ROOM1", "round": 4, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 1, "cards": ["SK"]}, {"seat": 2, "cards": ["SA"]}, {"seat": 3, "cards": ["SQ"]}, {"seat": 0, "cards": ["H4"]}]}
+{"t": 1794595783.093, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["S9", "S9"], "bot": true}
+{"t": 1794595783.795, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["SJ", "SJ"], "bot": true}
+{"t": 1794595786.34, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["H6", "H7"], "bot": false}
+{"t": 1794595787.041, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["S10", "SA"], "bot": true}
+{"t": 1794595787.041, "room": "ROOM1", "round": 4, "e": "trick", "winner": 3, "points": 10, "plays": [{"seat": 2, "cards": ["S9", "S9"]}, {"seat": 3, "cards": ["SJ", "SJ"]}, {"seat": 0, "cards": ["H6", "H7"]}, {"seat": 1, "cards": ["S10", "SA"]}]}
+{"t": 1794595787.743, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["SK"], "bot": true}
+{"t": 1794595790.28, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["S5"], "bot": false}
+{"t": 1794595790.98, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["CA"], "bot": true}
+{"t": 1794595791.681, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["S8"], "bot": true}
+{"t": 1794595791.682, "room": "ROOM1", "round": 4, "e": "trick", "winner": 0, "points": 15, "plays": [{"seat": 3, "cards": ["SK"]}, {"seat": 0, "cards": ["S5"]}, {"seat": 1, "cards": ["CA"]}, {"seat": 2, "cards": ["S8"]}]}
+{"t": 1794595793.832, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["H8"], "bot": false}
+{"t": 1794595794.534, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["H10"], "bot": true}
+{"t": 1794595795.234, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["S4"], "bot": true}
+{"t": 1794595795.935, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["HA"], "bot": true}
+{"t": 1794595795.936, "room": "ROOM1", "round": 4, "e": "trick", "winner": 3, "points": 10, "plays": [{"seat": 0, "cards": ["H8"]}, {"seat": 1, "cards": ["H10"]}, {"seat": 2, "cards": ["S4"]}, {"seat": 3, "cards": ["HA"]}]}
+{"t": 1794595796.637, "room": "ROOM1", "round": 4, "e": "play", "seat": 3, "cards": ["H9", "H9"], "bot": true}
+{"t": 1794595799.469, "room": "ROOM1", "round": 4, "e": "play", "seat": 0, "cards": ["HJ", "C5"], "bot": false}
+{"t": 1794595800.17, "room": "ROOM1", "round": 4, "e": "play", "seat": 1, "cards": ["HA", "HQ"], "bot": true}
+{"t": 1794595800.872, "room": "ROOM1", "round": 4, "e": "play", "seat": 2, "cards": ["S2", "SQ"], "bot": true}
+{"t": 1794595800.873, "room": "ROOM1", "round": 4, "e": "trick", "winner": 3, "points": 5, "plays": [{"seat": 3, "cards": ["H9", "H9"]}, {"seat": 0, "cards": ["HJ", "C5"]}, {"seat": 1, "cards": ["HA", "HQ"]}, {"seat": 2, "cards": ["S2", "SQ"]}]}
+{"t": 1794595800.873, "room": "ROOM1", "round": 4, "e": "round_end", "attacker_points": 85, "kitty": ["S4", "S7", "S7", "C2", "C3", "C6", "C7", "C10"], "kitty_points": 40, "winner_team": 1, "level_change": 0, "new_levels": ["5", "2"], "next_banker": 1, "game_over": false, "games_won": [0, 0], "point_scored": false}
+{"t": 1794539945.985, "room": "ROOM2", "round": 4, "e": "round_start", "deck": ["S5", "D6", "D4", "SQ", "H5", "C3", "C6", "D2", "CK", "DA", "HK", "C7", "S9", "SK", "C4", "S2", "S4", "C3", "SJ", "CA", "SA", "DQ", "SA", "H6", "DQ", "S5", "C6", "S8", "C7", "HQ", "C10", "H2", "H7", "S2", "DJ", "C9", "D10", "C5", "CQ", "C8", "S6", "LJ", "S7", "D7", "S4", "HK", "D9", "HQ", "DA", "S3", "HA", "D3", "SK", "HJ", "H4", "LJ", "S10", "C4", "SJ", "D3", "BJ", "H5", "D7", "DK", "D6", "D5", "CK", "H10", "BJ", "D5", "H7", "S6", "HJ", "D4", "D9", "S7", "H6", "HA", "H3", "C9", "SQ", "H8", "H9", "H10", "DK", "S8", "D10", "C8", "CA", "CJ", "S10", "DJ", "S3", "C2", "CQ", "D8", "H2", "D8", "D2", "C5", "H8", "H4", "H3", "C2", "S9", "H9", "C10", "CJ"], "banker": 1, "trump_rank": "5", "levels": ["2", "5"], "players": [{"seat": 0, "name": "Seat 0", "is_bot": false}, {"seat": 1, "name": "Seat 1", "is_bot": false}, {"seat": 2, "name": "Seat 2", "is_bot": false}, {"seat": 3, "name": "Seat 3", "is_bot": true}]}
+{"t": 1794539973.145, "room": "ROOM2", "round": 4, "e": "trump", "suit": "H", "rank": "5", "banker": 1, "declared": false}
+{"t": 1794540013.707, "room": "ROOM2", "round": 4, "e": "bury", "seat": 1, "cards": ["S3", "S8", "C4", "C10", "D4", "D6", "D8", "DQ"], "bot": false}
+{"t": 1794540027.205, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["DA"], "bot": false}
+{"t": 1794540030.17, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["D7"], "bot": true}
+{"t": 1794540030.871, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["DK"], "bot": true}
+{"t": 1794540035.234, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["D6"], "bot": true}
+{"t": 1794540035.235, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 1, "cards": ["DA"]}, {"seat": 2, "cards": ["D7"]}, {"seat": 3, "cards": ["DK"]}, {"seat": 0, "cards": ["D6"]}]}
+{"t": 1794540042.388, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["C2", "C2", "C3", "C3"], "bot": false}
+{"t": 1794540045.322, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["C6", "C6", "CQ", "CQ"], "bot": true}
+{"t": 1794540046.023, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["C8", "C8", "C9", "C9"], "bot": true}
+{"t": 1794540050.4, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["C7", "CA", "CK", "S3"], "bot": true}
+{"t": 1794540050.4, "room": "ROOM2", "round": 4, "e": "trick", "winner": 3, "points": 10, "plays": [{"seat": 1, "cards": ["C2", "C2", "C3", "C3"]}, {"seat": 2, "cards": ["C6", "C6", "CQ", "CQ"]}, {"seat": 3, "cards": ["C8", "C8", "C9", "C9"]}, {"seat": 0, "cards": ["C7", "CA", "CK", "S3"]}]}
+{"t": 1794540051.296, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["S7"], "bot": true}
+{"t": 1794540055.743, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["SK"], "bot": true}
+{"t": 1794540093.288, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["S2"], "bot": false}
+{"t": 1794540095.8, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["S10"], "bot": true}
+{"t": 1794540095.801, "room": "ROOM2", "round": 4, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 3, "cards": ["S7"]}, {"seat": 0, "cards": ["SK"]}, {"seat": 1, "cards": ["S2"]}, {"seat": 2, "cards": ["S10"]}]}
+{"t": 1794540101.633, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["DK"], "bot": true}
+{"t": 1794540195.962, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["HK"], "bot": false}
+{"t": 1794540196.808, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["DJ"], "bot": true}
+{"t": 1794540197.51, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["D7"], "bot": true}
+{"t": 1794540197.511, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 20, "plays": [{"seat": 0, "cards": ["DK"]}, {"seat": 1, "cards": ["HK"]}, {"seat": 2, "cards": ["DJ"]}, {"seat": 3, "cards": ["D7"]}]}
+{"t": 1794540200.418, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["CJ", "CJ"], "bot": false}
+{"t": 1794540202.038, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["C10", "CK"], "bot": true}
+{"t": 1794540202.739, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["C7", "CA"], "bot": true}
+{"t": 1794540207.118, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["BJ", "BJ"], "bot": true}
+{"t": 1794540207.118, "room": "ROOM2", "round": 4, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 1, "cards": ["CJ", "CJ"]}, {"seat": 2, "cards": ["C10", "CK"]}, {"seat": 3, "cards": ["C7", "CA"]}, {"seat": 0, "cards": ["BJ", "BJ"]}]}
+{"t": 1794540212.93, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["DQ"], "bot": true}
+{"t": 1794540278.7, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["H3"], "bot": false}
+{"t": 1794540283.102, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["D2"], "bot": true}
+{"t": 1794540283.803, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["D2"], "bot": true}
+{"t": 1794540283.803, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 0, "cards": ["DQ"]}, {"seat": 1, "cards": ["H3"]}, {"seat": 2, "cards": ["D2"]}, {"seat": 3, "cards": ["D2"]}]}
+{"t": 1794540287.038, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["H8", "H8"], "bot": false}
+{"t": 1794540288.381, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["H7", "H9"], "bot": true}
+{"t": 1794540289.083, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["H10", "H10"], "bot": true}
+{"t": 1794540293.459, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["H6", "H7"], "bot": true}
+{"t": 1794540293.459, "room": "ROOM2", "round": 4, "e": "trick", "winner": 3, "points": 20, "plays": [{"seat": 1, "cards": ["H8", "H8"]}, {"seat": 2, "cards": ["H7", "H9"]}, {"seat": 3, "cards": ["H10", "H10"]}, {"seat": 0, "cards": ["H6", "H7"]}]}
+{"t": 1794540294.271, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["DJ"], "bot": true, "attempted_cards": ["D3", "D3", "DJ"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794540298.616, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["DA"], "bot": true}
+{"t": 1794540300.499, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["H4"], "bot": false}
+{"t": 1794540303.677, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["D4"], "bot": true}
+{"t": 1794540303.677, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 3, "cards": ["DJ"]}, {"seat": 0, "cards": ["DA"]}, {"seat": 1, "cards": ["H4"]}, {"seat": 2, "cards": ["D4"]}]}
+{"t": 1794540308.691, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["S9"], "bot": false}
+{"t": 1794540313.917, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["S7"], "bot": true}
+{"t": 1794540314.618, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["S6"], "bot": true}
+{"t": 1794540319.0, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["S10"], "bot": true}
+{"t": 1794540319.0, "room": "ROOM2", "round": 4, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 1, "cards": ["S9"]}, {"seat": 2, "cards": ["S7"]}, {"seat": 3, "cards": ["S6"]}, {"seat": 0, "cards": ["S10"]}]}
+{"t": 1794540324.678, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["S5"], "bot": true}
+{"t": 1794540331.603, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["H5"], "bot": false}
+{"t": 1794540334.916, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["H4"], "bot": true}
+{"t": 1794540335.617, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["C5"], "bot": true}
+{"t": 1794540335.617, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 15, "plays": [{"seat": 0, "cards": ["S5"]}, {"seat": 1, "cards": ["H5"]}, {"seat": 2, "cards": ["H4"]}, {"seat": 3, "cards": ["C5"]}]}
+{"t": 1794540341.716, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["SK"], "bot": false}
+{"t": 1794540345.042, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["SA"], "bot": true}
+{"t": 1794540345.744, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["S8"], "bot": true}
+{"t": 1794540350.119, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["S9"], "bot": true}
+{"t": 1794540350.119, "room": "ROOM2", "round": 4, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 1, "cards": ["SK"]}, {"seat": 2, "cards": ["SA"]}, {"seat": 3, "cards": ["S8"]}, {"seat": 0, "cards": ["S9"]}]}
+{"t": 1794540355.858, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["C4"], "bot": true}
+{"t": 1794540356.558, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["LJ"], "bot": true}
+{"t": 1794540361.046, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["S6"], "bot": true}
+{"t": 1794540364.268, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["H9"], "bot": false}
+{"t": 1794540364.268, "room": "ROOM2", "round": 4, "e": "trick", "winner": 3, "points": 0, "plays": [{"seat": 2, "cards": ["C4"]}, {"seat": 3, "cards": ["LJ"]}, {"seat": 0, "cards": ["S6"]}, {"seat": 1, "cards": ["H9"]}]}
+{"t": 1794540364.97, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["SQ"], "bot": true}
+{"t": 1794540366.163, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["SA"], "bot": true}
+{"t": 1794540410.818, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["C5"], "bot": false}
+{"t": 1794540411.235, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["SJ"], "bot": true}
+{"t": 1794540411.235, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 5, "plays": [{"seat": 3, "cards": ["SQ"]}, {"seat": 0, "cards": ["SA"]}, {"seat": 1, "cards": ["C5"]}, {"seat": 2, "cards": ["SJ"]}]}
+{"t": 1794540414.215, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["HQ"], "bot": false}
+{"t": 1794540416.421, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["HK"], "bot": true}
+{"t": 1794540417.123, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["HQ"], "bot": true}
+{"t": 1794540421.654, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["H2"], "bot": true}
+{"t": 1794540421.655, "room": "ROOM2", "round": 4, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 1, "cards": ["HQ"]}, {"seat": 2, "cards": ["HK"]}, {"seat": 3, "cards": ["HQ"]}, {"seat": 0, "cards": ["H2"]}]}
+{"t": 1794540426.845, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["D10", "D9", "D9"], "bot": true}
+{"t": 1794540427.547, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["D3", "D3", "D8"], "bot": true}
+{"t": 1794540431.996, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["D10", "S4", "S4"], "bot": true}
+{"t": 1794540433.784, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["HJ", "D5", "D5"], "bot": false}
+{"t": 1794540433.784, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 30, "plays": [{"seat": 2, "cards": ["D10", "D9", "D9"]}, {"seat": 3, "cards": ["D3", "D3", "D8"]}, {"seat": 0, "cards": ["D10", "S4", "S4"]}, {"seat": 1, "cards": ["HJ", "D5", "D5"]}]}
+{"t": 1794540439.499, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["HA"], "bot": false}
+{"t": 1794540442.089, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["HA"], "bot": true}
+{"t": 1794540442.79, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["H6"], "bot": true}
+{"t": 1794540447.181, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["H5"], "bot": true}
+{"t": 1794540447.181, "room": "ROOM2", "round": 4, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 1, "cards": ["HA"]}, {"seat": 2, "cards": ["HA"]}, {"seat": 3, "cards": ["H6"]}, {"seat": 0, "cards": ["H5"]}]}
+{"t": 1794540452.364, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["SQ"], "bot": true}
+{"t": 1794540454.394, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["S5"], "bot": false}
+{"t": 1794540457.476, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["SJ"], "bot": true}
+{"t": 1794540458.177, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["S2"], "bot": true}
+{"t": 1794540458.177, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 5, "plays": [{"seat": 0, "cards": ["SQ"]}, {"seat": 1, "cards": ["S5"]}, {"seat": 2, "cards": ["SJ"]}, {"seat": 3, "cards": ["S2"]}]}
+{"t": 1794540459.217, "room": "ROOM2", "round": 4, "e": "play", "seat": 1, "cards": ["LJ"], "bot": false}
+{"t": 1794540462.541, "room": "ROOM2", "round": 4, "e": "play", "seat": 2, "cards": ["H3"], "bot": true}
+{"t": 1794540463.242, "room": "ROOM2", "round": 4, "e": "play", "seat": 3, "cards": ["H2"], "bot": true}
+{"t": 1794540467.606, "room": "ROOM2", "round": 4, "e": "play", "seat": 0, "cards": ["HJ"], "bot": true}
+{"t": 1794540467.607, "room": "ROOM2", "round": 4, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 1, "cards": ["LJ"]}, {"seat": 2, "cards": ["H3"]}, {"seat": 3, "cards": ["H2"]}, {"seat": 0, "cards": ["HJ"]}]}
+{"t": 1794540467.607, "room": "ROOM2", "round": 4, "e": "round_end", "attacker_points": 75, "kitty": ["S3", "S8", "C4", "C10", "D4", "D6", "D8", "DQ"], "kitty_points": 0, "winner_team": 1, "level_change": 1, "new_levels": ["2", "6"], "next_banker": 3, "game_over": false, "games_won": [0, 0], "point_scored": false}
+{"t": 1794120218.973, "room": "ROOM3", "round": 1, "e": "round_start", "deck": ["DK", "SQ", "H6", "C6", "SK", "D6", "H9", "HQ", "C9", "SA", "H10", "H8", "BJ", "S4", "SA", "H3", "S3", "D6", "C2", "S6", "H5", "H10", "H7", "D7", "DQ", "C8", "H8", "D7", "HK", "C6", "C5", "CJ", "HA", "CK", "HK", "CJ", "SK", "S9", "S5", "H4", "S6", "S2", "C10", "SJ", "D3", "S10", "HJ", "D10", "LJ", "S2", "SJ", "C10", "LJ", "D9", "DJ", "H9", "S9", "C7", "S3", "DQ", "S10", "D8", "D5", "S8", "D4", "S5", "C4", "DK", "CK", "SQ", "CA", "CQ", "S4", "C8", "H2", "C3", "HJ", "DA", "D9", "H3", "CQ", "DJ", "C3", "D10", "C9", "HQ", "H5", "HA", "C2", "D8", "C5", "D3", "CA", "S7", "C7", "H6", "D2", "H7", "S7", "C4", "H4", "H2", "D5", "D2", "BJ", "D4", "DA", "S8"], "banker": null, "trump_rank": "2", "levels": ["2", "2"], "players": [{"seat": 0, "name": "Seat 0", "is_bot": false}, {"seat": 1, "name": "Seat 1", "is_bot": true}, {"seat": 2, "name": "Seat 2", "is_bot": true}, {"seat": 3, "name": "Seat 3", "is_bot": true}]}
+{"t": 1794120223.032, "room": "ROOM3", "round": 1, "e": "declare", "seat": 2, "cards": ["C2"], "bot": true}
+{"t": 1794120230.0, "room": "ROOM3", "round": 1, "e": "declare", "seat": 1, "cards": ["S2", "S2"], "bot": true}
+{"t": 1794120241.753, "room": "ROOM3", "round": 1, "e": "trump", "suit": "S", "rank": "2", "banker": 1, "declared": true}
+{"t": 1794120242.697, "room": "ROOM3", "round": 1, "e": "bury", "seat": 1, "cards": ["C6", "C7", "C8", "CK", "H10", "H4", "H7", "HQ"], "bot": true}
+{"t": 1794120243.549, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["S4"], "bot": true}
+{"t": 1794120244.25, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["S3"], "bot": true}
+{"t": 1794120244.95, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["SJ"], "bot": true}
+{"t": 1794120245.672, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["BJ"], "bot": false}
+{"t": 1794120245.672, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 1, "cards": ["S4"]}, {"seat": 2, "cards": ["S3"]}, {"seat": 3, "cards": ["SJ"]}, {"seat": 0, "cards": ["BJ"]}]}
+{"t": 1794120247.306, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["LJ"], "bot": false}
+{"t": 1794120248.007, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["BJ"], "bot": true}
+{"t": 1794120248.707, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["S5"], "bot": true}
+{"t": 1794120249.409, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["S8"], "bot": true}
+{"t": 1794120249.409, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 5, "plays": [{"seat": 0, "cards": ["LJ"]}, {"seat": 1, "cards": ["BJ"]}, {"seat": 2, "cards": ["S5"]}, {"seat": 3, "cards": ["S8"]}]}
+{"t": 1794120250.262, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D2"], "bot": true}
+{"t": 1794120250.968, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["SJ"], "bot": true}
+{"t": 1794120251.67, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["S6"], "bot": true}
+{"t": 1794120251.975, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["LJ"], "bot": false}
+{"t": 1794120251.975, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 1, "cards": ["D2"]}, {"seat": 2, "cards": ["SJ"]}, {"seat": 3, "cards": ["S6"]}, {"seat": 0, "cards": ["LJ"]}]}
+{"t": 1794120285.222, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["S9"], "bot": true}
+{"t": 1794120285.963, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["S8"], "bot": true}
+{"t": 1794120286.663, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["H2"], "bot": true}
+{"t": 1794120287.364, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["D3"], "bot": true}
+{"t": 1794120287.365, "room": "ROOM3", "round": 1, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 0, "cards": ["S9"]}, {"seat": 1, "cards": ["S8"]}, {"seat": 2, "cards": ["H2"]}, {"seat": 3, "cards": ["D3"]}]}
+{"t": 1794120288.088, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["CA"], "bot": true}
+{"t": 1794120289.042, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["C4"], "bot": true}
+{"t": 1794120290.382, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["CK"], "bot": true}
+{"t": 1794120291.083, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["C8"], "bot": true}
+{"t": 1794120291.083, "room": "ROOM3", "round": 1, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 2, "cards": ["CA"]}, {"seat": 3, "cards": ["C4"]}, {"seat": 0, "cards": ["CK"]}, {"seat": 1, "cards": ["C8"]}]}
+{"t": 1794120291.873, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["H10"], "bot": true}
+{"t": 1794120292.575, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["HA"], "bot": true}
+{"t": 1794120295.491, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["HJ"], "bot": true}
+{"t": 1794120296.191, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D5"], "bot": true}
+{"t": 1794120296.192, "room": "ROOM3", "round": 1, "e": "trick", "winner": 3, "points": 15, "plays": [{"seat": 2, "cards": ["H10"]}, {"seat": 3, "cards": ["HA"]}, {"seat": 0, "cards": ["HJ"]}, {"seat": 1, "cards": ["D5"]}]}
+{"t": 1794120296.91, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["CJ", "CJ"], "bot": true}
+{"t": 1794120300.579, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["C9", "C9"], "bot": true}
+{"t": 1794120301.28, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D4", "S10"], "bot": true}
+{"t": 1794120301.981, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["C5", "C5"], "bot": true}
+{"t": 1794120301.981, "room": "ROOM3", "round": 1, "e": "trick", "winner": 3, "points": 20, "plays": [{"seat": 3, "cards": ["CJ", "CJ"]}, {"seat": 0, "cards": ["C9", "C9"]}, {"seat": 1, "cards": ["D4", "S10"]}, {"seat": 2, "cards": ["C5", "C5"]}]}
+{"t": 1794120302.736, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["D7", "D7"], "bot": true, "attempted_cards": ["D10", "D10", "D7", "D7"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794120306.094, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["D3", "D4"], "bot": true}
+{"t": 1794120306.796, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D8", "D8"], "bot": true}
+{"t": 1794120307.497, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["D9", "DJ"], "bot": true}
+{"t": 1794120307.497, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 3, "cards": ["D7", "D7"]}, {"seat": 0, "cards": ["D3", "D4"]}, {"seat": 1, "cards": ["D8", "D8"]}, {"seat": 2, "cards": ["D9", "DJ"]}]}
+{"t": 1794120308.22, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["DA", "DA"], "bot": true}
+{"t": 1794120308.924, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["C7", "D5"], "bot": true}
+{"t": 1794120309.625, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["D10", "D10"], "bot": true}
+{"t": 1794120311.342, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["DK", "DQ"], "bot": true}
+{"t": 1794120311.342, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 35, "plays": [{"seat": 1, "cards": ["DA", "DA"]}, {"seat": 2, "cards": ["C7", "D5"]}, {"seat": 3, "cards": ["D10", "D10"]}, {"seat": 0, "cards": ["DK", "DQ"]}]}
+{"t": 1794120312.278, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["SQ", "SQ"], "bot": true}
+{"t": 1794120312.979, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["C2", "S7"], "bot": true}
+{"t": 1794120313.682, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["H3", "H9"], "bot": true}
+{"t": 1794120316.472, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["SK", "SK"], "bot": true}
+{"t": 1794120316.472, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 1, "cards": ["SQ", "SQ"]}, {"seat": 2, "cards": ["C2", "S7"]}, {"seat": 3, "cards": ["H3", "H9"]}, {"seat": 0, "cards": ["SK", "SK"]}]}
+{"t": 1794120322.334, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["CQ"], "bot": true}
+{"t": 1794120323.036, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["S5"], "bot": true}
+{"t": 1794120323.737, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["C4"], "bot": true}
+{"t": 1794120324.438, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["C10"], "bot": true}
+{"t": 1794120324.438, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 15, "plays": [{"seat": 0, "cards": ["CQ"]}, {"seat": 1, "cards": ["S5"]}, {"seat": 2, "cards": ["C4"]}, {"seat": 3, "cards": ["C10"]}]}
+{"t": 1794120325.748, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["H2"], "bot": true}
+{"t": 1794120326.449, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["SA"], "bot": true}
+{"t": 1794120327.151, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["H3"], "bot": true}
+{"t": 1794120327.405, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["S4"], "bot": true}
+{"t": 1794120327.405, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 1, "cards": ["H2"]}, {"seat": 2, "cards": ["SA"]}, {"seat": 3, "cards": ["H3"]}, {"seat": 0, "cards": ["S4"]}]}
+{"t": 1794120328.225, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["S2", "S2"], "bot": true}
+{"t": 1794120329.531, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["C3", "H7"], "bot": true}
+{"t": 1794120330.233, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["C6", "H4"], "bot": true}
+{"t": 1794120332.487, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["S3", "S6"], "bot": true}
+{"t": 1794120332.487, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 1, "cards": ["S2", "S2"]}, {"seat": 2, "cards": ["C3", "H7"]}, {"seat": 3, "cards": ["C6", "H4"]}, {"seat": 0, "cards": ["S3", "S6"]}]}
+{"t": 1794120333.343, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D9"], "bot": true, "attempted_cards": ["D6", "D6", "D9"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794120334.126, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["H6"], "bot": true}
+{"t": 1794120335.766, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["DQ"], "bot": true}
+{"t": 1794120338.858, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["S10"], "bot": true}
+{"t": 1794120338.858, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 1, "cards": ["D9"]}, {"seat": 2, "cards": ["H6"]}, {"seat": 3, "cards": ["DQ"]}, {"seat": 0, "cards": ["S10"]}]}
+{"t": 1794120344.206, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["CA"], "bot": true}
+{"t": 1794120344.907, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["S9"], "bot": true}
+{"t": 1794120345.608, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["C10"], "bot": true}
+{"t": 1794120346.309, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["C3"], "bot": true}
+{"t": 1794120346.309, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 0, "cards": ["CA"]}, {"seat": 1, "cards": ["S9"]}, {"seat": 2, "cards": ["C10"]}, {"seat": 3, "cards": ["C3"]}]}
+{"t": 1794120347.011, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D6"], "bot": true}
+{"t": 1794120347.718, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["HK"], "bot": true}
+{"t": 1794120348.42, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["DK"], "bot": true}
+{"t": 1794120349.313, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["C2"], "bot": true}
+{"t": 1794120349.313, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 1, "cards": ["D6"]}, {"seat": 2, "cards": ["HK"]}, {"seat": 3, "cards": ["DK"]}, {"seat": 0, "cards": ["C2"]}]}
+{"t": 1794120354.448, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["HK"], "bot": true}
+{"t": 1794120355.149, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["S7"], "bot": true}
+{"t": 1794120355.849, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["H9"], "bot": true}
+{"t": 1794120356.551, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["H8"], "bot": true}
+{"t": 1794120356.551, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 0, "cards": ["HK"]}, {"seat": 1, "cards": ["S7"]}, {"seat": 2, "cards": ["H9"]}, {"seat": 3, "cards": ["H8"]}]}
+{"t": 1794120357.252, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["DJ"], "bot": true}
+{"t": 1794120357.953, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["HJ"], "bot": true}
+{"t": 1794120358.659, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["H6"], "bot": true}
+{"t": 1794120359.524, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["H5"], "bot": true}
+{"t": 1794120359.524, "room": "ROOM3", "round": 1, "e": "trick", "winner": 1, "points": 5, "plays": [{"seat": 1, "cards": ["DJ"]}, {"seat": 2, "cards": ["HJ"]}, {"seat": 3, "cards": ["H6"]}, {"seat": 0, "cards": ["H5"]}]}
+{"t": 1794120360.225, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["SA"], "bot": true}
+{"t": 1794120360.926, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["H5"], "bot": true}
+{"t": 1794120361.628, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["CQ"], "bot": true}
+{"t": 1794120364.578, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["D2"], "bot": true}
+{"t": 1794120364.578, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 1, "cards": ["SA"]}, {"seat": 2, "cards": ["H5"]}, {"seat": 3, "cards": ["CQ"]}, {"seat": 0, "cards": ["D2"]}]}
+{"t": 1794120369.633, "room": "ROOM3", "round": 1, "e": "play", "seat": 0, "cards": ["HA"], "bot": true}
+{"t": 1794120370.334, "room": "ROOM3", "round": 1, "e": "play", "seat": 1, "cards": ["D6"], "bot": true}
+{"t": 1794120371.035, "room": "ROOM3", "round": 1, "e": "play", "seat": 2, "cards": ["H8"], "bot": true}
+{"t": 1794120371.736, "room": "ROOM3", "round": 1, "e": "play", "seat": 3, "cards": ["HQ"], "bot": true}
+{"t": 1794120371.736, "room": "ROOM3", "round": 1, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 0, "cards": ["HA"]}, {"seat": 1, "cards": ["D6"]}, {"seat": 2, "cards": ["H8"]}, {"seat": 3, "cards": ["HQ"]}]}
+{"t": 1794120371.736, "room": "ROOM3", "round": 1, "e": "round_end", "attacker_points": 105, "kitty": ["C6", "C7", "C8", "CK", "H10", "H4", "H7", "HQ"], "kitty_points": 40, "winner_team": 0, "level_change": 0, "new_levels": ["2", "2"], "next_banker": 2, "game_over": false, "games_won": [0, 0], "point_scored": false}
+{"t": 1794546036.853, "room": "ROOM4", "round": 2, "e": "round_start", "deck": ["HJ", "H6", "CQ", "H8", "HK", "S9", "C5", "D10", "C10", "HK", "D5", "D4", "S10", "H10", "S8", "H2", "S3", "S6", "D6", "D6", "DK", "C2", "D2", "C2", "DJ", "D2", "H3", "S10", "H8", "CQ", "C6", "S7", "HJ", "C3", "BJ", "C4", "BJ", "D7", "DA", "SA", "DJ", "H2", "S4", "CK", "D3", "C8", "CA", "D9", "H3", "S5", "S8", "HA", "CA", "SQ", "SA", "C9", "C10", "C6", "D8", "D9", "S9", "H10", "H5", "SJ", "LJ", "H4", "LJ", "C9", "S6", "H9", "DK", "C4", "C3", "CJ", "H9", "C5", "S3", "C7", "D8", "SQ", "DQ", "S7", "H4", "H7", "HA", "SK", "C7", "SJ", "HQ", "CJ", "D7", "SK", "C8", "CK", "D5", "DQ", "S4", "H5", "H7", "D4", "S5", "H6", "HQ", "DA", "D3", "S2", "S2", "D10"], "banker": 1, "trump_rank": "3", "levels": ["2", "3"], "players": [{"seat": 0, "name": "Seat 0", "is_bot": false}, {"seat": 1, "name": "Seat 1", "is_bot": true}, {"seat": 2, "name": "Seat 2", "is_bot": true}, {"seat": 3, "name": "Seat 3", "is_bot": true}]}
+{"t": 1794546056.584, "room": "ROOM4", "round": 2, "e": "declare", "seat": 0, "cards": ["H3"], "bot": false}
+{"t": 1794546060.152, "room": "ROOM4", "round": 2, "e": "trump", "suit": "H", "rank": "3", "banker": 1, "declared": true}
+{"t": 1794546061.019, "room": "ROOM4", "round": 2, "e": "bury", "seat": 1, "cards": ["C2", "C6", "C7", "D2", "D7", "S6", "S7", "S9"], "bot": true}
+{"t": 1794546061.947, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["H2"], "bot": true}
+{"t": 1794546062.649, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["H5"], "bot": true}
+{"t": 1794546063.35, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["HA"], "bot": true}
+{"t": 1794546074.27, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["C3"], "bot": false}
+{"t": 1794546074.271, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 1, "cards": ["H2"]}, {"seat": 2, "cards": ["H5"]}, {"seat": 3, "cards": ["HA"]}, {"seat": 0, "cards": ["C3"]}]}
+{"t": 1794546077.442, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["HA"], "bot": false}
+{"t": 1794546078.143, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["D3"], "bot": true}
+{"t": 1794546078.843, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["H4"], "bot": true}
+{"t": 1794546079.545, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["H8"], "bot": true}
+{"t": 1794546079.545, "room": "ROOM4", "round": 2, "e": "trick", "winner": 1, "points": 0, "plays": [{"seat": 0, "cards": ["HA"]}, {"seat": 1, "cards": ["D3"]}, {"seat": 2, "cards": ["H4"]}, {"seat": 3, "cards": ["H8"]}]}
+{"t": 1794546080.429, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["H4"], "bot": true}
+{"t": 1794546081.129, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["H7"], "bot": true}
+{"t": 1794546081.83, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["H2"], "bot": true}
+{"t": 1794546084.947, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["H3"], "bot": false}
+{"t": 1794546084.947, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 1, "cards": ["H4"]}, {"seat": 2, "cards": ["H7"]}, {"seat": 3, "cards": ["H2"]}, {"seat": 0, "cards": ["H3"]}]}
+{"t": 1794546087.579, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["CA"], "bot": false}
+{"t": 1794546088.279, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["C8"], "bot": true}
+{"t": 1794546088.98, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["C5"], "bot": true}
+{"t": 1794546089.681, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["C2"], "bot": true}
+{"t": 1794546089.681, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 0, "cards": ["CA"]}, {"seat": 1, "cards": ["C8"]}, {"seat": 2, "cards": ["C5"]}, {"seat": 3, "cards": ["C2"]}]}
+{"t": 1794546095.547, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["C10", "C10"], "bot": false}
+{"t": 1794546096.248, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["CJ", "CJ"], "bot": true}
+{"t": 1794546096.949, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["C6", "C7"], "bot": true}
+{"t": 1794546097.65, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["C4", "C4"], "bot": true}
+{"t": 1794546097.65, "room": "ROOM4", "round": 2, "e": "trick", "winner": 1, "points": 20, "plays": [{"seat": 0, "cards": ["C10", "C10"]}, {"seat": 1, "cards": ["CJ", "CJ"]}, {"seat": 2, "cards": ["C6", "C7"]}, {"seat": 3, "cards": ["C4", "C4"]}]}
+{"t": 1794546098.46, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["H6", "H6"], "bot": true}
+{"t": 1794546099.161, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["H9", "LJ"], "bot": true}
+{"t": 1794546099.861, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["D6", "H7"], "bot": true}
+{"t": 1794546104.47, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["S3", "S3"], "bot": false}
+{"t": 1794546104.47, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 1, "cards": ["H6", "H6"]}, {"seat": 2, "cards": ["H9", "LJ"]}, {"seat": 3, "cards": ["D6", "H7"]}, {"seat": 0, "cards": ["S3", "S3"]}]}
+{"t": 1794546106.778, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["HJ", "HJ"], "bot": false}
+{"t": 1794546107.48, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["H10", "H10"], "bot": true}
+{"t": 1794546108.181, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["BJ", "H3"], "bot": true}
+{"t": 1794546108.882, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["D4", "D4"], "bot": true}
+{"t": 1794546108.882, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 0, "cards": ["HJ", "HJ"]}, {"seat": 1, "cards": ["H10", "H10"]}, {"seat": 2, "cards": ["BJ", "H3"]}, {"seat": 3, "cards": ["D4", "D4"]}]}
+{"t": 1794546113.019, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["DJ", "DJ"], "bot": false}
+{"t": 1794546113.72, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["D10", "DA"], "bot": true}
+{"t": 1794546114.421, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["D5", "D5"], "bot": true}
+{"t": 1794546115.123, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["D9", "D9"], "bot": true}
+{"t": 1794546115.123, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 0, "cards": ["DJ", "DJ"]}, {"seat": 1, "cards": ["D10", "DA"]}, {"seat": 2, "cards": ["D5", "D5"]}, {"seat": 3, "cards": ["D9", "D9"]}]}
+{"t": 1794546117.553, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["DQ"], "bot": false}
+{"t": 1794546118.254, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["SQ"], "bot": true}
+{"t": 1794546118.955, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["DK"], "bot": true}
+{"t": 1794546119.657, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["DQ"], "bot": true}
+{"t": 1794546119.657, "room": "ROOM4", "round": 2, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 0, "cards": ["DQ"]}, {"seat": 1, "cards": ["SQ"]}, {"seat": 2, "cards": ["DK"]}, {"seat": 3, "cards": ["DQ"]}]}
+{"t": 1794546120.372, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["D8", "D8", "DA"], "bot": true}
+{"t": 1794546121.073, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["CK", "D10", "SK"], "bot": true}
+{"t": 1794546126.922, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["S10", "DK", "HK"], "bot": false}
+{"t": 1794546127.623, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["CQ", "S2", "S2"], "bot": true}
+{"t": 1794546127.624, "room": "ROOM4", "round": 2, "e": "trick", "winner": 2, "points": 60, "plays": [{"seat": 2, "cards": ["D8", "D8", "DA"]}, {"seat": 3, "cards": ["CK", "D10", "SK"]}, {"seat": 0, "cards": ["S10", "DK", "HK"]}, {"seat": 1, "cards": ["CQ", "S2", "S2"]}]}
+{"t": 1794546128.325, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["S8", "S8"], "bot": true, "attempted_cards": ["S8", "S8", "SA"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794546129.026, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["SJ", "SJ"], "bot": true}
+{"t": 1794546133.751, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["S4", "S6"], "bot": false}
+{"t": 1794546134.452, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["S5", "S5"], "bot": true}
+{"t": 1794546134.453, "room": "ROOM4", "round": 2, "e": "trick", "winner": 3, "points": 10, "plays": [{"seat": 2, "cards": ["S8", "S8"]}, {"seat": 3, "cards": ["SJ", "SJ"]}, {"seat": 0, "cards": ["S4", "S6"]}, {"seat": 1, "cards": ["S5", "S5"]}]}
+{"t": 1794546135.441, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["C9", "C9"], "bot": true}
+{"t": 1794546138.371, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["S9", "C8"], "bot": false}
+{"t": 1794546139.072, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["CK", "HK"], "bot": true}
+{"t": 1794546139.773, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["CA", "CQ"], "bot": true}
+{"t": 1794546139.773, "room": "ROOM4", "round": 2, "e": "trick", "winner": 3, "points": 20, "plays": [{"seat": 3, "cards": ["C9", "C9"]}, {"seat": 0, "cards": ["S9", "C8"]}, {"seat": 1, "cards": ["CK", "HK"]}, {"seat": 2, "cards": ["CA", "CQ"]}]}
+{"t": 1794546140.475, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["SA"], "bot": true}
+{"t": 1794546149.103, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["H8"], "bot": false}
+{"t": 1794546149.804, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["SK"], "bot": true}
+{"t": 1794546150.505, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["S4"], "bot": true}
+{"t": 1794546150.505, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 3, "cards": ["SA"]}, {"seat": 0, "cards": ["H8"]}, {"seat": 1, "cards": ["SK"]}, {"seat": 2, "cards": ["S4"]}]}
+{"t": 1794546153.076, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["HQ"], "bot": false}
+{"t": 1794546153.776, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["C3"], "bot": true}
+{"t": 1794546154.478, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["D2"], "bot": true}
+{"t": 1794546155.18, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["S10"], "bot": true}
+{"t": 1794546155.18, "room": "ROOM4", "round": 2, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 0, "cards": ["HQ"]}, {"seat": 1, "cards": ["C3"]}, {"seat": 2, "cards": ["D2"]}, {"seat": 3, "cards": ["S10"]}]}
+{"t": 1794546155.882, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["H9"], "bot": true}
+{"t": 1794546156.584, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["SA"], "bot": true}
+{"t": 1794546157.285, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["S7"], "bot": true}
+{"t": 1794546160.104, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["D3"], "bot": false}
+{"t": 1794546160.104, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 1, "cards": ["H9"]}, {"seat": 2, "cards": ["SA"]}, {"seat": 3, "cards": ["S7"]}, {"seat": 0, "cards": ["D3"]}]}
+{"t": 1794546162.053, "room": "ROOM4", "round": 2, "e": "play", "seat": 0, "cards": ["LJ", "BJ"], "bot": false}
+{"t": 1794546162.755, "room": "ROOM4", "round": 2, "e": "play", "seat": 1, "cards": ["H5", "HQ"], "bot": true}
+{"t": 1794546163.455, "room": "ROOM4", "round": 2, "e": "play", "seat": 2, "cards": ["D6", "D7"], "bot": true}
+{"t": 1794546164.157, "room": "ROOM4", "round": 2, "e": "play", "seat": 3, "cards": ["C5", "SQ"], "bot": true}
+{"t": 1794546164.157, "room": "ROOM4", "round": 2, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 0, "cards": ["LJ", "BJ"]}, {"seat": 1, "cards": ["H5", "HQ"]}, {"seat": 2, "cards": ["D6", "D7"]}, {"seat": 3, "cards": ["C5", "SQ"]}]}
+{"t": 1794546164.157, "room": "ROOM4", "round": 2, "e": "round_end", "attacker_points": 140, "kitty": ["C2", "C6", "C7", "D2", "D7", "S6", "S7", "S9"], "kitty_points": 0, "winner_team": 0, "level_change": 1, "new_levels": ["3", "3"], "next_banker": 2, "game_over": false, "games_won": [0, 0], "point_scored": false}
+{"t": 1794538175.367, "room": "ROOM5", "round": 8, "e": "round_start", "deck": ["D7", "CK", "DA", "C3", "SJ", "S10", "S2", "BJ", "H6", "HQ", "H7", "C9", "D6", "S6", "S8", "DK", "HK", "CQ", "HQ", "SA", "H9", "C10", "C4", "C7", "DQ", "S4", "D4", "SJ", "SQ", "S9", "D5", "CA", "D5", "D10", "C2", "H5", "C7", "SK", "DQ", "H2", "C4", "H3", "S3", "C8", "S10", "SK", "H8", "SQ", "S5", "CJ", "DJ", "H9", "H4", "D2", "H10", "H7", "D4", "D6", "D2", "DA", "S2", "H4", "HA", "C6", "CK", "S9", "C8", "S7", "S4", "D3", "BJ", "HA", "H2", "C5", "C6", "S6", "S5", "H8", "S8", "S7", "DJ", "H3", "C5", "D3", "D9", "C3", "H5", "H6", "SA", "CJ", "CA", "CQ", "HJ", "LJ", "S3", "D9", "D8", "C10", "C9", "HJ", "D10", "H10", "HK", "C2", "D7", "D8", "LJ", "DK"], "banker": 2, "trump_rank": "2", "levels": ["2", "7"], "players": [{"seat": 0, "name": "Seat 0", "is_bot": false}, {"seat": 1, "name": "Seat 1", "is_bot": true}, {"seat": 2, "name": "Seat 2", "is_bot": true}, {"seat": 3, "name": "Seat 3", "is_bot": true}]}
+{"t": 1794538190.976, "room": "ROOM5", "round": 8, "e": "declare", "seat": 2, "cards": ["D2"], "bot": true}
+{"t": 1794538202.598, "room": "ROOM5", "round": 8, "e": "trump", "suit": "D", "rank": "2", "banker": 2, "declared": true}
+{"t": 1794538203.501, "room": "ROOM5", "round": 8, "e": "bury", "seat": 2, "cards": ["C4", "C5", "C6", "C8", "S3", "S3", "S8", "S8"], "bot": true}
+{"t": 1794538204.395, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["S2"], "bot": true}
+{"t": 1794538205.097, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["D9"], "bot": true}
+{"t": 1794538305.754, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["D4"], "bot": false}
+{"t": 1794538306.456, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["D6"], "bot": true}
+{"t": 1794538306.456, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 2, "cards": ["S2"]}, {"seat": 3, "cards": ["D9"]}, {"seat": 0, "cards": ["D4"]}, {"seat": 1, "cards": ["D6"]}]}
+{"t": 1794538307.418, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["DJ"], "bot": true}
+{"t": 1794538308.12, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["D3"], "bot": true}
+{"t": 1794538489.541, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["H2"], "bot": true}
+{"t": 1794538490.243, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["D3"], "bot": true}
+{"t": 1794538490.243, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 2, "cards": ["DJ"]}, {"seat": 3, "cards": ["D3"]}, {"seat": 0, "cards": ["H2"]}, {"seat": 1, "cards": ["D3"]}]}
+{"t": 1794538495.356, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["DQ"], "bot": true}
+{"t": 1794538496.059, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["LJ"], "bot": true}
+{"t": 1794538496.761, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["BJ"], "bot": true}
+{"t": 1794538497.462, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["DA"], "bot": true}
+{"t": 1794538497.463, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 0, "cards": ["DQ"]}, {"seat": 1, "cards": ["LJ"]}, {"seat": 2, "cards": ["BJ"]}, {"seat": 3, "cards": ["DA"]}]}
+{"t": 1794538498.378, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["C2", "C2"], "bot": true}
+{"t": 1794538499.08, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["DK", "H2"], "bot": true}
+{"t": 1794538500.592, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["D5", "D7"], "bot": true}
+{"t": 1794538501.293, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["D10", "D2"], "bot": true}
+{"t": 1794538501.294, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 25, "plays": [{"seat": 2, "cards": ["C2", "C2"]}, {"seat": 3, "cards": ["DK", "H2"]}, {"seat": 0, "cards": ["D5", "D7"]}, {"seat": 1, "cards": ["D10", "D2"]}]}
+{"t": 1794538502.223, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["LJ"], "bot": true}
+{"t": 1794538502.925, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["BJ"], "bot": true}
+{"t": 1794538505.725, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["D9"], "bot": true}
+{"t": 1794538506.426, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["S10"], "bot": true}
+{"t": 1794538506.426, "room": "ROOM5", "round": 8, "e": "trick", "winner": 3, "points": 10, "plays": [{"seat": 2, "cards": ["LJ"]}, {"seat": 3, "cards": ["BJ"]}, {"seat": 0, "cards": ["D9"]}, {"seat": 1, "cards": ["S10"]}]}
+{"t": 1794538507.278, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["CA"], "bot": true}
+{"t": 1794538510.918, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["C7"], "bot": true}
+{"t": 1794538511.619, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["C5"], "bot": true}
+{"t": 1794538512.321, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["C9"], "bot": true}
+{"t": 1794538512.321, "room": "ROOM5", "round": 8, "e": "trick", "winner": 3, "points": 5, "plays": [{"seat": 3, "cards": ["CA"]}, {"seat": 0, "cards": ["C7"]}, {"seat": 1, "cards": ["C5"]}, {"seat": 2, "cards": ["C9"]}]}
+{"t": 1794538513.13, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["C8"], "bot": true}
+{"t": 1794538516.065, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["C4"], "bot": true}
+{"t": 1794538516.765, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["CK"], "bot": true}
+{"t": 1794538517.467, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["CA"], "bot": true}
+{"t": 1794538517.467, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 3, "cards": ["C8"]}, {"seat": 0, "cards": ["C4"]}, {"seat": 1, "cards": ["CK"]}, {"seat": 2, "cards": ["CA"]}]}
+{"t": 1794538518.278, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["H10", "H10"], "bot": true}
+{"t": 1794538518.979, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["H5", "H6"], "bot": true}
+{"t": 1794538521.252, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["H6", "H9"], "bot": true}
+{"t": 1794538521.953, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["H3", "H3"], "bot": true}
+{"t": 1794538521.953, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 25, "plays": [{"seat": 2, "cards": ["H10", "H10"]}, {"seat": 3, "cards": ["H5", "H6"]}, {"seat": 0, "cards": ["H6", "H9"]}, {"seat": 1, "cards": ["H3", "H3"]}]}
+{"t": 1794538522.672, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["H8"], "bot": true}
+{"t": 1794538523.373, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["H7"], "bot": true}
+{"t": 1794538526.383, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["H4"], "bot": true}
+{"t": 1794538527.084, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["H4"], "bot": true}
+{"t": 1794538527.085, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 2, "cards": ["H8"]}, {"seat": 3, "cards": ["H7"]}, {"seat": 0, "cards": ["H4"]}, {"seat": 1, "cards": ["H4"]}]}
+{"t": 1794538527.796, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["HA"], "bot": true}
+{"t": 1794538528.497, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["H9"], "bot": true}
+{"t": 1794538531.477, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["HK"], "bot": true}
+{"t": 1794538532.178, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["H8"], "bot": true}
+{"t": 1794538532.178, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 2, "cards": ["HA"]}, {"seat": 3, "cards": ["H9"]}, {"seat": 0, "cards": ["HK"]}, {"seat": 1, "cards": ["H8"]}]}
+{"t": 1794538532.91, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["H5"], "bot": true}
+{"t": 1794538533.611, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["HA"], "bot": true}
+{"t": 1794538536.53, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["HJ"], "bot": true}
+{"t": 1794538537.231, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["HQ"], "bot": true}
+{"t": 1794538537.231, "room": "ROOM5", "round": 8, "e": "trick", "winner": 3, "points": 5, "plays": [{"seat": 2, "cards": ["H5"]}, {"seat": 3, "cards": ["HA"]}, {"seat": 0, "cards": ["HJ"]}, {"seat": 1, "cards": ["HQ"]}]}
+{"t": 1794538537.962, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["C7"], "bot": true}
+{"t": 1794538541.61, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["CK"], "bot": true}
+{"t": 1794538542.311, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["C3"], "bot": true}
+{"t": 1794538543.011, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["HK"], "bot": true}
+{"t": 1794538543.011, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 3, "cards": ["C7"]}, {"seat": 0, "cards": ["CK"]}, {"seat": 1, "cards": ["C3"]}, {"seat": 2, "cards": ["HK"]}]}
+{"t": 1794538547.48, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["SA"], "bot": true}
+{"t": 1794538548.18, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["S6"], "bot": true}
+{"t": 1794538548.881, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["H7"], "bot": true}
+{"t": 1794538549.582, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["SJ"], "bot": true}
+{"t": 1794538549.582, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 0, "cards": ["SA"]}, {"seat": 1, "cards": ["S6"]}, {"seat": 2, "cards": ["H7"]}, {"seat": 3, "cards": ["SJ"]}]}
+{"t": 1794538553.345, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["SQ"], "bot": true}
+{"t": 1794538554.046, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["S4"], "bot": true}
+{"t": 1794538554.748, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["HQ"], "bot": true}
+{"t": 1794538555.449, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["SQ"], "bot": true}
+{"t": 1794538555.449, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 0, "cards": ["SQ"]}, {"seat": 1, "cards": ["S4"]}, {"seat": 2, "cards": ["HQ"]}, {"seat": 3, "cards": ["SQ"]}]}
+{"t": 1794538559.118, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["S10"], "bot": true}
+{"t": 1794538559.818, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["S9"], "bot": true}
+{"t": 1794538560.519, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["D10"], "bot": true}
+{"t": 1794538561.219, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["S6"], "bot": true}
+{"t": 1794538561.22, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 20, "plays": [{"seat": 0, "cards": ["S10"]}, {"seat": 1, "cards": ["S9"]}, {"seat": 2, "cards": ["D10"]}, {"seat": 3, "cards": ["S6"]}]}
+{"t": 1794538561.985, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["D2"], "bot": true}
+{"t": 1794538562.686, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["SA"], "bot": true}
+{"t": 1794538564.28, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["D6"], "bot": true}
+{"t": 1794538564.981, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["S9"], "bot": true}
+{"t": 1794538564.981, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 2, "cards": ["D2"]}, {"seat": 3, "cards": ["SA"]}, {"seat": 0, "cards": ["D6"]}, {"seat": 1, "cards": ["S9"]}]}
+{"t": 1794538565.681, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["D4"], "bot": true}
+{"t": 1794538566.382, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["C9"], "bot": true}
+{"t": 1794538569.575, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["DJ"], "bot": true}
+{"t": 1794538570.326, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["CQ"], "bot": true}
+{"t": 1794538570.326, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 2, "cards": ["D4"]}, {"seat": 3, "cards": ["C9"]}, {"seat": 0, "cards": ["DJ"]}, {"seat": 1, "cards": ["CQ"]}]}
+{"t": 1794538574.855, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["S5"], "bot": true}
+{"t": 1794538575.557, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["SK"], "bot": true}
+{"t": 1794538576.257, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["DK"], "bot": true}
+{"t": 1794538576.958, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["S7"], "bot": true}
+{"t": 1794538576.958, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 25, "plays": [{"seat": 0, "cards": ["S5"]}, {"seat": 1, "cards": ["SK"]}, {"seat": 2, "cards": ["DK"]}, {"seat": 3, "cards": ["S7"]}]}
+{"t": 1794538577.66, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["D7"], "bot": true}
+{"t": 1794538578.361, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["CQ"], "bot": true}
+{"t": 1794538579.933, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["D8"], "bot": true}
+{"t": 1794538580.633, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["SK"], "bot": true}
+{"t": 1794538580.633, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 2, "cards": ["D7"]}, {"seat": 3, "cards": ["CQ"]}, {"seat": 0, "cards": ["D8"]}, {"seat": 1, "cards": ["SK"]}]}
+{"t": 1794538585.082, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["S2"], "bot": true}
+{"t": 1794538585.783, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["CJ"], "bot": true}
+{"t": 1794538586.485, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["D5"], "bot": true}
+{"t": 1794538587.186, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["C6"], "bot": true}
+{"t": 1794538587.186, "room": "ROOM5", "round": 8, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 0, "cards": ["S2"]}, {"seat": 1, "cards": ["CJ"]}, {"seat": 2, "cards": ["D5"]}, {"seat": 3, "cards": ["C6"]}]}
+{"t": 1794538590.229, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["S5"], "bot": true, "attempted_cards": ["S5", "SJ"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794538590.93, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["CJ"], "bot": true}
+{"t": 1794538591.631, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["D8"], "bot": true}
+{"t": 1794538592.333, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["S7"], "bot": true}
+{"t": 1794538592.334, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 5, "plays": [{"seat": 0, "cards": ["S5"]}, {"seat": 1, "cards": ["CJ"]}, {"seat": 2, "cards": ["D8"]}, {"seat": 3, "cards": ["S7"]}]}
+{"t": 1794538593.034, "room": "ROOM5", "round": 8, "e": "play", "seat": 2, "cards": ["DA", "DQ"], "bot": true}
+{"t": 1794538593.735, "room": "ROOM5", "round": 8, "e": "play", "seat": 3, "cards": ["C3", "HJ"], "bot": true}
+{"t": 1794538595.279, "room": "ROOM5", "round": 8, "e": "play", "seat": 0, "cards": ["S4", "SJ"], "bot": true}
+{"t": 1794538595.98, "room": "ROOM5", "round": 8, "e": "play", "seat": 1, "cards": ["C10", "C10"], "bot": true}
+{"t": 1794538595.98, "room": "ROOM5", "round": 8, "e": "trick", "winner": 2, "points": 20, "plays": [{"seat": 2, "cards": ["DA", "DQ"]}, {"seat": 3, "cards": ["C3", "HJ"]}, {"seat": 0, "cards": ["S4", "SJ"]}, {"seat": 1, "cards": ["C10", "C10"]}]}
+{"t": 1794538595.98, "room": "ROOM5", "round": 8, "e": "round_end", "attacker_points": 20, "kitty": ["C4", "C5", "C6", "C8", "S3", "S3", "S8", "S8"], "kitty_points": 0, "winner_team": 0, "level_change": 2, "new_levels": ["4", "7"], "next_banker": 0, "game_over": false, "games_won": [0, 0], "point_scored": false}
+{"t": 1794528211.145, "room": "ROOM6", "round": 1, "e": "round_start", "deck": ["S6", "S7", "HQ", "D8", "SJ", "C4", "S9", "D9", "S2", "S3", "H6", "S3", "D9", "C5", "C8", "HK", "C3", "C6", "H7", "H2", "H6", "HA", "C5", "DJ", "D6", "S4", "S2", "D2", "DK", "HK", "CA", "C4", "H4", "C7", "D6", "D5", "S8", "D7", "H5", "D10", "DA", "SJ", "C2", "H10", "S10", "H9", "LJ", "D3", "S9", "C7", "C8", "HA", "H3", "H2", "DK", "HJ", "H5", "LJ", "DQ", "SK", "CJ", "D5", "S7", "C10", "S5", "S10", "H4", "HQ", "C2", "H9", "H10", "D3", "C9", "C6", "SK", "C3", "CJ", "D4", "H7", "H8", "C9", "D8", "SA", "S6", "SQ", "SQ", "HJ", "D7", "DA", "S8", "CQ", "H8", "C10", "CQ", "S4", "SA", "S5", "CK", "DJ", "H3", "CK", "DQ", "CA", "D2", "D4", "BJ", "D10", "BJ"], "banker": null, "trump_rank": "2", "levels": ["2", "2"], "players": [{"seat": 0, "name": "Seat 0", "is_bot": false}, {"seat": 1, "name": "Seat 1", "is_bot": true}, {"seat": 2, "name": "Seat 2", "is_bot": true}, {"seat": 3, "name": "Seat 3", "is_bot": true}]}
+{"t": 1794528214.705, "room": "ROOM6", "round": 1, "e": "declare", "seat": 0, "cards": ["S2"], "bot": false}
+{"t": 1794528238.204, "room": "ROOM6", "round": 1, "e": "trump", "suit": "S", "rank": "2", "banker": 0, "declared": true}
+{"t": 1794528253.886, "room": "ROOM6", "round": 1, "e": "bury", "seat": 0, "cards": ["H3", "H4", "H5", "H6", "C3", "D4", "D6", "D9"], "bot": false}
+{"t": 1794528260.994, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["C9", "C9", "CJ", "CJ", "CA"], "bot": false}
+{"t": 1794528261.696, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["C4", "C6", "C6", "C7", "C7"], "bot": true}
+{"t": 1794528262.397, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["C5", "C8", "C8", "CA", "CQ"], "bot": true}
+{"t": 1794528263.099, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["C10", "C3", "C4", "D7", "S3"], "bot": true}
+{"t": 1794528263.1, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 15, "plays": [{"seat": 0, "cards": ["C9", "C9", "CJ", "CJ", "CA"]}, {"seat": 1, "cards": ["C4", "C6", "C6", "C7", "C7"]}, {"seat": 2, "cards": ["C5", "C8", "C8", "CA", "CQ"]}, {"seat": 3, "cards": ["C10", "C3", "C4", "D7", "S3"]}]}
+{"t": 1794528275.431, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["DK", "DA", "DA"], "bot": false}
+{"t": 1794528276.132, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["D4", "D7", "D8"], "bot": true}
+{"t": 1794528276.833, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["D6", "DJ", "DK"], "bot": true}
+{"t": 1794528277.534, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["D3", "D3", "D8"], "bot": true}
+{"t": 1794528277.535, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 0, "cards": ["DK", "DA", "DA"]}, {"seat": 1, "cards": ["D4", "D7", "D8"]}, {"seat": 2, "cards": ["D6", "DJ", "DK"]}, {"seat": 3, "cards": ["D3", "D3", "D8"]}]}
+{"t": 1794528295.969, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["C2"], "bot": false}
+{"t": 1794528296.671, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["SJ"], "bot": true}
+{"t": 1794528297.373, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["S4"], "bot": true}
+{"t": 1794528298.074, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["S6"], "bot": true}
+{"t": 1794528298.074, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 0, "cards": ["C2"]}, {"seat": 1, "cards": ["SJ"]}, {"seat": 2, "cards": ["S4"]}, {"seat": 3, "cards": ["S6"]}]}
+{"t": 1794528307.97, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["DQ"], "bot": false}
+{"t": 1794528308.67, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["D5"], "bot": true}
+{"t": 1794528309.372, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["DQ"], "bot": true}
+{"t": 1794528310.073, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["D9"], "bot": true}
+{"t": 1794528310.074, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 0, "cards": ["DQ"]}, {"seat": 1, "cards": ["D5"]}, {"seat": 2, "cards": ["DQ"]}, {"seat": 3, "cards": ["D9"]}]}
+{"t": 1794528323.739, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["D2"], "bot": false}
+{"t": 1794528324.44, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["S3"], "bot": true}
+{"t": 1794528325.141, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["SK"], "bot": true}
+{"t": 1794528325.842, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["H2"], "bot": true}
+{"t": 1794528325.842, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 0, "cards": ["D2"]}, {"seat": 1, "cards": ["S3"]}, {"seat": 2, "cards": ["SK"]}, {"seat": 3, "cards": ["H2"]}]}
+{"t": 1794528333.358, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["SQ"], "bot": false}
+{"t": 1794528334.059, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["H2"], "bot": true}
+{"t": 1794528334.759, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["LJ"], "bot": true}
+{"t": 1794528335.461, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["D2"], "bot": true}
+{"t": 1794528335.461, "room": "ROOM6", "round": 1, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 0, "cards": ["SQ"]}, {"seat": 1, "cards": ["H2"]}, {"seat": 2, "cards": ["LJ"]}, {"seat": 3, "cards": ["D2"]}]}
+{"t": 1794528336.329, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["SA"], "bot": true}
+{"t": 1794528337.031, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["SK"], "bot": true}
+{"t": 1794528341.257, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S2"], "bot": false}
+{"t": 1794528341.957, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["LJ"], "bot": true}
+{"t": 1794528341.958, "room": "ROOM6", "round": 1, "e": "trick", "winner": 1, "points": 10, "plays": [{"seat": 2, "cards": ["SA"]}, {"seat": 3, "cards": ["SK"]}, {"seat": 0, "cards": ["S2"]}, {"seat": 1, "cards": ["LJ"]}]}
+{"t": 1794528342.706, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["HK"], "bot": true}
+{"t": 1794528343.408, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["H4"], "bot": true}
+{"t": 1794528344.109, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["H3"], "bot": true}
+{"t": 1794528347.603, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S10"], "bot": false}
+{"t": 1794528347.603, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 20, "plays": [{"seat": 1, "cards": ["HK"]}, {"seat": 2, "cards": ["H4"]}, {"seat": 3, "cards": ["H3"]}, {"seat": 0, "cards": ["S10"]}]}
+{"t": 1794528351.488, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["SJ"], "bot": false}
+{"t": 1794528352.19, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["SQ"], "bot": true}
+{"t": 1794528352.891, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["C2"], "bot": true}
+{"t": 1794528353.593, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["SA"], "bot": true}
+{"t": 1794528353.594, "room": "ROOM6", "round": 1, "e": "trick", "winner": 2, "points": 0, "plays": [{"seat": 0, "cards": ["SJ"]}, {"seat": 1, "cards": ["SQ"]}, {"seat": 2, "cards": ["C2"]}, {"seat": 3, "cards": ["SA"]}]}
+{"t": 1794528354.434, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["HQ"], "bot": true}
+{"t": 1794528355.136, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["HA"], "bot": true}
+{"t": 1794528358.346, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S5"], "bot": false}
+{"t": 1794528359.048, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["HA"], "bot": true}
+{"t": 1794528359.049, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 5, "plays": [{"seat": 2, "cards": ["HQ"]}, {"seat": 3, "cards": ["HA"]}, {"seat": 0, "cards": ["S5"]}, {"seat": 1, "cards": ["HA"]}]}
+{"t": 1794528362.12, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S9"], "bot": false}
+{"t": 1794528362.821, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["S10"], "bot": true}
+{"t": 1794528363.523, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["S2"], "bot": true}
+{"t": 1794528364.224, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["DJ"], "bot": true}
+{"t": 1794528364.224, "room": "ROOM6", "round": 1, "e": "trick", "winner": 2, "points": 10, "plays": [{"seat": 0, "cards": ["S9"]}, {"seat": 1, "cards": ["S10"]}, {"seat": 2, "cards": ["S2"]}, {"seat": 3, "cards": ["DJ"]}]}
+{"t": 1794528365.069, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["S9"], "bot": true}
+{"t": 1794528365.77, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["HJ"], "bot": true}
+{"t": 1794528370.128, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S5"], "bot": false}
+{"t": 1794528370.829, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["S8"], "bot": true}
+{"t": 1794528370.829, "room": "ROOM6", "round": 1, "e": "trick", "winner": 2, "points": 5, "plays": [{"seat": 2, "cards": ["S9"]}, {"seat": 3, "cards": ["HJ"]}, {"seat": 0, "cards": ["S5"]}, {"seat": 1, "cards": ["S8"]}]}
+{"t": 1794528372.541, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["H10"], "bot": true, "attempted_cards": ["H10", "HJ"], "engine_resolution": "failed_throw_forced"}
+{"t": 1794528373.689, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["HQ"], "bot": true}
+{"t": 1794528430.156, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S6"], "bot": false}
+{"t": 1794528430.858, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["H9"], "bot": true}
+{"t": 1794528430.858, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 10, "plays": [{"seat": 2, "cards": ["H10"]}, {"seat": 3, "cards": ["HQ"]}, {"seat": 0, "cards": ["S6"]}, {"seat": 1, "cards": ["H9"]}]}
+{"t": 1794528435.917, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["S8"], "bot": false}
+{"t": 1794528436.618, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["S7"], "bot": true}
+{"t": 1794528437.32, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["S7"], "bot": true}
+{"t": 1794528438.021, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["H8"], "bot": true}
+{"t": 1794528438.022, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 0, "plays": [{"seat": 0, "cards": ["S8"]}, {"seat": 1, "cards": ["S7"]}, {"seat": 2, "cards": ["S7"]}, {"seat": 3, "cards": ["H8"]}]}
+{"t": 1794528441.676, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["BJ", "BJ"], "bot": false}
+{"t": 1794528442.377, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["H9", "S4"], "bot": true}
+{"t": 1794528443.079, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["H5", "H6"], "bot": true}
+{"t": 1794528443.78, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["H10", "H8"], "bot": true}
+{"t": 1794528443.781, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 15, "plays": [{"seat": 0, "cards": ["BJ", "BJ"]}, {"seat": 1, "cards": ["H9", "S4"]}, {"seat": 2, "cards": ["H5", "H6"]}, {"seat": 3, "cards": ["H10", "H8"]}]}
+{"t": 1794528446.392, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["CK"], "bot": false}
+{"t": 1794528447.094, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["CQ"], "bot": true}
+{"t": 1794528447.796, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["HJ"], "bot": true}
+{"t": 1794528448.497, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["D5"], "bot": true}
+{"t": 1794528448.498, "room": "ROOM6", "round": 1, "e": "trick", "winner": 0, "points": 15, "plays": [{"seat": 0, "cards": ["CK"]}, {"seat": 1, "cards": ["CQ"]}, {"seat": 2, "cards": ["HJ"]}, {"seat": 3, "cards": ["D5"]}]}
+{"t": 1794528450.67, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["C10"], "bot": false}
+{"t": 1794528451.372, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["CK"], "bot": true}
+{"t": 1794528452.074, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["H7"], "bot": true}
+{"t": 1794528452.774, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["D10"], "bot": true}
+{"t": 1794528452.775, "room": "ROOM6", "round": 1, "e": "trick", "winner": 1, "points": 30, "plays": [{"seat": 0, "cards": ["C10"]}, {"seat": 1, "cards": ["CK"]}, {"seat": 2, "cards": ["H7"]}, {"seat": 3, "cards": ["D10"]}]}
+{"t": 1794528453.475, "room": "ROOM6", "round": 1, "e": "play", "seat": 1, "cards": ["C5"], "bot": true}
+{"t": 1794528454.177, "room": "ROOM6", "round": 1, "e": "play", "seat": 2, "cards": ["H7"], "bot": true}
+{"t": 1794528454.879, "room": "ROOM6", "round": 1, "e": "play", "seat": 3, "cards": ["HK"], "bot": true}
+{"t": 1794528455.534, "room": "ROOM6", "round": 1, "e": "play", "seat": 0, "cards": ["D10"], "bot": false}
+{"t": 1794528455.534, "room": "ROOM6", "round": 1, "e": "trick", "winner": 1, "points": 25, "plays": [{"seat": 1, "cards": ["C5"]}, {"seat": 2, "cards": ["H7"]}, {"seat": 3, "cards": ["HK"]}, {"seat": 0, "cards": ["D10"]}]}
+{"t": 1794528455.534, "room": "ROOM6", "round": 1, "e": "round_end", "attacker_points": 75, "kitty": ["H3", "H4", "H5", "H6", "C3", "D4", "D6", "D9"], "kitty_points": 10, "winner_team": 0, "level_change": 1, "new_levels": ["3", "2"], "next_banker": 2, "game_over": false, "games_won": [0, 0], "point_scored": false}

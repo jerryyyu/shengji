@@ -240,7 +240,7 @@ export function ModeChip({ mode }: { mode: Mode }) {
     );
   }
   if (mode === "practice") {
-    return <span className="chip mode-chip practice" title="Bots on this device">Practice</span>;
+    return <span className="chip mode-chip practice" title="Bots on this device">Offline</span>;
   }
   return null;
 }

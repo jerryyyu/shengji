@@ -31,8 +31,8 @@ import QueueLayer from "./queue/QueueLayer";
 import { firstJoinerText } from "./queue/tableText";
 import { useRoomBack } from "./roomBack";
 
-// Offline play (no game server): its start screen loads with the local server.
-const OfflineStart = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineStart })));
+// Offline play (no game server): its Play tab loads with the local server.
+const OfflineHome = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineHome })));
 
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
@@ -273,15 +273,16 @@ export default function App() {
   } else if (game) {
     // at the table the toast is placed against the table's own rows
     screen = <Table state={game} toast={toast} />;
-  } else if (room) {
-    screen = <Room room={room} />;
   } else if (OFFLINE) {
+    // the offline table's room is filled with bots and dealt from the Play tab
     screen = (
       <Suspense fallback={null}>
-        <OfflineStart status={status} error={toast?.text ?? null}
-                      onArmAutoFill={() => { autoFill.current = true; }} />
+        <OfflineHome status={status} error={toast?.text ?? null} room={room?.room ?? null}
+                     onArmAutoFill={() => { autoFill.current = true; }} />
       </Suspense>
     );
+  } else if (room) {
+    screen = <Room room={room} />;
   } else {
     screen = (
       <HomeShell active="play">

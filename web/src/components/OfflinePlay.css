@@ -1,0 +1,40 @@
+/* The Play tab with no connection: the online page's controls in their
+   places, with what needs the server greyed. */
+.play-mode {
+  display: flex;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(17, 20, 26, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.play-mode-opt {
+  flex: 1;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-14, 14px);
+  font-weight: 700;
+}
+.play-mode-opt.on {
+  background: #2f3a4d;
+  color: #fff;
+}
+.play-mode-opt:disabled {
+  color: #5a6270;
+  text-decoration: line-through;
+  cursor: default;
+}
+
+/* grey, not the live green: nobody else is about */
+.play-presence.offline .play-presence-dot {
+  background: #6b7484;
+  box-shadow: none;
+}
+
+.play-offline .join-row {
+  opacity: 0.45;
+}

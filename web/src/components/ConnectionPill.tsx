@@ -138,8 +138,8 @@ function ConnectionLost({ inRoom, inGame, onRetry }: { inRoom: boolean; inGame: 
       </p>
       <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>Retry</button>
       {inRoom ? null : (
-        <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.start()}>
-          Play bots on this device
+        <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
+          Play offline
         </button>
       )}
     </dialog>

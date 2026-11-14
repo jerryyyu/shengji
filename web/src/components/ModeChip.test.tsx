@@ -1,5 +1,5 @@
 // The header's mode chip: Ranked (gold, trophy) for a matched game or a
-// created room switched to Ranked, Practice
+// created room switched to Ranked, Offline
 // for offline play on this device, nothing for a room among friends. It sits
 // right of the points, before the menu.
 import { act } from "react";
@@ -46,9 +46,9 @@ it("a created room its host switched to Ranked shows the same Ranked chip", () =
   expect(chip()!.classList.contains("ranked")).toBe(true);
 });
 
-it("offline play shows a grey Practice chip", () => {
+it("offline play shows a grey Offline chip", () => {
   act(() => root.render(<Hud state={state(false)} practice />));
-  expect(chip()!.textContent).toBe("Practice");
+  expect(chip()!.textContent).toBe("Offline");
   expect(chip()!.classList.contains("practice")).toBe(true);
 });
 
@@ -56,7 +56,7 @@ it("a room among friends shows no mode chip", () => {
   act(() => root.render(<Hud state={state(false)} practice={false} />));
   expect(chip()).toBeNull();
   expect(host.textContent).not.toContain("Ranked");
-  expect(host.textContent).not.toContain("Practice");
+  expect(host.textContent).not.toContain("Offline");
 });
 
 it("the chip sits after the points and before the menu", () => {

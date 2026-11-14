@@ -63,7 +63,7 @@ export function leaveCopy(ranked: boolean, practice = false,
 
 interface LeaveAlertProps {
   ranked: boolean;
-  /** Offline practice: the game ends (the start screen then sends the player home). */
+  /** Offline practice: the game ends and the offline Play tab comes back. */
   practice?: boolean;
   /** Opened from the round-end screen: the round is over and rated. */
   betweenRounds?: boolean;

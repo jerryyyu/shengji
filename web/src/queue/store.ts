@@ -770,8 +770,8 @@ export class QueueStore {
 
   /** Leave your pair (a Duo after its game, say): the server ends it for
    *  both and tells each with party_closed. */
-  leaveParty(): void {
-    this.send({ type: "party_leave" });
+  leaveParty(): boolean {
+    return this.send({ type: "party_leave" });
   }
 
   /** Test seam: forget everything, as a fresh page would. */

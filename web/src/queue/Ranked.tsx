@@ -97,18 +97,20 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
   );
 }
 
-/** A pair's other member, between games: the leader searches for both, so
- *  this member's row is who the Duo is with and a Leave that ends it. */
-function PairRow({ leader }: { leader: string }) {
+/** A formed pair between games, for either member: who the Duo is with and
+ *  a Leave that ends it (party_leave, never a search). Leave waits for the
+ *  socket, and a send that fails keeps the sheet up. */
+function PairRow({ partner, online }: { partner: string; online: boolean }) {
   const [asking, setAsking] = useState(false);
   return (
     <div className="play-ranked-row play-pair-row">
-      <span className="play-pair-label">Duo with {shortName(leader)}</span>
-      <button type="button" className="btn play-duo play-pair-leave" onClick={() => setAsking(true)}>Leave</button>
+      <span className="play-pair-label">Duo with {shortName(partner)}</span>
+      <button type="button" className="btn play-duo play-pair-leave" disabled={!online}
+              onClick={() => setAsking(true)}>Leave</button>
       {asking ? (
-        <LeaveSheet context={{ kind: "duo", partner: leader, opener: false }}
+        <LeaveSheet context={{ kind: "duo", partner, opener: false }}
                     onStay={() => setAsking(false)}
-                    onLeave={() => { setAsking(false); queue.leaveParty(); }} />
+                    onLeave={() => { if (queue.leaveParty()) setAsking(false); }} />
       ) : null}
     </div>
   );
@@ -178,13 +180,14 @@ export function RankedSection({ online, room = null }: {
       </>
     );
   }
-  const pairLeader = pair && !pair.you_lead ? pair.members.find((m) => m.leader)?.name ?? null : null;
+  // the leader searches for the pair; the other member has only the row
+  const partner = pair ? pair.members.find((m) => !m.you)?.name ?? null : null;
+  const pairRow = partner ? <PairRow partner={partner} online={online} /> : null;
   const body = q.inGame ? (
     <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
-  ) : pairLeader ? (
-    <PairRow leader={pairLeader} />
-  ) : (
+  ) : pairRow && !pair!.you_lead ? pairRow : (
     <>
+      {pairRow}
       {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}
       <div className="play-ranked-row">
         <button type="button" className={`btn gold play-main q-find${joining ? " searching" : ""}`}

@@ -72,7 +72,7 @@ class CopyRule:
 
 
 COPY_RULES = (
-    CopyRule("web/src/components/LeaveAlert.tsx", r"minute wait to search", MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
+    CopyRule("web/src/components/leaveCopy.ts", r'JOIN_WAIT = "', MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
     CopyRule("web/src/queue/store.ts", r"No tap for", MATCHMAKING_PY, "TABLE_IDLE_SECS"),
     CopyRule("web/src/queue/TablePanel.tsx", r"seconds left to join", "web/src/queue/tableText.ts", "OFFER_CLOCK_MS"),
     CopyRule("web/src/queue/TablePanel.tsx", r"Bots fill the empty seats in", "web/src/queue/store.ts", "BOTS_WARN_MS"),
@@ -182,8 +182,9 @@ def test_every_copy_rule_still_finds_its_phrase():
 
 
 def test_the_copy_scan_flags_a_mismatched_cooldown():
-    match = DURATION.search("Stay until this round ends, or wait 1 minute to play again.")
-    assert match and _seconds(match) == 60
-    assert _seconds(match) != py_constant(MATCHMAKING_PY, "JOIN_COOLDOWN_SECS")
+    cooldown = py_constant(MATCHMAKING_PY, "JOIN_COOLDOWN_SECS")
+    stale = f"leaving means a {int(cooldown // 60) + 4}-minute wait"
+    match = DURATION.search(stale)
+    assert match and _seconds(match) != cooldown
     assert DURATION.search("leaving means a 5-minute wait") is not None
     assert DURATION.search("five seconds left") is not None

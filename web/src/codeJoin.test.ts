@@ -157,3 +157,21 @@ describe("an older ?party= link", () => {
     }
   });
 });
+
+describe("one link kind: an older ?room= link", () => {
+  it("is an alias of ?code=: looked up as any code, its ?name= dropped", () => {
+    window.history.replaceState(null, "", "/?room=wxyz&name=Ann");
+    status("open");
+    expect(sent).toEqual([{ type: "code_lookup", code: "WXYZ" }]);
+    expect(window.location.search).toBe("?code=wxyz");
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    expect(codes.view.room).toMatchObject({ code: "WXYZ", from: "link", kind: "room" });
+  });
+
+  it("leaves a ?code= link as it is when it has one too", () => {
+    window.history.replaceState(null, "", "/?code=ABCD&room=WXYZ");
+    status("open");
+    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }]);
+    expect(window.location.search).toBe("?code=ABCD");
+  });
+});

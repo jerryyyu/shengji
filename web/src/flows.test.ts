@@ -41,13 +41,12 @@ const SURFACE = /<dialog\b|role=["'](?:alert)?dialog["']|(?<![[\w-])aria-modal\s
 const SURFACES = [
   "components/ConnectionPill.tsx", // the 60 s full-screen "No connection" state
   "components/GuestChip.tsx", // the guest name sheet ("Your name")
+  "components/JoinPanel.tsx", // the confirm before taking a dropped player's seat
   "components/LastTrickPanel.tsx", // the last trick played, over the table
   "components/LeaveSheet.tsx", // the one Leave sheet
-  "components/Lobby.tsx", // the "Table is full" card on a code join
   "components/MePage.tsx", // the delete-account confirm
   "components/OpponentActions.tsx", // a player's options at the table
   "components/ResultDialog.tsx", // the round end's modal frame
-  "components/SeatTakeover.tsx", // the dropped-seat picker on a code join
   "queue/Sheet.tsx", // the queue sheet frame every Sheet uses
 ];
 
@@ -57,7 +56,7 @@ const notAClient = (rel: string) => rel === "protocol.ts" || rel.startsWith("off
 
 /** Every file that sends leave_room or leaves the queue. Target: one leave.ts. */
 const LEAVE_SITES = [
-  "App.tsx", // the leave sheet a room link opens while you sit elsewhere
+  "App.tsx", // the leave sheet a link opens while you sit elsewhere
   "components/HudMenu.tsx", // ⋯ → Leave game
   "components/OfflinePlay.tsx", // leaving the offline table
   "components/RoundEndModal.tsx", // Leave game on the round end
@@ -68,7 +67,7 @@ const LEAVE_SITES = [
 
 /** Every file that sends join_room / peek_room or joins the queue. Target: codeJoin.ts only. */
 const JOIN_SITES = [
-  "components/Lobby.tsx", // the code box and room links
+  "components/Lobby.tsx", // the code box and the Join panel a link opens
   "intent.ts", // the join_room a saved intent resumes with
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
   "queue/TablePanel.tsx", // Move it here (an offer for another table)

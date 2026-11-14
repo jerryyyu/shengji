@@ -1,11 +1,11 @@
-// Every join box and the `?code=` link (and the older `?party=` link, its
-// alias) take a room or table code: the code is looked up first (PROTOCOL.md
+// Every join box and the `?code=` link (and the older `?room=` and `?party=`
+// links, its aliases) take a room or table code: the code is looked up first (PROTOCOL.md
 // "Codes"), then the room flow (peek, join_room) or the table flow
 // (queue_join with the code; a table code is no room until its game starts,
 // and a Duo's table is joined this way too).
 
 import { useSyncExternalStore } from "react";
-import { CODE_LEN, NO_CODE, aliasPartyLink, normalizeCode } from "./codes";
+import { CODE_LEN, NO_CODE, aliasInviteLink, normalizeCode } from "./codes";
 import type { ServerMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
 import { conn } from "./ws";
@@ -84,7 +84,7 @@ export class CodeStore {
     }
     if (this.linkTaken) return;
     this.linkTaken = true;
-    aliasPartyLink();
+    aliasInviteLink();
     const code = new URLSearchParams(window.location.search).get("code");
     if (code) this.lookup(code, "link");
   }

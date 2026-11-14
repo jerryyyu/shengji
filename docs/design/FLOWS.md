@@ -119,6 +119,22 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail.
 5. The guest line "Playing as a guest · Sign in to be ranked" stays.
 
+## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
+1. **One invite path.** One link kind, `?code=`, opens Play with the Join panel for that table: its title
+   ("Join Jerry", or the code for a Play table, whose seats show once you sit), the seats with yours lit,
+   Join and Not now. Nothing joins until Join is tapped. `?room=` and `?party=` links (and the iOS universal
+   links) read as `?code=`; a `?name=` is dropped. A guest is never asked for a name: Join uses the random
+   name the chip shows, editable there. A full table shows the same panel, "Table is full" and Join
+   disabled. The seat picker (`SeatTakeover`) and the "Table is full" card are removed.
+   - Taking a dropped player's seat stays an explicit choice: in the Join panel their seat reads
+     "Alice (away)", and tapping it opens the "Alice dropped out. Take their seat?" confirm. Join stays
+     disabled while only away seats are left, so no plain Join takes a person's seat.
+   - A link opened while you sit at another table shows the Leave sheet first; your own table's link
+     changes nothing. The code box still joins at once when it can, and shows the same panel when it
+     cannot (full, or only away seats).
+   - The Join panel is drawn by `components/JoinPanel.tsx` from TablePanel's exported seat layouts; folding
+     it into `TablePanel.tsx` as a panel kind is a follow-up.
+
 ## Grammar: Us/Them are labels, sentences say we/they (Jerry 2026-11-14)
 - "Us" and "Them" are labels only: team heads, HUD chips, "Them 15 / 80", "Games: Us 1 · Them 0".
 - In a sentence the team is "we" or "they": "They took 35 of 80. We go up 1, to 3.", "They won the last trick: ×2, +30". A round title names the players ("You & Alice win the round"), and with no names it says "We" or "They".

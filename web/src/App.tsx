@@ -36,13 +36,12 @@ import { askRoomLeave, useRoomBack } from "./roomBack";
 // Offline play (no game server): its Play tab loads with the local server.
 const OfflineHome = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineHome })));
 
-/** Drop a room link from the address once its question is answered Stay,
- *  so the lobby does not take it up later. */
-function dropRoomLink(): void {
+/** Drop the invite link from the address once its question is answered
+ *  Stay, so the lobby does not take it up later. */
+function dropInviteLink(): void {
   const params = new URLSearchParams(window.location.search);
-  if (!params.has("room") && !params.has("name")) return;
-  params.delete("room");
-  params.delete("name");
+  if (!params.has("code")) return;
+  params.delete("code");
   const rest = params.toString();
   window.history.replaceState(window.history.state, "",
     `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
@@ -121,22 +120,19 @@ export default function App() {
     const unsubStatus = conn.subscribeStatus((s) => {
       setStatus(s);
       if (s !== "open") return;
-      // ONE decision, made in intent.ts and unit-tested there. An invite is
-      // handled by the Lobby (it must not auto-submit without a name), so the
-      // only thing to act on here is a saved resume.
+      // ONE decision, made in intent.ts and unit-tested there. An invite opens
+      // the Lobby's Join panel and never joins by itself, so the only thing to
+      // act on here is a saved resume.
       const params = new URLSearchParams(window.location.search);
-      // a ?code= link may name a room, so it outranks a saved room as ?room= does
-      const inviteRoom = params.get("room") ?? params.get("code");
-      // A link to another room while this device holds a seat goes back to
-      // that seat first and asks before leaving it. A ?code= may name a pair,
-      // so only ?room= is known to be a room before its lookup.
-      const linkRoom = params.get("room")?.toUpperCase() ?? null;
+      // One link kind: an older ?room= or ?party= link already reads as ?code=.
+      const link = params.get("code")?.toUpperCase() ?? null;
+      // A link to another table while this device holds a room seat goes back
+      // to that seat first and asks before leaving it.
       const saved = getSavedRoom()?.toUpperCase() ?? null;
-      const elsewhere = linkRoom !== null && linkRoom.length === 4 && saved !== null && saved !== linkRoom;
-      if (elsewhere) setLinkPrompt(linkRoom);
+      const elsewhere = link !== null && link.length === 4 && saved !== null && saved !== link;
+      if (elsewhere) setLinkPrompt(link);
       const intent = decideIntent({
-        invite: inviteRoom && !elsewhere ? { room: inviteRoom,
-                                             name: params.get("name") ?? undefined } : null,
+        invite: link && !elsewhere ? { room: link } : null,
         savedRoom: getSavedRoom(),
         // A signed-in player keeps no name on the device, and a socket that
         // has just signed out must still ask for its seat back, so the server
@@ -358,7 +354,7 @@ export default function App() {
                     onStay={() => {
                       setLinkPrompt(null);
                       setLinkDropped((n) => n + 1);
-                      dropRoomLink();
+                      dropInviteLink();
                     }} />
       ) : null}
       <QueueLayer />

@@ -647,62 +647,100 @@ describe("a guest's random name", () => {
   });
 });
 
-describe("an invite link lands in the room", () => {
+describe("an invite link opens the Join panel", () => {
   const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
   const types = () => sent.map((m) => (m as { type: string }).type);
-  beforeEach(() => { window.history.replaceState(null, "", "/?room=abcd"); });
+  const panel = () => host.querySelector<HTMLElement>(".tp-join-code");
+  const panelButton = (label: string) =>
+    [...panel()!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label)!;
+  /** The link's lookup, answered: a room's panel then peeks its seats. */
+  const linkNames = (kind: "room" | "table") => {
+    act(() => { codes.lookup("abcd", "link"); });
+    serverSays({ type: "code_kind", code: "ABCD", kind });
+  };
+  const SEATS = { type: "room_seats", room: "ABCD", in_game: false,
+                  seats: [{ seat: 0, name: "Jerry", is_bot: false, connected: true, team: 0, claimable: false }] };
+  beforeEach(() => { window.history.replaceState(null, "", "/?code=abcd"); });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
-  it("a guest with a saved name goes straight in under it", async () => {
-    localStorage.setItem("shengji.name", "Ace");
+  it("a first-time guest is not asked for a name: Join goes in under the chip's random name", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
+    linkNames("room");
     expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).toBeNull();
-    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
-    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
-    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Ace" });
+    expect(types()).toEqual(["code_lookup", "peek_room"]);
+    serverSays(SEATS);
+    expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
+    expect(types()).not.toContain("join_room");
+    const random = host.querySelector(".guest-pill")?.textContent ?? "";
+    const chosen = localStorage.getItem("shengji.name")!;
+    expect(isRandom(chosen)).toBe(true);
+    expect(random).toContain(chosen);
+    act(() => panelButton("Join").click());
+    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: chosen });
     expect(window.location.search).toBe("");
   });
 
-  it("a signed-in player goes straight in under the account name", async () => {
-    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
-    await render();
-    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
-    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
-    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Jerry" });
-  });
-
-  it("a first-time guest names themselves, and Done goes into the room", async () => {
+  it("the random name is edited from the chip, and Join uses the edit", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).not.toBeNull();
-    expect(types()).toEqual([]);
+    linkNames("room");
+    serverSays(SEATS);
     type(nameInput(), "Robin");
     act(() => buttonNamed("Done").click());
-    expect(sent).toEqual([{ type: "peek_room", room: "ABCD" }]);
-    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
+    act(() => panelButton("Join").click());
     expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Robin" });
   });
 
-  it("a ?code= link that names a room goes in the same way", async () => {
-    window.history.replaceState(null, "", "/?code=abcd");
+  it("a guest with a saved name joins under it", async () => {
     localStorage.setItem("shengji.name", "Ace");
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    act(() => { codes.lookup("abcd", "link"); });
-    serverSays({ type: "code_kind", code: "ABCD", kind: "room" });
-    expect(types()).toEqual(["code_lookup", "peek_room"]);
-    serverSays({ type: "room_seats", room: "ABCD", in_game: false, seats: [] });
+    linkNames("room");
+    serverSays(SEATS);
+    act(() => panelButton("Join").click());
     expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Ace" });
+  });
+
+  it("a signed-in player joins under the account name", async () => {
+    authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+    await render();
+    linkNames("room");
+    serverSays(SEATS);
+    act(() => panelButton("Join").click());
+    expect(sent.at(-1)).toMatchObject({ type: "join_room", room: "ABCD", name: "Jerry" });
+  });
+
+  it("a Play table's code opens the panel too, and Join sits there through the queue", async () => {
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    linkNames("table");
+    expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join ABCD");
+    expect(types()).toEqual(["code_lookup"]);
+    act(() => panelButton("Join").click());
+    expect(sent.at(-1)).toEqual({ type: "queue_join", code: "ABCD", name: localStorage.getItem("shengji.name") });
+  });
+
+  it("Not now drops the link and puts Play back", async () => {
+    authState.current = { status: "out", clientId: "cid.apps", user: null };
+    await render();
+    linkNames("room");
+    serverSays(SEATS);
+    act(() => panelButton("Not now").click());
+    expect(panel()).toBeNull();
+    expect(window.location.search).toBe("");
+    expect(types()).not.toContain("join_room");
   });
 
   it("a room that is gone leaves the guest on Play, saying so", async () => {
     localStorage.setItem("shengji.name", "Ace");
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
+    linkNames("room");
     serverSays({ type: "error", code: "room_not_found", message: "Room not found." });
     expect(host.querySelector(".lobby-error")?.textContent).toBe("No room ABCD. It may have closed.");
+    expect(panel()).toBeNull();
     expect(window.location.search).toBe("");
-    expect(types()).toEqual(["peek_room"]);
+    expect(types()).toEqual(["code_lookup", "peek_room"]);
   });
 });

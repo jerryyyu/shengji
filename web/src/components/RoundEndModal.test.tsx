@@ -59,12 +59,12 @@ afterEach(() => {
     else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
   }
 });
-function renderModal(result: RoundResult, shown: GameState = state): string {
+function renderModal(result: RoundResult, shown: GameState = state, clock: number | null = null): string {
   sent.length = 0;
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => { root.render(<RoundEndModal state={shown} result={result} />); });
+  act(() => { root.render(<RoundEndModal state={shown} result={result} clock={clock} />); });
   return host.textContent ?? "";
 }
 
@@ -81,8 +81,7 @@ describe("round end modal", () => {
   });
   it("shows a level change on an ordinary round", () => {
     const text = renderModal(makeResult({ new_levels: ["5", "2"] }));
-    expect(text).toContain("Level change");
-    expect(text).toContain("+3");
+    expect(text).toContain("We go up 3, to 5.");
     expect(text).not.toContain("win the game");
   });
 
@@ -91,13 +90,13 @@ describe("round end modal", () => {
     // announced "+3 levels", which reads as the game losing your progress.
     const text = renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
     expect(text).toContain("win the game");
-    expect(text).toContain("levels restart at 2");
-    expect(text).not.toContain("Level change");
+    expect(text).toContain("Levels restart at 2.");
+    expect(text).not.toContain("go up");
   });
 
   it("shows the running games-won tally once a game has been won", () => {
     const text = renderModal(makeResult({ point_scored: true, games_won: [2, 1] }));
-    expect(text).toContain("Games won");
+    expect(text).toContain("Games: Us 2 · Them 1");
   });
 
   it("a game won says so up front: the game in the title, the games score, Next game and Leave", () => {
@@ -109,7 +108,7 @@ describe("round end modal", () => {
     // the score sits in the main view, outside Details
     const games = host.querySelector(".result-games")!;
     expect(games.closest("details")).toBeNull();
-    expect(games.textContent).toBe("Games: Us 1 · Them 0");
+    expect(games.textContent).toBe("Games: Us 1 · Them 0Levels restart at 2.");
     const buttons = [...host.querySelectorAll("button")].map((b) => b.textContent);
     expect(buttons).toContain("Next game");
     expect(buttons).not.toContain("Next round");
@@ -124,10 +123,10 @@ describe("round end modal", () => {
     renderModal(makeResult({ point_scored: true, games_won: [2, 3], winner_team: 1 }),
                 { ...state, you: 1 });
     expect(host.querySelector("h2")!.textContent).toBe("You & Ada win the game");
-    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 3 · Them 2");
+    expect(host.querySelector(".result-games > span")!.textContent).toBe("Games: Us 3 · Them 2");
     renderModal(makeResult({ point_scored: true, games_won: [0, 1], winner_team: 1 }));
     expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the game");
-    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 0 · Them 1");
+    expect(host.querySelector(".result-games > span")!.textContent).toBe("Games: Us 0 · Them 1");
   });
 
   it("an ordinary round keeps Next round and no games score", () => {
@@ -165,23 +164,18 @@ describe("round end modal", () => {
 });
 
 describe("buried kitty reveal", () => {
-  it("names the banker and the points in the bury, above the score", () => {
-    const text = renderModal(makeResult({ kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
-    expect(text).toContain("Buried by you · 25 pts");
-    expect(text.indexOf("Buried by")).toBeLessThan(text.indexOf("Trick points"));
+  it("labels the kitty with its points", () => {
+    renderModal(makeResult({ kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
+    expect(host.querySelector(".round-end-kitty .round-end-col-label")!.textContent).toBe("Kitty · 25 points");
   });
 
-  it("uses the banker's name for another seat and counts a pointless bury as 0", () => {
-    const other = { ...state, banker: 1 };
-    host = document.createElement("div");
-    document.body.appendChild(host);
-    root = createRoot(host);
-    act(() => { root.render(<RoundEndModal state={other} result={makeResult({ kitty_cards: ["S2", "S3", "S4", "S6", "S7", "S8", "S9", "SJ"] })} />); });
-    expect(host.textContent).toContain("Buried by Robin · 0 pts");
+  it("counts a pointless bury as 0", () => {
+    renderModal(makeResult({ kitty_cards: ["S2", "S3", "S4", "S6", "S7", "S8", "S9", "SJ"] }), { ...state, banker: 1 });
+    expect(host.querySelector(".round-end-kitty .round-end-col-label")!.textContent).toBe("Kitty · 0 points");
   });
 
   it("shows nothing when there are no buried cards", () => {
-    expect(renderModal(makeResult())).not.toContain("Buried");
+    expect(renderModal(makeResult())).not.toContain("Kitty");
   });
 });
 
@@ -197,13 +191,14 @@ describe("leaving from the round-end screen", () => {
       HTMLButtonElement;
 
   for (const [kind, shown] of [["casual", state], ["ranked", { ...state, matched: true }]] as const) {
-    it(`puts Leave below the full-width Next round, the same in a ${kind} room`, () => {
+    it(`puts Leave beside Next round in one row, the same in a ${kind} room`, () => {
       renderModal(makeResult(), shown);
       const leave = leaveButton()!;
       expect(leave).toBeDefined();
-      expect(leave.className).toBe("btn subtle danger dialog-leave-btn");
+      expect(leave.className).toBe("btn danger big dialog-leave-btn");
       expect(nextButton().className).toContain("btn primary big");
       expect(leave.parentElement).toBe(nextButton().parentElement);
+      expect(leave.parentElement!.className).toBe("round-end-actions");
       expect(nextButton().compareDocumentPosition(leave) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
   }
@@ -258,22 +253,23 @@ describe("round end rating line", () => {
     expect(host.querySelector(".rating-delta")).toBeNull();
   });
 
-  it("shows a signed-in player's rating and this round's change", () => {
+  it("puts a signed-in player's change for the round on the result line, with no separate rating line", () => {
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), ranked);
-    const line = host.querySelector(".rating-line")!;
-    expect(line.textContent).toContain("Your rating 1712");
-    expect(line.querySelector(".rating-delta")!.textContent).toBe("▲ +9");
-    expect(line.querySelector(".rating-delta")!.className).toContain("delta-up");
-    expect(line.querySelector(".rating-game")).toBeNull();
-    expect(host.querySelector(".rating-guest-note")).toBeNull();
+    const bit = host.querySelector(".result-line .result-rating")!;
+    expect(bit.textContent).toBe(" · +9");
+    expect(bit.className).toContain("delta-up");
+    expect(host.querySelector(".rating-line")).toBeNull();
   });
 
-  it("shows a loss and, on the round that wins a game, the game's total", () => {
+  it("shows a loss, and on the round that wins a game, the game's total", () => {
+    renderModal(makeResult({ rating: { rating: 1688, delta: -4 } }), ranked);
+    expect(host.querySelector(".result-rating")!.textContent).toBe(" · −4");
+    expect(host.querySelector(".result-rating")!.className).toContain("delta-dn");
+    act(() => root.unmount());
+    host.remove();
     renderModal(makeResult({ point_scored: true, games_won: [1, 0],
                              rating: { rating: 1688, delta: -4, game_delta: 31 } }), ranked);
-    const line = host.querySelector(".rating-line")!;
-    expect(line.querySelector(".rating-delta")!.textContent).toBe("▼ −4");
-    expect(line.querySelector(".rating-game")!.textContent).toBe("+31 this game");
+    expect(host.querySelector(".result-games .result-rating")!.textContent).toBe(" · +31");
   });
 
 
@@ -301,11 +297,12 @@ describe("round end rating line", () => {
     expect(host.querySelector(".rating-guest-note")).toBeNull();
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
     expect(host.querySelector(".rating-line")).toBeNull();
+    expect(host.querySelector(".result-rating")).toBeNull();
   });
 
   it("a created room switched to Ranked shows the rating line like a queue room", () => {
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), { ...state, ranked: true });
-    expect(host.querySelector(".rating-line")!.textContent).toContain("Your rating 1712");
+    expect(host.querySelector(".result-rating")!.textContent).toBe(" · +9");
   });
 
   it("says nothing about ratings while sign-in is still loading", () => {
@@ -314,65 +311,161 @@ describe("round end rating line", () => {
   });
 });
 
-describe("headline first, details behind a disclosure", () => {
-  it("leads with the level change and new levels; the score grid and kitty wait under Details", () => {
-    renderModal(makeResult({ new_levels: ["5", "2"], attacker_points: 30,
-      kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
-    const modal = host.querySelector(".modal")!;
-    const headline = modal.querySelector(".result-headline")!;
-    const lines = [...headline.querySelectorAll(".result-team-line")].map((l) => l.textContent);
-    // banker seat 0: you defend, they attack; your line comes first
-    expect(lines).toEqual(["Us(You & Sam)defending · +3 levels", "Them(Robin & Ada)attacking · scored 30 of 80 · no level change"]);
-    expect(headline.textContent).toContain("Levels now Us 5 · Them 2");
-    expect(headline.textContent).toContain("Next banker: Sam");
-    const details = modal.querySelector<HTMLDetailsElement>("details.result-details")!;
-    expect(details.open).toBe(false);
-    expect(details.querySelector("summary")!.textContent).toBe("Details");
-    expect(details.querySelector(".result-grid")).not.toBeNull();
-    expect(details.querySelector(".kitty-reveal")).not.toBeNull();
-    expect(details.querySelector(".result-verdict")).not.toBeNull();
-    // the headline comes before the details, and Next round and Leave stay outside them
-    expect(headline.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const next = [...modal.querySelectorAll("button")].find((b) => b.textContent === "Next round")!;
-    expect(details.contains(next)).toBe(false);
-    act(() => next.click());
-    expect(sent).toEqual([{ type: "next_round" }]);
-    const leave = [...modal.querySelectorAll("button")].find((b) => /leave/i.test(b.textContent ?? ""));
-    expect(leave && details.contains(leave)).toBe(false);
+describe("a minimal top: the title, one result line, the button row", () => {
+  it("says the attackers' points, who goes up how far and the next banker in one line", () => {
+    renderModal(makeResult({ winner_team: 0, level_change: 1, attacker_points: 35, new_levels: ["3", "2"], next_banker: 2 }), state, 18);
+    expect(host.querySelector("h2")!.textContent).toBe("You & Sam win the round");
+    const lines = host.querySelectorAll(".modal > p");
+    expect(lines.length).toBe(1);
+    expect(lines[0].textContent).toBe("They took 35 of 80. We go up 1, to 3.Next banker: Sam.");
+    const row = host.querySelector(".modal > .round-end-actions")!;
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["18Next round", "Leave game"]);
+    expect(row.querySelector(".timer-ring")).not.toBeNull();
+    // the top holds nothing else: no per-team lines, no grid, no ready count
+    expect(host.querySelector(".result-team-line")).toBeNull();
+    expect(host.querySelector(".result-grid")).toBeNull();
+    expect(host.querySelector(".ready-status")).toBeNull();
   });
 
-  it("says one level in the headline; a won game's headline is the games score alone", () => {
-    renderModal(makeResult({ level_change: 1 }));
-    expect(host.querySelector(".result-team-line.gained")!.textContent).toContain("+1 level");
+  it("names the attackers' win and a deal taken with no level change", () => {
+    renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 100, next_banker: 1, new_levels: ["2", "4"] }));
+    expect(host.querySelector(".result-line")!.textContent).toBe("They took 100 of 80. They go up 1, to 4.Next banker: Robin.");
+    expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the round");
     act(() => root.unmount());
     host.remove();
-    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
-    expect(host.querySelector(".result-team-line")).toBeNull();
-    expect(host.querySelector(".result-headline")!.textContent).toBe("Games: Us 1 · Them 0");
-    // the level restart is still told, behind Details
-    expect(host.querySelector("details")!.textContent).toContain("Levels restart at");
-  });
-
-  it("leads with your team when the attackers win, names who attacked, and never relies on colour", () => {
-    renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 100, next_banker: 1 }));
-    const lines = [...host.querySelectorAll(".result-team-line")];
-    expect(lines[0].textContent).toBe("Us(You & Sam)defending · no level change");
-    expect(lines[1].textContent).toBe("Them(Robin & Ada)attacking · scored 100 of 80 · +1 level");
-    // the gainer is marked in words as well as colour
-    expect(lines[1].classList.contains("gained")).toBe(true);
-    expect(host.querySelector(".result-headline")!.textContent).toContain("Next banker: Robin");
-    expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the round");
-  });
-
-  it("says the attackers take the deal when no level changes, never +0", () => {
-    renderModal(makeResult({ winner_team: 1, level_change: 0, attacker_points: 105, next_banker: 1 }));
-    const them = host.querySelectorAll(".result-team-line")[1];
-    expect(them.textContent).toBe("Them(Robin & Ada)attacking · scored 105 of 80 · take the deal · no level change");
+    renderModal(makeResult({ winner_team: 1, level_change: 0, attacker_points: 85, next_banker: 1 }));
+    expect(host.querySelector(".result-line")!.textContent).toContain("They take the deal, no level change.");
     expect(host.textContent).not.toContain("+0");
   });
 
   it("says when you are the next banker", () => {
     renderModal(makeResult({ next_banker: 0 }));
-    expect(host.querySelector(".result-next-banker")!.textContent).toBe("Next banker: you");
+    expect(host.querySelector(".result-next-banker")!.textContent).toBe("Next banker: you.");
+  });
+
+  it("a ranked round's rating change fits on the result line", () => {
+    renderModal(makeResult({ new_levels: ["5", "2"], rating: { rating: 1712, delta: 12 } }), ranked);
+    expect(host.querySelector(".result-line")!.textContent).toContain("We go up 3, to 5 · +12.");
+    expect(host.querySelector(".result-rating")!.className).toContain("delta-up");
+    act(() => root.unmount());
+    host.remove();
+    renderModal(makeResult({ rating: { rating: 1712, delta: 12 } }));
+    expect(host.querySelector(".result-rating")).toBeNull();
+  });
+
+  it("drops the ready count; your own Next turns into Waiting for others", () => {
+    renderModal(makeResult(), { ...state, ready: [0] });
+    expect(host.querySelector(".ready-status")).toBeNull();
+    expect(host.textContent).not.toMatch(/\d\/\d ready/);
+    const next = host.querySelector<HTMLButtonElement>(".round-end-actions .btn.primary")!;
+    expect(next.textContent).toBe("Waiting for others…");
+    expect(next.disabled).toBe(true);
+  });
+});
+
+describe("Details: the kitty and the last trick, closed by default", () => {
+  // banker seat 0: Robin (1) and Ada (3) attack
+  const lastTrick = {
+    leader: 1, winner: 3, points: 10,
+    plays: [
+      { seat: 1, cards: ["H9"] }, { seat: 2, cards: ["H3"] },
+      { seat: 3, cards: ["HA"] }, { seat: 0, cards: ["HK"] },
+    ],
+  };
+  const kitty = ["S5", "C3", "D10", "C4", "C6", "C7", "C8", "D9"];
+
+  it("is a small toggle between the result line and the buttons, closed by default", () => {
+    renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
+    const details = host.querySelector<HTMLDetailsElement>(".modal > details.result-details")!;
+    expect(details.open).toBe(false);
+    expect(details.querySelector("summary")!.textContent).toBe("Details");
+    const line = host.querySelector(".result-line")!;
+    const row = host.querySelector(".round-end-actions")!;
+    expect(line.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(details.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(details.contains(row)).toBe(false);
+    expect(host.querySelector(".modal.details-open")).toBeNull();
+  });
+
+  it("opened, widens the card and shows the kitty and the last trick side by side", () => {
+    renderModal(makeResult({ attacker_points: 115, kitty_points: 30, kitty_cards: kitty, winner_team: 1, level_change: 1, new_levels: ["2", "3"] }),
+                { ...state, last_trick: lastTrick });
+    const details = host.querySelector<HTMLDetailsElement>("details.result-details")!;
+    act(() => {
+      details.open = true;
+      details.dispatchEvent(new Event("toggle"));
+    });
+    expect(host.querySelector(".modal.details-open")).not.toBeNull();
+    const cols = [...details.querySelectorAll(".round-end-details > .round-end-col")];
+    expect(cols.map((c) => c.classList.contains("round-end-kitty"))).toEqual([true, false]);
+    const [kittyCol, trickCol] = cols;
+    expect(kittyCol.querySelector(".round-end-col-label")!.textContent).toBe("Kitty · 15 points");
+    expect(kittyCol.querySelectorAll(".round-end-kitty-cards .card").length).toBe(8);
+    expect(kittyCol.querySelector(".kitty-bonus")!.textContent).toBe("They won the last trick: ×2, +30");
+    expect(trickCol.querySelector(".round-end-col-label")!.textContent).toBe("Last trick · Ada, 10 points");
+  });
+
+  it("shows the last trick in play order, each card over its player's name, the winner's outlined", () => {
+    renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: lastTrick });
+    const plays = [...host.querySelectorAll(".round-end-play")];
+    expect(plays.map((p) => p.querySelector(".round-end-play-who")!.textContent)).toEqual(["Robin", "Sam", "Ada", "You"]);
+    expect(plays.map((p) => p.querySelectorAll(".card").length)).toEqual([1, 1, 1, 1]);
+    expect(plays.map((p) => p.classList.contains("winner"))).toEqual([false, false, true, false]);
+  });
+
+  it("a pair lead shows both cards of each play; nothing buried still names the multiplier", () => {
+    const pairs = { leader: 1, winner: 1, points: 0, plays: [
+      { seat: 1, cards: ["S9", "S9"] }, { seat: 2, cards: ["S3", "S4"] },
+      { seat: 3, cards: ["S6", "S7"] }, { seat: 0, cards: ["S8", "SJ"] } ] };
+    renderModal(makeResult({ kitty_cards: ["S2", "S3", "S4", "S6", "S7", "S8", "S9", "SJ"] }), { ...state, last_trick: pairs });
+    expect(host.querySelectorAll(".round-end-play")[0].querySelectorAll(".card").length).toBe(2);
+    expect(host.querySelector(".round-end-last-trick > .round-end-col-label")!.textContent).toBe("Last trick · Robin");
+    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("They won the last trick: ×4, +0");
+  });
+
+  it("speaks in the first person when your side attacked: We took …, They go up …, We won the last trick", () => {
+    renderModal(makeResult({ winner_team: 1, level_change: 2, attacker_points: 40, kitty_points: 10, new_levels: ["2", "4"], next_banker: 3,
+                             kitty_cards: ["S5", "C3", "C4", "C6", "C7", "C8", "C9", "CJ"] }),
+                { ...state, banker: 1, last_trick: { ...lastTrick, winner: 2 } });
+    expect(host.querySelector(".result-line")!.textContent).toBe("We took 40 of 80. They go up 2, to 4.Next banker: Ada.");
+    expect(host.querySelector(".kitty-bonus")!.textContent).toBe("We won the last trick: ×2, +10");
+    // labels keep Us / Them
+    expect(host.textContent).not.toMatch(/\b(Us|Them) (took|go|take|won)\b/);
+  });
+
+  it("a 5-card throw keeps all four plays in one row, five cards each, the winner's group outlined", () => {
+    const throwTrick = { leader: 1, winner: 0, points: 35, plays: [
+      { seat: 1, cards: ["SQ", "SQ", "SJ", "SJ", "SA"] }, { seat: 2, cards: ["S3", "S4", "S5", "S8", "S10"] },
+      { seat: 3, cards: ["S6", "S7", "S9", "SK", "HK"] }, { seat: 0, cards: ["C2", "C2", "S2", "S2", "H2"] } ] };
+    renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: throwTrick });
+    const row = host.querySelector(".round-end-plays")!;
+    const plays = [...row.querySelectorAll(":scope > .round-end-play")];
+    expect(plays.length).toBe(4);
+    expect(plays.map((p) => p.querySelectorAll(".round-end-play-cards > .card").length)).toEqual([5, 5, 5, 5]);
+    expect(plays.map((p) => p.classList.contains("winner"))).toEqual([false, false, false, true]);
+    expect(host.querySelector(".round-end-last-trick > .round-end-col-label")!.textContent).toBe("Last trick · You, 35 points");
+  });
+
+  it("omits the bonus line when the banker's side took the last trick", () => {
+    renderModal(makeResult({ kitty_cards: kitty }), { ...state, last_trick: { ...lastTrick, winner: 2 } });
+    expect(host.querySelector(".round-end-kitty")).not.toBeNull();
+    expect(host.querySelector(".kitty-bonus")).toBeNull();
+  });
+
+  it("leaves out the last trick when the state has none, and Details when there is nothing to show", () => {
+    renderModal(makeResult({ kitty_cards: kitty }));
+    expect(host.querySelector(".round-end-last-trick")).toBeNull();
+    expect(host.querySelector(".round-end-kitty")).not.toBeNull();
+    act(() => root.unmount());
+    host.remove();
+    renderModal(makeResult());
+    expect(host.querySelector("details")).toBeNull();
+  });
+
+  it("a won game keeps the games score on top, with the level restart under it", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
+    expect(host.querySelector(".result-line")).toBeNull();
+    const head = host.querySelector(".result-headline")!;
+    expect([...head.children].map((c) => c.textContent)).toEqual(["Games: Us 1 · Them 0", "Levels restart at 2."]);
   });
 });

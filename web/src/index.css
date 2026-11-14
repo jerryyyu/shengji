@@ -2589,6 +2589,132 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-variant-numeric: tabular-nums;
 }
 
+/* round end: the result in one line, then Next round and Leave in one row */
+.result-headline.result-line,
+.result-headline.result-games {
+  margin: 0;
+}
+
+.result-line {
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+
+.result-line .result-next-banker {
+  color: #c4ccd8;
+  font-weight: 400;
+}
+
+.round-end-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.round-end-actions > .btn.primary {
+  flex: 1;
+}
+
+.round-end-actions > .dialog-leave-btn {
+  margin: 0;
+  flex: none;
+}
+
+/* Details: the kitty and the last trick side by side, so the opened card
+   still fits a sideways phone */
+/* the toggle keeps its 44px hit area but sits tight between the result
+   line and the buttons */
+.round-end .result-details > summary {
+  margin: -8px auto;
+}
+
+/* the opened card grows to fit the widest last trick (four 5-card throws
+   come to about 700px), never past the screen less a 12px margin a side */
+.modal.round-end.details-open {
+  width: max-content;
+  min-width: min(560px, 100%);
+  max-width: min(100%, calc(100vw - 24px));
+}
+
+.round-end-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #11141a;
+  border: 1px solid var(--panel-edge);
+  text-align: left;
+}
+
+.round-end-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.round-end-kitty {
+  flex: 1;
+}
+
+.round-end-col-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.round-end-kitty-cards,
+.round-end-play-cards {
+  display: flex;
+  --cw: 34px;
+}
+
+.round-end-kitty-cards .card + .card {
+  margin-left: -15px;
+}
+
+/* each play overlaps like a hand: an 18px step keeps every rank readable */
+.round-end-play-cards .card + .card {
+  margin-left: -16px;
+}
+
+.kitty-bonus {
+  color: #c4ccd8;
+  font-size: var(--fs-12);
+}
+
+.round-end-plays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.round-end-play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.round-end-play.winner .round-end-play-cards {
+  border-radius: 6px;
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.round-end-play-who {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.round-end-play.winner .round-end-play-who {
+  color: var(--gold);
+}
+
 /* ============ Mobile landscape (short viewports) ============ */
 /* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
    page scrolling. Desktop rules above are untouched.
@@ -3880,7 +4006,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .modal {
     width: min(380px, 100%);
     max-width: 100%;
-    padding: 12px 16px 0;
+    padding: 12px 16px;
     gap: 8px;
     max-height: 100%;
     overflow-y: auto;
@@ -3938,18 +4064,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-left: -6px;
   }
 
-  .modal > .btn.big {
+  /* the button row stays in view, even on a card taller than the screen */
+  .modal > .round-end-actions {
     position: sticky;
     bottom: 0;
-    min-height: 44px;
-    padding: 8px 16px;
-    box-shadow: 0 -10px 12px var(--panel);
+    z-index: 1;
+    background: #171b22;
   }
 
-  /* the card's own 8px gap separates Next round from Leave, and Leave keeps
-     the same 12px from the bottom edge as the title has from the top */
-  .modal > .dialog-leave-btn {
-    margin: 0 auto 12px;
+  .round-end-actions > .btn.big {
+    min-height: 44px;
+    padding: 8px 16px;
   }
 
   .game-won-crown {

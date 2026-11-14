@@ -9,7 +9,9 @@ import { scrollActiveTabToTop } from "./session";
 import { useTabSwipe } from "./useTabSwipe";
 import type { MeSection, Tab } from "./route";
 import { useGuestName } from "../guestName";
-import QueueBar, { QueuePill, QueueStrip, useInlineQueue } from "../queue/QueueBar";
+import YourTablePill from "../queue/YourTablePill";
+import { SeatedAtContext } from "../queue/seatedAt";
+import type { SeatedAt } from "../queue/seatedAt";
 import AccountChip from "../components/AccountChip";
 import GuestChip, { GuestNameSheet } from "../components/GuestChip";
 
@@ -107,11 +109,10 @@ export function TabBar({ active }: { active: Tab }) {
 
 /** The wide layout's top bar: the wordmark (except on Play, whose page
  *  carries the title), the phone's three tabs centred, and the account chip
- *  (a guest's chip and Sign in) at the end, after the search's pill on a tab
- *  other than Play. */
+ *  (a guest's chip and Sign in) at the end, after the Your table pill on a
+ *  tab other than Play. */
 export function TopBar({ active }: { active: Tab }) {
   const account = useAuth();
-  const inlineQueue = useInlineQueue();
   const user = account.status === "in" ? account.user : null;
   let end: ReactNode = null;
   if (user) {
@@ -142,7 +143,7 @@ export function TopBar({ active }: { active: Tab }) {
           </button>
         ))}
       </nav>
-      <div className="topbar-end">{inlineQueue && active !== "play" ? <QueuePill /> : null}{end}</div>
+      <div className="topbar-end">{active !== "play" ? <YourTablePill /> : null}{end}</div>
     </header>
   );
 }
@@ -166,30 +167,30 @@ function useTabFade(body: { current: HTMLElement | null }, key: string): void {
 
 /** The home screen's frame: the active tab's page with the tabs above it
  *  (wide) or below it (a phone, where a sideways swipe on the page moves to
- *  the tab beside it). A game, a replay and How to play are drawn without it. */
-export default function HomeShell({ active, section, children }: {
-  active: Tab; section?: MeSection; children: ReactNode;
+ *  the tab beside it). A game, a replay and How to play are drawn without it.
+ *  `seatedAt` names a game or room you sit at, for the Your table pill that
+ *  the top bar (wide) or the page's title row (a phone) shows on other tabs. */
+export default function HomeShell({ active, section, seatedAt = null, children }: {
+  active: Tab; section?: MeSection; seatedAt?: SeatedAt; children: ReactNode;
 }) {
   const wide = useMediaQuery(WIDE);
-  const inlineQueue = useInlineQueue();
   const account = useAuth();
   const guest = account.status !== "in" && account.status !== "loading";
-  // Play holds the table panel itself; the other tabs keep a way back to it
   const away = active !== "play";
   const body = useRef<HTMLDivElement | null>(null);
   useTabSwipe(body, active, !wide);
   useTabFade(body, `${active}/${section ?? ""}`);
   return (
-    <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
-      {wide ? <TopBar active={active} /> : null}
-      {wide && !inlineQueue && away ? <QueueStrip /> : null}
-      <div className="home-body" ref={body}>{children}</div>
-      {!wide && away ? <QueueBar /> : null}
-      {wide ? null : <TabBar active={active} />}
-      {/* one name editor for a guest's chip and Me's Edit name: the Play tab
-          holds its own, every other tab this one */}
-      {guest && away ? <GuestNameSheet /> : null}
-    </div>
+    <SeatedAtContext.Provider value={seatedAt}>
+      <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>
+        {wide ? <TopBar active={active} /> : null}
+        <div className="home-body" ref={body}>{children}</div>
+        {wide ? null : <TabBar active={active} />}
+        {/* one name editor for a guest's chip and Me's Edit name: the Play tab
+            holds its own, every other tab this one */}
+        {guest && away ? <GuestNameSheet /> : null}
+      </div>
+    </SeatedAtContext.Provider>
   );
 }
 

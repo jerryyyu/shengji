@@ -399,16 +399,22 @@ describe("deep links", () => {
     expect(host.querySelector(".tabbar")).toBeNull();
   });
 
-  it("over a game the tabs' pages offer the way back instead of the bars", async () => {
+  it("over a game the tabs' pages keep the bars, and the Your game pill leads back", async () => {
     await renderApp({ resume: true });
     const ws = FakeWS.all[0];
     act(() => ws.onopen?.());
     act(() => ws.deliver(playing));
-    await act(async () => { window.location.hash = "#/leaderboard"; await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector(".large-title")?.textContent).toBe("Leaderboard");
-    expect(host.querySelector(".tabbar")).toBeNull();
-    const back = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "‹ Back to game")!;
-    await act(async () => { back.click(); await new Promise((r) => setTimeout(r, 0)); });
+    for (const hash of ["#/leaderboard", "#/me"]) {
+      await act(async () => { window.location.hash = hash; await new Promise((r) => setTimeout(r, 0)); });
+      expect(host.querySelector(".tabbar")).not.toBeNull();
+      const pill = host.querySelector<HTMLButtonElement>(".large-title-row .table-pill")!;
+      expect(pill.textContent).toBe("Your game");
+      expect(pill.querySelector(".timer-ring")).toBeNull();
+      expect([...host.querySelectorAll("button")].some((b) => /Back to game/.test(b.textContent ?? ""))).toBe(false);
+    }
+    const pill = host.querySelector<HTMLButtonElement>(".table-pill")!;
+    await act(async () => { pill.click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(host.querySelector(".table, .hand")).not.toBeNull();
+    expect(host.querySelector(".table-pill")).toBeNull();
   });
 });

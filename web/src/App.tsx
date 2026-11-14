@@ -299,13 +299,11 @@ export default function App() {
     }, status === "open" && !inRoom);
     return () => setContinueHandler(null, false);
   }, [status, inRoom]);
-  // Over a game the tabs' pages show without the tab bars and with a way
-  // back; at home, and at a room before its game (its panel is on Play),
-  // the bars frame them.
-  const backToGame = game !== null ? () => openTab("play") : undefined;
+  // The tabs' pages keep the tab bars over a game too; the Your table pill
+  // on them leads back to the game, or to a room's panel on Play.
   const tabPage = homeRoute === null ? null
-    : homeRoute.tab === "leaderboard" ? <Leaderboard onBack={backToGame} />
-    : <MePage section={homeRoute.section} onBack={backToGame} />;
+    : homeRoute.tab === "leaderboard" ? <Leaderboard />
+    : <MePage section={homeRoute.section} />;
 
   let screen: ReactNode;
   // the Play tab's lobby shows the toast in its own error line
@@ -316,11 +314,10 @@ export default function App() {
     screen = <HowTo route={howtoRoute} />;
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} />;
-  } else if (homeRoute && game) {
-    screen = tabPage;
   } else if (homeRoute) {
     screen = (
-      <HomeShell active={homeRoute.tab} section={homeRoute.tab === "me" ? homeRoute.section : undefined}>
+      <HomeShell active={homeRoute.tab} section={homeRoute.tab === "me" ? homeRoute.section : undefined}
+                 seatedAt={game ? "game" : room ? "room" : null}>
         {tabPage}
       </HomeShell>
     );

@@ -303,7 +303,7 @@ describe("a guest", () => {
   it("Edit name opens the guest's name sheet; Done keeps the new name, shown at once", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    // the home frame holds the sheet; Me over a game holds its own
+    // the home frame holds the sheet
     expect(guestName.getSnapshot().editing).toBe(false);
     act(() => rowNamed("Edit name").click());
     expect(guestName.getSnapshot().editing).toBe(true);
@@ -311,21 +311,6 @@ describe("a guest", () => {
     expect(host.querySelector(".me-name")?.textContent).toBe("Mei");
     expect(host.querySelector(".me-who .avatar")?.textContent).toBe("M");
     act(() => guestName.close());
-  });
-
-  it("over a game (no home frame), Me holds the name sheet itself", async () => {
-    authState.current = { status: "out", clientId: "cid", user: null };
-    host = document.createElement("div");
-    document.body.appendChild(host);
-    root = createRoot(host);
-    await act(async () => { root.render(<MePage section="stats" onBack={() => {}} />); });
-    await settle();
-    expect(document.querySelector(".guest-name-sheet")).toBeNull();
-    act(() => rowNamed("Edit name").click());
-    const input = document.querySelector<HTMLInputElement>(".guest-name-sheet input")!;
-    expect(input.value).toBe("Gentle Tractor");
-    act(() => document.querySelector<HTMLButtonElement>(".guest-name-sheet .btn.gold")!.click());
-    expect(guestName.getSnapshot().editing).toBe(false);
   });
 
   it("a guest who opens Me before Play gets a name, not a blank", async () => {

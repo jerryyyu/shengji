@@ -65,7 +65,7 @@ function SignInToRank({ clientId }: { clientId: string }) {
  *  the last board shown at once while a fresh one loads. The board carries
  *  the viewer's own row, so it is cached per viewer and reloads when the
  *  viewer changes. */
-export default function Leaderboard({ onBack }: { onBack?: () => void }) {
+export default function Leaderboard() {
   useScreen("leaderboard");
   const account = useAuth();
   const [period, setPeriodState] = useState<Period>(tabMemory.period);
@@ -107,8 +107,7 @@ export default function Leaderboard({ onBack }: { onBack?: () => void }) {
   if (signIn) pinned = null;
 
   return (
-    <LargeTitlePage className="lb-page" scroller={scroller} title="Leaderboard" phone={phone} onRefresh={reload}
-                    before={onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}>
+    <LargeTitlePage className="lb-page" scroller={scroller} title="Leaderboard" phone={phone} onRefresh={reload}>
       <Segmented label="Period" options={PERIODS} value={period} onChange={setPeriod} />
       {body}
       {signIn}

@@ -2,8 +2,8 @@
 /// <reference types="node" />
 // Guards the top bar's fit while searching, which jsdom cannot lay out: the
 // side columns never shrink below their content, the groups keep 8px apart,
-// and a narrow bar collapses the search pill to its time, then drops the
-// account chip's name and rating.
+// and a narrow bar keeps the Your table pill whole by dropping the account
+// chip's name, then its rating.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -42,11 +42,10 @@ describe("the top bar while searching", () => {
     expect(decls(".account-pill-name")).toContain("text-overflow: ellipsis");
   });
 
-  it("collapses the pill to its time below 1200px, still 44px, then drops the name and rating", () => {
-    expect(decls(".q-pill")).toContain("height: 44px");
-    expect(decls(".topbar .q-pill-label", "(max-width: 1199px)")).toContain("display: none");
-    expect(decls(".topbar .q-pill", "(max-width: 1199px)")).toContain("min-width: 44px");
-    expect(decls(".topbar:has(.q-pill) .account-pill-name", "(max-width: 959px)")).toContain("display: none");
-    expect(decls(".topbar:has(.q-pill) .account-pill-rating", "(max-width: 767px)")).toContain("display: none");
+  it("keeps the Your table pill whole, 40px, and drops the account chip's name, then its rating", () => {
+    expect(decls(".table-pill")).toContain("height: 40px");
+    expect(decls(".table-pill")).toContain("white-space: nowrap");
+    expect(decls(".topbar:has(.table-pill) .account-pill-name", "(max-width: 1199px)")).toContain("display: none");
+    expect(decls(".topbar:has(.table-pill) .account-pill-rating", "(max-width: 959px)")).toContain("display: none");
   });
 });

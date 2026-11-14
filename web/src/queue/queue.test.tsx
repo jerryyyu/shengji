@@ -438,42 +438,59 @@ describe("your own table", () => {
     expect(button("Wait for people", p)).toBeUndefined();
   });
 
-  it("on other tabs a phone keeps a one-line strip back to Play: the bots' countdown ring, amber in the last ten seconds", async () => {
+  it("on other tabs a phone's title row holds the Your table pill: the bots' countdown ring, amber in the last ten seconds", async () => {
     await renderApp();
     fakeClock();
     say(queued());
-    expect(q(".q-bar")).toBeNull();                        // on Play the panel is the table
+    expect(q(".table-pill")).toBeNull();                   // on Play the panel is the table
     const { openTab } = await import("../home/route");
     act(() => openTab("leaderboard"));
-    const bar = q(".q-bar")!;
-    expect(bar.parentElement?.className).toContain("home-narrow");
-    expect(bar.querySelector(".q-bar-title")?.textContent).toBe("Your table");
+    const pill = () => q(".large-title-row .table-pill");
+    expect(pill()?.previousElementSibling?.textContent).toBe("Leaderboard");
+    expect(pill()?.querySelector(".table-pill-label")?.textContent).toBe("Your table");
     // the bots' countdown, never the time waited
-    const ring = () => q(".q-bar .q-bar-time .timer-ring");
+    const ring = () => q(".table-pill .timer-ring");
     expect(ring()?.textContent).toBe("60");
     expect(ring()?.getAttribute("style")).toContain("--ring-deg: 360deg");
     tick(49_000);
     expect(ring()?.textContent).toBe("11");
     expect(ring()?.className).not.toContain("low");
-    expect(q(".q-bar")?.className).not.toContain("warn");
+    expect(pill()?.className).not.toContain("warn");
     tick(1_000);
     expect(ring()?.textContent).toBe("10");
     expect(ring()?.className).toContain("low");
-    expect(q(".q-bar")?.className).toContain("warn");
-    // notices are lifted over the strip while it shows
-    expect(document.documentElement.style.getPropertyValue("--q-bar-clear")).toMatch(/^\d+px$/);
-    click(q(".q-bar-go"));
-    expect(q(".q-bar")).toBeNull();
+    expect(pill()?.className).toContain("warn");
+    click(pill());
+    expect(q(".table-pill")).toBeNull();
     expect(panel()).not.toBeNull();
   });
 
-  it("on a desktop or an iPad the panel is in the Ranked card's place with the mini table, and a pill elsewhere", async () => {
+  it("waiting for people, the pill is the dot and words with no ring", async () => {
+    await renderApp();
+    say(queued({ bots_at: null, wait_players: true }));
+    const { openTab } = await import("../home/route");
+    act(() => openTab("me", "stats"));
+    expect(q(".table-pill")?.textContent).toBe("Your table");
+    expect(q(".table-pill .timer-ring")).toBeNull();
+  });
+
+  it("nothing shows on another tab when you sit nowhere", async () => {
+    await renderApp();
+    const { openTab } = await import("../home/route");
+    for (const go of [() => openTab("leaderboard"), () => openTab("me", "stats")]) {
+      act(go);
+      expect(q(".table-pill")).toBeNull();
+    }
+    viewport(true);
+    act(() => openTab("leaderboard"));
+    expect(q(".table-pill")).toBeNull();
+  });
+
+  it("on a desktop or an iPad the panel is in the Ranked card's place with the mini table, and the pill in the top bar elsewhere", async () => {
     viewport(true);
     await renderApp();
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
-    expect(q(".q-bar")).toBeNull();
-    expect(q(".q-strip")).toBeNull();
-    expect(q(".q-pill")).toBeNull();
+    expect(q(".table-pill")).toBeNull();
     const p = panel()!;
     expect(p.className).toContain("tp-wide");
     expect(p.querySelector(".seat-clock .tp-seat.pos-bottom")?.getAttribute("aria-label")).toBe("You, your team");
@@ -483,32 +500,30 @@ describe("your own table", () => {
     const { openTab } = await import("../home/route");
     for (const go of [() => openTab("leaderboard"), () => openTab("me", "stats"), () => openTab("me", "games")]) {
       act(go);
-      const pill = q(".topbar .topbar-end .q-pill")!;
+      const pill = q(".topbar .topbar-end .table-pill")!;
       // the bots' countdown, 36 s left, not the 24 s waited
       expect(pill.querySelector(".timer-ring")?.textContent).toBe("36");
-      // a narrow top bar hides this label and keeps the ring (topBarFitCss.test.ts)
-      expect(pill.querySelector(".q-pill-label")?.textContent).toBe("Your table");
+      expect(pill.querySelector(".table-pill-label")?.textContent).toBe("Your table");
       expect(pill.nextElementSibling?.className).toContain("account-pill");
-      expect(q(".q-strip")).toBeNull();
+      expect(document.querySelectorAll(".table-pill")).toHaveLength(1);
     }
-    click(q(".q-pill"));
+    click(q(".table-pill"));
     expect(window.location.hash).toBe("");
-    expect(q(".q-pill")).toBeNull();
+    expect(q(".table-pill")).toBeNull();
     expect(panel()).not.toBeNull();
   });
 
-  it("a phone held sideways: the panel on Play, the strip under the top bar elsewhere", async () => {
+  it("a phone held sideways: the panel on Play, the same pill in the top bar elsewhere", async () => {
     viewport(false, true);
     await renderApp();
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
     expect(panel()?.className).not.toContain("tp-wide");
-    expect(q(".q-strip")).toBeNull();
+    expect(q(".table-pill")).toBeNull();
     const { openTab } = await import("../home/route");
     act(() => openTab("leaderboard"));
-    expect(q(".q-strip .q-chip .q-chip-text")?.textContent).toBe("Your table");
-    expect(q(".q-strip .q-chip .timer-ring")?.textContent).toBe("36");
-    expect(q(".q-pill")).toBeNull();
-    expect(q(".q-bar")).toBeNull();
+    expect(q(".topbar .topbar-end .table-pill .table-pill-label")?.textContent).toBe("Your table");
+    expect(q(".topbar .table-pill .timer-ring")?.textContent).toBe("36");
+    expect(document.querySelectorAll(".table-pill")).toHaveLength(1);
   });
 });
 
@@ -1399,13 +1414,13 @@ describe("open tables", () => {
     expect(button(/table has a seat/)).toBeUndefined();
   });
 
-  it("on another tab the strip says a table has a seat and opens Play", async () => {
+  it("on another tab while a table is offered, the pill says Your table and opens Play", async () => {
     await open();
     tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
     const { openTab } = await import("../home/route");
     act(() => openTab("leaderboard"));
-    expect(q(".q-bar")?.textContent).toBe("Table with a seatJoin");
-    click(q(".q-bar-go"));
+    expect(q(".table-pill")?.textContent).toBe("Your table");
+    click(q(".table-pill"));
     expect(panel()?.classList.contains("tp-join")).toBe(true);
   });
 

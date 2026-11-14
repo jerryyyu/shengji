@@ -1,16 +1,16 @@
-import type { RoomSeats, ServerMsg } from "../protocol";
+import type { RoomMsg, ServerMsg } from "../protocol";
 import { openHowto } from "../howto/route";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getResumeToken, getSavedName } from "../ws";
 import { createRoomPayload } from "../testPolicy";
-import { needsSeatPicker } from "../seatPicker";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
 import GuestChip, { GuestNameSheet } from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
 import { RankedSection, TrophyIcon } from "../queue/Ranked";
+import { useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
 import { codes, useCodes } from "../codeJoin";
@@ -19,8 +19,14 @@ import { normalizeCode } from "../codes";
 interface LobbyProps {
   status: ConnStatus;
   error: string | null;
-  /** Arm App's fill-with-bots-then-start orchestration before creating a room. */
-  onArmAutoFill: () => void;
+  /** The room this socket sits in before its game: its panel takes Play's place. */
+  room?: RoomMsg | null;
+  /** A room link waits while App asks whether to leave the table you sit at. */
+  holdInvite?: boolean;
+  /** A room link opened while you sit at a table: App asks to leave it first. */
+  onSeatedInvite?: (code: string) => void;
+  /** Counts the times that question was answered Stay: the link is dropped. */
+  inviteDropped?: number;
 }
 
 /** After this long without a connection the Play tab shows its offline state. */
@@ -40,10 +46,10 @@ function useStalled(status: ConnStatus): boolean {
 }
 
 /** A start request the server has not answered yet. */
-type Starting = { kind: "bots" | "create" | "join"; generation: number };
+type Starting = { kind: "create" | "join"; generation: number };
 /** If neither a room nor an error has come back by then, the buttons wake up again. */
 export const START_TIMEOUT_MS = 15000;
-const STARTING_LABEL: Record<Starting["kind"], string> = { bots: "Starting…", create: "Creating…", join: "Joining…" };
+const STARTING_LABEL: Record<Starting["kind"], string> = { create: "Creating…", join: "Joining…" };
 
 /** The Ranked block while the server cannot say whether sign-in exists:
  *  Play and Duo in their places, unavailable. */
@@ -60,9 +66,10 @@ function RankedUnavailable() {
   );
 }
 
-export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
+export default function Lobby({ status, error, room = null, holdInvite = false,
+                                onSeatedInvite, inviteDropped = 0 }: LobbyProps) {
   const stalled = useStalled(status);
-  // Play vs bots, Create room and Join each send one request and then wait:
+  // The test room's Create and Join each send one request and then wait:
   // the button says so at once and every start button holds until the room
   // arrives (the lobby goes away), an error comes back, the connection the
   // request went out on is replaced, or START_TIMEOUT_MS passes. Any of the
@@ -107,7 +114,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     autoFilled.current = true;
     if (!name.trim() && !getSavedName().trim()) guestName.fill(randomName());
   }, [account.status, name]);
-  const nameId = useId();
   // Only a guest's own name is remembered; an account name lives on the account.
   const rememberName = useCallback((trimmed: string) => {
     if (!signedIn && trimmed) guestName.keep(trimmed);
@@ -130,10 +136,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // A Play-box or link lookup still waiting for its answer holds Join.
   const looking = codeView.pending !== null && codeView.pending.from !== "pair";
   const autoJoined = useRef(false);
-  const lastPeek = useRef<string | null>(null);
   const peekGen = useRef<number | null>(null);
-  // Mid-game joins pick their seat: partner choice matters (0&2 vs 1&3).
-  const [seatChoice, setSeatChoice] = useState<RoomSeats | null>(null);
   // A ranked table's invite that cannot be taken here: no bot seat is left.
   // Guests take a ranked table's seats as accounts do, unrated.
   const [tableFull, setTableFull] = useState(false);
@@ -149,7 +152,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     const trimmed = playerName;
     rememberName(trimmed);
     clearInvite();
-    setSeatChoice(null);
     const token = getResumeToken();
     if (conn.send({ type: "join_room", room: target, name: trimmed, seat,
                     ...(token ? { token } : {}) })) {
@@ -162,7 +164,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     // Ignore anything answering a transaction from a previous socket.
     if (peekGen.current !== null && peekGen.current !== conn.generation) {
       peekGen.current = null;
-      setSeatChoice(null);
       return;
     }
     // a code that named a pair or nothing: the box is free again
@@ -178,30 +179,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
         clearInvite();
         return;
       }
-      if (needsSeatPicker(m.seats)) {
-        setStarting(null);                 // the answer is a choice to make
-        setSeatChoice(m);
-      } else {
-        joinSeat(undefined, m.room);       // nothing to choose
-      }
+      // the server seats you: a lobby's next seat (move in the panel), or a
+      // game's first bot seat
+      joinSeat(undefined, m.room);
       return;
     }
-    // Someone took the seat between our peek and our join: reopen the
-    // picker with fresh occupancy rather than leaving a dead-end toast.
-    if (m?.type === "error"
-        && (m.code === "seat_unavailable" || m.code === "choose_seat")
-        && lastPeek.current) {
-      conn.send({ type: "peek_room", room: lastPeek.current });
-    }
-    if (m?.type === "error" && m.code === "table_full") {
-      setSeatChoice(null);
-      setTableFull(true);
-    }
-    // this device already sits at the table, or the table takes its players
-    // from the queue only: App says so, and the picker has nothing to offer
-    if (m?.type === "error" && (m.code === "same_device" || m.code === "ranked_queue_only")) {
-      setSeatChoice(null);
-    }
+    if (m?.type === "error" && m.code === "table_full") setTableFull(true);
     // An invite that went nowhere leaves the page on Play, saying why; the
     // server's own words do for the rest (full, one device, ranked).
     if (m?.type === "error" && inviting.current) {
@@ -212,7 +195,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     }
   }), [joinSeat]);
 
-  // An empty name never blocks a start: Play vs bots, Create room and Join
+  // An empty name never blocks a start: the test room's Create and Join
   // each fill the field with a random name and go, the same as the dice.
   const ready = status === "open" && starting === null;
   const testReady = !w32Selected || testAccessKey.trim().length > 0;
@@ -234,18 +217,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     if (conn.send(payload)) begin("create");
   };
 
-  const playBots = () => {
-    if (!ready || !testReady) return;
-    const trimmed = nameOrRandom();
-    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
-    if (!payload) return;
-    rememberName(trimmed);
-    clearSavedRoom();
-    onArmAutoFill();
-    if (conn.send(payload)) begin("bots");
-  };
-
-
   // Drop the invite param once the user acts: otherwise a stale ?room=
   // keeps steering later flows (including starting a fresh game) and the
   // name field looks "stuck" on whatever the link implied.
@@ -258,7 +229,6 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   // Ask who's sitting where first; the subscriber shows a picker when
   // needsSeatPicker() says so, otherwise joins straight through.
   const peek = useCallback((code: string) => {
-    lastPeek.current = code;
     peekGen.current = conn.generation;   // this transaction belongs to this socket
     if (conn.send({ type: "peek_room", room: code })) {
       setStarting({ kind: "join", generation: conn.generation });
@@ -298,8 +268,23 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
   const nameAsked = useRef(false);
   const accountKnown = account.status !== "loading";
   useEffect(() => {
+    if (inviteDropped === 0) return;
+    autoJoined.current = true;
+    setLinkRoom(null);
+  }, [inviteDropped]);
+  // Sitting at a table already (a room here, or the queue's) the link waits
+  // for App's leave-first question; once that table is left, it goes on.
+  const queued = useQueue().queued;
+  const seated = room !== null || queued;
+  useEffect(() => {
     if (autoJoined.current || status !== "open" || !invited || invited.length !== 4) return;
     const code = invited.toUpperCase();
+    if (holdInvite) return;
+    if (seated) {
+      if (room?.room !== code) onSeatedInvite?.(code);
+      else clearInvite();
+      return;
+    }
     if (invitedName && invitedName.trim()) {
       autoJoined.current = true;
       const joinAs = signedIn ? accountName : invitedName.trim();
@@ -322,7 +307,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     setInviteError(null);
     peek(code);
   }, [status, invited, invitedName, signedIn, accountName, accountKnown, hadName, editing,
-      playerName, peek]);
+      playerName, peek, holdInvite, seated, room, onSeatedInvite]);
 
   if (tableFull) {
     return (
@@ -336,80 +321,21 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
     );
   }
 
-  if (seatChoice) {
-    const you = playerName || "You";
-    const ranked = seatChoice.ranked === true;
-    return (
-      <div className="screen lobby-screen">
-        <div className="lobby-card">
-          <h2>Take a seat in {seatChoice.room}</h2>
-          {ranked ? (
-            <p className="seat-hint">
-              Ranked game in progress · first round is unranked. Pick a bot&rsquo;s
-              seat; you take it after the current trick.
-            </p>
-          ) : (
-            <p className="seat-hint">
-              Game in progress — pick a seat to take. Seats 0 &amp; 2 are one
-              team, 1 &amp; 3 the other. A seat whose player has gone offline can
-              be taken over too; a bot is playing it in the meantime.
-            </p>
-          )}
-          <div className="seat-grid">
-            {seatChoice.seats.map((sd: RoomSeats["seats"][number]) => (
-              <button
-                key={sd.seat}
-                className={"seat-option team" + sd.team + (sd.claimable ? "" : " taken")}
-                disabled={!sd.claimable || starting !== null}
-                onClick={() => joinSeat(sd.seat)}
-              >
-                <span className="seat-num">Seat {sd.seat}</span>
-                <span className="seat-who">
-                  {sd.is_bot ? `${sd.name} (bot)`
-                    : sd.connected ? sd.name
-                    : sd.reserved_secs != null
-                      ? `${sd.name} (held ${Math.ceil(sd.reserved_secs)}s)`
-                      : `${sd.name} (offline)`}
-                </span>
-                <span className="seat-team">Team {sd.team === 0 ? "A" : "B"}</span>
-                {sd.claimable && (
-                  <span className="seat-take">
-                    {sd.is_bot ? `${you} sits here` : `${you} takes over`}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-          <button className="btn" onClick={() => setSeatChoice(null)}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  const botsReady = ready && testReady;
-  const botsLabel = starting?.kind === "bots" ? STARTING_LABEL.bots : "Play bots";
-  const createLabel = starting?.kind === "create" ? STARTING_LABEL.create : "Create room";
-  const casual = (
-    <section className="play-section" aria-labelledby={`${nameId}-casual`}>
-      <h2 className="play-label" id={`${nameId}-casual`}>Casual</h2>
-      <ul className="grp play-grp">
-        <li>
-          <button type="button" className="grp-row" disabled={!ready || !testReady} onClick={create}
-                  aria-busy={starting?.kind === "create" || undefined}>
-            <span className="grp-label">{createLabel}</span><span className="grp-value chev" />
-          </button>
-        </li>
-        <li>
-          <button type="button" className="grp-row" disabled={!botsReady} onClick={playBots}
-                  aria-busy={starting?.kind === "bots" || undefined}>
-            <span className="grp-label">{botsLabel}</span><span className="grp-value chev" />
-          </button>
-        </li>
-      </ul>
-    </section>
-  );
-  const ranked = account.status === "error"
-    ? <RankedUnavailable /> : <RankedSection online={status === "open"} />;
+  // The test controls' room: a created room for the W32 policy, reached
+  // only from ?test_shortlist=1. Every other table comes from Play.
+  const createLabel = starting?.kind === "create" ? STARTING_LABEL.create : "Create test room";
+  const testRoom = testControlsVisible ? (
+    <ul className="grp play-grp">
+      <li>
+        <button type="button" className="grp-row" disabled={!ready || !testReady} onClick={create}
+                aria-busy={starting?.kind === "create" || undefined}>
+          <span className="grp-label">{createLabel}</span><span className="grp-value chev" />
+        </button>
+      </li>
+    </ul>
+  ) : null;
+  const ranked = account.status === "error" && !room
+    ? <RankedUnavailable /> : <RankedSection online={status === "open"} room={room} />;
 
   return (
     <div className={`screen lobby-screen play-tab${stalled ? " play-offline" : ""}`}>
@@ -455,12 +381,12 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
 
         {/* With no connection Play plays on this device, and what needs the
             server waits; the chip, How to play and an open sheet stay put. */}
-        {stalled ? <OfflineControls local={false} status={status} /> : (
+        {stalled && !room ? <OfflineControls local={false} status={status} /> : (
           <>
             {ranked}
-            {casual}
+            {testRoom}
 
-            <div className="join-row">
+            {room ? null : <div className="join-row">
               <input
                 className="room-input"
                 value={roomCode}
@@ -489,7 +415,7 @@ export default function Lobby({ status, error, onArmAutoFill }: LobbyProps) {
               >
                 {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
               </button>
-            </div>
+            </div>}
             {/* a code that names nothing answers the Join tap, so it is said where the code was typed */}
             {codeView.playError ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
           </>

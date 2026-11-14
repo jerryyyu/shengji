@@ -12,6 +12,8 @@ interface LeaveSheetProps {
   onLeave: () => void;
   /** Closes the sheet without leaving: Stay, Escape. */
   onStay: () => void;
+  /** The question in place of the context's own, e.g. a link to another table. */
+  title?: string;
 }
 
 /** The one confirm every leave goes through: a title, one line of what
@@ -21,14 +23,16 @@ interface LeaveSheetProps {
  *  bottom of a phone; at the table it is a centred card that leaves the
  *  cards in view. Opened from a tap or click, that first focus paints no
  *  ring; the ring returns with the first key pressed inside it. */
-export default function LeaveSheet({ context, onLeave, onStay }: LeaveSheetProps) {
+export default function LeaveSheet({ context, onLeave, onStay, title: ask }: LeaveSheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const stayRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const lineId = useId();
   // read once: the sheet keeps the line it opened with while it is up
   const [joined] = useState(inJoinedRound);
-  const { title, line } = leaveCopy(context, joined);
+  const copy = leaveCopy(context, joined);
+  const title = ask ?? copy.title;
+  const line = copy.line;
   const [pointerOpen, setPointerOpen] = useState(() => lastInputModality() === "pointer");
   const place = context.kind === "game" ? "card" : "bottom";
 

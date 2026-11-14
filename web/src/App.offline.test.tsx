@@ -98,7 +98,7 @@ it("in the app with no network at launch, Play shows its offline state and deals
   await until(() => host.querySelector(".play-offline") !== null);
   expectOfflinePlayTab();
   await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
-  expect(host.querySelector(".table-screen, .room-screen")).toBeNull();
+  expect(host.querySelector(".table-screen, .tp-room")).toBeNull();
   expect(panel()).toBeNull();
   expect(assign).not.toHaveBeenCalled();
 });
@@ -113,7 +113,7 @@ it("Play opens your table with three bots, marked Offline, and Start deals under
   expect(panel()!.querySelector(".tp-title")!.textContent).toBe("You and 3 bots");
   expect(panel()!.querySelectorAll(".tp-seat.bot").length).toBe(3);
   await startGame();
-  expect(host.querySelector(".lobby-screen, .room-screen")).toBeNull();
+  expect(host.querySelector(".lobby-screen, .tp-room")).toBeNull();
   expect(host.querySelector(".hud-bar .mode-chip")!.textContent).toBe("Offline");
   expect(host.textContent).toContain("Cheerful Tractor");
   expect(host.querySelectorAll(".opponent").length).toBe(3);

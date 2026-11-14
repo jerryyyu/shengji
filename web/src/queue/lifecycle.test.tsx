@@ -125,7 +125,7 @@ it("a lost join reply recovers after reconnect without server entry", async () =
   await renderApp();
   fakeClock();
   click(findBtn());
-  expect(lastSent()).toEqual({type:"queue_join"});
+  expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
   act(() => ws().close());
   tick(2000);
   act(() => ws().onopen?.());
@@ -155,7 +155,7 @@ it("the next account's pair action carries no stale party id", async () => {
   await act(async () => { auth.signedIn({name:"Other User",email:"other@example.invalid",picture:null,display_name:null,name_shown:"Other"}); });
   act(() => ws().onopen?.());
   click(findBtn());
-  expect(lastSent()).toEqual({ type: "queue_join" });
+  expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
   expect(q(".q-party-chip")).toBeNull();
 });
 

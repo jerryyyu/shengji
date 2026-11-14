@@ -116,7 +116,7 @@ describe("the app's edge swipe back", () => {
     act(() => ws.deliver({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2",
                            players: [{ seat: 0, name: "Me", is_bot: false, connected: true }] }));
     await flush();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(gesture).toEqual([true, false, true, false, true]);
   });
 

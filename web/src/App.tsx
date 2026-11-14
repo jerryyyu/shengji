@@ -7,7 +7,8 @@ import { OFFLINE, clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRo
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
 import { auth } from "./auth";
 import Lobby from "./components/Lobby";
-import Room from "./components/Room";
+import LeaveSheet from "./components/LeaveSheet";
+import type { LeaveContext } from "./components/leaveCopy";
 import Table from "./components/Table";
 import GamesList from "./components/GamesList";
 import { useGamesRoute } from "./replay/route";
@@ -28,17 +29,49 @@ import type { Toast } from "./toast";
 import ToastView from "./components/ToastView";
 import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
+import { othersAt, queue, useQueue } from "./queue/store";
 import { firstJoinerText } from "./queue/tableText";
 import { askRoomLeave, useRoomBack } from "./roomBack";
 
 // Offline play (no game server): its Play tab loads with the local server.
 const OfflineHome = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineHome })));
 
+/** Drop a room link from the address once its question is answered Stay,
+ *  so the lobby does not take it up later. */
+function dropRoomLink(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("room") && !params.has("name")) return;
+  params.delete("room");
+  params.delete("name");
+  const rest = params.toString();
+  window.history.replaceState(window.history.state, "",
+    `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
+}
+
+/** What leaving the seat you hold costs, for the sheet a link to another
+ *  table opens: the game in play, the room before its game, or the Play table. */
+function linkLeaveContext(game: GameState | null, room: RoomMsg | null, others: string[]): LeaveContext {
+  if (game) return { kind: "game", ranked: !!(game.ranked || game.matched), guest: game.guest === true,
+                     betweenRounds: game.phase === "round_end" };
+  if (room) {
+    const staying = room.players.filter((p) => !p.is_bot && p.seat !== room.you)
+      .sort((a, b) => a.seat - b.seat).map((p) => p.name);
+    return { kind: "room", others: staying, host: room.you === room.host };
+  }
+  return { kind: "queue", others };
+}
+
 export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  // A room link opened while this socket sits at another table: the code,
+  // held until the player says whether to leave that table first.
+  const [linkPrompt, setLinkPrompt] = useState<string | null>(null);
+  const [linkDropped, setLinkDropped] = useState(0);
+  // Leave was tapped: the question goes, and the link waits for the seat to go.
+  const [linkLeaving, setLinkLeaving] = useState(false);
   const toastTimer = useRef<number | null>(null);
   // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
   // each lobby `room` message advances the fill-with-bots-then-start chain.
@@ -76,6 +109,9 @@ export default function App() {
         clearSavedRoom();
         setRoom(null);
         conn.clearChat();   // next room starts with an empty log
+        // the table the question was about is gone: the link goes ahead
+        setLinkPrompt(null);
+        setLinkLeaving(false);
       }
       setGame(null);
       seededRef.current = false;
@@ -91,9 +127,16 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       // a ?code= link may name a room, so it outranks a saved room as ?room= does
       const inviteRoom = params.get("room") ?? params.get("code");
+      // A link to another room while this device holds a seat goes back to
+      // that seat first and asks before leaving it. A ?code= may name a pair,
+      // so only ?room= is known to be a room before its lookup.
+      const linkRoom = params.get("room")?.toUpperCase() ?? null;
+      const saved = getSavedRoom()?.toUpperCase() ?? null;
+      const elsewhere = linkRoom !== null && linkRoom.length === 4 && saved !== null && saved !== linkRoom;
+      if (elsewhere) setLinkPrompt(linkRoom);
       const intent = decideIntent({
-        invite: inviteRoom ? { room: inviteRoom,
-                               name: params.get("name") ?? undefined } : null,
+        invite: inviteRoom && !elsewhere ? { room: inviteRoom,
+                                             name: params.get("name") ?? undefined } : null,
         savedRoom: getSavedRoom(),
         // A signed-in player keeps no name on the device, and a socket that
         // has just signed out must still ask for its seat back, so the server
@@ -233,7 +276,15 @@ export default function App() {
   useEffect(() => { prewarmAudio(); }, []);
 
   const inRoom = room !== null || game !== null;
-  // back (or the edge swipe) from the room screen asks to leave, as its Leave does
+  const q = useQueue();
+  const seatedAnywhere = inRoom || q.queued;
+  useEffect(() => {
+    if (linkLeaving && !seatedAnywhere) {
+      setLinkLeaving(false);
+      setLinkPrompt(null);
+    }
+  }, [linkLeaving, seatedAnywhere]);
+  // back (or the edge swipe) from the room panel asks to leave, as its Leave does
   const roomShowing =
     room !== null && game === null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
   useRoomBack(roomShowing, askRoomLeave);
@@ -248,21 +299,24 @@ export default function App() {
     }, status === "open" && !inRoom);
     return () => setContinueHandler(null, false);
   }, [status, inRoom]);
-  // Over a room or a game the tabs' pages show without the tab bars and
-  // with a way back; at home the bars frame them.
-  const backToGame = inRoom ? () => openTab("play") : undefined;
+  // Over a game the tabs' pages show without the tab bars and with a way
+  // back; at home, and at a room before its game (its panel is on Play),
+  // the bars frame them.
+  const backToGame = game !== null ? () => openTab("play") : undefined;
   const tabPage = homeRoute === null ? null
     : homeRoute.tab === "leaderboard" ? <Leaderboard onBack={backToGame} />
     : <MePage section={homeRoute.section} onBack={backToGame} />;
 
   let screen: ReactNode;
+  // the Play tab's lobby shows the toast in its own error line
+  let lobbyShown = false;
   if (infoRoute) {
     screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
   } else if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
   } else if (gamesRoute) {
     screen = <GamesList route={gamesRoute} />;
-  } else if (homeRoute && inRoom) {
+  } else if (homeRoute && game) {
     screen = tabPage;
   } else if (homeRoute) {
     screen = (
@@ -281,18 +335,12 @@ export default function App() {
                      onArmAutoFill={() => { autoFill.current = true; }} />
       </Suspense>
     );
-  } else if (room) {
-    screen = <Room room={room} />;
   } else {
+    lobbyShown = true;
     screen = (
       <HomeShell active="play">
-        <Lobby
-          status={status}
-          error={toast?.text ?? null}
-          onArmAutoFill={() => {
-            autoFill.current = true;
-          }}
-        />
+        <Lobby status={status} error={toast?.text ?? null} room={room} holdInvite={linkPrompt !== null}
+               onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped} />
       </HomeShell>
     );
   }
@@ -301,7 +349,21 @@ export default function App() {
     <div className={`app${rotated ? " rotated" : ""}${OFFLINE ? " offline" : ""}`}>
       {screen}
       {OFFLINE && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
-      {toast && inRoom && !atTable ? <ToastView key={toast.id} toast={toast} /> : null}
+      {toast && inRoom && !atTable && !lobbyShown ? <ToastView key={toast.id} toast={toast} /> : null}
+      {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
+        // a link to another table while seated: the leave sheet, asked about the link
+        <LeaveSheet context={linkLeaveContext(game, room, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}
+                    onLeave={() => {
+                      if (room === null && game === null) queue.leave();
+                      else conn.send({ type: "leave_room" });
+                      setLinkLeaving(true);
+                    }}
+                    onStay={() => {
+                      setLinkPrompt(null);
+                      setLinkDropped((n) => n + 1);
+                      dropRoomLink();
+                    }} />
+      ) : null}
       <QueueLayer status={status} />
     </div>
   );

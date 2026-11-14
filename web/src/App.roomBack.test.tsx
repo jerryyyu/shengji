@@ -102,7 +102,7 @@ describe("back from the room screen", () => {
     const ws = await mountFromMe();
     act(() => ws.deliver(roomMsg));
     await flush();
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
     const before = ws.sent.length;
 
     await back();
@@ -117,7 +117,7 @@ describe("back from the room screen", () => {
     expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Back to game")).toBe(false);
     act(() => ws.deliver({ type: "left" }));
     await flush();
-    expect(host.querySelector(".room-screen")).toBeNull();
+    expect(host.querySelector(".tp-room")).toBeNull();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
   });
 
@@ -172,13 +172,13 @@ describe("back from the room screen", () => {
     const { openTab } = await import("./home/route");
     act(() => openTab("leaderboard"));
     await flush();
-    expect(host.querySelector(".room-screen")).toBeNull();
+    expect(host.querySelector(".tp-room")).toBeNull();
     const before = ws.sent.length;
 
     await back();
 
     expect(ws.sent.slice(before)).toEqual([]);
-    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".tp-room")).not.toBeNull();
   });
 
   it("does not leave a game in progress", async () => {

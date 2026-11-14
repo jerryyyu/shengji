@@ -133,25 +133,26 @@ function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Recor
 
 describe("Play", () => {
   const lobby = () => q(".lobby-panel")!;
-  it("signed in: Ranked first with a gold Play and Duo, then Casual; no Find a game", async () => {
+  it("signed in: Ranked / Casual above a gold Play and Duo; no Find a game, Create room or Play bots", async () => {
     await renderApp();
-    const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Ranked", "Casual"]);
+    const modes = [...lobby().querySelectorAll(".play-mode button")].map((b) => b.textContent);
+    expect(modes).toEqual(["Ranked", "Casual"]);
+    expect(lobby().querySelector(".play-label")).toBeNull();
     expect(findBtn().textContent).toBe("Play");
     expect(findBtn().className).toContain("gold");
     say({ type: "queue_count", count: 3 });
     expect(findBtn().textContent).toBe("Play");          // no count under the button
     expect(button("Duo", lobby())).toBeDefined();
     expect(button(/Find a game/)).toBeUndefined();
-    expect(button("Create room", lobby())).toBeDefined();
-    expect(button("Play bots", lobby())).toBeDefined();
+    expect(button(/Create room/, lobby())).toBeUndefined();
+    expect(button(/Play bots/, lobby())).toBeUndefined();
     expect(q("input[aria-label='Room or duo code']")).not.toBeNull();
   });
 
   it("Play joins the ranked queue at once, with no sheet", async () => {
     await renderApp();
     click(findBtn());
-    expect(lastSent()).toEqual({ type: "queue_join" });
+    expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
     expect(q(".q-sheet")).toBeNull();
     // waiting for the server's word: Play holds, and nothing else says searching
     expect(findBtn().textContent).toBe("Play");
@@ -167,19 +168,19 @@ describe("Play", () => {
     expect(q(".q-sheet .ranked-chip")?.textContent).toBe("Ranked");
   });
 
-  it("a guest: Play and Duo with no Ranked heading, the guest line, and Play bots as a Casual row", async () => {
+  it("a guest: both modes, Play and Duo, the guest line, and no Play bots or Create room", async () => {
     signedIn = false;
     await renderApp();
-    const labels = [...lobby().querySelectorAll(".play-label")].map((h) => h.textContent);
-    expect(labels).toEqual(["Casual"]);
+    const modes = [...lobby().querySelectorAll(".play-mode button")].map((b) => b.textContent);
+    expect(modes).toEqual(["Ranked", "Casual"]);
     expect(document.body.textContent).not.toContain("Sign in to play ranked");
     expect(q(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
-    const bots = button("Play bots", lobby())!;
-    expect(bots.className).toContain("grp-row");
+    expect(button(/Play bots/, lobby())).toBeUndefined();
+    expect(button(/Create room/, lobby())).toBeUndefined();
     // Play queues a guest exactly as it does an account, with the chip's name
     const name = q(".lobby-panel .guest-pill .account-pill-name")!.textContent;
     click(button("Play", lobby())!);
-    expect(lastSent()).toEqual({ type: "queue_join", name });
+    expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked", name });
     expect(localStorage.getItem("shengji.name")).toBe(name);
     say(queued());
     expect(q(".q-find")).toBeNull();
@@ -204,7 +205,7 @@ describe("Play", () => {
   it("an account's queue messages carry no name", async () => {
     await renderApp();
     click(button("Play", lobby())!);
-    expect(lastSent()).toEqual({ type: "queue_join" });
+    expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
   });
 
   it("a guest who signs in mid-search starts over: the search is cleared and Play asked for again", async () => {
@@ -250,7 +251,7 @@ describe("Play", () => {
     expect(document.body.textContent).not.toContain("left the table while away");
     expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([]);
     click(findBtn());
-    expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([{ type: "queue_join" }]);
+    expect(fresh.sent.filter((m) => m.type === "queue_join")).toEqual([{ type: "queue_join", mode: "ranked" }]);
     expect(old.sent.slice(oldSent)).toEqual([]);  // nothing more on the guest's socket
     say(queued());
     expect(panel()).not.toBeNull();
@@ -740,7 +741,7 @@ describe("with a friend", () => {
     expect(findBtn().textContent).toBe("Play");
     click(findBtn());          // no sheet: straight into the queue
     expect(q(".q-sheet")).toBeNull();
-    expect(lastSent()).toEqual({ type: "queue_join", party_id: "p1" });
+    expect(lastSent()).toEqual({ type: "queue_join", party_id: "p1", mode: "ranked" });
     fakeClock();
     say(queued({ party_id: "p1" }));
     tick(12_000);
@@ -1045,7 +1046,7 @@ describe("one code for rooms and pairs", () => {
     click(button("Cancel", q(".q-sheet")!));
     say({ type: "room", room: "WXYZ", you: 0, host: 0, start_level: "2",
           players: [{ seat: 0, name: "Jerry", is_bot: false, connected: true }] });
-    click(q(".room-code"));
+    click(button("Invite link", q(".tp-room")!));
     await settle();
     expect(clipboard.at(-1)).toBe(`${window.location.origin}/?code=WXYZ`);
   });
@@ -1468,13 +1469,13 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(lastSent()).toEqual({ type: "peek_room", room: "RANK" });
   };
 
-  it("signed in: the ranked seat picker, then join_room with the seat", async () => {
+  it("signed in: no seat picker, the server seats you at a bot's seat", async () => {
     await open();
     viaPlayBox();
     tell(rankedSeats());
-    expect(document.body.textContent).toContain("Ranked game in progress · first round is unranked");
-    click(button(/Seat 2/));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
+    expect(document.body.textContent).not.toContain("Take a seat");
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK" });
+    expect(lastSent()).not.toHaveProperty("seat");
   });
 
   it("a guest takes a ranked table's seat as an account does", async () => {
@@ -1483,17 +1484,14 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     viaPlayBox();
     tell(rankedSeats());
     expect(q(".ranked-gate")).toBeNull();
-    click(button(/Seat 2/));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK", seat: 2 });
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK" });
   });
 
-  it("same_device closes the seat picker and shows the server's message", async () => {
+  it("same_device shows the server's message", async () => {
     await open();
     viaPlayBox();
     tell(rankedSeats());
-    click(button(/Seat 2/));
     tell({ type: "error", code: "same_device", message: "Someone on this device is already at that table." });
-    expect(document.body.textContent).not.toContain("Take a seat");
     expect(document.body.textContent).toContain("Someone on this device is already at that table.");
   });
 
@@ -1631,7 +1629,7 @@ describe("the search on screen is the server's", () => {
     await pastGuard();
     expect(Boolean(button("Leave table", panel()!))).toBe(leader);
     click(button("Move it here", panel()!));
-    expect(lastSent()).toEqual({ type: "queue_join" });
+    expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
     say({ type: "queue_state", queued: false, count: 1 });
     expect(panel()).toBeNull();
     expect(q(".q-toast")).toBeNull();
@@ -1872,32 +1870,48 @@ describe("the unified table on the client", () => {
   const FAKE_SENT = () => FakeWS.all.flatMap((w) => w.sent);
   const presence = () => q(".play-presence");
 
-  it("the presence line: waiting first, then open tables, else nobody; counts only and not a button", async () => {
+  it("the presence line: waiting first, then open tables split by mode, else nobody; counts only and not a button", async () => {
     await renderApp();
     expect(presence()?.textContent).toBe("Nobody is playing right now");
     expect(presence()?.querySelector(".play-presence-dot")?.getAttribute("aria-hidden")).toBe("true");
     expect(presence()?.closest("button")).toBeNull();
-    say({ type: "presence", tables: 2, playing: 3, waiting: 0 });
-    expect(presence()?.textContent).toBe("2 tables have a seat · 3 people playing");
-    say({ type: "presence", tables: 1, playing: 1, waiting: 0 });
-    expect(presence()?.textContent).toBe("1 table has a seat · 1 person playing");
-    say({ type: "presence", tables: 1, playing: 1, waiting: 1 });
+    say({ type: "presence", tables: 2, playing: 3, waiting: 0, ranked: 2, casual: 0 });
+    expect(presence()?.textContent).toBe("2 ranked tables have a seat · 3 people playing");
+    say({ type: "presence", tables: 1, playing: 1, waiting: 0, ranked: 0, casual: 1 });
+    expect(presence()?.textContent).toBe("1 casual table has a seat · 1 person playing");
+    say({ type: "presence", tables: 3, playing: 5, waiting: 0, ranked: 2, casual: 1 });
+    expect(presence()?.textContent).toBe("3 tables have a seat · 2 ranked, 1 casual · 5 people playing");
+    expect(presence()?.querySelector(".play-presence-hl")?.textContent).toBe("2 ranked");
+    say({ type: "presence", tables: 1, playing: 1, waiting: 1, ranked: 1, casual: 0 });
     expect(presence()?.textContent).toBe("1 person is waiting for a game");
-    say({ type: "presence", tables: 0, playing: 0, waiting: 3 });
+    say({ type: "presence", tables: 0, playing: 0, waiting: 3, ranked: 0, casual: 0 });
     expect(presence()?.textContent).toBe("3 people are waiting for a game");
+    // an older server sends no split
+    say({ type: "presence", tables: 2, playing: 4, waiting: 0 });
+    expect(presence()?.textContent).toBe("2 tables have a seat · 4 people playing");
     say({ type: "presence", tables: 0, playing: 0, waiting: 0 });
-    expect(presence()?.textContent).toMatch(/^Nobody is playing right now/);
+    expect(presence()?.textContent).toBe("Nobody is playing right now");
     // the panel takes Play's place, and the line with it
     say(queued());
     expect(presence()).toBeNull();
   });
 
-  it("a guest sees the same presence line, with no ranked word", async () => {
+  it("the presence line splits by mode only when both have tables, the selected mode's count lit", async () => {
+    await renderApp();
+    say({ type: "presence", tables: 2, playing: 3, waiting: 0, ranked: 1, casual: 1 });
+    expect(presence()?.textContent).toBe("2 tables · 1 ranked, 1 casual · 3 playing");
+    expect([...presence()!.querySelectorAll(".play-presence-hl")].map((b) => b.textContent)).toEqual(["1 ranked"]);
+    click(button("Casual", q(".play-mode")!));
+    expect([...presence()!.querySelectorAll(".play-presence-hl")].map((b) => b.textContent)).toEqual(["1 casual"]);
+    say({ type: "presence", tables: 1, playing: 2, waiting: 0, ranked: 0, casual: 1 });
+    expect(presence()!.querySelector(".play-presence-hl")).toBeNull();
+  });
+
+  it("a guest sees the same presence line", async () => {
     signedIn = false;
     await renderApp();
-    say({ type: "presence", tables: 1, playing: 2, waiting: 0 });
-    expect(presence()?.textContent).toBe("1 table has a seat · 2 people playing");
-    expect(presence()?.textContent).not.toMatch(/rank/i);
+    say({ type: "presence", tables: 1, playing: 2, waiting: 0, ranked: 1, casual: 0 });
+    expect(presence()?.textContent).toBe("1 ranked table · 2 playing");
   });
 
   it("the presence line hides during a cooldown and on a reconnect forgets old counts", async () => {
@@ -1907,11 +1921,41 @@ describe("the unified table on the client", () => {
     say({ type: "queue_state", queued: false, count: 0, cooldown_until: nowSecs() + 30 });
     expect(presence()).toBeNull();
     tick(31_000);
-    expect(presence()?.textContent).toMatch(/^2 people are waiting/);
+    expect(presence()?.textContent).toBe("2 waiting");
     act(() => ws().close());
     act(() => { vi.advanceTimersByTime(5000); });
     act(() => ws().onopen?.());
-    expect(presence()?.textContent).toMatch(/^Nobody is playing/);
+    expect(presence()?.textContent).toBe("Nobody is playing right now");
+  });
+
+  it("Ranked / Casual is remembered on this device, and Play queues in the chosen mode", async () => {
+    await renderApp();
+    const modeBtn = (label: string) => button(label, q(".play-mode")!)!;
+    expect(modeBtn("Ranked").getAttribute("aria-pressed")).toBe("true");
+    click(modeBtn("Casual"));
+    expect(modeBtn("Casual").getAttribute("aria-pressed")).toBe("true");
+    expect(localStorage.getItem("shengji.playMode")).toBe("casual");
+    click(findBtn());
+    expect(lastSent()).toEqual({ type: "queue_join", mode: "casual" });
+    // at a table the switch shows that table's mode and holds still
+    say(queued({ mode: "casual" }));
+    expect(modeBtn("Casual").disabled).toBe(true);
+    expect(modeBtn("Casual").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a stored Casual choice is read back on a fresh page, and blocked storage reads as Ranked", async () => {
+    localStorage.setItem("shengji.playMode", "casual");
+    const { readPlayMode } = await import("./store");
+    expect(readPlayMode()).toBe("casual");
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    try {
+      expect(readPlayMode()).toBe("ranked");
+    } finally {
+      spy.mockRestore();
+    }
+    await renderApp();
+    click(findBtn());
+    expect(lastSent()).toEqual({ type: "queue_join", mode: "casual" });
   });
 
   it("a single moves seats before Start: a green seat sends table_move; no visible hint, the label says Move here", async () => {

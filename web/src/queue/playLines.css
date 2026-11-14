@@ -28,3 +28,131 @@
   font-weight: 600;
   text-align: center;
 }
+/* the selected mode's count when both modes have tables */
+.play-presence-hl {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(242, 193, 78, 0.18);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Ranked / Casual above Play: one segmented control */
+.play-mode {
+  display: flex;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid #333b49;
+  background: #11141a;
+}
+.play-mode-opt {
+  appearance: none;
+  flex: 1;
+  min-height: 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #9aa3b2;
+  font: inherit;
+  font-size: var(--fs-14, 14px);
+  font-weight: 700;
+  cursor: pointer;
+}
+.play-mode-opt.on { background: #2f3a4d; color: #fff; }
+.play-mode-opt:disabled { cursor: default; }
+.play-mode-opt:disabled:not(.on) { opacity: 0.5; }
+.play-mode-opt:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+/* A room's rows in the table panel: the code with its Invite link, the
+   starting level, and the chat row. Labels only. */
+.tp-code-row { display: flex; gap: 8px; align-items: center; }
+.tp-code {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid #333b49;
+  background: #11141a;
+  color: var(--gold);
+  font-size: var(--fs-19, 19px);
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  padding-left: 0.3em;
+}
+.tp-invite {
+  appearance: none;
+  flex: none;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid #3a4250;
+  background: transparent;
+  color: #e9ecf2;
+  font: inherit;
+  font-size: var(--fs-14, 14px);
+  font-weight: 600;
+  cursor: pointer;
+}
+.tp-set {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  font-size: var(--fs-16, 16px);
+  color: #fff;
+}
+.tp-set select {
+  min-width: 64px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid #333b49;
+  background: #11141a;
+  color: #fff;
+  font: inherit;
+}
+.tp-set-val { color: #c3cad6; font-weight: 600; }
+.tp-chat {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid #333b49;
+  background: rgba(17, 20, 26, 0.55);
+  color: #e9ecf2;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tp-chat-label { flex: none; font-size: var(--fs-14, 14px); font-weight: 700; }
+.tp-chat-last {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-13, 13px);
+  color: #9aa3b2;
+}
+.tp-chat-badge {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: #e0525e;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}

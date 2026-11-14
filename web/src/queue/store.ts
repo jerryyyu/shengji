@@ -11,8 +11,10 @@ import type { ConnStatus } from "../ws";
 import { conn, getResumeToken, getSavedName, getSavedRoom } from "../ws";
 import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
-import type { ServerMsg } from "../protocol";
-import type { OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, WaitingTableMsg } from "./messages";
+import type { ChatMsg, ServerMsg } from "../protocol";
+import type {
+  OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, WaitingTableMsg,
+} from "./messages";
 import { QUEUE_ERROR_CODES } from "./messages";
 
 /** From this long before the bot fill the bar turns amber. */
@@ -69,8 +71,30 @@ export type Sheet = null | "solo" | "party";
 
 export interface QueueNote { id: number; title: string; sub?: string }
 
-/** The Play tab's counts: open ranked tables, people at them, people queued. */
+/** The Play tab's counts: open tables (split by mode when the server
+ *  says), people at them, people queued. */
 export type Presence = Omit<PresenceMsg, "type">;
+
+/** Where the Play tab's Ranked / Casual choice is kept on this device. */
+export const PLAY_MODE_KEY = "shengji.playMode";
+
+/** The mode this device last chose; Ranked until it chooses. Storage may be
+ *  blocked (a private window), which reads as no choice. */
+export function readPlayMode(): QueueMode {
+  try {
+    return window.localStorage.getItem(PLAY_MODE_KEY) === "casual" ? "casual" : "ranked";
+  } catch {
+    return "ranked";
+  }
+}
+
+function keepPlayMode(mode: QueueMode): void {
+  try {
+    window.localStorage.setItem(PLAY_MODE_KEY, mode);
+  } catch {
+    /* blocked storage: the choice lasts this page only */
+  }
+}
 
 /** Play was refused because the account already plays a ranked game: the
  *  server's words, and whether this device knows the room to go back to. */
@@ -120,13 +144,29 @@ export interface QueueView {
   /** Local ms you leave the table unless you answer "still here?". */
   stillHereUntil: number | null;
   inGame: InGame | null;
+  /** The Ranked / Casual switch above Play: the mode Play queues in. */
+  playMode: QueueMode;
+  /** The mode of the search the server holds (queue_state.mode). */
+  queueMode: QueueMode | null;
+  /** The waiting table's chat, as room chat lines (`room` is the table id);
+   *  empty away from a table. */
+  tableChat: ChatMsg[];
+  /** Queued: your table's code (your own alone, the opener's at a waiting
+   *  table); null when not queued. */
+  tableCode: string | null;
+  /** Queued: your table's Allow joiners and starting level. */
+  allowJoiners: boolean;
+  startLevel: string;
+  /** Queued: you opened this table (alone, always), so you set its level. */
+  opener: boolean;
 }
 
 const EMPTY: QueueView = {
   count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
   partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
   cooldownUntil: null, cooldownTold: false, party: null, partyError: null, sheet: null, joinCode: "", note: null,
-  presence: null, panelSeq: null, stillHereUntil: null, inGame: null,
+  presence: null, panelSeq: null, stillHereUntil: null, inGame: null, playMode: "ranked", queueMode: null,
+  tableChat: [], tableCode: null, allowJoiners: true, startLevel: "2", opener: true,
 };
 
 /** The name you play under: the account's, or a guest's own. */
@@ -141,12 +181,12 @@ export function partnerName(party: PartyMsg | null): string | null {
 }
 
 /** The names of the others at a waiting table. */
-function othersAt(t: TableView | null): string[] {
+export function othersAt(t: TableView | null): string[] {
   return t ? t.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
 }
 
 export class QueueStore {
-  view: QueueView = EMPTY;
+  view: QueueView = { ...EMPTY, playMode: readPlayMode() };
   private listeners = new Set<() => void>();
   /** Server clock minus local clock, ms. */
   private skew = 0;
@@ -197,7 +237,8 @@ export class QueueStore {
     this.joinSentAt = null;
     this.droppedWhileQueued = false;
     this.findAfterSignIn = false;
-    this.set({ ...EMPTY, count: this.view.count, presence: this.view.presence, note: null });
+    this.set({ ...EMPTY, count: this.view.count, presence: this.view.presence, note: null,
+               playMode: this.view.playMode });
     if (searching) this.notify("Signed in. Press Play to find a table.");
   }
 
@@ -322,8 +363,23 @@ export class QueueStore {
         this.set({ count: msg.count });
         break;
       case "presence":
-        this.set({ presence: { tables: msg.tables, playing: msg.playing, waiting: msg.waiting } });
+        this.set({ presence: { tables: msg.tables, playing: msg.playing, waiting: msg.waiting,
+                               ranked: msg.ranked, casual: msg.casual } });
         break;
+      case "table_chat_history": {
+        const t = this.view.table;
+        if (!t || t.id !== msg.table) break;
+        this.set({ tableChat: msg.messages.slice(-100).map((m) => ({ ...m, type: "chat", room: msg.table })) });
+        break;
+      }
+      case "table_chat": {
+        const t = this.view.table;
+        if (!t || t.id !== msg.table || this.view.tableChat.some((m) => m.id === msg.id)) break;
+        const line: ChatMsg = { type: "chat", id: msg.id, room: msg.table, seat: msg.seat, name: msg.name,
+                                text: msg.text, t: msg.t };
+        this.set({ tableChat: [...this.view.tableChat, line].slice(-100) });
+        break;
+      }
       case "table_moved":
         this.notify(`${msg.name} moved to ${msg.your_team ? "your team" : "the other team"}.`);
         break;
@@ -340,7 +396,7 @@ export class QueueStore {
           this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
                      pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
                      cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null,
-                     cooldownTold: false, panelSeq: null, stillHereUntil: null });
+                     cooldownTold: false, panelSeq: null, stillHereUntil: null, queueMode: null, tableChat: [], tableCode: null });
           if (msg.replaced && wasQueued) {
             const there = msg.by === "window" ? "window" : "device";
             this.notify(msg.stopped ? `Your table was closed from another ${there}.` : `Your table moved to another ${there}.`);
@@ -373,7 +429,12 @@ export class QueueStore {
           : this.view.pending === "start" && table && !table.youReady ? "start" : null;
         const offer = msg.offer ? this.offerView(msg.offer) : null;
         if (offer && !this.view.offer) haptic("declare");
+        // a table's chat belongs to that table: another table starts empty
+        const tableChat = table && this.view.table?.id === table.id ? this.view.tableChat : [];
         this.set({
+          queueMode: msg.mode ?? this.view.queueMode ?? "ranked", tableChat,
+          tableCode: msg.code ?? null, allowJoiners: msg.allow_joiners !== false,
+          startLevel: msg.start_level ?? "2", opener: msg.opener !== false,
           queued: true, count: msg.count,
           since: msg.since !== undefined ? this.local(msg.since) : now,
           botsAt: msg.bots_at != null ? this.local(msg.bots_at) : null,
@@ -391,7 +452,7 @@ export class QueueStore {
         this.clearResync();
         this.set({ queued: false, table: null, pending: null, sheet: null, offer: null, openTables: 0, botsPaused: false,
                    since: null, botsAt: null, waitPlayers: false, front: false, note: null, elsewhere: false,
-                   panelSeq: null, stillHereUntil: null, inGame: null });
+                   panelSeq: null, stillHereUntil: null, inGame: null, queueMode: null, tableChat: [], tableCode: null });
         break;
       case "match_cancelled":
         this.set({ pending: null });
@@ -405,7 +466,7 @@ export class QueueStore {
         const by = msg.by && msg.by !== me ? msg.by : null;
         this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false,
                    front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-                   panelSeq: null, stillHereUntil: null });
+                   panelSeq: null, stillHereUntil: null, queueMode: null, tableChat: [], tableCode: null });
         if (msg.reason === "idle") {
           this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
         } else if (msg.reason === "away") {
@@ -505,13 +566,17 @@ export class QueueStore {
 
   // ---- actions
 
-  /** Queue now: as the pair when one is formed and you lead it, else alone. */
-  join(): void {
+  /** Queue now: as the pair when one is formed and you lead it, else alone.
+   *  With `code` (a friend's table, from a link or the code box), sit at
+   *  that table instead, in its mode and with its settings. */
+  join(code?: string): void {
     const p = this.view.party;
     const pair = p && p.members.length === 2 ? p : null;
-    if (pair && !pair.you_lead) return;
+    if (pair && !pair.you_lead && code === undefined) return;
     if (this.cooling()) return;
-    const sent = this.send(pair ? { type: "queue_join", party_id: pair.party_id } : { type: "queue_join" });
+    const mode = this.view.playMode;
+    const sent = this.send(code !== undefined ? { type: "queue_join", code }
+      : pair ? { type: "queue_join", party_id: pair.party_id, mode } : { type: "queue_join", mode });
     if (!sent) {
       this.notify("Not connected.", "Press Play again in a moment.");
       return;
@@ -529,6 +594,32 @@ export class QueueStore {
       this.notify("Couldn't open a table.", "Press Play to try again.");
       if (this.status === "open") this.askStatus();
     }, CONFIRM_MS);
+  }
+
+  /** The Ranked / Casual switch above Play, kept on this device. A search
+   *  under way keeps its own mode (the server holds it). */
+  setPlayMode(mode: QueueMode): void {
+    keepPlayMode(mode);
+    if (mode !== this.view.playMode) this.set({ playMode: mode });
+  }
+
+  /** Your table's Allow joiners, alone or at a waiting table. */
+  setAllowJoiners(on: boolean): void {
+    if (!this.view.queued) return;
+    this.send({ type: "table_allow_joiners", on });
+  }
+
+  /** Your casual table's starting level (the opener only). */
+  setStartLevel(level: string): void {
+    if (!this.view.queued || !this.view.opener) return;
+    this.send({ type: "table_start_level", start_level: level });
+  }
+
+  /** A line to everyone at your waiting table; the server echoes it back. */
+  tableChat(text: string): boolean {
+    const line = text.trim();
+    if (!line || !this.view.table) return false;
+    return this.send({ type: "table_chat", text: line });
   }
 
   /** A queue cooldown still runs: Play waits it out. */
@@ -688,7 +779,7 @@ export class QueueStore {
     this.checkTimer = null;
     if (this.noteTimer !== null) window.clearTimeout(this.noteTimer);
     this.noteTimer = null;
-    this.view = EMPTY;
+    this.view = { ...EMPTY, playMode: readPlayMode() };
     this.skew = 0;
     this.joinSentAt = null;
     this.droppedWhileQueued = false;

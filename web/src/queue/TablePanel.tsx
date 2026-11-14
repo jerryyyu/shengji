@@ -1,14 +1,21 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
+import ChatPanel from "../components/ChatPanel";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import { seatPos } from "../components/TrickArea";
+import { codeLink } from "../codes";
+import type { ChatMsg, Rank, RoomMsg, ServerMsg } from "../protocol";
+import { RANKS } from "../protocol";
+import { onRoomLeaveAsk } from "../roomBack";
+import { conn } from "../ws";
 import { useInlineQueue } from "./QueueBar";
 import { BOTS_WARN_MS, partnerName, queue, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, announcement, joinLabel, joinTitle, ownTimerLine, panelKind,
-  sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
+  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, START_NOW_SECS, announcement, joinLabel, joinTitle, ownTimerLine,
+  panelKind, roomReadyLine, roomTitle, roomWaitingLabel, sharedStatusLine, sharedTitle, shortName, startLabel,
+  stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
@@ -196,6 +203,7 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
     const n = q.openTables;
     const extra = (
       <>
+        <QueueTableRows q={q} />
         {n > 0 ? (
           <button type="button" className="tp-row" onClick={() => queue.offerShow()}>
             {n === 1 ? "1 table has a seat" : `${n} tables have a seat`} · <b>View</b>
@@ -214,11 +222,17 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
   }
   if (kind === "shared" && q.table) {
     const t = q.table;
-    const extra = !t.timer && q.leader ? (
-      <button type="button" className="tp-row" disabled={q.pending !== null} onClick={() => queue.allowBots()}>
-        Add bots in 1:00
-      </button>
-    ) : null;
+    const extra = (
+      <>
+        <QueueTableRows q={q} />
+        {!t.timer && q.leader ? (
+          <button type="button" className="tp-row" disabled={q.pending !== null} onClick={() => queue.allowBots()}>
+            Add bots in 1:00
+          </button>
+        ) : null}
+        <ChatRow messages={q.tableChat} you={t.you} onSend={(text) => queue.tableChat(text)} />
+      </>
+    );
     const move = canMove(q);
     const seats = sharedSeats(t, now, move, q.pending !== null);
     if (q.stillHereUntil !== null) {
@@ -269,23 +283,15 @@ function useEnterIsPrimary(primary: RefObject<HTMLButtonElement | null>, box: Re
   }, [primary, box]);
 }
 
-/** The table you are at, in Play's place: Join (a game in progress has a
- *  seat), your own table (alone, drawn by the app), or a shared table (two
- *  or three people waiting). Inline and non-modal on every screen. */
-export default function TablePanel({ q, guarded }: { q: QueueView; guarded: boolean }) {
+/** The panel's frame, the same for every kind: the title, at most one
+ *  status line, the seats (team columns on a phone, the mini table on wide
+ *  screens), extra rows, the buttons, and the leave sheet when it is up. */
+function PanelView({ p, kind, guarded, sheet }: { p: PanelParts; kind: string; guarded: boolean; sheet?: ReactNode }) {
   const wide = useInlineQueue();
-  const kind = panelKind(q);
-  const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
   const titleId = useId();
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const box = useRef<HTMLElement | null>(null);
   useEnterIsPrimary(primaryRef, box);
-  const [asking, setAsking] = useState(false);
-  const p = parts(q, kind, now, () => setAsking(true));
-  if (!p) return null;
-  // the people a shared table keeps when you go; your own table has nobody else
-  const others = kind === "shared" && q.table
-    ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
   return (
     <section ref={box} className={`tp tp-${kind}${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
       <h2 className="tp-title" id={titleId}>{p.title}</h2>
@@ -309,13 +315,235 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
           ) : null}
         </div>
       )}
-      {asking ? (
-        <LeaveSheet context={{ kind: "queue", others }}
-                    onStay={() => setAsking(false)}
-                    onLeave={() => { setAsking(false); queue.leave(); }} />
-      ) : null}
+      {sheet}
     </section>
   );
+}
+
+/** The table you are at, in Play's place: Join (a game in progress has a
+ *  seat), your own table (alone, drawn by the app), or a shared table (two
+ *  or three people waiting). Inline and non-modal on every screen. */
+export default function TablePanel({ q, guarded }: { q: QueueView; guarded: boolean }) {
+  const kind = panelKind(q);
+  const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
+  const [asking, setAsking] = useState(false);
+  const p = parts(q, kind, now, () => setAsking(true));
+  if (!p) return null;
+  // the people a shared table keeps when you go; your own table has nobody else
+  const others = kind === "shared" && q.table
+    ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
+  const sheet = asking ? (
+    <LeaveSheet context={{ kind: "queue", others }}
+                onStay={() => setAsking(false)}
+                onLeave={() => { setAsking(false); queue.leave(); }} />
+  ) : null;
+  return <PanelView p={p} kind={kind} guarded={guarded} sheet={sheet} />;
+}
+
+/** The chat log of the room this socket sits in, as the connection keeps
+ *  it: the lines from before the panel mounted are already there. */
+function useRoomChat(): ChatMsg[] {
+  const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory());
+  useEffect(() => conn.subscribe((msg: ServerMsg) => {
+    if (msg.type === "chat" || msg.type === "chat_history") setChat(conn.chatHistory());
+  }), []);
+  return chat;
+}
+
+/** The table's chat row: the last line and an unread count, and a tap
+ *  opens the chat sheet. The same log carries into the game, because the
+ *  server turns it into the room's scrollback. */
+export function ChatRow({ messages, you, onSend }: {
+  messages: ChatMsg[]; you: number; onSend: (text: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(() => messages[messages.length - 1]?.id ?? -1);
+  const lastId = messages[messages.length - 1]?.id ?? -1;
+  useEffect(() => { if (open) setSeen(lastId); }, [open, lastId]);
+  const unread = messages.filter((m) => m.id > seen && m.seat !== you && m.seat !== -1).length;
+  const last = [...messages].reverse().find((m) => m.seat !== -1);
+  return (
+    <>
+      <button type="button" className="tp-chat" aria-expanded={open} onClick={() => setOpen((o) => !o)}
+              aria-label={unread ? `Chat, ${unread} new` : "Chat"}>
+        <span className="tp-chat-label" aria-hidden="true">Chat</span>
+        <span className="tp-chat-last" aria-hidden="true">{last ? `${shortName(last.name)}: ${last.text}` : ""}</span>
+        {unread ? <span className="tp-chat-badge" aria-hidden="true">{unread}</span> : null}
+      </button>
+      <ChatPanel messages={messages} you={you} open={open} onClose={() => setOpen(false)} onSend={onSend} />
+    </>
+  );
+}
+
+/** A table's invite: the system share sheet where there is one, else the
+ *  link on the clipboard. Resolves true when the link was copied. */
+function shareInvite(code: string): Promise<boolean> {
+  const url = codeLink(code);
+  if (typeof navigator.share === "function") {
+    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
+      .then(() => false, () => false);   // a dismissed share sheet is not an error
+  }
+  if (!navigator.clipboard) return Promise.resolve(false);
+  return navigator.clipboard.writeText(url).then(() => true, () => false);
+}
+
+/** The code with its Invite link: the share sheet, or a copy. */
+function CodeRow({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const invite = () => {
+    void shareInvite(code).then((didCopy) => {
+      if (!didCopy) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  };
+  return (
+    <div className="tp-code-row">
+      <span className="tp-code" aria-label={`Table code ${code.split("").join(" ")}`}>{code}</span>
+      <button type="button" className="tp-invite" onClick={invite}>{copied ? "Link copied" : "Invite link"}</button>
+    </div>
+  );
+}
+
+/** A labelled switch row, label only. */
+function SwitchRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} className="q-wait tp-switch" onClick={onToggle}>
+      <span className="q-wait-label">{label}</span>
+      <span className="q-switch" aria-hidden="true" />
+    </button>
+  );
+}
+
+/** Every table's settings rows, labels only: the code with its Invite link,
+ *  Starting level on a casual table (the opener picks it, others read it; a
+ *  ranked table starts at 2 and has no row), and Allow joiners. */
+function TableRows({ code, ranked, opener, level, onLevel, joiners, onJoiners }: {
+  code: string | null; ranked: boolean; opener: boolean; level: string;
+  onLevel: (level: Rank) => void; joiners: boolean | undefined; onJoiners: (on: boolean) => void;
+}) {
+  return (
+    <>
+      {code ? <CodeRow code={code} /> : null}
+      {ranked ? null : opener ? (
+        <label className="tp-set">
+          <span>Starting level</span>
+          <select aria-label="Starting level" value={level} onChange={(e) => onLevel(e.target.value as Rank)}>
+            {RANKS.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </label>
+      ) : (
+        <div className="tp-set" role="group" aria-label={`Starting level ${level}`}>
+          <span aria-hidden="true">Starting level</span>
+          <span className="tp-set-val" aria-hidden="true">{level}</span>
+        </div>
+      )}
+      {joiners !== undefined ? (
+        <SwitchRow label="Allow joiners" on={joiners} onToggle={() => onJoiners(!joiners)} />
+      ) : null}
+    </>
+  );
+}
+
+/** A Play table's settings rows, from the queue's state. */
+function QueueTableRows({ q }: { q: QueueView }) {
+  return (
+    <TableRows code={q.tableCode} ranked={(q.queueMode ?? q.playMode) === "ranked"} opener={q.opener}
+               level={q.startLevel} onLevel={(l) => queue.setStartLevel(l)}
+               joiners={q.leader ? q.allowJoiners : undefined} onJoiners={(on) => queue.setAllowJoiners(on)} />
+  );
+}
+
+/** A room's seats from its frame. Before your Start an empty seat is a
+ *  button that moves you there; the server refuses it once you tapped. */
+function roomSeats(room: RoomMsg, ready: Set<number>, move: boolean): SeatItem[] {
+  const me = room.players.find((pl) => pl.seat === room.you);
+  return [0, 1, 2, 3].map((at): SeatItem => {
+    const pl = room.players.find((x) => x.seat === at);
+    const ours = (at - room.you + 4) % 2 === 0;
+    if (!pl) {
+      if (move && me) {
+        return { at, look: "open", name: "Open seat", sub: "",
+                 label: `Open seat, ${teamWord(ours)}. Move here`,
+                 pick: () => conn.send({ type: "swap_seats", a: room.you, b: at,
+                                         expect: [{ name: me.name, is_bot: me.is_bot }, null] }) };
+      }
+      return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    }
+    const tick = ready.has(at);
+    if (at === room.you) {
+      return { at, look: "you", name: "You", sub: "", tick, label: ["You", tick ? "ready" : null].filter(Boolean).join(", ") };
+    }
+    if (pl.is_bot) return { at, look: "bot", name: shortName(pl.name), sub: "", label: `${pl.name}, bot, ${teamWord(ours)}` };
+    const sub = pl.connected ? "" : "Reconnecting";
+    return { at, look: "person", name: shortName(pl.name), sub, tick,
+             label: [pl.name, tick ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
+  });
+}
+
+/** The people who stay when you leave the room, in seat order: the first
+ *  of them takes the opener's controls, as the server hands them on. */
+function staying(room: RoomMsg): string[] {
+  return room.players.filter((p) => !p.is_bot && p.seat !== room.you)
+    .sort((a, b) => a.seat - b.seat).map((p) => p.name);
+}
+
+/** A room before its game, as a kind of the same panel: the table's rows,
+ *  the chat row, the seats, and Start for everyone. Once others sit, the
+ *  opener also gets Start now when `start_now_in` runs out. Leave, and the
+ *  back gesture, ask through the leave sheet. */
+export function RoomPanel({ room }: { room: RoomMsg }) {
+  const opener = (room.opener ?? room.host) === room.you;
+  const ranked = !!(room.matched || room.ranked);
+  const ready = new Set(room.ready ?? []);
+  const youReady = ready.has(room.you);
+  const others = room.players.filter((pl) => !pl.is_bot && pl.seat !== room.you);
+  const [asking, setAsking] = useState(false);
+  useEffect(() => onRoomLeaveAsk(() => setAsking(true)), []);
+  // The frame's countdown, as a local deadline: each frame restarts it.
+  const startNowAt = useMemo(
+    () => (room.start_now_in !== undefined ? Date.now() + room.start_now_in * 1000 : null), [room]);
+  const counting = opener && others.length > 0 && startNowAt !== null;
+  const now = useNow(counting, 250);
+  const chat = useRoomChat();
+  const left = counting ? Math.max(0, startNowAt! - now) : null;
+
+  let primary: PanelParts["primary"];
+  if (left !== null && left <= 0) {
+    primary = { label: "Start now", disabled: false, onClick: () => conn.send({ type: "start_game" }) };
+  } else if (!youReady) {
+    primary = { label: others.length ? "Start" : "Start with bots", disabled: false,
+                onClick: () => conn.send({ type: "lobby_ready", on: true }) };
+  } else if (left !== null) {
+    primary = { label: "Start now", disabled: true, onClick: () => {},
+                ring: <TimerRing left={left / 1000} total={START_NOW_SECS} /> };
+  } else {
+    primary = { label: roomWaitingLabel(room), disabled: true, onClick: () => {} };
+  }
+  const readyLine = roomReadyLine(room);
+  const extra = (
+    <>
+      <TableRows code={room.room} ranked={ranked} opener={opener} level={room.start_level}
+                 onLevel={(l) => conn.send({ type: "set_start_level", start_level: l })}
+                 joiners={room.allow_joiners} onJoiners={(on) => conn.send({ type: "allow_joiners", on })} />
+      <ChatRow messages={chat} you={room.you} onSend={(text) => conn.send({ type: "chat", text })} />
+    </>
+  );
+  const p: PanelParts = {
+    title: roomTitle(room),
+    status: readyLine ? { text: readyLine } : undefined,
+    seats: roomSeats(room, ready, !youReady),
+    you: room.you,
+    extra,
+    primary,
+    secondary: { label: "Leave", disabled: false, onClick: () => setAsking(true) },
+  };
+  const sheet = asking ? (
+    <LeaveSheet context={{ kind: "room", others: staying(room), host: opener }}
+                onStay={() => setAsking(false)}
+                onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
+  ) : null;
+  return <PanelView p={p} kind="room" guarded={false} sheet={sheet} />;
 }
 
 /** The one polite announcement per change of state, and one when ten

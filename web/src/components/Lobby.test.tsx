@@ -50,7 +50,7 @@ async function render() {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => root.render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />));
+  await act(async () => root.render(<Lobby status="open" error={null} />));
 }
 const NAME_FIELD = ".q-layer:not(.q-out) input[autocomplete='nickname']";
 /** A guest's name field, in the editor their chip opens (opened here when
@@ -101,18 +101,19 @@ describe("the lobby with sign-in OFF", () => {
     expect(gis.initialize).not.toHaveBeenCalled();
     expect(nameInput().value).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);   // a random name
     const labels = Array.from(host.querySelectorAll("button")).map((b) => b.textContent);
-    expect(labels).toContain("Play bots");
-    expect(labels).toContain("Create room");
+    expect(labels).not.toContain("Play bots");
+    expect(labels).not.toContain("Create room");
     expect(labels).not.toContain("Find a game");
-    // no accounts: guests still queue, with no way to sign in offered
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
+    // no accounts: guests still queue in either mode, with no way to sign in offered
+    expect([...host.querySelectorAll(".play-mode button")].map((b) => b.textContent)).toEqual(["Ranked", "Casual"]);
     expect([...host.querySelectorAll(".play-ranked-row button")].map((b) => b.textContent)).toEqual(["Play", "Duo"]);
     expect(host.querySelector(".play-guest-line")?.textContent).toBe("Playing as a guest");
   });
-  it("the section a guest plays in is called Casual", async () => {
+  it("a guest's Play section has no heading, only the mode switch", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(host.querySelector(".play-label")?.textContent).toBe("Casual");
+    expect(host.querySelector(".play-label")).toBeNull();
+    expect(host.querySelector(".play-mode")).not.toBeNull();
     expect(host.textContent).not.toMatch(/unranked/i);
   });
   it("while loading, nothing about accounts shows either", async () => {
@@ -127,7 +128,7 @@ describe("the lobby when the server cannot be reached", () => {
   it("keeps the Ranked section, with Play and Duo unavailable, instead of dropping it", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Casual"]);
+    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked"]);
     const ranked = host.querySelector("[data-testid=ranked-unavailable]")!;
     expect(ranked).not.toBeNull();
     const buttons = [...ranked.querySelectorAll<HTMLButtonElement>("button")];
@@ -151,10 +152,10 @@ describe("the lobby with sign-in ON", () => {
   });
   afterEach(() => { window.history.replaceState(null, "", "/"); });
 
-  it("signed out: the signed-in layout with a guest chip, Play and Duo with no Ranked heading, and Casual rows", async () => {
+  it("signed out: the signed-in layout with a guest chip, the mode switch, Play and Duo", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
+    expect([...host.querySelectorAll(".play-mode button")].map((b) => b.textContent)).toEqual(["Ranked", "Casual"]);
     expect(host.textContent).not.toContain("Sign in to play ranked");
     expect(host.textContent).not.toContain("Your name");
     // the chip sits where an account's does: initial, name, the guest line for the rating, and a pencil
@@ -169,10 +170,8 @@ describe("the lobby with sign-in ON", () => {
     expect(row.map((b) => b.textContent)).toEqual(["Play", "Duo"]);
     expect(row[0].className).toContain("gold");
     expect(host.querySelector(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
-    // Play bots is a Casual row, as it is for an account
-    const rows = [...host.querySelectorAll(".play-grp .grp-row")].map((b) => b.textContent);
-    expect(rows).toEqual(["Create room", "Play bots"]);
-    expect(buttonNamed("Play bots").className).not.toContain("gold");
+    // no Create room or Play bots rows: Play opens every table
+    expect(host.querySelector(".play-grp")).toBeNull();
     // the sign-in buttons appear only once asked for
     expect(host.querySelector(".google-signin")).toBeNull();
     act(() => host.querySelector<HTMLButtonElement>(".play-guest-signin")!.click());
@@ -180,7 +179,7 @@ describe("the lobby with sign-in ON", () => {
     expect(sent).toHaveLength(0);
     // Play queues a guest like anyone
     act(() => row[0].click());
-    expect(sent).toEqual([{ type: "queue_join", name }]);
+    expect(sent).toEqual([{ type: "queue_join", mode: "ranked", name }]);
   });
 
   it("signed out: the chip opens the name editor, whose Done keeps the name", async () => {
@@ -211,14 +210,16 @@ describe("the lobby with sign-in ON", () => {
     expect(window.location.hash).toBe("#/me");
   });
 
-  it("signed in: Ranked first (Play and Duo), then Casual (Create room, Play bots)", async () => {
+  it("signed in: Ranked / Casual, then Play and Duo; no Create room or Play bots", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Ranked", "Casual"]);
+    expect([...host.querySelectorAll(".play-mode button")].map((b) => b.textContent)).toEqual(["Ranked", "Casual"]);
     const ranked = [...host.querySelectorAll(".play-ranked-row button")].map((b) => b.textContent);
     expect(ranked).toEqual(["Play", "Duo"]);
-    const rows = [...host.querySelectorAll(".play-grp .grp-row")].map((b) => b.textContent);
-    expect(rows).toEqual(["Create room", "Play bots"]);
+    expect(host.querySelector(".play-grp")).toBeNull();
+    for (const gone of ["Create room", "Play bots"]) {
+      expect([...host.querySelectorAll("button")].some((b) => b.textContent === gone)).toBe(false);
+    }
     expect(host.textContent).not.toContain("Find a game");
     expect(host.querySelector(".game-subtitle")).toBeNull();
   });
@@ -240,11 +241,19 @@ describe("the lobby with sign-in ON", () => {
   });
 });
 
-const rerender = () => act(async () => root.render(<Lobby status="open" error={null} onArmAutoFill={() => {}} />));
+const rerender = () => act(async () => root.render(<Lobby status="open" error={null} />));
 const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === label)!;
-/** A bots game: one tap on Play bots. */
-const playBots = () => act(() => buttonNamed("Play bots").click());
-const sentName = (k = 0) => (sent[k] as { name: string }).name;
+/** Join a room by its code: the lookup, the peek, then join_room under the
+ *  player's name. */
+const joinCode = (code = "ABCD") => {
+  const box = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+  type(box, code);
+  act(() => buttonNamed("Join").click());
+  act(() => { for (const fn of [...link.listeners]) fn({ type: "code_kind", code, kind: "room" }); });
+  act(() => { for (const fn of [...link.listeners]) fn({ type: "room_seats", room: code, in_game: false, seats: [] }); });
+};
+/** The name the k-th join_room went with. */
+const sentName = (k = 0) => (sent.filter((m) => (m as { type: string }).type === "join_room")[k] as { name: string }).name;
 const isRandom = (v: string) => {
   const [adj, noun] = v.split(" ");
   return (NAME_ADJECTIVES as readonly string[]).includes(adj) && (NAME_NOUNS as readonly string[]).includes(noun);
@@ -259,23 +268,20 @@ async function remount() {
 describe("signed in, the player plays under the account name", () => {
   const CAPTAIN = { ...JERRY, display_name: "Captain", name_shown: "Captain" };
 
-  it("shows no name field; Create and Play bots send the account name; Play queues at once", async () => {
+  it("shows no name field; a code join sends the account name; Play queues at once", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await render();
     expect(nameInput()).toBeNull();
     expect(saveRow()).toBeNull();
     expect(host.textContent).not.toContain("Your name");
-    act(() => buttonNamed("Create room").click());
-    answered();
-    playBots();
+    joinCode();
     answered();
     // Play joins the ranked queue with no sheet in between
     act(() => buttonNamed("Play").click());
     expect(queue.view.sheet).toBeNull();
-    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["create_room", "create_room", "queue_join"]);
+    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["code_lookup", "peek_room", "join_room", "queue_join"]);
     expect(sentName(0)).toBe("Captain");
-    expect(sentName(1)).toBe("Captain");
-    expect(sent[2]).toEqual({ type: "queue_join" });
+    expect(sent[3]).toEqual({ type: "queue_join", mode: "ranked" });
   });
 
   it("Duo opens the pair sheet", async () => {
@@ -289,12 +295,12 @@ describe("signed in, the player plays under the account name", () => {
   it("without a display name the first name is used, and a rename is followed at once", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    act(() => buttonNamed("Create room").click());
+    joinCode();
     expect(sentName()).toBe("Jerry");
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await rerender();
     answered();
-    act(() => buttonNamed("Create room").click());
+    joinCode("WXYZ");
     expect(sentName(1)).toBe("Captain");
   });
 
@@ -302,7 +308,7 @@ describe("signed in, the player plays under the account name", () => {
     localStorage.setItem("shengji.name", "JY");
     authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    act(() => buttonNamed("Create room").click());
+    joinCode();
     expect(sentName()).toBe("Jerry");
     expect(localStorage.getItem("shengji.name")).toBe("JY");
   });
@@ -320,7 +326,7 @@ describe("signed in, the player plays under the account name", () => {
 describe("signed out, the guest names themselves", () => {
   const dice = () => { nameInput(); return host.querySelector<HTMLButtonElement>("button[aria-label='Random name']")!; };
 
-  it("restores the name used last time, which Create and Play vs bots save without asking", async () => {
+  it("restores the name used last time, which a code join and Play save without asking", async () => {
     localStorage.setItem("shengji.name", "Ace");
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
@@ -328,14 +334,14 @@ describe("signed out, the guest names themselves", () => {
     expect(saveRow()).toBeNull();
     expect(host.querySelector(".account-edit")).toBeNull();
     type(nameInput(), "Deuce");
-    act(() => buttonNamed("Create room").click());
+    joinCode();
     expect(sentName()).toBe("Deuce");
     expect(localStorage.getItem("shengji.name")).toBe("Deuce");
     await remount();
     expect(nameInput().value).toBe("Deuce");
     type(nameInput(), "Trey");
-    playBots();
-    expect(sentName()).toBe("Trey");
+    act(() => buttonNamed("Play").click());
+    expect(sent.at(-1)).toMatchObject({ type: "queue_join", name: "Trey" });
     expect(localStorage.getItem("shengji.name")).toBe("Trey");
   });
 
@@ -345,7 +351,8 @@ describe("signed out, the guest names themselves", () => {
       authState.current = { status, clientId: status === "out" ? "cid.apps" : null, user: null };
       if (status === "off") await render(); else await remount();
       expect(isRandom(nameInput().value)).toBe(true);
-      act(() => buttonNamed("Create room").click());
+      answered();
+      joinCode();
       expect(sentName()).toBe(nameInput().value);
       expect(localStorage.getItem("shengji.name")).toBe(nameInput().value);
     }
@@ -391,20 +398,13 @@ describe("signed out, the guest names themselves", () => {
     expect(nameInput().value).toBe("");
   });
 
-  it("with the name cleared, Create room and Play vs bots both stay enabled and pick a random name", async () => {
+  it("with the name cleared, a code join stays enabled and picks a random name", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
     type(nameInput(), "");
-    expect(buttonNamed("Create room").disabled).toBe(false);
-    expect(buttonNamed("Play bots").disabled).toBe(false);
-    act(() => buttonNamed("Create room").click());
+    joinCode();
     expect(isRandom(sentName())).toBe(true);
     expect(nameInput().value).toBe(sentName());          // the field shows the name it went with
-    await remount();
-    type(nameInput(), "   ");
-    playBots();
-    expect(isRandom(sentName())).toBe(true);
-    expect(nameInput().value).toBe(sentName());
   });
 });
 
@@ -417,7 +417,7 @@ describe("no connection", () => {
       document.body.appendChild(host);
       root = createRoot(host);
     }
-    await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
+    await act(async () => root.render(<Lobby status={status} error={null} />));
   }
 
   it("shows no connection row of its own, and after 4 s shows the Play tab's offline state", async () => {
@@ -428,7 +428,7 @@ describe("no connection", () => {
     const rows = () => host.querySelector(".play-conn, .reconnect-banner, .conn-lost");
     expect(rows()).toBeNull();
     expect(host.textContent).not.toContain("Connecting…");
-    expect(buttonNamed("Play bots").disabled).toBe(true);    // not yet known to be offline
+    expect(buttonNamed("Play").disabled).toBe(true);    // not yet known to be offline
     await act(async () => { vi.advanceTimersByTime(STALL_MS - 1); });
     expect(host.querySelector(".play-offline")).toBeNull();
     await act(async () => { vi.advanceTimersByTime(1); });
@@ -466,16 +466,14 @@ describe("no connection", () => {
     }
   });
 
-  it("connected, Play bots plays online (never the offline game)", async () => {
+  it("connected, Play queues online (never the offline game)", async () => {
     const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
     try {
       authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
       await renderAt("open");
-      const bots = buttonNamed("Play bots");
-      expect(bots.className).toContain("grp-row");
-      act(() => bots.click());
+      act(() => buttonNamed("Play").click());
       expect(start).not.toHaveBeenCalled();
-      expect(sent).toMatchObject([{ type: "create_room" }]);
+      expect(sent).toMatchObject([{ type: "queue_join" }]);
     } finally {
       start.mockRestore();
     }
@@ -553,43 +551,28 @@ describe("help and policy links", () => {
 describe("starting a game waits for the server", () => {
   const button = (text: RegExp) => [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => text.test(b.textContent ?? ""))!;
   const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
-  async function renderWith(status: "open" | "closed" | "connecting") {
-    await act(async () => root.render(<Lobby status={status} error={null} onArmAutoFill={() => {}} />));
-  }
 
   beforeEach(() => { authState.current = { status: "off", clientId: null, user: null }; });
-  const tapStart = (start: RegExp) => act(() => button(start).click());
-  for (const [start, busy] of [[/^Play bots$/, "Starting…"], [/^Create room$/, "Creating…"]] as const) {
-    it(`${busy} shows at once, and a second tap sends nothing; an error allows a retry`, async () => {
+  it("the test controls' Create test room shows Creating… at once, and a second tap sends nothing", async () => {
+    window.history.replaceState(null, "", "/?test_shortlist=1");
+    try {
       await render();
-      tapStart(start);
-      expect(sent).toHaveLength(1);
-      const b = button(new RegExp(busy));
+      act(() => button(/^Create test room$/).click());
+      expect(sent).toMatchObject([{ type: "create_room" }]);
+      const b = button(/Creating…/);
       expect(b.getAttribute("aria-busy")).toBe("true");
-      expect(b.disabled).toBe(true);
       act(() => b.click());
       expect(sent).toHaveLength(1);
-      // every other start waits too
-      expect(button(/^(Play bots|Create room)$/).disabled).toBe(true);
       serverSays({ type: "error", code: "busy", message: "Server busy." });
-      expect(button(start).disabled).toBe(false);
-      expect(button(start).getAttribute("aria-busy")).toBeNull();
-      tapStart(start);
-      expect(sent).toHaveLength(2);
-    });
-  }
+      expect(button(/^Create test room$/).disabled).toBe(false);
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
 
-  it("a reconnect frees a start that was never answered, for a deliberate retry", async () => {
+  it("without the test flag there is no way to create a room", async () => {
     await render();
-    playBots();
-    expect(button(/Starting…/).disabled).toBe(true);
-    await renderWith("closed");
-    link.generation += 1;
-    await renderWith("open");
-    expect(button(/^Play bots$/).disabled).toBe(false);
-    playBots();
-    expect(sent).toHaveLength(2);
-    link.generation = 0;
+    expect(button(/Create/)).toBeUndefined();
   });
 
   it("Join says Joining… while the room is looked up, and an error frees it", async () => {

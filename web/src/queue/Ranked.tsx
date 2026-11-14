@@ -1,9 +1,11 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
-import TablePanel, { TableAnnouncer } from "./TablePanel";
+import type { RoomMsg } from "../protocol";
+import type { QueueMode } from "./messages";
+import TablePanel, { RoomPanel, TableAnnouncer } from "./TablePanel";
 import { useKindGuard } from "./useKindGuard";
-import { panelKind, presenceLine } from "./tableText";
+import { panelKind, presenceParts } from "./tableText";
 import "./playLines.css";
 import { clock, partnerName, queue, useNow, useQueue } from "./store";
 
@@ -76,13 +78,36 @@ function GuestLine({ online }: { online: boolean }) {
   );
 }
 
-/** The counts under Play and Duo: who is about, never a button. */
+/** The counts under Play and Duo: who is about, never a button. When both
+ *  modes have tables, the selected mode's count is lit. */
 function PresenceLine({ q }: { q: ReturnType<typeof useQueue> }) {
   return (
     <p className="play-presence">
       <span className="play-presence-dot" aria-hidden="true" />
-      <span>{presenceLine(q.presence)}</span>
+      <span>
+        {presenceParts(q.presence, q.playMode).map((part, i) => (
+          part.hl ? <b key={i} className="play-presence-hl">{part.text}</b> : <span key={i}>{part.text}</span>
+        ))}
+      </span>
     </p>
+  );
+}
+
+const MODES: { mode: QueueMode; label: string }[] = [{ mode: "ranked", label: "Ranked" }, { mode: "casual", label: "Casual" }];
+
+/** Ranked / Casual above Play, remembered on this device. At a table it
+ *  shows that table's mode and holds still. */
+function ModeSwitch({ value, disabled }: { value: QueueMode; disabled: boolean }) {
+  return (
+    <div className="play-mode" role="group" aria-label="Mode">
+      {MODES.map(({ mode, label }) => (
+        <button key={mode} type="button" className={`play-mode-opt${value === mode ? " on" : ""}`}
+                aria-pressed={value === mode} disabled={disabled}
+                onClick={() => queue.setPlayMode(mode)}>
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -107,26 +132,26 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
   );
 }
 
-/** Play's queue block, the same for guests and accounts: a wide gold Play
- *  that joins the queue at once (as the pair when one is formed and you lead
- *  it) and Duo, which opens the pair sheet. An account sees it under a Ranked
- *  heading; a guest, whose rounds are not rated, sees no heading and a line
- *  under the buttons that offers sign-in. While queued, the table panel takes
- *  the buttons' place on every screen. While sign-in is still loading nothing
- *  shows. */
-export function RankedSection({ online }: {
+/** Play's block, the same for guests and accounts: the Ranked / Casual
+ *  switch, a wide gold Play that joins the queue in that mode (as the pair
+ *  when one is formed and you lead it) and Duo, which opens the pair sheet.
+ *  At a table the panel takes the buttons' place on every screen: a room's
+ *  (`room`, before its game) or the queue's. A guest sees a line under the
+ *  buttons that offers sign-in. While sign-in is still loading nothing
+ *  shows. With no connection for a while the Play tab shows its offline
+ *  controls in this block's place. */
+export function RankedSection({ online, room = null }: {
   /** The socket is open; without it every queue control is disabled. */
   online: boolean;
+  /** The room this socket sits in before its game, if any. */
+  room?: RoomMsg | null;
 }) {
   const q = useQueue();
   const account = useAuth();
-  const labelId = useId();
   const kind = panelKind(q);
   // "I'm here" and Start share the primary place: the guard covers each swap
   const guarded = useKindGuard(kind === "shared" && q.stillHereUntil !== null ? "still_here" : kind);
   const now = useNow(q.cooldownUntil !== null, 500);
-  if (account.status === "loading" || account.status === "error") return null;
-  const guest = account.status !== "in";
 
   const pair = q.party && q.party.members.length === 2 ? q.party : null;
   const joining = q.pending === "join";
@@ -139,13 +164,32 @@ export function RankedSection({ online }: {
     label = `Play in ${clock(q.cooldownUntil! - now, true)}`;
     disabled = true;
   } else if (pair && !pair.you_lead) disabled = true;
+  // the switch shows the mode of the table you sit at, else your choice
+  const tableMode: QueueMode | null = room ? (room.matched || room.ranked ? "ranked" : "casual")
+    : kind !== "play" ? q.queueMode ?? q.playMode : null;
+  const modes = <ModeSwitch value={tableMode ?? q.playMode} disabled={tableMode !== null || joining || !!q.inGame} />;
   // first in every branch, so the live region stays mounted as the panel changes kind
   const announcer = <TableAnnouncer q={q} />;
+  // a room's panel needs no account: it shows while sign-in is still unknown
+  if (room) {
+    return (
+      <>
+        {announcer}
+        <div className="play-section play-table">
+          {modes}
+          <RoomPanel room={room} />
+        </div>
+      </>
+    );
+  }
+  if (account.status === "loading" || account.status === "error") return null;
+  const guest = account.status !== "in";
   if (kind !== "play") {
     return (
       <>
         {announcer}
         <div className="play-section play-table">
+          {modes}
           <PartyChip />
           <TablePanel q={q} guarded={guarded} />
         </div>
@@ -173,23 +217,13 @@ export function RankedSection({ online }: {
       {online && !cooling ? <PresenceLine q={q} /> : null}
     </>
   );
-  if (guest) {
-    return (
-      <>
-        {announcer}
-        <section className="play-section play-guest" aria-label="Play">
-          {body}
-          <GuestLine online={online} />
-        </section>
-      </>
-    );
-  }
   return (
     <>
       {announcer}
-      <section className="play-section" aria-labelledby={labelId}>
-        <h2 className="play-label ranked" id={labelId}><TrophyIcon />Ranked</h2>
+      <section className={`play-section${guest ? " play-guest" : ""}`} aria-label="Play">
+        {modes}
         {body}
+        {guest ? <GuestLine online={online} /> : null}
       </section>
     </>
   );

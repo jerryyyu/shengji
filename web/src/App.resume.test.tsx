@@ -132,7 +132,7 @@ it("signing out at a ranked table asks for the seat back, then leaves the table 
   expect(ws.sent.map((m) => m.type)).toEqual(["join_room"]);
   act(() => ws.deliver({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2", ready: [],
                          players: [{ seat: 0, name: "Avery", is_bot: false, connected: true }] }));
-  expect(host.querySelector(".room-screen")).not.toBeNull();
+  expect(host.querySelector(".tp-room")).not.toBeNull();
   // the sign-out replaces the socket; the guest one asks for the seat again
   await act(async () => { conn.reconnect(); await new Promise((r) => setTimeout(r, 20)); });
   const guest = FakeWS.all.at(-1)!;
@@ -140,7 +140,7 @@ it("signing out at a ranked table asks for the seat back, then leaves the table 
   act(() => guest.onopen?.());
   expect(guest.sent.map((m) => m.type)).toEqual(["join_room"]);
   act(() => guest.deliver({ type: "error", code: "ranked_queue_only", message: "Ranked games are joined through the queue." }));
-  expect(host.querySelector(".room-screen")).toBeNull();
+  expect(host.querySelector(".tp-room")).toBeNull();
   expect(host.querySelector(".lobby-panel")).not.toBeNull();
   expect(host.querySelector(".lobby-error")?.textContent).toBe("Sign in again to return to your game.");
   expect(getSavedRoom()).toBe("ABCD");

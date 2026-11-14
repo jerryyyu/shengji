@@ -122,6 +122,19 @@ describe("failed-throw notice and table messages: told once, as the one toast", 
     again.unmount();
   });
 
+  it("tells a reused notice id in the next round", () => {
+    const roundOne = at({ notice: failedThrow(1) });
+    const view = render(roundOne);
+    expect(toast()?.text).toContain("Throw failed.");
+    act(() => clearToast());
+    // Round creates its notice sequence afresh, so the first failed throw of
+    // the next round may again be id 1 at the same table.
+    view.rerender(at({ notice: null, phase: "round_end" }));
+    view.rerender(at({ notice: failedThrow(1), phase: "play", levels: ["3", "2"] }));
+    expect(toast()?.text).toContain("Throw failed.");
+    view.unmount();
+  });
+
   it("tells no notice outside play", () => {
     const view = render(at({ notice: failedThrow(4), phase: "round_end" }));
     expect(toast()).toBeNull();

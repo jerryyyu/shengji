@@ -68,9 +68,12 @@ past the rating window and Allow joiners; every other queue rule
 ways and out of open-table offers. A ranked table starts at ``RANKS[0]``;
 a casual table's opener sets its level (``table_start_level``).
 
-The people at a waiting table may chat (``table_chat``): validated as room
-chat is, rate-limited, held in memory only, and handed to the room as its
-first scrollback when the table starts.
+Every table has chat from the moment you sit (``table_chat``): validated
+as room chat is, rate-limited, held in memory only. A lone entry's lines
+are its own table's log (``Entry.chat``): they merge into the waiting table
+it sits at, in time order, and are the room's first scrollback when it
+starts alone. A waiting table's log is the room's first scrollback when
+the table starts.
 
 Each entry's ``queue_state`` carries ``panel_seq``, which changes whenever
 its panel changes kind or target (alone, an offer of one room, a waiting
@@ -324,6 +327,11 @@ class Entry:
     # starting level (casual only; a ranked table starts at RANKS[0]).
     allow_joiners: bool = True
     start_level: str = RANKS[0]
+    # Its own table's chat while alone, the last CHAT_KEEP, as (sender,
+    # line): in memory only. The sender is kept to find its seat when the
+    # lines merge into a waiting table; it never leaves the matchmaker.
+    chat: list[tuple[int, dict]] = field(default_factory=list)
+    chat_seq: int = 0
 
     @property
     def size(self) -> int:
@@ -458,7 +466,7 @@ async def _store_rating(user_id: int) -> float | None:
 
 # ------------------------------------------------------------- the queue
 # (table id, slots, sockets, *, mode, chat): ``mode`` is the entries' mode
-# and ``chat`` the waiting table's chat lines (empty for a game started alone).
+# and ``chat`` the table's chat lines (a lone entry's own for a game started alone).
 StartRoom = Callable[..., Awaitable[Any]]
 # (room code, seat, account, name, socket) -> None when the seat is the
 # newcomer's (pending until the handover), else a refusal code.
@@ -992,6 +1000,7 @@ class Matchmaker:
             self._send_chat_history(t, [uid])
         else:
             self._send(uid, self.queue_state(uid))
+            self._send_lone_history(e, [uid])
 
     def renamed(self, uid: int, name: str) -> None:
         """The account's name changed (its sockets' ``name`` already is the
@@ -1338,15 +1347,25 @@ class Matchmaker:
                                "your_team": mine % 2 == seat % 2})
 
     def _table_chat(self, uid: int, msg: dict) -> None:
-        """A line from a seated entry to everyone at its waiting table,
-        itself included, validated as a room chat line is. Held in memory
+        """A line from a queued entry to everyone at its table, itself
+        included, validated as a room chat line is: its waiting table's, or
+        while alone its own table's (``table`` is null). Held in memory
         only: never in the queue log, telemetry or a game log."""
         e = self._entry(uid)
-        t = self._table(e)
-        if e is None or t is None:
-            raise QueueError("not_seated", "You are not at a waiting table.")
+        if e is None:
+            raise QueueError("not_seated", "You are not at a table.")
         text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
         if not text:
+            return
+        t = self._table(e)
+        if t is None:
+            e.chat_seq += 1
+            line = {"id": e.chat_seq, "seat": self._lone_seat(e, uid), "name": self._name(uid),
+                    "text": text, "t": self.clock()}
+            e.chat.append((uid, line))
+            del e.chat[:-CHAT_KEEP]
+            for u in e.members:
+                self._send(u, {"type": "table_chat", "table": None, **line})
             return
         t.chat_seq += 1
         line = {"id": t.chat_seq, "seat": t.seats.index(uid), "name": self._name(uid),
@@ -1356,6 +1375,33 @@ class Matchmaker:
         for o in t.entries:
             for u in o.members:
                 self._send(u, {"type": "table_chat", "table": t.id, **line})
+
+    @staticmethod
+    def _lone_seat(e: Entry, uid: int) -> int:
+        """A member's seat when the entry plays alone (``_bot_slots``)."""
+        return 2 * e.members.index(uid)
+
+    @staticmethod
+    def _lone_lines(e: Entry) -> list[dict]:
+        """A lone entry's chat as the room's scrollback: lines only."""
+        return [line for _, line in e.chat]
+
+    def _send_lone_history(self, e: Entry, members: list[int]) -> None:
+        if e.chat:
+            for u in members:
+                self._send(u, {"type": "table_chat_history", "table": None,
+                               "messages": self._lone_lines(e)})
+
+    def _merge_chat(self, t: Table, e: Entry) -> None:
+        """``e``'s lone lines join the table's log in time order, each at its
+        sender's seat here, under fresh ids after the table's; the last
+        CHAT_KEEP stay."""
+        mine = [dict(line, seat=t.seats.index(u)) for u, line in e.chat]
+        merged = sorted(t.chat + mine, key=lambda line: line["t"])[-CHAT_KEEP:]
+        base = t.chat_seq
+        t.chat = [dict(line, id=base + i) for i, line in enumerate(merged, 1)]
+        t.chat_seq = base + len(t.chat)
+        e.chat, e.chat_seq = [], 0
 
     def _send_chat_history(self, t: Table, members: list[int]) -> None:
         """The table's chat so far, to members who just sat or came back."""
@@ -1442,7 +1488,12 @@ class Matchmaker:
         e.offer, e.open_codes = None, []
         if e.paused is not None:
             e.bots_at, e.paused = now + e.paused, None
-        self._send_chat_history(t, e.members)
+        if e.chat:
+            # new lines for everyone already here, so all of them hear it
+            self._merge_chat(t, e)
+            self._send_chat_history(t, [u for o in t.entries for u in o.members])
+        else:
+            self._send_chat_history(t, e.members)
 
     # ------------------------------------------------------------- starts
     def _due(self, t: Table, now: float) -> bool:
@@ -1520,7 +1571,7 @@ class Matchmaker:
         self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
         self._flush_count()
         await self._start_room_for(None, self._bot_slots(e), [e], mode=e.mode,
-                                   **self._room_settings(e))
+                                   chat=self._lone_lines(e), **self._room_settings(e))
 
     @staticmethod
     def _room_settings(e: Entry) -> dict:
@@ -1578,7 +1629,8 @@ class Matchmaker:
         slots = self._bot_slots(e)
         conns = {u: self.conns[u] for u in e.members}
         try:
-            await self._start(None, slots, conns, mode=e.mode, **self._room_settings(e))
+            await self._start(None, slots, conns, mode=e.mode, chat=self._lone_lines(e),
+                              **self._room_settings(e))
         except Exception:          # noqa: BLE001
             log.exception("bot game failed to start")
             err = QueueError("start_failed", "Could not start the game.")

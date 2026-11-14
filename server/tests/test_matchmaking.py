@@ -3592,9 +3592,10 @@ def test_table_chat_reaches_everyone_at_the_waiting_table_and_carries_into_the_r
     try:
         async def go():
             env = Env()
-            await env.join(1)
+            env.player(1)
             await env.send(1, "table_chat", text="anyone?")
             assert env.conns[1].last("error")["code"] == "not_seated"
+            await env.join(1)
             await env.join(2)
             await env.send(2, "table_chat", text="  hi there  ")
             for uid in (1, 2):
@@ -3631,6 +3632,151 @@ def test_table_chat_is_rate_limited():
         assert env.conns[2].last("table_chat")["text"] == f"m{mm.CHAT_LIMIT[0] - 1}"
         await env.send(2, "table_chat", text="still mine")   # per person
         assert env.conns[1].last("table_chat")["text"] == "still mine"
+    run(go())
+
+
+def test_a_lone_entry_chats_at_its_own_table_and_hears_it_back():
+    async def go():
+        env = Env()
+        await env.join(1, allow_joiners=False)             # stays alone
+        await env.send(1, "table_chat", text="  hello table  ")
+        assert env.conns[1].last("error") is None
+        line = env.conns[1].last("table_chat")
+        assert line["table"] is None
+        assert {k: line[k] for k in ("id", "seat", "name", "text")} == {
+            "id": 1, "seat": 0, "name": "P1", "text": "hello table"}
+        await env.send(1, "table_chat", text="x" * 500)
+        assert env.conns[1].last("table_chat")["text"] == "x" * mm.CHAT_MAX_LEN
+        assert env.conns[1].last("table_chat")["id"] == 2
+        # a Duo alone: both hear it, the partner at seat 2
+        await env.pair(3, 4)
+        await env.send(3, "queue_join")
+        await env.send(4, "table_chat", text="duo line")
+        for uid in (3, 4):
+            assert env.conns[uid].last("table_chat")["seat"] == 2
+        # back from reconnecting: the log so far
+        conn = env.player(1)
+        await env.send(1, "queue_join", conn=conn)
+        history = conn.last("table_chat_history")
+        assert history["table"] is None
+        assert [m["text"] for m in history["messages"]] == ["hello table", "x" * mm.CHAT_MAX_LEN]
+    run(go())
+
+
+def test_a_lone_entrys_chat_merges_into_the_table_a_stranger_forms():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "table_chat", text="first")
+        env.clock.advance(1.0)
+        # a third entry waits alone for its code while the others chat
+        await env.join(3, allow_joiners=False)
+        await env.send(3, "table_chat", text="lone three")
+        env.clock.advance(1.0)
+        await env.send(1, "table_chat", text="second")
+        env.clock.advance(1.0)
+        await env.join(2)
+        (t,) = env.mm.tables.values()
+        assert t.seats.count(None) == 2 and 3 not in t.seats
+        assert [(m["id"], m["seat"], m["text"]) for m in t.chat] == [
+            (1, 0, "first"), (2, 0, "second")]
+        for uid in (1, 2):
+            history = env.conns[uid].last("table_chat_history")
+            assert history["table"] == t.id
+            assert [m["text"] for m in history["messages"]] == ["first", "second"]
+        await env.send(2, "table_chat", text="third")
+        assert env.conns[1].last("table_chat")["id"] == 3
+        # it sits: its lines merge in time order, under ids after the table's
+        await env.send(3, "table_allow_joiners", on=True)
+        assert env.mm._entry(3).table_id == t.id and env.mm._entry(3).chat == []
+        assert [(m["id"], m["text"]) for m in t.chat] == [
+            (4, "first"), (5, "lone three"), (6, "second"), (7, "third")]
+        assert t.chat[1]["seat"] == t.seats.index(3)
+        for uid in (1, 2, 3):
+            assert [m["text"] for m in env.conns[uid].last("table_chat_history")["messages"]] == [
+                "first", "lone three", "second", "third"]
+        for uid in (1, 2, 3):
+            await env.send(uid, "table_start")
+        (chat,) = env.chats
+        assert [m["text"] for m in chat] == ["first", "lone three", "second", "third"]
+        assert all(set(m) == {"id", "seat", "name", "text", "t"} for m in chat)
+    run(go())
+
+
+def test_a_merged_lone_chat_keeps_the_table_cap():
+    async def go():
+        env = Env()
+        env.mm.chat_limiter = mm.accounts.RateLimiter(10 * mm.CHAT_KEEP, 60.0)
+        await env.join(1, mode="casual", allow_joiners=False)
+        for i in range(mm.CHAT_KEEP + 5):
+            env.clock.advance(0.01)
+            await env.send(1, "table_chat", text=f"a{i}")
+        assert len(env.mm._entry(1).chat) == mm.CHAT_KEEP
+        await env.join(2, mode="casual", allow_joiners=False)
+        for i in range(10):
+            env.clock.advance(0.01)
+            await env.send(2, "table_chat", text=f"b{i}")
+        await env.send(1, "table_allow_joiners", on=True)
+        await env.send(2, "table_allow_joiners", on=True)
+        (t,) = env.mm.tables.values()
+        assert len(t.chat) == mm.CHAT_KEEP
+        assert [m["text"] for m in t.chat] == (
+            [f"a{i}" for i in range(15, mm.CHAT_KEEP + 5)] + [f"b{i}" for i in range(10)])
+    run(go())
+
+
+def test_a_code_joiner_hears_the_lone_hosts_chat():
+    async def go():
+        env = Env()
+        await env.join(1, mode="casual", allow_joiners=False)
+        await env.send(1, "table_chat", text="come sit")
+        code = env.conns[1].last("queue_state")["code"]
+        env.player(2)
+        await env.send(2, "queue_join", code=code)
+        (t,) = env.mm.tables.values()
+        history = env.conns[2].last("table_chat_history")
+        assert history["table"] == t.id
+        assert [(m["seat"], m["name"], m["text"]) for m in history["messages"]] == [
+            (0, "P1", "come sit")]
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        (chat,) = env.chats
+        assert [m["text"] for m in chat] == ["come sit"]
+    run(go())
+
+
+def test_a_lone_entrys_chat_is_the_rooms_scrollback_when_it_starts_alone():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "table_chat", text="just me")
+        await env.send(1, "queue_start_bots")
+        (table_id, _), = env.started
+        assert table_id is None
+        (chat,) = env.chats
+        assert [(m["seat"], m["name"], m["text"]) for m in chat] == [(0, "P1", "just me")]
+        assert all(set(m) == {"id", "seat", "name", "text", "t"} for m in chat)
+        # and on the bot timer
+        await env.join(2)
+        await env.send(2, "table_chat", text="timer me")
+        env.clock.advance(mm.BOT_FILL_SECS + 1)
+        await env.mm.pump()
+        assert [tid for tid, _ in env.started] == [None, None]
+        assert [m["text"] for m in env.chats[1]] == ["timer me"]
+    run(go())
+
+
+def test_a_lone_entrys_chat_is_rate_limited():
+    async def go():
+        env = Env()
+        await env.join(1)
+        for i in range(mm.CHAT_LIMIT[0]):
+            await env.send(1, "table_chat", text=f"m{i}")
+        assert env.conns[1].last("error") is None
+        await env.send(1, "table_chat", text="one too many")
+        assert env.conns[1].last("error")["code"] == "rate_limited"
+        assert env.conns[1].last("table_chat")["text"] == f"m{mm.CHAT_LIMIT[0] - 1}"
+        assert len(env.mm._entry(1).chat) == mm.CHAT_LIMIT[0]
     run(go())
 
 

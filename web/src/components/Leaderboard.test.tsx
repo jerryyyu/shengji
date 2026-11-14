@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Leaderboard from "./Leaderboard";
+import { IdentitySheet } from "./GuestChip";
+import { guestName } from "../guestName";
 import { auth } from "../auth";
 import { forgetHomeSession } from "../home/session";
 import type { Leaderboard as Board, LeaderRow } from "../ratings/api";
@@ -32,6 +34,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   forgetHomeSession();
+  guestName.reset();
   calls.length = 0;
   signedIn = true;
   auth.reset();
@@ -57,7 +60,7 @@ async function render() {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => { root.render(<Leaderboard />); });
+  await act(async () => { root.render(<><Leaderboard /><IdentitySheet /></>); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
 
@@ -93,19 +96,21 @@ it("ratings carry a thousands separator", async () => {
   expect(host.querySelector(".lb-pin .lb-rating")?.textContent).toBe("1,210");
 });
 
-it("with the server unreachable a guest still sees the sign-in card, unavailable, with the reason", async () => {
+it("with the server unreachable a guest still sees the Sign in row, whose sheet shows sign-in unavailable", async () => {
   globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
   await auth.init();
   expect(auth.state.status).toBe("error");
   await render();
-  const card = host.querySelector(".lb-rated")!;
-  expect(card).not.toBeNull();
-  const btn = card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
+  const row = host.querySelector<HTMLButtonElement>(".lb-rated .lb-signin")!;
+  expect(row.textContent).toBe("Sign in to be ranked");
+  act(() => row.click());
+  const sheet = document.querySelector(".identity-sheet")!;
+  const btn = sheet.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
   expect(btn.disabled).toBe(true);
-  expect(card.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
+  expect(sheet.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
 });
 
-it("with only sign-in out of reach, the board shows and the sign-in card is unavailable", async () => {
+it("with only sign-in out of reach, the board shows and the Sign in row stays", async () => {
   const real = globalThis.fetch;
   globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
     if (String(input) === "/api/auth/config") return { status: 503, json: async () => ({}) } as Response;
@@ -116,9 +121,7 @@ it("with only sign-in out of reach, the board shows and the sign-in card is unav
   expect(auth.state.status).toBe("error");
   await render();
   expect(host.querySelectorAll(".lb-list .lb-row:not(.anchor)").length).toBeGreaterThan(0);
-  const card = host.querySelector(".lb-page .lb-rated")!;
-  expect(card).not.toBeNull();
-  expect(card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!.disabled).toBe(true);
+  expect(host.querySelector(".lb-page .lb-rated .lb-signin")).not.toBeNull();
 });
 
 it("marks provisional players with a new chip", async () => {
@@ -139,20 +142,25 @@ it("switches to all time and does not pin a row already in the list", async () =
   expect(host.querySelector(".lb-pin")).toBeNull();
 });
 
-it("a guest reads the board, with a sign-in card where their own row would be", async () => {
+it("a guest reads the board, with one Sign in row where their own row would be, which opens the one sheet", async () => {
   signedIn = false;
   await act(async () => { await auth.init(); });
   expect(auth.state.status).toBe("out");
   await render();
   expect(host.querySelectorAll(".lb-list .lb-row:not(.anchor)")).toHaveLength(4);
   expect(host.querySelector(".lb-row.me")).toBeNull();
-  const card = host.querySelector(".lb-page .signin-card")!;
-  expect(card.querySelector("h3")?.textContent).toBe("Sign in to be ranked");
-  expect(card.querySelector(".google-signin")).not.toBeNull();
-  expect(card.textContent).not.toMatch(/coming soon/i);
+  const card = host.querySelector(".lb-page .lb-rated")!;
+  expect(card.querySelectorAll("button")).toHaveLength(1);
+  expect(card.textContent).toBe("Sign in to be ranked");
+  expect(card.querySelector(".google-signin")).toBeNull();
   // it follows the board in the page, not pinned to the screen's bottom
   expect(host.querySelector(".lb-pin")).toBeNull();
   expect(card.previousElementSibling?.classList.contains("lb-list")).toBe(true);
+  expect(document.querySelector(".identity-sheet")).toBeNull();
+  act(() => card.querySelector<HTMLButtonElement>(".lb-signin")!.click());
+  const sheet = document.querySelector(".identity-sheet")!;
+  expect(sheet.querySelector("input[aria-label='Your name']")).not.toBeNull();
+  expect(sheet.querySelector(".google-signin")).not.toBeNull();
 });
 
 it("review: account change must not reuse another viewer's personalized board", async () => {
@@ -206,12 +214,12 @@ describe("viewer changes", () => {
   it("guest to account: the board reloads with the new account's own row", async () => {
     await act(async () => { await auth.init(); });
     await render();
-    expect(host.querySelector(".lb-page .signin-card")).not.toBeNull();
+    expect(host.querySelector(".lb-page .lb-signin")).not.toBeNull();
     expect(lbCalls()).toHaveLength(1);
     await signIn("Jerry");
     expect(lbCalls()).toHaveLength(2);
     expect(pinnedName()).toBe("Jerry (you)");
-    expect(host.querySelector(".signin-card")).toBeNull();
+    expect(host.querySelector(".lb-signin")).toBeNull();
   });
 
   it("account A, guest, account B: each sees only their own row", async () => {
@@ -221,7 +229,7 @@ describe("viewer changes", () => {
     expect(pinnedName()).toBe("Jerry (you)");
     await signOut();
     expect(host.textContent).not.toContain("(you)");
-    expect(host.querySelector(".lb-page .signin-card")).not.toBeNull();
+    expect(host.querySelector(".lb-page .lb-signin")).not.toBeNull();
     await signIn("Alice");
     expect(pinnedName()).toBe("Alice (you)");
     expect(host.textContent).not.toContain("Jerry (you)");

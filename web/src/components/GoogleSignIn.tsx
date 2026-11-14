@@ -9,7 +9,8 @@ import {
  *  a client id. On the website it is the official GIS button, whose script is
  *  fetched the first time this mounts; in the iOS app, where Google refuses
  *  that button, it is a native sign-in through the shell, with "Sign in with
- *  Apple" beside it when the shell supports it. */
+ *  Apple" above it when the shell supports it. The website has no Apple
+ *  button: the server accepts Apple tokens issued to the app only. */
 export default function GoogleSignIn({ clientId }: { clientId: string }) {
   if (isNative()) return <NativeGoogleSignIn clientId={clientId} />;
   return <WebGoogleSignIn clientId={clientId} />;
@@ -170,11 +171,6 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
 
   return (
     <div className="google-signin">
-      <button type="button" className="google-signin-native" data-testid="google-signin" style={NATIVE_BUTTON}
-              disabled={busy} onClick={() => void signIn()}>
-        <GoogleMark />
-        <span>Sign in with Google</span>
-      </button>
       {apple ? (
         <button type="button" className="apple-signin-native" data-testid="apple-signin" style={APPLE_BUTTON}
                 disabled={busy} onClick={() => void signInWithApple()}>
@@ -182,6 +178,11 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
           <span>Sign in with Apple</span>
         </button>
       ) : null}
+      <button type="button" className="google-signin-native" data-testid="google-signin" style={NATIVE_BUTTON}
+              disabled={busy} onClick={() => void signIn()}>
+        <GoogleMark />
+        <span>Sign in with Google</span>
+      </button>
       {error ? <div className="lobby-error">{error}</div> : null}
     </div>
   );

@@ -18,6 +18,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import MePage from "./MePage";
+import { IdentitySheet } from "./GuestChip";
 import GamesList from "./GamesList";
 import { openNameEditor } from "../home/route";
 import { forgetHomeSession, forgetPrivateSession } from "../home/session";
@@ -81,7 +82,7 @@ async function render(section: "stats" | "games" = "stats") {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => { root.render(<MePage section={section} />); });
+  await act(async () => { root.render(<><MePage section={section} /><IdentitySheet /></>); });
   await settle();
 }
 const rowLabels = () => [...host.querySelectorAll(".grp-row .grp-label")].map((e) => e.textContent);
@@ -254,63 +255,92 @@ describe("signed in", () => {
 describe("a guest", () => {
   beforeEach(() => { nameGuest("Gentle Tractor"); });
 
-  it("sees their name and initial, Edit name, the sign-in card with Google only, the settings and the help rows", async () => {
+  it("sees their name and initial, Edit name, one Sign in row, the settings and the help rows", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
     expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
     expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
-    const card = host.querySelector(".signin-card")!;
-    expect(card.querySelector(".google-signin")).not.toBeNull();
-    expect(card.querySelector(".apple-signin")).toBeNull();
-    expect(card.querySelectorAll("button:disabled")).toHaveLength(0);
-    expect(card.textContent).not.toContain("Apple");
-    expect(rowLabels()).toEqual(["Edit name", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    // no sign-in buttons on the page: Sign in is a row that opens the sheet
+    expect(host.querySelector(".google-signin")).toBeNull();
+    expect(host.querySelector(".signin-card")).toBeNull();
+    expect(rowLabels()).toEqual(["Edit name", "Sign in", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
     expect(rowNamed("Edit name").querySelector(".grp-value")?.textContent).toBe("Gentle Tractor");
+    expect(rowNamed("Sign in").querySelector(".grp-value.chev")).not.toBeNull();
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
   });
 
-  it("the sign-in card is the heading and the buttons, nothing else", async () => {
+  it("Sign in opens the one identity sheet: the name with dice, Google (no Apple on the web), Done", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    const card = host.querySelector(".signin-card")!;
-    expect(card.querySelector("h3")?.textContent).toBe("Sign in");
-    expect(card.querySelector("p")).toBeNull();
-    expect(card.querySelector(".me-rated-link")).toBeNull();
+    expect(document.querySelector(".identity-sheet")).toBeNull();
+    act(() => rowNamed("Sign in").click());
+    const sheet = document.querySelector(".identity-sheet")!;
+    expect(sheet.querySelector<HTMLInputElement>("input[aria-label='Your name']")!.value).toBe("Gentle Tractor");
+    expect(sheet.querySelector(".name-reroll")).not.toBeNull();
+    expect(sheet.querySelector(".google-signin")).not.toBeNull();
+    expect(sheet.querySelector("[data-testid='apple-signin']")).toBeNull();
+    expect(sheet.textContent).not.toContain("Apple");
+    expect(sheet.querySelector("p")).toBeNull();
+    act(() => guestName.close());
   });
 
-  it("with the server unreachable the card stays, its sign-in unavailable, with one line saying why", async () => {
+  it("with the server unreachable Sign in stays, and its sheet shows sign-in unavailable with one line saying why", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    const card = host.querySelector(".signin-card")!;
-    expect(card).not.toBeNull();
-    expect(card.querySelector("h3")?.textContent).toBe("Sign in");
-    const btn = card.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
+    expect(rowLabels()).toEqual(["Edit name", "Sign in", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    act(() => rowNamed("Sign in").click());
+    const sheet = document.querySelector(".identity-sheet")!;
+    const btn = sheet.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toBe("Sign in with Google");
-    expect(card.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
-    expect(rowLabels()).toEqual(["Edit name", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    expect(sheet.querySelector(".signin-upsell")?.textContent).toBe("Can't reach the server");
+    act(() => guestName.close());
   });
 
-  it("with sign-in off there is no card at all", async () => {
+  it("with sign-in off there is no Sign in row, and the sheet is the name only", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(host.querySelector(".signin-card")).toBeNull();
+    expect(rowLabels()).not.toContain("Sign in");
+    act(() => rowNamed("Edit name").click());
+    const sheet = document.querySelector(".identity-sheet")!;
+    expect(sheet.querySelector(".identity-signin")).toBeNull();
+    act(() => guestName.close());
   });
 
-  it("Edit name opens the guest's name sheet; Done keeps the new name, shown at once", async () => {
+  it("Edit name opens the same sheet; the dice and typing rename at once, and Done keeps the name", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    // the home frame holds the sheet
     expect(guestName.getSnapshot().editing).toBe(false);
     act(() => rowNamed("Edit name").click());
     expect(guestName.getSnapshot().editing).toBe(true);
+    const sheet = document.querySelector(".identity-sheet")!;
+    expect(sheet.querySelector(".google-signin")).not.toBeNull();
+    act(() => sheet.querySelector<HTMLButtonElement>(".name-reroll")!.click());
+    const rolled = guestName.name;
+    expect(rolled).not.toBe("Gentle Tractor");
+    expect(host.querySelector(".me-name")?.textContent).toBe(rolled);
     act(() => guestName.setName("Mei"));
     expect(host.querySelector(".me-name")?.textContent).toBe("Mei");
     expect(host.querySelector(".me-who .avatar")?.textContent).toBe("M");
-    act(() => guestName.close());
+    const done = [...sheet.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Done")!;
+    act(() => done.click());
+    expect(guestName.getSnapshot().editing).toBe(false);
+    expect(document.querySelector(".identity-sheet")).toBeNull();
+  });
+
+  it("signing in from the sheet closes it, and an account never sees it", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    act(() => rowNamed("Sign in").click());
+    expect(document.querySelector(".identity-sheet")).not.toBeNull();
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    act(() => root.render(<><MePage section="stats" /><IdentitySheet /></>));
+    await settle();
+    expect(document.querySelector(".identity-sheet")).toBeNull();
+    expect(guestName.getSnapshot().editing).toBe(false);
   });
 
   it("a guest who opens Me before Play gets a name, not a blank", async () => {
@@ -366,7 +396,7 @@ describe("account changes", () => {
   });
   const as = async (state: AuthState, section: "stats" | "games" = "stats") => {
     authState.current = state;
-    await act(async () => { root.render(<MePage section={section} />); });
+    await act(async () => { root.render(<><MePage section={section} /><IdentitySheet /></>); });
     await settle();
   };
   const IN = (user: typeof JERRY): AuthState => ({ status: "in", clientId: "cid", user });

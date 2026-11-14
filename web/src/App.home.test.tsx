@@ -188,14 +188,49 @@ describe("the bars", () => {
     expect(document.querySelector(".guest-name-sheet")).toBeNull();
   });
 
-  it("a guest at 700px gets a Sign in button that opens Me", async () => {
+  it("a guest at 700px has the chip as the one identity control: it opens the one sheet, with sign-in", async () => {
+    const { guestName } = await import("./guestName");
     signedIn = false;
     viewport(true);
     await renderApp();
-    const signIn = host.querySelector<HTMLButtonElement>(".topbar-signin")!;
-    expect(signIn.textContent).toBe("Sign in");
-    await act(async () => { signIn.click(); await new Promise((r) => setTimeout(r, 0)); });
-    expect(host.querySelector(".me-page .signin-card")).not.toBeNull();
+    const bar = host.querySelector(".topbar-end")!;
+    expect([...bar.querySelectorAll("button")].map((b) => b.className)).toEqual(["account-pill guest-pill"]);
+    expect(bar.textContent).not.toContain("Sign in");
+    await act(async () => { bar.querySelector<HTMLButtonElement>(".guest-pill")!.click(); await new Promise((r) => setTimeout(r, 0)); });
+    const sheets = document.querySelectorAll(".identity-sheet");
+    expect(sheets).toHaveLength(1);
+    expect(sheets[0].querySelector("input[aria-label='Your name']")).not.toBeNull();
+    expect(sheets[0].querySelector(".name-reroll")).not.toBeNull();
+    expect(sheets[0].querySelector(".google-signin")).not.toBeNull();
+    expect(sheets[0].querySelector("[data-testid='apple-signin']")).toBeNull();
+    act(() => guestName.close());
+  });
+
+  it("every Sign in opens the one sheet, mounted once by App, on every tab", async () => {
+    const { guestName } = await import("./guestName");
+    const { openTab } = await import("./home/route");
+    signedIn = false;
+    await renderApp();
+    act(() => FakeWS.all[0].onopen?.());
+    const opened = async (click: () => void) => {
+      await act(async () => { click(); await new Promise((r) => setTimeout(r, 0)); });
+      expect(document.querySelectorAll(".identity-sheet")).toHaveLength(1);
+      expect(document.querySelectorAll("input[aria-label='Your name']")).toHaveLength(1);
+      act(() => guestName.close());
+      expect(document.querySelector(".identity-sheet")).toBeNull();
+    };
+    // Play: the chip, and the guest line's Sign in
+    await opened(() => host.querySelector<HTMLButtonElement>(".lobby-panel .guest-pill")!.click());
+    await opened(() => host.querySelector<HTMLButtonElement>(".play-guest-signin")!.click());
+    // Leaderboard: the one row
+    await act(async () => { openTab("leaderboard"); await new Promise((r) => setTimeout(r, 0)); });
+    await opened(() => host.querySelector<HTMLButtonElement>(".lb-signin")!.click());
+    // Me: Edit name and Sign in
+    await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
+    const meRow = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".me-page .grp-row")]
+      .find((r) => r.querySelector(".grp-label")?.textContent === label)!;
+    await opened(() => meRow("Edit name").click());
+    await opened(() => meRow("Sign in").click());
   });
 
   for (const wide of [false, true]) {
@@ -383,13 +418,13 @@ describe("deep links", () => {
     });
   }
 
-  it("a guest on #/leaderboard reads the board with the sign-in card", async () => {
+  it("a guest on #/leaderboard reads the board with the Sign in row", async () => {
     signedIn = false;
     window.history.replaceState(null, "", "/#/leaderboard");
     await renderApp();
     expect(host.querySelector(".lb-list")).not.toBeNull();
     expect(host.textContent).not.toContain("Sheng Ji bot");
-    expect(host.querySelector(".lb-page .signin-card h3")?.textContent).toBe("Sign in to be ranked");
+    expect(host.querySelector(".lb-page .lb-signin")?.textContent).toBe("Sign in to be ranked");
   });
 
   it("a saved game's page and its replay keep their routes, without the bars", async () => {

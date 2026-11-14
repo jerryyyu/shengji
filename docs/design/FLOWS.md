@@ -135,6 +135,18 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      cannot (full, or only away seats).
    - The Join panel is drawn by `components/JoinPanel.tsx` from TablePanel's exported seat layouts; folding
      it into `TablePanel.tsx` as a panel kind is a follow-up.
+3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
+   (`IdentitySheet` in `components/GuestChip.tsx`, mounted once by App): "Your name" with the field and its
+   dice, then the sign-in buttons, then Done. Every Sign in opens that same sheet: the Play tab's guest line
+   ("Playing as a guest · Sign in to be ranked", which stays), Me's Edit name and Sign in rows, the
+   Leaderboard's one row "Sign in to be ranked ›" (its card and its sentence on ratings are gone; saying
+   what ranked means in How to play is a follow-up) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
+   is gone, and signing in closes the sheet.
+   - Sign in with Apple shows where it works today: the iOS app, when `nativeAuth` reports the Apple
+     provider ready, above Google. The website shows Google only, until web Apple sign-in has its Services
+     ID, return URL and server audience.
+   - A signed-in player still edits their name inline in Me (`NameEditForm`, saved to the account); the
+     sheet is a guest's.
 5. **One toast and one line above the hand.** Every message that comes and goes is the one toast
    (`components/Toast.tsx`, shown through `showToast` in `toast.ts`): one at a time, the newest replacing the
    one showing, gone after 4 s. It has one spot per layout: at the top of the page off the table, and at the

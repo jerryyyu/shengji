@@ -38,6 +38,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import Lobby, { STALL_MS } from "./Lobby";
+import { IdentitySheet } from "./GuestChip";
 import { offlineGame } from "./offlineGame";
 import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
@@ -51,7 +52,7 @@ async function render() {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => root.render(<Lobby status="open" />));
+  await act(async () => root.render(<><Lobby status="open" /><IdentitySheet /></>));
 }
 const NAME_FIELD = ".q-layer:not(.q-out) input[autocomplete='nickname']";
 /** A guest's name field, in the editor their chip opens (opened here when
@@ -247,7 +248,7 @@ describe("the lobby with sign-in ON", () => {
   });
 });
 
-const rerender = () => act(async () => root.render(<Lobby status="open" />));
+const rerender = () => act(async () => root.render(<><Lobby status="open" /><IdentitySheet /></>));
 const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === label)!;
 /** Join a room by its code: the lookup, the peek, then join_room under the
  *  player's name. */
@@ -423,7 +424,7 @@ describe("no connection", () => {
       document.body.appendChild(host);
       root = createRoot(host);
     }
-    await act(async () => root.render(<Lobby status={status} />));
+    await act(async () => root.render(<><Lobby status={status} /><IdentitySheet /></>));
   }
 
   it("shows no connection row of its own, and after 4 s shows the Play tab's offline state", async () => {

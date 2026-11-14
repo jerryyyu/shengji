@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../auth";
-import GoogleSignIn from "../components/GoogleSignIn";
+import { guestName } from "../guestName";
 import LeaveSheet from "../components/LeaveSheet";
 import type { RoomMsg } from "../protocol";
 import type { QueueMode } from "./messages";
@@ -21,13 +21,11 @@ export function TrophyIcon() {
 }
 
 /** The line under a guest's Play: they queue like everyone, unrated, and
- *  Sign in shows the sign-in buttons in the line's place. Without sign-in on
- *  this server the line says only that they play as a guest. */
+ *  Sign in opens the identity sheet. Without sign-in on this server the line
+ *  says only that they play as a guest. */
 function GuestLine({ online }: { online: boolean }) {
   const account = useAuth();
-  const [signingIn, setSigningIn] = useState(false);
   const clientId = account.status === "out" ? account.clientId : null;
-  if (clientId && signingIn && online) return <GoogleSignIn clientId={clientId} />;
   return (
     <p className="play-guest-line">
       Playing as a guest
@@ -35,7 +33,7 @@ function GuestLine({ online }: { online: boolean }) {
         <>
           {" · "}
           <button type="button" className="play-guest-signin" disabled={!online}
-                  onClick={() => setSigningIn(true)}>Sign in</button>
+                  onClick={() => guestName.open()}>Sign in</button>
           {" to be ranked"}
         </>
       ) : null}

@@ -4,6 +4,9 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GamesList, { SavedGames } from "./GamesList";
+import { IdentitySheet } from "./GuestChip";
+import { auth } from "../auth";
+import { guestName } from "../guestName";
 import { remember } from "../home/session";
 import { dayLabel } from "../home/dayLabel";
 import { navigate, useGamesRoute } from "../replay/route";
@@ -130,6 +133,34 @@ describe("the games list", () => {
     await mount();
     expect(q(".games-status")?.textContent).toContain("Sign in to see your saved games.");
     expect(qa(".games-day-row")).toHaveLength(0);
+  });
+
+  it("a lapsed session's Sign in opens the one identity sheet, on the list and on a game's page", async () => {
+    routes["GET /api/auth/config"] = { status: 200, body: { google_client_id: "cid" } };
+    routes["GET /api/me"] = { status: 401, body: { detail: "not signed in" } };
+    routes["GET /api/me/games?limit=20"] = { status: 401, body: { detail: "not signed in" } };
+    routes["GET /api/me/games/g1"] = { status: 401, body: { detail: "not signed in" } };
+    auth.reset();
+    guestName.reset();
+    await act(async () => { await auth.init(); });
+    expect(auth.state.status).toBe("out");
+    try {
+      await mount();
+      for (const start of [{ page: "list" as const }, { page: "game" as const, id: "g1" }]) {
+        act(() => navigate(start));
+        act(() => root.render(<><Host /><IdentitySheet /></>));
+        await settle();
+        expect(q(".games-status")?.textContent).toContain("Sign in to see your saved games.");
+        expect(q(".games-status .google-signin")).toBeNull();
+        expect(document.querySelector(".identity-sheet")).toBeNull();
+        await click(button("Sign in"));
+        expect(document.querySelectorAll(".identity-sheet")).toHaveLength(1);
+        expect(document.querySelector(".identity-sheet .google-signin")).not.toBeNull();
+        act(() => guestName.close());
+      }
+    } finally {
+      auth.reset();
+    }
   });
 
   it("says an unknown game is unavailable (404)", async () => {

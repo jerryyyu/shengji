@@ -12,7 +12,6 @@ import { useMediaQuery } from "../phoneLayout";
 import { cached, remember, tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home/session";
 import LargeTitlePage from "../home/LargeTitlePage";
 import type { MeSection } from "../home/route";
-import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
 import { useScreen } from "../telemetry";
@@ -269,10 +268,10 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
 
 /** A guest's Me, the signed-in Me minus what only an account has (a
  *  rating, a leaderboard place, saved games): the name they play under with
- *  its initial and Edit name, which opens the same sheet as the chip, one
- *  sign-in card, the settings and the help rows. `unreachable`: the server
- *  could not be asked, so the card shows its buttons unavailable rather than
- *  disappearing. */
+ *  its initial, Edit name and Sign in, which both open the identity sheet the
+ *  chip opens, the settings and the help rows. `unreachable`: the server
+ *  could not be asked, so Sign in stays and the sheet shows its buttons
+ *  unavailable. */
 function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachable: boolean }) {
   const { name } = useGuestName();
   // a guest who opens Me first gets the same random name Play would give
@@ -295,10 +294,9 @@ function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachab
             <Row label="Edit name" value={name.trim()} chevron className="me-edit" onClick={() => guestName.open()} />
           </ul>
           {clientId || unreachable ? (
-            <div className="signin-card">
-              <h3>Sign in</h3>
-              {clientId ? <GoogleSignIn clientId={clientId} /> : <SignInUnavailable />}
-            </div>
+            <ul className="grp me-signin">
+              <Row label="Sign in" chevron className="me-signin-row" onClick={() => guestName.open()} />
+            </ul>
           ) : null}
         </>
       )}

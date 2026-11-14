@@ -5332,7 +5332,6 @@ body.keyboard-open .tabbar { display: none; }
 .topbar-tab.on { color: var(--gold); background: rgba(255, 255, 255, 0.1); font-weight: 600; }
 .topbar-end { grid-column: 3; justify-self: end; display: flex; align-items: center; min-width: 0; }
 .topbar-end > .topbar-tab { height: 56px; }
-.topbar-signin { min-height: 36px; white-space: nowrap; }
 
 .avatar {
   width: 28px;
@@ -5471,7 +5470,6 @@ body.keyboard-open .tabbar { display: none; }
 /* tapped as 44px tall */
 .play-guest-signin::after { content: ""; position: absolute; inset: -14px -6px; }
 .play-guest-signin:disabled { color: inherit; cursor: default; }
-.play-guest .google-signin { align-self: center; }
 /* Unavailable controls keep their place and shape, greyed rather than faded. */
 .play-tab .btn:disabled {
   opacity: 1;
@@ -5826,38 +5824,11 @@ button.grp-row:disabled { cursor: default; }
   background: linear-gradient(rgba(27, 31, 39, 0), var(--page) 28px);
 }
 
-.signin-card {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-  padding: 20px 18px 16px;
-  border-radius: 16px;
-  background: var(--grp);
-  text-align: center;
-}
-.signin-card.compact { gap: 10px; padding: 16px 16px 14px; }
 .lb-page .lb-rated { margin-top: 16px; }
-.signin-card h3 { margin: 0; font-size: var(--fs-20); font-weight: 700; line-height: 1.2; color: #fff; }
-.signin-card p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
-/* The one explanation of ranked play is the Leaderboard's sign-in card; other
-   sign-in cards link there with this. */
-.me-rated-link {
-  appearance: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-weight: 600;
-  color: var(--gold);
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: var(--gold-soft);
-  text-underline-offset: 3px;
-}
-.signin-card .google-signin { display: flex; flex-direction: column; align-items: center; }
-.signin-card .google-signin-slot { width: 100%; display: flex; justify-content: center; }
-.signin-card p.signin-foot { margin-top: -4px; font-size: var(--fs-12); color: var(--muted-2); }
+/* The identity sheet's sign-in buttons, between the name and Done, as wide
+   as the field. */
+.identity-signin .google-signin { align-items: stretch; gap: 10px; }
+.identity-signin .google-signin-slot { width: 100%; }
 .me-who { display: flex; align-items: center; gap: 14px; }
 .me-who-text { min-width: 0; }
 .me-name { font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff; overflow-wrap: anywhere; }

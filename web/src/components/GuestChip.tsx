@@ -1,11 +1,13 @@
-import { useId } from "react";
+import { useEffect, useId } from "react";
+import { useAuth } from "../auth";
 import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
 import Sheet from "../queue/Sheet";
+import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 
 /** A guest's chip, in the signed-in chip's place: the name's initial, the
  *  name, the guest line where a rating would be, and a pencil, since a tap
- *  opens the name editor on every tab. `compact` (the wide top bar) has no
+ *  opens the identity sheet on every tab. `compact` (the wide top bar) has no
  *  pencil. */
 export default function GuestChip({ compact = false }: { compact?: boolean }) {
   const { name } = useGuestName();
@@ -21,20 +23,29 @@ export default function GuestChip({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** The guest's name editor: the name field with its random-name die, and
- *  Done, which keeps the name for next time. Rendered once, by the Play tab
- *  or by the home frame on every other tab (or by Me shown over a game), so
- *  the chip and Me's Edit name open the same sheet. */
-export function GuestNameSheet() {
+/** A guest's one identity sheet: the name field with its random-name die,
+ *  then the sign-in buttons (Google, and Apple where the app offers it),
+ *  then Done, which keeps the name for next time. App mounts it once, and the
+ *  chip, Me's Edit name and every Sign in open it with `guestName.open()`;
+ *  signing in closes it, and an account never sees it. */
+export function IdentitySheet() {
   const { name, editing } = useGuestName();
+  const account = useAuth();
+  const signedIn = account.status === "in";
   const id = useId();
-  if (!editing) return null;
+  useEffect(() => {
+    if (signedIn && editing) guestName.close();
+  }, [signedIn, editing]);
+  if (!editing || signedIn) return null;
   const done = () => {
     guestName.keep(name);
     guestName.close();
   };
+  const signIn = account.status === "out" && account.clientId ? <GoogleSignIn clientId={account.clientId} />
+    : account.status === "error" ? <SignInUnavailable />
+    : null;
   return (
-    <Sheet title="Your name" onClose={done} cancel={null}>
+    <Sheet title="Your name" onClose={done} cancel={null} className="identity-sheet">
       <div className="q-sheet-pad guest-name-sheet">
         <div className="field">
           <div className="name-input">
@@ -61,6 +72,7 @@ export function GuestNameSheet() {
             </button>
           </div>
         </div>
+        {signIn ? <div className="identity-signin">{signIn}</div> : null}
         <button type="button" className="btn gold" onClick={done}>Done</button>
       </div>
     </Sheet>

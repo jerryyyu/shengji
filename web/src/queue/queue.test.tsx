@@ -257,19 +257,22 @@ describe("Play", () => {
     expect(fresh.sent.filter((m) => m.type === "queue_join")).toHaveLength(1);
   });
 
-  it("a guest's Sign in shows the sign-in buttons in the line's place", async () => {
+  it("a guest's Sign in opens the one identity sheet; the line stays under Play", async () => {
     signedIn = false;
     await renderApp();
     click(q(".play-guest-signin") as HTMLButtonElement);
-    expect(q(".play-guest-line")).toBeNull();
-    expect(q(".lobby-panel .google-signin")).not.toBeNull();
+    expect(q(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
+    expect(q(".lobby-panel .google-signin")).toBeNull();
+    expect(document.querySelectorAll(".identity-sheet")).toHaveLength(1);
+    expect(q(".identity-sheet input[aria-label='Your name']")).not.toBeNull();
+    expect(q(".identity-sheet .google-signin")).not.toBeNull();
     // the website signs in with Google only; nothing promises a provider still to come
     expect(q("[data-testid='apple-signin']")).toBeNull();
     expect(document.body.textContent).not.toMatch(/coming soon/i);
   });
 });
 
-it("in the app a guest's Sign in offers Apple beside Google", async () => {
+it("in the app a guest's Sign in opens the sheet with Apple above Google", async () => {
   const { resetNativeForTests } = await import("../native");
   const Plugins: Record<string, unknown> = {
     SocialLogin: { initialize: () => Promise.resolve(), login: () => Promise.resolve(), logout: () => Promise.resolve() },
@@ -283,8 +286,8 @@ it("in the app a guest's Sign in offers Apple beside Google", async () => {
     await renderApp();
     click(q(".play-guest-signin") as HTMLButtonElement);
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-    expect(q("[data-testid='google-signin']")).not.toBeNull();
-    expect(q("[data-testid='apple-signin']")?.textContent).toBe("Sign in with Apple");
+    const buttons = [...document.querySelectorAll(".identity-sheet .google-signin button")].map((b) => b.textContent);
+    expect(buttons).toEqual(["Sign in with Apple", "Sign in with Google"]);
     expect(document.body.textContent).not.toMatch(/coming soon/i);
   } finally {
     delete (window as unknown as { Capacitor?: unknown }).Capacitor;

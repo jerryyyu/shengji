@@ -7,7 +7,7 @@ import { tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home
 import { WIDE } from "../home/route";
 import LargeTitlePage from "../home/LargeTitlePage";
 import { useMediaQuery } from "../phoneLayout";
-import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
+import { guestName } from "../guestName";
 import { SkeletonRows } from "./GamesList";
 import { useScreen } from "../telemetry";
 
@@ -45,22 +45,24 @@ function Rows({ board }: { board: Board }) {
   );
 }
 
-/** Under the board for a guest: what signing in buys, and the button.
- *  This is the one place ranked and unranked play are explained; the other
- *  sign-in prompts link here. */
-function SignInToRank({ clientId }: { clientId: string }) {
+/** Under the board for a guest: one row that opens the identity sheet.
+ *  What ranked play means is How to play's to say. */
+function SignInToRank() {
   return (
-    <div className="signin-card compact lb-rated">
-      <h3>Sign in to be ranked</h3>
-      <p>Ranked rounds move your rating here, starting from 1000.</p>
-      <GoogleSignIn clientId={clientId} />
-    </div>
+    <ul className="grp lb-rated">
+      <li>
+        <button type="button" className="grp-row lb-signin" onClick={() => guestName.open()}>
+          <span className="grp-label">Sign in to be ranked</span>
+          <span className="grp-value chev" />
+        </button>
+      </li>
+    </ul>
   );
 }
 
 /** The Leaderboard tab: ranked players by rating, this week or all time.
- *  Guests read it too; the viewer's own row (or, for a guest, a sign-in
- *  card) is pinned to the bottom when it is not among the rows shown.
+ *  Guests read it too; the viewer's own row (or, for a guest, the Sign in
+ *  row) is pinned to the bottom when it is not among the rows shown.
  *  This week on the first visit; after that the period last chosen, with
  *  the last board shown at once while a fresh one loads. The board carries
  *  the viewer's own row, so it is cached per viewer and reloads when the
@@ -97,13 +99,11 @@ export default function Leaderboard() {
       pinned = <ul className="grp lb-list"><Row row={me} /></ul>;
     }
   }
-  // a guest's card follows the board, where it is seen at once, rather than
-  // pinned to the screen's bottom
-  // with sign-in out of reach the same card shows unavailable, whether or not
-  // the board itself loaded
-  const signIn = account.status === "out" && account.clientId ? <SignInToRank clientId={account.clientId} />
-    : account.status === "error" ? <div className="signin-card compact lb-rated"><h3>Sign in to be ranked</h3><SignInUnavailable /></div>
-    : null;
+  // a guest's row follows the board, where it is seen at once, rather than
+  // pinned to the screen's bottom; with sign-in out of reach the row stays
+  // and the sheet shows its buttons unavailable
+  const signIn = (account.status === "out" && account.clientId) || account.status === "error"
+    ? <SignInToRank /> : null;
   if (signIn) pinned = null;
 
   return (

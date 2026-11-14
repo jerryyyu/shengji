@@ -302,28 +302,58 @@ textarea:focus-visible {
 
 /* ---------- toast / banners ---------- */
 
+/* The app's one toast, in one fixed spot: the top of the page here, under
+   the top seat at the table (.at-table). An error is red; a notice is the
+   gold-outlined panel (.toast-info). */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 220px;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  bottom: auto;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
   background: #3a1e24;
   border: 1px solid var(--danger);
   color: #ffd7dc;
-  padding: 10px 20px;
-  border-radius: 10px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: var(--fs-14);
   font-weight: 600;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   /* the fade ends as the toast unmounts: --toast-ms is the state timer */
   animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in calc(var(--toast-ms, 4000ms) - 0.4s) forwards;
-  z-index: 60;
+  z-index: 80;
   pointer-events: none;
+}
+
+.toast small {
+  display: block;
+  font-size: var(--fs-13);
+  font-weight: 400;
+  color: #9aa3b2;
+}
+
+.toast-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--team0); }
+.toast-dot.team1 { background: var(--team1); }
+
+/* At the table: centred under the top seat, clear of your row and the hand
+   line above it. */
+.toast.at-table {
+  top: 184px;
+  max-width: min(560px, calc(100vw - 32px));
 }
 
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(10px);
+    transform: translateX(-50%) translateY(-10px);
   }
 }
 
@@ -857,14 +887,6 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
 .name-edit-actions .btn { padding: 6px 12px; font-size: var(--fs-13); }
 .name-edit-error { color: #f0a0aa; font-size: var(--fs-12); }
 
-/* a code that went nowhere, inline under the box it was typed in */
-.join-error {
-  margin-top: -4px;
-  color: #f0a0aa;
-  font-size: var(--fs-13);
-  font-weight: 600;
-  text-align: center;
-}
 
 .lobby-error {
   background: #3a1e24;
@@ -1614,66 +1636,8 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   .points-pop { display: none; }
 }
 
-.hud-message {
-  text-align: center;
-  font-size: var(--fs-13);
-  color: #ffe9b0;
-  padding: 4px 0 2px;
-  animation: message-in 0.25s ease-out;
-}
 
-/* A notice outlives the one-play `hud-message` and is dismissed by hand, so it
-   is quieter than the red toast and louder than the info line: it has to be
-   readable for a whole trick without becoming furniture. */
-.hud-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 6px auto 0;
-  max-width: 440px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 233, 176, 0.35);
-  border-left: 3px solid #e0a03a;
-  border-radius: 6px;
-  background: rgba(40, 30, 12, 0.92);
-  color: #ffe9b0;
-  font-size: var(--fs-13);
-  line-height: 1.35;
-  text-align: left;
-  animation: message-in 0.25s ease-out;
-}
-.hud-notice-body { flex: 1 1 auto; }
-.hud-notice-cards {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  color: #fff6de;
-}
-.hud-notice-cards.forced { text-decoration: underline; text-underline-offset: 2px; }
-.hud-notice-close {
-  flex: 0 0 auto;
-  margin: -2px -2px 0 0;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #ffe9b0;
-  font-size: var(--fs-16);
-  line-height: 1.2;
-  cursor: pointer;
-  opacity: 0.7;
-}
-@media (hover: hover) and (pointer: fine) {
-  .hud-notice-close:hover { opacity: 1; background: rgba(255, 233, 176, 0.12); }
-}
-.hud-notice-close:focus-visible { outline: 2px solid #e0a03a; outline-offset: 1px; opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .hud-notice { animation: none; } }
 
-@keyframes message-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
 
 /* ---------- Felt / table layout ---------- */
 
@@ -2058,12 +2022,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   max-width: 900px;
 }
 
-.action-hint {
-  color: rgba(233, 236, 242, 0.75);
-  font-size: var(--fs-13);
-  font-style: italic;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-}
 
 /* ---------- Hand ---------- */
 
@@ -2140,7 +2098,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 
 /* the hint floats over the table just above your row, out of the flow, so
    showing it never moves the action bar */
-.follow-hint {
+.hand-line {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 6px);
@@ -2156,16 +2114,16 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-  animation: follow-hint-in 160ms var(--ease-out) both;
+  animation: hand-line-in 160ms var(--ease-out) both;
 }
 
-@keyframes follow-hint-in {
+@keyframes hand-line-in {
   from { opacity: 0; }
 }
 
 /* a newcomer's first turns: the coach line in gold, the cards that follow
    the lead at full strength and the rest dimmed; an idle turn pulses both */
-.coach-cue {
+.hand-line.coach {
   border-color: var(--gold);
   color: var(--gold);
 }
@@ -2174,11 +2132,11 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   filter: brightness(0.55) saturate(0.7);
 }
 
-.coach-cue.nudge {
-  animation: follow-hint-in 160ms var(--ease-out) both, coach-pulse 1.6s ease-in-out infinite;
+.hand-line.coach.nudge {
+  animation: hand-line-in 160ms var(--ease-out) both, coach-pulse 1.6s ease-in-out infinite;
 }
 
-.coach-cue.nudge ~ .hand .hand-slot.lit .card {
+.hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
   animation: coach-pulse 1.6s ease-in-out infinite;
 }
 
@@ -2188,8 +2146,8 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .coach-cue.nudge,
-  .coach-cue.nudge ~ .hand .hand-slot.lit .card {
+  .hand-line.coach.nudge,
+  .hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
     animation: none;
     box-shadow: 0 0 0 2px var(--gold);
   }
@@ -2297,7 +2255,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .follow-hint { animation: none; }
+  .hand-line { animation: none; }
 }
 
 /* ---------- Cards ---------- */
@@ -2903,8 +2861,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     display: none;
   }
 
-  .hud-bar > .hud-group,
-  .hud-notice {
+  .hud-bar > .hud-group {
     pointer-events: auto;
   }
 
@@ -2938,11 +2895,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .points-big {
     font-size: var(--fs-16);
     font-variant-numeric: tabular-nums;
-  }
-
-  .hud-message {
-    font-size: var(--fs-12);
-    padding: 2px 0 1px;
   }
 
   /* --- One header strip: levels · trump · levels | points --- */
@@ -3614,28 +3566,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     animation: declare-in 120ms var(--ease-back) both;
   }
 
-  .action-hint {
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: rgba(8, 20, 14, 0.78);
-    color: var(--text);
-    font-size: var(--fs-12);
-    font-style: normal;
-    text-shadow: none;
-  }
 
-  /* a status line reads left of the buttons, so Pass stays at the edge */
-  .action-bar > .action-hint {
-    order: -1;
-  }
 
-  /* the deck says it while dealing, Pass while declaring, the glowing seat
-     in play */
-  .phase-deal .action-hint,
-  .phase-declare .action-hint,
-  .phase-play .action-hint {
-    display: none;
-  }
 
   /* --- Hand: width-scaled pitch, 16px under the home indicator --- */
   .hand {
@@ -3712,7 +3644,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* a refused Play's hint stands just above your row, over the hand */
-  .follow-hint {
+  .hand-line {
     position: absolute;
     left: 50%;
     bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
@@ -3751,84 +3683,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: var(--fs-13);
   }
 
-  /* --- Messages pass in the bottom-left corner, above your row --- */
-  .hud-message {
-    position: fixed;
-    left: var(--corner-l);
-    bottom: calc(var(--cross-bottom) + 6px);
-    max-width: calc(50% - var(--corner-l) - 96px);
-    margin: 0;
-    padding: 5px 12px;
-    border-radius: 12px;
-    background: rgba(8, 20, 14, 0.82);
-    z-index: 11;
-    pointer-events: none;
-    animation: hud-message-pass-corner 3.2s ease forwards;
-  }
 
-  .hud-notice {
-    position: fixed;
-    left: var(--corner-l);
-    bottom: calc(var(--cross-bottom) + 6px);
-    z-index: 11;
-    width: calc(50% - var(--corner-l) - 96px);
-    max-width: 360px;
-    margin: 0;
-    padding: 6px 8px;
-    font-size: var(--fs-12);
-  }
 
-  /* In play the corner beside your row is free: messages and the
-     failed-throw notice pass there, left of the crown, no taller than the band
-     under the left seat's slot. */
-  .phase-play .hud-message,
-  .phase-play .hud-notice {
-    bottom: calc(var(--zone-bottom) + var(--space-s));
-    width: auto;
-    max-width: calc(50% - var(--corner-l) - 88px);
-    max-height: calc(var(--cross-avail) / 2 - var(--trick-ch) / 2 - 26px);
-  }
 
-  .phase-play .hud-message {
-    overflow: hidden;
-  }
 
-  /* a declaration is told once, by its tag under the declared cards */
-  .hud-message.declare-message {
-    display: none;
-  }
 
-  .phase-play .hud-notice {
-    font-size: var(--fs-11);
-    line-height: 1.3;
-    padding-right: 30px;
-  }
 
-  /* Only the text is clipped to the band: clipping the notice itself would
-     also clip the close button's tap area, which overhangs the corner. */
-  .phase-play .hud-notice .hud-notice-body {
-    align-self: stretch;
-    min-height: 0;
-    overflow: hidden;
-  }
 
-  /* The close is a full 44px button whose glyph sits in the notice's top
-     right 24px corner; the 10px of tap area around the glyph overhangs the
-     notice's top and right edges by 8px instead of making a short notice
-     taller. */
-  .phase-play .hud-notice .hud-notice-close {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    margin: 0;
-    padding: 10px;
-    line-height: 24px;
-    background-clip: content-box;
-  }
 
   @media (prefers-reduced-motion: reduce) {
     .hand .card,
@@ -3988,26 +3849,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-size: 30px;
   }
 
-  /* off the table, an error passes in the header band */
-  .toast {
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
+  /* At the table the toast passes just under the header, where the top
+     seat's label sits: never over a side seat's label, your row, the hand
+     line or the hand. It stays inside the cross's width. */
+  .table-screen .toast.at-table {
+    top: calc(var(--safe-t) + 6px + var(--header-h) + var(--space-xs));
     bottom: auto;
-    max-width: calc(100vw - 2 * max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) - 32px);
-    font-size: var(--fs-13);
-    padding: 7px 16px;
-  }
-
-  /* At the table an error passes just above your row, centred, close to the
-     hand it is about: never over a seat's label, Play, Clear or the hand. It
-     stays inside the cross's width, between the side seats' labels. */
-  .table-screen .toast {
-    top: auto;
-    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
     max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
     font-size: var(--fs-13);
     line-height: 17px;
     padding: 6px 14px;
-    text-align: center;
   }
 
   /* chat sits in the header, beside the menu button, clear of the hand
@@ -4055,14 +3906,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 }
 
-/* The phone message's pass, from the bottom-left corner (see the short
-   landscape block); kept out of that block so it stays plain rules. */
-@keyframes hud-message-pass-corner {
-  0% { opacity: 0; transform: translateY(4px); }
-  10% { opacity: 1; transform: none; }
-  80% { opacity: 1; }
-  100% { opacity: 0; visibility: hidden; }
-}
 
 /* Phone table motion (see the short landscape block). */
 @keyframes deck-pulse {
@@ -4417,18 +4260,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .seat-team { font-size: var(--fs-11); opacity: 0.55; letter-spacing: 0.06em; }
 .seat-take { font-size: var(--fs-11); opacity: 0.7; margin-top: 2px; }
 
-/* A phone-only message toast; the element remounts per message (key=message),
-   so the animation restarts for each new line and the last one fades out. */
-@keyframes hud-message-pass {
-  0% { opacity: 0; transform: translate(-50%, -4px); }
-  10% { opacity: 1; transform: translate(-50%, 0); }
-  80% { opacity: 1; }
-  100% { opacity: 0; visibility: hidden; }
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .hud-message { animation: none; }
-  .modal, .modal-backdrop, .hud-notice, .trick-play { animation: none; }
+  .modal, .modal-backdrop, .trick-play { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .opponent.on-turn::after { animation: none; }
   .hand .card, .btn, .seat-option { transition: none; }
@@ -4440,7 +4274,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* A phone's controls need finger-sized targets, not desktop icon bounds. */
 @media (pointer: coarse) {
   .btn, .hud-more-btn, .hud-menu-row,
-  .hud-notice-close, .chat-close, .xr-close {
+  .chat-close, .xr-close {
     min-height: 44px;
     min-width: 44px;
   }
@@ -4450,7 +4284,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
 .hud-more-btn:active,
 .hud-menu-row:not([aria-disabled="true"]):active, .chat-close:active,
-.xr-close:active, .chat-launch:active, .hud-notice-close:active { background-color: #394452; }
+.xr-close:active, .chat-launch:active { background-color: #394452; }
 
 @media (prefers-reduced-transparency: reduce) {
   .modal-backdrop { backdrop-filter: none; background: #10131a; }
@@ -6406,17 +6240,6 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .q-center { text-align: center; }
 
 
-/* Above the tab bar. */
-.q-toast {
-  position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(130px + env(safe-area-inset-bottom, 0px));
-  z-index: 75; display: flex; align-items: flex-start; gap: 10px; width: max-content; max-width: calc(100vw - 32px);
-  padding: 12px 16px; border-radius: 12px; background: #262d38; border: 1px solid #3d4556; color: #fff;
-  font-size: var(--fs-15); font-weight: 600; line-height: 1.3; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  animation: toast-in 0.2s ease-out; pointer-events: none;
-}
-.q-toast small { display: block; font-size: var(--fs-13); font-weight: 400; color: #9aa3b2; }
-.q-toast-i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #3f3415; color: var(--gold); font-size: 13px; }
 
 /* The game's mode at the top of the ⋯ menu: a label, not a row to tap. */
 .hud-menu-mode {
@@ -6540,7 +6363,6 @@ dialog.leave-sheet-backdrop {
   .q-grab { display: none; }
   .q-layer.q-in .q-sheet { animation: pop-in 320ms var(--ease-out); }
   .q-layer.q-out .q-sheet { animation: pop-out 320ms cubic-bezier(0.32, 0, 0.67, 0) forwards; }
-  .q-toast { bottom: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .q-spin { animation: none; }
@@ -6591,18 +6413,7 @@ dialog.leave-sheet-backdrop {
    vertical scrolling and pinch zoom. */
 .howto-screen { touch-action: pan-y pinch-zoom; }
 
-/* the table's corner line about a newcomer, and the newcomer's own pill */
-.join-notice {
-  position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: 128px;
-  z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; pointer-events: none;
-}
-.join-notice span {
-  display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; padding: 0 14px 0 12px;
-  border-radius: 18px; background: rgba(20, 23, 30, 0.82); border: 1px solid #333b49;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); color: #e9ecf2; font-size: var(--fs-14); white-space: nowrap;
-}
-.join-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--team0); }
-.join-dot.team1 { background: var(--team1); }
+/* the newcomer's own pill */
 .btn.join-leave {
   min-height: 40px; padding: 0 16px; border-radius: 14px; border: 1px solid #4a5262;
   background: rgba(255, 255, 255, 0.06); color: #e9ecf2; font-size: var(--fs-15); font-weight: 600;
@@ -6770,7 +6581,7 @@ dialog.leave-sheet-backdrop {
 }
 
 /* declare and bury help: a short line that may wrap, above your row */
-.follow-hint.phase-help {
+.hand-line.help {
   white-space: normal;
   width: max-content;
   max-width: min(560px, calc(100vw - 32px));
@@ -6971,7 +6782,7 @@ dialog.leave-sheet-backdrop {
 
 /* burying on a phone, the help line sits where the declaration is drawn;
    the trump chip in the header already names the declared suit */
-:where(.phone-landscape) .table-screen.phase-bury:has(.follow-hint.phase-help) .trick-play.declaration {
+:where(.phone-landscape) .table-screen.phase-bury:has(.hand-line.help) .trick-play.declaration {
   visibility: hidden;
 }
 

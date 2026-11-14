@@ -54,13 +54,13 @@ it("stills the points float under Reduce Motion", () => {
 });
 
 describe("the follow hint floats", () => {
-  // every .follow-hint rule, desktop and phone, takes the hint out of the
+  // every .hand-line rule, desktop and phone, takes the hint out of the
   // flow, so showing it never moves the action bar
-  it("the base and phone .follow-hint rules are absolutely positioned", () => {
+  it("the base and phone .hand-line rules are absolutely positioned", () => {
     const re = /([^{}]+)\{([^{}]*)\}/g;
     const bodies: string[] = [];
     for (let m = re.exec(css); m; m = re.exec(css)) {
-      if (m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ") === ".follow-hint") bodies.push(m[2]);
+      if (m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ") === ".hand-line") bodies.push(m[2]);
     }
     const positions = bodies.map((body) => prop(body, "position")).filter((p) => p !== null);
     expect(positions.length).toBeGreaterThanOrEqual(2);

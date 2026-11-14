@@ -21,10 +21,10 @@ import { normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
 import { offlineGame } from "./offlineGame";
+import { showToast } from "../toast";
 
 interface LobbyProps {
   status: ConnStatus;
-  error: string | null;
   /** The room this socket sits in before its game: its panel takes Play's place. */
   room?: RoomMsg | null;
   /** A link waits while App asks whether to leave the table you sit at. */
@@ -83,7 +83,7 @@ function RankedUnavailable() {
   );
 }
 
-export default function Lobby({ status, error, room = null, holdInvite = false,
+export default function Lobby({ status, room = null, holdInvite = false,
                                 onSeatedInvite, inviteDropped = 0 }: LobbyProps) {
   const stalled = useStalled(status);
   // The test room's Create and Join each send one request and then wait:
@@ -168,8 +168,21 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
   // The table the last Join went to and who sent it, so a table_full answer
   // shows its panel and a choose_seat answer looks again for the same asker.
   const lastJoin = useRef<{ code: string; kind: TableKind; for: PeekFor } | null>(null);
-  // Why a link's table could not be opened, said on Play.
+  // Why a link's table could not be opened, said as the toast. It is said
+  // after the message's other listeners have run, so it wins over App's
+  // generic toast for the same error.
   const [inviteError, setInviteError] = useState<string | null>(null);
+  useEffect(() => {
+    if (inviteError === null) return;
+    showToast(inviteError);
+    setInviteError(null);
+  }, [inviteError]);
+  // A code that names nothing answers the Join tap: said as the toast, once.
+  useEffect(() => {
+    if (codeView.playError === null) return;
+    showToast(codeView.playError);
+    codes.clearPlayError();
+  }, [codeView.playError]);
   const sendPeek = useCallback((code: string, asker: PeekFor): boolean => {
     if (!conn.send({ type: "peek_room", room: code })) return false;
     peeks.current.push({ code, for: asker, live: true, generation: conn.generation });
@@ -484,13 +497,6 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
           </div>
         ) : null}
 
-        {/* above the sections, so it is on screen at rest; a phone's tab bar
-            covers the bottom of the column */}
-        {/* a full table's panel says so itself: one status, not two */}
-        {(inviteError || error) && !(joinUp && joinView?.full) ? (
-          <div className="lobby-error" role="alert">{inviteError ?? error}</div>
-        ) : null}
-
         {/* With no connection Play plays on this device, and what needs the
             server waits; the chip, How to play and an open sheet stay put. */}
         {stalled && !room ? <OfflineControls local={false} status={status} /> : (
@@ -534,8 +540,6 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
                 {starting?.kind === "join" || looking ? STARTING_LABEL.join : "Join"}
               </button>
             </div>}
-            {/* a code that names nothing answers the Join tap, so it is said where the code was typed */}
-            {codeView.playError && !seated ? <div className="join-error" role="alert">{codeView.playError}</div> : null}
           </>
         )}
 

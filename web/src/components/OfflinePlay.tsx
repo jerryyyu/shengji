@@ -160,7 +160,6 @@ export function OfflineControls({ local, status, error = null, room = null, onAr
 
 /** The whole Play tab of a page in offline mode. */
 export default function OfflinePlay(props: OfflineControlsProps & { local: true }) {
-  const { error = null } = props;
   const showTable = useOfflineTable(true);
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -177,7 +176,6 @@ export default function OfflinePlay(props: OfflineControlsProps & { local: true 
           </>
         )}
         {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
-        {error ? <div className="lobby-error" role="alert">{error}</div> : null}
         <OfflineControls {...props} />
         <p className="howto-entry">
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>

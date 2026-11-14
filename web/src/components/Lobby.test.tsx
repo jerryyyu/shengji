@@ -42,6 +42,7 @@ import { offlineGame } from "./offlineGame";
 import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
 import { guestName } from "../guestName";
+import { clearToast, currentToast } from "../toast";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -50,7 +51,7 @@ async function render() {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => root.render(<Lobby status="open" error={null} />));
+  await act(async () => root.render(<Lobby status="open" />));
 }
 const NAME_FIELD = ".q-layer:not(.q-out) input[autocomplete='nickname']";
 /** A guest's name field, in the editor their chip opens (opened here when
@@ -90,6 +91,7 @@ const answered = () => act(() => { for (const fn of [...link.listeners]) fn({ ty
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
+  clearToast();
 });
 
 describe("the lobby with sign-in OFF", () => {
@@ -245,7 +247,7 @@ describe("the lobby with sign-in ON", () => {
   });
 });
 
-const rerender = () => act(async () => root.render(<Lobby status="open" error={null} />));
+const rerender = () => act(async () => root.render(<Lobby status="open" />));
 const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === label)!;
 /** Join a room by its code: the lookup, the peek, then join_room under the
  *  player's name. */
@@ -421,7 +423,7 @@ describe("no connection", () => {
       document.body.appendChild(host);
       root = createRoot(host);
     }
-    await act(async () => root.render(<Lobby status={status} error={null} />));
+    await act(async () => root.render(<Lobby status={status} />));
   }
 
   it("shows no connection row of its own, and after 4 s shows the Play tab's offline state", async () => {
@@ -615,22 +617,19 @@ describe("starting a game waits for the server", () => {
     expect(button(/^Join$/).disabled).toBe(false);
   });
 
-  it("a code that names nothing frees Join and says so until the box changes", async () => {
+  it("a code that names nothing frees Join and says so in the one toast, once", async () => {
     await render();
     const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "ZZZZ");
     act(() => button(/^Join$/).click());
     serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
     expect(button(/^Join$/).disabled).toBe(false);
-    expect(host.querySelector(".join-error")?.textContent).toBe("No table has that code.");
-    // inline under the code box it answers, not in the lobby's error box or the connection pill
-    expect(host.querySelector(".lobby-error")).toBeNull();
-    const err = host.querySelector(".join-error")!;
-    expect(err.previousElementSibling?.classList.contains("join-row")).toBe(true);
-    expect(err.getAttribute("role")).toBe("alert");
+    expect(currentToast()?.text).toBe("No table has that code.");
+    expect(currentToast()?.info).toBeUndefined();
+    // no line of the lobby's own
+    expect(host.querySelector(".join-error, .lobby-error")).toBeNull();
+    expect(codes.view.playError).toBeNull();
     expect(sent).toEqual([{ type: "code_lookup", code: "ZZZZ" }]);
-    type(code, "ZZZ");
-    expect(host.querySelector(".join-error")).toBeNull();
   });
 });
 
@@ -738,7 +737,8 @@ describe("an invite link opens the Join panel", () => {
     await render();
     linkNames("room");
     serverSays({ type: "error", code: "room_not_found", message: "Room not found." });
-    expect(host.querySelector(".lobby-error")?.textContent).toBe("No room ABCD. It may have closed.");
+    expect(currentToast()?.text).toBe("No room ABCD. It may have closed.");
+    expect(host.querySelector(".lobby-error")).toBeNull();
     expect(panel()).toBeNull();
     expect(window.location.search).toBe("");
     expect(types()).toEqual(["code_lookup", "peek_room"]);

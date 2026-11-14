@@ -198,7 +198,7 @@ function layout(layer: HTMLElement, you: number) {
     .filter((r) => r.width > 0 && r.height > 0)
     .map((r) => localBox(r, outer, turned));
   // cards and the controls you tap are never covered
-  const hard = boxes(".trick-area .card, .hand, .hud-notice, .you-row button, .hud button, .chat-launch");
+  const hard = boxes(".trick-area .card, .hand, .toast, .you-row button, .hud button, .chat-launch");
   const placed: Box[] = [];
   for (const el of layer.querySelectorAll<HTMLElement>(".chat-bubble")) {
     const seat = Number(el.dataset.seat);

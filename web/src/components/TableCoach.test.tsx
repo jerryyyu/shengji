@@ -88,7 +88,7 @@ afterEach(() => {
 const render = (s: GameState) => act(() => root.render(<Table state={s} />));
 
 
-const cue = () => host.querySelector(".coach-cue");
+const cue = () => host.querySelector(".hand-line.coach");
 const lit = () => [...host.querySelectorAll(".hand-slot.lit")].map((s) => Number((s as HTMLElement).dataset.id));
 const dim = () => host.querySelectorAll(".hand-slot.dim").length;
 const hearts2 = { suit: "H", rank: "2", declarer: 1 };
@@ -192,6 +192,16 @@ describe("newcomer coach", () => {
     expect(cue()!.classList.contains("nudge")).toBe(false);
     act(() => { vi.advanceTimersByTime(200); });
     expect(cue()!.classList.contains("nudge")).toBe(true);
+  });
+
+  it("shares the one line above the hand: a refused Play's reason displaces the cue", () => {
+    render(state({ turn: 0, trump: hearts2, hand: clubHand, trick: { leader: 0, plays: [] } }));
+    expect(cue()).not.toBeNull();
+    act(() => host.querySelector<HTMLElement>(".play-wrap")!.click());
+    const lines = host.querySelectorAll(".hand-line");
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent).toBe("Choose the cards to lead");
+    expect(cue()).toBeNull();
   });
 
   it("explains a lead without lighting anything", () => {

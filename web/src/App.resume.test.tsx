@@ -142,6 +142,6 @@ it("signing out at a ranked table asks for the seat back, then leaves the table 
   act(() => guest.deliver({ type: "error", code: "ranked_queue_only", message: "Ranked games are joined through the queue." }));
   expect(host.querySelector(".tp-room")).toBeNull();
   expect(host.querySelector(".lobby-panel")).not.toBeNull();
-  expect(host.querySelector(".lobby-error")?.textContent).toBe("Sign in again to return to your game.");
+  expect(host.querySelector(".toast")?.textContent).toBe("Sign in again to return to your game.");
   expect(getSavedRoom()).toBe("ABCD");
 });

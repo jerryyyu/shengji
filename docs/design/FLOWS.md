@@ -135,6 +135,21 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      cannot (full, or only away seats).
    - The Join panel is drawn by `components/JoinPanel.tsx` from TablePanel's exported seat layouts; folding
      it into `TablePanel.tsx` as a panel kind is a follow-up.
+5. **One toast and one line above the hand.** Every message that comes and goes is the one toast
+   (`components/Toast.tsx`, shown through `showToast` in `toast.ts`): one at a time, the newest replacing the
+   one showing, gone after 4 s. It has one spot per layout: at the top of the page off the table, and at the
+   table centred under the top seat, just under the header. An error is red and read at once
+   (`aria-live="assertive"`); a notice is gold-outlined and read politely. Its sources: the server's errors
+   and notices, a link's table that is gone or a code that names nothing (the lobby's error box and the line
+   under the code box are gone), the queue's notices (`q-toast` is gone), a failed throw (the header notice
+   and its close are gone), the engine's table messages (a declaration is not one: its tag under the
+   declared cards tells it), a newcomer joining ("Mei joins next trick", once per join; the corner line is
+   gone) and Coach on/off.
+   - At the table, exactly one line stands between the trick and your hand (`components/HandLine.tsx`),
+     highest first: why Play is disabled (a refused tap, or a play that does not follow), else the phase's
+     help (declaring, burying), else the newcomer coach's cue. The status line in the button row ("Waiting
+     for Li", "Dealing cards…") is gone: the seat on turn glows and says "their turn", and the hand fills
+     as it is dealt.
 
 ## Grammar: Us/Them are labels, sentences say we/they (Jerry 2026-11-14)
 - "Us" and "Them" are labels only: team heads, HUD chips, "Them 15 / 80", "Games: Us 1 · Them 0".

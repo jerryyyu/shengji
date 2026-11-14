@@ -1,9 +1,10 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DUR } from "../motion";
 import type { GameState, Notice, StatePlayer } from "../protocol";
 import Hud from "./Hud";
+import { clearToast, currentToast } from "../toast";
 
 function makePlayer(overrides: Partial<StatePlayer> = {}): StatePlayer {
   return {
@@ -84,98 +85,71 @@ function render(state: GameState) {
   };
 }
 
-describe("failed-throw notice", () => {
-  it("names what was thrown and what was forced", () => {
-    const view = render(makeState({ notice: failedThrow() }));
-    const el = view.host.querySelector(".hud-notice");
-    expect(el).not.toBeNull();
-    const text = el!.textContent ?? "";
-    expect(text).toContain("Throw failed");
-    expect(text).toContain("♣7 ♣7 ♦7 ♦7"); // the attempt, which `message` never carried
-    expect(text).toContain("♦7 ♦7");
-    expect(el!.getAttribute("role")).toBe("status");
+describe("failed-throw notice and table messages: told once, as the one toast", () => {
+  // each test sits at its own table, so what one told is news to the next
+  let n = 0;
+  const at = (over: Partial<GameState> = {}) => makeState({ room: `T${n}`, ...over });
+  beforeEach(() => { n += 1; clearToast(); });
+  const toast = () => currentToast();
+
+  it("names what was thrown and what was forced, politely", () => {
+    const view = render(at({ notice: failedThrow() }));
+    expect(toast()?.text).toBe("Throw failed. You threw ♣7 ♣7 ♦7 ♦7 and had to play ♦7 ♦7.");
+    expect(toast()?.info).toBe(true);
+    // no banner of its own in the header
+    expect(view.host.querySelector(".hud-notice, .hud-message")).toBeNull();
     view.unmount();
   });
 
   it("names the other player when the throw was not yours", () => {
-    const view = render(makeState({ notice: failedThrow(1, 1) }));
-    expect(view.host.querySelector(".hud-notice")!.textContent).toContain("Robin threw");
+    const view = render(at({ notice: failedThrow(1, 1) }));
+    expect(toast()?.text).toContain("Robin threw");
     view.unmount();
   });
 
-  it("dismisses on click and stays dismissed while the same notice stands", () => {
-    const state = makeState({ notice: failedThrow() });
+  it("tells a notice once while the same notice stands, even across a remount", () => {
+    const state = at({ notice: failedThrow() });
     const view = render(state);
-    const close = view.host.querySelector<HTMLButtonElement>(".hud-notice-close")!;
-    act(() => close.click());
-    expect(view.host.querySelector(".hud-notice")).toBeNull();
-    // the server keeps sending the same notice for several plays: it must not
-    // pop back up after the player has dismissed it
+    act(() => clearToast());
+    // the server keeps sending the same notice for several plays
     view.rerender({ ...state });
-    expect(view.host.querySelector(".hud-notice")).toBeNull();
+    expect(toast()).toBeNull();
+    view.unmount();
+    const again = render(state);
+    expect(toast()).toBeNull();
+    again.rerender(at({ notice: failedThrow(2) }));
+    expect(toast()?.text).toContain("Throw failed.");
+    again.unmount();
+  });
+
+  it("tells no notice outside play", () => {
+    const view = render(at({ notice: failedThrow(4), phase: "round_end" }));
+    expect(toast()).toBeNull();
     view.unmount();
   });
 
-  it("shows the NEXT failed throw even after the last one was dismissed", () => {
-    const state = makeState({ notice: failedThrow(1) });
-    const view = render(state);
-    act(() => view.host.querySelector<HTMLButtonElement>(".hud-notice-close")!.click());
-    expect(view.host.querySelector(".hud-notice")).toBeNull();
-    view.rerender(makeState({ notice: failedThrow(2) }));
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+  it("tells the notice, not the one-play message that restates it", () => {
+    const view = render(at({ notice: failedThrow(), message: "Throw failed — forced to play D7+D7" }));
+    expect(toast()?.text).toContain("You threw");
     view.unmount();
   });
 
-  it("closes when the round ends, even if no later trick cleared it", () => {
-    const notice = failedThrow(4);
-    const view = render(makeState({ notice }));
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
-    view.rerender(makeState({ notice, phase: "round_end" }));
-    expect(view.host.querySelector(".hud-notice")).toBeNull();
+  it("tells an ordinary message, once until the next play clears it", () => {
+    const view = render(at({ message: "No declaration — trump flipped from the kitty: S" }));
+    expect(toast()?.text).toBe("No declaration — trump flipped from the kitty: ♠");
+    act(() => clearToast());
+    view.rerender(at({ message: "No declaration — trump flipped from the kitty: S" }));
+    expect(toast()).toBeNull();
+    view.rerender(at({ message: null }));
+    view.rerender(at({ message: "No declaration — trump flipped from the kitty: S" }));
+    expect(toast()).not.toBeNull();
     view.unmount();
   });
 
-  it("goes away by itself once the trick after the failed throw is over", () => {
-    const trickA = { leader: 0, plays: [], winner: 0 } as unknown as GameState["last_trick"];
-    const trickB = { leader: 1, plays: [], winner: 1 } as unknown as GameState["last_trick"];
-    const trickC = { leader: 2, plays: [], winner: 2 } as unknown as GameState["last_trick"];
-    const notice = failedThrow(3);
-    const view = render(makeState({ notice, last_trick: trickA }));
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
-    view.rerender(makeState({ notice, last_trick: trickA }));     // more plays in the same trick
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
-    view.rerender(makeState({ notice, last_trick: trickB }));     // the throw's trick ends
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
-    view.rerender(makeState({ notice, last_trick: trickC }));     // one more trick ends
-    expect(view.host.querySelector(".hud-notice")).toBeNull();
-    view.rerender(makeState({ notice: failedThrow(4), last_trick: trickC }));   // a new failed throw shows
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+  it("tells no declaration: its tag under the declared cards does", () => {
+    const view = render(at({ message: "Seat 1 declared H2" }));
+    expect(toast()).toBeNull();
     view.unmount();
-  });
-
-  it("does not double up the one-play message with the notice", () => {
-    const view = render(makeState({
-      notice: failedThrow(),
-      message: "Throw failed — forced to play D7+D7",
-    }));
-    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
-    expect(view.host.querySelector(".hud-message")).toBeNull();
-    view.unmount();
-  });
-
-  it("still shows an ordinary message when there is no notice", () => {
-    const view = render(makeState({ message: "Robin declared Hearts" }));
-    expect(view.host.querySelector(".hud-message")!.textContent).toBe("Robin declared Hearts");
-    view.unmount();
-  });
-
-  it("marks a declaration message, which the phone tells only by the tag under the cards", () => {
-    const view = render(makeState({ message: "Seat 1 declared H2" }));
-    expect(view.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(true);
-    view.unmount();
-    const other = render(makeState({ message: "Robin declared Hearts" }));
-    expect(other.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(false);
-    other.unmount();
   });
 });
 

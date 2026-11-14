@@ -444,21 +444,6 @@ describe("phone controls", () => {
     expect(rule(block, ".hand .card::after").top).toBe("calc(-1 * var(--lift))");
   });
 
-  it("gives the in-play notice's close a 44px box that the notice does not clip", () => {
-    const close = rule(block, ".phase-play .hud-notice .hud-notice-close");
-    for (const k of ["width", "height", "min-width", "min-height"]) expect(px(close[k]), k).toBe(44);
-    // the glyph is the 24px content box, drawn in the notice's top right corner
-    expect(px(close.width) - 2 * px(close.padding)).toBe(24);
-    expect(close.position).toBe("absolute");
-    // the box overhangs the notice's corner, so only the text may be clipped
-    expect(px(close.top)).toBeLessThan(0);
-    expect(px(close.right)).toBeLessThan(0);
-    expect(rule(block, ".phase-play .hud-notice").overflow).toBeUndefined();
-    expect(rule(block, ".phase-play .hud-message, .phase-play .hud-notice").overflow).toBeUndefined();
-    expect(rule(block, ".phase-play .hud-notice .hud-notice-body").overflow).toBe("hidden");
-    expect(rule(block, ".phase-play .hud-message").overflow).toBe("hidden");
-  });
-
   it("shortens a long seat name inside a bounded label: smaller, then an ellipsis", () => {
     expect(tokens["--pill-max"]).toContain("calc(var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - 2 * var(--space-s))");
     expect(rule(block, ".opponent.pos-left, .opponent.pos-right")["max-width"]).toBe("var(--pill-max)");
@@ -484,7 +469,7 @@ describe("phone controls", () => {
   });
 
   it("keeps table text at 11px or more", () => {
-    for (const sel of [".lead-tag, .win-tag", ".declare-tag", ".you-tag, .host-tag, .off-tag", ".action-hint", ".chip"]) {
+    for (const sel of [".lead-tag, .win-tag", ".declare-tag", ".you-tag, .host-tag, .off-tag", ".hand-line", ".chip"]) {
       expect(px(rule(block, sel)["font-size"])).toBeGreaterThanOrEqual(11);
     }
   });
@@ -540,10 +525,6 @@ describe("phone controls", () => {
 
   it("lets the banker's crown stand in for its team dot, so a short name fits beside the crown", () => {
     expect(rule(block, ".opponent:has(.banker-crown) .seat-dot").display).toBe("none");
-  });
-
-  it("tells a declaration once, by its tag, not again in the corner", () => {
-    expect(rule(block, ".hud-message.declare-message").display).toBe("none");
   });
 
   it("hides the lone crown beside Bury", () => {
@@ -610,15 +591,8 @@ describe("phone controls", () => {
     expect(rule(block, ".phase-play.showing-last .you-row").visibility).toBe("hidden");
   });
 
-  it("floats messages and the failed-throw notice in the bottom-left corner", () => {
-    for (const sel of [".hud-message", ".hud-notice"]) {
-      expect(rule(block, sel).position).toBe("fixed");
-      expect(rule(block, sel).left).toBe("var(--corner-l)");
-    }
-  });
-
   it("puts felt text on the dark pill", () => {
-    for (const sel of [".lead-tag", ".declare-tag", ".action-hint", ".deal-deck-count"]) {
+    for (const sel of [".lead-tag", ".declare-tag", ".deal-deck-count"]) {
       expect(rule(block, sel).background).toMatch(/^rgba\(8, 20, 14, 0\.7\d\)$/);
     }
   });
@@ -646,15 +620,11 @@ describe("desktop and iPad are untouched", () => {
 
 describe("the table's frame", () => {
   it("reads the viewport and safe areas only through the frame tokens", () => {
-    // every vw, vh and env() in the block is a frame token's fallback, or the
-    // off-table toast (a lobby screen is never rotated)
-    const offTable = rule(block, ".toast");
+    // every vw, vh and env() in the block is a frame token's fallback
     const stripped = block
       .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/--(view-[wh]|safe-[tlrb]):[^;]*;/g, "")
-      .replace(/\.toast \{[^}]*\}/, "");
+      .replace(/--(view-[wh]|safe-[tlrb]):[^;]*;/g, "");
     expect(stripped).not.toMatch(/\d(vw|vh)\b|env\(/);
-    expect(offTable.top).toContain("env(safe-area-inset-top");
   });
 
   it("turns a portrait phone's table a quarter turn into a landscape frame, safe areas with it", () => {
@@ -686,27 +656,28 @@ describe("the table's frame", () => {
   });
 });
 
-describe("the error toast at the table", () => {
-  const t = rule(block, ".table-screen .toast");
-  it("passes just above your row, centred, inside the cross's width", () => {
-    expect(t.top).toBe("auto");
-    expect(t.bottom).toBe("calc(var(--zone-bottom) + var(--row-h) + var(--space-xs))");
+describe("the one toast at the table", () => {
+  const t = rule(block, ".table-screen .toast.at-table");
+  it("passes just under the header, under the top seat, centred, inside the cross's width", () => {
+    expect(t.top).toBe("calc(var(--safe-t) + 6px + var(--header-h) + var(--space-xs))");
+    expect(t.bottom).toBe("auto");
     expect(t["max-width"]).toBe("calc(2 * var(--side-out) - 2 * var(--space-s))");
   });
 
   for (const [name, vp] of FRAMES) {
-    it(`covers no seat label, your row or the hand: ${name}`, () => {
+    it(`covers no side seat's label, your row, the hand line or the hand: ${name}`, () => {
       for (const phase of ["play", "setup"] as const) {
         const g = geometry(vp, tokens, phase);
         const vars = phase === "play" ? { ...tokens, ...rule(block, ".table-screen.phase-play") } : tokens;
         const L = (e: string) => evalLength(e, vp, vars);
-        const y1 = vp.h - L(t.bottom);
+        const y0 = L(t.top);
         // two lines at most: 2 x 17 + 12 of padding
-        const toast: Rect = { x0: g.cx - L(t["max-width"]) / 2, x1: g.cx + L(t["max-width"]) / 2, y0: y1 - 46, y1 };
-        expect(y1).toBeLessThanOrEqual(vp.h - L("var(--zone-bottom)") - L("var(--row-h)"));
-        expect(y1).toBeLessThanOrEqual(g.handTop);
-        expect(overlaps(toast, g.row)).toBe(false);
+        const toast: Rect = { x0: g.cx - L(t["max-width"]) / 2, x1: g.cx + L(t["max-width"]) / 2, y0, y1: y0 + 46 };
         expect(toast.y0).toBeGreaterThanOrEqual(g.header);
+        // the hand line stands just above your row: two of its lines fit under the toast
+        expect(toast.y1).toBeLessThanOrEqual(vp.h - L("var(--zone-bottom)") - L("var(--row-h)") - 2 * 17);
+        expect(toast.y1).toBeLessThanOrEqual(g.handTop);
+        expect(overlaps(toast, g.row)).toBe(false);
         for (const p of [g.pills.left, g.pills.right]) expect(overlaps(toast, p)).toBe(false);
       }
     });

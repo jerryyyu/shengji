@@ -218,7 +218,7 @@ describe("Play", () => {
     await settle();
     expect(panel()).toBeNull();
     expect(findBtn().textContent).toBe("Play");
-    expect(q(".q-toast")?.textContent).toContain("Signed in. Press Play to find a table.");
+    expect(q(".toast")?.textContent).toContain("Signed in. Press Play to find a table.");
   });
 
   it("a guest who signs in at a waiting table or in a pair keeps nothing: the new socket's one Play is the only search", async () => {
@@ -914,7 +914,7 @@ describe("a shared table", () => {
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     say(queued({ table: null }));
     expect(panel()?.classList.contains("tp-own")).toBe(true);
-    expect(q(".q-toast")?.textContent).toContain("Alice left the table.");
+    expect(q(".toast")?.textContent).toContain("Alice left the table.");
   });
 
   it("two minutes without a tap: one notice, back on Play, no cooldown", async () => {
@@ -922,7 +922,7 @@ describe("a shared table", () => {
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
     say({ type: "queue_removed", reason: "idle", cooldown_until: null });
     expect(panel()).toBeNull();
-    expect(q(".q-toast")?.textContent).toContain("You left the table.");
+    expect(q(".toast")?.textContent).toContain("You left the table.");
     await pastGuard();
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
@@ -958,7 +958,7 @@ describe("a shared table", () => {
     expect(q(".table-screen")).toBeNull();
     expect(panel()?.classList.contains("tp-own")).toBe(true);
     expect(localStorage.getItem("shengji.room")).toBeNull();   // nothing to resume
-    expect(q(".q-toast")?.textContent).toContain("The game could not start.");
+    expect(q(".toast")?.textContent).toContain("The game could not start.");
   });
 
   it("a bots game that fails to start returns to the lobby, away from the table", async () => {
@@ -1013,7 +1013,7 @@ describe("a pair the server forgot", () => {
     expect(queue.view.party).not.toBeNull();
     say({ type: "error", code: "not_in_party", message: "You are not in a party." });
     expect(queue.view.party).toBeNull();
-    expect(q(".lobby-error")).toBeNull();
+    expect(q(".toast")).toBeNull();
   });
 
   it("a reconnect that gets no pair back drops it", async () => {
@@ -1054,7 +1054,7 @@ describe("away from the app", () => {
     expect(panel()).not.toBeNull();      // the server may still hand it back
     tick(3000);
     expect(panel()).toBeNull();
-    expect(q(".q-toast")?.textContent).toContain("You left the table while away.");
+    expect(q(".toast")?.textContent).toContain("You left the table while away.");
   });
 
   it("a socket back in time gets its entry back and no notice", async () => {
@@ -1067,14 +1067,14 @@ describe("away from the app", () => {
     say(queued());
     tick(3000);
     expect(panel()).not.toBeNull();
-    expect(q(".q-toast")).toBeNull();
+    expect(q(".toast")).toBeNull();
   });
 
   it("the server's away removal says so too", async () => {
     await renderApp();
     say(queued());
     say({ type: "queue_removed", reason: "away", cooldown_until: null });
-    expect(q(".q-toast")?.textContent).toContain("You left the table while away.");
+    expect(q(".toast")?.textContent).toContain("You left the table while away.");
     expect(panel()).toBeNull();
     await pastGuard();
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);   // no cooldown
@@ -1145,7 +1145,7 @@ describe("one code for rooms and tables", () => {
     typeInto(playBox(), "7F2K");
     playJoin();
     say({ type: "code_kind", code: "7F2K", kind: "party" });
-    expect(q(".join-error")?.textContent).toBe("No table has that code.");
+    expect(q(".toast")?.textContent).toBe("No table has that code.");
     expect(sentTypes()).not.toContain("party_join");
     expect(sentTypes()).not.toContain("peek_room");
     expect(button(/^Join$/, q(".join-row")!)?.disabled).toBe(false);
@@ -1156,7 +1156,7 @@ describe("one code for rooms and tables", () => {
     typeInto(playBox(), "ZZZZ");
     playJoin();
     say({ type: "code_kind", code: "ZZZZ", kind: "none" });
-    expect(q(".join-error")?.textContent).toBe("No table has that code.");
+    expect(q(".toast")?.textContent).toBe("No table has that code.");
     expect(sentTypes()).not.toContain("peek_room");
     expect(sentTypes()).not.toContain("party_join");
   });
@@ -1218,7 +1218,7 @@ describe("one code for rooms and tables", () => {
     await renderApp();
     say({ type: "code_kind", code: "7F2K", kind: "party" });
     await settle();
-    expect(q(".join-error")?.textContent).toBe("No table has that code.");
+    expect(q(".toast")?.textContent).toBe("No table has that code.");
     expect(sentTypes()).not.toContain("party_join");
   });
 
@@ -1227,7 +1227,7 @@ describe("one code for rooms and tables", () => {
     await renderApp();
     say({ type: "code_kind", code: "ZZZZ", kind: "none" });
     await settle();
-    expect(q(".join-error")?.textContent).toBe("No table has that code.");
+    expect(q(".toast")?.textContent).toBe("No table has that code.");
     expect(window.location.search).toBe("");
   });
 
@@ -1315,7 +1315,7 @@ describe("a code lookup that is interrupted or refused", () => {
     typeInto(q("input[aria-label='Table code']") as HTMLInputElement, "WXYZ");
     click(button(/^Join$/, q(".join-row")!));
     say(LIMITED);
-    expect(q(".lobby-error")?.textContent).toBe("Too many requests; wait a minute.");
+    expect(q(".toast")?.textContent).toBe("Too many requests; wait a minute.");
     expect(button(/^Join$/, q(".join-row")!)?.disabled).toBe(false);
   });
 
@@ -1324,7 +1324,7 @@ describe("a code lookup that is interrupted or refused", () => {
     await renderApp();
     say(LIMITED);
     await settle();
-    expect(q(".lobby-error")?.textContent).toBe("Too many requests; wait a minute.");
+    expect(q(".toast")?.textContent).toBe("Too many requests; wait a minute.");
   });
 
   it("an unrelated error while a lookup waits does not cancel it", async () => {
@@ -1448,7 +1448,7 @@ describe("open tables", () => {
     const taken = offer({ pick: 1, seats: [offerSeat("Jerry", false, false), offerSeat("Bot 1", true, true),
                                             offerSeat("Bob", false, false), offerSeat("Bot 3", true, true)] });
     tell(queued({ offer: taken, bots_paused: true, bots_at: null }));
-    expect(q(".q-toast")?.textContent).toContain("That seat was just taken.");
+    expect(q(".toast")?.textContent).toContain("That seat was just taken.");
     expect([...panel()!.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
       .toContain("Bob, playing, other team");
     expect(panel()!.querySelector(".tp-seat.you")).not.toBeNull();
@@ -1513,14 +1513,19 @@ describe("open tables", () => {
     expect(sentLast()).toEqual({ type: "leave_room" });
   });
 
-  it("O2: the table sees one corner line, next trick then next round", async () => {
+  it("O2: the table is told once per join, as the toast: next trick then next round", async () => {
     await open();
     tell({ type: "match_started", match_id: "m1", room: "OPEN", rated: true });
     tell(state({ joining: [{ seat: 2, name: "Alice", when: "trick" }] }));
-    expect(q(".join-notice")?.textContent).toBe("Alice joins next trick");
+    expect(q(".toast.at-table")?.textContent).toBe("Alice joins next trick");
+    expect(q(".toast .toast-dot.team0")).not.toBeNull();
+    const { clearToast } = await import("../toast");
+    act(() => { clearToast(); });
+    // the same join again is no news
+    tell(state({ joining: [{ seat: 2, name: "Alice", when: "trick" }] }));
+    expect(q(".toast")).toBeNull();
     tell(state({ joining: [{ seat: 2, name: "Alice", when: "round" }] }));
-    expect(q(".join-notice")?.textContent).toBe("Alice joins next round");
-    tell(state({ joining: [] }));
+    expect(q(".toast.at-table")?.textContent).toBe("Alice joins next round");
     expect(q(".join-notice")).toBeNull();
   });
 
@@ -1686,7 +1691,7 @@ describe("the search on screen is the server's", () => {
       tick(3000);
       expect(findBtn().getAttribute("aria-busy")).toBeNull();
       expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
-      expect(q(".q-toast")?.textContent).toContain("Couldn't open a table.");
+      expect(q(".toast")?.textContent).toContain("Couldn't open a table.");
       expect(lastSent()).toMatchObject({ type: "queue_status" });
       say(queued());                       // it did reach the server after all
       expect(panel()).not.toBeNull();
@@ -1700,7 +1705,7 @@ describe("the search on screen is the server's", () => {
     say(queued());
     tick(3000);
     expect(panel()).not.toBeNull();
-    expect(q(".q-toast")).toBeNull();
+    expect(q(".toast")).toBeNull();
   });
 
   for (const error of [{ code: "same_device", message: "Someone on this device is already at that table." },
@@ -1725,8 +1730,8 @@ describe("the search on screen is the server's", () => {
     say({ type: "queue_state", queued: false, count: 0 });
     expect(panel()).toBeNull();
     expect(findBtn().textContent).toBe("Play");
-    expect(q(".q-toast")?.textContent).toContain("You're no longer at a table.");
-    expect(q(".q-toast")?.textContent).toContain("Press Play to find one.");
+    expect(q(".toast")?.textContent).toContain("You're no longer at a table.");
+    expect(q(".toast")?.textContent).toContain("Press Play to find one.");
   });
 
   it.each([true, false])("an elsewhere-held table can be reclaimed with leader=%s", async (leader) => {
@@ -1741,7 +1746,7 @@ describe("the search on screen is the server's", () => {
     expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked" });
     say({ type: "queue_state", queued: false, count: 1 });
     expect(panel()).toBeNull();
-    expect(q(".q-toast")).toBeNull();
+    expect(q(".toast")).toBeNull();
   });
 
   it("back in view, a socket suspended without a close is probed and replaced, and the search rechecked", async () => {
@@ -1810,12 +1815,12 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     expect((findBtn() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("a cooldown refusal is told once (the lobby's line), and Play counts it down", async () => {
+  it("a cooldown refusal is told once (the toast), and Play counts it down", async () => {
     await renderApp();
     click(findBtn());
     say({ type: "error", code: "cooldown", message: "You left a table you joined. Play again in 4:59.",
           cooldown_until: nowSecs() + 299 });
-    expect(q(".q-toast")).toBeNull();
+    expect(q(".toast")?.textContent).toBe("You left a table you joined. Play again in 4:59.");
     expect(document.body.textContent?.match(/You left a table you joined/g)?.length).toBe(1);
     expect(findBtn().textContent).toBe("Play in 4:59");
   });
@@ -1892,11 +1897,11 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     await renderApp();
     say(queued());
     say({ type: "queue_state", queued: false, count: 0, replaced: true, by: "device", stopped: true });
-    expect(q(".q-toast")?.textContent).toContain("Your table was closed from another device.");
-    expect(q(".q-toast")?.textContent).not.toContain("window");
+    expect(q(".toast")?.textContent).toContain("Your table was closed from another device.");
+    expect(q(".toast")?.textContent).not.toContain("window");
     say(queued());
     say({ type: "queue_state", queued: false, count: 0, replaced: true, by: "window" });
-    expect(q(".q-toast")?.textContent).toContain("Your table moved to another window.");
+    expect(q(".toast")?.textContent).toContain("Your table moved to another window.");
   });
 
   it("a guest is never called ranked: search, table, Duo table, offer and the table's top bar", async () => {
@@ -2071,11 +2076,11 @@ describe("the unified table on the client", () => {
     expect(lastSent()).toEqual({ type: "table_move", seat: 3 });
     // seat refusals in a few words
     say({ type: "error", code: "seat_taken", message: "That seat was just taken. Pick another." });
-    expect(q(".q-toast")?.textContent).toBe("!That seat was just taken.Pick another.");
+    expect(q(".toast")?.textContent).toBe("That seat was just taken.Pick another.");
     say({ type: "error", code: "already_ready", message: "You tapped Start, so your seat is set." });
-    expect(q(".q-toast")?.textContent).toBe("!You tapped Start, so your seat is set.");
+    expect(q(".toast")?.textContent).toBe("You tapped Start, so your seat is set.");
     say({ type: "error", code: "pair_seats_fixed", message: "A Duo's seats stay together." });
-    expect(q(".q-toast")?.textContent).toBe("!A Duo's seats stay together.");
+    expect(q(".toast")?.textContent).toBe("A Duo's seats stay together.");
     // after your Start the seat is set: no seat buttons
     say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null]));
     expect(panel()!.querySelector(".tp-hint")).toBeNull();
@@ -2094,10 +2099,10 @@ describe("the unified table on the client", () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), null, seat("Alice"), null]));
     say({ type: "table_moved", name: "Alice", seat: 2, your_team: true });
-    expect(q(".q-toast")?.textContent).toBe("!Alice moved to your team.");
-    expect(q(".q-toast")?.getAttribute("role")).toBe("status");
+    expect(q(".toast")?.textContent).toBe("Alice moved to your team.");
+    expect(q(".toast")?.getAttribute("role")).toBe("status");
     say({ type: "table_moved", name: "Alice", seat: 1, your_team: false });
-    expect(q(".q-toast")?.textContent).toBe("!Alice moved to the other team.");
+    expect(q(".toast")?.textContent).toBe("Alice moved to the other team.");
   });
 
   it("still here?: a countdown and I’m back; the automatic check is not an answer", async () => {
@@ -2153,8 +2158,7 @@ describe("the unified table on the client", () => {
     expect(lastSent()).toEqual({ type: "queue_start_bots", panel_seq: 7 });
     const before = sentOf("queue_status").length;
     say({ type: "error", code: "panel_changed", message: "Your table changed. Look again before you tap." });
-    expect(q(".q-toast")).toBeNull();
-    expect(q(".lobby-error")).toBeNull();
+    expect(q(".toast")).toBeNull();
     expect(sentOf("queue_status").length).toBe(before + 1);
     expect(words(primary()!)).toBe("Start with bots");
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { panel_seq: 8 }));

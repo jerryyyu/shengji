@@ -2818,7 +2818,15 @@ def test_one_of_two_humans_leaving_leaves_the_game_running(client):
         left = room.seats[want]
         assert not left.is_bot and not left.connected and left.name == "james"
         assert not srv._unwatched(room)
-        assert srv._auto_mode(room, want) is None   # the takeover covers it
+        # a deliberate Leave: the bot covers the seat at once, and the
+        # table names it as left rather than counting down
+        assert left.left_by_choice
+        st = srv.state_for(room, 0)
+        seat = next(p for p in st["players"] if p["seat"] == want)
+        assert seat["left"] is True and seat["takeover_in"] is None
+        assert seat["controller"] == "bot_cover" and seat["reserved_for"] == "james"
+        # the owner's 30 s reservation of the seat is unchanged
+        assert seat["reserved_secs"] is not None and srv._reserved(room, want)
 
 
 def test_only_the_served_pace_slows_an_empty_room(monkeypatch):
@@ -3055,3 +3063,69 @@ def test_a_casual_room_takes_no_allow_joiners_switch(client):
         host.send_json({"type": "allow_joiners", "on": True})
         assert _drain(host, "error")["message"] == "Only a ranked table takes joiners."
         assert srv.rooms[code].allow_joiners is False
+
+
+def test_a_deliberate_leave_is_covered_by_the_pump_at_once(client, monkeypatch):
+    """A seat whose owner pressed Leave moves at the bot pace inside what
+    would be a disconnect's 30 s window; a reconnect clears the mark."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        _, room = _banker_leads(client, a, monkeypatch, bot_delay=0.05)
+        _wait_for(lambda: room.bot_task is None or room.bot_task.done())
+
+        async def leave_seat_1():
+            async with room.lock:
+                sd = room.seats[1]
+                sd.is_bot, sd.name, sd.connected = False, "james", False
+                sd.left_at = srv.now()
+                sd.left_by_choice = True
+
+        client.portal.call(leave_seat_1)
+        _real_play(client, a, room)
+        _wait_for(lambda: _plays_by(room, 1) == 1, timeout=3.0)
+        seat = srv.state_for(room, 0)["players"][1]
+        assert seat["left"] is True and seat["takeover_in"] is None
+
+
+def test_attach_clears_a_deliberate_leave():
+    from shengji.api import server as srv
+
+    seat = srv.Seat(name="james", left_by_choice=True)
+    room = srv.Room(code="ZZZZ", seats=[seat])
+
+    class _Ws:
+        async def send_json(self, payload):
+            return None
+
+    import asyncio
+
+    async def attach():
+        srv._attach(room, seat, _Ws())
+        if seat.writer is not None:
+            seat.writer.cancel()
+
+    asyncio.run(attach())
+    assert seat.connected and not seat.left_by_choice
+
+
+def test_frames_count_down_the_declare_window(client, monkeypatch):
+    from shengji.ai.heuristic import HeuristicBot
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.0)
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        a.send_json({"type": "start_game"})
+        seen = []
+        for _ in range(400):
+            st = _drain(a, "state", tries=60)
+            seen.append((st["phase"], st["declare_deadline"]))
+            if st["phase"] not in ("deal", "declare"):
+                break
+        declaring = [d for ph, d in seen if ph == "declare"]
+        assert declaring, "no frame in the declare window"
+        assert all(d is not None and 0 <= d <= srv.DECLARE_GRACE for d in declaring), [x for x in seen if x[0] != "deal"]
+        assert all(d is None for ph, d in seen if ph != "declare")
+        assert srv.rooms[code].declare_until is None

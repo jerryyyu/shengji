@@ -7,6 +7,7 @@ import copy
 import errno
 import json
 import logging
+import math
 import random
 import re
 import time
@@ -288,6 +289,11 @@ class Seat:
     # name the seat goes back to if they leave during it.
     joined_round: int | None = None
     bot_name: str | None = None
+    # The owner pressed Leave mid-game: the bot covers the seat at once
+    # instead of after TAKEOVER_AFTER, and the table names it as left. The
+    # reservation window and every rating and penalty rule stay as for a
+    # disconnect. Cleared when any socket takes the seat again.
+    left_by_choice: bool = False
 
 
 @dataclass
@@ -363,6 +369,9 @@ class Room:
     move_timer: bool = False
     # Which decision the seats' ``turn_started`` clocks belong to.
     timer_key: tuple | None = field(default=None, init=False, repr=False)
+    # Loop time at which the post-deal declare window closes; None outside
+    # that window. Frames send the seconds left as ``declare_deadline``.
+    declare_until: float | None = field(default=None, init=False, repr=False)
     # A matched room whose start failed and was unwound: no socket may act
     # in it, and a receive loop still holding it drops it.
     aborted: bool = field(default=False, init=False, repr=False)
@@ -614,6 +623,21 @@ def _takeover_in(room: Room, seat: int) -> float | None:
     return round(max(0.0, TAKEOVER_AFTER - (now() - sd.left_at)), 1)
 
 
+def _declare_deadline(room: Room, phase: str) -> float | None:
+    """Seconds left in the declare window, to a tenth, on the loop clock the
+    window runs on. Rounded half up by floor so the offline server, which
+    mirrors this, rounds the same double the same way; a whole number is
+    sent as an int, as JavaScript writes it."""
+    if phase != "declare" or room.declare_until is None:
+        return None
+    try:
+        t = asyncio.get_running_loop().time()
+    except RuntimeError:
+        return None
+    tenths = max(0, math.floor((room.declare_until - t) * 10 + 0.5))
+    return tenths // 10 if tenths % 10 == 0 else tenths / 10
+
+
 def _decision_key(room: Room) -> tuple | None:
     """Identity of the decision the table is waiting on: a new key restarts
     every owing seat's move clock."""
@@ -739,7 +763,8 @@ def _auto_mode(room: Room, seat: int) -> str | None:
         return "timeout"
     if room.closing and not sd.connected:
         return "close"
-    if sd.bot_announced and _turn_eligible(room, seat, "takeover"):
+    if ((sd.bot_announced or sd.left_by_choice)
+            and _turn_eligible(room, seat, "takeover")):
         return "takeover"
     return None
 
@@ -817,7 +842,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # countdown instead of a bare "offline" (Jerry, 2026-08-03).
             # Clients tick it down locally: broadcasts are event-driven, not
             # per-second, and an absolute time would need clock agreement.
-            "takeover_in": _takeover_in(room, s),
+            # None once the owner pressed Leave: the bot already plays it
+            "takeover_in": (None if room.seats[s].left_by_choice
+                            else _takeover_in(room, s)),
             # Explicit three-way state instead of inferring it from is_bot:
             #   "human"     — a connected person is playing
             #   "bot"       — a permanent bot seat
@@ -832,6 +859,10 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "reserved_secs": (_takeover_in(room, s)
                               if _reserved(room, s) else None),
             **(_move_timer_fields(room, s) if room.move_timer else {}),
+            # the owner pressed Leave: "Bot (Alice left)", not a countdown;
+            # sent only while true, so other frames keep their shape
+            **({"left": True} if (room.seats[s].left_by_choice
+                                  and _controller(room, s) == "bot_cover") else {}),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -841,6 +872,9 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "turn": rnd.turn,
         "declare_options": declare_options,
         "passed": sorted(rnd.passed),
+        # Seconds left in the post-deal declare window (null outside it).
+        # Ticked down locally, like turn_deadline.
+        "declare_deadline": _declare_deadline(room, phase),
         "current_declaration": (
             {"seat": rnd.declaration["seat"], "cards": rnd.declaration["cards"]}
             if rnd.declaration else None),
@@ -1399,7 +1433,7 @@ def _turn_eligible(room: Room, seat: int, mode: str, *,
             and not owner.connected
             and owner.left_at is not None
             and (owner_left_at is None or owner.left_at == owner_left_at)
-            and now() - owner.left_at >= TAKEOVER_AFTER
+            and (owner.left_by_choice or now() - owner.left_at >= TAKEOVER_AFTER)
         )
     if mode == "timeout":
         return (room.move_timer and not owner.is_bot and owner.connected
@@ -1704,8 +1738,9 @@ async def _watchdog_body(room: Room) -> bool:
         if (seat is None
                 or not _turn_eligible(room, seat, "takeover")):
             return False
-        if room.seats[seat].bot_announced:
-            # an announced cover moves at the served pace through pump_bots;
+        if room.seats[seat].bot_announced or room.seats[seat].left_by_choice:
+            # an announced cover, or the seat of someone who left, moves at
+            # the served pace through pump_bots;
             # here it only restarts a pump that is not running
             kick_bots(room)
             return False
@@ -1927,6 +1962,7 @@ async def run_deal(room: Room) -> None:
     """Stream the deal card by card, then run the declare grace window."""
     rnd = room.round
     assert rnd is not None
+    room.declare_until = None
     while True:
         async with room.lock:
             if room.round is not rnd:
@@ -1937,6 +1973,10 @@ async def run_deal(room: Room) -> None:
                 break
             seat, idx, code = rnd.deal_next()
             room.ids[seat][idx] = code
+            if rnd.phase == "declare":
+                # provisional, so the frames before the window opens (the
+                # last card, the bots' last declarations) already count down
+                room.declare_until = asyncio.get_running_loop().time() + DECLARE_GRACE
         await _bot_declares(room, [seat])
         async with room.lock:
             if room.round is not rnd:
@@ -1953,8 +1993,9 @@ async def run_deal(room: Room) -> None:
         for s in range(4):
             if room.seats[s].is_bot and not needs_response:
                 rnd.passed.add(s)
+        deadline = loop.time() + DECLARE_GRACE
+        room.declare_until = deadline
         await broadcast(room)
-    deadline = loop.time() + DECLARE_GRACE
     last_declaration = rnd.declaration
     while True:
         await asyncio.sleep(0.0 if room.closing else 0.25)
@@ -1989,14 +2030,20 @@ async def run_deal(room: Room) -> None:
                         rnd.passed.add(s)
             humans = [i for i, s in enumerate(room.seats)
                       if not s.is_bot and s.connected]
-            if all(i in rnd.passed for i in humans) or loop.time() >= deadline:
-                rnd.finalize_declare()
-                room.log_event("trump", suit=rnd.trump_suit or "NT",
-                               rank=rnd.trump_rank, banker=rnd.banker,
-                               declared=rnd.declaration is not None)
-                await broadcast(room)
-                kick_bots(room)
-                return
+            if not (all(i in rnd.passed for i in humans) or loop.time() >= deadline):
+                if deadline != room.declare_until:
+                    # a new declaration bought more time: the countdown shows it
+                    room.declare_until = deadline
+                    await broadcast(room)
+                continue
+            room.declare_until = None
+            rnd.finalize_declare()
+            room.log_event("trump", suit=rnd.trump_suit or "NT",
+                           rank=rnd.trump_rank, banker=rnd.banker,
+                           declared=rnd.declaration is not None)
+            await broadcast(room)
+            kick_bots(room)
+            return
 
 
 # ------------------------------------------------------------------ actions
@@ -2881,6 +2928,12 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                     and room.round.phase != "round_end")
                     leaver = (me.user_id, me.queue_id)
                     _detach(me, room, my_gen)
+                    if (room.game is not None and not joined_leave
+                            and me in room.seats and not me.is_bot
+                            and not me.connected):
+                        # a deliberate Leave: the bot covers the seat now,
+                        # with no disconnect grace to wait out
+                        me.left_by_choice = True
                     if joined_leave:
                         _revert_to_bot(room, room.seats.index(me))
                         _joined_leave_penalty(room, *leaver)
@@ -2913,6 +2966,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # (Codex ship gate P0-4).
                         elif not await advance_if_all_ready(room):
                             await broadcast(room)
+                        kick_bots(room)
                 await send(ws, {"type": "left"})
                 room, me = None, None
                 MATCHMAKER.return_to_lobby(conn)
@@ -3529,6 +3583,7 @@ def _revert_to_bot(room: Room, seat: int) -> None:
     sd.timeouts_in_row = sd.timeouts_in_round = 0
     sd.turn_started = None
     sd.left_at = None
+    sd.left_by_choice = False
     saved_games.seat_changed(room, seat)
     room.log_event("seat_claimed", seat=seat, name=sd.name, bot=True)
 
@@ -3582,6 +3637,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.gen += 1
     seat.ws, seat.connected = ws, True
     seat.left_at = None
+    seat.left_by_choice = False
     seat.queue = asyncio.Queue(maxsize=128)
     seat.writer_error = None      # fresh socket, fresh writer
     seat.writer_exit = None

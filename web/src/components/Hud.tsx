@@ -13,6 +13,7 @@ import { formatTableMessage, isDeclareMessage } from "../messageCopy";
 import { codeLink } from "../codes";
 import { OFFLINE } from "../offlineMode";
 import { useAuth } from "../auth";
+import { attackingTeam, myTeam, pointsLabel } from "../tableCopy";
 
 const PHASE_LABEL: Record<Phase, string> = {
   deal: "Dealing",
@@ -123,7 +124,11 @@ function rankIndex(level: string): number {
 
 /** A team's level. It rolls up through the ranks it passes and pulses gold
  *  when the team climbs (or wins a game); a reset to a lower level snaps. */
-function LevelChip({ team, level, gamesWon }: { team: 0 | 1; level: string; gamesWon: number }) {
+function LevelChip({ team, level, gamesWon, word }: {
+  team: 0 | 1; level: string; gamesWon: number;
+  /** "Us" or "Them": the team in words, so it never rests on its colour. */
+  word: "Us" | "Them";
+}) {
   const idx = rankIndex(level);
   const shownIdx = Math.round(useCountUp(idx, { snapDown: true }));
   // An unknown level string is shown verbatim rather than rolled.
@@ -141,9 +146,9 @@ function LevelChip({ team, level, gamesWon }: { team: 0 | 1; level: string; game
   return (
     <span className={`chip level-chip team${team}${pulse ? " level-up" : ""}`}
           key={pulse ? `pulse${pulse}` : "idle"}
-          title={team === 0 ? "Team seats 0 & 2" : "Team seats 1 & 3"}>
-      <span className={`team-dot t${team}`} />
-      Lv <span className="level-value">{shown}</span>
+          title={word === "Us" ? "Your team's level" : "The other team's level"}>
+      <span className={`team-dot t${team}`} aria-hidden="true" />
+      <span className="team-word">{word}</span> <span className="level-value">{shown}</span>
       {gamesWon ? (
         <span className="games-won" title="Games won">
           ★{gamesWon}
@@ -243,6 +248,9 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
   const guest = state.guest === true || account === "out" || account === "off";
   useStripWidth(barRef, mode);
   const shownPoints = Math.round(useCountUp(state.attacker_points, { snapDown: true }));
+  const us = myTeam(state);
+  const them = (1 - us) as 0 | 1;
+  const attackers = attackingTeam(state);
   // Tapping the room chip mid-game copies a full invite link, so you can
   // pull someone into a game already in progress — they land on a bot's
   // seat.
@@ -279,13 +287,20 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
         </div>
 
         <div className="hud-group">
-          <LevelChip team={0} level={state.levels[0]} gamesWon={state.games_won[0]} />
+          {/* your team first */}
+          <LevelChip team={us} word="Us" level={state.levels[us]} gamesWon={state.games_won[us]} />
           <TrumpChip state={state} />
-          <LevelChip team={1} level={state.levels[1]} gamesWon={state.games_won[1]} />
+          <LevelChip team={them} word="Them" level={state.levels[them]} gamesWon={state.games_won[them]} />
         </div>
 
         <div className="hud-group">
-          <span className="chip points-chip" title="Points captured by the attacking team">
+          <span className={`chip points-chip${attackers === null ? "" : attackers === us ? " attack-us" : " attack-them"}`}
+                title="Points captured by the attacking team">
+            {/* who attacks, in words: "Attackers" before a banker, then Us or Them */}
+            <span className="points-label">
+              {attackers !== null ? <span className="points-label-long">Attackers · </span> : null}
+              {pointsLabel(state)}
+            </span>
             {/* keyed so a new score is a new box: WebKit would keep the old width */}
             <span className="points-big" key={shownPoints}>{shownPoints}</span>
             <span className="points-target">/ 80</span>

@@ -18,11 +18,10 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
   if (declared) {
     const seat = Number(declared[1]);
     const who = seat === you ? "You" : players.find((p) => p.seat === seat)?.name ?? `Seat ${seat}`;
-    const verb = seat === you ? "declared" : "declares";
     const what = declared[2] === "NT"
       ? "no trump"
-      : `${declared[3]}${SUIT_SYMBOL[declared[2]]}`;
-    return `${who} ${verb} ${what}${declared[4] ? " pair" : ""}`;
+      : `${SUIT_SYMBOL[declared[2]]}${declared[3]}`;
+    return `${who} declared ${what}${declared[4] ? " pair" : ""}`;
   }
   const flipped = /^No declaration — trump flipped from the kitty: (NT|[SHDC])$/.exec(message);
   if (flipped) {

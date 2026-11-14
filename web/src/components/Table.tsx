@@ -26,6 +26,11 @@ import { RING_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useCoachSetting } from "../firstTurns";
 import { TOAST_MS, makeToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
+import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
+import LastTrickPanel from "./LastTrickPanel";
+
+/** The declare window's full length, for the countdown ring (server.py DECLARE_GRACE). */
+const DECLARE_WINDOW_SECS = 5;
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -139,6 +144,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
     if (pressTimer.current !== null) { window.clearTimeout(pressTimer.current); pressTimer.current = null; }
   };
   const takeover = useCountdown(player.takeover_in ?? null);
+  const status = seatStatus(player, takeover);
   const onTurn = state.turn === player.seat;
   const actionPhase = state.phase === "bury" || state.phase === "play";
   const botControlled = player.is_bot || player.controller === "bot_cover";
@@ -175,22 +181,17 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         {/* the phone pill carries the team as a dot and the turn as a gold
             fill ending in "…" */}
         <span className={`seat-dot t${player.team}`} aria-hidden="true" />
-        {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
-        <span className="opp-name-text">{player.name}</span>
+        {player.is_banker ? <span className="banker-crown" aria-hidden="true">👑</span> : null}
+        {/* a seat whose owner left is the bot's now: "Bot (Alice left)" is its name */}
+        <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : player.name}</span>
+        {/* the crown alone is easy to miss: "Sam banks" in words */}
+        {player.is_banker ? <span className="bank-tag">banks</span> : null}
         {/* always drawn, so the label's width never changes with the turn */}
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {player.away && player.connected ? <span className="away-tag">Away</span> : null}
-        {!player.connected && !player.is_bot ? (
-          <span className="off-tag">
-            {takeover !== null && takeover > 0
-              ? `offline — bot in ${Math.ceil(takeover)}s`
-              : player.controller === "bot_cover"
-                ? "bot playing"
-                : "offline"}
-          </span>
-        ) : null}
+        {status !== null && !player.left ? <span className="off-tag">{status}</span> : null}
       </div>
       <div className="opp-cards">
         <div className="back-stack">
@@ -397,7 +398,23 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // your move timer (ranked tables): the ring in its last seconds, a haptic
   // at five, and nothing before that
   const clock = useMoveClock(me?.turn_deadline, state);
+  // the post-deal declare window: a ring on its buttons, no haptic
+  const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
   const away = (me?.away ?? false) && state.phase !== "game_over";
+
+  // The hand held before the kitty arrives, so the bury can mark the 8
+  // cards that came from it until the bury is sent.
+  const preKitty = useRef<Set<number> | null>(null);
+  if (state.phase === "deal" || state.phase === "declare") {
+    preKitty.current = new Set(state.hand.map((c) => c.id));
+  } else if (state.phase !== "bury") {
+    preKitty.current = null;
+  }
+  const fromKitty = state.phase === "bury" && iAmBanker ? kittyIds(preKitty.current, state.hand) : null;
+
+  // The last trick, reopened on request; it stays until dismissed.
+  const [lastOpen, setLastOpen] = useState(false);
+  useEffect(() => { if (state.phase !== "play") setLastOpen(false); }, [state.phase]);
 
   // A tap on a Play that cannot go yet says why, once, above the hand.
   const [hint, setHint] = useState<{ text: string; n: number } | null>(null);
@@ -520,8 +537,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
     // during the short declare window afterwards. No Pass while dealing.
     const canDeclare = state.declare_options.length > 0;
     const iPassed = state.passed.includes(state.you);
+    if (canDeclare) inlineHint = declareHelp(state);
     actionBar = (
       <>
+        {state.phase === "declare" && !iPassed ? <MoveRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}
@@ -548,6 +567,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
+    inlineHint = BURY_HELP;
     actionBar = (
       <>
       <MoveRing left={clock} />
@@ -559,6 +579,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
       >
         {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
       </button>
+      <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span>
       </>
     );
   } else if (state.phase === "play" && myTurn) {
@@ -620,6 +641,16 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           <OpponentPanel key={p.seat} player={p} state={state} />
         ))}
 
+        {state.phase === "play" && state.last_trick ? (
+          <button className="btn subtle last-trick-btn" aria-expanded={lastOpen}
+                  onClick={() => setLastOpen((o) => !o)}>
+            Last trick
+          </button>
+        ) : null}
+        {lastOpen && state.last_trick ? (
+          <LastTrickPanel state={state} trick={state.last_trick} onClose={() => setLastOpen(false)} />
+        ) : null}
+
         <TrickArea
           state={state}
           trick={trickToShow}
@@ -633,8 +664,9 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           {/* your name and your controls; a phone centres them as one row */}
           <div className="you-row">
           <div className={`you-tagline team${me?.team ?? 0}${myTurn ? " on-turn" : ""}`}>
-            {iAmBanker ? <span className="banker-crown" title="Banker">👑</span> : null}
+            {iAmBanker ? <span className="banker-crown" aria-hidden="true">👑</span> : null}
             <span className="you-name">{me?.name ?? "You"}</span>
+            {iAmBanker && me ? <span className="bank-tag you-bank">{bankerText(me, state.you)}</span> : null}
             {myTurn ? <span className="your-turn-tag">your turn</span> : null}
             {state.phase === "declare" && state.passed.includes(state.you) ? (
               <span className="ready-tag">ready</span>
@@ -645,12 +677,12 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           {hint ? (
             <div className="follow-hint" role="status" key={hint.n}>{hint.text}</div>
           ) : inlineHint ? (
-            <div className="follow-hint" role="status">{inlineHint}</div>
+            <div className={`follow-hint${state.phase === "play" ? "" : " phase-help"}`} role="status">{inlineHint}</div>
           ) : coach && nothingChosen ? (
             <div className={`follow-hint coach-cue${nudge ? " nudge" : ""}`} role="status">{coach.text}</div>
           ) : null}
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} lit={coach?.follow ?? null} />
+                rects={handRects} lit={coach?.follow ?? null} fromKitty={fromKitty} />
         </div>
       </div>
 

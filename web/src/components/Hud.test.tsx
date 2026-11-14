@@ -227,13 +227,13 @@ describe("level chip", () => {
     try {
       const view = render(makeState({ levels: ["2", "2"] }));
       const chip = () => view.host.querySelector(".level-chip.team0")!;
-      expect(chip().textContent).toContain("Lv 2");
+      expect(chip().textContent).toContain("Us 2");
       expect(chip().classList.contains("level-up")).toBe(false);
       view.rerender(makeState({ levels: ["5", "2"] }));
       expect(chip().classList.contains("level-up")).toBe(true);
       expect(view.host.querySelector(".level-chip.team1")!.classList.contains("level-up")).toBe(false);
       act(() => { vi.advanceTimersByTime(DUR.count + 50); });
-      expect(chip().textContent).toContain("Lv 5");
+      expect(chip().textContent).toContain("Us 5");
       act(() => { vi.advanceTimersByTime(DUR.pulse); });
       expect(chip().classList.contains("level-up")).toBe(false);
       view.unmount();
@@ -249,7 +249,7 @@ describe("level chip", () => {
       const view = render(makeState({ levels: ["2", "2"], attacker_points: 0 }));
       view.rerender(makeState({ levels: ["K", "2"], attacker_points: 35 }));
       const chip = view.host.querySelector(".level-chip.team0")!;
-      expect(chip.textContent).toContain("Lv K");
+      expect(chip.textContent).toContain("Us K");
       expect(chip.classList.contains("level-up")).toBe(false);
       expect(view.host.querySelector(".points-big")!.textContent).toBe("35");
       view.unmount();

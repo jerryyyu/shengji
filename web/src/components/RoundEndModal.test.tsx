@@ -83,14 +83,14 @@ describe("round end modal", () => {
     const text = renderModal(makeResult({ new_levels: ["5", "2"] }));
     expect(text).toContain("Level change");
     expect(text).toContain("+3");
-    expect(text).not.toContain("wins the game");
+    expect(text).not.toContain("win the game");
   });
 
   it("says a GAME was won, not '+levels', when a team holds Ace", () => {
     // The bug this guards: the levels reset to 2 while the modal still
     // announced "+3 levels", which reads as the game losing your progress.
     const text = renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
-    expect(text).toContain("wins the game");
+    expect(text).toContain("win the game");
     expect(text).toContain("levels restart at 2");
     expect(text).not.toContain("Level change");
   });
@@ -100,18 +100,17 @@ describe("round end modal", () => {
     expect(text).toContain("Games won");
   });
 
-  it("titles the round with the winners and a plural verb, colour prefix separable", () => {
+  it("titles the round with the winners and a plural verb, never a colour", () => {
     renderModal(makeResult({ winner_team: 0 }));
     const h2 = host.querySelector("h2")!;
-    expect(h2.textContent).toBe("Blue team · You & Sam win the round");
-    // phones hide the prefix; what remains still reads as a sentence
-    expect(h2.querySelector(".title-team")!.textContent).toBe("Blue team · ");
+    expect(h2.textContent).toBe("You & Sam win the round");
+    expect(host.textContent).not.toMatch(/Blue|Orange/);
   });
 
   it("says your side lost when the other team wins the round", () => {
     renderModal(makeResult({ winner_team: 1 }));
     const h2 = host.querySelector("h2")!;
-    expect(h2.textContent).toBe("Blue team · You & Sam lose the round");
+    expect(h2.textContent).toBe("You & Sam lose the round");
     expect(h2.className).toContain("team0");
     expect(h2.textContent).not.toContain("Robin & Ada win");
   });
@@ -270,10 +269,11 @@ describe("headline first, details behind a disclosure", () => {
       kitty_cards: ["S5", "HK", "D10", "C3", "C4", "C6", "C7", "C8"] }));
     const modal = host.querySelector(".modal")!;
     const headline = modal.querySelector(".result-headline")!;
-    expect(headline.querySelector(".result-change")!.textContent).toBe("+3 levels");
-    expect(headline.textContent).toContain("Now");
-    expect(headline.textContent).toContain("5");
-    expect(headline.textContent).toContain("Attackers 30 of 80");
+    const lines = [...headline.querySelectorAll(".result-team-line")].map((l) => l.textContent);
+    // banker seat 0: you defend, they attack; your line comes first
+    expect(lines).toEqual(["Us(You & Sam)defending · +3 levels", "Them(Robin & Ada)attacking · scored 30 of 80 · no level change"]);
+    expect(headline.textContent).toContain("Levels now Us 5 · Them 2");
+    expect(headline.textContent).toContain("Next banker: Sam");
     const details = modal.querySelector<HTMLDetailsElement>("details.result-details")!;
     expect(details.open).toBe(false);
     expect(details.querySelector("summary")!.textContent).toBe("Details");
@@ -292,11 +292,34 @@ describe("headline first, details behind a disclosure", () => {
 
   it("says one level, and a won game, in the headline", () => {
     renderModal(makeResult({ level_change: 1 }));
-    expect(host.querySelector(".result-change")!.textContent).toBe("+1 level");
+    expect(host.querySelector(".result-team-line.gained")!.textContent).toContain("+1 level");
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
-    expect(host.querySelector(".result-change")!.textContent).toBe("Game won");
+    expect(host.querySelector(".result-team-line.gained")!.textContent).toContain("game won");
     expect(host.querySelector(".result-headline")!.textContent).toContain("Levels restart at");
+  });
+
+  it("leads with your team when the attackers win, names who attacked, and never relies on colour", () => {
+    renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 100, next_banker: 1 }));
+    const lines = [...host.querySelectorAll(".result-team-line")];
+    expect(lines[0].textContent).toBe("Us(You & Sam)defending · no level change");
+    expect(lines[1].textContent).toBe("Them(Robin & Ada)attacking · scored 100 of 80 · +1 level");
+    // the gainer is marked in words as well as colour
+    expect(lines[1].classList.contains("gained")).toBe(true);
+    expect(host.querySelector(".result-headline")!.textContent).toContain("Next banker: Robin");
+    expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the round");
+  });
+
+  it("says the attackers take the deal when no level changes, never +0", () => {
+    renderModal(makeResult({ winner_team: 1, level_change: 0, attacker_points: 105, next_banker: 1 }));
+    const them = host.querySelectorAll(".result-team-line")[1];
+    expect(them.textContent).toBe("Them(Robin & Ada)attacking · scored 105 of 80 · take the deal · no level change");
+    expect(host.textContent).not.toContain("+0");
+  });
+
+  it("says when you are the next banker", () => {
+    renderModal(makeResult({ next_banker: 0 }));
+    expect(host.querySelector(".result-next-banker")!.textContent).toBe("Next banker: you");
   });
 });

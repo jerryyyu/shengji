@@ -455,6 +455,33 @@ def test_lock_is_released_only_by_its_owner(lane):
 
 # ---------------------------------------------------------------- supervision
 
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS power assertions")
+@pytest.mark.parametrize("hold", [False, True])
+def test_mac_producer_owns_sleep_assertions_until_completion_or_hold(lane, hold):
+    ln = lane(SHARDS="30", DELAY="0.1"); ln.arm()
+    p = ln.start()
+    try:
+        wait_for(lambda: ln.invocations() == 1)
+        pgid = ln.pgid()
+        members = subprocess.run(["pgrep", "-g", str(pgid)], check=True,
+                                 capture_output=True, text=True).stdout.split()
+        assertions = subprocess.run(["pmset", "-g", "assertions"], check=True,
+                                    capture_output=True, text=True).stdout
+        owned = [line for line in assertions.splitlines()
+                 if any(f"pid {pid}(" in line for pid in members)]
+        assert any("PreventUserIdleSystemSleep" in line for line in owned), owned
+        assert any("PreventSystemSleep" in line for line in owned), owned
+        if hold:
+            ln.hold.touch()
+        assert p.wait(30) == (1 if hold else 0)
+        assert group_members(pgid) == 0
+        assert ("PAUSED" if hold else "DONE") in ln.terminal()
+        assert not ln.lock.exists()
+    finally:
+        if p.poll() is None:
+            p.terminate()
+            p.wait(30)
+
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
 def test_signal_to_the_supervisor_stops_the_group_then_pauses_then_unlocks(lane, sig):
     ln = lane(SHARDS="200", DELAY="0.2"); ln.arm()

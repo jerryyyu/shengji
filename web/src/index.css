@@ -4010,9 +4010,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* the header row's right end, left of the … menu: the HUD strip and the
      top seat's label take the rest of that row, the side seats the row under it */
   .app:has(.table-screen) .reconnect-banner {
-    top: calc(var(--frame-safe-t, env(safe-area-inset-top, 0px)) + 6px);
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
+    top: calc(var(--safe-t) + 6px);
     left: auto;
-    right: calc(var(--frame-safe-r, env(safe-area-inset-right, 0px)) + 52px);
+    right: calc(var(--safe-r) + 52px);
   }
 }
 

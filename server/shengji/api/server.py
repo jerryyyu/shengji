@@ -2273,12 +2273,43 @@ def _remove_player(room: Room, seat: int, msg: dict) -> None:
         enqueue(gone, {"type": "left", "reason": "removed",
                        "message": "The host removed you from the room."})
         chat_system(room, f"{gone.name} was removed by the host")
+    _start_after_lobby_change(room)
 
 
 def _clear_lobby_ready(room: Room) -> None:
     for sd in room.seats:
         if sd is not None:
             sd.lobby_ready = False
+
+
+def _lobby_all_ready(room: Room) -> bool:
+    """A created room's lobby where at least one person is connected and
+    every connected person has tapped Start."""
+    if room.game is not None or room.queued:
+        return False
+    present = [i for i in _lobby_humans(room) if room.seats[i].connected]
+    return bool(present) and all(room.seats[i].lobby_ready for i in present)
+
+
+def _start_if_lobby_ready(room: Room) -> bool:
+    """Start the game when the lobby's Start taps are all in (caller holds
+    the lock). Checked whenever the taps or the people present change: a
+    leave or drop can leave only ready people behind. Raises what
+    ``_start_game`` raises."""
+    if not _lobby_all_ready(room):
+        return False
+    _start_game(room)
+    return True
+
+
+def _start_after_lobby_change(room: Room) -> bool:
+    """``_start_if_lobby_ready`` after someone left, dropped or was removed:
+    nobody asked, so a refusal (two players on one device at a ranked
+    table) leaves the room in its lobby."""
+    try:
+        return _start_if_lobby_ready(room)
+    except IllegalPlay:
+        return False
 
 
 def _start_game(room: Room) -> None:
@@ -2416,14 +2447,11 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         me = room.seats[seat]
         on = msg.get("on", True) is not False
         me.lobby_ready = on
-        waiting = [i for i in _lobby_humans(room)
-                   if room.seats[i].connected and not room.seats[i].lobby_ready]
-        if on and not waiting:
-            try:
-                _start_game(room)
-            except IllegalPlay:
-                me.lobby_ready = False
-                raise
+        try:
+            _start_if_lobby_ready(room)
+        except IllegalPlay:
+            me.lobby_ready = False
+            raise
     elif game is None or rnd is None:
         raise IllegalPlay("Game not started.")
     elif t == "im_back":
@@ -3051,7 +3079,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                     (room.host + k) % 4 for k in range(1, 4)
                                     if (room.host + k) % 4 in humans)
                             _unrank_without_account(room)
+                            started = _start_after_lobby_change(room)
                             await broadcast(room)
+                            if started:
+                                kick_bots(room)
                     else:
                         # mid-game: seat stays (reclaimable); bots cover it.
                         # The last human leaving closes the room.
@@ -3124,6 +3155,9 @@ async def ws_endpoint(ws: WebSocket) -> None:
                            if x is not None and not x.is_bot):
                     if room.cleanup_task is None or room.cleanup_task.done():
                         room.cleanup_task = asyncio.create_task(cleanup_room(room))
+                elif _start_after_lobby_change(room):
+                    await broadcast(room)
+                    kick_bots(room)
                 else:
                     if not await advance_if_all_ready(room):
                         await broadcast(room)

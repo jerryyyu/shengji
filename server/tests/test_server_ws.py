@@ -2251,6 +2251,68 @@ def test_a_room_starts_when_everyone_at_it_taps_start(client):
             False, True, False, True]
 
 
+def test_a_lobby_left_with_only_ready_people_starts(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        b.send_json({"type": "join_room", "room": code, "name": "james"})
+        _drain(b, "room")
+        a.send_json({"type": "lobby_ready"})
+        _room_until(a, lambda m: m["ready"] == [0])
+        b.send_json({"type": "leave_room"})
+        _drain(b, "left")
+        _drain(a, "state")
+        assert srv.rooms[code].game is not None
+
+
+def test_a_lobby_whose_unready_person_drops_starts(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            _drain(b, "room")
+            a.send_json({"type": "lobby_ready"})
+            _room_until(a, lambda m: m["ready"] == [0])
+            assert srv.rooms[code].game is None
+        _drain(a, "state")                      # b's socket closed
+        room = srv.rooms[code]
+        assert room.game is not None and room.seats[2].name == "james"
+
+
+def test_a_lobby_whose_unready_person_is_removed_starts(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b, \
+            client.websocket_connect("/ws") as c:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        b.send_json({"type": "join_room", "room": code, "name": "james"})
+        assert _drain(b, "room")["you"] == 2
+        c.send_json({"type": "join_room", "room": code, "name": "amy"})
+        assert _drain(c, "room")["you"] == 1
+        a.send_json({"type": "lobby_ready"})
+        b.send_json({"type": "lobby_ready"})
+        _room_until(a, lambda m: m["ready"] == [0, 2])
+        assert srv.rooms[code].game is None
+        a.send_json({"type": "remove_player", "seat": 1})
+        _drain(a, "state")
+        room = srv.rooms[code]
+        assert room.game is not None and room.seats[1].is_bot
+
+
+def test_a_lobby_with_nobody_connected_never_starts():
+    from shengji.api import server as srv
+    room = srv.Room(code="NOBO")
+    room.seats = [srv.Seat(name="jerry", lobby_ready=True),
+                  srv.Seat(name="james", lobby_ready=True)]
+    assert not any(sd.connected for sd in room.seats)
+    assert srv._start_if_lobby_ready(room) is False and room.game is None
+    room.seats[0].connected = True
+    assert srv._lobby_all_ready(room) is True
+
+
 def test_alone_the_openers_start_tap_starts_with_bots(client):
     from shengji.api import server as srv
     with client.websocket_connect("/ws") as a:

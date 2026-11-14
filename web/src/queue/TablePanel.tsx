@@ -1,19 +1,19 @@
 import { useEffect, useId, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
-import { useAuth } from "../auth";
 import { TimerRing } from "../components/MoveClock";
 import { seatPos } from "../components/TrickArea";
 import { useInlineQueue } from "./QueueBar";
 import { BOTS_WARN_MS, partnerName, queue, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, announcement, joinLabel, joinLines, joinTitle, ownTimerLine, panelKind,
-  sharedTimerLine, sharedTitle, shortName, startLabel, stillHereLine,
+  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, announcement, joinLabel, joinTitle, ownTimerLine, panelKind,
+  sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
 /** One seat as the panel draws it, on a phone's team columns or on the
- *  wide screens' mini table. */
+ *  wide screens' mini table. The seats carry names and live status only;
+ *  which seat is your partner's the layout already shows. */
 interface SeatItem {
   at: number;
   look: "you" | "friend" | "person" | "open" | "bot";
@@ -33,24 +33,19 @@ const teamWord = (ours: boolean) => (ours ? "your team" : "other team");
 function offerSeats(o: OfferView, busy: boolean): SeatItem[] {
   return o.seats.map((s, at) => {
     const ours = (at - o.pick + 4) % 2 === 0;
-    const partnerSeat = o.seats[(o.pick + 2) % 4];
-    if (at === o.pick) {
-      const with_ = partnerSeat && !partnerSeat.bot && !partnerSeat.open && !o.partner
-        ? `${shortName(partnerSeat.name)}'s partner` : "";
-      return { at, look: "you", name: "You", sub: with_, label: `You, ${teamWord(true)}` };
-    }
+    if (at === o.pick) return { at, look: "you", name: "You", sub: "", label: `You, ${teamWord(true)}` };
     if (o.partner && at === o.partner.seat) {
       return { at, look: "friend", name: shortName(o.partner.name), sub: "your Duo partner",
                label: `${o.partner.name}, your Duo partner` };
     }
     if (s.open && !o.partner) {
-      const holder = s.bot ? "a bot holds it" : `${shortName(s.name)} · away`;
+      const holder = s.bot ? "" : `${shortName(s.name)} · away`;
       const away = s.bot ? "" : `, ${s.name} is away`;
       return { at, look: "open", name: "Open seat", sub: holder, busy,
                label: `Open seat, ${teamWord(ours)}${away}. Sit here`, pick: () => queue.offerPick(at) };
     }
-    if (s.bot || s.open) return { at, look: "bot", name: "Bot", sub: "a bot plays", label: `Bot, ${teamWord(ours)}` };
-    return { at, look: "person", name: shortName(s.name), sub: "playing", label: `${s.name}, playing, ${teamWord(ours)}` };
+    if (s.bot || s.open) return { at, look: "bot", name: "Bot", sub: "", label: `Bot, ${teamWord(ours)}` };
+    return { at, look: "person", name: shortName(s.name), sub: "", label: `${s.name}, playing, ${teamWord(ours)}` };
   });
 }
 
@@ -64,7 +59,7 @@ function ownSeats(q: QueueView): SeatItem[] {
       return { at, look: "friend", name: shortName(partner), sub: "your Duo partner", label: `${partner}, your Duo partner` };
     }
     const ours = at === 2;
-    return { at, look: "open", name: "Open seat", sub: ours ? "partner" : "", label: `Open seat, ${teamWord(ours)}` };
+    return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
   });
 }
 
@@ -93,8 +88,7 @@ function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): S
       return { at, look: "you", name: "You", sub: status, tick: s.ready,
                label: ["You", s.ready ? "ready" : null, status || null].filter(Boolean).join(", ") };
     }
-    const role = s.pair ? "your Duo partner" : ours ? "your partner" : "";
-    const sub = status || role;
+    const sub = status || (s.pair ? "your Duo partner" : "");
     return { at, look: s.pair ? "friend" : "person", name: shortName(s.name), sub, tick: s.ready,
              label: [s.name, s.ready ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
   });
@@ -165,13 +159,13 @@ function WaitSwitch({ q }: { q: QueueView }) {
   );
 }
 
+/** A panel is its title, its seats, at most one live status line and its
+ *  buttons; explanations live in How to play and the coach. */
 interface PanelParts {
-  kicker: string;
   title: string;
-  lines: { text: string; warn?: boolean }[];
+  status?: { text: string; warn?: boolean };
   seats: SeatItem[] | null;
   you: number;
-  hint?: string;
   extra?: ReactNode;
   primary: { label: string; disabled: boolean; onClick: () => void; ring?: ReactNode } | null;
   secondary: { label: string; disabled: boolean; onClick: () => void } | null;
@@ -179,7 +173,7 @@ interface PanelParts {
   led?: string;
 }
 
-function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): PanelParts | null {
+function parts(q: QueueView, kind: PanelKind, now: number): PanelParts | null {
   const partner = q.partyId ? partnerName(q.party) : null;
   const led = q.leader ? undefined : `${shortName(partner ?? "Your partner")} leads`;
   const leave = { label: "Leave table", disabled: q.pending === "leave", onClick: () => queue.leave() };
@@ -188,8 +182,7 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
     const busy = q.pending !== null;
     const seats = offerSeats(o, busy);
     return {
-      kicker: "Table with people", title: joinTitle(o), lines: joinLines(o, guest), seats, you: o.pick,
-      hint: seats.some((s) => s.pick) ? "Tap a green seat to sit there" : undefined,
+      title: joinTitle(o), seats, you: o.pick,
       primary: { label: q.pending === "offer" ? "Joining…" : joinLabel(o), disabled: busy,
                  onClick: () => queue.offerJoin(),
                  ring: q.pending === "offer" ? null
@@ -198,11 +191,7 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
     };
   }
   if (kind === "own") {
-    const duo = partner !== null;
     const timer = ownTimerLine(q, now);
-    const lines = [{ text: duo ? "Two players or another Duo sit across." : "Anyone who presses Play can sit here." }];
-    if (timer) lines.push({ text: timer });
-    if (!duo && !q.waitPlayers) lines.push({ text: "Others can join as they arrive." });
     const n = q.openTables;
     const extra = (
       <>
@@ -215,7 +204,7 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
       </>
     );
     return {
-      kicker: duo ? "Your Duo's table" : "Your table", title: "Waiting for players", lines,
+      title: "Waiting for players", status: timer ? { text: timer } : undefined,
       seats: ownSeats(q), you: 0, extra, led,
       primary: { label: q.pending === "bots" ? "Starting…" : "Start with bots", disabled: q.pending !== null,
                  onClick: () => queue.startBots() },
@@ -234,19 +223,15 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
     if (q.stillHereUntil !== null) {
       // a table with no timer asks before it drops a seat nobody is at
       return {
-        kicker: "Table", title: sharedTitle(t),
-        lines: [{ text: "Still here? Tap to stay at the table.", warn: true },
-                { text: stillHereLine(q.stillHereUntil, now) }],
+        title: sharedTitle(t), status: { text: stillHereLine(q.stillHereUntil, now), warn: true },
         seats, you: t.you,
         primary: { label: "I'm here", disabled: false, onClick: () => queue.here() },
         secondary: leave,
       };
     }
     return {
-      kicker: "Table", title: sharedTitle(t),
-      lines: [{ text: sharedTimerLine(t, now) }, { text: `${t.ready} of ${t.of} ready.` }],
+      title: sharedTitle(t), status: { text: sharedStatusLine(t, now) },
       seats, you: t.you, extra, led,
-      hint: move && seats.some((st) => st.pick) ? "Tap a green seat to move" : undefined,
       primary: { label: q.pending === "start" ? "Starting…" : startLabel(t),
                  disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart() },
       secondary: leave,
@@ -254,7 +239,7 @@ function parts(q: QueueView, kind: PanelKind, guest: boolean, now: number): Pane
   }
   if (kind === "elsewhere") {
     return {
-      kicker: "Your table", title: "Your table is open on another device.", lines: [], seats: null, you: 0,
+      title: "Your table is open on another device.", seats: null, you: 0,
       primary: { label: "Move it here", disabled: q.pending !== null, onClick: () => queue.join() },
       secondary: q.leader ? leave : null,
     };
@@ -287,8 +272,6 @@ function useEnterIsPrimary(primary: RefObject<HTMLButtonElement | null>, box: Re
  *  seat), your own table (alone, drawn by the app), or a shared table (two
  *  or three people waiting). Inline and non-modal on every screen. */
 export default function TablePanel({ q, guarded }: { q: QueueView; guarded: boolean }) {
-  const account = useAuth();
-  const guest = account.status !== "in";
   const wide = useInlineQueue();
   const kind = panelKind(q);
   const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
@@ -296,19 +279,13 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const box = useRef<HTMLElement | null>(null);
   useEnterIsPrimary(primaryRef, box);
-  const p = parts(q, kind, guest, now);
+  const p = parts(q, kind, now);
   if (!p) return null;
   return (
     <section ref={box} className={`tp tp-${kind}${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
-      <div className="tp-kicker">{p.kicker}</div>
       <h2 className="tp-title" id={titleId}>{p.title}</h2>
-      {p.lines.length ? (
-        <div className="tp-lines">
-          {p.lines.map((l, i) => <p key={i} className={`tp-line${l.warn ? " warn" : ""}`}>{l.text}</p>)}
-        </div>
-      ) : null}
+      {p.status ? <p className={`tp-line${p.status.warn ? " warn" : ""}`}>{p.status.text}</p> : null}
       {p.seats ? (wide ? <MiniTable seats={p.seats} you={p.you} /> : <TeamColumns seats={p.seats} you={p.you} />) : null}
-      {p.hint ? <p className="tp-hint">{p.hint}</p> : null}
       {p.extra}
       {p.led ? <p className="tp-led">{p.led}</p> : (
         <div className="tp-acts">
@@ -334,10 +311,9 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
 /** The one polite announcement per change of state, and one when ten
  *  seconds are left; the ticking clocks themselves are not read. */
 export function TableAnnouncer({ q }: { q: QueueView }) {
-  const guest = useAuth().status !== "in";
   const kind = panelKind(q);
   const now = useNow(kind === "join" || kind === "own" || kind === "shared", 500);
-  const base = announcement(q, guest);
+  const base = announcement(q);
   let soon = "";
   if (kind === "join" && q.offer && q.offer.expiresAt - now <= OFFER_CLOCK_MS) soon = " 10 seconds left to join.";
   const botsAt = kind === "own" && !q.waitPlayers ? q.botsAt : kind === "shared" ? q.table?.timer?.at ?? null : null;

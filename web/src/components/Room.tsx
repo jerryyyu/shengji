@@ -406,7 +406,6 @@ export default function Room({ room }: { room: RoomFrame }) {
                   onClick={() => conn.send({ type: "set_ranked", on: !ranked })}>
             <span className="room-ranked-text">
               <span className="field-label">Ranked</span>
-              <span className="room-ranked-note">Rates signed-in players</span>
             </span>
             <span className={`ios-switch${ranked ? " on" : ""}`} aria-hidden="true" />
           </button>
@@ -417,7 +416,6 @@ export default function Room({ room }: { room: RoomFrame }) {
                   onClick={() => conn.send({ type: "allow_joiners", on: !joiners })}>
             <span className="room-ranked-text">
               <span className="field-label">Allow joiners</span>
-              <span className="room-ranked-note">Queue players can take a bot&rsquo;s seat</span>
             </span>
             <span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
           </button>

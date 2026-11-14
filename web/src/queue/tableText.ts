@@ -54,40 +54,22 @@ export function joinLabel(o: OfferView): string {
   return o.partner ? "Join together" : "Join";
 }
 
-/** The lines under the Join title. `guest`: never rated, so no round is
- *  called ranked. Leaving the round you joined costs a 5-minute wait;
- *  joining between rounds does not. */
-export function joinLines(o: OfferView, guest: boolean): { text: string; warn?: boolean }[] {
-  const lines: { text: string; warn?: boolean }[] = [];
-  if (o.partner) lines.push({ text: `Two seats for you and ${shortName(o.partner.name)}, as partners.` });
-  if (o.roundEnd) {
-    if (!o.partner) lines.push({ text: "Between rounds. You play from the next round." });
-    if (!guest) lines.push({ text: "Ranked." });
-    return lines;
-  }
-  if (!o.partner) lines.push({ text: "Round in progress. You sit after this trick." });
-  if (!guest) lines.push({ text: "Ranked from the next round." });
-  lines.push({ text: "Stay until this round ends, or wait 5 minutes to play again.", warn: true });
-  return lines;
-}
-
-/** Your own table's bot line: the countdown, none while you wait for
- *  people, and nothing while an open table holds your timer still. */
+/** Your own table's one status line: the bots' countdown, and nothing
+ *  while you wait for people or an open table holds your timer still. */
 export function ownTimerLine(q: QueueView, now: number): string | null {
-  if (q.waitPlayers) return "No timer. Starts when someone joins you.";
-  if (q.botsPaused || q.botsAt === null) return null;
+  if (q.waitPlayers || q.botsPaused || q.botsAt === null) return null;
   const left = q.botsAt - now;
-  if (left <= 0) return "Adding bots…";
-  return `Bots fill the empty seats in ${clock(left, true)}.`;
+  return left <= 0 ? "Adding bots…" : `Bots in ${clock(left, true)}`;
 }
 
-/** A shared table's bot line. Whose timer it is does not matter to anyone
- *  at the table, so it is not said. */
-export function sharedTimerLine(t: TableView, now: number): string {
-  if (!t.timer) return "No timer. Starts when the table is full or everyone taps Start.";
+/** A shared table's one status line: who is ready, then the bots'
+ *  countdown when the table has one. Whose timer it is does not matter to
+ *  anyone at the table, so it is not said. */
+export function sharedStatusLine(t: TableView, now: number): string {
+  const ready = `${t.ready} of ${t.of} ready`;
+  if (!t.timer) return ready;
   const left = t.timer.at - now;
-  if (left <= 0) return "Adding bots…";
-  return `Bots fill the empty seats in ${clock(left, true)}.`;
+  return `${ready} · ${left <= 0 ? "Adding bots…" : `Bots in ${clock(left, true)}`}`;
 }
 
 /** "You and Alice", "You, Alice and Li". */
@@ -115,11 +97,10 @@ export function stripLabel(q: QueueView): string {
 
 /** The one sentence the live region speaks when the panel changes state;
  *  the ticking clocks are not in it. */
-export function announcement(q: QueueView, guest: boolean): string {
+export function announcement(q: QueueView): string {
   const kind = panelKind(q);
   if (kind === "join" && q.offer) {
-    const lines = joinLines(q.offer, guest).map((l) => l.text).join(" ");
-    return `Table with people. ${joinTitle(q.offer)}. ${lines}`;
+    return `Table with people. ${joinTitle(q.offer)}.`;
   }
   if (kind === "own") {
     const who = q.partyId ? "Your Duo's table" : "Your table";
@@ -141,13 +122,11 @@ export function announcement(q: QueueView, guest: boolean): string {
  *  so it promises no seat; with no counts from the server, nobody is about. */
 export function presenceLine(p: Presence | null): string {
   const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-  if (p && p.waiting >= 1) {
-    return `${n(p.waiting, "person is", "people are")} waiting for a game · Play to join them`;
-  }
+  if (p && p.waiting >= 1) return `${n(p.waiting, "person is", "people are")} waiting for a game`;
   if (p && p.tables >= 1) {
     return `${n(p.tables, "table has", "tables have")} a seat · ${n(p.playing, "person", "people")} playing`;
   }
-  return "Nobody is playing right now · Press Play and the next person can join you";
+  return "Nobody is playing right now";
 }
 
 /** The one toast a game started alone gets when its first newcomer sits. */
@@ -158,7 +137,7 @@ export function firstJoinerText(m: Pick<FirstJoinerMsg, "name" | "move_secs" | "
     : `${who} Moves are now timed, ${m.move_secs} s each.`;
 }
 
-/** The "still here?" countdown line. */
+/** The "still here?" status: the question and its countdown, one line. */
 export function stillHereLine(until: number, now: number): string {
-  return `You leave the table in ${clock(Math.max(0, until - now), true)}.`;
+  return `Still here? You leave the table in ${clock(Math.max(0, until - now), true)}.`;
 }

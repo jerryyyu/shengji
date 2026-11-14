@@ -6,8 +6,8 @@
 import { useSyncExternalStore } from "react";
 import { getSavedName, saveName } from "./ws";
 
-/** What a guest's identity line says: the one thing a guest lacks. */
-export const GUEST_LINE = "Guest · not ranked";
+/** What a guest's identity line says, where an account shows its rating. */
+export const GUEST_LINE = "Guest";
 
 export interface GuestNameView {
   name: string;

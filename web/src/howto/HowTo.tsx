@@ -52,15 +52,17 @@ function Trump({ suit, rank }: { suit: string | null; rank: string }) {
   );
 }
 
-function Level({ team, level, star }: { team: 0 | 1; level: string; star?: number }) {
+function Level({ team, level }: { team: 0 | 1; level: string }) {
   return (
     <span className={`chip level-chip team${team}`}>
       <span className={`team-dot t${team}`} />
       Lv <span className="level-value">{level}</span>
-      {star ? <span className="games-won">★{star}</span> : null}
     </span>
   );
 }
+
+/** The top bar's games score, as the table shows it. */
+const Games = ({ us, them }: { us: number; them: number }) => <span className="chip games-chip">Games {us}–{them}</span>;
 
 /** Class for a part of a picture that appears partway through its timeline:
  *  hidden (keeping its space) until `shown`, then it pops in. */
@@ -444,8 +446,8 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
   );
 }
 
-/* Win a game: defending at Ace wins the game (a star), then both teams
-   start again from 2. */
+/* Win a game: defending at Ace wins the game (a point on the games score),
+   then both teams start again from 2. */
 const WIN_FRAMES = count([300, 1100, 2000, 2700]);
 
 function WinPicture({ f }: { f: CountFrame }) {
@@ -455,12 +457,13 @@ function WinPicture({ f }: { f: CountFrame }) {
       <div className="howto-follow">
         <Group className={at(s >= 1)} label="Your team defends at Ace…"><Level team={0} level="A" /></Group>
         <span className={at(s >= 2, "howto-arrow side")} aria-hidden="true">→</span>
-        <Group className={at(s >= 2)} label="…and wins a game"><Level team={0} level="A" star={1} /></Group>
+        <Group className={at(s >= 2)} label="…and wins a game"><Games us={1} them={0} /></Group>
       </div>
       <span className={at(s >= 3, "howto-arrow")} aria-hidden="true">↓ both teams start again</span>
       <div className={`howto-row center ${at(s >= 4)}`}>
-        <Level team={0} level="2" star={1} />
+        <Level team={0} level="2" />
         <Level team={1} level="2" />
+        <Games us={1} them={0} />
       </div>
     </>
   );
@@ -526,7 +529,7 @@ const STEPS: Step[] = [
     title: "Win a game",
     body: <>Reach Ace, then defend it as the banker's team. Winning as attackers at Ace only takes the deal.</>,
     visual: picture(WIN_FRAMES, (f) => <WinPicture f={f} />),
-    caption: <>The ★ on your level chip counts games won. The table keeps playing.</>,
+    caption: <>The top bar keeps the games score, Us first. The table keeps playing.</>,
   },
 ];
 

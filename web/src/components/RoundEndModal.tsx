@@ -10,7 +10,7 @@ import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
 import { myTeam, nextBankerText, pointsOf, roundLines, teamMembers, teamWord } from "../tableCopy";
 
-/** Leave below Next round, the same in every room. The round is over and
+/** Leave below Next round (Next game), the same in every room. The round is over and
  *  recorded and the next has not started, so leaving costs nothing and goes
  *  at once; a practice game on this device ends with it, so that one still
  *  asks first. The modal dialog makes the HUD's own Leave control
@@ -77,7 +77,7 @@ function signedDelta(delta: number): string {
 
 /** The viewer's own rating after the round (the server sends it only to a
  *  signed-in seat, once the round is stored); a guest seat (the result's
- *  `unranked: "guest"` or the state's `guest`) gets "Guest · not ranked". ``total`` shows the whole
+ *  `unranked: "guest"` or the state's `guest`) gets "Guest". ``total`` shows the whole
  *  game's change where a game was won. An unranked room shows neither. */
 export function RatingLine({ result, total, ranked, guest = false }: {
   result: RoundResult; total: boolean; ranked: boolean;
@@ -108,7 +108,7 @@ export function RatingLine({ result, total, ranked, guest = false }: {
   }
   // an account's rating may still be on its way; only a guest seat is told
   if (result.unranked !== "guest" && !guest) return null;
-  return <div className="rating-line rating-unranked rating-guest-note"><span>Guest · not ranked</span></div>;
+  return <div className="rating-line rating-unranked rating-guest-note"><span>Guest</span></div>;
 }
 
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
@@ -128,44 +128,31 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
       ? "you"
       : state.players.find((p) => p.seat === state.banker)?.name ?? `Seat ${state.banker}`;
 
-  if (result.game_over) {
-    return (
-      <ResultDialog titleId={titleId}>
-        <div className="panel modal victory">
-          <div className="victory-crown">👑</div>
-          <h2 id={titleId} tabIndex={-1} className={`victory-title team${result.winner_team}`}>
-            <TeamTitle team={result.winner_team} state={state} what="the game!" />
-          </h2>
-          <p className="victory-sub">
-            Final levels — Us: {result.new_levels[myTeam(state)]} · Them: {result.new_levels[1 - myTeam(state)]}
-          </p>
-          <RatingLine result={result} total ranked={ranked} guest={state.guest === true} />
-          <button
-            className="btn primary big"
-            onClick={() => conn.leaveToLobby()}
-          >
-            Back to lobby
-          </button>
-        </div>
-      </ResultDialog>
-    );
-  }
-
   const lostTeam = losingViewerTeam(state, result.winner_team);
+  // A team that defends at Ace wins a game: a point on the games score, and
+  // both teams' levels restart. The table goes on, so this is Next game.
+  const gameWon = result.point_scored;
+  const what = gameWon ? "the game" : "the round";
   const climb = result.level_change > 0
     ? `go up ${result.level_change} level${result.level_change === 1 ? "" : "s"}`
     : "take the deal with no level change";
   return (
     <ResultDialog titleId={titleId}>
-      <div className="panel modal">
+      <div className={`panel modal${gameWon ? " game-won" : ""}`}>
+        {gameWon ? <div className="game-won-crown" aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
           {lostTeam !== null
-            ? <TeamTitle team={lostTeam} state={state} what="the round" verb="lose" />
-            : <TeamTitle team={result.winner_team} state={state} what="the round" />}
+            ? <TeamTitle team={lostTeam} state={state} what={what} verb="lose" />
+            : <TeamTitle team={result.winner_team} state={state} what={what} />}
         </h2>
 
         {/* the outcome first, your team first and in words; how it was
             scored waits behind Details */}
+        {gameWon ? (
+          <div className="result-headline result-games">
+            Games: Us {result.games_won[myTeam(state)]} · Them {result.games_won[1 - myTeam(state)]}
+          </div>
+        ) : (
         <div className="result-headline result-teams">
           <div className="result-team-lines">
             {roundLines(state, result).map((line) => (
@@ -185,6 +172,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           </span>
           <span className="result-next-banker">{nextBankerText(state, result)}</span>
         </div>
+        )}
 
         <RatingLine result={result} total={result.point_scored} ranked={ranked} guest={state.guest === true} />
 
@@ -272,7 +260,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
                 onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
               >
                 {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
-                {iAmReady ? "Waiting for others…" : "Next round"}
+                {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
               </button>
               {humans.length > 1 && (
                 <div className="ready-status">

@@ -5,8 +5,8 @@ import Sheet from "../queue/Sheet";
 
 /** A guest's chip, in the signed-in chip's place: the name's initial, the
  *  name, the guest line where a rating would be, and a pencil, since a tap
- *  opens the name editor on every tab. `compact` (the wide top bar) says
- *  "Guest" alone. */
+ *  opens the name editor on every tab. `compact` (the wide top bar) has no
+ *  pencil. */
 export default function GuestChip({ compact = false }: { compact?: boolean }) {
   const { name } = useGuestName();
   const shown = name.trim() || "Guest";
@@ -15,7 +15,7 @@ export default function GuestChip({ compact = false }: { compact?: boolean }) {
             aria-label={`${shown}, guest, edit name`}>
       <span className="avatar avatar-sm" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>
       <span className="account-pill-name">{shown}</span>
-      <span className="account-pill-rating">{compact ? "Guest" : GUEST_LINE}</span>
+      <span className="account-pill-rating">{GUEST_LINE}</span>
       {compact ? null : <span className="guest-pill-edit" aria-hidden="true">✎</span>}
     </button>
   );

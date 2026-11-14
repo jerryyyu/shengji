@@ -255,7 +255,7 @@ describe("one name control", () => {
       const { openTab } = await import("./home/route");
       await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
       expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
-      expect(host.querySelector(".me-sub")?.textContent).toBe("Guest · not ranked");
+      expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
       expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
       const edit = [...host.querySelectorAll<HTMLButtonElement>(".grp-row")].find((r) => r.textContent?.startsWith("Edit name"))!;
       act(() => edit.click());
@@ -275,10 +275,10 @@ describe("one name control", () => {
     });
   }
 
-  it("the Play chip says Guest · not ranked with a pencil; the top bar's says Guest", async () => {
+  it("the Play chip says Guest with a pencil; the top bar's says Guest", async () => {
     signedIn = false;
     await renderApp();
-    expect(host.querySelector(".guest-pill .account-pill-rating")?.textContent).toBe("Guest · not ranked");
+    expect(host.querySelector(".guest-pill .account-pill-rating")?.textContent).toBe("Guest");
     expect(host.querySelector(".guest-pill .guest-pill-edit")).not.toBeNull();
     act(() => root.unmount());
     host.remove();

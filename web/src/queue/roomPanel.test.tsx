@@ -469,6 +469,29 @@ describe("every Play table has a code", () => {
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
   });
 
+  it("Allow joiners is the opener's switch: a non-opener sees none", async () => {
+    const switches = (p: Element) => [...p.querySelectorAll("[role='switch']")]
+      .filter((b) => b.textContent === "Allow joiners");
+    const seat = (name: string, you: boolean, pair = false) =>
+      ({ name, you, ready: false, reconnecting: false, since: nowSecs(), pair, leader: true });
+    const table = (opener: number, mine = seat("Jerry", true)) =>
+      ({ id: "t1", code: "4N5Z", opener, you: 2, timer: null, ready: 0, of: 2, you_ready: false,
+         waiting_for: ["Mei"], seats: [seat("Mei", false), null, mine, null] });
+    await renderApp();
+    say(shared({ table: table(2), opener: true }));
+    const mine = q(".tp-shared")!;
+    expect(switches(mine)).toHaveLength(1);
+    click(switches(mine)[0] as HTMLElement);
+    expect(lastSent()).toEqual({ type: "table_allow_joiners", on: false });
+    // a seated non-opener, a single or a pair's leader alike
+    say(shared({ table: table(0) }));
+    const theirs = q(".tp-shared")!;
+    expect(switches(theirs)).toHaveLength(0);
+    expect(theirs.textContent).not.toContain("Allow joiners");
+    say(shared({ table: table(0, seat("Jerry", true, true)) }));
+    expect(switches(q(".tp-shared")!)).toHaveLength(0);
+  });
+
   it("a ranked shared table hides Starting level too", async () => {
     await renderApp();
     say(shared());

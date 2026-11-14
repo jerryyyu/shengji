@@ -434,7 +434,8 @@ function SwitchRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
 
 /** Every table's settings rows, labels only: the code with its Invite link,
  *  Starting level on a casual table (the opener picks it, others read it; a
- *  ranked table starts at 2 and has no row), and Allow joiners. */
+ *  ranked table starts at 2 and has no row), and Allow joiners when
+ *  ``joiners`` is set (the opener's switch; others see no row). */
 function TableRows({ code, ranked, opener, level, onLevel, joiners, onJoiners }: {
   code: string | null; ranked: boolean; opener: boolean; level: string;
   onLevel: (level: Rank) => void; joiners: boolean | undefined; onJoiners: (on: boolean) => void;
@@ -462,12 +463,14 @@ function TableRows({ code, ranked, opener, level, onLevel, joiners, onJoiners }:
   );
 }
 
-/** A Play table's settings rows, from the queue's state. */
+/** A Play table's settings rows, from the queue's state. Allow joiners is
+ *  the table opener's switch (``queue_state.opener``: its leader's), so
+ *  nobody else is shown one. */
 function QueueTableRows({ q }: { q: QueueView }) {
   return (
     <TableRows code={q.tableCode} ranked={(q.queueMode ?? q.playMode) === "ranked"} opener={q.opener}
                level={q.startLevel} onLevel={(l) => queue.setStartLevel(l)}
-               joiners={q.leader ? q.allowJoiners : undefined} onJoiners={(on) => queue.setAllowJoiners(on)} />
+               joiners={q.opener ? q.allowJoiners : undefined} onJoiners={(on) => queue.setAllowJoiners(on)} />
   );
 }
 

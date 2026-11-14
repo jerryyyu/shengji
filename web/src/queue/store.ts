@@ -157,7 +157,8 @@ export interface QueueView {
   /** Queued: your table's Allow joiners and starting level. */
   allowJoiners: boolean;
   startLevel: string;
-  /** Queued: you opened this table (alone, always), so you set its level. */
+  /** Queued: you opened this table (alone, always), so you set its level
+   *  and Allow joiners. */
   opener: boolean;
 }
 
@@ -616,9 +617,10 @@ export class QueueStore {
     if (mode !== this.view.playMode) this.set({ playMode: mode });
   }
 
-  /** Your table's Allow joiners, alone or at a waiting table. */
+  /** Your table's Allow joiners, alone or at a waiting table (the opener
+   *  only). */
   setAllowJoiners(on: boolean): void {
-    if (!this.view.queued) return;
+    if (!this.view.queued || !this.view.opener) return;
     this.send({ type: "table_allow_joiners", on });
   }
 

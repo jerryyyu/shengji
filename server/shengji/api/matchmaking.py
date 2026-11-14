@@ -22,11 +22,13 @@ Seating (``seat_waiting``, on every join and every ``tick``):
    table with the next waiting entry; with fewer than ``WINDOW_FROM`` people
    queued anyone sits with anyone, from ``WINDOW_FROM`` on only within the
    entry's rating window (``window_for`` its wait). Tables never merge;
-3. seats fill in arrival order, alternating teams (``SEAT_ORDER``: the
-   second person on the other team, the third as the first one's partner,
-   the fourth the last seat); a pair takes two seats of one team
-   (``PAIR_SEATS``). Nobody is re-seated while waiting, and a leaver's seat
-   is simply free again.
+3. seats fill in arrival order, partner first (``SEAT_ORDER``: the second
+   person as the first one's partner, the third and fourth on the other
+   team); a pair takes two seats of one team (``PAIR_SEATS``), so a pair sits
+   across from two singles. Nobody is re-seated while waiting except by
+   their own move (``table_move``: a single, before its Start, to an empty
+   seat; the others hear ``table_moved``), and a leaver's seat is simply
+   free again.
 
 A table starts (``tick``, and at once after the event that makes it due):
 
@@ -43,6 +45,26 @@ timer does not, and starts without an entry whose socket is still gone.
 There is no ready check: the table is the accept. An entry alone in the queue
 starts with bots at its own ``bots_at``, or at once on ``queue_start_bots``.
 
+Away and idle: a closed socket keeps its entry ``AWAY_SECS`` alone,
+``WAIT_AWAY_SECS`` alone with its switch on (nothing starts without it), and
+``TABLE_AWAY_SECS`` at a waiting table. A seated entry that has not tapped
+Start and sent nothing for ``TABLE_IDLE_SECS`` leaves; at a table with no
+timer it is asked "still here?" first (``still_here_until``) and leaves
+``STILL_HERE_SECS`` later unless any message (``table_here``) answers.
+
+Each entry's ``queue_state`` carries ``panel_seq``, which changes whenever
+its panel changes kind or target (alone, an offer of one room, a waiting
+table). A Start or Join that sends back an older ``panel_seq`` is refused
+(``panel_changed``), so a tap aimed at an offer never lands as an
+irrevocable Start at the waiting table that replaced it in the same tick.
+
+Every lobby socket hears ``presence`` (open tables, the connected people at
+them, people queued) when the counts change, at most once per
+``COUNT_DEBOUNCE``: counts only, never a name, code or id. Queue events
+(join, leave, start, start_failed) go to the stderr queue log and to the
+telemetry sink (``telemetry.queue_event``, allow-listed fields only), never
+to the game logs.
+
 Room creation is the server's job: ``start_room`` is injected, and receives
 the table id (``None`` for a game started alone) and the four seats in seat
 order (bots as ``Slot`` with ``user_id=None``).
@@ -51,12 +73,16 @@ Open tables (``open_tables`` and ``join_table`` are injected by the server):
 a ranked game in play with a seat a newcomer may take. A single entry alone
 in the queue (after ``seat_waiting``, so a waiting table always comes first)
 is offered the open table with the most people, for ``OFFER_SECS``: it picks
-a seat and joins, or waits. A table it waited on (or let lapse) is never
-offered to it again by itself, but stays one tap away on the bar while it is
-joinable. The entry's bot timer is paused only while an offer is up, and
-runs on after Wait. Leaving a table it joined, before its
+a seat and joins, or keeps looking. A table it passed on (or let lapse) is
+not offered to it again by itself in this search, but stays one tap away on
+the bar while it is joinable; a fresh ``queue_join`` forgets those. The
+entry's bot timer is paused only while an offer is up, and runs on after
+Wait. Leaving a table it joined, before its
 first ranked round there, costs a ``JOIN_COOLDOWN_SECS`` queue cooldown and
-that table is never offered to it again.
+that table is never offered to it again (``barred``, which a fresh
+``queue_join`` keeps). A game started alone stays an open table; the server
+tells its people once when the first newcomer's Join lands
+(``first_joiner``).
 """
 
 from __future__ import annotations
@@ -73,7 +99,7 @@ from dataclasses import dataclass, field
 from itertools import count
 from typing import Any, Awaitable, Callable
 
-from . import accounts, ratings
+from . import accounts, ratings, telemetry
 
 log = logging.getLogger(__name__)
 # One JSON line per queue event (join, leave and its reason, start): who is a
@@ -107,26 +133,34 @@ WINDOW_STEPS: tuple[tuple[float, float], ...] = ((20.0, 100.0), (40.0, 250.0))
 # People queued (at tables or not) from which the rating window decides who
 # shares a table; below it everyone queued sits at one table.
 WINDOW_FROM = 5
-# How long a closed socket keeps its entry: alone in the queue, and seated at
-# a waiting table (where an app sent to the background must not lose its seat).
+# How long a closed socket keeps its entry: alone in the queue, seated at a
+# waiting table (where an app sent to the background must not lose its seat),
+# and alone with "Wait for people" on, where nothing starts without it and a
+# player is expected to switch apps while waiting.
 AWAY_SECS = 10.0
 TABLE_AWAY_SECS = 60.0
+WAIT_AWAY_SECS = 60.0
 # A seated entry that has not tapped Start and sent nothing for this long
-# leaves the table and the queue, with no cooldown.
+# leaves the table and the queue, with no cooldown. At a table with no timer
+# it is asked "still here?" instead and leaves only STILL_HERE_SECS later,
+# since there nobody is waiting on a clock and patience is the point.
 TABLE_IDLE_SECS = 120.0
-# Seat order for arrivals (team 0 at seats 0+2, team 1 at 1+3), and the two
-# seat pairs a pair can take.
-SEAT_ORDER = (0, 1, 2, 3)
+STILL_HERE_SECS = 30.0
+# Seat order for arrivals (team 0 at seats 0+2, team 1 at 1+3): the second
+# person sits as the first one's partner, and the two seat pairs a pair can
+# take.
+SEAT_ORDER = (0, 2, 1, 3)
 PAIR_SEATS = ((0, 2), (1, 3))
 # How long an open-table offer stays up, and the queue cooldown after
 # leaving a table one joined before its first ranked round there.
-OFFER_SECS = 10.0
+OFFER_SECS = 20.0
 JOIN_COOLDOWN_SECS = 300.0
 PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
 PARTY_LIMIT = (20, 60.0)     # party_* per account per window
 LOOKUP_LIMIT = (30, 60.0)    # code_lookup per account (a guest: per socket) per window
+MOVE_LIMIT = (20, 60.0)      # table_move per account per window
 # Room and pair codes share one space: no live room and live pair ever hold
 # the same code, so one join box takes either. No I, O, 0 or 1, which read
 # alike.
@@ -137,6 +171,7 @@ QUEUE_MESSAGES = frozenset({
     "queue_status", "queue_join", "queue_leave", "table_start", "match_accept", "match_decline",
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
     "party_leave", "open_table_join", "open_table_wait", "open_table_show",
+    "table_move", "table_here",
 })
 SAME_DEVICE = "Someone on this device is already at that table."
 # The only queue messages a seated socket may send: leaving a pair, and
@@ -239,6 +274,14 @@ class Entry:
     open_codes: list[str] = field(default_factory=list)
     # A Join is in flight: the entry is neither seated nor started meanwhile.
     claiming: bool = False
+    # Asked "still here?" at a table with no timer (``table_here`` answers).
+    prompted: bool = False
+    # What the entry's panel shows (its own table, an offer, a waiting
+    # table) and the process-wide sequence number of its last change: a
+    # Start sent against an older panel is refused, so a tap aimed at Join
+    # never becomes an irrevocable Start.
+    panel_key: tuple = ()
+    panel_seq: int = 0
 
     @property
     def size(self) -> int:
@@ -386,6 +429,7 @@ class Matchmaker:
                  open_tables: Callable[[], list[dict]] | None = None,
                  join_table: JoinTable | None = None,
                  join_pair: JoinPair | None = None,
+                 presence: Callable[[], tuple[int, int]] | None = None,
                  autorun: bool = True) -> None:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
@@ -401,6 +445,10 @@ class Matchmaker:
         self.open_tables = open_tables or (lambda: [])
         self.join_table = join_table
         self.join_pair = join_pair
+        # (open tables, connected humans seated at them) for the presence
+        # line; by default read off ``open_tables`` (seats neither bot nor
+        # open count as people).
+        self.presence = presence or self._presence_from_open_tables
         self.autorun = autorun
         self._task: asyncio.Task | None = None
         self.reset()
@@ -430,9 +478,13 @@ class Matchmaker:
         self.join_limiter = accounts.RateLimiter(*JOIN_LIMIT)
         self.party_limiter = accounts.RateLimiter(*PARTY_LIMIT)
         self.lookup_limiter = accounts.RateLimiter(*LOOKUP_LIMIT)
+        self.move_limiter = accounts.RateLimiter(*MOVE_LIMIT)
         self._seq = count(1)
+        self._panel = count(1)
         self._count_sent = 0
         self._count_sent_at = -math.inf
+        self._presence_sent: tuple[int, int, int] = (0, 0, 0)
+        self._presence_sent_at = -math.inf
         self._last_tick = -math.inf
 
     # ---------------------------------------------------------- plumbing
@@ -449,7 +501,7 @@ class Matchmaker:
             except Exception:      # noqa: BLE001 - the queue outlives one bad tick
                 log.exception("matchmaking pump failed")
             if (not self.entries and not self.tables and not self.parties
-                    and not self.joining and self._count_sent == 0):
+                    and not self.joining and self._count_sent == 0 and not self.lobby):
                 return
 
     def _live(self, uid: int) -> Conn | None:
@@ -520,6 +572,11 @@ class Matchmaker:
             qlog.info(json.dumps(rec, separators=(",", ":"), sort_keys=True))
         except Exception:      # noqa: BLE001 - logging never breaks the queue
             pass
+        # The same event to the telemetry sink, under the leader's socket sid;
+        # ``queue_event`` keeps only its allow-listed fields, so no id leaves.
+        conn = self.conns.get(e.leader) if e is not None else None
+        telemetry.queue_event(conn, event, **{k: v for k, v in rec.items()
+                                              if k not in ("queue", "t")})
 
     def _error(self, conn: Conn, err: QueueError) -> None:
         conn.push({"type": "error", "code": err.code, "message": err.message,
@@ -540,6 +597,35 @@ class Matchmaker:
         self._count_sent, self._count_sent_at = n, now
         for c in list(self.lobby):
             c.push({"type": "queue_count", "count": n})
+
+    def _presence_from_open_tables(self) -> tuple[int, int]:
+        tables = [t for t in self.open_tables() if t.get("seats")]
+        return len(tables), sum(1 for t in tables for st in t["seats"]
+                                if not st.get("bot") and not st.get("open"))
+
+    def presence_payload(self) -> dict:
+        """Counts only: no names, codes or ids reach an idle Play tab."""
+        try:
+            tables, playing = self.presence()
+        except Exception:      # noqa: BLE001 - the line is cosmetic; the queue goes on
+            log.exception("presence count failed")
+            tables, playing = 0, 0
+        return {"type": "presence", "tables": tables, "playing": playing,
+                "waiting": self.count()}
+
+    def _flush_presence(self) -> None:
+        """Every lobby socket hears the presence counts when they change, at
+        most once per ``COUNT_DEBOUNCE``."""
+        now = self.clock()
+        if now - self._presence_sent_at < COUNT_DEBOUNCE:
+            return
+        p = self.presence_payload()
+        key = (p["tables"], p["playing"], p["waiting"])
+        if key == self._presence_sent:
+            return
+        self._presence_sent, self._presence_sent_at = key, now
+        for c in list(self.lobby):
+            c.push(p)
 
     def _entry(self, uid: int) -> Entry | None:
         eid = self.entry_of.get(uid)
@@ -597,6 +683,9 @@ class Matchmaker:
             return self._idle_state(uid)
         t = self._table(e)
         return {"type": "queue_state", "queued": True, "since": e.since,
+                "panel_seq": self._panel_seq(e),
+                "still_here_until": (e.active_at + TABLE_IDLE_SECS + STILL_HERE_SECS
+                                     if e.prompted and t is not None else None),
                 "count": self.count(), "front": e.front,
                 "party_id": e.party_id, "leader": e.leader == uid,
                 "bots_at": e.bots_at,
@@ -605,6 +694,27 @@ class Matchmaker:
                 "table": self.table_payload(t, uid) if t is not None else None,
                 "offer": self._offer_payload(e.offer, uid, e) if e.offer is not None else None,
                 "open_tables": len(e.open_codes)}
+
+    def _panel_seq(self, e: Entry) -> int:
+        """The entry's panel sequence number, advanced when what its panel
+        shows changes kind or target (own table, an offer of one room, a
+        waiting table); re-renders of the same panel keep it."""
+        t = self._table(e)
+        key: tuple = (("table", t.id) if t is not None
+                      else ("offer", e.offer.code) if e.offer is not None else ("own",))
+        if key != e.panel_key:
+            e.panel_key, e.panel_seq = key, next(self._panel)
+        return e.panel_seq
+
+    def _check_panel(self, e: Entry, msg: dict) -> None:
+        """Refuse a tap sent against a panel the entry no longer shows; a
+        message without ``panel_seq`` (an older client) is not checked."""
+        sent = msg.get("panel_seq")
+        if sent is None or isinstance(sent, bool) or not isinstance(sent, int):
+            return
+        if sent != self._panel_seq(e):
+            self._send_state(e)
+            raise QueueError("panel_changed", "Your table changed. Look again before you tap.")
 
     def _offer_payload(self, o: Offer, uid: int | None = None, e: Entry | None = None) -> dict:
         """The offer as ``uid`` sees it: for a pair, ``pick`` is its own seat
@@ -666,6 +776,13 @@ class Matchmaker:
         for o in left:
             self._send_state(o)
 
+    def _push_presence(self, conn: Conn) -> None:
+        """A socket arriving in the lobby hears the counts at once, unless
+        they are all zero (the line then reads as nobody playing)."""
+        p = self.presence_payload()
+        if p["tables"] or p["playing"] or p["waiting"]:
+            conn.push(p)
+
     # ------------------------------------------------------- connections
     def connect(self, conn: Conn) -> None:
         """A new socket: it is a lobby socket, and when its account's queue
@@ -674,6 +791,8 @@ class Matchmaker:
         n = self.count()
         if n:
             conn.push({"type": "queue_count", "count": n})
+        self._push_presence(conn)
+        self.ensure_running()
         uid = conn.queue_id
         if uid is None:
             return
@@ -761,6 +880,8 @@ class Matchmaker:
         n = self.count()
         if n:
             conn.push({"type": "queue_count", "count": n})
+        self._push_presence(conn)
+        self.ensure_running()
         uid = conn.queue_id
         if uid is not None and self._live(uid) is None:
             self.conns[uid] = conn
@@ -830,8 +951,10 @@ class Matchmaker:
                 raise QueueError("in_room", "Leave the room before queueing.")
             now = self.clock()
             e = self._entry(queue_id)
+            answered = False
             if e is not None and e.table_id is not None:
                 e.active_at = now          # any message from the table is a tap
+                answered, e.prompted = e.prompted, False
             if t == "queue_join":
                 if not self.join_limiter.allow(str(queue_id), now):
                     raise QueueError("rate_limited", "Too many requests; wait a minute.")
@@ -856,17 +979,33 @@ class Matchmaker:
                     raise QueueError("no_match", "There is no ready check for you.")
                 elif t == "table_start" or (t == "queue_start_bots" and self._table(e) is not None):
                     # An older client's Play bots at a table is its Start.
+                    if e is not None:
+                        self._check_panel(e, msg)
                     await self._table_start(queue_id)
                 elif t == "queue_start_bots":
+                    if e is not None:
+                        self._check_panel(e, msg)
                     await self._start_bots(queue_id)
+                elif t == "table_move":
+                    if not self.move_limiter.allow(str(queue_id), now):
+                        raise QueueError("rate_limited", "Too many requests; wait a minute.")
+                    self._table_move(queue_id, msg)
+                elif t == "table_here":
+                    if e is None or e.table_id is None:
+                        raise QueueError("not_seated", "You are not at a waiting table.")
+                    answered = True
                 elif t in ("queue_wait_players", "queue_allow_bots"):
                     self._set_bot_fill(queue_id, t == "queue_allow_bots")
                 elif t == "open_table_join":
+                    if e is not None:
+                        self._check_panel(e, msg)
                     await self._open_join(conn, queue_id, msg)
                 elif t == "open_table_wait":
                     self._open_wait(queue_id)
                 elif t == "open_table_show":
                     self._open_show(queue_id, msg)
+            if answered and e is not None and self.entries.get(e.id) is e:
+                self._send_state(e)        # the "still here?" prompt is gone
         except QueueError as err:
             self._error(conn, err)
         self.ensure_running()
@@ -908,6 +1047,11 @@ class Matchmaker:
         if pid is not None and (self.party_of.get(uid) != pid
                                 or self.parties[pid].members != members):
             raise QueueError("party_changed", "Your Duo changed; try again.")
+        # A fresh Play forgets the tables its members waited on: Keep looking
+        # holds for one search, not for the life of the process. Tables they
+        # joined and left (``barred``) stay barred.
+        for m in members:
+            self.declined.pop(m, None)
         since = self.clock()
         e = Entry(id=secrets.token_hex(6), seq=next(self._seq), members=members,
                   leader=uid, member_ratings=member_ratings, since=since,
@@ -968,6 +1112,38 @@ class Matchmaker:
             t.ready.add(e.id)
             self._send_table(t)
         await self._start_due()
+
+    def _table_move(self, uid: int, msg: dict) -> None:
+        """A single at a waiting table moves itself to an empty seat, until
+        it taps Start; a pair's seats never move. Everyone at the table sees
+        the new seats, and the others are told who moved and to which team."""
+        e = self._entry(uid)
+        t = self._table(e)
+        if e is None or t is None:
+            raise QueueError("not_seated", "You are not at a waiting table.")
+        if e.size != 1:
+            raise QueueError("pair_seats_fixed", "A Duo's seats stay together.")
+        if e.id in t.ready:
+            raise QueueError("already_ready", "You tapped Start, so your seat is set.")
+        seat = msg.get("seat")
+        if isinstance(seat, bool) or not isinstance(seat, int) or not 0 <= seat < 4:
+            raise QueueError("bad_seat", "Pick one of the open seats.")
+        old = t.seats.index(uid)
+        if seat == old:
+            self._send_state(e)
+            return
+        if t.seats[seat] is not None:
+            self._send_state(e)
+            raise QueueError("seat_taken", "That seat was just taken. Pick another.")
+        t.seats[old], t.seats[seat] = None, uid
+        self._send_table(t)
+        for o in t.entries:
+            if o is e:
+                continue
+            for u in o.members:
+                mine = t.seats.index(u)
+                self._send(u, {"type": "table_moved", "name": self._name(uid), "seat": seat,
+                               "your_team": mine % 2 == seat % 2})
 
     # ----------------------------------------------------------- seating
     def seat_waiting(self) -> None:
@@ -1032,7 +1208,7 @@ class Matchmaker:
             t.seats[s] = u
             t.seated_at[u] = now
         t.entries.append(e)
-        e.table_id, e.active_at = t.id, now
+        e.table_id, e.active_at, e.prompted = t.id, now, False
         # A waiting table outranks an open table: the offer goes, and a
         # paused bot wait runs again as the table's timer.
         e.offer, e.open_codes = None, []
@@ -1569,6 +1745,7 @@ class Matchmaker:
             self._last_tick = now
             await self.tick()
         self._flush_count()
+        self._flush_presence()
 
     async def tick(self) -> None:
         """Seat everyone who can sit, offer open tables to who is still
@@ -1587,9 +1764,15 @@ class Matchmaker:
     def _drop_away(self, now: float) -> None:
         """A member whose socket has been gone over its grace takes the entry
         out of the queue, with no cooldown: ``AWAY_SECS`` alone,
-        ``TABLE_AWAY_SECS`` at a waiting table."""
+        ``TABLE_AWAY_SECS`` at a waiting table, ``WAIT_AWAY_SECS`` alone with
+        "Wait for people" on."""
         for e in list(self.entries.values()):
-            grace = TABLE_AWAY_SECS if e.table_id is not None else AWAY_SECS
+            if e.table_id is not None:
+                grace = TABLE_AWAY_SECS
+            elif e.bots_at is None and e.paused is None:
+                grace = WAIT_AWAY_SECS
+            else:
+                grace = AWAY_SECS
             gone = []
             for u in e.members:
                 c = self.conns.get(u)
@@ -1608,12 +1791,19 @@ class Matchmaker:
 
     def _drop_idle(self, now: float) -> None:
         """A seated entry that has not tapped Start and sent nothing for
-        ``TABLE_IDLE_SECS`` leaves, with no cooldown. A reconnecting one is
-        left to ``_drop_away``."""
+        ``TABLE_IDLE_SECS`` leaves, with no cooldown. At a table with no
+        timer it is asked "still here?" first and leaves ``STILL_HERE_SECS``
+        later unless a member sends anything. A reconnecting one is left to
+        ``_drop_away``."""
         for e in list(self.entries.values()):
             t = self._table(e)
             if (t is None or e.id in t.ready or now - e.active_at < TABLE_IDLE_SECS
                     or not self._entry_available(e)):
+                continue
+            if t.timer() is None and now - e.active_at < TABLE_IDLE_SECS + STILL_HERE_SECS:
+                if not e.prompted:
+                    e.prompted = True
+                    self._send_state(e)
                 continue
             self._remove(e, "idle")
             for u in e.members:

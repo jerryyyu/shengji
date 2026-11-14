@@ -2619,21 +2619,95 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   flex: none;
 }
 
-.kitty-bonus,
-.result-levels-line {
-  color: #c4ccd8;
-  font-size: var(--fs-13);
+/* Details: the kitty and the last trick side by side, so the opened card
+   still fits a sideways phone */
+/* the toggle keeps its 44px hit area but sits tight between the result
+   line and the buttons */
+.round-end .result-details > summary {
+  margin: -8px auto;
 }
 
-.round-end-last-trick {
+.modal.round-end.details-open {
+  width: 560px;
+  max-width: 100%;
+}
+
+.round-end-details {
+  display: flex;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #11141a;
+  border: 1px solid var(--panel-edge);
+  text-align: left;
+}
+
+.round-end-col {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.round-end-kitty {
+  flex: 1;
+}
+
+.round-end-col-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.round-end-kitty-cards,
+.round-end-play-cards {
+  display: flex;
+  --cw: 34px;
+}
+
+.round-end-kitty-cards .card + .card {
+  margin-left: -15px;
+}
+
+.round-end-play-cards .card + .card {
+  margin-left: -20px;
+}
+
+.kitty-bonus {
+  color: #c4ccd8;
+  font-size: var(--fs-12);
+}
+
+.round-end-plays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
   gap: 6px;
 }
 
-.round-end-last-trick .last-trick-plays {
-  text-align: left;
+.round-end-play {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.round-end-play.winner .round-end-play-cards {
+  border-radius: 6px;
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.round-end-play-who {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.round-end-play.winner .round-end-play-who {
+  color: var(--gold);
 }
 
 /* ============ Mobile landscape (short viewports) ============ */
@@ -3985,12 +4059,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-left: -6px;
   }
 
-  /* the button row stays in view while an opened Details scrolls under it */
+  /* the button row stays in view, even on a card taller than the screen */
   .modal > .round-end-actions {
     position: sticky;
-    top: 0;
+    bottom: 0;
     z-index: 1;
-    background: var(--panel);
+    background: #171b22;
   }
 
   .round-end-actions > .btn.big {

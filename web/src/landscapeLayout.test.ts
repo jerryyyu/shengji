@@ -785,13 +785,13 @@ describe("the header row on a phone", () => {
 });
 
 describe("the round-end card on a phone", () => {
-  it("keeps Next round and Leave in one row pinned in view, with 12px padding all round the card", () => {
+  it("keeps Next round and Leave in one row pinned to the bottom, with 12px padding all round the card", () => {
     const block = phoneBlock();
     expect(rule(block, ".modal").gap).toBe("8px");
     expect(rule(block, ".modal").padding).toBe("12px 16px");
     const row = rule(block, ".modal > .round-end-actions");
     expect(row.position).toBe("sticky");
-    expect(row.top).toBe("0");
+    expect(row.bottom).toBe("0");
     expect(rule(css, ".round-end-actions").display).toBe("flex");
     expect(rule(css, ".round-end-actions > .dialog-leave-btn").margin).toBe("0");
   });

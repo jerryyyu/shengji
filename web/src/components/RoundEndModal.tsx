@@ -62,44 +62,20 @@ export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null 
   return mine === undefined || mine === winner ? null : mine;
 }
 
-function signedDelta(delta: number): string {
-  if (delta > 0) return `▲ +${delta}`;
-  if (delta < 0) return `▼ −${Math.abs(delta)}`;
-  return "±0";
-}
-
-/** The viewer's own rating after the round (the server sends it only to a
- *  signed-in seat, once the round is stored); a guest seat (the result's
- *  `unranked: "guest"` or the state's `guest`) gets "Guest". ``total`` shows the whole
- *  game's change where a game was won. An unranked room shows neither. */
-export function RatingLine({ result, total, ranked, guest = false }: {
-  result: RoundResult; total: boolean; ranked: boolean;
+/** The rating note for a ranked seat with no rating change to show: a seat
+ *  taken mid-round from an open table is unranked for it, and a guest seat
+ *  (the result's `unranked: "guest"` or the state's `guest`) reads "Guest".
+ *  An account's rating may still be on its way, so it gets no note; an
+ *  unranked room shows neither. */
+export function RatingLine({ result, ranked, guest = false }: {
+  result: RoundResult; ranked: boolean;
   /** The viewer sits as a guest (the state's `guest`). */
   guest?: boolean;
 }) {
-  const rating = result.rating;
   if (!ranked) return null;
   if (result.unranked === "joined") {
     return <div className="rating-line rating-unranked"><span>Unranked · joined mid-round</span></div>;
   }
-  if (rating) {
-    const game = total && rating.game_delta !== undefined ? rating.game_delta : null;
-    const tone = (d: number) => (d > 0 ? "delta-up" : d < 0 ? "delta-dn" : "delta-flat");
-    return (
-      <div className="rating-line">
-        <span>Your rating <b>{rating.rating}</b></span>
-        <span className="rating-deltas">
-          <span className={`rating-delta ${tone(rating.delta)}`}>{signedDelta(rating.delta)}</span>
-          {game !== null ? (
-            <span className={`rating-game ${tone(game)}`}>
-              {game > 0 ? "+" : game < 0 ? "−" : "±"}{Math.abs(game)} this game
-            </span>
-          ) : null}
-        </span>
-      </div>
-    );
-  }
-  // an account's rating may still be on its way; only a guest seat is told
   if (result.unranked !== "guest" && !guest) return null;
   return <div className="rating-line rating-unranked rating-guest-note"><span>Guest</span></div>;
 }
@@ -126,41 +102,29 @@ function resultSentences(state: GameState, result: RoundResult): { took: string;
   };
 }
 
-/** The kitty's multiplier, read back from the bonus the server applied
- *  (bonus = buried points x multiplier); null when there was no bonus. */
-function kittyMultiplier(result: RoundResult): number | null {
-  const buried = pointsOf(result.kitty_cards);
-  if (result.kitty_points <= 0 || buried <= 0 || result.kitty_points % buried !== 0) return null;
-  return result.kitty_points / buried;
-}
-
-/** Why the kitty paid what it did, in one line. */
-function kittyBonusText(state: GameState, result: RoundResult): string {
+/** "Them won the last trick: ×2, +30" when the attackers took the last
+ *  trick, else null. The multiplier is read back from the bonus the server
+ *  applied (bonus = buried points x multiplier); with nothing buried to
+ *  multiply it is the engine's 2 x the cards in the lead. */
+function kittyBonusText(state: GameState, result: RoundResult): string | null {
   const attack = attackingTeam(state);
-  const attackers = attack === null ? "the attackers" : teamWord(attack, state);
-  const mult = kittyMultiplier(result);
-  if (result.kitty_points > 0) {
-    return mult !== null ? `×${mult} · +${result.kitty_points} to ${attackers}` : `+${result.kitty_points} to ${attackers}`;
-  }
   const last = state.last_trick;
-  if (attack !== null && last && last.winner % 2 !== attack) {
-    return `No bonus: ${teamWord((1 - attack) as 0 | 1, state)} took the last trick`;
-  }
-  return "No bonus";
+  if (attack === null || !last || last.winner % 2 !== attack) return null;
+  const buried = pointsOf(result.kitty_cards);
+  const mult = result.kitty_points > 0 && buried > 0 && result.kitty_points % buried === 0
+    ? result.kitty_points / buried
+    : buried === 0 ? 2 * (last.plays[0]?.cards.length ?? 1) : null;
+  const times = mult !== null ? `×${mult}, ` : "";
+  return `${teamWord(attack, state)} won the last trick: ${times}+${result.kitty_points}`;
 }
 
 export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
   useScreen("round_end");
+  const [open, setOpen] = useState(false);
   const ranked = !!(state.matched || state.ranked);
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
   const buriedPoints = pointsOf(result.kitty_cards);
-  const bankerName =
-    state.banker === null
-      ? null
-      : state.banker === state.you
-      ? "you"
-      : state.players.find((p) => p.seat === state.banker)?.name ?? `Seat ${state.banker}`;
 
   const lostTeam = losingViewerTeam(state, result.winner_team);
   // A team that defends at Ace wins a game: a point on the games score, and
@@ -169,18 +133,22 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   const what = gameWon ? "the game" : "the round";
   const us = myTeam(state);
   const them = (1 - us) as 0 | 1;
+  // A rated round's change rides on the result line; the guest and
+  // joined-mid-round notes, which have no number, keep their own line.
   const rating = ranked ? result.rating : undefined;
-  const ratingTone = rating ? (rating.delta > 0 ? "delta-up" : rating.delta < 0 ? "delta-dn" : "delta-flat") : "";
-  const ratingBit = rating
-    ? <span className={`result-rating ${ratingTone}`}> · {shortDelta(rating.delta)}</span>
+  const shownDelta = rating ? (gameWon && rating.game_delta !== undefined ? rating.game_delta : rating.delta) : null;
+  const ratingBit = shownDelta !== null
+    ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}> · {shortDelta(shownDelta)}</span>
     : null;
   const { took, climb } = resultSentences(state, result);
+  const bonus = kittyBonusText(state, result);
+  const hasDetails = result.kitty_cards.length > 0 || state.last_trick !== null;
   // Everyone reviews the round at their own pace: the server only advances
   // once every connected human has confirmed.
   const iAmReady = (state.ready ?? []).includes(state.you);
   return (
     <ResultDialog titleId={titleId}>
-      <div className={`panel modal round-end${gameWon ? " game-won" : ""}`}>
+      <div className={`panel modal round-end${gameWon ? " game-won" : ""}${open ? " details-open" : ""}`}>
         {gameWon ? <div className="game-won-crown" aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
           {lostTeam !== null
@@ -190,7 +158,8 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
 
         {gameWon ? (
           <p className="result-headline result-games">
-            Games: Us {result.games_won[us]} · Them {result.games_won[them]}{ratingBit}
+            <span>Games: Us {result.games_won[us]} · Them {result.games_won[them]}{ratingBit}</span>
+            <span className="result-next-banker">Levels restart at {result.new_levels[us]}.</span>
           </p>
         ) : (
           <p className="result-headline result-line">
@@ -198,6 +167,25 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             <span className="result-next-banker">{nextBankerText(state, result)}.</span>
           </p>
         )}
+        {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
+
+        {hasDetails ? (
+          <details className="result-details" onToggle={(e) => setOpen(e.currentTarget.open)}>
+            <summary>Details</summary>
+            <div className="round-end-details">
+              {result.kitty_cards.length > 0 ? (
+                <div className="round-end-col round-end-kitty">
+                  <div className="round-end-col-label">Kitty · {buriedPoints} points</div>
+                  <div className="round-end-kitty-cards">
+                    {result.kitty_cards.map((code, i) => <Card key={i} code={code} />)}
+                  </div>
+                  {bonus ? <div className="kitty-bonus">{bonus}</div> : null}
+                </div>
+              ) : null}
+              {state.last_trick ? <RoundEndLastTrick state={state} trick={state.last_trick} /> : null}
+            </div>
+          </details>
+        ) : null}
 
         <div className="round-end-actions">
           <button
@@ -210,29 +198,6 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
           </button>
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />
         </div>
-
-        <details className="result-details">
-          <summary>Details</summary>
-          {result.kitty_cards.length > 0 && (
-            <div className="kitty-reveal">
-              <div className="kitty-reveal-label">
-                Kitty{bankerName ? ` · buried by ${bankerName}` : ""} · {buriedPoints} pts
-              </div>
-              <div className="kitty-cards">
-                {result.kitty_cards.map((code, i) => (
-                  <Card key={i} code={code} />
-                ))}
-              </div>
-              <div className="kitty-bonus">{kittyBonusText(state, result)}</div>
-            </div>
-          )}
-          {state.last_trick ? <RoundEndLastTrick state={state} trick={state.last_trick} /> : null}
-          <div className="result-levels-line">
-            {gameWon ? "Levels restart at " : "Levels now "}
-            Us {result.new_levels[us]} · Them {result.new_levels[them]}
-          </div>
-          <RatingLine result={result} total={gameWon} ranked={ranked} guest={state.guest === true} />
-        </details>
       </div>
     </ResultDialog>
   );

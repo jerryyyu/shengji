@@ -4,7 +4,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import type { GameState, HandCard, StatePlayer } from "../protocol";
 
 const haptics: string[] = [];
-vi.mock("../native", () => ({ haptic: (k: string) => { haptics.push(k); } }));
+vi.mock("../native", async (load) => ({
+  ...(await load<typeof import("../native")>()),
+  haptic: (k: string) => { haptics.push(k); },
+}));
 const sent: unknown[] = [];
 // a stand-in connection: open unless a test says otherwise, and able to
 // deliver a server message to whoever subscribed

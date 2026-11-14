@@ -157,13 +157,14 @@ describe("the lobby with sign-in ON", () => {
     expect([...host.querySelectorAll(".play-label")].map((h) => h.textContent)).toEqual(["Casual"]);
     expect(host.textContent).not.toContain("Sign in to play ranked");
     expect(host.textContent).not.toContain("Your name");
-    // the chip sits where an account's does: initial, name, and Guest for the rating
+    // the chip sits where an account's does: initial, name, the guest line for the rating, and a pencil
     const chip = host.querySelector<HTMLButtonElement>(".guest-pill")!;
     expect(chip.previousElementSibling?.className).toBe("lobby-preview");
     const name = chip.querySelector(".account-pill-name")!.textContent!;
     expect(name).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
     expect(chip.querySelector(".avatar")?.textContent).toBe(name.slice(0, 1));
-    expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("Guest");
+    expect(chip.querySelector(".account-pill-rating")?.textContent).toBe("Guest · not ranked");
+    expect(chip.querySelector(".guest-pill-edit")).not.toBeNull();
     const row = [...host.querySelectorAll<HTMLButtonElement>(".play-ranked-row button")];
     expect(row.map((b) => b.textContent)).toEqual(["Play", "Duo"]);
     expect(row[0].className).toContain("gold");

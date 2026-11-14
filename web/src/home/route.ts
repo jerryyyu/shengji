@@ -1,9 +1,9 @@
 // The home screen's tabs live in the URL hash like My games and How to play,
 // so a reload or a link lands on a tab and the game socket is never touched.
-// Play is the bare URL. A phone has three tabs, Play, Leaderboard and Me, with
-// Me's Stats and Games as segments; at 700px and up the top bar shows Stats and
-// Games as tabs of their own. `#/stats`, `#/me` and `#/me/stats` name Stats,
-// `#/games` and `#/me/games` name Games, at any width. Switching tabs adds a
+// Play is the bare URL. Every width has the same three tabs, Play, Leaderboard
+// and Me, with Me's Stats and Games as a switch inside it. `#/me` and
+// `#/me/games` are Me's own hashes; `#/stats`, `#/me/stats` and `#/games` still
+// open Me on that switch, so older links and bookmarks keep working. Switching tabs adds a
 // history entry, so back (or the app's edge swipe) returns to the tab before,
 // as it does from a sub-page such as How to play or a replay.
 import { useEffect, useState } from "react";
@@ -22,23 +22,12 @@ export function parseHome(hash: string): HomeRoute | null {
 }
 
 /** At this width and up (an iPad either way round, a desktop window) the
- *  tabs sit in a top bar, with Stats and Games as tabs; below it, a phone's
- *  bottom tab bar with Me. */
+ *  tabs sit in a top bar; below it, in a phone's bottom tab bar. */
 export const WIDE = "(min-width: 700px)";
 
-function isWide(): boolean {
-  try {
-    return window.matchMedia?.(WIDE)?.matches ?? false;
-  } catch {
-    return false;
-  }
-}
-
-/** The hash a tab is opened at: the top bar's own `#/stats` and `#/games`
- *  when `wide`, Me's `#/me` and `#/me/games` on a phone. */
-export function homeHash(tab: Tab, section: MeSection = "stats", wide = false): string {
+/** The hash a tab is opened at, the same at every width. */
+export function homeHash(tab: Tab, section: MeSection = "stats"): string {
   if (tab === "leaderboard") return "#/leaderboard";
-  if (tab === "me" && wide) return section === "games" ? "#/games" : "#/stats";
   if (tab === "me") return section === "games" ? "#/me/games" : "#/me";
   return "";
 }
@@ -55,7 +44,7 @@ function currentHash(): string {
  *  theirs; reopening the current tab adds nothing. Me opens on the section
  *  named, else the one it last showed this session. */
 export function openTab(tab: Tab, section?: MeSection): void {
-  const hash = homeHash(tab, section ?? tabMemory.meSection, isWide());
+  const hash = homeHash(tab, section ?? tabMemory.meSection);
   try {
     if (hash && currentHash() === hash) return;
     if (!hash && !currentHash()) return;

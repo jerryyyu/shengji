@@ -1,11 +1,10 @@
-import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, Ref } from "react";
 import type { ReactNode } from "react";
 import { auth, deleteAccount, effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
 import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
-import { openHowto } from "../howto/route";
 import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { EDIT_NAME_EVENT, WIDE, openTab, takeNameEditRequest } from "../home/route";
@@ -16,9 +15,11 @@ import type { MeSection } from "../home/route";
 import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import NameEditForm from "./NameEditForm";
 import { SavedGames } from "./GamesList";
-import { useMuted } from "../useMuted";
-import { hapticsEnabled, isNative, setHapticsEnabled, subscribeHaptics } from "../native";
 import { useScreen } from "../telemetry";
+import { SettingsGroup } from "./SettingsList";
+import { GuestNameSheet } from "./GuestChip";
+import { GUEST_LINE, guestName, useGuestName } from "../guestName";
+import { randomName } from "../randomName";
 
 const SECTIONS = [
   { value: "stats", label: "Stats" },
@@ -182,48 +183,9 @@ function DeleteAccount() {
   );
 }
 
-/** A switch row: the whole 44 pt row is the control. */
-function SwitchRow({ label, on, onClick, className }: {
-  label: string; on: boolean; onClick: () => void; className: string;
-}) {
-  return (
-    <li>
-      <button type="button" className={`grp-row ${className}`} role="switch" aria-checked={on} onClick={onClick}>
-        <span className="grp-label">{label}</span>
-        <span className={`ios-switch${on ? " on" : ""}`} aria-hidden="true" />
-      </button>
-    </li>
-  );
-}
-
-function useHaptics(): boolean {
-  return useSyncExternalStore(subscribeHaptics, hapticsEnabled);
-}
-
-/** This device's settings, for guests and accounts alike: sound, and haptics
- *  inside the app (a browser has none to turn off). An account adds its own
- *  rows after these. */
-function DeviceRows() {
-  const [muted, toggleSound] = useMuted();
-  const haptics = useHaptics();
-  return (
-    <>
-      <SwitchRow label="Sound" on={!muted} onClick={toggleSound} className="me-sound" />
-      {isNative()
-        ? <SwitchRow label="Haptics" on={haptics} onClick={() => setHapticsEnabled(!haptics)} className="me-haptics" />
-        : null}
-    </>
-  );
-}
-
-function SettingsHead() {
-  return <h3 className="grp-head" id="me-settings-head">Settings</h3>;
-}
-
 function InfoRows() {
   return (
     <ul className="grp">
-      <Row label="How to play" chevron onClick={() => openHowto()} />
       <li><a className="grp-row" href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>
         <span className="grp-label">Privacy policy</span><span className="grp-value chev" />
       </a></li>
@@ -234,7 +196,8 @@ function InfoRows() {
   );
 }
 
-/** The account's rows, under both Stats and Games. The leaderboard switch
+/** The settings and the account's rows, beside or under both Stats and
+ *  Games. The leaderboard switch
  *  moves on the tap and says it is saving; a refused save puts it back and
  *  says why next to it. */
 function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | null; statsKey: string }) {
@@ -278,9 +241,8 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
   };
   return (
     <>
-      <SettingsHead />
-      <ul className="grp me-settings" aria-labelledby="me-settings-head">
-        <DeviceRows />
+      <SettingsGroup />
+      <ul className="grp me-account">
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
                   disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}
@@ -306,39 +268,70 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
   );
 }
 
-/** A guest's Me: one sign-in card, the device settings and the help rows.
- *  `unreachable`: the server could not be asked, so the card shows its
- *  buttons unavailable rather than disappearing. */
-function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachable: boolean }) {
+/** A guest's Me, the signed-in Me minus what only an account has (a
+ *  rating, a leaderboard place, saved games): the name they play under with
+ *  its initial and Edit name, which opens the same sheet as the chip, one
+ *  sign-in card, the settings and the help rows. `unreachable`: the server
+ *  could not be asked, so the card shows its buttons unavailable rather than
+ *  disappearing. `standalone`: Me is over a game, with no home frame to hold
+ *  the name editor, so Me holds it. */
+function GuestMe({ clientId, unreachable, standalone }: {
+  clientId: string | null; unreachable: boolean; standalone: boolean;
+}) {
+  const { name } = useGuestName();
+  // a guest who opens Me first gets the same random name Play would give
+  useEffect(() => {
+    if (!guestName.name.trim()) guestName.fill(randomName());
+  }, []);
+  const shown = name.trim() || "Guest";
   return (
-    <>
-      <div className="me-who">
-        <Avatar user={null} size="lg" />
-        <div className="me-who-text">
-          <div className="me-name">Guest</div>
-          <div className="me-sub">Unranked</div>
-        </div>
-      </div>
-      {clientId || unreachable ? (
-        <div className="signin-card">
-          <h3>Sign in to keep your games</h3>
-          {clientId ? <GoogleSignIn clientId={clientId} /> : <SignInUnavailable />}
-        </div>
-      ) : null}
-      <SettingsHead />
-      <ul className="grp me-settings" aria-labelledby="me-settings-head">
-        <DeviceRows />
-      </ul>
-      <InfoRows />
-    </>
+    <MeColumns
+      main={(
+        <>
+          <div className="me-who">
+            <Avatar user={null} size="lg" guestName={shown} />
+            <div className="me-who-text">
+              <div className="me-name">{shown}</div>
+              <div className="me-sub">{GUEST_LINE}</div>
+            </div>
+          </div>
+          <ul className="grp me-account">
+            <Row label="Edit name" value={name.trim()} chevron className="me-edit" onClick={() => guestName.open()} />
+          </ul>
+          {clientId || unreachable ? (
+            <div className="signin-card">
+              <h3>Sign in to be ranked and keep your games</h3>
+              {clientId ? <GoogleSignIn clientId={clientId} /> : <SignInUnavailable />}
+            </div>
+          ) : null}
+        </>
+      )}
+      side={(
+        <>
+          <SettingsGroup />
+          <InfoRows />
+          {standalone ? <GuestNameSheet /> : null}
+        </>
+      )}
+    />
   );
 }
 
-/** The Me tab: who you are, your stats or your saved games, and the
- *  account's settings below either. At 700px and up the two sections are
- *  the top bar's Stats and Games tabs instead: Stats keeps who you are and
- *  the settings (the leaderboard switch and Delete account live nowhere
- *  else), Games is the list alone. Leaving and coming back keeps the
+/** Me's two parts: who you are with your stats or games, and the settings.
+ *  A wide enough page sets them side by side; otherwise one follows the
+ *  other in the one column. */
+function MeColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
+  return (
+    <div className="me-cols">
+      <div className="me-col me-main">{main}</div>
+      <div className="me-col me-side">{side}</div>
+    </div>
+  );
+}
+
+/** The Me tab, the same at every width: who you are, a Stats / Games
+ *  switch over your stats or your saved games, and the settings and the
+ *  account's rows beside or below either. Leaving and coming back keeps the
  *  section, the scroll position and the last stats while fresh ones load;
  *  a different viewer or session starts from nothing. */
 export default function MePage({ section, onBack }: { section: MeSection; onBack?: () => void }) {
@@ -369,7 +362,7 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
   if (account.status === "loading") body = <p className="lb-note" role="status">Loading…</p>;
   else if (!user) {
     body = <GuestMe clientId={account.status === "out" ? account.clientId : null}
-                    unreachable={account.status === "error"} />;
+                    unreachable={account.status === "error"} standalone={onBack !== undefined} />;
   }
   else {
     let content: ReactNode;
@@ -380,19 +373,23 @@ export default function MePage({ section, onBack }: { section: MeSection; onBack
     else if (!res.ok) {
       content = <p className="lobby-error" role="alert">Could not load your stats ({res.status || "no connection"}).</p>;
     } else content = <StatsBody stats={res.data} />;
-    const gamesTab = wide && section === "games";
     body = (
       <Fragment key={scope}>
-        {gamesTab ? null : <Identity user={user} stats={stats} />}
-        {wide ? null
-          : <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />}
-        {content}
-        {gamesTab ? null : <Settings user={user} stats={stats} statsKey={statsKey} />}
+        <MeColumns
+          main={(
+            <>
+              <Identity user={user} stats={stats} />
+              <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />
+              {content}
+            </>
+          )}
+          side={<Settings user={user} stats={stats} statsKey={statsKey} />}
+        />
       </Fragment>
     );
   }
   return (
-    <LargeTitlePage className="me-page" scroller={scroller} title={wide ? (section === "games" ? "Games" : "Stats") : "Me"}
+    <LargeTitlePage className="me-page" scroller={scroller} title="Me"
                     phone={!wide} onRefresh={refresh}
                     before={onBack ? <button className="btn subtle games-back home-back" onClick={onBack}>‹ Back to game</button> : null}>
       {body}

@@ -20,6 +20,10 @@ export type QueueClientMsg = { name?: string } & (
       /** Your own casual table's starting level (default "2"); a ranked
        *  table refuses anything but "2" with `ranked_level_fixed`. */
       start_level?: string;
+      /** Open your own table as a Duo: the seat opposite you is held for
+       *  the first single who joins by the table's code (ignored with
+       *  `code`, and for a full party, which queues as the pair). */
+      duo?: boolean;
     }
   | { type: "queue_leave" }
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
@@ -103,8 +107,18 @@ export interface QueueStateMsg {
   /** Queued: your table's Allow joiners and starting level. */
   allow_joiners?: boolean;
   start_level?: string;
-  /** Queued: you opened this table (alone, always), so you set its level. */
+  /** Queued: you opened this table (alone, always), so you set its level
+   *  and Allow joiners. */
   opener?: boolean;
+  /** Queued: a Duo table's opener, or either member of a Duo made there. */
+  duo?: boolean;
+  /** Queued: the seat your entry holds for your friend (2 while alone),
+   *  else your table's first held seat, or null. */
+  held_seat?: number | null;
+  /** Queued in a Duo made at a table: how many of you tapped Start (each
+   *  member taps; null otherwise), and whether you did. */
+  duo_ready?: number | null;
+  you_ready?: boolean;
 }
 
 /** A seat at an offered open table, in seat order (team 0 at seats 0+2). */
@@ -153,6 +167,10 @@ export interface WaitingTableMsg {
   code?: string;
   /** The opener's seat. */
   opener?: number;
+  /** The empty seat held for the table opener's friend (at most one; null
+   *  when none), also as a list. */
+  held_seat?: number | null;
+  held_seats?: number[];
   seats: (TableSeatMsg | null)[];
   you: number;
   /** The table's bot timer and whose it is; null when every switch is on. */
@@ -235,7 +253,10 @@ export interface PartyMember { name: string; leader: boolean; you: boolean }
 export interface PartyMsg {
   type: "party";
   party_id: string;
+  /** A Duo made at a table (`table`) has no code of its own: this is its
+   *  table's code while queued, else empty. */
   code: string;
+  table?: boolean;
   you_lead: boolean;
   members: PartyMember[];
   expires_at: number;

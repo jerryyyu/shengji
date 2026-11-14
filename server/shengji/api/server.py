@@ -390,6 +390,10 @@ class Room:
     # from the next round). Server-only apart from the notices in a frame.
     allow_joiners: bool = True
     pending_joins: dict = field(default_factory=dict, repr=False)
+    # The seat a Duo table still held for its opener's friend when it
+    # started (a bot plays it): a join by the room's code that names no
+    # seat takes it first. Server-only.
+    friend_seat: int | None = field(default=None, repr=False)
     # Whether the people at a game started alone were told of its first
     # joiner (``first_joiner``): once per room, so the toast never repeats.
     first_joiner_told: bool = field(default=False, repr=False)
@@ -2927,7 +2931,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                                    "pick another."})
                                     continue
                                 pick = want if want is not None else (
-                                    botseats[0] if botseats else None)
+                                    target.friend_seat if target.friend_seat in botseats
+                                    else botseats[0] if botseats else None)
                                 if pick is None:
                                     reserved = [i for i, sd in enumerate(target.seats)
                                                 if _reserved(target, i)]
@@ -3196,7 +3201,8 @@ async def start_matched_room(match_id: str | None, slots: list,
                              conns: dict, *, mode: str = "ranked",
                              chat: Any = (), code: str | None = None,
                              allow_joiners: bool = True,
-                             start_level: str = RANKS[0]) -> str:
+                             start_level: str = RANKS[0],
+                             friend_seat: int | None = None) -> str:
     """Build, seat and start the room for a waiting table (``match_id`` is
     the table's id) or an entry that starts alone with bots (``None``).
     ``mode`` "ranked" builds a rated matched room; "casual" an unrated room
@@ -3204,7 +3210,8 @@ async def start_matched_room(match_id: str | None, slots: list,
     table's chat, which becomes the room's first scrollback (unlogged, as it
     was at the table). ``code`` is the table's code, which the queue has just
     released for the room, so the table's invite link leads here;
-    ``allow_joiners`` and a casual table's ``start_level`` carry over.
+    ``allow_joiners`` and a casual table's ``start_level`` carry over, and
+    ``friend_seat`` is the seat a Duo table still held for its friend.
     Slots arrive in seat order; every
     human's socket is bound to its seat here, before anything awaits, so the
     socket's receive loop adopts the room on its next message.
@@ -3219,7 +3226,7 @@ async def start_matched_room(match_id: str | None, slots: list,
     room = Room(code=code, matched=ranked, move_timer=ranked, queued=True,
                 allow_joiners=allow_joiners,
                 start_level=start_level if not ranked and start_level in RANKS else RANKS[0],
-                waiting_table=match_id,
+                waiting_table=match_id, friend_seat=friend_seat,
                 table_humans=sum(1 for slot in slots if slot.user_id is not None))
     for line in chat:
         room.chat_seq += 1
@@ -3565,7 +3572,7 @@ async def join_by_invite(room: Room, seat: Any, uid: int, name: str, conn: Any) 
         if isinstance(seat, bool) or not (seat is None or isinstance(seat, int)):
             seat = None
         if seat is None:
-            seat = _default_seat(room, seats)
+            seat = room.friend_seat if room.friend_seat in seats else _default_seat(room, seats)
         if seat not in seats:
             return "seat_unavailable"
         if conn.device is not None and _device_seated(room, conn.device):

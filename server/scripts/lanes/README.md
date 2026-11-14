@@ -51,3 +51,5 @@ reserved block is a refusal. On exit 1 the library parses the overlap lines and 
 Every status line is `<LANE_PREFIX> <WORD> <LANE_NAME> <utc> ...` in `LANE_STATUS`. Each attempt ends in exactly one
 of `DONE`, `PAUSED` (resumable) or `ABORT`, and `UNLOCKED` follows it. The library runs nothing when sourced; a running
 launcher is never edited, because `lane_admit after-wait` refuses any change to `LANE_FILES` since arming.
+
+Branch shipping (not a lane): `server/scripts/pr_ship.sh` updates a branch, runs its gates, pushes with a lease and opens or updates the PR at the pushed head, stopping at the first failed step; `server/scripts/affected_tests.py --base origin/main` lists (or `--run`s) the gates the changed paths require.

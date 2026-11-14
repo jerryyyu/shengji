@@ -85,7 +85,7 @@ RULES: tuple[Rule, ...] = (
          ("server/shengji/api/server.py", "server/shengji/api/accounts.py",
           "web/src/useMoveClock.ts", "web/src/auth.ts", "web/src/queue/*",
           "web/src/components/Table.tsx", "web/src/components/ChatPanel.tsx",
-          "web/src/components/LeaveAlert.tsx", "web/src/offline/server/server.ts"),
+          "web/src/components/leaveCopy.ts", "web/src/offline/server/server.ts"),
          pure=("test_client_server_constants",)),
     Rule("fly.toml is the served release's configuration and identity",
          ("fly.toml",),

@@ -533,24 +533,16 @@ describe("following", () => {
 });
 
 describe("a stalled connection at the table", () => {
-  it("offers Retry after the lobby's wait, and Retry reconnects at once", () => {
+  it("adds no pill of its own: App's one connection pill speaks for the socket", () => {
     vi.useFakeTimers();
     try {
       link.reconnects = 0;
       render(state());
       act(() => { link.status = "closed"; for (const fn of link.statusListeners) fn("closed"); });
-      act(() => { vi.advanceTimersByTime(3900); });
-      expect(host.querySelector(".table-stalled")).toBeNull();
-      act(() => { vi.advanceTimersByTime(200); });
-      const retry = host.querySelector<HTMLButtonElement>(".table-stalled .conn-retry")!;
-      expect(retry.textContent).toBe("Retry");
-      act(() => retry.click());
-      expect(link.reconnects).toBe(1);
-      // the wait starts over
-      expect(host.querySelector(".table-stalled")).toBeNull();
-      act(() => { link.status = "open"; for (const fn of link.statusListeners) fn("open"); });
-      act(() => { vi.advanceTimersByTime(5000); });
-      expect(host.querySelector(".table-stalled")).toBeNull();
+      act(() => { vi.advanceTimersByTime(70_000); });
+      expect(host.querySelector(".table-stalled, .reconnect-banner, .conn-lost")).toBeNull();
+      expect(host.textContent).not.toContain("Can’t reach the server.");
+      expect(link.reconnects).toBe(0);
     } finally { vi.useRealTimers(); }
   });
 });

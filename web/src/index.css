@@ -379,11 +379,15 @@ textarea:focus-visible {
   }
 }
 
+/* The one connection pill, in the lobby and at the table: gold while the
+   socket reconnects on its own, with Retry inside once the wait is long. */
 .reconnect-banner {
   position: fixed;
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
   background: #4a3a12;
   border: 1px solid var(--gold);
   color: var(--gold);
@@ -391,7 +395,108 @@ textarea:focus-visible {
   border-radius: 999px;
   font-size: var(--fs-13);
   font-weight: 600;
+  white-space: nowrap;
   z-index: 70;
+}
+
+/* off the table it sits at the top of the page, over the title, and under
+   the wide top bar, whose tabs stay in reach */
+.reconnect-banner.at-home {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+.app:has(.home-wide) .reconnect-banner.at-home {
+  top: calc(env(safe-area-inset-top, 0px) + 56px + 10px);
+}
+
+/* at the table it sits at the felt's top-left corner under the header,
+   clear of the top seat, the side seats and the hand */
+.app:has(.table-screen) .reconnect-banner {
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  left: max(20px, env(safe-area-inset-left, 0px));
+  transform: none;
+}
+
+.reconnect-banner .conn-dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+}
+
+.reconnect-banner.with-retry {
+  padding: 4px 4px 4px 14px;
+}
+
+.reconnect-retry {
+  appearance: none;
+  margin-left: 10px;
+  min-height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #1b1f27;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The one full-screen state, once the connection has been gone a long
+   while: over everything, with Retry and, off the table, bots on this device. */
+.conn-lost {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: max(32px, env(safe-area-inset-top, 0px)) 32px max(32px, env(safe-area-inset-bottom, 0px));
+  background: var(--chrome);
+  color: var(--text);
+  text-align: center;
+}
+
+dialog.conn-lost:not([open]) { display: none; }
+dialog.conn-lost::backdrop { background: var(--chrome); }
+
+.conn-lost-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  color: var(--gold);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.conn-lost-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.conn-lost-body {
+  margin: 0;
+  max-width: 34ch;
+  color: #c3cad6;
+  font-size: var(--fs-15);
+  line-height: 1.45;
+}
+
+.conn-lost .btn {
+  width: 100%;
+  max-width: 340px;
+  min-height: 48px;
 }
 
 /* ---------- Lobby ---------- */
@@ -795,6 +900,15 @@ textarea:focus-visible {
 .name-edit-actions { display: flex; gap: 8px; }
 .name-edit-actions .btn { padding: 6px 12px; font-size: var(--fs-13); }
 .name-edit-error { color: #f0a0aa; font-size: var(--fs-12); }
+
+/* a code that went nowhere, inline under the box it was typed in */
+.join-error {
+  margin-top: -4px;
+  color: #f0a0aa;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  text-align: center;
+}
 
 .lobby-error {
   background: #3a1e24;
@@ -2019,31 +2133,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
     animation: none;
     box-shadow: 0 0 0 2px var(--gold);
   }
-}
-
-/* the lobby's stalled line, at the table: the server has been out of reach
-   for a while, and Retry tries again now */
-.table-stalled {
-  position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 104px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 71;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 4px 4px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--danger);
-  background: rgba(20, 23, 30, 0.95);
-  color: var(--text);
-  font-size: var(--fs-13);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.table-stalled .conn-retry {
-  padding: 4px 14px;
 }
 
 /* The one timer ring: it drains from full over the whole window, with the
@@ -3619,10 +3708,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-right: 12px;
   }
 
-  .table-stalled {
-    top: calc(var(--header-bottom) + 44px);
-  }
-
   .result-change {
     font-size: var(--fs-17);
   }
@@ -3930,6 +4015,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .reconnect-banner {
     top: 40px;
   }
+
+  /* the header row's right end, left of the … menu: the HUD strip and the
+     top seat's label take the rest of that row, the side seats the row under it */
+  .app:has(.table-screen) .reconnect-banner {
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
+    top: calc(var(--safe-t) + 6px);
+    left: auto;
+    right: calc(var(--safe-r) + 52px);
+  }
 }
 
 /* The phone message's pass, from the bottom-left corner (see the short
@@ -3996,6 +4091,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* A dialog opened with showModal() lives in the browser's top layer, which
    ignores the .app transform, so it takes the same quarter turn itself and
    reads the same turned frame. */
+.app.rotated dialog.conn-lost:modal,
 .app.rotated dialog.modal-backdrop:modal {
   inset: auto;
   top: 0;
@@ -5543,23 +5639,6 @@ body.keyboard-open .tabbar { display: none; }
 .play-grp .grp-row { min-height: 50px; }
 .play-grp .grp-row:disabled { color: #7a8494; }
 .play-tab .howto-entry { font-size: var(--fs-15); }
-.play-conn-row { display: flex; justify-content: center; }
-.play-conn {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 14px;
-  border: 1px solid #3a4250;
-  border-radius: 16px;
-  background: #2a2f3a;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-14);
-  font-weight: 600;
-}
-button.play-conn { cursor: pointer; }
-.play-conn .conn-dot { width: 8px; height: 8px; margin-right: 8px; background: var(--gold); }
 
 /* A phone's Play tab fits 390x844 at rest, Join and How to play above the
    tab bar: the title starts at the status-bar inset, smaller, and the

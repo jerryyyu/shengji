@@ -928,7 +928,7 @@ describe("one code for rooms and pairs", () => {
     typeInto(playBox(), "ZZZZ");
     playJoin();
     say({ type: "code_kind", code: "ZZZZ", kind: "none" });
-    expect(q(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    expect(q(".join-error")?.textContent).toBe("No game or pair has that code.");
     expect(sentTypes()).not.toContain("peek_room");
     expect(sentTypes()).not.toContain("party_join");
     click(button("Duo"));
@@ -1006,7 +1006,7 @@ describe("one code for rooms and pairs", () => {
     await renderApp();
     say({ type: "code_kind", code: "ZZZZ", kind: "none" });
     await settle();
-    expect(q(".lobby-error")?.textContent).toBe("No game or pair has that code.");
+    expect(q(".join-error")?.textContent).toBe("No game or pair has that code.");
     expect(window.location.search).toBe("");
   });
 

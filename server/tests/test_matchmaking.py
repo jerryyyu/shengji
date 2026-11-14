@@ -71,10 +71,13 @@ class Env:
         async def rating_of(uid):
             return self.ratings.get(uid)
 
-        async def start_room(match_id, slots, conns, mode="ranked", chat=()):
+        self.rooms: list[dict] = []
+
+        async def start_room(match_id, slots, conns, mode="ranked", chat=(), **room):
             self.started.append((match_id, slots))
             self.modes.append(mode)
             self.chats.append(list(chat))
+            self.rooms.append(room)
             for c in conns.values():
                 self.mm.enter_room(c)
             return "ROOM"
@@ -3771,3 +3774,223 @@ def test_ws_a_seat_a_queue_join_holds_is_not_claimable_by_code(wsenv, monkeypatc
         f.send_json({"type": "join_room", "room": code, "name": "Friend"})
         _wait_until(lambda: room.seats[1].name == "Friend")
         assert room.seats[2].is_bot
+
+
+# ------------------------------------------------------- table codes
+def test_a_lone_entry_has_its_own_table_code():
+    async def go():
+        env = Env()
+        await env.join(1)
+        state = env.conns[1].last("queue_state")
+        assert state["table"] is None             # an older client still sees itself alone
+        code = state["code"]
+        assert len(code) == mm.CODE_LEN and set(code) <= set(mm.CODE_ALPHABET)
+        assert state["opener"] is True and state["allow_joiners"] is True
+        assert state["start_level"] == "2"
+        assert env.mm.has_code(code)
+        assert env.mm.code_lookup(env.conns[1], {"code": code.lower()}, 1)["kind"] == "table"
+        await env.send(1, "queue_leave")
+        assert not env.mm.has_code(code)
+        assert env.mm.code_lookup(env.conns[1], {"code": code}, 1)["kind"] == "none"
+    run(go())
+
+
+def test_a_friend_joins_by_code_before_the_game_and_the_code_is_the_room_code():
+    async def go():
+        env = Env()
+        await env.join(1, mode="casual", allow_joiners=False)
+        code = env.conns[1].last("queue_state")["code"]
+        env.player(2, rating=1900.0)               # far outside any window: a friend sits anyway
+        await env.send(2, "queue_join", code=code)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, None, 2, None] and t.mode == "casual"
+        for uid in (1, 2):
+            state = env.conns[uid].last("queue_state")
+            assert state["code"] == code and state["table"]["code"] == code
+            assert state["table"]["opener"] == 0 and state["opener"] is (uid == 1)
+            assert state["mode"] == "casual" and state["allow_joiners"] is False
+        # a joiner's own code still leads to the same table
+        mine = env.mm._entry(2).code
+        assert mine != code and env.mm.code_lookup(env.conns[2], {"code": mine}, 2)["kind"] == "table"
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        (match_id, slots), = env.started
+        assert match_id == t.id and humans_of(slots) == [1, 2]
+        assert env.modes == ["casual"]
+        assert env.rooms[0] == {"code": code, "allow_joiners": False, "start_level": "2"}
+        assert not env.mm.has_code(code) and not env.mm.has_code(mine)
+    run(go())
+
+
+def test_a_game_started_alone_keeps_the_entry_code():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        await env.send(1, "queue_start_bots")
+        assert env.rooms == [{"code": code, "allow_joiners": True, "start_level": "2"}]
+    run(go())
+
+
+def test_joining_by_code_takes_the_tables_mode_and_keeps_the_queue_guards():
+    async def go():
+        env = Env()
+        await env.join(1)                          # ranked
+        code = env.conns[1].last("queue_state")["code"]
+        # the code decides the mode, whatever the joiner's tab says
+        env.player(-7, name="Guest")
+        await env.send(-7, "queue_join", code=code, mode="casual")
+        guest = env.mm._entry(-7)
+        assert guest.mode == "ranked" and guest.table_id is not None
+        assert guest.member_ratings == {-7: ratings.GUEST_RATING}
+        # own code, an unknown code, a cooldown, a device already there
+        await env.send(1, "queue_join", code=code)
+        assert env.conns[1].last("error") is None   # already at that table: a resync
+        env.player(3)
+        await env.send(3, "queue_join", code="ZZZZ")
+        assert env.conns[3].last("error")["code"] == "table_not_found"
+        env.mm.cooldowns[3] = env.clock() + 30
+        await env.send(3, "queue_join", code=code)
+        assert env.conns[3].last("error")["code"] == "cooldown"
+        assert env.mm._entry(3) is None
+        del env.mm.cooldowns[3]
+        env.conns[1].device = DEVICE_A
+        env.conns[3].device = DEVICE_A
+        await env.send(3, "queue_join", code=code)
+        assert env.conns[3].last("error")["code"] == "same_device"
+        assert env.mm._entry(3) is None
+        # someone searching elsewhere cancels first
+        env.conns[3].device = DEVICE_B
+        await env.send(3, "queue_join", mode="casual")
+        await env.send(3, "queue_join", code=code)
+        assert env.conns[3].last("error")["code"] == "in_queue"
+        await env.send(3, "queue_leave")
+        # a full table refuses
+        await env.send(3, "queue_join", code=code)
+        env.player(4)
+        await env.send(4, "queue_join", code=code)
+        assert env.started                          # four people: the table started
+        env.player(5)
+        await env.send(5, "queue_join", code=code)
+        assert env.conns[5].last("error")["code"] == "table_not_found"
+    run(go())
+
+
+def test_a_ranked_table_refuses_a_starting_level_and_a_casual_one_takes_it():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_join", start_level="5")
+        assert env.conns[1].last("error")["code"] == "ranked_level_fixed"
+        await env.send(1, "queue_join")
+        await env.send(1, "table_start_level", start_level="5")
+        assert env.conns[1].last("error")["code"] == "ranked_level_fixed"
+        assert env.conns[1].last("queue_state")["start_level"] == "2"
+        await env.send(1, "queue_leave")
+
+        await env.send(1, "queue_join", mode="casual", start_level="5")
+        assert env.conns[1].last("queue_state")["start_level"] == "5"
+        code = env.conns[1].last("queue_state")["code"]
+        env.player(2)
+        await env.send(2, "queue_join", code=code)
+        await env.send(2, "table_start")
+        await env.send(2, "table_start_level", start_level="9")
+        assert env.conns[2].last("error")["code"] == "not_opener"
+        await env.send(1, "table_start_level", start_level="9")
+        state = env.conns[2].last("queue_state")
+        assert state["start_level"] == "9" and state["table"]["ready"] == 0   # Start agreed to 5
+        await env.send(1, "table_start_level", start_level="1")
+        assert env.conns[1].last("error")["code"] == "bad_start_level"
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        assert env.rooms[-1]["start_level"] == "9"
+    run(go())
+
+
+def test_allow_joiners_off_hides_the_table_from_play_but_not_from_its_code():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        await env.send(1, "table_allow_joiners", on=False)
+        assert env.conns[1].last("queue_state")["allow_joiners"] is False
+        await env.join(2)                           # a stranger on Play
+        assert env.mm.tables == {} and env.conns[2].last("queue_state")["table"] is None
+        env.player(3)
+        await env.send(3, "queue_join", code=code)  # the link
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, None, 3, None]
+        await env.mm.tick()
+        assert env.mm._entry(2).table_id is None    # still not offered the private table
+        # on again: Play seats the stranger there
+        await env.send(3, "table_allow_joiners", on=True)
+        assert t.seats == [1, 2, 3, None]
+    run(go())
+
+
+def test_allow_joiners_off_offers_no_open_table():
+    async def go():
+        env = Env()
+        tables = [{"code": "OPEN", "mode": "ranked", "round_end": False, "seats": [
+            {"name": "Ann", "bot": False, "open": False, "queue_id": 50, "device": None},
+            {"name": "Bot 1", "bot": True, "open": True},
+            {"name": "Bot 2", "bot": True, "open": True},
+            {"name": "Bot 3", "bot": True, "open": True}]}]
+        env.mm.open_tables = lambda: tables
+        await env.join(1, allow_joiners=False)
+        assert env.conns[1].last("queue_state")["offer"] is None
+        await env.send(1, "table_allow_joiners", on=True)
+        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        await env.send(1, "table_allow_joiners", on=False)
+        assert env.conns[1].last("queue_state")["offer"] is None
+    run(go())
+
+
+def test_new_room_and_pair_codes_avoid_queued_table_codes(monkeypatch):
+    from shengji.api import server as srv
+    srv.MATCHMAKER.reset()
+    try:
+        srv.MATCHMAKER.entry_codes["TAKN"] = "e1"
+        draws = iter(["TAKN", "FREE"])
+
+        class Rng:
+            def choices(self, alphabet, k):
+                return list(next(draws))
+        monkeypatch.setattr(srv, "random", Rng())
+        assert srv.new_code() == "FREE"
+        assert srv.MATCHMAKER.code_lookup(mm.Conn(None, 1), {"code": "TAKN"}, 1)["kind"] == "table"
+    finally:
+        srv.MATCHMAKER.reset()
+
+
+def test_ws_a_friend_joins_a_table_by_its_code_and_the_room_has_that_code(wsenv):
+    srv, store, client, clock = wsenv
+    host, host_headers = _user(store, "codehost", "Host")
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        h.send_json({"type": "queue_join"})
+        code = _drain(h, "queue_state")["code"]
+        g.send_json({"type": "code_lookup", "code": code})
+        assert _drain(g, "code_kind")["kind"] == "table"
+        g.send_json({"type": "queue_join", "code": code, "name": "Guest"})
+        table = _drain(g, "queue_state")["table"]
+        assert table["code"] == code and table["you"] == 2
+        h.send_json({"type": "table_start"})
+        g.send_json({"type": "table_start"})
+        assert _drain(h, "match_started", tries=80)["room"] == code
+        assert _drain(g, "match_started", tries=80)["room"] == code
+        room = srv.rooms[code]
+        assert room.matched and room.start_level == "2" and room.allow_joiners is True
+
+
+def test_ws_a_casual_tables_starting_level_reaches_its_room(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "mode": "casual", "start_level": "5", "name": "Guest"})
+        state = _drain(g, "queue_state")
+        assert state["start_level"] == "5"
+        g.send_json({"type": "queue_start_bots"})
+        code = _drain(g, "match_started", tries=80)["room"]
+        assert code == state["code"]
+        room = srv.rooms[code]
+        assert room.start_level == "5" and room.game.levels == ("5", "5")

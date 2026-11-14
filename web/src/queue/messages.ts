@@ -9,7 +9,18 @@ export type QueueClientMsg = { name?: string } & (
   /** `mode` (default "ranked"): which tables to sit at, join or open.
    *  Casual tables are unrated and never seat a ranked searcher, or the
    *  reverse. Guests may queue in either. */
-  | { type: "queue_join"; party_id?: string; mode?: QueueMode }
+  | {
+      type: "queue_join"; party_id?: string; mode?: QueueMode;
+      /** A friend's table code (its invite link, or a code_kind "table"):
+       *  sit at that waiting table, in its mode and with its settings
+       *  (`mode`, `allow_joiners` and `start_level` are then ignored). */
+      code?: string;
+      /** Your own table's Allow joiners (default true). */
+      allow_joiners?: boolean;
+      /** Your own casual table's starting level (default "2"); a ranked
+       *  table refuses anything but "2" with `ranked_level_fixed`. */
+      start_level?: string;
+    }
   | { type: "queue_leave" }
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
    *  since changed is refused with `panel_changed`. */
@@ -24,6 +35,13 @@ export type QueueClientMsg = { name?: string } & (
    *  30 a minute). Never logged; it becomes the room's chat when the table
    *  starts. */
   | { type: "table_chat"; text: string }
+  /** Your table's Allow joiners, alone or at a waiting table (anyone
+   *  seated, as in a room). Off: Play seats no stranger with you and
+   *  offers you no open table; your code still works. */
+  | { type: "table_allow_joiners"; on: boolean }
+  /** Your casual table's starting level (the opener only). Clears every
+   *  Start at the table. */
+  | { type: "table_start_level"; start_level: string }
   | { type: "queue_wait_players" }
   | { type: "queue_allow_bots" }
   | { type: "party_create" }
@@ -78,6 +96,15 @@ export interface QueueStateMsg {
   /** Asked "still here?" at a table with no timer: answer with table_here
    *  before then, or you leave the table (queue_removed idle). */
   still_here_until?: number | null;
+  /** Queued: your table's code (alone, your own; at a waiting table, its
+   *  opener's). Invite links are `/?code=CODE`; the room the table starts
+   *  has this code. */
+  code?: string;
+  /** Queued: your table's Allow joiners and starting level. */
+  allow_joiners?: boolean;
+  start_level?: string;
+  /** Queued: you opened this table (alone, always), so you set its level. */
+  opener?: boolean;
 }
 
 /** A seat at an offered open table, in seat order (team 0 at seats 0+2). */
@@ -122,6 +149,10 @@ export interface TableSeatMsg {
  *  0+2), null for an empty one, which a bot takes when the table starts. */
 export interface WaitingTableMsg {
   id: string;
+  /** The table's code (its opener's), which the room keeps. */
+  code?: string;
+  /** The opener's seat. */
+  opener?: number;
   seats: (TableSeatMsg | null)[];
   you: number;
   /** The table's bot timer and whose it is; null when every switch is on. */
@@ -234,7 +265,9 @@ export type QueueErrorCode =
   | "not_queued" | "not_seated" | "no_match" | "start_failed"
   | "party_not_found" | "party_full" | "party_busy" | "in_queue" | "in_party"
   | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed"
-  | "pair_seats_fixed" | "already_ready" | "panel_changed" | "bad_mode";
+  | "pair_seats_fixed" | "already_ready" | "panel_changed" | "bad_mode"
+  | "table_not_found" | "own_table" | "table_full" | "not_opener"
+  | "ranked_level_fixed" | "bad_setting";
 
 export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "signed_in_only", "in_room", "rate_limited", "not_leader",
@@ -243,4 +276,6 @@ export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "party_not_found", "party_full", "party_busy", "in_queue", "in_party",
   "not_in_party", "cooldown", "no_offer", "bad_seat", "seat_taken", "table_closed",
   "pair_seats_fixed", "already_ready", "panel_changed", "bad_mode",
+  "table_not_found", "own_table", "table_full", "not_opener",
+  "ranked_level_fixed", "bad_setting",
 ]);

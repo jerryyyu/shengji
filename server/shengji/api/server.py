@@ -2097,7 +2097,7 @@ def new_code() -> str:
     # The module RNG, as before: choices() draws once per character whatever
     # the alphabet, so the stream that seeded fixtures read is unchanged.
     return matchmaking.new_code(
-        lambda c: c in rooms or MATCHMAKER.has_party_code(c), random)
+        lambda c: c in rooms or MATCHMAKER.has_code(c), random)
 
 
 def _card_ids(msg: dict) -> list[int]:
@@ -2321,6 +2321,8 @@ def _start_game(room: Room) -> None:
     room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
                   for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
     validate_human_evaluation_start(room)
+    if ratings.ranked(room):
+        room.start_level = RANKS[0]      # every rated game starts at the same level
     if not room.matched:
         # An open table names its people by queue id, so the queue never
         # offers a seat here to someone already sitting at it.
@@ -2396,6 +2398,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Only the host can set the starting level.")
         if room.game:
             raise IllegalPlay("The starting level is fixed once the game has started.")
+        if ratings.ranked(room):
+            # one starting level for every rated game, so ratings compare
+            raise IllegalPlay(matchmaking.RANKED_LEVEL)
         level = msg.get("start_level")
         if level not in RANKS:
             raise IllegalPlay("Unknown starting level.")
@@ -2423,6 +2428,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         if on and not room.ranked:
             room.casual_move_timer = room.move_timer
             room.move_timer = True
+            room.start_level = RANKS[0]
         elif not on and room.ranked:
             room.move_timer = bool(room.casual_move_timer)
             room.casual_move_timer = None
@@ -3188,13 +3194,17 @@ async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -
 
 async def start_matched_room(match_id: str | None, slots: list,
                              conns: dict, *, mode: str = "ranked",
-                             chat: Any = ()) -> str:
+                             chat: Any = (), code: str | None = None,
+                             allow_joiners: bool = True,
+                             start_level: str = RANKS[0]) -> str:
     """Build, seat and start the room for a waiting table (``match_id`` is
     the table's id) or an entry that starts alone with bots (``None``).
     ``mode`` "ranked" builds a rated matched room; "casual" an unrated room
     with no move timer, open to casual joiners. ``chat`` is the waiting
     table's chat, which becomes the room's first scrollback (unlogged, as it
-    was at the table).
+    was at the table). ``code`` is the table's code, which the queue has just
+    released for the room, so the table's invite link leads here;
+    ``allow_joiners`` and a casual table's ``start_level`` carry over.
     Slots arrive in seat order; every
     human's socket is bound to its seat here, before anything awaits, so the
     socket's receive loop adopts the room on its next message.
@@ -3204,7 +3214,11 @@ async def start_matched_room(match_id: str | None, slots: list,
     detached and every socket is back in the lobby with no adoption pending,
     before the error reaches the matchmaker that requeues these players."""
     ranked = mode != "casual"
-    room = Room(code=new_code(), matched=ranked, move_timer=ranked, queued=True,
+    if not code or code in rooms or MATCHMAKER.has_code(code):
+        code = new_code()
+    room = Room(code=code, matched=ranked, move_timer=ranked, queued=True,
+                allow_joiners=allow_joiners,
+                start_level=start_level if not ranked and start_level in RANKS else RANKS[0],
                 waiting_table=match_id,
                 table_humans=sum(1 for slot in slots if slot.user_id is not None))
     for line in chat:

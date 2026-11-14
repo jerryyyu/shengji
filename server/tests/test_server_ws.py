@@ -3324,3 +3324,21 @@ def test_frames_count_down_the_declare_window(client, monkeypatch):
         assert all(d is not None and 0 <= d <= srv.DECLARE_GRACE for d in declaring), [x for x in seen if x[0] != "deal"]
         assert all(d is None for ph, d in seen if ph != "declare")
         assert srv.rooms[code].declare_until is None
+
+
+def test_a_ranked_room_starts_at_level_two_and_refuses_another(client, host_account):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws", headers=host_account) as host:
+        host.send_json({"type": "create_room", "name": "jerry", "start_level": "9"})
+        code = _drain(host, "room")["room"]
+        host.send_json({"type": "set_ranked", "on": True})
+        frame = _drain(host, "room")
+        assert frame["ranked"] is True and frame["start_level"] == "2"
+        host.send_json({"type": "set_start_level", "start_level": "9"})
+        assert "level 2" in _drain(host, "error")["message"]
+        assert srv.rooms[code].start_level == "2"
+        host.send_json({"type": "set_ranked", "on": False})
+        _drain(host, "room")
+        host.send_json({"type": "set_start_level", "start_level": "9"})
+        assert _drain(host, "room")["start_level"] == "9"      # casual keeps the opener's level
+        assert srv.rooms[code].start_level == "9"

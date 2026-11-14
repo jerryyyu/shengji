@@ -370,12 +370,13 @@ export type ErrorCode =
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */
 export type Controller = "human" | "bot" | "bot_cover";
 
-/** Reply to code_lookup: room and pair codes share one space, so a code
- *  names a live room, a live pair, or nothing. */
+/** Reply to code_lookup: room, pair and table codes share one space, so a
+ *  code names a live room, a live pair, a queued table (join it with
+ *  `queue_join {code}`), or nothing. */
 export interface CodeKindMsg {
   type: "code_kind";
   code: string;
-  kind: "room" | "party" | "none";
+  kind: "room" | "party" | "table" | "none";
 }
 
 export interface ChatHistory {

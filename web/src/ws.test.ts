@@ -522,3 +522,20 @@ describe("transport swap: the game server's socket and the on-device one share n
     expect(FakeWS.last!.sent).toEqual([]);
   });
 });
+
+it("does not send an offline turn's telemetry after returning online", async () => {
+  const { conn } = await load();
+  const { telemetry } = await import("./telemetry");
+  const { offlineGame } = await import("./components/offlineGame");
+  conn.start();
+  FakeWS.last!.onopen?.();
+  offlineGame.startFromPlay();
+  await vi.waitFor(() => expect(conn.status).toBe("open"));
+  telemetry.turnDone({ phase: "play", need: 1, ms_total: 123, sel_changes: 1,
+    disabled_play_taps: 0, refused: 0, coach: false, nth_turn: 1, by: "you" });
+  offlineGame.goOnline();
+  FakeWS.last!.onopen?.();
+  telemetry.flush();
+  expect(FakeWS.last!.sent.filter((m) => m.type === "client_event")
+    .flatMap((m) => m.events).filter((e: any) => e.e === "turn_done")).toEqual([]);
+});

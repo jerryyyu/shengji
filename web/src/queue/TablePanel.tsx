@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { TimerRing } from "../components/MoveClock";
+import LeaveSheet from "../components/LeaveSheet";
 import { seatPos } from "../components/TrickArea";
 import { useInlineQueue } from "./QueueBar";
 import { BOTS_WARN_MS, partnerName, queue, useNow } from "./store";
@@ -173,10 +174,10 @@ interface PanelParts {
   led?: string;
 }
 
-function parts(q: QueueView, kind: PanelKind, now: number): PanelParts | null {
+function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void): PanelParts | null {
   const partner = q.partyId ? partnerName(q.party) : null;
   const led = q.leader ? undefined : `${shortName(partner ?? "Your partner")} leads`;
-  const leave = { label: "Leave table", disabled: q.pending === "leave", onClick: () => queue.leave() };
+  const leave = { label: "Leave table", disabled: q.pending === "leave", onClick: askLeave };
   if (kind === "join" && q.offer) {
     const o = q.offer;
     const busy = q.pending !== null;
@@ -279,8 +280,12 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const box = useRef<HTMLElement | null>(null);
   useEnterIsPrimary(primaryRef, box);
-  const p = parts(q, kind, now);
+  const [asking, setAsking] = useState(false);
+  const p = parts(q, kind, now, () => setAsking(true));
   if (!p) return null;
+  // the people a shared table keeps when you go; your own table has nobody else
+  const others = kind === "shared" && q.table
+    ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
   return (
     <section ref={box} className={`tp tp-${kind}${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
       <h2 className="tp-title" id={titleId}>{p.title}</h2>
@@ -304,6 +309,11 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
           ) : null}
         </div>
       )}
+      {asking ? (
+        <LeaveSheet context={{ kind: "queue", others }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { setAsking(false); queue.leave(); }} />
+      ) : null}
     </section>
   );
 }

@@ -35,7 +35,7 @@ afterEach(() => {
 
 const pill = () => host.querySelector<HTMLButtonElement>(".leave-btn")!;
 const alert = () => host.querySelector<HTMLDialogElement>("[role='alertdialog']");
-const keep = () => alert()!.querySelector<HTMLButtonElement>(".leave-alert-keep")!;
+const keep = () => alert()!.querySelector<HTMLButtonElement>(".leave-sheet-stay")!;
 
 function tap(el: HTMLElement) {
   act(() => {
@@ -55,14 +55,14 @@ describe("the HUD Leave pill in a ranked round in play", () => {
   it("still warns what leaving does to the result", () => {
     act(() => root.render(<LeaveButton ranked practice={false} />));
     tap(pill());
-    expect(alert()!.querySelector("h2")!.textContent).toBe("Leave this ranked game?");
+    expect(alert()!.querySelector("h2")!.textContent).toBe("Leave the game?");
     expect(alert()!.querySelector("p")!.textContent)
-      .toBe("A bot takes your seat, and this round counts as at best a draw.");
+      .toBe("A bot takes your seat. This round counts as at best a draw for you.");
     expect(sent).toEqual([]);
   });
 });
 
-describe("the leave alert's first focus", () => {
+describe("the leave sheet's first focus", () => {
   it("opened by a tap: focus is inside the dialog, with no focus ring", () => {
     const focus = vi.spyOn(HTMLElement.prototype, "focus");
     act(() => root.render(<LeaveButton ranked practice={false} />));
@@ -92,7 +92,7 @@ describe("the leave alert's first focus", () => {
   it("the stylesheet drops the ring only while the alert is marked tap-opened", () => {
     const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
     expect(css).toContain(
-      ".leave-alert-backdrop[data-pointer-open] .leave-alert-actions button:focus-visible { outline: none; }");
-    expect(css).toContain(".leave-alert-actions button:focus-visible { outline: 2px solid var(--gold);");
+      ".leave-sheet-backdrop[data-pointer-open] .leave-sheet-actions button:focus-visible { outline: none; }");
+    expect(css).toContain(".leave-sheet-actions button:focus-visible { outline: 2px solid var(--gold);");
   });
 });

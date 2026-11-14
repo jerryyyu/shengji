@@ -3,19 +3,18 @@ import { conn } from "../ws";
 import Card from "./Card";
 import { useId, useState } from "react";
 import ResultDialog from "./ResultDialog";
-import LeaveAlert from "./LeaveAlert";
+import LeaveSheet from "./LeaveSheet";
 import { OFFLINE } from "../offlineMode";
 import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
 import { myTeam, nextBankerText, pointsOf, roundLines, teamMembers, teamWord } from "../tableCopy";
 
-/** Leave below Next round (Next game), the same in every room. The round is over and
- *  recorded and the next has not started, so leaving costs nothing and goes
- *  at once; a practice game on this device ends with it, so that one still
- *  asks first. The modal dialog makes the HUD's own Leave control
- *  unreachable here. */
-function RoundEndLeave({ ranked }: { ranked: boolean }) {
+/** Leave below Next round (Next game), the same in every room. It asks through the one
+ *  leave sheet, like every other leave: the round is over and recorded, so
+ *  the sheet says it is free; an offline game on this device ends with it.
+ *  The modal dialog makes the HUD's own Leave control unreachable here. */
+function RoundEndLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
   const [asking, setAsking] = useState(false);
   return (
     <>
@@ -24,15 +23,15 @@ function RoundEndLeave({ ranked }: { ranked: boolean }) {
         className="btn subtle danger dialog-leave-btn"
         onClick={() => {
           telemetry.tap("round_end_leave");
-          if (OFFLINE) setAsking(true);
-          else conn.send({ type: "leave_room" });
+          setAsking(true);
         }}
       >
         Leave game
       </button>
       {asking ? (
-        <LeaveAlert ranked={ranked} practice betweenRounds
-                    onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} />
+        <LeaveSheet context={{ kind: "game", ranked, guest, practice: OFFLINE, betweenRounds: true }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
       ) : null}
     </>
   );
@@ -270,7 +269,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
                   )}
                 </div>
               )}
-              <RoundEndLeave ranked={ranked && state.guest !== true} />
+              <RoundEndLeave ranked={ranked} guest={state.guest === true} />
             </>
           );
         })()}

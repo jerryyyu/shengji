@@ -3,7 +3,7 @@ import { useMenuKeys } from "../useMenuKeys";
 import { usePresence } from "../usePresence";
 import { OFFLINE } from "../offlineMode";
 import { codeLink } from "../codes";
-import LeaveAlert from "./LeaveAlert";
+import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
 
@@ -15,15 +15,17 @@ import { SettingsMenuRows } from "./SettingsList";
  * bury. Desktop keeps its chips (this
  * is hidden by CSS there). Account rows (name, saved games, sign out) live on the Me tab, so
  * this stays a table menu for signed-in players and guests alike. Leave
- * closes the menu and opens the leave alert, which waits for Keep playing or
+ * closes the menu and opens the leave sheet, which waits for Stay or
  * Leave. Offline there is no invite link, and nothing here moves the game
  * online: an offline game plays to its end on this device.
  *
  * Keyboard: opening moves focus to the first actionable row, ArrowUp and
  * ArrowDown move between rows (wrapping), Home and End go to the ends, and
  * Escape closes the menu and returns focus to the `…` button. */
-export default function HudMenu({ room, ranked = false, offline = OFFLINE, allowJoiners }: {
+export default function HudMenu({ room, ranked = false, guest = false, offline = OFFLINE, allowJoiners }: {
   room: string; ranked?: boolean; offline?: boolean;
+  /** A guest seat: the leave sheet speaks of no ranking. */
+  guest?: boolean;
   /** A ranked table's "Allow joiners" switch; undefined elsewhere. */
   allowJoiners?: boolean;
 }) {
@@ -132,7 +134,9 @@ export default function HudMenu({ room, ranked = false, offline = OFFLINE, allow
         </div>
       ) : null}
       {asking ? (
-        <LeaveAlert ranked={ranked} practice={offline} onKeep={() => setAsking(false)} onLeft={() => setAsking(false)} />
+        <LeaveSheet context={{ kind: "game", ranked, guest, practice: offline }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
       ) : null}
     </div>
   );

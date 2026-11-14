@@ -257,14 +257,14 @@ it("with a sheet already open, the full screen sits above it and Retry is reacha
   expect(sheet.contains(document.activeElement)).toBe(true);
 });
 
-it("with the leave alert open at the table, the full screen still takes focus", async () => {
+it("with the leave sheet open at the table, the full screen still takes focus", async () => {
   const { ws, LOST_AFTER_MS } = await mount();
   ws.saveName("Me");
   act(() => latest().open());
   act(() => latest().deliver(playing));
   act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
   act(() => host.querySelector<HTMLButtonElement>(".hud-menu-row.leave")!.click());
-  const alert = host.querySelector<HTMLElement>(".leave-alert-backdrop")!;
+  const alert = host.querySelector<HTMLElement>(".leave-sheet-backdrop")!;
   expect(alert.contains(document.activeElement)).toBe(true);
   act(() => latest().close());
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });

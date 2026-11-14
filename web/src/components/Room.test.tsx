@@ -347,7 +347,8 @@ describe("room screen", () => {
     expect(host.textContent).not.toContain("Add bot");
     expect(host.textContent).not.toContain("Remove bot");
     act(() => host.querySelector<HTMLButtonElement>(".room-leave")!.click());
-    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(sent).toEqual([]);
+    expect(host.querySelector("[role='alertdialog']")).not.toBeNull();
   });
 
   it("drops the copy captions and labels the code box", () => {
@@ -542,5 +543,55 @@ describe("ranked switch", () => {
     expect(joiners()!.getAttribute("aria-checked")).toBe("true");
     act(() => { joiners()!.click(); });
     expect(sent).toEqual([{ type: "allow_joiners", on: false }]);
+  });
+});
+
+describe("leaving the room asks through the leave sheet", () => {
+  const sheet = () => host.querySelector<HTMLDialogElement>("[role='alertdialog']");
+  const sheetText = () => `${sheet()!.querySelector("h2")!.textContent} / ${sheet()!.querySelector("p")!.textContent}`;
+  const leave = () => act(() => host.querySelector<HTMLButtonElement>(".room-leave")!.click());
+
+  it("the host with a friend there: free, the table stays and the friend can start it", () => {
+    render(room());
+    leave();
+    expect(sheetText()).toBe("Leave the room? / Free. The table stays open; Amy can start it.");
+    expect([...sheet()!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
+    act(() => sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
+    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(sheet()).toBeNull();
+  });
+
+  it("the opener's controls pass to the next person in seat order", () => {
+    render(room({ players: [
+      { seat: 0, name: "Jerry", is_bot: false, connected: true },
+      { seat: 1, name: "Li", is_bot: false, connected: true },
+      { seat: 3, name: "Amy", is_bot: false, connected: true },
+    ] }));
+    leave();
+    expect(sheetText()).toBe("Leave the room? / Free. The table stays open; Li can start it.");
+  });
+
+  it("a joiner: free, and the table stays open", () => {
+    render(room({ you: 2 }));
+    leave();
+    expect(sheetText()).toBe("Leave the room? / Free. The table stays open.");
+  });
+
+  it("alone with bots: free, and the room closes", () => {
+    render(room({ players: [
+      { seat: 0, name: "Jerry", is_bot: false, connected: true },
+      { seat: 1, name: "Bot 1", is_bot: true, connected: true },
+    ] }));
+    leave();
+    expect(sheetText()).toBe("Leave the room? / Free. The room closes.");
+  });
+
+  it("Stay keeps the room and sends nothing; a ranked room says nothing of ranking", () => {
+    render(room({ ranked: true }));
+    leave();
+    expect(sheet()!.textContent).not.toMatch(/rank|draw/i);
+    act(() => sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-stay")!.click());
+    expect(sheet()).toBeNull();
+    expect(sent).toEqual([]);
   });
 });

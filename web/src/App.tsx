@@ -29,7 +29,7 @@ import ToastView from "./components/ToastView";
 import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
 import { firstJoinerText } from "./queue/tableText";
-import { useRoomBack } from "./roomBack";
+import { askRoomLeave, useRoomBack } from "./roomBack";
 
 // Offline play (no game server): its Play tab loads with the local server.
 const OfflineHome = lazy(() => import("./offline/server/ui").then((m) => ({ default: m.OfflineHome })));
@@ -233,10 +233,10 @@ export default function App() {
   useEffect(() => { prewarmAudio(); }, []);
 
   const inRoom = room !== null || game !== null;
-  // back (or the edge swipe) from the room screen leaves the room for Play
+  // back (or the edge swipe) from the room screen asks to leave, as its Leave does
   const roomShowing =
     room !== null && game === null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
-  useRoomBack(roomShowing, () => { conn.send({ type: "leave_room" }); });
+  useRoomBack(roomShowing, askRoomLeave);
   // Continue on a saved game: a new room with bots in the other seats, which
   // the auto-fill chain then starts (the server already filled it). Only
   // from outside a room, so no game in progress is left by a tap.

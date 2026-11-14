@@ -332,9 +332,9 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           </span>
           <MuteButton />
           <CoachChip />
-          {/* a guest is never rated, so its leave warning is the casual one even at a ranked table */}
-          <LeaveButton ranked={mode === "ranked" && !guest} practice={practice} />
-          <HudMenu room={state.room} ranked={mode === "ranked" && !guest} offline={practice}
+          {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table */}
+          <LeaveButton ranked={mode === "ranked"} guest={guest} practice={practice} />
+          <HudMenu room={state.room} ranked={mode === "ranked"} guest={guest} offline={practice}
                    allowJoiners={(state.matched || state.ranked) && !state.joining_you ? state.allow_joiners ?? true : undefined} />
         </div>
       </div>

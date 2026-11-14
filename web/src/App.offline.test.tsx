@@ -77,7 +77,7 @@ async function startGame() {
 async function leaveGame() {
   act(() => host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
   act(() => host.querySelector<HTMLButtonElement>(".hud-menu-row.leave")!.click());
-  act(() => host.querySelector<HTMLButtonElement>(".leave-alert-leave")!.click());
+  act(() => host.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
   await until(() => host.querySelector(".table-screen") === null);
 }
 

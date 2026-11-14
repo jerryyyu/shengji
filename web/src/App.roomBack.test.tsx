@@ -1,6 +1,7 @@
 // Back from the room screen (the browser's back, or the iOS app's edge swipe,
-// which walks the same history) leaves the room as its Leave button does and
-// lands on Play, whatever page came before the room. A page opened over the
+// which walks the same history) opens the leave sheet as its Leave button
+// does; Leave lands on Play, whatever page came before the room, and Stay
+// keeps the room. A page opened over the
 // room still steps back to the room, and the table keeps its own way out.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -92,8 +93,12 @@ async function mountFromMe() {
   return ws;
 }
 
+const sheet = () => host.querySelector<HTMLDialogElement>("[role='alertdialog']");
+const sheetText = () => `${sheet()!.querySelector("h2")!.textContent} / ${sheet()!.querySelector("p")!.textContent}`;
+const tapIn = (cls: string) => act(() => sheet()!.querySelector<HTMLButtonElement>(cls)!.click());
+
 describe("back from the room screen", () => {
-  it("leaves the room and lands on Play, not Me", async () => {
+  it("asks through the leave sheet; Leave leaves the room and lands on Play, not Me", async () => {
     const ws = await mountFromMe();
     act(() => ws.deliver(roomMsg));
     await flush();
@@ -102,6 +107,10 @@ describe("back from the room screen", () => {
 
     await back();
 
+    expect(ws.sent.slice(before)).toEqual([]);
+    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(sheetText()).toBe("Leave the room? / Free. The room closes.");
+    tapIn(".leave-sheet-leave");
     expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["leave_room"]);
     expect(window.location.hash).toBe("");
     expect(host.querySelector(".me-page")).toBeNull();
@@ -125,12 +134,35 @@ describe("back from the room screen", () => {
       await new Promise((r) => setTimeout(r, 0));
     });
 
+    expect(host.querySelector(".me-page")).toBeNull();
+    expect(sheetText()).toBe("Leave the room? / Free. The room closes.");
+    tapIn(".leave-sheet-leave");
     expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["leave_room"]);
     expect(window.location.hash).toBe("");
     act(() => ws.deliver({ type: "left" }));
     await flush();
     expect(host.querySelector(".lobby-panel")).not.toBeNull();
     expect(host.querySelector(".me-page")).toBeNull();
+  });
+
+  it("Stay keeps the room, and the next back asks again", async () => {
+    const ws = await mountFromMe();
+    act(() => ws.deliver({ ...roomMsg, players: [...roomMsg.players,
+      { seat: 2, name: "Alice", is_bot: false, connected: true }] }));
+    await flush();
+    const before = ws.sent.length;
+
+    await back();
+    expect(sheetText()).toBe("Leave the room? / Free. The table stays open; Alice can start it.");
+    tapIn(".leave-sheet-stay");
+    expect(sheet()).toBeNull();
+    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(host.querySelector(".me-page")).toBeNull();
+
+    await back();
+    expect(sheet()).not.toBeNull();
+    expect(host.querySelector(".room-screen")).not.toBeNull();
+    expect(ws.sent.slice(before)).toEqual([]);
   });
 
   it("a page opened over the room steps back to the room, still in it", async () => {

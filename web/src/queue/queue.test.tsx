@@ -27,6 +27,7 @@ const ws = () => FakeWS.all[FakeWS.all.length - 1];
 const say = (msg: unknown) => act(() => ws().deliver(msg));
 const sentTypes = () => FakeWS.all.flatMap((w) => w.sent).map((m) => m.type);
 const lastSent = () => { const all = FakeWS.all.flatMap((w) => w.sent); return all[all.length - 1]; };
+const sentCount = () => FakeWS.all.flatMap((w) => w.sent).length;
 const nowSecs = () => Date.now() / 1000;
 
 let signedIn = true;
@@ -301,6 +302,13 @@ const lines = (scope: ParentNode | null = panel()) =>
   [...(scope?.querySelectorAll(".tp-line") ?? [])].map((l) => l.textContent);
 const primary = () => panel()?.querySelector<HTMLButtonElement>(".tp-primary") ?? null;
 const live = () => q(".sr-only[aria-live='polite']");
+/** The open leave sheet's title and line. */
+const leaveSheetText = () => {
+  const d = q("[role='alertdialog']");
+  return d ? `${d.querySelector("h2")!.textContent} / ${d.querySelector("p")!.textContent}` : null;
+};
+/** Taps Leave in the open leave sheet. */
+const confirmLeave = () => click(q("[role='alertdialog'] .leave-sheet-leave"));
 
 describe("your own table", () => {
   it("Play turns into your table in Play's place: seats, the bot countdown, Start with bots and Leave table", async () => {
@@ -332,6 +340,9 @@ describe("your own table", () => {
     say(queued());
     tick(GUARD_MS + 10);
     click(button("Leave table", panel()!));
+    expect(leaveSheetText()).toBe("Leave the table? / Free.");
+    expect(lastSent()).not.toEqual({ type: "queue_leave" });
+    confirmLeave();
     expect(lastSent()).toEqual({ type: "queue_leave" });
     say({ type: "queue_state", queued: false, count: 0 });
     expect(panel()).toBeNull();
@@ -596,8 +607,13 @@ describe("a shared table", () => {
   it("Leave table frees your seat and puts you back on Play", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+    const before = sentCount();
     click(button("Leave table", panel()!));
+    expect(leaveSheetText()).toBe("Leave the table? / Free. Alice stays at the table.");
+    expect(sentCount()).toBe(before);
+    confirmLeave();
     expect(lastSent()).toEqual({ type: "queue_leave" });
+    expect(leaveSheetText()).toBeNull();
     say({ type: "queue_state", queued: false, count: 1 });
     expect(panel()).toBeNull();
     await pastGuard();
@@ -1391,6 +1407,9 @@ describe("open tables", () => {
     expect(q(".join-notice")).toBeNull();
     expect(button(/^Play/)).toBeUndefined();
     click(button("Leave", q(".join-pill")!));
+    expect(leaveSheetText()).toBe("Leave the game? / You'll wait 1 minute to play again.");
+    expect(sentLast()).not.toEqual({ type: "leave_room" });
+    confirmLeave();
     expect(sentLast()).toEqual({ type: "leave_room" });
   });
 
@@ -1670,7 +1689,7 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     click(q(".table-screen .leave-btn"));
     const d = q("[role='alertdialog']")!;
     const out = `${d.querySelector("h2")!.textContent} / ${d.querySelector("p")!.textContent}`;
-    click(d.querySelector<HTMLElement>(".leave-alert-keep"));
+    click(d.querySelector<HTMLElement>(".leave-sheet-stay"));
     return out;
   };
 
@@ -1697,18 +1716,18 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     expect(findBtn().textContent).toBe("Play in 4:59");
   });
 
-  it("leaving a round joined from an open table: not ranked for you, and a 5-minute wait", async () => {
+  it("leaving a round joined from an open table: a 1-minute wait", async () => {
     await renderApp();
     say({ type: "match_started", match_id: null, room: "OPEN", rated: true, joining: true, seat: 2 });
     say(state({ joining_you: true }));
     say(state());
     expect(leaveAlertText()).toBe(
-      "Leave the table? / This round isn't ranked for you, and leaving means a 5-minute wait to search.");
+      "Leave the game? / You'll wait 1 minute to play again.");
     // the round over, the next one is an ordinary ranked round
     say(state({ phase: "round_end" }));
     say(state({ phase: "deal" }));
     expect(leaveAlertText()).toBe(
-      "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
+      "Leave the game? / A bot takes your seat. This round counts as at best a draw for you.");
   });
 
   it("after a reload, state frames alone (no match_started) carry the joined round's warning", async () => {
@@ -1716,19 +1735,19 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     await renderApp();
     say(state({ joined_round: true }));
     expect(leaveAlertText()).toBe(
-      "Leave the table? / This round isn't ranked for you, and leaving means a 5-minute wait to search.");
+      "Leave the game? / You'll wait 1 minute to play again.");
     // the server omits the flag once the round is over; the round end clears it
     say(state({ phase: "round_end" }));
     say(state({ phase: "deal" }));
     expect(leaveAlertText()).toBe(
-      "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
+      "Leave the game? / A bot takes your seat. This round counts as at best a draw for you.");
   });
 
   it("review: reconnect after the joined round ends clears its warning", async () => {
     await renderApp();
     const first = ws();
     say(state({ joined_round: true }));
-    expect(leaveAlertText()).toMatch(/5-minute wait/);
+    expect(leaveAlertText()).toMatch(/wait 1 minute/);
     act(() => first.close());
     await act(async () => { await new Promise((r) => setTimeout(r, 1600)); });
     expect(ws()).not.toBe(first);
@@ -1737,7 +1756,7 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     // client never received the previous round_end frame.
     say(state({ phase: "play", levels: ["3", "2"] }));
     expect(leaveAlertText()).toBe(
-      "Leave this ranked game? / A bot takes your seat, and this round counts as at best a draw.");
+      "Leave the game? / A bot takes your seat. This round counts as at best a draw for you.");
   });
 
   it("after a reconnect, the new socket's joined_round frame keeps the joined round's warning", async () => {
@@ -1748,7 +1767,7 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 1600)); });
     expect(ws()).not.toBe(first);
     say(state({ joined_round: true }));
-    expect(leaveAlertText()).toMatch(/isn't ranked for you, and leaving means a 5-minute wait/);
+    expect(leaveAlertText()).toMatch(/You'll wait 1 minute to play again/);
   });
 
   it("a seat taken at a round end, or a server flag saying otherwise, gets the ranked warning", async () => {
@@ -1757,12 +1776,12 @@ describe("flow fixes: cooldown, joined seat, other device, Duo, guests", () => {
     say(state({ joining_you: true, phase: "round_end" }));
     say(state({ phase: "round_end" }));
     say(state({ phase: "deal" }));
-    expect(leaveAlertText()).toMatch(/^Leave this ranked game\?/);
+    expect(leaveAlertText()).toMatch(/at best a draw for you\.$/);
     say({ type: "match_started", match_id: null, room: "OPEN", rated: true, joining: true, seat: 2 });
     say(state({ joined_round: false }));
-    expect(leaveAlertText()).toMatch(/^Leave this ranked game\?/);
+    expect(leaveAlertText()).toMatch(/at best a draw for you\.$/);
     say(state({ joined_round: true }));
-    expect(leaveAlertText()).toMatch(/isn't ranked for you/);
+    expect(leaveAlertText()).toMatch(/You'll wait 1 minute/);
   });
 
   it("Leave table on another device: the holder says the table was closed there", async () => {

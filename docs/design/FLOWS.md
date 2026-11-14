@@ -59,7 +59,8 @@ The host role passes on, and a ranked leave keeps "at best a draw".
   - copy: "Stay until this round ends, or wait 1 minute to play again."
 
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 60 s, and a
-bad code shown inline under the code box. One wording.
+bad code shown inline under the code box. One wording. The same pill, in the same place, says "A bot holds your
+seat · I'm back" once the socket is open again while a bot still plays your seat (simplification 4, below).
 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me.
@@ -135,5 +136,14 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   table, in a room's panel or in a game: a dot, "Your table" ("Your game" in a game), then the bots' ring while it runs; a tap
   opens Play, which holds the panel or the game. Nothing shows when you sit nowhere. It replaces the phone's strip above the tab
   bar, the top-bar pill, the sideways phone's chip strip and "‹ Back to game"; over a game the tab pages keep the tab bars.
+- One "a bot holds your seat" state (simplification 4, approved on the simplify mock): one pill at the felt's top-left, the
+  connection pill's place. It reads "Reconnecting…" while the socket is down and "A bot holds your seat · I'm back" once it
+  is open; any tap or key press counts as back and sends `im_back` (the server's away and the ranked leaver cap are
+  unchanged). Before the game the panel's primary is "I'm back": at a shared table that asks "still here?" (any tap also
+  answers it, sending `table_here`; the status line is the countdown, "You leave the table in 0:30."), for a table open on
+  another device (was "Move it here"), and when Play is refused for a game on another device (was "Return to your game").
+  It replaces the separate Away pill. "Joining after this trick" stays its own pill: you are joining, not held, and its
+  Leave is the way out. The signed-out "Sign in again to return to your game." line stays as it is: no I'm back can work
+  without the account.
 - Server merge (one Table object): yes, planned after Duo lands.
 - Start rule (no auto-start alone): Jerry asked for more explanation. It goes to a mock with both variants before any decision.

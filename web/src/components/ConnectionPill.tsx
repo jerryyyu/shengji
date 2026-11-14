@@ -43,7 +43,8 @@ interface Props {
 
 /** The one connection surface, in the lobby and at the table alike: a pill
  *  while the socket is down, with Retry after RETRY_AFTER_MS, and one full
- *  screen after LOST_AFTER_MS. Nothing shows while the socket is open. */
+ *  screen after LOST_AFTER_MS. While the socket is open the table may show
+ *  SeatHeldPill in the same place; this shows nothing. */
 export default function ConnectionPill({ status, inRoom, inGame }: Props) {
   const [phase, retry] = useConnPhase(status);
   if (phase === "open") return null;
@@ -58,6 +59,18 @@ export default function ConnectionPill({ status, inRoom, inGame }: Props) {
       {phase === "retry" ? (
         <button type="button" className="reconnect-retry" onClick={retry}>Retry</button>
       ) : null}
+    </div>
+  );
+}
+
+/** The connection pill's other state, in the same place: the socket is
+ *  open and a bot plays your seat until you are back. */
+export function SeatHeldPill({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="reconnect-banner seat-held with-retry" role="status">
+      <span className="conn-dot" />
+      <span className="reconnect-text">A bot holds your seat</span>
+      <button type="button" className="reconnect-retry" onClick={onBack}>I’m back</button>
     </div>
   );
 }

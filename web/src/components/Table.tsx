@@ -28,6 +28,8 @@ import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../te
 import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
 import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
+import { SeatHeldPill } from "./ConnectionPill";
+import { useAnyTapIsBack } from "./seatHeld";
 
 /** The declare window's full length, for the countdown ring (server.py DECLARE_GRACE). */
 const DECLARE_WINDOW_SECS = 5;
@@ -402,6 +404,10 @@ export default function Table({ state, toast = null }: { state: GameState; toast
   // the post-deal declare window: a ring on its buttons, no haptic
   const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
   const away = (me?.away ?? false) && state.phase !== "game_over";
+  // a bot holds your seat: one pill, and any tap or key counts as back; while
+  // the socket is down the connection pill says Reconnecting in its place
+  const held = away && !watching && online;
+  const back = useAnyTapIsBack(held, () => conn.send({ type: "im_back" }));
 
   // The hand held before the kitty arrives, so the bury can mark the 8
   // cards that came from it until the bury is sent.
@@ -712,17 +718,7 @@ export default function Table({ state, toast = null }: { state: GameState; toast
           <JoinPillLeave ranked={!!(state.matched || state.ranked)} guest={state.guest === true} />
         </div>
       ) : null}
-      {away && !watching ? (
-        <div className="away-pill" role="status">
-          <span className="away-pill-text">
-            <b>Away</b>
-            <span>The bot is playing for you</span>
-          </span>
-          <button className="btn away-back" onClick={() => conn.send({ type: "im_back" })}>
-            I’m back
-          </button>
-        </div>
-      ) : null}
+      {held ? <SeatHeldPill onBack={back} /> : null}
       {toast ? <ToastView key={toast.id} toast={toast} />
         : coachToast ? <ToastView key={`coach-${coachToast.id}`} toast={coachToast} info /> : null}
     </div>

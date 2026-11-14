@@ -626,17 +626,59 @@ describe("move timer", () => {
     expect(haptics).toEqual([]);
   });
 
-  it("shows the away pill, and I'm back sends im_back", () => {
+  it("away: the one held pill, top-left in the connection pill's place, and I’m back sends im_back", () => {
     render(state({ turn: 1, players: mine({ away: true }) }));
-    const pill = host.querySelector(".away-pill")!;
-    expect(pill.textContent).toContain("Away");
-    expect(pill.textContent).toContain("The bot is playing for you");
+    const pill = host.querySelector(".reconnect-banner.seat-held")!;
+    expect(pill.textContent).toBe("A bot holds your seat" + "I’m back");
+    expect(host.querySelector(".away-pill")).toBeNull();
     const back = pill.querySelector<HTMLButtonElement>("button")!;
-    expect(back.textContent).toContain("I’m back");
+    expect(back.textContent).toBe("I’m back");
+    act(() => back.click());
+    expect(sent).toEqual([{ type: "im_back" }]);
+    // a second press of the same hold sends nothing more
     act(() => back.click());
     expect(sent).toEqual([{ type: "im_back" }]);
     render(state({ turn: 1, players: mine({ away: false }) }));
-    expect(host.querySelector(".away-pill")).toBeNull();
+    expect(host.querySelector(".seat-held")).toBeNull();
+  });
+
+  it("away: any tap or key anywhere counts as back, once per hold; a lone modifier does not", () => {
+    render(state({ turn: 1, players: mine({ away: true }) }));
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Meta" })); });
+    expect(sent).toEqual([]);
+    act(() => { host.querySelector(".table-screen")!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    expect(sent).toEqual([{ type: "im_back" }]);
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "a" })); });
+    expect(sent).toEqual([{ type: "im_back" }]);
+    // back, then held again later: the next hold answers a tap again
+    render(state({ turn: 1, players: mine({ away: false }) }));
+    act(() => { document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    expect(sent).toHaveLength(1);
+    render(state({ turn: 1, players: mine({ away: true }) }));
+    act(() => { document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    expect(sent).toEqual([{ type: "im_back" }, { type: "im_back" }]);
+  });
+
+  it("away with the socket down: no held pill (the connection pill says Reconnecting), and a tap sends nothing", () => {
+    act(() => { link.status = "closed"; for (const fn of link.statusListeners) fn("closed"); });
+    try {
+      render(state({ turn: 1, players: mine({ away: true }) }));
+      expect(host.querySelector(".seat-held")).toBeNull();
+      act(() => { document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+      expect(sent).toEqual([]);
+      act(() => { link.status = "open"; for (const fn of link.statusListeners) fn("open"); });
+      expect(host.querySelector(".seat-held")?.textContent).toContain("A bot holds your seat");
+    } finally {
+      act(() => { link.status = "open"; for (const fn of link.statusListeners) fn("open"); });
+    }
+  });
+
+  it("joining after this trick keeps its own pill, with no held pill and no tap-to-back", () => {
+    render(state({ turn: 1, joining_you: true, players: mine({ away: true }) }));
+    expect(host.querySelector(".join-pill")?.textContent).toContain("Joining after this trick");
+    expect(host.querySelector(".seat-held")).toBeNull();
+    act(() => { document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); });
+    expect(sent).toEqual([]);
   });
 
   it("tags another player's seat Away and nothing else", () => {
@@ -644,7 +686,7 @@ describe("move timer", () => {
       player(2), player(3)] }));
     const tags = [...host.querySelectorAll(".away-tag")].map((t) => t.textContent);
     expect(tags).toEqual(["Away"]);
-    expect(host.querySelector(".away-pill")).toBeNull();
+    expect(host.querySelector(".seat-held")).toBeNull();
   });
 });
 

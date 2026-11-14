@@ -158,7 +158,7 @@ export function announcement(q: QueueView): string {
     return `${who}. Waiting for players.${q.waitPlayers ? " No timer." : ""}`;
   }
   if (kind === "shared" && q.table && q.stillHereUntil !== null) {
-    return "Still here? Tap I'm here to stay at the table.";
+    return "Tap I’m back to stay at the table.";
   }
   if (kind === "shared" && q.table) {
     const t = q.table;
@@ -207,7 +207,7 @@ export function firstJoinerText(m: Pick<FirstJoinerMsg, "name" | "move_secs" | "
     : `${who} Moves are now timed, ${m.move_secs} s each.`;
 }
 
-/** The "still here?" status: the question and its countdown, one line. */
+/** The idle-seat status, one line: the countdown until the table drops you. */
 export function stillHereLine(until: number, now: number): string {
-  return `Still here? You leave the table in ${clock(Math.max(0, until - now), true)}.`;
+  return `You leave the table in ${clock(Math.max(0, until - now), true)}.`;
 }

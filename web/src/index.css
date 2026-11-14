@@ -409,6 +409,14 @@ textarea:focus-visible {
   top: calc(env(safe-area-inset-top, 0px) + 56px + 10px);
 }
 
+/* at the table it sits at the felt's top-left corner under the header,
+   clear of the top seat, the side seats and the hand */
+.app:has(.table-screen) .reconnect-banner {
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  left: max(20px, env(safe-area-inset-left, 0px));
+  transform: none;
+}
+
 .reconnect-banner .conn-dot {
   width: 8px;
   height: 8px;
@@ -3997,6 +4005,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .reconnect-banner {
     top: 40px;
+  }
+
+  /* the header row's right end, left of the … menu: the HUD strip and the
+     top seat's label take the rest of that row, the side seats the row under it */
+  .app:has(.table-screen) .reconnect-banner {
+    top: calc(var(--frame-safe-t, env(safe-area-inset-top, 0px)) + 6px);
+    left: auto;
+    right: calc(var(--frame-safe-r, env(safe-area-inset-right, 0px)) + 52px);
   }
 }
 

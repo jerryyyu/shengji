@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -146,3 +147,72 @@ def test_changed_paths_include_branch_uncommitted_and_untracked(tmp_path):
     (tmp_path / "a.txt").write_text("changed")
     (tmp_path / "new.txt").write_text("n")
     assert at.changed_paths("main", tmp_path) == ["a.txt", "fly.toml", "new.txt"]
+
+
+def _fake_venv(root: Path) -> Path:
+    python = root / "server" / ".venv" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.write_text("#!/bin/sh\n")
+    python.chmod(0o755)
+    return python
+
+
+@pytest.fixture
+def main_and_worktree(tmp_path):
+    main = tmp_path / "main"
+    main.mkdir()
+    def git(*args, cwd=main):
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "t")
+    (main / "a.txt").write_text("a")
+    git("add", "a.txt")
+    git("commit", "-q", "-m", "a")
+    worktree = tmp_path / "wt"
+    git("worktree", "add", "-q", "-b", "topic", str(worktree))
+    return main, worktree
+
+
+def test_a_worktree_without_a_venv_uses_the_main_worktree_venv(main_and_worktree):
+    main, worktree = main_and_worktree
+    expected = _fake_venv(main)
+    assert Path(at.resolve_python(worktree, env={})).resolve() == expected.resolve()
+
+
+def test_the_worktree_venv_wins_over_the_main_one(main_and_worktree):
+    main, worktree = main_and_worktree
+    _fake_venv(main)
+    own = _fake_venv(worktree)
+    assert at.resolve_python(worktree, env={}) == str(own)
+
+
+def test_shengji_py_wins(main_and_worktree):
+    main, worktree = main_and_worktree
+    _fake_venv(main)
+    _fake_venv(worktree)
+    assert at.resolve_python(worktree, env={"SHENGJI_PY": "/opt/py"}) == "/opt/py"
+
+
+def test_no_venv_anywhere_is_a_clear_error(main_and_worktree, capsys):
+    _, worktree = main_and_worktree
+    with pytest.raises(at.NoInterpreter, match="SHENGJI_PY"):
+        at.resolve_python(worktree, env={})
+    done = subprocess.run([sys.executable, str(REPO / "server/scripts/affected_tests.py"),
+                           "--repo", str(worktree), "fly.toml"],
+                          env={k: v for k, v in os.environ.items() if k != "SHENGJI_PY"},
+                          capture_output=True, text=True)
+    assert done.returncode == 2 and "no checkout virtualenv found" in done.stderr
+
+
+def test_checks_use_the_resolved_interpreter_too(main_and_worktree, monkeypatch):
+    _, worktree = main_and_worktree
+    monkeypatch.setenv("SHENGJI_PY", "/opt/py")
+    commands = at.commands_for(at.plan_for(["server/shengji/api/server.py"]), "origin/main", worktree)
+    pythons = {c.argv[0] for c in commands if c.cwd != "web"}
+    assert pythons == {"/opt/py"} and len([c for c in commands if c.cwd == "."]) == 2
+
+
+def test_a_plan_without_python_gates_needs_no_interpreter(tmp_path):
+    plan = at.Plan([], [], ["vitest"], [], [])
+    assert [c.cwd for c in at.commands_for(plan, "origin/main", tmp_path)] == ["web"]

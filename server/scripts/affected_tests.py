@@ -15,7 +15,8 @@ Usage::
 
 ``--run`` runs every command even after a failure, prints ``rc=<n>`` per
 command and exits 1 when any command failed (0 when all passed or none
-applied).  The rules live in ``RULES`` below; each rule names path globs
+applied), and 2 when no checkout virtualenv is found (see
+``resolve_python``).  The rules live in ``RULES`` below; each rule names path globs
 (``fnmatch``, so ``*`` also crosses ``/``) and what they require.
 """
 
@@ -180,13 +181,45 @@ def plan_for(paths: list[str], repo: Path = REPO) -> Plan:
     return plan
 
 
-def _python(repo: Path) -> str:
-    venv = repo / "server" / ".venv" / "bin" / "python"
-    return str(venv) if os.access(venv, os.X_OK) else sys.executable
+class NoInterpreter(RuntimeError):
+    """No Python with the checkout's dependencies was found."""
+
+
+VENV_PYTHON = Path("server") / ".venv" / "bin" / "python"
+
+
+def resolve_python(repo: Path = REPO, env: dict[str, str] | None = None) -> str:
+    """The interpreter every Python gate runs under.
+
+    ``$SHENGJI_PY`` wins; then this work tree's ``server/.venv``; then the main
+    work tree's, found through ``git rev-parse --git-common-dir`` (a linked
+    worktree usually has no venv of its own).  A system python is never used:
+    without pytest, test_checkout.py refuses and every gate would fail."""
+    env = os.environ if env is None else env
+    if env.get("SHENGJI_PY"):
+        return env["SHENGJI_PY"]
+    tried = [repo / VENV_PYTHON]
+    if os.access(tried[0], os.X_OK):
+        return str(tried[0])
+    common = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=repo,
+                            capture_output=True, text=True)
+    if common.returncode == 0 and common.stdout.strip():
+        common_dir = Path(common.stdout.strip())
+        if not common_dir.is_absolute():
+            common_dir = repo / common_dir
+        candidate = common_dir.resolve().parent / VENV_PYTHON
+        tried.append(candidate)
+        if os.access(candidate, os.X_OK):
+            return str(candidate)
+    raise NoInterpreter("no checkout virtualenv found (tried "
+                        + ", ".join(str(t) for t in tried)
+                        + "); set SHENGJI_PY or run `uv sync --group dev` in server/")
 
 
 def commands_for(plan: Plan, base: str, repo: Path = REPO) -> list[Command]:
-    python = _python(repo)
+    if not (plan.pure or plan.compiled or plan.checks):
+        return [Command("web", WEB_COMMANDS[key]) for key in plan.web]
+    python = resolve_python(repo)
     out: list[Command] = []
     for engine, names in (("pure", plan.pure), ("compiled", plan.compiled)):
         if names:
@@ -235,7 +268,11 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base or "origin/main"
     paths = args.paths or changed_paths(base, args.repo)
     plan = plan_for(paths, args.repo)
-    commands = commands_for(plan, base, args.repo)
+    try:
+        commands = commands_for(plan, base, args.repo)
+    except NoInterpreter as exc:
+        print(f"affected_tests: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps([{"cwd": c.cwd, "argv": list(c.argv)} for c in commands], indent=2))
         return 0

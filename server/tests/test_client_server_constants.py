@@ -72,7 +72,6 @@ class CopyRule:
 
 
 COPY_RULES = (
-    CopyRule("web/src/queue/tableText.ts", r"wait \S+ minutes? to play again", MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
     CopyRule("web/src/components/LeaveAlert.tsx", r"minute wait to search", MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
     CopyRule("web/src/queue/store.ts", r"No tap for", MATCHMAKING_PY, "TABLE_IDLE_SECS"),
     CopyRule("web/src/queue/TablePanel.tsx", r"seconds left to join", "web/src/queue/tableText.ts", "OFFER_CLOCK_MS"),

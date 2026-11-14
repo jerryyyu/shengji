@@ -466,7 +466,7 @@ export default function Lobby({ status, error, room = null, holdInvite = false,
                 value={roomCode}
                 maxLength={4}
                 placeholder="CODE"
-                aria-label="Room or duo code"
+                aria-label="Table code"
                 disabled={status !== "open"}
                 autoCapitalize="characters"
                 autoCorrect="off"

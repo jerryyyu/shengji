@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
+import LeaveSheet from "../components/LeaveSheet";
 import type { RoomMsg } from "../protocol";
 import type { QueueMode } from "./messages";
 import TablePanel, { RoomPanel, TableAnnouncer } from "./TablePanel";
 import { useKindGuard } from "./useKindGuard";
-import { panelKind, presenceParts } from "./tableText";
+import { panelKind, presenceParts, shortName } from "./tableText";
 import "./playLines.css";
 import { clock, queue, useNow, useQueue } from "./store";
 
@@ -96,6 +97,23 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
   );
 }
 
+/** A pair's other member, between games: the leader searches for both, so
+ *  this member's row is who the Duo is with and a Leave that ends it. */
+function PairRow({ leader }: { leader: string }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <div className="play-ranked-row play-pair-row">
+      <span className="play-pair-label">Duo with {shortName(leader)}</span>
+      <button type="button" className="btn play-duo play-pair-leave" onClick={() => setAsking(true)}>Leave</button>
+      {asking ? (
+        <LeaveSheet context={{ kind: "duo", partner: leader, opener: false }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { setAsking(false); queue.leaveParty(); }} />
+      ) : null}
+    </div>
+  );
+}
+
 /** Play's block, the same for guests and accounts: the Ranked / Casual
  *  switch, a wide gold Play that joins the queue in that mode (as the pair
  *  when one is formed and you lead it) and Duo, which opens your own table
@@ -160,8 +178,11 @@ export function RankedSection({ online, room = null }: {
       </>
     );
   }
+  const pairLeader = pair && !pair.you_lead ? pair.members.find((m) => m.leader)?.name ?? null : null;
   const body = q.inGame ? (
     <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
+  ) : pairLeader ? (
+    <PairRow leader={pairLeader} />
   ) : (
     <>
       {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}

@@ -250,7 +250,7 @@ const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button"
 /** Join a room by its code: the lookup, the peek, then join_room under the
  *  player's name. */
 const joinCode = (code = "ABCD") => {
-  const box = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+  const box = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
   type(box, code);
   act(() => buttonNamed("Join").click());
   act(() => { for (const fn of [...link.listeners]) fn({ type: "code_kind", code, kind: "room" }); });
@@ -456,7 +456,7 @@ describe("no connection", () => {
       expect(buttonNamed("Ranked").disabled).toBe(true);
       expect(buttonNamed("Casual").getAttribute("aria-pressed")).toBe("true");
       for (const label of ["Duo", "Join"]) expect(buttonNamed(label).disabled).toBe(true);
-      expect(host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!.disabled).toBe(true);
+      expect(host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!.disabled).toBe(true);
       expect(host.textContent).not.toContain("Play bots");
       expect(host.textContent).not.toContain("Create room");
       const play = buttonNamed("Play");
@@ -597,7 +597,7 @@ describe("starting a game waits for the server", () => {
 
   it("Join says Joining… while the room is looked up, and an error frees it", async () => {
     await render();
-    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "abcd");
     act(() => button(/^Join$/).click());
     expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }]);
@@ -617,7 +617,7 @@ describe("starting a game waits for the server", () => {
 
   it("a code that names nothing frees Join and says so until the box changes", async () => {
     await render();
-    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "ZZZZ");
     act(() => button(/^Join$/).click());
     serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });

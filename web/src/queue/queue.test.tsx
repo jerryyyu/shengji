@@ -148,7 +148,7 @@ describe("Play", () => {
     expect(button(/Find a game/)).toBeUndefined();
     expect(button(/Create room/, lobby())).toBeUndefined();
     expect(button(/Play bots/, lobby())).toBeUndefined();
-    expect(q("input[aria-label='Room or duo code']")).not.toBeNull();
+    expect(q("input[aria-label='Table code']")).not.toBeNull();
   });
 
   it("Play joins the ranked queue at once, with no sheet", async () => {
@@ -226,7 +226,7 @@ describe("Play", () => {
     await renderApp();
     say({ type: "party", party_id: "p1", code: "7F2K", you_lead: false, expires_at: nowSecs() + 300,
           members: [{ name: "Sam", leader: true, you: false }, { name: "Guesty", leader: false, you: true }] });
-    click(button("Play", lobby())!);
+    // Sam searches for the pair
     say(atTable([seat("Guesty", { you: true }), seat("Alice"), null, null]));
     expect(panel()?.className).toContain("tp-shared");
     const old = ws();
@@ -525,6 +525,7 @@ describe("a Duo is a table", () => {
     queued({ party_id: "d1", leader: opener, duo: true, held_seat: null, duo_ready: ready, you_ready: youReady,
              code: "4N5Z", opener, allow_joiners: true, ...over });
   const joiners = (p: Element) => [...p.querySelectorAll("[role='switch']")].filter((b) => b.textContent === "Allow joiners");
+  const lobby = () => q(".lobby-panel")!;
 
   it("tap Duo: Your Duo, the partner seat held, the table's code and Invite link, Start with bots and Leave", async () => {
     await renderApp();
@@ -643,6 +644,44 @@ describe("a Duo is a table", () => {
     confirmLeave();
     expect(lastSent()).toEqual({ type: "queue_leave" });
     expect(document.querySelectorAll("[role='alertdialog']")).toHaveLength(0);
+  });
+
+  it("after the game the other member's Play tab is one row: Duo with Jerry, and Leave", async () => {
+    await renderApp();
+    say(duoParty(false));
+    const row = q(".play-pair-row")!;
+    expect(row.textContent).toBe("Duo with JerryLeave");
+    expect(buttons(row).map((b) => b.textContent)).toEqual(["Leave"]);
+    expect(button("Play", lobby())).toBeUndefined();
+    expect(button("Duo", lobby())).toBeUndefined();
+    expect(q(".play-presence")).toBeNull();
+  });
+
+  it("its Leave goes through the Duo sheet and sends party_leave; the normal Play tab returns", async () => {
+    await renderApp();
+    say(duoParty(false));
+    click(button("Leave", q(".play-pair-row")!));
+    expect(leaveSheetText()).toBe("Leave the Duo? / Jerry keeps the table.");
+    click(q("[role='alertdialog'] .leave-sheet-stay"));
+    expect(leaveSheetText()).toBeNull();
+    expect(sentTypes()).not.toContain("party_leave");
+    click(button("Leave", q(".play-pair-row")!));
+    confirmLeave();
+    expect(lastSent()).toEqual({ type: "party_leave" });
+    say({ type: "party_closed", party_id: "d1", reason: "left", by: "Alice", you: true });
+    expect(q(".play-pair-row")).toBeNull();
+    expect(button("Play", lobby())?.disabled).toBe(false);
+    expect(button("Duo", lobby())).toBeDefined();
+  });
+
+  it("the leader's Play tab is unchanged: Play and Duo, and Play queues the pair", async () => {
+    await renderApp();
+    say(duoParty(true));
+    expect(q(".play-pair-row")).toBeNull();
+    expect(buttons(q(".play-ranked-row")!).map((b) => b.textContent)).toEqual(["Play", "Duo"]);
+    await pastGuard();
+    click(button("Play", lobby()));
+    expect(lastSent()).toEqual({ type: "queue_join", party_id: "d1", mode: "ranked" });
   });
 
   it("alone with the seat held, Leave is the plain table's", async () => {
@@ -1019,7 +1058,7 @@ describe("one code for rooms and tables", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); });
   };
-  const playBox = () => q("input[aria-label='Room or duo code']") as HTMLInputElement;
+  const playBox = () => q("input[aria-label='Table code']") as HTMLInputElement;
   const playJoin = () => click(button(/^Join$/, q(".join-row")!));
   const seats = (room: string) => ({
     type: "room_seats", room, in_game: false,
@@ -1185,7 +1224,7 @@ describe("a code lookup that is interrupted or refused", () => {
 
   it("a rate-limited Play lookup says so under the Play box", async () => {
     await renderApp();
-    typeInto(q("input[aria-label='Room or duo code']") as HTMLInputElement, "WXYZ");
+    typeInto(q("input[aria-label='Table code']") as HTMLInputElement, "WXYZ");
     click(button(/^Join$/, q(".join-row")!));
     say(LIMITED);
     expect(q(".lobby-error")?.textContent).toBe("Too many requests; wait a minute.");
@@ -1202,7 +1241,7 @@ describe("a code lookup that is interrupted or refused", () => {
 
   it("an unrelated error while a lookup waits does not cancel it", async () => {
     await renderApp();
-    typeInto(q("input[aria-label='Room or duo code']") as HTMLInputElement, "WXYZ");
+    typeInto(q("input[aria-label='Table code']") as HTMLInputElement, "WXYZ");
     click(button(/^Join$/, q(".join-row")!));
     say({ type: "error", code: "room_full", message: "Room is full." });
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
@@ -1433,7 +1472,7 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
             seatRow(2, "Bot 2", true, !full), seatRow(3, "Bot 3", true, !full)],
   });
   const viaPlayBox = () => {
-    typeInto(q("input[aria-label='Room or duo code']") as HTMLInputElement, "rank");
+    typeInto(q("input[aria-label='Table code']") as HTMLInputElement, "rank");
     click(button(/^Join$/, q(".join-row")!));
     tell({ type: "code_kind", code: "RANK", kind: "room" });
     expect(lastSent()).toEqual({ type: "peek_room", room: "RANK" });

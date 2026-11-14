@@ -1,19 +1,17 @@
-// Every join box and the `?code=` link take a room, table or pair code: the
-// code is looked up first (PROTOCOL.md "Codes"), then the room flow (peek,
-// join_room), the table flow (queue_join with the code; a table code is no
-// room until its game starts) or the pair flow (party_join, which needs
-// sign-in).
+// Every join box and the `?code=` link (and the older `?party=` link, its
+// alias) take a room or table code: the code is looked up first (PROTOCOL.md
+// "Codes"), then the room flow (peek, join_room) or the table flow
+// (queue_join with the code; a table code is no room until its game starts,
+// and a Duo's table is joined this way too).
 
 import { useSyncExternalStore } from "react";
-import { CODE_LEN, NO_CODE, normalizeCode } from "./codes";
-import { openTab } from "./home/route";
+import { CODE_LEN, NO_CODE, aliasPartyLink, normalizeCode } from "./codes";
 import type { ServerMsg } from "./protocol";
-import { queue } from "./queue/store";
 import type { ConnStatus } from "./ws";
 import { conn } from "./ws";
 
-/** Where a lookup started: the Play box, the pair sheet's box, or a link. */
-export type CodeFrom = "play" | "pair" | "link";
+/** Where a lookup started: the Play box or a link. */
+export type CodeFrom = "play" | "link";
 
 /** What a code the Play screen opens names: a room (peek_room, join_room)
  *  or a queued table (queue_join with its code). */
@@ -58,12 +56,6 @@ export class CodeStore {
     // a test may stand in a partial socket
     conn.subscribe?.((m) => this.onMessage(m));
     conn.subscribeStatus?.((s) => this.onStatus(s));
-    // Dismissing the pair sheet (Cancel, the scrim, Escape, a drag) cancels
-    // its lookup. The room handoff clears the lookup before it closes the
-    // sheet, so it is not a dismissal.
-    queue.subscribe?.(() => {
-      if (this.view.pending?.from === "pair" && queue.view.sheet !== "party") this.cancel();
-    });
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -92,6 +84,7 @@ export class CodeStore {
     }
     if (this.linkTaken) return;
     this.linkTaken = true;
+    aliasPartyLink();
     const code = new URLSearchParams(window.location.search).get("code");
     if (code) this.lookup(code, "link");
   }
@@ -103,8 +96,7 @@ export class CodeStore {
     if (!conn.send({ type: "code_lookup", code })) return false;
     // one lookup at a time: a newer one replaces any still waiting
     if (this.view.pending) this.stale.push(this.view.pending.code);
-    this.set({ pending: { code, from }, ...(from === "pair" ? {} : { playError: null }) });
-    if (from === "pair") queue.showPartyError(null);
+    this.set({ pending: { code, from }, playError: null });
     return true;
   }
 
@@ -141,38 +133,18 @@ export class CodeStore {
     if (!p) return;
     if (msg.type === "error") {
       if (!refused) return;
-      this.set({ pending: null });
-      if (p.from === "pair") queue.showPartyError(msg.message);
-      else this.set({ playError: msg.message });
+      this.set({ pending: null, playError: msg.message });
       return;
     }
     if (msg.type !== "code_kind" || msg.code !== p.code) return;
     this.set({ pending: null });
     if (p.from === "link" && msg.kind !== "room" && msg.kind !== "table") dropParam("code");
     if (msg.kind === "room" || msg.kind === "table") {
-      if (p.from === "pair") {
-        queue.closeSheet();
-        openTab("play");
-      }
       this.set({ room: { code: p.code, from: p.from, at: Date.now(), kind: msg.kind } });
-    } else if (msg.kind === "party") {
-      this.party(p.code, p.from);
-    } else if (p.from === "pair") {
-      queue.showPartyError(NO_CODE);
     } else {
+      // a Duo is a table, so an older client's pair code opens nothing here
       this.set({ playError: NO_CODE });
     }
-  }
-
-  /** A pair code: joined at once, by guests and accounts alike. A link only
-   *  fills the pair sheet in, as `?party=` always has. */
-  private party(code: string, from: CodeFrom): void {
-    if (from !== "link") {
-      queue.joinParty(code);
-      return;
-    }
-    queue.setJoinCode(code);
-    queue.openSheet("party");
   }
 
   /** Test seam: forget everything, as a fresh page would. */

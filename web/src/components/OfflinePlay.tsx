@@ -149,7 +149,7 @@ export function OfflineControls({ local, status, error = null, room = null, onAr
             <span>Offline</span>
           </p>
           <div className="join-row">
-            <input className="room-input" placeholder="CODE" aria-label="Room or duo code" disabled />
+            <input className="room-input" placeholder="CODE" aria-label="Table code" disabled />
             <button className="btn" disabled>Join</button>
           </div>
         </>

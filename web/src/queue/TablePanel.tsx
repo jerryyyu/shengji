@@ -5,6 +5,7 @@ import ChatPanel from "../components/ChatPanel";
 import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
+import type { LeaveContext } from "../components/leaveCopy";
 import { seatPos } from "../components/TrickArea";
 import { codeLink } from "../codes";
 import type { ChatMsg, Rank, RoomMsg, ServerMsg } from "../protocol";
@@ -12,10 +13,11 @@ import { RANKS } from "../protocol";
 import { onRoomLeaveAsk } from "../roomBack";
 import { conn } from "../ws";
 import { useInlineQueue } from "./QueueBar";
-import { BOTS_WARN_MS, BOT_FILL_MS, partnerName, queue, useNow } from "./store";
+import { BOTS_WARN_MS, BOT_FILL_MS, partnerName, queue, tableDuo, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, START_NOW_SECS, announcement, joinLabel, joinTitle, ownBotsAt,
+  JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, START_NOW_SECS, announcement, duoStartLabel, joinLabel, joinTitle,
+  ownBotsAt, ownTitle,
   panelKind, roomReadyLine, roomTitle, roomWaitingLabel, sharedStatusLine, sharedTitle, shortName, startLabel,
   stillHereLine,
 } from "./tableText";
@@ -26,7 +28,8 @@ import type { PanelKind } from "./tableText";
  *  which seat is your partner's the layout already shows. */
 export interface SeatItem {
   at: number;
-  look: "you" | "friend" | "person" | "open" | "bot";
+  /** `held`: an empty seat kept for a Duo opener's friend. */
+  look: "you" | "friend" | "person" | "open" | "held" | "bot";
   name: string;
   sub: string;
   /** Read by a screen reader: the full name and the seat's team. */
@@ -45,7 +48,7 @@ function offerSeats(o: OfferView, busy: boolean): SeatItem[] {
     const ours = (at - o.pick + 4) % 2 === 0;
     if (at === o.pick) return { at, look: "you", name: "You", sub: "", label: `You, ${teamWord(true)}` };
     if (o.partner && at === o.partner.seat) {
-      return { at, look: "friend", name: shortName(o.partner.name), sub: "your Duo partner",
+      return { at, look: "friend", name: shortName(o.partner.name), sub: "",
                label: `${o.partner.name}, your Duo partner` };
     }
     if (s.open && !o.partner) {
@@ -59,15 +62,29 @@ function offerSeats(o: OfferView, busy: boolean): SeatItem[] {
   });
 }
 
+/** The held seat: "Partner" across from you, the friend a Duo waits for. */
+function heldSeat(at: number, ours: boolean): SeatItem {
+  return { at, look: "held", name: "Partner", sub: "",
+           label: ours ? "Partner seat, held for your friend" : `Partner seat, held, ${teamWord(false)}` };
+}
+
 /** Your own table, drawn from the lone queue entry: the server keeps no
- *  table for one, so you sit at the bottom and a Duo partner across. */
+ *  table for one, so you sit at the bottom and a Duo partner, or the seat
+ *  held for one, across. In a Duo made there each member's Start shows. */
 function ownSeats(q: QueueView): SeatItem[] {
   const partner = q.partyId ? partnerName(q.party) : null;
+  const duo = tableDuo(q);
+  const partnerReady = duo && (q.duoReady ?? 0) - (q.youReady ? 1 : 0) > 0;
   return [0, 1, 2, 3].map((at): SeatItem => {
-    if (at === 0) return { at, look: "you", name: "You", sub: "", label: "You, your team" };
-    if (at === 2 && partner) {
-      return { at, look: "friend", name: shortName(partner), sub: "your Duo partner", label: `${partner}, your Duo partner` };
+    if (at === 0) {
+      return { at, look: "you", name: "You", sub: "", tick: duo && q.youReady,
+               label: duo && q.youReady ? "You, ready" : "You, your team" };
     }
+    if (at === 2 && partner) {
+      return { at, look: "friend", name: shortName(partner), sub: "", tick: partnerReady,
+               label: [partner, partnerReady ? "ready" : null, "your Duo partner"].filter(Boolean).join(", ") };
+    }
+    if (at === 2 && q.heldSeat === 2) return heldSeat(at, true);
     const ours = at === 2;
     return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
   });
@@ -86,6 +103,7 @@ function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): S
   return [0, 1, 2, 3].map((at): SeatItem => {
     const s = t.seats[at] ?? null;
     const ours = (at - t.you + 4) % 2 === 0;
+    if (!s && t.heldSeats.includes(at)) return heldSeat(at, ours);
     if (!s && move) {
       return { at, look: "open", name: "Open seat", sub: "", busy,
                label: `Open seat, ${teamWord(ours)}. Move here`, pick: () => queue.tableMove(at) };
@@ -98,9 +116,10 @@ function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): S
       return { at, look: "you", name: "You", sub: status, tick: s.ready,
                label: ["You", s.ready ? "ready" : null, status || null].filter(Boolean).join(", ") };
     }
-    const sub = status || (s.pair ? "your Duo partner" : "");
-    return { at, look: s.pair ? "friend" : "person", name: shortName(s.name), sub, tick: s.ready,
-             label: [s.name, s.ready ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
+    const partner = s.pair && ours;
+    return { at, look: partner ? "friend" : "person", name: shortName(s.name), sub: status, tick: s.ready,
+             label: [s.name, s.ready ? "ready" : null, status || null, partner ? "your Duo partner" : teamWord(ours)]
+               .filter(Boolean).join(", ") };
   });
 }
 
@@ -114,7 +133,7 @@ function useMyInitial(): string {
 
 function SeatBody({ s }: { s: SeatItem }) {
   const mine = useMyInitial();
-  const av = s.look === "open" ? "+" : s.look === "bot" ? "·"
+  const av = s.look === "open" ? "+" : s.look === "bot" || s.look === "held" ? "·"
     : s.look === "you" ? mine || "·" : s.name.slice(0, 2).toUpperCase();
   return (
     <>
@@ -188,7 +207,7 @@ interface PanelParts {
   seats: SeatItem[] | null;
   you: number;
   extra?: ReactNode;
-  primary: { label: string; disabled: boolean; onClick: () => void; ring?: ReactNode } | null;
+  primary: { label: string; disabled: boolean; onClick: () => void; ring?: ReactNode; searching?: boolean } | null;
   secondary: { label: string; disabled: boolean; onClick: () => void } | null;
   /** A Duo's other member: who presses the buttons instead. */
   led?: string;
@@ -203,7 +222,8 @@ function botsRing(at: number | null, now: number): ReactNode {
 
 function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void): PanelParts | null {
   const partner = q.partyId ? partnerName(q.party) : null;
-  const led = q.leader ? undefined : `${shortName(partner ?? "Your partner")} leads`;
+  // a Duo made at a table has no leader to press for it: each member taps
+  const led = q.leader || tableDuo(q) ? undefined : `${shortName(partner ?? "Your partner")} leads`;
   const leave = { label: "Leave", disabled: q.pending === "leave", onClick: askLeave };
   if (kind === "join" && q.offer) {
     const o = q.offer;
@@ -232,12 +252,25 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
         <ChatRow messages={q.tableChat} you={q.leader ? 0 : 2} onSend={(text) => queue.tableChat(text)} />
       </>
     );
+    const ring = botsRing(ownBotsAt(q), now);
+    if (tableDuo(q) && partner) {
+      // the pair's own table: both tap Start, then it searches as one
+      return {
+        title: ownTitle(q, partner), status: { text: `${q.duoReady ?? 0} of 2 ready` },
+        seats: ownSeats(q), you: 0, extra,
+        primary: { label: q.pending === "start" ? "Starting…" : duoStartLabel(q, partner),
+                   disabled: q.youReady || q.pending !== null, onClick: () => queue.tableStart(),
+                   ring: q.pending === "start" ? null : ring,
+                   searching: q.youReady && (q.duoReady ?? 0) >= 2 },
+        secondary: leave,
+      };
+    }
     return {
-      title: "Your table",
+      title: ownTitle(q, partner),
       seats: ownSeats(q), you: 0, extra, led,
       primary: { label: q.pending === "bots" ? "Starting…" : "Start with bots", disabled: q.pending !== null,
                  onClick: () => queue.startBots(),
-                 ring: q.pending === "bots" ? null : botsRing(ownBotsAt(q), now) },
+                 ring: q.pending === "bots" ? null : ring },
       secondary: leave,
     };
   }
@@ -318,7 +351,7 @@ function PanelView({ p, kind, guarded, sheet }: { p: PanelParts; kind: string; g
       {p.led ? <p className="tp-led">{p.primary?.ring}{p.led}</p> : (
         <div className="tp-acts">
           {p.primary ? (
-            <button ref={primaryRef} type="button" className="tp-primary"
+            <button ref={primaryRef} type="button" className={`tp-primary${p.primary.searching ? " searching" : ""}`}
                     disabled={p.primary.disabled || guarded} onClick={p.primary.onClick}>
               {p.primary.ring}
               {p.primary.label}
@@ -346,11 +379,14 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const [asking, setAsking] = useState(false);
   const p = parts(q, kind, now, () => setAsking(true));
   if (!p) return null;
-  // the people a shared table keeps when you go; your own table has nobody else
+  // the people a shared table keeps when you go; your own table has nobody
+  // else, but for a Duo partner, who keeps it
   const others = kind === "shared" && q.table
     ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
+  const partner = tableDuo(q) ? partnerName(q.party) : null;
+  const context: LeaveContext = partner ? { kind: "duo", partner, opener: q.opener } : { kind: "queue", others };
   const sheet = asking ? (
-    <LeaveSheet context={{ kind: "queue", others }}
+    <LeaveSheet context={context}
                 onStay={() => setAsking(false)}
                 onLeave={() => { setAsking(false); queue.leave(); }} />
   ) : null;

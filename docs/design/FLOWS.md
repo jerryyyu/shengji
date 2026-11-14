@@ -110,6 +110,7 @@ shows the bots' countdown, not elapsed time.
 - Duo opens your own table (the same inline panel as Play), with the partner seat held for your friend. There is no separate Duo code or Duo bar: the table's code and Invite link are the Duo invite, and a code joiner takes the held partner seat first.
 - A Duo stays paired. After Start, or when Play matches you, the pair moves and is matched as one, as Duo is today, and a ranked Duo is rated as a pair. One Leave, on the panel, ends the Duo for you; your partner keeps the table.
 - The table is an inline panel, not a popup. Popups are only for decisions (Leave, take a seat, a Duo invite).
+- Built (client): the Duo sheet, the Duo chip and the separate party code are removed (`?party=` links read as `?code=`). Between games a formed pair shows one row, "Duo with <partner>" and Leave (`party_leave`), to both members; the leader keeps Play and Duo under it.
 
 ## Decisions 2026-11-14 morning (Jerry)
 1. Duo flow as mocked (core.html section 5, "Duo: one table, paired"): approved, build it.

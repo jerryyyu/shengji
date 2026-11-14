@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useAuth } from "../auth";
 import GoogleSignIn from "../components/GoogleSignIn";
+import LeaveSheet from "../components/LeaveSheet";
 import type { RoomMsg } from "../protocol";
 import type { QueueMode } from "./messages";
 import TablePanel, { RoomPanel, TableAnnouncer } from "./TablePanel";
 import { useKindGuard } from "./useKindGuard";
-import { panelKind, presenceParts } from "./tableText";
+import { panelKind, presenceParts, shortName } from "./tableText";
 import "./playLines.css";
-import { clock, partnerName, queue, useNow, useQueue } from "./store";
+import { clock, queue, useNow, useQueue } from "./store";
 
 /** The ranked mark: a trophy. */
 export function TrophyIcon() {
@@ -16,42 +17,6 @@ export function TrophyIcon() {
       <path d="M8 4h8v5a4 4 0 0 1-8 0z" />
       <path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6" />
     </svg>
-  );
-}
-
-/** "RANKED" with its trophy, as a small gold chip. */
-export function RankedChip() {
-  return <span className="ranked-chip"><TrophyIcon />Ranked</span>;
-}
-
-/** The pair above Play: "You + Sam · you lead · Leave", or the code still
- *  waiting for a friend. */
-export function PartyChip() {
-  const q = useQueue();
-  const p = q.party;
-  if (!p) return null;
-  const other = partnerName(p);
-  if (p.members.length < 2 || !other) {
-    return (
-      <div className="q-party-chip waiting">
-        <button type="button" className="q-party-main" onClick={() => queue.openParty()}>
-          Duo code <b>{p.code}</b>
-        </button>
-        <button type="button" className="q-party-leave" onClick={() => queue.leaveParty()}>Leave</button>
-      </div>
-    );
-  }
-  const leader = p.members.find((m) => m.leader);
-  return (
-    <div className="q-party-chip">
-      <span className="q-party-main">
-        <span className="q-av" aria-hidden="true">{(p.members.find((m) => m.you)?.name ?? "Y").slice(0, 1)}</span>
-        <span className="q-av q-av2" aria-hidden="true">{other.slice(0, 1)}</span>
-        You + {other}
-        <span className="q-party-sub">· {p.you_lead ? "you lead" : `${leader?.name ?? other} leads`}</span>
-      </span>
-      <button type="button" className="q-party-leave" onClick={() => queue.leaveParty()}>Leave</button>
-    </div>
   );
 }
 
@@ -132,9 +97,29 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
   );
 }
 
+/** A formed pair between games, for either member: who the Duo is with and
+ *  a Leave that ends it (party_leave, never a search). Leave waits for the
+ *  socket, and a send that fails keeps the sheet up. */
+function PairRow({ partner, online }: { partner: string; online: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <div className="play-ranked-row play-pair-row">
+      <span className="play-pair-label">Duo with {shortName(partner)}</span>
+      <button type="button" className="btn play-duo play-pair-leave" disabled={!online}
+              onClick={() => setAsking(true)}>Leave</button>
+      {asking ? (
+        <LeaveSheet context={{ kind: "duo", partner, opener: false }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { if (queue.leaveParty()) setAsking(false); }} />
+      ) : null}
+    </div>
+  );
+}
+
 /** Play's block, the same for guests and accounts: the Ranked / Casual
  *  switch, a wide gold Play that joins the queue in that mode (as the pair
- *  when one is formed and you lead it) and Duo, which opens the pair sheet.
+ *  when one is formed and you lead it) and Duo, which opens your own table
+ *  with the partner seat held; its code is the Duo's invite.
  *  At a table the panel takes the buttons' place on every screen: a room's
  *  (`room`, before its game) or the queue's. A guest sees a line under the
  *  buttons that offers sign-in. While sign-in is still loading nothing
@@ -190,27 +175,26 @@ export function RankedSection({ online, room = null }: {
         {announcer}
         <div className="play-section play-table">
           {modes}
-          <PartyChip />
           <TablePanel q={q} guarded={guarded} />
         </div>
       </>
     );
   }
+  // the leader searches for the pair; the other member has only the row
+  const partner = pair ? pair.members.find((m) => !m.you)?.name ?? null : null;
+  const pairRow = partner ? <PairRow partner={partner} online={online} /> : null;
   const body = q.inGame ? (
+    <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
+  ) : pairRow && !pair!.you_lead ? pairRow : (
     <>
-      <PartyChip />
-      <InGameBlock message={q.inGame.message} canReturn={q.inGame.canReturn} online={online} />
-    </>
-  ) : (
-    <>
-      <PartyChip />
+      {pairRow}
       {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}
       <div className="play-ranked-row">
         <button type="button" className={`btn gold play-main q-find${joining ? " searching" : ""}`}
                 disabled={disabled} aria-busy={joining || undefined} onClick={() => queue.join()}>
           {label}
         </button>
-        <button type="button" className="btn play-duo" disabled={!online || cooling} onClick={() => queue.openParty()}>
+        <button type="button" className="btn play-duo" disabled={disabled} onClick={() => queue.joinDuo()}>
           Duo
         </button>
       </div>

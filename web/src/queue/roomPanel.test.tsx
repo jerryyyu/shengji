@@ -165,7 +165,7 @@ describe("a room is a kind of the table panel on Play", () => {
     const casual = button("Casual", q(".play-mode")!)!;
     expect(casual.getAttribute("aria-pressed")).toBe("true");
     expect(casual.disabled).toBe(true);
-    expect(q("input[aria-label='Room or duo code']")).toBeNull();
+    expect(q("input[aria-label='Table code']")).toBeNull();
   });
 
   it("a ranked table has no Starting level row: it starts at 2", async () => {
@@ -514,7 +514,7 @@ describe("every Play table has a code", () => {
 
   it("a table code typed in the code box joins that table", async () => {
     await renderApp();
-    const input = q("input[aria-label='Room or duo code']") as HTMLInputElement;
+    const input = q("input[aria-label='Table code']") as HTMLInputElement;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, "4n5z"); input.dispatchEvent(new Event("input", { bubbles: true })); });
     click(button("Join"));
@@ -560,7 +560,7 @@ describe("a full room's dropped seats are taken only on purpose", () => {
       { seat: 3, name: "Li", is_bot: false, connected: true, team: 1, claimable: false, controller: "human", reserved_secs: null }],
   });
   const joinBox = (code: string) => {
-    const input = q("input[aria-label='Room or duo code']") as HTMLInputElement;
+    const input = q("input[aria-label='Table code']") as HTMLInputElement;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, code); input.dispatchEvent(new Event("input", { bubbles: true })); });
     click(button("Join"));

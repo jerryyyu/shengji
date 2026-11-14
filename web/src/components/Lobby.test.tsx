@@ -250,7 +250,7 @@ const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button"
 /** Join a room by its code: the lookup, the peek, then join_room under the
  *  player's name. */
 const joinCode = (code = "ABCD") => {
-  const box = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+  const box = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
   type(box, code);
   act(() => buttonNamed("Join").click());
   act(() => { for (const fn of [...link.listeners]) fn({ type: "code_kind", code, kind: "room" }); });
@@ -282,18 +282,18 @@ describe("signed in, the player plays under the account name", () => {
     answered();
     // Play joins the ranked queue with no sheet in between
     act(() => buttonNamed("Play").click());
-    expect(queue.view.sheet).toBeNull();
+    expect(document.querySelector(".q-sheet")).toBeNull();
     expect(sent.map((m) => (m as { type: string }).type)).toEqual(["code_lookup", "peek_room", "join_room", "queue_join"]);
     expect(sentName(0)).toBe("Captain");
     expect(sent[3]).toEqual({ type: "queue_join", mode: "ranked" });
   });
 
-  it("Duo opens the pair sheet", async () => {
+  it("Duo opens your own table as a Duo: no sheet and no Duo code", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: CAPTAIN };
     await render();
     act(() => buttonNamed("Duo").click());
-    expect(queue.view.sheet).toBe("party");
-    expect(sent).toEqual([{ type: "party_create" }]);
+    expect(document.querySelector(".q-sheet")).toBeNull();
+    expect(sent).toEqual([{ type: "queue_join", mode: "ranked", duo: true }]);
   });
 
   it("without a display name the first name is used, and a rename is followed at once", async () => {
@@ -456,7 +456,7 @@ describe("no connection", () => {
       expect(buttonNamed("Ranked").disabled).toBe(true);
       expect(buttonNamed("Casual").getAttribute("aria-pressed")).toBe("true");
       for (const label of ["Duo", "Join"]) expect(buttonNamed(label).disabled).toBe(true);
-      expect(host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!.disabled).toBe(true);
+      expect(host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!.disabled).toBe(true);
       expect(host.textContent).not.toContain("Play bots");
       expect(host.textContent).not.toContain("Create room");
       const play = buttonNamed("Play");
@@ -597,7 +597,7 @@ describe("starting a game waits for the server", () => {
 
   it("Join says Joining… while the room is looked up, and an error frees it", async () => {
     await render();
-    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "abcd");
     act(() => button(/^Join$/).click());
     expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }]);
@@ -617,12 +617,12 @@ describe("starting a game waits for the server", () => {
 
   it("a code that names nothing frees Join and says so until the box changes", async () => {
     await render();
-    const code = host.querySelector<HTMLInputElement>("input[aria-label='Room or duo code']")!;
+    const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "ZZZZ");
     act(() => button(/^Join$/).click());
     serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
     expect(button(/^Join$/).disabled).toBe(false);
-    expect(host.querySelector(".join-error")?.textContent).toBe("No game or pair has that code.");
+    expect(host.querySelector(".join-error")?.textContent).toBe("No table has that code.");
     // inline under the code box it answers, not in the lobby's error box or the connection pill
     expect(host.querySelector(".lobby-error")).toBeNull();
     const err = host.querySelector(".join-error")!;

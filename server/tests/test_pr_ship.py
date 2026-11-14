@@ -8,6 +8,8 @@ its arguments and copies any ``--body-file`` it is given.
 from __future__ import annotations
 
 import os
+import shlex
+import sys
 from pathlib import Path
 import subprocess
 
@@ -235,3 +237,64 @@ def test_default_gates_run_affected_tests_for_the_changed_paths(repo):
     assert done.returncode == 0, done.stderr
     assert "affected_tests.py --repo" in done.stdout and "gates rc=0" in done.stdout
     assert remote_head(repo) == git(repo.work, "rev-parse", "HEAD")
+
+
+def peer_push(r, tmp: Path, content: str) -> str:
+    """Push a divergent topic commit from a second clone; return its sha."""
+    peer = tmp / "peer"
+    subprocess.run(["git", "clone", "-q", str(r.origin), str(peer)], check=True)
+    for key, value in (("user.name", "p"), ("user.email", "p@example.invalid"), ("commit.gpgsign", "false")):
+        git(peer, "config", key, value)
+    git(peer, "switch", "-q", "-c", "topic")
+    (peer / "peer.txt").write_text(content)
+    git(peer, "add", "peer.txt")
+    git(peer, "commit", "-q", "-m", "peer work")
+    git(peer, "push", "-q", "--force", "origin", "topic")
+    return git(peer, "rev-parse", "HEAD")
+
+
+def gates_calling(r, tmp: Path, body: str) -> str:
+    """A gate command that runs a Python snippet with this test's helpers."""
+    script = tmp / "gate.py"
+    script.write_text(
+        "import sys, subprocess\nfrom pathlib import Path\n"
+        f"sys.path.insert(0, {str(Path(__file__).parent)!r})\n"
+        "from test_pr_ship import git, peer_push\n"
+        f"class R: pass\nr = R(); r.origin = Path({str(r.origin)!r}); r.work = Path({str(r.work)!r})\n"
+        f"tmp = Path({str(tmp)!r})\n" + body)
+    return f"{shlex.quote(sys.executable)} {shlex.quote(str(script))}"
+
+
+def test_a_peer_creating_the_branch_during_the_gates_is_not_overwritten(repo, tmp_path):
+    gates = gates_calling(repo, tmp_path, "print(peer_push(r, tmp, 'peer\\n'))\n")
+    done = ship(repo, "--title", "t", "--body-file", str(repo.body), PR_SHIP_GATES=gates)
+    assert done.returncode == 5, done.stdout + done.stderr
+    peer = remote_head(repo)
+    assert peer and peer != git(repo.work, "rev-parse", "HEAD")
+    assert "pr create" not in gh_calls(repo)
+
+
+def test_a_peer_push_during_the_gates_is_not_overwritten(repo, tmp_path):
+    assert ship(repo, "--title", "t", "--body-file", str(repo.body)).returncode == 0
+    git(repo.work, "commit", "-q", "--amend", "-m", "feature, amended")
+    gates = gates_calling(repo, tmp_path, "print(peer_push(r, tmp, 'peer\\n'))\n")
+    done = ship(repo, "--update-comment", GH_STUB_PR="12", PR_SHIP_GATES=gates)
+    assert done.returncode == 5, done.stdout + done.stderr
+    assert remote_head(repo) not in ("", git(repo.work, "rev-parse", "HEAD"))
+    assert "pr comment" not in gh_calls(repo)
+
+
+def test_a_commit_made_during_the_gates_is_refused(repo, tmp_path):
+    gates = gates_calling(repo, tmp_path,
+                          "(r.work / 'late.txt').write_text('x\\n')\n"
+                          "git(r.work, 'add', 'late.txt'); git(r.work, 'commit', '-q', '-m', 'late')\n")
+    done = ship(repo, "--title", "t", "--body-file", str(repo.body), PR_SHIP_GATES=gates)
+    assert done.returncode == 2 and "HEAD moved" in done.stderr
+    assert remote_head(repo) == "" and "pr create" not in gh_calls(repo)
+
+
+def test_a_tree_dirtied_during_the_gates_is_refused(repo):
+    done = ship(repo, "--title", "t", "--body-file", str(repo.body),
+                PR_SHIP_GATES=f"echo late > {repo.work / 'feature.txt'}")
+    assert done.returncode == 2 and "changed during the gates" in done.stderr
+    assert remote_head(repo) == "" and "pr create" not in gh_calls(repo)

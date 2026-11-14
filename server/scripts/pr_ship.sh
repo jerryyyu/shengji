@@ -84,6 +84,17 @@ run_step() {
 
 run_step git fetch --quiet "$remote"
 
+# The lease is the remote head as read before the rebase and the gates. A peer
+# push during the gates changes the remote, the lease no longer matches, and the
+# push is refused; the lease is never refreshed to a newly observed head. An
+# empty value means the branch must not exist yet.
+ref="refs/heads/$branch"
+old=""
+if [ "$dry" -eq 0 ]; then
+  old=$(git ls-remote "$remote" "$ref") || die 5 "cannot read $remote $ref"
+  old=${old%%[[:space:]]*}
+fi
+
 # Whether the PR exists is read before the gates, so a missing title or body
 # stops the run before anything is pushed.
 number=""
@@ -105,6 +116,9 @@ if [ "$rebase" -eq 1 ]; then
   fi
 fi
 
+# The commit the gates test is the commit that is pushed.
+tested=$(git rev-parse HEAD)
+
 if [ -n "${PR_SHIP_GATES:-}" ]; then
   gates_desc="bash -c $PR_SHIP_GATES"
 else
@@ -123,23 +137,30 @@ if [ "$dry" -eq 0 ]; then
   if [ "$gates_rc" -ne 0 ]; then die 4 "gates failed (rc=$gates_rc); nothing was pushed"; fi
 fi
 
-ref="refs/heads/$branch"
-old=$(git ls-remote "$remote" "$ref") || die 5 "cannot read $remote $ref"
-old=${old%%[[:space:]]*}
-local_head=$(git rev-parse HEAD)
-# The lease pins the remote's head as read just now; an empty value means the
-# branch must not exist yet.
-say "step: git push --force-with-lease=$ref:$old $remote HEAD:$ref (remote head ${old:-<none>})"
+# HEAD and the tree must be what the gates saw.
+if [ "$dry" -eq 0 ]; then
+  now=$(git rev-parse HEAD)
+  if [ "$now" != "$tested" ]; then
+    die 2 "refusing: HEAD moved from $tested to $now during the gates; nothing was pushed"
+  fi
+  dirty=$(git status --porcelain --untracked-files=normal)
+  if [ -n "$dirty" ]; then
+    printf '%s\n' "$dirty" >&2
+    die 2 "refusing: the work tree changed during the gates; nothing was pushed"
+  fi
+fi
+say "step: git push --force-with-lease=$ref:${old} $remote $tested:$ref (remote head at start ${old:-<none>})"
 if [ "$dry" -eq 1 ]; then
   say "step: create or update the PR for $branch against $pr_base at the pushed head"
   say "dry run: nothing fetched, rebased, tested, pushed or posted"
   exit 0
 fi
-git push --quiet --force-with-lease="$ref:$old" -u "$remote" "HEAD:$ref" || die 5 "push failed; the PR was not touched"
-head=$(git rev-parse HEAD)
+git push --quiet --force-with-lease="$ref:$old" "$remote" "$tested:$ref" || die 5 "push refused or failed (the remote may have moved since the start); the PR was not touched"
+git branch --quiet --set-upstream-to="$remote/$branch" "$branch" 2>/dev/null || true
+head=$tested
 pushed=$(git ls-remote "$remote" "$ref") || die 5 "cannot read back $remote $ref"
 pushed=${pushed%%[[:space:]]*}
-if [ "$pushed" != "$head" ] || [ "$head" != "$local_head" ]; then
+if [ "$pushed" != "$head" ]; then
   die 5 "remote $ref is ${pushed:-<missing>}, local HEAD is $head; the PR was not touched"
 fi
 say "pushed $head to $remote $ref"

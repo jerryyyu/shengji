@@ -45,12 +45,13 @@ interface RoundEndModalProps {
   clock?: number | null;
 }
 
-/** "You & Bot 2 win the round"; the members take a plural verb. */
+/** "You & Bot 2 win the round"; the members take a plural verb. A team
+ *  with no one seated is "We" or "They". */
 function TeamTitle({ team, state, what, verb = "win" }: {
   team: 0 | 1; state: GameState; what: string; verb?: "win" | "lose";
 }) {
   const members = teamMembers(team, state);
-  if (!members) return <>{teamWord(team, state)} {verb} {what}</>;
+  if (!members) return <>{teamSubject(team, state)} {verb} {what}</>;
   return <>{members} {verb} {what}</>;
 }
 

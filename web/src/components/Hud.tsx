@@ -39,8 +39,8 @@ function TrumpChip({ state }: { state: GameState }) {
   );
 }
 
-/** The table's notices and messages already told, so a remount of the
- *  table (How to play and back) tells none of them again. */
+/** The notice and message on the table now, once told, so a remount of the
+ *  table (How to play and back) tells neither again while it stands. */
 const told = { notice: "", message: "" };
 
 /** A failed throw and the engine's table messages are told once, as the one
@@ -51,7 +51,10 @@ function useTableToasts(state: GameState) {
   const notice = state.notice && state.phase === "play" ? state.notice : null;
   const noticeKey = notice ? `${state.room}:${notice.id}` : "";
   useEffect(() => {
-    if (!notice || told.notice === noticeKey) return;
+    // a round numbers its notices afresh, so once no notice stands the next
+    // one is news even with the same id; a remount while it stands is not
+    if (!notice) { told.notice = ""; return; }
+    if (told.notice === noticeKey) return;
     told.notice = noticeKey;
     const who = notice.seat === state.you
       ? "You"

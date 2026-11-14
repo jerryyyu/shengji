@@ -228,25 +228,27 @@ function useTableHaptics(state: GameState) {
   }, [hadResult, wonRound]);
 }
 
-/** The joins already told, by room and seat, so a remount of the table
- *  (How to play and back) tells none of them again. */
-const toldJoins = new Set<string>();
+/** The joins still outstanding at each room, once told, so a remount of the
+ *  table (How to play and back) tells none of them again. A join that is no
+ *  longer listed is forgotten, so the same join later is news. */
+const toldJoins = new Map<string, Set<string>>();
 
 /** An open-table newcomer is told once, as a toast: "Alice joins next trick"
  *  before the handover, "Alice joins next round" when seated at the round
  *  end. The newcomer itself is not told. */
 function useJoinToasts(state: GameState) {
   const lines = (state.joining ?? []).filter((j) => j.seat !== state.you && !state.joining_you);
-  const keys = lines.map((j) => `${state.room}:${j.seat}:${j.when}:${j.name}`);
+  const keys = lines.map((j) => `${j.seat}:${j.when}:${j.name}`);
   useEffect(() => {
+    const told = toldJoins.get(state.room) ?? new Set<string>();
+    toldJoins.set(state.room, new Set(keys));
     lines.forEach((j, i) => {
-      if (toldJoins.has(keys[i])) return;
-      toldJoins.add(keys[i]);
+      if (told.has(keys[i])) return;
       showToast(`${j.name} joins next ${j.when === "round" ? "round" : "trick"}`, { info: true, dot: (j.seat % 2) as 0 | 1 });
     });
     // told on a new key only; the lines are read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keys.join("|")]);
+  }, [state.room, keys.join("|")]);
 }
 
 /** The decision whose clock is running, kept across a remount of the

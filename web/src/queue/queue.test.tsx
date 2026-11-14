@@ -1529,6 +1529,20 @@ describe("open tables", () => {
     expect(q(".join-notice")).toBeNull();
   });
 
+  it("O2: a join that went and came back is told again", async () => {
+    await open();
+    const { clearToast } = await import("../toast");
+    tell({ type: "match_started", match_id: "m1", room: "OPEN", rated: true });
+    tell(state({ joining: [{ seat: 2, name: "Alice", when: "trick" }] }));
+    expect(q(".toast.at-table")?.textContent).toBe("Alice joins next trick");
+    act(() => { clearToast(); });
+    // Alice took her seat (or left); later the same seat opens to her again
+    tell(state({ joining: [] }));
+    expect(q(".toast")).toBeNull();
+    tell(state({ joining: [{ seat: 2, name: "Alice", when: "trick" }] }));
+    expect(q(".toast.at-table")?.textContent).toBe("Alice joins next trick");
+  });
+
   it("the game menu's Allow joiners switch, at ranked tables only", async () => {
     await open();
     tell({ type: "match_started", match_id: "m1", room: "OPEN", rated: true });

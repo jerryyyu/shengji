@@ -52,6 +52,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from ..engine.cards import RANKS
 from ..engine.round import HAND_SIZE, KITTY_SIZE
 from . import accounts
 
@@ -242,6 +243,16 @@ def round_ended(room: Any, result: Any) -> None:
 
 
 @_guarded
+def abort(room: Any) -> None:
+    """A start rolled back before the game began: no account keeps it. The
+    delete queues behind this game's link writes on the same worker."""
+    link: GameLink | None = getattr(room, "saved_game", None)
+    room.saved_game = None
+    if link is not None and link.stored:
+        _submit("forget_game", link.id)
+
+
+@_guarded
 def log_failed(room: Any) -> None:
     """A record of this game did not reach disk: its replay is incomplete."""
     link: GameLink | None = getattr(room, "saved_game", None)
@@ -429,10 +440,27 @@ def readable_rounds(game: dict) -> dict[int, int]:
     return dict(sorted(seats.items()))
 
 
-def _summary(game: dict, rounds: dict[int, int]) -> dict:
+def _add_rating(summary: dict, rated: dict | None) -> None:
+    """The viewer's own rating change in this game; an unrated game (unranked
+    room, or no rated round for this account) carries no rating keys."""
+    if not rated:
+        return
+    summary["rating_change"] = int(round(rated["rating_change"]))
+    summary["rating_after"] = int(round(rated["rating_after"]))
+    summary["rated_rounds"] = int(rated["rated_rounds"])
+
+
+def _current(names: list[str], current: dict[int, str] | None) -> list[str]:
+    """The logged names by seat, each seat an account held shown by that
+    account's current name instead."""
+    return [(current or {}).get(seat) or name for seat, name in enumerate(names)]
+
+
+def _summary(game: dict, rounds: dict[int, int],
+             current: dict[int, str] | None = None) -> dict:
     return {"id": game["id"], "room_code": game["room_code"],
             "started_at": game["started_at"], "ended_at": game["ended_at"],
-            "seat": rounds[max(rounds)], "players": _first_names(game),
+            "seat": rounds[max(rounds)], "players": _current(_first_names(game), current),
             "rounds": list(rounds), "final_levels": game["final_levels"],
             "games_won": game["games_won"], "incomplete": bool(game["incomplete"])}
 
@@ -472,15 +500,35 @@ def _result(rec: dict) -> dict:
     return {k: rec[k] for k in PUBLIC_KEYS["round_end"] if k in rec}
 
 
+def _level_and_banker(records: list[dict]) -> dict:
+    """The rank the round was played at and its banker seat. A first round
+    names its banker only when trump is fixed, so the trump record wins."""
+    out: dict = {}
+    for kind in ("round_start", "trump"):
+        rec = next((r for r in records if r["e"] == kind), None)
+        if rec is None:
+            continue
+        rank = rec.get("trump_rank", rec.get("rank"))
+        if isinstance(rank, str):
+            out["level"] = rank
+        if isinstance(rec.get("banker"), int):
+            out["banker"] = rec["banker"]
+    return out
+
+
 # The blocking bodies of the endpoints; each runs on a worker thread.
 def _list(user_id: int, before: tuple[int, str] | None, limit: int) -> dict:
     games = accounts.STORE.list_games(user_id, before=before, limit=limit + 1)
     more = len(games) > limit
+    current = accounts.STORE.current_seat_names([g["id"] for g in games[:limit]], 1)
     out = []
     for game in games[:limit]:
         rounds = readable_rounds(game)
         if rounds:
-            out.append(_summary(game, rounds))
+            out.append(_summary(game, rounds, current.get(game["id"])))
+    rated = accounts.STORE.game_ratings(user_id, [g["id"] for g in out])
+    for summary in out:
+        _add_rating(summary, rated.get(summary["id"]))
     return {"games": out,
             "next_before": accounts.Store.game_cursor(games[limit - 1]) if more else None}
 
@@ -501,19 +549,67 @@ def _detail(user_id: int, game_id: str) -> dict | None:
         return None
     game, rounds = found
     seg = _segment(game)
-    out = _summary(game, rounds)
+    out = _summary(game, rounds,
+                   accounts.STORE.current_seat_names([game["id"]], 1).get(game["id"]))
+    _add_rating(out, accounts.STORE.game_ratings(user_id, [game["id"]]).get(game["id"]))
+    deltas = accounts.STORE.game_round_ratings(user_id, game["id"])
     results = []
     for n, seat in rounds.items():
         if n not in seg.rounds:
             out["incomplete"] = True
             continue
-        end = next((r for r in _round_records(game, seg, n) if r["e"] == "round_end"), None)
+        records = _round_records(game, seg, n)
+        end = next((r for r in records if r["e"] == "round_end"), None)
         if end is not None:
-            results.append({"round": n, "seat": seat, "result": _result(end)})
+            row = {"round": n, "seat": seat, "result": _result(end)}
+            row.update(_level_and_banker(records))
+            if n in deltas:
+                row["rating_delta"] = int(round(deltas[n]))
+            results.append(row)
     if seg.truncated:
         out["incomplete"] = True
     out["round_results"] = results
     return out
+
+
+def resume_point(user_id: int, game_id: str) -> dict | None:
+    """Where a new table continuing one of this account's saved games
+    starts: the account's seat (as the game list shows it), and both teams'
+    levels and the next banker from the game's latest logged ``round_end``.
+    None when the game is not this account's to read, when the summary has
+    no levels (a game no round of which finished), when the log no longer
+    holds a finished round, or when the latest state cannot be verified: a
+    game whose log missed a record (``incomplete``) may lack its latest
+    ``round_end``, and an older one would silently roll the game back, so
+    the latest logged round end must also agree with the stored summary."""
+    found = _visible(user_id, game_id)
+    if found is None:
+        return None
+    game, rounds = found
+    stored = teams_levels(game["final_levels"])
+    if stored is None or game.get("incomplete"):
+        return None
+    seg = _segment(game)
+    for n in sorted(seg.rounds, reverse=True):
+        end = next((r for r in _round_records(game, seg, n) if r["e"] == "round_end"), None)
+        if end is None:
+            continue
+        levels = teams_levels(end.get("new_levels"))
+        banker = end.get("next_banker")
+        if levels is None or not isinstance(banker, int) or not 0 <= banker < 4:
+            return None
+        if levels != stored or end.get("games_won") != game.get("games_won"):
+            return None
+        return {"seat": rounds[max(rounds)], "levels": levels, "banker": banker}
+    return None
+
+
+def teams_levels(value: Any) -> list[str] | None:
+    """``[team 0, team 1]`` ranks, or None unless both are known ranks."""
+    if (isinstance(value, list) and len(value) == 2
+            and all(isinstance(v, str) and v in RANKS for v in value)):
+        return list(value)
+    return None
 
 
 def _round(user_id: int, game_id: str, n: int) -> dict | None:
@@ -529,8 +625,10 @@ def _round(user_id: int, game_id: str, n: int) -> dict | None:
     seat = rounds[n]
     start = next((r for r in records if r["e"] == "round_start"), None)
     finished, events = filter_round(records, seat)
+    current = accounts.STORE.current_seat_names([game["id"]], n if start else 1)
     return {"game_id": game["id"], "round": n, "seat": seat,
-            "players": _player_names(start) if start else _first_names(game),
+            "players": _current(_player_names(start) if start else _first_names(game),
+                                current.get(game["id"])),
             "finished": finished, "events": events}
 
 

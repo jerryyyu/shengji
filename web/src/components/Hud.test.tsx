@@ -126,6 +126,33 @@ describe("failed-throw notice", () => {
     view.unmount();
   });
 
+  it("closes when the round ends, even if no later trick cleared it", () => {
+    const notice = failedThrow(4);
+    const view = render(makeState({ notice }));
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, phase: "round_end" }));
+    expect(view.host.querySelector(".hud-notice")).toBeNull();
+    view.unmount();
+  });
+
+  it("goes away by itself once the trick after the failed throw is over", () => {
+    const trickA = { leader: 0, plays: [], winner: 0 } as unknown as GameState["last_trick"];
+    const trickB = { leader: 1, plays: [], winner: 1 } as unknown as GameState["last_trick"];
+    const trickC = { leader: 2, plays: [], winner: 2 } as unknown as GameState["last_trick"];
+    const notice = failedThrow(3);
+    const view = render(makeState({ notice, last_trick: trickA }));
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickA }));     // more plays in the same trick
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickB }));     // the throw's trick ends
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.rerender(makeState({ notice, last_trick: trickC }));     // one more trick ends
+    expect(view.host.querySelector(".hud-notice")).toBeNull();
+    view.rerender(makeState({ notice: failedThrow(4), last_trick: trickC }));   // a new failed throw shows
+    expect(view.host.querySelector(".hud-notice")).not.toBeNull();
+    view.unmount();
+  });
+
   it("does not double up the one-play message with the notice", () => {
     const view = render(makeState({
       notice: failedThrow(),
@@ -140,6 +167,15 @@ describe("failed-throw notice", () => {
     const view = render(makeState({ message: "Robin declared Hearts" }));
     expect(view.host.querySelector(".hud-message")!.textContent).toBe("Robin declared Hearts");
     view.unmount();
+  });
+
+  it("marks a declaration message, which the phone tells only by the tag under the cards", () => {
+    const view = render(makeState({ message: "Seat 1 declared H2" }));
+    expect(view.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(true);
+    view.unmount();
+    const other = render(makeState({ message: "Robin declared Hearts" }));
+    expect(other.host.querySelector(".hud-message")!.classList.contains("declare-message")).toBe(false);
+    other.unmount();
   });
 });
 
@@ -191,13 +227,13 @@ describe("level chip", () => {
     try {
       const view = render(makeState({ levels: ["2", "2"] }));
       const chip = () => view.host.querySelector(".level-chip.team0")!;
-      expect(chip().textContent).toContain("Lv 2");
+      expect(chip().textContent).toContain("Us 2");
       expect(chip().classList.contains("level-up")).toBe(false);
       view.rerender(makeState({ levels: ["5", "2"] }));
       expect(chip().classList.contains("level-up")).toBe(true);
       expect(view.host.querySelector(".level-chip.team1")!.classList.contains("level-up")).toBe(false);
       act(() => { vi.advanceTimersByTime(DUR.count + 50); });
-      expect(chip().textContent).toContain("Lv 5");
+      expect(chip().textContent).toContain("Us 5");
       act(() => { vi.advanceTimersByTime(DUR.pulse); });
       expect(chip().classList.contains("level-up")).toBe(false);
       view.unmount();
@@ -213,12 +249,122 @@ describe("level chip", () => {
       const view = render(makeState({ levels: ["2", "2"], attacker_points: 0 }));
       view.rerender(makeState({ levels: ["K", "2"], attacker_points: 35 }));
       const chip = view.host.querySelector(".level-chip.team0")!;
-      expect(chip.textContent).toContain("Lv K");
+      expect(chip.textContent).toContain("Us K");
       expect(chip.classList.contains("level-up")).toBe(false);
       expect(view.host.querySelector(".points-big")!.textContent).toBe("35");
       view.unmount();
     } finally {
       window.matchMedia = mm;
     }
+  });
+});
+
+describe("games score", () => {
+  it("is absent until a game is won, then reads Games Us–Them with your team first", () => {
+    const view = render(makeState());
+    expect(view.host.querySelector(".games-chip")).toBeNull();
+    expect(view.host.textContent).not.toContain("Games");
+    view.rerender(makeState({ games_won: [1, 0] }));
+    const chip = () => view.host.querySelector(".games-chip")!;
+    expect(chip().textContent).toBe("Games 1–0");
+    expect(chip().getAttribute("aria-label")).toBe("Games: Us 1, Them 0");
+    // the level chips carry no star of their own
+    expect(view.host.querySelector(".level-chip.team0")!.textContent).not.toMatch(/★/);
+    // seen from the other team, Us is that team
+    view.rerender(makeState({ you: 1, games_won: [1, 0],
+                              players: [makePlayer({ seat: 0, name: "Robin", team: 0 }),
+                                        makePlayer({ seat: 1, name: "You", team: 1 })] }));
+    expect(chip().textContent).toBe("Games 0–1");
+    expect(chip().getAttribute("aria-label")).toBe("Games: Us 0, Them 1");
+    view.unmount();
+  });
+
+  it("sits with the levels, after the other team's chip", () => {
+    const view = render(makeState({ games_won: [2, 3] }));
+    const group = view.host.querySelector(".level-chip.team1")!.parentElement!;
+    expect(group.lastElementChild?.className).toContain("games-chip");
+    view.unmount();
+  });
+});
+
+describe("points pop", () => {
+  it("floats the gain by the counter when the attackers score, then goes", () => {
+    vi.useFakeTimers();
+    try {
+      const view = render(makeState({ attacker_points: 0 }));
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      view.rerender(makeState({ attacker_points: 10 }));
+      const pop = view.host.querySelector(".points-chip .points-pop");
+      expect(pop?.textContent).toBe("+10");
+      expect(pop?.getAttribute("aria-hidden")).toBe("true");
+      view.rerender(makeState({ attacker_points: 25 }));
+      expect(view.host.querySelector(".points-pop")?.textContent).toBe("+15");
+      act(() => { vi.advanceTimersByTime(1200); });
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      // a new round's reset is not a gain
+      view.rerender(makeState({ attacker_points: 0 }));
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows no float under reduced motion", () => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+    try {
+      const view = render(makeState({ attacker_points: 0 }));
+      view.rerender(makeState({ attacker_points: 20 }));
+      expect(view.host.querySelector(".points-pop")).toBeNull();
+      view.unmount();
+    } finally {
+      window.matchMedia = mm;
+    }
+  });
+});
+
+it("says plainly that no trump is declared yet, with no placeholder mark", () => {
+  const view = render(makeState({ trump: null, phase: "deal" }));
+  const chip = view.host.querySelector(".trump-chip.none")!;
+  expect(chip.querySelector(".trump-none-long")!.textContent).toBe("No trump yet");
+  expect(chip.querySelector(".trump-none-short")!.textContent).toBe("No trump");
+  expect(chip.textContent).not.toContain("?");
+  view.unmount();
+});
+
+describe("leaving a ranked table", () => {
+  it("warns a signed-in player about the result but gives a guest the casual warning", () => {
+    const signedIn = render(makeState({ matched: true }));
+    act(() => signedIn.host.querySelector<HTMLButtonElement>(".leave-btn")!.click());
+    expect(signedIn.host.querySelector("[role='alertdialog'] p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
+    signedIn.unmount();
+    const guest = render(makeState({ matched: true, guest: true }));
+    act(() => guest.host.querySelector<HTMLButtonElement>(".leave-btn")!.click());
+    // a guest sees no ranked words
+    expect(guest.host.querySelector("[role='alertdialog'] p")!.textContent)
+      .toBe("A bot takes your seat and the others keep playing.");
+    expect(guest.host.querySelector("[role='alertdialog']")!.textContent).not.toMatch(/rank|draw/i);
+    guest.unmount();
+  });
+});
+
+describe("the kitty's count", () => {
+  it("is marked for the phone's header only while the kitty is being buried", () => {
+    const view = render(makeState({ phase: "bury" }));
+    const chip = () => view.host.querySelector(".kitty-chip")!;
+    expect(chip().textContent).toBe("8");
+    expect(chip().classList.contains("burying")).toBe(true);
+    view.rerender(makeState({ phase: "play" }));
+    expect(chip().classList.contains("burying")).toBe(false);
+    view.unmount();
+  });
+
+  it("the phone's CSS hides it except during the bury", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
+    const phone = css.slice(css.indexOf(":where(.phone-landscape) {"));
+    expect(phone).toMatch(/\.kitty-chip,\s*\n\s*\.hud-bar \.mute-btn/);
+    expect(phone).toMatch(/\.hud-bar \.kitty-chip\.burying \{\s*\n\s*display: inline-flex;/);
   });
 });

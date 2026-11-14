@@ -1,0 +1,286 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import type { ChatMsg, GameState, StatePlayer } from "../protocol";
+import { clearMutes, setMuted } from "../chatMute";
+
+vi.mock("../native", () => ({ haptic: () => {} }));
+const link = vi.hoisted(() => ({
+  listeners: new Set<(m: unknown) => void>(),
+  history: [] as unknown[],
+}));
+vi.mock("../ws", () => ({
+  conn: {
+    status: "open",
+    generation: 1,
+    send: () => true,
+    subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
+    subscribeStatus: (fn: (s: string) => void) => { fn("open"); return () => {}; },
+    chatHistory: () => link.history.slice(),
+    reconnect: () => {},
+  },
+}));
+// the connection buffers a live line before telling subscribers, as ws.ts does
+const serverSays = <M extends { type: string }>(m: M) => act(() => {
+  if (m.type === "chat") link.history.push(m);
+  for (const fn of link.listeners) fn(m);
+});
+
+const { default: Table } = await import("./Table");
+const { placeBubble } = await import("./ChatBubbles");
+
+function player(seat: number): StatePlayer {
+  return { seat, name: ["Me", "Ann", "Bo", "Cy"][seat], is_bot: false, connected: true,
+    team: (seat % 2) as 0 | 1, cards_left: 25, is_banker: false, takeover_in: null,
+    controller: "human", reserved_for: null, reserved_secs: null };
+}
+function state(): GameState {
+  return {
+    type: "state", room: "T", you: 0, phase: "play", players: [0, 1, 2, 3].map(player),
+    hand: [], levels: ["2", "2"], games_won: [0, 0], banker: 1, trump: null, turn: 1,
+    declare_options: [], current_declaration: null, passed: [], trick: null, last_trick: null,
+    attacker_points: 0, kitty_count: 8, round_result: null, message: null, notice: null,
+  };
+}
+const line = (id: number, seat: number, text: string): ChatMsg =>
+  ({ type: "chat", id, room: "T", seat, name: seat < 0 ? "" : player(seat).name, text, t: 0 });
+
+beforeAll(() => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, value: () => {} });
+});
+
+let host: HTMLDivElement;
+let root: ReturnType<typeof createRoot>;
+beforeEach(() => {
+  vi.useFakeTimers();
+  link.history = [];
+  clearMutes();
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  vi.useRealTimers();
+});
+const render = () => act(() => root.render(<Table state={state()} />));
+const bubbles = () => [...host.querySelectorAll<HTMLButtonElement>(".chat-bubble")];
+const bubbleText = () => bubbles().map((b) => `${b.dataset.seat}:${b.textContent}`);
+const later = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+
+it("shows a live line at its seat for five seconds, in a polite live region", () => {
+  render();
+  serverSays(line(1, 1, "nice lead"));
+  expect(bubbleText()).toEqual(["1:Ann: nice lead"]);
+  expect(host.querySelector(".chat-bubbles")!.getAttribute("aria-live")).toBe("polite");
+  later(4900);
+  expect(bubbles()).toHaveLength(1);
+  later(100);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("replaces a seat's bubble with its next line and restarts the clock", () => {
+  render();
+  serverSays(line(1, 1, "first"));
+  later(3000);
+  serverSays(line(2, 1, "second"));
+  expect(bubbleText()).toEqual(["1:Ann: second"]);
+  later(3000);
+  expect(bubbleText()).toEqual(["1:Ann: second"]);
+  later(2000);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("shows several seats at once, your own line included", () => {
+  render();
+  serverSays(line(1, 1, "hi"));
+  serverSays(line(2, 2, "hello"));
+  serverSays(line(3, 0, "hey"));
+  expect(bubbleText()).toEqual(["1:Ann: hi", "2:Bo: hello", "0:You: hey"]);
+  expect(bubbles()[2].classList.contains("mine")).toBe(true);
+});
+
+it("pops nothing for a muted seat, a system line or replayed history", () => {
+  link.history = [line(1, 1, "buffered before the table")];
+  render();
+  expect(bubbles()).toHaveLength(0);
+  setMuted("T", 2, true);
+  serverSays(line(2, 2, "muted"));
+  serverSays(line(3, -1, "Cy joined"));
+  expect(bubbles()).toHaveLength(0);
+  // a reconnect: the snapshot, then a live echo of a line it already holds
+  serverSays({ type: "chat_history", room: "T", messages: [line(1, 1, "old"), line(4, 3, "older")] });
+  serverSays(line(4, 3, "older"));
+  expect(bubbles()).toHaveLength(0);
+  serverSays(line(5, 3, "fresh"));
+  expect(bubbleText()).toEqual(["3:Cy: fresh"]);
+});
+
+it("shows none while the panel is open and clears them when the launcher opens it", () => {
+  render();
+  serverSays(line(1, 1, "hello"));
+  act(() => host.querySelector<HTMLButtonElement>(".chat-launch")!.click());
+  const panel = host.querySelector(".chat-panel")!;
+  expect(panel.getAttribute("aria-hidden")).toBeNull();
+  expect(bubbles()).toHaveLength(0);
+  serverSays(line(2, 2, "while open"));
+  expect(bubbles()).toHaveLength(0);
+  // the line still reaches the panel
+  expect(panel.textContent).toContain("hello");
+});
+
+const panelShut = () => {
+  const panel = host.querySelector(".chat-panel");
+  return !panel || panel.getAttribute("aria-hidden") === "true";
+};
+
+it("a tap dismisses a bubble at once, leaves the panel shut and the badge as it was", () => {
+  render();
+  serverSays(line(1, 1, "tap me"));
+  serverSays(line(2, 2, "stay"));
+  const badge = () => host.querySelector(".chat-badge")?.textContent;
+  expect(badge()).toBe("2");
+  const ann = bubbles()[0];
+  expect(ann.getAttribute("aria-label")).toBe("Dismiss: Ann: tap me");
+  act(() => ann.click());
+  expect(bubbleText()).toEqual(["2:Bo: stay"]);
+  expect(panelShut()).toBe(true);
+  expect(badge()).toBe("2");
+  // the next line from that seat pops again, on a fresh clock
+  later(1000);
+  serverSays(line(3, 1, "again"));
+  expect(bubbleText()).toEqual(["2:Bo: stay", "1:Ann: again"]);
+  later(4500);
+  expect(bubbleText()).toEqual(["1:Ann: again"]);
+  // the dismissed line is still in the panel
+  act(() => host.querySelector<HTMLButtonElement>(".chat-launch")!.click());
+  expect(host.querySelector(".chat-panel")!.textContent).toContain("tap me");
+});
+
+const pointer = (el: Element, type: string, clientX: number) => act(() => {
+  el.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }));
+});
+// a pointer click as a browser fires it after pointerup; a keyboard one has detail 0
+const pointerClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+});
+const keyboardClick = (el: Element) => act(() => {
+  el.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 }));
+});
+
+it("a sideways swipe past 30 px dismisses a bubble", () => {
+  render();
+  serverSays(line(1, 1, "swipe me"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 120);
+  pointer(b, "pointerup", 140);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+  expect(host.querySelector(".chat-badge")!.textContent).toBe("1");
+});
+
+it("a short drag snaps back and keeps the bubble, its trailing click included", () => {
+  render();
+  serverSays(line(1, 1, "drag me"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 115);
+  expect(b.style.transform).toBe("translateX(15px)");
+  pointer(b, "pointerup", 120);
+  pointerClick(b);
+  expect(bubbles()).toEqual([b]);
+  expect(b.style.transform).toBe("");
+  // the next plain tap still dismisses
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointerup", 102);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("a tap with its pointer events dismisses a bubble", () => {
+  render();
+  serverSays(line(1, 1, "tap"));
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 103);
+  pointer(b, "pointerup", 103);
+  pointerClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("a keyboard activation dismisses a bubble, even right after a short drag", () => {
+  render();
+  serverSays(line(1, 1, "one"));
+  serverSays(line(2, 2, "two"));
+  keyboardClick(bubbles()[0]);
+  expect(bubbleText()).toEqual(["2:Bo: two"]);
+  const b = bubbles()[0];
+  pointer(b, "pointerdown", 100);
+  pointer(b, "pointermove", 115);
+  pointer(b, "pointerup", 115);
+  keyboardClick(b);
+  expect(bubbles()).toHaveLength(0);
+});
+
+it("captures the pointer, and a lost capture or a cancel ends the swipe and clears its offset", () => {
+  const capture = vi.fn();
+  Object.defineProperty(Element.prototype, "setPointerCapture", { configurable: true, value: capture });
+  try {
+    render();
+    serverSays(line(1, 1, "hold"));
+    const b = bubbles()[0];
+    pointer(b, "pointerdown", 100);
+    expect(capture).toHaveBeenCalledWith(1);
+    pointer(b, "pointermove", 125);
+    // released outside the window: the capture is lost, no pointerup arrives here
+    pointer(b, "lostpointercapture", 125);
+    expect(b.style.transform).toBe("");
+    // a stray pointerup afterwards is not a swipe
+    pointer(b, "pointerup", 200);
+    expect(bubbles()).toEqual([b]);
+    pointer(b, "pointerdown", 100);
+    pointer(b, "pointermove", 140);
+    pointer(b, "pointercancel", 140);
+    expect(b.style.transform).toBe("");
+    pointer(b, "pointerup", 200);
+    expect(bubbles()).toEqual([b]);
+  } finally {
+    delete (Element.prototype as { setPointerCapture?: unknown }).setPointerCapture;
+  }
+});
+
+it("Escape in the bubble layer dismisses every bubble", () => {
+  render();
+  serverSays(line(1, 1, "one"));
+  serverSays(line(2, 3, "two"));
+  const b = bubbles()[0];
+  b.focus();
+  act(() => { b.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(bubbles()).toHaveLength(0);
+  expect(panelShut()).toBe(true);
+});
+
+it("keeps counting a bubbled line as unread until the panel opens", () => {
+  render();
+  serverSays(line(1, 1, "count me"));
+  expect(host.querySelector(".chat-badge")!.textContent).toBe("1");
+});
+
+it("places a bubble beside its seat, never over a card", () => {
+  const bounds = { x: 0, y: 0, w: 800, h: 400 };
+  const seat = { x: 200, y: 50, w: 60, h: 20 };
+  const size = { w: 100, h: 24 };
+  // open felt to the right: toward the table
+  expect(placeBubble(seat, size, ["right", "left"], bounds, [[]])).toMatchObject({ side: "right", x: 268 });
+  // a card there: the outer side instead
+  const card = { x: 280, y: 40, w: 40, h: 60 };
+  expect(placeBubble(seat, size, ["right", "left"], bounds, [[card]])).toMatchObject({ side: "left", x: 92 });
+  // nowhere clear of cards: no bubble
+  const wall = { x: 0, y: 0, w: 800, h: 400 };
+  expect(placeBubble(seat, size, ["right", "left"], bounds, [[wall]])).toBeNull();
+});

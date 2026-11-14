@@ -54,6 +54,8 @@ export interface TableView {
   waitingFor: string[];
   /** The empty seats held for a Duo opener's friend. */
   heldSeats: number[];
+  /** When the opener's Start now unlocks, local ms; null from an older server. */
+  startNowAt: number | null;
 }
 
 /** An open table offered to you, times in local ms; `pick` is the seat you
@@ -694,6 +696,14 @@ export class QueueStore {
     if (this.send({ type: "table_start", ...this.seq() })) this.set({ pending: "start" });
   }
 
+  /** The opener's Start now at a waiting table: it starts at once with
+   *  bots. The server refuses it before `start_now_at`. */
+  tableStartNow(): void {
+    const t = this.view.table;
+    if (!t || !this.view.opener || this.view.pending !== null) return;
+    if (this.send({ type: "table_start_now", ...this.seq() })) this.set({ pending: "start" });
+  }
+
   /** A single at a shared table moves to an empty seat before its Start;
    *  the server's queue_state shows the new seats. */
   tableMove(seat: number): void {
@@ -765,6 +775,7 @@ export class QueueStore {
       seats: t.seats.map((s) => (s ? { ...s, since: s.since !== null ? this.local(s.since) : null } : null)),
       timer: t.timer ? { ...t.timer, at: this.local(t.timer.at) } : null,
       heldSeats: t.held_seats ?? (t.held_seat != null ? [t.held_seat] : []),
+      startNowAt: t.start_now_at != null ? this.local(t.start_now_at) : null,
     };
   }
 

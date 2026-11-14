@@ -339,13 +339,12 @@ describe("leaving a ranked table", () => {
   it("warns a signed-in player about the result but gives a guest the casual warning", () => {
     const signedIn = render(makeState({ matched: true }));
     leave(signedIn.host);
-    expect(signedIn.host.querySelector("[role='alertdialog'] p")!.textContent).toBe("A bot takes your seat. This round counts as at best a draw for you.");
+    expect(signedIn.host.querySelector("[role='alertdialog'] p")!.textContent).toBe("This round counts as at best a draw.");
     signedIn.unmount();
     const guest = render(makeState({ matched: true, guest: true }));
     leave(guest.host);
     // a guest sees no ranked words
-    expect(guest.host.querySelector("[role='alertdialog'] p")!.textContent)
-      .toBe("A bot takes your seat and the others keep playing.");
+    expect(guest.host.querySelector("[role='alertdialog'] p")).toBeNull();
     expect(guest.host.querySelector("[role='alertdialog']")!.textContent).not.toMatch(/rank|draw/i);
     guest.unmount();
   });
@@ -430,6 +429,20 @@ describe("the header holds the game's state only", () => {
     };
     expect(rows(0)).toContain("Allow joiners");
     expect(rows(1)).not.toContain("Allow joiners");
+  });
+
+  it("Allow joiners is at every table that takes joiners: casual and unmatched too, never a test room", () => {
+    const rows = (over: Record<string, unknown>) => {
+      const view = render(makeState({ opener: 0, ...over }));
+      act(() => view.host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
+      const text = [...view.host.querySelectorAll(".hud-menu-row")].map((r) => r.textContent);
+      view.unmount();
+      return text;
+    };
+    expect(rows({ matched: false, allow_joiners: false })).toContain("Allow joiners");
+    expect(rows({ matched: false, ranked: true, allow_joiners: true })).toContain("Allow joiners");
+    // the server leaves the flag off a room that never seats a stranger
+    expect(rows({ matched: true })).not.toContain("Allow joiners");
   });
 
   it("the stylesheet keeps no rules for the chips that left the bar", async () => {

@@ -108,7 +108,7 @@ describe("round end modal", () => {
     // the score sits in the main view, outside Details
     const games = host.querySelector(".result-games")!;
     expect(games.closest("details")).toBeNull();
-    expect(games.textContent).toBe("Games: Us 1 · Them 0Levels restart at 2.");
+    expect(games.textContent).toBe("Games: Us 1 · Them 0");
     const buttons = [...host.querySelectorAll("button")].map((b) => b.textContent);
     expect(buttons).toContain("Next game");
     expect(buttons).not.toContain("Next round");
@@ -123,10 +123,10 @@ describe("round end modal", () => {
     renderModal(makeResult({ point_scored: true, games_won: [2, 3], winner_team: 1 }),
                 { ...state, you: 1 });
     expect(host.querySelector("h2")!.textContent).toBe("You & Ada win the game");
-    expect(host.querySelector(".result-games > span")!.textContent).toBe("Games: Us 3 · Them 2");
+    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 3 · Them 2");
     renderModal(makeResult({ point_scored: true, games_won: [0, 1], winner_team: 1 }));
     expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the game");
-    expect(host.querySelector(".result-games > span")!.textContent).toBe("Games: Us 0 · Them 1");
+    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 0 · Them 1");
   });
 
   it("an ordinary round keeps Next round and no games score", () => {
@@ -269,7 +269,7 @@ describe("round end rating line", () => {
     host.remove();
     renderModal(makeResult({ point_scored: true, games_won: [1, 0],
                              rating: { rating: 1688, delta: -4, game_delta: 31 } }), ranked);
-    expect(host.querySelector(".result-games .result-rating")!.textContent).toBe(" · +31");
+    expect(host.querySelector(".result-line .result-rating")!.textContent).toBe(" · +31");
   });
 
 
@@ -462,10 +462,27 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     expect(host.querySelector("details")).toBeNull();
   });
 
-  it("a won game keeps the games score on top, with the level restart under it", () => {
-    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
-    expect(host.querySelector(".result-line")).toBeNull();
-    const head = host.querySelector(".result-headline")!;
-    expect([...head.children].map((c) => c.textContent)).toEqual(["Games: Us 1 · Them 0", "Levels restart at 2."]);
+  it("a won game is the round-end card: one result line, then the games score as a label, then Details", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0], attacker_points: 35, kitty_cards: kitty }));
+    const card = host.querySelector(".modal.round-end")!;
+    const order = [...card.children].map((c) => c.className.split(" ")[0] || c.tagName);
+    expect(order).toEqual(["game-won-crown", "modal-title", "result-headline", "result-games", "result-details",
+                           "round-end-actions"]);
+    expect(host.querySelectorAll(".result-headline")).toHaveLength(1);
+    expect(host.querySelector(".result-line > span")!.textContent).toBe("They took 35 of 80. Levels restart at 2.");
+    expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 1 · Them 0");
+  });
+
+  it("Next game and Leave game share one row; on a timed table Next game carries the same ring as Next round", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }), ranked, 20);
+    const row = host.querySelector(".round-end-actions")!;
+    expect([...row.querySelectorAll("button")].map((b) => b.textContent?.replace(/^\d+/, "")))
+      .toEqual(["Next game", "Leave game"]);
+    const gameRing = row.querySelector(".btn.primary .timer-ring")?.outerHTML;
+    expect(gameRing).toBeDefined();
+    act(() => root.unmount());
+    host.remove();
+    renderModal(makeResult(), ranked, 20);
+    expect(host.querySelector(".round-end-actions .btn.primary .timer-ring")?.outerHTML).toBe(gameRing);
   });
 });

@@ -307,6 +307,59 @@ def test_every_start_tapped_starts_the_table_with_bots_and_a_newcomer_keeps_the_
     run(go())
 
 
+def test_the_openers_start_now_unlocks_30_s_after_the_latest_arrival_and_starts_with_bots():
+    async def go():
+        env = Env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")   # no bot timer: only Start now starts it
+        formed = env.clock.t
+        table = env.conns[2].last("queue_state")["table"]
+        assert table["start_now_at"] == formed + mm.START_NOW_SECS == formed + 30.0
+        env.clock.advance(29.9)
+        await env.send(1, "table_start_now")
+        assert env.conns[1].last("error")["code"] == "too_soon" and env.started == []
+        env.clock.advance(0.1)
+        await env.send(2, "table_start_now")             # only the opener
+        assert env.conns[2].last("error")["code"] == "not_opener" and env.started == []
+        await env.send(1, "table_start_now")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, None, 2, None]   # bots in the empty seats
+    run(go())
+
+
+def test_a_new_arrival_restarts_the_start_now_wait_and_a_move_does_not():
+    async def go():
+        env = Env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        env.clock.advance(25)
+        await env.join(3)
+        await env.send(3, "queue_wait_players")
+        arrived = env.clock.t
+        assert env.conns[1].last("queue_state")["table"]["start_now_at"] == arrived + 30.0
+        env.clock.advance(10)                            # 35 s after the table formed
+        await env.send(1, "table_start_now")
+        assert env.conns[1].last("error")["code"] == "too_soon"
+        await env.send(3, "table_move", seat=3)
+        assert env.conns[1].last("queue_state")["table"]["start_now_at"] == arrived + 30.0
+        env.clock.advance(20)
+        await env.send(1, "table_start_now")
+        (_, slots), = env.started
+        assert sorted(humans_of(slots)) == [1, 2, 3] and len(humans_of(slots)) == 3
+    run(go())
+
+
+def test_start_now_needs_a_waiting_table():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.send(1, "table_start_now")
+        assert env.conns[1].last("error")["code"] == "not_seated" and env.started == []
+    run(go())
+
+
 def test_the_table_timer_is_the_earliest_switch_off_players_and_switch_on_players_ride_it():
     async def go():
         env = Env()

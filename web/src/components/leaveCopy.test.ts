@@ -28,29 +28,30 @@ describe("one consequence line per place a leave starts", () => {
       .toBe("The table stays open; Alice can start it.");
     expect(line({ kind: "room", others: ["Alice"], host: false })).toBe("The table stays open.");
     expect(line({ kind: "room", others: [], host: true })).toBe("The room closes.");
-    expect(leaveCopy({ kind: "room", others: [], host: true }).title).toBe("Leave the room?");
+    for (const others of [[], ["Alice"]]) {
+      expect(leaveCopy({ kind: "room", others, host: true }).title).toBe("Leave the table?");
+    }
   });
 
-  it("a ranked round keeps 'at best a draw'; a casual one hands the seat to a bot", () => {
-    expect(line({ kind: "game", ranked: true }))
-      .toBe("A bot takes your seat. This round counts as at best a draw for you.");
-    expect(line({ kind: "game", ranked: false })).toBe("A bot takes your seat and the others keep playing.");
+  it("a ranked round keeps 'at best a draw'; a casual one is free and has no line", () => {
+    expect(line({ kind: "game", ranked: true })).toBe("This round counts as at best a draw.");
+    expect(line({ kind: "game", ranked: false })).toBeNull();
   });
 
   it("a guest sees no ranked words", () => {
     for (const joined of [false, true]) {
       for (const betweenRounds of [false, true]) {
-        expect(line({ kind: "game", ranked: true, guest: true, betweenRounds }, joined)).not.toMatch(/rank|draw/i);
+        expect(line({ kind: "game", ranked: true, guest: true, betweenRounds }, joined) ?? "").not.toMatch(/rank|draw/i);
       }
     }
-    expect(line({ kind: "game", ranked: true, guest: true }))
-      .toBe("A bot takes your seat and the others keep playing.");
+    expect(line({ kind: "game", ranked: true, guest: true })).toBeNull();
   });
 
   it("a round joined at a ranked table costs the 1-minute wait; at a casual one it is free", () => {
-    expect(line({ kind: "game", ranked: true }, true)).toBe("You'll wait 1 minute to play again.");
-    expect(line({ kind: "game", ranked: true, guest: true }, true)).toBe("You'll wait 1 minute to play again.");
-    expect(line({ kind: "game", ranked: false }, true)).toBe("A bot takes your seat and the others keep playing.");
+    const wait = "Stay until this round ends, or wait 1 minute to play again.";
+    expect(line({ kind: "game", ranked: true }, true)).toBe(wait);
+    expect(line({ kind: "game", ranked: true, guest: true }, true)).toBe(wait);
+    expect(line({ kind: "game", ranked: false }, true)).toBeNull();
   });
 
   it("a free leave never says Free: a round end keeps its result, and practice says the game ends", () => {

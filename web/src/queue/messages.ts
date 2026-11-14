@@ -29,6 +29,9 @@ export type QueueClientMsg = { name?: string } & (
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
    *  since changed is refused with `panel_changed`. */
   | { type: "table_start"; panel_seq?: number }
+  /** The opener's Start now at a waiting table, from its `start_now_at`:
+   *  the table starts at once with bots (`not_opener`, `too_soon`). */
+  | { type: "table_start_now"; panel_seq?: number }
   | { type: "queue_start_bots"; panel_seq?: number }
   /** Move yourself to an empty seat at your waiting table (singles only,
    *  before your Start). */
@@ -167,6 +170,9 @@ export interface WaitingTableMsg {
   code?: string;
   /** The opener's seat. */
   opener?: number;
+  /** When the opener's Start now unlocks (server clock, seconds): 30 s
+   *  after the latest person sat. */
+  start_now_at?: number;
   /** The empty seat held for the table opener's friend (at most one; null
    *  when none), also as a list. */
   held_seat?: number | null;
@@ -292,7 +298,7 @@ export type QueueErrorCode =
   | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed"
   | "pair_seats_fixed" | "already_ready" | "panel_changed" | "bad_mode"
   | "table_not_found" | "own_table" | "table_full" | "not_opener"
-  | "ranked_level_fixed" | "bad_setting";
+  | "ranked_level_fixed" | "bad_setting" | "too_soon";
 
 export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "signed_in_only", "in_room", "rate_limited", "not_leader",
@@ -302,5 +308,5 @@ export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
   "not_in_party", "cooldown", "no_offer", "bad_seat", "seat_taken", "table_closed",
   "pair_seats_fixed", "already_ready", "panel_changed", "bad_mode",
   "table_not_found", "own_table", "table_full", "not_opener",
-  "ranked_level_fixed", "bad_setting",
+  "ranked_level_fixed", "bad_setting", "too_soon",
 ]);

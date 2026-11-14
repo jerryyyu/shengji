@@ -182,7 +182,7 @@ export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): P
   if (p && p.tables >= 1) {
     const ranked = p.ranked ?? 0;
     const casual = p.casual ?? 0;
-    const playing = { text: ` · ${n(p.playing, "person", "people")} playing` };
+    const playing = { text: ` · ${p.playing} playing` };
     if (ranked >= 1 && casual >= 1) {
       return [{ text: `${n(p.tables, "table has", "tables have")} a seat · ` },
               { text: `${ranked} ranked`, hl: mode === "ranked" }, { text: ", " },

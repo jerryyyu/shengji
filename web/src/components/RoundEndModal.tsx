@@ -163,17 +163,15 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
             : <TeamTitle team={result.winner_team} state={state} what={what} />}
         </h2>
 
+        {/* one result line, the same on every round end; a won game says the
+            levels restart where another round says the climb */}
+        <p className="result-headline result-line">
+          <span>{took} {gameWon ? `Levels restart at ${result.new_levels[us]}` : climb}{ratingBit}.</span>
+          <span className="result-next-banker">{nextBankerText(state, result)}.</span>
+        </p>
         {gameWon ? (
-          <p className="result-headline result-games">
-            <span>Games: Us {result.games_won[us]} · Them {result.games_won[them]}{ratingBit}</span>
-            <span className="result-next-banker">Levels restart at {result.new_levels[us]}.</span>
-          </p>
-        ) : (
-          <p className="result-headline result-line">
-            <span>{took} {climb}{ratingBit}.</span>
-            <span className="result-next-banker">{nextBankerText(state, result)}.</span>
-          </p>
-        )}
+          <p className="result-games">Games: Us {result.games_won[us]} · Them {result.games_won[them]}</p>
+        ) : null}
         {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
 
         {hasDetails ? (

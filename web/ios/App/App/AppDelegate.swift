@@ -7,8 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // A hand can sit idle for a while between turns; keep the screen awake while the app is open.
-        application.isIdleTimerDisabled = true
+        // The screen stays awake only at the table (ShengjiShell.setGameMode).
         return true
     }
 

@@ -424,6 +424,9 @@ other socket with `account_in_game`.
   `{id, seat, name, text, t}`), replacing what you hold: when you sit down at
   a table that has some, when a newcomer's lines from alone merge in (to
   everyone there; every line then takes a new id), or when you come back.
+  A merged line from someone no longer at the table keeps its `name` and has
+  `seat: null` (an ordinary named line, never yours); the room's opening
+  `chat_history` carries it the same way.
 - `table_moved {name, seat, your_team, by?, you?, team_changed?}`: to
   everyone else at your waiting table when `name` moved to `seat`;
   `your_team` says whether that seat is on your team. When the opener moved

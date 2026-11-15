@@ -64,8 +64,8 @@ const LEAVE_SITES = [
   "components/OfflinePlay.tsx", // leaving the offline table
   "components/RoundEndModal.tsx", // Leave game on the round end
   "components/Table.tsx", // Leave on the joining-after-this-trick pill
-  "queue/TablePanel.tsx", // the panel's Leave (queue and room kinds)
   "queue/store.ts", // queue.leave(): the queue's own leave, which the queue sites call
+  "queue/tableModel.ts", // the panel's Leave, through either backend's dispatcher (queue and room kinds)
   "ws.ts", // leaveToLobby: the socket's own leave, keeping the connection
 ];
 
@@ -75,7 +75,7 @@ const JOIN_SITES = [
   "components/Lobby.tsx", // the code box and the Join panel a link opens
   "intent.ts", // the join_room a saved intent resumes with
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
-  "queue/TablePanel.tsx", // I’m back (your table, moved here from another device)
+  "queue/tableModel.ts", // the panel's I’m back (your table, moved here from another device)
 ];
 
 /** The files that render the panel frame: the one table UI. */

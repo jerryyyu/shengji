@@ -4,7 +4,7 @@ import { guestName } from "../guestName";
 import LeaveSheet from "../components/LeaveSheet";
 import type { RoomMsg } from "../protocol";
 import type { QueueMode } from "./messages";
-import TablePanel, { RoomPanel, TableAnnouncer } from "./TablePanel";
+import TablePanel, { TableAnnouncer } from "./TablePanel";
 import { useKindGuard } from "./useKindGuard";
 import { panelKind, presenceParts, shortName } from "./tableText";
 import "./playLines.css";
@@ -160,7 +160,7 @@ export function RankedSection({ online, room = null }: {
         {announcer}
         <div className="play-section play-table">
           {modes}
-          <RoomPanel room={room} />
+          <TablePanel key="room" q={q} room={room} guarded={false} />
         </div>
       </>
     );
@@ -173,7 +173,7 @@ export function RankedSection({ online, room = null }: {
         {announcer}
         <div className="play-section play-table">
           {modes}
-          <TablePanel q={q} guarded={guarded} />
+          <TablePanel key="queue" q={q} guarded={guarded} />
         </div>
       </>
     );

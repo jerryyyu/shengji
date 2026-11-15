@@ -62,6 +62,7 @@ def rules(classifier):
     ("docs/atlas_v2/registry.json", False),
     ("PROTOCOL.md", False),
     ("server/tests/test_matchmaking.py", False),
+    ("server/tests/test_server_ws.py", False),
     ("server/shengji/api/server.py", True),
     ("server/shengji/train/cwv_train.py", True),
     ("server/scripts/ci_cwv_modes.sh", True),
@@ -71,7 +72,6 @@ def rules(classifier):
     # helpers selected modules import as `from tests.test_x import ...`
     ("server/tests/test_world_shortlist.py", True),
     ("server/tests/test_debug_xray.py", True),
-    ("server/tests/test_server_ws.py", True),
     ("server/tests/test_screen_deadline.py", True),
     ("server/tests/test_bot_scheduler.py", True),
     # reached only through another helper (test_pv_adaptive_worlds)

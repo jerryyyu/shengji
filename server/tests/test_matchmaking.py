@@ -4601,3 +4601,217 @@ def test_a_duo_started_without_its_friend_tells_the_room_the_held_seat():
         await env.send(1, "queue_start_bots")
         assert "friend_seat" not in env.rooms[-1]
     run(go())
+
+
+# ------------------------------------------- taking back a Start
+def test_a_start_is_taken_back_before_the_table_starts_and_the_ready_count_drops():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.join(2)
+        await env.join(3)
+        (t,) = env.mm.tables.values()
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        mine = env.conns[3].last("queue_state")["table"]
+        assert mine["ready"] == 2 and mine["waiting_for"] == []
+        await env.send(2, "table_unready")
+        table = env.conns[2].last("queue_state")["table"]
+        assert table["you_ready"] is False and table["ready"] == 1 and table["of"] == 3
+        assert table["waiting_for"] == ["P3"] and not table["seats"][2]["ready"]
+        assert env.conns[1].last("queue_state")["table"]["waiting_for"] == ["P2", "P3"]
+        await env.send(2, "table_unready")            # twice is once
+        assert env.conns[2].last("error") is None
+        # the last Start no longer starts it: the taken-back one is missing
+        await env.send(3, "table_start")
+        assert env.started == [] and env.mm.tables == {t.id: t}
+        await env.send(2, "table_start")
+        (table_id, _), = env.started
+        assert table_id == t.id
+        # alone there is no Start to take back
+        env = Env()
+        await env.join(1)
+        await env.send(1, "table_unready")
+        assert env.conns[1].last("error")["code"] == "not_seated"
+    run(go())
+
+
+def test_a_table_duo_member_takes_back_its_own_tap_and_a_pair_partner_cannot_for_the_pair():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=2)
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        assert env.conns[1].last("queue_state")["duo_ready"] == 2
+        await env.send(2, "table_unready")
+        assert env.conns[1].last("queue_state")["duo_ready"] == 1
+        assert env.conns[2].last("queue_state")["you_ready"] is False
+        await env.join(3)                             # the pair sits: one tap is not the pair's Start
+        (t,) = env.mm.tables.values()
+        assert env.mm._entry(1).id not in t.ready
+        await env.send(2, "table_start")
+        assert env.mm._entry(1).id in t.ready
+        await env.send(1, "table_unready")
+        assert env.mm._entry(1).id not in t.ready and env.mm._entry(1).taps == {2}
+        assert env.conns[3].last("queue_state")["table"]["waiting_for"] == ["P1"]
+        # a party pair: the leader's Start, the leader's to take back
+        env = Env()
+        await env.join(1)
+        await env.pair(2, 3)
+        await env.send(2, "queue_join")
+        (t,) = env.mm.tables.values()
+        await env.send(2, "table_start")
+        await env.send(3, "table_unready")
+        assert env.conns[3].last("error")["code"] == "not_leader"
+        assert env.mm._entry(2).id in t.ready
+        await env.send(2, "table_unready")
+        assert env.mm._entry(2).id not in t.ready
+    run(go())
+
+
+# --------------------------------------- the opener moves other people
+def test_the_opener_moves_another_single_to_an_empty_seat_and_the_moved_one_is_told():
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 3, 2, None]
+        await env.send(2, "table_start")
+        await env.send(1, "table_move", seat=3, **{"from": 2})
+        assert t.seats == [1, 3, None, 2]
+        assert env.conns[2].last("table_moved") == {
+            "type": "table_moved", "name": "P2", "seat": 3, "your_team": True,
+            "by": "P1", "you": True, "team_changed": True}
+        assert env.conns[3].last("table_moved") == {
+            "type": "table_moved", "name": "P2", "seat": 3, "your_team": True, "by": "P1"}
+        assert env.conns[1].last("table_moved") is None
+        # the Start agreed to the old seat: it is taken back
+        assert env.mm._entry(2).id not in t.ready
+        assert env.conns[2].last("queue_state")["table"]["you"] == 3
+        # only the opener moves others, and only into an empty seat
+        await env.send(3, "table_move", seat=2, **{"from": 0})
+        assert env.conns[3].last("error")["code"] == "not_opener"
+        await env.send(1, "table_move", seat=1, **{"from": 3})
+        assert env.conns[1].last("error")["code"] == "seat_taken"
+        for bad in (None, 2, 7, True):                # nobody there, or not a seat
+            if bad is None:
+                continue
+            await env.send(1, "table_move", seat=2, **{"from": bad})
+            assert env.conns[1].last("error")["code"] == "bad_seat"
+        assert t.seats == [1, 3, None, 2]
+        # the opener's own seat in ``from`` is its own move
+        await env.send(1, "table_move", seat=2, **{"from": 0})
+        assert t.seats == [None, 3, 1, 2]
+    run(go())
+
+
+def test_the_opener_never_splits_a_duo_nor_moves_anyone_into_a_held_seat():
+    async def go():
+        env = Env()
+        await env.join(1)
+        await env.pair(2, 3)
+        await env.send(2, "queue_join")
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, 3]
+        # a pair moves only as one, to a whole free team: the opener's team
+        # has the opener on it, and the pair's own seats are never split
+        for src, seat in ((1, 2), (3, 2)):
+            await env.send(1, "table_move", seat=seat, **{"from": src})
+            assert env.conns[1].last("error")["code"] == "seat_taken"
+        assert t.seats == [1, 2, None, 3]
+        assert env.conns[2].last("table_moved") is None
+        # a Duo pair that opened the table moves a single within the other team
+        env = Env()
+        await env.pair(2, 3)
+        await env.send(2, "queue_join")
+        env.player(1)
+        await env.send(1, "queue_join", code=env.mm._entry(2).code)
+        (t,) = env.mm.tables.values()
+        assert t.entries[0] is env.mm._entry(2) and t.seats == [2, 1, 3, None]
+        await env.send(3, "table_move", seat=3, **{"from": 1})   # the partner is not the leader
+        assert env.conns[3].last("error")["code"] == "not_opener"
+        await env.send(2, "table_move", seat=3, **{"from": 1})
+        assert t.seats == [2, None, 3, 1]
+        moved = env.conns[1].last("table_moved")
+        assert moved["you"] is True and moved["team_changed"] is False and moved["by"] == "P2"
+        assert env.conns[3].last("table_moved")["your_team"] is False
+        # a held seat is never a destination
+        env = Env()
+        await _duo_table(env, 1, strangers=(2, 3))
+        (t,) = env.mm.tables.values()
+        assert t.held_seat() == 2 and t.seats == [1, 2, None, 3]
+        await env.send(1, "table_move", seat=2, **{"from": 1})
+        assert env.conns[1].last("error")["code"] == "seat_taken" and t.seats[2] is None
+    run(go())
+
+
+# ------------------------------------- a table keeps its code for life
+def test_a_table_keeps_its_code_when_its_opener_leaves_and_the_room_starts_on_it():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        await env.join(2)
+        await env.join(3)
+        (t,) = env.mm.tables.values()
+        assert t.code == code
+        await env.send(1, "queue_leave")
+        assert t.seats == [None, 3, 2, None]
+        for uid in (2, 3):
+            state = env.conns[uid].last("queue_state")
+            assert state["code"] == code and state["table"]["code"] == code
+        assert env.conns[2].last("queue_state")["opener"] is True   # the controls pass on
+        assert env.mm.code_lookup(env.conns[2], {"code": code}, 2)["kind"] == "table"
+        assert env.mm.entry_codes[code] == t.id
+        # the departed opener queues again under a fresh code
+        await env.join(1)
+        assert env.mm._entry(1).code != code and env.mm._entry(1).table_id == t.id
+        assert env.conns[1].last("queue_state")["code"] == code
+        # the old link still joins that table
+        env.player(4)
+        await env.send(4, "queue_join", code=code)
+        (match_id, slots), = env.started               # the fourth started the table
+        assert match_id == t.id and sorted(humans_of(slots)) == [1, 2, 3, 4]
+        assert env.rooms[0]["code"] == code
+        assert code not in env.mm.entry_codes
+    run(go())
+
+
+def test_the_one_left_at_a_table_keeps_the_tables_code_as_its_own():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        await env.join(2)
+        own = env.mm._entry(2).code
+        await env.send(1, "queue_leave")
+        assert env.mm.tables == {}
+        state = env.conns[2].last("queue_state")
+        assert state["table"] is None and state["code"] == code and state["opener"] is True
+        assert env.mm.entry_codes == {code: env.mm._entry(2).id}
+        assert env.mm.code_lookup(env.conns[2], {"code": own}, 2)["kind"] == "none"
+        env.player(3)
+        await env.send(3, "queue_join", code=code)
+        (t,) = env.mm.tables.values()
+        assert t.code == code and t.seats == [2, None, 3, None]
+        await env.send(3, "queue_leave")
+        await env.send(2, "queue_start_bots")
+        assert env.rooms[0]["code"] == code
+    run(go())
+
+
+def test_an_away_opener_dropped_at_the_start_leaves_the_room_the_tables_code():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        await env.join(2)
+        await env.join(3)
+        env.mm.disconnect(env.conns[1])
+        env.clock.advance(mm.BOT_FILL_SECS + 1)       # the timer does not wait for a reconnect
+        await env.mm.tick()
+        (_, slots), = env.started
+        assert 1 not in humans_of(slots)
+        assert env.rooms[0]["code"] == code
+    run(go())

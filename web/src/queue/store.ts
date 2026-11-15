@@ -12,7 +12,8 @@ import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ChatMsg, ServerMsg } from "../protocol";
 import type {
-  OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, WaitingTableMsg,
+  OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, TableMovedMsg,
+  WaitingTableMsg,
 } from "./messages";
 import { QUEUE_ERROR_CODES } from "./messages";
 
@@ -185,6 +186,15 @@ const NO_DUO = { duo: false, heldSeat: null, duoReady: null, youReady: false } a
 function myName(): string {
   const a = auth.state;
   return a?.status === "in" && a.user ? effectiveName(a.user) : guestName.name.trim();
+}
+
+/** The toast for a seat move at your table: the opener's move of you,
+ *  someone the opener moved, or someone's own move. */
+export function movedNote(m: TableMovedMsg): string {
+  const team = m.your_team ? "your team" : "the other team";
+  if (m.by && m.you) return m.team_changed ? `${m.by} moved you to the other team.` : `${m.by} moved your seat.`;
+  if (m.by) return `${m.by} moved ${m.name} to ${team}.`;
+  return `${m.name} moved to ${team}.`;
 }
 
 /** Queued as the two members of a Duo made at a table: each taps Start. */
@@ -403,7 +413,7 @@ export class QueueStore {
         break;
       }
       case "table_moved":
-        this.notify(`${msg.name} moved to ${msg.your_team ? "your team" : "the other team"}.`);
+        this.notify(movedNote(msg));
         break;
       case "room":
       case "state":
@@ -702,6 +712,23 @@ export class QueueStore {
     const t = this.view.table;
     if (!t || !this.view.opener || this.view.pending !== null) return;
     if (this.send({ type: "table_start_now", ...this.seq() })) this.set({ pending: "start" });
+  }
+
+  /** Take your Start back while the table waits: Start shows again. */
+  tableUnready(): void {
+    const t = this.view.table;
+    if (!t && !tableDuo(this.view)) return;
+    if (!(t ? t.youReady : this.view.youReady) || this.view.pending !== null) return;
+    this.send({ type: "table_unready" });
+  }
+
+  /** The opener moves the person at `from` to the empty `seat` (a pair
+   *  moves as one); the server's queue_state shows the new seats. */
+  tableMoveOther(from: number, seat: number): void {
+    const t = this.view.table;
+    if (!t || !this.view.opener || this.view.pending !== null || from === t.you) return;
+    if (!t.seats[from] || t.seats[seat] !== null) return;
+    this.send({ type: "table_move", seat, from });
   }
 
   /** A single at a shared table moves to an empty seat before its Start;

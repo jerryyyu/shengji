@@ -48,6 +48,7 @@ const SURFACES = [
   "components/OpponentActions.tsx", // a player's options at the table
   "components/ResultDialog.tsx", // the round end's modal frame
   "queue/Sheet.tsx", // the queue sheet frame every Sheet uses
+  "queue/TablePanel.tsx", // the opener's one confirm before moving someone
 ];
 
 // The protocol's message union and the on-device server name these messages

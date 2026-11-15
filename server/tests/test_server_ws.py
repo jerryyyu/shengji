@@ -2234,6 +2234,30 @@ def test_a_non_host_moves_to_an_empty_seat_until_they_tap_start(client):
         assert _names(srv.rooms[code]) == ["jerry", "james"]
 
 
+def test_a_host_move_takes_back_the_moved_persons_start_and_a_start_is_taken_back(client):
+    from shengji.api import server as srv
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b, \
+            client.websocket_connect("/ws") as c:
+        code = _host_and_guest(client, a, b)
+        c.send_json({"type": "join_room", "room": code, "name": "li"})
+        assert _drain(c, "room")["you"] == 2
+        b.send_json({"type": "lobby_ready"})
+        _room_until(a, lambda m: m["ready"] == [1])
+        b.send_json({"type": "lobby_ready", "on": False})
+        _room_until(a, lambda m: m["ready"] == [])
+        b.send_json({"type": "lobby_ready"})
+        c.send_json({"type": "lobby_ready"})
+        _room_until(a, lambda m: m["ready"] == [1, 2])
+        a.send_json({"type": "swap_seats", "a": 1, "b": 3})       # the host moves james
+        st = _room_until(a, lambda m: 3 in [p["seat"] for p in m["players"]])
+        assert st["ready"] == [2]
+        room = srv.rooms[code]
+        assert room.game is None and not room.seats[3].lobby_ready and room.seats[2].lobby_ready
+        a.send_json({"type": "lobby_ready"})                      # james's Start is still missing
+        _room_until(a, lambda m: m["ready"] == [0, 2])
+        assert room.game is None
+
+
 def test_a_room_starts_when_everyone_at_it_taps_start(client):
     from shengji.api import server as srv
     with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:

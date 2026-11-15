@@ -32,15 +32,17 @@ Seating (``seat_waiting``, on every join and every ``tick``):
    team); a pair takes two seats of one team (``PAIR_SEATS``), so a pair sits
    across from two singles. Nobody is re-seated while waiting except by
    their own move (``table_move``: a single, before its Start, to an empty
-   seat; the others hear ``table_moved``), and a leaver's seat is simply
-   free again.
+   seat; the others hear ``table_moved``) or the opener's (``table_move``
+   with ``from``: anyone else to an empty seat, a pair as one to the other
+   team, never into a held seat, which takes the moved entry's Start
+   back), and a leaver's seat is simply free again.
 
 A table starts (``tick``, and at once after the event that makes it due):
 
 * when it has four people;
 * when every entry at it has tapped Start (``table_start``; a party pair's
   leader taps for the pair, each member of a table Duo for itself), bots
-  taking the empty seats;
+  taking the empty seats; ``table_unready`` takes a Start back until then;
 * at the table's timer: the earliest ``bots_at`` among its entries. An entry
   whose switch is on ("Only tables with people", ``queue_wait_players``)
   has no ``bots_at`` and rides another entry's timer; with every switch on
@@ -62,8 +64,10 @@ timer it is asked "still here?" first (``still_here_until``) and leaves
 ``STILL_HERE_SECS`` later unless any message (``table_here``) answers.
 
 Every queued entry holds a table code from the room code space
-(``entry_codes``): alone it names the entry's own table, and the opener's
-(the table's first arrival) is a waiting table's code and the room's when
+(``entry_codes``): alone it names the entry's own table. A waiting table
+takes its opener's code when it forms (``Table.code``) and keeps it for its
+whole life: when the opener leaves, the code maps to the table itself, the
+one left alone at a table keeps it as its own, and the room takes it when
 the table starts, so an invite link stays good. ``queue_join {code}`` seats
 the joiner at that table in its mode, opening it when its host is alone,
 past the rating window and Allow joiners; every other queue rule
@@ -225,7 +229,7 @@ QUEUE_MESSAGES = frozenset({
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
     "party_leave", "open_table_join", "open_table_wait", "open_table_show",
     "table_move", "table_here", "table_chat", "table_allow_joiners", "table_start_level",
-    "table_start_now",
+    "table_start_now", "table_unready",
 })
 SAME_DEVICE = "Someone on this device is already at that table."
 RANKED_LEVEL = "A ranked table starts at level 2."
@@ -344,8 +348,8 @@ class Entry:
     # "ranked" or "casual" (``queue_join``'s ``mode``).
     mode: str = "ranked"
     # The entry's table code while it is queued: alone it names the entry's
-    # own table, and at a waiting table it still leads there. The opener's
-    # (``Table.entries[0]``) is the table's code and becomes the room's.
+    # own table, and at a waiting table it still leads there. The table's
+    # own code (``Table.code``) is its opener's when it formed.
     code: str = ""
     # The table settings, the same on every entry at one table so they
     # outlast its opener: Allow joiners (off: Play seats no stranger with
@@ -393,6 +397,10 @@ class Table:
     chat_seq: int = 0
     # The opener's Start now landed: the table is due at once.
     forced: bool = False
+    # The table's code for its whole life: its opener's entry code when it
+    # formed. It stays when the opener leaves (``entry_codes`` then maps it
+    # to the table's id) and the room takes it when the table starts.
+    code: str = ""
 
     @property
     def humans(self) -> int:
@@ -781,7 +789,7 @@ class Matchmaker:
         timer = t.timer()
         opener = t.entries[0]
         return {
-            "id": t.id, "seats": seats, "code": opener.code,
+            "id": t.id, "seats": seats, "code": t.code,
             "opener": t.seats.index(opener.leader), "held_seat": t.held_seat(),
             "held_seats": t.held_seats(), "start_now_at": t.start_now_at(),
             "you": t.seats.index(uid) if uid in t.seats else None,
@@ -854,10 +862,15 @@ class Matchmaker:
         t = self._table(e)
         return t.entries[0] if t is not None and t.entries else e
 
+    def _table_code(self, e: Entry) -> str:
+        """The code of ``e``'s table: its waiting table's, else its own."""
+        t = self._table(e)
+        return t.code if t is not None else e.code
+
     def _settings_payload(self, e: Entry, uid: int) -> dict:
         """Your table's code and settings, alone or at a waiting table."""
         o = self._opener(e)
-        return {"code": o.code, "allow_joiners": o.allow_joiners,
+        return {"code": self._table_code(e), "allow_joiners": o.allow_joiners,
                 "start_level": o.start_level, "opener": o.leader == uid}
 
     def _panel_seq(self, e: Entry) -> int:
@@ -934,14 +947,35 @@ class Matchmaker:
                 t.seats[s] = None
                 t.seated_at.pop(u, None)
         left = list(t.entries)
+        if self.entry_codes.get(t.code) == e.id:
+            # the table's code outlives its opener's seat
+            self.entry_codes[t.code] = t.id
         if len(left) <= 1:
-            # One entry left is alone again: back to its own bar and timer.
-            self.tables.pop(t.id, None)
+            # One entry left is alone again: back to its own bar and timer,
+            # under the table's code, so a link to the table still finds it.
+            self._drop_table(t)
             for o in left:
                 o.table_id = None
+                self._adopt_code(o, t.code)
             t.entries, t.ready = [], set()
         for o in left:
             self._send_state(o)
+
+    def _drop_table(self, t: Table) -> None:
+        """``t`` is no longer a waiting table; a code it held goes with it."""
+        self.tables.pop(t.id, None)
+        if self.entry_codes.get(t.code) == t.id:
+            del self.entry_codes[t.code]
+
+    def _adopt_code(self, e: Entry, code: str) -> None:
+        """``e``, alone again, keeps its table's ``code`` as its own; the
+        code it had before it sat names nothing now."""
+        if not code or e.code == code or self.entries.get(e.id) is not e:
+            return
+        if self.entry_codes.get(e.code) == e.id:
+            del self.entry_codes[e.code]
+        e.code = code
+        self.entry_codes[code] = e.id
 
     def _push_presence(self, conn: Conn) -> None:
         """A socket arriving in the lobby hears the counts at once, unless
@@ -1157,6 +1191,8 @@ class Matchmaker:
                     if e is not None:
                         self._check_panel(e, msg)
                     await self._table_start(queue_id)
+                elif t == "table_unready":
+                    self._table_unready(queue_id)
                 elif t == "queue_start_bots":
                     if e is not None:
                         self._check_panel(e, msg)
@@ -1371,15 +1407,26 @@ class Matchmaker:
         self._offer_open_tables(self.clock())
         self._flush_count()
 
+    def _code_entry(self, code: str) -> Entry | None:
+        """The queued entry whose table ``code`` names: the entry itself,
+        or for a waiting table that kept a departed opener's code, the
+        table's opener now."""
+        key = self.entry_codes.get(code, "")
+        e = self.entries.get(key)
+        if e is not None:
+            return e
+        t = self.tables.get(key)
+        return t.entries[0] if t is not None and t.entries else None
+
     def _at_code(self, e: Entry | None, code: str) -> bool:
         """Whether ``e`` is already at the table ``code`` names."""
-        host = self.entries.get(self.entry_codes.get(code, ""))
+        host = self._code_entry(code)
         return (e is not None and host is not None
                 and (host is e or (e.table_id is not None and e.table_id == host.table_id)))
 
     def _code_host(self, code: str, uid: int) -> Entry:
         """The queued entry whose table ``code`` names."""
-        host = self.entries.get(self.entry_codes.get(code, ""))
+        host = self._code_entry(code)
         if host is None:
             raise QueueError("table_not_found", "No table has that code.")
         if uid in host.members:
@@ -1502,8 +1549,9 @@ class Matchmaker:
             self._send_state(e)
 
     async def _table_start(self, uid: int) -> None:
-        """Start at the waiting table: this entry is ready. Only a change of
-        the starting level takes readiness back; a newcomer does not."""
+        """Start at the waiting table: this entry is ready. ``table_unready``
+        takes it back, and so do a change of the starting level and an
+        opener's move of the entry; a newcomer does not."""
         e = self._entry(uid)
         t = self._table(e)
         if e is not None and self._table_duo(e):
@@ -1527,6 +1575,30 @@ class Matchmaker:
             self._send_table(t)
         await self._start_due()
 
+    def _table_unready(self, uid: int) -> None:
+        """Take back your Start before the table starts: a table Duo's
+        member its own tap, alone or at a table; anyone else (a pair's
+        leader, for the pair) its entry's. A table that every Start would
+        have started has started already, so there is nothing to undo."""
+        e = self._entry(uid)
+        t = self._table(e)
+        if e is not None and self._table_duo(e):
+            if uid in e.taps:
+                e.taps.discard(uid)
+                if t is not None:
+                    t.ready.discard(e.id)
+                    self._send_table(t)
+                else:
+                    self._send_state(e)
+            return
+        if e is None or t is None:
+            raise QueueError("not_seated", "You are not at a waiting table.")
+        if e.leader != uid:
+            raise QueueError("not_leader", "Only your Duo's leader can change this.")
+        if e.id in t.ready:
+            t.ready.discard(e.id)
+            self._send_table(t)
+
     async def _table_start_now(self, uid: int) -> None:
         """The opener's Start now: the waiting table starts at once, bots in
         its empty seats. Only the opener's leader may, and only from
@@ -1544,19 +1616,25 @@ class Matchmaker:
 
     def _table_move(self, uid: int, msg: dict) -> None:
         """A single at a waiting table moves itself to an empty seat, until
-        it taps Start; a pair's seats never move. Everyone at the table sees
-        the new seats, and the others are told who moved and to which team."""
+        it taps Start; a pair's seats never move by its own hand. With
+        ``from`` (another person's seat) the opener's leader moves that
+        person instead (``_move_other``). Everyone at the table sees the new
+        seats, and the others are told who moved and to which team."""
         e = self._entry(uid)
         t = self._table(e)
         if e is None or t is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
+        seat = msg.get("seat")
+        if isinstance(seat, bool) or not isinstance(seat, int) or not 0 <= seat < 4:
+            raise QueueError("bad_seat", "Pick one of the open seats.")
+        src = msg.get("from")
+        if src is not None and src != t.seats.index(uid):
+            self._move_other(e, uid, t, src, seat)
+            return
         if e.size != 1 or e.hold:
             raise QueueError("pair_seats_fixed", "A Duo's seats stay together.")
         if e.id in t.ready:
             raise QueueError("already_ready", "You tapped Start, so your seat is set.")
-        seat = msg.get("seat")
-        if isinstance(seat, bool) or not isinstance(seat, int) or not 0 <= seat < 4:
-            raise QueueError("bad_seat", "Pick one of the open seats.")
         old = t.seats.index(uid)
         if seat == old:
             self._send_state(e)
@@ -1566,13 +1644,65 @@ class Matchmaker:
             raise QueueError("seat_taken", "That seat was just taken. Pick another.")
         t.seats[old], t.seats[seat] = None, uid
         self._send_table(t)
-        for o in t.entries:
-            if o is e:
-                continue
-            for u in o.members:
-                mine = t.seats.index(u)
-                self._send(u, {"type": "table_moved", "name": self._name(uid), "seat": seat,
-                               "your_team": mine % 2 == seat % 2})
+        self._tell_moved(t, e, uid, seat)
+
+    def _move_other(self, e: Entry, uid: int, t: Table, src: Any, seat: int) -> None:
+        """The opener's leader moves the person at ``src`` to the empty
+        ``seat``. A single takes that seat; a pair moves as one to the two
+        seats of ``seat``'s team, the person tapped into ``seat``, and is
+        never split. A held seat is never free. The moved entry's Start is
+        taken back (it agreed to the old seat), and its members are told who
+        moved them."""
+        if self._opener(e) is not e or e.leader != uid:
+            raise QueueError("not_opener", "Only the table's opener moves other people.")
+        if (isinstance(src, bool) or not isinstance(src, int) or not 0 <= src < 4
+                or t.seats[src] is None or t.seats[src] in e.members):
+            raise QueueError("bad_seat", "Pick someone at the table.")
+        who = t.seats[src]
+        o = next(x for x in t.entries if who in x.members)
+        if o.size == 1:
+            moves = {src: seat}
+        else:
+            team = PAIR_SEATS[seat % 2]
+            mine = [s for s in range(4) if t.seats[s] in o.members]
+            if sorted(mine) == list(team):
+                self._send_state(e)
+                return
+            other = next(s for s in mine if s != src)
+            moves = {src: seat, other: next(s for s in team if s != seat)}
+        if all(a == b for a, b in moves.items()):
+            self._send_state(e)
+            return
+        if not all(t.free(b) for b in moves.values()):
+            self._send_state(e)
+            raise QueueError("seat_taken", "That seat was just taken. Pick another.")
+        people = {a: t.seats[a] for a in moves}
+        for a in moves:
+            t.seats[a] = None
+        for a, b in moves.items():
+            t.seats[b] = people[a]
+        t.ready.discard(o.id)
+        o.taps.clear()
+        self._send_table(t)
+        self._tell_moved(t, o, who, seat, by=e.leader, team_changed=src % 2 != seat % 2)
+
+    def _tell_moved(self, t: Table, o: Entry, who: int, seat: int, *, by: int | None = None,
+                    team_changed: bool = False) -> None:
+        """``table_moved`` to everyone at the table but whoever moved: who
+        moved and whether to the hearer's team; with ``by`` (the opener who
+        moved someone else), the moved members hear ``you`` and whether
+        their team changed."""
+        for x in t.entries:
+            for u in x.members:
+                if u == (who if by is None else by):
+                    continue
+                msg = {"type": "table_moved", "name": self._name(who), "seat": seat,
+                       "your_team": t.seats.index(u) % 2 == seat % 2}
+                if by is not None:
+                    msg["by"] = self._name(by)
+                    if x is o:
+                        msg.update(you=True, team_changed=team_changed)
+                self._send(u, msg)
 
     def _table_chat(self, uid: int, msg: dict) -> None:
         """A line from a queued entry to everyone at its table, itself
@@ -1705,6 +1835,8 @@ class Matchmaker:
     def _sit(self, t: Table, e: Entry, now: float) -> None:
         places = t.places_for(e)
         assert places is not None
+        if not t.entries:
+            t.code = e.code            # the opener's code is the table's from now on
         if t.entries:
             # the table's settings, so they stay the table's if its opener leaves
             e.allow_joiners = t.entries[0].allow_joiners
@@ -1765,7 +1897,7 @@ class Matchmaker:
         """Build the room for a due table. Synchronous up to the ``start_room``
         call, so the table and its entries are gone before anything yields.
         An entry whose socket is gone at the start leaves with no cooldown."""
-        self.tables.pop(t.id, None)
+        self._drop_table(t)
         entries = list(t.entries)
         for e in entries:
             e.table_id = None
@@ -1780,10 +1912,10 @@ class Matchmaker:
             self._flush_count()
             return
         by_user = {u: e for e in entries for u in e.members}
-        # The first arrival still here is the opener: its code and settings
-        # are the room's (``entries`` keeps arrival order).
+        # The first arrival still here is the opener: its settings are the
+        # room's (``entries`` keeps arrival order), and the table's code is.
         opener = entries[0]
-        # only the opener can hold a seat, and its code is the room's
+        # only the opener can hold a seat
         friend = t.held_for(opener)
         slots = []
         for u in t.seats:
@@ -1799,7 +1931,7 @@ class Matchmaker:
                    max_wait=round(max(self.clock() - e.since for e in entries), 1))
         self._flush_count()
         await self._start_room_for(t.id, slots, entries, mode=t.mode, chat=list(t.chat),
-                                   **self._room_settings(opener, friend))
+                                   **self._room_settings(opener, friend, code=t.code))
 
     async def _launch_alone(self, e: Entry) -> None:
         """An entry alone in the queue whose own timer ran out: it plays the
@@ -1812,12 +1944,12 @@ class Matchmaker:
                                    **self._room_settings(e, 2 if e.hold else None))
 
     @staticmethod
-    def _room_settings(e: Entry, friend_seat: int | None = None) -> dict:
+    def _room_settings(e: Entry, friend_seat: int | None = None, code: str = "") -> dict:
         """What the room keeps from the table: its code (so an invite link
-        stays good), Allow joiners, the starting level, and the seat still
-        held for a Duo opener's friend (a bot plays it until the friend
-        joins by the code)."""
-        out = {"code": e.code, "allow_joiners": e.allow_joiners, "start_level": e.start_level}
+        stays good; ``code``, else the lone entry's), Allow joiners, the
+        starting level, and the seat still held for a Duo opener's friend (a
+        bot plays it until the friend joins by the code)."""
+        out = {"code": code or e.code, "allow_joiners": e.allow_joiners, "start_level": e.start_level}
         if friend_seat is not None:
             out["friend_seat"] = friend_seat
         return out
@@ -2217,7 +2349,7 @@ class Matchmaker:
         code = p.code
         if p.table:
             e = self._entry(p.leader)
-            code = self._opener(e).code if e is not None else ""
+            code = self._table_code(e) if e is not None else ""
         return {"type": "party", "party_id": p.id, "code": code, "table": p.table,
                 "you_lead": p.leader == uid,
                 "members": [{"name": p.names[m], "leader": m == p.leader, "you": m == uid}

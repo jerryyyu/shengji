@@ -596,13 +596,15 @@ describe("a Duo is a table", () => {
     say(duoState(false, 1, true));
     expect(lines()).toEqual(["1 of 2 ready"]);
     expect(words(primary()!)).toBe("Waiting for Jerry");
-    expect(primary()!.disabled).toBe(true);
+    expect(primary()!.disabled).toBe(false);              // a tap takes the Start back
+    click(primary());
+    expect(lastSent()).toEqual({ type: "table_unready" });
     expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, ready");
     // the opener's own Start is counted too
     say(duoState(false, 2, true));
     expect(lines()).toEqual(["2 of 2 ready"]);
     expect(words(primary()!)).toBe("Finding a table");
-    expect(primary()!.disabled).toBe(true);
+    expect(primary()!.disabled).toBe(false);
     expect(primary()!.classList.contains("searching")).toBe(true);
     expect(ringSecs()).not.toBeNull();
     expect(panel()!.querySelectorAll(".tp-tick")).toHaveLength(2);
@@ -817,11 +819,11 @@ describe("a shared table", () => {
     const [ours, theirs] = [...p.querySelectorAll(".tp-col")];
     expect([...ours.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label")))
       .toEqual(["Open seat, your team. Move here", "You"]);
-    expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, Just joined, other team");
+    expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, Just joined, other team. Move");
     expect(button("Wait for people", p)).toBeUndefined();  // a personal switch: only alone
     expect(p.querySelector(".tp-hint")).toBeNull();          // the open seat's label says Move here
     tick(6000);
-    expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, other team");
+    expect(theirs.querySelector(".tp-seat")?.getAttribute("aria-label")).toBe("Alice, other team. Move");
     expect(lines()).toEqual(["0 of 2 ready"]);
     expect(ringSecs()).toBe("36");
     expect(words(primary()!)).toBe("Start");
@@ -858,20 +860,21 @@ describe("a shared table", () => {
   it("after your Start the button waits for the others by name; a newcomer keeps your tick", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null]));
-    expect(button("Waiting for Alice", panel()!)?.disabled).toBe(true);
+    await pastGuard();
+    expect(button("Waiting for Alice", panel()!)?.disabled).toBe(false);   // a tap takes it back
     expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, ready");
     expect(panel()!.querySelector(".tp-seat.you .tp-tick")).not.toBeNull();
     say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice", { reconnecting: true }),
                  seat("Bobby Tables The Third", { since: nowSecs() }), null],
                 { timer: { at: nowSecs() + 18, name: "Alice", you: false } }));
-    expect(button("Waiting for 2 players", panel()!)?.disabled).toBe(true);
+    expect(button("Waiting for 2 players", panel()!)?.disabled).toBe(false);
     expect(panel()!.querySelector(".tp-title")?.textContent).toBe("You, Alice and Bobby Tabl…");
     expect(lines()).toEqual(["1 of 3 ready"]);
     // the ring stays on the waiting button: the bots still come
     expect(ringSecs()).toMatch(/^1[789]$/);
     const names = [...panel()!.querySelectorAll(".tp-seat")].map((s) => s.getAttribute("aria-label"));
-    expect(names).toContain("Alice, Reconnecting, other team");
-    expect(names).toContain("Bobby Tables The Third, Just joined, your team");
+    expect(names).toContain("Alice, Reconnecting, other team. Move");
+    expect(names).toContain("Bobby Tables The Third, Just joined, your team. Move");
   });
 
   it("with every switch on there is no timer: no ring, no line and no Add bots row", async () => {
@@ -995,7 +998,7 @@ describe("a shared table", () => {
     const p = panel()!;
     expect(p.getAttribute("role")).toBeNull();
     expect(p.querySelector(".seat-clock .tp-seat.pos-bottom")?.getAttribute("aria-label")).toBe("You");
-    expect(p.querySelector(".seat-clock .tp-seat.pos-left")?.getAttribute("aria-label")).toBe("Alice, other team");
+    expect(p.querySelector(".seat-clock .tp-seat.pos-left")?.getAttribute("aria-label")).toBe("Alice, other team. Move");
     expect(p.querySelector(".seat-clock .tp-seat.pos-top")?.getAttribute("aria-label")).toBe("Open seat, your team. Move here");
     expect(p.querySelector(".seat-clock .tp-seat.pos-top")?.tagName).toBe("BUTTON");
     expect(q(".home-body")?.className).not.toContain("wt-behind");
@@ -2086,7 +2089,7 @@ describe("the unified table on the client", () => {
     const p = panel()!;
     expect(p.querySelector(".tp-hint")).toBeNull();
     expect(p.textContent).not.toMatch(/Tap a green seat/);
-    const open = [...p.querySelectorAll<HTMLButtonElement>("button.tp-seat")];
+    const open = [...p.querySelectorAll<HTMLButtonElement>("button.tp-seat.open")];
     expect(open.map((b) => b.getAttribute("aria-label")))
       .toEqual(["Open seat, your team. Move here", "Open seat, other team. Move here"]);
     click(open[1]);
@@ -2098,10 +2101,11 @@ describe("the unified table on the client", () => {
     expect(q(".toast")?.textContent).toBe("You tapped Start, so your seat is set.");
     say({ type: "error", code: "pair_seats_fixed", message: "A Duo's seats stay together." });
     expect(q(".toast")?.textContent).toBe("A Duo's seats stay together.");
-    // after your Start the seat is set: no seat buttons
+    // after your Start your seat is set: no open seat buttons (the opener
+    // may still move Alice)
     say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null]));
     expect(panel()!.querySelector(".tp-hint")).toBeNull();
-    expect(panel()!.querySelector("button.tp-seat")).toBeNull();
+    expect(panel()!.querySelector("button.tp-seat.open")).toBeNull();
   });
 
   it("a Duo's seats never move", async () => {
@@ -2109,7 +2113,10 @@ describe("the unified table on the client", () => {
     say(atTable([seat("Jerry", { you: true, pair: true }), seat("Li"), seat("Kai", { pair: true }), null],
                 {}, { party_id: "p1" }));
     expect(panel()!.querySelector(".tp-hint")).toBeNull();
-    expect(panel()!.querySelector("button.tp-seat")).toBeNull();
+    expect(panel()!.querySelector("button.tp-seat.open")).toBeNull();
+    // the partner's seat is never a button; the opener may still pick Li
+    expect([...panel()!.querySelectorAll("button.tp-seat")].map((b) => b.getAttribute("aria-label")))
+      .toEqual(["Li, other team. Move"]);
   });
 
   it("table_moved tells the table which team the mover joined", async () => {
@@ -2265,5 +2272,88 @@ describe("the first joiner", () => {
       .toBe("Alice joins your table from next round.");
     // render something for the shared teardown
     await renderApp();
+  });
+});
+
+
+describe("deferred mock items: take back a Start, the opener moves people", () => {
+  it("a Start is taken back with one more tap: Waiting for Alice sends table_unready, then Start shows again", async () => {
+    await renderApp();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null], {}, { opener: false }));
+    await pastGuard();
+    click(primary());
+    expect(lastSent()).toEqual({ type: "table_start" });
+    say(atTable([seat("Jerry", { you: true, ready: true }), seat("Alice"), seat("Li", { ready: true }), null], {},
+                { opener: false }));
+    expect(words(primary()!)).toBe("Waiting for Alice");
+    expect(lines()).toEqual(["2 of 3 ready"]);
+    expect(primary()!.className).toContain("waiting");
+    click(primary());
+    expect(lastSent()).toEqual({ type: "table_unready" });
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li", { ready: true }), null], {}, { opener: false }));
+    expect(words(primary()!)).toBe("Start");
+    expect(lines()).toEqual(["1 of 3 ready"]);
+    expect(primary()!.className).not.toContain("waiting");
+  });
+
+  it("only the opener taps a person, then a seat, then confirms once: table_move with from", async () => {
+    await renderApp();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null]));
+    await pastGuard();
+    const alice = () => [...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat")]
+      .find((b) => b.getAttribute("aria-label")?.startsWith("Alice"))!;
+    expect(alice().getAttribute("aria-label")).toBe("Alice, other team. Move");
+    expect(alice().getAttribute("aria-pressed")).toBe("false");
+    click(alice());
+    expect(alice().getAttribute("aria-pressed")).toBe("true");
+    expect(alice().className).toContain("picked");
+    // the empty seat is now where Alice goes; nothing is sent yet
+    const before = lastSent();
+    const dest = panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open")!;
+    expect(dest.getAttribute("aria-label")).toBe("Open seat, other team. Move Alice here");
+    click(dest);
+    expect(lastSent()).toBe(before);
+    const dialog = q("[role='alertdialog']")!;
+    expect(dialog.querySelector("h2")?.textContent).toBe("Move Alice here?");
+    expect(buttons(dialog).map((b) => b.textContent)).toEqual(["Cancel", "Move"]);
+    click(button("Cancel", dialog));
+    expect(q("[role='alertdialog']")).toBeNull();
+    expect(lastSent()).toBe(before);
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open"));
+    click(button("Move", q("[role='alertdialog']")!));
+    expect(lastSent()).toEqual({ type: "table_move", seat: 3, from: 1 });
+    expect(q("[role='alertdialog']")).toBeNull();
+    // a second tap on the picked person drops the pick
+    click(alice());
+    click(alice());
+    expect(alice().getAttribute("aria-pressed")).toBe("false");
+    // anyone else at the table sees people, not buttons
+    say(atTable([seat("Jerry"), seat("Alice", { you: true }), seat("Li"), null], { you: 1 }, { opener: false }));
+    expect([...panel()!.querySelectorAll("button.tp-seat")].map((b) => b.getAttribute("aria-label")))
+      .toEqual(["Open seat, your team. Move here"]);
+  });
+
+  it("a held seat is never a destination and a Duo goes only to a whole free team", async () => {
+    const { moveTargets } = await import("./tableText");
+    expect(moveTargets([{}, { pair: true }, null, { pair: true }], [], 1)).toEqual([]);
+    expect(moveTargets([null, { pair: true }, null, { pair: true }], [], 3)).toEqual([0, 2]);
+    expect(moveTargets([{}, {}, null, null], [2], 1)).toEqual([3]);
+    await renderApp();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, seat("Li")], { held_seats: [2], held_seat: 2 }));
+    await pastGuard();
+    click([...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat")].find((b) => b.getAttribute("aria-label")?.startsWith("Alice")));
+    expect(panel()!.querySelector("button.tp-seat.open, button.tp-seat.held")).toBeNull();
+    expect(panel()!.querySelector(".tp-seat.held")?.getAttribute("aria-label")).toBe("Partner seat, held for your friend");
+  });
+
+  it("the one moved hears it through the one toast", async () => {
+    await renderApp();
+    say(atTable([seat("Jerry"), null, null, seat("Alice", { you: true })], { you: 3 }, { opener: false }));
+    say({ type: "table_moved", name: "Alice", seat: 3, your_team: true, by: "Jerry", you: true, team_changed: true });
+    expect(q(".toast")?.textContent).toBe("Jerry moved you to the other team.");
+    say({ type: "table_moved", name: "Alice", seat: 1, your_team: true, by: "Jerry", you: true, team_changed: false });
+    expect(q(".toast")?.textContent).toBe("Jerry moved your seat.");
+    say({ type: "table_moved", name: "Li", seat: 1, your_team: false, by: "Jerry" });
+    expect(q(".toast")?.textContent).toBe("Jerry moved Li to the other team.");
   });
 });

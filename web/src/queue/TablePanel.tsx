@@ -14,15 +14,16 @@ import { RANKS } from "../protocol";
 import { onRoomLeaveAsk } from "../roomBack";
 import { conn } from "../ws";
 import { useInlineQueue } from "./QueueBar";
-import { BOTS_WARN_MS, BOT_FILL_MS, partnerName, queue, tableDuo, useNow } from "./store";
+import { BOTS_WARN_MS, BOT_FILL_MS, movedNote, partnerName, queue, tableDuo, useNow } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
   JUST_JOINED_MS, OFFER_CLOCK_MS, OFFER_SECS, START_NOW_SECS, announcement, duoStartLabel, joinLabel, joinTitle,
-  ownBotsAt, ownTitle,
+  moveQuestion, moveTargets, ownBotsAt, ownTitle,
   panelKind, roomReadyLine, roomTitle, roomWaitingLabel, sharedStatusLine, sharedTitle, shortName, startLabel,
   stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
+import "./tablePanel.css";
 
 /** One seat as the panel draws it, on a phone's team columns or on the
  *  wide screens' mini table. The seats carry names and live status only;
@@ -39,6 +40,9 @@ export interface SeatItem {
   /** An open seat you may take: tapping it picks it. */
   pick?: () => void;
   busy?: boolean;
+  /** The person the opener tapped to move: the next empty seat tapped is
+   *  where they go. */
+  picked?: boolean;
 }
 
 const teamWord = (ours: boolean) => (ours ? "your team" : "other team");
@@ -98,13 +102,30 @@ function canMove(q: QueueView): boolean {
   return !!t && !q.partyId && !t.youReady && t.of >= 2 && q.stillHereUntil === null;
 }
 
+/** The opener's move of someone else: the seat tapped (`picked`), a tap on
+ *  a person to pick them, and a tap on a seat they may go to. */
+interface OpenerMove {
+  picked: number | null;
+  pick: (at: number) => void;
+  to: (at: number) => void;
+}
+
 /** A shared table's seats; with `move`, an empty seat is a button that
- *  moves you there. */
-function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): SeatItem[] {
+ *  moves you there; with `other`, the opener taps another person, then a
+ *  seat for them. */
+function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean, other?: OpenerMove): SeatItem[] {
+  const targets = other && other.picked !== null ? moveTargets(t.seats, t.heldSeats, other.picked) : null;
   return [0, 1, 2, 3].map((at): SeatItem => {
     const s = t.seats[at] ?? null;
     const ours = (at - t.you + 4) % 2 === 0;
     if (!s && t.heldSeats.includes(at)) return heldSeat(at, ours);
+    if (!s && other && targets) {
+      const name = t.seats[other.picked!]?.name ?? "";
+      return targets.includes(at)
+        ? { at, look: "open", name: "Open seat", sub: "", busy,
+            label: `Open seat, ${teamWord(ours)}. Move ${name} here`, pick: () => other.to(at) }
+        : { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    }
     if (!s && move) {
       return { at, look: "open", name: "Open seat", sub: "", busy,
                label: `Open seat, ${teamWord(ours)}. Move here`, pick: () => queue.tableMove(at) };
@@ -118,9 +139,15 @@ function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean): S
                label: ["You", s.ready ? "ready" : null, status || null].filter(Boolean).join(", ") };
     }
     const partner = s.pair && ours;
-    return { at, look: partner ? "friend" : "person", name: shortName(s.name), sub: status, tick: s.ready,
-             label: [s.name, s.ready ? "ready" : null, status || null, partner ? "your Duo partner" : teamWord(ours)]
-               .filter(Boolean).join(", ") };
+    const item: SeatItem = {
+      at, look: partner ? "friend" : "person", name: shortName(s.name), sub: status, tick: s.ready,
+      label: [s.name, s.ready ? "ready" : null, status || null, partner ? "your Duo partner" : teamWord(ours)]
+        .filter(Boolean).join(", "),
+    };
+    if (!other || partner) return item;
+    const picked = other.picked === at;
+    return { ...item, picked, busy, pick: () => other.pick(at),
+             label: `${item.label}. ${picked ? "Moving; tap again to cancel" : "Move"}` };
   });
 }
 
@@ -148,10 +175,11 @@ function SeatBody({ s }: { s: SeatItem }) {
 }
 
 function Seat({ s, team, cls = "" }: { s: SeatItem; team: 0 | 1; cls?: string }) {
-  const className = `tp-seat ${s.look} team${team}${cls}`;
+  const className = `tp-seat ${s.look} team${team}${s.picked ? " picked" : ""}${cls}`;
   if (s.pick) {
     return (
-      <button type="button" className={className} aria-label={s.label} disabled={s.busy} onClick={s.pick}>
+      <button type="button" className={className} aria-label={s.label} aria-pressed={s.picked}
+              disabled={s.busy} onClick={s.pick}>
         <SeatBody s={s} />
       </button>
     );
@@ -210,7 +238,10 @@ interface PanelParts {
   seats: SeatItem[] | null;
   you: number;
   extra?: ReactNode;
-  primary: { label: string; disabled: boolean; onClick: () => void; ring?: ReactNode; searching?: boolean } | null;
+  /** `waiting`: your Start is in, and a tap takes it back. */
+  primary: {
+    label: string; disabled: boolean; onClick: () => void; ring?: ReactNode; searching?: boolean; waiting?: boolean;
+  } | null;
   secondary: { label: string; disabled: boolean; onClick: () => void } | null;
   /** A Duo's other member: who presses the buttons instead. */
   led?: string;
@@ -223,7 +254,7 @@ function botsRing(at: number | null, now: number): ReactNode {
   return <TimerRing left={(at - now) / 1000} total={BOT_FILL_MS / 1000} />;
 }
 
-function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void): PanelParts | null {
+function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void, other?: OpenerMove): PanelParts | null {
   const partner = q.partyId ? partnerName(q.party) : null;
   // a Duo made at a table has no leader to press for it: each member taps
   const led = q.leader || tableDuo(q) ? undefined : `${shortName(partner ?? "Your partner")} leads`;
@@ -256,9 +287,10 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
         title: ownTitle(q, partner), status: { text: `${q.duoReady ?? 0} of 2 ready` },
         seats: ownSeats(q), you: 0, extra,
         primary: { label: q.pending === "start" ? "Starting…" : duoStartLabel(q, partner),
-                   disabled: q.youReady || q.pending !== null, onClick: () => queue.tableStart(),
+                   disabled: q.pending !== null,
+                   onClick: () => (q.youReady ? queue.tableUnready() : queue.tableStart()),
                    ring: q.pending === "start" ? null : ring,
-                   searching: q.youReady && (q.duoReady ?? 0) >= 2 },
+                   searching: q.youReady && (q.duoReady ?? 0) >= 2, waiting: q.youReady },
         secondary: leave,
       };
     }
@@ -280,7 +312,7 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
       </>
     );
     const move = canMove(q);
-    const seats = sharedSeats(t, now, move, q.pending !== null);
+    const seats = sharedSeats(t, now, move, q.pending !== null, q.opener && q.stillHereUntil === null ? other : undefined);
     if (q.stillHereUntil !== null) {
       // a table with no timer asks before it drops a seat nobody is at; the
       // same I’m back as a game's held seat, and any tap counts
@@ -302,7 +334,9 @@ function parts(q: QueueView, kind: PanelKind, now: number, askLeave: () => void)
         ? { label: q.pending === "start" ? "Starting…" : "Start now", disabled: q.pending !== null,
             onClick: () => queue.tableStartNow(), ring }
         : { label: q.pending === "start" ? "Starting…" : startLabel(t),
-            disabled: t.youReady || q.pending !== null, onClick: () => queue.tableStart(), ring },
+            disabled: q.pending !== null || (t.youReady && t.waitingFor.length === 0),
+            onClick: () => (t.youReady ? queue.tableUnready() : queue.tableStart()), ring,
+            waiting: t.youReady },
       secondary: leave,
     };
   }
@@ -361,7 +395,8 @@ function PanelView({ p, kind, guarded, sheet }: { p: PanelParts; kind: string; g
       {p.led ? <p className="tp-led">{p.primary?.ring}{p.led}</p> : (
         <div className="tp-acts">
           {p.primary ? (
-            <button ref={primaryRef} type="button" className={`tp-primary${p.primary.searching ? " searching" : ""}`}
+            <button ref={primaryRef} type="button"
+                    className={`tp-primary${p.primary.searching ? " searching" : ""}${p.primary.waiting ? " waiting" : ""}`}
                     disabled={p.primary.disabled || guarded} onClick={p.primary.onClick}>
               {p.primary.ring}
               {p.primary.label}
@@ -389,7 +424,9 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const [asking, setAsking] = useState(false);
   // "still here?": any tap or key on the page answers it, as at a held seat
   useAnyTapIsBack(kind === "shared" && q.stillHereUntil !== null, () => queue.here());
-  const base = parts(q, kind, now, () => setAsking(true));
+  const seats = q.table?.seats ?? null;
+  const mover = useOpenerMove(seats, (from, to) => queue.tableMoveOther(from, to));
+  const base = parts(q, kind, now, () => setAsking(true), mover.move);
   if (!base) return null;
   const casual = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere";
   const p: PanelParts = casual ? { ...base, tag: "Casual" } : base;
@@ -403,8 +440,75 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
     <LeaveSheet context={context}
                 onStay={() => setAsking(false)}
                 onLeave={() => { setAsking(false); queue.leave(); }} />
-  ) : null;
+  ) : mover.sheet;
   return <PanelView p={p} kind={kind} guarded={guarded} sheet={sheet} />;
+}
+
+/** The opener's move of someone else, for a table's seats (`name` and a
+ *  Duo's `pair` per seat, null for empty): the person tapped, then the
+ *  seat, then one confirm, which `send`s it. A picked seat that empties or
+ *  changes hands drops the pick. */
+function useOpenerMove(seats: ({ name: string; pair?: boolean } | null)[] | null,
+                       send: (from: number, to: number) => void) {
+  const [picked, setPicked] = useState<{ at: number; name: string } | null>(null);
+  const [ask, setAsk] = useState<{ from: number; to: number; names: string[] } | null>(null);
+  const still = picked !== null && seats?.[picked.at]?.name === picked.name;
+  useEffect(() => { if (picked && !still) { setPicked(null); setAsk(null); } }, [picked, still]);
+  const move: OpenerMove = {
+    picked: still ? picked!.at : null,
+    pick: (at) => setPicked((was) => (was?.at === at || !seats?.[at] ? null : { at, name: seats[at]!.name })),
+    to: (to) => {
+      if (!picked || !seats) return;
+      const s = seats[picked.at];
+      const mate = s?.pair ? seats[(picked.at + 2) % 4] : null;
+      setAsk({ from: picked.at, to, names: [picked.name, ...(mate ? [mate.name] : [])] });
+    },
+  };
+  const sheet = ask ? (
+    <MoveConfirm names={ask.names}
+                 onMove={() => { send(ask.from, ask.to); setAsk(null); setPicked(null); }}
+                 onCancel={() => setAsk(null)} />
+  ) : null;
+  return { move, sheet };
+}
+
+/** The one confirm before the opener moves someone: "Move Alice here?",
+ *  then Cancel and Move. A modal dialog; Cancel is focused first and
+ *  Escape cancels. */
+function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () => void; onCancel: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const dialog = ref.current!;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    cancelRef.current?.focus();
+    return () => {
+      if (typeof dialog.close === "function") dialog.close();
+      else dialog.removeAttribute("open");
+    };
+  }, []);
+  return (
+    <dialog ref={ref} className="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog"
+            aria-modal="true" aria-labelledby={titleId}
+            onCancel={(e) => { e.preventDefault(); onCancel(); }}
+            onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+            }}>
+      <div className="leave-sheet">
+        <div className="leave-sheet-text">
+          <h2 id={titleId} className="leave-sheet-title">{moveQuestion(names)}</h2>
+        </div>
+        <div className="leave-sheet-actions">
+          <button ref={cancelRef} type="button" className="leave-sheet-stay" onClick={onCancel}>Cancel</button>
+          <button type="button" className="leave-sheet-leave tp-move-confirm" onClick={onMove}>Move</button>
+        </div>
+      </div>
+    </dialog>
+  );
 }
 
 /** The chat log of the room this socket sits in, as the connection keeps
@@ -525,18 +629,29 @@ function QueueTableRows({ q }: { q: QueueView }) {
 }
 
 /** A room's seats from its frame. Before your Start an empty seat is a
- *  button that moves you there; the server refuses it once you tapped. */
-function roomSeats(room: RoomMsg, ready: Set<number>, move: boolean): SeatItem[] {
+ *  button that moves you there; the server refuses it once you tapped.
+ *  With `other`, the opener taps another person, then an empty seat. */
+function roomSeats(room: RoomMsg, ready: Set<number>, move: boolean, other?: OpenerMove,
+                   onOwnMove?: () => void): SeatItem[] {
   const me = room.players.find((pl) => pl.seat === room.you);
+  const picked = other?.picked ?? null;
   return [0, 1, 2, 3].map((at): SeatItem => {
     const pl = room.players.find((x) => x.seat === at);
     const ours = (at - room.you + 4) % 2 === 0;
+    if (!pl && other && picked !== null) {
+      const name = room.players.find((x) => x.seat === picked)?.name ?? "";
+      return { at, look: "open", name: "Open seat", sub: "",
+               label: `Open seat, ${teamWord(ours)}. Move ${name} here`, pick: () => other.to(at) };
+    }
     if (!pl) {
       if (move && me) {
         return { at, look: "open", name: "Open seat", sub: "",
                  label: `Open seat, ${teamWord(ours)}. Move here`,
-                 pick: () => conn.send({ type: "swap_seats", a: room.you, b: at,
-                                         expect: [{ name: me.name, is_bot: me.is_bot }, null] }) };
+                 pick: () => {
+                   onOwnMove?.();
+                   conn.send({ type: "swap_seats", a: room.you, b: at,
+                               expect: [{ name: me.name, is_bot: me.is_bot }, null] });
+                 } };
       }
       return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
     }
@@ -546,9 +661,31 @@ function roomSeats(room: RoomMsg, ready: Set<number>, move: boolean): SeatItem[]
     }
     if (pl.is_bot) return { at, look: "bot", name: shortName(pl.name), sub: "", label: `${pl.name}, bot, ${teamWord(ours)}` };
     const sub = pl.connected ? "" : "Reconnecting";
-    return { at, look: "person", name: shortName(pl.name), sub, tick,
-             label: [pl.name, tick ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
+    const item: SeatItem = { at, look: "person", name: shortName(pl.name), sub, tick,
+                             label: [pl.name, tick ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
+    if (!other) return item;
+    return { ...item, picked: picked === at, pick: () => other.pick(at),
+             label: `${item.label}. ${picked === at ? "Moving; tap again to cancel" : "Move"}` };
   });
+}
+
+/** The queue's notice (the one toast) when the opener moved you in a
+ *  room: the frame's `you` changed with no move of your own in flight. */
+function useMovedByOpener(room: RoomMsg, ownMove: RefObject<boolean>) {
+  const was = useRef(room.you);
+  useEffect(() => {
+    if (room.you === was.current) return;
+    const before = was.current;
+    was.current = room.you;
+    if (ownMove.current) {
+      ownMove.current = false;
+      return;
+    }
+    const by = room.players.find((pl) => pl.seat === (room.opener ?? room.host))?.name;
+    if (!by) return;
+    queue.notify(movedNote({ type: "table_moved", name: "", seat: room.you, your_team: true, by: shortName(by),
+                             you: true, team_changed: before % 2 !== room.you % 2 }));
+  }, [room, ownMove]);
 }
 
 /** The people who stay when you leave the room, in seat order: the first
@@ -577,6 +714,17 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
   const now = useNow(counting, 250);
   const chat = useRoomChat();
   const left = counting ? Math.max(0, startNowAt! - now) : null;
+  const ownMove = useRef(false);
+  useMovedByOpener(room, ownMove);
+  const roomPeople = [0, 1, 2, 3].map((at) => {
+    const pl = room.players.find((x) => x.seat === at && !x.is_bot && at !== room.you);
+    return pl ? { name: pl.name } : room.players.some((x) => x.seat === at) ? { name: "" } : null;
+  });
+  const mover = useOpenerMove(roomPeople, (from, to) => {
+    const pl = room.players.find((x) => x.seat === from);
+    if (!pl) return;
+    conn.send({ type: "swap_seats", a: from, b: to, expect: [{ name: pl.name, is_bot: pl.is_bot }, null] });
+  });
 
   let primary: PanelParts["primary"];
   if (left !== null && left <= 0) {
@@ -588,7 +736,9 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
     primary = { label: "Start now", disabled: true, onClick: () => {},
                 ring: <TimerRing left={left / 1000} total={START_NOW_SECS} /> };
   } else {
-    primary = { label: roomWaitingLabel(room), disabled: true, onClick: () => {} };
+    const label = roomWaitingLabel(room);
+    primary = { label, disabled: label === "Starting…", waiting: true,
+                onClick: () => conn.send({ type: "lobby_ready", on: false }) };
   }
   const readyLine = roomReadyLine(room);
   const extra = (
@@ -603,7 +753,7 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
     tag: ranked ? undefined : "Casual",
     title: roomTitle(room),
     status: readyLine ? { text: readyLine } : undefined,
-    seats: roomSeats(room, ready, !youReady),
+    seats: roomSeats(room, ready, !youReady, opener ? mover.move : undefined, () => { ownMove.current = true; }),
     you: room.you,
     extra,
     primary,
@@ -613,7 +763,7 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
     <LeaveSheet context={{ kind: "room", others: staying(room), host: opener }}
                 onStay={() => setAsking(false)}
                 onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
-  ) : null;
+  ) : mover.sheet;
   return <PanelView p={p} kind="room" guarded={false} sheet={sheet} />;
 }
 

@@ -36,13 +36,19 @@ const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 80, provisional: 
                 won_pct: 58, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 3,
                 week_delta: 8, history: [1500, 1532], recent_games: [], visible: true };
 
-/** A window `width` px wide (true: a desktop window, false: a phone):
- *  min-width queries answer by it, every other query is false. */
-function viewport(width: number | boolean) {
+/** A window `width` px wide and `height` px tall (true: a desktop window,
+ *  false: a phone): width and height queries, alone or joined by `and`,
+ *  answer by it; every other query is false. */
+function viewport(width: number | boolean, height = 800) {
   const px = width === true ? 1440 : width === false ? 390 : width;
   window.matchMedia = ((q: string) => {
-    const min = /^\(min-width: (\d+)px\)$/.exec(q);
-    return { matches: min ? px >= Number(min[1]) : false, media: q, addEventListener() {}, removeEventListener() {} };
+    const parts = q.split(" and ").map((part) => /^\((min|max)-(width|height): (\d+)px\)$/.exec(part));
+    const matches = parts.every((m) => m !== null) && parts.every((m) => {
+      const [, side, dim, n] = m!;
+      const v = dim === "width" ? px : height;
+      return side === "min" ? v >= Number(n) : v <= Number(n);
+    });
+    return { matches, media: q, addEventListener() {}, removeEventListener() {} };
   }) as unknown as typeof window.matchMedia;
 }
 const BREAKPOINTS: [string, number][] = [["phone", 390], ["iPad portrait", 768], ["iPad", 1024], ["desktop", 1440]];
@@ -149,6 +155,16 @@ describe("the bars", () => {
       // who you are and the settings stay above or beside the games
       expect(host.querySelector(".me-who")).not.toBeNull();
       expect(host.querySelector(".me-visible")).not.toBeNull();
+    });
+  }
+
+  for (const [w, h] of [[932, 430], [844, 390]] as const) {
+    it(`a phone held sideways (${w}x${h}) keeps the portrait design: the tab bar, no top bar`, async () => {
+      viewport(w, h);
+      await renderApp();
+      expect([...host.querySelectorAll(".tabbar .tabbar-item")].map((b) => b.textContent)).toEqual(["Play", "Leaderboard", "Me"]);
+      expect(host.querySelector(".topbar")).toBeNull();
+      expect(host.querySelector(".home-narrow")).not.toBeNull();
     });
   }
 

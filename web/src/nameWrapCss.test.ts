@@ -47,8 +47,9 @@ describe("names in the table panel", () => {
     expect(side.map(([sel]) => sel)).toEqual([]);
   });
 
-  it("keeps the action row in reach on a sideways phone, as on a phone", () => {
-    expect(decls(".phone-landscape .play-table-up .tp-acts")).toContain("position: sticky");
+  it("keeps the action row in reach on a phone, upright or sideways (one portrait column)", () => {
+    expect(decls(".home-narrow .play-table-up .tp-acts")).toContain("position: sticky");
+    expect(css).not.toMatch(/\.phone-landscape [^{]*\.(play-tab|play-table-up|tp-)/);
   });
 
   it("moves a CJK name in the title to the next line whole", () => {

@@ -21,9 +21,11 @@ export function parseHome(hash: string): HomeRoute | null {
   return null;
 }
 
-/** At this width and up (an iPad either way round, a desktop window) the
- *  tabs sit in a top bar; below it, in a phone's bottom tab bar. */
-export const WIDE = "(min-width: 700px)";
+/** At this width and height and up (an iPad either way round, a desktop
+ *  window) the tabs sit in a top bar; below it, in a phone's bottom tab bar.
+ *  A phone held sideways is under the height, so it keeps the portrait
+ *  column; the CSS twin of this query is `(min-width: 700px) and (min-height: 501px)`. */
+export const WIDE = "(min-width: 700px) and (min-height: 501px)";
 
 /** The hash a tab is opened at, the same at every width. */
 export function homeHash(tab: Tab, section: MeSection = "stats"): string {

@@ -2683,9 +2683,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
    page scrolling. Desktop rules above are untouched.
    The block is keyed on the root's `phone-landscape` class, which
-   phoneLayout.ts sets for a viewport under 500px tall (the media query
-   `(max-height: 500px)`) and for a portrait phone at the table, whose table
-   is drawn turned a quarter turn (.app.rotated). A media query cannot see
+   phoneLayout.ts sets only at the table: for a viewport under 500px tall
+   (the media query `(max-height: 500px)`) and for a portrait phone, whose
+   table is drawn turned a quarter turn (.app.rotated). The lobby has one
+   portrait design, which a sideways phone shows too, so nothing here is
+   the lobby's. A media query cannot see
    the rotated frame, a class can. :where() adds no specificity, so every
    rule weighs what it would on its own; the build flattens the nesting. */
 
@@ -3668,72 +3670,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     }
   }
 
-  /* --- Lobby / Room fit in 360px-tall viewports --- */
-  .panel {
-    padding: 16px 22px;
-  }
-
-  .lobby-panel,
-  .room-panel {
-    gap: 10px;
-    width: 360px;
-  }
-
-  .game-title {
-    font-size: 28px;
-  }
-
-  .game-title-en {
-    font-size: 11px;
-    letter-spacing: 0.25em;
-    margin-top: 2px;
-  }
-
-  .game-subtitle {
-    margin: -4px 0 0;
-  }
-
-  /* no room for the preview above the form */
-  .lobby-preview {
-    display: none;
-  }
-
-  .field input,
-  .field select,
-  .room-input {
-    padding: 8px 12px;
-  }
-
-  .field select {
-    padding-right: 30px;
-  }
-
+  /* --- Round end: a compact card; Next round always on screen --- */
   .btn.big {
     padding: 9px 18px;
     font-size: var(--fs-14);
   }
 
-  .room-code {
-    min-height: 44px;
-    font-size: 26px;
-  }
-
-  .seat-clock {
-    row-gap: 6px;
-    padding: 8px;
-  }
-
-  .seat-card {
-    height: 48px;
-    gap: 2px;
-  }
-
-  .room-start {
-    min-height: 44px;
-    font-size: var(--fs-16, 16px);
-  }
-
-  /* --- Round end: a compact card; Next round always on screen --- */
   .modal {
     width: min(380px, 100%);
     max-width: 100%;
@@ -4925,7 +4867,7 @@ button.games-row { cursor: pointer; }
    Below 900px the stacked phone layout above is unchanged. The picture
    spans every text row, so it keeps one size on every step and the text
    needs no reserved height. */
-@media (min-width: 900px) {
+@media (min-width: 900px) and (min-height: 501px) {
   .howto-panel { width: 928px; gap: 20px; }
   .howto-step {
     display: grid;
@@ -5148,6 +5090,9 @@ button.games-row { cursor: pointer; }
   right: max(16px, env(safe-area-inset-right, 0px));
   bottom: var(--tabbar-bottom);
   height: var(--tabbar-h);
+  /* a phone held sideways keeps the portrait pill under the portrait column */
+  max-width: 480px;
+  margin-inline: auto;
   display: flex;
   align-items: stretch;
   padding: 6px;
@@ -5345,11 +5290,7 @@ body.keyboard-open .tabbar { display: none; }
   height: calc(var(--u) * 630);
 }
 /* at a table the panel needs the room more than the preview does */
-.home-wide .play-tab.play-table-up .lobby-preview,
-.phone-landscape .home-wide .play-tab .lobby-preview { display: none; }
-.phone-landscape .home-wide .play-tab .game-title { font-size: 28px; }
-.phone-landscape .home-wide .play-tab .game-title-en { font-size: 11px; }
-.phone-landscape .home-wide .play-tab > .lobby-panel { padding-top: 8px; gap: 12px; }
+.home-wide .play-tab.play-table-up .lobby-preview { display: none; }
 .topbar-end:has(.guest-pill) { gap: 10px; }
 .play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
 .play-label {
@@ -5487,9 +5428,7 @@ body.keyboard-open .tabbar { display: none; }
 .home-narrow .play-table-up .tp .q-switch::after { width: 22px; height: 22px; }
 .home-narrow .play-table-up .tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(18px); }
 .home-narrow .play-table-up .tp-acts,
-.home-narrow .play-table-up .tp-led,
-.phone-landscape .play-table-up .tp-acts,
-.phone-landscape .play-table-up .tp-led {
+.home-narrow .play-table-up .tp-led {
   position: sticky;
   /* the screen's bottom padding already clears the tab bar, and a sticky
      box keeps inside that padding */
@@ -6258,7 +6197,7 @@ dialog.leave-sheet-backdrop {
   from { opacity: 0; transform: scale(1.06); }
   to { opacity: 1; transform: none; }
 }
-@media (max-width: 699px) {
+@media (max-width: 699px), (max-height: 500px) {
   dialog.leave-sheet-bottom { align-items: flex-end; padding: 0; }
   .leave-sheet-bottom .leave-sheet {
     width: 100%;
@@ -6286,7 +6225,7 @@ dialog.leave-sheet-backdrop {
   to { transform: none; }
 }
 
-@media (min-width: 700px) {
+@media (min-width: 700px) and (min-height: 501px) {
   .q-layer { justify-content: center; align-items: center; }
   .q-sheet { width: 380px; padding-bottom: 18px; border-radius: 16px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
   .q-grab { display: none; }

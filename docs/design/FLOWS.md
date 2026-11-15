@@ -72,8 +72,13 @@ full screen still comes (Jerry 11-15).
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
 A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
-two columns from 900px), Support or Privacy. Real surfaces keep theirs: the table panel, sheets and dialogs,
+two columns from 900px, a sideways phone excepted), Support or Privacy. Real surfaces keep theirs: the table panel, sheets and dialogs,
 grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
+The phone lobby is portrait (Jerry 2026-11-15: "Yes let's lock lobby to portrait"): the app locks every lobby
+screen (Play and its panels and sheets, Leaderboard, Me, How to play, saved games, Support, Privacy) to portrait
+on an iPhone and the table to both landscapes; the web cannot lock, so a phone held sideways (under 501px tall)
+shows the same portrait column, centred under a capped tab bar, and scrolls. The lobby has no sideways design
+of its own; the table keeps its landscape layout.
 
 **Section 6, settings.** One settings list (Coach, Sound, Haptics on native only, How to play) in both Me and
 the ⋯ menu. "Kitty 8 cards" moves out of ⋯.
@@ -235,7 +240,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   "Brb"), then the field. All five fit one row of the narrowest chat (a 390 px phone, the in-game panel), so the
   row never scrolls or wraps. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
   path; nothing new is logged. On the Play tab the table panel's Chat row opens chat in the shared `Sheet`
-  (a bottom sheet on a phone, a centred dialog from 700px); in a game chat keeps its panel on the felt (Jerry 11-15).
+  (a bottom sheet on a phone either way round, a centred dialog from 700px); in a game chat keeps its panel on the felt (Jerry 11-15).
 - **The opener moves other people.** At a waiting table, the opener taps a person (the
   seat is outlined), then an empty seat, then confirms once ("Move Alice here?", Cancel / Move). A Duo moves as one
   to a whole free team and is never split; a held partner seat is never a destination. The move takes back the

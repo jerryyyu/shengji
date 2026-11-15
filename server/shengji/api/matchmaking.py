@@ -1730,8 +1730,12 @@ class Matchmaker:
     def _merge_chat(self, t: Table, own: Table) -> None:
         """The lines of an entry's own table ``own`` join ``t``'s log in time
         order, each at its sender's seat here, under fresh ids after the
-        table's; the last CHAT_KEEP stay."""
-        mine = [dict(line, seat=t.seats.index(own.senders[line["id"]])) for line in own.chat]
+        table's; the last CHAT_KEEP stay. A line whose sender is not here (a
+        Duo partner who left while the two waited alone) keeps its name and
+        text with ``seat`` null."""
+        def seat(u: int | None) -> int | None:
+            return t.seats.index(u) if u in t.seats else None
+        mine = [dict(line, seat=seat(own.senders.get(line["id"]))) for line in own.chat]
         merged = sorted(t.chat + mine, key=lambda line: line["t"])[-CHAT_KEEP:]
         base = t.chat_seq
         t.chat = [dict(line, id=base + i) for i, line in enumerate(merged, 1)]

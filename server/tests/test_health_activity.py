@@ -55,14 +55,14 @@ def test_room_game_and_records_move_their_counters(client):
         code = _room_with_bots(a)
         assert _activity(client) == {**ZERO, "rooms_created": 1}
 
-        # A chat is the first record a lobby can write: a record without a round.
+        # A lobby writes no record: its chat is held in memory only.
         a.send_json({"type": "chat", "text": "hello"})
         _drain(a, "chat")
         act = _activity(client)
-        assert act["records_written"] == 1
+        assert act["records_written"] == 0
         assert act["rounds_recorded"] == 0 and act["games_started"] == 0
         assert act["record_write_failures"] == 0
-        assert ISO_UTC.match(act["last_record_write"])
+        assert act["last_record_write"] is None
         assert act["last_record_failure"] is None
 
         a.send_json({"type": "start_game"})
@@ -75,8 +75,10 @@ def test_room_game_and_records_move_their_counters(client):
         # The deal keeps appending after the first state frame; the file can
         # only be ahead of the counter, never behind it.
         lines = (server.LOG_DIR / f"{code}.jsonl").read_text().splitlines()
-        assert 2 <= act["records_written"] <= len(lines)
-        assert [json.loads(line)["e"] for line in lines[:2]] == ["chat", "round_start"]
+        assert 1 <= act["records_written"] <= len(lines)
+        assert ISO_UTC.match(act["last_record_write"])
+        assert json.loads(lines[0])["e"] == "round_start"
+        assert json.loads(lines[0])["round"] == 1
 
         # Unauthenticated surface: no room code, no path.
         shown = json.dumps(act)
@@ -98,17 +100,10 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
     monkeypatch.setattr(server, "open", fake_open, raising=False)
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
+        # Lobby chat attempts no write, so the failing writer is not reached.
         a.send_json({"type": "chat", "text": "hello"})
         _drain(a, "chat")
-        act = _activity(client)
-        assert act["records_written"] == 0
-        assert act["record_write_failures"] == 1
-        assert act["last_record_write"] is None
-        failure = act["last_record_failure"]
-        assert failure["class"] == "OSError"
-        assert failure["errno"] == errno.ENOSPC
-        assert failure["errno_name"] == "ENOSPC"
-        assert ISO_UTC.match(failure["at"])
+        assert _activity(client)["record_write_failures"] == 0
 
         # The game path is untouched by the failing writer: the table starts,
         # the deal runs, and the gap between games started and rounds
@@ -120,7 +115,13 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
         assert act["games_started"] == 1
         assert act["rounds_recorded"] == 0
         assert act["records_written"] == 0
-        assert act["record_write_failures"] >= 2
+        assert act["record_write_failures"] >= 1
+        assert act["last_record_write"] is None
+        failure = act["last_record_failure"]
+        assert failure["class"] == "OSError"
+        assert failure["errno"] == errno.ENOSPC
+        assert failure["errno_name"] == "ENOSPC"
+        assert ISO_UTC.match(failure["at"])
         assert not (server.LOG_DIR / f"{code}.jsonl").exists()
 
         warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"

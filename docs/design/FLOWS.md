@@ -226,9 +226,11 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - **Take back a Start.** At a waiting table, your Start is in until you tap the button
   again: "Waiting for Alice" (a quiet button) becomes "Start", and the "N of M ready" count drops. Each Duo member
   takes back its own tap. The server's `table_start {on: false}` does it.
-- **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "Good game", "Nice!", "One more?",
-  "Brb"), then the field. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
-  path; nothing new is logged.
+- **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "GG", "Nice!", "One more?",
+  "Brb"), then the field. All five fit one row of the narrowest chat (a 390 px phone, the in-game panel), so the
+  row never scrolls or wraps. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
+  path; nothing new is logged. On the Play tab the table panel's Chat row opens chat in the shared `Sheet`
+  (a bottom sheet on a phone, a centred dialog from 700px); in a game chat keeps its panel on the felt (Jerry 11-15).
 - **The opener moves other people.** At a waiting table, the opener taps a person (the
   seat is outlined), then an empty seat, then confirms once ("Move Alice here?", Cancel / Move). A Duo moves as one
   to a whole free team and is never split; a held partner seat is never a destination. The move takes back the

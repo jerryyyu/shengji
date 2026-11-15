@@ -105,12 +105,12 @@ it("shows the quick phrases first, then the field, and a tap sends one as a plai
   const quick = host.querySelector(".chat-quick")!;
   expect(quick.getAttribute("aria-label")).toBe("Quick phrases");
   expect([...quick.querySelectorAll("button")].map((b) => b.textContent))
-    .toEqual(["Hi!", "Good game", "Nice!", "One more?", "Brb"]);
+    .toEqual(["Hi!", "GG", "Nice!", "One more?", "Brb"]);
   // the row sits before the composer
   expect(quick.compareDocumentPosition(host.querySelector(".chat-input")!) & Node.DOCUMENT_POSITION_FOLLOWING)
     .toBeTruthy();
   act(() => quick.querySelectorAll<HTMLButtonElement>("button")[1].click());
-  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "Good game" });
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "GG" });
   // a waiting table's sheet sends through its own path
   const table = vi.fn();
   act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} onSend={table} />));

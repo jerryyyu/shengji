@@ -172,7 +172,7 @@ async function step(s: Step) {
     if (!c) throw new Error(`no control ${s.tap}`);
     await press(c);
   } else if ("say" in s) {
-    const sheet = document.querySelector(".chat-panel")!;
+    const sheet = document.querySelector(".q-sheet.chat-sheet")!;
     const input = sheet.querySelector<HTMLInputElement>("input")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, s.say); input.dispatchEvent(new Event("input", { bubbles: true })); });

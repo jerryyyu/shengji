@@ -1,32 +1,83 @@
 import { useEffect, useRef, useState } from "react";
-import { useMuted } from "../useMuted";
+import { useMenuKeys } from "../useMenuKeys";
+import { usePresence } from "../usePresence";
+import { OFFLINE } from "../offlineMode";
+import { codeLink } from "../codes";
+import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
-import { auth, effectiveName, useAuth } from "../auth";
-import { navigate } from "../replay/route";
-import NameEditForm from "./NameEditForm";
+import { SettingsMenuRows } from "./SettingsList";
 
-/** The phone's `…` overflow: kitty count, sound, invite link and leave —
- * none of them a mid-trick decision, so on a small screen they share one
- * button instead of four chips. Desktop keeps its chips (this is hidden by CSS
- * there). Leave asks first: its row turns into "Leave game? Stay / Leave"
- * and waits, with no timer, until one is chosen or the menu is closed. */
-export default function HudMenu({ room, kittyCount }: { room: string; kittyCount: number }) {
+/** A table's invite: the system share sheet where there is one, else the
+ *  link on the clipboard. Resolves true when the link was copied. */
+function shareInvite(code: string): Promise<boolean> {
+  const url = codeLink(code);
+  if (typeof navigator.share === "function") {
+    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
+      .then(() => false, () => false);   // a dismissed share sheet is not an error
+  }
+  if (!navigator.clipboard) return Promise.resolve(false);
+  return navigator.clipboard.writeText(url).then(() => true, () => false);
+}
+
+/** The table's one `⋯` menu, the same on a phone and a desktop; the header
+ *  beside it holds only the game's state. Its rows, in order: the game's
+ *  mode as a label (Ranked or Casual, not a switch), the table's
+ *  own rows as the table panel draws them (the code with its Invite link,
+ *  then Allow joiners for the table's opener), the player's settings (the
+ *  same list as Me's: Coach, Sound, Haptics in the app, How to play), then
+ *  a red Leave game, which closes the menu and opens the one leave sheet.
+ *  Offline there is no code and no invite: an offline game plays to its end
+ *  on this device. Labels only, no sub-lines.
+ *
+ *  Keyboard: Enter or Space on `⋯` opens it with focus on the first row,
+ *  ArrowUp and ArrowDown move between rows (wrapping), Home and End go to
+ *  the ends, and Escape closes it and returns focus to `⋯`. */
+export default function HudMenu({ room, mode, ranked = false, guest = false, offline = OFFLINE, allowJoiners, opener = true }: {
+  room: string; ranked?: boolean; offline?: boolean;
+  /** The game's mode, a plain label at the top of the menu; the header carries none. */
+  mode?: "Ranked" | "Casual";
+  /** A guest seat: the leave sheet speaks of no ranking. */
+  guest?: boolean;
+  /** The table's "Allow joiners" switch; undefined at a table without one. */
+  allowJoiners?: boolean;
+  /** You opened this table: only the opener sees Allow joiners. */
+  opener?: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const [muted, toggleSound] = useMuted();
-  const [armed, setArmed] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [editingName, setEditingName] = useState(false);
-  const account = useAuth();
-  const [signOutError, setSignOutError] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // the row to focus after the next render
+  const focusNext = useRef<"first" | "last" | null>(null);
+  const presence = usePresence(open);
 
-  // outside tap / Escape closes; an armed Leave reverts too
+  // the rows a keyboard can act on, in order
+  const { items, onKeyDown: onMenuKey } = useMenuKeys(
+    menuRef, "[role='menuitem']:not([aria-disabled='true']), [role='menuitemcheckbox']");
+
+  useEffect(() => {
+    const want = focusNext.current;
+    if (!open || want === null) return;
+    focusNext.current = null;
+    const list = items();
+    const target = want === "last" ? list[list.length - 1] : list[0];
+    target?.focus();
+  });
+
+  // outside tap / Escape closes. Escape hands
+  // focus back to the `⋯` button; an outside tap leaves focus where it lands.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) close();
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      close();
+      triggerRef.current?.focus();
+    };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -35,93 +86,80 @@ export default function HudMenu({ room, kittyCount }: { room: string; kittyCount
     };
   });
 
-  const close = () => {
-    setOpen(false);
-    setArmed(false);
-    setEditingName(false);
+  const close = () => setOpen(false);
+
+  const invite = () => {
+    void shareInvite(room).then((didCopy) => {
+      if (!didCopy) return;
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    });
   };
 
-  const copyInvite = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/?room=${room}`)
-      .then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400); })
-      .catch(() => { /* clipboard blocked; leave the label as-is */ });
+  const askLeave = () => {
+    // the alert hands focus back to whatever had it: the `⋯` button, not a row that is going
+    triggerRef.current?.focus();
+    setOpen(false);
+    setAsking(true);
   };
 
-  const leave = () => {
-    setArmed(false);
-    setOpen(false);
-    conn.send({ type: "leave_room" });
-  };
+  const joiners = opener && !offline ? allowJoiners : undefined;
 
   return (
     <div className="hud-more" ref={rootRef}>
       <button
+        ref={triggerRef}
         className="hud-more-btn"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="More"
-        title="Kitty, sound, invite, leave"
-        onClick={() => (open ? close() : setOpen(true))}
+        title="Table, settings, leave"
+        onClick={() => {
+          if (open) { close(); return; }
+          focusNext.current = "first";
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          // ArrowDown / ArrowUp on the closed button open the menu at its first / last row
+          if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+          e.preventDefault();
+          focusNext.current = e.key === "ArrowDown" ? "first" : "last";
+          setOpen(true);
+        }}
       >
-        …
+        ⋯
       </button>
-      {open ? (
-        <div className="hud-menu" role="menu">
-          <div className="hud-menu-row" role="menuitem" aria-disabled="true">
-            <span>Kitty</span><span className="hud-menu-k">{kittyCount} cards</span>
-          </div>
-          <button className="hud-menu-row" role="menuitemcheckbox" aria-checked={!muted} onClick={toggleSound}>
-            <span>Sound</span><span className="hud-menu-k">{muted ? "off" : "on"}</span>
-          </button>
-          <button className="hud-menu-row" role="menuitem" onClick={copyInvite}>
-            <span>{copied ? "Link copied" : "Copy invite link"}</span>
-          </button>
-          {account.status === "in" && account.user ? (
-            <>
-              {editingName ? (
-                <div className="hud-menu-row hud-menu-edit" role="none">
-                  <NameEditForm user={account.user} onDone={() => setEditingName(false)} />
-                </div>
-              ) : (
-                <button className="hud-menu-row account-edit" role="menuitem"
-                        onClick={() => setEditingName(true)}>
-                  {account.user.picture
-                    ? <img className="account-avatar" src={account.user.picture} alt="" referrerPolicy="no-referrer" />
-                    : null}
-                  <span className="hud-menu-account-name">
-                    {effectiveName(account.user) || account.user.email}
-                  </span>
-                  <span className="hud-menu-k">Edit name</span>
-                </button>
-              )}
-              <button className="hud-menu-row account-games" role="menuitem"
-                      onClick={() => { close(); navigate({ page: "list" }); }}>
-                <span>My games</span>
+      {presence.mounted ? (
+        <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
+             aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
+             ref={menuRef} onKeyDown={onMenuKey}>
+          {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode}</div> : null}
+          {offline ? null : (
+            <div className="hud-menu-code" role="none">
+              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}>{room}</span>
+              <button className="hud-menu-row hud-menu-invite" role="menuitem" onClick={invite}>
+                {copied ? "Link copied" : "Invite link"}
               </button>
-              <button className="hud-menu-row account" role="menuitem"
-                      onClick={() => {
-                        // the menu stays open until the server confirms, so a
-                        // failed sign-out is visible and one tap retries it
-                        auth.signOut().then(close).catch(() => setSignOutError(true));
-                      }}>
-                <span>{signOutError ? "Sign out failed, retry" : "Sign out"}</span>
-              </button>
-            </>
-          ) : null}
-          {armed ? (
-            <div className="hud-menu-row leave armed" role="group" aria-label="Leave game?">
-              <span>Leave game?</span>
-              <span className="hud-menu-confirm">
-                <button className="hud-menu-choice" onClick={() => setArmed(false)}>Stay</button>
-                <button className="hud-menu-choice danger" onClick={leave}>Leave</button>
-              </span>
             </div>
-          ) : (
-            <button className="hud-menu-row leave" role="menuitem" onClick={() => setArmed(true)}>
-              <span>Leave game…</span>
+          )}
+          {joiners === undefined ? null : (
+            <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={joiners}
+                    onClick={() => conn.send({ type: "table_allow_joiners", on: !joiners })}>
+              <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
+          {offline ? null : <div className="hud-menu-sep" role="separator" />}
+          <SettingsMenuRows onOpenPage={close} />
+          <div className="hud-menu-sep" role="separator" />
+          <button className="hud-menu-row leave" role="menuitem" onClick={askLeave}>
+            <span>Leave game</span>
+          </button>
         </div>
+      ) : null}
+      {asking ? (
+        <LeaveSheet context={{ kind: "game", ranked, guest, practice: offline }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
       ) : null}
     </div>
   );

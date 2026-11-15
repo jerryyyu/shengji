@@ -2,6 +2,13 @@ export type { ChatMsg } from "../protocol";
 import type { ChatMsg } from "../protocol";
 import { useEffect, useRef, useState } from "react";
 import { conn } from "../ws";
+import { usePresence } from "../usePresence";
+import { useMutes } from "../chatMute";
+import "./ChatPanel.css";
+
+/** The chat sheet's quick phrases, above the field: a tap sends one as an
+ *  ordinary line, through the same validated, rate-limited path. */
+const QUICK_PHRASES = ["Hi!", "Good game", "Nice!", "One more?", "Brb"] as const;
 
 /** Toggled overlay, not a side panel: in landscape the table already fills
  *  the screen, so chat slides over it and closes again. Unread count lives
@@ -11,15 +18,22 @@ export default function ChatPanel({
   you,
   open,
   onClose,
+  onSend,
 }: {
   messages: ChatMsg[];
   you: number;
   open: boolean;
   onClose: () => void;
+  /** Where a line goes: room chat unless a waiting table sends its own. */
+  onSend?: (text: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const presence = usePresence(open);
+  // a muted seat's lines stay hidden for this viewer; system lines never mute
+  const isMuted = useMutes();
+  const shown = messages.filter((m) => m.seat === -1 || !isMuted(m.room, m.seat));
 
   useEffect(() => {
     if (open) {
@@ -34,17 +48,22 @@ export default function ChatPanel({
     if (open) endRef.current?.scrollIntoView({ block: "end" });
   }, [open, messages.length]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
+  const say = (text: string) => {
+    if (onSend) onSend(text);
+    else conn.send({ type: "table_chat", text });
+  };
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    conn.send({ type: "chat", text });
+    say(text);
     setDraft("");
   };
 
   return (
-    <div className="chat-panel" role="region" aria-label="Chat" onKeyDown={(event) => {
+    <div className={`chat-panel${presence.className ? ` ${presence.className}` : ""}`} role="region"
+         aria-label="Chat" aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
       if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
       event.stopPropagation();
     }}>
@@ -55,8 +74,7 @@ export default function ChatPanel({
         </button>
       </div>
       <div className="chat-log" role="log" aria-label="Messages" aria-relevant="additions">
-        {messages.length === 0 && <div className="chat-empty">No messages yet</div>}
-        {messages.map((m, i) =>
+        {shown.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
             <div key={i} className="chat-msg system">
               {m.text}
@@ -69,6 +87,13 @@ export default function ChatPanel({
           )
         )}
         <div ref={endRef} />
+      </div>
+      <div className="chat-quick" role="group" aria-label="Quick phrases">
+        {QUICK_PHRASES.map((phrase) => (
+          <button key={phrase} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
+            {phrase}
+          </button>
+        ))}
       </div>
       <div className="chat-input">
         <input

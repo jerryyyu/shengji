@@ -39,7 +39,7 @@ it("labels the mobile composer and does not send while confirming IME compositio
   expect(send).not.toHaveBeenCalled();
   expect(input.value).toBe("你好");
   act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "chat", text: "你好" });
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "你好" });
   expect(input.value).toBe("");
 });
 
@@ -65,4 +65,56 @@ it("returns focus to the launcher when chat closes", () => {
     act(() => root.render(<ChatPanel messages={[]} you={0} open={false} onClose={() => {}} />));
     expect(document.activeElement).toBe(launcher);
   } finally { launcher.remove(); }
+});
+
+it("scales and fades in and out, and does neither under Reduce Motion", () => {
+  vi.useFakeTimers();
+  const mm = window.matchMedia;
+  const had = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "animate");
+  Object.defineProperty(HTMLElement.prototype, "animate", { configurable: true, value: () => ({}) });
+  const setReduce = (on: boolean) => {
+    window.matchMedia = ((q: string) => ({ matches: on && q.includes("reduce"), media: q })) as unknown as typeof window.matchMedia;
+  };
+  const panel = () => host.querySelector<HTMLElement>(".chat-panel");
+  const show = (open: boolean) => act(() => root.render(<ChatPanel messages={[]} you={0} open={open} onClose={() => {}} />));
+  try {
+    setReduce(false);
+    show(false);
+    act(() => { vi.advanceTimersByTime(200); });
+    show(true);
+    expect(panel()!.classList.contains("pop-in")).toBe(true);
+    show(false);
+    expect(panel()!.classList.contains("pop-out")).toBe(true);
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(panel()).toBeNull();
+
+    setReduce(true);
+    show(true);
+    expect(panel()!.className).toBe("chat-panel");
+    show(false);
+    expect(panel()).toBeNull();
+  } finally {
+    window.matchMedia = mm;
+    if (had) Object.defineProperty(HTMLElement.prototype, "animate", had);
+    else Reflect.deleteProperty(HTMLElement.prototype, "animate");
+    vi.useRealTimers();
+  }
+});
+
+it("shows the quick phrases first, then the field, and a tap sends one as a plain line", () => {
+  const quick = host.querySelector(".chat-quick")!;
+  expect(quick.getAttribute("aria-label")).toBe("Quick phrases");
+  expect([...quick.querySelectorAll("button")].map((b) => b.textContent))
+    .toEqual(["Hi!", "Good game", "Nice!", "One more?", "Brb"]);
+  // the row sits before the composer
+  expect(quick.compareDocumentPosition(host.querySelector(".chat-input")!) & Node.DOCUMENT_POSITION_FOLLOWING)
+    .toBeTruthy();
+  act(() => quick.querySelectorAll<HTMLButtonElement>("button")[1].click());
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "Good game" });
+  // a waiting table's sheet sends through its own path
+  const table = vi.fn();
+  act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} onSend={table} />));
+  act(() => host.querySelector<HTMLButtonElement>(".chat-quick button")!.click());
+  expect(table).toHaveBeenCalledExactlyOnceWith("Hi!");
+  expect(send).toHaveBeenCalledTimes(1);
 });

@@ -7,11 +7,11 @@ export const DEFAULT_START_LEVEL: Rank = RANKS[0];
 /**
  * Build the create-room wire message for the guarded W32 test controls.
  *
- * The disabled path deliberately returns the historical object shape. A
- * selected policy without a key is refused before any send can occur.
+ * Every create says `start: true`: the room starts at once with bots, and
+ * the server counts a create without it as an out-of-date page's. A selected
+ * policy without a key is refused before any send can occur.
  *
- * `start_level` is omitted at the default, so an ordinary game puts exactly
- * the historical bytes on the wire and an older server keeps working.
+ * `start_level` is omitted at the default, the standard game.
  */
 export function createRoomPayload(
   name: string,
@@ -21,7 +21,7 @@ export function createRoomPayload(
 ): Extract<ClientMsg, { type: "create_room" }> | null {
   const level =
     startLevel === DEFAULT_START_LEVEL ? {} : { start_level: startLevel };
-  if (!w32Selected) return { type: "create_room", name, ...level };
+  if (!w32Selected) return { type: "create_room", name, ...level, start: true };
   if (!accessKey.trim()) return null;
   return {
     type: "create_room",
@@ -29,5 +29,6 @@ export function createRoomPayload(
     ...level,
     test_policy: "w32",
     test_access_key: accessKey,
+    start: true,
   };
 }

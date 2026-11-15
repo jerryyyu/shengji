@@ -136,7 +136,8 @@ describe("the Play tab on a phone", () => {
     expect(hit.inset).toBe("-2px 0");
     // Start and Leave stick to the bottom of the screen's content box, which
     // ends --tabbar-clear above the screen's bottom: never under the pill
-    const acts = rule(".home-narrow .play-table-up .tp-acts, .home-narrow .play-table-up .tp-led");
+    const acts = rule(".home-narrow .play-table-up .tp-acts, .home-narrow .play-table-up .tp-led, "
+      + ".phone-landscape .play-table-up .tp-acts, .phone-landscape .play-table-up .tp-led");
     expect(acts.position).toBe("sticky");
     expect(acts.bottom).toBe("0");
     expect(rule(".home-narrow .home-body > .screen")["padding-bottom"]).toBe("var(--tabbar-clear)");

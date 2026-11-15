@@ -347,7 +347,7 @@ describe("your own table", () => {
     expect(p.querySelector(".tp-secondary")?.textContent).toBe("Leave");
     expect(words(primary()!)).toBe("Start with bots");
     click(primary());
-    expect(lastSent()).toEqual({ type: "queue_start_bots" });
+    expect(lastSent()).toEqual({ type: "table_start_bots" });
     expect(primary()?.textContent).toBe("Starting…");
     say({ type: "match_started", match_id: null, room: "BOTS", rated: true });
     expect(panel()).toBeNull();
@@ -357,9 +357,9 @@ describe("your own table", () => {
     // leaving your own table costs nothing, so the sheet has no line
     expect(leaveSheetText()).toBe("Leave the table?");
     expect(q("[role='alertdialog']")!.textContent).not.toContain("Free");
-    expect(lastSent()).not.toEqual({ type: "queue_leave" });
+    expect(lastSent()).not.toEqual({ type: "table_leave" });
     confirmLeave();
-    expect(lastSent()).toEqual({ type: "queue_leave" });
+    expect(lastSent()).toEqual({ type: "table_leave" });
     say({ type: "queue_state", queued: false, count: 0 });
     expect(panel()).toBeNull();
     expect(findBtn().textContent).toBe("Play");
@@ -599,7 +599,7 @@ describe("a Duo is a table", () => {
     expect(words(primary()!)).toBe("Waiting for Jerry");
     expect(primary()!.disabled).toBe(false);              // a tap takes the Start back
     click(primary());
-    expect(lastSent()).toEqual({ type: "table_unready" });
+    expect(lastSent()).toEqual({ type: "table_start", on: false });
     expect(panel()!.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, ready");
     // the opener's own Start is counted too
     say(duoState(false, 2, true));
@@ -610,7 +610,9 @@ describe("a Duo is a table", () => {
     expect(ringSecs()).not.toBeNull();
     expect(panel()!.querySelectorAll(".tp-tick")).toHaveLength(2);
     expect(panel()!.querySelector(".tp-seat.friend")?.getAttribute("aria-label")).toBe("Jerry, ready, your Duo partner");
-    expect(sentTypes().filter((t) => t === "table_start")).toHaveLength(1);
+    // one Start and one take-back, never a second Start
+    const starts = FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "table_start");
+    expect(starts).toEqual([{ type: "table_start" }, { type: "table_start", on: false }]);
   });
 
   it("the opener's panel: You and Alice, with Start for the opener as well, and Allow joiners", async () => {
@@ -660,7 +662,7 @@ describe("a Duo is a table", () => {
     click(button("Leave", panel()!));
     expect(leaveSheetText()).toBe("Leave the Duo? / Alice keeps the table and its code.");
     confirmLeave();
-    expect(lastSent()).toEqual({ type: "queue_leave" });
+    expect(lastSent()).toEqual({ type: "table_leave" });
     expect(document.querySelectorAll("[role='alertdialog']")).toHaveLength(0);
   });
 
@@ -764,12 +766,12 @@ describe("the panel's primary button", () => {
     });
     key("Escape");
     expect(panel()).not.toBeNull();
-    expect(sentTypes()).not.toContain("queue_leave");
+    expect(sentTypes()).not.toContain("table_leave");
     expect(sentTypes()).not.toContain("open_table_wait");
     expect(q("[inert]")).toBeNull();
     act(() => (document.activeElement as HTMLElement | null)?.blur());
     key("Enter");
-    expect(lastSent()).toEqual({ type: "queue_start_bots" });
+    expect(lastSent()).toEqual({ type: "table_start_bots" });
   });
 
   it("one polite announcement per state, none per tick, and one at ten seconds left", async () => {
@@ -897,7 +899,7 @@ describe("a shared table", () => {
     expect(leaveSheetText()).toBe("Leave the table? / Alice stays at the table.");
     expect(sentCount()).toBe(before);
     confirmLeave();
-    expect(lastSent()).toEqual({ type: "queue_leave" });
+    expect(lastSent()).toEqual({ type: "table_leave" });
     expect(leaveSheetText()).toBeNull();
     say({ type: "queue_state", queued: false, count: 1 });
     expect(panel()).toBeNull();
@@ -1142,7 +1144,7 @@ describe("one code for rooms and tables", () => {
     playJoin();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
-    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats("WXYZ"));
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
   });
@@ -1154,7 +1156,7 @@ describe("one code for rooms and tables", () => {
     say({ type: "code_kind", code: "7F2K", kind: "party" });
     expect(q(".toast")?.textContent).toBe("No table has that code.");
     expect(sentTypes()).not.toContain("party_join");
-    expect(sentTypes()).not.toContain("peek_room");
+    expect(sentTypes()).not.toContain("table_peek");
     expect(button(/^Join$/, q(".join-row")!)?.disabled).toBe(false);
   });
 
@@ -1164,7 +1166,7 @@ describe("one code for rooms and tables", () => {
     playJoin();
     say({ type: "code_kind", code: "ZZZZ", kind: "none" });
     expect(q(".toast")?.textContent).toBe("No table has that code.");
-    expect(sentTypes()).not.toContain("peek_room");
+    expect(sentTypes()).not.toContain("table_peek");
     expect(sentTypes()).not.toContain("party_join");
   });
 
@@ -1176,7 +1178,7 @@ describe("one code for rooms and tables", () => {
     expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats("WXYZ"));
     await settle();
     expect(sentTypes()).not.toContain("join_room");
@@ -1193,7 +1195,7 @@ describe("one code for rooms and tables", () => {
     expect(window.location.search).toBe("?code=WXYZ");
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats("WXYZ"));
     await settle();
     expect(sentTypes()).not.toContain("join_room");
@@ -1308,7 +1310,7 @@ describe("a code lookup that is interrupted or refused", () => {
     expect(ws().sent).toEqual([{ type: "code_lookup", code: "WXYZ" }]);
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     expect(q(".tp-join-code")).not.toBeNull();
   });
 
@@ -1318,7 +1320,7 @@ describe("a code lookup that is interrupted or refused", () => {
     await renderApp();
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
-    const peeks = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "peek_room");
+    const peeks = () => FakeWS.all.flatMap((w) => w.sent).filter((m) => m.type === "table_peek");
     expect(peeks()).toHaveLength(1);
     say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [] });
     await settle();
@@ -1337,7 +1339,7 @@ describe("a code lookup that is interrupted or refused", () => {
     await settle();
     reconnect();
     await settle();
-    expect(ws().sent).toEqual([{ type: "peek_room", room: "WXYZ" }]);
+    expect(ws().sent).toEqual([{ type: "table_peek", code: "WXYZ" }]);
     expect(button("Join", q(".tp-join-code")!)?.disabled).toBe(true);
     say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [] });
     await settle();
@@ -1367,7 +1369,7 @@ describe("a code lookup that is interrupted or refused", () => {
     click(button(/^Join$/, q(".join-row")!));
     say({ type: "error", code: "room_full", message: "Room is full." });
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
-    expect(lastSent()).toEqual({ type: "peek_room", room: "WXYZ" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
   });
 });
 
@@ -1542,9 +1544,9 @@ describe("open tables", () => {
     expect(button(/^Play/)).toBeUndefined();
     click(button("Leave", q(".join-pill")!));
     expect(leaveSheetText()).toBe("Leave the game? / Stay until this round ends, or wait 1 minute to play again.");
-    expect(sentLast()).not.toEqual({ type: "leave_room" });
+    expect(sentLast()).not.toEqual({ type: "table_leave" });
     confirmLeave();
-    expect(sentLast()).toEqual({ type: "leave_room" });
+    expect(sentLast()).toEqual({ type: "table_leave" });
   });
 
   it("O2: the table is told once per join, as the toast: next trick then next round", async () => {
@@ -1586,7 +1588,7 @@ describe("open tables", () => {
       .find((r) => r.textContent?.startsWith("Allow joiners"));
     expect(allow?.getAttribute("aria-checked")).toBe("true");
     click(allow);
-    expect(sentLast()).toEqual({ type: "allow_joiners", on: false });
+    expect(sentLast()).toEqual({ type: "table_allow_joiners", on: false });
     tell(state({ allow_joiners: false }));
     const off = [...document.querySelectorAll<HTMLElement>(".hud-menu-row")]
       .find((r) => r.textContent?.startsWith("Allow joiners"));
@@ -1618,7 +1620,7 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     typeInto(q("input[aria-label='Table code']") as HTMLInputElement, "rank");
     click(button(/^Join$/, q(".join-row")!));
     tell({ type: "code_kind", code: "RANK", kind: "room" });
-    expect(lastSent()).toEqual({ type: "peek_room", room: "RANK" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "RANK" });
   };
 
   it("signed in: no seat picker, the server seats you at a bot's seat", async () => {
@@ -2207,7 +2209,7 @@ describe("the unified table on the client", () => {
     say(queued({ panel_seq: 7 }));
     await pastGuard();
     click(primary());
-    expect(lastSent()).toEqual({ type: "queue_start_bots", panel_seq: 7 });
+    expect(lastSent()).toEqual({ type: "table_start_bots", panel_seq: 7 });
     const before = sentOf("queue_status").length;
     say({ type: "error", code: "panel_changed", message: "Your table changed. Look again before you tap." });
     expect(q(".toast")).toBeNull();
@@ -2305,7 +2307,7 @@ describe("the first joiner", () => {
 
 
 describe("deferred mock items: take back a Start, the opener moves people", () => {
-  it("a Start is taken back with one more tap: Waiting for Alice sends table_unready, then Start shows again", async () => {
+  it("a Start is taken back with one more tap: Waiting for Alice sends table_start off, then Start shows again", async () => {
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null], {}, { opener: false }));
     await pastGuard();
@@ -2317,7 +2319,7 @@ describe("deferred mock items: take back a Start, the opener moves people", () =
     expect(lines()).toEqual(["2 of 3 ready"]);
     expect(primary()!.className).toContain("waiting");
     click(primary());
-    expect(lastSent()).toEqual({ type: "table_unready" });
+    expect(lastSent()).toEqual({ type: "table_start", on: false });
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li", { ready: true }), null], {}, { opener: false }));
     expect(words(primary()!)).toBe("Start");
     expect(lines()).toEqual(["1 of 3 ready"]);

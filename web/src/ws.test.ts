@@ -179,7 +179,7 @@ describe("leaveToLobby (Back to lobby without a page reload)", () => {
 
     conn.leaveToLobby();
 
-    expect(ws.sent).toEqual([{ type: "leave_room" }]);
+    expect(ws.sent).toEqual([{ type: "table_leave" }]);
     expect(got).toEqual(["left"]);                 // UI resets without waiting
     expect(getSavedRoom()).toBeNull();             // a reconnect cannot resume it
     expect(getResumeToken()).toBeNull();

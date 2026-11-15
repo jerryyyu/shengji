@@ -47,7 +47,7 @@ describe("the table's ⋯ menu", () => {
     v.unmount();
   });
 
-  it("Leave game closes the menu and opens the leave sheet; Leave sends leave_room", () => {
+  it("Leave game closes the menu and opens the leave sheet; Leave sends table_leave", () => {
     const v = render();
     act(() => btn(v.host).click());
     act(() => rows(v.host).find((r) => r.classList.contains("leave"))!.click());
@@ -57,7 +57,7 @@ describe("the table's ⋯ menu", () => {
     expect(alert.textContent).toContain("Leave the game?");
     expect(alert.querySelector("p")).toBeNull();   // a casual round costs nothing
     act(() => alert.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
-    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(sent).toEqual([{ type: "table_leave" }]);
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     v.unmount();
   });
@@ -85,7 +85,7 @@ describe("the table's ⋯ menu", () => {
     const joiners = rows(opener.host).find((r) => r.textContent === "Allow joiners")!;
     expect(joiners.getAttribute("aria-checked")).toBe("true");
     act(() => joiners.click());
-    expect(sent).toEqual([{ type: "allow_joiners", on: false }]);
+    expect(sent).toEqual([{ type: "table_allow_joiners", on: false }]);
     opener.unmount();
   });
 
@@ -320,7 +320,7 @@ describe("a ranked game's leave sheet", () => {
 });
 
 describe("the offline menu", () => {
-  it("Leave ends practice: a short alert, then leave_room (App's start screen takes the player home)", () => {
+  it("Leave ends practice: a short alert, then table_leave (App's start screen takes the player home)", () => {
     goOnline.mockClear();
     const v = render({ offline: true });
     act(() => btn(v.host).click());
@@ -330,7 +330,7 @@ describe("the offline menu", () => {
     expect(alert.querySelector("p")!.textContent).toBe("This offline game ends.");
     expect(goOnline).not.toHaveBeenCalled();
     act(() => alert.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
-    expect(sent).toEqual([{ type: "leave_room" }]);
+    expect(sent).toEqual([{ type: "table_leave" }]);
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     v.unmount();
   });

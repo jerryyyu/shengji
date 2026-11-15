@@ -286,7 +286,7 @@ describe("signed in, the player plays under the account name", () => {
     // Play joins the ranked queue with no sheet in between
     act(() => buttonNamed("Play").click());
     expect(document.querySelector(".q-sheet")).toBeNull();
-    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["code_lookup", "peek_room", "join_room", "queue_join"]);
+    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["code_lookup", "table_peek", "join_room", "queue_join"]);
     expect(sentName(0)).toBe("Captain");
     expect(sent[3]).toEqual({ type: "queue_join", mode: "ranked" });
   });
@@ -608,7 +608,7 @@ describe("starting a game waits for the server", () => {
     act(() => button(/Joining…/).click());
     expect(sent).toHaveLength(1);
     serverSays({ type: "code_kind", code: "ABCD", kind: "room" });
-    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }, { type: "peek_room", room: "ABCD" }]);
+    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }, { type: "table_peek", code: "ABCD" }]);
     expect(button(/Joining…/).disabled).toBe(true);
     // straight through when there is no seat to choose: still joining, one join
     serverSays({ type: "room_seats", room: "ABCD", seats: [] });
@@ -668,7 +668,7 @@ describe("an invite link opens the Join panel", () => {
     await render();
     linkNames("room");
     expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).toBeNull();
-    expect(types()).toEqual(["code_lookup", "peek_room"]);
+    expect(types()).toEqual(["code_lookup", "table_peek"]);
     serverSays(SEATS);
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
     expect(types()).not.toContain("join_room");
@@ -742,6 +742,6 @@ describe("an invite link opens the Join panel", () => {
     expect(host.querySelector(".lobby-error")).toBeNull();
     expect(panel()).toBeNull();
     expect(window.location.search).toBe("");
-    expect(types()).toEqual(["code_lookup", "peek_room"]);
+    expect(types()).toEqual(["code_lookup", "table_peek"]);
   });
 });

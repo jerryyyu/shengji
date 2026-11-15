@@ -52,7 +52,7 @@ export default function ChatPanel({
 
   const say = (text: string) => {
     if (onSend) onSend(text);
-    else conn.send({ type: "chat", text });
+    else conn.send({ type: "table_chat", text });
   };
   const send = () => {
     const text = draft.trim();

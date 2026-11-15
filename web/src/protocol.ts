@@ -76,6 +76,20 @@ export type ClientMsg =
   | { type: "code_lookup"; code: string }
   | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
   | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
+  /* The table family (PROTOCOL.md "Table messages"): the same names at a
+   * queue table and in a room, which the server rewrites into the message
+   * that place handles. The queue's own shapes are in QueueClientMsg. */
+  /** In a room: move yourself to the empty `seat`, or with `from` (the
+   *  host) move that seat's occupant there; `expect` as swap_seats's. */
+  | { type: "table_move"; seat: number; from?: number; expect?: [SeatOccupant | null, SeatOccupant | null] }
+  /** Your Start; `on: false` takes it back. */
+  | { type: "table_start"; on?: boolean; panel_seq?: number }
+  | { type: "table_start_level"; start_level: Rank }
+  /** Who is sitting where at a room's code, without joining (room_seats). */
+  | { type: "table_peek"; code: string }
+  /** Leave the table: a room's seat (the server replies {type:"left"}), a
+   *  pending invite Join, or the queue. */
+  | { type: "table_leave" }
   | QueueClientMsg;
 
 export type ReportReason = "abuse" | "spam" | "cheating" | "other";

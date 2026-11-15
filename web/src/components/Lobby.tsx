@@ -62,10 +62,10 @@ const STARTING_LABEL: Record<Starting["kind"], string> = { create: "Creating…"
  *  and whether no seat is left. */
 interface JoinView { code: string; kind: TableKind; peek: RoomSeats | null; full: boolean }
 
-/** Who asked for a peek_room: the Join panel (to show its seats) or the code
+/** Who asked for a table_peek: the Join panel (to show its seats) or the code
  *  box (to join at once when a plain seat is open). */
 type PeekFor = "panel" | "box";
-/** A peek_room sent and not yet answered. `live` goes false when the panel
+/** A table_peek sent and not yet answered. `live` goes false when the panel
  *  that asked is closed: its answer, when it comes, does nothing. */
 interface PeekAsk { code: string; for: PeekFor; live: boolean; generation: number }
 
@@ -189,7 +189,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
     codes.clearPlayError();
   }, [codeView.playError]);
   const sendPeek = useCallback((code: string, asker: PeekFor): boolean => {
-    if (!conn.send({ type: "peek_room", room: code })) return false;
+    if (!conn.send({ type: "table_peek", code })) return false;
     peeks.current.push({ code, for: asker, live: true, generation: conn.generation });
     return true;
   }, []);

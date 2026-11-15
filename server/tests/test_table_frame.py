@@ -189,7 +189,7 @@ def test_a_join_resends_the_table_frame_to_everyone_and_the_joiner_gets_it(clien
         code = room["room"]
         _drain(a, "state", tries=400)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "bea", "seat": 2})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bea", "seat": 2})
             got = _until(b, "table")
             mine = [m for m in got if m["type"] == "table"]
             assert len(mine) == 1 and got[-2]["type"] == "state"
@@ -219,7 +219,7 @@ def test_a_room_table_frame_names_its_seats_as_a_peek_does(client):
     with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
         a.send_json({"type": "create_room", "name": "amy"})
         frame = _until(a, "table")[-1]
-        b.send_json({"type": "peek_room", "room": frame["code"]})
+        b.send_json({"type": "table_peek", "code": frame["code"]})
         peek = _drain(b, "room_seats")
     for s, p in zip(frame["seats"], peek["seats"]):
         assert (s["name"], s["team"], s["state"] == "bot") == (p["name"], p["team"], p["is_bot"])

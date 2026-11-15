@@ -11,8 +11,9 @@ export function mutedSeats(room: string): ReadonlySet<number> {
   return muted.get(room) ?? NONE;
 }
 
-export function isMuted(room: string, seat: number): boolean {
-  return mutedSeats(room).has(seat);
+/** A line from someone no longer at the table (`seat` null) has no seat to mute. */
+export function isMuted(room: string, seat: number | null): boolean {
+  return seat !== null && mutedSeats(room).has(seat);
 }
 
 export function setMuted(room: string, seat: number, on: boolean): void {
@@ -40,7 +41,7 @@ function subscribe(listener: () => void): () => void {
 const getVersion = () => version;
 
 /** ``isMuted``, re-rendering the caller whenever any mute changes. */
-export function useMutes(): (room: string, seat: number) => boolean {
+export function useMutes(): (room: string, seat: number | null) => boolean {
   useSyncExternalStore(subscribe, getVersion, getVersion);
   return isMuted;
 }

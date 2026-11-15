@@ -110,7 +110,6 @@ export interface TableModel {
   /** A Duo's other member: who presses the buttons instead. */
   led?: string;
   leave: LeaveContext;
-  movers: MoverSeat[] | null;
 }
 
 /** The panel's own state the model reads: the clock, and the person the
@@ -241,7 +240,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   const duoPartner = tableDuo(q) ? partnerName(q.party) : null;
   const leave: LeaveContext = duoPartner ? { kind: "duo", partner: duoPartner, opener: q.opener }
     : { kind: "queue", others };
-  const base = { tag, leave, movers: q.table?.seats ?? null, rows: null, waitSwitch: null, chat: null };
+  const base = { tag, leave, rows: null, waitSwitch: null, chat: null };
   if (kind === "join" && q.offer) {
     const o = q.offer;
     const busy = q.pending !== null;

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.test_server_ws import _drain, client  # noqa: F401
+from tests.test_server_ws import _drain, _refuse_the_first_start, client  # noqa: F401
 from native_switches import NATIVE_OFF
 
 ISO_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -72,6 +72,26 @@ def test_room_game_and_records_move_their_counters(client):
         shown = json.dumps(act)
         assert code not in shown
         assert str(server.LOG_DIR) not in shown
+
+
+def test_a_refused_create_counts_no_room(client, monkeypatch):
+    """A create whose start is refused discards its room, so only the
+    started one counts."""
+    from shengji.api import server
+
+    refused = _refuse_the_first_start(monkeypatch, server.IllegalPlay("Refused for the test."))
+    with client.websocket_connect("/ws") as a:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        _drain(a, "left", tries=2)
+        assert refused == [code]
+        assert _activity(client)["rooms_created"] == 0
+        a.send_json({"type": "create_room", "name": "jerry"})
+        _drain(a, "room")
+        _drain(a, "state", tries=400)
+        act = _activity(client)
+        assert act["rooms_created"] == 1
+        assert act["games_started"] == 1
 
 
 def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(

@@ -20,7 +20,6 @@ vi.mock("../auth", async (importOriginal) => {
 import MePage from "./MePage";
 import { IdentitySheet } from "./GuestChip";
 import GamesList from "./GamesList";
-import { openNameEditor } from "../home/route";
 import { forgetHomeSession, forgetPrivateSession } from "../home/session";
 import { hapticsEnabled, setHapticsEnabled } from "../native";
 import { isMuted, setMuted } from "../audio";
@@ -175,12 +174,6 @@ describe("signed in", () => {
     await act(async () => { sw.click(); await new Promise((r) => setTimeout(r, 0)); });
     expect(calls.filter((c) => c.method === "POST").map((c) => c.url)).toEqual(["/api/me/leaderboard-visibility"]);
     expect(sw.getAttribute("aria-checked")).toBe("false");
-  });
-
-  it("the account menu's Edit name opens Me with the form already open", async () => {
-    openNameEditor();
-    await render();
-    expect(host.querySelector<HTMLInputElement>(".name-edit-input")?.value).toBe("Jerry");
   });
 
   it("Edit name opens the inline form; Sign out signs out", async () => {

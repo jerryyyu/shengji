@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, StatePlayer } from "./protocol";
 import {
-  attackingTeam, bankerText, buryPointsText, declareHelp, pointsLabel, seatStatus, teamWord,
+  attackingTeam, bankerText, buryPointsText, declareHelp, seatStatus, teamWord,
 } from "./tableCopy";
 
 function p(seat: number, name: string, extra: Partial<StatePlayer> = {}): StatePlayer {
@@ -22,11 +22,10 @@ describe("table copy", () => {
     expect(teamWord(0, base)).toBe("Them");
   });
 
-  it("finds the attackers from the banker and labels the counter", () => {
+  it("finds the attackers from the banker", () => {
     expect(attackingTeam(base)).toBeNull();
-    expect(pointsLabel(base)).toBe("Attackers");
-    expect(pointsLabel({ ...base, banker: 0 })).toBe("Us");
-    expect(pointsLabel({ ...base, banker: 3 })).toBe("Them");
+    expect(attackingTeam({ ...base, banker: 0 })).toBe(1);
+    expect(attackingTeam({ ...base, banker: 3 })).toBe(0);
   });
 
   it("names the banker in words for the crown's label", () => {

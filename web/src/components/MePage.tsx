@@ -7,7 +7,7 @@ import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
 import { followInfoLink } from "../support/route";
 import { Avatar, Segmented } from "../home/HomeShell";
-import { EDIT_NAME_EVENT, WIDE, openTab, takeNameEditRequest } from "../home/route";
+import { WIDE, openTab } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
 import { cached, remember, tabMemory, useCachedResource, useTabScroll, viewerScope } from "../home/session";
 import LargeTitlePage from "../home/LargeTitlePage";
@@ -206,12 +206,6 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
   savingNow.current = saving;
   useEffect(() => { if (stats && !savingNow.current) setVisible(stats.visible); }, [stats]);
   const [editing, setEditing] = useState(false);
-  useEffect(() => {
-    const open = () => { if (takeNameEditRequest()) setEditing(true); };
-    open();
-    window.addEventListener(EDIT_NAME_EVENT, open);
-    return () => window.removeEventListener(EDIT_NAME_EVENT, open);
-  }, []);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);

@@ -64,12 +64,14 @@ function useChatBubbles(open: boolean) {
     if (seen.current.room !== msg.room) seen.current = { room: msg.room, max: -1 };
     if (msg.id <= seen.current.max) return;     // a replay of a line already shown
     seen.current.max = msg.id;
-    if (msg.seat < 0 || openRef.current || isMuted(msg.room, msg.seat)) return;
-    const bubble: Bubble = { seat: msg.seat, id: msg.id, name: msg.name, text: msg.text };
-    setBubbles((list) => [...list.filter((b) => b.seat !== msg.seat), bubble]);
-    const old = timers.current.get(msg.seat);
+    // a system line, or one from someone no longer seated, has no seat to sit at
+    const seat = msg.seat;
+    if (seat === null || seat < 0 || openRef.current || isMuted(msg.room, seat)) return;
+    const bubble: Bubble = { seat, id: msg.id, name: msg.name, text: msg.text };
+    setBubbles((list) => [...list.filter((b) => b.seat !== seat), bubble]);
+    const old = timers.current.get(seat);
     if (old !== undefined) window.clearTimeout(old);
-    timers.current.set(msg.seat, window.setTimeout(() => drop(msg.seat), BUBBLE_MS));
+    timers.current.set(seat, window.setTimeout(() => drop(seat), BUBBLE_MS));
   }), []);
 
   useEffect(() => {

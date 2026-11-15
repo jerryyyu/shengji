@@ -151,11 +151,6 @@ export function dealNext(state: RoundState): [number, number, Card] {
   return [seat, idx, code];
 }
 
-/** Deal every remaining card (no declarations in between). */
-export function dealAll(state: RoundState): void {
-  while (state.phase === "deal") dealNext(state);
-}
-
 // --------------------------------------------------------------- declare
 
 export function declarationStrength(state: RoundState, cards: readonly Card[]): number | null {
@@ -283,11 +278,6 @@ export function checkPlay(state: RoundState, seat: number, cards: readonly Card[
     if (e instanceof IllegalPlay) return { ok: false, error: e.message };
     throw e;
   }
-}
-
-/** True when the engine accepts `cards` from `seat` (a failing throw is accepted). */
-export function isLegal(state: RoundState, seat: number, cards: readonly Card[]): boolean {
-  return checkPlay(state, seat, cards).ok;
 }
 
 /**

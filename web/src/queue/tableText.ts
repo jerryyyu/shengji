@@ -116,11 +116,6 @@ export function moveQuestion(names: string[]): string {
   return `Move ${who.length > 1 ? `${who[0]} and ${who[1]}` : who[0]} here?`;
 }
 
-/** The strip and pill on other tabs: what the table is, in a few words. */
-export function stripLabel(q: QueueView): string {
-  return q.offer && !q.table && !q.elsewhere ? "Table with a seat" : "Your table";
-}
-
 /** The one sentence the live region speaks when the panel changes state;
  *  the ticking clocks are not in it. */
 export function announcement(q: QueueView): string {
@@ -171,11 +166,6 @@ export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): P
     return [{ text: `${p.tables} ${kind}${p.tables === 1 ? "table has" : "tables have"} a seat` }, playing];
   }
   return [{ text: "Nobody is playing right now" }];
-}
-
-/** The presence line as one string, for a reader and for tests. */
-export function presenceLine(p: Presence | null, mode: QueueMode = "ranked"): string {
-  return presenceParts(p, mode).map((x) => x.text).join("");
 }
 
 /** The one toast a game started alone gets when its first newcomer sits. */

@@ -1,198 +1,199 @@
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import Card from "./Card";
-import { useId } from "react";
+import { useId, useState } from "react";
 import ResultDialog from "./ResultDialog";
-import LeaveButton from "./LeaveButton";
+import LeaveSheet from "./LeaveSheet";
+import { OFFLINE } from "../offlineMode";
+import { TimerRing } from "./MoveClock";
+import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
+import { telemetry, useScreen } from "../telemetry";
+import { attackingTeam, myTeam, nextBankerText, pointsOf, teamMembers, teamWord } from "../tableCopy";
+import RoundEndLastTrick from "./RoundEndLastTrick";
+
+/** Leave beside Next round (Next game), the same in every room. It asks through the one
+ *  leave sheet, like every other leave: the round is over and recorded, so
+ *  the sheet says it is free; an offline game on this device ends with it.
+ *  The modal dialog makes the HUD's own Leave control unreachable here. */
+function RoundEndLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="btn danger big dialog-leave-btn"
+        onClick={() => {
+          telemetry.tap("round_end_leave");
+          setAsking(true);
+        }}
+      >
+        Leave game
+      </button>
+      {asking ? (
+        <LeaveSheet context={{ kind: "game", ranked, guest, practice: OFFLINE, betweenRounds: true }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
+      ) : null}
+    </>
+  );
+}
 
 interface RoundEndModalProps {
   state: GameState;
   result: RoundResult;
+  /** Seconds left on your move timer for Next (ranked tables), else null. */
+  clock?: number | null;
 }
 
-/** Name the actual players, not the seat numbers: "Blue team (seats 0 & 2)"
- *  makes you work out who that was, and "you" should be obvious. */
-function teamName(team: 0 | 1, state?: GameState): string {
-  const colour = team === 0 ? "Blue" : "Orange";
+/** "You & Bot 2 win the round"; the members take a plural verb. A team
+ *  with no one seated is "We" or "They". */
+function TeamTitle({ team, state, what, verb = "win" }: {
+  team: 0 | 1; state: GameState; what: string; verb?: "win" | "lose";
+}) {
   const members = teamMembers(team, state);
-  return members ? `${colour} team (${members})` : `${colour} team`;
+  if (!members) return <>{teamSubject(team, state)} {verb} {what}</>;
+  return <>{members} {verb} {what}</>;
 }
 
-/** "You & Bot 2": the team's players, you first; empty when unknown. */
-function teamMembers(team: 0 | 1, state?: GameState): string {
-  if (!state) return "";
-  return state.players
-    .filter((p) => p.team === team)
-    .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat)
-    .map((p) => (p.seat === state.you ? "You" : p.name))
-    .join(" & ");
+/** The viewer's team when it lost the round, else null (a win, or a viewer
+ *  with no seat). A loss names your own side, "You & Sam lose the round":
+ *  the winners' names alone read as someone else's news. */
+export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null {
+  const mine = state.players.find((p) => p.seat === state.you)?.team;
+  return mine === undefined || mine === winner ? null : mine;
 }
 
-/** "Blue team · You & Bot 2 win the round"; the members take a plural verb,
- *  and phones drop the colour prefix (the title is already in team colour). */
-function TeamTitle({ team, state, what }: { team: 0 | 1; state: GameState; what: string }) {
-  const colour = team === 0 ? "Blue" : "Orange";
-  const members = teamMembers(team, state);
-  if (!members) return <>{colour} team wins {what}</>;
-  return <><span className="title-team">{colour} team · </span>{members} win {what}</>;
+/** The note for a ranked seat whose rating change is missing because the
+ *  seat was taken mid-round from an open table. A guest's seat and an
+ *  account whose rating is still on its way get no note; an unranked room
+ *  shows none. */
+export function RatingLine({ result, ranked }: { result: RoundResult; ranked: boolean }) {
+  if (!ranked || result.unranked !== "joined") return null;
+  return <p className="rating-unranked">Unranked · joined mid-round</p>;
 }
 
-/** Card points: 5s are worth 5, 10s and kings 10, everything else 0. */
-function cardPoints(code: string): number {
-  const rank = code.slice(1);
-  if (rank === "5") return 5;
-  if (rank === "10" || rank === "K") return 10;
-  return 0;
+/** "+12", "−4" or "±0": a rating change short enough for the result line. */
+function shortDelta(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  if (delta < 0) return `−${Math.abs(delta)}`;
+  return "±0";
 }
 
-export default function RoundEndModal({ state, result }: RoundEndModalProps) {
+/** A team as the subject of a sentence: "We" or "They". Labels keep Us
+ *  and Them; prose on the card speaks as the player would. */
+function teamSubject(team: 0 | 1, state: GameState): "We" | "They" {
+  return teamWord(team, state) === "Us" ? "We" : "They";
+}
+
+/** The round in one line: "They took 35 of 80. We go up 1, to 3". The
+ *  attackers' total already includes any kitty bonus. */
+function resultSentences(state: GameState, result: RoundResult): { took: string; climb: string } {
+  const attack = attackingTeam(state);
+  const attackers = attack === null ? "Attackers" : teamSubject(attack, state);
+  const winner = teamSubject(result.winner_team, state);
+  const n = result.level_change;
+  return {
+    took: `${attackers} took ${result.attacker_points} of 80.`,
+    climb: n > 0
+      ? `${winner} go up ${n}, to ${result.new_levels[result.winner_team]}`
+      : `${winner} take the deal, no level change`,
+  };
+}
+
+/** "They won the last trick: ×2, +30" when the attackers took the last
+ *  trick, else null. The multiplier is read back from the bonus the server
+ *  applied (bonus = buried points x multiplier); with nothing buried to
+ *  multiply it is the engine's 2 x the cards in the lead. */
+function kittyBonusText(state: GameState, result: RoundResult): string | null {
+  const attack = attackingTeam(state);
+  const last = state.last_trick;
+  if (attack === null || !last || last.winner % 2 !== attack) return null;
+  const buried = pointsOf(result.kitty_cards);
+  const mult = result.kitty_points > 0 && buried > 0 && result.kitty_points % buried === 0
+    ? result.kitty_points / buried
+    : buried === 0 ? 2 * (last.plays[0]?.cards.length ?? 1) : null;
+  const times = mult !== null ? `×${mult}, ` : "";
+  return `${teamSubject(attack, state)} won the last trick: ${times}+${result.kitty_points}`;
+}
+
+export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
   const titleId = useId();
-  const nextBankerName =
-    state.players.find((p) => p.seat === result.next_banker)?.name ?? `Seat ${result.next_banker}`;
-  // attacker_points is the final total (kitty bonus already included);
-  // kitty_points is the kitty portion of that total.
-  const total = result.attacker_points;
-  const trickPoints = result.attacker_points - result.kitty_points;
+  useScreen("round_end");
+  const [open, setOpen] = useState(false);
+  const ranked = !!state.matched;
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
-  const buriedPoints = result.kitty_cards.reduce((sum, code) => sum + cardPoints(code), 0);
-  const bankerName =
-    state.banker === null
-      ? null
-      : state.banker === state.you
-      ? "you"
-      : state.players.find((p) => p.seat === state.banker)?.name ?? `Seat ${state.banker}`;
+  const buriedPoints = pointsOf(result.kitty_cards);
 
-  if (result.game_over) {
-    return (
-      <ResultDialog titleId={titleId}>
-        <div className="panel modal victory">
-          <div className="victory-crown">👑</div>
-          <h2 id={titleId} tabIndex={-1} className={`victory-title team${result.winner_team}`}>
-            <TeamTitle team={result.winner_team} state={state} what="the game!" />
-          </h2>
-          <p className="victory-sub">
-            Final levels — Blue: {result.new_levels[0]} · Orange: {result.new_levels[1]}
-          </p>
-          <button
-            className="btn primary big"
-            onClick={() => conn.leaveToLobby()}
-          >
-            Back to lobby
-          </button>
-        </div>
-      </ResultDialog>
-    );
-  }
-
+  const lostTeam = losingViewerTeam(state, result.winner_team);
+  // A team that defends at Ace wins a game: a point on the games score, and
+  // both teams' levels restart. The table goes on, so this is Next game.
+  const gameWon = result.point_scored;
+  const what = gameWon ? "the game" : "the round";
+  const us = myTeam(state);
+  const them = (1 - us) as 0 | 1;
+  // A rated round's change rides on the result line; the guest and
+  // joined-mid-round notes, which have no number, keep their own line.
+  const rating = ranked ? result.rating : undefined;
+  const shownDelta = rating ? (gameWon && rating.game_delta !== undefined ? rating.game_delta : rating.delta) : null;
+  const ratingBit = shownDelta !== null
+    ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}> · rating {shortDelta(shownDelta)}</span>
+    : null;
+  const { took, climb } = resultSentences(state, result);
+  const bonus = kittyBonusText(state, result);
+  const hasDetails = result.kitty_cards.length > 0 || state.last_trick !== null;
+  // Everyone reviews the round at their own pace: the server only advances
+  // once every connected human has confirmed.
+  const iAmReady = (state.ready ?? []).includes(state.you);
   return (
     <ResultDialog titleId={titleId}>
-      <div className="panel modal">
-        <h2 id={titleId} tabIndex={-1} className={`modal-title team${result.winner_team}`}>
-          <TeamTitle team={result.winner_team} state={state} what="the round" />
+      <div className={`panel modal round-end${gameWon ? " game-won" : ""}${open ? " details-open" : ""}`}>
+        {gameWon ? <div className="game-won-crown" aria-hidden="true">👑</div> : null}
+        <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
+          {lostTeam !== null
+            ? <TeamTitle team={lostTeam} state={state} what={what} verb="lose" />
+            : <TeamTitle team={result.winner_team} state={state} what={what} />}
         </h2>
 
-        {result.kitty_cards.length > 0 && (
-          <div className="kitty-reveal">
-            <div className="kitty-reveal-label">
-              {bankerName ? `Buried by ${bankerName}` : "Buried"} · {buriedPoints} pts
-            </div>
-            <div className="kitty-cards">
-              {result.kitty_cards.map((code, i) => (
-                <Card key={i} code={code} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="result-grid">
-          <span className="result-label">Trick points</span>
-          <span className="result-value">{trickPoints}</span>
-
-          {result.kitty_points > 0 && (
-            <>
-              <span className="result-label">Kitty bonus</span>
-              <span className="result-value">+{result.kitty_points}</span>
-            </>
-          )}
-
-          <span className="result-label total">Total</span>
-          <span className="result-value total">
-            {total} <span className="result-note">(80 needed)</span>
-          </span>
-
-          <span className="result-label">
-            {result.point_scored ? "Result" : "Level change"}
-          </span>
-          <span className="result-value">
-            {result.point_scored
-              ? `${teamName(result.winner_team, state)} wins the game`
-              : `+${result.level_change}`}
-          </span>
-
-          {result.point_scored ? (
-            <>
-              <span className="result-label">Games won</span>
-              <span className="result-value">
-                <span className="team-dot t0" /> {result.games_won[0]}
-                <span className="team-dot t1" style={{ marginLeft: 12 }} />{" "}
-                {result.games_won[1]}
-              </span>
-            </>
-          ) : null}
-
-          <span className="result-label">
-            {result.point_scored ? "Levels restart at" : "New levels"}
-          </span>
-          <span className="result-value">
-            <span className="team-dot t0" /> {result.new_levels[0]}
-            <span className="team-dot t1" style={{ marginLeft: 12 }} /> {result.new_levels[1]}
-          </span>
-
-          <span className="result-label">Next banker</span>
-          <span className="result-value">{nextBankerName}</span>
-        </div>
-
-        <p className="result-verdict">
-          {result.point_scored
-            ? `${teamName(result.winner_team, state)} held Ace and wins the game — levels restart at ${result.new_levels[0]} and play continues.`
-            : total >= 80
-            ? `Attackers reached ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`
-            : `Attackers fell short with ${total} of the 80 needed — ${teamName(result.winner_team, state)} goes up ${result.level_change} level${result.level_change === 1 ? "" : "s"}.`}
+        {/* one result line, the same on every round end; a won game says the
+            levels restart where another round says the climb */}
+        <p className="result-headline result-line">
+          <span>{took} {gameWon ? `Levels restart at ${result.new_levels[us]}` : climb}{ratingBit}.</span>
+          <span className="result-next-banker">{nextBankerText(state, result)}.</span>
         </p>
+        {gameWon ? (
+          <p className="result-games">Games: Us {result.games_won[us]} · Them {result.games_won[them]}</p>
+        ) : null}
+        {rating ? null : <RatingLine result={result} ranked={ranked} />}
 
-        {(() => {
-          // Everyone reviews the round at their own pace: the server only
-          // advances once EVERY connected human has confirmed.
-          // Only CONNECTED humans are counted — a player who drops during
-          // the round-end screen is taken off the tally server-side too.
-          const humans = state.players.filter((p) => !p.is_bot && p.connected);
-          const ready = state.ready ?? [];
-          const iAmReady = ready.includes(state.you);
-          const waiting = humans.filter((p) => !ready.includes(p.seat));
-          return (
-            <>
-              <button
-                className="btn primary big"
-                disabled={iAmReady}
-                onClick={() => conn.send({ type: "next_round" })}
-              >
-                {iAmReady ? "Waiting for others…" : "Next round"}
-              </button>
-              {humans.length > 1 && (
-                <div className="ready-status">
-                  {ready.length}/{humans.length} ready
-                  {waiting.length > 0 && iAmReady && (
-                    <> — waiting for {waiting.map((p) => p.name).join(", ")}</>
-                  )}
+        {hasDetails ? (
+          <details className="result-details" onToggle={(e) => setOpen(e.currentTarget.open)}>
+            <summary>Details</summary>
+            <div className="round-end-details">
+              {result.kitty_cards.length > 0 ? (
+                <div className="round-end-col round-end-kitty">
+                  <div className="round-end-col-label">Kitty · {buriedPoints} points</div>
+                  <div className="round-end-kitty-cards">
+                    {result.kitty_cards.map((code, i) => <Card key={i} code={code} />)}
+                  </div>
+                  {bonus ? <div className="kitty-bonus">{bonus}</div> : null}
                 </div>
-              )}
-              {/* The modal dialog makes the HUD inert, so its Leave control
-                  is unreachable here; without this, a player waiting on
-                  others has no way out until everyone confirms. */}
-              <LeaveButton variant="dialog" />
-            </>
-          );
-        })()}
+              ) : null}
+              {state.last_trick ? <RoundEndLastTrick state={state} trick={state.last_trick} /> : null}
+            </div>
+          </details>
+        ) : null}
+
+        <div className="round-end-actions">
+          <button
+            className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
+            disabled={iAmReady}
+            onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
+          >
+            {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
+            {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
+          </button>
+          <RoundEndLeave ranked={ranked} guest={state.guest === true} />
+        </div>
       </div>
     </ResultDialog>
   );

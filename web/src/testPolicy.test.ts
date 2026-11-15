@@ -3,19 +3,21 @@ import { RANKS } from "./protocol";
 import { createRoomPayload } from "./testPolicy";
 
 describe("W32 create-room opt-in payload", () => {
-  it("preserves the ordinary create payload exactly", () => {
+  it("sends the ordinary create payload, starting at once", () => {
     expect(createRoomPayload("Jerry", false, "ignored")).toEqual({
       type: "create_room",
       name: "Jerry",
+      start: true,
     });
   });
 
-  it("includes only the constrained W32 fields when enabled", () => {
+  it("includes only the constrained W32 fields when enabled, starting at once", () => {
     expect(createRoomPayload("Jerry", true, "secret")).toEqual({
       type: "create_room",
       name: "Jerry",
       test_policy: "w32",
       test_access_key: "secret",
+      start: true,
     });
   });
 
@@ -25,10 +27,11 @@ describe("W32 create-room opt-in payload", () => {
 });
 
 describe("starting level opt-in payload", () => {
-  it("omits start_level at the default, keeping the historical bytes", () => {
+  it("omits start_level at the default", () => {
     expect(createRoomPayload("Jerry", false, "", "2")).toEqual({
       type: "create_room",
       name: "Jerry",
+      start: true,
     });
     expect(
       Object.keys(createRoomPayload("Jerry", false, "", "2")!),
@@ -39,6 +42,7 @@ describe("starting level opt-in payload", () => {
     expect(createRoomPayload("Jerry", false, "")).toEqual({
       type: "create_room",
       name: "Jerry",
+      start: true,
     });
   });
 
@@ -47,6 +51,7 @@ describe("starting level opt-in payload", () => {
       type: "create_room",
       name: "Jerry",
       start_level: "10",
+      start: true,
     });
   });
 
@@ -57,6 +62,7 @@ describe("starting level opt-in payload", () => {
       start_level: "K",
       test_policy: "w32",
       test_access_key: "secret",
+      start: true,
     });
   });
 

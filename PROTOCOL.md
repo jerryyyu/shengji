@@ -22,7 +22,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `remove_player` | `seat`, optional `expect` | host, lobby: that occupant leaves the room |
 | `allow_joiners` | `on: boolean` | anyone seated at an ordinary room, ranked or casual (lobby or in play): whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
 | `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
-| `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
+| `peek_room` | `room` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found`, the refusal every client's peek already settles on |
 | `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
 | `chat` | `text` (<=300 chars) | after joining. A line sent in the lobby, before the game starts, is kept in memory only (the scrollback, `chat_history`), never in a log, as `table_chat` is; once the game has started a line is also written to the room log |
 | `add_bot` | — | host, in lobby or between rounds |
@@ -123,6 +123,30 @@ Reply to `peek_room`. Read-only: it does not seat the asker and reveals no
 private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
 who your partner is.
+
+A queued table's code (one `code_lookup` calls `"table"`) is answered with
+the table form instead; a room wins a code both could hold, as in
+`code_lookup`, and a code that names neither is `room_not_found`:
+
+`{type: "room_seats", room, table: true, mode, in_game: false, allow_joiners, full, closed, seats: [{seat, team, state, name, ready}]}`
+
+- `seats`: all four, in seat order. `state` is `"taken"`, `"open"` or
+  `"held"` (a Duo opener's partner seat). A taken seat's `name` is the name
+  the table shows and `ready` whether that person's Start is in; an open or
+  held seat has `name: null`, `ready: false`. A lone entry's seats are where
+  its game would put it: one person at seat 0, a pair (or a Duo opener and
+  its held seat) at 0 and 2.
+- `mode`: `"ranked"` or `"casual"`, the mode a code join sits in.
+- `full`: a code join by one person meets `table_full`. The first single by
+  a Duo opener's code takes the held seat, so that code is not full.
+- `closed`: a Join of the table's host is in flight, and a code join meets
+  `table_closed`.
+- `allow_joiners`: the opener's switch. Off, Play seats no stranger there;
+  a code join still sits (see "Table codes").
+
+Anyone holding the code may peek, signed in or not. The frame carries
+names only: no account id, rating or sitting token. A table that has
+started is a room, and its code answers with the room form.
 
 ### `{type: "code_kind", code, kind}`
 
@@ -280,7 +304,7 @@ frames that come back (`room`, `queue_state`, `room_seats`, `chat`,
 | `table_chat` | `text` | `table_chat` | `chat` (a lobby line stays in memory only; a line in play is logged) |
 | `table_leave` | — | `queue_leave`; with an invite Join waiting for its handover, `leave_room` | `leave_room` |
 | `table_join` | `code`, `name`, optional `seat`, `token` | a live room's code: `join_room {room: code}`; any other code: `queue_join {code}`; no code: `room_not_found` | `join_room`, refused from a seat as ever |
-| `table_peek` | `code` | `peek_room {room: code}` (room codes) | `peek_room`, refused from a seat as ever |
+| `table_peek` | `code` | `peek_room {room: code}` (a room's or a queued table's code) | `peek_room`, refused from a seat as ever |
 
 `/healthz` carries `legacy_messages`: since the process started, how many
 times each older name arrived on a socket (`swap_seats`, `lobby_ready`,

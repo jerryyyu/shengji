@@ -2829,6 +2829,19 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         # this to offer a seat picker for a game in progress.
                         target = rooms.get(str(msg.get("room", "")).upper())
                         if target is None:
+                            # Any other code is read like ``code_lookup``, on its
+                            # limit. Past it the answer is the ``room_not_found``
+                            # every client's peek consumer already settles on,
+                            # so a pending peek never waits on a new refusal.
+                            if not MATCHMAKER.lookup_allowed(conn, account_id()):
+                                await send(ws, {"type": "error", "code": "room_not_found",
+                                                "message": "Too many requests; wait a minute."})
+                                continue
+                            # a room wins a code, as in ``code_lookup``
+                            seats = MATCHMAKER.peek(matchmaking.normalize_code(msg.get("room")))
+                            if seats is not None:
+                                await send(ws, seats)
+                                continue
                             await send(ws, {"type": "error", "code": "room_not_found",
                                             "message": "Room not found."})
                             continue

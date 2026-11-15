@@ -1214,11 +1214,11 @@ describe("one code for rooms and tables", () => {
     expect(sentTypes()).not.toContain("table_join");
     // no name sheet: the chip already shows a random name
     expect(q(".q-layer:not(.q-out) .q-sheet")).toBeNull();
-    // the name the chip shows, read from the chip: storage can be written
-    // late by an earlier test's module copies left alive by resetModules
+    // the chip's random name, kept for the next page load
     const chipName = q(".guest-pill .account-pill-name")?.textContent;
     expect(chipName).toBeTruthy();
     expect(chipName).not.toBe("Guest");
+    expect(localStorage.getItem("shengji.name")).toBe(chipName);
     click(button("Join", joinPanel()!));
     expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: chipName });
     expect(lastSent()).not.toMatchObject({ name: "Ann" });
@@ -1244,8 +1244,10 @@ describe("one code for rooms and tables", () => {
     const chipName = q(".guest-pill .account-pill-name")?.textContent;
     expect(chipName).toBeTruthy();
     expect(chipName).not.toBe("Guest");
+    expect(chipName).not.toBe("Other Tab");
     click(button("Join", joinPanel()!));
     expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: chipName });
+    expect(localStorage.getItem("shengji.name")).toBe(chipName);
   });
 
   it("an older ?party= link is a ?code= link: a Duo's table code opens its Join panel", async () => {

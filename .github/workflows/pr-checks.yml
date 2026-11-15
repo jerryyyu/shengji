@@ -14,9 +14,11 @@ concurrency:
 
 jobs:
   # Path classification for the heavy jobs. A push to main always runs the full
-  # suite; on a pull request, `code` is false only when every changed path is
-  # documentation, and `luna` is false only when no changed path can reach the
-  # luna-profiles job. Any error, or an empty diff, reports both as true.
+  # suite. On a pull request, `code` is false only when every changed path is
+  # documentation; `luna`, `train` and `search` are false only when no changed
+  # path can reach that job; `server_full` is false when every code path is
+  # under web/, and then `server_web_only` runs just the server test modules
+  # that read web/ files (server-web). Any error, or an empty diff, runs everything.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -24,6 +26,11 @@ jobs:
       code: ${{ steps.classify.outputs.code }}
       luna: ${{ steps.classify.outputs.luna }}
       train: ${{ steps.classify.outputs.train }}
+      search: ${{ steps.classify.outputs.search }}
+      server_full: ${{ steps.classify.outputs.server_full }}
+      server_web_only: ${{ steps.classify.outputs.server_web_only }}
+      server_web_pure: ${{ steps.classify.outputs.server_web_pure }}
+      server_web_compiled: ${{ steps.classify.outputs.server_web_compiled }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,55 +52,47 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 - <<'PY'
-          import ast, glob, os, re, subprocess, sys
+          import glob, os, re, subprocess, sys
 
           # Documentation that no CI job reads. HANDOFF_REVIEW.md is not here:
           # the conftest review-ledger guard checks it on every PR test session.
           DOC_PREFIXES = ("docs/", "docs_archive/", "incidents/")
+          WORKFLOW = ".github/workflows/pr-checks.yml"
+          TEST_MODULE = re.compile(r"server/tests/test_\w+\.py")
+
+          # The test-module scan and the web-reader rule live in the local gate
+          # script, so CI and `affected_tests.py` select the same modules. A failed
+          # import raises inside classify(), and everything runs.
+          SCRIPTS = os.path.abspath("server/scripts")
+
+          def shared():
+              if SCRIPTS not in sys.path:
+                  sys.path.insert(0, SCRIPTS)
+              import affected_tests
+              return affected_tests
+
+          def imported_test_modules(name):
+              return shared().imported_test_modules(name)
+
+          def with_helpers(names):
+              return shared().with_helpers(names)
 
           def is_doc(path):
               if path == "HANDOFF_REVIEW.md":
                   return False
               return path.endswith(".md") or path.startswith(DOC_PREFIXES)
 
-          def imported_test_modules(name):
-              # Test modules `server/tests/<name>.py` imports, by its syntax tree:
-              # `import test_x`, `from test_x import ...`, `import tests.test_x`,
-              # `from tests.test_x import ...` and `from tests import test_x`.
-              tree = ast.parse(open(f"server/tests/{name}.py").read())
-              found = set()
-              for node in ast.walk(tree):
-                  if isinstance(node, ast.Import):
-                      modules = [alias.name for alias in node.names]
-                  elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                      modules = [node.module]
-                      if node.module == "tests":
-                          modules = [f"tests.{alias.name}" for alias in node.names]
-                  else:
-                      continue
-                  for module in modules:
-                      leaf = module.removeprefix("tests.")
-                      if "." not in leaf and leaf.startswith("test_"):
-                          found.add(leaf)
-              return {leaf for leaf in found if os.path.exists(f"server/tests/{leaf}.py")}
-
-          def with_helpers(names):
-              # `names` plus every test module they import, transitively.
-              names = set(names)
-              todo = list(names)
-              while todo:
-                  for name in imported_test_modules(todo.pop()):
-                      if name not in names:
-                          names.add(name)
-                          todo.append(name)
-              return names
+          def job_block(job):
+              text = open(WORKFLOW).read()
+              block = re.search(rf"\n  {job}:\n(.*?)(?=\n  [A-Za-z_-]+:\n|\Z)", text, re.S)
+              if not block:
+                  raise RuntimeError(f"job {job} not found")
+              return block.group(1)
 
           def luna_test_modules():
               # Test modules the luna-profiles job selects, plus the sibling test
               # modules they import (helpers shared through `from test_x import`).
-              text = open(".github/workflows/pr-checks.yml").read()
-              block = re.search(r"\n  luna-profiles:\n(.*?)(?=\n  [A-Za-z_-]+:\n|\Z)", text, re.S)
-              names = set(re.findall(r"tests/(test_\w+)\.py", block.group(1)))
+              names = set(re.findall(r"tests/(test_\w+)\.py", job_block("luna-profiles")))
               if not names:
                   raise RuntimeError("no luna-profiles test modules found")
               names = with_helpers(names)
@@ -106,12 +105,11 @@ jobs:
               # ci_*_modes.sh scripts they call), the sibling test modules those
               # import, and every web/ file those modules name: a web change
               # reaches the training suites only through such a literal path.
-              text = open(".github/workflows/pr-checks.yml").read()
               selection = ""
               for job in TRAIN_JOBS:
-                  block = re.search(rf"\n  {job}:\n(.*?)(?=\n  [A-Za-z_-]+:\n|\Z)", text, re.S)
-                  selection += block.group(1)
-                  for script in re.findall(r"scripts/(ci_\w+\.sh)", block.group(1)):
+                  block = job_block(job)
+                  selection += block
+                  for script in re.findall(r"scripts/(ci_\w+\.sh)", block):
                       selection += open(f"server/scripts/{script}").read()
               names = set()
               for pattern in re.findall(r"tests/(test_[\w*?]+)\.py", selection):
@@ -126,6 +124,38 @@ jobs:
                   web.update(re.findall(r"""['"/](web/[\w./-]+)""", source))
               return {f"server/tests/{name}.py" for name in names}, web
 
+          API_IMPORT = re.compile(r"shengji\.api\b|from shengji import api\b|from \.\.+api\b")
+
+          def search_inputs():
+              # Test modules the search-regression job selects and the sibling test
+              # modules they import; whether any of them reads a web/ path; and
+              # whether the API package reaches them: imported by one of them, or
+              # by a shengji module outside the package.
+              names = set(re.findall(r"tests/(test_\w+)\.py", job_block("search-regression")))
+              if not names:
+                  raise RuntimeError("no search-regression test modules found")
+              names = with_helpers(names)
+              sources = [open(f"server/tests/{name}.py").read() for name in names]
+              reads_web = any(shared().WEB_PATH.search(source) for source in sources)
+              api = any(API_IMPORT.search(source) for source in sources)
+              for path in glob.glob("server/shengji/**/*.py", recursive=True):
+                  if not path.startswith("server/shengji/api/") and API_IMPORT.search(open(path).read()):
+                      api = True
+              return {f"server/tests/{name}.py" for name in names}, reads_web, api
+
+          def server_selection():
+              # Test modules the server job's pure-engine and compiled-engine steps name.
+              pure, compiled = set(), set()
+              for step in job_block("server").split("\n      - name: ")[1:]:
+                  names = set(re.findall(r"tests/(test_\w+)\.py", step))
+                  if "--engine compiled" in step:
+                      compiled |= names
+                  elif "--engine pure" in step:
+                      pure |= names
+              if not pure or not compiled:
+                  raise RuntimeError("server job selection not found")
+              return pure, compiled
+
           def reaches_train(path, train_tests, train_web):
               # The training suites import most of server/shengji (the API server
               # included) and read fixtures and scripts; documentation, web files
@@ -134,7 +164,7 @@ jobs:
                   return False
               if path.startswith("web/"):
                   return path in train_web
-              if re.fullmatch(r"server/tests/test_\w+\.py", path):
+              if TEST_MODULE.fullmatch(path):
                   return path in train_tests
               return True
 
@@ -144,38 +174,102 @@ jobs:
               # documentation, the web client and other server test modules are out.
               if is_doc(path) or path.startswith("web/"):
                   return False
-              if re.fullmatch(r"server/tests/test_\w+\.py", path):
+              if TEST_MODULE.fullmatch(path):
                   return path in luna_tests
               return True
 
+          def reaches_search(path, search_tests, search_web, search_api):
+              # The search regressions import the engine, the bots and (through
+              # the served-bot witnesses) the API server; documentation, the web
+              # client when none of them reads it, the API package when nothing
+              # they load imports it, and other server test modules are out.
+              if is_doc(path):
+                  return False
+              if path.startswith("web/"):
+                  return search_web
+              if path.startswith("server/shengji/api/"):
+                  return search_api
+              if TEST_MODULE.fullmatch(path):
+                  return path in search_tests
+              return True
+
+          def reaches_server(path):
+              # The server job runs in full for any code path outside web/.
+              return not is_doc(path) and not path.startswith("web/")
+
+          def classify_paths(paths):
+              # Outputs for a pull request's changed paths. server_web_only: every
+              # code path is under web/, so the server job is replaced by the
+              # server test modules that read web/ files (`plan_for`), each in the
+              # engine mode(s) the server job runs it in; a module the server job
+              # does not select runs in pure mode.
+              luna_tests = luna_test_modules()
+              train_tests, train_web = train_inputs()
+              search_tests, search_web, search_api = search_inputs()
+              code = any(not is_doc(path) for path in paths)
+              server_full = any(reaches_server(path) for path in paths)
+              out = {
+                  "code": code,
+                  "luna": any(reaches_luna(path, luna_tests) for path in paths),
+                  "train": any(reaches_train(path, train_tests, train_web) for path in paths),
+                  "search": any(reaches_search(path, search_tests, search_web, search_api) for path in paths),
+                  "server_full": server_full,
+                  "server_web_only": code and not server_full,
+                  "server_web_pure": [],
+                  "server_web_compiled": [],
+              }
+              if out["server_web_only"]:
+                  plan = shared().plan_for([path for path in paths if not is_doc(path)])
+                  wanted = sorted(set(plan.pure) | set(plan.compiled))
+                  if not wanted:
+                      raise RuntimeError("a web change selected no server test module")
+                  pure, compiled = server_selection()
+                  out["server_web_pure"] = [name for name in wanted if name in pure or name not in compiled]
+                  out["server_web_compiled"] = [name for name in wanted if name in compiled]
+              for path in paths:
+                  print(f"{'doc ' if is_doc(path) else 'code'} "
+                        f"{'luna' if reaches_luna(path, luna_tests) else '    '} "
+                        f"{'train' if reaches_train(path, train_tests, train_web) else '     '} "
+                        f"{'search' if reaches_search(path, search_tests, search_web, search_api) else '      '} "
+                        f"{'server' if reaches_server(path) else '      '} {path}")
+              return out
+
+          EVERYTHING = {"code": True, "luna": True, "train": True, "search": True,
+                        "server_full": True, "server_web_only": False,
+                        "server_web_pure": [], "server_web_compiled": []}
+
           def classify():
               if os.environ["EVENT_NAME"] != "pull_request":
-                  return True, True, True, "not a pull request"
+                  return dict(EVERYTHING), "not a pull request"
               base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
               out = subprocess.run(
                   ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"],
                   check=True, capture_output=True, text=True).stdout
               paths = [line for line in out.splitlines() if line]
               if not paths:
-                  return True, True, True, "empty diff"
-              luna_tests = luna_test_modules()
-              train_tests, train_web = train_inputs()
-              code = any(not is_doc(path) for path in paths)
-              luna = any(reaches_luna(path, luna_tests) for path in paths)
-              train = any(reaches_train(path, train_tests, train_web) for path in paths)
-              for path in paths:
-                  print(f"{'doc ' if is_doc(path) else 'code'} "
-                        f"{'luna' if reaches_luna(path, luna_tests) else '    '} "
-                        f"{'train' if reaches_train(path, train_tests, train_web) else '     '} {path}")
-              return code, luna, train, f"{len(paths)} changed paths"
+                  return dict(EVERYTHING), "empty diff"
+              return classify_paths(paths), f"{len(paths)} changed paths"
+
+          def output_lines(result):
+              lines = []
+              for key, value in result.items():
+                  if isinstance(value, bool):
+                      lines.append(f"{key}={str(value).lower()}")
+                  else:
+                      lines.append(f"{key}={' '.join(f'tests/{name}.py' for name in value)}")
+              return lines
 
           try:
-              code, luna, train, why = classify()
+              result, why = classify()
           except Exception as error:
-              code, luna, train, why = True, True, True, f"classification failed, running everything: {error!r}"
-          print(f"code={str(code).lower()} luna={str(luna).lower()} train={str(train).lower()} ({why})")
+              result, why = dict(EVERYTHING), f"classification failed, running everything: {error!r}"
+          lines = output_lines(result)
+          print(" ".join(line for line in lines if "=tests/" not in line) + f" ({why})")
+          for line in lines:
+              if "=tests/" in line:
+                  print(line)
           with open(os.environ.get("GITHUB_OUTPUT", "/dev/stdout"), "a") as output:
-              output.write(f"code={str(code).lower()}\nluna={str(luna).lower()}\ntrain={str(train).lower()}\n")
+              output.write("".join(f"{line}\n" for line in lines))
           PY
 
   test-selection:
@@ -223,7 +317,7 @@ jobs:
 
   server:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.server_full == 'true'
     runs-on: ubuntu-latest
     # Two shards side by side, each a whole set of steps: `pure` runs the core
     # suite and the Sol benchmark contracts; `compiled` runs compiled parity and
@@ -485,6 +579,41 @@ jobs:
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
         run: uv run --frozen --group rl python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py tests/test_y_trajectory_runner.py
 
+  # A pull request that changes only web/ and documentation runs, instead of the
+  # server job, the server test modules that read web/ files: the changes job
+  # lists them with the rule affected_tests.py applies locally, split by the
+  # engine mode(s) the server job runs each in.
+  server-web:
+    needs: changes
+    if: needs.changes.outputs.server_web_only == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked development and RL environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
+      - name: Build compiled engine
+        run: uv run python setup.py build_ext --inplace
+      - name: Test web-reading server modules in pure mode
+        if: needs.changes.outputs.server_web_pure != ''
+        env:
+          TESTS: ${{ needs.changes.outputs.server_web_pure }}
+        run: uv run python scripts/test_checkout.py --engine pure -- -q --durations=10 $TESTS
+      - name: Test web-reading server modules in compiled mode
+        if: ${{ !cancelled() && needs.changes.outputs.server_web_compiled != '' }}
+        env:
+          SHENGJI_FAST: "1"
+          TESTS: ${{ needs.changes.outputs.server_web_compiled }}
+        run: uv run python scripts/test_checkout.py --engine compiled -- -q --durations=10 $TESTS
+
   import-walk:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -618,7 +747,7 @@ jobs:
 
   search-regression:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.search == 'true'
     runs-on: ubuntu-latest
     # Each engine leg runs in three shards balanced by measured per-file time
     # (a pure leg of the whole selection takes about 25 minutes of pytest);

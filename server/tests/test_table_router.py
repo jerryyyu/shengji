@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeout
 from contextlib import ExitStack
 
 import pytest
@@ -23,18 +21,9 @@ from shengji.api import tables
 from tests.test_accounts import accounts_on, keypair  # noqa: F401
 from tests.test_matchmaking import DEVICE_A, DEVICE_B, _account_match, wsenv  # noqa: F401
 from tests.test_ratings import _user
-from tests.test_server_ws import _drain, _next_where, client  # noqa: F401
+from tests.test_server_ws import _drain, _frames_until, _next_where, client  # noqa: F401
 
 DEVICE_C = "CCCCCCCCCCCCCCCCCCCCCC"
-_POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="router-read")
-
-
-def _recv(ws, timeout=5.0):
-    fut = _POOL.submit(ws.receive_json)
-    try:
-        return fut.result(timeout=timeout)
-    except FutureTimeout:
-        raise AssertionError("no frame within the timeout") from None
 
 
 # ------------------------------------------------------------ normalizing
@@ -71,28 +60,17 @@ def _frames(seen: list[dict]) -> list[str]:
                    if m.get("type") != "state"] + list(out))
 
 
-def _until_text(ws, text, tries=600):
+def _until_text(ws, text):
     """Frames up to and including the chat line ``text`` (room or table
     chat) or an error, whichever comes first."""
-    seen = []
-    for _ in range(tries):
-        m = _recv(ws)
-        seen.append(m)
-        if m.get("type") in ("chat", "table_chat") and m.get("text") == text:
-            return seen
-        if m.get("type") == "error" and m.get("code") == "not_seated":
-            return seen
-    raise AssertionError(f"no {text!r} in {[m.get('type') for m in seen]}")
+    def stop(m):
+        return ((m.get("type") in ("chat", "table_chat") and m.get("text") == text)
+                or (m.get("type") == "error" and m.get("code") == "not_seated"))
+    return _frames_until(ws, stop, repr(text))
 
 
-def _until(ws, kind, tries=600):
-    seen = []
-    for _ in range(tries):
-        m = _recv(ws)
-        seen.append(m)
-        if m.get("type") == kind:
-            return seen
-    raise AssertionError(f"no {kind} in {[m.get('type') for m in seen]}")
+def _until(ws, kind):
+    return _frames_until(ws, lambda m: m.get("type") == kind, repr(kind))
 
 
 def _reset(srv):
@@ -151,7 +129,7 @@ def _run_room(env, case: dict, msg: dict, ends: str | None) -> dict:
         for name, seat in case.get("humans", (("Bo", 2),)):
             w = stack.enter_context(client.websocket_connect("/ws"))
             w.send_json({"type": "table_join", "code": code, "name": name, "seat": seat})
-            _drain(w, "state", tries=400)
+            _drain(w, "state")
             socks[name] = w
         room = srv.rooms[code]
         seated = list(socks)
@@ -380,7 +358,7 @@ def test_a_join_of_a_table_that_just_became_a_room_joins_the_room_by_its_name(ws
         a.send_json({"type": "table_start_bots"})
         assert _until(a, "match_started")[-1]["room"] == code
         c.send_json({"type": "table_join", "code": code, "name": "Cy"})
-        _drain(c, "state", tries=400)
+        _drain(c, "state")
         assert [sd.name for sd in srv.rooms[code].seats if not sd.is_bot] == ["Ann", "Cy"]
 
 
@@ -413,20 +391,19 @@ def test_table_messages_from_a_room_socket_reach_the_room_not_the_queue(client):
         h.send_json({"type": "create_room", "name": "Host", "start": True})
         code = _drain(h, "room")["room"]
         b.send_json({"type": "table_join", "code": code, "name": "Bo", "seat": 2})
-        _drain(b, "state", tries=400)
+        _drain(b, "state")
         b.send_json({"type": "table_chat", "text": "hello"})
-        assert _next_where(h, "chat", lambda m: m["seat"] == 2,
-                           tries=400)["text"] == "hello"
+        assert _next_where(h, "chat", lambda m: m["seat"] == 2)["text"] == "hello"
         # a pre-game control is the room's refusal, not the queue's not_seated
         b.send_json({"type": "table_move", "seat": 3})
-        assert _drain(b, "error", tries=400) == {"type": "error",
+        assert _drain(b, "error") == {"type": "error",
                                                  "message": "Game already started."}
         h.send_json({"type": "table_allow_joiners", "on": False})
         h.send_json({"type": "table_chat", "text": "after"})   # handled in order
-        _next_where(h, "chat", lambda m: m["text"] == "after", tries=400)
+        _next_where(h, "chat", lambda m: m["text"] == "after")
         assert srv.rooms[code].allow_joiners is False
         b.send_json({"type": "table_leave"})
-        assert _drain(b, "left", tries=400) == {"type": "left"}
+        assert _drain(b, "left") == {"type": "left"}
         # in play the seat stays, the bot covering it
         assert srv.rooms[code].seats[2].left_by_choice
 
@@ -440,11 +417,11 @@ def test_a_running_rooms_pre_game_controls_are_refused(client, kind):  # noqa: F
     with client.websocket_connect("/ws") as h:
         h.send_json({"type": "create_room", "name": "Host", "start": True})
         code = _drain(h, "room")["room"]
-        _drain(h, "state", tries=400)
+        _drain(h, "state")
         before = (srv.rooms[code].host, srv.rooms[code].start_level,
                   [(sd.name, sd.is_bot) for sd in srv.rooms[code].seats])
         h.send_json({"type": kind, "seat": 1, "a": 0, "b": 1, "start_level": "5"})
-        assert _drain(h, "error", tries=400) == {"type": "error",
+        assert _drain(h, "error") == {"type": "error",
                                                  "message": "Game already started."}
         assert (srv.rooms[code].host, srv.rooms[code].start_level,
                 [(sd.name, sd.is_bot) for sd in srv.rooms[code].seats]) == before
@@ -472,11 +449,11 @@ def test_every_retired_name_is_refused_and_counted(client, monkeypatch, seated):
         if seated:
             h.send_json({"type": "create_room", "name": "Host", "start": True})
             code = _drain(h, "room")["room"]
-            _drain(h, "state", tries=400)
+            _drain(h, "state")
             before = _records(srv.rooms[code])
         for msg in _retired_forms():
             h.send_json({**msg, "on": False, "text": "x", "room": "ABCD", "seat": 1})
-            assert _drain(h, "error", tries=400) == {
+            assert _drain(h, "error") == {
                 "type": "error", "code": "retired", "message": tables.RETIRED_MESSAGE}, msg
         if seated:
             # nothing reached the room: no chat, no switch, no leave
@@ -493,7 +470,7 @@ def test_a_create_without_start_is_counted_and_still_starts(client, monkeypatch)
     monkeypatch.setattr(srv, "ACTIVITY", srv.Activity())
     with client.websocket_connect("/ws") as h:
         h.send_json({"type": "create_room", "name": "Host"})
-        _drain(h, "state", tries=400)
+        _drain(h, "state")
     assert {k: v for k, v in _legacy(client).items() if v} == {"create_room": 1}
 
 
@@ -502,9 +479,9 @@ def test_internal_starts_and_canonical_names_are_not_counted(wsenv, monkeypatch)
     monkeypatch.setattr(srv, "ACTIVITY", srv.Activity())
     with client.websocket_connect("/ws") as h:
         h.send_json({"type": "create_room", "name": "Host", "start": True})
-        _drain(h, "state", tries=400)
+        _drain(h, "state")
         h.send_json({"type": "table_chat", "text": "one"})
-        _drain(h, "chat", tries=400)
+        _drain(h, "chat")
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as a:
         a.send_json({"type": "queue_join", "mode": "casual", "name": "Ann"})
         _drain(a, "queue_state")
@@ -512,7 +489,7 @@ def test_internal_starts_and_canonical_names_are_not_counted(wsenv, monkeypatch)
         _drain(a, "error")
         # the queue's own start of the room calls _start_game, never start_game
         a.send_json({"type": "table_start_bots"})
-        _drain(a, "match_started", tries=400)
+        _drain(a, "match_started")
     assert srv.ACTIVITY.games_started == 2
     assert _legacy(client) == dict.fromkeys(sorted(tables.LEGACY), 0)
 

@@ -3810,20 +3810,83 @@ saved_games.register_saved_games(app)
 ratings.register_ratings(app)
 
 # ------------------------------------------------------------------ static
+def _accepted_encodings(scope) -> set[str]:
+    """The content codings an ``Accept-Encoding`` header allows (q > 0)."""
+    accepted = set()
+    for name, value in scope.get("headers", ()):
+        if name != b"accept-encoding":
+            continue
+        for item in value.decode("latin-1").split(","):
+            coding, _, params = item.strip().partition(";")
+            q = 1.0
+            for param in params.split(";"):
+                key, _, number = param.strip().partition("=")
+                if key == "q":
+                    try:
+                        q = float(number)
+                    except ValueError:
+                        q = 0.0
+            if coding and q > 0:
+                accepted.add(coding.strip().lower())
+    return accepted
+
+
 class WebFiles(StaticFiles):
     """The built page. Vite names every file under assets/ by its content
-    hash, so those may be cached forever; everything else (index.html, the
-    icons, the og/ preview) keeps its name across deploys, so a browser
+    hash, so those may be cached forever, and the sound clips are fetched
+    with a ``?v=`` version, so those may too; everything else (index.html,
+    the icons, the og/ preview) keeps its name across deploys, so a browser
     re-checks it each load and picks up a new deploy at once instead of
-    holding the old page, which points at the old assets."""
+    holding the old page, which points at the old assets.
+
+    The build writes ``<file>.br`` and ``<file>.gz`` beside each file under
+    assets/ (vite.config.ts); a browser that accepts one gets it, with the
+    original file's type."""
+
+    PRECOMPRESSED = (("br", ".br"), ("gzip", ".gz"))
 
     async def get_response(self, path, scope):
-        response = await super().get_response(path, scope)
+        from urllib.parse import parse_qs
+
         if path.startswith("assets/"):
+            response = await self._precompressed(path, scope)
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            response.headers["Vary"] = "Accept-Encoding"
+            return response
+        response = await super().get_response(path, scope)
+        query = parse_qs(scope.get("query_string", b"").decode("latin-1"))
+        versioned = path.startswith("sounds/") and bool(query.get("v"))
+        if versioned and response.status_code in (200, 304):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
             response.headers["Cache-Control"] = "no-cache"
         return response
+
+    async def _precompressed(self, path, scope):
+        import mimetypes
+        import stat
+
+        import anyio
+
+        accepted = _accepted_encodings(scope)
+        if scope["method"] in ("GET", "HEAD") and not path.endswith((".br", ".gz")):
+            for coding, suffix in self.PRECOMPRESSED:
+                if coding not in accepted:
+                    continue
+                try:
+                    full, found = await anyio.to_thread.run_sync(self.lookup_path, path + suffix)
+                except (OSError, ValueError):
+                    break
+                if found is None or not stat.S_ISREG(found.st_mode):
+                    continue
+                response = self.file_response(full, found, scope)
+                media_type = mimetypes.guess_type(path)[0] or "text/plain"
+                if media_type.startswith("text/"):
+                    media_type += "; charset=utf-8"
+                response.headers["Content-Type"] = media_type
+                response.headers["Content-Encoding"] = coding
+                return response
+        return await super().get_response(path, scope)
 
 
 dist = Path(__file__).resolve().parents[3] / "web" / "dist"

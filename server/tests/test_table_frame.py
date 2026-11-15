@@ -123,27 +123,16 @@ def test_the_golden_log_never_holds_the_table_frame():
 
 # ------------------------------------------------------------------ rooms
 def _next(ws, timeout: float = 5.0) -> dict:
-    from concurrent.futures import ThreadPoolExecutor
-    from concurrent.futures import TimeoutError as _TO
-
     import tests.test_server_ws as sw
-    if sw._READER is None:
-        sw._READER = ThreadPoolExecutor(max_workers=32, thread_name_prefix="ws-drain")
-    fut = sw._READER.submit(ws.receive_json)
-    try:
-        return fut.result(timeout=timeout)
-    except _TO:
-        raise AssertionError(f"no frame within {timeout}s") from None
+    m = sw._recv(ws, timeout)
+    if m is None:
+        raise AssertionError(f"no frame within {timeout}s")
+    return m
 
 
-def _until(ws, kind: str, tries: int = 400) -> list[dict]:
-    seen = []
-    for _ in range(tries):
-        m = _next(ws)
-        seen.append(m)
-        if m["type"] == kind:
-            return seen
-    raise AssertionError(f"no {kind!r} in {tries} frames: {[m['type'] for m in seen]}")
+def _until(ws, kind: str) -> list[dict]:
+    import tests.test_server_ws as sw
+    return sw._frames_until(ws, lambda m: m["type"] == kind, repr(kind))
 
 
 def _agrees_with_room(frame: dict, room: dict, state: dict | None) -> None:
@@ -187,7 +176,7 @@ def test_a_join_resends_the_table_frame_to_everyone_and_the_joiner_gets_it(clien
         a.send_json({"type": "create_room", "name": "amy"})
         room = _drain(a, "room")
         code = room["room"]
-        _drain(a, "state", tries=400)
+        _drain(a, "state")
         with client.websocket_connect("/ws") as b:
             b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bea", "seat": 2})
             got = _until(b, "table")

@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import random
+import time
 import tomllib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -29,7 +30,7 @@ from shengji.ai.smart import SmartBot
 from shengji.train import cwv_shortlist_screen as S
 from shengji.train import pv_search_policy as pv
 from shengji.train import screen_deadline
-from shengji.train.screen_deadline import DeadlineSession, DecisionExpired, RECIPE
+from shengji.train.screen_deadline import DeadlineSession, DecisionExpired, RECIPE, STARTUP_SECONDS
 from shengji.train.search_screen import _run_pending
 from tests.test_cwv_shortlist_screen import cfg
 from tests.test_encoder_round_compat import PACKAGE_SHA, pinned_production_package  # noqa: F401
@@ -249,13 +250,29 @@ def test_a_post_round_validation_failure_also_closes_the_child(monkeypatch, work
 
 
 def test_a_stuck_child_falls_back_per_cluster_exactly_as_the_owned_child(monkeypatch, worker_state):
-    # Each expiry kills the child, and the next play respawns it on that play's
-    # clock (spawn-total-play-v1). The budget must cover a cold respawn on a
-    # contended runner, or the expiry's phase reads startup-or-transfer in one
-    # mode and enumeration in the other; it must stay under the 10 s block.
-    recipe = dict(RECIPE, seconds=5)
+    # Each expiry kills the child, and in a screen the next play respawns it on
+    # that play's clock (spawn-total-play-v1). A cold respawn (spawn, torch
+    # import, eight bot rebuilds) takes from under a second to several on a
+    # contended runner, so on a play's clock it races any fixed budget, and the
+    # two modes' expiries would differ by phase. Here the respawn runs straight
+    # after the expiry, on the startup budget, so the only race left is the
+    # budget against the 10 s native block.
+    recipe = dict(RECIPE, seconds=3)
     monkeypatch.setattr(S, "DEADLINE_RECIPE", recipe)
     monkeypatch.setattr(S, "_deadline_side", blocked_factory)
+    real_call = DeadlineSession.call
+    respawns = []
+
+    def call_then_respawn(self, index, method, args, kwargs, *, deadline=None):
+        try:
+            return real_call(self, index, method, args, kwargs, deadline=deadline)
+        except DecisionExpired:
+            assert self.process is None and self.specs
+            real_call(self, 0, "register", (), {}, deadline=time.monotonic() + STARTUP_SECONDS)
+            respawns.append(self.process.pid)
+            raise
+
+    monkeypatch.setattr(DeadlineSession, "call", call_then_respawn)
     owned = cfg("identity", decision_deadline=recipe)
     shared = dict(owned, deadline_child=PER_WORKER)
     for cluster in (0, 1):
@@ -270,6 +287,7 @@ def test_a_stuck_child_falls_back_per_cluster_exactly_as_the_owned_child(monkeyp
         assert len(expired) == 8 and all(d["phase"] != "startup-or-transfer" for d in expired), \
             sorted({d["phase"] for d in expired})
     # the kills mid-cluster respawned the child; the reset before cluster 1 ran on the respawn
+    assert len(respawns) == 32 and len(set(respawns)) == 32
     assert worker_state.session.process.is_alive()
 
 

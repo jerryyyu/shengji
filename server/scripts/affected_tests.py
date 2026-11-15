@@ -23,11 +23,13 @@ applied), and 2 when no checkout virtualenv is found (see
 from __future__ import annotations
 
 import argparse
+import ast
 from dataclasses import dataclass
 import fnmatch
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -73,6 +75,8 @@ RELEASE_IDENTITY_TESTS = (
     "test_served_config", "test_bury_fly_config", "test_deploy_web_only",
 )
 
+REPO = Path(__file__).resolve().parents[2]
+
 RULES: tuple[Rule, ...] = (
     Rule("the API server's frames are replayed by the offline web server through a fixture",
          ("server/shengji/api/*",),
@@ -112,6 +116,56 @@ RULES: tuple[Rule, ...] = (
          checks=("comment-provenance", "ci-test-selection")),
 )
 
+# A server test module reads the web tree when its own source names ``web/...``
+# or a ``"web"`` path component. Every such module runs for any web/ change, and
+# the CI path classifier selects the same set for a pull request that changes
+# only web/ and documentation.
+WEB_PATH = re.compile(r"""['"/]web/|['"]web['"]""")
+WEB_READERS_WHY = "server test modules that read web/ files run for any web change"
+
+
+def imported_test_modules(name: str, root: Path = Path(".")) -> set[str]:
+    """Test modules ``server/tests/<name>.py`` imports, by its syntax tree:
+    ``import test_x``, ``from test_x import ...``, ``import tests.test_x``,
+    ``from tests.test_x import ...`` and ``from tests import test_x``."""
+    tests = root / "server" / "tests"
+    tree = ast.parse((tests / f"{name}.py").read_text())
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules = [node.module]
+            if node.module == "tests":
+                modules = [f"tests.{alias.name}" for alias in node.names]
+        else:
+            continue
+        for module in modules:
+            leaf = module.removeprefix("tests.")
+            if "." not in leaf and leaf.startswith("test_"):
+                found.add(leaf)
+    return {leaf for leaf in found if (tests / f"{leaf}.py").exists()}
+
+
+def with_helpers(names, root: Path = Path(".")) -> set[str]:
+    """``names`` plus every test module they import, transitively."""
+    names = set(names)
+    todo = list(names)
+    while todo:
+        for name in imported_test_modules(todo.pop(), root):
+            if name not in names:
+                names.add(name)
+                todo.append(name)
+    return names
+
+
+def web_reading_tests(repo: Path = REPO) -> set[str]:
+    """Server test modules (top level of ``server/tests``) whose source names a
+    web/ path."""
+    tests = repo / "server" / "tests"
+    return {path.stem for path in tests.glob("test_*.py") if WEB_PATH.search(path.read_text())}
+
+
 # Web commands run in web/; a full vitest run makes the offline subset redundant.
 WEB_COMMANDS: dict[str, tuple[str, ...]] = {
     "vitest-offline": ("npx", "vitest", "run", "src/offline"),
@@ -126,9 +180,6 @@ CHECKS: dict[str, tuple[str, ...]] = {
     "comment-provenance": ("server/scripts/check_comment_provenance.py", "--base", "{base}"),
     "ci-test-selection": ("server/scripts/check_ci_test_selection.py",),
 }
-
-REPO = Path(__file__).resolve().parents[2]
-
 
 @dataclass(frozen=True)
 class Command:
@@ -170,7 +221,13 @@ def _own_tests(path: str, repo: Path) -> list[str]:
 
 def plan_for(paths: list[str], repo: Path = REPO) -> Plan:
     plan = Plan([], [], [], [], [])
+    web_readers: list[str] | None = None
     for path in paths:
+        if path.startswith("web/"):
+            if web_readers is None:
+                web_readers = sorted(web_reading_tests(repo))
+            _add(plan.pure, web_readers)
+            _add(plan.reasons, [WEB_READERS_WHY])
         for rule in RULES:
             if any(fnmatch.fnmatchcase(path, glob) for glob in rule.globs):
                 _add(plan.pure, rule.pure)

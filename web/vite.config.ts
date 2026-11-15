@@ -1,9 +1,41 @@
-import { defineConfig } from 'vite'
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+
+// Formats that are compressed already; a second pass only adds bytes.
+const COMPRESSED = /\.(png|jpe?g|webp|avif|gif|mp3|mp4|woff2?|br|gz)$/;
+
+/** Writes `<file>.br` and `<file>.gz` beside every file under dist/assets/
+ *  that compresses, so the server sends the smallest encoding the browser
+ *  accepts without compressing per request (server.py WebFiles). */
+function precompressAssets(): Plugin {
+  return {
+    name: "precompress-assets",
+    apply: "build",
+    writeBundle(options) {
+      const dir = join(options.dir ?? "dist", "assets");
+      let names: string[];
+      try { names = readdirSync(dir); } catch { return; }
+      for (const name of names) {
+        if (COMPRESSED.test(name)) continue;
+        const raw = readFileSync(join(dir, name));
+        const br = brotliCompressSync(raw, { params: {
+          [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY,
+          [constants.BROTLI_PARAM_SIZE_HINT]: raw.length,
+        } });
+        const gz = gzipSync(raw, { level: 9 });
+        if (br.length < raw.length) writeFileSync(join(dir, `${name}.br`), br);
+        if (gz.length < raw.length) writeFileSync(join(dir, `${name}.gz`), gz);
+      }
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), precompressAssets()],
   server: {
     // Same-origin /api in dev: the session cookie is set and read on one
     // host, so no CORS and nothing differs from the served build. The

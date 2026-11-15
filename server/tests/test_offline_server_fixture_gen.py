@@ -1,6 +1,6 @@
 """The offline-server parity fixture is current, deterministic and covers the flows.
 
-``web/src/offline/fixtures/server_sessions.jsonl.gz`` holds, per seeded solo
+``web/src/offline/fixtures/server_sessions_start.jsonl.gz`` holds, per seeded solo
 game, digests of every frame ``ws_endpoint`` sends the human's socket
 (``scripts/gen_offline_server_fixtures.py``); the TypeScript local server is
 held to it in vitest. Regenerating here and comparing byte for byte catches a
@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import gen_offline_server_fixtures as gen  # noqa: E402
 
 FIXTURE = (Path(__file__).resolve().parents[2] / "web" / "src" / "offline"
-           / "fixtures" / "server_sessions.jsonl.gz")
+           / "fixtures" / gen.FIXTURE_NAME)
 
 
 def _committed() -> str:
@@ -33,15 +33,6 @@ def test_committed_sessions_regenerate_identically():
     assert gen.sessions_text(header["games"], header["rounds"], header["seed"]) == text
 
 
-def test_committed_start_flow_sessions_regenerate_identically():
-    path = FIXTURE.with_name(gen.FIXTURE_NAMES["start"])
-    text = gzip.decompress(path.read_bytes()).decode("utf-8")
-    header = json.loads(text.split("\n", 1)[0])
-    assert header["format"] == gen.FORMAT
-    assert gen.sessions_text(header["games"], header["rounds"], header["seed"],
-                             flow="start") == text
-
-
 def test_committed_sessions_cover_the_server_flows():
     header = json.loads(_committed().split("\n", 1)[0])
     stats = header["stats"]
@@ -51,6 +42,8 @@ def test_committed_sessions_cover_the_server_flows():
                 "point_scored_rounds", "human_bury_frames", "human_declared_frames"):
         assert stats[key] > 0, key
     assert stats["round_end_frames"] == header["games"] * header["rounds"]
+    # create_room sends one room frame, then the game starts
+    assert stats["frames_room"] == header["games"]
 
 
 def test_a_session_is_deterministic_and_only_normalizes_environment():
@@ -105,25 +98,13 @@ def _first_state(frames: list[dict]) -> int:
     return next(i for i, f in enumerate(frames) if f["type"] == "state")
 
 
-# ``create_room`` with ``start: true`` stands for the client's create, add_bot
-# to four seats, start_game chain: from the first state frame on the human
-# gets the chain's frames, and before it only the chain's first room frame.
 # game_config cycles the driver variations: index 1 leads throws, index 3
 # starts at A.
 @pytest.mark.parametrize("seed,config_index", [(1, 0), (2, 1), (3, 2), (4, 3), (12345, 1)])
-def test_start_flow_matches_the_add_bot_start_game_chain(monkeypatch, seed, config_index):
+def test_a_session_starts_with_one_room_frame_and_ends_with_left(monkeypatch, seed, config_index):
     monkeypatch.setattr(gen, "VirtualTimeLoop", _BoundedLoop)
-    config = gen.game_config(config_index)
-    chain = gen.play_session(seed, 2, config, flow="chain")
-    start = gen.play_session(seed, 2, config, flow="start")
-    c, s = _first_state(chain), _first_state(start)
-    assert start[s:] == chain[c:]
-    assert [f["type"] for f in start[:s]] == ["resume", "chat_history", "room"]
-    assert start[:s] == chain[:s]
-    assert [f["type"] for f in chain[s:c]] == ["room"] * (c - s)
-    assert start[-1] == {"type": "left"}
-
-
-def test_an_unknown_flow_is_refused():
-    with pytest.raises(ValueError, match="unknown flow"):
-        gen.play_session(1, 1, gen.game_config(0), flow="other")
+    frames = gen.play_session(seed, 2, gen.game_config(config_index))
+    s = _first_state(frames)
+    assert [f["type"] for f in frames[:s]] == ["resume", "chat_history", "room"]
+    assert [p["name"] for p in frames[2]["players"]] == [gen.HUMAN_NAME]
+    assert frames[-1] == {"type": "left"}

@@ -96,10 +96,9 @@ describe("a phone held upright", () => {
     expect(host.querySelector(".app.rotated .table-screen > .toast")?.textContent).toBe("You must follow suit.");
     expect(host.querySelectorAll(".toast")).toHaveLength(1);
 
-    // back in a room: upright again
-    act(() => ws.deliver({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2",
-                           players: [{ seat: 0, name: "Me", is_bot: false, connected: true }] }));
-    expect(host.querySelector(".tp-room")).not.toBeNull();
+    // the table left, back on Play: upright again
+    act(() => ws.deliver({ type: "left" }));
+    expect(host.querySelector(".lobby-panel")).not.toBeNull();
     expect(app().classList.contains("rotated")).toBe(false);
     expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(false);
   });

@@ -468,10 +468,10 @@ def test_a_cookie_carrying_socket_gets_the_account_and_its_first_name(accounts_o
         assert seat.user_id == 1 and not seat.is_bot
         # A typed name does not replace the account's name.
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
-            b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
-            joined = _drain(b, "room")
+            b.send_json({"type": "join_room", "room": room["room"], "name": "JY", "seat": 2})
+            joined = _drain(b, "state", tries=400)
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[2] == "Jerry"      # a joiner sits as the host's partner
+            assert names[2] == "Jerry"      # the bot seat the joiner took
             assert srv.rooms[room["room"]].seats[2].user_id == 1
         # Nothing about the account reaches the wire.
         assert "user_id" not in str(joined) and "jerry@example.com" not in str(joined)
@@ -532,25 +532,25 @@ def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, ke
         assert srv.rooms[room["room"]].seats[0].user_id == 1
         # and a join from another freshly signed-in device
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
-            b.send_json({"type": "join_room", "room": room["room"], "name": "Phone"})
-            _drain(b, "room")
-            assert srv.rooms[room["room"]].seats[2].user_id == 1   # the partner seat
+            b.send_json({"type": "join_room", "room": room["room"], "name": "Phone",
+                         "seat": 2})
+            _drain(b, "state", tries=400)
+            assert srv.rooms[room["room"]].seats[2].user_id == 1   # the seat it took
 
 
 def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socket(
         accounts_on, keypair, client, monkeypatch):
     from shengji.api import server as srv
-    from tests.test_server_ws import _room_with_bots
 
     # Identity transitions must not race the fixture's accelerated room expiry.
     monkeypatch.setattr(srv, "ROOM_TTL", 300.0)
     private_pem, _ = keypair
     with client.websocket_connect("/ws") as guest:
-        code = _room_with_bots(guest)
+        guest.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(guest, "room")["room"]
         # the resume token the client saved from its first frame (ws.ts)
         token = srv.rooms[code].seats[0].token
-        guest.send_json({"type": "start_game"})
-        _drain(guest, "state", tries=60)
+        _drain(guest, "state", tries=400)
         seat = srv.rooms[code].seats[0]
         assert seat.user_id is None
 
@@ -767,14 +767,15 @@ def test_a_chosen_display_name_names_the_seat_whatever_name_is_typed(accounts_on
         assert room["players"][0]["name"] == "Captain"
         assert srv.rooms[room["room"]].seats[0].user_id == 1
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
-            b.send_json({"type": "join_room", "room": room["room"], "name": "JY"})
-            joined = _drain(b, "room")
+            b.send_json({"type": "join_room", "room": room["room"], "name": "JY", "seat": 2})
+            joined = _drain(b, "state", tries=400)
             names = {p["seat"]: p["name"] for p in joined["players"]}
-            assert names[2] == "Captain"    # a joiner sits as the host's partner
+            assert names[2] == "Captain"    # the bot seat the joiner took
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as c:
             c.send_json({"type": "join_room", "room": room["room"], "name": ""})
-            joined = _drain(c, "room")
-            names = {p["seat"]: p["name"] for p in joined["players"]}
+            joined = _drain(c, "state", tries=400)
+            names = {p["seat"]: p["name"] for p in joined["players"]
+                     if not p["is_bot"]}
             # the account's dropped seat, which carries its name, is its own again
             assert names == {0: "Captain", 2: "Captain"}
 

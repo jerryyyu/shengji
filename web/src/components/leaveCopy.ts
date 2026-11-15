@@ -17,9 +17,6 @@ export type LeaveContext =
   /** The Play tab's table before a game, in a Duo made there. `partner`
    *  keeps the table; `opener`: you opened it, so its code goes with it. */
   | { kind: "duo"; partner: string; opener: boolean }
-  /** A created room's lobby. `others` are the people staying, in seat order;
-   *  `host`: you hold the opener's controls, which pass to the first of them. */
-  | { kind: "room"; others: string[]; host: boolean }
   /** A game at the table. `ranked`: the table is ranked; `guest`: the viewer
    *  is never rated, so no line speaks of ranking; `practice`: an offline
    *  game on this device, which ends; `betweenRounds`: opened from the round end. */
@@ -77,13 +74,6 @@ export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; l
   if (ctx.kind === "duo") {
     const who = shortName(ctx.partner);
     return { title: "Leave the Duo?", line: ctx.opener ? `${who} keeps the table and its code.` : `${who} keeps the table.` };
-  }
-  if (ctx.kind === "room") {
-    if (ctx.others.length === 0) return { title: "Leave the table?", line: "The room closes." };
-    const line = ctx.host
-      ? `The table stays open; ${shortName(ctx.others[0])} can start it.`
-      : "The table stays open.";
-    return { title: "Leave the table?", line };
   }
   if (ctx.practice) return { title: "Leave the game?", line: "This offline game ends." };
   if (ctx.betweenRounds) return { title: "Leave the game?", line: "This round's result is kept." };

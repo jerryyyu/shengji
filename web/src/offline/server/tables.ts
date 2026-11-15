@@ -6,16 +6,18 @@
 
 type Json = Record<string, unknown>;
 
-/** The canonical names the offline server takes. `table_move` is not one:
- *  its room meaning is `swap_seats`, which the offline server has no handler
- *  for. */
+/** The canonical names the offline server takes. */
 export const CANONICAL: ReadonlySet<string> = new Set([
-  "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",
+  "table_move", "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",
   "table_start_level", "table_chat", "table_leave", "table_join", "table_peek",
 ]);
 
-/** The queue's own refusal for an early Start now, said the same way in a room. */
-export const TOO_SOON = "Start now opens 30 seconds after the last person sits.";
+/** tables.py LOBBY: what sets a table up before its game. A room's game has
+ *  always started, so in a room each is refused. */
+export const LOBBY: ReadonlySet<string> = new Set([
+  "swap_seats", "lobby_ready", "set_start_level", "table_move", "table_start",
+  "table_start_now", "table_start_bots", "table_start_level",
+]);
 
 const as = (msg: Json, type: string, fields: Json = {}): Json => ({ ...msg, type, ...fields });
 
@@ -33,16 +35,12 @@ export function forQueue(msg: Json): Json | null {
   return null;
 }
 
-/** `msg` (a canonical name) from the person at a room's seat, before or
- *  during its game. `table_start_now` is the host's `start_game`; the caller
- *  gates it. */
+/** `msg` (a canonical name) from a person seated in a room's game. The names
+ *  that set a table up before its game (`LOBBY`) stay as they are, for the
+ *  room to refuse. */
 export function forRoom(msg: Json): Json {
   switch (msg.type) {
-    case "table_start": return as(msg, "lobby_ready");
-    case "table_start_bots": return as(msg, "lobby_ready", { on: true });
-    case "table_start_now": return as(msg, "start_game");
     case "table_allow_joiners": return as(msg, "allow_joiners");
-    case "table_start_level": return as(msg, "set_start_level");
     case "table_chat": return as(msg, "chat");
     case "table_leave": return as(msg, "leave_room");
     case "table_join": return as(msg, "join_room", { room: msg.code ?? "" });

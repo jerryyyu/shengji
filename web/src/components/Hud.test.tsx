@@ -427,7 +427,6 @@ describe("the header holds the game's state only", () => {
       return text;
     };
     expect(rows({ matched: false, allow_joiners: false })).toContain("Allow joiners");
-    expect(rows({ matched: false, ranked: true, allow_joiners: true })).toContain("Allow joiners");
     // the server leaves the flag off a room that never seats a stranger
     expect(rows({ matched: true })).not.toContain("Allow joiners");
   });

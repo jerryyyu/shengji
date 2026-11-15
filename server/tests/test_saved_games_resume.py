@@ -71,8 +71,7 @@ def test_continue_starts_a_table_at_those_levels_banker_and_seat(env):
         assert room_msg["players"][2]["name"] == "Jerry"
         room = srv.rooms[room_msg["room"]]
         assert room.seats[2].user_id == uid
-        ws.send_json({"type": "start_game"})
-        state = _drain(ws, "state", tries=60)
+        state = _drain(ws, "state", tries=400)
         assert state["you"] == 2
         assert state["levels"] == list(last.new_levels)
         assert room.game.levels == tuple(last.new_levels)
@@ -85,18 +84,22 @@ def test_continue_starts_a_table_at_those_levels_banker_and_seat(env):
         ws.__exit__(None, None, None)
 
 
-def test_a_continued_game_is_rated_for_the_signed_in_player_when_ranked(env):
+def test_a_continued_game_refuses_ranked_and_is_never_rated(env):
+    """A continued game is a created room, and only the queue makes a rated
+    one: the old Ranked switch is refused and the game stays unrated."""
+    from shengji.api import tables
+
     srv, store, client, cookie, uid, _pem = env
     t, _last = _saved(srv, uid, seat=1, rounds=1)
     ws = _continue(client, cookie, t.game_id)
     try:
         code = _drain(ws, "room")["room"]
-        # a continued game is a created room: unranked until its host says so
+        _drain(ws, "state", tries=400)
         ws.send_json({"type": "set_ranked", "on": True})
-        ws.send_json({"type": "start_game"})
-        _drain(ws, "state", tries=60)
+        err = _drain(ws, "error", tries=400)
+        assert err["code"] == "retired" and err["message"] == tables.RETIRED_MESSAGE
         room = srv.rooms[code]
-        assert room.ratings is not None and room.ratings.present == {1: uid}
+        assert room.ratings is None and not room.matched
     finally:
         ws.__exit__(None, None, None)
 
@@ -222,7 +225,7 @@ def test_continue_with_start_keeps_levels_banker_seat_and_link(env):
         room_msg = _drain(ws, "room")
         assert room_msg["you"] == 2 and room_msg["host"] == 2
         assert [p["is_bot"] for p in room_msg["players"]] == [True, True, False, True]
-        state = _drain(ws, "state", tries=60)
+        state = _drain(ws, "state", tries=400)
         assert state["you"] == 2 and state["levels"] == list(last.new_levels)
         room = srv.rooms[room_msg["room"]]
         assert [sd.name for sd in room.seats] == ["Bot 1", "Bot 2", "Jerry", "Bot 3"]

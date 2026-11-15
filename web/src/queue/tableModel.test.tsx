@@ -1,15 +1,13 @@
-// The table panel's DOM and sends, fixture by fixture: every room and queue
-// state the panel tests put on screen, rendered through the whole app on a
-// fixed clock. For each state the snapshot holds the panel's markup, then
-// for every enabled control a fresh replay that taps it, with the frames it
-// sent and how the markup changed. A room table and a Play table are one panel fed
-// by two adapters; this file holds both to the same output.
+// The table panel's DOM and sends, fixture by fixture: every queue state
+// the panel tests put on screen, rendered through the whole app on a fixed
+// clock. For each state the snapshot holds the panel's markup, then for
+// every enabled control a fresh replay that taps it, with the frames it sent
+// and how the markup changed.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
-import type { RoomMsg } from "../protocol";
 import { GUARD_MS } from "./useKindGuard";
 
 class FakeWS {
@@ -64,8 +62,7 @@ type Step =
   | { tap: string }                 // a control, by its text or aria-label, in the panel or an open sheet
   | { say: string }                 // typed into the chat sheet's field, then Send
   | { frames: () => unknown[] }     // more frames
-  | { wait: number }                // ms on the fake clock
-  | { back: true };                 // the back gesture off the room screen
+  | { wait: number };               // ms on the fake clock
 interface Fixture { name: string; frames: () => unknown[]; steps?: Step[]; wide?: boolean; guest?: boolean }
 
 async function boot(f: Fixture) {
@@ -184,11 +181,8 @@ async function step(s: Step) {
   } else if ("frames" in s) {
     for (const m of s.frames()) tell(m);
     await flush();
-  } else if ("wait" in s) {
-    tick(s.wait);
   } else {
-    const { askRoomLeave } = await import("../roomBack");
-    act(() => askRoomLeave());
+    tick(s.wait);
   }
 }
 
@@ -208,67 +202,6 @@ async function trace(f: Fixture) {
   }
   return { ...base, taps };
 }
-
-type P = { seat: number; name: string; is_bot?: boolean; connected?: boolean };
-function room(over: Record<string, unknown> = {}, players: P[] = [{ seat: 0, name: "Jerry" }]) {
-  return {
-    type: "room", room: "WXYZ", you: 0, host: 0, opener: 0, start_level: "2", ready: [], allow_joiners: true,
-    players: players.map((p) => ({ is_bot: false, connected: true, ...p })),
-    ...over,
-  };
-}
-const JA: P[] = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
-const FOUR: P[] = [{ seat: 0, name: "Jerry" }, { seat: 1, name: "Alice" }, { seat: 2, name: "Li" },
-                   { seat: 3, name: "Bartholomew" }];
-const chatHistory = () => ({ type: "chat_history", room: "WXYZ", messages: [
-  { type: "chat", id: 1, room: "WXYZ", seat: 2, name: "Alice", text: "hi!", t: nowSecs() }] });
-
-const ROOMS: Fixture[] = [
-  { name: "room: opener alone, casual", frames: () => [room()] },
-  { name: "room: opener alone, wide", wide: true, frames: () => [room()] },
-  { name: "room: opener alone, level 5, no joiners switch", frames: () => [room({ start_level: "5", allow_joiners: undefined })] },
-  { name: "room: opener alone, joiners off", frames: () => [room({ allow_joiners: false })] },
-  { name: "room: ranked with Alice", frames: () => [room({ ranked: true }, JA)] },
-  { name: "room: matched with Alice", frames: () => [room({ matched: true }, JA)] },
-  { name: "room: opener with Alice", frames: () => [room({}, JA)] },
-  { name: "room: opener with Alice, wide", wide: true, frames: () => [room({}, JA)] },
-  { name: "room: joiner", frames: () => [room({ you: 2 }, JA)] },
-  { name: "room: joiner, start_now over", frames: () => [room({ you: 2, start_now_in: 0 }, JA)] },
-  { name: "room: joiner ready, waiting for Jerry", frames: () => [room({ you: 2, ready: [2], start_now_in: 0 }, JA)] },
-  { name: "room: joiner, opener elsewhere", frames: () => [room({ you: 2, host: 0, opener: 2 }, JA)] },
-  { name: "room: opener, start_now 30", frames: () => [room({ start_now_in: 30 }, JA)] },
-  { name: "room: opener ready, start_now 29", frames: () => [room({ ready: [0], start_now_in: 29 }, JA)] },
-  { name: "room: opener ready, start_now ran out", frames: () => [room({ ready: [0], start_now_in: 29 }, JA)],
-    steps: [{ wait: 29_500 }] },
-  { name: "room: opener ready, start_now 0", frames: () => [room({ ready: [0], start_now_in: 0 }, JA)] },
-  { name: "room: opener ready, waiting for Alice", frames: () => [room({ ready: [0] }, JA)] },
-  { name: "room: both ready, starting", frames: () => [room({ ready: [0, 2] }, JA)] },
-  { name: "room: Alice reconnecting", frames: () => [room({ ready: [0] }, [{ seat: 0, name: "Jerry" },
-                                                                       { seat: 2, name: "Alice", connected: false }])] },
-  { name: "room: with a bot", frames: () => [room({}, [{ seat: 0, name: "Jerry" }, { seat: 1, name: "Bot 1", is_bot: true }])] },
-  { name: "room: four people, two ready", frames: () => [room({ ready: [0, 1] }, FOUR)] },
-  { name: "room: four people, joiner", frames: () => [room({ you: 3, ready: [3] }, FOUR)] },
-  { name: "room: opener picks Alice", frames: () => [room({}, JA)], steps: [{ tap: "Alice, your team. Move" }] },
-  { name: "room: opener picks Alice, wide", wide: true, frames: () => [room({}, JA)],
-    steps: [{ tap: "Alice, your team. Move" }] },
-  { name: "room: opener moves Alice, confirm", frames: () => [room({}, JA)],
-    steps: [{ tap: "Alice, your team. Move" }, { tap: "Open seat, other team. Move Alice here" }] },
-  { name: "room: opener moves Alice, picked seat empties", frames: () => [room({}, JA)],
-    steps: [{ tap: "Alice, your team. Move" }, { frames: () => [room()] }] },
-  { name: "room: joiner moved by the opener", frames: () => [room({ you: 2 }, JA)],
-    steps: [{ frames: () => [room({ you: 1 }, [{ seat: 0, name: "Jerry" }, { seat: 1, name: "Alice" }])] }] },
-  { name: "room: joiner moves themself", frames: () => [room({ you: 2 }, JA)],
-    steps: [{ tap: "Open seat, other team. Move here" },
-            { frames: () => [room({ you: 3 }, [{ seat: 0, name: "Jerry" }, { seat: 3, name: "Alice" }])] }] },
-  { name: "room: chat history", frames: () => [room({}, JA), chatHistory()] },
-  { name: "room: chat open", frames: () => [room({}, JA), chatHistory()], steps: [{ tap: "Chat" }] },
-  { name: "room: chat sent", frames: () => [room({}, JA), chatHistory()], steps: [{ tap: "Chat" }, { say: "hello" }] },
-  { name: "room: leave sheet, opener", frames: () => [room({}, JA)], steps: [{ tap: "Leave" }] },
-  { name: "room: leave sheet, alone", frames: () => [room()], steps: [{ tap: "Leave" }] },
-  { name: "room: leave sheet, joiner", frames: () => [room({ you: 2 }, JA)], steps: [{ tap: "Leave" }] },
-  { name: "room: back gesture asks to leave", frames: () => [room({}, JA)],
-    steps: [{ back: true }] },
-];
 
 function queued(over: Record<string, unknown> = {}) {
   const since = nowSecs();
@@ -410,54 +343,26 @@ const QUEUES: Fixture[] = [
     steps: [{ tap: "Alice, other team. Move" },
             { frames: () => [atTable([seat("Jerry", { you: true }), seat("Alice", { sit: "sit-Alice-2" }),
                                       seat("Li"), null])] }] },
-  { name: "shared: the back gesture is the room's only", frames: () => [atTable(two())], steps: [{ back: true }] },
   { name: "elsewhere: leader", frames: () => [queued({ elsewhere: true, count: 2, table: null, offer: null })] },
   { name: "elsewhere: follower", frames: () => [queued({ elsewhere: true, count: 2, leader: false, table: null, offer: null })] },
 ];
 
 describe("the table panel, fixture by fixture", () => {
-  for (const f of [...ROOMS, ...QUEUES]) {
+  for (const f of QUEUES) {
     it(f.name, async () => {
       expect(await trace(f)).toMatchSnapshot();
     }, 60_000);
   }
 });
 
-describe("the model and its dispatchers", () => {
-  const frame = (over: Record<string, unknown> = {}, players: P[] = JA) =>
-    room(over, players) as unknown as RoomMsg;
-
-  it("a room's model never carries the queue's pending words", async () => {
-    vi.resetModules();
-    const { fromRoom } = await import("./tableModel");
-    for (const r of [frame(), frame({ ready: [0] }), frame({ ready: [0, 2] }), frame({ ready: [0], start_now_in: 5 })]) {
-      const m = fromRoom(r, [], { now: T0, picked: null }, r.start_now_in !== undefined ? T0 + r.start_now_in * 1000 : null);
-      expect(m.kind).toBe("room");
-      expect(m.waitSwitch).toBeNull();
-      expect(["Start", "Start now", "Waiting for Alice", "Starting…"]).toContain(m.primary!.label);
-    }
-    // "Starting…" in a room is only everyone's Start, never a send in flight
-    expect(fromRoom(frame({ ready: [0] }), [], { now: T0, picked: null }, null).primary!.label).toBe("Waiting for Alice");
-  });
-
-  it("each backend adds its own precondition to a move", async () => {
+describe("the model and its dispatcher", () => {
+  it("a table's move needs the sitting token", async () => {
     vi.resetModules();
     const { conn } = await import("../ws");
-    const { queueSend, roomSend } = await import("./tableModel");
+    const { queueSend } = await import("./tableModel");
     const sent: unknown[] = [];
     const spy = vi.spyOn(conn, "send").mockImplementation((m) => { sent.push(m); return true; });
-    const own = { current: false };
-    const send = roomSend(frame(), own);
-    send({ type: "move", seat: 1 });
-    expect(own.current).toBe(true);
-    send({ type: "move_other", from: 2, to: 3, sit: null });
-    send({ type: "start_bots" });   // not a room's action
-    expect(sent).toEqual([
-      { type: "table_move", seat: 1, expect: [{ name: "Jerry", is_bot: false }, null] },
-      { type: "table_move", seat: 3, from: 2, expect: [{ name: "Alice", is_bot: false }, null] },
-    ]);
-    sent.length = 0;
-    queueSend({ type: "move_other", from: 1, to: 3, sit: null });   // a table's move needs the sitting token
+    queueSend({ type: "move_other", from: 1, to: 3, sit: null });
     expect(sent).toEqual([]);
     spy.mockRestore();
   });

@@ -1277,11 +1277,11 @@ def test_ws_joining_a_room_leaves_the_queue_and_leaving_it_returns_to_the_lobby(
         assert got["queue_removed"]["reason"] == "in_room"
         assert srv.MATCHMAKER._entry(uid) is None
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "error")["code"] == "in_room"
+        assert _drain(a, "error", tries=400)["code"] == "in_room"
         a.send_json({"type": "leave_room"})
-        _drain(a, "left")
+        _drain(a, "left", tries=400)
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "queue_state")["queued"] is True
+        assert _drain(a, "queue_state", tries=400)["queued"] is True
 
 
 # ----------------------------------------------------- one code space
@@ -1394,7 +1394,7 @@ def test_ws_code_lookup_and_the_old_join_messages(wsenv):
         g.send_json({"type": "peek_room", "room": room.lower()})
         assert _drain(g, "room_seats")["room"] == room
         g.send_json({"type": "join_room", "room": room, "name": "guest"})
-        assert _drain(g, "room")["room"] == room
+        assert _drain(g, "state", tries=400)["room"] == room
 
         # a closed room's code names nothing
         closed = srv.rooms.pop(room)
@@ -2391,10 +2391,6 @@ def test_ws_a_rename_while_seated_renames_the_seat_in_the_next_frame(wsenv, monk
     with client.websocket_connect("/ws", headers=headers) as a:
         a.send_json({"type": "create_room"})
         code = _drain(a, "room")["room"]
-        assert client.patch("/api/me", json={"display_name": "Lobbyname"},
-                            headers=headers).status_code == 200
-        assert _drain(a, "room")["players"][0]["name"] == "Lobbyname"
-        a.send_json({"type": "start_game"})
         _drain(a, "state", tries=80)
         assert client.patch("/api/me", json={"display_name": "Gamename"},
                             headers=headers).status_code == 200
@@ -2784,54 +2780,8 @@ def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
             assert -1 in t.seats and other in t.seats
 
 
-def _same_device_lobby(srv, store, client):
-    """A created casual room: its host signed in on DEVICE_A, a guest on the
-    same device in seat 1 (a joiner sits as the host's partner, so the host
-    moves it there)."""
-    _, headers = _user(store, "host", "Host Person")
-    host = client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers)
-    guest = client.websocket_connect(f"/ws?device={DEVICE_A}")
-    h, g = host.__enter__(), guest.__enter__()
-    h.send_json({"type": "create_room", "name": "Host"})
-    code = _drain(h, "room")["room"]
-    g.send_json({"type": "join_room", "room": code, "name": "Guesty"})
-    _drain(g, "room")
-    h.send_json({"type": "swap_seats", "a": 2, "b": 1})
-    _next(g, "room", lambda m: m["you"] == 1)
-    _next(h, "room", lambda m: [p["seat"] for p in m["players"]] == [0, 1])
-    room = srv.rooms[code]
-    assert [sd.device for sd in room.seats[:2]] == [DEVICE_A, DEVICE_A]
-    return (host, guest), h, g, room
-
-
-def test_ws_ranked_is_refused_with_two_players_on_one_device(wsenv):
-    srv, store, client, clock = wsenv
-    ctx, h, g, room = _same_device_lobby(srv, store, client)
-    try:
-        h.send_json({"type": "set_ranked", "on": True})
-        err = _drain(h, "error")
-        assert err["code"] == "same_device" and "one device" in err["message"]
-        assert room.ranked is False and room.move_timer is False
-    finally:
-        for c in reversed(ctx):
-            c.__exit__(None, None, None)
-
-
 def test_a_ranked_start_with_two_players_on_one_device_is_refused(wsenv):
     srv, store, client, clock = wsenv
-    ctx, h, g, room = _same_device_lobby(srv, store, client)
-    try:
-        room.seats[1].device = DEVICE_B
-        h.send_json({"type": "set_ranked", "on": True})
-        _next(h, "room", lambda m: m.get("ranked") is True)
-        room.seats[1].device = DEVICE_A       # however the seat came to share it
-        h.send_json({"type": "start_game"})
-        assert _drain(h, "error")["code"] == "same_device"
-        assert room.game is None and room.ratings is None
-    finally:
-        for c in reversed(ctx):
-            c.__exit__(None, None, None)
-    # a queue-matched room is held to the same rule at its start
     matched = srv.Room(code="SAMEDV", matched=True, move_timer=True)
     matched.seats = [srv.Seat(name="A", user_id=7, queue_id=7, device=DEVICE_A),
                      srv.Seat(name="Bot 1", is_bot=True),
@@ -3035,68 +2985,6 @@ def test_ws_two_sockets_of_one_account_both_see_the_true_search(wsenv):
         assert _drain(g, "queue_state")["queued"] is False
 
 
-# ------------------------------------------ created rooms: Ranked, Allow joiners
-def test_ws_ranked_shows_once_a_signed_in_player_sits_and_goes_off_when_they_leave(wsenv):
-    srv, store, client, clock = wsenv
-    _, headers = _user(store, "friend", "Friend Person")
-    with client.websocket_connect(f"/ws?device={DEVICE_A}") as h:
-        h.send_json({"type": "create_room", "name": "Host"})
-        first = _drain(h, "room")
-        code = first["room"]
-        assert "rankable" not in first
-        with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=headers) as f:
-            f.send_json({"type": "join_room", "room": code, "name": "x"})
-            _drain(f, "room")
-            assert _next(h, "room", lambda m: len(m["players"]) == 2)["rankable"] is True
-            h.send_json({"type": "set_ranked", "on": True})
-            assert _next(h, "room", lambda m: m.get("ranked") is True)["allow_joiners"] is True
-            f.send_json({"type": "leave_room"})
-            st = _next(h, "room", lambda m: len(m["players"]) == 1)
-        assert "ranked" not in st and "rankable" not in st
-        assert srv.rooms[code].ranked is False
-
-
-def test_ws_allow_joiners_set_in_a_ranked_rooms_lobby_opens_the_table_in_play(wsenv, monkeypatch):
-    srv, store, client, clock = wsenv
-    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
-    uid, headers = _user(store, "host", "Host Person")
-    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as h:
-        h.send_json({"type": "create_room", "name": "Host"})
-        code = _drain(h, "room")["room"]
-        room = srv.rooms[code]
-        h.send_json({"type": "set_ranked", "on": True})
-        _next(h, "room", lambda m: m.get("ranked") is True)
-        h.send_json({"type": "allow_joiners", "on": True})
-        assert _next(h, "room", lambda m: m.get("allow_joiners") is True)["ranked"] is True
-        h.send_json({"type": "start_game"})
-        assert _drain(h, "state", tries=400)["allow_joiners"] is True
-        assert room.seats[0].queue_id == uid
-        [view] = [t for t in srv.open_tables() if t["code"] == code]
-        assert [s["open"] for s in view["seats"]] == [False, True, True, True]
-        assert view["seats"][0]["queue_id"] == uid
-        # switched off at the table, as at a queue-matched one
-        h.send_json({"type": "allow_joiners", "on": False})
-        # the reply queues behind the deal's state frames (about one per card)
-        _next(h, "state", lambda m: m.get("allow_joiners") is False, tries=400)
-        assert not [t for t in srv.open_tables() if t["code"] == code]
-
-
-def test_ws_a_ranked_room_left_with_joiners_off_is_not_an_open_table(wsenv, monkeypatch):
-    srv, store, client, clock = wsenv
-    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
-    _, headers = _user(store, "host", "Host Person")
-    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as h:
-        h.send_json({"type": "create_room", "name": "Host"})
-        code = _drain(h, "room")["room"]
-        h.send_json({"type": "set_ranked", "on": True})
-        _next(h, "room", lambda m: m.get("ranked") is True)
-        h.send_json({"type": "allow_joiners", "on": False})
-        _next(h, "room", lambda m: m.get("allow_joiners") is False)
-        h.send_json({"type": "start_game"})
-        assert _drain(h, "state", tries=400)["allow_joiners"] is False
-        assert not [t for t in srv.open_tables() if t["code"] == code]
-
-
 # ------------------------------------- signed out while the account plays ranked
 def _account_match(srv, store, client, device=DEVICE_A):
     """An account on ``device`` starts a ranked game with bots and its socket
@@ -3170,34 +3058,9 @@ def test_every_seat_without_an_account_at_a_matched_table_is_a_guest(otenv, monk
     assert "guest" not in srv.state_for(room, 1)
 
 
-def test_review_signed_out_created_ranked_game_blocks_guest_queue(wsenv, monkeypatch):
-    srv, store, client, clock = wsenv
-    async def paused_deal(room):
-        await asyncio.Future()
-    monkeypatch.setattr(srv, "run_deal", paused_deal)
-    _, headers = _user(store, "review-created", "Host")
-    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as h:
-        h.send_json({"type": "create_room"})
-        code = _drain(h, "room")["room"]
-        h.send_json({"type": "set_ranked", "on": True})
-        _next(h, "room", lambda m: m.get("ranked") is True)
-        h.send_json({"type": "start_game"})
-        _drain(h, "state", tries=400)
-    assert srv.rooms[code].ranked and not srv.rooms[code].matched
-    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
-        g.send_json({"type": "queue_join", "name": "Guest"})
-        for _ in range(40):
-            msg = g.receive_json()
-            if msg["type"] in ("queue_state", "error"):
-                assert msg.get("code") == "account_in_game", msg
-                break
-        else:
-            raise AssertionError("no queue response")
-
-
-def _created_game(srv, store, client, monkeypatch, ranked=True, device=DEVICE_A):
-    """An account on ``device`` creates a room (Ranked or not), starts it with
-    bots and its socket closes (a sign-out): the room code."""
+def _created_game(srv, store, client, monkeypatch, device=DEVICE_A):
+    """An account on ``device`` creates a room, which starts with bots, and
+    its socket closes (a sign-out): the room code."""
     async def paused_deal(room):
         await asyncio.Future()
     monkeypatch.setattr(srv, "run_deal", paused_deal)
@@ -3205,48 +3068,15 @@ def _created_game(srv, store, client, monkeypatch, ranked=True, device=DEVICE_A)
     with client.websocket_connect(f"/ws?device={device}", headers=headers) as h:
         h.send_json({"type": "create_room"})
         code = _drain(h, "room")["room"]
-        if ranked:
-            h.send_json({"type": "set_ranked", "on": True})
-            _next(h, "room", lambda m: m.get("ranked") is True)
-        h.send_json({"type": "start_game"})
         _drain(h, "state", tries=400)
     room = srv.rooms[code]
-    assert room.ranked is ranked and not room.matched and room.game is not None
+    assert not room.matched and room.game is not None
     return code
-
-
-def test_ws_the_signed_out_guest_cannot_queue_while_its_accounts_created_ranked_game_is_in_play(
-        wsenv, monkeypatch):
-    srv, store, client, clock = wsenv
-    _created_game(srv, store, client, monkeypatch)
-    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
-        for kind in sorted(srv.QUEUE_STARTS):
-            g.send_json({"type": kind, "name": "Cre"})
-            err = _drain(g, "error")
-            assert err == {"type": "error", "code": "account_in_game",
-                           "message": "Sign in again to return to your game."}, kind
-    assert srv.MATCHMAKER.entry_of == {}
-    with client.websocket_connect(f"/ws?device={DEVICE_B}") as other:
-        other.send_json({"type": "queue_join", "name": "Other"})
-        assert _drain(other, "queue_state")["queued"]
-
-
-def test_ws_the_signed_out_guest_asking_for_its_created_ranked_seat_without_a_token_is_told_to_sign_in(
-        wsenv, monkeypatch):
-    srv, store, client, clock = wsenv
-    code = _created_game(srv, store, client, monkeypatch)
-    room = srv.rooms[code]
-    seats = [(s.is_bot, s.user_id) for s in room.seats]
-    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
-        for name in ("Player", "Cre Ator"):
-            g.send_json({"type": "join_room", "room": code, "name": name})
-            assert _drain(g, "error")["code"] == "ranked_queue_only"
-    assert room.pending_joins == {} and [(s.is_bot, s.user_id) for s in room.seats] == seats
 
 
 def test_ws_a_casual_created_game_does_not_hold_the_signed_out_guest(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
-    _created_game(srv, store, client, monkeypatch, ranked=False)
+    _created_game(srv, store, client, monkeypatch)
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "name": "Cre"})
         assert _drain(g, "queue_state")["queued"]
@@ -3254,7 +3084,8 @@ def test_ws_a_casual_created_game_does_not_hold_the_signed_out_guest(wsenv, monk
 
 def test_live_ranked_room_excludes_a_finished_or_closing_game(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
-    code = _created_game(srv, store, client, monkeypatch)
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, _ = _account_match(srv, store, client)
     room = srv.rooms[code]
     assert srv._live_ranked_room(room) and srv._account_game_on(DEVICE_A) is room
     for attr in ("aborted", "closing"):
@@ -3264,7 +3095,7 @@ def test_live_ranked_room_excludes_a_finished_or_closing_game(wsenv, monkeypatch
     room.game.game_over = True
     assert not srv._live_ranked_room(room)
     room.game.game_over = False
-    room.ranked = False
+    room.matched = False
     assert not srv._live_ranked_room(room)
 
 
@@ -3932,7 +3763,7 @@ def test_ws_table_chat_becomes_the_rooms_scrollback_and_is_never_logged(wsenv):
         assert [(m["seat"], m["name"], m["text"]) for m in history["messages"]] == [
             (2, "Two", "secret-table-line")]
         room = srv.rooms[started["room"]]
-        assert not room.matched and not room.ranked and not room.move_timer
+        assert not room.matched and not room.move_timer
         assert [s.user_id for s in room.seats] == [u1, None, u2, None]
     logs = [p for p in srv.LOG_DIR.rglob("*") if p.is_file()]
     assert logs, "the room wrote its round log"
@@ -3950,7 +3781,6 @@ def test_ws_a_casual_created_room_is_an_open_table_of_the_casual_queue_only(wsen
         first = _drain(o, "room")
         code = first["room"]
         assert first["allow_joiners"] is True and "ranked" not in first
-        o.send_json({"type": "lobby_ready"})
         _drain(o, "state", tries=400)
         room = srv.rooms[code]
         _wait_until(lambda: room.round is not None)
@@ -4035,7 +3865,6 @@ def test_ws_a_seat_a_queue_join_holds_is_not_claimable_by_code(wsenv, monkeypatc
             client.websocket_connect(f"/ws?device={DEVICE_B}") as f:
         o.send_json({"type": "create_room", "name": "Owner"})
         code = _drain(o, "room")["room"]
-        o.send_json({"type": "lobby_ready"})
         room = srv.rooms[code]
         _wait_until(lambda: room.round is not None)
         room.pending_joins[2] = srv.PendingJoin(uid=77, name="Queued", conn=mm.Conn(None, 77))

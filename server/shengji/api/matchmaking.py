@@ -202,8 +202,8 @@ PAIR_SEATS = ((0, 2), (1, 3))
 OFFER_SECS = 20.0
 JOIN_COOLDOWN_SECS = 60.0
 # The opener's Start now unlocks this long after the latest person sat at a
-# waiting table, as a room's does (server.START_NOW_SECS), so a newcomer
-# gets time to tap Start before the table starts without them.
+# waiting table, so a newcomer gets time to tap Start before the table
+# starts without them.
 START_NOW_SECS = 30.0
 PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0

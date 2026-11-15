@@ -113,10 +113,6 @@ describe("online panels", () => {
     start_level: "2", opener: true, ...over,
   });
   const offerSeat = (name: string, bot: boolean, open: boolean) => ({ name, bot, open });
-  const room = (over: Record<string, unknown> = {}, players: { seat: number; name: string }[] = [{ seat: 0, name: "Jerry" }]) => ({
-    type: "room", room: "WXYZ", you: 0, host: 0, opener: 0, start_level: "2", ready: [], allow_joiners: true,
-    players: players.map((p) => ({ is_bot: false, connected: true, ...p })), ...over,
-  });
 
   /** Each panel kind, as the server's frames put it on screen. */
   const KINDS: { kind: string; sel: string; frames: () => unknown[] }[] = [
@@ -138,11 +134,6 @@ describe("online panels", () => {
       table: { id: "t1", code: "4N5Z", opener: 0, you: 0, timer: null, ready: 1, of: 2, you_ready: true,
                waiting_for: ["Alice"],
                seats: [seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null] } })] },
-    { kind: "room (opener)", sel: ".tp-room", frames: () => [room()] },
-    { kind: "room (joiner)", sel: ".tp-room",
-      frames: () => [room({ you: 2 }, [{ seat: 0, name: "Mei" }, { seat: 2, name: "Jerry" }])] },
-    { kind: "room (ranked)", sel: ".tp-room",
-      frames: () => [room({ ranked: true }, [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }])] },
   ];
 
   for (const wide of [false, true]) {

@@ -32,7 +32,6 @@ import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
 import { othersAt, queue, useQueue } from "./queue/store";
 import { firstJoinerText } from "./queue/tableText";
-import { askRoomLeave, useRoomBack } from "./roomBack";
 import { offlineGame } from "./components/offlineGame";
 
 /** Drop the invite link from the address once its question is answered
@@ -47,15 +46,10 @@ function dropInviteLink(): void {
 }
 
 /** What leaving the seat you hold costs, for the sheet a link to another
- *  table opens: the game in play, the room before its game, or the Play table. */
-function linkLeaveContext(game: GameState | null, room: RoomMsg | null, others: string[]): LeaveContext {
-  if (game) return { kind: "game", ranked: !!(game.ranked || game.matched), guest: game.guest === true,
+ *  table opens: the game in play, else the Play table. */
+function linkLeaveContext(game: GameState | null, others: string[]): LeaveContext {
+  if (game) return { kind: "game", ranked: !!game.matched, guest: game.guest === true,
                      betweenRounds: game.phase === "round_end" };
-  if (room) {
-    const staying = room.players.filter((p) => !p.is_bot && p.seat !== room.you)
-      .sort((a, b) => a.seat - b.seat).map((p) => p.name);
-    return { kind: "room", others: staying, host: room.you === room.host };
-  }
   return { kind: "queue", others };
 }
 
@@ -141,9 +135,8 @@ export default function App() {
         case "room":
           resumingRef.current = false;
           setRoom(msg);
-          // "room" is only sent while the room is in lobby state, so any
-          // previously rendered game is stale (e.g. rejoined after the game
-          // ended) — drop it so we route to the Room screen.
+          // "room" comes once, as the room's game starts and ahead of its
+          // first state, so any game still rendered is an older one
           resetToLobby({ keepRoom: true });
           saveRoom(msg.room);
           break;
@@ -266,10 +259,6 @@ export default function App() {
       setLinkPrompt(null);
     }
   }, [linkLeaving, seatedAnywhere]);
-  // back (or the edge swipe) from the room panel asks to leave, as its Leave does
-  const roomShowing =
-    room !== null && game === null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
-  useRoomBack(roomShowing, askRoomLeave);
   // Continue on a saved game: a new room with bots in the other seats, which
   // the server starts at once. Only from outside a room, so no game in
   // progress is left by a tap.
@@ -281,7 +270,7 @@ export default function App() {
     return () => setContinueHandler(null, false);
   }, [status, inRoom, offline]);
   // The tabs' pages keep the tab bars over a game too; the Your table pill
-  // on them leads back to the game, or to a room's panel on Play.
+  // on them leads back to the game.
   const tabPage = homeRoute === null ? null
     : homeRoute.tab === "leaderboard" ? <Leaderboard />
     : <MePage section={homeRoute.section} />;
@@ -298,7 +287,7 @@ export default function App() {
   } else if (homeRoute) {
     screen = (
       <HomeShell active={homeRoute.tab} section={homeRoute.tab === "me" ? homeRoute.section : undefined}
-                 seatedAt={game ? "game" : room ? "room" : null}>
+                 seatedAt={game ? "game" : null}>
         {tabPage}
       </HomeShell>
     );
@@ -325,7 +314,7 @@ export default function App() {
       <IdentitySheet />
       {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link
-        <LeaveSheet context={linkLeaveContext(game, room, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}
+        <LeaveSheet context={linkLeaveContext(game, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}
                     onLeave={() => {
                       if (room === null && game === null) queue.leave();
                       else conn.send({ type: "table_leave" });

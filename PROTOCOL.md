@@ -15,20 +15,12 @@ Two decks are used, so each code appears twice. Every physical card instance has
 
 | type | fields | when |
 |------|--------|------|
-| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`), optional `start: true` (start the game at once with a bot in every empty seat: one `room` frame, then the game's frames, as `add_bot` to four seats then `start_game` would; a refusal leaves the room in its lobby with an `error`) | anytime before joining |
-| `set_start_level` | `start_level` (same values) | host (the opener), lobby only; refused once the game has started, and in a ranked room ("A ranked table starts at level 2."): every rated game starts at `"2"`. A real change clears every Start tap (`lobby_ready`) |
-| `set_ranked` | `on: boolean` | host (the opener), lobby only, created rooms only: whether the room is ranked (see "Ranked rooms"); refused once the game has started. On sets `start_level` back to `"2"`. A real change clears every Start tap |
-| `swap_seats` | `a`, `b` (seat positions), optional `expect` | lobby: the host exchanges any two positions, which takes back the Start of each person it moves (the host's own excepted); anyone else moves themselves (one of `a`, `b` is their own seat, the other empty) until they tap Start |
-| `remove_player` | `seat`, optional `expect` | host, lobby: that occupant leaves the room |
-| `allow_joiners` | `on: boolean` | anyone seated at an ordinary room, ranked or casual (lobby or in play): whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
-| `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
+| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`), optional `start: true`. The game starts at once with a bot in every empty seat, with `start` or without it: one `room` frame, then the game's frames. A refused start discards the room: the creator gets the `error`, then `left` | anytime before joining |
+| `allow_joiners` | `on: boolean` | the opener of an ordinary room in play, ranked or casual: whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
+| `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | from the lobby, to a room in play: claim a bot's or a dropped human's seat, or resume your own by `token`. A room whose game has not started answers `room_not_found` |
 | `peek_room` | `room` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found`, the refusal every client's peek already settles on |
 | `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
-| `chat` | `text` (<=300 chars) | after joining. A line sent in the lobby, before the game starts, is kept in memory only (the scrollback, `chat_history`), never in a log, as `table_chat` is; once the game has started a line is also written to the room log |
-| `add_bot` | — | host, in lobby or between rounds |
-| `remove_bot` | — | host, lobby (removes last bot) |
-| `start_game` | — | host (the opener), lobby: the game starts at once, bots in every empty seat ("Start now" once others sit; see "Room lobby") |
-| `lobby_ready` | optional `on: boolean` (default `true`) | anyone seated in a created room's lobby: their Start tap; the game starts when every connected person has tapped it. `on: false` takes it back |
+| `chat` | `text` (<=300 chars) | seated in a game: the line goes to the table and the room log |
 | `declare` | `card_ids: number[]` (1 or 2 ids of a valid declaration) | anytime during `deal` or `declare` phase |
 | `pass_declare` | — | `declare` phase (marks you done with the declare window) |
 | `bury` | `card_ids: number[]` (exactly 8) | you are banker, phase `bury` |
@@ -50,7 +42,9 @@ between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no
 longer exists — the client should clear its saved room and return to the
-lobby instead of retrying), and `"bad_start_level"` (`create_room` carried a
+lobby instead of retrying), `"retired"` (`add_bot`, `remove_bot`,
+`remove_player` or `set_ranked`: a created room's old lobby control, which
+no table has; the page is out of date), and `"bad_start_level"` (`create_room` carried a
 `start_level` that is not a known rank). An unknown `start_level` is REFUSED,
 never coerced to `"2"`: silently downgrading it would hand the player a game
 their own lobby misdescribes. No room is created, and the socket stays usable.
@@ -58,56 +52,37 @@ their own lobby misdescribes. No room is created, and the socket stays usable.
 room (`test_policy`) when the server has them off (production does); such rooms
 add an `experimental_policy` field to `room` and `state`.
 
-### `{type: "room", room: string, you: number, host: number, opener: number, start_level: string, ready: number[], players: RoomPlayer[], allow_joiners?: boolean, start_now_in?: number, ranked?: true, rankable?: true}`
-Sent in lobby. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
+### `{type: "room", room: string, you: number, host: number, opener: number, start_level: string, players: RoomPlayer[], allow_joiners?: boolean}`
+Sent once by `create_room`, before its game starts: the frame the client saves the room from. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
 
-### Room lobby
+### Created rooms
 
-`opener` is the same seat as `host`: the creator, and when the opener leaves
-the lobby, the next person round the table from the opener's seat (the room
-stays open). Only the opener sets the starting level and Ranked. `ready` is the
-seats that tapped Start (`lobby_ready`); the game starts when every connected
-person at the table has. A person who tapped Start keeps their seat until they
-take the tap back. `start_now_in` is sent only while someone besides the opener
-is seated: the seconds until the client offers the opener "Start now", 30 s
-after the latest person sat down (ticked down locally). The server does not
-hold `start_game` back: an older client's host Start still starts at once.
-`table_start_now` (see "Table messages") is held back: while someone besides
-the opener is seated it is refused with `too_soon` until `start_now_in` reaches
-0, as a waiting table's Start now is.
-`allow_joiners` (every ordinary room; on at creation) says whether the queue
-may offer the room's bot seats once its game is in play.
+A room exists only to play its game: `create_room` starts it at once, and
+nobody sits at a room before its game. `opener` is the same seat as `host`:
+the creator, and when the opener leaves the game, the next person round the
+table. In a room, the messages that set a table up before its game
+(`swap_seats`, `lobby_ready`, `set_start_level`, `start_game`, and in the
+table family `table_move`, `table_start`, `table_start_now`,
+`table_start_bots`, `table_start_level`) are refused with "Game already
+started.". `allow_joiners` (every ordinary room; on at creation) says
+whether the queue may offer the room's bot seats.
 
-`start_level` is the rank BOTH teams begin at: set at `create_room`, changeable
-by the host with `set_start_level` until the game starts, and echoed to everyone
-so a joiner knows what game they are taking a seat in. A team wins a game by
+`start_level` is the rank BOTH teams begin at: set at `create_room` and
+echoed to everyone so a joiner knows what game they are taking a seat in. A team wins a game by
 successfully DEFENDING at `A`, so a higher start level is simply a shorter game.
 The room then plays on (see `games_won` below).
 
 ### Ranked rooms
 
-Only a ranked room's rounds are rated. A room from the ranked queue
-(`matched: true`) always is; a room from the casual queue never is (it is an
-ordinary unranked room, with no move timer). A room made with `create_room` (Play bots and a continued saved
-game included) starts unranked; its host may send `set_ranked {on}` until the
-game starts, and `room` and `state` then carry `ranked: true` (absent when
-off) to every seat. Once the game starts the mode is fixed for it. `set_ranked`
-is refused for anyone but the host, after the game has started, and in a
-queue or test room. A ranked room starts at level `"2"`, fixed, so every
-rated game is the same game: `set_ranked {on: true}` sets `start_level` back
-to `"2"`, `set_start_level` is refused while the room is ranked, and the
-game starts at `"2"` whatever the room held. A casual room keeps its host's
-level.
-
-A created ranked room keeps the open join of any created room: guests may sit
-and join by code or invite link, and the queue-only refusals
-(`ranked_sign_in`, `ranked_queue_only`) and open-table invite path belong to
-queue rooms only. Its signed-in seats are rated from the round-start snapshot;
-a guest seat counts at the bot anchor rating, and a guest seated does not void
-the round (a queue room's round that starts with a guest is not rated). A
-person who claims a seat mid-round is rated from the next round. An unranked
-room is never rated: its `round_result` carries no `rating`, and the client
-shows no rating line.
+Only a ranked room's rounds are rated, and only the ranked queue makes one
+(`matched: true`). A room from the casual queue is an ordinary unranked room,
+with no move timer, and so is every room made with `create_room` (Play bots,
+a test room and a continued saved game included). A ranked room starts at
+level `"2"`, fixed, so every rated game is the same game: `set_start_level` is
+refused there. Its signed-in seats are rated from the round-start snapshot;
+a guest seat counts at the bot anchor rating and is never rated itself. A
+person who claims a seat mid-round is rated from the next round. An unranked room is never rated: its `round_result` carries no
+`rating`, and the client shows no rating line.
 
 ### Trick plays carry a `shape`
 
@@ -276,7 +251,7 @@ never sends `code_lookup` keeps working. Invite links are `/?code=CODE`;
 
 ## Flow
 
-1. `create_room` → `room` message with code; others `join_room`; host `add_bot` to fill; `start_game` requires 4 seats.
+1. `create_room` → one `room` message with the code, then the game starts with a bot in every other seat; others `join_room` to claim a bot's seat.
 2. **deal**: cards are dealt one at a time (~10s for the full deal); each new state shows your hand growing and every player's `cards_left`. At ANY point during dealing, a player holding a valid declaration (`declare_options` non-empty) may send `declare`: single trump-rank card sets that suit; a pair of trump-rank cards beats a single; a joker pair beats both and declares NT. `turn` is null throughout — declaration is a race, not a rotation.
 3. **declare**: a short grace window (~5s) after the last card so anyone can still (over-)declare. `pass_declare` marks you done (you appear in `passed`); the window closes when every connected human has passed or the timer runs out — a new declaration resets both. If nobody declared at all, the server flips the kitty to fix trump. First round: first declarer's seat becomes banker; later rounds the banker is fixed by rotation and declaring only sets the suit.
 4. **bury**: banker's hand shows 33 cards (25 + 8 kitty); banker sends `bury` with 8 ids.
@@ -287,21 +262,20 @@ never sends `code_lookup` keeps working. Invite links are `/?code=CODE`;
 ## Table messages
 
 One family of `table_*` messages works at any table, whether the socket waits
-in the queue (alone or at a waiting table) or sits in a room, before or during
-its game. The server rewrites each into the message that place already
+in the queue (alone or at a waiting table) or sits in a room's game. The server rewrites each into the message that place already
 handles, so every check, rate limit and refusal of that message applies; the
 frames that come back (`room`, `queue_state`, `room_seats`, `chat`,
 `table_chat` and the rest) are that message's. The older names stay accepted.
 
 | type | fields | in the queue | in a room |
 |------|--------|--------------|-----------|
-| `table_move` | `seat`, optional `from`, `who` (queue), `expect` (room) | `table_move` | `swap_seats` with `a` = `from` (else your own seat) and `b` = `seat`: a move of yourself, or with `from` the host's swap of those two seats |
-| `table_start` | optional `on: boolean`, `panel_seq` | `table_start`; `on: false` is `table_unready` | `lobby_ready` with the same `on` |
-| `table_start_now` | optional `panel_seq` | `table_start_now` | `start_game`, refused with `too_soon` until 30 s after the last person sat while anyone besides the opener is seated (see "Room lobby") |
-| `table_start_bots` | optional `panel_seq` | `queue_start_bots` | `lobby_ready {on: true}`: your Start, as Play bots at a waiting table is |
+| `table_move` | `seat`, optional `from`, `who` | `table_move` | refused: "Game already started." |
+| `table_start` | optional `on: boolean`, `panel_seq` | `table_start`; `on: false` is `table_unready` | refused, as `table_move` |
+| `table_start_now` | optional `panel_seq` | `table_start_now` | refused, as `table_move` |
+| `table_start_bots` | optional `panel_seq` | `queue_start_bots` | refused, as `table_move` |
 | `table_allow_joiners` | `on: boolean` | `table_allow_joiners` | `allow_joiners` |
-| `table_start_level` | `start_level` | `table_start_level` | `set_start_level` |
-| `table_chat` | `text` | `table_chat` | `chat` (a lobby line stays in memory only; a line in play is logged) |
+| `table_start_level` | `start_level` | `table_start_level` | refused, as `table_move` |
+| `table_chat` | `text` | `table_chat` | `chat` (logged) |
 | `table_leave` | — | `queue_leave`; with an invite Join waiting for its handover, `leave_room` | `leave_room` |
 | `table_join` | `code`, `name`, optional `seat`, `token` | a live room's code: `join_room {room: code}`; any other code: `queue_join {code}`; no code: `room_not_found` | `join_room`, refused from a seat as ever |
 | `table_peek` | `code` | `peek_room {room: code}` (a room's or a queued table's code) | `peek_room`, refused from a seat as ever |
@@ -310,9 +284,9 @@ frames that come back (`room`, `queue_state`, `room_seats`, `chat`,
 times each older name arrived on a socket (`swap_seats`, `lobby_ready`,
 `table_unready`, `start_game`, `queue_start_bots`, `allow_joiners`,
 `set_start_level`, `chat`, `leave_room`, `queue_leave`, `join_room`,
-`queue_join` with a `code`, `peek_room`), plus the created lobby's own
-controls (`create_room` without `start: true`, `add_bot`, `remove_bot`,
-`remove_player`, `set_ranked`). Only messages from a client count; the
+`queue_join` with a `code`, `peek_room`, `create_room` without `start:
+true`), plus the retired lobby controls that are refused (`add_bot`,
+`remove_bot`, `remove_player`, `set_ranked`). Only messages from a client count; the
 server's own start of a queue table does not. Plain counts, nothing else.
 
 ## Matchmaking queue
@@ -589,8 +563,7 @@ A room in play, ranked or casual, is an open table while it has a bot seat, a
 person connected and "Allow joiners" on (`allow_joiners`, any seated person
 may send `{type: "allow_joiners", on}`; default on, created rooms included).
 A test or evaluation room never is. Each open table has a mode: ranked
-(queue-matched, or a created room switched to Ranked) or casual (any other
-created room, or a casual queue room), and the queue offers it only to
+(queue-matched) or casual (a created room, or a casual queue room), and the queue offers it only to
 entries of that mode. A newcomer who taps Play goes, in
 order, to a waiting table if anyone is queued, else is offered the open table
 with the most people (`queue_state.offer`, 20 s), else waits alone. A
@@ -655,4 +628,4 @@ Rejoining with `join_room` and the stored `token` (or, for a disconnected seat, 
 
 A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **30 seconds**, the server's bot plays that turn (and keeps doing so until they reconnect).
 
-`leave_room` is the explicit exit: in the lobby the seat is freed (host passes to the first remaining human; a room with only bots left is deleted). Mid-game the seat is kept reclaimable (bots cover it, same as a disconnect) but the leaver's client should clear its saved room. The server confirms with `{type: "left"}`, after which the same connection may `create_room`/`join_room` again.
+`leave_room` is the explicit exit: the seat is kept reclaimable (bots cover it, same as a disconnect) but the leaver's client should clear its saved room. The server confirms with `{type: "left"}`, after which the same connection may `create_room`/`join_room` again.

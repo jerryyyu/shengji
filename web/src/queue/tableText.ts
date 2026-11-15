@@ -2,7 +2,6 @@
 import { clock } from "./store";
 import type { OfferView, Presence, QueueView, TableView } from "./store";
 import type { FirstJoinerMsg, QueueMode } from "./messages";
-import type { RoomMsg, RoomPlayer } from "../protocol";
 
 /** A seat taken this recently reads "Just joined". */
 export const JUST_JOINED_MS = 5000;
@@ -13,10 +12,6 @@ export const OFFER_CLOCK_MS = 10_000;
 export const OFFER_SECS = 20;
 /** Names are cut to this many characters; the full name stays in the label. */
 export const NAME_CHARS = 10;
-
-/** The opener's Start now unlocks this long after the latest arrival
- *  (server START_NOW_SECS); `start_now_in` from the server wins. */
-export const START_NOW_SECS = 30;
 
 /** The panel's three kinds, and the Play buttons it replaces. */
 export type PanelKind = "play" | "join" | "own" | "shared" | "elsewhere";
@@ -94,37 +89,6 @@ export function sharedTitle(t: TableView): string {
   if (others.length === 0) return "Your table";
   if (others.length === 1) return `You and ${others[0]}`;
   return `You, ${others.slice(0, -1).join(", ")} and ${others[others.length - 1]}`;
-}
-
-/** The people at a room other than you, by name. */
-function roomOthers(room: RoomMsg): RoomPlayer[] {
-  return room.players.filter((pl) => !pl.is_bot && pl.seat !== room.you);
-}
-
-/** A room's title: "Your table", "You and Alice", "You, Alice and Li". */
-export function roomTitle(room: RoomMsg): string {
-  const others = roomOthers(room).map((pl) => shortName(pl.name));
-  if (others.length === 0) return "Your table";
-  if (others.length === 1) return `You and ${others[0]}`;
-  return `You, ${others.slice(0, -1).join(", ")} and ${others[others.length - 1]}`;
-}
-
-/** "1 of 2 ready" once someone else sits: the people connected, and how
- *  many of them tapped Start. Alone there is nothing to wait for. */
-export function roomReadyLine(room: RoomMsg): string | null {
-  if (roomOthers(room).length === 0) return null;
-  const here = room.players.filter((pl) => !pl.is_bot && (pl.connected || pl.seat === room.you));
-  const ready = new Set(room.ready ?? []);
-  return `${here.filter((pl) => ready.has(pl.seat)).length} of ${here.length} ready`;
-}
-
-/** Your Start is in: who the room still waits for. */
-export function roomWaitingLabel(room: RoomMsg): string {
-  const ready = new Set(room.ready ?? []);
-  const w = roomOthers(room).filter((pl) => pl.connected && !ready.has(pl.seat)).map((pl) => pl.name);
-  if (w.length === 0) return "Starting…";
-  if (w.length === 1) return `Waiting for ${shortName(w[0])}`;
-  return `Waiting for ${w.length} players`;
 }
 
 /** The Start button's words: Start until you tap it, then who the table is

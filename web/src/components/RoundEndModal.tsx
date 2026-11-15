@@ -129,7 +129,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   const titleId = useId();
   useScreen("round_end");
   const [open, setOpen] = useState(false);
-  const ranked = !!(state.matched || state.ranked);
+  const ranked = !!state.matched;
   // kitty_cards are the 8 cards the banker buried (the server sends rnd.buried).
   const buriedPoints = pointsOf(result.kitty_cards);
 

@@ -34,30 +34,10 @@ export type ClientMsg =
        *  with the account in its saved seat and bots in the other three, and
        *  starts at that game's last levels with its next banker. */
       resume_from?: string;
-      /** Start the game at once with a bot in every empty seat; a refused
-       *  start leaves the room in its lobby with an `error`. */
+      /** The game starts at once with a bot in every empty seat, with or
+       *  without this; a refused start sends an `error`, then `left`. */
       start?: boolean;
     }
-  | { type: "add_bot" }
-  /** Host only, before the game starts: the rank both teams begin at. */
-  | { type: "set_start_level"; start_level: Rank }
-  /** Host only, before the game starts: whether this created room is ranked
-   *  (its rounds rated). A room starts unranked. */
-  | { type: "set_ranked"; on: boolean }
-  | { type: "remove_bot" }
-  /** Before the game starts: the host exchanges the occupants of any two
-   *  seats; anyone else moves themselves (one of a, b is their seat) to an
-   *  empty seat, until they tap Start (`lobby_ready`). */
-  /** `expect`: who the sender saw at a and b (null: empty); the server refuses if either changed. */
-  | { type: "swap_seats"; a: number; b: number; expect?: [SeatOccupant | null, SeatOccupant | null] }
-  /** Host only, before the game starts: send the person in this seat out of the room. */
-  | { type: "remove_player"; seat: number; expect?: SeatOccupant }
-  /** The opener's Start: the game starts at once. With others seated the
-   *  room panel offers it as "Start now" once `start_now_in` reaches 0. */
-  | { type: "start_game" }
-  /** A created room's Start, anyone seated, before the game: the game starts
-   *  when every connected person has tapped it. `on: false` takes it back. */
-  | { type: "lobby_ready"; on?: boolean }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
   | { type: "bury"; card_ids: number[] }
@@ -66,7 +46,7 @@ export type ClientMsg =
   /** Ranked table: the player is back after the move timer marked them away. */
   | { type: "im_back" }
   /** Any ordinary table, ranked or casual: whether newcomers may be offered
-   *  a bot seat; anyone seated may switch it, a created room from its lobby. */
+   *  a bot seat; anyone seated may switch it. */
   | { type: "allow_joiners"; on: boolean }
   | { type: "chat"; text: string }
   /** Report another seat's player; the server answers report_received or a coded error. */
@@ -78,13 +58,8 @@ export type ClientMsg =
   | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
   /* The table family (PROTOCOL.md "Table messages"): the same names at a
    * queue table and in a room, which the server rewrites into the message
-   * that place handles. The queue's own shapes are in QueueClientMsg. */
-  /** In a room: move yourself to the empty `seat`, or with `from` (the
-   *  host) move that seat's occupant there; `expect` as swap_seats's. */
-  | { type: "table_move"; seat: number; from?: number; expect?: [SeatOccupant | null, SeatOccupant | null] }
-  /** Your Start; `on: false` takes it back. */
-  | { type: "table_start"; on?: boolean; panel_seq?: number }
-  | { type: "table_start_level"; start_level: Rank }
+   * that place handles. A room takes them only once its game is in play;
+   * the queue's own shapes are in QueueClientMsg. */
   /** Who is sitting where at a room's code, without joining (room_seats). */
   | { type: "table_peek"; code: string }
   /** Leave the table: a room's seat (the server replies {type:"left"}), a
@@ -108,9 +83,6 @@ export interface ErrorMsg {
   cooldown_until?: number;
 }
 
-/** A seat's occupant as a room frame shows it, for a lobby action to name. */
-export interface SeatOccupant { name: string; is_bot: boolean }
-
 export interface RoomPlayer {
   seat: number;
   name: string;
@@ -118,6 +90,8 @@ export interface RoomPlayer {
   connected: boolean;
 }
 
+/** The room you sit in, sent once as its game starts (a room has no lobby),
+ *  ahead of the game's first `state`. */
 export interface RoomMsg {
   type: "room";
   room: string;
@@ -130,21 +104,12 @@ export interface RoomMsg {
   experimental_policy?: "w32";
   /** Built by the matchmaking queue: a rated game between strangers. */
   matched?: boolean;
-  /** A created room its host switched to Ranked: its rounds are rated. */
-  ranked?: boolean;
-  /** The opener: the same seat as `host`. Only it sets the starting level
-   *  and Ranked, and may Start now. */
+  /** The opener: the same seat as `host`, which holds the table's opener
+   *  controls in play. */
   opener?: number;
   /** Whether newcomers may be offered a bot seat once the game is in play
    *  (any ordinary room; on at creation). Absent on a test room. */
   allow_joiners?: boolean;
-  /** A signed-in player is seated, so the opener may switch Ranked on. */
-  rankable?: boolean;
-  /** The seats that tapped Start (`lobby_ready`). */
-  ready?: number[];
-  /** With someone besides the opener seated: seconds until the opener is
-   *  offered Start now (0 once it is). Tick it down locally. */
-  start_now_in?: number;
 }
 
 export interface StatePlayer {
@@ -256,8 +221,6 @@ export interface GameState {
   experimental_policy?: "w32";
   /** Built by the matchmaking queue: a rated game between strangers. */
   matched?: boolean;
-  /** A created room its host switched to Ranked: its rounds are rated. */
-  ranked?: boolean;
   /** This viewer sits as a guest: their rounds are not ranked. */
   guest?: boolean;
   /** The seat holding the table's opener controls: only it switches Allow
@@ -378,6 +341,9 @@ export type ErrorCode =
   | "bad_start_level"
   | "resume_unavailable"
   | "stale_connection"
+  /** A lobby control an out-of-date page sent (add_bot, remove_bot,
+   *  remove_player, set_ranked); no table has it. */
+  | "retired"
   | "report_sign_in"
   | "report_bad_seat"
   | "report_bad_reason"

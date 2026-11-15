@@ -41,6 +41,8 @@ def _enable(monkeypatch, tmp_path):
 def test_real_creation_gate_shares_weights_not_rooms_and_excludes_logs(client, monkeypatch, tmp_path):
     _enable(monkeypatch, tmp_path)
     monkeypatch.setenv("SHENGJI_BOT", "mc-s0-report-lcb")
+    # every room starts at creation; no search runs before the deal
+    monkeypatch.setattr(srv, "DEAL_DELAY", 60)
     with client.websocket_connect("/ws") as normal, \
             client.websocket_connect("/ws") as first, \
             client.websocket_connect("/ws") as second, \
@@ -78,14 +80,9 @@ def test_real_creation_gate_shares_weights_not_rooms_and_excludes_logs(client, m
         # Joining a room with experimental fields cannot change its policy.
         excess.send_json({"type": "join_room", "room": ordinary.code,
                           "name": "guest", "test_policy": "w32", "test_access_key": KEY})
-        assert "experimental_policy" not in _drain(excess, "room")
+        assert "experimental_policy" not in _drain(excess, "state")
         assert ordinary.experimental_policy is None
-        # The real in-game payload keeps the test marker, without starting search.
-        monkeypatch.setattr(srv, "DEAL_DELAY", 60)
-        for _ in range(3):
-            first.send_json({"type": "add_bot"})
-            _drain(first, "room")
-        first.send_json({"type": "start_game"})
+        # The real in-game payload keeps the test marker.
         assert _drain(first, "state")["experimental_policy"] == "w32"
 
 

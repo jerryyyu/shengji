@@ -1,15 +1,13 @@
 """Ratings for signed-in players: one Elo-style number per account, the
 leaderboard and the My stats page.
 
-Only rounds in a ranked room are rated (``ranked``): a room from the queue
-(``matched``) always is, and a room a player created is ranked only when its
-host switched Ranked on (``set_ranked``) before the game started; the mode is
-then fixed for that game. Every other room, Play bots included, is unranked
-and writes no rating at all.
+Only rounds in a ranked room are rated (``ranked``), and only the ranked
+queue makes one (``matched``). Every other room, Play bots and the casual
+queue's included, is unranked and writes no rating at all.
 
 Only signed-in human seats are rated. Bots never move: every bot seat counts
 as ``BOT_RATING``, the anchor of the served release, and a guest seat (a
-person with no account, in a queue-matched room or a created ranked one)
+person with no account, in a queue-matched room)
 counts the same and is never rated itself, so solo games against bots, games
 with a partner and mixed tables share one scale. A round with a guest rates
 every signed-in player in it in full. Nothing here reads or changes a game decision;
@@ -478,10 +476,9 @@ def _signed_in(seat: Any) -> int | None:
 
 
 def ranked(room: Any) -> bool:
-    """Whether the room's rounds are rated: a queue-matched room, or a created
-    room whose host switched Ranked on; never a room that is not ``eligible``."""
-    return eligible(room) and bool(getattr(room, "matched", False)
-                                   or getattr(room, "ranked", False))
+    """Whether the room's rounds are rated: a queue-matched room, never one
+    that is not ``eligible``."""
+    return eligible(room) and bool(getattr(room, "matched", False))
 
 
 @_guarded

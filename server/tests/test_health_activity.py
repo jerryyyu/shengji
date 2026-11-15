@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.test_server_ws import _drain, _room_with_bots, client  # noqa: F401
+from tests.test_server_ws import _drain, client  # noqa: F401
 from native_switches import NATIVE_OFF
 
 ISO_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -52,21 +52,9 @@ def test_room_game_and_records_move_their_counters(client):
     from shengji.api import server
 
     with client.websocket_connect("/ws") as a:
-        code = _room_with_bots(a)
-        assert _activity(client) == {**ZERO, "rooms_created": 1}
-
-        # A lobby writes no record: its chat is held in memory only.
-        a.send_json({"type": "chat", "text": "hello"})
-        _drain(a, "chat")
-        act = _activity(client)
-        assert act["records_written"] == 0
-        assert act["rounds_recorded"] == 0 and act["games_started"] == 0
-        assert act["record_write_failures"] == 0
-        assert act["last_record_write"] is None
-        assert act["last_record_failure"] is None
-
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        _drain(a, "state", tries=400)
         act = _activity(client)
         assert act["rooms_created"] == 1
         assert act["games_started"] == 1
@@ -99,17 +87,12 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
 
     monkeypatch.setattr(server, "open", fake_open, raising=False)
     with client.websocket_connect("/ws") as a:
-        code = _room_with_bots(a)
-        # Lobby chat attempts no write, so the failing writer is not reached.
-        a.send_json({"type": "chat", "text": "hello"})
-        _drain(a, "chat")
-        assert _activity(client)["record_write_failures"] == 0
-
         # The game path is untouched by the failing writer: the table starts,
         # the deal runs, and the gap between games started and rounds
         # recorded is what names the failure.
-        a.send_json({"type": "start_game"})
-        st = _drain(a, "state", tries=60)
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        st = _drain(a, "state", tries=400)
         assert st["phase"] in ("deal", "declare", "bury", "play")
         act = _activity(client)
         assert act["games_started"] == 1
@@ -194,6 +177,10 @@ def test_healthz_reports_the_latency_switches_from_the_process_environment(
         client, tmp_path, monkeypatch):
     """The latency switches enter no served name, so ``/healthz`` shows them under
     ``pv_search``, read from the process environment the bot factory reads."""
+    # imported before SHENGJI_PV_CKPT is set: its import registers the env's
+    # served package, which this stand-in file is not
+    import shengji.train.pv_search_policy  # noqa: F401
+
     package = tmp_path / "package.npz"
     package.write_bytes(b"stand-in")
     monkeypatch.setenv("SHENGJI_PV_CKPT", str(package))

@@ -52,7 +52,6 @@ PAIRS = (
     Pair(OFFLINE_SERVER_TS, "DECLARE_EXTEND", SERVER_PY, "DECLARE_EXTEND"),
     Pair(OFFLINE_SERVER_TS, "CHAT_KEEP", SERVER_PY, "CHAT_KEEP"),
     Pair(OFFLINE_SERVER_TS, "CHAT_MAX_LEN", SERVER_PY, "CHAT_MAX_LEN"),
-    Pair(OFFLINE_SERVER_TS, "START_NOW_SECS", SERVER_PY, "START_NOW_SECS"),
 )
 
 # Inline literals with no named constant on the client side.
@@ -77,7 +76,6 @@ COPY_RULES = (
     CopyRule("web/src/queue/store.ts", r"No tap for", MATCHMAKING_PY, "TABLE_IDLE_SECS"),
     CopyRule("web/src/queue/TablePanel.tsx", r"seconds left to join", "web/src/queue/tableText.ts", "OFFER_CLOCK_MS"),
     CopyRule("web/src/queue/TablePanel.tsx", r"Bots fill the empty seats in", "web/src/queue/store.ts", "BOTS_WARN_MS"),
-    CopyRule("web/src/offline/server/tables.ts", r'TOO_SOON = "', SERVER_PY, "START_NOW_SECS"),
 )
 
 WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,

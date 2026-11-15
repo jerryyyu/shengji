@@ -700,7 +700,7 @@ export default function Table({ state }: { state: GameState }) {
           <span className="away-pill-text">
             <b>Joining after this trick</b>
           </span>
-          <JoinPillLeave ranked={!!(state.matched || state.ranked)} guest={state.guest === true} />
+          <JoinPillLeave ranked={!!state.matched} guest={state.guest === true} />
         </div>
       ) : null}
       {held ? <SeatHeldPill onBack={back} /> : null}

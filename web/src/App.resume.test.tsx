@@ -95,11 +95,17 @@ it("reports an explicit missing-room join after an automatic resume was refused"
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
   act(() => host.querySelector<HTMLButtonElement>(".join-row button")!.click());
-  expect(ws.sent.at(-1)).toEqual({ type: "code_lookup", code: "WXYZ" });
-  act(() => ws.deliver({ type: "code_kind", code: "WXYZ", kind: "room" }));
-  expect(ws.sent.at(-1)).toMatchObject({ type: "table_peek", code: "WXYZ" });
+  expect(ws.sent.at(-1)).toEqual({ type: "table_peek", code: "WXYZ" });
+  act(() => ws.deliver({ type: "room_seats", room: "WXYZ", in_game: true, seats: [0, 1, 2, 3].map((seat) => ({
+    seat, name: seat ? `Bot ${seat}` : "Mei", is_bot: seat > 0, connected: true, team: seat % 2,
+    claimable: seat > 0, controller: seat ? "bot" : "human", reserved_secs: null })) }));
+  act(() => [...host.querySelectorAll<HTMLButtonElement>(".tp-join-code button")]
+    .find((b) => b.textContent === "Join")!.click());
+  expect(ws.sent.at(-1)).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", seat: 1 });
+  // the game ended between the peek and the Join
   act(() => ws.deliver({ type: "error", code: "room_not_found", message: "Room not found" }));
   expect(host.textContent).toContain("That game has ended.");
+  expect(host.querySelector(".tp-join-code")).toBeNull();
 });
 
 it("a signed-out player's saved ranked seat asks them to sign in again and keeps the room", async () => {

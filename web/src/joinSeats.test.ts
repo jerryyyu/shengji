@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hostName, joinSeat, tableFull, tableHostName, tableViewSeat, takeoverSeats } from "./joinSeats";
+import { hostName, joinSeat, roomChoices, roomDefaultSeat, tableFull, tableHostName, tableJoinSeat, takeoverSeats } from "./joinSeats";
 
 type Row = { seat: number; name: string; is_bot?: boolean; connected?: boolean; claimable?: boolean };
 const peek = (rows: Row[], over: { in_game?: boolean; ranked?: boolean; full?: boolean } = {}) => ({
@@ -28,6 +28,19 @@ describe("the Join panel's seats", () => {
     expect(tableFull(peek(rows, { in_game: true }))).toBe(true);
   });
 
+  it("a game's choices are its bot seats, the plain one first, else its dropped players' seats", () => {
+    const rows: Row[] = [{ seat: 0, name: "Mei" }, { seat: 1, name: "Bot 1", is_bot: true, claimable: true },
+                         { seat: 2, name: "Alice", connected: false, claimable: true },
+                         { seat: 3, name: "Bot 3", is_bot: true, claimable: true }];
+    expect(roomChoices(peek(rows, { in_game: true }))).toEqual([1, 3]);
+    expect(roomDefaultSeat(peek(rows, { in_game: true }))).toBe(1);
+    rows[1] = { seat: 1, name: "Li" };
+    rows[3] = { seat: 3, name: "Sam" };
+    expect(roomChoices(peek(rows, { in_game: true }))).toEqual([2]);
+    rows[2] = { seat: 2, name: "Alice" };
+    expect(roomDefaultSeat(peek(rows, { in_game: true }))).toBeNull();
+  });
+
   it("a ranked table the server calls full is full", () => {
     const rows: Row[] = [0, 1, 2, 3].map((seat) => ({ seat, name: `P${seat}` }));
     expect(tableFull(peek(rows, { in_game: true, ranked: true, full: true }))).toBe(true);
@@ -39,11 +52,11 @@ describe("a queued table's seats", () => {
   const table = (states: State[], names: (string | null)[] = []) => ({
     seats: states.map((state, seat) => ({ seat, team: seat % 2, state, name: names[seat] ?? null, ready: false })),
   });
-  it("are drawn from the held seat, else the first open seat partner first, else seat 0", () => {
-    expect(tableViewSeat(table(["taken", "open", "held", "open"]))).toBe(2);
-    expect(tableViewSeat(table(["taken", "open", "open", "open"]))).toBe(2);
-    expect(tableViewSeat(table(["taken", "open", "taken", "open"]))).toBe(1);
-    expect(tableViewSeat(table(["taken", "taken", "taken", "taken"]))).toBe(0);
+  it("seat a code join in the held seat, else the first open seat partner first, else nowhere", () => {
+    expect(tableJoinSeat(table(["taken", "open", "held", "open"]))).toBe(2);
+    expect(tableJoinSeat(table(["taken", "open", "open", "open"]))).toBe(2);
+    expect(tableJoinSeat(table(["taken", "open", "taken", "open"]))).toBe(1);
+    expect(tableJoinSeat(table(["taken", "taken", "taken", "taken"]))).toBeNull();
   });
   it("are titled with the first person seated", () => {
     expect(tableHostName(table(["open", "taken", "taken", "open"], [null, "Li", "Mei"]))).toBe("Li");

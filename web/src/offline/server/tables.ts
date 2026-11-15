@@ -21,12 +21,13 @@ export const LOBBY: ReadonlySet<string> = new Set([
 ]);
 
 /** tables.py RETIRED: the names a canonical name replaced, the created
- *  room's old lobby controls, the Duo made by its own code and the ready
- *  check's answers. `queue_join` is one only with a `code`. */
+ *  room's old lobby controls, `code_lookup`, whose question `table_peek`
+ *  answers, the Duo made by its own code and the ready check's answers.
+ *  `queue_join` is one only with a `code`. */
 export const RETIRED: ReadonlySet<string> = new Set([
   "swap_seats", "lobby_ready", "table_unready", "start_game", "queue_start_bots",
   "allow_joiners", "set_start_level", "chat", "leave_room", "queue_leave",
-  "join_room", "queue_join", "peek_room",
+  "join_room", "queue_join", "peek_room", "code_lookup",
   "add_bot", "remove_bot", "remove_player", "set_ranked",
   "party_create", "party_invite", "party_join", "match_accept", "match_decline",
 ]);

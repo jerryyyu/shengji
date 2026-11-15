@@ -35,17 +35,7 @@ import type { QueueView } from "./queue/store";
 import { queueLeaveContext } from "./queue/tableModel";
 import { firstJoinerText } from "./queue/tableText";
 import { offlineGame } from "./components/offlineGame";
-
-/** Drop the invite link from the address once its question is answered
- *  Stay, so the lobby does not take it up later. */
-function dropInviteLink(): void {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has("code")) return;
-  params.delete("code");
-  const rest = params.toString();
-  window.history.replaceState(window.history.state, "",
-    `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
-}
+import { codes, useCodes } from "./codeJoin";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
  *  table opens: the game in play, else the Play table as its panel says it. */
@@ -59,12 +49,6 @@ export default function App() {
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
-  // A room link opened while this socket sits at another table: the code,
-  // held until the player says whether to leave that table first.
-  const [linkPrompt, setLinkPrompt] = useState<string | null>(null);
-  const [linkDropped, setLinkDropped] = useState(0);
-  // Leave was tapped: the question goes, and the link waits for the seat to go.
-  const [linkLeaving, setLinkLeaving] = useState(false);
   // Whether the announcer has been seeded with a first game state.
   const seededRef = useRef(false);
   // True from an automatic resume of the saved room until the server answers it.
@@ -92,9 +76,8 @@ export default function App() {
         clearSavedRoom();
         setRoom(null);
         conn.clearChat();   // next room starts with an empty log
-        // the table the question was about is gone: the link goes ahead
-        setLinkPrompt(null);
-        setLinkLeaving(false);
+        // the table a link's question was about is gone: the link goes ahead
+        codes.release();
       }
       setGame(null);
       seededRef.current = false;
@@ -115,10 +98,9 @@ export default function App() {
       // One link kind: an older ?room= or ?party= link already reads as ?code=.
       const link = params.get("code")?.toUpperCase() ?? null;
       // A link to another table while this device holds a room seat goes back
-      // to that seat first and asks before leaving it.
+      // to that seat first; the code store asks before leaving it.
       const saved = getSavedRoom()?.toUpperCase() ?? null;
       const elsewhere = link !== null && link.length === 4 && saved !== null && saved !== link;
-      if (elsewhere) setLinkPrompt(link);
       const intent = decideIntent({
         invite: link && !elsewhere ? { room: link } : null,
         savedRoom: getSavedRoom(),
@@ -149,6 +131,8 @@ export default function App() {
           setGame(msg);
           break;
         case "error":
+          // a peek's refusal is the code store's to say
+          if (msg.peek !== undefined) break;
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
           if (msg.code === "not_in_party") {
@@ -256,12 +240,9 @@ export default function App() {
   const q = useQueue();
   const account = useAuth();
   const seatedAnywhere = inRoom || q.queued;
-  useEffect(() => {
-    if (linkLeaving && !seatedAnywhere) {
-      setLinkLeaving(false);
-      setLinkPrompt(null);
-    }
-  }, [linkLeaving, seatedAnywhere]);
+  // a link to another table while you sit at one asks first
+  const link = useCodes();
+  const linkPrompt = link?.step === "ask" ? link.code : null;
   // Continue on a saved game: a new room with bots in the other seats, which
   // the server starts at once. Only from outside a room, so no game in
   // progress is left by a tap.
@@ -307,8 +288,7 @@ export default function App() {
     playNoTable = !seatedAnywhere && account.status !== "error";
     screen = (
       <HomeShell active="play">
-        <Lobby status={status} room={room} holdInvite={linkPrompt !== null}
-               onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped} />
+        <Lobby status={status} room={room} />
       </HomeShell>
     );
   }
@@ -320,19 +300,15 @@ export default function App() {
       {screenIsTable ? null : <Toast />}
       {/* the one identity sheet: a guest's chip, Edit name and every Sign in */}
       <IdentitySheet />
-      {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
+      {linkPrompt && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link
         <LeaveSheet context={linkLeaveContext(game, q)} title={`Leave to join ${linkPrompt}?`}
                     onLeave={() => {
                       if (room === null && game === null) queue.leave();
                       else conn.send({ type: "table_leave" });
-                      setLinkLeaving(true);
+                      codes.leaving();
                     }}
-                    onStay={() => {
-                      setLinkPrompt(null);
-                      setLinkDropped((n) => n + 1);
-                      dropInviteLink();
-                    }} />
+                    onStay={() => codes.cancel()} />
       ) : null}
       <QueueLayer />
     </div>

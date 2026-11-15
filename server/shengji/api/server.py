@@ -2496,23 +2496,28 @@ async def _peek_room(caller: _Caller, msg: dict) -> None:
     """A ``peek_room``: who is sitting where, without joining; the lobby
     offers a seat picker from it for a game in progress."""
     ws, conn, account_id = caller.ws, caller.conn, caller.account_id
-    target = rooms.get(str(msg.get("room", "")).upper())
+    asked = matchmaking.normalize_code(msg.get("room"))
+    target = rooms.get(asked)
     if target is None:
-        # Any other code is read like ``code_lookup``, on its
-        # limit. Past it the answer is the ``room_not_found``
-        # every client's peek consumer already settles on,
-        # so a pending peek never waits on a new refusal.
+        # Any other code is a queued table's or nothing,
+        # read on the lookup limit. Past it the answer is
+        # the ``room_not_found`` every client's peek
+        # consumer already settles on, so a pending peek
+        # never waits on a new refusal. ``peek`` echoes
+        # the asked code, so a reply is matched by code.
+        echo = asked[:matchmaking.CODE_LEN * 2]
         if not MATCHMAKER.lookup_allowed(conn, account_id()):
             await send(ws, {"type": "error", "code": "room_not_found",
+                            "peek": echo,
                             "message": "Too many requests; wait a minute."})
             return
-        # a room wins a code, as in ``code_lookup``
-        seats = MATCHMAKER.peek(matchmaking.normalize_code(msg.get("room")))
+        # a room wins a code both could hold
+        seats = MATCHMAKER.peek(asked)
         if seats is not None:
             await send(ws, seats)
             return
         await send(ws, {"type": "error", "code": "room_not_found",
-                        "message": "Room not found."})
+                        "peek": echo, "message": PEEK_NOT_FOUND})
         return
     await send(ws, room_seats_json(target))
 
@@ -2849,9 +2854,6 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
                     await send(ws, {"type": "pong", "nonce": nonce})
-                continue
-            if t == "code_lookup":
-                await send(ws, MATCHMAKER.code_lookup(conn, msg, account_id()))
                 continue
             if t == "client_event":
                 # UI flow events: allow-listed, to their own sink, never a room log
@@ -3293,6 +3295,8 @@ def _account_of(qid: int | None) -> int | None:
 
 
 SAME_DEVICE_MESSAGE = "Someone on this device is already at that table."
+# A peek of a code that names no room and no queued table.
+PEEK_NOT_FOUND = "No table has that code."
 ACCOUNT_IN_GAME_MESSAGE = "Sign in again to return to your game."
 ACCOUNT_PLAYING_MESSAGE = "You are already in a game on another device."
 # The queue messages that start a search or a seat; a guest whose device's

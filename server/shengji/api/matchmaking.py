@@ -209,7 +209,7 @@ PARTY_TTL = 300.0
 COUNT_DEBOUNCE = 1.0
 JOIN_LIMIT = (10, 60.0)      # queue_join per account per window
 PARTY_LIMIT = (20, 60.0)     # party_* per account per window
-LOOKUP_LIMIT = (30, 60.0)    # code_lookup per account (a guest: per socket) per window
+LOOKUP_LIMIT = (30, 60.0)    # table code peeks per account (a guest: per socket) per window
 MOVE_LIMIT = (20, 60.0)      # table_move per account per window
 CHAT_LIMIT = (30, 60.0)      # table_chat per account per window
 # A waiting table's chat keeps a room chat's limits (server.CHAT_MAX_LEN,
@@ -572,8 +572,7 @@ class Matchmaker:
         self.rating_of = rating_of or _store_rating
         self.start_room = start_room
         self.user_active = user_active or (lambda uid: not accounts.is_deleted(uid))
-        # Whether a code names a live room: table codes avoid them, and
-        # code_lookup answers with them.
+        # Whether a code names a live room: table codes avoid them.
         self.room_live = room_live or (lambda code: False)
         # The open tables as the server sees them (``{"code", "seats", "mode",
         # "round_end"}``; a seat is ``{"name", "bot", "open", "queue_id",
@@ -2304,30 +2303,10 @@ class Matchmaker:
             # back from a waiting table that failed to start: alone, with its settings
             self._own_table(e, like=t)
 
-    def code_lookup(self, conn: Conn, msg: dict, user_id: int | None) -> dict:
-        """What a typed or linked code names: ``room``, ``table`` (a queued
-        table, joined with ``queue_join {code}``) or ``none``. Read-only and
-        open to guests, so any join box can ask before choosing the flow. A
-        room wins a code both hold, which only codes issued before the
-        shared space can do."""
-        code = normalize_code(msg.get("code"))
-        if not self.lookup_allowed(conn, user_id):
-            # ``lookup`` marks this refusal as the lookup's one reply; the
-            # queue and pair messages refuse with the same code untagged.
-            return {"type": "error", "code": "rate_limited", "lookup": code[:CODE_LEN * 2],
-                    "message": "Too many requests; wait a minute."}
-        kind = "none"
-        if len(code) == CODE_LEN and code.isascii() and code.isalnum():
-            if self.room_live(code):
-                kind = "room"
-            elif code in self.entry_codes:
-                kind = "table"
-        return {"type": "code_kind", "code": code[:CODE_LEN * 2], "kind": kind}
-
     def lookup_allowed(self, conn: Conn, user_id: int | None) -> bool:
-        """One more read of what a code names (``code_lookup`` or a peek):
-        both draw on one ``LOOKUP_LIMIT`` per account (a guest: per socket),
-        so neither widens the other's reach over the code space."""
+        """One more peek of a code that names no live room: one
+        ``LOOKUP_LIMIT`` per account (a guest: per socket) bounds a socket's
+        reach over the code space."""
         key = str(user_id) if user_id is not None else f"socket:{id(conn)}"
         return self.lookup_limiter.allow(key, self.clock())
 

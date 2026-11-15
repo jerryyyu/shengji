@@ -126,10 +126,9 @@ describe("room links land in the panel", () => {
   it("a ?room= link opens the Join panel, and Join sends a room join", async () => {
     window.history.replaceState(null, "", "/?room=wxyz");
     await renderApp();
-    expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
-    say({ type: "code_kind", code: "WXYZ", kind: "room" });
-    await settle();
+    // one step: the link's code is peeked, and its panel shows while the seats come
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
+    expect(q(".tp-join-code")).not.toBeNull();
     say({ type: "room_seats", room: "WXYZ", in_game: true, seats: [
       { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
       { seat: 1, name: "Bot 1", is_bot: true, connected: true, team: 1, claimable: true, controller: "bot", reserved_secs: null },
@@ -140,9 +139,10 @@ describe("room links land in the panel", () => {
     const join = q(".tp-join-code")!;
     expect(join.querySelector(".tp-title")?.textContent).toBe("Join Mei");
     expect(sentOf("table_join")).toHaveLength(0);
+    // you glow in the first bot seat; Join names it
+    expect(join.querySelector(".tp-seat.you.picked")).not.toBeNull();
     click(button("Join", join));
-    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: "Jerry" });
-    expect(lastSent()).not.toHaveProperty("seat");
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: "Jerry", seat: 1 });
   });
 
   it("a link to another room while seated at a saved one asks to leave that table first", async () => {
@@ -164,9 +164,7 @@ describe("room links land in the panel", () => {
     expect(q("[role='alertdialog']")).toBeNull();
     say({ type: "left" });
     await settle();
-    // the link's lookup, answered while the seat was held, opens its panel now
-    say({ type: "code_kind", code: "WXYZ", kind: "room" });
-    await settle();
+    // the seat is gone: the link's panel opens now
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     expect(q(".tp-join-code")).not.toBeNull();
     expect(sentOf("table_join")).toHaveLength(1);
@@ -191,17 +189,17 @@ describe("room links land in the panel", () => {
   it("a room link found while at a Play table asks first, and Leave leaves the queue's table", async () => {
     window.history.replaceState(null, "", "/?code=WXYZ");
     await renderApp();
-    expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
+    // the queue's table, back on this fresh page, holds this device first
     say({ type: "queue_state", queued: true, count: 2, since: nowSecs(), leader: true, bots_at: nowSecs() + 60,
           table: { id: "t1", you: 0, timer: null, ready: 0, of: 2, you_ready: false, waiting_for: ["Alice"],
                    seats: [{ name: "Jerry", you: true, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
                            { name: "Alice", you: false, ready: false, reconnecting: false, since: nowSecs(), pair: false, leader: true },
                            null, null] } });
-    say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
     const alert = q("[role='alertdialog']")!;
     expect(alert.querySelector("h2")?.textContent).toBe("Leave to join WXYZ?");
-    expect(sentOf("table_peek")).toHaveLength(0);
+    expect(q(".tp-join-code")).toBeNull();
     click(button("Leave", alert));
     expect(lastSent()).toEqual({ type: "table_leave" });
     say({ type: "queue_state", queued: false, count: 0 });
@@ -396,18 +394,17 @@ describe("every Play table has a code", () => {
   it("a table code from a link is looked up, opens its Join panel with its seats, and Join sends table_join {code}", async () => {
     window.history.replaceState(null, "", "/?code=4n5z");
     await renderApp();
-    expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
-    await settle();
     expect(lastSent()).toEqual({ type: "table_peek", code: "4N5Z" });
+    await settle();
     say(tableSeats());
     await settle();
     const p = q(".tp-join-code")!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
     // drawn from the held seat a Duo's code fills: Jerry across, the others open
+    // you glow in the held seat a Duo's code fills: Jerry across, the others open
     expect(seatNames(p).sort()).toEqual(["Jerry, ready, your team", "Open seat, other team",
-                                         "Open seat, other team", "Partner seat, held, your team"]);
-    expect(p.querySelector(".tp-seat.held .tp-seat-name")?.textContent).toBe("Partner");
+                                         "Open seat, other team", "You, your team"]);
+    expect(p.querySelector(".tp-seat.you.picked .tp-seat-name")?.textContent).toBe("You");
     expect(p.querySelector(".tp-seat.person .tp-seat-name")?.textContent).toBe("Jerry ✓");
     expect(p.querySelectorAll(".tp-line")).toHaveLength(0);
     expect(sentOf("table_join")).toHaveLength(0);
@@ -419,16 +416,14 @@ describe("every Play table has a code", () => {
   it("a table code typed in the code box opens its seats, and Join joins that table", async () => {
     await renderApp();
     typeCode("4n5z");
-    expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
-    await settle();
     expect(lastSent()).toEqual({ type: "table_peek", code: "4N5Z" });
+    await settle();
     say(tableSeats({}, [["taken", "Mei"], ["taken", "Li", true], ["open", null], ["open", null]]));
     await settle();
     const p = q(".tp-join-code")!;
     expect(p.querySelector(".tp-title")?.textContent).toBe("Join Mei");
     expect(seatNames(p).sort()).toEqual(["Li, ready, other team", "Mei, your team",
-                                         "Open seat, other team", "Open seat, your team"]);
+                                         "Open seat, other team", "You, your team"]);
     expect(sentOf("table_join")).toHaveLength(0);
     click(button("Join", p));
     expect(lastSent()).toEqual({ type: "table_join", code: "4N5Z", name: expect.any(String) });
@@ -437,7 +432,6 @@ describe("every Play table has a code", () => {
   it("a full table's seats show with Join disabled", async () => {
     await renderApp();
     typeCode("4N5Z");
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
     say(tableSeats({ full: true }, [["taken", "Mei"], ["taken", "Li"], ["taken", "Sam"], ["taken", "Ana"]]));
     await settle();
@@ -453,7 +447,6 @@ describe("every Play table has a code", () => {
   it("a closed table (its host's Join in flight) opens no panel, as table_closed does", async () => {
     await renderApp();
     typeCode("4N5Z");
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
     say(tableSeats({ closed: true }));
     await settle();
@@ -464,7 +457,6 @@ describe("every Play table has a code", () => {
   it("a table that has started answers as a room: the room's seats and a room join", async () => {
     window.history.replaceState(null, "", "/?code=4N5Z");
     await renderApp();
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
     say({ type: "room_seats", room: "4N5Z", in_game: true, seats: [
       { seat: 0, name: "Jerry", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
@@ -481,15 +473,13 @@ describe("every Play table has a code", () => {
   it("a refused table peek says so once, and a retry of the same code still shows its seats and joins", async () => {
     await renderApp();
     typeCode("4N5Z");
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
-    // past the lookup limit the server refuses the peek with room_not_found
-    say({ type: "error", code: "room_not_found", message: "Room not found." });
+    // the server refuses the peek with room_not_found, echoing the code
+    say({ type: "error", code: "room_not_found", peek: "4N5Z", message: "No table has that code." });
     await settle();
     expect(q(".tp-join-code")).toBeNull();
     expect(q(".toast")?.textContent).toBe("No table has that code.");
     typeCode("4N5Z");
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
     expect(sentOf("table_peek")).toHaveLength(2);
     say(tableSeats());
@@ -501,18 +491,14 @@ describe("every Play table has a code", () => {
   });
 
   it("a table panel closed before its seats arrive ignores them, and the next ask gets its own", async () => {
+    window.history.replaceState(null, "", "/?code=4N5Z");
     await renderApp();
-    typeCode("4N5Z");
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
-    await settle();
     click(button("Not now", q(".tp-join-code")!));
-    typeCode("4N5Z");
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
-    await settle();
-    // the first answer belongs to the closed panel
+    // the answer belongs to the closed panel
     say(tableSeats({}, [["taken", "Old"], ["open", null], ["open", null], ["open", null]]));
     await settle();
-    expect(q(".tp-join-code .tp-seat.person")).toBeNull();
+    expect(q(".tp-join-code")).toBeNull();
+    typeCode("4N5Z");
     say(tableSeats());
     await settle();
     expect(q(".tp-join-code .tp-title")?.textContent).toBe("Join Jerry");
@@ -522,7 +508,6 @@ describe("every Play table has a code", () => {
     window.history.replaceState(null, "", "/?code=4N5Z");
     await renderApp();
     say(own({ code: "ABCD" }));
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
     const alert = q("[role='alertdialog']")!;
     expect(alert.querySelector("h2")?.textContent).toBe("Leave to join 4N5Z?");
@@ -532,6 +517,9 @@ describe("every Play table has a code", () => {
     say({ type: "queue_state", queued: false, count: 0 });
     await settle();
     // the link goes on to its Join panel; nothing is joined unasked
+    expect(lastSent()).toEqual({ type: "table_peek", code: "4N5Z" });
+    say(tableSeats());
+    await settle();
     expect(sentOf("table_join")).toHaveLength(0);
     click(button("Join", q(".tp-join-code")!));
     expect(lastSent()).toEqual({ type: "table_join", code: "4N5Z", name: expect.any(String) });
@@ -541,7 +529,6 @@ describe("every Play table has a code", () => {
     window.history.replaceState(null, "", "/?code=4N5Z");
     await renderApp();
     say(own());
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
     expect(q("[role='alertdialog']")).toBeNull();
     expect(sentOf("table_join")).toHaveLength(0);
@@ -561,18 +548,15 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, code); input.dispatchEvent(new Event("input", { bubbles: true })); });
     click(button("Join"));
-    say({ type: "code_kind", code, kind: "room" });
   };
 
   const viaLink = async () => {
     window.history.replaceState(null, "", "/?code=WXYZ");
     await renderApp();
-    say({ type: "code_kind", code: "WXYZ", kind: "room" });
-    await settle();
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
   };
 
-  it("the Join panel shows Alice (away); tap → confirm → table_join {seat}", async () => {
+  it("the Join panel shows Alice (away) chosen; Join → confirm → table_join {seat}", async () => {
     await renderApp();
     joinBox("WXYZ");
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
@@ -582,10 +566,10 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     expect(sentOf("table_join")).toHaveLength(0);
     const panelEl = q(".tp-join-code")!;
     expect(panelEl.querySelector(".tp-title")?.textContent).toBe("Join Mei");
-    // no plain seat is left: Join waits, the away seat is the choice
-    expect(button("Join", panelEl)?.disabled).toBe(true);
+    // no bot seat is left: the away seat is the one chosen, glowing, under its name
+    expect(panelEl.querySelector(".tp-seat.picked .tp-seat-name")?.textContent).toBe("Alice (away)");
     expect(panelEl.querySelector(".tp-line")).toBeNull();
-    click(button(/Alice \(away\)$/u, panelEl));
+    click(button("Join", panelEl));
     const sheet = q("[role='alertdialog']")!;
     expect(sheet.querySelector("h2")?.textContent).toBe("Alice dropped out. Take their seat?");
     expect(sheet.querySelector("p")).toBeNull();
@@ -593,7 +577,7 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     click(button("Cancel", sheet));
     expect(q("[role='alertdialog']")).toBeNull();
     expect(sentOf("table_join")).toHaveLength(0);
-    click(button(/Alice \(away\)$/u, q(".tp-join-code")!));
+    click(button("Join", q(".tp-join-code")!));
     click(button("Take seat", q("[role='alertdialog']")!));
     expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", seat: 1 });
   });
@@ -605,9 +589,23 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     expect(sentOf("table_join")).toHaveLength(0);
     click(button("Join", q(".tp-join-code")!));
     expect(sentOf("table_join")).toHaveLength(0);
-    click(button(/Alice \(away\)$/u, q(".tp-join-code")!));
     click(button("Take seat", q("[role='alertdialog']")!));
     expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", seat: 1 });
+  });
+
+  it("with a bot seat free, an away seat is a choice too, and choosing it still asks first", async () => {
+    await viaLink();
+    const withBot = seats(true);
+    withBot.seats[3] = { ...withBot.seats[3], name: "Bot 3", is_bot: true, claimable: true, controller: "bot" };
+    say(withBot);
+    await settle();
+    // the bot's seat is chosen; Alice's is not offered while a bot seat is free
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-seat.you.picked")).not.toBeNull();
+    expect(button(/Alice \(away\)$/u, p)).toBeUndefined();
+    click(button("Join", p));
+    expect(q("[role='alertdialog']")).toBeNull();
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", seat: 3 });
   });
 
   it("a room link waits for its peek before it can send a plain Join", async () => {
@@ -617,38 +615,43 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     expect(sentOf("table_join")).toHaveLength(0);
   });
 
-  it("a choose_seat answer looks again and offers the dropped seats; it never picks one", async () => {
+  it("a choose_seat answer looks again and offers the dropped seats; it never takes one unasked", async () => {
     await renderApp();
     joinBox("WXYZ");
     // a bot seat at the peek, gone by the join
     const withBot = seats(true);
     withBot.seats[3] = { ...withBot.seats[3], name: "Bot 3", is_bot: true, claimable: true, controller: "bot" };
     say(withBot);
-    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room" });
-    expect(lastSent()).not.toHaveProperty("seat");
+    await settle();
+    click(button("Join", q(".tp-join-code")!));
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", seat: 3 });
     say({ type: "error", code: "choose_seat", message: "Every seat is taken, but a player is offline." });
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats(true));
     await settle();
     expect(sentOf("table_join")).toHaveLength(1);
-    expect(button(/Alice \(away\)$/u, q(".tp-join-code")!)).toBeDefined();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-seat.picked .tp-seat-name")?.textContent).toBe("Alice (away)");
+    click(button("Join", p));
+    expect(q("[role='alertdialog']")).not.toBeNull();
+    expect(sentOf("table_join")).toHaveLength(1);
   });
 
-  it("a link's Join that the server answers choose_seat shows the away seats in the same panel", async () => {
+  it("a link's Join that the server answers seat_unavailable moves the glow in the same panel", async () => {
     await viaLink();
     const withBot = seats(true);
     withBot.seats[3] = { ...withBot.seats[3], name: "Bot 3", is_bot: true, claimable: true, controller: "bot" };
     say(withBot);
     await settle();
     click(button("Join", q(".tp-join-code")!));
-    expect(lastSent()).not.toHaveProperty("seat");
-    say({ type: "error", code: "choose_seat", message: "Every seat is taken, but a player is offline." });
+    say({ type: "error", code: "seat_unavailable", message: "That seat was just taken — pick another." });
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
+    // the panel stays up while it looks again
+    expect(q(".tp-join-code")).not.toBeNull();
     say(seats(true));
     await settle();
     expect(sentOf("table_join")).toHaveLength(1);
-    expect(button("Join", q(".tp-join-code")!)?.disabled).toBe(true);
-    expect(button(/Alice \(away\)$/u, q(".tp-join-code")!)).toBeDefined();
+    expect(q(".tp-join-code .tp-seat.picked .tp-seat-name")?.textContent).toBe("Alice (away)");
   });
 
   it("a full table shows the same panel with Join disabled and Table is full", async () => {
@@ -667,7 +670,11 @@ describe("a full room's dropped seats are taken only on purpose", () => {
   it("a Play table's link that turns out full (table_full) disables Join in the same panel", async () => {
     window.history.replaceState(null, "", "/?code=4N5Z");
     await renderApp();
-    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    say({ type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false, allow_joiners: true,
+          full: false, closed: false,
+          seats: [0, 1, 2, 3].map((seat) => ({ seat, team: seat % 2, state: seat ? "open" : "taken",
+                                               name: seat ? null : "Jerry", ready: false })) });
     await settle();
     click(button("Join", q(".tp-join-code")!));
     say({ type: "error", code: "table_full", message: "That table is full." });
@@ -690,24 +697,19 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     expect(sentOf("table_join")).toHaveLength(0);
   });
 
-  it("a cancelled peek's late answer goes to it, not to the next ask for the same room", async () => {
+  it("a cancelled peek's late answer does nothing, and the next ask for the same room takes its own", async () => {
     await viaLink();
     click(button("Not now", q(".tp-join-code")!));
-    // the code box asks for the same room before the panel's answer lands
-    joinBox("WXYZ");
-    expect(sentOf("table_peek")).toHaveLength(2);
-    const away = { type: "room_seats", room: "WXYZ", in_game: true, seats: [
-      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
-      { seat: 1, name: "Alice", is_bot: false, connected: false, team: 1, claimable: true, controller: "bot_cover", reserved_secs: null },
-      { seat: 2, name: "Sam", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
-      { seat: 3, name: "Li", is_bot: false, connected: true, team: 1, claimable: false, controller: "human", reserved_secs: null }] };
+    const away = seats(true);
     say(away);   // the cancelled panel's answer: nothing
     await settle();
     expect(q(".tp-join-code")).toBeNull();
-    say(away);   // the box's answer: only away seats, so the panel asks
+    joinBox("WXYZ");
+    expect(sentOf("table_peek")).toHaveLength(2);
+    say(away);
     await settle();
     expect(sentOf("table_join")).toHaveLength(0);
-    expect(button(/Alice \(away\)$/u, q(".tp-join-code")!)).toBeDefined();
+    expect(q(".tp-join-code .tp-seat.picked .tp-seat-name")?.textContent).toBe("Alice (away)");
   });
 
   it("Not now ignores the room peek that was already in flight", async () => {

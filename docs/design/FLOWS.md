@@ -131,19 +131,24 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 5. The guest line "Playing as a guest · Sign in to be ranked" stays.
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
-1. **One invite path.** One link kind, `?code=`, opens Play with the Join panel for that table: its title
-   ("Join Jerry"), the seats with yours lit, Join and Not now. A queued Play table's seats show as they
-   stand (names with their Start, open seats, a Duo's held seat as "Partner"), with no seat lit: the
-   server seats a code join. Nothing joins until Join is tapped. `?room=` and `?party=` links (and the iOS universal
+1. **One invite path.** One link kind, `?code=`, opens Play with the Join panel for that table, and so
+   does every code typed in the code box (Jerry 2026-11-15), a game in progress too: its title
+   ("Join Jerry"), the seats with yours glowing, Join and Not now. You glow in the seat Join takes: in a
+   room the first bot seat (else a dropped player's), and tapping another bot seat moves you there; at a
+   queued Play table the seat its rule gives a code join (a Duo's held seat, else the first open seat,
+   partner first), which no tap moves. The rest show as they stand (names with their Start, open seats, a
+   Duo's held seat as "Partner"). Nothing joins until Join is tapped. `?room=` and `?party=` links (and the iOS universal
    links) read as `?code=`; a `?name=` is dropped. A guest is never asked for a name: Join uses the random
    name the chip shows, editable there. A full table shows the same panel, "Table is full" and Join
    disabled. The seat picker (`SeatTakeover`) and the "Table is full" card are removed.
    - Taking a dropped player's seat stays an explicit choice: in the Join panel their seat reads
-     "Alice (away)", and tapping it opens the "Alice dropped out. Take their seat?" confirm. Join stays
-     disabled while only away seats are left, so no plain Join takes a person's seat.
+     "Alice (away)" (glowing when it is the seat chosen, which it is only while no bot seat is free), and
+     Join on it opens the "Alice dropped out. Take their seat?" confirm first.
    - A link opened while you sit at another table shows the Leave sheet first; your own table's link
-     changes nothing. For a room the code box still joins at once when it can, and shows the same panel
-     when it cannot (full, or only away seats); a Play table's code always opens its panel.
+     changes nothing. The code box no longer joins a room at once: a code costs one more tap, Join, and
+     you see who is there before you sit.
+   - One step: the page peeks a code directly (`table_peek`; the old `code_lookup` → `code_kind` is
+     retired), and the store in `codeJoin.ts` holds the whole join as one value.
    - The Join panel is drawn by `components/JoinPanel.tsx` from TablePanel's exported seat layouts; folding
      it into `TablePanel.tsx` as a panel kind is a follow-up.
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
@@ -190,7 +195,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
    - The swap carries nothing across: the old socket's handlers are cut before it closes, its room,
      resume token, chat and any pending leave or reconnect are dropped (listeners get `left`), the queue
      store and the toast reset, and the on-device socket passes on only the messages its server answers
-     (the queue, presence, code lookups, telemetry and heartbeats go nowhere). App's fill-with-bots
+     (the queue, presence, telemetry and heartbeats go nowhere). App's fill-with-bots
      chain ends with that `left`, as does a Start cancelled before its room came back. Telemetry collects
      only online: an online page's buffered events go before it turns offline, and nothing buffered on
      either side is kept across the switch.

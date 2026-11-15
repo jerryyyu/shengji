@@ -547,7 +547,7 @@ export class QueueStore {
         if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) {
           // An error the queue does not name may still be the answer to a
           // Play: never keep searching on it; the server says what it holds.
-          if (this.view.pending === "join" && !("lookup" in msg)) {
+          if (this.view.pending === "join" && !("peek" in msg)) {
             this.joinSentAt = null;
             this.set({ pending: null });
             this.askStatus();

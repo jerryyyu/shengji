@@ -33,6 +33,15 @@ def test_committed_sessions_regenerate_identically():
     assert gen.sessions_text(header["games"], header["rounds"], header["seed"]) == text
 
 
+def test_committed_start_flow_sessions_regenerate_identically():
+    path = FIXTURE.with_name(gen.FIXTURE_NAMES["start"])
+    text = gzip.decompress(path.read_bytes()).decode("utf-8")
+    header = json.loads(text.split("\n", 1)[0])
+    assert header["format"] == gen.FORMAT
+    assert gen.sessions_text(header["games"], header["rounds"], header["seed"],
+                             flow="start") == text
+
+
 def test_committed_sessions_cover_the_server_flows():
     header = json.loads(_committed().split("\n", 1)[0])
     stats = header["stats"]

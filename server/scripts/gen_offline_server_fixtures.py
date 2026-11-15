@@ -363,8 +363,9 @@ def game_seed(base: int, g: int) -> int:
     return (base * 1_000_003 + g) & M32
 
 
-def session_record(seed: int, rounds: int, config: dict, stats: Counter) -> dict:
-    frames = play_session(seed, rounds, config)
+def session_record(seed: int, rounds: int, config: dict, stats: Counter,
+                   flow: str = "chain") -> dict:
+    frames = play_session(seed, rounds, config, flow)
     kinds = Counter(f["type"] for f in frames)
     for k, v in kinds.items():
         stats[f"frames_{k}"] += v
@@ -387,9 +388,14 @@ def session_record(seed: int, rounds: int, config: dict, stats: Counter) -> dict
             "digests": "".join(digest(f) for f in frames)}
 
 
-def sessions_text(n_games: int, rounds: int, base_seed: int, stats=None) -> str:
+# The committed fixture file each flow regenerates.
+FIXTURE_NAMES = {"chain": "server_sessions.jsonl.gz", "start": "server_sessions_start.jsonl.gz"}
+
+
+def sessions_text(n_games: int, rounds: int, base_seed: int, stats=None,
+                  flow: str = "chain") -> str:
     stats = Counter() if stats is None else stats
-    lines = [_dumps(session_record(game_seed(base_seed, g), rounds, game_config(g), stats))
+    lines = [_dumps(session_record(game_seed(base_seed, g), rounds, game_config(g), stats, flow))
              for g in range(n_games)]
     deck = list(__import__("shengji.engine.cards", fromlist=["make_deck"]).make_deck())
     DeckRng(game_seed(base_seed, 0)).shuffle(deck)
@@ -405,20 +411,22 @@ def main(argv=None) -> int:
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--flow", choices=sorted(FIXTURE_NAMES), default="chain",
+                    help="how each game starts: the add_bot/start_game chain or create_room start")
     ap.add_argument("--dump", type=int, metavar="GAME",
                     help="print game GAME's normalised frames as JSON lines")
     args = ap.parse_args(argv)
     if args.dump is not None:
         for f in play_session(game_seed(args.seed, args.dump), args.rounds,
-                              game_config(args.dump)):
+                              game_config(args.dump), args.flow):
             print(canonical(f))
         return 0
     if args.out is None:
         ap.error("--out is required unless --dump is given")
     stats: Counter = Counter()
-    text = sessions_text(args.games, args.rounds, args.seed, stats)
+    text = sessions_text(args.games, args.rounds, args.seed, stats, args.flow)
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "server_sessions.jsonl.gz").write_bytes(_gzip_bytes(text))
+    (args.out / FIXTURE_NAMES[args.flow]).write_bytes(_gzip_bytes(text))
     print(json.dumps(dict(sorted(stats.items()))))
     return 0
 

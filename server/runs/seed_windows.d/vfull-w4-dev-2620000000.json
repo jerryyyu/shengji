@@ -1,0 +1,14 @@
+{
+ "name": "vfull-w4-dev-2620000000",
+ "purpose": "screen",
+ "seed0": 2620000000,
+ "clusters": 1000,
+ "span": [
+  2620000000,
+  2620001000
+ ],
+ "created_at": "2026-11-15T00:00:00Z",
+ "host": "ultra",
+ "git_head": "5a9171cd61f20fc76553f1ae8791aaee00f629a5",
+ "note": "V-FULL arm A pick w4-c38000-e10 (value package vfull-w4-c38000-e10-ema 631a9edf, 680x4, value forward in float32), DEV stage (VFD1): 1,000 paired seat-swapped rank-mixed deals vs release 52 as served on the M5 Ultra. DEV pass bar (plan section 5): mean >= +0.02 and one-sided 80% lower bound > 0. seed_windows.py clear against w4-c38000 epoch-10.avg.pt, G3A epoch-04, FT1 and the B1a lineage (intervals + live keys) is CLEAR in the VFD1 packet. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

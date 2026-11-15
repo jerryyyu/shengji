@@ -15,7 +15,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 
 | type | fields | when |
 |------|--------|------|
-| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`) | anytime before joining |
+| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`), optional `start: true` (start the game at once with a bot in every empty seat: one `room` frame, then the game's frames, as `add_bot` to four seats then `start_game` would; a refusal leaves the room in its lobby with an `error`) | anytime before joining |
 | `set_start_level` | `start_level` (same values) | host (the opener), lobby only; refused once the game has started, and in a ranked room ("A ranked table starts at level 2."): every rated game starts at `"2"`. A real change clears every Start tap (`lobby_ready`) |
 | `set_ranked` | `on: boolean` | host (the opener), lobby only, created rooms only: whether the room is ranked (see "Ranked rooms"); refused once the game has started. On sets `start_level` back to `"2"`. A real change clears every Start tap |
 | `swap_seats` | `a`, `b` (seat positions), optional `expect` | lobby: the host exchanges any two positions, which takes back the Start of each person it moves (the host's own excepted); anyone else moves themselves (one of `a`, `b` is their own seat, the other empty) until they tap Start |

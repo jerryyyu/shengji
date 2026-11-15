@@ -2561,6 +2561,26 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         _log_round_end(room)
 
 
+async def _start_created_room(room: Room, me: Seat) -> None:
+    """``create_room`` with ``start: true``: the creator's own ``start_game``,
+    sent for them, so every start check applies and a bot takes every empty
+    seat. A refusal leaves the room in its lobby and goes to the creator."""
+    async with room.lock:
+        try:
+            await handle_action(room, room.seats.index(me), {"type": "start_game"})
+        except SameDevice as e:
+            enqueue(me, {"type": "error", "code": "same_device", "message": str(e)})
+        except IllegalPlay as e:
+            code = getattr(e, "code", None)
+            enqueue(me, {"type": "error", **({"code": code} if code else {}),
+                         "message": str(e)})
+        except Exception:
+            enqueue(me, {"type": "error", "message": "Invalid request."})
+        else:
+            await broadcast(room)
+            kick_bots(room)
+
+
 async def _resume_point(user_id: int | None, game_id: Any, options: dict) -> dict | None:
     """The ``create_room`` ``resume_from`` option: a saved game of the
     signed-in caller's own account, in an ordinary room. None refuses it
@@ -2764,7 +2784,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                                           for i in range(4)]
                             room.host = resume["seat"]
                         my_gen = _attach(room, me, ws)
+                        # The client saves a room only from a room frame, so
+                        # one goes out before a ``start`` begins the game.
                         await broadcast(room)
+                        if msg.get("start") is True:
+                            await _start_created_room(room, me)
                     elif t == "peek_room":
                         # Who is sitting where, WITHOUT joining — the lobby uses
                         # this to offer a seat picker for a game in progress.

@@ -125,3 +125,24 @@ def test_experimental_room_cannot_write_into_ordinary_logs(tmp_path, monkeypatch
 def test_misconfiguration_fails(env):
     with pytest.raises(ValueError):
         ShortlistTestRooms(env)
+
+
+def test_a_test_room_with_start_stays_unrated_and_closed_to_joiners(client, monkeypatch,
+                                                                     tmp_path):
+    _enable(monkeypatch, tmp_path)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 60)    # no search before the deal
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "create_room", "name": "test", "test_policy": "w32",
+                      "test_access_key": KEY, "start": True})
+        room_msg = _drain(ws, "room")
+        assert room_msg["experimental_policy"] == "w32"
+        assert "allow_joiners" not in room_msg
+        assert _drain(ws, "state")["experimental_policy"] == "w32"
+        room = srv.rooms[room_msg["room"]]
+        assert room.game is not None and room.ratings is None
+        assert not srv.ratings.eligible(room) and not srv._takes_joiners(room)
+        assert not srv._joinable(room) and not srv._joinable(room, invite=True)
+        assert not room.log_dir.is_relative_to(srv.LOG_DIR)
+        assert (room.log_dir / f"{room.code}.jsonl").exists()
+        ws.send_json({"type": "allow_joiners", "on": True})
+        assert _drain(ws, "error")["message"] == "This table takes no joiners."

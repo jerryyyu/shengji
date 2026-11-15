@@ -3594,3 +3594,72 @@ def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_
             _drain(a, "state", tries=5)
         else:
             raise AssertionError("Bo did not take the open seat")
+
+
+# ------------------------------------------- create_room with start: true
+@pytest.mark.parametrize("start", [False, "true", 1, None])
+def test_create_room_starts_only_on_start_true(client, start):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "create_room", "name": "P", "start": start})
+        room_msg = _drain(ws, "room")
+        assert [p["name"] for p in room_msg["players"]] == ["P"]
+        room = srv.rooms[room_msg["room"]]
+        assert room.game is None and len(room.seats) == 1
+        # the ordinary created room's lobby: the client's chain still works
+        for _ in range(3):
+            ws.send_json({"type": "add_bot"})
+            _drain(ws, "room")
+        ws.send_json({"type": "start_game"})
+        assert _drain(ws, "state")["you"] == 0
+
+
+def test_create_room_start_true_seats_bots_and_starts(client):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "create_room", "name": "P", "start": True,
+                      "start_level": "5"})
+        room_msg = _drain(ws, "room")
+        assert [p["name"] for p in room_msg["players"]] == ["P"]
+        state = _drain(ws, "state")
+        assert state["you"] == 0 and state["levels"] == ["5", "5"]
+        room = srv.rooms[room_msg["room"]]
+        assert [sd.name for sd in room.seats] == ["P", "Bot 1", "Bot 2", "Bot 3"]
+        assert [sd.is_bot for sd in room.seats] == [False, True, True, True]
+        assert room.host == 0 and room.game is not None and not room.ranked
+        ws.send_json({"type": "start_game"})
+        # the deal streams a state frame per card ahead of the refusal
+        assert _drain(ws, "error", tries=400)["message"] == "Game already started."
+
+
+class _EvaluationRooms:
+    """Room options that make the created room a human evaluation room."""
+
+    def __init__(self, log_dir):
+        self.log_dir = log_dir
+
+    def room_options(self, msg, rooms, ordinary_log_root):
+        from types import SimpleNamespace
+
+        from tests.test_human_eval_contract import _context
+        return {"evaluation": _context(), "log_dir": self.log_dir,
+                "bot": SimpleNamespace(policy_name="candidate-policy")}
+
+
+def test_create_room_start_true_keeps_the_evaluation_start_refusal(client, monkeypatch,
+                                                                   tmp_path):
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(srv, "SHORTLIST_TEST_ROOMS", _EvaluationRooms(tmp_path / "evaluation"))
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "create_room", "name": "P", "start": True})
+        room_msg = _drain(ws, "room")
+        error = _drain(ws, "error")
+        assert error["message"] == "Evaluation participant identity mismatch."
+        room = srv.rooms[room_msg["room"]]
+        assert room.game is None and room.deal_task is None and room.ratings is None
+        # the same refusal as the client's own start_game
+        ws.send_json({"type": "start_game"})
+        assert _drain(ws, "error")["message"] == "Evaluation participant identity mismatch."

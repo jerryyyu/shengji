@@ -71,3 +71,50 @@ def test_endpoint_failure_or_early_exit_does_not_wait_forever(monkeypatch, failu
     message = "injected endpoint failure" if failure else "endpoint ended before"
     with pytest.raises(error, match=message):
         gen.play_session(12345, 1, gen.game_config(1))
+
+
+# A two-round session takes about 130 virtual seconds.
+VIRTUAL_CEILING = 3600.0
+
+
+class _BoundedLoop(gen.VirtualTimeLoop):
+    """Fails a session that stops making progress (nothing ready and no timer
+    due, or virtual time far past any real session) instead of waiting forever."""
+
+    def _run_once(self) -> None:
+        if not getattr(self, "_stalled", False):
+            if not self._ready and not self._scheduled:
+                self._stalled = True
+                raise RuntimeError("session stalled: nothing left to run")
+            if self._virtual_now > VIRTUAL_CEILING:
+                self._stalled = True
+                raise RuntimeError("session stalled: virtual time ceiling")
+        super()._run_once()
+
+
+def _first_state(frames: list[dict]) -> int:
+    return next(i for i, f in enumerate(frames) if f["type"] == "state")
+
+
+# ``create_room`` with ``start: true`` stands for the client's create, add_bot
+# to four seats, start_game chain: from the first state frame on the human
+# gets the chain's frames, and before it only the chain's first room frame.
+# game_config cycles the driver variations: index 1 leads throws, index 3
+# starts at A.
+@pytest.mark.parametrize("seed,config_index", [(1, 0), (2, 1), (3, 2), (4, 3), (12345, 1)])
+def test_start_flow_matches_the_add_bot_start_game_chain(monkeypatch, seed, config_index):
+    monkeypatch.setattr(gen, "VirtualTimeLoop", _BoundedLoop)
+    config = gen.game_config(config_index)
+    chain = gen.play_session(seed, 2, config, flow="chain")
+    start = gen.play_session(seed, 2, config, flow="start")
+    c, s = _first_state(chain), _first_state(start)
+    assert start[s:] == chain[c:]
+    assert [f["type"] for f in start[:s]] == ["resume", "chat_history", "room"]
+    assert start[:s] == chain[:s]
+    assert [f["type"] for f in chain[s:c]] == ["room"] * (c - s)
+    assert start[-1] == {"type": "left"}
+
+
+def test_an_unknown_flow_is_refused():
+    with pytest.raises(ValueError, match="unknown flow"):
+        gen.play_session(1, 1, gen.game_config(0), flow="other")

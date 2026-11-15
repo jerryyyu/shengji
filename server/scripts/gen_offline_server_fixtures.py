@@ -194,8 +194,10 @@ class HumanDriver:
     a frame read after the room already moved on is not acted on.
     """
 
-    def __init__(self, rounds: int, live_round, throws: bool = False):
+    def __init__(self, rounds: int, live_round, throws: bool = False,
+                 flow: str = "chain"):
         self.rounds = rounds
+        self.flow = flow
         self.throws = throws
         self.live_round = live_round      # () -> the room's current Round, or None
         self.bot = SmartBot()
@@ -219,7 +221,7 @@ class HumanDriver:
     def react(self, msg: dict) -> list[dict]:
         t = msg["type"]
         if t == "room":
-            if msg["you"] != msg["host"]:
+            if self.flow == "start" or msg["you"] != msg["host"]:
                 return []
             if len(msg["players"]) < 4:
                 return [{"type": "add_bot"}]
@@ -288,7 +290,8 @@ async def _inline_bot_turn(snapshot):
     return server._compute_bot_turn(snapshot)
 
 
-async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
+async def _session(seed: int, rounds: int, config: dict,
+                   flow: str = "chain") -> list[dict]:
     ws = FakeWebSocket()
     endpoint = asyncio.ensure_future(server.ws_endpoint(ws))
 
@@ -296,8 +299,10 @@ async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
         room = next(iter(server.rooms.values()), None)
         return room.round if room is not None else None
 
-    human = HumanDriver(rounds, live_round, throws=config["throws"])
+    human = HumanDriver(rounds, live_round, throws=config["throws"], flow=flow)
     create = {"type": "create_room", "name": HUMAN_NAME}
+    if flow == "start":
+        create["start"] = True
     if config["startLevel"] is not None:
         create["start_level"] = config["startLevel"]
     ws.inbox.put_nowait(create)
@@ -329,14 +334,20 @@ async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
     return frames
 
 
-def play_session(seed: int, rounds: int, config: dict) -> list[dict]:
-    """Every frame seat 0 receives in one seeded solo game of ``rounds`` rounds."""
+def play_session(seed: int, rounds: int, config: dict, flow: str = "chain") -> list[dict]:
+    """Every frame seat 0 receives in one seeded solo game of ``rounds`` rounds.
+
+    ``flow`` is how the game starts: ``"chain"`` (the committed fixture's) is
+    ``create_room``, ``add_bot`` to four seats, then ``start_game``;
+    ``"start"`` is one ``create_room`` with ``start: true``."""
+    if flow not in ("chain", "start"):
+        raise ValueError(f"unknown flow {flow!r}")
     saved = (server.Game, server._compute_bot_turn_off_loop)
     server.Game = functools.partial(Game, DeckRng(seed))
     server._compute_bot_turn_off_loop = _inline_bot_turn
     loop = VirtualTimeLoop()
     try:
-        return loop.run_until_complete(_session(seed, rounds, config))
+        return loop.run_until_complete(_session(seed, rounds, config, flow))
     finally:
         pending = asyncio.all_tasks(loop)
         for task in pending:

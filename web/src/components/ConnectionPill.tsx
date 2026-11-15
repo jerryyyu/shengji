@@ -39,16 +39,20 @@ interface Props {
   inRoom: boolean;
   /** A game in progress, which a bot plays on while this device is away. */
   inGame: boolean;
+  /** Whether the pill shows while the socket is down. Play with no table
+   *  says it on its presence line instead; the full screen shows anyway. */
+  pill?: boolean;
 }
 
 /** The one connection surface, in the lobby and at the table alike: a pill
  *  while the socket is down, with Retry after RETRY_AFTER_MS, and one full
  *  screen after LOST_AFTER_MS. While the socket is open the table may show
  *  SeatHeldPill in the same place; this shows nothing. */
-export default function ConnectionPill({ status, inRoom, inGame }: Props) {
+export default function ConnectionPill({ status, inRoom, inGame, pill = true }: Props) {
   const [phase, retry] = useConnPhase(status);
   if (phase === "open") return null;
   if (phase === "lost") return <ConnectionLost inGame={inGame} onRetry={retry} />;
+  if (!pill) return null;
   // the first connect of a page load is not a drop: no socket has opened yet
   const label = conn.generation > 0 ? "Reconnecting…" : "Connecting…";
   return (

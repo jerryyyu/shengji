@@ -64,6 +64,9 @@ The host role passes on, and a ranked leave keeps "at best a draw".
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 60 s, and a
 bad code shown inline under the code box. One wording. The same pill, in the same place, says "A bot holds your
 seat · I'm back" once the socket is open again while a bot still plays your seat (simplification 4, below).
+The pill shows at a table or in a game. On the Play tab with no table the presence line is the one status:
+"Connecting…" until the socket opens, then the counts, or "Offline" once Play plays on this device; the 60 s
+full screen still comes (Jerry 11-15).
 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me.

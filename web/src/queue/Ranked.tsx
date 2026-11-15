@@ -42,8 +42,18 @@ function GuestLine({ online }: { online: boolean }) {
 }
 
 /** The counts under Play and Duo: who is about, never a button. When both
- *  modes have tables, the selected mode's count is lit. */
-function PresenceLine({ q }: { q: ReturnType<typeof useQueue> }) {
+ *  modes have tables, the selected mode's count is lit. Until the socket
+ *  opens it is Play's connection status: "Connecting…", then the offline
+ *  controls' "Offline". */
+function PresenceLine({ q, online }: { q: ReturnType<typeof useQueue>; online: boolean }) {
+  if (!online) {
+    return (
+      <p className="play-presence connecting" role="status">
+        <span className="play-presence-dot" aria-hidden="true" />
+        <span>Connecting…</span>
+      </p>
+    );
+  }
   return (
     <p className="play-presence">
       <span className="play-presence-dot" aria-hidden="true" />
@@ -153,7 +163,9 @@ export function RankedSection({ online, room = null }: {
   const modes = <ModeSwitch value={tableMode ?? q.playMode} disabled={tableMode !== null || joining || !!q.inGame} />;
   // first in every branch, so the live region stays mounted as the panel changes kind
   const announcer = <TableAnnouncer q={q} />;
-  if (account.status === "loading" || account.status === "error") return null;
+  // while sign-in loads only the connection status shows, once the socket is down
+  if (account.status === "loading") return online ? null : <PresenceLine q={q} online={false} />;
+  if (account.status === "error") return null;
   const guest = account.status !== "in";
   if (kind !== "play") {
     return (
@@ -184,7 +196,7 @@ export function RankedSection({ online, room = null }: {
           Duo
         </button>
       </div>
-      {online && !cooling ? <PresenceLine q={q} /> : null}
+      {cooling ? null : <PresenceLine q={q} online={online} />}
     </>
   );
   return (

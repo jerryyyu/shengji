@@ -6062,6 +6062,8 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
   padding: 6px 0 calc(16px + env(safe-area-inset-bottom, 0px));
   border-radius: 14px 14px 0 0; background: #1b1f27; color: #eef1f6;
   box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); outline: none;
+  /* a phone held sideways keeps the portrait sheet under the portrait column */
+  align-self: center; width: 100%; max-width: 520px; box-sizing: border-box;
 }
 .q-grab { flex: none; width: 36px; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: #4a5263; }
 .q-sheet-body {
@@ -6201,7 +6203,7 @@ dialog.leave-sheet-backdrop {
   dialog.leave-sheet-bottom { align-items: flex-end; padding: 0; }
   .leave-sheet-bottom .leave-sheet {
     width: 100%;
-    max-width: none;
+    max-width: 520px;
     padding: 10px 16px calc(20px + env(safe-area-inset-bottom, 0px));
     border: 0;
     border-top: 1px solid #333b49;

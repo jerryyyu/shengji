@@ -7,6 +7,7 @@ import { continueGame, hasLevels, useCanContinue } from "../replay/continueGame"
 import type { GamesRoute } from "../replay/route";
 import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 import ReplayView from "./ReplayView";
+import ConfirmSheet from "./ConfirmSheet";
 import { dayLabel } from "../home/dayLabel";
 import { cached, remember } from "../home/session";
 import { deltaText } from "../ratings/api";
@@ -163,30 +164,23 @@ function GameActions({ game, className }: { game: GameRow; className: string }) 
 
 function GameView({ id }: { id: string }) {
   const [res, setRes] = useState<Fetched<GameDetail> | null>(null);
-  const [armed, setArmed] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<number | null>(null);
   useEffect(() => {
     let live = true;
     setRes(null);
     fetchGame(id).then((r) => { if (live) setRes(r); });
     return () => { live = false; };
   }, [id]);
-  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current); }, []);
 
+  // the confirm sheet's Remove: the sheet holds still until the server answers
   const remove = () => {
-    if (!armed) {
-      setArmed(true);
-      timer.current = window.setTimeout(() => { timer.current = null; setArmed(false); }, 3000);
-      return;
-    }
-    if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; }
     setBusy(true);
     setError(null);
     removeGame(id)
       .then(() => { forgetRemovedGame(id); navigate({ page: "list" }); })
-      .catch((e: Error) => { setError(e.message); setArmed(false); })
+      .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
 
@@ -227,10 +221,12 @@ function GameView({ id }: { id: string }) {
             {game.rounds.length === 0 ? <li className="games-round-res">No rounds to replay.</li> : null}
           </ul>
         </div>
-        <button className={`btn danger games-remove${armed ? " armed" : ""}`} disabled={busy} onClick={remove}>
-          {busy ? "Removing…" : armed ? "Tap again to remove" : "Remove from my games"}
-        </button>
-        {error ? <div className="lobby-error" role="alert">{error}</div> : null}
+        <button className="btn danger games-remove" onClick={() => setAsking(true)}>Remove from my games</button>
+        {asking ? (
+          <ConfirmSheet title="Remove this game?" cancel="Cancel" confirm={busy ? "Removing…" : "Remove"} danger
+                        busy={busy} error={error} className="games-remove-confirm"
+                        onConfirm={remove} onCancel={() => { setAsking(false); setError(null); }} />
+        ) : null}
       </>
     );
   }

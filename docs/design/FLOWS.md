@@ -244,3 +244,13 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - **A table keeps its code for life.** The code a table took from its opener stays when the opener leaves (the
   next person takes the opener's controls, not the code), so every invite link keeps working while the table
   exists, and the room starts on it. The last one left alone keeps the table's code as its own.
+
+## Audit decisions 2026-11-15 (Jerry)
+- **One confirm sheet.** Every "are you sure" is one `ConfirmSheet` (`components/ConfirmSheet.tsx`): a title,
+  at most one line, then the cancel (focused first; Escape and the scrim also cancel) and the confirm side by side,
+  rising from the bottom of a phone, a centred card at the table. A confirm that undoes something is red; one that
+  is not a way out is the panel's gold. It carries the Leave sheet (`LeaveSheet.tsx` is its copy lookup), the
+  opener's move ("Move Alice here?", Cancel / Move), taking a dropped player's seat ("Alice dropped out. Take their
+  seat?", Cancel / Take seat), Delete account ("Delete your account?", "Your rating and games are deleted.",
+  Cancel / Delete; was an inline card) and removing a saved game ("Remove this game?", Cancel / Remove; was "Tap
+  again to remove"). A link opened while you sit in a Duo asks with the panel's own Duo line.

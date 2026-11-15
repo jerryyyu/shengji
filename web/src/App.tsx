@@ -30,7 +30,9 @@ import { showToast as toastShow } from "./toast";
 import Toast from "./components/Toast";
 import ConnectionPill from "./components/ConnectionPill";
 import QueueLayer from "./queue/QueueLayer";
-import { othersAt, queue, useQueue } from "./queue/store";
+import { queue, useQueue } from "./queue/store";
+import type { QueueView } from "./queue/store";
+import { queueLeaveContext } from "./queue/tableModel";
 import { firstJoinerText } from "./queue/tableText";
 import { offlineGame } from "./components/offlineGame";
 
@@ -46,11 +48,11 @@ function dropInviteLink(): void {
 }
 
 /** What leaving the seat you hold costs, for the sheet a link to another
- *  table opens: the game in play, else the Play table. */
-function linkLeaveContext(game: GameState | null, others: string[]): LeaveContext {
+ *  table opens: the game in play, else the Play table as its panel says it. */
+function linkLeaveContext(game: GameState | null, q: QueueView): LeaveContext {
   if (game) return { kind: "game", ranked: !!game.matched, guest: game.guest === true,
                      betweenRounds: game.phase === "round_end" };
-  return { kind: "queue", others };
+  return queueLeaveContext(q);
 }
 
 export default function App() {
@@ -320,7 +322,7 @@ export default function App() {
       <IdentitySheet />
       {linkPrompt && !linkLeaving && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link
-        <LeaveSheet context={linkLeaveContext(game, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}
+        <LeaveSheet context={linkLeaveContext(game, q)} title={`Leave to join ${linkPrompt}?`}
                     onLeave={() => {
                       if (room === null && game === null) queue.leave();
                       else conn.send({ type: "table_leave" });

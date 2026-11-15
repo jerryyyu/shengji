@@ -191,14 +191,21 @@ describe("a game", () => {
     expect(rounds.every((r) => r.querySelector("button")?.textContent === "Replay")).toBe(true);
   });
 
-  it("Remove from my games needs two taps, sends DELETE and drops the row", async () => {
+  it("Remove from my games asks on the one confirm sheet, sends DELETE and drops the row", async () => {
     routes["DELETE /api/me/games/g1"] = { status: 204 };
     await mount();
     await click(qa(".games-day-row")[0]);
     await click(button("Remove from my games"));
+    const sheet = q("[role=alertdialog]")!;
+    expect(sheet.querySelector("h2")?.textContent).toBe("Remove this game?");
+    expect(sheet.querySelector("p")).toBeNull();
+    expect([...sheet.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "Remove"]);
+    await click(button("Cancel"));
+    expect(q("[role=alertdialog]")).toBeNull();
+    await click(button("Remove from my games"));
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("g2", 1_789_000_000)], next_before: null } };
-    await click(button("Tap again to remove"));
+    await click(button("Remove"));
     expect(calls.filter((c) => c.method === "DELETE")).toEqual([{ url: "/api/me/games/g1", method: "DELETE" }]);
     const rows = qa(".games-day-row");
     expect(rows).toHaveLength(1);
@@ -209,7 +216,7 @@ describe("a game", () => {
     routes["DELETE /api/me/games/g1"] = { status: 500 };
     await mount({ page: "game", id: "g1" });
     await click(button("Remove from my games"));
-    await click(button("Tap again to remove"));
+    await click(button("Remove"));
     expect(q("[role=alert]")?.textContent).toContain("Could not remove the game (500)");
     expect(q(".games-title")?.textContent).toBe("Game");
   });
@@ -346,7 +353,7 @@ it("review: remove last game through cached Me history reaches empty state", asy
   await click(qa(".games-day-row")[0]);
   await click(button("Remove from my games"));
   routes["GET /api/me/games?limit=20"]={status:200,body:{games:[],next_before:null}};
-  await click(button("Tap again to remove"));
+  await click(button("Remove"));
   expect(calls.some(c=>c.method === "DELETE")).toBe(true);
   expect(host.textContent).toContain("No saved games yet");
 });

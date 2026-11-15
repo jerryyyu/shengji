@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
+import ConfirmSheet from "./ConfirmSheet";
 import type { RoomSeats, TableSeats } from "../protocol";
 import type { TableKind } from "../codeJoin";
 import { hostName, joinSeat, tableHostName, tableViewSeat, takeoverSeats } from "../joinSeats";
@@ -8,41 +9,11 @@ import type { SeatItem } from "../queue/TablePanel";
 import { shortName } from "../queue/tableText";
 
 /** The confirm before taking a dropped player's seat: one question, then
- *  Take seat and Cancel. A modal dialog; Cancel is focused first and Escape
- *  cancels. */
+ *  Cancel and Take seat, on the one confirm sheet. */
 function TakeoverConfirm({ name, onTake, onCancel }: { name: string; onTake: () => void; onCancel: () => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const titleId = useId();
-  useEffect(() => {
-    const dialog = ref.current!;
-    if (typeof dialog.showModal === "function") dialog.showModal();
-    else dialog.setAttribute("open", "");
-    cancelRef.current?.focus();
-    return () => {
-      if (typeof dialog.close === "function") dialog.close();
-      else dialog.removeAttribute("open");
-    };
-  }, []);
   return (
-    <dialog ref={ref} className="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog"
-            aria-modal="true" aria-labelledby={titleId}
-            onCancel={(e) => { e.preventDefault(); onCancel(); }}
-            onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-            }}>
-      <div className="leave-sheet">
-        <div className="leave-sheet-text">
-          <h2 id={titleId} className="leave-sheet-title">{shortName(name)} dropped out. Take their seat?</h2>
-        </div>
-        <div className="leave-sheet-actions">
-          <button ref={cancelRef} type="button" className="leave-sheet-stay" onClick={onCancel}>Cancel</button>
-          <button type="button" className="leave-sheet-leave seat-take-confirm" onClick={onTake}>Take seat</button>
-        </div>
-      </div>
-    </dialog>
+    <ConfirmSheet title={`${shortName(name)} dropped out. Take their seat?`} cancel="Cancel" confirm="Take seat"
+                  confirmClass="seat-take-confirm" onConfirm={onTake} onCancel={onCancel} />
   );
 }
 

@@ -5827,9 +5827,6 @@ button.grp-row:disabled { cursor: default; }
 }
 .ios-switch.on { background: #5fc78b; }
 .ios-switch.on::after { transform: translateX(20px); }
-.me-delete-confirm { display: flex; flex-direction: column; gap: 10px; padding: 16px; text-align: center; }
-.me-delete-confirm h3 { margin: 0; font-size: var(--fs-17); color: #fff; }
-.me-delete-confirm p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
 
 .games-days { display: flex; flex-direction: column; gap: 14px; }
 .grp .games-day-row { min-height: 60px; padding: 8px 16px; }
@@ -6198,9 +6195,9 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
   padding-bottom: 0;
 }
 
-/* The leave sheet: a title, one line of what leaving costs, then Stay and
-   Leave side by side. A centred card at the table; before a game it rises
-   from the bottom of a phone. */
+/* The one confirm sheet (leave, move, take a seat, delete, remove): a
+   title, at most one line, then cancel and confirm side by side. A centred
+   card at the table; elsewhere it rises from the bottom of a phone. */
 dialog.leave-sheet-backdrop {
   background: rgba(8, 10, 14, 0.55);
   backdrop-filter: none;
@@ -6265,6 +6262,12 @@ dialog.leave-sheet-backdrop {
   background: #5a1f27;
   color: #ffd0d6;
 }
+/* a confirm that is not a way out (move, take a seat) is the panel's gold */
+.leave-sheet-actions .leave-sheet-leave.confirm-sheet-go {
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+}
+.leave-sheet-actions button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
+.leave-sheet-error { margin: 0; font-size: 14px; line-height: 1.4; color: #f0a0aa; text-align: center; }
 @keyframes leave-sheet-in {
   from { opacity: 0; transform: scale(1.06); }
   to { opacity: 1; transform: none; }

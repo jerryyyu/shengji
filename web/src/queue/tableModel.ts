@@ -221,6 +221,17 @@ function botsRing(at: number | null, now: number): Ring | null {
   return { left: (at - now) / 1000, total: BOT_FILL_MS / 1000 };
 }
 
+/** What leaving the Play table costs, for every sheet that asks: the
+ *  panel's Leave and a link to another table. The people a shared table
+ *  keeps when you go; your own table has nobody else, but for a Duo
+ *  partner, who keeps it. */
+export function queueLeaveContext(q: QueueView): LeaveContext {
+  const others = panelKind(q) === "shared" && q.table
+    ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
+  const duoPartner = tableDuo(q) ? partnerName(q.party) : null;
+  return duoPartner ? { kind: "duo", partner: duoPartner, opener: q.opener } : { kind: "queue", others };
+}
+
 /** The queue's table, by the kind its state calls for; null on Play. */
 export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel | null {
   const kind = panelKind(q);
@@ -232,13 +243,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   const tag = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere" ? "Casual" as const : undefined;
   const rows: TableRows = { code: q.tableCode, ranked, opener: q.opener, level: q.startLevel,
                             joiners: q.opener ? q.allowJoiners : undefined };
-  // the people a shared table keeps when you go; your own table has nobody
-  // else, but for a Duo partner, who keeps it
-  const others = kind === "shared" && q.table
-    ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
-  const duoPartner = tableDuo(q) ? partnerName(q.party) : null;
-  const leave: LeaveContext = duoPartner ? { kind: "duo", partner: duoPartner, opener: q.opener }
-    : { kind: "queue", others };
+  const leave = queueLeaveContext(q);
   const base = { tag, leave, rows: null, waitSwitch: null, chat: null };
   if (kind === "join" && q.offer) {
     const o = q.offer;

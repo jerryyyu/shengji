@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, Ref } from "react";
 import type { ReactNode } from "react";
 import { auth, deleteAccount, effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
@@ -13,6 +12,7 @@ import { cached, remember, tabMemory, useCachedResource, useTabScroll, viewerSco
 import LargeTitlePage from "../home/LargeTitlePage";
 import type { MeSection } from "../home/route";
 import NameEditForm from "./NameEditForm";
+import ConfirmSheet from "./ConfirmSheet";
 import { SavedGames } from "./GamesList";
 import { useScreen } from "../telemetry";
 import { SettingsGroup } from "./SettingsList";
@@ -34,16 +34,16 @@ function deltaClass(delta: number): string {
 
 /** One 44 pt row of an inset-grouped list: a label and, at the end, a value
  *  or a chevron. A row with an action is a button. */
-function Row({ label, value, chevron, onClick, className = "", children, buttonRef }: {
+function Row({ label, value, chevron, onClick, className = "", children }: {
   label: ReactNode; value?: ReactNode; chevron?: boolean; onClick?: () => void; className?: string;
-  children?: ReactNode; buttonRef?: Ref<HTMLButtonElement>;
+  children?: ReactNode;
 }) {
   const end = value !== undefined || chevron
     ? <span className={`grp-value${chevron ? " chev" : ""}`}>{value}</span> : null;
   if (onClick) {
     return (
       <li>
-        <button ref={buttonRef} type="button" className={`grp-row ${className}`} onClick={onClick}>
+        <button type="button" className={`grp-row ${className}`} onClick={onClick}>
           <span className="grp-label">{label}</span>{end}
         </button>
         {children}
@@ -104,27 +104,14 @@ function StatsBody({ stats }: { stats: Stats }) {
   );
 }
 
-/** Delete account: the first tap opens an in-page confirmation, and only
- *  its own Delete button calls the server. The confirmation is a dialog:
- *  opening it focuses Cancel, Tab stays inside it, and Cancel or Escape
- *  closes it with focus back on the Delete account row. */
+/** Delete account: the row opens the one confirm sheet, and only its own
+ *  Delete calls the server. While that call is out the sheet holds still;
+ *  a refusal says why inside it. Closing it gives focus back to the row. */
 function DeleteAccount() {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const row = useRef<HTMLButtonElement | null>(null);
-  const cancelBtn = useRef<HTMLButtonElement | null>(null);
-  const dialog = useRef<HTMLDivElement | null>(null);
-  const returning = useRef(false);
-  useEffect(() => {
-    if (confirming) cancelBtn.current?.focus();
-    else if (returning.current) {
-      returning.current = false;
-      row.current?.focus();
-    }
-  }, [confirming]);
   const confirm = () => {
-    if (busy) return;
     setBusy(true);
     setError(null);
     deleteAccount()
@@ -135,49 +122,18 @@ function DeleteAccount() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
-  const cancel = () => {
-    if (busy) return;
-    returning.current = true;
-    setConfirming(false);
-    setError(null);
-  };
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      cancel();
-      return;
-    }
-    if (e.key !== "Tab") return;
-    const stops = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button") ?? []);
-    if (stops.length === 0) return;
-    const at = stops.indexOf(document.activeElement as HTMLElement);
-    const next = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at + 1) % stops.length;
-    e.preventDefault();
-    stops[next].focus();
-  };
-  if (!confirming) {
-    return (
-      <ul className="grp">
-        <Row label="Delete account" chevron className="destructive me-delete" buttonRef={row}
-             onClick={() => setConfirming(true)} />
-      </ul>
-    );
-  }
-  // busy buttons are aria-disabled rather than disabled, so focus stays put
   return (
-    <div className="grp me-delete-confirm" role="alertdialog" aria-modal="true" ref={dialog} onKeyDown={onKey}
-         aria-labelledby="me-delete-title" aria-describedby="me-delete-desc">
-      <h3 id="me-delete-title">Delete your account?</h3>
-      <p id="me-delete-desc">Your rating, your place on the leaderboard and your saved games are removed for good. This can’t be undone.</p>
-      <button type="button" className="btn big danger me-delete-yes" aria-disabled={busy || undefined} onClick={confirm}>
-        {busy ? "Deleting…" : "Delete account"}
-      </button>
-      <button ref={cancelBtn} type="button" className="btn big subtle me-delete-no" aria-disabled={busy || undefined}
-              onClick={cancel}>
-        Cancel
-      </button>
-      {error ? <div className="lobby-error" role="alert">{error}</div> : null}
-    </div>
+    <>
+      <ul className="grp">
+        <Row label="Delete account" chevron className="destructive me-delete" onClick={() => setConfirming(true)} />
+      </ul>
+      {confirming ? (
+        <ConfirmSheet title="Delete your account?" line="Your rating and games are deleted." cancel="Cancel"
+                      confirm={busy ? "Deleting…" : "Delete"} danger busy={busy} error={error}
+                      className="me-delete-confirm" confirmClass="me-delete-yes"
+                      onConfirm={confirm} onCancel={() => { setConfirming(false); setError(null); }} />
+      ) : null}
+    </>
   );
 }
 

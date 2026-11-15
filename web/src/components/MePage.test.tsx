@@ -184,16 +184,18 @@ describe("signed in", () => {
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("Delete account calls DELETE /api/me only after the in-page confirmation, then returns to Play", async () => {
+  it("Delete account calls DELETE /api/me only after the confirm sheet's Delete, then returns to Play", async () => {
     window.history.replaceState(null, "", "/#/me");
     await render();
     act(() => rowNamed("Delete account").click());
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     const dialog = host.querySelector(".me-delete-confirm")!;
     expect(dialog.getAttribute("role")).toBe("alertdialog");
-    expect(dialog.textContent).toContain("can’t be undone");
+    expect(dialog.querySelector("h2")?.textContent).toBe("Delete your account?");
+    expect(dialog.querySelector("p")?.textContent).toBe("Your rating and games are deleted.");
+    expect([...dialog.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "Delete"]);
     // Cancel backs out without a request
-    act(() => dialog.querySelector<HTMLButtonElement>(".me-delete-no")!.click());
+    act(() => dialog.querySelector<HTMLButtonElement>(".leave-sheet-stay")!.click());
     expect(host.querySelector(".me-delete-confirm")).toBeNull();
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     act(() => rowNamed("Delete account").click());
@@ -213,9 +215,10 @@ describe("signed in", () => {
     act(() => deleteRow.click());
     const dialog = host.querySelector<HTMLElement>(".me-delete-confirm")!;
     const yes = dialog.querySelector<HTMLButtonElement>(".me-delete-yes")!;
-    const no = dialog.querySelector<HTMLButtonElement>(".me-delete-no")!;
+    const no = dialog.querySelector<HTMLButtonElement>(".leave-sheet-stay")!;
     expect(document.activeElement).toBe(no);
-    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toContain("can’t be undone");
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent)
+      .toBe("Your rating and games are deleted.");
     const key = (k: string, shift = false) =>
       act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey: shift, bubbles: true })); });
     key("Tab");
@@ -228,7 +231,7 @@ describe("signed in", () => {
     expect(host.querySelector(".me-delete-confirm")).toBeNull();
     expect(document.activeElement).toBe(rowNamed("Delete account"));
     act(() => rowNamed("Delete account").click());
-    act(() => host.querySelector<HTMLButtonElement>(".me-delete-no")!.click());
+    act(() => host.querySelector<HTMLButtonElement>(".me-delete-confirm .leave-sheet-stay")!.click());
     expect(document.activeElement).toBe(rowNamed("Delete account"));
   });
 
@@ -551,7 +554,7 @@ describe("removing a saved game from Me → Games", () => {
     await act(async () => { root.render(<GamesList route={{ page: "game", id: "g2" }} />); });
     await settle();
     await tap(buttonNamed("Remove from my games")!);
-    await tap(buttonNamed("Tap again to remove")!);
+    await tap(buttonNamed("Remove")!);
     expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/me/games/g2")).toBe(true);
 
     // the refreshed first page still has a continuation, so the cached older page stays

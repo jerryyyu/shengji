@@ -1,0 +1,9 @@
+/* The table panel's states beyond index.css's base panel: a Start that is
+   in (a tap takes it back) and the person the opener picked to move. */
+.tp-primary.waiting:not(:disabled) { background: transparent; border-color: #3a4250; color: #e9ecf2; }
+.tp-seat.picked { border-color: var(--gold); background: rgba(242, 193, 78, 0.14); box-shadow: 0 0 0 2px var(--gold); }
+/* Moving someone is not a way out: its confirm is the panel's gold, not
+   the Leave sheet's red. */
+.leave-sheet-actions .leave-sheet-leave.tp-move-confirm {
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+}

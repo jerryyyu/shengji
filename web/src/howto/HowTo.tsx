@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, TouchEvent } from "react";
 import type { GameState, Trick } from "../protocol";
 import Card from "../components/Card";
 import TrickArea from "../components/TrickArea";
@@ -7,6 +7,7 @@ import { closeHowto, openHowto } from "./route";
 import type { HowtoRoute } from "./route";
 import Picture from "./Picture";
 import type { Frame } from "./useTimeline";
+import { useScreen } from "../telemetry";
 
 const RANK_LADDER = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
@@ -51,15 +52,17 @@ function Trump({ suit, rank }: { suit: string | null; rank: string }) {
   );
 }
 
-function Level({ team, level, star }: { team: 0 | 1; level: string; star?: number }) {
+function Level({ team, level }: { team: 0 | 1; level: string }) {
   return (
     <span className={`chip level-chip team${team}`}>
       <span className={`team-dot t${team}`} />
       Lv <span className="level-value">{level}</span>
-      {star ? <span className="games-won">★{star}</span> : null}
     </span>
   );
 }
+
+/** The top bar's games score, as the table shows it. */
+const Games = ({ us, them }: { us: number; them: number }) => <span className="chip games-chip">Games {us}–{them}</span>;
 
 /** Class for a part of a picture that appears partway through its timeline:
  *  hidden (keeping its space) until `shown`, then it pops in. */
@@ -443,8 +446,8 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
   );
 }
 
-/* Win a game: defending at Ace wins the game (a star), then both teams
-   start again from 2. */
+/* Win a game: defending at Ace wins the game (a point on the games score),
+   then both teams start again from 2. */
 const WIN_FRAMES = count([300, 1100, 2000, 2700]);
 
 function WinPicture({ f }: { f: CountFrame }) {
@@ -454,12 +457,13 @@ function WinPicture({ f }: { f: CountFrame }) {
       <div className="howto-follow">
         <Group className={at(s >= 1)} label="Your team defends at Ace…"><Level team={0} level="A" /></Group>
         <span className={at(s >= 2, "howto-arrow side")} aria-hidden="true">→</span>
-        <Group className={at(s >= 2)} label="…and wins a game"><Level team={0} level="A" star={1} /></Group>
+        <Group className={at(s >= 2)} label="…and wins a game"><Games us={1} them={0} /></Group>
       </div>
       <span className={at(s >= 3, "howto-arrow")} aria-hidden="true">↓ both teams start again</span>
       <div className={`howto-row center ${at(s >= 4)}`}>
-        <Level team={0} level="2" star={1} />
+        <Level team={0} level="2" />
         <Level team={1} level="2" />
+        <Games us={1} them={0} />
       </div>
     </>
   );
@@ -525,15 +529,15 @@ const STEPS: Step[] = [
     title: "Win a game",
     body: <>Reach Ace, then defend it as the banker's team. Winning as attackers at Ace only takes the deal.</>,
     visual: picture(WIN_FRAMES, (f) => <WinPicture f={f} />),
-    caption: <>The ★ on your level chip counts games won. The table keeps playing.</>,
+    caption: <>The top bar keeps the games score, Us first. The table keeps playing.</>,
   },
 ];
 
 function Head({ count }: { count: ReactNode }) {
   return (
     <header className="howto-head">
-      <button className="btn subtle games-back" onClick={closeHowto}>‹ Lobby</button>
-      <span className="howto-page">How to play</span>
+      <button className="btn subtle games-back" onClick={closeHowto}>‹ Back</button>
+      <h1 className="howto-page">How to play</h1>
       <span className="howto-count">{count}</span>
     </header>
   );
@@ -543,40 +547,29 @@ function Stepper({ step }: { step: number }) {
   const n = STEPS.length;
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
-  const touch = useRef<{ x: number; y: number } | null>(null);
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
   return (
     <div className="panel games-panel howto-panel">
       <Head count={`${i + 1} of ${n}`} />
       {/* Keyed by step, so a slide's picture starts afresh each time it is entered. */}
-      <section key={i} className="howto-step" aria-roledescription="slide"
-               onTouchStart={(e) => {
-                 touch.current = e.touches.length === 1
-                   ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
-               }}
-               onTouchMove={(e) => { if (e.touches.length !== 1) touch.current = null; }}
-               onTouchCancel={() => { touch.current = null; }}
-               onTouchEnd={(e) => {
-                 const start = touch.current; touch.current = null;
-                 if (start === null || e.changedTouches.length !== 1) return;
-                 const dx = e.changedTouches[0].clientX - start.x;
-                 const dy = e.changedTouches[0].clientY - start.y;
-                 if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(i + 1 + (dx < 0 ? 1 : -1));
-               }}>
+      <section key={i} className="howto-step" aria-roledescription="slide">
         <h2 className="howto-title">{s.title}</h2>
         <p className="howto-body">{s.body}</p>
         {s.visual}
         <p className="howto-caption">{s.caption}</p>
       </section>
       <nav className="howto-nav" aria-label="Steps">
-        <div className="howto-dots">
+        {/* Where you are, not a control: ten taps would be under 30px wide on
+            a small phone, and Next and the swipe already move a step.
+            The header's "n of 10" says the same for a screen reader. */}
+        <div className="howto-dots" aria-hidden="true">
           {STEPS.map((_, k) => (
-            <button key={k} className={`howto-dot${k === i ? " on" : ""}`}
-                    aria-label={`Step ${k + 1}`} aria-current={k === i ? "step" : undefined} onClick={() => go(k + 1)} />
+            <span key={k} className={`howto-dot${k === i ? " on" : ""}`} />
           ))}
         </div>
+        {/* One way forward: a step back is a swipe or the browser's own back,
+            and the header's ‹ Back is the one way out. */}
         <div className="howto-buttons">
-          <button className="btn big" disabled={i === 0} onClick={() => go(i)}>Back</button>
           {i < n - 1
             ? <button className="btn primary big" onClick={() => go(i + 2)}>Next</button>
             : <button className="btn gold big" onClick={closeHowto}>Start playing</button>}
@@ -586,9 +579,42 @@ function Stepper({ step }: { step: number }) {
   );
 }
 
+/** A swipe turns the page wherever it starts on the screen: only a mostly
+ *  horizontal single-finger move past the threshold counts, so vertical
+ *  scrolling and taps pass through. A touch that starts at the left edge
+ *  belongs to the system's back gesture. */
+const SWIPE_MIN_PX = 50;
+const EDGE_PX = 20;
+
+function useSwipe(step: number) {
+  const n = STEPS.length;
+  const i = Math.min(Math.max(step, 1), n);
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0];
+      touch.current = e.touches.length === 1 && t.clientX > EDGE_PX
+        ? { x: t.clientX, y: t.clientY } : null;
+    },
+    onTouchMove: (e: TouchEvent) => { if (e.touches.length !== 1) touch.current = null; },
+    onTouchCancel: () => { touch.current = null; },
+    onTouchEnd: (e: TouchEvent) => {
+      const start = touch.current; touch.current = null;
+      if (start === null || e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - start.x;
+      const dy = e.changedTouches[0].clientY - start.y;
+      if (Math.abs(dx) > SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy)) {
+        openHowto(Math.min(Math.max(i + (dx < 0 ? 1 : -1), 1), n));
+      }
+    },
+  };
+}
+
 export default function HowTo({ route }: { route: HowtoRoute }) {
+  useScreen("howto");
+  const swipe = useSwipe(route.step);
   return (
-    <div className="screen lobby-screen howto-screen">
+    <div className="screen lobby-screen howto-screen" {...swipe}>
       <Stepper step={route.step} />
     </div>
   );

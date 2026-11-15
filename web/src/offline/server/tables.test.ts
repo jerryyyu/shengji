@@ -178,11 +178,11 @@ describe("table_start_now's start-now gate, as server.py's", () => {
 // so the ClientMsg union is the page's sendable set; `satisfies` below makes
 // tsc refuse a union member this table leaves out, or a name it adds that
 // Sendable does not list. The rest of Sendable comes from outside the union:
-// the telemetry batch (telemetry.ts sends it untyped) and the canonical names
-// the page does not send yet (CANONICAL, checked against tables.py below). "local": the offline server answers it, so it must be in
+// the telemetry batch (telemetry.ts sends it untyped) and the canonical name
+// the page does not send (CANONICAL, checked against tables.py below). "local": the offline server answers it, so it must be in
 // LOCAL_MESSAGES; anything else is why the device never answers it, so it
 // must not be.
-type Sendable = ClientMsg["type"] | "client_event" | "table_start_bots" | "table_join" | "table_peek" | "table_leave";
+type Sendable = ClientMsg["type"] | "client_event" | "table_join";
 const LOCAL = "local";
 const QUEUE = "the matchmaking queue, which the device does not have";
 const SENDABLE = {

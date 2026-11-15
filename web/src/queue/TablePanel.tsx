@@ -652,7 +652,7 @@ function roomSeats(room: RoomMsg, ready: Set<number>, move: boolean, other?: Ope
                  label: `Open seat, ${teamWord(ours)}. Move here`,
                  pick: () => {
                    onOwnMove?.();
-                   conn.send({ type: "swap_seats", a: room.you, b: at,
+                   conn.send({ type: "table_move", seat: at,
                                expect: [{ name: me.name, is_bot: me.is_bot }, null] });
                  } };
       }
@@ -726,30 +726,30 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
   const mover = useOpenerMove(roomPeople, (from, to) => {
     const pl = room.players.find((x) => x.seat === from);
     if (!pl) return;
-    conn.send({ type: "swap_seats", a: from, b: to, expect: [{ name: pl.name, is_bot: pl.is_bot }, null] });
+    conn.send({ type: "table_move", seat: to, from, expect: [{ name: pl.name, is_bot: pl.is_bot }, null] });
   });
 
   let primary: PanelParts["primary"];
   if (left !== null && left <= 0) {
-    primary = { label: "Start now", disabled: false, onClick: () => conn.send({ type: "start_game" }) };
+    primary = { label: "Start now", disabled: false, onClick: () => conn.send({ type: "table_start_now" }) };
   } else if (!youReady) {
     primary = { label: others.length ? "Start" : "Start with bots", disabled: false,
-                onClick: () => conn.send({ type: "lobby_ready", on: true }) };
+                onClick: () => conn.send({ type: "table_start", on: true }) };
   } else if (left !== null) {
     primary = { label: "Start now", disabled: true, onClick: () => {},
                 ring: <TimerRing left={left / 1000} total={START_NOW_SECS} /> };
   } else {
     const label = roomWaitingLabel(room);
     primary = { label, disabled: label === "Starting…", waiting: true,
-                onClick: () => conn.send({ type: "lobby_ready", on: false }) };
+                onClick: () => conn.send({ type: "table_start", on: false }) };
   }
   const readyLine = roomReadyLine(room);
   const extra = (
     <>
       <TableRows code={room.room} ranked={ranked} opener={opener} level={room.start_level}
-                 onLevel={(l) => conn.send({ type: "set_start_level", start_level: l })}
-                 joiners={room.allow_joiners} onJoiners={(on) => conn.send({ type: "allow_joiners", on })} />
-      <ChatRow messages={chat} you={room.you} onSend={(text) => conn.send({ type: "chat", text })} />
+                 onLevel={(l) => conn.send({ type: "table_start_level", start_level: l })}
+                 joiners={room.allow_joiners} onJoiners={(on) => conn.send({ type: "table_allow_joiners", on })} />
+      <ChatRow messages={chat} you={room.you} onSend={(text) => conn.send({ type: "table_chat", text })} />
     </>
   );
   const p: PanelParts = {
@@ -765,7 +765,7 @@ export function RoomPanel({ room }: { room: RoomMsg }) {
   const sheet = asking ? (
     <LeaveSheet context={{ kind: "room", others: staying(room), host: opener }}
                 onStay={() => setAsking(false)}
-                onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
+                onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
   ) : mover.sheet;
   return <PanelView p={p} kind="room" guarded={false} sheet={sheet} />;
 }

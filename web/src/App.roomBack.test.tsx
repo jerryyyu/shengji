@@ -135,7 +135,7 @@ describe("back from the room screen", () => {
     expect(host.querySelector(".tp-room")).not.toBeNull();
     expect(sheetText()).toBe("Leave the table? / The room closes.");
     tapIn(".leave-sheet-leave");
-    expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["leave_room"]);
+    expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["table_leave"]);
     expect(window.location.hash).toBe("");
     expect(host.querySelector(".me-page")).toBeNull();
     expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Back to game")).toBe(false);
@@ -161,7 +161,7 @@ describe("back from the room screen", () => {
     expect(host.querySelector(".me-page")).toBeNull();
     expect(sheetText()).toBe("Leave the table? / The room closes.");
     tapIn(".leave-sheet-leave");
-    expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["leave_room"]);
+    expect(ws.sent.slice(before).map((m) => m.type)).toEqual(["table_leave"]);
     expect(window.location.hash).toBe("");
     act(() => ws.deliver({ type: "left" }));
     await flush();
@@ -216,6 +216,7 @@ describe("back from the room screen", () => {
 
     await back();
 
+    expect(ws.sent.slice(before).map((m) => m.type)).not.toContain("table_leave");
     expect(ws.sent.slice(before).map((m) => m.type)).not.toContain("leave_room");
     expect(host.querySelector(".table-screen")).not.toBeNull();
   });

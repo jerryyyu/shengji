@@ -144,7 +144,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           )}
           {joiners === undefined ? null : (
             <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={joiners}
-                    onClick={() => conn.send({ type: "allow_joiners", on: !joiners })}>
+                    onClick={() => conn.send({ type: "table_allow_joiners", on: !joiners })}>
               <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
@@ -159,7 +159,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest, practice: offline }}
                     onStay={() => setAsking(false)}
-                    onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
+                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
       ) : null}
     </div>
   );

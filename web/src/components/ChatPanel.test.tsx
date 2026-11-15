@@ -39,7 +39,7 @@ it("labels the mobile composer and does not send while confirming IME compositio
   expect(send).not.toHaveBeenCalled();
   expect(input.value).toBe("你好");
   act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "chat", text: "你好" });
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "你好" });
   expect(input.value).toBe("");
 });
 
@@ -110,7 +110,7 @@ it("shows the quick phrases first, then the field, and a tap sends one as a plai
   expect(quick.compareDocumentPosition(host.querySelector(".chat-input")!) & Node.DOCUMENT_POSITION_FOLLOWING)
     .toBeTruthy();
   act(() => quick.querySelectorAll<HTMLButtonElement>("button")[1].click());
-  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "chat", text: "Good game" });
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: "table_chat", text: "Good game" });
   // a waiting table's sheet sends through its own path
   const table = vi.fn();
   act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} onSend={table} />));

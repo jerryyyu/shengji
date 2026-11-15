@@ -328,7 +328,7 @@ export default function App() {
         <LeaveSheet context={linkLeaveContext(game, room, othersAt(q.table))} title={`Leave to join ${linkPrompt}?`}
                     onLeave={() => {
                       if (room === null && game === null) queue.leave();
-                      else conn.send({ type: "leave_room" });
+                      else conn.send({ type: "table_leave" });
                       setLinkLeaving(true);
                     }}
                     onStay={() => {

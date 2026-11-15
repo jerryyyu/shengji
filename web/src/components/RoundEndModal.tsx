@@ -32,7 +32,7 @@ function RoundEndLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest, practice: OFFLINE, betweenRounds: true }}
                     onStay={() => setAsking(false)}
-                    onLeave={() => { conn.send({ type: "leave_room" }); setAsking(false); }} />
+                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
       ) : null}
     </>
   );

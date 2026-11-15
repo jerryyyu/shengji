@@ -251,7 +251,7 @@ class Connection {
   }
 
   /** Leave the current room and go straight back to the lobby, keeping this
-   *  socket. The saved room is forgotten, the server is told (leave_room
+   *  socket. The saved room is forgotten, the server is told (table_leave
    *  frees the seat exactly like a disconnect), and listeners get the same {type:"left"}
    *  the server will send, so the UI resets now instead of a round trip later.
    *  If the socket is not open there is nothing to tell the server: the seat
@@ -261,7 +261,7 @@ class Connection {
     clearSavedRoom();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       const ws = this.ws;
-      ws.send(JSON.stringify({ type: "leave_room" } satisfies ClientMsg));
+      ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
       this.leavingWs = ws;
       // Fail-safe: no confirmation means no barrier can be lifted safely, so
       // give up on this socket rather than swallow the next room's replies.
@@ -414,8 +414,8 @@ class Connection {
       }
       if (this.leavingWs === ws) {
         // Already reset locally by leaveToLobby(): drop whatever the room
-        // sent before the server processed our leave_room. Only "left" is
-        // causally tied to it (server.py answers leave_room with "left" once
+        // sent before the server processed our table_leave. Only "left" is
+        // causally tied to it (server.py answers a room's leave with "left" once
         // the seat is detached), so only "left" reopens the socket. Errors
         // carry no request id: one may be a late reply to an old action, with
         // more old-room state behind it, or the server refusing the leave

@@ -51,11 +51,13 @@ const SURFACES = [
   "queue/TablePanel.tsx", // the opener's one confirm before moving someone
 ];
 
-// The protocol's message union and the on-device server name these messages
-// without sending them from a player's tap.
-const notAClient = (rel: string) => rel === "protocol.ts" || rel.startsWith("offline/server/");
+// The message unions and the on-device server name these messages without
+// sending them from a player's tap.
+const notAClient = (rel: string) =>
+  rel === "protocol.ts" || rel === "queue/messages.ts" || rel.startsWith("offline/server/");
 
-/** Every file that sends leave_room or leaves the queue. Target: one leave.ts. */
+/** Every file that sends a leave (table_leave, or the older leave_room) or
+ *  leaves the queue. Target: one leave.ts. */
 const LEAVE_SITES = [
   "App.tsx", // the leave sheet a link opens while you sit elsewhere
   "components/HudMenu.tsx", // ⋯ → Leave game
@@ -63,10 +65,12 @@ const LEAVE_SITES = [
   "components/RoundEndModal.tsx", // Leave game on the round end
   "components/Table.tsx", // Leave on the joining-after-this-trick pill
   "queue/TablePanel.tsx", // the panel's Leave (queue and room kinds)
+  "queue/store.ts", // queue.leave(): the queue's own leave, which the queue sites call
   "ws.ts", // leaveToLobby: the socket's own leave, keeping the connection
 ];
 
-/** Every file that sends join_room / peek_room or joins the queue. Target: codeJoin.ts only. */
+/** Every file that sends a join or peek (table_join / table_peek, or the
+ *  older join_room / peek_room) or joins the queue. Target: codeJoin.ts only. */
 const JOIN_SITES = [
   "components/Lobby.tsx", // the code box and the Join panel a link opens
   "intent.ts", // the join_room a saved intent resumes with
@@ -85,14 +89,14 @@ it("the surfaces a player can open are exactly the listed ones", () => {
 });
 
 it("leave paths are exactly the listed ones", () => {
-  expect(matching(/["']leave_room["']|\bqueue\.leave\(/, notAClient),
+  expect(matching(/["'](?:leave_room|table_leave)["']|\bqueue\.leave\(/, notAClient),
     "A new way to leave duplicates the one Leave sheet (FLOWS.md section 3). Route it through an existing "
     + "leave site; a removed one shrinks LEAVE_SITES.")
     .toEqual([...LEAVE_SITES].sort());
 });
 
 it("join paths are exactly the listed ones", () => {
-  expect(matching(/["'](?:join_room|peek_room)["']|\bqueue\.join\(/, notAClient),
+  expect(matching(/["'](?:join_room|peek_room|table_join|table_peek)["']|\bqueue\.join\(/, notAClient),
     "A new way to join or peek a table duplicates Play and the code box (FLOWS.md sections 1-2). Route it "
     + "through an existing join site; a removed one shrinks JOIN_SITES.")
     .toEqual([...JOIN_SITES].sort());

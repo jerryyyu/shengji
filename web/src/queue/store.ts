@@ -674,7 +674,7 @@ export class QueueStore {
   }
 
   leave(): void {
-    if (this.send({ type: "queue_leave" })) this.set({ pending: "leave" });
+    if (this.send({ type: "table_leave" })) this.set({ pending: "leave" });
   }
 
   /** The panel the tap was aimed at, for a Start or a Join. */
@@ -683,7 +683,7 @@ export class QueueStore {
   }
 
   startBots(): void {
-    if (this.send({ type: "queue_start_bots", ...this.seq() })) this.set({ pending: "bots" });
+    if (this.send({ type: "table_start_bots", ...this.seq() })) this.set({ pending: "bots" });
   }
 
   /** Turn the bot fill off; the server's queue_state confirms it. */
@@ -720,7 +720,7 @@ export class QueueStore {
     const t = this.view.table;
     if (!t && !tableDuo(this.view)) return;
     if (!(t ? t.youReady : this.view.youReady) || this.view.pending !== null) return;
-    this.send({ type: "table_unready" });
+    this.send({ type: "table_start", on: false });
   }
 
   /** The opener moves the person at `from`, the sitting `who` the opener

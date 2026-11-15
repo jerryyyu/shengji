@@ -221,7 +221,7 @@ describe("leaving from the round-end screen", () => {
       expect(sheetText()).toBe("Leave the game? / This round's result is kept.");
       expect([...sheet()!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Stay", "Leave"]);
       act(() => { sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click(); });
-      expect(sent).toEqual([{ type: "leave_room" }]);
+      expect(sent).toEqual([{ type: "table_leave" }]);
       expect(sheet()).toBeNull();
     });
   }

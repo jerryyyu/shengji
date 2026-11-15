@@ -26,15 +26,21 @@ export type QueueClientMsg = { name?: string } & (
       duo?: boolean;
     }
   | { type: "queue_leave" }
+  /** Leave your search or waiting table (`queue_leave` at the queue). */
+  | { type: "table_leave" }
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
-   *  since changed is refused with `panel_changed`. */
-  | { type: "table_start"; panel_seq?: number }
-  /** Take your Start back before the table starts (a Duo member: its own). */
+   *  since changed is refused with `panel_changed`. `on: false` takes your
+   *  Start back before the table starts (a Duo member: its own). */
+  | { type: "table_start"; on?: boolean; panel_seq?: number }
+  /** Take your Start back: the older name of `table_start {on: false}`. */
   | { type: "table_unready" }
   /** The opener's Start now at a waiting table, from its `start_now_at`:
    *  the table starts at once with bots (`not_opener`, `too_soon`). */
   | { type: "table_start_now"; panel_seq?: number }
   | { type: "queue_start_bots"; panel_seq?: number }
+  /** Play bots: start your table now with bots in the open seats (at a
+   *  waiting table, your Start); `queue_start_bots` at the queue. */
+  | { type: "table_start_bots"; panel_seq?: number }
   /** Move yourself to an empty seat at your waiting table (singles only,
    *  before your Start). With `from`, another person's seat, the opener
    *  moves that person instead: a pair as one, never into a held seat. */

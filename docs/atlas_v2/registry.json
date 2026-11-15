@@ -4376,6 +4376,28 @@
    "takeaway": "SCREEN_FAIL \u22120.0084 [\u22120.0224, +0.0054], LB80 \u22120.014: the DBEL DEV gain did not replicate on fresh seeds; X2B is even with R51 or slightly worse.",
    "note": "Read once 11-09 08:04Z with x2duel_read.r4 (reader sha256 141c6ffbf612205e448611c9d2c085fb1ff5d2ba61691e188ff525a410ee7be4), sha rechecked on the host. VALID: 0 play, belief and bury fallbacks on both sides; 3,920 deals. Levels/round -0.008418367346938776 95% CI [-0.022448979591836733, 0.005357142857142857], one-sided LB80 -0.014285714285714285, one-sided LB95 -0.020025510204081633; points/round -0.5082908163265306 [-1.0057397959183674, -0.005723852040816559]. Verdict FAIL. Runner sha256 028597ef43f49cd107cf8af5914db92e91f8be3c09f254cee9a58985a51a121d; recipe sha256 cf2ecc2a1f1b6ba097463670367dfd73221fe3a4f735b135954558d68567d864; both listed in the X2 stage-2 packet DELTA_SHA256SUMS (sha256 8d297629761541522c71976377def4bf90cd607713d76b289d2146dd8e7bacea). The screen's 95% CI excludes the DBEL DEV point. CBEL (the confirmation) was not released. X2 is proposed parked. Raw duel.jsonl kept (vs the current release). Archive readouts/x2sbel/ (receipt.json, SHA256SUMS sha256 02d5ea19e564edc7eac606064075f0184698ffd470179f91cb70f8fc9ef777a5).",
    "ref": "https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6735193129"
+  },
+  {
+   "id": "vfd1",
+   "date": "2026-11-15",
+   "status": "sealed",
+   "box": "ultra",
+   "title": "V-FULL wide value net in release 52 (DEV)",
+   "candidate": "release 52 with the value package swapped to V-FULL w4-c38000-e10 (680x4 value net, EMA epoch 10, 631a9edf; float32 value forward, defender float64 as served), nothing else differing; M5 Ultra",
+   "comparator": "release 52 as served (Fly v64: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8), head to head",
+   "vs": 52,
+   "vs_group": "release 52 as served, head to head: a 1,000-deal seat-swapped DEV duel, not a common-control screen",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "instrument": "1,000 seat-swapped deal pairs [2620000000, 2620001000), candidate vs release 52 head to head; served budgets; paired level utility, deal bootstrap; one look; host M5 Ultra; predeclared VFULL DEV duel bar (VFULL plan.md section 5, board #1263 row E0b): PASS iff mean >= +0.02 AND one-sided 80% lower bound > 0; tier-i DEV duel",
+   "seeds": "2620000000 (ultra)",
+   "confidence": 0.95,
+   "point": 0.0105,
+   "lo": -0.0215,
+   "hi": 0.043,
+   "takeaway": "DEV FAIL +0.0105 [\u22120.0215, +0.0430], LB80 \u22120.0035: the V-FULL offline value gain is not significant in play; the value arm is parked.",
+   "note": "Read once 11-15 with vfdduel_read.r9 (reader sha256 57a5a5af1ad965e41c657e974531a7ea4e90e958188210f772fcb5508b870291). VALID: 0 play, belief and bury fallbacks and 0 declare abandons on both sides; worlds delivered 64/64; 1,000 deals (2,000 rows), outcome rows consistent. Levels/round 0.0105 95% CI [-0.0215125, 0.0430125], one-sided LB80 -0.0035, one-sided LB95 -0.0165; points/round -0.2075 [-1.440125, 1.0025] (descriptive). Verdict FAIL. DONE 2026-11-15T17:42:41Z rc=0; launcher identity 3a0eb173755f8334f42fff7d49850835d8f2fab2723649d03a493f320ab6e0a3; recipe sha256 228260adfdd91942ad5e927c96a9a17a9bb471d8f2a4e72f6d986ffe5fcdbba4; duel.jsonl sha256 23a4e7e470666489b25e0ea49d15582917b041ae185ed95466984ae17f2e1fc9. Packet PASS https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6898293412. Raw duel.jsonl kept (vs the current release). Archive readouts/VFD1/ (receipt.json, SHA256SUMS sha256 82d21fcbb1e34821506f5f3fd605d8badae9f64bac90a50a2a20910a6e0bec81).",
+   "ref": "https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6898680990"
   }
  ],
  "context_screens": [

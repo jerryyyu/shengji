@@ -98,6 +98,17 @@ describe("the leave sheet's first focus", () => {
     expect(alert()!.hasAttribute("data-pointer-open")).toBe(false);
   });
 
+  it("a short seat name has no floor wider than itself, so the turn's … stays inside its pill", () => {
+    const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
+    const phone = css.slice(css.indexOf(":where(.phone-landscape) {"));
+    const base = phone.slice(phone.indexOf(".opp-name-text {"), phone.indexOf("}", phone.indexOf(".opp-name-text {")));
+    expect(base).toContain("min-width: 0;");
+    expect(phone).toContain(
+      '.opponent:is([data-name-len="m"], [data-name-len="l"]) .opp-name-text {\n    min-width: min(3em, 100%);');
+    const dots = phone.slice(phone.indexOf(".opponent .turn-dots {"), phone.indexOf("}", phone.indexOf(".opponent .turn-dots {")));
+    expect(dots).toContain("width: 1.1em;");
+  });
+
   it("on a phone the menu scrolls and Leave game stays pinned at its foot", () => {
     const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
     const phone = css.slice(css.indexOf(":where(.phone-landscape) {"));

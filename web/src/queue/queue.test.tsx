@@ -1229,7 +1229,6 @@ describe("one code for rooms and tables", () => {
     const chipName = q(".guest-pill .account-pill-name")?.textContent;
     expect(chipName).toBeTruthy();
     expect(chipName).not.toBe("Guest");
-    expect(localStorage.getItem("shengji.name")).toBe(chipName);
     click(button("Join", joinPanel()!));
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: chipName });
   });

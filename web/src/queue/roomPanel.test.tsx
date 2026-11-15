@@ -234,7 +234,7 @@ describe("a Play table's chat before the game", () => {
     expect(row().querySelector(".tp-chat-badge")?.textContent).toBe("2");
     click(row());
     expect(row().querySelector(".tp-chat-badge")).toBeNull();
-    const sheet = q(".chat-panel")!;
+    const sheet = q(".q-sheet.chat-sheet")!;
     expect(sheet.textContent).toContain("ready?");
     const input = sheet.querySelector<HTMLInputElement>("input")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
@@ -257,7 +257,7 @@ describe("a Play table's chat before the game", () => {
     const row = () => q(".tp-own .tp-chat")!;
     expect(row()).not.toBeNull();
     click(row());
-    const sheet = q(".chat-panel")!;
+    const sheet = q(".q-sheet.chat-sheet")!;
     const input = sheet.querySelector<HTMLInputElement>("input")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     act(() => { setter.call(input, "anyone?"); input.dispatchEvent(new Event("input", { bubbles: true })); });

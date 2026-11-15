@@ -382,6 +382,7 @@ describe("teaching text follows the coach", () => {
     expect(help()).toBe(DECLARE);
     render(burying());
     expect(help()).toBe(BURY);
+    expect(host.querySelector(".bury-points")!.textContent).toBe("Burying 0 points");
   });
 
   it("switched on, a player past the coach's plays still gets them", () => {
@@ -400,9 +401,9 @@ describe("teaching text follows the coach", () => {
     expect(host.querySelector(".action-bar .btn.gold")).not.toBeNull();
     render(burying());
     expect(host.querySelector(".hand-line")).toBeNull();
-    // the count on Bury and the points chosen are feedback, not teaching
-    expect(host.querySelector(".action-bar .btn.primary")!.textContent).toBe("Bury 8 cards (0/8)");
-    expect(host.querySelector(".bury-points")!.textContent).toBe("Burying 0 points");
+    // the count on Bury is feedback; the points chosen are teaching and follow the coach
+    expect(host.querySelector(".action-bar .btn.primary")!.textContent).toBe("Bury (0/8)");
+    expect(host.querySelector(".bury-points")).toBeNull();
   });
 
   it("an account past its newcomer rounds, on a fresh store, sees no help", () => {

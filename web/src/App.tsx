@@ -6,7 +6,7 @@ import type { ConnStatus } from "./ws";
 import { OFFLINE, useOffline } from "./offlineMode";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
-import { auth } from "./auth";
+import { auth, useAuth } from "./auth";
 import Lobby from "./components/Lobby";
 import LeaveSheet from "./components/LeaveSheet";
 import type { LeaveContext } from "./components/leaveCopy";
@@ -252,6 +252,7 @@ export default function App() {
 
   const inRoom = room !== null || game !== null;
   const q = useQueue();
+  const account = useAuth();
   const seatedAnywhere = inRoom || q.queued;
   useEffect(() => {
     if (linkLeaving && !seatedAnywhere) {
@@ -276,6 +277,10 @@ export default function App() {
     : <MePage section={homeRoute.section} />;
 
   let screen: ReactNode;
+  // Play with no table: its presence line is the connection status, not the
+  // pill. A sign-in server that could not be reached leaves Play without that
+  // line, so the pill stays.
+  let playNoTable = false;
   // exactly one toast is mounted: the table's, else this one at the page's top
   let screenIsTable = false;
   if (infoRoute) {
@@ -297,6 +302,7 @@ export default function App() {
     screen = <Table state={game} />;
   } else {
     // offline, the same Play tab: its table's room is filled with bots and dealt from there
+    playNoTable = !seatedAnywhere && account.status !== "error";
     screen = (
       <HomeShell active="play">
         <Lobby status={status} room={room} holdInvite={linkPrompt !== null}
@@ -308,7 +314,7 @@ export default function App() {
   return (
     <div className={`app${rotated ? " rotated" : ""}${offline ? " offline" : ""}`}>
       {screen}
-      {offline && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} />}
+      {offline && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} pill={!playNoTable} />}
       {screenIsTable ? null : <Toast />}
       {/* the one identity sheet: a guest's chip, Edit name and every Sign in */}
       <IdentitySheet />

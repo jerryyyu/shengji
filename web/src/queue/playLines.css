@@ -21,6 +21,11 @@
   background: #4fb27a;
   box-shadow: 0 0 0 3px rgba(79, 178, 122, 0.25);
 }
+/* grey until the socket opens: the counts are not known yet */
+.play-presence.connecting .play-presence-dot {
+  background: #6b7484;
+  box-shadow: none;
+}
 .play-in-game { display: flex; flex-direction: column; gap: 10px; }
 .play-in-game-line {
   margin: 0;

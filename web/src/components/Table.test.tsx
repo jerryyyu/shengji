@@ -81,10 +81,8 @@ describe("opponent turn status", () => {
     const view = renderTable(state);
     try {
       const first = view.container.querySelector(".bot-banter")?.textContent;
-      const bar = view.container.querySelector('[role="progressbar"]');
-      expect(bar?.getAttribute("aria-label")).toBe("Bot considering its play");
-      expect(bar?.hasAttribute("aria-valuenow")).toBe(false);
-      expect(first).toContain("Bot banter:");
+      expect(view.container.querySelector('[role="progressbar"]')).toBeNull();
+      expect(first).toBe("Hmm… decisions, decisions.");
       act(() => vi.advanceTimersByTime(3200));
       expect(view.container.querySelector(".bot-banter")?.textContent).not.toBe(first);
       expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Considering the next play…");
@@ -129,7 +127,6 @@ describe("opponent turn status", () => {
       expect(view.container.querySelector(".bot-banter")?.textContent).toBe(first);
       view.rerender({ ...state, phase: "play" });
       expect(view.container.querySelector(".bot-banter")?.textContent).toContain("Hmm…");
-      expect(view.container.querySelector('[role="progressbar"]')?.hasAttribute("aria-valuenow")).toBe(false);
     } finally {
       view.unmount();
       random.mockRestore();
@@ -148,8 +145,9 @@ describe("opponent turn status", () => {
       }));
       expect(view.container.querySelector(".thinking")?.textContent).toBe(text);
       expect(view.container.querySelector(".thinking")?.getAttribute("role")).toBe("status");
-      expect(view.container.querySelector('[role="progressbar"]')?.getAttribute("aria-label")).toBe(
-        phase === "bury" ? "Bot choosing cards to bury" : "Bot considering its play");
+      // the status is for screen readers; the seat's gold edge is the visible turn
+      expect(view.container.querySelector(".thinking")?.classList.contains("sr-only")).toBe(true);
+      expect(view.container.querySelector('[role="progressbar"]')).toBeNull();
       view.unmount();
     }
   });

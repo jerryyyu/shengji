@@ -146,7 +146,7 @@ export default function Sheet({ title, onClose, children, className = "", cancel
   useEffect(() => {
     const boxEl = box.current!;
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !e.isComposing) {
         close.current();
         return;
       }

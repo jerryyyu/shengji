@@ -64,9 +64,16 @@ The host role passes on, and a ranked leave keeps "at best a draw".
 **Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 60 s, and a
 bad code shown inline under the code box. One wording. The same pill, in the same place, says "A bot holds your
 seat · I'm back" once the socket is open again while a bot still plays your seat (simplification 4, below).
+The pill shows at a table or in a game. On the Play tab with no table the presence line is the one status:
+"Connecting…" until the socket opens, then the counts, or "Offline" once Play plays on this device; the 60 s
+full screen still comes (Jerry 11-15).
 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
-Games become a switch inside Me.
+Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
+Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
+A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
+two columns from 900px), Support or Privacy. Real surfaces keep theirs: the table panel, sheets and dialogs,
+grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
 
 **Section 6, settings.** One settings list (Coach, Sound, Haptics on native only, How to play) in both Me and
 the ⋯ menu. "Kitty 8 cards" moves out of ⋯.
@@ -120,7 +127,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 1. Duo flow as mocked (core.html section 5, "Duo: one table, paired"): approved, build it.
 2. Allow joiners is the opener's switch only (server and client); others see nothing (copy rule).
 3. Offline copy: plain "Offline" (cut the subtext); "Offline · you'll play the bots on this device" and "Ranked needs a connection" are dropped.
-4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail.
+4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail. A guest gets no rating note (the "Guest" box is gone); a seat taken mid-round reads "Unranked · joined mid-round" as plain text under the result line, because it explains the missing number (Jerry 11-15).
 5. The guest line "Playing as a guest · Sign in to be ranked" stays.
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
@@ -168,6 +175,9 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      The banker's bury hand is one plain hand: kitty cards carry no mark (Jerry 11-14). The status line in the button row ("Waiting
      for Li", "Dealing cards…") is gone: the seat on turn glows and says "their turn", and the hand fills
      as it is dealt.
+     A bot on turn is its seat's gold edge and, on desktop, one plain line of banter; the "Considering the
+     next play…" line and the progress bar are gone, and that status is read to screen readers only (Jerry 11-15).
+     The bury button reads "Bury (3/8)"; "Burying 10 points" is teaching and shows only while the coach shows (Jerry 11-15).
 7. **Offline without a reload.** Offline is a state of the one Play page, not a page of its own. Play on
    the greyed Play tab (no connection), the Play offline link beside How to play, and the full-screen
    connection state's "Play offline with the bots" all swap the socket to the on-device server in place
@@ -221,9 +231,11 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - **Take back a Start.** At a waiting table, your Start is in until you tap the button
   again: "Waiting for Alice" (a quiet button) becomes "Start", and the "N of M ready" count drops. Each Duo member
   takes back its own tap. The server's `table_start {on: false}` does it.
-- **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "Good game", "Nice!", "One more?",
-  "Brb"), then the field. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
-  path; nothing new is logged.
+- **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "GG", "Nice!", "One more?",
+  "Brb"), then the field. All five fit one row of the narrowest chat (a 390 px phone, the in-game panel), so the
+  row never scrolls or wraps. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
+  path; nothing new is logged. On the Play tab the table panel's Chat row opens chat in the shared `Sheet`
+  (a bottom sheet on a phone, a centred dialog from 700px); in a game chat keeps its panel on the felt (Jerry 11-15).
 - **The opener moves other people.** At a waiting table, the opener taps a person (the
   seat is outlined), then an empty seat, then confirms once ("Move Alice here?", Cancel / Move). A Duo moves as one
   to a whole free team and is never split; a held partner seat is never a destination. The move takes back the

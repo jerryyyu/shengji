@@ -434,7 +434,8 @@ describe("no connection", () => {
     // App's one pill speaks for the socket
     const rows = () => host.querySelector(".play-conn, .reconnect-banner, .conn-lost");
     expect(rows()).toBeNull();
-    expect(host.textContent).not.toContain("Connecting…");
+    // the presence line is Play's connection status
+    expect(host.querySelector(".play-presence")?.textContent).toBe("Connecting…");
     expect(buttonNamed("Play").disabled).toBe(true);    // not yet known to be offline
     await act(async () => { vi.advanceTimersByTime(STALL_MS - 1); });
     expect(host.querySelector(".play-offline")).toBeNull();

@@ -184,3 +184,12 @@ describe("the home Play column", () => {
   });
 });
 
+
+describe("one layer on the page", () => {
+  it("How to play, Support and Privacy draw no raised card behind their content", () => {
+    const flat = decls(".howto-screen > .panel, .info-screen > .panel");
+    for (const d of ["background: none", "border: 0", "box-shadow: none"]) expect(flat).toContain(d);
+    // the flattening comes after the shared .panel card, so it wins
+    expect(css.indexOf(".howto-screen > .panel,")).toBeGreaterThan(css.indexOf(".panel {"));
+  });
+});

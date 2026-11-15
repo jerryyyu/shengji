@@ -84,19 +84,13 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
   }, [phase]);
   return (
     <>
-      <div className="thinking" role="status" aria-live="polite">
+      {/* The seat's gold edge shows whose turn it is; this status is for screen readers. */}
+      <div className="thinking sr-only" role="status" aria-live="polite">
         {phase === "bury" ? "Choosing 8 cards to bury…" : "Considering the next play…"}
-      </div>
-      <div className="bot-progress" role="progressbar"
-        title="Working — completion percentage is not available."
-        aria-label={phase === "bury" ? "Bot choosing cards to bury" : "Bot considering its play"}>
-        <span />
       </div>
       {/* Cosmetic copy only; no card identities, scores, or search reasoning.
           Keep rotation outside the live region so screen readers are not spammed. */}
-      <div className="bot-banter" title="Playful flavor, not model reasoning.">
-        <span className="bot-banter-label">Bot banter: </span>{BOT_BANTER[phase][line]}
-      </div>
+      <div className="bot-banter">{BOT_BANTER[phase][line]}</div>
     </>
   );
 }
@@ -580,9 +574,10 @@ export default function Table({ state }: { state: GameState }) {
         aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
+        {pendingLabel ?? `Bury (${selectedIds.length}/8)`}
       </button>
-      <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span>
+      {/* the points are teaching, like the phase's help: shown only with the coach */}
+      {coachOn ? <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span> : null}
       </>
     );
   } else if (state.phase === "play" && myTurn) {

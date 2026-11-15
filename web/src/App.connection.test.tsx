@@ -1,5 +1,5 @@
-// One connection surface: a dropped socket shows the same pill in the lobby
-// and at the table, Retry joins it after RETRY_AFTER_MS, one full screen
+// One connection surface: a dropped socket shows the pill at a table or in a
+// game (Play with no table says it on its presence line), Retry joins it after RETRY_AFTER_MS, one full screen
 // takes over after LOST_AFTER_MS, and a reconnect clears all of it while the
 // saved seat is resumed exactly as before.
 import { act } from "react";
@@ -122,28 +122,31 @@ it("at the table a drop shows the pill, Retry at 10 s, the full screen at 60 s, 
   expect(host.querySelector(".table-screen")).not.toBeNull();
 });
 
-it("in the lobby the same pill shows, and the full screen offers Retry and bots on this device", async () => {
-  const { LOST_AFTER_MS, RETRY_AFTER_MS } = await mount();
+it("on Play with no table the presence line is the status, no pill, and the full screen offers Retry and bots on this device", async () => {
+  const { LOST_AFTER_MS } = await mount();
   // the first connect of a page is not a drop
-  expect(banner()?.textContent).toBe("Connecting…");
-  expect(banner()?.classList.contains("at-home")).toBe(true);
+  expect(banner()).toBeNull();
+  expect(host.querySelector(".play-presence")?.textContent).toBe("Connecting…");
   act(() => latest().open());
   expect(banner()).toBeNull();
   expect(host.querySelector(".play-tab")).not.toBeNull();
+  expect(host.querySelector(".play-presence")?.textContent).not.toBe("Connecting…");
 
   act(() => latest().close());
-  expect(banner()?.textContent).toBe("Reconnecting…");
+  expect(banner()).toBeNull();
+  expect(host.querySelector(".play-presence")?.textContent).toBe("Connecting…");
   expect(host.querySelector(".play-conn")).toBeNull();          // no second status row in the lobby
-  act(() => { vi.advanceTimersByTime(RETRY_AFTER_MS); });
-  expect(retryIn()).not.toBeNull();
-  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS - RETRY_AFTER_MS); });
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+  expect(banner()).toBeNull();
+  expect(host.querySelectorAll(".play-presence")).toHaveLength(1);
+  expect(host.querySelector(".play-presence")?.textContent).toBe("Offline");
   expect(lost()).not.toBeNull();
   expect(lost()?.textContent).not.toContain("A bot holds your seat");
 
-  // Retry from the full screen goes back to the pill and starts the wait over
+  // Retry from the full screen starts the wait over, with no pill on Play
   act(() => host.querySelector<HTMLButtonElement>(".conn-lost-retry")!.click());
   expect(lost()).toBeNull();
-  expect(banner()?.textContent).toBe("Reconnecting…");
+  expect(banner()).toBeNull();
   act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
   const offline = host.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
   expect(offline.textContent).toBe("Play offline with the bots");

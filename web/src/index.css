@@ -1749,58 +1749,11 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   color: var(--text-dim);
 }
 
-/* A pulse, not a background-position shimmer: animating the clipped text
-   gradient restyled and repainted the label on the main thread every frame
-   for as long as a bot thought (~8% of a 4x-throttled phone CPU, measured);
-   opacity animates on the compositor. */
-.thinking {
-  font-size: var(--fs-12);
-  font-style: italic;
-  color: #d5dbe5;
-  animation: thinking-pulse 1.4s ease-in-out infinite alternate;
-}
-
 .bot-banter {
   max-width: 160px;
   font-size: var(--fs-10);
   color: var(--text-dim);
   line-height: 1.3;
-}
-
-.bot-banter-label { font-style: italic; }
-
-.bot-progress {
-  width: 112px;
-  max-width: 100%;
-  height: 3px;
-  margin: 5px auto;
-  overflow: hidden;
-  border-radius: 3px;
-  background: #8a93a330;
-}
-
-.bot-progress > span {
-  display: block;
-  width: 36%;
-  height: 100%;
-  border-radius: inherit;
-  background: #a7b4c9;
-  animation: bot-progress-sweep 1.6s ease-in-out infinite;
-}
-
-@keyframes bot-progress-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(280%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thinking { animation: none; background: none; color: var(--text-dim); }
-  .bot-progress > span { animation: none; transform: translateX(90%); }
-}
-
-@keyframes thinking-pulse {
-  from { opacity: 0.45; }
-  to { opacity: 1; }
 }
 
 .their-turn {
@@ -3092,8 +3045,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .back-stack,
   .bot-tag,          /* every seat but yours is a bot at most tables; the tag is noise */
-  .bot-banter,
-  .bot-progress {
+  .bot-banter {
     display: none;
   }
 
@@ -3127,25 +3079,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 800;
   }
 
-  .thinking {
-    font-size: var(--fs-11);
-  }
-
   /* a human's turn is the label's fill too; the label stays one line */
   .opponent .their-turn {
     display: none;
-  }
-
-  /* A bot's turn shows as its seat's gold edge, not a sentence on the felt.
-     The status text stays in the accessibility tree as a visually hidden live
-     region. */
-  .opponent .thinking {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 
   /* The top seat's label shares the header row. Its stretch runs from a gap
@@ -5164,22 +5100,6 @@ button.games-row { cursor: pointer; }
 .delta-up { color: #5cc488; }
 .delta-dn { color: #e07a5f; }
 .delta-flat { color: var(--text-dim); }
-/* The round-end rating line sits under the result grid. */
-.rating-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid #6b5a22;
-  border-radius: 10px;
-  background: #1d1a10;
-  font-size: 14px;
-}
-.rating-line b { font-size: 17px; color: var(--gold); font-variant-numeric: tabular-nums; }
-.rating-deltas { display: flex; gap: 10px; align-items: baseline; font-weight: 700; }
-.rating-game { font-size: 12px; font-weight: 600; }
-.rating-guest-note { font-size: 13px; }
 
 @media (prefers-reduced-motion: reduce) {
   .ios-switch, .ios-switch::after { transition: none; }
@@ -5662,7 +5582,8 @@ body.keyboard-open .tabbar { display: none; }
   padding-bottom: 16px;
   color: #eef1f6;
 }
-.me-page .home-col { max-width: 560px; }
+/* Me and the Leaderboard are the phone's column at every width, centred */
+.me-page .home-col, .lb-page .home-col { max-width: 560px; }
 /* Me's two parts flow as one column at every width, the phone's page
    centred and capped like every other page */
 .me-cols, .me-col { display: contents; }
@@ -5843,6 +5764,7 @@ button.grp-row:disabled { cursor: default; }
 .lb-rank.top { color: var(--gold); }
 .lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
 .lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-you { flex: none; white-space: pre; }
 .lb-new {
   flex: none;
   margin-left: 6px;
@@ -6001,6 +5923,18 @@ button[role="switch"]:active .ios-switch {
 .games-row-rating-after { font-size: var(--fs-12); color: #9aa3b2; font-variant-numeric: tabular-nums; }
 .games-round-delta { flex: none; font-size: var(--fs-13); }
 .games-actions .btn { flex: 1; min-height: 44px; }
+
+/* How to play, Support and Privacy are one layer on the page at every
+   width: no raised card behind the content. How to play keeps its two
+   columns from 900px; its diagrams and the form's fields keep their own
+   surfaces. */
+.howto-screen > .panel,
+.info-screen > .panel {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 
 /* My games and the replay on the redesign's charcoal: a top-aligned column
    with grouped surfaces, no card; the replay's felt stays green. */
@@ -6424,7 +6358,7 @@ dialog.leave-sheet-backdrop {
   min-height: 40px; padding: 0 16px; border-radius: 14px; border: 1px solid #4a5262;
   background: rgba(255, 255, 255, 0.06); color: #e9ecf2; font-size: var(--fs-15); font-weight: 600;
 }
-.rating-unranked { color: var(--text-dim); }
+.rating-unranked { margin: 0; font-size: var(--fs-14); color: var(--text-dim); }
 /* Live chat beside the seat that said it: one ellipsized line for a few
    seconds, then it fades. The layer passes taps through; a tap or a sideways
    swipe on a bubble dismisses it. ChatBubbles.tsx places each one clear of the trick and the hand. */

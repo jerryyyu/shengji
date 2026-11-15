@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { effectiveName, useAuth } from "../auth";
-import ChatPanel from "../components/ChatPanel";
+import { ChatBody } from "../components/ChatPanel";
 import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
@@ -9,6 +9,7 @@ import { useAnyTapIsBack } from "../components/seatHeld";
 import { codeLink } from "../codes";
 import type { ChatMsg, Rank } from "../protocol";
 import { RANKS } from "../protocol";
+import Sheet from "./Sheet";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
 import { fromQueue, queueSend } from "./tableModel";
@@ -248,7 +249,7 @@ function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () 
 }
 
 /** The table's chat row: the last line and an unread count, and a tap
- *  opens the chat sheet. The same log carries into the game, because the
+ *  opens the chat sheet, the shared Sheet. The same log carries into the game, because the
  *  server turns it into the room's scrollback. */
 export function ChatRow({ messages, you, onSend }: {
   messages: ChatMsg[]; you: number; onSend: (text: string) => void;
@@ -267,7 +268,11 @@ export function ChatRow({ messages, you, onSend }: {
         <span className="tp-chat-last" aria-hidden="true">{last ? `${shortName(last.name)}: ${last.text}` : ""}</span>
         {unread ? <span className="tp-chat-badge" aria-hidden="true">{unread}</span> : null}
       </button>
-      <ChatPanel messages={messages} you={you} open={open} onClose={() => setOpen(false)} onSend={onSend} />
+      {open ? (
+        <Sheet title="Chat" cancel={null} className="chat-sheet" onClose={() => setOpen(false)}>
+          <ChatBody messages={messages} you={you} onSend={onSend} />
+        </Sheet>
+      ) : null}
     </>
   );
 }

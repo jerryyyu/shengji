@@ -258,7 +258,7 @@ describe("round end rating line", () => {
     const bit = host.querySelector(".result-line .result-rating")!;
     expect(bit.textContent).toBe(" · rating +9");
     expect(bit.className).toContain("delta-up");
-    expect(host.querySelector(".rating-line")).toBeNull();
+    expect(host.querySelector(".rating-unranked")).toBeNull();
   });
 
   it("shows a loss, and on the round that wins a game, the game's total", () => {
@@ -273,36 +273,30 @@ describe("round end rating line", () => {
   });
 
 
-  it("tells a guest seat it plays as a guest, from the result's unranked: guest", () => {
+  it("a guest seat shows no note, from the result's unranked: guest or the state's guest", () => {
     renderModal(makeResult({ unranked: "guest" }), ranked);
-    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest");
-    expect(host.querySelector(".rating-delta")).toBeNull();
+    expect(host.querySelector(".rating-unranked")).toBeNull();
+    expect(host.textContent).not.toContain("Guest");
     expect(host.querySelector(".google-signin-slot")).toBeNull();
-  });
-
-  it("or from the state's guest at a ranked table", () => {
+    act(() => root.unmount());
+    host.remove();
     renderModal(makeResult(), { ...ranked, guest: true });
-    expect(host.querySelector(".rating-guest-note")!.textContent).toBe("Guest");
+    expect(host.querySelector(".rating-unranked")).toBeNull();
+    expect(host.textContent).not.toContain("Guest");
   });
 
-  it("a signed-out viewer with neither field sees no guest note", async () => {
+  it("an unranked room shows no rating note", async () => {
     await signedOutWithSignIn();
-    renderModal(makeResult(), ranked);
-    expect(host.querySelector(".rating-guest-note")).toBeNull();
-  });
-
-  it("an unranked room shows no rating line and no guest note", async () => {
-    await signedOutWithSignIn();
-    renderModal(makeResult({ unranked: "guest" }), { ...state, guest: true });
-    expect(host.querySelector(".rating-guest-note")).toBeNull();
+    renderModal(makeResult({ unranked: "joined" }), { ...state, guest: true });
+    expect(host.querySelector(".rating-unranked")).toBeNull();
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }));
-    expect(host.querySelector(".rating-line")).toBeNull();
+    expect(host.querySelector(".rating-unranked")).toBeNull();
     expect(host.querySelector(".result-rating")).toBeNull();
   });
 
   it("says nothing about ratings while sign-in is still loading", () => {
     renderModal(makeResult(), ranked);
-    expect(host.querySelector(".rating-line")).toBeNull();
+    expect(host.querySelector(".rating-unranked")).toBeNull();
   });
 });
 

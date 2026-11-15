@@ -466,7 +466,7 @@ describe("Play and Bury say they are sending", () => {
   it("a delayed bury: Sending… and aria-busy, the eight stay, one send", () => {
     render(burying());
     for (let i = 0; i < 8; i++) pick(i);
-    expect(label()).toBe("Bury 8 cards (8/8)");
+    expect(label()).toBe("Bury (8/8)");
     act(() => primary().click());
     expect(label()).toBe("Sending…");
     expect(primary().getAttribute("aria-busy")).toBe("true");
@@ -481,7 +481,7 @@ describe("Play and Bury say they are sending", () => {
     for (let i = 0; i < 8; i++) pick(i);
     act(() => primary().click());
     serverSays({ type: "error", code: "illegal", message: "Bury exactly 8 cards." });
-    expect(label()).toBe("Bury 8 cards (8/8)");
+    expect(label()).toBe("Bury (8/8)");
     expect(primary().getAttribute("aria-busy")).toBeNull();
     expect(primary().disabled).toBe(false);
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);

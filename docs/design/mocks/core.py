@@ -300,7 +300,7 @@ def f5_game():
                actions=ring(5, 1, 32, RED) + btn("Pass", "ghost", grow=False, h=38))
     bury = felt(levels=("2", "♥ 2", "2"), points="THEM 0 / 80", last_trick=False,
                 hand_html=hand(dots=(1, 4, 6, 9, 12, 14, 15, 16), ups=(4, 9, 15)),
-                actions=btn("Bury 8 cards (3/8)", "off", grow=False, h=40) + '<span style="font:700 13px ' + FONT + ';color:#f2c14e">Burying 10 points</span>')
+                actions=btn("Bury (3/8)", "off", grow=False, h=40))
     lt_panel = ('<div style="position:absolute;left:10px;top:76px;width:240px;padding:10px 12px;border-radius:12px;background:rgba(17,20,26,.95);border:1px solid #333b49;font:600 13px ' + FONT + '">'
                 '<div style="display:flex;justify-content:space-between;margin-bottom:6px"><b>Last trick</b><span style="color:#f2c14e">Li wins · 10 pts</span></div>'
                 + "".join(f'<div style="display:flex;justify-content:space-between;padding:2px 0"><span>{n}</span><span style="color:#c8242f;background:#fbfaf6;padding:0 5px;border-radius:4px">{c}</span></div>'

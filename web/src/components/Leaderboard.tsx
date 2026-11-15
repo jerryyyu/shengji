@@ -28,7 +28,9 @@ export function Row({ row }: { row: LeaderRow }) {
       <span className={`lb-rank${top ? " top" : ""}`}>{row.rank ?? "—"}</span>
       <span className="avatar avatar-sm" aria-hidden="true">{row.name.slice(0, 1).toUpperCase()}</span>
       <span className="lb-name">
-        <span className="lb-name-text" title={row.name}>{row.you ? `${row.name} (you)` : row.name}</span>
+        <span className="lb-name-text" title={row.name}>{row.name}</span>
+        {/* its own box, so a long name truncates before it */}
+        {row.you ? <span className="lb-you">{" (you)"}</span> : null}
         {row.provisional ? <span className="lb-new" title="Fewer than 20 ranked rounds">new</span> : null}
       </span>
       <span className="lb-rating">{ratingText(row.rating)}</span>

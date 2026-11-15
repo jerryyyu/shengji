@@ -198,8 +198,6 @@ export interface WaitingTableMsg {
   waiting_for: string[];
 }
 
-export interface QueueCountMsg { type: "queue_count"; count: number }
-
 /** The Play tab's presence line, to every lobby socket on change. Counts
  *  only: open tables, connected people at them, people queued, and the open
  *  tables split by mode (`ranked` + `casual` = `tables`). */
@@ -292,7 +290,6 @@ export interface PartyClosedMsg {
 
 export type QueueServerMsg =
   | QueueStateMsg
-  | QueueCountMsg
   | PresenceMsg
   | TableChatMsg
   | TableChatHistoryMsg

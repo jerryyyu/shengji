@@ -143,7 +143,6 @@ describe("Play", () => {
     expect(lobby().querySelector(".play-label")).toBeNull();
     expect(findBtn().textContent).toBe("Play");
     expect(findBtn().className).toContain("gold");
-    say({ type: "queue_count", count: 3 });
     expect(findBtn().textContent).toBe("Play");          // no count under the button
     expect(button("Duo", lobby())).toBeDefined();
     expect(button(/Find a game/)).toBeUndefined();
@@ -241,8 +240,8 @@ describe("Play", () => {
     act(() => fresh.onopen?.());
     // what the guest's socket still had in flight belongs to the guest
     act(() => old.deliver(atTable([seat("Guesty", { you: true }), seat("Alice"), null, null])));
-    // the server holds nothing for the account: it says only the count
-    say({ type: "queue_count", count: 1 });
+    // the server holds nothing for the account: it says only that it is not queued
+    say({ type: "queue_state", queued: false, count: 1 });
     tick(10_000);                                 // past the reconnect resync: no "left while away"
     expect(panel()).toBeNull();
     expect(q(".q-party-chip")).toBeNull();
@@ -718,7 +717,6 @@ describe("a Duo is a table", () => {
     await renderApp();
     say(duoParty(true));
     say(duoState(true, 0, false));
-    say({ type: "code_kind", code: "WXYZ", kind: "table" });
     await settle();
     expect(leaveSheetText()).toBe("Leave to join WXYZ? / Alice keeps the table and its code.");
     click(q("[role='alertdialog'] .leave-sheet-stay"));

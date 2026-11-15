@@ -2279,7 +2279,8 @@ async def _start_created_room(room: Room, me: Seat) -> None:
     """Every ``create_room``, with or without ``start: true``: the creator's
     own ``start_game``, sent for them, so every start check applies and a bot
     takes every empty seat. A refusal discards the room: the creator gets the
-    ``error``, then ``left``, through its writer so they arrive in order."""
+    ``error``, then ``left``, through its writer so they arrive in order, and
+    ``rooms_created`` counts only a room that started."""
     async with room.lock:
         try:
             await handle_action(room, room.seats.index(me), {"type": "start_game"})
@@ -2292,6 +2293,7 @@ async def _start_created_room(room: Room, me: Seat) -> None:
         except Exception:
             refusal = {"type": "error", "message": "Invalid request."}
         else:
+            ACTIVITY.rooms_created += 1
             await broadcast(room)
             kick_bots(room)
             return
@@ -2507,7 +2509,6 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         room = Room(code=new_code(), start_level=start_level, resume=resume,
                                     **options)
                         rooms[room.code] = room
-                        ACTIVITY.rooms_created += 1
                         # Through _attach like every other path: hand-rolling the
                         # queue/writer here skipped the generation bump AND the
                         # resume token, so a creator had no identity and an

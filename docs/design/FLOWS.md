@@ -149,7 +149,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
    (`IdentitySheet` in `components/GuestChip.tsx`, mounted once by App): "Your name" with the field and its
    dice, then the sign-in buttons, then Done. Every Sign in opens that same sheet: the Play tab's guest line
-   ("Playing as a guest · Sign in to be ranked", which stays), Me's Edit name and Sign in rows, the
+   ("Playing as a guest · Sign in to be ranked", which stays), a guest's one name row on Me, the
    Leaderboard's one row "Sign in to be ranked ›" (its card and its sentence on ratings are gone; saying
    what ranked means in How to play is a follow-up) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
    is gone, and signing in closes the sheet.
@@ -259,3 +259,6 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   levels and today's rating change, then ›. The game's page holds the one gold Continue and a Replay for each
   round; the game-level Replay is gone (it opened round 1, as round 1's Replay does). Replaying a round is
   Me → Games → game → round.
+- **A guest's Me: one row for who you are.** The row is the name with a chevron and opens the identity sheet
+  (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
+  where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged.

@@ -218,11 +218,10 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
 
 /** A guest's Me, the signed-in Me minus what only an account has (a
  *  rating, a leaderboard place, saved games): the name they play under with
- *  its initial, Edit name and Sign in, which both open the identity sheet the
- *  chip opens, the settings and the help rows. `unreachable`: the server
- *  could not be asked, so Sign in stays and the sheet shows its buttons
- *  unavailable. */
-function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachable: boolean }) {
+ *  its initial, one row with that name which opens the identity sheet the
+ *  chip opens (the name, and Sign in where it works), the settings and the
+ *  help rows. */
+function GuestMe() {
   const { name } = useGuestName();
   // a guest who opens Me first gets the same random name Play would give
   useEffect(() => {
@@ -241,13 +240,8 @@ function GuestMe({ clientId, unreachable }: { clientId: string | null; unreachab
             </div>
           </div>
           <ul className="grp me-account">
-            <Row label="Edit name" value={name.trim()} chevron className="me-edit" onClick={() => guestName.open()} />
+            <Row label={shown} chevron className="me-identity" onClick={() => guestName.open()} />
           </ul>
-          {clientId || unreachable ? (
-            <ul className="grp me-signin">
-              <Row label="Sign in" chevron className="me-signin-row" onClick={() => guestName.open()} />
-            </ul>
-          ) : null}
         </>
       )}
       side={(
@@ -304,8 +298,7 @@ export default function MePage({ section }: { section: MeSection }) {
   let body: ReactNode;
   if (account.status === "loading") body = <p className="lb-note" role="status">Loading…</p>;
   else if (!user) {
-    body = <GuestMe clientId={account.status === "out" ? account.clientId : null}
-                    unreachable={account.status === "error"} />;
+    body = <GuestMe />;
   }
   else {
     let content: ReactNode;

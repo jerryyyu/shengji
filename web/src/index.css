@@ -5737,6 +5737,8 @@ button.grp-row:disabled { cursor: default; }
 /* Edit name keeps its label on one line; a long name ends in an ellipsis
    before the chevron */
 .me-edit .grp-label { flex: none; white-space: nowrap; }
+/* a guest's one identity row: the name, ellipsized before the chevron */
+.me-identity .grp-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-edit .grp-value {
   display: block; position: relative; flex: 0 1 auto; padding-right: 16px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

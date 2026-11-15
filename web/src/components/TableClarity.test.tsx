@@ -143,15 +143,15 @@ describe("declaring", () => {
 });
 
 describe("burying", () => {
-  it("marks the 8 kitty cards, totals the points chosen and explains the kitty multiplier", () => {
+  it("marks no card as the kitty's, totals the points chosen and explains the kitty multiplier", () => {
     const before = hand(["S3", "S4", "HK"]);
     const deal = withBanker(makeState({ phase: "declare", hand: before }), 0);
     const view = render(<Table state={deal} />);
     const kitty = hand(["D5", "D10", "C3", "C4", "C6", "C7", "C8", "C9"], 100);
     const bury = withBanker(makeState({ phase: "bury", turn: 0, hand: [...before, ...kitty] }), 0);
     view.rerender(<Table state={bury} />);
-    const marked = [...view.host.querySelectorAll(".hand-slot.from-kitty")].map((s) => Number((s as HTMLElement).dataset.id));
-    expect(marked.sort((a, b) => a - b)).toEqual(kitty.map((c) => c.id));
+    // the bury hand is one plain hand: no outline, dot or words on kitty cards
+    expect(view.host.querySelector(".from-kitty, .kitty-badge, .hand-slot .tc-sr")).toBeNull();
     expect(view.host.querySelector(".bury-points")!.textContent).toBe("Burying 0 points");
     const click = (id: number) => act(() => {
       (view.host.querySelector(`.hand-slot[data-id="${id}"] .card`) as HTMLElement).click();
@@ -159,10 +159,6 @@ describe("burying", () => {
     click(100); click(101); click(2);
     expect(view.host.querySelector(".bury-points")!.textContent).toBe("Burying 25 points");
     expect(view.host.querySelector(".hand-line.help")!.textContent).toContain("count double for them (×4 on a pair lead)");
-    // once the bury is in, the marks go
-    const play = withBanker(makeState({ phase: "play", turn: 0, hand: before }), 0);
-    view.rerender(<Table state={play} />);
-    expect(view.host.querySelector(".from-kitty")).toBeNull();
     view.unmount();
   });
 });

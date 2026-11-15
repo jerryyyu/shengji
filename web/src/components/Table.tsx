@@ -25,7 +25,7 @@ import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
-import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
+import { BURY_HELP, bankerText, buryPointsText, declareHelp, seatStatus } from "../tableCopy";
 import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
@@ -414,15 +414,6 @@ export default function Table({ state }: { state: GameState }) {
   const held = away && !watching && online;
   const back = useAnyTapIsBack(held, () => conn.send({ type: "im_back" }));
 
-  // The hand held before the kitty arrives, so the bury can mark the 8
-  // cards that came from it until the bury is sent.
-  const preKitty = useRef<Set<number> | null>(null);
-  if (state.phase === "deal" || state.phase === "declare") {
-    preKitty.current = new Set(state.hand.map((c) => c.id));
-  } else if (state.phase !== "bury") {
-    preKitty.current = null;
-  }
-  const fromKitty = state.phase === "bury" && iAmBanker ? kittyIds(preKitty.current, state.hand) : null;
 
   // The last trick, reopened on request; it stays until dismissed.
   const [lastOpen, setLastOpen] = useState(false);
@@ -448,7 +439,11 @@ export default function Table({ state }: { state: GameState }) {
     showToast(s === "on" ? "Coach on" : "Coach off", { info: true });
   }), []);
   useJoinToasts(state);
-  const coach = state.phase === "play" && myTurn && pending === null && coachShows(coachSwitch, plays, newAccount)
+  // One decision for all teaching text at the table: the coach's cues and
+  // the declare and bury help. A refused tap's reason is feedback, not
+  // teaching, and shows either way.
+  const coachOn = coachShows(coachSwitch, plays, newAccount);
+  const coach = state.phase === "play" && myTurn && pending === null && coachOn
     ? coachFor(state.hand, lead, state.trump)
     : null;
   const coaching = coach !== null;
@@ -537,7 +532,8 @@ export default function Table({ state }: { state: GameState }) {
       : null;
 
   let actionBar: ReactNode = null;
-  // the hand line's parts that the phase sets: why Play waits, and the phase's help
+  // the hand line's parts that the phase sets: why Play waits, and the
+  // phase's help while the coach is on
   let blocked: string | null = null;
   let phaseHelp: string | null = null;
   if (watching) {
@@ -547,7 +543,7 @@ export default function Table({ state }: { state: GameState }) {
     // during the short declare window afterwards. No Pass while dealing.
     const canDeclare = state.declare_options.length > 0;
     const iPassed = state.passed.includes(state.you);
-    if (canDeclare) phaseHelp = declareHelp(state);
+    if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
         {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
@@ -572,7 +568,7 @@ export default function Table({ state }: { state: GameState }) {
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
-    phaseHelp = BURY_HELP;
+    if (coachOn) phaseHelp = BURY_HELP;
     actionBar = (
       <>
       <TimerRing left={clock} total={MOVE_SECS} />
@@ -681,7 +677,7 @@ export default function Table({ state }: { state: GameState }) {
           <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
                     tap={hint?.n ?? 0} nudge={nudge} />
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} lit={coach?.follow ?? null} fromKitty={fromKitty} />
+                rects={handRects} lit={coach?.follow ?? null} />
         </div>
       </div>
 

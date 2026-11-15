@@ -6579,24 +6579,6 @@ dialog.leave-sheet-backdrop {
   box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 
-.kitty-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--gold);
-  box-shadow: 0 0 0 1.5px #1a1a1a;
-  pointer-events: none;
-  z-index: 6;
-}
-
-.hand-slot:not(:last-child) .kitty-badge {
-  right: auto;
-  left: 18px;
-}
-
 .tc-sr {
   position: absolute;
   width: 1px;
@@ -6755,12 +6737,6 @@ dialog.leave-sheet-backdrop {
    the trump chip in the header already names the declared suit */
 :where(.phone-landscape) .table-screen.phase-bury:has(.hand-line.help) .trick-play.declaration {
   visibility: hidden;
-}
-
-:where(.phone-landscape) .kitty-badge {
-  width: 6px;
-  height: 6px;
-  top: 3px;
 }
 
 .result-team-word { font-weight: 800; }

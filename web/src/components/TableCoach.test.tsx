@@ -364,3 +364,65 @@ describe("newcomer coach", () => {
     expect(cue()).not.toBeNull();
   });
 });
+
+describe("teaching text follows the coach", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => { localStorage.clear(); forgetSessionCoach(); });
+
+  const help = () => host.querySelector(".hand-line.help")?.textContent ?? null;
+  const declaring = () => state({ phase: "declare", banker: null, turn: null, trump: null,
+    hand: [{ id: 1, code: "H2" }, { id: 2, code: "S5" }], declare_options: [[1]] });
+  const burying = () => state({ phase: "bury", banker: 0, turn: 0, trump: hearts2, hand: cards(33),
+    players: [0, 1, 2, 3].map((s) => player(s, { is_banker: s === 0 })) });
+  const DECLARE = "Declaring picks trump and makes you banker. A pair outbids a single.";
+  const BURY = "Pick 8 cards to hide. If the attackers win the last trick, these points count double for them (×4 on a pair lead).";
+
+  it("a newcomer on auto gets the declare and bury help", () => {
+    render(declaring());
+    expect(help()).toBe(DECLARE);
+    render(burying());
+    expect(help()).toBe(BURY);
+  });
+
+  it("switched on, a player past the coach's plays still gets them", () => {
+    localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
+    localStorage.setItem(COACH_KEY, "on");
+    render(declaring());
+    expect(help()).toBe(DECLARE);
+    render(burying());
+    expect(help()).toBe(BURY);
+  });
+
+  it("on auto past the coach's plays, declaring and burying show no help", () => {
+    localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
+    render(declaring());
+    expect(host.querySelector(".hand-line")).toBeNull();
+    expect(host.querySelector(".action-bar .btn.gold")).not.toBeNull();
+    render(burying());
+    expect(host.querySelector(".hand-line")).toBeNull();
+    // the count on Bury and the points chosen are feedback, not teaching
+    expect(host.querySelector(".action-bar .btn.primary")!.textContent).toBe("Bury 8 cards (0/8)");
+    expect(host.querySelector(".bury-points")!.textContent).toBe("Burying 0 points");
+  });
+
+  it("an account past its newcomer rounds, on a fresh store, sees no help", () => {
+    signIn(NEWCOMER_ROUNDS);
+    render(declaring());
+    expect(host.querySelector(".hand-line")).toBeNull();
+    render(burying());
+    expect(host.querySelector(".hand-line")).toBeNull();
+    act(() => auth.reset());
+  });
+
+  it("switched off, a newcomer sees no help, and a refused Play still says why", () => {
+    localStorage.setItem(COACH_KEY, "off");
+    render(declaring());
+    expect(host.querySelector(".hand-line")).toBeNull();
+    render(burying());
+    expect(host.querySelector(".hand-line")).toBeNull();
+    render(state({ turn: 0, trump: hearts2, hand: clubHand, trick: { leader: 0, plays: [] } }));
+    expect(host.querySelector(".hand-line")).toBeNull();
+    act(() => host.querySelector<HTMLElement>(".play-wrap")!.click());
+    expect(host.querySelector(".hand-line")?.textContent).toBe("Choose the cards to lead");
+  });
+});

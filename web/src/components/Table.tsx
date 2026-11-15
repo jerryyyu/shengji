@@ -448,7 +448,11 @@ export default function Table({ state }: { state: GameState }) {
     showToast(s === "on" ? "Coach on" : "Coach off", { info: true });
   }), []);
   useJoinToasts(state);
-  const coach = state.phase === "play" && myTurn && pending === null && coachShows(coachSwitch, plays, newAccount)
+  // One decision for all teaching text at the table: the coach's cues and
+  // the declare and bury help. A refused tap's reason is feedback, not
+  // teaching, and shows either way.
+  const coachOn = coachShows(coachSwitch, plays, newAccount);
+  const coach = state.phase === "play" && myTurn && pending === null && coachOn
     ? coachFor(state.hand, lead, state.trump)
     : null;
   const coaching = coach !== null;
@@ -537,7 +541,8 @@ export default function Table({ state }: { state: GameState }) {
       : null;
 
   let actionBar: ReactNode = null;
-  // the hand line's parts that the phase sets: why Play waits, and the phase's help
+  // the hand line's parts that the phase sets: why Play waits, and the
+  // phase's help while the coach is on
   let blocked: string | null = null;
   let phaseHelp: string | null = null;
   if (watching) {
@@ -547,7 +552,7 @@ export default function Table({ state }: { state: GameState }) {
     // during the short declare window afterwards. No Pass while dealing.
     const canDeclare = state.declare_options.length > 0;
     const iPassed = state.passed.includes(state.you);
-    if (canDeclare) phaseHelp = declareHelp(state);
+    if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
         {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
@@ -572,7 +577,7 @@ export default function Table({ state }: { state: GameState }) {
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
-    phaseHelp = BURY_HELP;
+    if (coachOn) phaseHelp = BURY_HELP;
     actionBar = (
       <>
       <TimerRing left={clock} total={MOVE_SECS} />

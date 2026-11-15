@@ -49,7 +49,7 @@ interface SlotProps {
   pressed: boolean;
   /** "lit": one of the cards that can make the play; "dim": not one. */
   mark: "" | "lit" | "dim";
-  /** Came from the kitty: a small gold badge on the card. */
+  /** Came from the kitty: a gold outline, and words for screen readers. */
   kitty: boolean;
   onToggle: ((id: number) => void) | undefined;
 }
@@ -61,7 +61,7 @@ const HandSlot = memo(function HandSlot({ id, code, selected, pressed, mark, kit
   return (
     <div className={`hand-slot${pressed ? " pressed" : ""}${mark ? ` ${mark}` : ""}${kitty ? " from-kitty" : ""}`} data-id={id}>
       <Card code={code} selected={selected} onClick={onToggle ? () => onToggle(id) : undefined} />
-      {kitty ? <span className="kitty-badge" title="From the kitty"><span className="tc-sr">from the kitty</span></span> : null}
+      {kitty ? <span className="tc-sr">from the kitty</span> : null}
     </div>
   );
 });

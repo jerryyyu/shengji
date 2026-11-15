@@ -256,20 +256,20 @@ describe("round end rating line", () => {
   it("puts a signed-in player's change for the round on the result line, with no separate rating line", () => {
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), ranked);
     const bit = host.querySelector(".result-line .result-rating")!;
-    expect(bit.textContent).toBe(" · +9");
+    expect(bit.textContent).toBe(" · rating +9");
     expect(bit.className).toContain("delta-up");
     expect(host.querySelector(".rating-line")).toBeNull();
   });
 
   it("shows a loss, and on the round that wins a game, the game's total", () => {
     renderModal(makeResult({ rating: { rating: 1688, delta: -4 } }), ranked);
-    expect(host.querySelector(".result-rating")!.textContent).toBe(" · −4");
+    expect(host.querySelector(".result-rating")!.textContent).toBe(" · rating −4");
     expect(host.querySelector(".result-rating")!.className).toContain("delta-dn");
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult({ point_scored: true, games_won: [1, 0],
                              rating: { rating: 1688, delta: -4, game_delta: 31 } }), ranked);
-    expect(host.querySelector(".result-line .result-rating")!.textContent).toBe(" · +31");
+    expect(host.querySelector(".result-line .result-rating")!.textContent).toBe(" · rating +31");
   });
 
 
@@ -302,7 +302,7 @@ describe("round end rating line", () => {
 
   it("a created room switched to Ranked shows the rating line like a queue room", () => {
     renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), { ...state, ranked: true });
-    expect(host.querySelector(".result-rating")!.textContent).toBe(" · +9");
+    expect(host.querySelector(".result-rating")!.textContent).toBe(" · rating +9");
   });
 
   it("says nothing about ratings while sign-in is still loading", () => {
@@ -345,7 +345,7 @@ describe("a minimal top: the title, one result line, the button row", () => {
 
   it("a ranked round's rating change fits on the result line", () => {
     renderModal(makeResult({ new_levels: ["5", "2"], rating: { rating: 1712, delta: 12 } }), ranked);
-    expect(host.querySelector(".result-line")!.textContent).toContain("We go up 3, to 5 · +12.");
+    expect(host.querySelector(".result-line")!.textContent).toContain("We go up 3, to 5 · rating +12.");
     expect(host.querySelector(".result-rating")!.className).toContain("delta-up");
     act(() => root.unmount());
     host.remove();

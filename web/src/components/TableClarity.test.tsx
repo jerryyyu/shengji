@@ -152,6 +152,11 @@ describe("burying", () => {
     view.rerender(<Table state={bury} />);
     const marked = [...view.host.querySelectorAll(".hand-slot.from-kitty")].map((s) => Number((s as HTMLElement).dataset.id));
     expect(marked.sort((a, b) => a - b)).toEqual(kitty.map((c) => c.id));
+    // the gold outline is the one mark: no dot, and the slot still says it in words
+    expect(view.host.querySelector(".kitty-badge")).toBeNull();
+    for (const slot of view.host.querySelectorAll(".hand-slot.from-kitty")) {
+      expect(slot.querySelector(".tc-sr")?.textContent).toBe("from the kitty");
+    }
     expect(view.host.querySelector(".bury-points")!.textContent).toBe("Burying 0 points");
     const click = (id: number) => act(() => {
       (view.host.querySelector(`.hand-slot[data-id="${id}"] .card`) as HTMLElement).click();

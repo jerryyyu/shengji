@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fixtures that hold the offline page's bot requests to the game server's rounds.
 
-For the solo games of ``server_sessions.jsonl.gz`` (same seeds, same human
+For the solo games of ``server_sessions_start.jsonl.gz`` (same seeds, same human
 driver; ``server/scripts/gen_offline_server_fixtures.py``), with SmartBot as the
 room bot, records the request the offline page must send for every room-bot
 decision (``bridge_harness``) and writes, per game, the digest of each request

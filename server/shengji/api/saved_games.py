@@ -14,8 +14,7 @@ raises into a game: any failure, in the hook or in the queued write,
 increments ``ACTIVITY.account_link_failures`` and play goes on.
 
 What is linked: only ordinary rooms whose log lives in the training log root
-(rooms with an experimental policy or a human-evaluation context write
-elsewhere and are not linked); only seats signed in to an account; and a
+(a room logging elsewhere is not linked); only seats signed in to an account; and a
 seat that signs in mid-game from the round it signs in on (the next round
 when the current one is already over). A game no seat ever signed in to
 never touches the database.
@@ -143,10 +142,7 @@ def _guarded(fn: Callable[..., None]) -> Callable[..., None]:
 
 
 def eligible(room: Any, training_root: Path) -> bool:
-    """Ordinary rooms only: no experimental policy, no human-evaluation
-    context, and a log in the training log root the read side reads."""
-    if room.experimental_policy is not None or room.evaluation is not None:
-        return False
+    """A room whose log is in the training log root the read side reads."""
     if room.log_dir is None:
         return False
     return Path(room.log_dir).resolve() == Path(training_root).resolve()

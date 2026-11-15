@@ -1705,13 +1705,10 @@ def test_open_tables_are_ranked_games_in_play_with_bot_seats_and_joiners_allowed
             await srv.handle_action(t.room, 1, {"type": "allow_joiners", "on": True})
         await srv.handle_action(t.room, 0, {"type": "allow_joiners", "on": True})
         assert len(srv.open_tables()) == 1
-        # nobody connected, a test room, four people: none is open
+        # nobody connected, four people: none is open
         t.room.seats[0].connected = False
         assert srv.open_tables() == []
         t.room.seats[0].connected = True
-        t.room.experimental_policy = "w32"
-        assert srv.open_tables() == []
-        t.room.experimental_policy = None
         # a casual room is an open table of the casual queue
         t.room.matched = False
         assert [v["mode"] for v in srv.open_tables()] == ["casual"]

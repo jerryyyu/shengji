@@ -47,7 +47,6 @@ server/tests/test_harvest_schema.py
 server/tests/test_heuristic_follow_native.py
 server/tests/test_heuristic_lead_native.py
 server/tests/test_heuristic_lead_prefilter.py
-server/tests/test_human_eval_contract.py
 server/tests/test_human_shards.py
 server/tests/test_invariants.py
 server/tests/test_luna_atomic_io.py

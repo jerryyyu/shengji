@@ -591,24 +591,7 @@ describe("starting a game waits for the server", () => {
   const serverSays = (m: unknown) => act(() => { for (const fn of [...link.listeners]) fn(m); });
 
   beforeEach(() => { authState.current = { status: "off", clientId: null, user: null }; });
-  it("the test controls' Create test room shows Creating… at once, and a second tap sends nothing", async () => {
-    window.history.replaceState(null, "", "/?test_shortlist=1");
-    try {
-      await render();
-      act(() => button(/^Create test room$/).click());
-      expect(sent).toMatchObject([{ type: "create_room" }]);
-      const b = button(/Creating…/);
-      expect(b.getAttribute("aria-busy")).toBe("true");
-      act(() => b.click());
-      expect(sent).toHaveLength(1);
-      serverSays({ type: "error", code: "busy", message: "Server busy." });
-      expect(button(/^Create test room$/).disabled).toBe(false);
-    } finally {
-      window.history.replaceState(null, "", "/");
-    }
-  });
-
-  it("without the test flag there is no way to create a room", async () => {
+  it("there is no way to create a room", async () => {
     await render();
     expect(button(/Create/)).toBeUndefined();
   });

@@ -1,9 +1,7 @@
-import type { RoomMsg, ServerMsg } from "../protocol";
+import type { RoomMsg } from "../protocol";
 import { openHowto } from "../howto/route";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
-import { clearSavedRoom, conn } from "../ws";
-import { createRoomPayload } from "../testPolicy";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
 import AccountChip from "./AccountChip";
@@ -43,11 +41,6 @@ function useStalled(status: ConnStatus): boolean {
   return stalled && !open;
 }
 
-/** The test room's Create, sent and not answered yet. */
-type Starting = { generation: number };
-/** If neither a room nor an error has come back by then, the buttons wake up again. */
-export const START_TIMEOUT_MS = 15000;
-
 /** The Ranked block while the server cannot say whether sign-in exists:
  *  Play and Duo in their places, unavailable. */
 function RankedUnavailable() {
@@ -69,23 +62,6 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   // the offline ones, and links, peeks and the Join panel wait for the game server.
   const offline = useOffline();
   const offlineTable = useOfflineTable(offline);
-  // The test room's Create sends one request and then waits: the button
-  // says so at once and every start button holds until the game arrives
-  // (the lobby goes away), an error comes back, the connection the request
-  // went out on is replaced, or START_TIMEOUT_MS passes. Any of the last
-  // three leaves the buttons ready for a deliberate retry.
-  const [starting, setStarting] = useState<Starting | null>(null);
-  useEffect(() => {
-    if (starting && (status !== "open" || conn.generation !== starting.generation)) setStarting(null);
-  }, [status, starting]);
-  useEffect(() => {
-    if (!starting) return;
-    const t = window.setTimeout(() => setStarting(null), START_TIMEOUT_MS);
-    return () => window.clearTimeout(t);
-  }, [starting]);
-  useEffect(() => conn.subscribe((msg: ServerMsg) => {
-    if (msg?.type === "error") setStarting(null);
-  }), []);
   const { name } = useGuestName();
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
@@ -95,7 +71,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   // socket's own default is read once at its handshake and would miss a
   // rename made since.
   // A guest's chip sits in the same place and opens their name editor: the
-  // name starts as the one they used last time, saved on Play, Create, Join
+  // name starts as the one they used last time, saved on Play, Join
   // or the editor's Done, or else a random one.
   const playerName = signedIn ? accountName : name.trim();
   // The random fill happens once, as soon as the page knows the visitor is
@@ -112,13 +88,6 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   const rememberName = useCallback((trimmed: string) => {
     if (!signedIn && trimmed) guestName.keep(trimmed);
   }, [signedIn]);
-  // The query gate is captured at mount. clearInvite() removes the URL query
-  // after an action, but must not make an already-open test control disappear.
-  const [testControlsVisible] = useState(
-    () => new URLSearchParams(window.location.search).get("test_shortlist") === "1",
-  );
-  const [w32Selected, setW32Selected] = useState(false);
-  const [testAccessKey, setTestAccessKey] = useState("");
   // A ?code= link prefills the box (an older ?room= link reads as one).
   const [roomCode, setRoomCode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -132,41 +101,19 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   const { queued, tableCode, pending: queuePending } = useQueue();
   const seated = room !== null || queued;
   const seatedAt = seated ? (room?.room ?? tableCode ?? "") : null;
-  const ready = status === "open" && starting === null;
+  const ready = status === "open";
   useEffect(() => {
     codes.setPlace({ ready: status === "open" && !offline, seatedAt });
   }, [status, offline, seatedAt, codeView?.step]);
   // A code typed in the box waits for its seats before the panel opens.
   const looking = codeView?.step === "peek" && !panelShown(codeView);
-  const testReady = !w32Selected || testAccessKey.trim().length > 0;
-  // An empty name never blocks a start: the test room's Create and the
-  // panel's Join each fill the field with a random name and go, the same as
-  // the dice.
+  // An empty name never blocks a start: the panel's Join fills the field
+  // with a random name and goes, the same as the dice.
   const nameOrRandom = () => {
     if (playerName) return playerName;
     const picked = randomName();
     guestName.fill(picked);
     return picked;
-  };
-
-  const create = () => {
-    if (!ready || !testReady) return;
-    const trimmed = nameOrRandom();
-    const payload = createRoomPayload(trimmed, w32Selected, testAccessKey);
-    if (!payload) return;
-    rememberName(trimmed);
-    clearInvite();
-    clearSavedRoom(); // don't auto-rejoin an old room while creating a new one
-    if (conn.send(payload)) setStarting({ generation: conn.generation });
-  };
-
-  // Drop the invite param once the user acts: otherwise a stale ?room=
-  // keeps steering later flows (including starting a fresh game) and the
-  // name field looks "stuck" on whatever the link implied.
-  const clearInvite = () => {
-    if (window.location.search) {
-      window.history.replaceState({}, "", window.location.pathname);
-    }
   };
 
   // The box takes a room or table code: its peek opens the panel.
@@ -198,19 +145,6 @@ export default function Lobby({ status, room = null }: LobbyProps) {
     if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
   }, [panelUp]);
 
-  // The test controls' room: a created room for the W32 policy, reached
-  // only from ?test_shortlist=1. Every other table comes from Play.
-  const createLabel = starting ? "Creating…" : "Create test room";
-  const testRoom = testControlsVisible ? (
-    <ul className="grp play-grp">
-      <li>
-        <button type="button" className="grp-row" disabled={!ready || !testReady} onClick={create}
-                aria-busy={starting !== null || undefined}>
-          <span className="grp-label">{createLabel}</span><span className="grp-value chev" />
-        </button>
-      </li>
-    </ul>
-  ) : null;
   // A phone's panel sits right under the chip and the mode switch, with the
   // art gone, so its buttons are on screen; wide screens keep the art beside it.
   const showArt = wide || !panelUp;
@@ -231,33 +165,6 @@ export default function Lobby({ status, room = null }: LobbyProps) {
         <div className="play-side">
         {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
 
-        {testControlsVisible ? (
-          <div className="experimental-controls">
-            <label>
-              <input
-                type="checkbox"
-                checked={w32Selected}
-                onChange={(e) => setW32Selected(e.target.checked)}
-              />{" "}
-              experimental W32
-            </label>
-            {w32Selected ? (
-              <label className="field">
-                <input
-                  type="password"
-                  value={testAccessKey}
-                  placeholder="Access code"
-                  autoComplete="new-password"
-                  onChange={(e) => setTestAccessKey(e.target.value)}
-                />
-                <span className="field-label">
-                  Experimental wide moves may take ~30s; another test room can queue behind them.
-                </span>
-              </label>
-            ) : null}
-          </div>
-        ) : null}
-
         {/* With no connection Play plays on this device, and what needs the
             server waits; the chip, How to play and an open sheet stay put. */}
         {offline ? (
@@ -270,7 +177,6 @@ export default function Lobby({ status, room = null }: LobbyProps) {
                                || queuePending === "join"}
                          onJoin={joinFromPanel} onCancel={closeJoin} onPick={(at) => codes.pick(at)} />
             ) : ranked}
-            {testRoom}
 
             {/* at a table the panel is the page: no code box until you leave it */}
             {seated || joinUp ? null : <div className="join-row">

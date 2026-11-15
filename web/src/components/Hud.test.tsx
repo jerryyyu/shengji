@@ -418,7 +418,7 @@ describe("the header holds the game's state only", () => {
     expect(rows(1)).not.toContain("Allow joiners");
   });
 
-  it("Allow joiners is at every table that takes joiners: casual and unmatched too, never a test room", () => {
+  it("Allow joiners is at every table that takes joiners: casual and unmatched too, never without the flag", () => {
     const rows = (over: Record<string, unknown>) => {
       const view = render(makeState({ opener: 0, ...over }));
       act(() => view.host.querySelector<HTMLButtonElement>(".hud-more-btn")!.click());
@@ -427,7 +427,7 @@ describe("the header holds the game's state only", () => {
       return text;
     };
     expect(rows({ matched: false, allow_joiners: false })).toContain("Allow joiners");
-    // the server leaves the flag off a room that never seats a stranger
+    // a frame without the flag shows no row
     expect(rows({ matched: true })).not.toContain("Allow joiners");
   });
 

@@ -238,7 +238,7 @@ def test_no_log_record_carries_the_account(accounts_on, keypair, client):
 
 def _fake_room(round_no, phase, seats):
     return SimpleNamespace(
-        code="FAKE", experimental_policy=None, evaluation=None, log_dir=Path("/logs"),
+        code="FAKE", log_dir=Path("/logs"),
         game=SimpleNamespace(round_no=round_no), round=SimpleNamespace(phase=phase),
         seats=[SimpleNamespace(user_id=u, is_bot=u is None) for u in seats],
         saved_game=None)
@@ -294,22 +294,17 @@ def test_a_round_summary_before_the_first_link_reaches_the_row(accounts_on):
     assert _rows(store, "SELECT from_round FROM game_players") == [{"from_round": 2}]
 
 
-def test_training_excluded_rooms_are_not_linked(client, tmp_path):
+def test_rooms_logging_elsewhere_are_not_linked(client, tmp_path):
     from shengji.api import saved_games
     from shengji.api import server as srv
 
     ordinary = srv.Room(code="ORDN")
     assert saved_games.eligible(ordinary, srv.LOG_DIR)
-    test_room = srv.Room(code="TEST", experimental_policy="w32", log_dir=tmp_path / "test-root")
-    assert not saved_games.eligible(test_room, srv.LOG_DIR)
     elsewhere = srv.Room(code="ELSE", log_dir=tmp_path / "elsewhere")
     assert not saved_games.eligible(elsewhere, srv.LOG_DIR)
-    evaluation = SimpleNamespace(experimental_policy=None, evaluation=object(),
-                                 log_dir=srv.LOG_DIR)
-    assert not saved_games.eligible(evaluation, srv.LOG_DIR)
-    test_room.game = SimpleNamespace(round_no=1)
-    saved_games.start(test_room, 0, srv.LOG_DIR)
-    assert test_room.saved_game is None
+    elsewhere.game = SimpleNamespace(round_no=1)
+    saved_games.start(elsewhere, 0, srv.LOG_DIR)
+    assert elsewhere.saved_game is None
 
 
 def test_a_failed_log_write_marks_a_linked_game_incomplete(accounts_on):

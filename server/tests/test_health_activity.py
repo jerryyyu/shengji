@@ -169,7 +169,6 @@ def test_real_filesystem_failure_records_the_platform_errno(tmp_path, caplog):
     assert "(FileExistsError errno=EEXIST)" in caplog.text
     assert "private" not in caplog.text
     assert str(log_dir) not in caplog.text
-    assert not room.evaluation_invalidated
 
 
 def test_errno_without_a_platform_name_is_reported_as_its_number():

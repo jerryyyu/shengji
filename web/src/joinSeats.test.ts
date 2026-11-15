@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hostName, joinSeat, tableFull, takeoverSeats } from "./joinSeats";
+import { hostName, joinSeat, tableFull, tableHostName, tableViewSeat, takeoverSeats } from "./joinSeats";
 
 type Row = { seat: number; name: string; is_bot?: boolean; connected?: boolean; claimable?: boolean };
 const peek = (rows: Row[], over: { in_game?: boolean; ranked?: boolean; full?: boolean } = {}) => ({
@@ -31,5 +31,22 @@ describe("the Join panel's seats", () => {
   it("a ranked table the server calls full is full", () => {
     const rows: Row[] = [0, 1, 2, 3].map((seat) => ({ seat, name: `P${seat}` }));
     expect(tableFull(peek(rows, { in_game: true, ranked: true, full: true }))).toBe(true);
+  });
+});
+
+describe("a queued table's seats", () => {
+  type State = "taken" | "open" | "held";
+  const table = (states: State[], names: (string | null)[] = []) => ({
+    seats: states.map((state, seat) => ({ seat, team: seat % 2, state, name: names[seat] ?? null, ready: false })),
+  });
+  it("are drawn from the held seat, else the first open seat partner first, else seat 0", () => {
+    expect(tableViewSeat(table(["taken", "open", "held", "open"]))).toBe(2);
+    expect(tableViewSeat(table(["taken", "open", "open", "open"]))).toBe(2);
+    expect(tableViewSeat(table(["taken", "open", "taken", "open"]))).toBe(1);
+    expect(tableViewSeat(table(["taken", "taken", "taken", "taken"]))).toBe(0);
+  });
+  it("are titled with the first person seated", () => {
+    expect(tableHostName(table(["open", "taken", "taken", "open"], [null, "Li", "Mei"]))).toBe("Li");
+    expect(tableHostName(table(["open", "open", "open", "open"]))).toBeNull();
   });
 });

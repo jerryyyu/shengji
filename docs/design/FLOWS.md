@@ -122,8 +122,9 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
 1. **One invite path.** One link kind, `?code=`, opens Play with the Join panel for that table: its title
-   ("Join Jerry", or the code for a Play table, whose seats show once you sit), the seats with yours lit,
-   Join and Not now. Nothing joins until Join is tapped. `?room=` and `?party=` links (and the iOS universal
+   ("Join Jerry"), the seats with yours lit, Join and Not now. A queued Play table's seats show as they
+   stand (names with their Start, open seats, a Duo's held seat as "Partner"), with no seat lit: the
+   server seats a code join. Nothing joins until Join is tapped. `?room=` and `?party=` links (and the iOS universal
    links) read as `?code=`; a `?name=` is dropped. A guest is never asked for a name: Join uses the random
    name the chip shows, editable there. A full table shows the same panel, "Table is full" and Join
    disabled. The seat picker (`SeatTakeover`) and the "Table is full" card are removed.
@@ -131,8 +132,8 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      "Alice (away)", and tapping it opens the "Alice dropped out. Take their seat?" confirm. Join stays
      disabled while only away seats are left, so no plain Join takes a person's seat.
    - A link opened while you sit at another table shows the Leave sheet first; your own table's link
-     changes nothing. The code box still joins at once when it can, and shows the same panel when it
-     cannot (full, or only away seats).
+     changes nothing. For a room the code box still joins at once when it can, and shows the same panel
+     when it cannot (full, or only away seats); a Play table's code always opens its panel.
    - The Join panel is drawn by `components/JoinPanel.tsx` from TablePanel's exported seat layouts; folding
      it into `TablePanel.tsx` as a panel kind is a follow-up.
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet

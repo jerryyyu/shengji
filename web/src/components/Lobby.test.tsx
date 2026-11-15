@@ -716,7 +716,13 @@ describe("an invite link opens the Join panel", () => {
     await render();
     linkNames("table");
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join ABCD");
-    expect(types()).toEqual(["code_lookup"]);
+    expect(types()).toEqual(["code_lookup", "table_peek"]);
+    serverSays({ type: "room_seats", room: "ABCD", table: true, mode: "ranked", in_game: false,
+                 allow_joiners: true, full: false, closed: false,
+                 seats: [0, 1, 2, 3].map((seat) => ({ seat, team: seat % 2, state: seat ? "open" : "taken",
+                                                      name: seat ? null : "Jerry", ready: false })) });
+    expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
+    expect(panel()?.querySelectorAll(".tp-seat.open")).toHaveLength(3);
     act(() => panelButton("Join").click());
     expect(sent.at(-1)).toEqual({ type: "queue_join", code: "ABCD", name: localStorage.getItem("shengji.name") });
   });

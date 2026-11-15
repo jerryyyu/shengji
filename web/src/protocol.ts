@@ -342,6 +342,7 @@ export type ServerMsg =
   | EventMsg
   | LeftMsg
   | RoomSeats
+  | TableSeats
   | CodeKindMsg
   | ChatMsg
   | ChatHistory
@@ -425,6 +426,7 @@ export interface ResumeMsg {
 export interface RoomSeats {
   type: "room_seats";
   room: string;
+  table?: undefined;
   in_game: boolean;
   seats: {
     seat: number; name: string; is_bot: boolean; connected: boolean;
@@ -439,4 +441,20 @@ export interface RoomSeats {
   ranked?: boolean;
   /** A ranked table with no seat to take. */
   full?: boolean;
+}
+
+/** The peek's answer for a queued table's code (PROTOCOL.md "room_seats"):
+ *  all four seats, names only, before any game. */
+export interface TableSeats {
+  type: "room_seats";
+  room: string;
+  table: true;
+  mode: "ranked" | "casual";
+  in_game: false;
+  allow_joiners: boolean;
+  /** A code join by one person meets table_full. */
+  full: boolean;
+  /** The host's Join is in flight: a code join meets table_closed. */
+  closed: boolean;
+  seats: { seat: number; team: number; state: "taken" | "open" | "held"; name: string | null; ready: boolean }[];
 }

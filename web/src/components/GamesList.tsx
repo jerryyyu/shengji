@@ -401,7 +401,7 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
               <li key={g.id} className="games-day-item">
                 <button className="grp-row games-day-row" onClick={() => navigate({ page: "game", id: g.id })}>
                   <span className="games-row-main">
-                    <span className="games-row-title">{gameTitle(g)}</span>
+                    <span className="games-row-title" title={gameTitle(g)}>{gameTitle(g)}</span>
                     <span className="games-row-sub">
                       {gameSub(g)}
                       {g.incomplete ? <span className="games-tag">incomplete</span> : null}

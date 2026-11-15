@@ -18,7 +18,7 @@ export default function RoundEndLastTrick({ state, trick }: { state: GameState; 
             <span className="round-end-play-cards">
               {play.cards.map((code, i) => <Card key={i} code={code} />)}
             </span>
-            <span className="round-end-play-who">{nameOf(play.seat)}</span>
+            <span className="round-end-play-who" title={nameOf(play.seat)}>{nameOf(play.seat)}</span>
           </li>
         ))}
       </ol>

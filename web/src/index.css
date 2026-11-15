@@ -2661,7 +2661,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   flex: 1;
 }
 
+/* a CJK name in the label moves to the next line whole */
 .round-end-col-label {
+  word-break: keep-all;
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -2709,7 +2711,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   outline-offset: 1px;
 }
 
+/* a name stays on one line under its cards and ends in an ellipsis, so
+   four long names fit a sideways phone */
 .round-end-play-who {
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--text-dim);
 }
@@ -4238,7 +4246,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: var(--fs-14); }
 .chat-head, .chat-input { flex-shrink: 0; }
 .chat-msg { margin: 4px 0; word-break: break-word; }
-.chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
+/* the sender's name is one line ending in an ellipsis; the line's text wraps
+   between words */
+.chat-msg .chat-name {
+  opacity: 0.65; margin-right: 6px; font-weight: 600;
+  display: inline-block; max-width: 100%; vertical-align: top;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .chat-msg.mine .chat-name { color: #8fd18f; }
 .chat-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.12); }
 .chat-input input {
@@ -5839,7 +5853,7 @@ button.grp-row:disabled { cursor: default; }
   font-size: 11px;
   font-weight: 600;
 }
-.lb-rating { flex: none; width: 46px; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+.lb-rating { flex: none; min-width: 46px; white-space: nowrap; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
 .lb-list .lb-row.me { background: #2d3a2f; box-shadow: inset 3px 0 0 var(--gold); }
 .lb-pin {
   position: sticky;

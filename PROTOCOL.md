@@ -22,7 +22,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `remove_player` | `seat`, optional `expect` | host, lobby: that occupant leaves the room |
 | `allow_joiners` | `on: boolean` | anyone seated at an ordinary room, ranked or casual (lobby or in play): whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
 | `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
-| `peek_room` | `room` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). Shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it, `error` with code `rate_limited` and `peek` (the code asked) |
+| `peek_room` | `room` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found`, the refusal every client's peek already settles on |
 | `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
 | `chat` | `text` (<=300 chars) | after joining. A line sent in the lobby, before the game starts, is kept in memory only (the scrollback, `chat_history`), never in a log, as `table_chat` is; once the game has started a line is also written to the room log |
 | `add_bot` | — | host, in lobby or between rounds |

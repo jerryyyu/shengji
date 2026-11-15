@@ -4992,27 +4992,43 @@ def test_ws_peek_a_table_code_by_either_name_and_its_room_once_it_starts(wsenv):
 
 
 def test_ws_peeks_share_the_code_lookup_limit(wsenv):
+    """A live room's code peeks as it always has, unlimited. Any other code
+    is read like ``code_lookup``, on its limit; past it the answer is the
+    ``room_not_found`` every client's peek consumer settles on, and a later
+    peek of a live room answers in full."""
     srv, store, client, clock = wsenv
-    with client.websocket_connect("/ws") as host, client.websocket_connect("/ws") as g, \
+    _, headers = _user(store, "limithost", "Host")
+    with client.websocket_connect("/ws") as host, \
+            client.websocket_connect("/ws", headers=headers) as q, \
+            client.websocket_connect("/ws") as g, \
             client.websocket_connect("/ws") as other:
         host.send_json({"type": "create_room", "name": "host"})
         room = _drain(host, "room")["room"]
+        q.send_json({"type": "queue_join", "mode": "casual"})
+        table = _drain(q, "queue_state")["code"]
         limit, window = mm.LOOKUP_LIMIT
         for i in range(limit):
             if i % 2:
-                g.send_json({"type": "code_lookup", "code": room})
-                assert _drain(g, "code_kind")["kind"] == "room"
+                g.send_json({"type": "code_lookup", "code": table})
+                assert _drain(g, "code_kind")["kind"] == "table"
             else:
-                g.send_json({"type": "peek_room", "room": room})
-                assert _drain(g, "room_seats")["room"] == room
-        g.send_json({"type": "table_peek", "code": room.lower()})
-        refused = _drain(g, "error")
-        assert refused["code"] == "rate_limited" and refused["peek"] == room
-        g.send_json({"type": "code_lookup", "code": room})
+                g.send_json({"type": "peek_room", "room": table})
+                assert _drain(g, "room_seats")["table"] is True
+        # a table's code past the limit, by either name: a plain miss
+        for m in ({"type": "table_peek", "code": table.lower()},
+                  {"type": "peek_room", "room": table}):
+            g.send_json(m)
+            refused = _drain(g, "error")
+            assert refused["code"] == "room_not_found" and "peek" not in refused
+        g.send_json({"type": "code_lookup", "code": table})
         assert _drain(g, "error")["code"] == "rate_limited"
+        # a live room's code is never limited, so a retry after a refusal joins
+        for _ in range(3):
+            g.send_json({"type": "peek_room", "room": room})
+            assert _drain(g, "room_seats")["room"] == room
         # another socket has its own limit
-        other.send_json({"type": "peek_room", "room": room})
-        assert _drain(other, "room_seats")["room"] == room
+        other.send_json({"type": "peek_room", "room": table})
+        assert _drain(other, "room_seats")["table"] is True
         clock.advance(window + 1)
-        g.send_json({"type": "peek_room", "room": room})
-        assert _drain(g, "room_seats")["room"] == room
+        g.send_json({"type": "peek_room", "room": table})
+        assert _drain(g, "room_seats")["table"] is True

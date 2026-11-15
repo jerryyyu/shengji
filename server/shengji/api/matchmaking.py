@@ -662,9 +662,20 @@ class Matchmaker:
     def _send(self, uid: int, payload: dict) -> None:
         c = self._live(uid)
         if c is not None:
-            c.push(payload)
+            self._push(c, payload)
         if payload.get("type") in MIRRORED:
             self._mirror(uid)
+
+    def _push(self, conn: Conn, payload: dict) -> None:
+        """``payload`` to ``conn``; a ``queue_state`` that holds the entry
+        is followed by the ``table`` frame of the entry's table."""
+        conn.push(payload)
+        if (payload.get("type") == "queue_state" and payload.get("queued")
+                and not payload.get("elsewhere") and not conn.in_room
+                and conn.queue_id is not None):
+            e = self._entry(conn.queue_id)
+            if e is not None and e.table is not None:
+                conn.push(self.table_frame(e.table, conn.queue_id))
 
     def _others(self, uid: int) -> list[Conn]:
         """The queue id's open lobby sockets other than its queue socket."""
@@ -818,6 +829,43 @@ class Matchmaker:
                             for u in (e.members if self._table_duo(e) else [e.leader])
                             if u != uid and not self._tapped(t, e, u)
                             and (self._table_duo(e) or uid not in e.members)],
+        }
+
+    def table_frame(self, t: Table, uid: int) -> dict:
+        """The ``table`` frame of ``t`` as ``uid`` sees it, alone or at a
+        waiting table: the same shape a room in play sends
+        (``server.room_table_frame``). Names only, as ``table_payload``."""
+        by_user = {u: e for e in t.entries for u in e.members}
+        held = t.held_seats()
+        seats = []
+        for s, u in enumerate(t.seats):
+            seat = {"seat": s, "team": s % 2, "state": "held" if s in held else "open",
+                    "name": None, "you": False, "ready": False, "reconnecting": False,
+                    "since": None, "sit": None, "pair": False, "leader": False, "left": False}
+            if u is not None:
+                e = by_user[u]
+                seat.update(state="taken", name=self._name(u), you=u == uid,
+                            ready=self._tapped(t, e, u), reconnecting=self._live(u) is None,
+                            since=t.seated_at.get(u), sit=t.sit_ids.get(u),
+                            pair=e.size == 2, leader=e.leader == u)
+            seats.append(seat)
+        mine = by_user.get(uid)
+        timer = t.timer()
+        return {
+            "type": "table", "code": t.code, "phase": "open", "mode": t.mode,
+            "you": t.seats.index(uid) if uid in t.seats else None,
+            "opener": t.seats.index(t.entries[0].leader), "seats": seats,
+            "settings": {"allow_joiners": t.allow_joiners, "start_level": t.start_level},
+            "timers": {"bots": (None if timer is None else
+                                {"at": timer[0], "name": self._name(timer[1].leader),
+                                 "you": uid in timer[1].members}),
+                       "start_now_at": t.start_now_at() if t.waiting else None},
+            "your_ready": mine is not None and self._tapped(t, mine, uid),
+            "waiting_for": [self._name(u) for e in t.entries
+                            for u in (e.members if self._table_duo(e) else [e.leader])
+                            if u != uid and not self._tapped(t, e, u)
+                            and (self._table_duo(e) or uid not in e.members)],
+            "chat_log": self._chat_id(t),
         }
 
     def _tapped(self, t: Table, e: Entry, u: int) -> bool:
@@ -1167,7 +1215,7 @@ class Matchmaker:
         t = msg.get("type")
         if t == "queue_status":
             # Read-only: what the queue holds for this socket, never a bind.
-            conn.push(self.state_for(conn))
+            self._push(conn, self.state_for(conn))
             return
         try:
             if queue_id is None:

@@ -1840,6 +1840,8 @@ def test_a_cancelled_deal_task_is_recorded_without_a_warning(client, caplog):
                 try:
                     _drain(a, "state", tries=1, timeout=1.0)
                 except AssertionError as failure:
+                    if "within" not in str(failure):
+                        continue       # a queued table frame is backlog too
                     message = str(failure)
                     break
             assert message is not None, "frames kept arriving after the deal task was cancelled"

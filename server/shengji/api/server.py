@@ -302,6 +302,9 @@ class Seat:
     # reservation window and every rating and penalty rule stay as for a
     # disconnect. Cleared when any socket takes the seat again.
     left_by_choice: bool = False
+    # The last ``table`` frame this seat's socket was sent: a broadcast
+    # sends it again only when it changed. Cleared on every attach.
+    table_sent: dict | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -970,6 +973,41 @@ def room_json(room: Room, seat: int) -> dict:
     }
 
 
+def room_table_frame(room: Room, seat: int) -> dict:
+    """The ``table`` frame of a room as ``seat`` sees it: the same shape a
+    queue table sends (``Matchmaker.table_frame``). Names only; the seat's
+    resume token stays in ``resume``. Nothing in it ticks with the clock, so
+    a broadcast resends it only on a real change."""
+    seats = []
+    for i in range(4):
+        sd = room.seats[i] if i < len(room.seats) else None
+        seat_out = {"seat": i, "team": i % 2, "state": "open", "name": None,
+                    "you": i == seat, "ready": None, "reconnecting": False, "since": None,
+                    "sit": None, "pair": False, "leader": False, "left": False}
+        if sd is not None:
+            gone = not sd.is_bot and sd.left_by_choice
+            seat_out.update(state="bot" if sd.is_bot or gone else "taken", name=sd.name,
+                            reconnecting=not sd.is_bot and not gone and not sd.connected,
+                            left=gone)
+        seats.append(seat_out)
+    return {
+        "type": "table", "code": room.code, "phase": "playing",
+        "mode": "ranked" if ratings.ranked(room) else "casual",
+        "you": seat, "opener": room.host, "seats": seats,
+        "settings": {"allow_joiners": room.allow_joiners if _takes_joiners(room) else None,
+                     "start_level": room.start_level},
+        "timers": {"bots": None, "start_now_at": None},
+        "your_ready": None, "waiting_for": None, "chat_log": room.code,
+    }
+
+
+def _send_table_frame(room: Room, i: int, seat: Seat) -> None:
+    frame = room_table_frame(room, i)
+    if frame != seat.table_sent:
+        seat.table_sent = frame
+        enqueue(seat, frame)
+
+
 async def send(ws: WebSocket, payload: dict) -> None:
     """Direct send; only for sockets not yet bound to a seat."""
     try:
@@ -1145,6 +1183,7 @@ async def broadcast(room: Room) -> None:
         if seat is not None and seat.connected and not seat.is_bot:
             if room.game and room.round:
                 enqueue(seat, state_for(room, i))
+                _send_table_frame(room, i, seat)
             else:
                 enqueue(seat, room_json(room, i))
     if room.game and room.round:
@@ -3589,6 +3628,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.queue = asyncio.Queue(maxsize=128)
     seat.writer_error = None      # fresh socket, fresh writer
     seat.writer_exit = None
+    seat.table_sent = None
     _start_writer(seat, ws)
     enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
     enqueue(seat, chat_snapshot(room))   # one snapshot, before the first state

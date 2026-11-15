@@ -553,30 +553,147 @@ describe("every Play table has a code", () => {
     expect(p.textContent).not.toContain("Starting level");
   });
 
-  it("a table code from a link is looked up, opens its Join panel, and Join sends queue_join {code}", async () => {
+  /** A queued table's peek answer (PROTOCOL.md "room_seats", table form). */
+  const tableSeats = (over: Record<string, unknown> = {},
+                      seats: [string, string | null, boolean?][] = [["taken", "Jerry", true], ["open", null], ["held", null], ["open", null]]) => ({
+    type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false,
+    allow_joiners: true, full: false, closed: false,
+    seats: seats.map(([state, name, ready], seat) => ({ seat, team: seat % 2, state, name, ready: ready ?? false })),
+    ...over,
+  });
+  const typeCode = (code: string) => {
+    const input = q("input[aria-label='Table code']") as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => { setter.call(input, code); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    click(button("Join"));
+  };
+  const seatNames = (p: HTMLElement) => [...p.querySelectorAll(".tp-seat")].map((el) => el.getAttribute("aria-label"));
+
+  it("a table code from a link is looked up, opens its Join panel with its seats, and Join sends queue_join {code}", async () => {
     window.history.replaceState(null, "", "/?code=4n5z");
     await renderApp();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
     say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
+    expect(lastSent()).toEqual({ type: "table_peek", code: "4N5Z" });
+    say(tableSeats());
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
+    // drawn from the held seat a Duo's code fills: Jerry across, the others open
+    expect(seatNames(p).sort()).toEqual(["Jerry, ready, your team", "Open seat, other team",
+                                         "Open seat, other team", "Partner seat, held, your team"]);
+    expect(p.querySelector(".tp-seat.held .tp-seat-name")?.textContent).toBe("Partner");
+    expect(p.querySelector(".tp-seat.person .tp-seat-name")?.textContent).toBe("Jerry ✓");
+    expect(p.querySelectorAll(".tp-line")).toHaveLength(0);
     expect(sentOf("queue_join")).toHaveLength(0);
-    click(button("Join", q(".tp-join-code")!));
+    click(button("Join", p));
     expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
     expect(sentOf("join_room")).toHaveLength(0);
-    expect(sentOf("table_peek")).toHaveLength(0);
     expect(window.location.search).toBe("");
   });
 
-  it("a table code typed in the code box joins that table", async () => {
+  it("a table code typed in the code box opens its seats, and Join joins that table", async () => {
     await renderApp();
-    const input = q("input[aria-label='Table code']") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => { setter.call(input, "4n5z"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    click(button("Join"));
+    typeCode("4n5z");
     expect(lastSent()).toEqual({ type: "code_lookup", code: "4N5Z" });
     say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
+    expect(lastSent()).toEqual({ type: "table_peek", code: "4N5Z" });
+    say(tableSeats({}, [["taken", "Mei"], ["taken", "Li", true], ["open", null], ["open", null]]));
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Join Mei");
+    expect(seatNames(p).sort()).toEqual(["Li, ready, other team", "Mei, your team",
+                                         "Open seat, other team", "Open seat, your team"]);
+    expect(sentOf("queue_join")).toHaveLength(0);
+    click(button("Join", p));
     expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
+  });
+
+  it("a full table's seats show with Join disabled", async () => {
+    await renderApp();
+    typeCode("4N5Z");
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    say(tableSeats({ full: true }, [["taken", "Mei"], ["taken", "Li"], ["taken", "Sam"], ["taken", "Ana"]]));
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-line")?.textContent).toBe("Table is full");
+    expect(p.querySelectorAll(".tp-line, .tp-led, .tp-hint")).toHaveLength(1);
+    expect(p.querySelectorAll(".tp-seat.person")).toHaveLength(4);
+    expect(button("Join", p)?.disabled).toBe(true);
+    click(button("Join", p));
+    expect(sentOf("queue_join")).toHaveLength(0);
+  });
+
+  it("a closed table (its host's Join in flight) opens no panel, as table_closed does", async () => {
+    await renderApp();
+    typeCode("4N5Z");
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    say(tableSeats({ closed: true }));
+    await settle();
+    expect(q(".tp-join-code")).toBeNull();
+    expect(sentOf("queue_join")).toHaveLength(0);
+  });
+
+  it("a table that has started answers as a room: the room's seats and join_room", async () => {
+    window.history.replaceState(null, "", "/?code=4N5Z");
+    await renderApp();
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    say({ type: "room_seats", room: "4N5Z", in_game: true, seats: [
+      { seat: 0, name: "Jerry", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 1, name: "Bot 1", is_bot: true, connected: true, team: 1, claimable: true, controller: "bot", reserved_secs: null },
+      { seat: 2, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 3, name: "Bot 3", is_bot: true, connected: true, team: 1, claimable: true, controller: "bot", reserved_secs: null }] });
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-seat.you")).not.toBeNull();
+    click(button("Join", p));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "4N5Z" });
+    expect(sentOf("queue_join")).toHaveLength(0);
+  });
+
+  it("a refused table peek says so once, and a retry of the same code still shows its seats and joins", async () => {
+    await renderApp();
+    typeCode("4N5Z");
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    // past the lookup limit the server refuses the peek with room_not_found
+    say({ type: "error", code: "room_not_found", message: "Room not found." });
+    await settle();
+    expect(q(".tp-join-code")).toBeNull();
+    expect(q(".toast")?.textContent).toBe("No table has that code.");
+    typeCode("4N5Z");
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    expect(sentOf("table_peek")).toHaveLength(2);
+    say(tableSeats());
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
+    click(button("Join", p));
+    expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
+  });
+
+  it("a table panel closed before its seats arrive ignores them, and the next ask gets its own", async () => {
+    await renderApp();
+    typeCode("4N5Z");
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    click(button("Not now", q(".tp-join-code")!));
+    typeCode("4N5Z");
+    say({ type: "code_kind", code: "4N5Z", kind: "table" });
+    await settle();
+    // the first answer belongs to the closed panel
+    say(tableSeats({}, [["taken", "Old"], ["open", null], ["open", null], ["open", null]]));
+    await settle();
+    expect(q(".tp-join-code .tp-seat.person")).toBeNull();
+    say(tableSeats());
+    await settle();
+    expect(q(".tp-join-code .tp-title")?.textContent).toBe("Join Jerry");
   });
 
   it("a table link opened while at another Play table asks to leave it first", async () => {

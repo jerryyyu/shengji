@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { RoomSeats } from "../protocol";
+import type { RoomSeats, TableSeats } from "../protocol";
 import type { TableKind } from "../codeJoin";
-import { hostName, joinSeat, takeoverSeats } from "../joinSeats";
+import { hostName, joinSeat, tableHostName, tableViewSeat, takeoverSeats } from "../joinSeats";
 import type { DroppedSeat } from "../joinSeats";
 import { useInlineQueue } from "../queue/QueueBar";
 import { MiniTable, TeamColumns } from "../queue/TablePanel";
@@ -70,6 +70,20 @@ function roomSeats(peek: RoomSeats, you: number, busy: boolean, ask: (s: Dropped
   });
 }
 
+/** A queued table's four seats as they stand: who sits there (with their
+ *  Start), the open seats and a Duo's held partner seat. No seat is yours
+ *  yet: the server seats a code join by its own rules. */
+function queuedSeats(peek: TableSeats, you: number): SeatItem[] {
+  return [0, 1, 2, 3].map((at): SeatItem => {
+    const sd = peek.seats.find((s) => s.seat === at);
+    const ours = (at - you + 4) % 2 === 0;
+    if (sd?.state === "held") return { at, look: "held", name: "Partner", sub: "", label: `Partner seat, held, ${teamWord(ours)}` };
+    if (sd?.state !== "taken" || !sd.name) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    return { at, look: "person", name: shortName(sd.name), sub: "", tick: sd.ready,
+             label: [sd.name, sd.ready ? "ready" : null, teamWord(ours)].filter(Boolean).join(", ") };
+  });
+}
+
 /** The one invite path's panel, in Play's place: a code from a link (or a
  *  room the code box cannot seat you at at once) shows its table, Join and
  *  Not now. A full table shows the same panel with Join disabled. A seat a
@@ -77,9 +91,9 @@ function roomSeats(peek: RoomSeats, you: number, busy: boolean, ask: (s: Dropped
 export default function JoinPanel({ code, kind, peek, full, busy, onJoin, onTake, onCancel }: {
   code: string;
   kind: TableKind;
-  /** A room's seats, from peek_room (null until it answers); always null
-   *  for a Play table, whose seats the server shows once you sit. */
-  peek: RoomSeats | null;
+  /** The table's seats, from table_peek (null until it answers): a room's,
+   *  or a queued Play table's in the table form. */
+  peek: RoomSeats | TableSeats | null;
   full: boolean;
   busy: boolean;
   onJoin: () => void;
@@ -89,14 +103,17 @@ export default function JoinPanel({ code, kind, peek, full, busy, onJoin, onTake
   const wide = useInlineQueue();
   const titleId = useId();
   const [asking, setAsking] = useState<DroppedSeat | null>(null);
-  const plain = peek ? joinSeat(peek) : null;
-  // the seats are drawn from where you would sit, or the first away seat
-  const you = plain ?? (peek ? takeoverSeats(peek)[0]?.seat : undefined) ?? 0;
-  const seats = peek ? roomSeats(peek, you, busy, setAsking) : null;
-  const who = peek ? hostName(peek) : null;
+  const room = peek && !peek.table ? peek : null;
+  const queued = peek?.table ? peek : null;
+  const plain = room ? joinSeat(room) : null;
+  // a room's seats are drawn from where you would sit, or the first away seat
+  const you = queued ? tableViewSeat(queued)
+    : plain ?? (room ? takeoverSeats(room)[0]?.seat : undefined) ?? 0;
+  const seats = room ? roomSeats(room, you, busy, setAsking) : queued ? queuedSeats(queued, you) : null;
+  const who = room ? hostName(room) : queued ? tableHostName(queued) : null;
   // a room's Join waits for its seats and needs a plain one open; a Play
-  // table has no peek, and the server answers table_full when it is full
-  const canJoin = !full && !busy && (kind === "table" || (peek !== null && plain !== null));
+  // table's needs no seat named, and the server answers table_full when it is full
+  const canJoin = !full && !busy && (kind === "table" || (room !== null && plain !== null));
   return (
     <section className={`tp tp-join-code${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
       <h2 className="tp-title" id={titleId}>Join {who ? shortName(who) : code}</h2>

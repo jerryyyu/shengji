@@ -188,7 +188,7 @@ def f1_first_open():
             shot(signed, 390, 844, "First open, signed in", "The same page; the chip shows the rating."),
             shot(casual, 390, 844, "Tap Casual", "Remembered on this device; the casual count lights up."),
             shot(none, 390, 844, "Nobody online", "One short line."),
-            shot(desk, 1280, 800, "Desktop / iPad", "Three tabs in the top bar; the same controls beside the art."),
+            shot(desk, 1280, 800, "Desktop / iPad", "Three tabs in the top bar; the phone's one column, centred, with a small preview."),
         ]),
     ]
 
@@ -250,7 +250,7 @@ def f3_own_table():
             shot(joined, 390, 844, "Alice presses Play", "She sits as your partner. One status: '0 of 2 ready'. Start now carries the same timer."),
             shot(ready, 390, 844, "Tap Start now", "Your tick; the button says who you wait for."),
             shot(game, 844, 390, "Alice taps Start (or the timer)", "Bots take the empty seats; strangers can still join (Allow joiners is on)."),
-            shot(desk, 1280, 800, "Desktop / iPad", "The same panel in Play's place, with the mini table."),
+            shot(desk, 1280, 800, "Desktop / iPad", "The same panel in Play's place, with the phone's team columns."),
         ]),
     ]
 

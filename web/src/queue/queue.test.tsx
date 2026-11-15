@@ -487,15 +487,15 @@ describe("your own table", () => {
     expect(q(".table-pill")).toBeNull();
   });
 
-  it("on a desktop or an iPad the panel is in the Ranked card's place with the mini table, and the pill in the top bar elsewhere", async () => {
+  it("on a desktop or an iPad the panel is in the Ranked card's place with the team columns, and the pill in the top bar elsewhere", async () => {
     viewport(true);
     await renderApp();
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
     expect(q(".table-pill")).toBeNull();
     const p = panel()!;
-    expect(p.className).toContain("tp-wide");
-    expect(p.querySelector(".seat-clock .tp-seat.pos-bottom")?.getAttribute("aria-label")).toBe("You, your team");
-    expect(p.querySelectorAll(".seat-clock .tp-seat")).toHaveLength(4);
+    const [ours] = p.querySelectorAll(".tp-teams .tp-col");
+    expect(ours.children[1]?.getAttribute("aria-label")).toBe("You, your team");
+    expect(p.querySelectorAll(".tp-teams .tp-seat")).toHaveLength(4);
     expect(p.closest("[aria-modal]")).toBeNull();
     expect(p.closest("[inert]")).toBeNull();
     const { openTab } = await import("../home/route");
@@ -518,7 +518,7 @@ describe("your own table", () => {
     viewport(false, true);
     await renderApp();
     say(queued({ since: nowSecs() - 24, bots_at: nowSecs() + 36 }));
-    expect(panel()?.className).not.toContain("tp-wide");
+    expect(panel()?.querySelectorAll(".tp-teams .tp-seat")).toHaveLength(4);
     expect(q(".table-pill")).toBeNull();
     const { openTab } = await import("../home/route");
     act(() => openTab("leaderboard"));
@@ -993,17 +993,18 @@ describe("a shared table", () => {
     expect(q(".join-row")).toBeNull();
   });
 
-  it("on a desktop or an iPad the shared table is the same inline panel with the mini table", async () => {
+  it("on a desktop or an iPad the shared table is the same inline panel with the team columns", async () => {
     viewport(true);
     await renderApp();
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null],
                 { timer: { at: nowSecs() + 42, name: "Alice", you: false } }));
     const p = panel()!;
     expect(p.getAttribute("role")).toBeNull();
-    expect(p.querySelector(".seat-clock .tp-seat.pos-bottom")?.getAttribute("aria-label")).toBe("You");
-    expect(p.querySelector(".seat-clock .tp-seat.pos-left")?.getAttribute("aria-label")).toBe("Alice, other team. Move");
-    expect(p.querySelector(".seat-clock .tp-seat.pos-top")?.getAttribute("aria-label")).toBe("Open seat, your team. Move here");
-    expect(p.querySelector(".seat-clock .tp-seat.pos-top")?.tagName).toBe("BUTTON");
+    const [ours, theirs] = p.querySelectorAll(".tp-teams .tp-col");
+    expect(ours.children[1]?.getAttribute("aria-label")).toBe("You");
+    expect(theirs.children[0]?.getAttribute("aria-label")).toBe("Alice, other team. Move");
+    expect(ours.children[0]?.getAttribute("aria-label")).toBe("Open seat, your team. Move here");
+    expect(ours.children[0]?.tagName).toBe("BUTTON");
     expect(q(".home-body")?.className).not.toContain("wt-behind");
     expect(q("[inert]")).toBeNull();
     expect(lines()).toEqual(["0 of 2 ready"]);
@@ -1510,17 +1511,19 @@ describe("open tables", () => {
     expect(panel()?.classList.contains("tp-join")).toBe(true);
   });
 
-  it("on a desktop the offer's seats sit around the mini table; a green seat is a button", async () => {
+  it("on a desktop the offer's seats are the phone's team columns; a green seat is a button", async () => {
     viewport(true);
     await open();
     tell(queued({ offer: offer(), bots_paused: true, bots_at: null }));
     const p = panel()!;
-    expect(p.querySelector(".seat-clock .tp-seat.pos-bottom")?.getAttribute("aria-label")).toBe("You, your team");
-    expect(p.querySelector(".seat-clock .tp-seat.pos-top")?.getAttribute("aria-label")).toBe("Jerry, playing, your team");
-    const left = p.querySelector<HTMLButtonElement>(".seat-clock button.tp-seat.pos-left")!;
-    expect(left.getAttribute("aria-label")).toBe("Open seat, other team. Sit here");
-    click(left);
-    expect(p.querySelector(".seat-clock .tp-seat.pos-bottom")?.getAttribute("aria-label")).toBe("You, your team");
+    const cols = () => p.querySelectorAll(".tp-teams .tp-col");
+    expect(cols()[0].children[1]?.getAttribute("aria-label")).toBe("You, your team");
+    expect(cols()[0].children[0]?.getAttribute("aria-label")).toBe("Jerry, playing, your team");
+    const open1 = [...cols()[1].querySelectorAll<HTMLButtonElement>("button.tp-seat")]
+      .find((b) => b.getAttribute("aria-label") === "Open seat, other team. Sit here")!;
+    expect(open1).toBeDefined();
+    click(open1);
+    expect(cols()[0].children[1]?.getAttribute("aria-label")).toBe("You, your team");
     expect(q("[aria-modal]")).toBeNull();
   });
 

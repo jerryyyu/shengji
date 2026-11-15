@@ -5395,31 +5395,34 @@ body.keyboard-open .tabbar { display: none; }
   padding: 24px 0;
 }
 .home-wide .play-tab .account-pill { display: none; }
-/* The art and the controls are one column on a phone. On desktop and iPad
-   the controls, and the table panel in Play's place, sit beside the art. */
+/* The art and the controls are one column at every width, the phone's
+   Play tab centred under the top bar. On a wide screen the title and the
+   preview stay small, so the controls and the table panel start high on
+   the page; a sideways phone drops the preview and keeps a small title. */
 .play-art, .play-side { display: contents; }
-.home-wide .play-tab > .lobby-panel:has(.play-side) {
-  width: min(1180px, 100%);
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 32px;
+.home-wide .play-tab .game-title { font-size: 40px; line-height: 1.1; }
+.home-wide .play-tab .game-title-en { font-size: 13px; margin-top: 2px; }
+.home-wide .play-tab .lobby-preview {
+  aspect-ratio: auto;
+  margin-top: 0;
+  height: 150px;
+  flex: none;
+  container-type: size;
 }
-.home-wide .play-tab .play-art {
-  display: flex;
-  flex: 1.4 1 0;
-  min-width: 0;
-  flex-direction: column;
-  gap: 12px;
-  position: sticky;
-  top: 12px;
+.home-wide .play-tab .lp-stage {
+  --u: min(100cqw / 1200, 100cqh / 630);
+  inset: auto;
+  left: calc(50% - var(--u) * 600);
+  top: calc(50% - var(--u) * 315);
+  width: calc(var(--u) * 1200);
+  height: calc(var(--u) * 630);
 }
-.home-wide .play-tab .play-side {
-  display: flex;
-  flex: 0 0 400px;
-  min-width: 0;
-  flex-direction: column;
-  gap: 16px;
-}
+/* at a table the panel needs the room more than the preview does */
+.home-wide .play-tab.play-table-up .lobby-preview,
+.phone-landscape .home-wide .play-tab .lobby-preview { display: none; }
+.phone-landscape .home-wide .play-tab .game-title { font-size: 28px; }
+.phone-landscape .home-wide .play-tab .game-title-en { font-size: 11px; }
+.phone-landscape .home-wide .play-tab > .lobby-panel { padding-top: 8px; gap: 12px; }
 .topbar-end:has(.guest-pill) { gap: 10px; }
 .play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
 .play-label {
@@ -5557,7 +5560,9 @@ body.keyboard-open .tabbar { display: none; }
 .home-narrow .play-table-up .tp .q-switch::after { width: 22px; height: 22px; }
 .home-narrow .play-table-up .tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(18px); }
 .home-narrow .play-table-up .tp-acts,
-.home-narrow .play-table-up .tp-led {
+.home-narrow .play-table-up .tp-led,
+.phone-landscape .play-table-up .tp-acts,
+.phone-landscape .play-table-up .tp-led {
   position: sticky;
   /* the screen's bottom padding already clears the tab bar, and a sticky
      box keeps inside that padding */
@@ -5644,15 +5649,9 @@ body.keyboard-open .tabbar { display: none; }
   color: #eef1f6;
 }
 .me-page .home-col { max-width: 560px; }
-/* Me's two parts flow as one column, like every other page */
+/* Me's two parts flow as one column at every width, the phone's page
+   centred and capped like every other page */
 .me-cols, .me-col { display: contents; }
-/* a wide enough page (an iPad sideways, a desktop window) sets the settings
-   beside who you are and your stats, so neither is a long scroll away */
-@media (min-width: 960px) {
-  .home-wide .me-page .home-col { max-width: 940px; }
-  .home-wide .me-cols { display: grid; grid-template-columns: 1.3fr 1fr; gap: 28px; align-items: start; }
-  .home-wide .me-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-}
 .large-title {
   margin: 4px 0 0;
   font-size: clamp(34px, calc(34 * var(--tu)), 40px);
@@ -5807,6 +5806,14 @@ button.grp-row:disabled { cursor: default; }
   font-variant-numeric: tabular-nums;
 }
 .grp-value.chev::after { content: "›"; color: var(--muted-2); font-size: 22px; line-height: 1; }
+/* Edit name keeps its label on one line; a long name ends in an ellipsis
+   before the chevron */
+.me-edit .grp-label { flex: none; white-space: nowrap; }
+.me-edit .grp-value {
+  display: block; position: relative; flex: 0 1 auto; padding-right: 16px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.me-edit .grp-value.chev::after { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 .grp-row.destructive { color: var(--destructive); }
 .grp-row[aria-busy="true"] { cursor: progress; }
 .me-saving { font-size: var(--fs-15); }
@@ -5850,7 +5857,11 @@ button.grp-row:disabled { cursor: default; }
 .identity-signin .google-signin-slot { width: 100%; }
 .me-who { display: flex; align-items: center; gap: 14px; }
 .me-who-text { min-width: 0; }
-.me-name { font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff; overflow-wrap: anywhere; }
+/* the name stays on one line and ends in an ellipsis, like a seat's */
+.me-name {
+  min-width: 0; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .me-sub { margin-top: 2px; font-size: var(--fs-15); color: #9aa3b2; font-variant-numeric: tabular-nums; }
 .me-sub b { font-weight: 600; }
 .me-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -6055,9 +6066,11 @@ button[role="switch"]:active .ios-switch {
   background: linear-gradient(rgba(79, 178, 122, 0.16), rgba(79, 178, 122, 0.08)), #171b22;
   color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.25; text-align: left;
 }
+/* a name in the title moves to the next line whole, a CJK one included;
+   only a name longer than the line breaks inside */
 .tp-title {
   margin: 0; font-size: var(--fs-20); font-weight: 700; color: #fff;
-  overflow-wrap: anywhere;
+  word-break: keep-all; overflow-wrap: anywhere;
 }
 .tp-line { margin: 0; font-size: var(--fs-14); color: #c3cad6; }
 /* the mode tag sits tight above the title */
@@ -6087,8 +6100,10 @@ button[role="switch"]:active .ios-switch {
 .tp-seat.team0 .tp-av { background: var(--team0); }
 .tp-seat.team1 .tp-av { background: var(--team1); }
 .tp-seat-text { display: flex; flex-direction: column; min-width: 0; }
-/* names are cut to ten characters already; a narrow column wraps at spaces */
-.tp-seat-name { font-size: var(--fs-14); font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+/* a seat's words stay on one line and end in an ellipsis when the seat is
+   narrower than them; they never break inside a word */
+.tp-seat-name, .tp-seat-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-seat-name { font-size: var(--fs-14); font-weight: 600; line-height: 1.15; }
 .tp-seat-sub { font-size: 11px; line-height: 1.2; color: #9aa3b2; }
 .tp-tick { color: #4fb27a; }
 .tp-seat.you, .tp-seat.friend { border-color: var(--gold); }
@@ -6103,7 +6118,7 @@ button[role="switch"]:active .ios-switch {
 .tp-seat.held .tp-seat-name { color: var(--gold); }
 button.tp-seat { cursor: pointer; }
 /* the narrowest phones give the seat's words the avatar's room */
-@media (max-width: 359px) { .tp:not(.tp-wide) .tp-av { display: none; } }
+@media (max-width: 359px) { .tp .tp-av { display: none; } }
 button.tp-seat:disabled { opacity: 0.6; cursor: default; }
 button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .tp .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); color: #fff; }
@@ -6138,19 +6153,6 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp-led { margin: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; color: #bfe9cf; font-size: var(--fs-15); }
 /* the bots' countdown for the Duo member who does not lead */
 .tp-led .timer-ring { --size: 32px; --band: 2.5px; margin-right: 10px; }
-/* Wide screens: the seats around the mini table, you at the bottom. */
-.tp-clock { row-gap: 28px; padding: 14px 10px; }
-.tp-clock .tp-seat { justify-self: stretch; }
-.tp-clock .tp-seat.pos-top { grid-area: top; justify-self: center; width: min(100%, 170px); }
-.tp-clock .tp-seat.pos-bottom { grid-area: bottom; justify-self: center; width: min(100%, 170px); }
-.tp-clock .tp-seat.pos-left { grid-area: left; }
-.tp-clock .tp-seat.pos-right { grid-area: right; }
-/* A phone held sideways: seats on the left, words and buttons on the right. */
-.phone-landscape .tp:not(.tp-wide) {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; row-gap: 8px; align-items: start;
-}
-.phone-landscape .tp:not(.tp-wide) > .tp-teams { grid-column: 1; grid-row: 1 / span 8; }
-.phone-landscape .tp:not(.tp-wide) > :not(.tp-teams) { grid-column: 2; }
 /* The Your table pill on a tab other than Play: in the top bar's end on a
    wide layout, at the end of the large title's row on a phone. */
 .table-pill {

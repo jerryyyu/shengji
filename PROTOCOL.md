@@ -289,6 +289,44 @@ true`), plus the retired lobby controls that are refused (`add_bot`,
 `remove_bot`, `remove_player`, `set_ranked`). Only messages from a client count; the
 server's own start of a queue table does not. Plain counts, nothing else.
 
+## The table frame (new, additive)
+
+`{type: "table", code, phase, mode, you, opener, seats, settings, timers, your_ready, waiting_for, chat_log}`
+describes the table a socket sits at the same way whether it is a queued
+table (`phase: "open"`: alone or waiting) or a room in play (`phase:
+"playing"`). It is sent next to the frames it will replace, which are
+unchanged; a client may ignore it. Design and field mapping:
+`docs/design/TABLE_FRAME.md`.
+
+- `seats`: four, in seat order, each `{seat, team, state, name, you, ready,
+  reconnecting, since, sit, pair, leader, left}`. `state` is `"taken"`,
+  `"open"` (empty; a bot fills it when the game starts), `"held"` (kept for
+  a Duo opener's friend) or `"bot"` (a bot plays it in the game; `left`
+  when its owner pressed Leave). An open or held seat has `name: null`.
+  `ready`, `since`, `sit`, `pair` and `leader` are `queue_state.table`'s
+  seat fields (`ready` is null in a room; `sit` null alone and in a room);
+  `reconnecting` is a person's seat whose socket is gone.
+- `mode`: `"ranked"` or `"casual"`. `opener`: the opener's seat.
+- `settings`: `{allow_joiners, start_level}`; `allow_joiners` is null in a
+  room that never takes joiners (a test room).
+- `timers`: `{bots, start_now_at}`: `bots` is `queue_state.table.timer`'s
+  `{at, name, you}` (alone: your entry's own `bots_at`), null when no timer
+  runs and in a room; `start_now_at` as `queue_state.table`, null alone and
+  in a room.
+- `your_ready`: whether your Start is in (null in a room); `waiting_for`:
+  as `queue_state.table` (alone: a Duo partner yet to tap), null in a room.
+- `chat_log`: the key the table's chat frames carry: `table_chat.table`
+  (null alone) or, in a room, its code.
+
+Sent in the open phase right after every `queue_state` that holds your
+entry (`queued`, not `elsewhere`), on the same socket; in a room, in every
+broadcast right after your `state`, only when it differs from the last one
+your socket got (nothing in it counts down), and always to a fresh socket.
+A Join waiting for its handover gets none until it holds the seat.
+`queue_state {queued: false}`, `queue_removed`, `match_started` and `left`
+end a table as before. Names only: no account id, rating, device key or
+resume token. The offline server does not send it yet.
+
 ## Matchmaking queue
 
 Signed-in players can queue for a rated game instead of sharing a room code.

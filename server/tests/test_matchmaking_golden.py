@@ -50,7 +50,10 @@ class GoldenConn(mm.Conn):
             return
         frame = json.loads(json.dumps(payload))
         self.sent.append(frame)
-        self.env.log.append(["frame", self.label, frame])
+        # the additive ``table`` frame is checked against its queue_state by
+        # test_table_frame.py; the old frames' goldens stay byte for byte
+        if frame.get("type") != "table":
+            self.env.log.append(["frame", self.label, frame])
 
     def last(self, kind: str) -> dict | None:
         return next((m for m in reversed(self.sent) if m.get("type") == kind), None)
@@ -111,6 +114,7 @@ class Env:
         self.log: list[list] = []
         self.ratings: dict[int, float] = {}
         self.conns: dict[int, GoldenConn] = {}
+        self.all_conns: list[GoldenConn] = []
         self.fail_starts = 0
 
         async def rating_of(uid: int) -> float | None:
@@ -141,6 +145,7 @@ class Env:
         conn = GoldenConn(self, uid, name or f"P{uid}", device or f"dev{uid}", label)
         self.ratings[uid] = rating
         self.conns[uid] = conn
+        self.all_conns.append(conn)
         self.mm.connect(conn)
         return conn
 
@@ -645,7 +650,7 @@ async def a_guest_signs_in_and_one_device_never_sits_twice(env: Env) -> None:
 
 
 # ------------------------------------------------------------------ runner
-def run_scenario(fn: Scenario) -> list:
+def run_env(fn: Scenario) -> Env:
     env = Env()
     kept = list(mm.qlog.handlers)
     mm.qlog.handlers = [_QlogCapture(env)]
@@ -653,7 +658,11 @@ def run_scenario(fn: Scenario) -> list:
         asyncio.run(fn(env))
     finally:
         mm.qlog.handlers = kept
-    return normalize(env.log)
+    return env
+
+
+def run_scenario(fn: Scenario) -> list:
+    return normalize(run_env(fn).log)
 
 
 def transcripts() -> dict[str, list]:

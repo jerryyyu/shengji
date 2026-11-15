@@ -309,6 +309,10 @@ async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
             if not frame.done():
                 frame.cancel()
                 await asyncio.gather(frame, return_exceptions=True)
+        if msg["type"] == "table":
+            # additive and not yet sent by the offline server; the offline
+            # fixtures hold the frames both servers send
+            continue
         frames.append(normalize(msg))
         if msg["type"] == "error":
             raise RuntimeError(f"seed {seed}: server refused the driver: {msg}")

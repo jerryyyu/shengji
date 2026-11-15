@@ -1199,8 +1199,11 @@ describe("one code for rooms and tables", () => {
     expect(sentTypes()).not.toContain("join_room");
     // no name sheet: the chip already shows a random name
     expect(q(".q-layer:not(.q-out) .q-sheet")).toBeNull();
-    const chipName = localStorage.getItem("shengji.name");
+    // the name the chip shows, read from the chip: storage can be written
+    // late by an earlier test's module copies left alive by resetModules
+    const chipName = q(".guest-pill .account-pill-name")?.textContent;
     expect(chipName).toBeTruthy();
+    expect(chipName).not.toBe("Guest");
     click(button("Join", joinPanel()!));
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: chipName });
     expect(lastSent()).not.toMatchObject({ name: "Ann" });

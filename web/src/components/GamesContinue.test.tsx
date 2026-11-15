@@ -1,5 +1,6 @@
-// Continue and Replay on a saved game's row and on its page: Continue only
-// when the record has both teams' levels, and only while no room is open.
+// A saved game's row only opens it; its page holds Continue (only when the
+// record has both teams' levels, and only while no room is open) and a
+// Replay per round.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,54 +47,49 @@ async function render(node: React.ReactNode) {
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
 
-const actions = (li: Element) =>
-  [...li.querySelectorAll<HTMLButtonElement>(".games-row-actions button")].map((b) => b.textContent);
-
 describe("a saved game's row", () => {
-  it("offers Continue then Replay, and hides Continue without both levels", async () => {
-    games = [row("g1"), row("old", { final_levels: null }), row("odd", { final_levels: ["5", "Z"] })];
+  it("is one tap target that opens the game: no Continue or Replay on it", async () => {
+    games = [row("g1"), row("old", { final_levels: null })];
     await render(<SavedGames onPlay={() => {}} />);
     const items = [...host.querySelectorAll(".games-day-item")];
-    expect(items.map(actions)).toEqual([["Continue", "Replay"], ["Replay"], ["Replay"]]);
-    expect(items[0].querySelector(".games-continue")?.classList.contains("gold")).toBe(true);
+    expect(items.map((li) => li.querySelectorAll("button").length)).toEqual([1, 1]);
+    expect(host.querySelector(".games-continue, .games-replay")).toBeNull();
+    act(() => items[0].querySelector<HTMLButtonElement>("button.games-day-row")!.click());
+    expect(window.location.hash).toBe("#/games/g1");
   });
+});
 
-  it("Continue asks for that game; Replay opens its first readable round", async () => {
+describe("a saved game's page", () => {
+  it("offers one gold Continue under the summary, and Replay only per round", async () => {
     games = [row("g1")];
-    await render(<SavedGames onPlay={() => {}} />);
-    act(() => host.querySelector<HTMLButtonElement>(".games-continue")!.click());
+    await render(<GamesList route={{ page: "game", id: "g1" }} />);
+    const btns = [...host.querySelectorAll<HTMLButtonElement>(".games-actions button")];
+    expect(btns.map((b) => b.textContent)).toEqual(["Continue"]);
+    expect(btns[0].classList.contains("gold")).toBe(true);
+    expect(host.querySelectorAll(".btn.gold")).toHaveLength(1);
+    act(() => btns[0].click());
     expect(continued).toEqual(["g1"]);
-    act(() => host.querySelector<HTMLButtonElement>(".games-replay")!.click());
+    const replays = [...host.querySelectorAll<HTMLButtonElement>(".games-round button")];
+    expect(replays.map((b) => b.textContent)).toEqual(["Replay", "Replay"]);
+    act(() => replays[0].click());
     expect(window.location.hash).toBe("#/games/g1/rounds/2");
   });
 
   it("Continue is disabled while a room is open", async () => {
     setContinueHandler((id) => continued.push(id), false);
     games = [row("g1")];
-    await render(<SavedGames onPlay={() => {}} />);
+    await render(<GamesList route={{ page: "game", id: "g1" }} />);
     const btn = host.querySelector<HTMLButtonElement>(".games-continue")!;
     expect(btn.disabled).toBe(true);
     act(() => btn.click());
     expect(continued).toEqual([]);
   });
-});
 
-describe("a saved game's page", () => {
-  it("offers Continue and Replay under the summary", async () => {
-    games = [row("g1")];
-    await render(<GamesList route={{ page: "game", id: "g1" }} />);
-    const btns = [...host.querySelectorAll<HTMLButtonElement>(".games-actions button")];
-    expect(btns.map((b) => b.textContent)).toEqual(["Continue", "Replay"]);
-    act(() => btns[0].click());
-    expect(continued).toEqual(["g1"]);
-    act(() => btns[1].click());
-    expect(window.location.hash).toBe("#/games/g1/rounds/2");
-  });
-
-  it("an old record without levels offers Replay alone", async () => {
-    games = [row("g1", { final_levels: null })];
-    await render(<GamesList route={{ page: "game", id: "g1" }} />);
-    expect([...host.querySelectorAll(".games-actions button")].map((b) => b.textContent)).toEqual(["Replay"]);
+  it("an old record without both levels offers no Continue", async () => {
+    games = [row("old", { final_levels: null }), row("odd", { final_levels: ["5", "Z"] })];
+    await render(<GamesList route={{ page: "game", id: "old" }} />);
+    expect(host.querySelector(".games-continue")).toBeNull();
+    expect(host.querySelectorAll(".games-round button")).toHaveLength(2);
   });
 });
 

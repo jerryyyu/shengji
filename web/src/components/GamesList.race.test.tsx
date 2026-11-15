@@ -12,7 +12,7 @@ import { cached, forgetHomeSession } from "../home/session";
 
 const game = (id: string, room: string) => ({
   id, room_code: room, started_at: Math.floor(Date.now() / 1000) - 60, ended_at: null, seat: 0,
-  players: ["Jerry", "Sam", "Mei", "Wen"], rounds: [1, 2], final_levels: ["4", "3"], games_won: [0, 0],
+  players: ["Jerry", "Sam", room, "Wen"], rounds: [1, 2], final_levels: ["4", "3"], games_won: [0, 0],
   incomplete: false,
 });
 const OLD = { games: [game("g-old", "OLD1")], next_before: null };
@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 const KEY = "user:j@x#0:games";
-const rooms = () => [...host.querySelectorAll(".games-row-title")].map((e) => e.textContent?.match(/^(\w+) ·/)?.[1]);
+const rooms = () => [...host.querySelectorAll(".games-row-title")].map((e) => e.textContent?.match(/^You & (\w+) vs/)?.[1]);
 type Cached = { status: string; games: { room_code: string }[] };
 
 async function mountThenPull(order: "fresh-first" | "old-first") {

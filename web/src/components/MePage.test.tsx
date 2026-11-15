@@ -106,7 +106,7 @@ describe("signed in", () => {
     expect(host.querySelector(".segmented-btn[aria-pressed=true]")?.textContent).toBe("Stats");
   });
 
-  it("merges stats and games: the Games segment lists the saved games by day with Replay", async () => {
+  it("merges stats and games: the Games segment lists the saved games by day, a row one tap", async () => {
     await render();
     const games = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "Games")!;
     act(() => games.click());
@@ -117,8 +117,8 @@ describe("signed in", () => {
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
     expect(host.querySelector(".grp-head")?.textContent).toBe("Today");
     const row = host.querySelector(".games-day-row")!;
-    expect(row.querySelector(".games-row-title")?.textContent).toBe("KQ4X · Sam, Mei, Wen");
-    expect(row.parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
+    expect(row.querySelector(".games-row-title")?.textContent).toBe("You & Mei vs Sam, Wen");
+    expect(row.parentElement!.querySelectorAll("button")).toHaveLength(1);
     expect(host.querySelector(".me-tile")).toBeNull();
   });
 
@@ -600,7 +600,7 @@ describe("pull to refresh", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
     expect(count("/api/me/games?")).toBe(2);
     expect(count("/api/me/stats")).toBe(2);
-    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("KQ4X · Sam, Mei, Wen");
+    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("You & Mei vs Sam, Wen");
   });
 });
 

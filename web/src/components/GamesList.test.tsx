@@ -80,7 +80,7 @@ const button = (label: string) =>
 const click = async (el: HTMLElement) => { act(() => el.click()); await settle(); };
 
 describe("the games list", () => {
-  it("renders rows from the API grouped by day, each naming the other three seats", async () => {
+  it("renders rows from the API grouped by day, each naming the teams, yours first", async () => {
     const day = (y: number, m: number, d: number, h: number) => new Date(y, m, d, h).getTime() / 1000;
     routes["GET /api/me/games?limit=20"] = { status: 200, body: {
       games: [row("g1", day(2026, 10, 8, 21)), row("g3", day(2026, 10, 8, 20)),
@@ -93,13 +93,13 @@ describe("the games list", () => {
     expect(days[0].querySelectorAll(".games-day-row")).toHaveLength(2);
     expect(days[1].querySelectorAll(".games-day-row")).toHaveLength(1);
     const rows = qa(".games-day-row");
-    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bot 1, Bea, Bot 3");
+    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("You & Bea vs Bot 1, Bot 3");
     expect(rows[0].textContent).toContain("3 rounds");
     expect(rows[0].textContent).toContain("Levels 5–3");
-    expect(rows[0].parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
+    expect(rows[0].parentElement!.querySelectorAll("button")).toHaveLength(1);
     expect(rows[0].querySelector(".games-tag")).toBeNull();
-    // seat 1: the others are seats 2, 3 and 0
-    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bea, Bot 3, Ana");
+    // seat 1: the partner is seat 3, the others seats 2 and 0
+    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("You & Bot 3 vs Bea, Ana");
     expect(rows[2].textContent).toContain("1 round");
     expect(rows[2].querySelector(".games-tag")?.textContent).toBe("incomplete");
     expect(button("Load more")).toBeUndefined();

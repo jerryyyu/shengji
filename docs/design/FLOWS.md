@@ -254,3 +254,8 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   seat?", Cancel / Take seat), Delete account ("Delete your account?", "Your rating and games are deleted.",
   Cancel / Delete; was an inline card) and removing a saved game ("Remove this game?", Cancel / Remove; was "Tap
   again to remove"). A link opened while you sit in a Duo asks with the panel's own Duo line.
+- **Saved games: one place for Continue and Replay.** A list row is one tap target that opens the game: the
+  teams ("You & Alice vs Bot Wei, Bot Li"; was the table code and the other three names), the time, rounds,
+  levels and today's rating change, then ›. The game's page holds the one gold Continue and a Replay for each
+  round; the game-level Replay is gone (it opened round 1, as round 1's Replay does). Replaying a round is
+  Me → Games → game → round.

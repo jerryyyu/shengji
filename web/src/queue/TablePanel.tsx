@@ -425,7 +425,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   // "still here?": any tap or key on the page answers it, as at a held seat
   useAnyTapIsBack(kind === "shared" && q.stillHereUntil !== null, () => queue.here());
   const seats = q.table?.seats ?? null;
-  const mover = useOpenerMove(seats, (from, to) => queue.tableMoveOther(from, to));
+  const mover = useOpenerMove(seats, (from, to, sit) => { if (sit) queue.tableMoveOther(from, to, sit); });
   const base = parts(q, kind, now, () => setAsking(true), mover.move);
   if (!base) return null;
   const casual = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere";
@@ -444,29 +444,32 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   return <PanelView p={p} kind={kind} guarded={guarded} sheet={sheet} />;
 }
 
-/** The opener's move of someone else, for a table's seats (`name` and a
- *  Duo's `pair` per seat, null for empty): the person tapped, then the
- *  seat, then one confirm, which `send`s it. A picked seat that empties or
- *  changes hands drops the pick. */
-function useOpenerMove(seats: ({ name: string; pair?: boolean } | null)[] | null,
-                       send: (from: number, to: number) => void) {
-  const [picked, setPicked] = useState<{ at: number; name: string } | null>(null);
-  const [ask, setAsk] = useState<{ from: number; to: number; names: string[] } | null>(null);
-  const still = picked !== null && seats?.[picked.at]?.name === picked.name;
+/** The opener's move of someone else, for a table's seats (`name`, the
+ *  sitting token `sit` where the server gives one, and a Duo's `pair` per
+ *  seat, null for empty): the person tapped, then the seat, then one
+ *  confirm, which `send`s it with the sitting picked. A picked seat that
+ *  empties or changes hands drops the pick and its confirm. */
+function useOpenerMove(seats: ({ name: string; sit?: string | null; pair?: boolean } | null)[] | null,
+                       send: (from: number, to: number, sit: string | null) => void) {
+  const [picked, setPicked] = useState<{ at: number; name: string; sit: string | null } | null>(null);
+  const [ask, setAsk] = useState<{ from: number; to: number; names: string[]; sit: string | null } | null>(null);
+  const now = picked !== null ? seats?.[picked.at] : null;
+  const still = !!now && now.name === picked!.name && (now.sit ?? null) === picked!.sit;
   useEffect(() => { if (picked && !still) { setPicked(null); setAsk(null); } }, [picked, still]);
   const move: OpenerMove = {
     picked: still ? picked!.at : null,
-    pick: (at) => setPicked((was) => (was?.at === at || !seats?.[at] ? null : { at, name: seats[at]!.name })),
+    pick: (at) => setPicked((was) => (was?.at === at || !seats?.[at] ? null
+                                      : { at, name: seats[at]!.name, sit: seats[at]!.sit ?? null })),
     to: (to) => {
       if (!picked || !seats) return;
       const s = seats[picked.at];
       const mate = s?.pair ? seats[(picked.at + 2) % 4] : null;
-      setAsk({ from: picked.at, to, names: [picked.name, ...(mate ? [mate.name] : [])] });
+      setAsk({ from: picked.at, to, names: [picked.name, ...(mate ? [mate.name] : [])], sit: picked.sit });
     },
   };
   const sheet = ask ? (
     <MoveConfirm names={ask.names}
-                 onMove={() => { send(ask.from, ask.to); setAsk(null); setPicked(null); }}
+                 onMove={() => { send(ask.from, ask.to, ask.sit); setAsk(null); setPicked(null); }}
                  onCancel={() => setAsk(null)} />
   ) : null;
   return { move, sheet };

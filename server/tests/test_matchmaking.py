@@ -4670,6 +4670,45 @@ def test_a_table_duo_member_takes_back_its_own_tap_and_a_pair_partner_cannot_for
 
 
 # --------------------------------------- the opener moves other people
+async def _opener_move(env, uid, src, seat, who=...):
+    """The opener's confirmed move of whoever sits at ``src``: the frame
+    carries that sitting's token, as the panel sends it."""
+    if who is ...:
+        (t,) = env.mm.tables.values()
+        occ = t.seats[src] if isinstance(src, int) and not isinstance(src, bool) and 0 <= src < 4 else None
+        who = t.sit_ids.get(occ)
+    await env.send(uid, "table_move", seat=seat, who=who, **{"from": src})
+
+
+def test_a_delayed_opener_move_never_lands_on_whoever_sat_after():
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 3, 2, None]
+        assert env.conns[1].last("queue_state")["table"]["seats"][2]["sit"] == t.sit_ids[2]
+        # the opener confirms moving player 2; the frame is delayed in transit
+        delayed = {"type": "table_move", "from": 2, "seat": 3, "who": t.sit_ids[2]}
+        await env.send(2, "queue_leave")
+        await env.join(4)
+        assert t.seats == [1, 3, 4, None]
+        await env.mm.handle(env.conns[1], delayed, 1)
+        assert t.seats == [1, 3, 4, None]
+        assert env.conns[1].last("error")["code"] == "seat_changed"
+        # a move without the token, or with a stale one, is refused the same way
+        for who in (None, "stale", 7):
+            await _opener_move(env, 1, 2, 3, who=who)
+            assert env.conns[1].last("error")["code"] == "seat_changed" and t.seats == [1, 3, 4, None]
+        # a fresh sitting gets a fresh token; the person who sat after moves on their own
+        await _opener_move(env, 1, 2, 3)
+        assert t.seats == [1, 3, None, 4]
+        # a move keeps the sitting: the same token still names the moved person
+        await _opener_move(env, 1, 3, 2)
+        assert t.seats == [1, 3, 4, None]
+    run(go())
+
+
 def test_the_opener_moves_another_single_to_an_empty_seat_and_the_moved_one_is_told():
     async def go():
         env = Env()
@@ -4678,7 +4717,7 @@ def test_the_opener_moves_another_single_to_an_empty_seat_and_the_moved_one_is_t
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 3, 2, None]
         await env.send(2, "table_start")
-        await env.send(1, "table_move", seat=3, **{"from": 2})
+        await _opener_move(env, 1, 2, 3)
         assert t.seats == [1, 3, None, 2]
         assert env.conns[2].last("table_moved") == {
             "type": "table_moved", "name": "P2", "seat": 3, "your_team": True,
@@ -4690,18 +4729,18 @@ def test_the_opener_moves_another_single_to_an_empty_seat_and_the_moved_one_is_t
         assert env.mm._entry(2).id not in t.ready
         assert env.conns[2].last("queue_state")["table"]["you"] == 3
         # only the opener moves others, and only into an empty seat
-        await env.send(3, "table_move", seat=2, **{"from": 0})
+        await _opener_move(env, 3, 0, 2)
         assert env.conns[3].last("error")["code"] == "not_opener"
-        await env.send(1, "table_move", seat=1, **{"from": 3})
+        await _opener_move(env, 1, 3, 1)
         assert env.conns[1].last("error")["code"] == "seat_taken"
         for bad in (None, 2, 7, True):                # nobody there, or not a seat
             if bad is None:
                 continue
-            await env.send(1, "table_move", seat=2, **{"from": bad})
+            await _opener_move(env, 1, bad, 2)
             assert env.conns[1].last("error")["code"] == "bad_seat"
         assert t.seats == [1, 3, None, 2]
         # the opener's own seat in ``from`` is its own move
-        await env.send(1, "table_move", seat=2, **{"from": 0})
+        await _opener_move(env, 1, 0, 2)
         assert t.seats == [None, 3, 1, 2]
     run(go())
 
@@ -4717,7 +4756,7 @@ def test_the_opener_never_splits_a_duo_nor_moves_anyone_into_a_held_seat():
         # a pair moves only as one, to a whole free team: the opener's team
         # has the opener on it, and the pair's own seats are never split
         for src, seat in ((1, 2), (3, 2)):
-            await env.send(1, "table_move", seat=seat, **{"from": src})
+            await _opener_move(env, 1, src, seat)
             assert env.conns[1].last("error")["code"] == "seat_taken"
         assert t.seats == [1, 2, None, 3]
         assert env.conns[2].last("table_moved") is None
@@ -4729,9 +4768,9 @@ def test_the_opener_never_splits_a_duo_nor_moves_anyone_into_a_held_seat():
         await env.send(1, "queue_join", code=env.mm._entry(2).code)
         (t,) = env.mm.tables.values()
         assert t.entries[0] is env.mm._entry(2) and t.seats == [2, 1, 3, None]
-        await env.send(3, "table_move", seat=3, **{"from": 1})   # the partner is not the leader
+        await _opener_move(env, 3, 1, 3)   # the partner is not the leader
         assert env.conns[3].last("error")["code"] == "not_opener"
-        await env.send(2, "table_move", seat=3, **{"from": 1})
+        await _opener_move(env, 2, 1, 3)
         assert t.seats == [2, None, 3, 1]
         moved = env.conns[1].last("table_moved")
         assert moved["you"] is True and moved["team_changed"] is False and moved["by"] == "P2"
@@ -4741,7 +4780,7 @@ def test_the_opener_never_splits_a_duo_nor_moves_anyone_into_a_held_seat():
         await _duo_table(env, 1, strangers=(2, 3))
         (t,) = env.mm.tables.values()
         assert t.held_seat() == 2 and t.seats == [1, 2, None, 3]
-        await env.send(1, "table_move", seat=2, **{"from": 1})
+        await _opener_move(env, 1, 1, 2)
         assert env.conns[1].last("error")["code"] == "seat_taken" and t.seats[2] is None
     run(go())
 

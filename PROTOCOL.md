@@ -276,7 +276,7 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `queue_leave` | — | leave the queue (leader only for a pair); at a waiting table this frees your seat |
 | `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready until you take it back; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
 | `table_unready` | — | take back your Start before the table starts (the same who as `table_start`: a pair's leader for the pair, a table Duo's member its own tap, alone too); `not_seated` alone outside a Duo, `not_leader` for a pair's partner; nothing to take back is no change |
-| `table_move` | `seat`, optional `from` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`); it takes back the moved entry's Start. 20 per account per minute |
+| `table_move` | `seat`, optional `from` and `who` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, and `who`, that seat's `sit` token as the opener confirmed it, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's, `seat_changed` when `who` is missing or no longer that seat's sitting, so a delayed move never lands on whoever sat after): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`); it takes back the moved entry's Start. 20 per account per minute |
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
 | `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
 | `queue_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` (what an older client's bar button sends) |
@@ -301,7 +301,7 @@ not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
 joined, see "Open tables"), `no_offer`, `bad_seat`, `seat_taken` (another
 newcomer confirmed that seat first; the offer is re-sent without it, or the
 seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
-`already_ready`, `panel_changed` (a fresh `queue_state` follows),
+`already_ready`, `seat_changed` (an opener's `table_move` named a sitting that has left that seat; a fresh `queue_state` follows), `panel_changed` (a fresh `queue_state` follows),
 `table_not_found` (no queued table has that `code`), `own_table`,
 `table_full`, `same_device` (a device of yours already sits at that table),
 `not_opener`, `ranked_level_fixed`, `bad_start_level`, `bad_setting`. A signed-in
@@ -330,7 +330,7 @@ other socket with `account_in_game`.
   empty seats held for a Duo opener's friend, at most one, and `held_seat`
   that seat, else null). `seats` has
   four items in seat order (team 0 at seats 0+2), `null` for an empty seat (a
-  bot plays it), else `{name, you, ready, reconnecting, since, pair, leader}`;
+  bot plays it), else `{name, you, ready, reconnecting, since, sit, pair, leader}` (`sit`: an opaque token, fresh each time someone sits down and kept through moves);
   `you` is your seat; `timer` is `{at, name, you}` (the earliest `bots_at`
   among the table's switch-off entries, named by that entry's leader) or null
   when every switch is on; `ready`/`of` count people; `waiting_for` names the

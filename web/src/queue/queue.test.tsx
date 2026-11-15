@@ -113,9 +113,10 @@ function queued(over: Record<string, unknown> = {}) {
            leader: true, bots_at: since + 60, ...over };
 }
 type Seat = { name: string; you?: boolean; ready?: boolean; reconnecting?: boolean; since?: number;
-              pair?: boolean; leader?: boolean } | null;
+              sit?: string; pair?: boolean; leader?: boolean } | null;
 const seat = (name: string, over: Partial<NonNullable<Seat>> = {}): Seat => ({
-  name, you: false, ready: false, reconnecting: false, since: nowSecs() - 30, pair: false, leader: true, ...over,
+  name, you: false, ready: false, reconnecting: false, since: nowSecs() - 30, sit: `sit-${name}`, pair: false,
+  leader: true, ...over,
 });
 /** A queue_state at a waiting table (you at seat 0 unless `you` says). */
 function atTable(seats: Seat[], table: Record<string, unknown> = {}, over: Record<string, unknown> = {}) {
@@ -2321,7 +2322,7 @@ describe("deferred mock items: take back a Start, the opener moves people", () =
     expect(lastSent()).toBe(before);
     click(panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open"));
     click(button("Move", q("[role='alertdialog']")!));
-    expect(lastSent()).toEqual({ type: "table_move", seat: 3, from: 1 });
+    expect(lastSent()).toEqual({ type: "table_move", seat: 3, from: 1, who: "sit-Alice" });
     expect(q("[role='alertdialog']")).toBeNull();
     // a second tap on the picked person drops the pick
     click(alice());
@@ -2331,6 +2332,28 @@ describe("deferred mock items: take back a Start, the opener moves people", () =
     say(atTable([seat("Jerry"), seat("Alice", { you: true }), seat("Li"), null], { you: 1 }, { opener: false }));
     expect([...panel()!.querySelectorAll("button.tp-seat")].map((b) => b.getAttribute("aria-label")))
       .toEqual(["Open seat, your team. Move here"]);
+  });
+
+  it("a new sitting in the picked seat drops the pick and its confirm, even under the same name", async () => {
+    await renderApp();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null]));
+    await pastGuard();
+    const alice = () => [...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat")]
+      .find((b) => b.getAttribute("aria-label")?.startsWith("Alice"))!;
+    click(alice());
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open"));
+    expect(q("[role='alertdialog']")).not.toBeNull();
+    const before = lastSent();
+    // Alice left and another "Alice" sat down before Move was tapped
+    say(atTable([seat("Jerry", { you: true }), seat("Alice", { sit: "sit-Alice-2" }), seat("Li"), null]));
+    expect(q("[role='alertdialog']")).toBeNull();
+    expect(alice().getAttribute("aria-pressed")).toBe("false");
+    expect(lastSent()).toBe(before);
+    // a fresh pick sends the new sitting
+    click(alice());
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open"));
+    click(button("Move", q("[role='alertdialog']")!));
+    expect(lastSent()).toEqual({ type: "table_move", seat: 3, from: 1, who: "sit-Alice-2" });
   });
 
   it("a held seat is never a destination and a Duo goes only to a whole free team", async () => {

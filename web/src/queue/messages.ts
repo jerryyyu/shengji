@@ -38,7 +38,7 @@ export type QueueClientMsg = { name?: string } & (
   /** Move yourself to an empty seat at your waiting table (singles only,
    *  before your Start). With `from`, another person's seat, the opener
    *  moves that person instead: a pair as one, never into a held seat. */
-  | { type: "table_move"; seat: number; from?: number }
+  | { type: "table_move"; seat: number; from?: number; who?: string }
   /** Answer the "still here?" prompt (`still_here_until`). */
   | { type: "table_here" }
   /** A chat line to everyone at your waiting table (<=300 chars, trimmed;
@@ -161,6 +161,9 @@ export interface TableSeatMsg {
   reconnecting: boolean;
   /** When this person sat down. */
   since: number | null;
+  /** This sitting's opaque token, fresh each time someone sits; an
+   *  opener's `table_move` names it as `who`. */
+  sit?: string | null;
   pair: boolean;
   leader: boolean;
 }

@@ -33,9 +33,10 @@ Seating (``seat_waiting``, on every join and every ``tick``):
    across from two singles. Nobody is re-seated while waiting except by
    their own move (``table_move``: a single, before its Start, to an empty
    seat; the others hear ``table_moved``) or the opener's (``table_move``
-   with ``from``: anyone else to an empty seat, a pair as one to the other
-   team, never into a held seat, which takes the moved entry's Start
-   back), and a leaver's seat is simply free again.
+   with ``from`` and ``who``, the sitting token it confirmed: anyone else to
+   an empty seat, a pair as one to the other team, never into a held seat,
+   which takes the moved entry's Start back; a seat whose sitting changed
+   is refused), and a leaver's seat is simply free again.
 
 A table starts (``tick``, and at once after the event that makes it due):
 
@@ -390,6 +391,9 @@ class Table:
     entries: list[Entry] = field(default_factory=list)   # arrival order
     ready: set[str] = field(default_factory=set)          # entry ids that tapped Start
     seated_at: dict[int, float] = field(default_factory=dict)
+    # An opaque token per sitting, fresh each time someone sits down: an
+    # opener's move names it, so a move never lands on whoever sat after.
+    sit_ids: dict[int, str] = field(default_factory=dict)
     mode: str = "ranked"
     # ``table_chat`` lines, the last CHAT_KEEP: in memory only, never in a
     # log, and the room's first scrollback when the table starts.
@@ -784,7 +788,7 @@ class Matchmaker:
             e = by_user[u]
             seats.append({"name": self._name(u), "you": u == uid,
                           "ready": self._tapped(t, e, u), "reconnecting": self._live(u) is None,
-                          "since": t.seated_at.get(u), "pair": e.size == 2,
+                          "since": t.seated_at.get(u), "sit": t.sit_ids.get(u), "pair": e.size == 2,
                           "leader": e.leader == u})
         timer = t.timer()
         opener = t.entries[0]
@@ -946,6 +950,7 @@ class Matchmaker:
             if u in e.members:
                 t.seats[s] = None
                 t.seated_at.pop(u, None)
+                t.sit_ids.pop(u, None)
         left = list(t.entries)
         if self.entry_codes.get(t.code) == e.id:
             # the table's code outlives its opener's seat
@@ -1360,6 +1365,7 @@ class Matchmaker:
         if t is not None and held is not None:
             t.seats[held] = uid
             t.seated_at[uid] = now
+            t.sit_ids[uid] = secrets.token_hex(6)
             self._send_table(t)
             self._send_chat_history(t, [uid])
         else:
@@ -1385,6 +1391,7 @@ class Matchmaker:
                 if u == uid:
                     t.seats[s] = None
             t.seated_at.pop(uid, None)
+            t.sit_ids.pop(uid, None)
             t.ready.discard(e.id)
         e.members = [stay]
         e.taps.clear()
@@ -1629,7 +1636,7 @@ class Matchmaker:
             raise QueueError("bad_seat", "Pick one of the open seats.")
         src = msg.get("from")
         if src is not None and src != t.seats.index(uid):
-            self._move_other(e, uid, t, src, seat)
+            self._move_other(e, uid, t, src, seat, msg.get("who"))
             return
         if e.size != 1 or e.hold:
             raise QueueError("pair_seats_fixed", "A Duo's seats stay together.")
@@ -1646,19 +1653,23 @@ class Matchmaker:
         self._send_table(t)
         self._tell_moved(t, e, uid, seat)
 
-    def _move_other(self, e: Entry, uid: int, t: Table, src: Any, seat: int) -> None:
+    def _move_other(self, e: Entry, uid: int, t: Table, src: Any, seat: int, sit: Any) -> None:
         """The opener's leader moves the person at ``src`` to the empty
         ``seat``. A single takes that seat; a pair moves as one to the two
         seats of ``seat``'s team, the person tapped into ``seat``, and is
         never split. A held seat is never free. The moved entry's Start is
         taken back (it agreed to the old seat), and its members are told who
-        moved them."""
+        moved them. ``sit`` is the sitting token the opener confirmed: a
+        seat whose sitting changed since is refused, never moved."""
         if self._opener(e) is not e or e.leader != uid:
             raise QueueError("not_opener", "Only the table's opener moves other people.")
         if (isinstance(src, bool) or not isinstance(src, int) or not 0 <= src < 4
                 or t.seats[src] is None or t.seats[src] in e.members):
             raise QueueError("bad_seat", "Pick someone at the table.")
         who = t.seats[src]
+        if not isinstance(sit, str) or t.sit_ids.get(who) != sit:
+            self._send_state(e)
+            raise QueueError("seat_changed", "That seat changed hands. Pick again.")
         o = next(x for x in t.entries if who in x.members)
         if o.size == 1:
             moves = {src: seat}
@@ -1844,6 +1855,7 @@ class Matchmaker:
         for s, u in zip(places, e.members):
             t.seats[s] = u
             t.seated_at[u] = now
+            t.sit_ids[u] = secrets.token_hex(6)
         t.entries.append(e)
         e.table_id, e.active_at, e.prompted = t.id, now, False
         if self._table_duo(e) and set(e.members) <= e.taps:

@@ -69,9 +69,6 @@ export default function App() {
   const [linkDropped, setLinkDropped] = useState(0);
   // Leave was tapped: the question goes, and the link waits for the seat to go.
   const [linkLeaving, setLinkLeaving] = useState(false);
-  // Single-player orchestration: when armed (via Lobby's "Play vs bots"),
-  // each lobby `room` message advances the fill-with-bots-then-start chain.
-  const autoFill = useRef(false);
   // Whether the announcer has been seeded with a first game state.
   const seededRef = useRef(false);
   // True from an automatic resume of the saved room until the server answers it.
@@ -149,17 +146,6 @@ export default function App() {
           // ended) — drop it so we route to the Room screen.
           resetToLobby({ keepRoom: true });
           saveRoom(msg.room);
-          // Auto-fill chain: one send per room broadcast, host only, so
-          // there is never a double-send. Each add_bot triggers the next
-          // room message; at 4 players start once and disarm.
-          if (autoFill.current && msg.you === msg.host) {
-            if (msg.players.length < 4) {
-              conn.send({ type: "add_bot" });
-            } else {
-              autoFill.current = false;
-              conn.send({ type: "start_game" });
-            }
-          }
           break;
         case "state":
           resumingRef.current = false;
@@ -170,7 +156,6 @@ export default function App() {
         case "error":
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
-          autoFill.current = false; // abort single-player orchestration
           if (msg.code === "not_in_party") {
             // a pair the server no longer holds: the queue store drops the chip
             break;
@@ -220,10 +205,7 @@ export default function App() {
           break;
         case "left":
           // Intentional exit confirmed: forget the room (name kept) so
-          // reconnects don't auto-rejoin, and route back to the lobby. A
-          // fill-with-bots chain armed for a room not yet made ends here too:
-          // the next room this socket hears of is not the one it was armed for.
-          autoFill.current = false;
+          // reconnects don't auto-rejoin, and route back to the lobby.
           resetToLobby();
           if (msg.reason === "removed") {
             openTab("play");
@@ -289,12 +271,11 @@ export default function App() {
     room !== null && game === null && !gamesRoute && !howtoRoute && !infoRoute && !homeRoute;
   useRoomBack(roomShowing, askRoomLeave);
   // Continue on a saved game: a new room with bots in the other seats, which
-  // the auto-fill chain then starts (the server already filled it). Only
-  // from outside a room, so no game in progress is left by a tap.
+  // the server starts at once. Only from outside a room, so no game in
+  // progress is left by a tap.
   useEffect(() => {
     setContinueHandler((gameId) => {
-      autoFill.current = true;
-      conn.send({ type: "create_room", name: getSavedName(), resume_from: gameId });
+      conn.send({ type: "create_room", name: getSavedName(), resume_from: gameId, start: true });
       openTab("play");
     }, status === "open" && !inRoom && !offline);
     return () => setContinueHandler(null, false);
@@ -330,8 +311,7 @@ export default function App() {
     screen = (
       <HomeShell active="play">
         <Lobby status={status} room={room} holdInvite={linkPrompt !== null}
-               onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped}
-               onArmAutoFill={() => { autoFill.current = true; }} />
+               onSeatedInvite={setLinkPrompt} inviteDropped={linkDropped} />
       </HomeShell>
     );
   }

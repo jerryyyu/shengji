@@ -57,17 +57,15 @@ interface OfflineControlsProps {
    *  socket to the on-device server with the table open. */
   local: boolean;
   status: ConnStatus;
-  /** The room Start made, while bots fill it and the deal starts. */
+  /** The room Start made, until its deal starts. */
   room?: string | null;
-  /** Arm App's fill-with-bots-then-start chain before creating the room. */
-  onArmAutoFill?: () => void;
 }
 
 /** The Play tab's controls with no connection, between the name chip and How
  *  to play: the mode switch, then Play, Duo, the presence line and the code
  *  box, or the offline table in their place. The online Play tab shows these
  *  in place of its own, so what surrounds them stays mounted. */
-export function OfflineControls({ local, status, room = null, onArmAutoFill }: OfflineControlsProps) {
+export function OfflineControls({ local, status, room = null }: OfflineControlsProps) {
   const showTable = useOfflineTable(local);
   // an error frees Start; the toast says it
   const error = useToast()?.text ?? null;
@@ -105,7 +103,7 @@ export function OfflineControls({ local, status, room = null, onArmAutoFill }: O
   const leave = () => {
     if (room) conn.send({ type: "leave_room" });
     // a Start whose room has not come back yet: the leave waits for that
-    // room on the socket, and App's bot fill for it ends at once
+    // room on the socket
     else if (sent) conn.leaveToLobby();
     setSent(false);
     offlineGame.played = false;
@@ -117,8 +115,7 @@ export function OfflineControls({ local, status, room = null, onArmAutoFill }: O
     setSent(true);
     offlineGame.played = true;
     clearSavedRoom();
-    onArmAutoFill?.();
-    conn.send({ type: "create_room", name: (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player" });
+    conn.send({ type: "create_room", name: (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player", start: true });
   };
 
   return (

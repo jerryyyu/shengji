@@ -10,12 +10,13 @@ describe("W32 create-room opt-in payload", () => {
     });
   });
 
-  it("includes only the constrained W32 fields when enabled", () => {
+  it("includes only the constrained W32 fields when enabled, starting at once", () => {
     expect(createRoomPayload("Jerry", true, "secret")).toEqual({
       type: "create_room",
       name: "Jerry",
       test_policy: "w32",
       test_access_key: "secret",
+      start: true,
     });
   });
 
@@ -57,6 +58,7 @@ describe("starting level opt-in payload", () => {
       start_level: "K",
       test_policy: "w32",
       test_access_key: "secret",
+      start: true,
     });
   });
 

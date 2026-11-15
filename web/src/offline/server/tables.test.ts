@@ -175,7 +175,7 @@ const SENDABLE = {
   code_lookup: "codes name the game server's rooms and tables",
   client_event: "telemetry, collected by the game server",
   queue_status: QUEUE, queue_join: QUEUE, table_here: QUEUE, queue_wait_players: QUEUE,
-  queue_allow_bots: QUEUE, party_create: QUEUE, party_join: QUEUE, party_leave: QUEUE,
+  queue_allow_bots: QUEUE, party_leave: QUEUE,
   open_table_join: QUEUE, open_table_wait: QUEUE, open_table_show: QUEUE,
 } satisfies Record<Sendable, string>;
 

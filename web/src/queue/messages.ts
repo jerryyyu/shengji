@@ -59,8 +59,6 @@ export type QueueClientMsg = { name?: string } & (
   | { type: "table_start_level"; start_level: string }
   | { type: "queue_wait_players" }
   | { type: "queue_allow_bots" }
-  | { type: "party_create" }
-  | { type: "party_join"; code: string }
   | { type: "party_leave" }
   /** Take this seat at the offered open table; the first confirm wins. */
   | { type: "open_table_join"; room: string; seat: number; panel_seq?: number }

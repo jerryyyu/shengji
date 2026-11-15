@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import secrets
 
 import pytest
 
@@ -106,10 +107,20 @@ class Env:
     async def pair(self, leader, partner, r1=1000.0, r2=1000.0):
         self.player(leader, r1)
         self.player(partner, r2)
-        await self.send(leader, "party_create")
-        code = self.conns[leader].last("party")["code"]
-        await self.send(partner, "party_join", code=code)
-        return self.mm._party(leader)
+        return lobby_duo(self.mm, leader, partner)
+
+
+def lobby_duo(m, leader, partner):
+    """A Duo in the lobby and not queued, as one is back from its game
+    (``test_a_duo_back_from_its_game_queues_again_by_its_party_id`` walks
+    there): the leader's ``queue_join {party_id}`` queues the two."""
+    p = mm.Party(id=secrets.token_hex(6), leader=leader, members=[leader, partner],
+                 names={u: m._name(u) for u in (leader, partner)}, idle_since=m.clock())
+    m.parties[p.id] = p
+    for u in p.members:
+        m.party_of[u] = p.id
+    m._send_party(p)
+    return p
 
 def run(coro):
     return asyncio.run(coro)
@@ -433,8 +444,8 @@ def test_the_ready_check_is_gone():
     async def go():
         env = Env()
         await env.join(1)
-        await env.send(1, "match_accept", match_id="x")
-        assert env.conns[1].last("error")["code"] == "no_match"
+        # its answers are retired names the server refuses before the queue
+        assert {"match_accept", "match_decline"}.isdisjoint(mm.QUEUE_MESSAGES)
         await env.send(1, "table_start")
         assert env.conns[1].last("error")["code"] == "not_seated"
     run(go())
@@ -450,24 +461,6 @@ def test_an_older_clients_play_bots_at_a_table_is_its_start():
         await env.send(2, "queue_start_bots")
         (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, None, 2, None]
-    run(go())
-
-
-def test_the_pair_leader_starts_for_the_pair_and_the_partner_cannot():
-    async def go():
-        env = Env()
-        await env.join(1)
-        await env.pair(2, 3)
-        await env.send(2, "queue_join")
-        for kind in ("table_start", "queue_leave", "queue_wait_players"):
-            await env.send(3, kind)
-            assert env.conns[3].last("error")["code"] == "not_leader"
-        await env.send(2, "table_start")
-        table = env.conns[1].last("queue_state")["table"]
-        assert table["ready"] == 2 and table["of"] == 3 and table["waiting_for"] == []
-        await env.send(1, "table_start")
-        (_, slots), = env.started
-        assert [s.user_id for s in slots] == [1, 2, None, 3]
     run(go())
 
 
@@ -697,35 +690,21 @@ def test_a_pair_is_one_entry_at_its_average_rating():
     run(go())
 
 
-def test_only_the_leader_queues_or_cancels():
+def test_only_the_leader_queues_and_either_member_leaves():
     async def go():
         env = Env()
         await env.pair(1, 2)
         await env.send(2, "queue_join")
         assert env.conns[2].last("error")["code"] == "not_leader"
         await env.send(1, "queue_join")
-        await env.send(2, "queue_leave")
+        await env.send(2, "queue_wait_players")
         assert env.conns[2].last("error")["code"] == "not_leader"
-        assert env.mm._entry(1) is not None
-        await env.send(2, "party_leave")        # either member may leave
-        assert env.mm._entry(1) is None and env.mm._party(1) is None
+        await env.send(2, "party_leave")        # either member may leave; the other stays
+        e = env.mm._entry(1)
+        assert e is not None and e.members == [1] and env.mm._entry(2) is None
+        assert env.mm._party(1) is None
         closed = env.conns[1].last("party_closed")
         assert closed["by"] == "P2" and closed["you"] is False
-    run(go())
-
-
-def test_a_pair_leaving_its_party_frees_both_seats():
-    async def go():
-        env = Env()
-        await env.join(1)
-        await env.pair(2, 3)
-        await env.send(2, "queue_join")
-        (t,) = env.mm.tables.values()
-        assert t.seats == [1, 2, None, 3]
-        await env.send(3, "party_leave")
-        assert t.seats == [1, None, None, None] and env.mm.tables == {}
-        assert env.mm._entry(2) is None and env.mm._entry(3) is None
-        assert env.conns[1].last("queue_state")["table"] is None
     run(go())
 
 
@@ -745,21 +724,34 @@ def test_parties_expire_after_five_minutes_unless_queued():
     run(go())
 
 
-def test_party_join_rules():
+def test_a_queue_join_by_another_duos_party_id_is_refused():
     async def go():
         env = Env()
         await env.pair(1, 2)
-        code = env.mm._party(1).code
-        env.player(3)
-        await env.send(3, "party_join", code=code)
-        assert env.conns[3].last("error")["code"] == "party_full"
-        await env.send(3, "party_join", code="0000")
-        assert env.conns[3].last("error")["code"] == "party_not_found"
-        await env.send(3, "party_invite")             # the code is the invite
-        assert env.conns[3].last("party")["code"] != code
         env.player(5)
-        await env.send(5, "queue_join", party_id=env.mm._party(3).id)
+        await env.send(5, "queue_join", party_id=env.mm._party(1).id)
         assert env.conns[5].last("error")["code"] == "bad_party"
+        assert env.mm._entry(5) is None
+    run(go())
+
+
+def test_a_duo_back_from_its_game_queues_again_by_its_party_id():
+    async def go():
+        env = Env()
+        await env.join(1, duo=True)
+        await env.join(2, code=env.mm._entry(1).code)
+        p = env.mm._party(1)
+        await env.send(1, "queue_start_bots")
+        (_, slots), = env.started
+        assert [s.user_id for s in slots] == [1, None, 2, None]
+        for u in (1, 2):
+            env.mm.return_to_lobby(env.conns[u])
+        # the Duo outlives its game, not queued: the state ``Env.pair`` makes
+        assert env.mm.parties == {p.id: p} and p.members == [1, 2]
+        assert env.mm.entries == {}
+        await env.send(1, "queue_join", party_id=p.id)
+        e = env.mm._entry(1)
+        assert e is env.mm._entry(2) and e.members == [1, 2] and e.party_id == p.id
     run(go())
 
 
@@ -822,31 +814,11 @@ def test_leave_queue_on_another_device_tells_the_holder_it_was_stopped_there():
     run(go())
 
 
-def test_a_guest_who_enters_its_own_duo_code_is_told_a_duo_needs_two_devices():
-    async def go():
-        env = Env()
-        env.player(-7, name="G")
-        await env.send(-7, "party_create")
-        code = env.conns[-7].last("party")["code"]
-        other_tab = FakeConn(-7, "G")
-        env.mm.connect(other_tab)
-        await env.send(-7, "party_join", conn=other_tab, code=code)
-        err = other_tab.last("error")
-        assert err["code"] == "same_device" and err["message"] == "A Duo needs two devices."
-        assert len(env.mm._party(-7).members) == 1
-    run(go())
-
-
 def test_duo_messages_say_duo_never_party_or_pair():
     async def go():
         env = Env()
         await env.pair(1, 2)
-        code = env.mm._party(1).code
         env.player(3)
-        await env.send(3, "party_join", code=code)
-        assert env.conns[3].last("error")["message"] == "That Duo is full."
-        await env.send(3, "party_join", code="ZZZZ")
-        assert env.conns[3].last("error")["message"] == "No Duo has that code."
         await env.send(3, "party_leave")
         assert env.conns[3].last("error")["message"] == "You are not in a Duo."
         await env.send(2, "queue_join")
@@ -863,7 +835,7 @@ def test_guests_are_refused():
         env = Env()
         guest = FakeConn(None, "")
         env.mm.connect(guest)
-        for kind in ("queue_join", "party_create", "queue_start_bots", "queue_wait_players",
+        for kind in ("queue_join", "party_leave", "queue_start_bots", "queue_wait_players",
                      "table_start"):
             await env.mm.handle(guest, {"type": kind}, None)
         assert [m["code"] for m in guest.of("error")] == ["signed_in_only"] * 5
@@ -888,23 +860,19 @@ def test_one_entry_per_account_and_a_second_socket_takes_it_over():
     run(go())
 
 
-def test_queue_count_is_debounced_to_one_broadcast_per_second():
+def test_the_lobby_hears_the_queues_size_as_presence_waiting_only():
     async def go():
         env = Env()
         watcher = FakeConn(None, "")
         env.mm.connect(watcher)
         for uid in (1, 2, 3):
             await env.join(uid)
-        assert [m["count"] for m in watcher.of("queue_count")] == [1]
-        env.clock.advance(0.5)
         await env.mm.pump()
-        assert len(watcher.of("queue_count")) == 1
-        env.clock.advance(0.5)
-        await env.mm.pump()
-        assert [m["count"] for m in watcher.of("queue_count")] == [1, 3]
+        assert watcher.last("presence")["waiting"] == 3
         late = FakeConn(None, "")
         env.mm.connect(late)
-        assert late.last("queue_count")["count"] == 3
+        assert late.last("presence")["waiting"] == 3
+        assert {m["type"] for m in watcher.sent + late.sent} == {"presence"}
     run(go())
 
 
@@ -918,7 +886,7 @@ def test_queue_join_and_party_messages_are_rate_limited():
         await env.send(1, "queue_join")
         assert env.conns[1].last("error")["code"] == "rate_limited"
         for _ in range(mm.PARTY_LIMIT[0]):
-            await env.send(1, "party_create")
+            await env.send(1, "party_leave")
         await env.send(1, "party_leave")
         assert env.conns[1].last("error")["code"] == "rate_limited"
     run(go())
@@ -1199,18 +1167,23 @@ def test_ws_start_bots_solo_starts_a_rated_game(wsenv):
         assert room.ratings.present == {0: uid}
 
 
+def _ws_duo(a, b):
+    """A Duo made at ``a``'s table, ``b`` joining by its code."""
+    a.send_json({"type": "queue_join", "duo": True})
+    code = _drain(a, "queue_state")["code"]
+    b.send_json({"type": "table_join", "code": code})
+    party = _drain(b, "party")
+    assert len(party["members"]) == 2
+    return party
+
+
 def test_ws_pair_start_bots_seats_both_partners(wsenv):
     srv, store, client, clock = wsenv
     u1, h1 = _user(store, "lead", "Lead")
     u2, h2 = _user(store, "mate", "Mate")
     with client.websocket_connect("/ws", headers=h1) as a, \
             client.websocket_connect("/ws", headers=h2) as b:
-        a.send_json({"type": "party_create"})
-        party = _drain(a, "party")
-        b.send_json({"type": "party_join", "code": party["code"]})
-        assert len(_drain(b, "party")["members"]) == 2
-        a.send_json({"type": "queue_join", "party_id": party["party_id"]})
-        _drain(b, "queue_state")
+        _ws_duo(a, b)
         a.send_json({"type": "table_start_bots"})
         code = _drain(b, "match_started", tries=40)["room"]
         _drain(b, "state", tries=80)
@@ -1303,22 +1276,22 @@ def test_new_code_draws_again_past_any_taken_code():
     assert code == "JKLM"
 
 
-def test_a_pair_code_never_repeats_a_live_room_code(monkeypatch):
+def test_a_table_code_never_repeats_a_live_room_code(monkeypatch):
     async def go():
         env = Env()
         env.mm.room_live = {"WXYZ"}.__contains__
         monkeypatch.setattr(mm, "_CODE_RNG", ScriptedCodes("WXYZ", "WXYZ", "PQRS"))
-        env.player(1)
-        await env.send(1, "party_create")
-        assert env.conns[1].last("party")["code"] == "PQRS"
+        await env.join(1)
+        assert env.conns[1].last("queue_state")["code"] == "PQRS"
     run(go())
 
 
-def test_code_lookup_names_rooms_pairs_and_nothing():
+def test_code_lookup_names_rooms_tables_and_nothing():
     async def go():
         env = Env()
         env.mm.room_live = {"WXYZ"}.__contains__
-        p = await env.pair(1, 2)
+        await env.join(1)
+        code = env.mm._entry(1).code
         guest = FakeConn(None, "")
         env.mm.connect(guest)
 
@@ -1326,13 +1299,13 @@ def test_code_lookup_names_rooms_pairs_and_nothing():
             return env.mm.code_lookup(conn, {"code": code}, uid)
 
         assert kind(" wxyz ") == {"type": "code_kind", "code": "WXYZ", "kind": "room"}
-        assert kind(p.code.lower()) == {"type": "code_kind", "code": p.code, "kind": "party"}
-        assert kind(p.code, uid=1, conn=env.conns[1])["kind"] == "party"
+        assert kind(code.lower()) == {"type": "code_kind", "code": code, "kind": "table"}
+        assert kind(code, uid=1, conn=env.conns[1])["kind"] == "table"
         assert kind("ZZZZ")["kind"] == "none"
         for bad in ("WXY", "WXYZQ", "", None, "W-YZ"):
             assert kind(bad)["kind"] == "none", bad
-        await env.send(1, "party_leave")             # a closed pair's code is free again
-        assert kind(p.code)["kind"] == "none"
+        await env.send(1, "queue_leave")             # a table out of the queue frees its code
+        assert kind(code)["kind"] == "none"
     run(go())
 
 
@@ -1349,7 +1322,7 @@ def test_code_lookup_is_rate_limited_per_account():
     assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
 
 
-def test_ws_room_code_never_repeats_a_live_pair_code(wsenv, monkeypatch):
+def test_ws_room_code_never_repeats_a_queued_tables_code(wsenv, monkeypatch):
     import random
 
     srv, store, client, clock = wsenv
@@ -1359,8 +1332,8 @@ def test_ws_room_code_never_repeats_a_live_pair_code(wsenv, monkeypatch):
     monkeypatch.setattr(random, "choices", lambda population, k: list(next(rolls)))
     with client.websocket_connect("/ws", headers=headers) as a, \
             client.websocket_connect("/ws") as b:
-        a.send_json({"type": "party_create"})
-        assert _drain(a, "party")["code"] == "PQRS"
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "queue_state")["code"] == "PQRS"
         b.send_json({"type": "create_room", "name": "host"})
         assert _drain(b, "room")["room"] == "TUVW"
 
@@ -1371,13 +1344,13 @@ def test_ws_code_lookup_and_the_old_join_messages(wsenv):
     with client.websocket_connect("/ws", headers=headers) as a, \
             client.websocket_connect("/ws") as host, \
             client.websocket_connect("/ws") as g:
-        a.send_json({"type": "party_create"})
-        pair = _drain(a, "party")["code"]
+        a.send_json({"type": "queue_join"})
+        table = _drain(a, "queue_state")["code"]
         host.send_json({"type": "create_room", "name": "host"})
         room = _drain(host, "room")["room"]
-        assert all(c in mm.CODE_ALPHABET for c in room + pair)
+        assert all(c in mm.CODE_ALPHABET for c in room + table)
 
-        for code, kind in ((room.lower(), "room"), (pair.lower(), "party"),
+        for code, kind in ((room.lower(), "room"), (table.lower(), "table"),
                            ("ZZZZ", "none")):
             g.send_json({"type": "code_lookup", "code": code})
             assert _drain(g, "code_kind") == {"type": "code_kind", "code": code.upper(),
@@ -1385,10 +1358,6 @@ def test_ws_code_lookup_and_the_old_join_messages(wsenv):
         # a signed-in socket asks the same way
         a.send_json({"type": "code_lookup", "code": room})
         assert _drain(a, "code_kind")["kind"] == "room"
-
-        # a guest who follows a pair code is told to sign in
-        g.send_json({"type": "party_join", "code": pair})
-        assert _drain(g, "error")["code"] == "signed_in_only"
 
         # the messages old clients send still work
         g.send_json({"type": "table_peek", "code": room.lower()})
@@ -2221,10 +2190,8 @@ def test_ws_a_ranked_invite_with_no_bot_seat_is_table_full(wsenv, monkeypatch):
 async def _queued_pair(env, leader, partner, names=("Lee", "Pat")):
     for uid, name in zip((leader, partner), names):
         env.player(uid, name=name).ws = _FakeWS()
-    await env.send(leader, "party_create")
-    code = env.conns[leader].last("party")["code"]
-    await env.send(partner, "party_join", code=code)
-    await env.send(leader, "queue_join", party_id=env.mm._party(leader).id)
+    p = lobby_duo(env.mm, leader, partner)
+    await env.send(leader, "queue_join", party_id=p.id)
     return env.conns[leader], env.conns[partner]
 
 
@@ -2268,6 +2235,7 @@ def test_a_pair_is_never_offered_two_bot_seats_that_are_not_partners(pairenv):
         await env.mm.tick()
         assert env.mm._entry(lee).offer is None
         await env.send(lee, "queue_leave")
+        await env.send(pat, "queue_leave")
         conn = env.player(solo, name="Solo")
         await env.send(solo, "queue_join")
         assert conn.last("queue_state")["offer"]["room"] == "OPEN"   # a single still is
@@ -2430,12 +2398,12 @@ def test_a_pair_needs_two_devices():
         env = Env()
         env.player(1).device = DEVICE_A
         g = _guest(env, -1, DEVICE_A)
-        await env.send(1, "party_create")
-        code = env.conns[1].last("party")["code"]
-        await env.send(-1, "party_join", code=code)
+        await env.send(1, "queue_join", duo=True)
+        code = env.mm._entry(1).code
+        await env.send(-1, "queue_join", code=code)
         assert g.last("error")["code"] == "same_device"
         other = _guest(env, -2, DEVICE_B)
-        await env.send(-2, "party_join", code=code)
+        await env.send(-2, "queue_join", code=code)
         assert other.last("party")["members"][1]["name"] == "G2"
         assert env.mm._party(1).members == [1, -2]
     run(go())
@@ -2747,21 +2715,19 @@ def test_ws_a_guest_who_signs_in_in_a_pair_ends_the_pair(wsenv):
     friend, friend_headers = _user(store, "friend", "Friend Person")
     with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=friend_headers) as f:
         with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
-            f.send_json({"type": "party_create"})
-            code = _drain(f, "party")["code"]
-            g.send_json({"type": "party_join", "code": code, "name": "Guesty"})
+            f.send_json({"type": "queue_join", "duo": True})
+            code = _drain(f, "queue_state")["code"]
+            g.send_json({"type": "table_join", "code": code, "name": "Guesty"})
             _drain(g, "party")
-            f.send_json({"type": "queue_join"})
-            assert _next(f, "queue_state", lambda m: m["queued"])["queued"] is True
             assert srv.MATCHMAKER.entry_of.keys() == {friend, -1}
         _, headers = _user(store, "signer", "Acct Person")
         with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
             _settled(a)
-            assert _next(f, "queue_state", lambda m: not m["queued"])["queued"] is False
             closed = _drain(f, "party_closed")
             assert closed["reason"] == "left" and closed["you"] is False
             assert srv.MATCHMAKER.parties == {} and srv.MATCHMAKER.party_of == {}
-            assert srv.MATCHMAKER.entry_of == {} and srv.MATCHMAKER.count() == 0
+            # the friend keeps its table, alone
+            assert srv.MATCHMAKER.entry_of.keys() == {friend} and srv.MATCHMAKER.count() == 1
 
 
 def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
@@ -2954,7 +2920,7 @@ def test_a_queue_writer_that_failed_once_delivers_later_messages():
     async def go():
         ws = FlakyWs()
         c = mm.Conn(ws, 1, "P1")
-        c.push({"type": "queue_count", "count": 1})
+        c.push({"type": "presence", "waiting": 1})
         for _ in range(5):
             await asyncio.sleep(0)
         c.push({"type": "queue_state", "queued": False, "count": 0})
@@ -3003,7 +2969,7 @@ def test_ws_the_signed_out_guest_cannot_queue_while_its_accounts_game_is_in_play
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
     code, _ = _account_match(srv, store, client)
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
-        for kind in ("queue_join", "party_create"):
+        for kind in ("queue_join", "table_start_bots"):
             g.send_json({"type": kind, "name": "Lea"})
             err = _drain(g, "error")
             assert err == {"type": "error", "code": "account_in_game",
@@ -4133,15 +4099,9 @@ def test_a_duo_open_holds_the_partner_seat_with_the_tables_code_as_its_invite():
         e = env.mm._entry(1)
         assert e.hold and e.size == 1 and e.party_id is None
         assert env.mm.entry_codes == {state["code"]: e.id}
-        assert env.mm.party_codes == {} and env.mm.parties == {}
+        assert env.mm.parties == {}
         lookup = env.mm.code_lookup(env.conns[1], {"code": state["code"]}, 1)
         assert lookup["kind"] == "table"
-        # a lone open party is folded in: the table's code is the only invite
-        env.player(5)
-        await env.send(5, "party_create")
-        assert env.mm.party_codes
-        await env.send(5, "queue_join", duo=True)
-        assert env.mm.party_codes == {} and env.mm._entry(5).hold
         await env.send(6, "queue_join", conn=env.player(6), duo="yes")
         assert env.conns[6].last("error")["code"] == "bad_setting"
     run(go())
@@ -4205,8 +4165,7 @@ def test_the_first_code_joiner_takes_the_held_seat_and_the_two_become_one_paired
         e = env.mm._entry(1)
         assert e is env.mm._entry(3) and e.size == 2 and e.members == [1, 3] and not e.hold
         p = env.mm._party(1)
-        assert p is env.mm._party(3) and p.table and p.members == [1, 3]
-        assert env.mm.party_codes == {}
+        assert p is env.mm._party(3) and p.members == [1, 3]
         state = env.conns[3].last("queue_state")
         assert state["table"]["you"] == 2 and state["duo"] is True and state["held_seat"] is None
         assert state["leader"] is False and state["table"]["seats"][2]["pair"]
@@ -4336,28 +4295,6 @@ def test_allow_joiners_from_anyone_but_the_tables_opener_is_refused():
     run(go())
 
 
-def test_the_party_flow_still_makes_a_pair_with_its_own_code():
-    async def go():
-        env = Env()
-        p = await env.pair(1, 2)
-        assert not p.table and env.mm.party_codes == {p.code: p.id}
-        assert env.conns[2].last("party")["table"] is False
-        assert env.mm.code_lookup(env.conns[3] if 3 in env.conns else env.player(3),
-                                  {"code": p.code}, 3)["kind"] == "party"
-        await env.send(1, "queue_join", party_id=p.id)
-        state = env.conns[2].last("queue_state")
-        assert state["duo"] is False and state["held_seat"] is None
-        await env.send(2, "queue_leave")
-        assert env.conns[2].last("error")["code"] == "not_leader"
-        await env.join(4)
-        (t,) = env.mm.tables.values()
-        assert t.seats == [1, 4, 2, None] and t.held_seat() is None
-        await env.send(2, "party_leave")
-        assert env.mm._entry(1) is None and env.mm._party(1) is None
-    run(go())
-
-
-
 def test_a_duo_split_at_a_strangers_table_stays_seated_there_with_nothing_held():
     async def go():
         env = Env()
@@ -4428,13 +4365,6 @@ def test_each_duo_member_taps_start_and_the_pair_is_ready_once_both_have():
         env.player(3)
         await env.send(3, "queue_join", code=env.mm._entry(1).code)
         assert env.conns[3].last("queue_state")["table"]["ready"] == 1
-        # a party pair keeps its leader's Start
-        env = Env()
-        await env.pair(1, 2)
-        await env.send(1, "queue_join")
-        await env.join(3)
-        await env.send(2, "table_start")
-        assert env.conns[2].last("error")["code"] == "not_leader"
     run(go())
 
 
@@ -4507,18 +4437,6 @@ def test_a_table_duo_member_takes_back_its_own_tap_and_a_pair_partner_cannot_for
         await env.send(1, "table_unready")
         assert env.mm._entry(1).id not in t.ready and env.mm._entry(1).taps == {2}
         assert env.conns[3].last("queue_state")["table"]["waiting_for"] == ["P1"]
-        # a party pair: the leader's Start, the leader's to take back
-        env = Env()
-        await env.join(1)
-        await env.pair(2, 3)
-        await env.send(2, "queue_join")
-        (t,) = env.mm.tables.values()
-        await env.send(2, "table_start")
-        await env.send(3, "table_unready")
-        assert env.conns[3].last("error")["code"] == "not_leader"
-        assert env.mm._entry(2).id in t.ready
-        await env.send(2, "table_unready")
-        assert env.mm._entry(2).id not in t.ready
     run(go())
 
 

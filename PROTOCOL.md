@@ -72,6 +72,9 @@ take the tap back. `start_now_in` is sent only while someone besides the opener
 is seated: the seconds until the client offers the opener "Start now", 30 s
 after the latest person sat down (ticked down locally). The server does not
 hold `start_game` back: an older client's host Start still starts at once.
+`table_start_now` (see "Table messages") is held back: while someone besides
+the opener is seated it is refused with `too_soon` until `start_now_in` reaches
+0, as a waiting table's Start now is.
 `allow_joiners` (every ordinary room; on at creation) says whether the queue
 may offer the room's bot seats once its game is in play.
 
@@ -257,12 +260,44 @@ never sends `code_lookup` keeps working. Invite links are `/?code=CODE`;
 6. **round_end**: `round_result` populated; every connected human sends `next_round` before the next round starts (banker/levels advance per result).
 7. A successful defence at level A scores a game: `point_scored` is set, `games_won` increments and both teams restart at the room's start level. Rooms never reach `game_over` (they are created with no game limit); the phase exists for engine games with a limit.
 
+## Table messages
+
+One family of `table_*` messages works at any table, whether the socket waits
+in the queue (alone or at a waiting table) or sits in a room, before or during
+its game. The server rewrites each into the message that place already
+handles, so every check, rate limit and refusal of that message applies; the
+frames that come back (`room`, `queue_state`, `room_seats`, `chat`,
+`table_chat` and the rest) are that message's. The older names stay accepted.
+
+| type | fields | in the queue | in a room |
+|------|--------|--------------|-----------|
+| `table_move` | `seat`, optional `from`, `who` (queue), `expect` (room) | `table_move` | `swap_seats` with `a` = `from` (else your own seat) and `b` = `seat`: a move of yourself, or with `from` the host's swap of those two seats |
+| `table_start` | optional `on: boolean`, `panel_seq` | `table_start`; `on: false` is `table_unready` | `lobby_ready` with the same `on` |
+| `table_start_now` | optional `panel_seq` | `table_start_now` | `start_game`, refused with `too_soon` until 30 s after the last person sat while anyone besides the opener is seated (see "Room lobby") |
+| `table_start_bots` | optional `panel_seq` | `queue_start_bots` | `lobby_ready {on: true}`: your Start, as Play bots at a waiting table is |
+| `table_allow_joiners` | `on: boolean` | `table_allow_joiners` | `allow_joiners` |
+| `table_start_level` | `start_level` | `table_start_level` | `set_start_level` |
+| `table_chat` | `text` | `table_chat` | `chat` (a lobby line stays in memory only; a line in play is logged) |
+| `table_leave` | — | `queue_leave`; with an invite Join waiting for its handover, `leave_room` | `leave_room` |
+| `table_join` | `code`, `name`, optional `seat`, `token` | a live room's code: `join_room {room: code}`; any other code: `queue_join {code}`; no code: `room_not_found` | `join_room`, refused from a seat as ever |
+| `table_peek` | `code` | `peek_room {room: code}` (room codes) | `peek_room`, refused from a seat as ever |
+
+`/healthz` carries `legacy_messages`: since the process started, how many
+times each older name arrived on a socket (`swap_seats`, `lobby_ready`,
+`table_unready`, `start_game`, `queue_start_bots`, `allow_joiners`,
+`set_start_level`, `chat`, `leave_room`, `queue_leave`, `join_room`,
+`queue_join` with a `code`, `peek_room`), plus the created lobby's own
+controls (`create_room` without `start: true`, `add_bot`, `remove_bot`,
+`remove_player`, `set_ranked`). Only messages from a client count; the
+server's own start of a queue table does not. Plain counts, nothing else.
+
 ## Matchmaking queue
 
 Signed-in players can queue for a rated game instead of sharing a room code.
 Invite rooms (`create_room` / `join_room`) are unchanged. Every queue message is
 sent from the lobby (a socket that holds no seat); a seated socket may send only
-`party_leave`, and anything else is refused with code `in_room`. Times
+`party_leave`, and anything else is refused with code `in_room`, except the
+`table_*` names of "Table messages", which reach the socket's room. Times
 (`since`, `expires_at`, `bots_at`, a table's `timer.at` and seat `since`) are
 Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 

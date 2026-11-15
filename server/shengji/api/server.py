@@ -31,7 +31,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, matchmaking, ratings, reports, saved_games, support, telemetry
+from . import accounts, matchmaking, ratings, reports, saved_games, support, tables, telemetry
 from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
 from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
@@ -183,6 +183,10 @@ class Activity:
     account_link_failures: int = 0
     last_record_write_t: float | None = None
     last_record_failure: dict | None = None
+    # uses of each old message name a client sent (``tables.LEGACY``): how
+    # many stale pages still speak them, counted where a frame arrives
+    legacy_messages: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys(sorted(tables.LEGACY), 0))
 
     def record_written(self, kind: str) -> None:
         self.records_written += 1
@@ -201,6 +205,9 @@ class Activity:
 
     def account_link_failed(self) -> None:
         self.account_link_failures += 1
+
+    def legacy_used(self, name: str) -> None:
+        self.legacy_messages[name] += 1
 
     def health(self) -> dict:
         return {
@@ -942,6 +949,11 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
 class NotOpener(IllegalPlay):
     """A setting only the table's opener may change."""
     code = "not_opener"
+
+
+class TooSoon(IllegalPlay):
+    """Start now before ``START_NOW_SECS`` passed since the last arrival."""
+    code = "too_soon"
 
 
 def _pass_opener_mid_game(room: Room, gone: int) -> None:
@@ -2382,8 +2394,13 @@ def _start_game(room: Room) -> None:
         room.watchdog_task = asyncio.create_task(watchdog(room))
 
 
-async def handle_action(room: Room, seat: int, msg: dict) -> None:
-    """Caller holds room.lock. Raises IllegalPlay on bad input."""
+async def handle_action(room: Room, seat: int, msg: dict, *,
+                        start_now_gate: bool = False) -> None:
+    """Caller holds room.lock. Raises IllegalPlay on bad input.
+
+    ``start_now_gate``: a ``start_game`` that came as ``table_start_now``,
+    which waits ``START_NOW_SECS`` after the last arrival while someone else
+    is at the table, as a queue table's Start now does."""
     if room.evaluation is not None and room.evaluation_invalidated:
         raise IllegalPlay("Evaluation session was invalidated by logging failure.")
     t = msg.get("type")
@@ -2480,6 +2497,9 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             raise IllegalPlay("Only the host can start.")
         if room.game:
             raise IllegalPlay("Game already started.")
+        if (start_now_gate and _start_now_in(room) > 0
+                and any(i != room.host for i in _lobby_humans(room))):
+            raise TooSoon(tables.TOO_SOON)
         _start_game(room)
     elif t == "lobby_ready":
         # A created room's Start: the game starts once every connected person
@@ -2697,6 +2717,21 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 await send(ws, {"type": "left"})
                 room, me = None, None
                 MATCHMAKER.return_to_lobby(conn)
+            if (legacy := tables.legacy_name(msg)) is not None:
+                ACTIVITY.legacy_used(legacy)
+            # A canonical name becomes the message the socket's backend
+            # handles before any guard reads ``t``, so each guard applies
+            # to both names alike. In a room only a Leave is rewritten
+            # here; the rest is rewritten under the room lock, where the
+            # sender's seat is current.
+            canonical = t if isinstance(t, str) and t in tables.CANONICAL else None
+            if canonical is not None:
+                if room is None or me is None:
+                    msg = tables.for_queue(msg, joining=conn.joining is not None,
+                                           room_codes=rooms)
+                elif canonical == "table_leave":
+                    msg = tables.for_room(msg, None)
+                t = msg.get("type")
             if t == "ping":
                 nonce = msg.get("nonce")
                 if type(nonce) is int and 0 <= nonce <= 9007199254740991:
@@ -3172,7 +3207,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 room, me = None, None
                 MATCHMAKER.return_to_lobby(conn)
                 continue
-            if t in matchmaking.QUEUE_MESSAGES:
+            if t in matchmaking.QUEUE_MESSAGES and canonical is None:
                 await MATCHMAKER.handle(conn, msg, queue_id())
                 continue
             if t == "report_player":
@@ -3187,8 +3222,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     await send(ws, {"type": "error", "code": "room_not_found",
                                     "message": "Seat no longer exists."})
                     continue
+                if canonical is not None:
+                    msg = tables.for_room(msg, seat_idx)
                 try:
-                    await handle_action(room, seat_idx, msg)
+                    await handle_action(room, seat_idx, msg,
+                                        start_now_gate=canonical == "table_start_now")
                     await broadcast(room)
                     kick_bots(room)
                 except SeatChanged as e:
@@ -3945,7 +3983,10 @@ async def healthz() -> dict:
             # Since this process started: rooms, games, records on disk and
             # record write failures, so a quiet week and a silent log failure
             # read differently without opening the volume.
-            "activity": ACTIVITY.health()}
+            "activity": ACTIVITY.health(),
+            # Since this process started, how often each old message name
+            # arrived: an alias may retire once its count stays at zero.
+            "legacy_messages": dict(ACTIVITY.legacy_messages)}
 
 
 from .debug import register_debug  # noqa: E402

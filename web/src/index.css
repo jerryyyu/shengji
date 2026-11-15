@@ -5582,7 +5582,8 @@ body.keyboard-open .tabbar { display: none; }
   padding-bottom: 16px;
   color: #eef1f6;
 }
-.me-page .home-col { max-width: 560px; }
+/* Me and the Leaderboard are the phone's column at every width, centred */
+.me-page .home-col, .lb-page .home-col { max-width: 560px; }
 /* Me's two parts flow as one column at every width, the phone's page
    centred and capped like every other page */
 .me-cols, .me-col { display: contents; }
@@ -5763,6 +5764,7 @@ button.grp-row:disabled { cursor: default; }
 .lb-rank.top { color: var(--gold); }
 .lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
 .lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-you { flex: none; white-space: pre; }
 .lb-new {
   flex: none;
   margin-left: 6px;

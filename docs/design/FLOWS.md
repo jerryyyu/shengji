@@ -69,7 +69,8 @@ The pill shows at a table or in a game. On the Play tab with no table the presen
 full screen still comes (Jerry 11-15).
 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
-Games become a switch inside Me.
+Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
+Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
 
 **Section 6, settings.** One settings list (Coach, Sound, Haptics on native only, How to play) in both Me and
 the ⋯ menu. "Kitty 8 cards" moves out of ⋯.

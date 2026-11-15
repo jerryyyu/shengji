@@ -85,7 +85,10 @@ it("lists the players without a bot row and pins the viewer's own row", async ()
   expect(listed[0].querySelector(".lb-rank.top")?.textContent).toBe("1");
   const pinned = host.querySelector(".lb-pin .lb-row.me")!;
   expect(pinned.querySelector(".lb-rank")!.textContent).toBe("26");
-  expect(pinned.querySelector(".lb-name-text")!.textContent).toBe("Jerry (you)");
+  expect(pinned.querySelector(".lb-name")!.textContent).toBe("Jerry (you)");
+  // "(you)" is its own box beside the name, so a long name truncates before it
+  expect(pinned.querySelector(".lb-name-text")!.textContent).toBe("Jerry");
+  expect(pinned.querySelector(".lb-name-text + .lb-you")!.textContent).toBe(" (you)");
   expect(host.querySelector(".lb-delta")).toBeNull();
 });
 
@@ -199,7 +202,7 @@ describe("viewer changes", () => {
     }) as typeof fetch;
   });
   const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-  const pinnedName = () => host.querySelector(".lb-pin .lb-name-text")?.textContent ?? null;
+  const pinnedName = () => host.querySelector(".lb-pin .lb-name")?.textContent ?? null;
   const signIn = async (name: string) => {
     viewer = name;
     await act(async () => { auth.signedIn(user(name)); });
@@ -307,14 +310,14 @@ describe("viewer changes", () => {
     const all = () => [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "All time")!;
     await act(async () => { all().click(); });
     await settle();
-    expect(host.querySelector(".lb-row.me .lb-name-text")?.textContent).toBe("Jerry (you)");
+    expect(host.querySelector(".lb-row.me .lb-name")?.textContent).toBe("Jerry (you)");
     act(() => root.unmount());
     host.remove();
     mode = "hold";
     await render();
     expect(all().getAttribute("aria-pressed")).toBe("true");
     expect(lbCalls().at(-1)).toBe("/api/leaderboard?period=all");
-    expect(host.querySelector(".lb-row.me .lb-name-text")?.textContent).toBe("Jerry (you)");
+    expect(host.querySelector(".lb-row.me .lb-name")?.textContent).toBe("Jerry (you)");
     expect(host.querySelector(".lb-note[role=status]")).toBeNull();
   });
 

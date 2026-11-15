@@ -2,22 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useMenuKeys } from "../useMenuKeys";
 import { usePresence } from "../usePresence";
 import { OFFLINE } from "../offlineMode";
-import { codeLink } from "../codes";
+import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
-
-/** A table's invite: the system share sheet where there is one, else the
- *  link on the clipboard. Resolves true when the link was copied. */
-function shareInvite(code: string): Promise<boolean> {
-  const url = codeLink(code);
-  if (typeof navigator.share === "function") {
-    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
-      .then(() => false, () => false);   // a dismissed share sheet is not an error
-  }
-  if (!navigator.clipboard) return Promise.resolve(false);
-  return navigator.clipboard.writeText(url).then(() => true, () => false);
-}
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
@@ -92,7 +80,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
     void shareInvite(room).then((didCopy) => {
       if (!didCopy) return;
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
+      window.setTimeout(() => setCopied(false), COPIED_MS);
     });
   };
 

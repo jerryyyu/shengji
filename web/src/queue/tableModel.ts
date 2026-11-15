@@ -7,7 +7,7 @@ import type { ChatMsg, Rank } from "../protocol";
 import { BOT_FILL_MS, partnerName, queue, tableDuo } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinLabel, joinTitle, moveTargets, ownBotsAt, ownTitle, panelKind,
+  JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, moveTargets, ownBotsAt, ownTitle, panelKind,
   sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
@@ -250,7 +250,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     const busy = q.pending !== null;
     return {
       ...base, kind, title: joinTitle(o), seats: offerSeats(o, busy), you: o.pick,
-      primary: { label: q.pending === "offer" ? "Joining…" : joinLabel(o), disabled: busy, act: { type: "offer_join" },
+      primary: { label: q.pending === "offer" ? "Joining…" : "Join", disabled: busy, act: { type: "offer_join" },
                  ring: q.pending === "offer" ? null : { left: Math.max(0, o.expiresAt - now) / 1000, total: OFFER_SECS } },
       secondary: { label: "Keep looking", disabled: busy, act: { type: "offer_wait" } },
     };

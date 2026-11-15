@@ -49,12 +49,6 @@ export function joinTitle(o: OfferView): string {
   return people.length ? `Join ${nameList(people)}` : "Join this table";
 }
 
-/** The Join button's words; the offer's clock is the ring beside them. A
- *  Duo's Join takes both seats, which the seats already show. */
-export function joinLabel(_o: OfferView): string {
-  return "Join";
-}
-
 /** When your own table's bots sit, as a local time: never while you wait
  *  for people or an open table holds your timer still. Its countdown is the
  *  ring on Start with bots. */

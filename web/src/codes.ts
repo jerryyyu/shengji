@@ -29,3 +29,18 @@ export function aliasInviteLink(): void {
 export function codeLink(code: string): string {
   return `${window.location.origin}/?code=${code}`;
 }
+
+/** How long an Invite button reads "Link copied" after a copy. */
+export const COPIED_MS = 1200;
+
+/** A table's invite: the system share sheet where there is one, else the
+ *  link on the clipboard. Resolves true when the link was copied. */
+export function shareInvite(code: string): Promise<boolean> {
+  const url = codeLink(code);
+  if (typeof navigator.share === "function") {
+    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
+      .then(() => false, () => false);   // a dismissed share sheet is not an error
+  }
+  if (!navigator.clipboard) return Promise.resolve(false);
+  return navigator.clipboard.writeText(url).then(() => true, () => false);
+}

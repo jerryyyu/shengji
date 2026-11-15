@@ -7,7 +7,7 @@ import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import ConfirmSheet from "../components/ConfirmSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
-import { codeLink } from "../codes";
+import { COPIED_MS, shareInvite } from "../codes";
 import type { ChatMsg, Rank } from "../protocol";
 import { RANKS } from "../protocol";
 import Sheet from "./Sheet";
@@ -248,18 +248,6 @@ export function ChatRow({ messages, you, onSend }: {
   );
 }
 
-/** A table's invite: the system share sheet where there is one, else the
- *  link on the clipboard. Resolves true when the link was copied. */
-function shareInvite(code: string): Promise<boolean> {
-  const url = codeLink(code);
-  if (typeof navigator.share === "function") {
-    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
-      .then(() => false, () => false);   // a dismissed share sheet is not an error
-  }
-  if (!navigator.clipboard) return Promise.resolve(false);
-  return navigator.clipboard.writeText(url).then(() => true, () => false);
-}
-
 /** The code with its Invite link: the share sheet, or a copy. */
 function CodeRow({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -267,7 +255,7 @@ function CodeRow({ code }: { code: string }) {
     void shareInvite(code).then((didCopy) => {
       if (!didCopy) return;
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      window.setTimeout(() => setCopied(false), COPIED_MS);
     });
   };
   return (

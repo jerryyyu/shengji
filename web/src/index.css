@@ -5854,7 +5854,11 @@ button.grp-row:disabled { cursor: default; }
 .identity-signin .google-signin-slot { width: 100%; }
 .me-who { display: flex; align-items: center; gap: 14px; }
 .me-who-text { min-width: 0; }
-.me-name { font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff; overflow-wrap: anywhere; }
+/* the name stays on one line and ends in an ellipsis, like a seat's */
+.me-name {
+  min-width: 0; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .me-sub { margin-top: 2px; font-size: var(--fs-15); color: #9aa3b2; font-variant-numeric: tabular-nums; }
 .me-sub b { font-weight: 600; }
 .me-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -6111,7 +6115,7 @@ button[role="switch"]:active .ios-switch {
 .tp-seat.held .tp-seat-name { color: var(--gold); }
 button.tp-seat { cursor: pointer; }
 /* the narrowest phones give the seat's words the avatar's room */
-@media (max-width: 359px) { .tp:not(.tp-wide) .tp-av { display: none; } }
+@media (max-width: 359px) { .tp .tp-av { display: none; } }
 button.tp-seat:disabled { opacity: 0.6; cursor: default; }
 button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .tp .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); color: #fff; }
@@ -6146,13 +6150,6 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp-led { margin: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; color: #bfe9cf; font-size: var(--fs-15); }
 /* the bots' countdown for the Duo member who does not lead */
 .tp-led .timer-ring { --size: 32px; --band: 2.5px; margin-right: 10px; }
-/* Wide screens: the seats around the mini table, you at the bottom. */
-.tp-clock { row-gap: 28px; padding: 14px 10px; }
-.tp-clock .tp-seat { justify-self: stretch; }
-.tp-clock .tp-seat.pos-top { grid-area: top; justify-self: center; width: min(100%, 170px); }
-.tp-clock .tp-seat.pos-bottom { grid-area: bottom; justify-self: center; width: min(100%, 170px); }
-.tp-clock .tp-seat.pos-left { grid-area: left; }
-.tp-clock .tp-seat.pos-right { grid-area: right; }
 /* The Your table pill on a tab other than Play: in the top bar's end on a
    wide layout, at the end of the large title's row on a phone. */
 .table-pill {

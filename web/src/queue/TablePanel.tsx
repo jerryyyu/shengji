@@ -6,11 +6,9 @@ import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
-import { seatPos } from "../components/TrickArea";
 import { codeLink } from "../codes";
 import type { ChatMsg, Rank } from "../protocol";
 import { RANKS } from "../protocol";
-import { useInlineQueue } from "./QueueBar";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
 import { fromQueue, queueSend } from "./tableModel";
@@ -43,8 +41,8 @@ function SeatBody({ s }: { s: SeatItem }) {
   );
 }
 
-function Seat({ s, team, cls = "" }: { s: SeatItem; team: 0 | 1; cls?: string }) {
-  const className = `tp-seat ${s.look} team${team}${s.picked ? " picked" : ""}${cls}`;
+function Seat({ s, team }: { s: SeatItem; team: 0 | 1 }) {
+  const className = `tp-seat ${s.look} team${team}${s.picked ? " picked" : ""}`;
   if (s.pick) {
     return (
       <button type="button" className={className} aria-label={s.label} aria-pressed={s.picked}
@@ -56,8 +54,8 @@ function Seat({ s, team, cls = "" }: { s: SeatItem; team: 0 | 1; cls?: string })
   return <div className={className} role="group" aria-label={s.label}><SeatBody s={s} /></div>;
 }
 
-/** A phone's seats: your team on the left, partner above you, the other
- *  team on the right. */
+/** The seats at every width: your team on the left, partner above you,
+ *  the other team on the right. */
 export function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
   const ours = [(you + 2) % 4, you].map((at) => seats[at]);
   const theirs = [(you + 1) % 4, (you + 3) % 4].map((at) => seats[at]);
@@ -69,17 +67,6 @@ export function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) 
       <div className="tp-col">{ours.map((s) => <Seat key={s.at} s={s} team={0} />)}</div>
       <span className="tp-vs" aria-hidden="true">VS</span>
       <div className="tp-col">{theirs.map((s) => <Seat key={s.at} s={s} team={1} />)}</div>
-    </div>
-  );
-}
-
-/** Wide screens: the seats around a green table, you at the bottom. */
-export function MiniTable({ seats, you }: { seats: SeatItem[]; you: number }) {
-  return (
-    <div className="seat-clock still tp-clock">
-      {seats.map((s) => (
-        <Seat key={s.at} s={s} team={(s.at - you + 4) % 2 === 0 ? 0 : 1} cls={` pos-${seatPos(s.at, you)}`} />
-      ))}
     </div>
   );
 }
@@ -126,12 +113,10 @@ function WaitSwitch({ on, disabled, act }: { on: boolean; disabled: boolean; act
 }
 
 /** The panel's frame, the same for every kind: the title, at most one
- *  status line, the seats (team columns on a phone, the mini table on wide
- *  screens), the rows, the buttons, and the leave sheet when it is up. */
+ *  status line, the seats in team columns, the rows, the buttons, and the leave sheet when it is up. */
 function PanelView({ m, guarded, sheet, act }: {
   m: TableModel; guarded: boolean; sheet?: ReactNode; act: (a: PanelAction) => void;
 }) {
-  const wide = useInlineQueue();
   const titleId = useId();
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const box = useRef<HTMLElement | null>(null);
@@ -139,11 +124,11 @@ function PanelView({ m, guarded, sheet, act }: {
   const seats = m.seats?.map(({ act: a, ...s }): SeatItem => (a ? { ...s, pick: () => act(a) } : s)) ?? null;
   const press = (b: TableButton) => () => { if (b.act) act(b.act); };
   return (
-    <section ref={box} className={`tp tp-${m.kind}${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
+    <section ref={box} className={`tp tp-${m.kind}`} aria-labelledby={titleId}>
       {m.tag ? <ModeTag tag={m.tag} /> : null}
       <h2 className="tp-title" id={titleId}>{m.title}</h2>
       {m.status ? <p className={`tp-line${m.status.warn ? " warn" : ""}`}>{m.status.text}</p> : null}
-      {seats ? (wide ? <MiniTable seats={seats} you={m.you} /> : <TeamColumns seats={seats} you={m.you} />) : null}
+      {seats ? <TeamColumns seats={seats} you={m.you} /> : null}
       {m.rows ? <TableRows rows={m.rows} act={act} /> : null}
       {m.waitSwitch ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
       {m.chat ? <ChatRow messages={m.chat.messages} you={m.chat.you} onSend={(text) => act({ type: "chat", text })} /> : null}

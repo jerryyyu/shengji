@@ -12,8 +12,7 @@ import {
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
-/** One seat as the panel draws it, on a phone's team columns or on the
- *  wide screens' mini table. The seats carry names and live status only;
+/** One seat as the panel draws it in its team columns. The seats carry names and live status only;
  *  which seat is your partner's the layout already shows. */
 export interface SeatItem {
   at: number;

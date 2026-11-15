@@ -250,7 +250,7 @@ def f3_own_table():
             shot(joined, 390, 844, "Alice presses Play", "She sits as your partner. One status: '0 of 2 ready'. Start now carries the same timer."),
             shot(ready, 390, 844, "Tap Start now", "Your tick; the button says who you wait for."),
             shot(game, 844, 390, "Alice taps Start (or the timer)", "Bots take the empty seats; strangers can still join (Allow joiners is on)."),
-            shot(desk, 1280, 800, "Desktop / iPad", "The same panel in Play's place, with the mini table."),
+            shot(desk, 1280, 800, "Desktop / iPad", "The same panel in Play's place, with the phone's team columns."),
         ]),
     ]
 

@@ -5,7 +5,7 @@
 // the phone's single column at every width (no side column that squeezes the
 // seats until each name breaks inside a word), a CJK name in the panel's
 // title moves to the next line whole, and Edit name on Me keeps its label on
-// one line beside an ellipsized name.
+// one line beside an ellipsized name, as does the large name heading.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -41,7 +41,7 @@ describe("names in the table panel", () => {
 
   it("never sets the seats in a side column beside the words and buttons", () => {
     const side = rules().filter(([sel, d]) => /\.tp\b/.test(sel) && /grid-column|grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(d)
-      && !/\.tp-teams|\.tp-clock|\.seat-clock/.test(sel));
+      && !/\.tp-teams|\.seat-clock/.test(sel));
     expect(side.map(([sel]) => sel)).toEqual([]);
   });
 
@@ -60,6 +60,13 @@ describe("names on Me", () => {
     const value = decls(".me-edit .grp-value");
     expect(value).toContain("text-overflow: ellipsis");
     expect(value).toContain("white-space: nowrap");
+  });
+
+  it("keeps the large name heading on one line, ellipsized", () => {
+    const d = decls(".me-name");
+    expect(d).toContain("white-space: nowrap");
+    expect(d).toContain("text-overflow: ellipsis");
+    expect(d).not.toMatch(/overflow-wrap: anywhere/);
   });
 
   it("is one column at every width", () => {

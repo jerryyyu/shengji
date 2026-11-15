@@ -8,8 +8,7 @@ import type { ConnStatus } from "../ws";
 import { clearSavedRoom, conn, getSavedName } from "../ws";
 import { effectiveName, useAuth } from "../auth";
 import { useOnline } from "../useOnline";
-import { useInlineQueue } from "../queue/QueueBar";
-import { MiniTable, ModeTag, TeamColumns } from "../queue/TablePanel";
+import { ModeTag, TeamColumns } from "../queue/TablePanel";
 import type { SeatItem } from "../queue/TablePanel";
 import { useToast } from "../toast";
 import { offlineGame, useOfflineTable } from "./offlineGame";
@@ -29,13 +28,12 @@ const SEATS: SeatItem[] = [
 function OfflineTable({ ready, starting, onStart, onLeave }: {
   ready: boolean; starting: boolean; onStart: () => void; onLeave: () => void;
 }) {
-  const wide = useInlineQueue();
   const titleId = useId();
   return (
-    <section className={`tp tp-offline${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
+    <section className="tp tp-offline" aria-labelledby={titleId}>
       <ModeTag tag="Offline" />
       <h2 className="tp-title" id={titleId}>You and 3 bots</h2>
-      {wide ? <MiniTable seats={SEATS} you={0} /> : <TeamColumns seats={SEATS} you={0} />}
+      <TeamColumns seats={SEATS} you={0} />
       {/* the table's chat row in its place, greyed: chat needs the server */}
       <button type="button" className="tp-chat" disabled aria-label="Chat needs a connection">
         <span className="tp-chat-label" aria-hidden="true">Chat</span>

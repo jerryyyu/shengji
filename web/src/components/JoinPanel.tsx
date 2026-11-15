@@ -3,8 +3,7 @@ import type { RoomSeats, TableSeats } from "../protocol";
 import type { TableKind } from "../codeJoin";
 import { hostName, joinSeat, tableHostName, tableViewSeat, takeoverSeats } from "../joinSeats";
 import type { DroppedSeat } from "../joinSeats";
-import { useInlineQueue } from "../queue/QueueBar";
-import { MiniTable, TeamColumns } from "../queue/TablePanel";
+import { TeamColumns } from "../queue/TablePanel";
 import type { SeatItem } from "../queue/TablePanel";
 import { shortName } from "../queue/tableText";
 
@@ -100,7 +99,6 @@ export default function JoinPanel({ code, kind, peek, full, busy, onJoin, onTake
   onTake: (seat: number) => void;
   onCancel: () => void;
 }) {
-  const wide = useInlineQueue();
   const titleId = useId();
   const [asking, setAsking] = useState<DroppedSeat | null>(null);
   const room = peek && !peek.table ? peek : null;
@@ -115,10 +113,10 @@ export default function JoinPanel({ code, kind, peek, full, busy, onJoin, onTake
   // table's needs no seat named, and the server answers table_full when it is full
   const canJoin = !full && !busy && (kind === "table" || (room !== null && plain !== null));
   return (
-    <section className={`tp tp-join-code${wide ? " tp-wide" : ""}`} aria-labelledby={titleId}>
+    <section className="tp tp-join-code" aria-labelledby={titleId}>
       <h2 className="tp-title" id={titleId}>Join {who ? shortName(who) : code}</h2>
       {full ? <p className="tp-line">Table is full</p> : null}
-      {seats ? (wide ? <MiniTable seats={seats} you={you} /> : <TeamColumns seats={seats} you={you} />) : null}
+      {seats ? <TeamColumns seats={seats} you={you} /> : null}
       <div className="tp-acts">
         <button type="button" className="tp-primary" disabled={!canJoin} onClick={onJoin}>
           {busy ? "Joining…" : "Join"}

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /// <reference types="node" />
 // Guards the phone table geometry in index.css (the `:where(.phone-landscape)`
-// block, which applies under 500px of height and to the rotated portrait table). jsdom does no layout, so this evaluates the block's own
+// block, which applies at the table under 500px of height and to the rotated portrait table). jsdom does no layout, so this evaluates the block's own
 // size tokens (calc, clamp, min, max, env, vw, vh) at real iPhone sizes and
 // checks the regions the layout promises to keep apart: the trick cross sits
 // between the header and your row, your action is centred on the table and,
@@ -44,6 +44,11 @@ function rule(block: string, selector: string): Record<string, string> {
 }
 
 const block = phoneBlock();
+
+it("holds the table's rules only: the lobby is one portrait design at every height", () => {
+  expect(block).not.toMatch(/\.(lobby-panel|lobby-preview|game-title|play-tab|home-narrow|home-wide|tp-)\b/);
+});
+
 /** A length in px; a chrome text token (var(--fs-N)) is N px at the default text size. */
 const px = (v: string) => {
   const token = /var\(--fs-(\d+)\)/.exec(v);

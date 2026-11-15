@@ -1,26 +1,27 @@
 import { useLayoutEffect, useSyncExternalStore } from "react";
 
-/** A viewport this short is a phone held sideways: the phone layout. */
+/** A viewport this short is a phone held sideways: the phone table. */
 export const SHORT_VIEWPORT = "(max-height: 500px)";
 /** A phone held upright (an iPad is at least 744px wide in portrait). */
 export const PORTRAIT_PHONE = "(orientation: portrait) and (max-width: 600px)";
-/** The root class every phone-layout rule in index.css is keyed on. */
+/** The root class every phone-table rule in index.css is keyed on. */
 export const PHONE_CLASS = "phone-landscape";
 
 export interface PhoneLayout {
-  /** The phone layout's rules apply. */
+  /** The phone table's rules apply. */
   phone: boolean;
   /** The table is drawn a quarter turn round, filling a portrait screen. */
   rotated: boolean;
 }
 
-/** The game is always played sideways. A portrait phone at the table gets the
- *  table turned a quarter turn, sized to the screen's long side, so it lays
- *  out exactly as on a phone held sideways; every other screen keeps the
- *  orientation it is held in. */
+/** The game is always played sideways and the lobby upright. A portrait phone
+ *  at the table gets the table turned a quarter turn, sized to the screen's
+ *  long side, so it lays out exactly as on a phone held sideways. The lobby
+ *  has one design, the portrait column, which a phone held sideways shows
+ *  too, so the phone class is the table's alone. */
 export function phoneLayout(short: boolean, portraitPhone: boolean, atTable: boolean): PhoneLayout {
   const rotated = atTable && portraitPhone;
-  return { phone: short || rotated, rotated };
+  return { phone: atTable && (short || rotated), rotated };
 }
 
 function mediaList(query: string): MediaQueryList | null {

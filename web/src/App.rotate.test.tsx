@@ -105,10 +105,10 @@ describe("a phone held upright", () => {
 });
 
 describe("a phone held sideways, a desktop", () => {
-  it("draws the table unturned; the phone class follows the height alone", async () => {
+  it("draws the table unturned with the phone class; the lobby keeps the portrait column", async () => {
     viewport({ portrait: false, short: true });
     const ws = await mountApp();
-    expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(true);
+    expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(false);
     act(() => ws.deliver(playing));
     expect(host.querySelector(".app")!.classList.contains("rotated")).toBe(false);
     expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(true);
@@ -127,6 +127,7 @@ it("turns only the table, and only on a portrait phone", () => {
   expect(phoneLayout(false, true, true)).toEqual({ phone: true, rotated: true });
   expect(phoneLayout(false, true, false)).toEqual({ phone: false, rotated: false });
   expect(phoneLayout(true, false, true)).toEqual({ phone: true, rotated: false });
-  expect(phoneLayout(true, false, false)).toEqual({ phone: true, rotated: false });
+  // a sideways phone in the lobby keeps the portrait column: no phone class
+  expect(phoneLayout(true, false, false)).toEqual({ phone: false, rotated: false });
   expect(phoneLayout(false, false, true)).toEqual({ phone: false, rotated: false });
 });

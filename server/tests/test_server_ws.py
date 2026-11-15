@@ -31,6 +31,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "DECLARE_GRACE", 0.05)
     monkeypatch.setattr(srv, "DECLARE_EXTEND", 0.05)
     srv.rooms.clear()
+    # peeks draw on the process-wide code-read limit; each test starts fresh
+    srv.MATCHMAKER.lookup_limiter.reset()
     # ONE event loop for the whole test: a bare TestClient gives each
     # websocket_connect its own portal, and a Room's asyncio.Lock binds to
     # whichever loop touches it first — so multi-socket tests died with
@@ -155,6 +157,34 @@ def test_peek_room_reports_seats_without_joining(client):
     # Peeking must NOT seat the peeker.
     from shengji.api import server as srv
     assert len(srv.rooms[code].seats) == 4
+
+
+def test_a_room_peek_frame_is_unchanged_in_the_lobby_and_in_play(client):
+    """The exact bytes of a room code's ``room_seats``, before and after its
+    game starts: a table code's peek adds fields only to its own frame."""
+    import json
+
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        a.send_json({"type": "add_bot"})
+        _drain(a, "room")
+        b.send_json({"type": "peek_room", "room": code.lower()})
+        lobby = json.dumps(_drain(b, "room_seats"))
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=400)
+        b.send_json({"type": "peek_room", "room": code})
+        play = json.dumps(_drain(b, "room_seats"))
+
+    def seat(i, name, bot):
+        return {"seat": i, "name": name, "is_bot": bot, "connected": not bot, "team": i % 2,
+                "claimable": bot, "reserved_secs": None,
+                "controller": "bot" if bot else "human"}
+    assert lobby == json.dumps({"type": "room_seats", "room": code, "in_game": False,
+                                "seats": [seat(0, "jerry", False), seat(1, "Bot 1", True)]})
+    assert play == json.dumps({"type": "room_seats", "room": code, "in_game": True,
+                               "seats": [seat(0, "jerry", False), seat(1, "Bot 1", True),
+                                         seat(2, "Bot 2", True), seat(3, "Bot 3", True)]})
 
 
 def test_peek_unknown_room_errors(client):

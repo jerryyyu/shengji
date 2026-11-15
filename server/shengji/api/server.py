@@ -2827,8 +2827,20 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     elif t == "peek_room":
                         # Who is sitting where, WITHOUT joining — the lobby uses
                         # this to offer a seat picker for a game in progress.
+                        # A code read like ``code_lookup``, on its limit.
+                        if not MATCHMAKER.lookup_allowed(conn, account_id()):
+                            await send(ws, {"type": "error", "code": "rate_limited",
+                                            "peek": matchmaking.normalize_code(
+                                                msg.get("room"))[:matchmaking.CODE_LEN * 2],
+                                            "message": "Too many requests; wait a minute."})
+                            continue
                         target = rooms.get(str(msg.get("room", "")).upper())
                         if target is None:
+                            # a room wins a code, as in ``code_lookup``
+                            seats = MATCHMAKER.peek(matchmaking.normalize_code(msg.get("room")))
+                            if seats is not None:
+                                await send(ws, seats)
+                                continue
                             await send(ws, {"type": "error", "code": "room_not_found",
                                             "message": "Room not found."})
                             continue

@@ -4854,3 +4854,165 @@ def test_an_away_opener_dropped_at_the_start_leaves_the_room_the_tables_code():
         assert 1 not in humans_of(slots)
         assert env.rooms[0]["code"] == code
     run(go())
+
+
+# ------------------------------------------------------- peek a table code
+PEEK_KEYS = {"type", "room", "table", "mode", "in_game", "allow_joiners", "full", "closed",
+             "seats"}
+PEEK_SEAT_KEYS = {"seat", "team", "state", "name", "ready"}
+
+
+def _states(peek):
+    return [(s["state"], s["name"]) for s in peek["seats"]]
+
+
+def test_peek_a_lone_entrys_code_shows_its_seat_and_three_open():
+    async def go():
+        env = Env()
+        await env.join(1, mode="casual")
+        code = env.conns[1].last("queue_state")["code"]
+        peek = env.mm.peek(code)
+        assert set(peek) == PEEK_KEYS and all(set(s) == PEEK_SEAT_KEYS for s in peek["seats"])
+        assert peek["type"] == "room_seats" and peek["room"] == code and peek["table"] is True
+        assert peek["mode"] == "casual" and peek["in_game"] is False
+        assert _states(peek) == [("taken", "P1"), ("open", None), ("open", None), ("open", None)]
+        assert [s["team"] for s in peek["seats"]] == [0, 1, 0, 1]
+        assert peek["allow_joiners"] is True and peek["full"] is False and peek["closed"] is False
+        assert env.mm.peek("ZZZZ") is None
+        await env.send(1, "queue_leave")
+        assert env.mm.peek(code) is None
+    run(go())
+
+
+def test_peek_a_duo_table_shows_its_held_seat_until_the_friend_takes_it():
+    async def go():
+        env = Env()
+        await env.join(1, duo=True)
+        code = env.conns[1].last("queue_state")["code"]
+        peek = env.mm.peek(code)
+        assert _states(peek) == [("taken", "P1"), ("open", None), ("held", None), ("open", None)]
+        assert peek["full"] is False and peek["mode"] == "ranked"
+        env.player(2)
+        await env.send(2, "queue_join", code=code)
+        peek = env.mm.peek(code)
+        assert [s["state"] for s in peek["seats"]] == ["taken", "open", "taken", "open"]
+        assert peek["seats"][2]["name"] == "P2"
+    run(go())
+
+
+def test_peek_a_waiting_table_shows_its_seats_starts_and_a_full_table():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        for uid in (2, 3):
+            env.player(uid)
+            await env.send(uid, "queue_join", code=code)
+        await env.send(2, "table_start")
+        peek = env.mm.peek(code)
+        (t,) = env.mm.tables.values()
+        names = {u: f"P{u}" for u in (1, 2, 3)}
+        assert _states(peek) == [("taken", names[u]) if u is not None else ("open", None)
+                                 for u in t.seats]
+        assert [s["ready"] for s in peek["seats"]] == [u == 2 for u in t.seats]
+        assert peek["full"] is False
+        # a joiner's own code shows the same table
+        assert env.mm.peek(env.mm._entry(3).code)["seats"] == peek["seats"]
+        # four seated wait while one reconnects: a full table, still queued
+        env.mm.disconnect(env.conns[3])
+        env.player(4)
+        await env.send(4, "queue_join", code=code)
+        assert not env.started
+        peek = env.mm.peek(code)
+        assert [s["state"] for s in peek["seats"]] == ["taken"] * 4 and peek["full"] is True
+    run(go())
+
+
+def test_peek_says_allow_joiners_off_and_shows_the_seats_anyway():
+    async def go():
+        env = Env()
+        await env.join(1, allow_joiners=False)
+        code = env.conns[1].last("queue_state")["code"]
+        peek = env.mm.peek(code)
+        assert peek["allow_joiners"] is False and peek["full"] is False
+        assert _states(peek)[0] == ("taken", "P1")
+    run(go())
+
+
+def test_peek_a_claiming_table_is_closed_and_a_started_one_is_gone():
+    async def go():
+        env = Env()
+        await env.join(1)
+        code = env.conns[1].last("queue_state")["code"]
+        env.mm._entry(1).claiming = True          # a Join of its own is in flight
+        assert env.mm.peek(code)["closed"] is True
+        env.mm._entry(1).claiming = False
+        await env.send(1, "queue_start_bots")
+        assert env.started and env.mm.peek(code) is None
+    run(go())
+
+
+def test_peek_shows_names_only_never_ids_ratings_or_sitting_tokens():
+    async def go():
+        env = Env()
+        env.player(917, rating=1777.5, name="Ann")
+        await env.join(917, rating=1777.5)
+        code = env.conns[917].last("queue_state")["code"]
+        env.player(4242, rating=1234.25, name="Bo")
+        await env.send(4242, "queue_join", code=code)
+        (t,) = env.mm.tables.values()
+        text = repr(env.mm.peek(code))
+        for secret in ("917", "4242", "1777", "1234", t.id, *t.sit_ids.values(),
+                       *(e.id for e in t.entries), "sit", "rating", "user"):
+            assert secret not in text, secret
+        assert [s["name"] for s in env.mm.peek(code)["seats"]] == ["Ann", None, "Bo", None]
+    run(go())
+
+
+def test_ws_peek_a_table_code_by_either_name_and_its_room_once_it_starts(wsenv):
+    srv, store, client, clock = wsenv
+    _, headers = _user(store, "peekhost", "Host")
+    with client.websocket_connect("/ws", headers=headers) as h, \
+            client.websocket_connect("/ws") as g:
+        h.send_json({"type": "queue_join", "mode": "casual"})
+        code = _drain(h, "queue_state")["code"]
+        g.send_json({"type": "peek_room", "room": code.lower()})
+        old = _drain(g, "room_seats")
+        g.send_json({"type": "table_peek", "code": f" {code.lower()} "})
+        assert _drain(g, "room_seats") == old
+        assert old["table"] is True and old["room"] == code and old["mode"] == "casual"
+        assert _states(old) == [("taken", "Host"), ("open", None), ("open", None), ("open", None)]
+        h.send_json({"type": "queue_start_bots"})
+        assert _drain(h, "match_started", tries=400)["room"] == code
+        g.send_json({"type": "peek_room", "room": code})
+        room = _drain(g, "room_seats")
+        assert "table" not in room and room["room"] == code
+        g.send_json({"type": "table_peek", "code": "ZZZZ"})
+        assert _drain(g, "error")["code"] == "room_not_found"
+
+
+def test_ws_peeks_share_the_code_lookup_limit(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect("/ws") as host, client.websocket_connect("/ws") as g, \
+            client.websocket_connect("/ws") as other:
+        host.send_json({"type": "create_room", "name": "host"})
+        room = _drain(host, "room")["room"]
+        limit, window = mm.LOOKUP_LIMIT
+        for i in range(limit):
+            if i % 2:
+                g.send_json({"type": "code_lookup", "code": room})
+                assert _drain(g, "code_kind")["kind"] == "room"
+            else:
+                g.send_json({"type": "peek_room", "room": room})
+                assert _drain(g, "room_seats")["room"] == room
+        g.send_json({"type": "table_peek", "code": room.lower()})
+        refused = _drain(g, "error")
+        assert refused["code"] == "rate_limited" and refused["peek"] == room
+        g.send_json({"type": "code_lookup", "code": room})
+        assert _drain(g, "error")["code"] == "rate_limited"
+        # another socket has its own limit
+        other.send_json({"type": "peek_room", "room": room})
+        assert _drain(other, "room_seats")["room"] == room
+        clock.advance(window + 1)
+        g.send_json({"type": "peek_room", "room": room})
+        assert _drain(g, "room_seats")["room"] == room

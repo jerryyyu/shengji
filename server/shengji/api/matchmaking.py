@@ -2338,9 +2338,8 @@ class Matchmaker:
         (a waiting table, joined with ``queue_join {code}``) or ``none``. Read-only and open to guests, so any join box can ask
         before choosing the room or the pair flow. A room wins a code both
         hold, which only codes issued before the shared space can do."""
-        key = str(user_id) if user_id is not None else f"socket:{id(conn)}"
         code = normalize_code(msg.get("code"))
-        if not self.lookup_limiter.allow(key, self.clock()):
+        if not self.lookup_allowed(conn, user_id):
             # ``lookup`` marks this refusal as the lookup's one reply; the
             # queue and pair messages refuse with the same code untagged.
             return {"type": "error", "code": "rate_limited", "lookup": code[:CODE_LEN * 2],
@@ -2354,6 +2353,52 @@ class Matchmaker:
             elif code in self.entry_codes:
                 kind = "table"
         return {"type": "code_kind", "code": code[:CODE_LEN * 2], "kind": kind}
+
+    def lookup_allowed(self, conn: Conn, user_id: int | None) -> bool:
+        """One more read of what a code names (``code_lookup`` or a peek):
+        both draw on one ``LOOKUP_LIMIT`` per account (a guest: per socket),
+        so neither widens the other's reach over the code space."""
+        key = str(user_id) if user_id is not None else f"socket:{id(conn)}"
+        return self.lookup_limiter.allow(key, self.clock())
+
+    def peek(self, code: str) -> dict | None:
+        """Who sits at the queued table ``code`` names, as a ``room_seats``
+        frame with ``table: true``; None when no queued table has it.
+        Read-only. A seat shows its state and, when taken, the name its
+        table shows and whether its Start is in: never an account, a
+        rating or a sitting token.
+
+        A lone entry's seats are where its table would put it (``_bot_slots``
+        for a pair or a Duo opener, whose partner seat is held). ``full`` is
+        what a code join by one person meets (``_check_room_for``): the first
+        single by a Duo opener's code takes its held seat. ``closed``: a Join
+        of the host's is in flight and the code join refuses
+        (``table_closed``). ``allow_joiners`` is the opener's switch, which
+        keeps strangers' Play away but never a code join."""
+        host = self._code_entry(code)
+        if host is None:
+            return None
+        t = self._table(host)
+        if t is not None:
+            occupants, held = list(t.seats), set(t.held_seats())
+            entries, mode = t.entries, t.mode
+        else:
+            occupants, held = [None] * 4, {2} if host.hold else set()
+            places = SEAT_ORDER if host.size == 1 and not host.hold else PAIR_SEATS[0]
+            for s, u in zip(places, host.members):
+                occupants[s] = u
+            entries, mode = [host], host.mode
+        by_user = {u: e for e in entries for u in e.members}
+        seats = []
+        for i, u in enumerate(occupants):
+            state = "taken" if u is not None else "held" if i in held else "open"
+            seats.append({"seat": i, "team": i % 2, "state": state,
+                          "name": self._name(u) if u is not None else None,
+                          "ready": u is not None and self._tapped(t, by_user[u], u)})
+        free = any(s["state"] == "open" for s in seats)
+        return {"type": "room_seats", "room": code, "table": True, "mode": mode,
+                "in_game": False, "allow_joiners": self._opener(host).allow_joiners,
+                "full": not (free or host.hold), "closed": host.claiming, "seats": seats}
 
     def _party_payload(self, p: Party, uid: int) -> dict:
         """A table Duo's ``code`` is its table's while queued (else empty),

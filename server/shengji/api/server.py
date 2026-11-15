@@ -3257,10 +3257,9 @@ def _account_of(qid: int | None) -> int | None:
 SAME_DEVICE_MESSAGE = "Someone on this device is already at that table."
 ACCOUNT_IN_GAME_MESSAGE = "Sign in again to return to your game."
 ACCOUNT_PLAYING_MESSAGE = "You are already in a game on another device."
-# The queue messages that start a search, a pair or a seat; a guest whose
-# device's account is in a ranked game in play is refused them.
-QUEUE_STARTS = frozenset({"queue_join", "queue_start_bots", "party_create",
-                          "party_join", "open_table_join"})
+# The queue messages that start a search or a seat; a guest whose device's
+# account is in a ranked game in play is refused them.
+QUEUE_STARTS = frozenset({"queue_join", "queue_start_bots", "open_table_join"})
 
 
 def _account_seat_on(room: Room, device: str) -> Seat | None:

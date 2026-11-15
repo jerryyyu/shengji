@@ -41,8 +41,8 @@ Seating (``seat_waiting``, on every join and every ``tick``):
 A table starts (``tick``, and at once after the event that makes it due):
 
 * when it has four people;
-* when every entry at it has tapped Start (``table_start``; a party pair's
-  leader taps for the pair, each member of a table Duo for itself), bots
+* when every entry at it has tapped Start (``table_start``; each member of
+  a Duo for itself), bots
   taking the empty seats; ``table_unready`` takes a Start back until then;
 * at the table's timer: the earliest ``bots_at`` among its entries. An entry
   whose switch is on ("Only tables with people", ``queue_wait_players``)
@@ -219,16 +219,15 @@ CHAT_KEEP = 50
 # The queue's two modes: ranked tables rate their rounds, casual ones never;
 # an entry is seated and offered tables of its own mode only.
 MODES = ("ranked", "casual")
-# Room and pair codes share one space: no live room and live pair ever hold
-# the same code, so one join box takes either. No I, O, 0 or 1, which read
+# Room and table codes share one space: no live room and queued table ever
+# hold the same code, so one join box takes either. No I, O, 0 or 1, which read
 # alike.
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CODE_LEN = 4
 
 QUEUE_MESSAGES = frozenset({
-    "queue_status", "queue_join", "queue_leave", "table_start", "match_accept", "match_decline",
-    "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_create", "party_invite", "party_join",
-    "party_leave", "open_table_join", "open_table_wait", "open_table_show",
+    "queue_status", "queue_join", "queue_leave", "table_start",
+    "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_leave", "open_table_join", "open_table_wait", "open_table_show",
     "table_move", "table_here", "table_chat", "table_allow_joiners", "table_start_level",
     "table_start_now", "table_unready",
 })
@@ -247,7 +246,7 @@ _CODE_RNG = secrets.SystemRandom()
 
 def new_code(taken: Callable[[str], bool], rng: Any = None) -> str:
     """A code from the shared space that ``taken`` says is free. ``taken``
-    must cover both live rooms and live pairs."""
+    must cover both live rooms and queued tables."""
     rng = rng if rng is not None else _CODE_RNG
     while True:
         code = "".join(rng.choices(CODE_ALPHABET, k=CODE_LEN))
@@ -283,16 +282,14 @@ class Slot:
 
 @dataclass
 class Party:
+    """A Duo, made at a table (``queue_join {duo}`` and its code's first
+    joiner): it has no code of its own, the table's code is its invite,
+    and a Leave before the game ends it for the leaver only."""
     id: str
-    code: str
     leader: int
     members: list[int]
     names: dict[int, str]
     idle_since: float             # the 5-minute expiry runs while not queued
-    # A Duo made at a table (``queue_join {duo}`` and its code's first
-    # joiner): it has no code of its own, the table's code is its invite,
-    # and a Leave before the game ends it for the leaver only.
-    table: bool = False
 
 
 @dataclass
@@ -575,7 +572,7 @@ class Matchmaker:
         self.rating_of = rating_of or _store_rating
         self.start_room = start_room
         self.user_active = user_active or (lambda uid: not accounts.is_deleted(uid))
-        # Whether a code names a live room: pair codes avoid them, and
+        # Whether a code names a live room: table codes avoid them, and
         # code_lookup answers with them.
         self.room_live = room_live or (lambda code: False)
         # The open tables as the server sees them (``{"code", "seats", "mode",
@@ -606,9 +603,8 @@ class Matchmaker:
         self.tables: dict[str, Table] = {}
         self.parties: dict[str, Party] = {}
         self.party_of: dict[int, str] = {}
-        self.party_codes: dict[str, str] = {}
-        # Every queued entry's table code -> entry id: one space with rooms
-        # and pairs, so a code names one thing and survives into the room.
+        # Every queued entry's table code -> entry id: one space with rooms,
+        # so a code names one thing and survives into the room.
         self.entry_codes: dict[str, str] = {}
         # Open tables: per account, the tables it waited on (never offered
         # again by themselves), the tables it may never be offered (it joined
@@ -826,9 +822,9 @@ class Matchmaker:
             "of": t.humans,
             "you_ready": mine is not None and self._tapped(t, mine, uid),
             "waiting_for": [self._name(u) for e in t.entries
-                            for u in (e.members if self._table_duo(e) else [e.leader])
+                            for u in e.members
                             if u != uid and not self._tapped(t, e, u)
-                            and (self._table_duo(e) or uid not in e.members)],
+                            and (e.size == 2 or uid not in e.members)],
         }
 
     def table_frame(self, t: Table, uid: int) -> dict:
@@ -862,16 +858,16 @@ class Matchmaker:
                        "start_now_at": t.start_now_at() if t.waiting else None},
             "your_ready": mine is not None and self._tapped(t, mine, uid),
             "waiting_for": [self._name(u) for e in t.entries
-                            for u in (e.members if self._table_duo(e) else [e.leader])
+                            for u in e.members
                             if u != uid and not self._tapped(t, e, u)
-                            and (self._table_duo(e) or uid not in e.members)],
+                            and (e.size == 2 or uid not in e.members)],
             "chat_log": self._chat_id(t),
         }
 
     def _tapped(self, t: Table, e: Entry, u: int) -> bool:
-        """Whether ``u``'s Start is in: its own tap in a table Duo, else
+        """Whether ``u``'s Start is in: its own tap in a Duo, else
         its entry's (never while its table is its own)."""
-        if self._table_duo(e):
+        if e.size == 2:
             return u in e.taps
         return e.id in t.ready
 
@@ -901,18 +897,13 @@ class Matchmaker:
                 "table": self.table_payload(t, uid) if t.waiting else None,
                 "offer": self._offer_payload(e.offer, uid, e) if e.offer is not None else None,
                 "open_tables": len(e.open_codes), "mode": e.mode,
-                "duo": e.hold or self._table_duo(e),
+                "duo": e.hold or e.size == 2,
                 "held_seat": t.held_for(e) if e.hold else t.held_seat(),
-                "duo_ready": len(e.taps) if self._table_duo(e) else None,
+                "duo_ready": len(e.taps) if e.size == 2 else None,
                 "you_ready": self._tapped(t, e, uid),
                 # your table's code and settings, alone or at a waiting table
                 "code": t.code, "allow_joiners": t.allow_joiners,
                 "start_level": t.start_level, "opener": t.entries[0].leader == uid}
-
-    def _table_duo(self, e: Entry) -> bool:
-        """A pair made at a Duo table (not a ``party_*`` pair)."""
-        p = self.parties.get(e.party_id) if e.party_id is not None else None
-        return e.size == 2 and p is not None and p.table
 
     @staticmethod
     def _opener(e: Entry) -> Entry:
@@ -1106,7 +1097,7 @@ class Matchmaker:
         called for it."""
         p = self._party(guest)
         e = self._entry(guest)
-        if e is not None and self._table_duo(e):
+        if e is not None and e.size == 2:
             self._split(e, guest, "signed_in")
             p, e = None, None
         if e is not None:
@@ -1136,7 +1127,7 @@ class Matchmaker:
         e = self._entry(uid)
         if e is None:
             return
-        if self._table_duo(e):
+        if e.size == 2:
             self._split(e, uid, "in_room")
             return
         self._remove(e, "in_room")
@@ -1234,23 +1225,15 @@ class Matchmaker:
                     raise QueueError("rate_limited", "Too many requests; wait a minute.")
                 self._bind(conn, queue_id)
                 await self._join(conn, queue_id, msg)
-            elif t.startswith("party_"):
+            elif t == "party_leave":
                 if not self.party_limiter.allow(str(queue_id), now):
                     raise QueueError("rate_limited", "Too many requests; wait a minute.")
                 self._bind(conn, queue_id)
-                if t in ("party_create", "party_invite"):
-                    self._party_create(queue_id)
-                elif t == "party_join":
-                    self._party_join(queue_id, msg)
-                else:
-                    self._party_leave(queue_id)
+                self._party_leave(queue_id)
             else:
                 self._bind(conn, queue_id, stopping=t == "queue_leave")
                 if t == "queue_leave":
                     self._leave(queue_id)
-                elif t in ("match_accept", "match_decline"):
-                    # The ready check is gone: the waiting table is the accept.
-                    raise QueueError("no_match", "There is no ready check for you.")
                 elif t == "table_start" or (t == "queue_start_bots" and self._table(e) is not None):
                     # Play bots at a table is its Start.
                     if e is not None:
@@ -1340,8 +1323,7 @@ class Matchmaker:
                 raise QueueError("not_leader", "Only your Duo's leader can search.")
             members, pid = list(party.members), party.id
         elif want is not None:
-            raise QueueError("party_incomplete" if party is not None and party.id == want
-                             else "bad_party", "Your friend has not joined yet.")
+            raise QueueError("bad_party", "Your friend has not joined yet.")
         for m in members:
             if m != uid and not self._available(m):
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
@@ -1378,8 +1360,6 @@ class Matchmaker:
             self.declined.pop(m, None)
         since = self.clock()
         hold = duo and len(members) == 1
-        if hold and party is not None:
-            self._close_party(party, None)    # the table's code is the invite now
         e = Entry(id=secrets.token_hex(6), seq=next(self._seq), members=members,
                   leader=uid, member_ratings=member_ratings, since=since,
                   party_id=pid, bots_at=since + BOT_FILL_SECS, mode=mode, hold=hold)
@@ -1405,10 +1385,10 @@ class Matchmaker:
         own = self._party(uid)
         if own is not None:
             self._close_party(own, None)
-        p = Party(id=secrets.token_hex(6), code="", leader=host.leader,
+        p = Party(id=secrets.token_hex(6), leader=host.leader,
                   members=[host.leader, uid],
                   names={host.leader: self._name(host.leader), uid: self._name(uid)},
-                  idle_since=now, table=True)
+                  idle_since=now)
         self.parties[p.id] = p
         for m in p.members:
             self.party_of[m] = p.id
@@ -1565,11 +1545,9 @@ class Matchmaker:
         if e is None:
             self._send(uid, self.queue_state(uid))
             return
-        if self._table_duo(e):
+        if e.size == 2:
             self._split(e, uid, "leave")
             return
-        if e.leader != uid:
-            raise QueueError("not_leader", "Only your Duo's leader can cancel.")
         self._remove(e, "leave")
         self._send_state(e)
         self._flush_count()
@@ -1597,7 +1575,7 @@ class Matchmaker:
         opener's move of the entry; a newcomer does not."""
         e = self._entry(uid)
         t = self._table(e)
-        if e is not None and self._table_duo(e):
+        if e is not None and e.size == 2:
             # each member's own Start; alone it waits for the pair's table
             if uid not in e.taps:
                 e.taps.add(uid)
@@ -1608,21 +1586,18 @@ class Matchmaker:
             return
         if e is None or t is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
-        if e.leader != uid:
-            raise QueueError("not_leader", "Only your Duo's leader can start.")
         if e.id not in t.ready:
             t.ready.add(e.id)
             self._send_table(t)
         await self._start_due()
 
     def _table_unready(self, uid: int) -> None:
-        """Take back your Start before the table starts: a table Duo's
-        member its own tap, alone or at a table; anyone else (a pair's
-        leader, for the pair) its entry's. A table that every Start would
+        """Take back your Start before the table starts: a Duo's member
+        its own tap, alone or at a table; a single its entry's. A table that every Start would
         have started has started already, so there is nothing to undo."""
         e = self._entry(uid)
         t = self._table(e)
-        if e is not None and self._table_duo(e):
+        if e is not None and e.size == 2:
             if uid in e.taps:
                 e.taps.discard(uid)
                 e.table.ready.discard(e.id)
@@ -1630,8 +1605,6 @@ class Matchmaker:
             return
         if e is None or t is None:
             raise QueueError("not_seated", "You are not at a waiting table.")
-        if e.leader != uid:
-            raise QueueError("not_leader", "Only your Duo's leader can change this.")
         if e.id in t.ready:
             t.ready.discard(e.id)
             self._send_table(t)
@@ -1886,7 +1859,7 @@ class Matchmaker:
             t.sit_ids[u] = secrets.token_hex(6)
         t.entries.append(e)
         e.table, e.active_at, e.prompted = t, now, False
-        if self._table_duo(e) and set(e.members) <= e.taps:
+        if e.size == 2 and set(e.members) <= e.taps:
             t.ready.add(e.id)          # both tapped Start while alone
         # A waiting table outranks an open table: the offer goes, and a
         # paused bot wait runs again as the table's timer.
@@ -2337,12 +2310,9 @@ class Matchmaker:
         self._bar(uid, code, cooldown=cooldown)
 
     # ------------------------------------------------------------- parties
-    def has_party_code(self, code: str) -> bool:
-        return code in self.party_codes
-
     def has_code(self, code: str) -> bool:
-        """A live pair's or queued table's code: a new room must avoid it."""
-        return code in self.party_codes or code in self.entry_codes
+        """A queued table's code: a new room must avoid it."""
+        return code in self.entry_codes
 
     def _new_code(self) -> str:
         return new_code(lambda c: self.has_code(c) or self.room_live(c))
@@ -2352,7 +2322,7 @@ class Matchmaker:
         had unless something else took it while it was out."""
         held = self.entry_codes.get(e.code)
         if (not e.code or (held is not None and held != e.id)
-                or e.code in self.party_codes or self.room_live(e.code)):
+                or self.room_live(e.code)):
             e.code = self._new_code()
         self.entries[e.id] = e
         for u in e.members:
@@ -2367,10 +2337,11 @@ class Matchmaker:
             self._own_table(e, like=t)
 
     def code_lookup(self, conn: Conn, msg: dict, user_id: int | None) -> dict:
-        """What a typed or linked code names: ``room``, ``party``, ``table``
-        (a waiting table, joined with ``queue_join {code}``) or ``none``. Read-only and open to guests, so any join box can ask
-        before choosing the room or the pair flow. A room wins a code both
-        hold, which only codes issued before the shared space can do."""
+        """What a typed or linked code names: ``room``, ``table`` (a queued
+        table, joined with ``queue_join {code}``) or ``none``. Read-only and
+        open to guests, so any join box can ask before choosing the flow. A
+        room wins a code both hold, which only codes issued before the
+        shared space can do."""
         code = normalize_code(msg.get("code"))
         if not self.lookup_allowed(conn, user_id):
             # ``lookup`` marks this refusal as the lookup's one reply; the
@@ -2381,8 +2352,6 @@ class Matchmaker:
         if len(code) == CODE_LEN and code.isascii() and code.isalnum():
             if self.room_live(code):
                 kind = "room"
-            elif code in self.party_codes:
-                kind = "party"
             elif code in self.entry_codes:
                 kind = "table"
         return {"type": "code_kind", "code": code[:CODE_LEN * 2], "kind": kind}
@@ -2426,13 +2395,11 @@ class Matchmaker:
                 "full": not (free or host.hold), "closed": host.claiming, "seats": seats}
 
     def _party_payload(self, p: Party, uid: int) -> dict:
-        """A table Duo's ``code`` is its table's while queued (else empty),
-        and ``table`` marks it."""
-        code = p.code
-        if p.table:
-            e = self._entry(p.leader)
-            code = e.table.code if e is not None and e.table is not None else ""
-        return {"type": "party", "party_id": p.id, "code": code, "table": p.table,
+        """A Duo's ``code`` is its table's while queued (else empty);
+        ``table`` is always true, every Duo being made at a table."""
+        e = self._entry(p.leader)
+        code = e.table.code if e is not None and e.table is not None else ""
+        return {"type": "party", "party_id": p.id, "code": code, "table": True,
                 "you_lead": p.leader == uid,
                 "members": [{"name": p.names[m], "leader": m == p.leader, "you": m == uid}
                             for m in p.members],
@@ -2442,67 +2409,18 @@ class Matchmaker:
         for m in p.members:
             self._send(m, self._party_payload(p, m))
 
-    def _party_create(self, uid: int) -> None:
-        p = self._party(uid)
-        if p is None:
-            p = Party(id=secrets.token_hex(6), code=self._new_code(), leader=uid,
-                      members=[uid], names={uid: self._name(uid)},
-                      idle_since=self.clock())
-            self.parties[p.id] = p
-            self.party_of[uid] = p.id
-            self.party_codes[p.code] = p.id
-        self._send(uid, self._party_payload(p, uid))
-
-    def _party_join(self, uid: int, msg: dict) -> None:
-        code = normalize_code(msg.get("code", ""))
-        p = self.parties.get(self.party_codes.get(code, ""))
-        if p is None:
-            raise QueueError("party_not_found", "No Duo has that code.")
-        if uid in p.members:
-            if len(p.members) == 1:
-                # your own code: a guest's queue id is its device
-                raise QueueError("same_device", "A Duo needs two devices." if uid < 0
-                                 else "That is your own Duo code.")
-            self._send(uid, self._party_payload(p, uid))
-            return
-        if len(p.members) >= 2:
-            raise QueueError("party_full", "That Duo is full.")
-        if uid in self.entry_of:
-            raise QueueError("in_queue", "Cancel your search before joining a Duo.")
-        if p.leader in self.entry_of:
-            raise QueueError("party_busy", "Your friend is already searching.")
-        mine, theirs = self.conns.get(uid), self.conns.get(p.leader)
-        if (mine is not None and theirs is not None and mine.device is not None
-                and mine.device == theirs.device):
-            raise QueueError("same_device", "A Duo needs two devices.")
-        own = self._party(uid)
-        if own is not None:
-            if len(own.members) == 2:
-                raise QueueError("in_party", "Leave your Duo first.")
-            self._close_party(own, None)
-        p.members.append(uid)
-        p.names[uid] = self._name(uid)
-        p.idle_since = self.clock()
-        self.party_of[uid] = p.id
-        self._send_party(p)
-
     def _party_leave(self, uid: int) -> None:
         p = self._party(uid)
         if p is None:
             raise QueueError("not_in_party", "You are not in a Duo.")
         e = self._entry(uid)
-        if e is not None and e.party_id == p.id and self._table_duo(e):
+        if e is not None and e.party_id == p.id:
             self._split(e, uid, "party_leave")
             return
-        if e is not None and e.party_id == p.id:
-            self._remove(e, "party_leave")
-            self._send_state(e)
-            self._flush_count()
         self._close_party(p, uid)
 
     def _close_party(self, p: Party, by: int | None, reason: str = "left") -> None:
         self.parties.pop(p.id, None)
-        self.party_codes.pop(p.code, None)
         for m in p.members:
             self.party_of.pop(m, None)
         for m in p.members:
@@ -2564,7 +2482,7 @@ class Matchmaker:
                     gone.append(u)
             if not gone:
                 continue
-            if len(gone) == 1 and self._table_duo(e):
+            if len(gone) == 1 and e.size == 2:
                 self._split(e, gone[0], "away")
                 continue
             self._remove(e, "away")

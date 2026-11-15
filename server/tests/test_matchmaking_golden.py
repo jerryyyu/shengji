@@ -22,6 +22,7 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -159,10 +160,19 @@ class Env:
         await self.send(uid, "queue_join", **fields)
 
     async def pair(self, leader: int, partner: int, r1: float = 1000.0, r2: float = 1000.0) -> None:
+        """A Duo in the lobby and not queued, as one is back from its game
+        (``test_matchmaking.lobby_duo``); the leader's ``queue_join``
+        queues the two."""
         self.player(leader, r1)
         self.player(partner, r2)
-        await self.send(leader, "party_create")
-        await self.send(partner, "party_join", code=self.conns[leader].last("party")["code"])
+        self.log.append(["duo", leader, partner])
+        m = self.mm
+        p = mm.Party(id=secrets.token_hex(6), leader=leader, members=[leader, partner],
+                     names={u: m._name(u) for u in (leader, partner)}, idle_since=m.clock())
+        m.parties[p.id] = p
+        for u in p.members:
+            m.party_of[u] = p.id
+        m._send_party(p)
 
     def code(self, uid: int) -> str:
         state = self.conns[uid].last("queue_state")
@@ -311,12 +321,14 @@ async def pairs_meet_and_a_pair_leaves(env: Env) -> None:
     await env.send(3, "queue_join")
     await env.send(3, "table_chat", text="pair waits alone")
     await env.send(4, "party_leave")
+    await env.send(3, "queue_leave")
     await env.send(7, "queue_leave")
     await env.pair(5, 6)
     await env.send(5, "queue_join")
     await env.send(1, "table_start")
     await env.send(2, "table_start")
     await env.send(5, "table_start")
+    await env.send(6, "table_start")
 
 
 @scenario

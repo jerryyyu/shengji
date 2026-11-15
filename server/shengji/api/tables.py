@@ -26,16 +26,19 @@ CANONICAL = frozenset({
     "table_join", "table_peek",
 })
 
-# The names a canonical name replaced, and the created room's old lobby
-# controls, which no table has any more. A client frame with one is refused
-# with the code ``retired`` (``RETIRED_MESSAGE``) and counted. ``queue_join``
-# is one only with a ``code`` (a join); without one it is the search, which
-# has no other name.
+# The names a canonical name replaced, the created room's old lobby
+# controls, which no table has any more, the Duo made by its own code (a
+# Duo is made at a table: ``queue_join {duo}`` and its code's joiner) and
+# the ready check's answers (the waiting table is the accept). A client
+# frame with one is refused with the code ``retired`` (``RETIRED_MESSAGE``)
+# and counted. ``queue_join`` is one only with a ``code`` (a join); without
+# one it is the search, which has no other name.
 RETIRED = frozenset({
     "swap_seats", "lobby_ready", "table_unready", "start_game", "queue_start_bots",
     "allow_joiners", "set_start_level", "chat", "leave_room", "queue_leave",
     "join_room", "queue_join", "peek_room",
     "add_bot", "remove_bot", "remove_player", "set_ranked",
+    "party_create", "party_invite", "party_join", "match_accept", "match_decline",
 })
 RETIRED_MESSAGE = "This page is out of date. Reload to play."
 # ``create_room`` counts only without ``start: true``; it starts the game at

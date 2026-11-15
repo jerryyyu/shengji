@@ -225,12 +225,9 @@ describe("the bars", () => {
     // Leaderboard: the one row
     await act(async () => { openTab("leaderboard"); await new Promise((r) => setTimeout(r, 0)); });
     await opened(() => host.querySelector<HTMLButtonElement>(".lb-signin")!.click());
-    // Me: Edit name and Sign in
+    // Me: the one row with the name
     await act(async () => { openTab("me"); await new Promise((r) => setTimeout(r, 0)); });
-    const meRow = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".me-page .grp-row")]
-      .find((r) => r.querySelector(".grp-label")?.textContent === label)!;
-    await opened(() => meRow("Edit name").click());
-    await opened(() => meRow("Sign in").click());
+    await opened(() => host.querySelector<HTMLButtonElement>(".me-page .me-identity")!.click());
   });
 
   for (const wide of [false, true]) {
@@ -276,7 +273,7 @@ describe("one name control", () => {
     act(() => { set.call(input, name); input.dispatchEvent(new Event("input", { bubbles: true })); });
   };
   for (const [label, width] of [["phone", 390], ["iPad", 1024]] as const) {
-    it(`a guest's chip on Play and Edit name on Me open the same sheet (${label})`, async () => {
+    it(`a guest's chip on Play and the name row on Me open the same sheet (${label})`, async () => {
       signedIn = false;
       viewport(width);
       await renderApp();
@@ -292,7 +289,8 @@ describe("one name control", () => {
       expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
       expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
       expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
-      const edit = [...host.querySelectorAll<HTMLButtonElement>(".grp-row")].find((r) => r.textContent?.startsWith("Edit name"))!;
+      const edit = host.querySelector<HTMLButtonElement>(".me-identity")!;
+      expect(edit.textContent).toBe("Gentle Tractor");
       act(() => edit.click());
       expect(sheets()).toHaveLength(1);
       expect(document.querySelector<HTMLInputElement>(".guest-name-sheet input")!.value).toBe("Gentle Tractor");

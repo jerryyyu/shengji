@@ -1,4 +1,4 @@
-// Continue a saved game: the row's Continue sends one `create_room` with
+// Continue a saved game: the game page's Continue sends one `create_room` with
 // `resume_from` and `start`, leaves the saved-games route, and lands on the
 // table at the saved levels when the server starts the filled room.
 import { act } from "react";
@@ -46,6 +46,7 @@ beforeEach(() => {
     const body = url === "/api/auth/config" ? { google_client_id: "cid" }
       : url === "/api/me" ? { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }
       : url.startsWith("/api/me/games?") ? { games: [GAME], next_before: null }
+      : url === "/api/me/games/g1" ? { ...GAME, round_results: [] }
       : null;
     return { status: body ? 200 : 404, json: async () => body ?? {} } as Response;
   }) as typeof fetch;
@@ -60,7 +61,7 @@ afterEach(() => {
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
 it("Continue sends one create_room with resume_from and start, then lands on the table", async () => {
-  window.history.replaceState(null, "", "/#/me/games");
+  window.history.replaceState(null, "", "/#/games/g1");
   const { saveName } = await import("./ws");
   saveName("Jerry");
   const { default: App } = await import("./App");
@@ -69,13 +70,12 @@ it("Continue sends one create_room with resume_from and start, then lands on the
   root = createRoot(host);
   await act(async () => { root.render(<App />); });
   await settle();
-  const cont = () => host.querySelector<HTMLButtonElement>(".games-day-item .games-continue")!;
+  const cont = () => host.querySelector<HTMLButtonElement>(".games-actions .games-continue")!;
   // no socket yet: Continue waits for one
   expect(cont().disabled).toBe(true);
   const ws = FakeWS.all[0];
   act(() => ws.onopen?.());
   expect(cont().disabled).toBe(false);
-  expect(host.querySelector(".games-day-item .games-replay")?.textContent).toBe("Replay");
 
   await act(async () => { cont().click(); await new Promise((r) => setTimeout(r, 0)); });
   const sends = () => ws.sent.filter((m) => m.type !== "ping");
@@ -102,7 +102,7 @@ it("Continue sends one create_room with resume_from and start, then lands on the
 });
 
 it("a refused Continue says so and stays off the table", async () => {
-  window.history.replaceState(null, "", "/#/me/games");
+  window.history.replaceState(null, "", "/#/games/g1");
   const { default: App } = await import("./App");
   host = document.createElement("div");
   document.body.appendChild(host);

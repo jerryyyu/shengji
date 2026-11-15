@@ -713,6 +713,18 @@ describe("a Duo is a table", () => {
     });
   }
 
+  it("a link to another table opened in a Duo asks with the panel's Duo line", async () => {
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    await renderApp();
+    say(duoParty(true));
+    say(duoState(true, 0, false));
+    say({ type: "code_kind", code: "WXYZ", kind: "table" });
+    await settle();
+    expect(leaveSheetText()).toBe("Leave to join WXYZ? / Alice keeps the table and its code.");
+    click(q("[role='alertdialog'] .leave-sheet-stay"));
+    expect(leaveSheetText()).toBeNull();
+  });
+
   it("the pair row's Leave waits for the socket", async () => {
     await renderApp();
     say(duoParty(true));

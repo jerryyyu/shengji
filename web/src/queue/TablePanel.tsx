@@ -5,6 +5,7 @@ import { ChatBody } from "../components/ChatPanel";
 import { useGuestName } from "../guestName";
 import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
+import ConfirmSheet from "../components/ConfirmSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
 import { codeLink } from "../codes";
 import type { ChatMsg, Rank } from "../protocol";
@@ -210,41 +211,11 @@ function useOpenerMove(seats: MoverSeat[] | null, send: (from: number, to: numbe
 }
 
 /** The one confirm before the opener moves someone: "Move Alice here?",
- *  then Cancel and Move. A modal dialog; Cancel is focused first and
- *  Escape cancels. */
+ *  then Cancel and Move, in the panel's gold: moving is not a way out. */
 function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () => void; onCancel: () => void }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const titleId = useId();
-  useEffect(() => {
-    const dialog = ref.current!;
-    if (typeof dialog.showModal === "function") dialog.showModal();
-    else dialog.setAttribute("open", "");
-    cancelRef.current?.focus();
-    return () => {
-      if (typeof dialog.close === "function") dialog.close();
-      else dialog.removeAttribute("open");
-    };
-  }, []);
   return (
-    <dialog ref={ref} className="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog"
-            aria-modal="true" aria-labelledby={titleId}
-            onCancel={(e) => { e.preventDefault(); onCancel(); }}
-            onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Escape") { e.preventDefault(); onCancel(); }
-            }}>
-      <div className="leave-sheet">
-        <div className="leave-sheet-text">
-          <h2 id={titleId} className="leave-sheet-title">{moveQuestion(names)}</h2>
-        </div>
-        <div className="leave-sheet-actions">
-          <button ref={cancelRef} type="button" className="leave-sheet-stay" onClick={onCancel}>Cancel</button>
-          <button type="button" className="leave-sheet-leave tp-move-confirm" onClick={onMove}>Move</button>
-        </div>
-      </div>
-    </dialog>
+    <ConfirmSheet title={moveQuestion(names)} cancel="Cancel" confirm="Move" confirmClass="tp-move-confirm"
+                  onConfirm={onMove} onCancel={onCancel} />
   );
 }
 

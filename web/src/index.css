@@ -3967,13 +3967,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   inset: -14px -8px;
 }
 
-.games-row-actions .btn { position: relative; }
-.games-row-actions .btn::after {
-  content: "";
-  position: absolute;
-  inset: -5px -4px;
-}
-
 /* ============ Hidden debug xray panel ============ */
 
 .xray-panel {
@@ -5744,6 +5737,8 @@ button.grp-row:disabled { cursor: default; }
 /* Edit name keeps its label on one line; a long name ends in an ellipsis
    before the chevron */
 .me-edit .grp-label { flex: none; white-space: nowrap; }
+/* a guest's one identity row: the name, ellipsized before the chevron */
+.me-identity .grp-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-edit .grp-value {
   display: block; position: relative; flex: 0 1 auto; padding-right: 16px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -5827,16 +5822,12 @@ button.grp-row:disabled { cursor: default; }
 }
 .ios-switch.on { background: #5fc78b; }
 .ios-switch.on::after { transform: translateX(20px); }
-.me-delete-confirm { display: flex; flex-direction: column; gap: 10px; padding: 16px; text-align: center; }
-.me-delete-confirm h3 { margin: 0; font-size: var(--fs-17); color: #fff; }
-.me-delete-confirm p { margin: 0; font-size: var(--fs-15); line-height: 1.35; color: #9aa3b2; }
 
 .games-days { display: flex; flex-direction: column; gap: 14px; }
 .grp .games-day-row { min-height: 60px; padding: 8px 16px; }
 .games-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .games-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
 .games-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 1px; font-size: var(--fs-13); color: #9aa3b2; }
-.grp-value.games-replay { color: var(--gold); font-size: var(--fs-15); }
 
 /* Native feel. A long press anywhere outside a field or a chat message
    selects nothing and raises no Copy / Look Up callout or Save Image sheet
@@ -5907,15 +5898,7 @@ button[role="switch"]:active .ios-switch {
   .chat-panel.pop-out { animation: none; }
 }
 
-/* A saved game's row: the row opens the game; Continue and Replay sit at its
-   end, or on a line of their own when the row is too narrow for both. */
-.games-day-item { display: flex; flex-wrap: wrap; align-items: center; }
-.games-day-item > .games-day-row { flex: 1 1 240px; width: auto; min-width: 0; }
-.games-row-actions { display: flex; gap: 8px; margin-left: auto; padding: 0 16px 10px; }
-@media (min-width: 700px) {
-  .games-row-actions { padding: 0 16px 0 0; }
-}
-.games-row-actions .btn { min-height: 36px; padding: 6px 14px; font-size: var(--fs-13); }
+/* A saved game's detail: its one Continue across the column. */
 .games-actions { display: flex; gap: 10px; }
 /* The viewer's rating change in a game: a figure column at the row's end. */
 .rating-change { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -6198,9 +6181,9 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
   padding-bottom: 0;
 }
 
-/* The leave sheet: a title, one line of what leaving costs, then Stay and
-   Leave side by side. A centred card at the table; before a game it rises
-   from the bottom of a phone. */
+/* The one confirm sheet (leave, move, take a seat, delete, remove): a
+   title, at most one line, then cancel and confirm side by side. A centred
+   card at the table; elsewhere it rises from the bottom of a phone. */
 dialog.leave-sheet-backdrop {
   background: rgba(8, 10, 14, 0.55);
   backdrop-filter: none;
@@ -6265,6 +6248,12 @@ dialog.leave-sheet-backdrop {
   background: #5a1f27;
   color: #ffd0d6;
 }
+/* a confirm that is not a way out (move, take a seat) is the panel's gold */
+.leave-sheet-actions .leave-sheet-leave.confirm-sheet-go {
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+}
+.leave-sheet-actions button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
+.leave-sheet-error { margin: 0; font-size: 14px; line-height: 1.4; color: #f0a0aa; text-align: center; }
 @keyframes leave-sheet-in {
   from { opacity: 0; transform: scale(1.06); }
   to { opacity: 1; transform: none; }

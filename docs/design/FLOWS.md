@@ -149,7 +149,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
    (`IdentitySheet` in `components/GuestChip.tsx`, mounted once by App): "Your name" with the field and its
    dice, then the sign-in buttons, then Done. Every Sign in opens that same sheet: the Play tab's guest line
-   ("Playing as a guest · Sign in to be ranked", which stays), Me's Edit name and Sign in rows, the
+   ("Playing as a guest · Sign in to be ranked", which stays), a guest's one name row on Me, the
    Leaderboard's one row "Sign in to be ranked ›" (its card and its sentence on ratings are gone; saying
    what ranked means in How to play is a follow-up) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
    is gone, and signing in closes the sheet.
@@ -244,3 +244,21 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - **A table keeps its code for life.** The code a table took from its opener stays when the opener leaves (the
   next person takes the opener's controls, not the code), so every invite link keeps working while the table
   exists, and the room starts on it. The last one left alone keeps the table's code as its own.
+
+## Audit decisions 2026-11-15 (Jerry)
+- **One confirm sheet.** Every "are you sure" is one `ConfirmSheet` (`components/ConfirmSheet.tsx`): a title,
+  at most one line, then the cancel (focused first; Escape and the scrim also cancel) and the confirm side by side,
+  rising from the bottom of a phone, a centred card at the table. A confirm that undoes something is red; one that
+  is not a way out is the panel's gold. It carries the Leave sheet (`LeaveSheet.tsx` is its copy lookup), the
+  opener's move ("Move Alice here?", Cancel / Move), taking a dropped player's seat ("Alice dropped out. Take their
+  seat?", Cancel / Take seat), Delete account ("Delete your account?", "Your rating and games are deleted.",
+  Cancel / Delete; was an inline card) and removing a saved game ("Remove this game?", Cancel / Remove; was "Tap
+  again to remove"). A link opened while you sit in a Duo asks with the panel's own Duo line.
+- **Saved games: one place for Continue and Replay.** A list row is one tap target that opens the game: the
+  teams ("You & Alice vs Bot Wei, Bot Li"; was the table code and the other three names), the time, rounds,
+  levels and today's rating change, then ›. The game's page holds the one gold Continue and a Replay for each
+  round; the game-level Replay is gone (it opened round 1, as round 1's Replay does). Replaying a round is
+  Me → Games → game → round.
+- **A guest's Me: one row for who you are.** The row is the name with a chevron and opens the identity sheet
+  (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
+  where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged.

@@ -80,7 +80,7 @@ const button = (label: string) =>
 const click = async (el: HTMLElement) => { act(() => el.click()); await settle(); };
 
 describe("the games list", () => {
-  it("renders rows from the API grouped by day, each naming the other three seats", async () => {
+  it("renders rows from the API grouped by day, each naming the teams, yours first", async () => {
     const day = (y: number, m: number, d: number, h: number) => new Date(y, m, d, h).getTime() / 1000;
     routes["GET /api/me/games?limit=20"] = { status: 200, body: {
       games: [row("g1", day(2026, 10, 8, 21)), row("g3", day(2026, 10, 8, 20)),
@@ -93,13 +93,13 @@ describe("the games list", () => {
     expect(days[0].querySelectorAll(".games-day-row")).toHaveLength(2);
     expect(days[1].querySelectorAll(".games-day-row")).toHaveLength(1);
     const rows = qa(".games-day-row");
-    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bot 1, Bea, Bot 3");
+    expect(rows[0].querySelector(".games-row-title")?.textContent).toBe("You & Bea vs Bot 1, Bot 3");
     expect(rows[0].textContent).toContain("3 rounds");
     expect(rows[0].textContent).toContain("Levels 5–3");
-    expect(rows[0].parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
+    expect(rows[0].parentElement!.querySelectorAll("button")).toHaveLength(1);
     expect(rows[0].querySelector(".games-tag")).toBeNull();
-    // seat 1: the others are seats 2, 3 and 0
-    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("ABCD · Bea, Bot 3, Ana");
+    // seat 1: the partner is seat 3, the others seats 2 and 0
+    expect(rows[2].querySelector(".games-row-title")?.textContent).toBe("You & Bot 3 vs Bea, Ana");
     expect(rows[2].textContent).toContain("1 round");
     expect(rows[2].querySelector(".games-tag")?.textContent).toBe("incomplete");
     expect(button("Load more")).toBeUndefined();
@@ -191,14 +191,21 @@ describe("a game", () => {
     expect(rounds.every((r) => r.querySelector("button")?.textContent === "Replay")).toBe(true);
   });
 
-  it("Remove from my games needs two taps, sends DELETE and drops the row", async () => {
+  it("Remove from my games asks on the one confirm sheet, sends DELETE and drops the row", async () => {
     routes["DELETE /api/me/games/g1"] = { status: 204 };
     await mount();
     await click(qa(".games-day-row")[0]);
     await click(button("Remove from my games"));
+    const sheet = q("[role=alertdialog]")!;
+    expect(sheet.querySelector("h2")?.textContent).toBe("Remove this game?");
+    expect(sheet.querySelector("p")).toBeNull();
+    expect([...sheet.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "Remove"]);
+    await click(button("Cancel"));
+    expect(q("[role=alertdialog]")).toBeNull();
+    await click(button("Remove from my games"));
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     routes["GET /api/me/games?limit=20"] = { status: 200, body: { games: [row("g2", 1_789_000_000)], next_before: null } };
-    await click(button("Tap again to remove"));
+    await click(button("Remove"));
     expect(calls.filter((c) => c.method === "DELETE")).toEqual([{ url: "/api/me/games/g1", method: "DELETE" }]);
     const rows = qa(".games-day-row");
     expect(rows).toHaveLength(1);
@@ -209,7 +216,7 @@ describe("a game", () => {
     routes["DELETE /api/me/games/g1"] = { status: 500 };
     await mount({ page: "game", id: "g1" });
     await click(button("Remove from my games"));
-    await click(button("Tap again to remove"));
+    await click(button("Remove"));
     expect(q("[role=alert]")?.textContent).toContain("Could not remove the game (500)");
     expect(q(".games-title")?.textContent).toBe("Game");
   });
@@ -346,7 +353,7 @@ it("review: remove last game through cached Me history reaches empty state", asy
   await click(qa(".games-day-row")[0]);
   await click(button("Remove from my games"));
   routes["GET /api/me/games?limit=20"]={status:200,body:{games:[],next_before:null}};
-  await click(button("Tap again to remove"));
+  await click(button("Remove"));
   expect(calls.some(c=>c.method === "DELETE")).toBe(true);
   expect(host.textContent).toContain("No saved games yet");
 });

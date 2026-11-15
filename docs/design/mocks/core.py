@@ -448,9 +448,7 @@ def me_page(u, signed):
             for a, c in (("58%", "rounds won"), ("+0.31", "levels / round"), ("7", "best streak"))) + '</div>')
         body = head + segm + tiles + settings + grp([chev("Edit name"), chev("Sign out")])
     else:
-        signin = ('<div style="background:#242a35;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px">'
-                  + btn("Sign in with Apple", "ghost", h=42, extra="width:100%;flex:none") + btn("Sign in with Google", "ghost", h=42, extra="width:100%;flex:none") + '</div>')
-        body = head + grp([chev("Edit name")]) + signin + settings
+        body = head + grp([chev(u[0])]) + settings
     return body
 
 
@@ -480,8 +478,8 @@ def f9_me():
                 active="Me", w=1024, h=768)
     return [
         ("Me: three tabs everywhere, one settings list, one name control", [
-            shot(guest, 390, 844, "Guest: tap Me", "Name and 'Guest'; Edit name; Sign in; the settings list."),
-            shot(edit, 390, 844, "Tap Edit name", "The same sheet opens from the name chip on Play."),
+            shot(guest, 390, 844, "Guest: tap Me", "Name and 'Guest'; one row with the name; the settings list."),
+            shot(edit, 390, 844, "Tap the name row", "The same sheet opens from the name chip on Play."),
             shot(signed, 390, 844, "Signed in: tap Me", "Stats / Games switch inside Me."),
             shot(games, 390, 844, "Tap Games", "Saved games, in Me."),
             shot(felt(overlay=menu), 844, 390, "At the table: ⋯", "The same four settings first, then table actions."),

@@ -7,6 +7,7 @@ import { continueGame, hasLevels, useCanContinue } from "../replay/continueGame"
 import type { GamesRoute } from "../replay/route";
 import { GamesHead, GamesNotice, GamesUnavailable, SignInPrompt } from "./GamesStatus";
 import ReplayView from "./ReplayView";
+import ConfirmSheet from "./ConfirmSheet";
 import { dayLabel } from "../home/dayLabel";
 import { cached, remember } from "../home/session";
 import { deltaText } from "../ratings/api";
@@ -138,24 +139,17 @@ function roundLine(row: RoundResult | undefined): string {
   return parts.join(" · ");
 }
 
-/** A saved game's two ways on: Continue (a new table at its last levels,
- *  shown only when the record has them) and Replay (its first round). */
-function GameActions({ game, className }: { game: GameRow; className: string }) {
+/** A saved game's Continue: a new table at its last levels, shown only
+ *  when the record has them. Replays are per round, in the game's list. */
+function ContinueGame({ game }: { game: GameRow }) {
   const can = useCanContinue();
-  const first = game.rounds[0];
+  if (!hasLevels(game)) return null;
   return (
-    <div className={className}>
-      {hasLevels(game) ? (
-        <button type="button" className="btn gold games-continue" disabled={!can}
-                title={can ? undefined : "Leave the game you are in to continue this one"}
-                onClick={() => continueGame(game.id)}>
-          Continue
-        </button>
-      ) : null}
-      <button type="button" className="btn subtle games-replay"
-              onClick={() => navigate(first !== undefined ? { page: "replay", id: game.id, round: first }
-                                                           : { page: "game", id: game.id })}>
-        Replay
+    <div className="games-actions">
+      <button type="button" className="btn gold games-continue" disabled={!can}
+              title={can ? undefined : "Leave the game you are in to continue this one"}
+              onClick={() => continueGame(game.id)}>
+        Continue
       </button>
     </div>
   );
@@ -163,30 +157,23 @@ function GameActions({ game, className }: { game: GameRow; className: string }) 
 
 function GameView({ id }: { id: string }) {
   const [res, setRes] = useState<Fetched<GameDetail> | null>(null);
-  const [armed, setArmed] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const timer = useRef<number | null>(null);
   useEffect(() => {
     let live = true;
     setRes(null);
     fetchGame(id).then((r) => { if (live) setRes(r); });
     return () => { live = false; };
   }, [id]);
-  useEffect(() => () => { if (timer.current !== null) window.clearTimeout(timer.current); }, []);
 
+  // the confirm sheet's Remove: the sheet holds still until the server answers
   const remove = () => {
-    if (!armed) {
-      setArmed(true);
-      timer.current = window.setTimeout(() => { timer.current = null; setArmed(false); }, 3000);
-      return;
-    }
-    if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; }
     setBusy(true);
     setError(null);
     removeGame(id)
       .then(() => { forgetRemovedGame(id); navigate({ page: "list" }); })
-      .catch((e: Error) => { setError(e.message); setArmed(false); })
+      .catch((e: Error) => setError(e.message))
       .finally(() => setBusy(false));
   };
 
@@ -207,7 +194,7 @@ function GameView({ id }: { id: string }) {
           <Teams game={game} />
           <Summary game={game} />
         </div>
-        <GameActions game={game} className="games-actions" />
+        <ContinueGame game={game} />
         <div className="games-section">
           <span className="field-label">Rounds</span>
           <ul className="games-rounds">
@@ -227,10 +214,12 @@ function GameView({ id }: { id: string }) {
             {game.rounds.length === 0 ? <li className="games-round-res">No rounds to replay.</li> : null}
           </ul>
         </div>
-        <button className={`btn danger games-remove${armed ? " armed" : ""}`} disabled={busy} onClick={remove}>
-          {busy ? "Removing…" : armed ? "Tap again to remove" : "Remove from my games"}
-        </button>
-        {error ? <div className="lobby-error" role="alert">{error}</div> : null}
+        <button className="btn danger games-remove" onClick={() => setAsking(true)}>Remove from my games</button>
+        {asking ? (
+          <ConfirmSheet title="Remove this game?" cancel="Cancel" confirm={busy ? "Removing…" : "Remove"} danger
+                        busy={busy} error={error} className="games-remove-confirm"
+                        onConfirm={remove} onCancel={() => { setAsking(false); setError(null); }} />
+        ) : null}
       </>
     );
   }
@@ -269,10 +258,10 @@ function clock(unix: number): string {
   return new Date(unix * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
-/** "ABCD · Ann, Bot 1, Bea": the room and the other three seats. */
+/** "You & Ann vs Bot 1, Bea": the teams, yours first. */
 function gameTitle(game: GameRow): string {
-  const others = [1, 2, 3].map((k) => nameAt(game, (game.seat + k) % 4));
-  return `${game.room_code} · ${others.join(", ")}`;
+  const me = game.seat;
+  return `You & ${nameAt(game, (me + 2) % 4)} vs ${nameAt(game, (me + 1) % 4)}, ${nameAt(game, (me + 3) % 4)}`;
 }
 
 function gameSub(game: GameRow): string {
@@ -297,8 +286,8 @@ function byDay(games: GameRow[]): { label: string; games: GameRow[] }[] {
 }
 
 /** The signed-in account's saved games, newest first and grouped by day;
- *  a row opens the game, whose rounds each have a Replay, and offers
- *  Continue and Replay itself. With a `cacheKey` the last list shown is
+ *  a whole row is one tap that opens the game, which holds its Continue and
+ *  a Replay for each round. With a `cacheKey` the last list shown is
  *  drawn at once on return and refreshed underneath; `onReady` fires once the list (or its failure) is drawn.
  *  `refreshRef` receives the first-page reload, for a pull to refresh. */
 export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
@@ -415,8 +404,8 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
                       ) : null}
                     </span>
                   ) : null}
+                  <span className="grp-value chev" aria-hidden="true" />
                 </button>
-                <GameActions game={g} className="games-row-actions" />
               </li>
             ))}
           </ul>

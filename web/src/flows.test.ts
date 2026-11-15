@@ -39,16 +39,14 @@ const SURFACE = /<dialog\b|role=["'](?:alert)?dialog["']|(?<![[\w-])aria-modal\s
 
 /** Every file that draws a surface, and what it draws. */
 const SURFACES = [
+  "components/ConfirmSheet.tsx", // the one "are you sure": leave, move, take a seat, delete account, remove a game
   "components/ConnectionPill.tsx", // the 60 s full-screen "No connection" state
   "components/GuestChip.tsx", // the one identity sheet: a guest's name and sign-in, mounted once by App
-  "components/JoinPanel.tsx", // the confirm before taking a dropped player's seat
   "components/LastTrickPanel.tsx", // the last trick played, over the table
-  "components/LeaveSheet.tsx", // the one Leave sheet
-  "components/MePage.tsx", // the delete-account confirm
   "components/OpponentActions.tsx", // a player's options at the table
   "components/ResultDialog.tsx", // the round end's modal frame
   "queue/Sheet.tsx", // the queue sheet frame every Sheet uses
-  "queue/TablePanel.tsx", // the opener's one confirm before moving someone, and the chat sheet
+  "queue/TablePanel.tsx", // the chat sheet
 ];
 
 // The message unions and the on-device server name these messages without

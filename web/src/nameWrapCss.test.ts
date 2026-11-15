@@ -64,6 +64,12 @@ describe("names on Me", () => {
     expect(value).toContain("white-space: nowrap");
   });
 
+  it("keeps a guest's name row on one line, ellipsized", () => {
+    const d = decls(".me-identity .grp-label");
+    expect(d).toContain("white-space: nowrap");
+    expect(d).toContain("text-overflow: ellipsis");
+  });
+
   it("keeps the large name heading on one line, ellipsized", () => {
     const d = decls(".me-name");
     expect(d).toContain("white-space: nowrap");

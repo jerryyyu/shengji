@@ -106,7 +106,7 @@ describe("signed in", () => {
     expect(host.querySelector(".segmented-btn[aria-pressed=true]")?.textContent).toBe("Stats");
   });
 
-  it("merges stats and games: the Games segment lists the saved games by day with Replay", async () => {
+  it("merges stats and games: the Games segment lists the saved games by day, a row one tap", async () => {
     await render();
     const games = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "Games")!;
     act(() => games.click());
@@ -117,8 +117,8 @@ describe("signed in", () => {
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
     expect(host.querySelector(".grp-head")?.textContent).toBe("Today");
     const row = host.querySelector(".games-day-row")!;
-    expect(row.querySelector(".games-row-title")?.textContent).toBe("KQ4X · Sam, Mei, Wen");
-    expect(row.parentElement!.querySelector(".games-replay")?.textContent).toBe("Replay");
+    expect(row.querySelector(".games-row-title")?.textContent).toBe("You & Mei vs Sam, Wen");
+    expect(row.parentElement!.querySelectorAll("button")).toHaveLength(1);
     expect(host.querySelector(".me-tile")).toBeNull();
   });
 
@@ -184,16 +184,18 @@ describe("signed in", () => {
     expect(signOut).toHaveBeenCalledTimes(1);
   });
 
-  it("Delete account calls DELETE /api/me only after the in-page confirmation, then returns to Play", async () => {
+  it("Delete account calls DELETE /api/me only after the confirm sheet's Delete, then returns to Play", async () => {
     window.history.replaceState(null, "", "/#/me");
     await render();
     act(() => rowNamed("Delete account").click());
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     const dialog = host.querySelector(".me-delete-confirm")!;
     expect(dialog.getAttribute("role")).toBe("alertdialog");
-    expect(dialog.textContent).toContain("can’t be undone");
+    expect(dialog.querySelector("h2")?.textContent).toBe("Delete your account?");
+    expect(dialog.querySelector("p")?.textContent).toBe("Your rating and games are deleted.");
+    expect([...dialog.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Cancel", "Delete"]);
     // Cancel backs out without a request
-    act(() => dialog.querySelector<HTMLButtonElement>(".me-delete-no")!.click());
+    act(() => dialog.querySelector<HTMLButtonElement>(".leave-sheet-stay")!.click());
     expect(host.querySelector(".me-delete-confirm")).toBeNull();
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     act(() => rowNamed("Delete account").click());
@@ -213,9 +215,10 @@ describe("signed in", () => {
     act(() => deleteRow.click());
     const dialog = host.querySelector<HTMLElement>(".me-delete-confirm")!;
     const yes = dialog.querySelector<HTMLButtonElement>(".me-delete-yes")!;
-    const no = dialog.querySelector<HTMLButtonElement>(".me-delete-no")!;
+    const no = dialog.querySelector<HTMLButtonElement>(".leave-sheet-stay")!;
     expect(document.activeElement).toBe(no);
-    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toContain("can’t be undone");
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent)
+      .toBe("Your rating and games are deleted.");
     const key = (k: string, shift = false) =>
       act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: k, shiftKey: shift, bubbles: true })); });
     key("Tab");
@@ -228,7 +231,7 @@ describe("signed in", () => {
     expect(host.querySelector(".me-delete-confirm")).toBeNull();
     expect(document.activeElement).toBe(rowNamed("Delete account"));
     act(() => rowNamed("Delete account").click());
-    act(() => host.querySelector<HTMLButtonElement>(".me-delete-no")!.click());
+    act(() => host.querySelector<HTMLButtonElement>(".me-delete-confirm .leave-sheet-stay")!.click());
     expect(document.activeElement).toBe(rowNamed("Delete account"));
   });
 
@@ -248,28 +251,27 @@ describe("signed in", () => {
 describe("a guest", () => {
   beforeEach(() => { nameGuest("Gentle Tractor"); });
 
-  it("sees their name and initial, Edit name, one Sign in row, the settings and the help rows", async () => {
+  it("sees their name and initial, one row with the name, the settings and the help rows", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
     expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
     expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
-    // no sign-in buttons on the page: Sign in is a row that opens the sheet
+    // no sign-in buttons on the page: the name row opens the sheet that has them
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(host.querySelector(".signin-card")).toBeNull();
-    expect(rowLabels()).toEqual(["Edit name", "Sign in", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
-    expect(rowNamed("Edit name").querySelector(".grp-value")?.textContent).toBe("Gentle Tractor");
-    expect(rowNamed("Sign in").querySelector(".grp-value.chev")).not.toBeNull();
+    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowNamed("Gentle Tractor").querySelector(".grp-value.chev")).not.toBeNull();
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
   });
 
-  it("Sign in opens the one identity sheet: the name with dice, Google (no Apple on the web), Done", async () => {
+  it("the name row opens the one identity sheet: the name with dice, Google (no Apple on the web), Done", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(document.querySelector(".identity-sheet")).toBeNull();
-    act(() => rowNamed("Sign in").click());
+    act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     expect(sheet.querySelector<HTMLInputElement>("input[aria-label='Your name']")!.value).toBe("Gentle Tractor");
     expect(sheet.querySelector(".name-reroll")).not.toBeNull();
@@ -280,11 +282,11 @@ describe("a guest", () => {
     act(() => guestName.close());
   });
 
-  it("with the server unreachable Sign in stays, and its sheet shows sign-in unavailable with one line saying why", async () => {
+  it("with the server unreachable the name row's sheet shows sign-in unavailable with one line saying why", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Edit name", "Sign in", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
-    act(() => rowNamed("Sign in").click());
+    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     const btn = sheet.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
     expect(btn.disabled).toBe(true);
@@ -293,21 +295,21 @@ describe("a guest", () => {
     act(() => guestName.close());
   });
 
-  it("with sign-in off there is no Sign in row, and the sheet is the name only", async () => {
+  it("with sign-in off the name row's sheet is the name only", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(rowLabels()).not.toContain("Sign in");
-    act(() => rowNamed("Edit name").click());
+    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     expect(sheet.querySelector(".identity-signin")).toBeNull();
     act(() => guestName.close());
   });
 
-  it("Edit name opens the same sheet; the dice and typing rename at once, and Done keeps the name", async () => {
+  it("the dice and typing in the name row's sheet rename at once, and Done keeps the name", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(guestName.getSnapshot().editing).toBe(false);
-    act(() => rowNamed("Edit name").click());
+    act(() => rowNamed("Gentle Tractor").click());
     expect(guestName.getSnapshot().editing).toBe(true);
     const sheet = document.querySelector(".identity-sheet")!;
     expect(sheet.querySelector(".google-signin")).not.toBeNull();
@@ -327,7 +329,7 @@ describe("a guest", () => {
   it("signing in from the sheet closes it, and an account never sees it", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    act(() => rowNamed("Sign in").click());
+    act(() => rowNamed("Gentle Tractor").click());
     expect(document.querySelector(".identity-sheet")).not.toBeNull();
     authState.current = { status: "in", clientId: "cid", user: JERRY };
     act(() => root.render(<><MePage section="stats" /><IdentitySheet /></>));
@@ -551,7 +553,7 @@ describe("removing a saved game from Me → Games", () => {
     await act(async () => { root.render(<GamesList route={{ page: "game", id: "g2" }} />); });
     await settle();
     await tap(buttonNamed("Remove from my games")!);
-    await tap(buttonNamed("Tap again to remove")!);
+    await tap(buttonNamed("Remove")!);
     expect(calls.some((c) => c.method === "DELETE" && c.url === "/api/me/games/g2")).toBe(true);
 
     // the refreshed first page still has a continuation, so the cached older page stays
@@ -597,7 +599,7 @@ describe("pull to refresh", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 450)); });
     expect(count("/api/me/games?")).toBe(2);
     expect(count("/api/me/stats")).toBe(2);
-    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("KQ4X · Sam, Mei, Wen");
+    expect(host.querySelector(".games-day-row .games-row-title")?.textContent).toBe("You & Mei vs Sam, Wen");
   });
 });
 

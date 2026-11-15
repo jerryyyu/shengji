@@ -3791,7 +3791,7 @@ def test_a_lone_entrys_chat_merges_into_the_table_a_stranger_forms():
         assert env.conns[1].last("table_chat")["id"] == 3
         # it sits: its lines merge in time order, under ids after the table's
         await env.send(3, "table_allow_joiners", on=True)
-        assert env.mm._entry(3).table_id == t.id and env.mm._entry(3).chat == []
+        assert env.mm._entry(3).table_id == t.id and env.mm._entry(3).table is t
         assert [(m["id"], m["text"]) for m in t.chat] == [
             (4, "first"), (5, "lone three"), (6, "second"), (7, "third")]
         assert t.chat[1]["seat"] == t.seats.index(3)
@@ -3814,7 +3814,7 @@ def test_a_merged_lone_chat_keeps_the_table_cap():
         for i in range(mm.CHAT_KEEP + 5):
             env.clock.advance(0.01)
             await env.send(1, "table_chat", text=f"a{i}")
-        assert len(env.mm._entry(1).chat) == mm.CHAT_KEEP
+        assert len(env.mm._entry(1).table.chat) == mm.CHAT_KEEP
         await env.join(2, mode="casual", allow_joiners=False)
         for i in range(10):
             env.clock.advance(0.01)
@@ -3879,7 +3879,7 @@ def test_a_lone_entrys_chat_is_rate_limited():
         await env.send(1, "table_chat", text="one too many")
         assert env.conns[1].last("error")["code"] == "rate_limited"
         assert env.conns[1].last("table_chat")["text"] == f"m{mm.CHAT_LIMIT[0] - 1}"
-        assert len(env.mm._entry(1).chat) == mm.CHAT_LIMIT[0]
+        assert len(env.mm._entry(1).table.chat) == mm.CHAT_LIMIT[0]
     run(go())
 
 

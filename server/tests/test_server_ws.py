@@ -3572,7 +3572,8 @@ def test_create_room_start_true_seats_bots_and_starts(client):
         assert [sd.is_bot for sd in room.seats] == [False, True, True, True]
         assert room.host == 0 and room.game is not None and not room.ranked
         ws.send_json({"type": "start_game"})
-        assert _drain(ws, "error")["message"] == "Game already started."
+        # the deal streams a state frame per card ahead of the refusal
+        assert _drain(ws, "error", tries=400)["message"] == "Game already started."
 
 
 class _EvaluationRooms:

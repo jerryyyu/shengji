@@ -2,7 +2,7 @@ import type { RoomMsg, RoomSeats, ServerMsg } from "../protocol";
 import { openHowto } from "../howto/route";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
-import { clearSavedRoom, conn, getResumeToken, getSavedName } from "../ws";
+import { clearSavedRoom, conn, getResumeToken } from "../ws";
 import { createRoomPayload } from "../testPolicy";
 import { effectiveName, useAuth } from "../auth";
 import { randomName } from "../randomName";
@@ -112,7 +112,6 @@ export default function Lobby({ status, room = null, holdInvite = false,
     if (msg?.type === "error") setStarting(null);
   }), []);
   const { name } = useGuestName();
-  const setName = (next: string) => guestName.setName(next);
   const account = useAuth();
   const signedIn = account.status === "in" && account.user ? account.user : null;
   const accountName = effectiveName(signedIn);
@@ -126,13 +125,14 @@ export default function Lobby({ status, room = null, holdInvite = false,
   const playerName = signedIn ? accountName : name.trim();
   // The random fill happens once, as soon as the page knows the visitor is
   // not signed in; a field the guest has typed into, or cleared afterwards,
-  // is left alone.
+  // is left alone. The store is the one name the chip shows and Join sends:
+  // storage written since it loaded (another tab) does not stand in for it.
   const autoFilled = useRef(false);
   useEffect(() => {
     if (autoFilled.current || (account.status !== "out" && account.status !== "off" && account.status !== "error")) return;
     autoFilled.current = true;
-    if (!name.trim() && !getSavedName().trim()) guestName.fill(randomName());
-  }, [account.status, name]);
+    if (!guestName.name.trim()) guestName.fill(randomName());
+  }, [account.status]);
   // Only a guest's own name is remembered; an account name lives on the account.
   const rememberName = useCallback((trimmed: string) => {
     if (!signedIn && trimmed) guestName.keep(trimmed);
@@ -291,7 +291,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
   const nameOrRandom = () => {
     if (playerName) return playerName;
     const picked = randomName();
-    setName(picked);
+    guestName.fill(picked);
     return picked;
   };
 

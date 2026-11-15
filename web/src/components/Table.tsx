@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
@@ -10,7 +10,6 @@ import { DUR } from "../motion";
 import Hud from "./Hud";
 import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
-import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
 import ChatBubbles from "./ChatBubbles";
 import OpponentActions from "./OpponentActions";
@@ -30,6 +29,9 @@ import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
 import { useAnyTapIsBack } from "./seatHeld";
+
+// the debug overlay loads on its first open, so a player's page never carries it
+const XrayPanel = lazy(() => import("./XrayPanel"));
 
 /** The declare window's full length, for the countdown ring (server.py DECLARE_GRACE). */
 const DECLARE_WINDOW_SECS = 5;
@@ -685,7 +687,11 @@ export default function Table({ state }: { state: GameState }) {
         <RoundEndModal state={state} result={state.round_result} clock={clock} />
       ) : null}
 
-      {xrayOpen ? <XrayPanel state={state} onClose={() => setXrayOpen(false)} /> : null}
+      {xrayOpen ? (
+        <Suspense fallback={null}>
+          <XrayPanel state={state} onClose={() => setXrayOpen(false)} />
+        </Suspense>
+      ) : null}
       {state.players.filter((p) => !p.is_bot).length > 1 && (
         <button className="chat-launch" onClick={() => setChatOpen((o) => !o)}
                 aria-label="Chat">

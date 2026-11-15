@@ -20,12 +20,6 @@ export function attackingTeam(state: GameState): Team | null {
   return state.banker === null ? null : ((1 - (state.banker % 2)) as Team);
 }
 
-/** The points counter's label: "Us" or "Them" once a banker is set. */
-export function pointsLabel(state: GameState): string {
-  const attack = attackingTeam(state);
-  return attack === null ? "Attackers" : teamWord(attack, state);
-}
-
 /** The banker's crown in words, for screen readers: "You, banker" for your
  *  own seat, "Sam, banker" for anyone else. */
 export function bankerText(player: StatePlayer, you: number): string {
@@ -93,36 +87,6 @@ export function teamMembers(team: Team, state: GameState): string {
     .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat)
     .map((p) => (p.seat === state.you ? "You" : p.name))
     .join(" & ");
-}
-
-export interface TeamLine {
-  team: Team;
-  word: "Us" | "Them";
-  members: string;
-  role: "attacking" | "defending" | null;
-  outcome: string;
-  won: boolean;
-}
-
-/** One line per team for the round end, yours first: its role and what
- *  happened to it, all in words. */
-export function roundLines(state: GameState, result: RoundResult): TeamLine[] {
-  const attack = attackingTeam(state);
-  const levels = (n: number) => `+${n} ${n === 1 ? "level" : "levels"}`;
-  const mine = myTeam(state);
-  return [mine, (1 - mine) as Team].map((team) => {
-    const won = team === result.winner_team;
-    const role = attack === null ? null : team === attack ? "attacking" : "defending";
-    const parts: string[] = [];
-    if (role === "attacking") parts.push(`scored ${result.attacker_points} of 80`);
-    if (won) {
-      // attackers who reach 80 take the deal even when no level changes
-      parts.push(result.point_scored ? "game won"
-        : result.level_change > 0 ? levels(result.level_change) : "take the deal · no level change");
-    }
-    else parts.push("no level change");
-    return { team, word: teamWord(team, state), members: teamMembers(team, state), role, outcome: parts.join(" · "), won };
-  });
 }
 
 /** "Next banker: Bot 1", or "Next banker: you". */

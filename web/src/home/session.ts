@@ -27,12 +27,6 @@ export function remember<T>(key: string, value: T): void {
 // a scope from an older generation never matches a live one.
 let generation = 0;
 
-/** The session generation now; a response fetched under an older one is
- *  for a session that has ended and is dropped. */
-export function sessionGeneration(): number {
-  return generation;
-}
-
 /** Who the cached data belongs to: the signed-in account, or a guest, in
  *  the current session generation. Pages key their cache, their rendered
  *  results and their fetch effects by it. */

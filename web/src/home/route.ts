@@ -69,21 +69,3 @@ export function useHomeRoute(): HomeRoute | null {
   return route;
 }
 
-let editNamePending = false;
-export const EDIT_NAME_EVENT = "shengji:edit-name";
-
-/** Open Me's Stats, where the account's rows are, with its name editor open
- *  (the account menu's Edit name): a page that mounts takes the request, one
- *  already showing hears the event. */
-export function openNameEditor(): void {
-  editNamePending = true;
-  openTab("me", "stats");
-  window.dispatchEvent(new Event(EDIT_NAME_EVENT));
-}
-
-/** Whether Me should open its name editor now; asking clears the request. */
-export function takeNameEditRequest(): boolean {
-  const pending = editNamePending;
-  editNamePending = false;
-  return pending;
-}

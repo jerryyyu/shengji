@@ -77,11 +77,14 @@ export function buryPointsText(hand: HandCard[], selected: Set<number>): string 
   return `Burying ${pts} ${pts === 1 ? "point" : "points"}`;
 }
 
-/** The ids in the banker's hand that came from the kitty: present now, absent
- *  from the hand held before the bury. Empty without a pre-bury hand. */
-export function kittyIds(before: Set<number> | null, hand: HandCard[]): Set<number> {
-  if (before === null || before.size === 0) return new Set();
-  return new Set(hand.filter((c) => !before.has(c.id)).map((c) => c.id));
+/** The kitty's eight cards carry ids from this one on both servers (a card's
+ *  id is its deck position, and the kitty is the deck's last eight). */
+export const KITTY_FIRST_ID = 100;
+
+/** The ids in the banker's hand that came from the kitty, read from the ids
+ *  themselves, so a client that missed part of the deal marks the same eight. */
+export function kittyIds(hand: HandCard[]): Set<number> {
+  return new Set(hand.filter((c) => c.id >= KITTY_FIRST_ID && c.id < KITTY_FIRST_ID + 8).map((c) => c.id));
 }
 
 /** The seat label's status: "Bot (Alice left)" after a deliberate Leave, a

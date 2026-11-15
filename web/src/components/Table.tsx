@@ -414,15 +414,8 @@ export default function Table({ state }: { state: GameState }) {
   const held = away && !watching && online;
   const back = useAnyTapIsBack(held, () => conn.send({ type: "im_back" }));
 
-  // The hand held before the kitty arrives, so the bury can mark the 8
-  // cards that came from it until the bury is sent.
-  const preKitty = useRef<Set<number> | null>(null);
-  if (state.phase === "deal" || state.phase === "declare") {
-    preKitty.current = new Set(state.hand.map((c) => c.id));
-  } else if (state.phase !== "bury") {
-    preKitty.current = null;
-  }
-  const fromKitty = state.phase === "bury" && iAmBanker ? kittyIds(preKitty.current, state.hand) : null;
+  // the bury marks the 8 cards that came from the kitty until it is sent
+  const fromKitty = state.phase === "bury" && iAmBanker ? kittyIds(state.hand) : null;
 
   // The last trick, reopened on request; it stays until dismissed.
   const [lastOpen, setLastOpen] = useState(false);

@@ -168,7 +168,7 @@ interface GameState {
     left?: true;                  // the owner pressed Leave: the bot plays the seat at once
                                   // (takeover_in is null); absent otherwise
   }[];
-  hand: { id: number; code: string }[];   // your cards, sorted server-side
+  hand: { id: number; code: string }[];   // your cards, sorted server-side; a card's id is its deck position, so the kitty's 8 are ids 100–107 (a card re-minted after a desync is 200+)
   levels: [string, string];       // rank symbol per team, e.g. ["2","5"]
   games_won: [number, number];    // games each team has won by defending at A
   banker: number | null;          // banker seat (null before first declaration of game)

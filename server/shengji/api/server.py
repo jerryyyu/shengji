@@ -116,6 +116,10 @@ BOT_DELAY = 0.7
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
 DEAL_DELAY = 0.2           # seconds between dealt cards (~20s full deal)
+# A card's id is its deck position; the kitty is the deck's last eight, ids
+# from here, the same in the offline server and the client's kitty marks.
+KITTY_FIRST_ID = 100
+
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
@@ -520,7 +524,7 @@ class Room:
         rnd = self.round
         assert rnd is not None
         self.ids = [{} for _ in range(4)]  # filled card-by-card as the deal runs
-        self._kitty_ids = {100 + i: rnd.deck[100 + i] for i in range(8)}
+        self._kitty_ids = {KITTY_FIRST_ID + i: rnd.deck[KITTY_FIRST_ID + i] for i in range(8)}
         self._kitty_given = False
 
     def mint_card_id(self, seat: int, code: str) -> int:

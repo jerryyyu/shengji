@@ -45,10 +45,13 @@ describe("table copy", () => {
     expect(buryPointsText(hand, new Set())).toBe("Burying 0 points");
   });
 
-  it("finds the kitty cards as the ids new since the deal", () => {
-    const hand = [{ id: 1, code: "S5" }, { id: 100, code: "HK" }];
-    expect([...kittyIds(new Set([1]), hand)]).toEqual([100]);
-    expect(kittyIds(null, hand).size).toBe(0);
+  it("finds the kitty cards by their ids, whatever part of the deal this client saw", () => {
+    // 25 dealt cards (deck positions 0..99) and the kitty's 8 (100..107),
+    // plus a card the server minted after a desync (200+)
+    const hand = [...[3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95, 99],
+      ...[100, 101, 102, 103, 104, 105, 106, 107], 200].map((id) => ({ id, code: "S5" }));
+    expect([...kittyIds(hand)]).toEqual([100, 101, 102, 103, 104, 105, 106, 107]);
+    expect(kittyIds(hand.slice(0, 25)).size).toBe(0);
   });
 
   it("words a left seat apart from a disconnect", () => {

@@ -173,6 +173,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      as it is dealt.
      A bot on turn is its seat's gold edge and, on desktop, one plain line of banter; the "Considering the
      next play…" line and the progress bar are gone, and that status is read to screen readers only (Jerry 11-15).
+     The bury button reads "Bury (3/8)"; "Burying 10 points" is teaching and shows only while the coach shows (Jerry 11-15).
 7. **Offline without a reload.** Offline is a state of the one Play page, not a page of its own. Play on
    the greyed Play tab (no connection), the Play offline link beside How to play, and the full-screen
    connection state's "Play offline with the bots" all swap the socket to the on-device server in place

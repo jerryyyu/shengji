@@ -574,9 +574,10 @@ export default function Table({ state }: { state: GameState }) {
         aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        {pendingLabel ?? `Bury 8 cards (${selectedIds.length}/8)`}
+        {pendingLabel ?? `Bury (${selectedIds.length}/8)`}
       </button>
-      <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span>
+      {/* the points are teaching, like the phase's help: shown only with the coach */}
+      {coachOn ? <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span> : null}
       </>
     );
   } else if (state.phase === "play" && myTurn) {

@@ -27,6 +27,9 @@ export const LOCAL_MESSAGES: ReadonlySet<string> = new Set([
   "create_room", "join_room", "peek_room", "leave_room", "chat", "add_bot", "remove_bot",
   "set_start_level", "allow_joiners", "lobby_ready", "start_game", "declare", "pass_declare",
   "bury", "play", "next_round",
+  // the canonical table names (tables.ts), rewritten to the ones above
+  "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",
+  "table_start_level", "table_chat", "table_leave", "table_join", "table_peek",
 ]);
 
 function localType(data: string): boolean {

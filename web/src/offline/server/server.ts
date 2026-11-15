@@ -29,6 +29,7 @@ import { SmartBot, viewFor } from "../bot";
 import { type Clock, realClock, sleep } from "./clock";
 import { type ActionEntry, BotGate, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
+import { CANONICAL, TOO_SOON, forQueue, forRoom } from "./tables";
 
 export const BOT_DELAY = 0.7;
 export const DEAL_DELAY = 0.2;
@@ -38,6 +39,7 @@ const DECLARE_POLL = 0.25;
 const CHAT_KEEP = 50;
 const CHAT_MAX_LEN = 300;
 const KITTY_FIRST_ID = 100;
+export const START_NOW_SECS = 30.0;
 
 type Json = Record<string, unknown>;
 
@@ -83,6 +85,11 @@ class Writer {
   }
 }
 
+/** server.py TooSoon: Start now before START_NOW_SECS passed since the last arrival. */
+class TooSoon extends IllegalPlay {
+  readonly code = "too_soon";
+}
+
 class Seat {
   connected = false;
   gen = 0;
@@ -121,11 +128,15 @@ export class LocalRoom {
   readonly code: string;
   startLevel: string;
   readonly decks: DeckRng;
+  /** Clock time the last person sat: the room's creation, since a join on
+   *  the device only resumes its own seat. */
+  arrivedAt: number;
 
-  constructor(code: string, startLevel: string, decks: DeckRng) {
+  constructor(code: string, startLevel: string, decks: DeckRng, arrivedAt = 0) {
     this.code = code;
     this.startLevel = startLevel;
     this.decks = decks;
+    this.arrivedAt = arrivedAt;
   }
 
   get round(): RoundState | null {
@@ -420,7 +431,7 @@ export class LocalServer {
   newRoom(startLevel: string): LocalRoom {
     let code = randomCode();
     while (this.rooms.has(code)) code = randomCode();
-    const room = new LocalRoom(code, startLevel, new DeckRng(this.seed()));
+    const room = new LocalRoom(code, startLevel, new DeckRng(this.seed()), this.clock.now());
     this.rooms.set(code, room);
     return room;
   }
@@ -735,8 +746,11 @@ export class LocalServer {
     return true;
   }
 
-  /** server.py handle_action: throws IllegalPlay on bad input. */
-  handleAction(room: LocalRoom, seat: number, msg: Json): void {
+  /** server.py handle_action: throws IllegalPlay on bad input.
+   *  `startNowGate`: a `start_game` that came as `table_start_now`, refused
+   *  until START_NOW_SECS after the last arrival while anyone besides the
+   *  opener is seated. */
+  handleAction(room: LocalRoom, seat: number, msg: Json, startNowGate = false): void {
     const t = msg.type;
     const game = room.game;
     let rnd = room.round;
@@ -771,6 +785,11 @@ export class LocalServer {
     } else if (t === "start_game" || (t === "lobby_ready" && msg.on !== false)) {
       if (t === "start_game" && seat !== room.host) throw new IllegalPlay("Only the host can start.");
       if (room.game) throw new IllegalPlay("Game already started.");
+      if (t === "start_game" && startNowGate
+          && room.arrivedAt + START_NOW_SECS - this.clock.now() > 0
+          && room.seats.some((s, i) => i !== room.host && !s.isBot)) {
+        throw new TooSoon(TOO_SOON);
+      }
       // a bot plays every seat nobody took, named for its seat
       while (room.seats.length < 4) room.seats.push(new Seat(`Bot ${room.seats.length}`, true, randomToken()));
       // gamesToWin null: a table keeps playing; holding A scores a point
@@ -865,6 +884,18 @@ export class LocalConnection {
 
   private handle(msg: Json): void {
     const server = this.server;
+    // A canonical name becomes the message this server handles before any
+    // check reads its type, so each check applies to both names alike.
+    const canonical = typeof msg.type === "string" && CANONICAL.has(msg.type) ? msg.type : null;
+    if (canonical !== null) {
+      if (this.room === null || this.me === null) {
+        const local = forQueue(msg);
+        if (local === null) return;
+        msg = local;
+      } else {
+        msg = forRoom(msg);
+      }
+    }
     const t = msg.type;
     if (this.room === null || this.me === null) {
       if (t === "create_room") {
@@ -945,11 +976,12 @@ export class LocalConnection {
       return;
     }
     try {
-      server.handleAction(room, seatIdx, msg);
+      server.handleAction(room, seatIdx, msg, canonical === "table_start_now");
       server.broadcast(room);
       server.kickBots(room);
     } catch (e) {
-      server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
+      const code = e instanceof TooSoon ? { code: e.code } : {};
+      server.enqueue(me, { type: "error", ...code, message: e instanceof IllegalPlay ? e.message : "Invalid request." });
     }
   }
 

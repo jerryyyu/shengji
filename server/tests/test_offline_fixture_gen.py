@@ -62,7 +62,8 @@ def test_committed_fixtures_exercise_every_rule_area():
         assert msg in probe_errors, msg
     assert sorted(f.name for f in FIXTURES.iterdir()) == [
         "bot_primitives.json.gz", "bot_rounds.jsonl.gz", "bridge_requests.jsonl.gz",
-        "primitives.json.gz", "rounds.jsonl.gz", "server_sessions_start.jsonl.gz"]
+        "online_only.json", "primitives.json.gz", "rounds.jsonl.gz",
+        "server_sessions_start.jsonl.gz"]
     assert sum(f.stat().st_size for f in FIXTURES.iterdir()) < 5_000_000
 
 

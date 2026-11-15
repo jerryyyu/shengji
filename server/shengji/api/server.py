@@ -784,9 +784,8 @@ def _auto_mode(room: Room, seat: int) -> str | None:
 
 
 def _move_timer_fields(room: Room, seat: int) -> dict[str, Any]:
-    """Per-seat move-timer fields, sent only in a room with the move timer:
-    a casual room's frames stay identical to the offline local server's,
-    which has no move timer."""
+    """Per-seat move-timer fields, in every room: a room without the move
+    timer sends ``turn_deadline: None`` and ``away: False``."""
     return {
         # Seconds this seat has left on the move timer; null when no clock
         # runs for it. Ticked down locally, like takeover_in.
@@ -838,8 +837,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
     guest_seat = guest or (room.matched and not me.is_bot and me.user_id is None)
     return {
         "type": "state",
-        **({"experimental_policy": room.experimental_policy}
-           if room.experimental_policy else {}),
+        "experimental_policy": room.experimental_policy,
         "room": room.code,
         "you": seat,
         # The round-end tally lives here too: in-game broadcasts send ONLY
@@ -872,11 +870,10 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # deadline the takeover countdown shows, so they cannot disagree.
             "reserved_secs": (_takeover_in(room, s)
                               if _reserved(room, s) else None),
-            **(_move_timer_fields(room, s) if room.move_timer else {}),
-            # the owner pressed Leave: "Bot (Alice left)", not a countdown;
-            # sent only while true, so other frames keep their shape
-            **({"left": True} if (room.seats[s].left_by_choice
-                                  and _controller(room, s) == "bot_cover") else {}),
+            **_move_timer_fields(room, s),
+            # the owner pressed Leave: "Bot (Alice left)", not a countdown
+            "left": (room.seats[s].left_by_choice
+                     and _controller(room, s) == "bot_cover"),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -916,12 +913,12 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         } if result else None),
         "message": rnd.message,
         "notice": rnd.notice,
-        **({"matched": True} if room.matched else {}),
+        "matched": room.matched,
         # the seat holding the opener's controls (Allow joiners)
         "opener": room.host,
         **({"allow_joiners": room.allow_joiners, "joining": _join_notices(room)}
            if _takes_joiners(room) else {}),
-        **({"guest": True} if guest_seat else {}),
+        "guest": guest_seat,
         # took this seat from an open table during this round: the round is
         # not ranked for them, and leaving it costs a queue wait (a casual
         # table's leave is free, so it is never set there). Always sent, so a
@@ -963,9 +960,8 @@ def room_json(room: Room, seat: int) -> dict:
         # the same seat as ``host``, named for what it is in the room panel
         "opener": room.host,
         "start_level": room.start_level,
-        **({"experimental_policy": room.experimental_policy}
-           if room.experimental_policy else {}),
-        **({"matched": True} if room.matched else {}),
+        "experimental_policy": room.experimental_policy,
+        "matched": room.matched,
         **({"allow_joiners": room.allow_joiners} if _takes_joiners(room) else {}),
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}

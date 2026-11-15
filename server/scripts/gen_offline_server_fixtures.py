@@ -9,7 +9,9 @@ plays seat 0 with SmartBot through ordinary client messages.  It records every
 frame the human's socket receives, normalised for the fields that are
 environmental (see ``normalize``), and writes one line per game to
 ``server_sessions_start.jsonl.gz``: the seed, how many rounds were played, the frame
-count and a short digest of each frame.  The vitest suite drives the
+count and a short digest of each frame.  Fields and frame types only the online
+server has are dropped before the digest; ``online_only.json`` beside the
+fixture lists them (see ``strip_online_only``).  The vitest suite drives the
 TypeScript server with the same seeds and the same human driver and compares
 digests frame by frame.
 
@@ -149,6 +151,37 @@ NORMALIZED_FIELDS = {
     "token": "resume token (random per seat)",
     "t": "chat timestamp (wall clock)",
 }
+
+
+# What the online server sends and the offline server does not: whole frame
+# types under "frames", and keys per frame type ("state.players" is each entry
+# of a state frame's players). The offline parity test reads the same file.
+ONLINE_ONLY_PATH = SERVER_DIR.parent / "web" / "src" / "offline" / "fixtures" / "online_only.json"
+ONLINE_ONLY: dict[str, dict[str, str]] = json.loads(ONLINE_ONLY_PATH.read_text())
+
+
+def strip_online_only(msg: dict) -> dict | None:
+    """``msg`` without the ONLINE_ONLY keys, or None for an online-only frame.
+    A listed key the frame lacks is an error: the list records what the
+    online server always sends."""
+    kind = msg.get("type")
+    if kind in ONLINE_ONLY["frames"]:
+        return None
+    out = dict(msg)
+    for key in ONLINE_ONLY.get(kind, {}):
+        if key not in out:
+            raise KeyError(f"{kind} frame lacks online-only key {key!r}")
+        del out[key]
+    player_keys = ONLINE_ONLY.get(f"{kind}.players", {})
+    if player_keys:
+        players = []
+        for p in out["players"]:
+            missing = [k for k in player_keys if k not in p]
+            if missing:
+                raise KeyError(f"{kind} player lacks online-only keys {missing}")
+            players.append({k: v for k, v in p.items() if k not in player_keys})
+        out["players"] = players
+    return out
 
 
 def normalize(msg: dict) -> dict:
@@ -309,11 +342,10 @@ async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
             if not frame.done():
                 frame.cancel()
                 await asyncio.gather(frame, return_exceptions=True)
-        if msg["type"] == "table":
-            # additive and not yet sent by the offline server; the offline
-            # fixtures hold the frames both servers send
+        shared = strip_online_only(msg)
+        if shared is None:
             continue
-        frames.append(normalize(msg))
+        frames.append(normalize(shared))
         if msg["type"] == "error":
             raise RuntimeError(f"seed {seed}: server refused the driver: {msg}")
         if msg["type"] == "left":
@@ -386,7 +418,8 @@ def sessions_text(n_games: int, rounds: int, base_seed: int, stats=None) -> str:
     DeckRng(game_seed(base_seed, 0)).shuffle(deck)
     header = {"format": FORMAT, "games": n_games, "rounds": rounds, "seed": base_seed,
               "human": HUMAN_NAME, "firstDeck": deck,
-              "normalized": NORMALIZED_FIELDS, "stats": dict(sorted(stats.items()))}
+              "normalized": NORMALIZED_FIELDS, "onlineOnly": ONLINE_ONLY,
+              "stats": dict(sorted(stats.items()))}
     return "\n".join([_dumps(header)] + lines) + "\n"
 
 

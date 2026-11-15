@@ -26,7 +26,7 @@ def test_disabled_refuses_at_socket_without_creating_room(client, monkeypatch, m
         # Refusal must not strand the socket or silently create a fallback room.
         ws.send_json({"type": "create_room", "name": "ordinary"})
         reply = _drain(ws, "room")
-        assert "experimental_policy" not in reply
+        assert reply["experimental_policy"] is None
 
 
 def _enable(monkeypatch, tmp_path):
@@ -54,7 +54,7 @@ def test_real_creation_gate_shares_weights_not_rooms_and_excludes_logs(client, m
         assert type(ordinary.bot) is REGISTRY["mc-s0-report-lcb"]
         assert ordinary.experimental_policy is None
         assert ordinary.log_dir == srv.LOG_DIR
-        assert "experimental_policy" not in ordinary_msg
+        assert ordinary_msg["experimental_policy"] is None
         made = []
         for ws in (first, second):
             ws.send_json({"type": "create_room", "name": "test",
@@ -80,7 +80,7 @@ def test_real_creation_gate_shares_weights_not_rooms_and_excludes_logs(client, m
         # Joining a room with experimental fields cannot change its policy.
         excess.send_json({"type": "table_join", "expect": "room", "code": ordinary.code,
                           "name": "guest", "test_policy": "w32", "test_access_key": KEY})
-        assert "experimental_policy" not in _drain(excess, "state")
+        assert _drain(excess, "state")["experimental_policy"] is None
         assert ordinary.experimental_policy is None
         # The real in-game payload keeps the test marker.
         assert _drain(first, "state")["experimental_policy"] == "w32"

@@ -2101,7 +2101,7 @@ def test_a_casual_room_has_no_move_timer(client, clock, monkeypatch):
         assert _tick(client, room) is False
         assert _plays_by(room, 0) == before and room.round.turn == 0
         state = _drain(a, "state", tries=200)
-        assert all("turn_deadline" not in p and "away" not in p
+        assert all(p["turn_deadline"] is None and p["away"] is False
                    for p in state["players"])
         assert room.seats[0].turn_started is None
 

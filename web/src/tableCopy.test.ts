@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, StatePlayer } from "./protocol";
 import {
-  attackingTeam, bankerText, buryPointsText, declareHelp, kittyIds, pointsLabel, seatStatus, teamWord,
+  attackingTeam, bankerText, buryPointsText, declareHelp, pointsLabel, seatStatus, teamWord,
 } from "./tableCopy";
 
 function p(seat: number, name: string, extra: Partial<StatePlayer> = {}): StatePlayer {
@@ -43,12 +43,6 @@ describe("table copy", () => {
     const hand = [{ id: 1, code: "S5" }, { id: 2, code: "HK" }, { id: 3, code: "D10" }, { id: 4, code: "C3" }];
     expect(buryPointsText(hand, new Set([1, 2, 4]))).toBe("Burying 15 points");
     expect(buryPointsText(hand, new Set())).toBe("Burying 0 points");
-  });
-
-  it("finds the kitty cards as the ids new since the deal", () => {
-    const hand = [{ id: 1, code: "S5" }, { id: 100, code: "HK" }];
-    expect([...kittyIds(new Set([1]), hand)]).toEqual([100]);
-    expect(kittyIds(null, hand).size).toBe(0);
   });
 
   it("words a left seat apart from a disconnect", () => {

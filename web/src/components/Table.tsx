@@ -25,7 +25,7 @@ import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
-import { BURY_HELP, bankerText, buryPointsText, declareHelp, kittyIds, seatStatus } from "../tableCopy";
+import { BURY_HELP, bankerText, buryPointsText, declareHelp, seatStatus } from "../tableCopy";
 import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
@@ -414,15 +414,6 @@ export default function Table({ state }: { state: GameState }) {
   const held = away && !watching && online;
   const back = useAnyTapIsBack(held, () => conn.send({ type: "im_back" }));
 
-  // The hand held before the kitty arrives, so the bury can mark the 8
-  // cards that came from it until the bury is sent.
-  const preKitty = useRef<Set<number> | null>(null);
-  if (state.phase === "deal" || state.phase === "declare") {
-    preKitty.current = new Set(state.hand.map((c) => c.id));
-  } else if (state.phase !== "bury") {
-    preKitty.current = null;
-  }
-  const fromKitty = state.phase === "bury" && iAmBanker ? kittyIds(preKitty.current, state.hand) : null;
 
   // The last trick, reopened on request; it stays until dismissed.
   const [lastOpen, setLastOpen] = useState(false);
@@ -686,7 +677,7 @@ export default function Table({ state }: { state: GameState }) {
           <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
                     tap={hint?.n ?? 0} nudge={nudge} />
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} lit={coach?.follow ?? null} fromKitty={fromKitty} />
+                rects={handRects} lit={coach?.follow ?? null} />
         </div>
       </div>
 

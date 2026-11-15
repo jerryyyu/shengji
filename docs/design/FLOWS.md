@@ -161,7 +161,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      highest first: why Play is disabled (a refused tap, or a play that does not follow), else the phase's
      help (declaring, burying), else the newcomer coach's cue. The phase's help and the cue are teaching and
      show only while the coach shows (the Coach switch on, or a newcomer on auto); the reason shows always.
-     A kitty card in the banker's hand is marked by its gold outline alone (no dot). The status line in the button row ("Waiting
+     The banker's bury hand is one plain hand: kitty cards carry no mark (Jerry 11-14). The status line in the button row ("Waiting
      for Li", "Dealing cards…") is gone: the seat on turn glows and says "their turn", and the hand fills
      as it is dealt.
 7. **Offline without a reload.** Offline is a state of the one Play page, not a page of its own. Play on

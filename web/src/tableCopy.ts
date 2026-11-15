@@ -77,13 +77,6 @@ export function buryPointsText(hand: HandCard[], selected: Set<number>): string 
   return `Burying ${pts} ${pts === 1 ? "point" : "points"}`;
 }
 
-/** The ids in the banker's hand that came from the kitty: present now, absent
- *  from the hand held before the bury. Empty without a pre-bury hand. */
-export function kittyIds(before: Set<number> | null, hand: HandCard[]): Set<number> {
-  if (before === null || before.size === 0) return new Set();
-  return new Set(hand.filter((c) => !before.has(c.id)).map((c) => c.id));
-}
-
 /** The seat label's status: "Bot (Alice left)" after a deliberate Leave, a
  *  countdown while a disconnect's grace runs, else null. */
 export function seatStatus(player: StatePlayer, takeover: number | null): string | null {

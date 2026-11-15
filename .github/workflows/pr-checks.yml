@@ -828,7 +828,9 @@ jobs:
             tests/test_pv_search_bury.py \
             tests/test_pv_sampler_telemetry.py \
             tests/test_world_weighting.py \
-            tests/test_belief_seq_init.py
+            tests/test_belief_seq_init.py \
+            tests/test_unified_seq.py \
+            tests/test_s134_v1_read.py
       - name: Test production search regressions (shard 2 of 3)
         if: matrix.shard == 2
         env:

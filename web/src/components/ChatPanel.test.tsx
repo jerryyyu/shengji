@@ -118,3 +118,14 @@ it("shows the quick phrases first, then the field, and a tap sends one as a plai
   expect(table).toHaveBeenCalledExactlyOnceWith("Hi!");
   expect(send).toHaveBeenCalledTimes(1);
 });
+
+it("keeps table chat open when Escape cancels IME composition", async () => {
+  const { ChatRow } = await import("../queue/TablePanel");
+  act(() => root.render(<ChatRow messages={[]} you={0} onSend={send} />));
+  act(() => host.querySelector<HTMLButtonElement>(".tp-chat")!.click());
+  const input = host.querySelector<HTMLInputElement>("input")!;
+  act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true })));
+  expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+  act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(host.querySelector('[role="dialog"]')).toBeNull();
+});

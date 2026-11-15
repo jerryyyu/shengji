@@ -5395,31 +5395,34 @@ body.keyboard-open .tabbar { display: none; }
   padding: 24px 0;
 }
 .home-wide .play-tab .account-pill { display: none; }
-/* The art and the controls are one column on a phone. On desktop and iPad
-   the controls, and the table panel in Play's place, sit beside the art. */
+/* The art and the controls are one column at every width, the phone's
+   Play tab centred under the top bar. On a wide screen the title and the
+   preview stay small, so the controls and the table panel start high on
+   the page; a sideways phone drops the preview and keeps a small title. */
 .play-art, .play-side { display: contents; }
-.home-wide .play-tab > .lobby-panel:has(.play-side) {
-  width: min(1180px, 100%);
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 32px;
+.home-wide .play-tab .game-title { font-size: 40px; line-height: 1.1; }
+.home-wide .play-tab .game-title-en { font-size: 13px; margin-top: 2px; }
+.home-wide .play-tab .lobby-preview {
+  aspect-ratio: auto;
+  margin-top: 0;
+  height: 150px;
+  flex: none;
+  container-type: size;
 }
-.home-wide .play-tab .play-art {
-  display: flex;
-  flex: 1.4 1 0;
-  min-width: 0;
-  flex-direction: column;
-  gap: 12px;
-  position: sticky;
-  top: 12px;
+.home-wide .play-tab .lp-stage {
+  --u: min(100cqw / 1200, 100cqh / 630);
+  inset: auto;
+  left: calc(50% - var(--u) * 600);
+  top: calc(50% - var(--u) * 315);
+  width: calc(var(--u) * 1200);
+  height: calc(var(--u) * 630);
 }
-.home-wide .play-tab .play-side {
-  display: flex;
-  flex: 0 0 400px;
-  min-width: 0;
-  flex-direction: column;
-  gap: 16px;
-}
+/* at a table the panel needs the room more than the preview does */
+.home-wide .play-tab.play-table-up .lobby-preview,
+.phone-landscape .home-wide .play-tab .lobby-preview { display: none; }
+.phone-landscape .home-wide .play-tab .game-title { font-size: 28px; }
+.phone-landscape .home-wide .play-tab .game-title-en { font-size: 11px; }
+.phone-landscape .home-wide .play-tab > .lobby-panel { padding-top: 8px; gap: 12px; }
 .topbar-end:has(.guest-pill) { gap: 10px; }
 .play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
 .play-label {

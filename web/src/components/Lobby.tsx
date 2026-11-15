@@ -477,8 +477,8 @@ export default function Lobby({ status, room = null, holdInvite = false,
   return (
     <div ref={screenRef} className={`screen lobby-screen play-tab${stalled || offline ? " play-offline" : ""}${panelUp ? " play-table-up" : ""}`}>
       <div className="panel lobby-panel">
-        {/* one column on a phone; on desktop and iPad the controls and the
-            table panel sit beside the art */}
+        {/* one column at every width: the art, then the controls or the
+            table panel */}
         <div className="play-art">
           <h1 className="game-title">
             升级 <span className="game-title-en">Sheng Ji</span>

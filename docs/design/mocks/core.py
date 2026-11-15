@@ -188,7 +188,7 @@ def f1_first_open():
             shot(signed, 390, 844, "First open, signed in", "The same page; the chip shows the rating."),
             shot(casual, 390, 844, "Tap Casual", "Remembered on this device; the casual count lights up."),
             shot(none, 390, 844, "Nobody online", "One short line."),
-            shot(desk, 1280, 800, "Desktop / iPad", "Three tabs in the top bar; the same controls beside the art."),
+            shot(desk, 1280, 800, "Desktop / iPad", "Three tabs in the top bar; the phone's one column, centred, with a small preview."),
         ]),
     ]
 

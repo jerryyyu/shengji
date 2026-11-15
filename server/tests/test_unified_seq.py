@@ -459,3 +459,38 @@ def test_store_map_rules_are_per_extract_dir():
     assert idx.resolve("/elsewhere/corpus", "/x/perf-v1") == "/elsewhere/corpus"
     with pytest.raises(us.UnifiedSeqError):
         us.parse_store_map(["no-equals"])
+
+
+@pytest.mark.parametrize("change", ["head_warmup_buffers", "buffer_chunks", "weight_decay", "input_manifest"])
+def test_a_resume_refuses_a_changed_recipe_or_input_before_any_update(world, tmp_path, change):
+    import shengji.ai.belief_numpy as bn
+    data = extract_dir(world["store"], tmp_path / "x", calib=0.5, task_clusters=1)
+    torch.manual_seed(0)
+    trunk = bs.build_model(**SMALL)
+    init = tmp_path / "init.npz"
+    bn.save_package(init, trunk.config, {k: v.detach().numpy() for k, v in trunk.state_dict().items()},
+                    {"temperature": 1.0})
+    common = ["train", "--data", str(data), "--init", str(init), "--threads", "1", "--loader-threads", "1",
+              "--rounds-per-batch", "1", "--buffer-chunks", "1", "--save-every", "0", "--head-warmup-buffers", "1"]
+    out = tmp_path / "run"
+    out.mkdir()
+    (out / "STOP").touch()
+    assert us.main(common + ["--out", str(out)]) == 3
+    (out / "STOP").unlink()
+    before = (out / "checkpoint.pt").read_bytes()
+    extra = {"head_warmup_buffers": ["--head-warmup-buffers", "2"], "buffer_chunks": ["--buffer-chunks", "2"],
+             "weight_decay": ["--weight-decay", "0.02"], "input_manifest": []}[change]
+    inputs = out / "inputs.json"
+    original = inputs.read_bytes()
+    if change == "input_manifest":                  # the chunks the run recorded are not the chunks seen now
+        rec = json.loads(original)
+        rec["chunk_sha256_digest"] = "0" * 64
+        inputs.write_text(json.dumps(rec))
+    assert us.main(common + ["--out", str(out)] + extra) == 1
+    log = (out / "status.log").read_text()
+    assert "S134U ABORT" in log and "resume:" in log and "RESUME" not in log and "S134U DONE" not in log
+    assert (out / "checkpoint.pt").read_bytes() == before              # the refusal touched nothing
+    inputs.write_bytes(original)
+    assert us.main(common + ["--out", str(out)]) == 0                   # the unchanged recipe still resumes
+    log = (out / "status.log").read_text()
+    assert "RESUME epoch 0 buffer 1" in log and "S134U DONE" in log

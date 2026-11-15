@@ -613,10 +613,20 @@ def _train(args, out: Path, status: str) -> int:
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
     if ck.exists():
         saved = torch.load(ck, weights_only=False, map_location="cpu")
-        for k in ("init_sha256", "seed", "exclude_seed_window", "q_weight", "policy_weight", "belief_weight",
-                  "policy_detach", "no_suit_aug", "epochs", "max_train_rows"):
-            if saved["run"].get(k) != _run_identity(args, init["sha256"]).get(k):
-                raise UnifiedSeqError(f"resume: {k} differs from the run's")
+        # The saved cursor (epoch, buffer) only means the same thing under the same recipe and inputs, so every
+        # semantic setting and the input identity must match before any weight is loaded or any update runs.
+        want = _run_identity(args, init["sha256"])
+        have = saved.get("run", {})
+        for k in sorted(set(want) | set(have)):
+            if have.get(k) != want.get(k):
+                raise UnifiedSeqError(f"resume: {k} differs from the run's ({have.get(k)!r} != {want.get(k)!r})")
+        recorded = json.loads((out / "inputs.json").read_text())
+        recorded.pop("init_calib", None)
+        now_inputs = json.loads(json.dumps(input_manifest(args, entries, args.data, init["sha256"], index),
+                                           default=str))
+        for k in sorted(set(recorded) | set(now_inputs)):
+            if recorded.get(k) != now_inputs.get(k):
+                raise UnifiedSeqError(f"resume: input {k} differs from the run's inputs.json")
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
@@ -689,8 +699,10 @@ def _run_identity(args, init_sha) -> dict:
             "q_weight": args.q_weight, "policy_weight": args.policy_weight, "belief_weight": args.belief_weight,
             "policy_detach": args.policy_detach, "no_suit_aug": args.no_suit_aug, "epochs": args.epochs,
             "max_train_rows": args.max_train_rows, "lr": args.lr, "head_lr": args.head_lr,
-            "head_warmup_buffers": args.head_warmup_buffers,
-            "data": list(args.data)}
+            "head_warmup_buffers": args.head_warmup_buffers, "weight_decay": args.weight_decay,
+            "kitty_weight": args.kitty_weight, "buffer_chunks": args.buffer_chunks,
+            "rounds_per_batch": args.rounds_per_batch, "calib_rows": args.calib_rows, "max_steps": args.max_steps,
+            "store_map": list(args.store_map), "data": list(args.data)}
 
 
 # ------------------------------------------------------------------ export

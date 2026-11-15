@@ -137,6 +137,21 @@ export function startLabel(t: TableView): string {
   return `Waiting for ${w.length} players`;
 }
 
+/** Where the person at `from` may go: an empty seat that is not held, and
+ *  for a Duo both seats of the other team, so the pair moves as one. */
+export function moveTargets(seats: ({ pair?: boolean } | null)[], held: number[], from: number): number[] {
+  const free = (at: number) => !seats[at] && !held.includes(at);
+  if (!seats[from]?.pair) return [0, 1, 2, 3].filter(free);
+  return [0, 1, 2, 3].filter((at) => at % 2 !== from % 2 && free(at) && free((at + 2) % 4));
+}
+
+/** The opener's one confirm before moving someone: "Move Alice here?",
+ *  or a Duo's two names. */
+export function moveQuestion(names: string[]): string {
+  const who = names.map(shortName);
+  return `Move ${who.length > 1 ? `${who[0]} and ${who[1]}` : who[0]} here?`;
+}
+
 /** The strip and pill on other tabs: what the table is, in a few words. */
 export function stripLabel(q: QueueView): string {
   return q.offer && !q.table && !q.elsewhere ? "Table with a seat" : "Your table";

@@ -18,7 +18,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`) | anytime before joining |
 | `set_start_level` | `start_level` (same values) | host (the opener), lobby only; refused once the game has started, and in a ranked room ("A ranked table starts at level 2."): every rated game starts at `"2"`. A real change clears every Start tap (`lobby_ready`) |
 | `set_ranked` | `on: boolean` | host (the opener), lobby only, created rooms only: whether the room is ranked (see "Ranked rooms"); refused once the game has started. On sets `start_level` back to `"2"`. A real change clears every Start tap |
-| `swap_seats` | `a`, `b` (seat positions), optional `expect` | lobby: the host exchanges any two positions; anyone else moves themselves (one of `a`, `b` is their own seat, the other empty) until they tap Start |
+| `swap_seats` | `a`, `b` (seat positions), optional `expect` | lobby: the host exchanges any two positions, which takes back the Start of each person it moves (the host's own excepted); anyone else moves themselves (one of `a`, `b` is their own seat, the other empty) until they tap Start |
 | `remove_player` | `seat`, optional `expect` | host, lobby: that occupant leaves the room |
 | `allow_joiners` | `on: boolean` | anyone seated at an ordinary room, ranked or casual (lobby or in play): whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
 | `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
@@ -274,8 +274,9 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `table_allow_joiners` | `on: boolean` | your table's Allow joiners, alone or at a waiting table; only the table's opener (its leader, for a pair) may switch it, anyone else is refused with `not_opener`, and the whole table takes it. 20 per account per minute (with `table_move`) |
 | `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change clears every Start at the table |
 | `queue_leave` | — | leave the queue (leader only for a pair); at a waiting table this frees your seat |
-| `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready for good; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
-| `table_move` | `seat` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. 20 per account per minute |
+| `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready until you take it back; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
+| `table_unready` | — | take back your Start before the table starts (the same who as `table_start`: a pair's leader for the pair, a table Duo's member its own tap, alone too); `not_seated` alone outside a Duo, `not_leader` for a pair's partner; nothing to take back is no change |
+| `table_move` | `seat`, optional `from` and `who` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, and `who`, that seat's `sit` token as the opener confirmed it, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's, `seat_changed` when `who` is missing or no longer that seat's sitting, so a delayed move never lands on whoever sat after): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`); it takes back the moved entry's Start. 20 per account per minute |
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
 | `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
 | `queue_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` (what an older client's bar button sends) |
@@ -300,7 +301,7 @@ not at a waiting table), `no_match`, `start_failed`, `party_not_found`,
 joined, see "Open tables"), `no_offer`, `bad_seat`, `seat_taken` (another
 newcomer confirmed that seat first; the offer is re-sent without it, or the
 seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
-`already_ready`, `panel_changed` (a fresh `queue_state` follows),
+`already_ready`, `seat_changed` (an opener's `table_move` named a sitting that has left that seat; a fresh `queue_state` follows), `panel_changed` (a fresh `queue_state` follows),
 `table_not_found` (no queued table has that `code`), `own_table`,
 `table_full`, `same_device` (a device of yours already sits at that table),
 `not_opener`, `ranked_level_fixed`, `bad_start_level`, `bad_setting`. A signed-in
@@ -329,7 +330,7 @@ other socket with `account_in_game`.
   empty seats held for a Duo opener's friend, at most one, and `held_seat`
   that seat, else null). `seats` has
   four items in seat order (team 0 at seats 0+2), `null` for an empty seat (a
-  bot plays it), else `{name, you, ready, reconnecting, since, pair, leader}`;
+  bot plays it), else `{name, you, ready, reconnecting, since, sit, pair, leader}` (`sit`: an opaque token, fresh each time someone sits down and kept through moves);
   `you` is your seat; `timer` is `{at, name, you}` (the earliest `bots_at`
   among the table's switch-off entries, named by that entry's leader) or null
   when every switch is on; `ready`/`of` count people; `waiting_for` names the
@@ -364,9 +365,12 @@ other socket with `account_in_game`.
   `{id, seat, name, text, t}`), replacing what you hold: when you sit down at
   a table that has some, when a newcomer's lines from alone merge in (to
   everyone there; every line then takes a new id), or when you come back.
-- `table_moved {name, seat, your_team}`: to everyone else at your waiting
-  table when `name` moved to `seat`; `your_team` says whether that seat is on
-  your team. It comes right after the `queue_state` that shows the new seats.
+- `table_moved {name, seat, your_team, by?, you?, team_changed?}`: to
+  everyone else at your waiting table when `name` moved to `seat`;
+  `your_team` says whether that seat is on your team. When the opener moved
+  someone, `by` names the opener (who hears nothing), and the people moved
+  hear `you: true` and `team_changed` (whether they are on the other team
+  now). It comes right after the `queue_state` that shows the new seats.
 - `first_joiner {name, seat, move_secs, round_end}`: once per game started
   alone (`queue_start_bots` or the entry's own timer), to its people, when the
   first newcomer's Join lands. `move_secs` is the move clock that runs from
@@ -444,12 +448,16 @@ leaves it queued.
 
 Every queued entry has a table code, from the moment it joins: alone, the
 code of its own table (`queue_state.code`, with `table` still null, so an
-older client sees no change); at a waiting table, the table's code is its
-opener's (the first arrival still there), and every seated entry's own code
-still leads to that table. When the table (or the lone entry's bot game)
-starts, the room takes the table's code, so an invite link `/?code=CODE`
-made before the game still opens the room after it. A code is released when
-its entry leaves the queue.
+older client sees no change). A waiting table takes its opener's code when
+it forms and keeps it for its whole life, and every seated entry's own code
+still leads to that table. When the opener leaves, the table keeps the code
+(the next person takes the opener's controls, not the code); when one entry
+is left alone, that entry keeps the table's code as its own, and its earlier
+code names nothing. When the table (or the lone entry's bot game) starts,
+the room takes the table's code, so an invite link `/?code=CODE` made before
+the game still opens the room after it. A code is released when its entry
+leaves the queue, unless its table still sits; a departed opener that queues
+again gets a fresh code.
 
 `queue_join {code}` (the link, or a typed code that `code_lookup` calls
 `"table"`) seats you at that table: opening it with its host when the host is
@@ -498,8 +506,8 @@ partner leaves (or signs in from a guest, takes a seat elsewhere or stays
 away), the Duo's taps are cleared and nobody moves: at a table the opener
 opened (or alone), its seat is held again for the opener; at someone
 else's table the opener stays on as a single with nothing held, and no late
-friend is promised a seat (its code, like any non-opener's, ends with the
-table). A held seat is always its table opener's, so its invite code is
+friend is promised a seat (its code, like any non-opener's, is not the
+table's). A held seat is always its table opener's, so its invite code is
 the code the room takes. When the opener leaves, the partner keeps the opener's code and, at
 its own table, becomes the opener, and nothing is held. After the game the
 pair stays paired, as a party pair does.

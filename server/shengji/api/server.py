@@ -298,7 +298,8 @@ class Seat:
     # disconnect. Cleared when any socket takes the seat again.
     left_by_choice: bool = False
     # Tapped Start in a created room's lobby (``lobby_ready``). On the Seat,
-    # not the position, so a seat move carries it.
+    # not the position, so your own seat move carries it; a host's move of
+    # you takes it back.
     lobby_ready: bool = False
 
 
@@ -2221,8 +2222,9 @@ def _check_expected(room: Room, position: int, expected: Any) -> None:
 
 def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     """Lobby move: the host exchanges what is in any two seat positions, a
-    person, a bot or nothing; anyone else moves themselves to an empty seat
-    until they tap Start.
+    person, a bot or nothing, which takes back the Start of each person it
+    moves; anyone else moves themselves to an empty seat until they tap
+    Start.
 
     Everything a connection owns (socket, queue, writer, generation, resume
     token, account) lives on the ``Seat`` object, and a socket finds its seat
@@ -2257,6 +2259,12 @@ def _swap_seats(room: Room, seat: int, msg: dict) -> None:
     first, second = _occupant(room, a), _occupant(room, b)
     if first is None and second is None:
         raise IllegalPlay("Both seats are empty.")
+    if seat == room.host:
+        # a person the host moves taps Start again: theirs agreed to the old seat
+        mover = room.seats[seat]
+        for sd in (first, second):
+            if sd is not None and sd is not mover:
+                sd.lobby_ready = False
     _seat_at(room, a, second)
     _seat_at(room, b, first)
     room.ids[a], room.ids[b] = room.ids[b], room.ids[a]

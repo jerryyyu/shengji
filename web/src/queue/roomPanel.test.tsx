@@ -113,6 +113,42 @@ function room(over: Record<string, unknown> = {}, players: P[] = [{ seat: 0, nam
 }
 
 describe("a room is a kind of the table panel on Play", () => {
+  it("a Start is taken back in a room: Waiting for Jerry sends lobby_ready off", async () => {
+    await renderApp();
+    const players = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
+    say(room({ you: 2, ready: [2] }, players));
+    expect(primary().textContent).toBe("Waiting for Jerry");
+    expect(primary().className).toContain("waiting");
+    click(primary());
+    expect(lastSent()).toEqual({ type: "lobby_ready", on: false });
+    say(room({ you: 2, ready: [] }, players));
+    expect(primary().textContent).toBe("Start");
+  });
+
+  it("the room's opener moves a person: tap them, tap a seat, confirm once; the moved one hears it", async () => {
+    await renderApp();
+    const players = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
+    say(room({}, players));
+    const alice = () => [...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat")]
+      .find((b) => b.getAttribute("aria-label")?.startsWith("Alice"))!;
+    click(alice());
+    expect(alice().className).toContain("picked");
+    const dest = [...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat.open")]
+      .map((b) => b.getAttribute("aria-label"));
+    expect(dest).toEqual(["Open seat, other team. Move Alice here", "Open seat, other team. Move Alice here"]);
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open"));
+    expect(q("[role='alertdialog'] h2")?.textContent).toBe("Move Alice here?");
+    click(button("Move", q("[role='alertdialog']")!));
+    expect(lastSent()).toEqual({ type: "swap_seats", a: 2, b: 1, expect: [{ name: "Alice", is_bot: false }, null] });
+    // a joiner sees no person as a button
+    say(room({ you: 2 }, players));
+    expect([...panel()!.querySelectorAll("button.tp-seat")].every((b) => b.classList.contains("open"))).toBe(true);
+    // and is told when the opener moves them
+    say(room({ you: 1 }, [{ seat: 0, name: "Jerry" }, { seat: 1, name: "Alice" }]));
+    await settle();
+    expect(q(".toast")?.textContent).toBe("Jerry moved you to the other team.");
+  });
+
   it("the opener's casual table: code, Invite link, Starting level, Allow joiners, chat; no room screen", async () => {
     await renderApp();
     say(room());
@@ -207,7 +243,7 @@ describe("a room is a kind of the table panel on Play", () => {
     p = panel()!;
     expect(p.querySelector(".tp-line")?.textContent).toBe("1 of 2 ready");
     expect(primary().textContent).toBe("Waiting for Jerry");
-    expect(primary().disabled).toBe(true);
+    expect(primary().disabled).toBe(false);                 // a tap takes the Start back
     // after the Start the seats hold still
     expect(p.querySelectorAll("button.tp-seat")).toHaveLength(0);
     expect(p.querySelector(".tp-seat.you .tp-tick")).not.toBeNull();

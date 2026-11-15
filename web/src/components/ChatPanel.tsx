@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { conn } from "../ws";
 import { usePresence } from "../usePresence";
 import { useMutes } from "../chatMute";
+import "./ChatPanel.css";
+
+/** The chat sheet's quick phrases, above the field: a tap sends one as an
+ *  ordinary line, through the same validated, rate-limited path. */
+const QUICK_PHRASES = ["Hi!", "Good game", "Nice!", "One more?", "Brb"] as const;
 
 /** Toggled overlay, not a side panel: in landscape the table already fills
  *  the screen, so chat slides over it and closes again. Unread count lives
@@ -45,11 +50,14 @@ export default function ChatPanel({
 
   if (!presence.mounted) return null;
 
+  const say = (text: string) => {
+    if (onSend) onSend(text);
+    else conn.send({ type: "chat", text });
+  };
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    if (onSend) onSend(text);
-    else conn.send({ type: "chat", text });
+    say(text);
     setDraft("");
   };
 
@@ -79,6 +87,13 @@ export default function ChatPanel({
           )
         )}
         <div ref={endRef} />
+      </div>
+      <div className="chat-quick" role="group" aria-label="Quick phrases">
+        {QUICK_PHRASES.map((phrase) => (
+          <button key={phrase} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
+            {phrase}
+          </button>
+        ))}
       </div>
       <div className="chat-input">
         <input

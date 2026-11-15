@@ -210,3 +210,19 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   without the account.
 - Server merge (one Table object): yes, planned after Duo lands.
 - Start rule (no auto-start alone): Jerry asked for more explanation. It goes to a mock with both variants before any decision.
+
+## Deferred mock items (Jerry 2026-11-14: "Yea do deferred mock questions")
+- **Take back a Start.** At a waiting table or a room before its game, your Start is in until you tap the button
+  again: "Waiting for Alice" (a quiet button) becomes "Start", and the "N of M ready" count drops. Each Duo member
+  takes back its own tap. The server's `table_unready` and a room's `lobby_ready {on: false}` do it.
+- **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "Good game", "Nice!", "One more?",
+  "Brb"), then the field. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
+  path; nothing new is logged.
+- **The opener moves other people.** At a waiting table or a room before its game, the opener taps a person (the
+  seat is outlined), then an empty seat, then confirms once ("Move Alice here?", Cancel / Move). A Duo moves as one
+  to a whole free team and is never split; a held partner seat is never a destination. The move takes back the
+  moved person's Start, and they hear it in the one toast ("Jerry moved you to the other team."). Anyone else's
+  own move to an empty seat is unchanged.
+- **A table keeps its code for life.** The code a table took from its opener stays when the opener leaves (the
+  next person takes the opener's controls, not the code), so every invite link keeps working while the table
+  exists, and the room starts on it. The last one left alone keeps the table's code as its own.

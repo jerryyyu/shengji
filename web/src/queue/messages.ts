@@ -29,13 +29,16 @@ export type QueueClientMsg = { name?: string } & (
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
    *  since changed is refused with `panel_changed`. */
   | { type: "table_start"; panel_seq?: number }
+  /** Take your Start back before the table starts (a Duo member: its own). */
+  | { type: "table_unready" }
   /** The opener's Start now at a waiting table, from its `start_now_at`:
    *  the table starts at once with bots (`not_opener`, `too_soon`). */
   | { type: "table_start_now"; panel_seq?: number }
   | { type: "queue_start_bots"; panel_seq?: number }
   /** Move yourself to an empty seat at your waiting table (singles only,
-   *  before your Start). */
-  | { type: "table_move"; seat: number }
+   *  before your Start). With `from`, another person's seat, the opener
+   *  moves that person instead: a pair as one, never into a held seat. */
+  | { type: "table_move"; seat: number; from?: number; who?: string }
   /** Answer the "still here?" prompt (`still_here_until`). */
   | { type: "table_here" }
   /** A chat line to everyone at your waiting table (<=300 chars, trimmed;
@@ -158,6 +161,9 @@ export interface TableSeatMsg {
   reconnecting: boolean;
   /** When this person sat down. */
   since: number | null;
+  /** This sitting's opaque token, fresh each time someone sits; an
+   *  opener's `table_move` names it as `who`. */
+  sit?: string | null;
   pair: boolean;
   leader: boolean;
 }
@@ -216,8 +222,12 @@ export interface TableChatHistoryMsg {
 }
 
 /** Someone else at your waiting table moved to `seat` (the queue_state
- *  with the new seats arrives just before it). */
-export interface TableMovedMsg { type: "table_moved"; name: string; seat: number; your_team: boolean }
+ *  with the new seats arrives just before it). `by`: the opener moved
+ *  them; `you`: you are the one moved, `team_changed` to the other team. */
+export interface TableMovedMsg {
+  type: "table_moved"; name: string; seat: number; your_team: boolean;
+  by?: string; you?: boolean; team_changed?: boolean;
+}
 
 /** Once per game you started alone: its first newcomer's Join landed. */
 export interface FirstJoinerMsg {

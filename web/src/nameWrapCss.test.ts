@@ -5,7 +5,9 @@
 // the phone's single column at every width (no side column that squeezes the
 // seats until each name breaks inside a word), a CJK name in the panel's
 // title moves to the next line whole, and Edit name on Me keeps its label on
-// one line beside an ellipsized name, as does the large name heading.
+// one line beside an ellipsized name, as does the large name heading. A chat
+// sender, a leaderboard row and each name under the round end's last trick
+// are one ellipsized line too.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -71,5 +73,40 @@ describe("names on Me", () => {
 
   it("is one column at every width", () => {
     expect(rules().filter(([sel]) => /\.me-cols?\b/.test(sel)).map(([, d]) => d.trim())).toEqual(["display: contents;"]);
+  });
+});
+
+describe("names in chat, the leaderboard and the round end", () => {
+  const oneLine = (sel: string) => {
+    const d = decls(sel);
+    expect(d).toContain("white-space: nowrap");
+    expect(d).toContain("overflow: hidden");
+    expect(d).toContain("text-overflow: ellipsis");
+    expect(d).not.toMatch(/overflow-wrap: anywhere|word-break: break-(all|word)/);
+  };
+
+  it("keeps a chat sender's name on one line, ellipsized", () => {
+    oneLine(".chat-msg .chat-name");
+    expect(decls(".chat-msg .chat-name")).toContain("display: inline-block");
+  });
+
+  it("keeps each name under the last trick on one line, ellipsized and narrow", () => {
+    oneLine(".round-end-play-who");
+    expect(decls(".round-end-play-who")).toMatch(/max-width: \d+px/);
+  });
+
+  it("moves a CJK name in a round-end Details label to the next line whole", () => {
+    expect(decls(".round-end-col-label")).toContain("word-break: keep-all");
+  });
+
+  it("lets a four-digit rating take the width it needs", () => {
+    const d = decls(".lb-rating");
+    expect(d).toContain("min-width: 46px");
+    expect(d).not.toMatch(/(^|[^-])width: 46px/);
+  });
+
+  it("keeps a leaderboard name and a saved game's title on one line, ellipsized", () => {
+    oneLine(".lb-name-text");
+    oneLine(".games-row-title");
   });
 });

@@ -248,7 +248,7 @@ def test_every_row_gets_its_rounds_outcome_from_the_actors_side(world):
         assert part["q_target"][i] == us.outcome_category(o["attacker_points"], att)
         lvl = category_signed_level(int(part["q_target"][i]))
         assert (lvl > 0) == ((o["attacker_points"] >= 80) == att)
-    rec = next(iter(idx.manifests.values()))
+    rec = idx.manifests[str(world["store"])]
     assert rec["manifest_sha256"] == hashlib.sha256((world["store"] / "manifest.json").read_bytes()).hexdigest()
 
 
@@ -273,7 +273,7 @@ def test_the_join_refuses_a_sidecar_that_disagrees(world, tmp_path, fault):
         man["shards"][0]["sidecar_sha256"] = hashlib.sha256(side_p.read_bytes()).hexdigest()
         (store / "manifest.json").write_text(json.dumps(man))
     recorded = str(world["store"])
-    idx = us.OutcomeIndex([(recorded, str(store))])
+    idx = us.OutcomeIndex(us.parse_store_map([f"{world['data']}@{recorded}={store}"]))
     e = [x for x in us.entries_for([str(world["data"])], "train") + us.entries_for([str(world["data"])], "calib")
          if 0 in np.load(x["path"])["cluster"]][0]
     with pytest.raises(us.UnifiedSeqError):
@@ -418,6 +418,10 @@ def test_train_dryrun_seal_and_export(world, tmp_path):
     rt = un.load_unified_numpy(pkg)
     model, saved = bs.load_trained(str(tmp_path / "belief.pt"))
     assert model.config == rt.trunk.config
+    assert us.main(["parity", "--ckpt", str(out / "best.pt"), "--pkg", str(pkg), "--sha256", rt.package_sha256,
+                    "--data", str(world["data"]), "--split", "train", "--rows", "50"]) == 0
+    assert us.main(["parity", "--ckpt", str(out / "best.pt"), "--pkg", str(pkg), "--data", str(world["data"]),
+                    "--split", "train", "--rows", "50", "--tol", "0"]) == 1
 
 
 def test_a_stopped_run_resumes_to_the_uninterrupted_runs_weights(world, tmp_path):
@@ -445,3 +449,13 @@ def test_a_stopped_run_resumes_to_the_uninterrupted_runs_weights(world, tmp_path
     a = torch.load(whole / "best.pt", weights_only=False)["model"]
     b = torch.load(cut / "best.pt", weights_only=False)["model"]
     assert all(torch.equal(a[k], b[k]) for k in a)
+
+
+def test_store_map_rules_are_per_extract_dir():
+    rules = us.parse_store_map(["/x/perf-v1@/root/=/fleet/perf/", "/root/=/fleet/cloud/"])
+    idx = us.OutcomeIndex(rules)
+    assert idx.resolve("/root/y/corpus", "/x/perf-v1/part-00") == "/fleet/perf/y/corpus"
+    assert idx.resolve("/root/y/corpus", "/x/cloud-v1/part-00") == "/fleet/cloud/y/corpus"
+    assert idx.resolve("/elsewhere/corpus", "/x/perf-v1") == "/elsewhere/corpus"
+    with pytest.raises(us.UnifiedSeqError):
+        us.parse_store_map(["no-equals"])

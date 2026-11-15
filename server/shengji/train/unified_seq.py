@@ -28,7 +28,7 @@ Outcome labels come from each trajectory store's shard sidecars (``cluster-NNNNN
 seed, banker, attacker points, decisions), sha-checked against the store manifest and joined per row
 by (store, cluster, round index); the join refuses a seed, banker or decision-count disagreement.
 
-CLI: ``python -m shengji.train.unified_seq {train,export}``; ``train --dryrun`` checks every input and
+CLI: ``python -m shengji.train.unified_seq {train,export,parity}``; ``train --dryrun`` checks every input and
 runs a few steps without writing a checkpoint.  Status lines (``OUT/status.log``):
 ``S134U START`` / ``RESUME`` / ``EPOCH`` / ``S134U DONE ...`` / ``S134U ABORT ...``.
 """
@@ -90,44 +90,48 @@ def outcome_category(attacker_points: int, root_is_attacker: bool) -> int:
     return signed_level_category(int(attacker_points), bool(root_is_attacker))
 
 
-def parse_store_map(items: Sequence[str]) -> list[tuple[str, str]]:
+def parse_store_map(items: Sequence[str]) -> list[tuple[str, str, str]]:
+    """``[DATA_PREFIX@]RECORDED_PREFIX=LOCAL_PREFIX`` rules: for an extract dir starting with DATA_PREFIX
+    (any dir when omitted), a recorded store path starting with RECORDED_PREFIX is read at LOCAL_PREFIX
+    plus the rest of the path.  Two extracts can record the same path for two hosts' stores."""
     out = []
     for it in items:
         if "=" not in it:
-            raise UnifiedSeqError(f"--store-map {it!r}: expected RECORDED_PREFIX=LOCAL_PREFIX")
-        a, b = it.split("=", 1)
-        out.append((a, b))
+            raise UnifiedSeqError(f"--store-map {it!r}: expected [DATA_PREFIX@]RECORDED_PREFIX=LOCAL_PREFIX")
+        left, local = it.split("=", 1)
+        data, _, recorded = left.rpartition("@")
+        out.append((data, recorded, local))
     return out
 
 
 class OutcomeIndex:
     """Per-round outcomes of trajectory stores, read from their shard sidecars.
 
-    ``store_map`` rewrites the store path an extract manifest recorded (the producing host's path) to
-    this host's copy by prefix.  A store's manifest is read once; every sidecar read is checked against
-    the manifest's ``sidecar_sha256``.  The manifest sha256 of every store used is in ``manifests``."""
+    ``store_map`` (``parse_store_map``) rewrites the store path an extract manifest recorded (the
+    producing host's) to this host's copy.  A store's manifest is read once; every sidecar read is
+    checked against the manifest's ``sidecar_sha256``.  ``manifests`` records each store used (local
+    path -> manifest sha256, run id, seed0, shard count)."""
 
-    def __init__(self, store_map: Sequence[tuple[str, str]] = ()):
-        self.store_map = list(store_map)
+    def __init__(self, store_map: Sequence[tuple[str, str, str]] = ()):
+        self.store_map = [tuple(r) if len(r) == 3 else ("",) + tuple(r) for r in store_map]
         self.lock = threading.Lock()
         self._stores: dict[str, dict] = {}
         self.manifests: dict[str, dict] = {}
 
-    def resolve(self, recorded: str) -> str:
-        for a, b in self.store_map:
-            if recorded.startswith(a):
+    def resolve(self, recorded: str, data_dir: str = "") -> str:
+        for data, a, b in self.store_map:
+            if str(data_dir).startswith(data) and recorded.startswith(a):
                 return b + recorded[len(a):]
         return recorded
 
-    def _store(self, recorded: str) -> dict:
+    def _store(self, local: str) -> dict:
         with self.lock:
-            got = self._stores.get(recorded)
+            got = self._stores.get(local)
         if got is not None:
             return got
-        local = self.resolve(recorded)
         mpath = Path(local) / "manifest.json"
         if not mpath.is_file():
-            raise UnifiedSeqError(f"store {recorded} -> {local}: no manifest.json")
+            raise UnifiedSeqError(f"store {local}: no manifest.json")
         raw = mpath.read_bytes()
         man = json.loads(raw)
         from .belief_labels import cluster_paths
@@ -138,15 +142,14 @@ class OutcomeIndex:
             raise UnifiedSeqError(f"store {local}: shard files differ from its manifest")
         got = {"local": local, "names": names, "by_name": by_name, "seed0": int(man["seed0"])}
         with self.lock:
-            self._stores[recorded] = got
-            self.manifests[recorded] = {"local": local, "manifest_sha256": hashlib.sha256(raw).hexdigest(),
-                                        "run_id": man.get("run_id"), "seed0": int(man["seed0"]),
-                                        "shards": len(man["shards"])}
+            self._stores[local] = got
+            self.manifests[local] = {"manifest_sha256": hashlib.sha256(raw).hexdigest(), "run_id": man.get("run_id"),
+                                     "seed0": int(man["seed0"]), "shards": len(man["shards"])}
         return got
 
-    def rounds(self, recorded: str, cluster_index: int) -> list[dict]:
+    def rounds(self, recorded: str, cluster_index: int, data_dir: str = "") -> list[dict]:
         """The cluster's rounds in mirror order (the extractor's ``round_index`` order)."""
-        st = self._store(recorded)
+        st = self._store(self.resolve(recorded, data_dir))
         name = st["names"][int(cluster_index)]
         sh = st["by_name"][name]
         side_path = Path(st["local"]) / sh["sidecar"]
@@ -156,11 +159,11 @@ class OutcomeIndex:
         side = json.loads(raw)
         if int(side["cluster"]) != int(sh["cluster"]) or side["sha256"] != sh["sha256"]:
             raise UnifiedSeqError(f"{side_path}: sidecar names another shard")
-        rounds = sorted((r for r in side["rounds"] if int(r["decisions"]) > 0), key=lambda r: int(r["mirror"]))
-        return rounds
+        return sorted((r for r in side["rounds"] if int(r["decisions"]) > 0), key=lambda r: int(r["mirror"]))
 
 
-def join_targets(part: Mapping[str, Any], stores: Sequence[str], index: OutcomeIndex) -> np.ndarray:
+def join_targets(part: Mapping[str, Any], stores: Sequence[str], index: OutcomeIndex,
+                 data_dir: str = "") -> np.ndarray:
     """``(N,)`` int16 outcome categories of a loaded part's rows, from the actor's side.
 
     Refuses a row whose seed or banker differs from its round's sidecar, or a round whose row count
@@ -173,7 +176,7 @@ def join_targets(part: Mapping[str, Any], stores: Sequence[str], index: OutcomeI
     key = np.stack([part["store"].astype(np.int64), part["cluster"].astype(np.int64)], 1)
     for s, c in np.unique(key, axis=0):
         sel = np.flatnonzero((key[:, 0] == s) & (key[:, 1] == c))
-        rounds = index.rounds(stores[int(s)], int(c))
+        rounds = index.rounds(stores[int(s)], int(c), data_dir)
         ri = part["round_index"][sel].astype(np.int64)
         for r in np.unique(ri):
             if not 0 <= r < len(rounds):
@@ -208,7 +211,7 @@ def entries_for(dirs: Sequence[str], split: str, *, exclude_seed_windows=()) -> 
 
 def load_unified_part(entry: Mapping[str, Any], verified, index: OutcomeIndex) -> dict:
     part = bs.load_part(entry, TRAIN_KEYS, verified)
-    part["q_target"] = join_targets(part, entry["stores"], index)
+    part["q_target"] = join_targets(part, entry["stores"], index, entry["dir"])
     return part
 
 
@@ -582,6 +585,11 @@ def _train(args, out: Path, status: str) -> int:
     if args.dryrun:
         _status(status, f"{LANE} DRYRUN start chunks={len(entries)} rows={stream.rows} buffers={n_buffers} "
                         f"init={init['sha256']} device={device}")
+        # every data dir's store mapping and outcome join, on its first train chunk
+        for d in args.data:
+            first = next(e for e in entries_for([d], "train", exclude_seed_windows=args.exclude_seed_window))
+            load_unified_part(first, verified, index)
+        _status(status, f"{LANE} DRYRUN joined one chunk of each of {len(args.data)} data dirs")
         pred = predict(model, calib, device=device)
         _status(status, f"{LANE} DRYRUN init calib {json.dumps(calib_metrics(pred, calib))}")
         t0, rows_seen, steps = time.time(), 0, 0
@@ -721,6 +729,36 @@ def export(args) -> int:
     return 0
 
 
+def parity(args) -> int:
+    """Max |torch - NumPy| of the belief logits, policy logits and Q probabilities over ``--rows`` rows of
+    a split (identity relabeling), for a checkpoint and the package exported from it."""
+    from ..ai import unified_numpy as un
+    model, _ = load_checkpoint(args.ckpt)
+    rt = un.load_unified_numpy(args.pkg, sha256=args.sha256)
+    idx = OutcomeIndex(parse_store_map(args.store_map))
+    v = bs._Verified()
+    part = bs.concat_parts([load_unified_part(e, v, idx) for e in entries_for(args.data, args.split)[:args.chunks]])
+    pred = predict(model, part)
+    rng = np.random.default_rng(0)
+    pick = set(rng.choice(len(part["X"]), size=min(args.rows, len(part["X"])), replace=False).tolist())
+    diff = {"belief": 0.0, "policy": 0.0, "q": 0.0}
+    n = 0
+    for rids, rows in bs.round_batches(part, 8, None):
+        b = make_unified_batch(part, rids, rows)
+        for k, i in enumerate(rows):
+            if int(i) not in pick:
+                continue
+            pre = un.batch_inputs(b, k, with_play=False)
+            diff["belief"] = max(diff["belief"], float(np.abs(rt.belief_logits(pre) - pred["belief"][i]).max()))
+            diff["policy"] = max(diff["policy"], float(np.abs(rt.policy_logits(pre) - pred["policy"][i]).max()))
+            diff["q"] = max(diff["q"], float(np.abs(rt.q_probs(un.batch_inputs(b, k, with_play=True)) - pred["q"][i]).max()))
+            n += 1
+    ok = max(diff.values()) <= args.tol
+    print(json.dumps({"rows": n, "max_abs_diff": diff, "tol": args.tol, "package": rt.package_sha256,
+                      "verdict": "PARITY OK" if ok else "PARITY FAIL"}))
+    return 0 if ok else 1
+
+
 # ------------------------------------------------------------------ CLI
 
 def build_parser() -> argparse.ArgumentParser:
@@ -733,7 +771,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--init", required=True, help="the served belief package (B1a) to warm the trunk from")
     t.add_argument("--init-sha256", default=None)
     t.add_argument("--store-map", action="append", default=[],
-                   help="RECORDED_PREFIX=LOCAL_PREFIX: where this host holds the stores the extracts name")
+                   help="[DATA_PREFIX@]RECORDED_PREFIX=LOCAL_PREFIX: where this host holds the stores the "
+                        "extracts name (per extract dir when DATA_PREFIX is given); repeatable")
     t.add_argument("--epochs", type=int, default=1)
     t.add_argument("--lr", type=float, default=1.5e-4, help="trunk learning rate (B1a's)")
     t.add_argument("--head-lr", type=float, default=1e-3, help="learning rate of the new heads")
@@ -764,12 +803,22 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--out", required=True)
     e.add_argument("--belief-ckpt", default=None)
     e.add_argument("--note", default="")
+    p = sub.add_parser("parity")
+    p.add_argument("--ckpt", required=True)
+    p.add_argument("--pkg", required=True)
+    p.add_argument("--sha256", default=None)
+    p.add_argument("--data", nargs="+", required=True)
+    p.add_argument("--split", default="calib")
+    p.add_argument("--chunks", type=int, default=4)
+    p.add_argument("--rows", type=int, default=200)
+    p.add_argument("--tol", type=float, default=1e-4)
+    p.add_argument("--store-map", action="append", default=[])
     return ap
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return {"train": train, "export": export}[args.command](args)
+    return {"train": train, "export": export, "parity": parity}[args.command](args)
 
 
 if __name__ == "__main__":

@@ -591,7 +591,9 @@ def _train(args, out: Path, status: str) -> int:
             load_unified_part(first, verified, index)
         _status(status, f"{LANE} DRYRUN joined one chunk of each of {len(args.data)} data dirs")
         pred = predict(model, calib, device=device)
-        _status(status, f"{LANE} DRYRUN init calib {json.dumps(calib_metrics(pred, calib))}")
+        dry_calib = calib_metrics(pred, calib)
+        _status(status, f"{LANE} DRYRUN init calib {json.dumps(dry_calib)}")
+        check_init_belief_ll(dry_calib, args.expect_init_belief_ll)
         t0, rows_seen, steps = time.time(), 0, 0
         it = stream.batches(args.seed, 0, 0)
         try:
@@ -630,6 +632,7 @@ def _train(args, out: Path, status: str) -> int:
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
+        check_init_belief_ll(state.get("init_calib"), args.expect_init_belief_ll)
         _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}")
     else:
         manifest = input_manifest(args, entries, args.data, init["sha256"], index)
@@ -641,6 +644,7 @@ def _train(args, out: Path, status: str) -> int:
                         f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']} "
                         f"inputs_sha256={sha256_file(out / 'inputs.json')} device={device}")
         _status(status, f"INIT calib {json.dumps(state['init_calib'])}")
+        check_init_belief_ll(state["init_calib"], args.expect_init_belief_ll)
 
     def save():
         tmp = out / "checkpoint.pt.tmp"
@@ -690,6 +694,18 @@ def _train(args, out: Path, status: str) -> int:
     return 0
 
 
+def check_init_belief_ll(init_calib, expect) -> None:
+    """The run starts from the init package's own calibration loss: a different, malformed or non-finite INIT
+    belief_ll means another trunk, split or loader, and refuses before any update or checkpoint."""
+    if expect is None:
+        return
+    ll = (init_calib or {}).get("belief_ll")
+    if not isinstance(ll, (int, float)) or not math.isfinite(ll):
+        raise UnifiedSeqError(f"INIT belief_ll {ll!r} is not a finite number (expected {expect:.5f})")
+    if f"{round(float(ll), 5):.5f}" != f"{expect:.5f}":
+        raise UnifiedSeqError(f"INIT belief_ll {ll!r} does not round to the expected {expect:.5f}")
+
+
 def _means(s) -> str:
     return (f"belief {s[0] / max(s[1], 1):.4f} q {s[2] / max(s[4], 1):.4f} policy {s[3] / max(s[4], 1):.4f}")
 
@@ -702,7 +718,8 @@ def _run_identity(args, init_sha) -> dict:
             "head_warmup_buffers": args.head_warmup_buffers, "weight_decay": args.weight_decay,
             "kitty_weight": args.kitty_weight, "buffer_chunks": args.buffer_chunks,
             "rounds_per_batch": args.rounds_per_batch, "calib_rows": args.calib_rows, "max_steps": args.max_steps,
-            "store_map": list(args.store_map), "data": list(args.data)}
+            "store_map": list(args.store_map), "expect_init_belief_ll": args.expect_init_belief_ll,
+            "data": list(args.data)}
 
 
 # ------------------------------------------------------------------ export
@@ -788,6 +805,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--epochs", type=int, default=1)
     t.add_argument("--lr", type=float, default=1.5e-4, help="trunk learning rate (B1a's)")
     t.add_argument("--head-lr", type=float, default=1e-3, help="learning rate of the new heads")
+    t.add_argument("--expect-init-belief-ll", type=float, default=None,
+                   help="refuse before any update unless the INIT calib belief_ll rounds (5 places) to this")
     t.add_argument("--head-warmup-buffers", type=int, default=4,
                    help="buffers at the start of the run in which only the new heads train (trunk lr 0)")
     t.add_argument("--weight-decay", type=float, default=0.01)

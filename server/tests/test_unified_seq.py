@@ -494,3 +494,48 @@ def test_a_resume_refuses_a_changed_recipe_or_input_before_any_update(world, tmp
     assert us.main(common + ["--out", str(out)]) == 0                   # the unchanged recipe still resumes
     log = (out / "status.log").read_text()
     assert "RESUME epoch 0 buffer 1" in log and "S134U DONE" in log
+
+
+def test_the_init_gate_refuses_before_any_update_and_on_a_resume_with_another_init(world, tmp_path):
+    import shengji.ai.belief_numpy as bn
+    data = extract_dir(world["store"], tmp_path / "x", calib=0.5, task_clusters=1)
+    torch.manual_seed(0)
+    trunk = bs.build_model(**SMALL)
+    init = tmp_path / "init.npz"
+    bn.save_package(init, trunk.config, {k: v.detach().numpy() for k, v in trunk.state_dict().items()},
+                    {"temperature": 1.0})
+    common = ["train", "--data", str(data), "--init", str(init), "--threads", "1", "--loader-threads", "1",
+              "--rounds-per-batch", "1", "--buffer-chunks", "1", "--save-every", "0", "--head-warmup-buffers", "1"]
+    wrong = tmp_path / "wrong"
+    assert us.main(common + ["--out", str(wrong), "--expect-init-belief-ll", "0.5"]) == 1
+    log = (wrong / "status.log").read_text()
+    assert "S134U ABORT" in log and "does not round" in log and "epoch 1 buffer" not in log
+    assert not (wrong / "checkpoint.pt").exists() and not (wrong / "best.pt").exists()
+    line = next(x for x in log.splitlines() if " INIT calib " in x)
+    ll = json.loads(line.split(" INIT calib ", 1)[1])["belief_ll"]
+    expect = ["--expect-init-belief-ll", f"{ll:.5f}"]
+    out = tmp_path / "run"
+    out.mkdir()
+    (out / "STOP").touch()
+    assert us.main(common + ["--out", str(out)] + expect) == 3        # the matching INIT trains on
+    (out / "STOP").unlink()
+    ck = out / "checkpoint.pt"
+    good = ck.read_bytes()
+    for bad in (float("nan"), "0.98782", ll + 0.01):
+        saved = torch.load(ck, weights_only=False)
+        saved["state"]["init_calib"]["belief_ll"] = bad
+        torch.save(saved, ck)
+        assert us.main(common + ["--out", str(out)] + expect) == 1
+        assert "RESUME" not in (out / "status.log").read_text()
+        ck.write_bytes(good)
+    assert us.main(common + ["--out", str(out)] + expect) == 0
+    log = (out / "status.log").read_text()
+    assert "RESUME epoch 0 buffer 1" in log and "S134U DONE" in log
+
+
+def test_check_init_belief_ll_rules():
+    us.check_init_belief_ll({"belief_ll": 0.9878241464563413}, 0.98782)
+    us.check_init_belief_ll({}, None)
+    for bad in ({"belief_ll": 0.97}, {"belief_ll": float("inf")}, {"belief_ll": None}, {}, None):
+        with pytest.raises(us.UnifiedSeqError):
+            us.check_init_belief_ll(bad, 0.98782)

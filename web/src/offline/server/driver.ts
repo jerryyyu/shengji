@@ -1,6 +1,7 @@
 // The parity fixtures' human player, ported from HumanDriver in
-// server/scripts/gen_offline_server_fixtures.py: App's Play-vs-bots chain,
-// then SmartBot's decisions for seat 0 sent as ordinary client messages. It
+// server/scripts/gen_offline_server_fixtures.py: App's Play-vs-bots chain
+// (or, in the "start" flow, nothing: create_room's start began the game), then
+// SmartBot's decisions for seat 0 sent as ordinary client messages. It
 // decides only on a frame that matches the live round, as the Python driver
 // does, so both servers see the same messages at the same points.
 import { orderingFor } from "../engine/cards";
@@ -17,6 +18,9 @@ interface HandCard {
   code: string;
 }
 type Action = Record<string, unknown>;
+/** How the game starts: "chain" is create_room, add_bot to four seats, then
+ *  start_game; "start" is one create_room with start: true. */
+export type Flow = "chain" | "start";
 
 function idsFor(hand: HandCard[], codes: string[]): number[] {
   const pool = [...hand];
@@ -37,11 +41,13 @@ export class HumanDriver {
   private rounds: number;
   private liveRound: () => RoundState | null;
   private throws: boolean;
+  private flow: Flow;
 
-  constructor(rounds: number, liveRound: () => RoundState | null, throws = false) {
+  constructor(rounds: number, liveRound: () => RoundState | null, throws = false, flow: Flow = "chain") {
     this.rounds = rounds;
     this.liveRound = liveRound;
     this.throws = throws;
+    this.flow = flow;
   }
 
   private fresh(msg: Frame, rnd: RoundState): boolean {
@@ -64,7 +70,7 @@ export class HumanDriver {
 
   react(msg: Frame): Action[] {
     if (msg.type === "room") {
-      if (msg.you !== msg.host) return [];
+      if (this.flow === "start" || msg.you !== msg.host) return [];
       return (msg.players as unknown[]).length < 4 ? [{ type: "add_bot" }] : [{ type: "start_game" }];
     }
     if (msg.type !== "state" || this.leaving) return [];

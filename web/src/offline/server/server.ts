@@ -770,8 +770,9 @@ export class LocalServer {
       if (room.game) throw new IllegalPlay("Game already started.");
     } else if (t === "start_game" || (t === "lobby_ready" && msg.on !== false)) {
       if (t === "start_game" && seat !== room.host) throw new IllegalPlay("Only the host can start.");
-      if (room.seats.length !== 4) throw new IllegalPlay("Need exactly 4 players.");
       if (room.game) throw new IllegalPlay("Game already started.");
+      // a bot plays every seat nobody took, named for its seat
+      while (room.seats.length < 4) room.seats.push(new Seat(`Bot ${room.seats.length}`, true, randomToken()));
       // gamesToWin null: a table keeps playing; holding A scores a point
       room.game = newGame({ startLevel: room.startLevel, gamesToWin: null });
       startRound(room.game, room.decks.deck());
@@ -879,7 +880,10 @@ export class LocalConnection {
         this.room = room;
         this.me = me;
         this.attach(room, me);
+        // the client saves a room only from a room frame, so one goes out
+        // before a start begins the game
         server.broadcast(room);
+        if (msg.start === true) this.startCreatedRoom(room, me);
       } else if (t === "peek_room") {
         this.sendDirect({ type: "error", code: "room_not_found", message: "Room not found." });
       } else if (t === "join_room") {
@@ -947,6 +951,21 @@ export class LocalConnection {
     } catch (e) {
       server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
     }
+  }
+
+  /** `create_room` with `start: true`: the creator's own `start_game`, sent
+   *  for them, so every start check applies and a bot takes every empty
+   *  seat. A refusal leaves the room in its lobby and goes to the creator. */
+  private startCreatedRoom(room: LocalRoom, me: Seat): void {
+    const server = this.server;
+    try {
+      server.handleAction(room, room.seats.indexOf(me), { type: "start_game" });
+    } catch (e) {
+      server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
+      return;
+    }
+    server.broadcast(room);
+    server.kickBots(room);
   }
 
   /** The socket closed: the seat waits, and a join with its token resumes it. */

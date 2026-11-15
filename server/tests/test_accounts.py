@@ -469,7 +469,7 @@ def test_a_cookie_carrying_socket_gets_the_account_and_its_first_name(accounts_o
         # A typed name does not replace the account's name.
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
             b.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": "JY", "seat": 2})
-            joined = _drain(b, "state", tries=400)
+            joined = _drain(b, "state")
             names = {p["seat"]: p["name"] for p in joined["players"]}
             assert names[2] == "Jerry"      # the bot seat the joiner took
             assert srv.rooms[room["room"]].seats[2].user_id == 1
@@ -534,7 +534,7 @@ def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, ke
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
             b.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": "Phone",
                          "seat": 2})
-            _drain(b, "state", tries=400)
+            _drain(b, "state")
             assert srv.rooms[room["room"]].seats[2].user_id == 1   # the seat it took
 
 
@@ -550,7 +550,7 @@ def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socke
         code = _drain(guest, "room")["room"]
         # the resume token the client saved from its first frame (ws.ts)
         token = srv.rooms[code].seats[0].token
-        _drain(guest, "state", tries=400)
+        _drain(guest, "state")
         seat = srv.rooms[code].seats[0]
         assert seat.user_id is None
 
@@ -558,7 +558,7 @@ def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socke
     cookie = _session_cookie(accounts_on, client, private_pem)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
         a.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
-        st = _drain(a, "state", tries=60)
+        st = _drain(a, "state")
         assert st["you"] == 0 and srv.rooms[code].seats[0] is seat
         assert seat.user_id == 1 and seat.connected
 
@@ -566,13 +566,13 @@ def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socke
     cookie2 = _session_cookie(accounts_on, client, private_pem, sub="222", email="other@example.com")
     with client.websocket_connect("/ws", headers={"cookie": cookie2}) as b:
         b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
-        assert _drain(b, "state", tries=60)["you"] == 0
+        assert _drain(b, "state")["you"] == 0
         assert seat.user_id == 2 and srv.rooms[code].seats[0] is seat
 
     # Sign out: the reconnect carries no cookie; the seat stays, the account clears.
     with client.websocket_connect("/ws") as c:
         c.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
-        assert _drain(c, "state", tries=60)["you"] == 0
+        assert _drain(c, "state")["you"] == 0
         assert seat.user_id is None and srv.rooms[code].seats[0] is seat
         assert len(srv.rooms[code].seats) == 4
 
@@ -768,12 +768,12 @@ def test_a_chosen_display_name_names_the_seat_whatever_name_is_typed(accounts_on
         assert srv.rooms[room["room"]].seats[0].user_id == 1
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
             b.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": "JY", "seat": 2})
-            joined = _drain(b, "state", tries=400)
+            joined = _drain(b, "state")
             names = {p["seat"]: p["name"] for p in joined["players"]}
             assert names[2] == "Captain"    # the bot seat the joiner took
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as c:
             c.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": ""})
-            joined = _drain(c, "state", tries=400)
+            joined = _drain(c, "state")
             names = {p["seat"]: p["name"] for p in joined["players"]
                      if not p["is_bot"]}
             # the account's dropped seat, which carries its name, is its own again

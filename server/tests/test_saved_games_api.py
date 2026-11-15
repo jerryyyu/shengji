@@ -500,7 +500,7 @@ def test_a_socket_left_open_across_its_account_delete_is_signed_out(api):
         # The same socket leaves and opens a new table: a guest seat now.
         ws.send_json({"type": "table_leave"})
         ws.send_json({"type": "create_room"})
-        again = _drain(ws, "room", tries=400)
+        again = _drain(ws, "room")
         assert again["room"] != room["room"]
         assert again["players"][0]["name"] == "Player"
         assert srv.rooms[again["room"]].seats[0].user_id is None

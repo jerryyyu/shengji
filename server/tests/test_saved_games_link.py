@@ -67,7 +67,7 @@ def _started_room(ws, name="jerry"):
     """A created room, its game dealing with a bot in every other seat."""
     ws.send_json({"type": "create_room", "name": name})
     code = _drain(ws, "room")["room"]
-    _drain(ws, "state", tries=400)
+    _drain(ws, "state")
     return code
 
 
@@ -79,7 +79,7 @@ def _start_signed_in_with_a_guest(client, cookie):
     g = client.websocket_connect("/ws")
     g.__enter__()
     g.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Guest", "seat": 1})
-    _drain(g, "state", tries=400)
+    _drain(g, "state")
     return code, a, g
 
 
@@ -169,9 +169,9 @@ def test_a_failing_database_leaves_play_alone_and_is_counted(
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
         a.send_json({"type": "create_room", "name": "jerry"})
         code = _drain(a, "room")["room"]
-        st = _drain(a, "state", tries=400)
+        st = _drain(a, "state")
         assert st["phase"] in ("deal", "declare", "bury", "play")
-        st = _drain(a, "state", tries=400)        # the deal keeps going
+        st = _drain(a, "state")        # the deal keeps going
         assert _wait_for(lambda: fresh_activity.account_link_failures >= 1)
         shown = client.get("/healthz").json()["activity"]
         assert shown["account_link_failures"] >= 1
@@ -203,9 +203,9 @@ def test_no_log_record_carries_the_account(accounts_on, keypair, client):
                                   email="other@example.com", name="Other Person")
         with client.websocket_connect("/ws", headers={"cookie": cookie2}) as b:
             b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Guest", "token": token})
-            _drain(b, "state", tries=60)
+            _drain(b, "state")
             a.send_json({"type": "table_chat", "text": "hi"})
-            _drain(a, "chat", tries=400)
+            _drain(a, "chat")
         game_id = srv.rooms[code].saved_game.id
         links = _rows(accounts_on.STORE,
                       "SELECT user_id, seat, from_round, to_round FROM game_players ORDER BY user_id")

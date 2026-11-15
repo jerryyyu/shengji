@@ -54,7 +54,7 @@ def test_room_game_and_records_move_their_counters(client):
     with client.websocket_connect("/ws") as a:
         a.send_json({"type": "create_room", "name": "jerry"})
         code = _drain(a, "room")["room"]
-        _drain(a, "state", tries=400)
+        _drain(a, "state")
         act = _activity(client)
         assert act["rooms_created"] == 1
         assert act["games_started"] == 1
@@ -83,12 +83,12 @@ def test_a_refused_create_counts_no_room(client, monkeypatch):
     with client.websocket_connect("/ws") as a:
         a.send_json({"type": "create_room", "name": "jerry"})
         code = _drain(a, "room")["room"]
-        _drain(a, "left", tries=2)
+        _drain(a, "left")
         assert refused == [code]
         assert _activity(client)["rooms_created"] == 0
         a.send_json({"type": "create_room", "name": "jerry"})
         _drain(a, "room")
-        _drain(a, "state", tries=400)
+        _drain(a, "state")
         act = _activity(client)
         assert act["rooms_created"] == 1
         assert act["games_started"] == 1
@@ -112,7 +112,7 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
         # recorded is what names the failure.
         a.send_json({"type": "create_room", "name": "jerry"})
         code = _drain(a, "room")["room"]
-        st = _drain(a, "state", tries=400)
+        st = _drain(a, "state")
         assert st["phase"] in ("deal", "declare", "bury", "play")
         act = _activity(client)
         assert act["games_started"] == 1
@@ -137,7 +137,7 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
         # Writes resume without a restart; the last failure stays on show.
         failing = False
         a.send_json({"type": "table_chat", "text": "again"})
-        _drain(a, "chat", tries=400)   # the deal's state frames interleave
+        _drain(a, "chat")   # the deal's state frames interleave
         act = _activity(client)
         assert act["records_written"] >= 1
         assert ISO_UTC.match(act["last_record_write"])
@@ -145,7 +145,7 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
         assert (server.LOG_DIR / f"{code}.jsonl").exists()
         failures = act["record_write_failures"]
         a.send_json({"type": "table_chat", "text": "and again"})
-        _drain(a, "chat", tries=400)
+        _drain(a, "chat")
         act = _activity(client)
         assert act["record_write_failures"] == failures
         assert act["records_written"] >= 2

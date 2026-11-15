@@ -18,8 +18,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`), optional `start: true`. The game starts at once with a bot in every empty seat, with `start` or without it (the client sends it; a create without it is counted as an out-of-date page's, see "Table messages"): one `room` frame, then the game's frames. A refused start discards the room: the creator gets the `error`, then `left` | anytime before joining |
 | `table_allow_joiners` | `on: boolean` | the opener of an ordinary room in play, ranked or casual: whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
 | `table_join` | `code` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`), optional `expect: "room"` | from the lobby, to a room in play: claim a bot's or a dropped human's seat, or resume your own by `token`; a queued table's code sits at that table (see "Table messages"). A code that names neither answers `room_not_found` with `expect: "room"`, else `table_not_found` |
-| `table_peek` | `code` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found`, the refusal every client's peek already settles on |
-| `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
+| `table_peek` | `code` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code is limited to 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found` and `peek` (the asked code), the refusal every client's peek already settles on |
 | `table_chat` | `text` (<=300 chars) | seated in a game: the line goes to the table and the room log |
 | `declare` | `card_ids: number[]` (1 or 2 ids of a valid declaration) | anytime during `deal` or `declare` phase |
 | `pass_declare` | — | `declare` phase (marks you done with the declare window) |
@@ -97,9 +96,11 @@ private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
 who your partner is.
 
-A queued table's code (one `code_lookup` calls `"table"`) is answered with
-the table form instead; a room wins a code both could hold, as in
-`code_lookup`, and a code that names neither is `room_not_found`:
+A queued table's code is answered with the table form instead; a room wins a
+code both could hold, and a code that names neither is
+`room_not_found` with `peek` set to the asked code, normalised, so a client
+matches a refusal to its peek by code as it matches `room_seats` by `room`
+(an older client reads the field as nothing):
 
 `{type: "room_seats", room, table: true, mode, in_game: false, allow_joiners, full, closed, seats: [{seat, team, state, name, ready}]}`
 
@@ -120,10 +121,6 @@ the table form instead; a room wins a code both could hold, as in
 Anyone holding the code may peek, signed in or not. The frame carries
 names only: no account id, rating or sitting token. A table that has
 started is a room, and its code answers with the room form.
-
-### `{type: "code_kind", code, kind}`
-
-Reply to `code_lookup`; see "Codes".
 
 ### `{type: "chat_history", room, through_id, messages[]}`
 
@@ -228,22 +225,13 @@ one thing. A queued table's code becomes its room's code when the table
 starts (see "Table codes"). Codes are compared after
 trimming and uppercasing.
 
-A client that does not know which kind a code is sends
-`{type: "code_lookup", code}` and gets `{type: "code_kind", code, kind}`, with
-`code` normalised and `kind` one of:
-
-- `"room"`: a live room. Continue with `table_peek` / `table_join`.
-- `"table"`: a queued table that has not started (see "Table codes").
-  Continue with `table_join {code}`. An older client reads it as no code.
-- `"none"`: nothing live has that code (or it is not 4 letters and digits).
-
-The lookup changes nothing on the server, works from a seat or the lobby,
-signed in or not, and is limited to 30 per account (a guest: per socket) per
-minute (`error` with code `rate_limited`). A room wins a code that a room and
-a queued table both hold, which only codes issued before the shared space
-can do. `table_peek` and `table_join` are unchanged, so a client that never
-sends `code_lookup` keeps working. Invite links are `/?code=CODE`;
-`/?room=CODE` and `/?party=CODE` read as `/?code=CODE`.
+A client opens any code with one `table_peek`: a live room's code answers with
+its seats, a queued table's with the table form (see "room_seats"), and
+anything else (a closed table's, nothing) with `room_not_found` carrying
+`peek`. Then a room is joined with `table_join {code, seat, expect: "room"}`
+and a queued table with `table_join {code}`. The peek changes nothing on the
+server. `code_lookup` is retired (`error` with code `retired`, counted). Invite
+links are `/?code=CODE`; `/?room=CODE` and `/?party=CODE` read as one.
 
 ## Flow
 
@@ -530,8 +518,8 @@ the game still opens the room after it. A code is released when its entry
 leaves the queue, unless its table still sits; a departed opener that queues
 again gets a fresh code.
 
-`table_join {code}` (the link, or a typed code that `code_lookup` calls
-`"table"`) seats you at that table: opening it with its host when the host is
+`table_join {code}` (the link, or a typed code whose peek answers with the
+table form) seats you at that table: opening it with its host when the host is
 alone, in the table's mode and with its settings, outside the rating window
 and whatever Allow joiners says. Every other queue rule holds: the cooldown,
 the account-in-game refusals, one device per table (`same_device`), a full

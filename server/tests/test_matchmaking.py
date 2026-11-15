@@ -1286,40 +1286,16 @@ def test_a_table_code_never_repeats_a_live_room_code(monkeypatch):
     run(go())
 
 
-def test_code_lookup_names_rooms_tables_and_nothing():
-    async def go():
-        env = Env()
-        env.mm.room_live = {"WXYZ"}.__contains__
-        await env.join(1)
-        code = env.mm._entry(1).code
-        guest = FakeConn(None, "")
-        env.mm.connect(guest)
-
-        def kind(code, uid=None, conn=guest):
-            return env.mm.code_lookup(conn, {"code": code}, uid)
-
-        assert kind(" wxyz ") == {"type": "code_kind", "code": "WXYZ", "kind": "room"}
-        assert kind(code.lower()) == {"type": "code_kind", "code": code, "kind": "table"}
-        assert kind(code, uid=1, conn=env.conns[1])["kind"] == "table"
-        assert kind("ZZZZ")["kind"] == "none"
-        for bad in ("WXY", "WXYZQ", "", None, "W-YZ"):
-            assert kind(bad)["kind"] == "none", bad
-        await env.send(1, "queue_leave")             # a table out of the queue frees its code
-        assert kind(code)["kind"] == "none"
-    run(go())
-
-
-def test_code_lookup_is_rate_limited_per_account():
+def test_code_peeks_are_rate_limited_per_account():
     env = Env()
     conn = env.player(1)
     limit, _ = mm.LOOKUP_LIMIT
     for _ in range(limit):
-        assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
-    refused = env.mm.code_lookup(conn, {"code": "ABCD"}, 1)
-    assert refused["type"] == "error" and refused["code"] == "rate_limited"
-    assert refused["lookup"] == "ABCD"
+        assert env.mm.lookup_allowed(conn, 1)
+    assert not env.mm.lookup_allowed(conn, 1)
+    assert env.mm.lookup_allowed(env.player(2), 2)     # another account has its own
     env.clock.advance(mm.LOOKUP_LIMIT[1] + 1)
-    assert env.mm.code_lookup(conn, {"code": "ABCD"}, 1)["type"] == "code_kind"
+    assert env.mm.lookup_allowed(conn, 1)
 
 
 def test_ws_room_code_never_repeats_a_queued_tables_code(wsenv, monkeypatch):
@@ -1338,7 +1314,9 @@ def test_ws_room_code_never_repeats_a_queued_tables_code(wsenv, monkeypatch):
         assert _drain(b, "room")["room"] == "TUVW"
 
 
-def test_ws_code_lookup_and_the_old_join_messages(wsenv):
+def test_ws_a_peek_names_rooms_tables_and_nothing_and_code_lookup_is_retired(wsenv):
+    from shengji.api import tables
+
     srv, store, client, clock = wsenv
     _, headers = _user(store, "leader", "Leader")
     with client.websocket_connect("/ws", headers=headers) as a, \
@@ -1350,26 +1328,29 @@ def test_ws_code_lookup_and_the_old_join_messages(wsenv):
         room = _drain(host, "room")["room"]
         assert all(c in mm.CODE_ALPHABET for c in room + table)
 
-        for code, kind in ((room.lower(), "room"), (table.lower(), "table"),
-                           ("ZZZZ", "none")):
-            g.send_json({"type": "code_lookup", "code": code})
-            assert _drain(g, "code_kind") == {"type": "code_kind", "code": code.upper(),
-                                              "kind": kind}
-        # a signed-in socket asks the same way
-        a.send_json({"type": "code_lookup", "code": room})
-        assert _drain(a, "code_kind")["kind"] == "room"
+        # the lookup's question is the peek's: an old page is told to reload
+        g.send_json({"type": "code_lookup", "code": room})
+        assert _drain(g, "error") == {"type": "error", "code": "retired",
+                                      "message": tables.RETIRED_MESSAGE}
 
-        # the messages old clients send still work
+        # a room's code peeks as its seats, a queued table's as its table;
+        # nothing's is a miss that echoes the asked code
         g.send_json({"type": "table_peek", "code": room.lower()})
         assert _drain(g, "room_seats")["room"] == room
+        g.send_json({"type": "table_peek", "code": table.lower()})
+        assert _drain(g, "room_seats")["table"] is True
+        g.send_json({"type": "table_peek", "code": " zzzz "})
+        assert _drain(g, "error") == {"type": "error", "code": "room_not_found",
+                                      "peek": "ZZZZ", "message": srv.PEEK_NOT_FOUND}
+
         g.send_json({"type": "table_join", "expect": "room", "code": room, "name": "guest"})
         assert _drain(g, "state", tries=400)["room"] == room
 
         # a closed room's code names nothing
         closed = srv.rooms.pop(room)
         try:
-            a.send_json({"type": "code_lookup", "code": room})
-            assert _drain(a, "code_kind")["kind"] == "none"
+            a.send_json({"type": "table_peek", "code": room})
+            assert _drain(a, "error")["peek"] == room
         finally:
             srv.rooms[room] = closed          # the fixture's teardown stops its tasks
 
@@ -3856,10 +3837,10 @@ def test_a_lone_entry_has_its_own_table_code():
         assert state["opener"] is True and state["allow_joiners"] is True
         assert state["start_level"] == "2"
         assert env.mm.has_code(code)
-        assert env.mm.code_lookup(env.conns[1], {"code": code.lower()}, 1)["kind"] == "table"
+        assert env.mm.peek(code)["table"] is True
         await env.send(1, "queue_leave")
         assert not env.mm.has_code(code)
-        assert env.mm.code_lookup(env.conns[1], {"code": code}, 1)["kind"] == "none"
+        assert env.mm.peek(code) is None
     run(go())
 
 
@@ -3879,7 +3860,7 @@ def test_a_friend_joins_by_code_before_the_game_and_the_code_is_the_room_code():
             assert state["mode"] == "casual" and state["allow_joiners"] is False
         # a joiner's own code still leads to the same table
         mine = env.mm._entry(2).code
-        assert mine != code and env.mm.code_lookup(env.conns[2], {"code": mine}, 2)["kind"] == "table"
+        assert mine != code and env.mm.peek(mine) is not None
         await env.send(1, "table_start")
         await env.send(2, "table_start")
         (match_id, slots), = env.started
@@ -4030,7 +4011,7 @@ def test_new_room_and_pair_codes_avoid_queued_table_codes(monkeypatch):
                 return list(next(draws))
         monkeypatch.setattr(srv, "random", Rng())
         assert srv.new_code() == "FREE"
-        assert srv.MATCHMAKER.code_lookup(mm.Conn(None, 1), {"code": "TAKN"}, 1)["kind"] == "table"
+        assert srv.MATCHMAKER.has_code("TAKN")
     finally:
         srv.MATCHMAKER.reset()
 
@@ -4042,8 +4023,8 @@ def test_ws_a_friend_joins_a_table_by_its_code_and_the_room_has_that_code(wsenv)
             client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         h.send_json({"type": "queue_join"})
         code = _drain(h, "queue_state")["code"]
-        g.send_json({"type": "code_lookup", "code": code})
-        assert _drain(g, "code_kind")["kind"] == "table"
+        g.send_json({"type": "table_peek", "code": code})
+        assert _drain(g, "room_seats")["table"] is True
         g.send_json({"type": "table_join", "code": code, "name": "Guest"})
         table = _drain(g, "queue_state")["table"]
         assert table["code"] == code and table["you"] == 2
@@ -4100,8 +4081,7 @@ def test_a_duo_open_holds_the_partner_seat_with_the_tables_code_as_its_invite():
         assert e.hold and e.size == 1 and e.party_id is None
         assert env.mm.entry_codes == {state["code"]: e.id}
         assert env.mm.parties == {}
-        lookup = env.mm.code_lookup(env.conns[1], {"code": state["code"]}, 1)
-        assert lookup["kind"] == "table"
+        assert env.mm.peek(state["code"])["table"] is True
         await env.send(6, "queue_join", conn=env.player(6), duo="yes")
         assert env.conns[6].last("error")["code"] == "bad_setting"
     run(go())
@@ -4572,7 +4552,7 @@ def test_a_table_keeps_its_code_when_its_opener_leaves_and_the_room_starts_on_it
             state = env.conns[uid].last("queue_state")
             assert state["code"] == code and state["table"]["code"] == code
         assert env.conns[2].last("queue_state")["opener"] is True   # the controls pass on
-        assert env.mm.code_lookup(env.conns[2], {"code": code}, 2)["kind"] == "table"
+        assert env.mm.peek(code) is not None
         assert env.mm.entry_codes[code] == t.id
         # the departed opener queues again under a fresh code
         await env.join(1)
@@ -4600,7 +4580,7 @@ def test_the_one_left_at_a_table_keeps_the_tables_code_as_its_own():
         state = env.conns[2].last("queue_state")
         assert state["table"] is None and state["code"] == code and state["opener"] is True
         assert env.mm.entry_codes == {code: env.mm._entry(2).id}
-        assert env.mm.code_lookup(env.conns[2], {"code": own}, 2)["kind"] == "none"
+        assert env.mm.peek(own) is None
         env.player(3)
         await env.send(3, "queue_join", code=code)
         (t,) = env.mm.tables.values()
@@ -4762,11 +4742,11 @@ def test_ws_peek_a_table_code_by_either_name_and_its_room_once_it_starts(wsenv):
         assert _drain(g, "error")["code"] == "room_not_found"
 
 
-def test_ws_peeks_share_the_code_lookup_limit(wsenv):
+def test_ws_table_code_peeks_are_limited(wsenv):
     """A live room's code peeks as it always has, unlimited. Any other code
-    is read like ``code_lookup``, on its limit; past it the answer is the
-    ``room_not_found`` every client's peek consumer settles on, and a later
-    peek of a live room answers in full."""
+    is on the lookup limit; past it the answer is the ``room_not_found``
+    every client's peek consumer settles on, echoing the asked code, and a
+    later peek of a live room answers in full."""
     srv, store, client, clock = wsenv
     _, headers = _user(store, "limithost", "Host")
     with client.websocket_connect("/ws") as host, \
@@ -4778,21 +4758,15 @@ def test_ws_peeks_share_the_code_lookup_limit(wsenv):
         q.send_json({"type": "queue_join", "mode": "casual"})
         table = _drain(q, "queue_state")["code"]
         limit, window = mm.LOOKUP_LIMIT
-        for i in range(limit):
-            if i % 2:
-                g.send_json({"type": "code_lookup", "code": table})
-                assert _drain(g, "code_kind")["kind"] == "table"
-            else:
-                g.send_json({"type": "table_peek", "code": table})
-                assert _drain(g, "room_seats")["table"] is True
+        for _ in range(limit):
+            g.send_json({"type": "table_peek", "code": table})
+            assert _drain(g, "room_seats")["table"] is True
         # a table's code past the limit, in either case: a plain miss
         for m in ({"type": "table_peek", "code": table.lower()},
                   {"type": "table_peek", "code": table}):
             g.send_json(m)
             refused = _drain(g, "error")
-            assert refused["code"] == "room_not_found" and "peek" not in refused
-        g.send_json({"type": "code_lookup", "code": table})
-        assert _drain(g, "error")["code"] == "rate_limited"
+            assert refused["code"] == "room_not_found" and refused["peek"] == table
         # a live room's code is never limited, so a retry after a refusal joins
         for _ in range(3):
             g.send_json({"type": "table_peek", "code": room})

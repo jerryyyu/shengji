@@ -2615,8 +2615,8 @@ def test_ws_a_duo_table_seats_its_code_joiner_in_the_held_seat_and_starts_a_rate
         c.send_json({"type": "queue_join", "mode": "ranked"})       # a stranger on Play
         table = _next_where(c, "queue_state", lambda m: m.get("table"))["table"]
         assert table["you"] == 1 and table["held_seat"] == 2 and table["code"] == code
-        b.send_json({"type": "code_lookup", "code": code})
-        assert _drain(b, "code_kind")["kind"] == "table"
+        b.send_json({"type": "table_peek", "code": code})
+        assert _drain(b, "room_seats")["table"] is True
         b.send_json({"type": "table_join", "code": code})            # the friend's link
         mine = _next_where(b, "queue_state", lambda m: m.get("table"))
         assert mine["table"]["you"] == 2 and mine["held_seat"] is None and mine["duo"] is True
@@ -2692,8 +2692,8 @@ def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_
         assert room.friend_seat is None
         (open_seat,) = [i for i, sd in enumerate(room.seats) if sd.is_bot]
         # Ann's own code ended with the table; Bo joins the room the usual way
-        b.send_json({"type": "code_lookup", "code": code})
-        assert _drain(b, "code_kind")["kind"] == "none"
+        b.send_json({"type": "table_peek", "code": code})
+        assert _drain(b, "error")["peek"] == code
         b.send_json({"type": "table_join", "expect": "room", "code": cy_code, "name": "Bo"})
         for _ in range(80):
             pj = room.pending_joins.get(open_seat)

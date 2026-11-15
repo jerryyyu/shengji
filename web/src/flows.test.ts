@@ -71,7 +71,7 @@ const LEAVE_SITES = [
  *  retired join_room / peek_room are matched too) or joins the queue.
  *  Target: codeJoin.ts only. */
 const JOIN_SITES = [
-  "components/Lobby.tsx", // the code box and the Join panel a link opens
+  "codeJoin.ts", // every code: the Play box's and a link's peek, then the Join panel's Join
   "intent.ts", // the table_join a saved intent resumes with
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
   "queue/store.ts", // queue.join(code): the table_join the queue's join sites call
@@ -117,7 +117,7 @@ const TOAST_VIEW_SITES = ["components/Toast.tsx"];
 const TOAST_SITES = [
   "App.tsx", // the server's errors and notices
   "components/Hud.tsx", // a failed throw and the engine's table messages
-  "components/Lobby.tsx", // a link's table that is gone, a code that names nothing
+  "codeJoin.ts", // a code that names nothing, or past the peek limit
   "components/Table.tsx", // Coach on/off, a newcomer joining the table
   "queue/QueueLayer.tsx", // the queue's notices
 ];

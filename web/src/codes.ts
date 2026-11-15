@@ -1,8 +1,7 @@
 // Room and table codes are one space (PROTOCOL.md "Codes"): the same four
-// characters, the same link. codeJoin.ts looks a code up and runs the room
-// or the table flow.
+// characters, the same link. codeJoin.ts peeks a code and opens its Join
+// panel.
 
-export const NO_CODE = "No table has that code.";
 export const CODE_LEN = 4;
 
 /** Uppercase letters and digits only, at most four: what the server compares. */

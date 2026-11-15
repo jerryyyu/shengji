@@ -6,7 +6,7 @@ import { NAME_ADJECTIVES, NAME_NOUNS } from "../randomName";
 
 const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects, link } = vi.hoisted(() => ({
   sent: [] as unknown[],
-  link: { generation: 0, listeners: new Set<(m: unknown) => void>() },
+  link: { generation: 0, listeners: new Set<(m: unknown) => void>(), status: new Set<(s: string) => void>() },
   reconnects: { n: 0 },
   authState: { current: { status: "loading", clientId: null, user: null } as AuthState },
   signOut: vi.fn(() => Promise.resolve()),
@@ -17,11 +17,13 @@ const { sent, authState, signOut, updated, updateDisplayName, gis, reconnects, l
 vi.mock("../ws", () => ({
   conn: { send: (m: unknown) => { sent.push(m); return true; },
           subscribe: (fn: (m: unknown) => void) => { link.listeners.add(fn); return () => link.listeners.delete(fn); },
+          subscribeStatus: (fn: (s: string) => void) => { link.status.add(fn); return () => link.status.delete(fn); },
           get generation() { return link.generation; },
           reconnect: () => { reconnects.n += 1; } },
   getSavedName: () => localStorage.getItem("shengji.name") ?? "",
   saveName: (n: string) => localStorage.setItem("shengji.name", n),
   getResumeToken: () => null,
+  getSavedRoom: () => null,
   clearSavedRoom: () => {},
   reconnect: () => {},
 }));
@@ -87,8 +89,12 @@ function type(input: HTMLInputElement, value: string) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
-/** The server answers the outstanding start (here with an error), so the next start may go. */
-const answered = () => act(() => { for (const fn of [...link.listeners]) fn({ type: "error", code: "x", message: "x" }); });
+/** The server answers the outstanding start (here with an error), so the
+ *  next start may go; a Join panel left open is closed (Not now). */
+const answered = () => act(() => {
+  for (const fn of [...link.listeners]) fn({ type: "error", code: "x", message: "x" });
+  codes.cancel();
+});
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
@@ -250,14 +256,21 @@ describe("the lobby with sign-in ON", () => {
 
 const rerender = () => act(async () => root.render(<><Lobby status="open" /><IdentitySheet /></>));
 const buttonNamed = (label: string) => Array.from(host.querySelectorAll("button")).find((b) => b.textContent === label)!;
-/** Join a room by its code: the lookup, the peek, then join_room under the
- *  player's name. */
+/** A game in progress at `code`: Mei at seat 0, bots elsewhere. */
+const inGame = (code: string) => ({
+  type: "room_seats", room: code, in_game: true,
+  seats: [0, 1, 2, 3].map((seat) => ({ seat, name: seat ? `Bot ${seat}` : "Mei", is_bot: seat > 0, connected: true,
+                                       team: seat % 2, claimable: seat > 0, controller: seat ? "bot" : "human",
+                                       reserved_secs: null })),
+});
+/** Join a room by its code: the peek, its panel, then the panel's Join
+ *  under the player's name. */
 const joinCode = (code = "ABCD") => {
   const box = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
   type(box, code);
   act(() => buttonNamed("Join").click());
-  act(() => { for (const fn of [...link.listeners]) fn({ type: "code_kind", code, kind: "room" }); });
-  act(() => { for (const fn of [...link.listeners]) fn({ type: "room_seats", room: code, in_game: false, seats: [] }); });
+  act(() => { for (const fn of [...link.listeners]) fn(inGame(code)); });
+  act(() => [...host.querySelectorAll<HTMLButtonElement>(".tp-join-code button")].find((b) => b.textContent === "Join")!.click());
 };
 /** The name the k-th join_room went with. */
 const sentName = (k = 0) => (sent.filter((m) => (m as { type: string }).type === "table_join")[k] as { name: string }).name;
@@ -269,6 +282,7 @@ async function remount() {
   act(() => root.unmount());
   host.remove();
   sent.length = 0;
+  codes.reset();
   await render();
 }
 
@@ -286,9 +300,9 @@ describe("signed in, the player plays under the account name", () => {
     // Play joins the ranked queue with no sheet in between
     act(() => buttonNamed("Play").click());
     expect(document.querySelector(".q-sheet")).toBeNull();
-    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["code_lookup", "table_peek", "table_join", "queue_join"]);
+    expect(sent.map((m) => (m as { type: string }).type)).toEqual(["table_peek", "table_join", "queue_join"]);
     expect(sentName(0)).toBe("Captain");
-    expect(sent[3]).toEqual({ type: "queue_join", mode: "ranked" });
+    expect(sent[2]).toEqual({ type: "queue_join", mode: "ranked" });
   });
 
   it("Duo opens your own table as a Duo: no sheet and no Duo code", async () => {
@@ -599,23 +613,29 @@ describe("starting a game waits for the server", () => {
     expect(button(/Create/)).toBeUndefined();
   });
 
-  it("Join says Joining… while the room is looked up, and an error frees it", async () => {
+  it("Join says Joining… while the code is peeked, and a game in progress opens its panel", async () => {
     await render();
     const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "abcd");
     act(() => button(/^Join$/).click());
-    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }]);
+    expect(sent).toEqual([{ type: "table_peek", code: "ABCD" }]);
     expect(button(/Joining…/).getAttribute("aria-busy")).toBe("true");
     act(() => button(/Joining…/).click());
     expect(sent).toHaveLength(1);
-    serverSays({ type: "code_kind", code: "ABCD", kind: "room" });
-    expect(sent).toEqual([{ type: "code_lookup", code: "ABCD" }, { type: "table_peek", code: "ABCD" }]);
+    // a game in progress never seats you unseen: its panel shows who is there
+    serverSays(inGame("ABCD"));
+    expect(sent).toHaveLength(1);
+    const panel = host.querySelector(".tp-join-code")!;
+    expect(panel.querySelector(".tp-title")?.textContent).toBe("Join Mei");
+    // you glow in the first bot seat; another bot seat moves you there
+    expect(panel.querySelector(".tp-seat.you.picked")?.getAttribute("aria-label")).toBe("You, your team");
+    const other = [...panel.querySelectorAll<HTMLButtonElement>("button.tp-seat")];
+    expect(other.map((b) => b.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["Bot, your team. Sit here"]));
+    act(() => other.find((b) => b.getAttribute("aria-label") === "Bot, your team. Sit here")!.click());
+    act(() => button(/^Join$/).click());
+    expect(sent.at(-1)).toMatchObject({ type: "table_join", code: "ABCD", seat: 3, expect: "room" });
     expect(button(/Joining…/).disabled).toBe(true);
-    // straight through when there is no seat to choose: still joining, one join
-    serverSays({ type: "room_seats", room: "ABCD", seats: [] });
-    expect(sent.filter((m) => (m as { type: string }).type === "table_join")).toHaveLength(1);
-    expect(button(/Joining…/).disabled).toBe(true);
-    serverSays({ type: "error", code: "room_not_found", message: "No such room." });
+    serverSays({ type: "error", code: "same_device", message: "Someone on this device is already at that table." });
     expect(button(/^Join$/).disabled).toBe(false);
   });
 
@@ -624,14 +644,26 @@ describe("starting a game waits for the server", () => {
     const code = host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!;
     type(code, "ZZZZ");
     act(() => button(/^Join$/).click());
-    serverSays({ type: "code_kind", code: "ZZZZ", kind: "none" });
+    serverSays({ type: "error", code: "room_not_found", peek: "ZZZZ", message: "No table has that code." });
     expect(button(/^Join$/).disabled).toBe(false);
     expect(currentToast()?.text).toBe("No table has that code.");
     expect(currentToast()?.info).toBeUndefined();
-    // no line of the lobby's own
-    expect(host.querySelector(".join-error, .lobby-error")).toBeNull();
-    expect(codes.view.playError).toBeNull();
-    expect(sent).toEqual([{ type: "code_lookup", code: "ZZZZ" }]);
+    // no line of the lobby's own, and no panel
+    expect(host.querySelector(".join-error, .lobby-error, .tp-join-code")).toBeNull();
+    expect(sent).toEqual([{ type: "table_peek", code: "ZZZZ" }]);
+  });
+
+  it("a full table shows its panel with Join disabled", async () => {
+    await render();
+    type(host.querySelector<HTMLInputElement>("input[aria-label='Table code']")!, "ABCD");
+    act(() => button(/^Join$/).click());
+    const full = inGame("ABCD");
+    full.seats = full.seats.map((sd) => ({ ...sd, name: sd.seat ? `P${sd.seat}` : "Mei", is_bot: false,
+                                            claimable: false, controller: "human" }));
+    serverSays(full);
+    expect(host.querySelector(".tp-join-code .tp-line")?.textContent).toBe("Table is full");
+    expect(host.querySelector(".tp-join-code .tp-seat.picked")).toBeNull();
+    expect(button(/^Join$/).disabled).toBe(true);
   });
 });
 
@@ -654,10 +686,9 @@ describe("an invite link opens the Join panel", () => {
   const panel = () => host.querySelector<HTMLElement>(".tp-join-code");
   const panelButton = (label: string) =>
     [...panel()!.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === label)!;
-  /** The link's lookup, answered: a room's panel then peeks its seats. */
-  const linkNames = (kind: "room" | "table") => {
-    act(() => { codes.lookup("abcd", "link"); });
-    serverSays({ type: "code_kind", code: "ABCD", kind });
+  /** The link is taken on the first open socket, and its panel peeks its seats. */
+  const linkOpens = () => {
+    act(() => { for (const fn of [...link.status]) fn("open"); });
   };
   const SEATS = { type: "room_seats", room: "ABCD", in_game: false,
                   seats: [{ seat: 0, name: "Jerry", is_bot: false, connected: true, team: 0, claimable: false }] };
@@ -667,9 +698,9 @@ describe("an invite link opens the Join panel", () => {
   it("a first-time guest is not asked for a name: Join goes in under the chip's random name", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    linkNames("room");
+    linkOpens();
     expect(host.querySelector(".q-layer:not(.q-out) .q-sheet")).toBeNull();
-    expect(types()).toEqual(["code_lookup", "table_peek"]);
+    expect(types()).toEqual(["table_peek"]);
     serverSays(SEATS);
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
     expect(types()).not.toContain("table_join");
@@ -685,7 +716,7 @@ describe("an invite link opens the Join panel", () => {
   it("the random name is edited from the chip, and Join uses the edit", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    linkNames("room");
+    linkOpens();
     serverSays(SEATS);
     type(nameInput(), "Robin");
     act(() => buttonNamed("Done").click());
@@ -697,7 +728,7 @@ describe("an invite link opens the Join panel", () => {
     localStorage.setItem("shengji.name", "Ace");
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    linkNames("room");
+    linkOpens();
     serverSays(SEATS);
     act(() => panelButton("Join").click());
     expect(sent.at(-1)).toMatchObject({ type: "table_join", code: "ABCD", expect: "room", name: "Ace" });
@@ -706,7 +737,7 @@ describe("an invite link opens the Join panel", () => {
   it("a signed-in player joins under the account name", async () => {
     authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
     await render();
-    linkNames("room");
+    linkOpens();
     serverSays(SEATS);
     act(() => panelButton("Join").click());
     expect(sent.at(-1)).toMatchObject({ type: "table_join", code: "ABCD", expect: "room", name: "Jerry" });
@@ -715,15 +746,18 @@ describe("an invite link opens the Join panel", () => {
   it("a Play table's code opens the panel too, and Join sits there through the queue", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    linkNames("table");
+    linkOpens();
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join ABCD");
-    expect(types()).toEqual(["code_lookup", "table_peek"]);
+    expect(types()).toEqual(["table_peek"]);
     serverSays({ type: "room_seats", room: "ABCD", table: true, mode: "ranked", in_game: false,
                  allow_joiners: true, full: false, closed: false,
                  seats: [0, 1, 2, 3].map((seat) => ({ seat, team: seat % 2, state: seat ? "open" : "taken",
                                                       name: seat ? null : "Jerry", ready: false })) });
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Jerry");
-    expect(panel()?.querySelectorAll(".tp-seat.open")).toHaveLength(3);
+    // you glow where the table's rule seats you: across from its host
+    expect(panel()?.querySelectorAll(".tp-seat.open")).toHaveLength(2);
+    expect(panel()?.querySelectorAll(".tp-seat.you.picked")).toHaveLength(1);
+    expect(panel()?.querySelector("button.tp-seat")).toBeNull();
     act(() => panelButton("Join").click());
     expect(sent.at(-1)).toEqual({ type: "table_join", code: "ABCD", name: localStorage.getItem("shengji.name") });
   });
@@ -731,7 +765,7 @@ describe("an invite link opens the Join panel", () => {
   it("Not now drops the link and puts Play back", async () => {
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    linkNames("room");
+    linkOpens();
     serverSays(SEATS);
     act(() => panelButton("Not now").click());
     expect(panel()).toBeNull();
@@ -743,12 +777,12 @@ describe("an invite link opens the Join panel", () => {
     localStorage.setItem("shengji.name", "Ace");
     authState.current = { status: "out", clientId: "cid.apps", user: null };
     await render();
-    linkNames("room");
-    serverSays({ type: "error", code: "room_not_found", message: "Room not found." });
-    expect(currentToast()?.text).toBe("No room ABCD. It may have closed.");
+    linkOpens();
+    serverSays({ type: "error", code: "room_not_found", peek: "ABCD", message: "No table has that code." });
+    expect(currentToast()?.text).toBe("No table has that code.");
     expect(host.querySelector(".lobby-error")).toBeNull();
     expect(panel()).toBeNull();
     expect(window.location.search).toBe("");
-    expect(types()).toEqual(["code_lookup", "table_peek"]);
+    expect(types()).toEqual(["table_peek"]);
   });
 });

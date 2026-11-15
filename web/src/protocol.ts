@@ -47,13 +47,12 @@ export type ClientMsg =
   | { type: "im_back" }
   /** Report another seat's player; the server answers report_received or a coded error. */
   | { type: "report_player"; seat: number; reason: ReportReason }
-  /** Which kind of thing a typed or linked code names (PROTOCOL.md "Codes"). */
-  | { type: "code_lookup"; code: string }
   /* The table family (PROTOCOL.md "Table messages"): the same names at a
    * queue table and in a room, which the server rewrites into the message
    * that place handles. A room takes them only once its game is in play;
    * the queue's own shapes are in QueueClientMsg. */
-  /** Who is sitting where at a room's code, without joining (room_seats). */
+  /** Who is sitting where at a room's or a queued table's code, without
+   *  joining (room_seats; a refusal echoes the code as `peek`). */
   | { type: "table_peek"; code: string }
   /** Leave the table: a room's seat (the server replies {type:"left"}), a
    *  pending invite Join, or the queue. */
@@ -70,8 +69,8 @@ export interface ErrorMsg {
   /** Machine-readable case. Typed so a new server code cannot be handled by
    *  a stale client branch that silently falls through to a generic toast. */
   code?: ErrorCode;
-  /** Set on a refused code_lookup only: the code it was asked about. */
-  lookup?: string;
+  /** Set on a refused table_peek only: the code it was asked about. */
+  peek?: string;
   /** A queue cooldown's end (Unix seconds, server clock), on code "cooldown". */
   cooldown_until?: number;
 }
@@ -304,7 +303,6 @@ export type ServerMsg =
   | LeftMsg
   | RoomSeats
   | TableSeats
-  | CodeKindMsg
   | ChatMsg
   | ChatHistory
   | ResumeMsg
@@ -354,15 +352,6 @@ export type ErrorCode =
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */
 export type Controller = "human" | "bot" | "bot_cover";
-
-/** Reply to code_lookup: room, pair and table codes share one space, so a
- *  code names a live room, a live pair, a queued table (join it with
- *  `queue_join {code}`), or nothing. */
-export interface CodeKindMsg {
-  type: "code_kind";
-  code: string;
-  kind: "room" | "party" | "table" | "none";
-}
 
 export interface ChatHistory {
   type: "chat_history";

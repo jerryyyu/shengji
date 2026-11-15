@@ -39,6 +39,23 @@ export function joinSeat(peek: Peek): number | null {
   return peek.seats.find((sd) => sd.claimable && sd.is_bot)?.seat ?? null;
 }
 
+/** The room seats a Join may name, which the panel lets the player choose
+ *  between: the plain seat and every bot seat it may take, else (with no
+ *  bot seat to take) the dropped players' seats. */
+export function roomChoices(peek: Peek): number[] {
+  if (peek.full) return [];
+  const plain = joinSeat(peek);
+  const bots = peek.seats.filter((sd) => sd.claimable && sd.is_bot).map((sd) => sd.seat);
+  const seats = plain === null ? bots : [plain, ...bots.filter((at) => at !== plain)];
+  return seats.length ? seats : takeoverSeats(peek).map((d) => d.seat);
+}
+
+/** The room seat the panel chooses for you: the one a plain Join would
+ *  get, else the first dropped player's seat; null when there is none. */
+export function roomDefaultSeat(peek: Peek): number | null {
+  return roomChoices(peek)[0] ?? null;
+}
+
 /** No seat for a joiner, plain or by takeover. */
 export function tableFull(peek: Peek): boolean {
   return joinSeat(peek) === null && takeoverSeats(peek).length === 0;
@@ -57,13 +74,14 @@ export function hostName(peek: Pick<RoomSeats, "seats">): string | null {
   return peek.seats.find((sd) => sd.seat === at)?.name ?? null;
 }
 
-/** The seat a queued table's seats are drawn from: the held seat (a Duo's
- *  code seats its first single there), else the first open seat in the
- *  server's arrival order (partner first), else seat 0. */
-export function tableViewSeat(peek: Pick<TableSeats, "seats">): number {
+/** Where a code join sits you at a queued table, as the server seats it:
+ *  the held seat (a Duo's code seats its first single there), else the
+ *  first open seat in the server's arrival order (partner first); null
+ *  when no seat is left. */
+export function tableJoinSeat(peek: Pick<TableSeats, "seats">): number | null {
   const at = (state: TableSeats["seats"][number]["state"]) =>
     [0, 2, 1, 3].find((s) => peek.seats.find((sd) => sd.seat === s)?.state === state);
-  return at("held") ?? at("open") ?? 0;
+  return at("held") ?? at("open") ?? null;
 }
 
 /** Who a queued table's panel title names: its first taken seat's person. */

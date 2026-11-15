@@ -1,5 +1,5 @@
-// "My games" is a hash route over the live app: opening it leaves the socket
-// alone, and closing it returns to the screen underneath.
+// Saved games are the Me tab's Games section, a hash route over the live
+// app: opening it leaves the socket alone, and Play returns to the lobby.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -41,22 +41,23 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-it("the lobby's My games opens the history page and Lobby returns", async () => {
+it("Me's Games opens the saved games and the Play tab returns, leaving the socket alone", async () => {
   const { default: App } = await import("./App");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
   await act(async () => { root.render(<App />); });
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-  const games = host.querySelector<HTMLButtonElement>(".account-games")!;
-  expect(games).not.toBeNull();
+  const tab = (label: string) =>
+    [...host.querySelectorAll<HTMLButtonElement>(".tabbar-item")].find((b) => b.textContent === label)!;
+  await act(async () => { tab("Me").click(); await new Promise((r) => setTimeout(r, 0)); });
+  const games = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "Games")!;
   await act(async () => { games.click(); await new Promise((r) => setTimeout(r, 0)); });
-  expect(host.querySelector(".games-title")?.textContent).toBe("My games");
+  expect(window.location.hash).toBe("#/me/games");
   expect(host.querySelector(".games-status")?.textContent).toContain("No saved games yet");
   expect(host.querySelector(".lobby-panel")).toBeNull();
   expect(FakeWS.all).toHaveLength(1);       // the socket was not touched
-  const back = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "‹ Lobby")!;
-  act(() => back.click());
+  await act(async () => { tab("Play").click(); await new Promise((r) => setTimeout(r, 0)); });
   expect(host.querySelector(".lobby-panel")).not.toBeNull();
   expect(window.location.hash).toBe("");
 });

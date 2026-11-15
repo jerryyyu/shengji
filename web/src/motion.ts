@@ -37,9 +37,12 @@ export function prefersReducedMotion(): boolean {
 }
 
 /** True when an element can be animated and the viewer has not asked for
- *  reduced motion. */
+ *  reduced motion. A table drawn turned a quarter turn (a portrait phone)
+ *  does not animate: flights and glides are measured in screen axes but
+ *  played in the table's own, which no longer agree. */
 export function canAnimate(el: Element | null | undefined): el is HTMLElement {
-  return !!el && typeof (el as HTMLElement).animate === "function" && !prefersReducedMotion();
+  return !!el && typeof (el as HTMLElement).animate === "function" && !prefersReducedMotion()
+    && !el.closest?.(".app.rotated");
 }
 
 export interface Box {

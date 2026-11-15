@@ -1,0 +1,14 @@
+/* The chat sheet's quick phrases: one row of chips above the field that
+   scrolls sideways when the sheet is narrow. */
+.chat-quick {
+  display: flex; gap: 6px; flex-shrink: 0; padding: 8px 8px 0; overflow-x: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.12); scrollbar-width: none;
+}
+.chat-quick::-webkit-scrollbar { display: none; }
+.chat-quick + .chat-input { border-top: 0; }
+.chat-quick-btn {
+  appearance: none; flex: none; min-height: 36px; padding: 0 12px; border-radius: 18px;
+  border: 1px solid #3a4250; background: rgba(255, 255, 255, 0.06); color: #e9ecf2;
+  font: inherit; font-size: var(--fs-14, 14px); white-space: nowrap; cursor: pointer;
+}
+.chat-quick-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

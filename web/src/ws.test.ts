@@ -345,3 +345,220 @@ describe("reconnect(): the identity lives on the handshake", () => {
     expect(FakeWS.count).toBe(before);
   });
 });
+
+describe("negotiated connection heartbeat", () => {
+  const start = async () => {
+    vi.useFakeTimers();
+    const { conn } = await load();
+    conn.start();
+    const ws = FakeWS.last!;
+    ws.onopen?.();
+    return { conn, ws };
+  };
+
+  it("does not probe a server that has not advertised support", async () => {
+    try {
+      const { conn, ws } = await start();
+      vi.advanceTimersByTime(60_000);
+      expect(ws.sent).toEqual([]);
+      expect(conn.status).toBe("open");
+      ws.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("keeps a quiet healthy socket and consumes pong without emitting game events", async () => {
+    try {
+      const { conn, ws } = await start();
+      const seen: unknown[] = [];
+      conn.subscribe((m) => seen.push(m));
+      expect(ws.url).toContain("heartbeat=1");
+      ws.deliver({ type: "heartbeat_ready" });
+      for (let nonce = 1; nonce <= 3; nonce++) {
+        vi.advanceTimersByTime(15_000);
+        expect(ws.sent.at(-1)).toEqual({ type: "ping", nonce });
+        ws.deliver({ type: "pong", nonce });
+      }
+      expect(seen).toEqual([]);
+      expect(conn.status).toBe("open");
+      ws.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("replaces a dead-but-open socket even if close never calls back, retaining resume identity", async () => {
+    try {
+      const { conn, ws } = await start();
+      localStorage.setItem("shengji.room", "ABCD");
+      localStorage.setItem("shengji.token", "saved-token");
+      ws.close = () => { ws.readyState = 3; };
+      ws.deliver({ type: "heartbeat_ready" });
+      vi.advanceTimersByTime(15_000);
+      ws.deliver({ type: "pong", nonce: 0 }); // a stale reply is not this probe's answer
+      vi.advanceTimersByTime(15_000);
+      expect(conn.status).toBe("closed");
+      vi.advanceTimersByTime(1);
+      expect(FakeWS.last).not.toBe(ws);
+      const fresh = FakeWS.last!;
+      fresh.onopen?.();
+      expect(conn.generation).toBe(2);
+      expect(localStorage.getItem("shengji.room")).toBe("ABCD");
+      expect(localStorage.getItem("shengji.token")).toBe("saved-token");
+      ws.deliver({ type: "heartbeat_ready" });
+      vi.advanceTimersByTime(60_000);
+      expect(fresh.sent).toEqual([]);
+      expect(conn.status).toBe("open");
+      fresh.deliver({ type: "heartbeat_ready" });
+      vi.advanceTimersByTime(15_000);
+      expect(fresh.sent).toEqual([{ type: "ping", nonce: 1 }]);
+      fresh.deliver({ type: "pong", nonce: 1 });
+      expect(conn.status).toBe("open");
+      fresh.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("cancels the old heartbeat when a socket closes normally", async () => {
+    try {
+      const { conn, ws } = await start();
+      ws.deliver({ type: "heartbeat_ready" });
+      vi.advanceTimersByTime(15_000);
+      ws.close();
+      vi.advanceTimersByTime(500);
+      const fresh = FakeWS.last!;
+      fresh.onopen?.();
+      vi.advanceTimersByTime(60_000);
+      expect(conn.status).toBe("open");
+      expect(fresh.sent).toEqual([]);
+      fresh.close();
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("the device key", () => {
+  it("is made once, 22 url-safe characters, kept in storage and sent on every socket", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, deviceKey } = await load();
+      const key = deviceKey();
+      expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      expect(deviceKey()).toBe(key);
+      expect(localStorage.getItem("shengji.device")).toBe(key);
+      conn.start();
+      const first = FakeWS.last!;
+      expect(new URL(first.url).searchParams.get("device")).toBe(key);
+      expect(new URL(first.url).searchParams.get("heartbeat")).toBe("1");
+      first.onopen?.();
+      first.close();
+      vi.advanceTimersByTime(30_000);
+      const second = FakeWS.last!;
+      expect(second).not.toBe(first);
+      expect(new URL(second.url).searchParams.get("device")).toBe(key);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("survives a reload, and two devices get different keys", async () => {
+    const a = (await load()).deviceKey();
+    expect((await load()).deviceKey()).toBe(a);
+    localStorage.clear();
+    expect((await load()).deviceKey()).not.toBe(a);
+  });
+
+  it("falls back to one in-memory key when storage refuses", async () => {
+    const { deviceKey } = await load();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    try {
+      const key = deviceKey();
+      expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
+      expect(deviceKey()).toBe(key);
+    } finally { get.mockRestore(); }
+  });
+});
+
+describe("transport swap: the game server's socket and the on-device one share nothing", () => {
+  it("cuts the old socket, forgets its room, chat and pending leave, and opens the other in place", async () => {
+    const { conn, saveRoom, saveResumeToken, getSavedRoom, getResumeToken } = await load();
+    const seen: any[] = [];
+    const statuses: string[] = [];
+    conn.subscribe((m: any) => seen.push(m));
+    conn.subscribeStatus((s: string) => statuses.push(s));
+    conn.start();
+    const network = FakeWS.last!;
+    network.onopen?.();
+    network.deliver({ type: "chat_history", room: "ABCD", through_id: 1,
+                      messages: [{ type: "chat", room: "ABCD", id: 1, seat: 0, name: "a", text: "hi", t: 1 }] });
+    saveRoom("ABCD");
+    saveResumeToken("tok");
+    conn.leaveToLobby();            // a leave still waiting for the server's "left"
+    seen.length = 0;
+
+    await conn.useLocalServer();
+    expect(network.readyState).toBe(3);
+    expect(network.onmessage).toBeNull();
+    expect(network.onclose).toBeNull();
+    expect(conn.chatHistory()).toEqual([]);
+    expect(getSavedRoom()).toBeNull();
+    expect(getResumeToken()).toBeNull();
+    expect(seen).toEqual([{ type: "left" }]);
+    expect(statuses.at(-1)).toBe("connecting");
+    // the on-device socket opens; the old one's late traffic reaches no one
+    await vi.waitFor(() => expect(conn.status).toBe("open"));
+    const count = FakeWS.count;
+    network.deliver({ type: "room", room: "ABCD", players: [], you: 0, host: 0 });
+    expect(seen).toEqual([{ type: "left" }]);
+    // the game server's own messages go nowhere offline: no error comes back
+    expect(conn.send({ type: "queue_status" } as any)).toBe(true);
+    expect(conn.send({ type: "create_room", name: "Me" })).toBe(true);
+    await vi.waitFor(() => expect(seen.some((m) => m.type === "room")).toBe(true));
+    expect(seen.filter((m) => m.type === "error")).toEqual([]);
+    expect(FakeWS.count).toBe(count);
+
+    // and back: a fresh game-server socket, the offline room forgotten
+    seen.length = 0;
+    conn.useGameServer();
+    expect(seen).toEqual([{ type: "left" }]);
+    expect(FakeWS.count).toBe(count + 1);
+    expect(FakeWS.last).not.toBe(network);
+    expect(getSavedRoom()).toBeNull();
+    FakeWS.last!.onopen?.();
+    expect(conn.status).toBe("open");
+    expect(FakeWS.last!.sent).toEqual([]);
+  });
+});
+
+it("does not send an offline turn's telemetry after returning online", async () => {
+  const { conn } = await load();
+  const { telemetry } = await import("./telemetry");
+  const { offlineGame } = await import("./components/offlineGame");
+  conn.start();
+  FakeWS.last!.onopen?.();
+  offlineGame.startFromPlay();
+  await vi.waitFor(() => expect(conn.status).toBe("open"));
+  telemetry.turnDone({ phase: "play", need: 1, ms_total: 123, sel_changes: 1,
+    disabled_play_taps: 0, refused: 0, coach: false, nth_turn: 1, by: "you" });
+  offlineGame.goOnline();
+  FakeWS.last!.onopen?.();
+  telemetry.flush();
+  expect(FakeWS.last!.sent.filter((m) => m.type === "client_event")
+    .flatMap((m) => m.events).filter((e: any) => e.e === "turn_done")).toEqual([]);
+});
+
+it("sends the online page's buffered telemetry before going offline, collects nothing offline, and resumes online", async () => {
+  const { conn } = await load();
+  const { telemetry } = await import("./telemetry");
+  const { offlineGame } = await import("./components/offlineGame");
+  conn.start();
+  const network = FakeWS.last!;
+  network.onopen?.();
+  telemetry.tap("play");
+  offlineGame.startFromPlay();
+  const taps = (ws: FakeWS) => ws.sent.filter((m) => m.type === "client_event")
+    .flatMap((m) => m.events).filter((e: any) => e.e === "tap").map((e: any) => e.id);
+  expect(taps(network)).toEqual(["play"]);
+  await vi.waitFor(() => expect(conn.status).toBe("open"));
+  telemetry.tap("next_round");
+  expect(telemetry.pending()).toEqual([]);
+  offlineGame.goOnline();
+  const back = FakeWS.last!;
+  back.onopen?.();
+  telemetry.tap("duo");
+  telemetry.flush();
+  expect(taps(back)).toEqual(["duo"]);
+});

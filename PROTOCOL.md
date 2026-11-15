@@ -421,7 +421,8 @@ other socket with `account_in_game`.
   waiting table with no timer: answer before then or you leave (`idle`).
 - `presence {tables, playing, waiting, ranked, casual}`: to every lobby socket
   when the counts change, at most once per second, and at once to a new lobby
-  socket when any is above zero. `waiting`: people queued; `tables`: games in
+  socket when any is above zero. `waiting`: people queued, including those
+  at waiting tables (`queue_state.count` is the same number); `tables`: games in
   play that a newcomer could join (a seat open, Allow joiners on, someone
   connected), ranked or casual; `ranked` and `casual` split `tables` by mode;
   `playing`: connected people seated at those tables. Counts only, no names
@@ -449,9 +450,6 @@ other socket with `account_in_game`.
   first newcomer's Join lands. `move_secs` is the move clock that runs from
   now on (null without one); `round_end` says the newcomer plays from the
   next round.
-- `queue_count {count}`: to every lobby socket, signed in or not; players
-  queued, including those at waiting tables. At most one per second; a newly
-  connected lobby socket gets the current count if it is above zero.
 - `match_started {match_id, room, rated}`: the room was created and started
   for you; `match_id` is the waiting table's id, or null for a game started
   alone (`table_start_bots` or the entry's own timer). It arrives with the

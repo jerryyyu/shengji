@@ -387,9 +387,6 @@ export class QueueStore {
   private onMessage(msg: ServerMsg): void {
     const now = Date.now();
     switch (msg.type) {
-      case "queue_count":
-        this.set({ count: msg.count });
-        break;
       case "presence":
         this.set({ presence: { tables: msg.tables, playing: msg.playing, waiting: msg.waiting,
                                ranked: msg.ranked, casual: msg.casual } });

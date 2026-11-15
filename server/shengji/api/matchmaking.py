@@ -621,8 +621,6 @@ class Matchmaker:
         self.chat_limiter = accounts.RateLimiter(*CHAT_LIMIT)
         self._seq = count(1)
         self._panel = count(1)
-        self._count_sent = 0
-        self._count_sent_at = -math.inf
         self._presence_sent: tuple[int, ...] = (0, 0, 0, 0, 0)
         self._presence_sent_at = -math.inf
         self._last_tick = -math.inf
@@ -641,7 +639,7 @@ class Matchmaker:
             except Exception:      # noqa: BLE001 - the queue outlives one bad tick
                 log.exception("matchmaking pump failed")
             if (not self.entries and not self.tables and not self.parties
-                    and not self.joining and self._count_sent == 0 and not self.lobby):
+                    and not self.joining and not any(self._presence_sent) and not self.lobby):
                 return
 
     def _live(self, uid: int) -> Conn | None:
@@ -739,15 +737,6 @@ class Matchmaker:
 
     def count(self) -> int:
         return sum(e.size for e in self.entries.values())
-
-    def _flush_count(self) -> None:
-        now = self.clock()
-        n = self.count()
-        if n == self._count_sent or now - self._count_sent_at < COUNT_DEBOUNCE:
-            return
-        self._count_sent, self._count_sent_at = n, now
-        for c in list(self.lobby):
-            c.push({"type": "queue_count", "count": n})
 
     def _presence_from_open_tables(self) -> tuple[int, int, int, int]:
         tables = [t for t in self.open_tables() if t.get("seats")]
@@ -1049,9 +1038,6 @@ class Matchmaker:
         """A new socket: it is a lobby socket, and when its account's queue
         socket is gone it becomes the queue socket and gets the state back."""
         self.lobby[conn] = None
-        n = self.count()
-        if n:
-            conn.push({"type": "queue_count", "count": n})
         self._push_presence(conn)
         self.ensure_running()
         uid = conn.queue_id
@@ -1103,7 +1089,6 @@ class Matchmaker:
         if e is not None:
             self._remove(e, "signed_in")
             self._send_state(e)
-            self._flush_count()
         if p is not None:
             self._close_party(p, guest)
         until = self.cooldowns.get(guest, 0.0)
@@ -1137,16 +1122,12 @@ class Matchmaker:
             if e.size == 2:
                 payload["by"] = self._name(uid)
             self._send(u, payload)
-        self._flush_count()
 
     def return_to_lobby(self, conn: Conn) -> None:
         if conn.closed or not conn.in_room:
             return
         conn.in_room = False
         self.lobby[conn] = None
-        n = self.count()
-        if n:
-            conn.push({"type": "queue_count", "count": n})
         self._push_presence(conn)
         self.ensure_running()
         uid = conn.queue_id
@@ -1374,7 +1355,6 @@ class Matchmaker:
         self._offer_open_tables(self.clock(), quiet={e.id})
         if e.table_id is None:
             self._send_state(e)
-        self._flush_count()
         await self._start_due()
 
     def _pair_up(self, host: Entry, uid: int, rating: float) -> None:
@@ -1411,7 +1391,6 @@ class Matchmaker:
         self._send_party(p)
         self.seat_waiting()
         self._offer_open_tables(self.clock())
-        self._flush_count()
 
     def _split(self, e: Entry, uid: int, reason: str) -> None:
         """``uid`` leaves its table Duo before the game: the Duo ends and
@@ -1447,7 +1426,6 @@ class Matchmaker:
         self._send_table(t)
         self.seat_waiting()
         self._offer_open_tables(self.clock())
-        self._flush_count()
 
     def _code_entry(self, code: str) -> Entry | None:
         """The queued entry whose table ``code`` names: the entry itself,
@@ -1537,7 +1515,6 @@ class Matchmaker:
         if kind == "allow":
             self.seat_waiting()
             self._offer_open_tables(self.clock())
-            self._flush_count()
             await self._start_due()
 
     def _leave(self, uid: int) -> None:
@@ -1550,7 +1527,6 @@ class Matchmaker:
             return
         self._remove(e, "leave")
         self._send_state(e)
-        self._flush_count()
 
     def _set_bot_fill(self, uid: int, allow: bool) -> None:
         """Turn the entry's bot timer off ("Only tables with people") or back
@@ -1920,14 +1896,12 @@ class Matchmaker:
                                "cooldown_until": None})
         entries = [e for e in entries if e not in gone]
         if not entries:
-            self._flush_count()
             return
         slots = self._slots(t, entries, alone=False)
         for e in entries:
             self._remove(e, "matched")
         self._qlog("start", table=True, humans=sum(not s.is_bot for s in slots),
                    max_wait=round(max(self.clock() - e.since for e in entries), 1))
-        self._flush_count()
         # The first arrival still here is the opener (``entries`` keeps
         # arrival order); only it can hold a seat.
         await self._start_room_for(t.id, slots, entries, mode=t.mode, chat=list(t.chat),
@@ -1939,7 +1913,6 @@ class Matchmaker:
         t = e.table
         self._remove(e, "bots_timer")
         self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
-        self._flush_count()
         await self._start_room_for(None, self._slots(t, [e], alone=True), [e], mode=e.mode,
                                    chat=list(t.chat), **self._room_settings(t, e))
 
@@ -1989,7 +1962,6 @@ class Matchmaker:
                     self._send(u, {"type": "match_cancelled", "match_id": table_id,
                                    "reason": "server_error"})
                 self._send_state(e)
-            self._flush_count()
             return False
 
     async def _start(self, table_id: str | None, slots: list[Slot],
@@ -2011,7 +1983,6 @@ class Matchmaker:
         t = e.table
         self._remove(e, "bots")
         self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
-        self._flush_count()
         slots = self._slots(t, [e], alone=True)
         conns = {u: self.conns[u] for u in e.members}
         try:
@@ -2205,7 +2176,6 @@ class Matchmaker:
             e.offer, e.open_codes, e.front = None, [], True
             if e.paused is not None:
                 e.bots_at, e.paused = now + e.paused, None
-            self._flush_count()
             return
         self.joining.pop(uid, None)
         self._offer_open_tables(now, quiet={e.id})
@@ -2240,7 +2210,6 @@ class Matchmaker:
             e.offer, e.open_codes, e.front = None, [], True
             if e.paused is not None:
                 e.bots_at, e.paused = now + e.paused, None
-            self._flush_count()
             return
         for u in e.members:
             self.joining.pop(u, None)
@@ -2286,7 +2255,6 @@ class Matchmaker:
         if e.table_id is None:
             self._offer_open_tables(self.clock(), quiet={e.id})
             self._send_state(e)
-        self._flush_count()
         self.ensure_running()
 
     def _bar(self, uid: int, code: str, *, cooldown: bool = True) -> None:
@@ -2446,7 +2414,6 @@ class Matchmaker:
         if now - self._last_tick >= TICK_INTERVAL:
             self._last_tick = now
             await self.tick()
-        self._flush_count()
         self._flush_presence()
 
     async def tick(self) -> None:
@@ -2492,7 +2459,6 @@ class Matchmaker:
                 if e.size == 2:
                     payload["by"] = self._name(gone[0])
                 self._send(u, payload)
-            self._flush_count()
 
     def _drop_idle(self, now: float) -> None:
         """A seated entry that has not tapped Start and sent nothing for
@@ -2514,4 +2480,3 @@ class Matchmaker:
             for u in e.members:
                 self._send(u, {"type": "queue_removed", "reason": "idle",
                                "cooldown_until": None})
-            self._flush_count()

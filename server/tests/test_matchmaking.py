@@ -860,23 +860,19 @@ def test_one_entry_per_account_and_a_second_socket_takes_it_over():
     run(go())
 
 
-def test_queue_count_is_debounced_to_one_broadcast_per_second():
+def test_the_lobby_hears_the_queues_size_as_presence_waiting_only():
     async def go():
         env = Env()
         watcher = FakeConn(None, "")
         env.mm.connect(watcher)
         for uid in (1, 2, 3):
             await env.join(uid)
-        assert [m["count"] for m in watcher.of("queue_count")] == [1]
-        env.clock.advance(0.5)
         await env.mm.pump()
-        assert len(watcher.of("queue_count")) == 1
-        env.clock.advance(0.5)
-        await env.mm.pump()
-        assert [m["count"] for m in watcher.of("queue_count")] == [1, 3]
+        assert watcher.last("presence")["waiting"] == 3
         late = FakeConn(None, "")
         env.mm.connect(late)
-        assert late.last("queue_count")["count"] == 3
+        assert late.last("presence")["waiting"] == 3
+        assert {m["type"] for m in watcher.sent + late.sent} == {"presence"}
     run(go())
 
 
@@ -2924,7 +2920,7 @@ def test_a_queue_writer_that_failed_once_delivers_later_messages():
     async def go():
         ws = FlakyWs()
         c = mm.Conn(ws, 1, "P1")
-        c.push({"type": "queue_count", "count": 1})
+        c.push({"type": "presence", "waiting": 1})
         for _ in range(5):
             await asyncio.sleep(0)
         c.push({"type": "queue_state", "queued": False, "count": 0})

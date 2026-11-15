@@ -2964,6 +2964,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     max-height: calc(100dvh - var(--safe-t) - var(--header-h) - 18px);
     overflow-y: auto;
   }
+  /* Leave game stays in view at the menu's foot while the rows above scroll */
+  .hud-menu-row.leave {
+    position: sticky;
+    bottom: -5px;
+    flex: none;
+    margin: 0 -5px -5px;
+    padding: 6px 15px 11px;
+    border-radius: 0 0 12px 12px;
+    border-top: 1px solid var(--panel-edge);
+    background: #0a0c11;
+  }
+  .hud-menu-sep:has(+ .hud-menu-row.leave) { display: none; }
 
   /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {
@@ -3032,12 +3044,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     visibility: hidden;
   }
 
+  /* room for the whole bold "…" at the label's size, so it never clips */
   .opponent .turn-dots {
     display: inline-block;
     flex-shrink: 0;
-    width: 10px;
-    margin-left: -2px;
+    width: 1.1em;
     font-weight: 800;
+    text-align: center;
     visibility: hidden;
   }
 
@@ -3169,10 +3182,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* the name keeps a readable floor; the tags beside it give way first,
      and only then does the name end in an ellipsis */
   .opp-name-text {
-    min-width: min(3em, 100%);
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* The floor is for names long enough to need it. On a short name it is
+     wider than the text, and a pill sized to the text then pushed the turn's
+     "…" past its edge. */
+  .opponent:is([data-name-len="m"], [data-name-len="l"]) .opp-name-text {
+    min-width: min(3em, 100%);
   }
 
   .opponent .opp-name > :is(.away-tag, .off-tag) {

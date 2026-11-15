@@ -450,7 +450,10 @@ describe("phone controls", () => {
     expect(rule(block, ".opponent.pos-top")["--top-w"]).toContain("min(200px");
     const text = rule(block, ".opp-name-text");
     expect([text.overflow, text["text-overflow"], text["white-space"], text["min-width"]])
-      .toEqual(["hidden", "ellipsis", "nowrap", "min(3em, 100%)"]);
+      .toEqual(["hidden", "ellipsis", "nowrap", "0"]);
+    // the readable floor is for names long enough to need one
+    expect(rule(block, '.opponent:is([data-name-len="m"], [data-name-len="l"]) .opp-name-text')["min-width"])
+      .toBe("min(3em, 100%)");
     // the status tags beside the name give way before it does
     const tags = rule(block, ".opponent .opp-name > :is(.away-tag, .off-tag)");
     expect([tags["flex-shrink"], tags["min-width"]]).toEqual(["100", "0"]);
@@ -506,7 +509,7 @@ describe("phone controls", () => {
     expect(rule(block, ".opponent.on-turn")["padding-right"]).toBeUndefined();
     // the dot and the "…" both keep their room in both states; only visibility changes
     const dots = rule(block, ".opponent .turn-dots");
-    expect([dots.display, dots.width, dots.visibility]).toEqual(["inline-block", "10px", "hidden"]);
+    expect([dots.display, dots.width, dots.visibility]).toEqual(["inline-block", "1.1em", "hidden"]);
     expect(rule(block, ".opponent .turn-dots.shown").visibility).toBe("visible");
     expect(rule(block, ".opponent.on-turn .seat-dot").display).toBeUndefined();
     expect(block).not.toMatch(/\.turn-dots[^{]*\{[^}]*display: none/);

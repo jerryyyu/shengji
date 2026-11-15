@@ -197,7 +197,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   return <PanelView m={m} guarded={guarded} sheet={sheet} act={act} />;
 }
 
-/** The opener's move of someone else, for a table's seats (`movers`): the
+/** The opener's move of someone else, for a table's seats: the
  *  person tapped, then the seat, then one confirm, which `send`s it with
  *  the sitting picked. A picked seat that empties or changes hands drops
  *  the pick and its confirm. */

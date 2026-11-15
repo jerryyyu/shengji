@@ -291,9 +291,10 @@ def test_lobby_chat_is_never_logged_but_reaches_the_table_and_scrollback(client)
         assert room.game is not None
 
         a.send_json({"type": "chat", "text": "in-game-line"})
-        echo = _drain(a, "chat")
+        # the deal streams a state frame per card, so the echo can come late
+        echo = _drain(a, "chat", tries=400)
         while echo.get("text") != "in-game-line":
-            echo = _drain(a, "chat")
+            echo = _drain(a, "chat", tries=400)
 
         bot_seat = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
         with client.websocket_connect("/ws") as c:

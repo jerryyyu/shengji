@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
+import type { RoomMsg } from "../protocol";
 import { GUARD_MS } from "./useKindGuard";
 
 class FakeWS {
@@ -420,4 +421,44 @@ describe("the table panel, fixture by fixture", () => {
       expect(await trace(f)).toMatchSnapshot();
     }, 60_000);
   }
+});
+
+describe("the model and its dispatchers", () => {
+  const frame = (over: Record<string, unknown> = {}, players: P[] = JA) =>
+    room(over, players) as unknown as RoomMsg;
+
+  it("a room's model never carries the queue's pending words", async () => {
+    vi.resetModules();
+    const { fromRoom } = await import("./tableModel");
+    for (const r of [frame(), frame({ ready: [0] }), frame({ ready: [0, 2] }), frame({ ready: [0], start_now_in: 5 })]) {
+      const m = fromRoom(r, [], { now: T0, picked: null }, r.start_now_in !== undefined ? T0 + r.start_now_in * 1000 : null);
+      expect(m.kind).toBe("room");
+      expect(m.waitSwitch).toBeNull();
+      expect(["Start", "Start now", "Waiting for Alice", "Starting…"]).toContain(m.primary!.label);
+    }
+    // "Starting…" in a room is only everyone's Start, never a send in flight
+    expect(fromRoom(frame({ ready: [0] }), [], { now: T0, picked: null }, null).primary!.label).toBe("Waiting for Alice");
+  });
+
+  it("each backend adds its own precondition to a move", async () => {
+    vi.resetModules();
+    const { conn } = await import("../ws");
+    const { queueSend, roomSend } = await import("./tableModel");
+    const sent: unknown[] = [];
+    const spy = vi.spyOn(conn, "send").mockImplementation((m) => { sent.push(m); return true; });
+    const own = { current: false };
+    const send = roomSend(frame(), own);
+    send({ type: "move", seat: 1 });
+    expect(own.current).toBe(true);
+    send({ type: "move_other", from: 2, to: 3, sit: null });
+    send({ type: "start_bots" });   // not a room's action
+    expect(sent).toEqual([
+      { type: "table_move", seat: 1, expect: [{ name: "Jerry", is_bot: false }, null] },
+      { type: "table_move", seat: 3, from: 2, expect: [{ name: "Alice", is_bot: false }, null] },
+    ]);
+    sent.length = 0;
+    queueSend({ type: "move_other", from: 1, to: 3, sit: null });   // a table's move needs the sitting token
+    expect(sent).toEqual([]);
+    spy.mockRestore();
+  });
 });

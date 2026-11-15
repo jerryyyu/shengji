@@ -573,6 +573,7 @@ def cmd_analyze(a) -> int:
     out = Path(a.out)
     result = out / "result.json"
     need(not result.exists(), "result.json exists: the reader reads once")
+    need(a.partial or not a.no_anchors, "--no-anchors is smoke only: a full read checks (a) against the G4b anchors")
     st = (out / "status").read_text()
     need(" score-ref DONE " in st and " score-q DONE " in st and " extract DONE " in st, "a stage is not DONE")
     ref_rows, heads = load_ref(out)

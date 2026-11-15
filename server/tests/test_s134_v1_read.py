@@ -114,3 +114,8 @@ def test_guards_refuse_before_any_outcome(fault):
         q.append(dict(q[0]))
     ok, reasons, _ = rd.guards(ref, q, anchors=anchors)
     assert not ok and reasons
+
+
+def test_a_full_read_refuses_to_skip_the_anchor_check(tmp_path):
+    assert rd.main(["analyze", "--out", str(tmp_path), "--no-anchors"]) == 2
+    assert "--no-anchors is smoke only" in (tmp_path / "status").read_text()

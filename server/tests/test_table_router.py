@@ -10,7 +10,6 @@ saved-game link and rating snapshot.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -22,9 +21,9 @@ import pytest
 from shengji.api import tables
 
 from tests.test_accounts import accounts_on, keypair  # noqa: F401
-from tests.test_matchmaking import DEVICE_A, DEVICE_B, Env, _account_match, wsenv  # noqa: F401
+from tests.test_matchmaking import DEVICE_A, DEVICE_B, _account_match, wsenv  # noqa: F401
 from tests.test_ratings import _user
-from tests.test_server_ws import _drain, _next_where, client, clock  # noqa: F401
+from tests.test_server_ws import _drain, _next_where, client  # noqa: F401
 
 DEVICE_C = "CCCCCCCCCCCCCCCCCCCCCC"
 _POOL = ThreadPoolExecutor(max_workers=16, thread_name_prefix="router-read")
@@ -127,7 +126,7 @@ def _records(room):
             "open": dict(link.open), "stored": link.stored,
             "last_round": link.last_round, "incomplete": link.incomplete},
         "ratings": None if room.ratings is None else dict(room.ratings.present),
-        "ranked": room.ranked, "start_level": room.start_level,
+        "matched": room.matched, "start_level": room.start_level,
         "seats": [None if sd is None else (sd.name, sd.is_bot, sd.user_id)
                   for sd in room.seats],
         "host": room.host, "allow_joiners": room.allow_joiners,
@@ -135,9 +134,10 @@ def _records(room):
     }
 
 
-def _run_room(env, clock, case: dict, which: str) -> dict:
-    """``case`` set up with the old names, then its action sent as
-    ``case[which]``; returns everything visible afterwards."""
+def _run_room(env, case: dict, which: str) -> dict:
+    """A room in play, its host at 0 with ``case``'s humans in bot seats,
+    then its action sent as ``case[which]``; returns everything visible
+    afterwards."""
     srv, store, client, _ = env
     _reset(srv)
     out: dict = {}
@@ -148,18 +148,11 @@ def _run_room(env, clock, case: dict, which: str) -> dict:
         h.send_json({"type": "create_room", "name": "Host"})
         code = _drain(h, "room")["room"]
         socks["Host"] = h
-        for name in case.get("humans", ("Bo",)):
+        for name, seat in case.get("humans", (("Bo", 2),)):
             w = stack.enter_context(client.websocket_connect("/ws"))
-            w.send_json({"type": "join_room", "room": code, "name": name})
-            _drain(w, "room")
+            w.send_json({"type": "join_room", "room": code, "name": name, "seat": seat})
+            _drain(w, "state", tries=400)
             socks[name] = w
-        for _ in range(case.get("bots", 0)):
-            h.send_json({"type": "add_bot"})
-        for name in case.get("ready", ()):
-            socks[name].send_json({"type": "lobby_ready"})
-        if case.get("started"):
-            h.send_json({"type": "start_game"})
-        clock["v"] += case.get("wait", 0.0)
         room = srv.rooms[code]
         seated = list(socks)
         for name in seated:                       # everything so far is setup
@@ -189,73 +182,26 @@ def _run_room(env, clock, case: dict, which: str) -> dict:
     return out
 
 
-BO = {"name": "Bo", "is_bot": False}
-ZED = {"name": "Zed", "is_bot": False}
-# The host sits at 0 and Bo, the host's partner, at 2.
+# The host sits at 0 and Bo, the host's partner, at 2; bots play 1 and 3.
 ROOM_CASES = {
-    "a self move": dict(actor="Bo", old={"type": "swap_seats", "a": 2, "b": 3},
-                        new={"type": "table_move", "seat": 3}),
-    "the host's self move": dict(actor="Host", old={"type": "swap_seats", "a": 0, "b": 1},
-                                 new={"type": "table_move", "seat": 1}),
-    "a self move onto a taken seat": dict(actor="Bo", old={"type": "swap_seats", "a": 2, "b": 0},
-                                          new={"type": "table_move", "seat": 0}),
-    "the host moves another": dict(
-        actor="Host", old={"type": "swap_seats", "a": 2, "b": 1, "expect": [BO, None]},
-        new={"type": "table_move", "from": 2, "seat": 1, "expect": [BO, None]}),
-    "the host move of a changed seat": dict(
-        actor="Host", old={"type": "swap_seats", "a": 2, "b": 1, "expect": [ZED, None]},
-        new={"type": "table_move", "from": 2, "seat": 1, "expect": [ZED, None]}),
-    "a guest moving the host": dict(actor="Bo", old={"type": "swap_seats", "a": 0, "b": 1},
-                                    new={"type": "table_move", "from": 0, "seat": 1}),
-    "a move after Start": dict(actor="Bo", ready=("Bo",), old={"type": "swap_seats", "a": 2, "b": 3},
-                               new={"type": "table_move", "seat": 3}),
-    "a Start": dict(actor="Bo", old={"type": "lobby_ready"}, new={"type": "table_start"}),
-    "a Start taken back": dict(actor="Bo", ready=("Bo",), old={"type": "lobby_ready", "on": False},
-                               new={"type": "table_start", "on": False}),
-    "the last Start starts": dict(actor="Host", ready=("Bo",), old={"type": "lobby_ready"},
-                                  new={"type": "table_start"}),
-    "Start now alone with bots": dict(actor="Host", humans=(), bots=3,
-                                      old={"type": "start_game"}, new={"type": "table_start_now"}),
-    "Start now once its wait is over": dict(actor="Host", wait=31.0, old={"type": "start_game"},
-                                            new={"type": "table_start_now"}),
-    "Start now by a guest": dict(actor="Bo", wait=31.0, old={"type": "start_game"},
-                                 new={"type": "table_start_now"}),
-    "Start now in play": dict(actor="Host", started=True, old={"type": "start_game"},
+    "Start now in play": dict(actor="Host", old={"type": "start_game"},
                               new={"type": "table_start_now"}, actor_ends="error"),
-    "a Start in play": dict(actor="Bo", started=True, old={"type": "lobby_ready"},
+    "a Start in play": dict(actor="Bo", old={"type": "lobby_ready"},
                             new={"type": "table_start"}, actor_ends="error"),
-    "Allow joiners off": dict(actor="Host", old={"type": "allow_joiners", "on": False},
-                              new={"type": "table_allow_joiners", "on": False}),
     "Allow joiners by a guest": dict(actor="Bo", old={"type": "allow_joiners", "on": False},
                                      new={"type": "table_allow_joiners", "on": False}),
-    "Allow joiners in play": dict(actor="Host", started=True,
-                                  old={"type": "allow_joiners", "on": False},
+    "Allow joiners in play": dict(actor="Host", old={"type": "allow_joiners", "on": False},
                                   new={"type": "table_allow_joiners", "on": False}),
-    "a starting level": dict(actor="Host", ready=("Bo",),
-                             old={"type": "set_start_level", "start_level": "5"},
-                             new={"type": "table_start_level", "start_level": "5"}),
-    "a starting level by a guest": dict(actor="Bo",
-                                        old={"type": "set_start_level", "start_level": "5"},
-                                        new={"type": "table_start_level", "start_level": "5"}),
-    "lobby chat": dict(actor="Bo", old={"type": "chat", "text": " hi all "},
-                       new={"type": "table_chat", "text": " hi all "}),
-    "chat in play": dict(actor="Bo", started=True, old={"type": "chat", "text": "gl"},
+    "chat in play": dict(actor="Bo", old={"type": "chat", "text": "gl"},
                          new={"type": "table_chat", "text": "gl"}),
-    "a lobby Leave": dict(actor="Bo", actor_ends="left", old={"type": "leave_room"},
-                          new={"type": "table_leave"}),
-    "the host's lobby Leave": dict(actor="Host", end_from="Bo", actor_ends="left",
-                                   old={"type": "leave_room"}, new={"type": "table_leave"}),
-    "a Leave in play": dict(actor="Bo", started=True, actor_ends="left",
+    "a Leave in play": dict(actor="Bo", actor_ends="left",
                             old={"type": "leave_room"}, new={"type": "table_leave"}),
-    "a Join": dict(actor="Cy", outsider=True, actor_ends="room",
-                   old={"type": "join_room", "room": "<CODE>", "name": "Cy"},
-                   new={"type": "table_join", "code": "<CODE>", "name": "Cy"}),
     "a Join into a bot's seat in play": dict(
-        actor="Cy", outsider=True, started=True, actor_ends="state",
+        actor="Cy", outsider=True, actor_ends="state",
         old={"type": "join_room", "room": "<CODE>", "name": "Cy", "seat": 3},
         new={"type": "table_join", "code": "<CODE>", "name": "Cy", "seat": 3}),
     "a Join into a taken seat in play": dict(
-        actor="Cy", outsider=True, started=True, actor_ends="error",
+        actor="Cy", outsider=True, actor_ends="error",
         old={"type": "join_room", "room": "<CODE>", "name": "Cy", "seat": 2},
         new={"type": "table_join", "code": "<CODE>", "name": "Cy", "seat": 2}),
     "a peek": dict(actor="Cy", outsider=True, actor_ends="room_seats",
@@ -270,34 +216,20 @@ ROOM_CASES = {
 # What the actor's frames must show, so that two runs agreeing on nothing
 # happening cannot pass.
 ROOM_SEES = {
-    "a self move": '"seat": 3', "the host's self move": '"seat": 1',
-    "a self move onto a taken seat": "Pick an empty seat.",
-    "the host moves another": '"name": "Bo", "seat": 1',
-    "the host move of a changed seat": '"seat_changed"',
-    "a guest moving the host": "Only the host can move other players.",
-    "a move after Start": "You tapped Start, so your seat is set.",
-    "a Start": '"ready": [2]', "a Start taken back": '"ready": []',
-    "the last Start starts": '"type": "state"', "Start now alone with bots": '"type": "state"',
-    "Start now once its wait is over": '"type": "state"',
-    "Start now by a guest": "Only the host can start.",
     "Start now in play": "Game already started.", "a Start in play": "Game already started.",
-    "Allow joiners off": '"allow_joiners": false',
     "Allow joiners by a guest": '"not_opener"', "Allow joiners in play": '"type": "state"',
-    "a starting level": '"start_level": "5"',
-    "a starting level by a guest": "Only the host can set the starting level.",
-    "lobby chat": '"text": "hi all"', "chat in play": '"text": "gl"',
-    "a lobby Leave": '"left"', "the host's lobby Leave": '"left"', "a Leave in play": '"left"',
-    "a Join": "Cy joined", "a Join into a bot's seat in play": "Cy took Bot 3's seat",
+    "chat in play": '"text": "gl"', "a Leave in play": '"left"',
+    "a Join into a bot's seat in play": "Cy took Bot 3's seat",
     "a Join into a taken seat in play": "seat_unavailable", "a peek": '"room_seats"',
     "a peek at an unknown code": "room_not_found",
 }
 
 
 @pytest.mark.parametrize("name", list(ROOM_CASES))
-def test_a_room_hears_the_old_name_and_the_canonical_one_alike(wsenv, clock, name):  # noqa: F811
+def test_a_room_hears_the_old_name_and_the_canonical_one_alike(wsenv, name):  # noqa: F811
     case = ROOM_CASES[name]
-    old = _run_room(wsenv, clock, case, "old")
-    new = _run_room(wsenv, clock, case, "new")
+    old = _run_room(wsenv, case, "old")
+    new = _run_room(wsenv, case, "new")
     assert ROOM_SEES[name] in " ".join(old[case["actor"]])
     assert new == old
 
@@ -394,59 +326,6 @@ def test_the_queue_hears_the_old_name_and_the_canonical_one_alike(wsenv, name): 
     assert new == old
 
 
-# ---------------------------------------------- Start now waits in a room too
-def test_a_rooms_table_start_now_waits_30_s_after_the_last_arrival_and_start_game_does_not(
-        client, clock):  # noqa: F811
-    from shengji.api import server as srv
-
-    with client.websocket_connect("/ws") as h, client.websocket_connect("/ws") as b, \
-            client.websocket_connect("/ws") as c:
-        h.send_json({"type": "create_room", "name": "Host"})
-        code = _drain(h, "room")["room"]
-        clock["v"] += 100.0                      # the host alone has no wait
-        b.send_json({"type": "join_room", "room": code, "name": "Bo"})
-        _drain(b, "room")
-        h.send_json({"type": "table_start_now"})
-        assert _drain(h, "error") == {"type": "error", "code": "too_soon",
-                                      "message": tables.TOO_SOON}
-        clock["v"] += 20.0
-        c.send_json({"type": "join_room", "room": code, "name": "Cy"})
-        _drain(c, "room")
-        clock["v"] += 15.0                       # 35 s after Bo, 15 s after Cy
-        h.send_json({"type": "table_start_now"})
-        assert _drain(h, "error")["code"] == "too_soon"
-        assert srv.rooms[code].game is None
-        clock["v"] += 15.0
-        h.send_json({"type": "table_start_now"})
-        assert _drain(h, "state", tries=400)["you"] == 0
-        assert srv.rooms[code].game is not None
-
-
-def test_a_rooms_start_game_still_starts_at_once(client, clock):  # noqa: F811
-    from shengji.api import server as srv
-
-    with client.websocket_connect("/ws") as h, client.websocket_connect("/ws") as b:
-        h.send_json({"type": "create_room", "name": "Host"})
-        code = _drain(h, "room")["room"]
-        b.send_json({"type": "join_room", "room": code, "name": "Bo"})
-        assert _drain(h, "room")["start_now_in"] == 30.0
-        h.send_json({"type": "start_game"})
-        assert _drain(h, "state", tries=400)["you"] == 0
-        assert srv.rooms[code].game is not None
-
-
-def test_the_rooms_too_soon_is_the_queues_refusal_word_for_word():
-    async def go():
-        env = Env()
-        for uid in (1, 2):
-            await env.join(uid)
-            await env.send(uid, "queue_wait_players")
-        await env.send(1, "table_start_now")
-        return env.conns[1].last("error")
-
-    assert asyncio.run(go()) == {"type": "error", "code": "too_soon", "message": tables.TOO_SOON}
-
-
 # ------------------------------------------ a table_* message reaches the room
 def test_table_messages_from_a_room_socket_reach_the_room_not_the_queue(client):  # noqa: F811
     from shengji.api import server as srv
@@ -454,21 +333,42 @@ def test_table_messages_from_a_room_socket_reach_the_room_not_the_queue(client):
     with client.websocket_connect("/ws") as h, client.websocket_connect("/ws") as b:
         h.send_json({"type": "create_room", "name": "Host"})
         code = _drain(h, "room")["room"]
-        b.send_json({"type": "join_room", "room": code, "name": "Bo"})
-        _drain(b, "room")
+        b.send_json({"type": "join_room", "room": code, "name": "Bo", "seat": 2})
+        _drain(b, "state", tries=400)
         b.send_json({"type": "table_chat", "text": "hello"})
-        assert _next_where(h, "chat", lambda m: m["seat"] == 2)["text"] == "hello"
+        assert _next_where(h, "chat", lambda m: m["seat"] == 2,
+                           tries=400)["text"] == "hello"
+        # a pre-game control is the room's refusal, not the queue's not_seated
         b.send_json({"type": "table_move", "seat": 3})
-        _next_where(h, "room", lambda m: [p["seat"] for p in m["players"]] == [0, 3])
-        b.send_json({"type": "table_start"})
-        _next_where(h, "room", lambda m: m["ready"] == [3])
-        h.send_json({"type": "table_start_level", "start_level": "4"})
-        _next_where(b, "room", lambda m: m["start_level"] == "4")
+        assert _drain(b, "error", tries=400) == {"type": "error",
+                                                 "message": "Game already started."}
         h.send_json({"type": "table_allow_joiners", "on": False})
-        _next_where(b, "room", lambda m: m["allow_joiners"] is False)
+        h.send_json({"type": "table_chat", "text": "after"})   # handled in order
+        _next_where(h, "chat", lambda m: m["text"] == "after", tries=400)
+        assert srv.rooms[code].allow_joiners is False
         b.send_json({"type": "table_leave"})
-        assert _drain(b, "left") == {"type": "left"}
-        assert [sd.name for sd in srv.rooms[code].seats if sd is not None] == ["Host"]
+        assert _drain(b, "left", tries=400) == {"type": "left"}
+        # in play the seat stays, the bot covering it
+        assert srv.rooms[code].seats[2].left_by_choice
+
+
+@pytest.mark.parametrize("kind", sorted(tables.LOBBY))
+def test_a_running_rooms_pre_game_controls_are_refused(client, kind):  # noqa: F811
+    """A room exists only once its game has started, so each pre-game
+    control, by its old name or its canonical one, is refused there."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as h:
+        h.send_json({"type": "create_room", "name": "Host"})
+        code = _drain(h, "room")["room"]
+        _drain(h, "state", tries=400)
+        before = (srv.rooms[code].host, srv.rooms[code].start_level,
+                  [(sd.name, sd.is_bot) for sd in srv.rooms[code].seats])
+        h.send_json({"type": kind, "seat": 1, "a": 0, "b": 1, "start_level": "5"})
+        assert _drain(h, "error", tries=400) == {"type": "error",
+                                                 "message": "Game already started."}
+        assert (srv.rooms[code].host, srv.rooms[code].start_level,
+                [(sd.name, sd.is_bot) for sd in srv.rooms[code].seats]) == before
 
 
 # ------------------------------------------------------- the legacy counters
@@ -486,19 +386,22 @@ def test_old_names_count_at_the_socket_and_canonical_names_do_not(client, monkey
         h.send_json({"type": "create_room", "name": "Host"})
         code = _drain(h, "room")["room"]
         b.send_json({"type": "table_join", "code": code, "name": "Bo"})
-        _drain(b, "room")
+        _drain(b, "state", tries=400)
         b.send_json({"type": "table_chat", "text": "one"})
-        _drain(h, "chat")
+        _drain(h, "chat", tries=400)
         b.send_json({"type": "chat", "text": "two"})
-        _drain(h, "chat")
+        _drain(h, "chat", tries=400)
+        # a retired control is counted and refused
         h.send_json({"type": "add_bot"})
-        _drain(h, "room")
+        assert _drain(h, "error", tries=400) == {"type": "error", "code": "retired",
+                                                 "message": tables.RETIRED_MESSAGE}
+        # an old pre-game name is counted, a canonical one is not; both refused
         b.send_json({"type": "lobby_ready"})
-        _drain(h, "room")
+        assert _drain(b, "error", tries=400)["message"] == "Game already started."
         b.send_json({"type": "table_start", "on": False})
-        _drain(h, "room")
+        assert _drain(b, "error", tries=400)["message"] == "Game already started."
         h.send_json({"type": "start_game"})
-        _drain(h, "state", tries=400)
+        assert _drain(h, "error", tries=400)["message"] == "Game already started."
     assert _legacy(client) == {**zero, "create_room": 1, "chat": 1, "add_bot": 1,
                                "lobby_ready": 1, "start_game": 1}
     # every value is a plain count: no codes, ids or text
@@ -586,24 +489,18 @@ def test_the_queue_rewrites():
 
 
 def test_the_room_rewrites():
-    def r(msg, seat=2):
-        return tables.for_room(msg, seat)
+    r = tables.for_room
 
-    assert r({"type": "table_move", "seat": 3}) == {"type": "swap_seats", "seat": 3,
-                                                    "a": 2, "b": 3}
-    assert r({"type": "table_move", "seat": 3, "from": 1, "expect": [None, None]}) == {
-        "type": "swap_seats", "seat": 3, "from": 1, "expect": [None, None], "a": 1, "b": 3}
-    assert r({"type": "table_start"}) == {"type": "lobby_ready"}
-    assert r({"type": "table_start", "on": False}) == {"type": "lobby_ready", "on": False}
-    assert r({"type": "table_start_bots", "on": False}) == {"type": "lobby_ready", "on": True}
-    assert r({"type": "table_start_now"}) == {"type": "start_game"}
     assert r({"type": "table_allow_joiners", "on": True}) == {"type": "allow_joiners", "on": True}
-    assert r({"type": "table_start_level", "start_level": "3"}) == {
-        "type": "set_start_level", "start_level": "3"}
     assert r({"type": "table_chat", "text": "hi"}) == {"type": "chat", "text": "hi"}
     assert r({"type": "table_leave"}) == {"type": "leave_room"}
-    assert r({"type": "table_join", "code": "ROOM"})["type"] == "join_room"
-    assert r({"type": "table_peek", "code": "ROOM"})["type"] == "peek_room"
+    assert r({"type": "table_join", "code": "ROOM"}) == {"type": "join_room", "code": "ROOM",
+                                                         "room": "ROOM"}
+    assert r({"type": "table_peek", "code": "ROOM"}) == {"type": "peek_room", "code": "ROOM",
+                                                         "room": "ROOM"}
+    # a pre-game control stays as it is, for the room to refuse
+    for kind in tables.LOBBY:
+        assert r({"type": kind, "seat": 3}) == {"type": kind, "seat": 3}
 
 
 def test_legacy_names():
@@ -615,3 +512,4 @@ def test_legacy_names():
     assert tables.legacy_name({"type": "play"}) is None
     assert tables.legacy_name({"type": ["chat"]}) is None
     assert not tables.CANONICAL & tables.LEGACY
+    assert all(tables.legacy_name({"type": t}) == t for t in tables.RETIRED)

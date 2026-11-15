@@ -23,16 +23,6 @@ describe("one consequence line per place a leave starts", () => {
     expect(line({ kind: "duo", partner: "Alexandrina Smith", opener: false })).toBe("Alexandrin… keeps the table.");
   });
 
-  it("a room's host controls pass on, and an empty room closes", () => {
-    expect(line({ kind: "room", others: ["Alice", "Li"], host: true }))
-      .toBe("The table stays open; Alice can start it.");
-    expect(line({ kind: "room", others: ["Alice"], host: false })).toBe("The table stays open.");
-    expect(line({ kind: "room", others: [], host: true })).toBe("The room closes.");
-    for (const others of [[], ["Alice"]]) {
-      expect(leaveCopy({ kind: "room", others, host: true }).title).toBe("Leave the table?");
-    }
-  });
-
   it("a ranked round keeps 'at best a draw'; a casual one is free and has no line", () => {
     expect(line({ kind: "game", ranked: true })).toBe("This round counts as at best a draw.");
     expect(line({ kind: "game", ranked: false })).toBeNull();
@@ -56,7 +46,7 @@ describe("one consequence line per place a leave starts", () => {
 
   it("a free leave never says Free: a round end keeps its result, and practice says the game ends", () => {
     expect(line({ kind: "game", ranked: true, betweenRounds: true }, true)).toBe("This round's result is kept.");
-    for (const ctx of [{ kind: "queue", others: ["Alice"] }, { kind: "room", others: [], host: true }] as LeaveContext[]) {
+    for (const ctx of [{ kind: "queue", others: ["Alice"] }, { kind: "duo", partner: "Alice", opener: true }] as LeaveContext[]) {
       expect(line(ctx)).not.toMatch(/Free/);
     }
     expect(line({ kind: "game", ranked: false, practice: true })).toBe("This offline game ends.");

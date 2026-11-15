@@ -112,11 +112,10 @@ describe("the app's edge swipe back", () => {
     expect(host.querySelector(".table-screen")).not.toBeNull();
     expect(gesture).toEqual([true, false, true, false]);
 
-    // the game over, back in the room: on
-    act(() => ws.deliver({ type: "room", room: "ABCD", you: 0, host: 0, start_level: "2",
-                           players: [{ seat: 0, name: "Me", is_bot: false, connected: true }] }));
+    // the table left, back on Play: on
+    act(() => ws.deliver({ type: "left" }));
     await flush();
-    expect(host.querySelector(".tp-room")).not.toBeNull();
+    expect(host.querySelector(".lobby-panel")).not.toBeNull();
     expect(gesture).toEqual([true, false, true, false, true]);
   });
 

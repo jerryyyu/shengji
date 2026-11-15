@@ -1,17 +1,14 @@
-// The table panel's one model, from either backend: a room before its game
-// (`fromRoom`) or the queue's table (`fromQueue`). The panel draws only the
-// model and answers only `TableAction`s; each backend's dispatcher turns an
-// action into its own frame, with that backend's precondition (a room's
-// `expect`, a table's sitting token) added there.
+// The table panel's one model, from the queue's table (`fromQueue`). The
+// panel draws only the model and answers only `TableAction`s; the queue's
+// dispatcher turns an action into its frame, with the table's sitting token
+// added there.
 import type { LeaveContext } from "../components/leaveCopy";
-import type { ChatMsg, Rank, RoomMsg } from "../protocol";
-import { conn } from "../ws";
+import type { ChatMsg, Rank } from "../protocol";
 import { BOT_FILL_MS, partnerName, queue, tableDuo } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
-  JUST_JOINED_MS, OFFER_SECS, START_NOW_SECS, duoStartLabel, joinLabel, joinTitle, moveTargets, ownBotsAt,
-  ownTitle, panelKind, roomReadyLine, roomTitle, roomWaitingLabel, sharedStatusLine, sharedTitle, shortName,
-  startLabel, stillHereLine,
+  JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinLabel, joinTitle, moveTargets, ownBotsAt, ownTitle, panelKind,
+  sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
@@ -35,7 +32,7 @@ export interface SeatItem {
   picked?: boolean;
 }
 
-/** Everything a table does, the same names for both backends. */
+/** Everything a table does. */
 export type TableAction =
   | { type: "start" }
   | { type: "unready" }
@@ -97,7 +94,7 @@ export type MoverSeat = { name: string; sit?: string | null; pair?: boolean } | 
 /** A panel is its title, its seats, at most one live status line, its rows
  *  and its buttons; explanations live in How to play and the coach. */
 export interface TableModel {
-  kind: Exclude<PanelKind, "play"> | "room";
+  kind: Exclude<PanelKind, "play">;
   /** The mode tag above the title; a ranked table has none. */
   tag?: "Casual";
   title: string;
@@ -299,8 +296,8 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       };
     }
     const ring = q.pending === "start" ? null : botsRing(t.timer?.at ?? null, now);
-    // the opener's Start now, 30 s after the latest arrival, as in a room;
-    // everyone else's button stays Start
+    // the opener's Start now, 30 s after the latest arrival; everyone
+    // else's button stays Start
     const startNow = q.opener && t.startNowAt !== null && now >= t.startNowAt;
     return {
       ...base, kind, rows, chat: { messages: q.tableChat, you: t.you },
@@ -326,112 +323,6 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   return null;
 }
 
-/** The opener's Start now deadline, as a local time, from the frame's
- *  `start_now_in`; each frame restarts it. */
-export function roomStartNowAt(room: RoomMsg, at: number): number | null {
-  return room.start_now_in !== undefined ? at + room.start_now_in * 1000 : null;
-}
-
-const roomOpener = (room: RoomMsg) => (room.opener ?? room.host) === room.you;
-const roomOthers = (room: RoomMsg) => room.players.filter((pl) => !pl.is_bot && pl.seat !== room.you);
-
-/** Whether the room's Start now is counting down: the opener's, once
- *  others sit. */
-export function roomCounting(room: RoomMsg, startNowAt: number | null): boolean {
-  return roomOpener(room) && roomOthers(room).length > 0 && startNowAt !== null;
-}
-
-/** A room's seats from its frame. Before your Start an empty seat moves you
- *  there; the server refuses it once you tapped. With `opener`, the opener
- *  taps another person, then an empty seat. */
-function roomSeats(room: RoomMsg, ready: Set<number>, move: boolean, opener: boolean,
-                   picked: number | null): ModelSeat[] {
-  const me = room.players.find((pl) => pl.seat === room.you);
-  return [0, 1, 2, 3].map((at): ModelSeat => {
-    const pl = room.players.find((x) => x.seat === at);
-    const ours = (at - room.you + 4) % 2 === 0;
-    if (!pl && opener && picked !== null) {
-      const name = room.players.find((x) => x.seat === picked)?.name ?? "";
-      return { at, look: "open", name: "Open seat", sub: "",
-               label: `Open seat, ${teamWord(ours)}. Move ${name} here`, act: { type: "move_to", at } };
-    }
-    if (!pl) {
-      if (move && me) {
-        return { at, look: "open", name: "Open seat", sub: "",
-                 label: `Open seat, ${teamWord(ours)}. Move here`, act: { type: "move", seat: at } };
-      }
-      return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
-    }
-    const tick = ready.has(at);
-    if (at === room.you) {
-      return { at, look: "you", name: "You", sub: "", tick, label: ["You", tick ? "ready" : null].filter(Boolean).join(", ") };
-    }
-    if (pl.is_bot) return { at, look: "bot", name: shortName(pl.name), sub: "", label: `${pl.name}, bot, ${teamWord(ours)}` };
-    const sub = pl.connected ? "" : "Reconnecting";
-    const item: ModelSeat = { at, look: "person", name: shortName(pl.name), sub, tick,
-                              label: [pl.name, tick ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
-    if (!opener) return item;
-    return { ...item, picked: picked === at, act: { type: "pick_person", at },
-             label: `${item.label}. ${picked === at ? "Moving; tap again to cancel" : "Move"}` };
-  });
-}
-
-/** The people who stay when you leave the room, in seat order: the first
- *  of them takes the opener's controls, as the server hands them on. */
-function staying(room: RoomMsg): string[] {
-  return room.players.filter((p) => !p.is_bot && p.seat !== room.you)
-    .sort((a, b) => a.seat - b.seat).map((p) => p.name);
-}
-
-/** The room's seats for the opener's move: people by name; a bot's seat
- *  and your own read blank, so neither can be picked. */
-export function roomMovers(room: RoomMsg): MoverSeat[] {
-  return [0, 1, 2, 3].map((at): MoverSeat => {
-    const pl = room.players.find((x) => x.seat === at && !x.is_bot && at !== room.you);
-    return pl ? { name: pl.name } : room.players.some((x) => x.seat === at) ? { name: "" } : null;
-  });
-}
-
-/** A room before its game, as a kind of the same panel: the table's rows,
- *  the chat row, the seats, and Start for everyone. Once others sit, the
- *  opener also gets Start now when `start_now_in` runs out. */
-export function fromRoom(room: RoomMsg, chat: ChatMsg[], { now, picked }: PanelState,
-                         startNowAt: number | null): TableModel {
-  const opener = roomOpener(room);
-  const ranked = !!(room.matched || room.ranked);
-  const ready = new Set(room.ready ?? []);
-  const youReady = ready.has(room.you);
-  const others = roomOthers(room);
-  const left = roomCounting(room, startNowAt) ? Math.max(0, startNowAt! - now) : null;
-  let primary: TableButton;
-  if (left !== null && left <= 0) {
-    primary = { label: "Start now", disabled: false, act: { type: "start_now" } };
-  } else if (!youReady) {
-    primary = { label: others.length ? "Start" : "Start with bots", disabled: false, act: { type: "start" } };
-  } else if (left !== null) {
-    primary = { label: "Start now", disabled: true, ring: { left: left / 1000, total: START_NOW_SECS } };
-  } else {
-    const label = roomWaitingLabel(room);
-    primary = { label, disabled: label === "Starting…", waiting: true, act: { type: "unready" } };
-  }
-  const readyLine = roomReadyLine(room);
-  return {
-    kind: "room",
-    tag: ranked ? undefined : "Casual",
-    title: roomTitle(room),
-    status: readyLine ? { text: readyLine } : undefined,
-    seats: roomSeats(room, ready, !youReady, opener, opener ? picked : null),
-    you: room.you,
-    rows: { code: room.room, ranked, opener, level: room.start_level, joiners: room.allow_joiners },
-    waitSwitch: null,
-    chat: { messages: chat, you: room.you },
-    primary,
-    secondary: { label: "Leave", disabled: false, act: { type: "ask_leave" } },
-    leave: { kind: "room", others: staying(room), host: opener },
-    movers: roomMovers(room),
-  };
-}
-
 /** The queue's dispatcher: each action through the store, which keeps the
  *  pending state and adds the table's sequence and sitting tokens. */
 export function queueSend(a: TableAction): void {
@@ -453,36 +344,4 @@ export function queueSend(a: TableAction): void {
     case "offer_wait": return queue.offerWait();
     case "offer_pick": return queue.offerPick(a.seat);
   }
-}
-
-/** A room's dispatcher: the same actions as the room's frames. A move
- *  names who it expects in the seat it moves from (`expect`), and your own
- *  move is marked in `ownMove` so the seat change it causes is not told as
- *  the opener's. The queue's own actions mean nothing to a room. */
-export function roomSend(room: RoomMsg, ownMove: { current: boolean }): (a: TableAction) => void {
-  return (a) => {
-    switch (a.type) {
-      case "start": conn.send({ type: "table_start", on: true }); return;
-      case "unready": conn.send({ type: "table_start", on: false }); return;
-      case "start_now": conn.send({ type: "table_start_now" }); return;
-      case "move": {
-        const me = room.players.find((pl) => pl.seat === room.you);
-        if (!me) return;
-        ownMove.current = true;
-        conn.send({ type: "table_move", seat: a.seat, expect: [{ name: me.name, is_bot: me.is_bot }, null] });
-        return;
-      }
-      case "move_other": {
-        const pl = room.players.find((x) => x.seat === a.from);
-        if (!pl) return;
-        conn.send({ type: "table_move", seat: a.to, from: a.from, expect: [{ name: pl.name, is_bot: pl.is_bot }, null] });
-        return;
-      }
-      case "leave": conn.send({ type: "table_leave" }); return;
-      case "chat": conn.send({ type: "table_chat", text: a.text }); return;
-      case "start_level": conn.send({ type: "table_start_level", start_level: a.level }); return;
-      case "allow_joiners": conn.send({ type: "table_allow_joiners", on: a.on }); return;
-      default: return;
-    }
-  };
 }

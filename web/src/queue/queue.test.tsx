@@ -1267,7 +1267,7 @@ describe("one code for rooms and tables", () => {
     expect(window.location.search).toBe("");
   });
 
-  it("share links are ?code= links, for a Duo's table and for a room", async () => {
+  it("share links are ?code= links", async () => {
     Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
     await renderApp();
     click(button("Duo"));
@@ -1275,12 +1275,6 @@ describe("one code for rooms and tables", () => {
     click(button("Invite link", panel()!));
     await settle();
     expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
-    say({ type: "queue_state", queued: false, count: 0 });
-    say({ type: "room", room: "WXYZ", you: 0, host: 0, start_level: "2",
-          players: [{ seat: 0, name: "Jerry", is_bot: false, connected: true }] });
-    click(button("Invite link", q(".tp-room")!));
-    await settle();
-    expect(clipboard.at(-1)).toBe(`${window.location.origin}/?code=WXYZ`);
   });
 });
 

@@ -500,7 +500,7 @@ def test_a_socket_left_open_across_its_account_delete_is_signed_out(api):
         # The same socket leaves and opens a new table: a guest seat now.
         ws.send_json({"type": "leave_room"})
         ws.send_json({"type": "create_room"})
-        again = _drain(ws, "room")
+        again = _drain(ws, "room", tries=400)
         assert again["room"] != room["room"]
         assert again["players"][0]["name"] == "Player"
         assert srv.rooms[again["room"]].seats[0].user_id is None
@@ -537,12 +537,12 @@ def test_list_pages_through_games_that_share_a_start_second(api):
 
 
 def _ranked_table(srv, users, code="RANK"):
-    """A Ranked table whose signed-in seats are connected, so its rounds are
-    rated through the real ratings hooks."""
+    """A queue-matched table whose signed-in seats are connected, so its
+    rounds are rated through the real ratings hooks."""
     from shengji.api import ratings
 
     t = Table(srv, code=code, users=users)
-    t.room.ranked = True
+    t.room.matched = True
     for seat in t.room.seats:
         seat.connected = True
     t.start_round(first=True)

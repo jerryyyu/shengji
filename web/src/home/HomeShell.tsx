@@ -161,7 +161,7 @@ function useTabFade(body: { current: HTMLElement | null }, key: string): void {
 /** The home screen's frame: the active tab's page with the tabs above it
  *  (wide) or below it (a phone, where a sideways swipe on the page moves to
  *  the tab beside it). A game, a replay and How to play are drawn without it.
- *  `seatedAt` names a game or room you sit at, for the Your table pill that
+ *  `seatedAt` names a game you sit at, for the Your table pill that
  *  the top bar (wide) or the page's title row (a phone) shows on other tabs. */
 export default function HomeShell({ active, section, seatedAt = null, children }: {
   active: Tab; section?: MeSection; seatedAt?: SeatedAt; children: ReactNode;

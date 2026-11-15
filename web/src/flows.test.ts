@@ -65,7 +65,7 @@ const LEAVE_SITES = [
   "components/RoundEndModal.tsx", // Leave game on the round end
   "components/Table.tsx", // Leave on the joining-after-this-trick pill
   "queue/store.ts", // queue.leave(): the queue's own leave, which the queue sites call
-  "queue/tableModel.ts", // the panel's Leave, through either backend's dispatcher (queue and room kinds)
+  "queue/tableModel.ts", // the panel's Leave, through the queue's dispatcher
   "ws.ts", // leaveToLobby: the socket's own leave, keeping the connection
 ];
 

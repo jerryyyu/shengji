@@ -26,7 +26,7 @@ import { showToast } from "../toast";
 
 interface LobbyProps {
   status: ConnStatus;
-  /** The room this socket sits in before its game: its panel takes Play's place. */
+  /** The room this socket sits in before its game's first state. */
   room?: RoomMsg | null;
   /** A link waits while App asks whether to leave the table you sit at. */
   holdInvite?: boolean;
@@ -92,7 +92,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
   const offline = useOffline();
   const offlineTable = useOfflineTable(offline);
   // The test room's Create and Join each send one request and then wait:
-  // the button says so at once and every start button holds until the room
+  // the button says so at once and every start button holds until the game
   // arrives (the lobby goes away), an error comes back, the connection the
   // request went out on is replaced, or START_TIMEOUT_MS passes. Any of the
   // last three leaves the buttons ready for a deliberate retry.
@@ -418,7 +418,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
   const screenRef = useRef<HTMLDivElement | null>(null);
   // a panel that opens puts the page back at its top, where the panel is
   const joinUp = joinView !== null && !seated && !offline;
-  const panelUp = offline ? offlineTable : (seated || joinUp) && !stalled;
+  const panelUp = offline ? offlineTable : (queued || joinUp) && !stalled;
   useEffect(() => {
     if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
   }, [panelUp]);

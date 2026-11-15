@@ -1,9 +1,6 @@
-// A room before its game is a kind of the Play tab's table panel: its code
-// and Invite link, Starting level, Allow joiners, the chat row, seats you
-// move between until your Start, and the opener's Start now. Room links land
-// in it, and a link opened while seated elsewhere asks to leave first. Play
-// tables get the same rows: every one has a code with its Invite link and
-// the chat row before its game, alone too.
+// Room links open the Join panel, and a link opened while seated elsewhere
+// asks to leave first. Play tables have their rows: every one has a code
+// with its Invite link and the chat row before its game, alone too.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -99,226 +96,53 @@ const click = (b: HTMLElement | null | undefined) => {
   if (!b) throw new Error("no such button");
   act(() => b.click());
 };
-const panel = () => q(".tp-room");
-const primary = () => panel()!.querySelector<HTMLButtonElement>(".tp-primary")!;
 
 type P = { seat: number; name: string; is_bot?: boolean; connected?: boolean };
 function room(over: Record<string, unknown> = {}, players: P[] = [{ seat: 0, name: "Jerry" }]) {
   return {
-    type: "room", room: "WXYZ", you: 0, host: 0, opener: 0, start_level: "2", ready: [],
-    allow_joiners: true,
+    type: "room", room: "WXYZ", you: 0, host: 0, opener: 0, start_level: "2", allow_joiners: true,
     players: players.map((p) => ({ is_bot: false, connected: true, ...p })),
     ...over,
   };
 }
 
-describe("a room is a kind of the table panel on Play", () => {
-  it("a Start is taken back in a room: Waiting for Jerry sends table_start off", async () => {
+describe("a room whose game is starting", () => {
+  it("holds Play still until the game's first state: no panel, Play and Duo off, the room's mode", async () => {
     await renderApp();
-    const players = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
-    say(room({ you: 2, ready: [2] }, players));
-    expect(primary().textContent).toBe("Waiting for Jerry");
-    expect(primary().className).toContain("waiting");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", on: false });
-    say(room({ you: 2, ready: [] }, players));
-    expect(primary().textContent).toBe("Start");
-  });
-
-  it("the room's opener moves a person: tap them, tap a seat, confirm once; the moved one hears it", async () => {
-    await renderApp();
-    const players = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
-    say(room({}, players));
-    const alice = () => [...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat")]
-      .find((b) => b.getAttribute("aria-label")?.startsWith("Alice"))!;
-    click(alice());
-    expect(alice().className).toContain("picked");
-    const dest = [...panel()!.querySelectorAll<HTMLButtonElement>("button.tp-seat.open")]
-      .map((b) => b.getAttribute("aria-label"));
-    expect(dest).toEqual(["Open seat, other team. Move Alice here", "Open seat, other team. Move Alice here"]);
-    click(panel()!.querySelector<HTMLButtonElement>("button.tp-seat.open"));
-    expect(q("[role='alertdialog'] h2")?.textContent).toBe("Move Alice here?");
-    click(button("Move", q("[role='alertdialog']")!));
-    expect(lastSent()).toEqual({ type: "table_move", seat: 1, from: 2, expect: [{ name: "Alice", is_bot: false }, null] });
-    // a joiner sees no person as a button
-    say(room({ you: 2 }, players));
-    expect([...panel()!.querySelectorAll("button.tp-seat")].every((b) => b.classList.contains("open"))).toBe(true);
-    // and is told when the opener moves them
-    say(room({ you: 1 }, [{ seat: 0, name: "Jerry" }, { seat: 1, name: "Alice" }]));
+    expect(button("Play")?.disabled).toBe(false);
+    say(room({ matched: true }));
     await settle();
-    expect(q(".toast")?.textContent).toBe("Jerry moved you to the other team.");
-  });
-
-  it("the opener's casual table: code, Invite link, Starting level, Allow joiners, chat; no room screen", async () => {
-    await renderApp();
-    say(room());
-    await settle();
-    const p = panel()!;
-    expect(p).not.toBeNull();
-    expect(q(".room-screen")).toBeNull();
-    // no kicker; a casual table's mode tag sits above the title
-    expect(p.querySelector(".tp-kicker")).toBeNull();
-    expect(p.querySelector(".tp-tag")?.textContent).toBe("Casual");
-    expect(p.querySelector(".tp-title")?.textContent).toBe("Your table");
-    // alone there is no status line
-    expect(p.querySelector(".tp-line")).toBeNull();
-    expect(p.querySelector(".tp-code")?.textContent).toBe("WXYZ");
-    click(button("Invite link", p));
-    await settle();
-    expect(clipboard).toEqual([`${window.location.origin}/?code=WXYZ`]);
-    expect(button("Link copied", p)).toBeDefined();
-    // the opener sets the level on a casual table
-    const level = p.querySelector<HTMLSelectElement>("select[aria-label='Starting level']")!;
-    act(() => {
-      level.value = "5";
-      level.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(lastSent()).toEqual({ type: "table_start_level", start_level: "5" });
-    const joiners = p.querySelector<HTMLButtonElement>("[role='switch']")!;
-    expect(joiners.textContent).toBe("Allow joiners");
-    expect(joiners.getAttribute("aria-checked")).toBe("true");
-    click(joiners);
-    expect(lastSent()).toEqual({ type: "table_allow_joiners", on: false });
-    // labels only: no sub-lines under the rows
-    expect(p.querySelector(".room-ranked-note, .tp-hint")).toBeNull();
-    expect(p.querySelector(".tp-chat")).not.toBeNull();
-    // alone, Start fills the seats with bots
-    expect(primary().textContent).toBe("Start with bots");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", on: true });
-    // Leave asks through the leave sheet first
-    const before = allSent().length;
-    click(button("Leave", p));
-    expect(allSent().length).toBe(before);
-    const sheet = q("[role='alertdialog']")!;
-    expect(sheet.querySelector("h2")?.textContent).toBe("Leave the table?");
-    expect(sheet.querySelector("p")?.textContent).toBe("The room closes.");
-    click(button("Stay", sheet));
-    expect(q("[role='alertdialog']")).toBeNull();
-    click(button("Leave", p));
-    click(button("Leave", q("[role='alertdialog']")!));
-    expect(lastSent()).toEqual({ type: "table_leave" });
-    // the Play tab around it: the mode switch shows the table's mode, held still; no code box
-    const casual = button("Casual", q(".play-mode")!)!;
-    expect(casual.getAttribute("aria-pressed")).toBe("true");
-    expect(casual.disabled).toBe(true);
+    expect(q(".tp")).toBeNull();
+    expect(button("Play")?.disabled).toBe(true);
+    expect(button("Duo")?.disabled).toBe(true);
+    const ranked = button("Ranked", q(".play-mode")!)!;
+    expect(ranked.getAttribute("aria-pressed")).toBe("true");
+    expect(ranked.disabled).toBe(true);
     expect(q("input[aria-label='Table code']")).toBeNull();
-  });
-
-  it("a ranked table has no Starting level row: it starts at 2", async () => {
-    await renderApp();
-    say(room({ ranked: true }, [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }]));
-    const p = panel()!;
-    expect(p.querySelector("select")).toBeNull();
-    expect(p.textContent).not.toContain("Starting level");
-    expect(p.querySelector(".tp-tag")).toBeNull();     // a ranked table has no mode tag
-    expect(p.querySelector(".tp-code")?.textContent).toBe("WXYZ");
-    expect(button("Ranked", q(".play-mode")!)!.getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("a joiner sees the level, moves to an empty seat until their Start, and waits for the others", async () => {
-    await renderApp();
-    const players = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
-    say(room({ you: 2 }, players));
-    let p = panel()!;
-    expect(p.querySelector(".tp-title")?.textContent).toBe("You and Jerry");
-    expect(p.querySelector("select")).toBeNull();
-    expect(p.querySelector(".tp-set-val")?.textContent).toBe("2");
-    // anyone seated may switch Allow joiners
-    expect(p.querySelector("[role='switch']")?.textContent).toBe("Allow joiners");
-    expect(p.querySelectorAll(".tp-line")).toHaveLength(1);
-    expect(p.querySelector(".tp-line")?.textContent).toBe("0 of 2 ready");
-    const open = [...p.querySelectorAll<HTMLButtonElement>("button.tp-seat")];
-    expect(open.map((b) => b.getAttribute("aria-label")))
-      .toEqual(["Open seat, other team. Move here", "Open seat, other team. Move here"]);
-    click(open[0]);
-    expect(lastSent()).toEqual({ type: "table_move", seat: 3, expect: [{ name: "Alice", is_bot: false }, null] });
-    // no Start now for a joiner, even when the countdown is over
-    say(room({ you: 2, start_now_in: 0 }, players));
-    p = panel()!;
-    expect(primary().textContent).toBe("Start");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", on: true });
-    say(room({ you: 2, ready: [2], start_now_in: 0 }, players));
-    p = panel()!;
-    expect(p.querySelector(".tp-line")?.textContent).toBe("1 of 2 ready");
-    expect(primary().textContent).toBe("Waiting for Jerry");
-    expect(primary().disabled).toBe(false);                 // a tap takes the Start back
-    // after the Start the seats hold still
-    expect(p.querySelectorAll("button.tp-seat")).toHaveLength(0);
-    expect(p.querySelector(".tp-seat.you .tp-tick")).not.toBeNull();
-  });
-
-  it("the opener gets Start now once start_now_in runs out, with the ring counting down", async () => {
-    await renderApp();
-    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
-    const players = [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }];
-    say(room({ start_now_in: 30 }, players));
-    expect(primary().textContent).toBe("Start");
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start", on: true });
-    say(room({ ready: [0], start_now_in: 29 }, players));
-    expect(primary().textContent).toContain("Start now");
-    expect(primary().disabled).toBe(true);
-    expect(primary().querySelector(".timer-ring")?.getAttribute("aria-label")).toBe("29 seconds left");
-    act(() => { vi.advanceTimersByTime(29_500); });
-    expect(primary().disabled).toBe(false);
-    expect(primary().querySelector(".timer-ring")).toBeNull();
-    click(primary());
-    expect(lastSent()).toEqual({ type: "table_start_now" });
-  });
-
-  it("on a wide screen the room's seats sit round the mini table", async () => {
-    viewport(true);
-    await renderApp();
-    say(room());
-    expect(panel()!.classList.contains("tp-wide")).toBe(true);
-    expect(panel()!.querySelector(".tp-clock")).not.toBeNull();
-  });
-
-  it("the chat row shows the room's chat, opens the chat sheet and sends room chat", async () => {
-    await renderApp();
-    say(room({}, [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Alice" }]));
-    say({ type: "chat_history", room: "WXYZ", messages: [
-      { type: "chat", id: 1, room: "WXYZ", seat: 2, name: "Alice", text: "hi!", t: nowSecs() }] });
-    const row = panel()!.querySelector<HTMLButtonElement>(".tp-chat")!;
-    expect(row.textContent).toContain("Alice: hi!");
-    click(row);
-    const sheet = q(".chat-panel")!;
-    expect(sheet.textContent).toContain("hi!");
-    const input = sheet.querySelector<HTMLInputElement>("input")!;
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => { setter.call(input, "hello"); input.dispatchEvent(new Event("input", { bubbles: true })); });
-    click(button("Send", sheet));
-    expect(lastSent()).toEqual({ type: "table_chat", text: "hello" });
   });
 });
 
 describe("room links land in the panel", () => {
-  it("a ?room= link opens the Join panel, and Join shows the room's panel on Play", async () => {
+  it("a ?room= link opens the Join panel, and Join sends join_room", async () => {
     window.history.replaceState(null, "", "/?room=wxyz");
     await renderApp();
     expect(lastSent()).toEqual({ type: "code_lookup", code: "WXYZ" });
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     await settle();
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
-    say({ type: "room_seats", room: "WXYZ", in_game: false, seats: [
-      // before the game the peek lists only taken seats
-      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false }] });
+    say({ type: "room_seats", room: "WXYZ", in_game: true, seats: [
+      { seat: 0, name: "Mei", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null },
+      { seat: 1, name: "Bot 1", is_bot: true, connected: true, team: 1, claimable: true, controller: "bot", reserved_secs: null },
+      { seat: 2, name: "Bot 2", is_bot: true, connected: true, team: 0, claimable: true, controller: "bot", reserved_secs: null },
+      { seat: 3, name: "Bot 3", is_bot: true, connected: true, team: 1, claimable: true, controller: "bot", reserved_secs: null }] });
     await settle();
     expect(document.body.textContent).not.toContain("Take a seat");
     const join = q(".tp-join-code")!;
     expect(join.querySelector(".tp-title")?.textContent).toBe("Join Mei");
-    // you sit across from Mei, as her partner
-    expect(join.querySelector(".tp-seat.you")?.getAttribute("aria-label")).toBe("You, your team");
     expect(sentOf("join_room")).toHaveLength(0);
     click(button("Join", join));
     expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
     expect(lastSent()).not.toHaveProperty("seat");
-    say(room({ you: 2, host: 0, opener: 0 }, [{ seat: 0, name: "Mei" }, { seat: 2, name: "Jerry" }]));
-    await settle();
-    expect(panel()?.querySelector(".tp-title")?.textContent).toBe("You and Mei");
-    expect(q(".lobby-panel")).not.toBeNull();
   });
 
   it("a link to another room while seated at a saved one asks to leave that table first", async () => {
@@ -358,7 +182,7 @@ describe("room links land in the panel", () => {
     await settle();
     expect(q("[role='alertdialog']")).toBeNull();
     expect(window.location.search).toBe("");
-    expect(panel()?.querySelector(".tp-code")?.textContent).toBe("ABCD");
+    expect(sentOf("table_leave")).toHaveLength(0);
     say({ type: "left" });
     await settle();
     expect(sentOf("table_peek")).toHaveLength(0);
@@ -750,33 +574,31 @@ describe("a full room's dropped seats are taken only on purpose", () => {
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
   };
 
-  for (const inGame of [false, true]) {
-    it(`${inGame ? "in game" : "before the game"}: the Join panel shows Alice (away); tap → confirm → join_room {seat}`, async () => {
-      await renderApp();
-      joinBox("WXYZ");
-      expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
-      say(seats(inGame));
-      await settle();
-      // nothing joined by itself
-      expect(sentOf("join_room")).toHaveLength(0);
-      const panelEl = q(".tp-join-code")!;
-      expect(panelEl.querySelector(".tp-title")?.textContent).toBe("Join Mei");
-      // no plain seat is left: Join waits, the away seat is the choice
-      expect(button("Join", panelEl)?.disabled).toBe(true);
-      expect(panelEl.querySelector(".tp-line")).toBeNull();
-      click(button(/Alice \(away\)$/u, panelEl));
-      const sheet = q("[role='alertdialog']")!;
-      expect(sheet.querySelector("h2")?.textContent).toBe("Alice dropped out. Take their seat?");
-      expect(sheet.querySelector("p")).toBeNull();
-      // Cancel takes nothing
-      click(button("Cancel", sheet));
-      expect(q("[role='alertdialog']")).toBeNull();
-      expect(sentOf("join_room")).toHaveLength(0);
-      click(button(/Alice \(away\)$/u, q(".tp-join-code")!));
-      click(button("Take seat", q("[role='alertdialog']")!));
-      expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", seat: 1 });
-    });
-  }
+  it("the Join panel shows Alice (away); tap → confirm → join_room {seat}", async () => {
+    await renderApp();
+    joinBox("WXYZ");
+    expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
+    say(seats(true));
+    await settle();
+    // nothing joined by itself
+    expect(sentOf("join_room")).toHaveLength(0);
+    const panelEl = q(".tp-join-code")!;
+    expect(panelEl.querySelector(".tp-title")?.textContent).toBe("Join Mei");
+    // no plain seat is left: Join waits, the away seat is the choice
+    expect(button("Join", panelEl)?.disabled).toBe(true);
+    expect(panelEl.querySelector(".tp-line")).toBeNull();
+    click(button(/Alice \(away\)$/u, panelEl));
+    const sheet = q("[role='alertdialog']")!;
+    expect(sheet.querySelector("h2")?.textContent).toBe("Alice dropped out. Take their seat?");
+    expect(sheet.querySelector("p")).toBeNull();
+    // Cancel takes nothing
+    click(button("Cancel", sheet));
+    expect(q("[role='alertdialog']")).toBeNull();
+    expect(sentOf("join_room")).toHaveLength(0);
+    click(button(/Alice \(away\)$/u, q(".tp-join-code")!));
+    click(button("Take seat", q("[role='alertdialog']")!));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", seat: 1 });
+  });
 
   it("from a link too: the away seat is taken only through its confirm", async () => {
     await viaLink();

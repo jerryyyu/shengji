@@ -164,9 +164,7 @@ def test_client_events_reach_the_sink_and_never_a_room_log(client, sink, tmp_pat
 
     monkeypatch.setattr(srv.Room, "log_event", spy)
     with client.websocket_connect("/ws") as ws:
-        _room_with_bots(ws)
-        ws.send_json({"type": "start_game"})
-        _drain(ws, "state")
+        _room_with_bots(ws)          # create_room starts the game: one state frame
         ws.send_json({"type": "client_event", "v": 1, "form": "phone",
                       "events": [{"e": "tap", "t": 10, "id": "table_start", "name": "jerry"},
                                  {"e": "screen", "t": 20, "name": "table", "prev": "room",

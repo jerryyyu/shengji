@@ -9,7 +9,7 @@
 // same games run on the local server with a stand-in for the native bot that
 // answers as SmartBot does, so the games unfold as recorded; every request it
 // receives must match, digest by digest, and every frame must still match the
-// server_sessions fixture.
+// server_sessions_start fixture.
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -119,7 +119,7 @@ async function playSession(
   const frames: Frame[] = [];
   let done = false;
   socket.onopen = () => {
-    const create: Record<string, unknown> = { type: "create_room", name: "You" };
+    const create: Record<string, unknown> = { type: "create_room", name: "You", start: true };
     if (config.startLevel !== null) create.start_level = config.startLevel;
     socket.send(JSON.stringify(create));
   };
@@ -151,7 +151,7 @@ describe("release-bot requests vs server.py's rounds", () => {
   const [headerLine, ...lines] = readLines("bridge_requests.jsonl.gz");
   const header = JSON.parse(headerLine) as { format: number; games: number; stats: Record<string, number> };
   const sessions = new Map<number, SessionRecord>();
-  for (const l of readLines("server_sessions.jsonl.gz").slice(1)) {
+  for (const l of readLines("server_sessions_start.jsonl.gz").slice(1)) {
     const rec = JSON.parse(l) as SessionRecord;
     sessions.set(rec.seed, rec);
   }
@@ -292,13 +292,9 @@ describe("SmartBot takes over when the release bot cannot answer", () => {
     server = new LocalServer({ clock, seed: () => seed, remote, autoplay: true });
     const socket = new LocalSocket(server);
     let roundEnd = false;
-    socket.onopen = () => socket.send(JSON.stringify({ type: "create_room", name: "You" }));
+    socket.onopen = () => socket.send(JSON.stringify({ type: "create_room", name: "You", start: true }));
     socket.onmessage = (ev) => {
       const msg = JSON.parse(ev.data as string) as Frame;
-      if (msg.type === "room") {
-        const players = msg.players as unknown[];
-        socket.send(JSON.stringify(players.length < 4 ? { type: "add_bot" } : { type: "start_game" }));
-      }
       if (msg.type === "state" && msg.phase === "round_end") roundEnd = true;
     };
     await clock.run(() => roundEnd);

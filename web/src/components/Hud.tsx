@@ -199,7 +199,7 @@ export type Mode = "ranked" | "casual" | "practice" | null;
 
 export function gameMode(state: GameState, practice: boolean): Mode {
   if (practice) return "practice";
-  return state.matched || state.ranked ? "ranked" : "casual";
+  return state.matched ? "ranked" : "casual";
 }
 
 /** The mode's word for the top of the ⋯ menu: "Ranked" or "Casual". The

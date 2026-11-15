@@ -300,11 +300,6 @@ describe("round end rating line", () => {
     expect(host.querySelector(".result-rating")).toBeNull();
   });
 
-  it("a created room switched to Ranked shows the rating line like a queue room", () => {
-    renderModal(makeResult({ rating: { rating: 1712, delta: 9 } }), { ...state, ranked: true });
-    expect(host.querySelector(".result-rating")!.textContent).toBe(" · rating +9");
-  });
-
   it("says nothing about ratings while sign-in is still loading", () => {
     renderModal(makeResult(), ranked);
     expect(host.querySelector(".rating-line")).toBeNull();

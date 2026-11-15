@@ -1,7 +1,7 @@
 """One message family for a table, wherever the socket sits.
 
-A table is open in the queue (a waiting ``Table``, or a lone entry) or in a
-created room before its game starts, and plays in a ``Room``. The
+A table is open in the queue (a waiting ``Table``, or a lone entry) and
+plays in a ``Room``, which exists only once its game has started. The
 canonical ``table_*`` names below mean the same thing in each place; this
 module rewrites a canonical message into the message the socket's backend
 already handles, so every guard, rate limit and refusal of that backend
@@ -33,15 +33,19 @@ ALIASES = frozenset({
     "allow_joiners", "set_start_level", "chat", "leave_room", "queue_leave",
     "join_room", "queue_join", "peek_room",
 })
-# The created room's lobby controls that no queue table has. Their counts
-# say when the legacy lobby has no users left; ``create_room`` counts only
-# without ``start: true``, which opens that lobby.
-LOBBY_ONLY = frozenset({"create_room", "add_bot", "remove_bot", "remove_player",
-                        "set_ranked"})
-LEGACY = ALIASES | LOBBY_ONLY
+# The created room's old lobby controls, which no table has any more: each is
+# refused with the code ``retired`` (``RETIRED_MESSAGE``), and still counted.
+RETIRED = frozenset({"add_bot", "remove_bot", "remove_player", "set_ranked"})
+RETIRED_MESSAGE = "This page is out of date. Reload to play."
+# ``create_room`` counts only without ``start: true``; it starts the game at
+# once either way.
+LEGACY = ALIASES | RETIRED | {"create_room"}
 
-# The queue's own refusal for an early Start now, said the same way in a room.
-TOO_SOON = "Start now opens 30 seconds after the last person sits."
+# What sets up a table before its game, old and canonical names alike: a
+# room's game has always started, so in a room each is refused.
+LOBBY = frozenset({"swap_seats", "lobby_ready", "set_start_level", "table_move",
+                   "table_start", "table_start_now", "table_start_bots",
+                   "table_start_level"})
 
 
 def legacy_name(msg: dict) -> str | None:
@@ -85,30 +89,13 @@ def for_queue(msg: dict, *, joining: bool, room_codes: Container[str]) -> dict:
     return msg
 
 
-def for_room(msg: dict, seat: int | None) -> dict:
-    """``msg`` (a canonical name) as the person at ``seat`` of a room sends
-    it, before or during its game.
-
-    ``table_move {seat}`` moves the sender to ``seat``; with ``from``,
-    another seat, the occupant of ``from`` goes there, which in a room is
-    the host's swap of the two positions. ``table_start_bots`` is the
-    sender's Start, as it is at a queue table. ``table_start_now`` is the
-    host's ``start_game``; the caller gates it (``handle_action``).
-    """
+def for_room(msg: dict) -> dict:
+    """``msg`` (a canonical name) as a person seated in a room's game sends
+    it. The names that set a table up before its game (``LOBBY``) stay as
+    they are, for the room to refuse."""
     t = msg["type"]
-    if t == "table_move":
-        src = msg.get("from")
-        return _as(msg, "swap_seats", a=seat if src is None else src, b=msg.get("seat"))
-    if t == "table_start":
-        return _as(msg, "lobby_ready")
-    if t == "table_start_bots":
-        return _as(msg, "lobby_ready", on=True)
-    if t == "table_start_now":
-        return _as(msg, "start_game")
     if t == "table_allow_joiners":
         return _as(msg, "allow_joiners")
-    if t == "table_start_level":
-        return _as(msg, "set_start_level")
     if t == "table_chat":
         return _as(msg, "chat")
     if t == "table_leave":

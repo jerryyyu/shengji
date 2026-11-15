@@ -29,7 +29,7 @@ import { SmartBot, viewFor } from "../bot";
 import { type Clock, realClock, sleep } from "./clock";
 import { type ActionEntry, BotGate, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
-import { CANONICAL, TOO_SOON, forQueue, forRoom } from "./tables";
+import { CANONICAL, LOBBY, forQueue, forRoom } from "./tables";
 
 export const BOT_DELAY = 0.7;
 export const DEAL_DELAY = 0.2;
@@ -39,7 +39,6 @@ const DECLARE_POLL = 0.25;
 const CHAT_KEEP = 50;
 const CHAT_MAX_LEN = 300;
 const KITTY_FIRST_ID = 100;
-export const START_NOW_SECS = 30.0;
 
 type Json = Record<string, unknown>;
 
@@ -85,11 +84,6 @@ class Writer {
   }
 }
 
-/** server.py TooSoon: Start now before START_NOW_SECS passed since the last arrival. */
-class TooSoon extends IllegalPlay {
-  readonly code = "too_soon";
-}
-
 class Seat {
   connected = false;
   gen = 0;
@@ -128,15 +122,11 @@ export class LocalRoom {
   readonly code: string;
   startLevel: string;
   readonly decks: DeckRng;
-  /** Clock time the last person sat: the room's creation, since a join on
-   *  the device only resumes its own seat. */
-  arrivedAt: number;
 
-  constructor(code: string, startLevel: string, decks: DeckRng, arrivedAt = 0) {
+  constructor(code: string, startLevel: string, decks: DeckRng) {
     this.code = code;
     this.startLevel = startLevel;
     this.decks = decks;
-    this.arrivedAt = arrivedAt;
   }
 
   get round(): RoundState | null {
@@ -358,8 +348,6 @@ export function roomJson(room: LocalRoom, seat: number): Json {
     opener: room.host,
     start_level: room.startLevel,
     allow_joiners: room.allowJoiners,
-    // the lobby's Start taps: a solo table starts on the one it gets
-    ready: [],
     players: room.seats.map((s, i) => ({ seat: i, name: s.name, is_bot: s.isBot, connected: s.connected || s.isBot })),
   };
 }
@@ -431,7 +419,7 @@ export class LocalServer {
   newRoom(startLevel: string): LocalRoom {
     let code = randomCode();
     while (this.rooms.has(code)) code = randomCode();
-    const room = new LocalRoom(code, startLevel, new DeckRng(this.seed()), this.clock.now());
+    const room = new LocalRoom(code, startLevel, new DeckRng(this.seed()));
     this.rooms.set(code, room);
     return room;
   }
@@ -746,50 +734,17 @@ export class LocalServer {
     return true;
   }
 
-  /** server.py handle_action: throws IllegalPlay on bad input.
-   *  `startNowGate`: a `start_game` that came as `table_start_now`, refused
-   *  until START_NOW_SECS after the last arrival while anyone besides the
-   *  opener is seated. */
-  handleAction(room: LocalRoom, seat: number, msg: Json, startNowGate = false): void {
+  /** server.py handle_action: throws IllegalPlay on bad input. */
+  handleAction(room: LocalRoom, seat: number, msg: Json): void {
     const t = msg.type;
     const game = room.game;
     let rnd = room.round;
 
-    if (t === "chat") {
-      const text = String(msg.text ?? "").trim().slice(0, CHAT_MAX_LEN);
-      if (!text) return;
-      this.chatPost(room, { seat, name: room.seats[seat].name, text, t: Date.now() / 1000 });
-      return;
-    }
-    if (t === "add_bot") {
-      if (seat !== room.host || room.seats.length >= 4) throw new IllegalPlay("Cannot add a bot now.");
-      room.seats.push(new Seat(`Bot ${room.seats.length}`, true, randomToken()));
-    } else if (t === "remove_bot") {
-      const last = room.seats[room.seats.length - 1];
-      if (seat !== room.host || !last || !last.isBot) throw new IllegalPlay("No bot to remove.");
+    if (t === "start_game") {
+      // the creator's start, sent for them by create_room: the one way a
+      // room's game begins
       if (room.game) throw new IllegalPlay("Game already started.");
-      room.seats.pop();
-    } else if (t === "set_start_level") {
-      if (seat !== room.host) throw new IllegalPlay("Only the host can set the starting level.");
-      if (room.game) throw new IllegalPlay("The starting level is fixed once the game has started.");
-      const level = msg.start_level;
-      if (typeof level !== "string" || !(RANKS as readonly string[]).includes(level)) {
-        throw new IllegalPlay("Unknown starting level.");
-      }
-      room.startLevel = level;
-    } else if (t === "allow_joiners") {
-      if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets Allow joiners.");
-      room.allowJoiners = msg.on === true;
-    } else if (t === "lobby_ready" && msg.on === false) {
-      if (room.game) throw new IllegalPlay("Game already started.");
-    } else if (t === "start_game" || (t === "lobby_ready" && msg.on !== false)) {
-      if (t === "start_game" && seat !== room.host) throw new IllegalPlay("Only the host can start.");
-      if (room.game) throw new IllegalPlay("Game already started.");
-      if (t === "start_game" && startNowGate
-          && room.arrivedAt + START_NOW_SECS - this.clock.now() > 0
-          && room.seats.some((s, i) => i !== room.host && !s.isBot)) {
-        throw new TooSoon(TOO_SOON);
-      }
+      if (seat !== room.host) throw new IllegalPlay("Only the host can start.");
       // a bot plays every seat nobody took, named for its seat
       while (room.seats.length < 4) room.seats.push(new Seat(`Bot ${room.seats.length}`, true, randomToken()));
       // gamesToWin null: a table keeps playing; holding A scores a point
@@ -797,8 +752,20 @@ export class LocalServer {
       startRound(room.game, room.decks.deck());
       room.indexRound();
       this.spawnDeal(room);
+    } else if (typeof t === "string" && LOBBY.has(t)) {
+      // a room exists only to play its game, so a lobby control has nothing
+      // left to set
+      throw new IllegalPlay("Game already started.");
     } else if (game === null || rnd === null) {
       throw new IllegalPlay("Game not started.");
+    } else if (t === "chat") {
+      const text = String(msg.text ?? "").trim().slice(0, CHAT_MAX_LEN);
+      if (!text) return;
+      this.chatPost(room, { seat, name: room.seats[seat].name, text, t: Date.now() / 1000 });
+      return;
+    } else if (t === "allow_joiners") {
+      if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets Allow joiners.");
+      room.allowJoiners = msg.on === true;
     } else if (t === "declare") {
       const codes = room.codesFor(seat, cardIds(msg));
       declare(rnd, seat, codes);
@@ -912,9 +879,9 @@ export class LocalConnection {
         this.me = me;
         this.attach(room, me);
         // the client saves a room only from a room frame, so one goes out
-        // before a start begins the game
+        // before the start begins the game
         server.broadcast(room);
-        if (msg.start === true) this.startCreatedRoom(room, me);
+        this.startCreatedRoom(room, me);
       } else if (t === "peek_room") {
         this.sendDirect({ type: "error", code: "room_not_found", message: "Room not found." });
       } else if (t === "join_room") {
@@ -951,15 +918,7 @@ export class LocalConnection {
     if (t === "leave_room") {
       server.chatSystem(room, `${me.name} left`);
       server.detach(me, room, this.myGen);
-      if (room.game === null) {
-        room.seats.splice(room.seats.indexOf(me), 1);
-        const humans = room.seats.flatMap((s, i) => (s.isBot ? [] : [i]));
-        if (!humans.length) server.closeRoom(room);
-        else {
-          room.host = humans[0];
-          server.broadcast(room);
-        }
-      } else if (!room.seats.some((s) => !s.isBot && s.connected)) {
+      if (!room.seats.some((s) => !s.isBot && s.connected)) {
         // nobody is left to play the human seat: the game ends here
         server.closeRoom(room);
       }
@@ -976,24 +935,28 @@ export class LocalConnection {
       return;
     }
     try {
-      server.handleAction(room, seatIdx, msg, canonical === "table_start_now");
+      server.handleAction(room, seatIdx, msg);
       server.broadcast(room);
       server.kickBots(room);
     } catch (e) {
-      const code = e instanceof TooSoon ? { code: e.code } : {};
-      server.enqueue(me, { type: "error", ...code, message: e instanceof IllegalPlay ? e.message : "Invalid request." });
+      server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
     }
   }
 
-  /** `create_room` with `start: true`: the creator's own `start_game`, sent
-   *  for them, so every start check applies and a bot takes every empty
-   *  seat. A refusal leaves the room in its lobby and goes to the creator. */
+  /** Every `create_room`, with or without `start: true`: the creator's own
+   *  `start_game`, sent for them, so every start check applies and a bot
+   *  takes every empty seat. A refusal discards the room: the creator gets
+   *  the `error`, then `left`, through its writer so they arrive in order. */
   private startCreatedRoom(room: LocalRoom, me: Seat): void {
     const server = this.server;
     try {
       server.handleAction(room, room.seats.indexOf(me), { type: "start_game" });
     } catch (e) {
       server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
+      server.enqueue(me, { type: "left" });
+      server.closeRoom(room);
+      this.room = null;
+      this.me = null;
       return;
     }
     server.broadcast(room);

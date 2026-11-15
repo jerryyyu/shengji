@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { effectiveName, useAuth } from "../auth";
 import ChatPanel from "../components/ChatPanel";
@@ -8,14 +8,12 @@ import LeaveSheet from "../components/LeaveSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
 import { seatPos } from "../components/TrickArea";
 import { codeLink } from "../codes";
-import type { ChatMsg, Rank, RoomMsg, ServerMsg } from "../protocol";
+import type { ChatMsg, Rank } from "../protocol";
 import { RANKS } from "../protocol";
-import { onRoomLeaveAsk } from "../roomBack";
-import { conn } from "../ws";
 import { useInlineQueue } from "./QueueBar";
-import { BOTS_WARN_MS, movedNote, queue, useNow } from "./store";
+import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
-import { fromQueue, fromRoom, queueSend, roomCounting, roomMovers, roomSend, roomStartNowAt } from "./tableModel";
+import { fromQueue, queueSend } from "./tableModel";
 import type { MoverSeat, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
 import "./tablePanel.css";
@@ -172,41 +170,31 @@ function PanelView({ m, guarded, sheet, act }: {
   );
 }
 
-/** The table you are at, in Play's place, from either backend: a room
- *  before its game (`room`), else the queue's Join (a game in progress has
- *  a seat), your own table (alone, drawn by the app) or a shared table (two
- *  or three people waiting). Inline and non-modal on every screen. Leave,
- *  and a room's back gesture, ask through the leave sheet. */
-export default function TablePanel({ q, room = null, guarded }: { q: QueueView; room?: RoomMsg | null; guarded: boolean }) {
+/** The table you are at, in Play's place: the queue's Join (a game in
+ *  progress has a seat), your own table (alone, drawn by the app) or a
+ *  shared table (two or three people waiting). Inline and non-modal on
+ *  every screen. Leave asks through the leave sheet. */
+export default function TablePanel({ q, guarded }: { q: QueueView; guarded: boolean }) {
   const kind = panelKind(q);
-  const startNowAt = useMemo(() => (room ? roomStartNowAt(room, Date.now()) : null), [room]);
-  const now = useNow(room ? roomCounting(room, startNowAt) : kind !== "play" && kind !== "elsewhere", 250);
+  const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
   const [asking, setAsking] = useState(false);
-  const inRoom = room !== null;
-  useEffect(() => (inRoom ? onRoomLeaveAsk(() => setAsking(true)) : undefined), [inRoom]);
   // "still here?": any tap or key on the page answers it, as at a held seat
-  useAnyTapIsBack(!room && kind === "shared" && q.stillHereUntil !== null, () => queue.here());
-  const chat = useRoomChat();
-  const ownMove = useRef(false);
-  useMovedByOpener(room, ownMove);
-  const send = room ? roomSend(room, ownMove) : queueSend;
-  const movers = room ? roomMovers(room) : q.table?.seats ?? null;
-  const mover = useOpenerMove(movers, (from, to, sit) => send({ type: "move_other", from, to, sit }));
-  const state = { now, picked: mover.picked };
-  const m = room ? fromRoom(room, chat, state, startNowAt) : fromQueue(q, state);
+  useAnyTapIsBack(kind === "shared" && q.stillHereUntil !== null, () => queue.here());
+  const mover = useOpenerMove(q.table?.seats ?? null, (from, to, sit) => queueSend({ type: "move_other", from, to, sit }));
+  const m = fromQueue(q, { now, picked: mover.picked });
   if (!m) return null;
   const act = (a: PanelAction) => {
     if (a.type === "ask_leave") setAsking(true);
     else if (a.type === "pick_person") mover.pick(a.at);
     else if (a.type === "move_to") mover.to(a.at);
-    else send(a);
+    else queueSend(a);
   };
   const sheet = asking ? (
     <LeaveSheet context={m.leave}
                 onStay={() => setAsking(false)}
-                onLeave={() => { setAsking(false); send({ type: "leave" }); }} />
+                onLeave={() => { setAsking(false); queueSend({ type: "leave" }); }} />
   ) : mover.sheet;
-  return <PanelView m={m} guarded={room ? false : guarded} sheet={sheet} act={act} />;
+  return <PanelView m={m} guarded={guarded} sheet={sheet} act={act} />;
 }
 
 /** The opener's move of someone else, for a table's seats (`movers`): the
@@ -272,16 +260,6 @@ function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () 
       </div>
     </dialog>
   );
-}
-
-/** The chat log of the room this socket sits in, as the connection keeps
- *  it: the lines from before the panel mounted are already there. */
-function useRoomChat(): ChatMsg[] {
-  const [chat, setChat] = useState<ChatMsg[]>(() => conn.chatHistory());
-  useEffect(() => conn.subscribe((msg: ServerMsg) => {
-    if (msg.type === "chat" || msg.type === "chat_history") setChat(conn.chatHistory());
-  }), []);
-  return chat;
 }
 
 /** The table's chat row: the last line and an unread count, and a tap
@@ -351,9 +329,8 @@ function SwitchRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
 
 /** Every table's settings rows, labels only: the code with its Invite link,
  *  Starting level on a casual table (the opener picks it, others read it; a
- *  ranked table starts at 2 and has no row), and Allow joiners when
- *  ``joiners`` is set (the opener's switch on a Play table; anyone's in a
- *  room). */
+ *  ranked table starts at 2 and has no row), and the opener's Allow joiners
+ *  switch when ``joiners`` is set. */
 function TableRows({ rows: { code, ranked, opener, level, joiners }, act }: {
   rows: Rows; act: (a: PanelAction) => void;
 }) {
@@ -379,25 +356,6 @@ function TableRows({ rows: { code, ranked, opener, level, joiners }, act }: {
       ) : null}
     </>
   );
-}
-
-/** The queue's notice (the one toast) when the opener moved you in a
- *  room: the frame's `you` changed with no move of your own in flight. */
-function useMovedByOpener(room: RoomMsg | null, ownMove: RefObject<boolean>) {
-  const was = useRef(room?.you);
-  useEffect(() => {
-    if (!room || room.you === was.current) return;
-    const before = was.current ?? room.you;
-    was.current = room.you;
-    if (ownMove.current) {
-      ownMove.current = false;
-      return;
-    }
-    const by = room.players.find((pl) => pl.seat === (room.opener ?? room.host))?.name;
-    if (!by) return;
-    queue.notify(movedNote({ type: "table_moved", name: "", seat: room.you, your_team: true, by: shortName(by),
-                             you: true, team_changed: before % 2 !== room.you % 2 }));
-  }, [room, ownMove]);
 }
 
 /** The one polite announcement per change of state, and one when ten

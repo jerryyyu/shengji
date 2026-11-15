@@ -19,7 +19,6 @@ function botsAt(q: QueueView): number | null {
 
 function pillText(at: SeatedAt, q: QueueView, now: number): PillText | null {
   if (at === "game") return { label: "Your game", left: null, warn: false };
-  if (at === "room") return { label: "Your table", left: null, warn: false };
   if (!q.queued) return null;
   const fill = botsAt(q);
   const left = fill === null ? null : Math.max(0, fill - now);

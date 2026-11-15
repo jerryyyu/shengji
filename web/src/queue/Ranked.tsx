@@ -118,15 +118,15 @@ function PairRow({ partner, online }: { partner: string; online: boolean }) {
  *  switch, a wide gold Play that joins the queue in that mode (as the pair
  *  when one is formed and you lead it) and Duo, which opens your own table
  *  with the partner seat held; its code is the Duo's invite.
- *  At a table the panel takes the buttons' place on every screen: a room's
- *  (`room`, before its game) or the queue's. A guest sees a line under the
- *  buttons that offers sign-in. While sign-in is still loading nothing
- *  shows. With no connection for a while the Play tab shows its offline
- *  controls in this block's place. */
+ *  At the queue's table its panel takes the buttons' place on every screen;
+ *  in a room whose game is starting, the buttons hold still. A guest sees a
+ *  line under the buttons that offers sign-in. While sign-in is still
+ *  loading nothing shows. With no connection for a while the Play tab shows
+ *  its offline controls in this block's place. */
 export function RankedSection({ online, room = null }: {
   /** The socket is open; without it every queue control is disabled. */
   online: boolean;
-  /** The room this socket sits in before its game, if any. */
+  /** The room this socket sits in before its game's first state, if any. */
   room?: RoomMsg | null;
 }) {
   const q = useQueue();
@@ -140,7 +140,7 @@ export function RankedSection({ online, room = null }: {
   const joining = q.pending === "join";
   const cooling = q.cooldownUntil !== null && q.cooldownUntil > now;
   let label = "Play";
-  let disabled = !online || guarded;
+  let disabled = !online || guarded || room !== null;
   if (joining) disabled = true;
   else if (cooling) {
     // a table you joined and left: Play counts the queue cooldown down
@@ -148,23 +148,11 @@ export function RankedSection({ online, room = null }: {
     disabled = true;
   } else if (pair && !pair.you_lead) disabled = true;
   // the switch shows the mode of the table you sit at, else your choice
-  const tableMode: QueueMode | null = room ? (room.matched || room.ranked ? "ranked" : "casual")
+  const tableMode: QueueMode | null = room ? (room.matched ? "ranked" : "casual")
     : kind !== "play" ? q.queueMode ?? q.playMode : null;
   const modes = <ModeSwitch value={tableMode ?? q.playMode} disabled={tableMode !== null || joining || !!q.inGame} />;
   // first in every branch, so the live region stays mounted as the panel changes kind
   const announcer = <TableAnnouncer q={q} />;
-  // a room's panel needs no account: it shows while sign-in is still unknown
-  if (room) {
-    return (
-      <>
-        {announcer}
-        <div className="play-section play-table">
-          {modes}
-          <TablePanel key="room" q={q} room={room} guarded={false} />
-        </div>
-      </>
-    );
-  }
   if (account.status === "loading" || account.status === "error") return null;
   const guest = account.status !== "in";
   if (kind !== "play") {
@@ -173,7 +161,7 @@ export function RankedSection({ online, room = null }: {
         {announcer}
         <div className="play-section play-table">
           {modes}
-          <TablePanel key="queue" q={q} guarded={guarded} />
+          <TablePanel q={q} guarded={guarded} />
         </div>
       </>
     );

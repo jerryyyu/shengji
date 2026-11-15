@@ -130,7 +130,7 @@ it("in the app with no network at launch, Play shows its offline state and deals
   await until(() => host.querySelector(".play-offline") !== null);
   expectOfflinePlayTab();
   await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
-  expect(host.querySelector(".table-screen, .tp-room")).toBeNull();
+  expect(host.querySelector(".table-screen")).toBeNull();
   expect(panel()).toBeNull();
   expect(assign).not.toHaveBeenCalled();
 });
@@ -152,7 +152,7 @@ it("Play opens your table with three bots, marked Offline, and Start deals under
   expect(chat.disabled).toBe(true);
   expect(chat.getAttribute("aria-label")).toBe("Chat needs a connection");
   await startGame();
-  expect(host.querySelector(".lobby-screen, .tp-room")).toBeNull();
+  expect(host.querySelector(".lobby-screen")).toBeNull();
   // offline is plain from the screen: no mode in the header, none in ⋯
   expect(host.querySelector(".hud-bar")!.textContent).not.toMatch(/Ranked|Casual/);
   expect(host.querySelector(".hud-menu-mode")).toBeNull();
@@ -322,7 +322,7 @@ it("cancelling Start before its local room reply sends nothing to a later online
   await until(() => host.querySelector(".play-offline") === null);
 
   act(() => remote.onmessage?.({ data: JSON.stringify({
-    type: "room", room: "WXYZ", you: 0, host: 0, start_level: "2", ready: [],
+    type: "room", room: "WXYZ", you: 0, host: 0, start_level: "2",
     players: [{ seat: 0, name: "Cheerful Tractor", is_bot: false, connected: true }],
   }) }));
   expect(remote.sent.filter((m) => m.type === "add_bot" || m.type === "start_game")).toEqual([]);

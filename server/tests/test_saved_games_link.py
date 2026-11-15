@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.test_accounts import _claims, _session_cookie, accounts_on, keypair  # noqa: F401
-from tests.test_server_ws import _drain, _room_with_bots, client  # noqa: F401
+from tests.test_server_ws import _drain, client  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -63,20 +63,23 @@ def _log_records(srv, code):
             (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
 
 
+def _started_room(ws, name="jerry"):
+    """A created room, its game dealing with a bot in every other seat."""
+    ws.send_json({"type": "create_room", "name": name})
+    code = _drain(ws, "room")["room"]
+    _drain(ws, "state", tries=400)
+    return code
+
+
 def _start_signed_in_with_a_guest(client, cookie):
     """Seat 0 signed in, seat 1 a guest, seats 2 and 3 bots; returns sockets."""
     a = client.websocket_connect("/ws", headers={"cookie": cookie})
     a.__enter__()
-    a.send_json({"type": "create_room", "name": "Jerry"})
-    code = _drain(a, "room")["room"]
+    code = _started_room(a, "Jerry")
     g = client.websocket_connect("/ws")
     g.__enter__()
-    g.send_json({"type": "join_room", "room": code, "name": "Guest"})
-    _drain(g, "room")
-    for _ in range(2):
-        a.send_json({"type": "add_bot"})
-    a.send_json({"type": "start_game"})
-    _drain(a, "state", tries=60)
+    g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 1})
+    _drain(g, "state", tries=400)
     return code, a, g
 
 
@@ -119,9 +122,7 @@ def test_a_game_nobody_signed_in_to_never_touches_the_database(accounts_on, clie
     from shengji.api import server as srv
 
     with client.websocket_connect("/ws") as a:
-        code = _room_with_bots(a)
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        code = _started_room(a)
         assert srv.rooms[code].saved_game is not None
         assert _rows(accounts_on.STORE, "SELECT * FROM games") == []
     assert not Path(accounts_on.STORE.path).exists()
@@ -137,10 +138,8 @@ def test_a_reused_room_code_gives_two_games_with_distinct_offsets(
     ids = []
     for _ in range(2):
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-            code = _room_with_bots(a)
+            code = _started_room(a)
             assert code == "SAME"
-            a.send_json({"type": "start_game"})
-            _drain(a, "state", tries=60)
             room = srv.rooms.pop(code)          # the room is gone; the code is free
             ids.append(room.saved_game.id)
             for task in (room.deal_task, room.bot_task, room.cleanup_task):
@@ -168,9 +167,9 @@ def test_a_failing_database_leaves_play_alone_and_is_counted(
 
     monkeypatch.setattr(accounts_on.STORE, "link_seat", broken)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-        code = _room_with_bots(a)
-        a.send_json({"type": "start_game"})
-        st = _drain(a, "state", tries=60)
+        a.send_json({"type": "create_room", "name": "jerry"})
+        code = _drain(a, "room")["room"]
+        st = _drain(a, "state", tries=400)
         assert st["phase"] in ("deal", "declare", "bury", "play")
         st = _drain(a, "state", tries=400)        # the deal keeps going
         assert _wait_for(lambda: fresh_activity.account_link_failures >= 1)

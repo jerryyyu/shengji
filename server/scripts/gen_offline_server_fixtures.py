@@ -8,7 +8,7 @@ WebSocket for the human at seat 0, three server bots, and a human driver that
 plays seat 0 with SmartBot through ordinary client messages.  It records every
 frame the human's socket receives, normalised for the fields that are
 environmental (see ``normalize``), and writes one line per game to
-``server_sessions.jsonl.gz``: the seed, how many rounds were played, the frame
+``server_sessions_start.jsonl.gz``: the seed, how many rounds were played, the frame
 count and a short digest of each frame.  The vitest suite drives the
 TypeScript server with the same seeds and the same human driver and compares
 digests frame by frame.
@@ -187,17 +187,15 @@ def _ids_for(hand: list[dict], codes: list[str]) -> list[int]:
 
 
 class HumanDriver:
-    """Seat 0 as a client: App's Play-vs-bots chain, then SmartBot decisions
-    sent as ordinary messages.  Mirrored in web/src/offline/server/driver.ts.
+    """Seat 0 as a client: App's Play-vs-bots ``create_room {start: true}``,
+    then SmartBot decisions sent as ordinary messages.  Mirrored in web/src/offline/server/driver.ts.
 
     A decision is made only on a frame that matches the live round (``fresh``):
     a frame read after the room already moved on is not acted on.
     """
 
-    def __init__(self, rounds: int, live_round, throws: bool = False,
-                 flow: str = "chain"):
+    def __init__(self, rounds: int, live_round, throws: bool = False):
         self.rounds = rounds
-        self.flow = flow
         self.throws = throws
         self.live_round = live_round      # () -> the room's current Round, or None
         self.bot = SmartBot()
@@ -220,12 +218,6 @@ class HumanDriver:
 
     def react(self, msg: dict) -> list[dict]:
         t = msg["type"]
-        if t == "room":
-            if self.flow == "start" or msg["you"] != msg["host"]:
-                return []
-            if len(msg["players"]) < 4:
-                return [{"type": "add_bot"}]
-            return [{"type": "start_game"}]
         if t != "state" or self.leaving:
             return []
         phase = msg["phase"]
@@ -290,8 +282,7 @@ async def _inline_bot_turn(snapshot):
     return server._compute_bot_turn(snapshot)
 
 
-async def _session(seed: int, rounds: int, config: dict,
-                   flow: str = "chain") -> list[dict]:
+async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
     ws = FakeWebSocket()
     endpoint = asyncio.ensure_future(server.ws_endpoint(ws))
 
@@ -299,10 +290,8 @@ async def _session(seed: int, rounds: int, config: dict,
         room = next(iter(server.rooms.values()), None)
         return room.round if room is not None else None
 
-    human = HumanDriver(rounds, live_round, throws=config["throws"], flow=flow)
-    create = {"type": "create_room", "name": HUMAN_NAME}
-    if flow == "start":
-        create["start"] = True
+    human = HumanDriver(rounds, live_round, throws=config["throws"])
+    create = {"type": "create_room", "name": HUMAN_NAME, "start": True}
     if config["startLevel"] is not None:
         create["start_level"] = config["startLevel"]
     ws.inbox.put_nowait(create)
@@ -334,20 +323,14 @@ async def _session(seed: int, rounds: int, config: dict,
     return frames
 
 
-def play_session(seed: int, rounds: int, config: dict, flow: str = "chain") -> list[dict]:
-    """Every frame seat 0 receives in one seeded solo game of ``rounds`` rounds.
-
-    ``flow`` is how the game starts: ``"chain"`` (the committed fixture's) is
-    ``create_room``, ``add_bot`` to four seats, then ``start_game``;
-    ``"start"`` is one ``create_room`` with ``start: true``."""
-    if flow not in ("chain", "start"):
-        raise ValueError(f"unknown flow {flow!r}")
+def play_session(seed: int, rounds: int, config: dict) -> list[dict]:
+    """Every frame seat 0 receives in one seeded solo game of ``rounds`` rounds."""
     saved = (server.Game, server._compute_bot_turn_off_loop)
     server.Game = functools.partial(Game, DeckRng(seed))
     server._compute_bot_turn_off_loop = _inline_bot_turn
     loop = VirtualTimeLoop()
     try:
-        return loop.run_until_complete(_session(seed, rounds, config, flow))
+        return loop.run_until_complete(_session(seed, rounds, config))
     finally:
         pending = asyncio.all_tasks(loop)
         for task in pending:
@@ -363,9 +346,8 @@ def game_seed(base: int, g: int) -> int:
     return (base * 1_000_003 + g) & M32
 
 
-def session_record(seed: int, rounds: int, config: dict, stats: Counter,
-                   flow: str = "chain") -> dict:
-    frames = play_session(seed, rounds, config, flow)
+def session_record(seed: int, rounds: int, config: dict, stats: Counter) -> dict:
+    frames = play_session(seed, rounds, config)
     kinds = Counter(f["type"] for f in frames)
     for k, v in kinds.items():
         stats[f"frames_{k}"] += v
@@ -388,14 +370,13 @@ def session_record(seed: int, rounds: int, config: dict, stats: Counter,
             "digests": "".join(digest(f) for f in frames)}
 
 
-# The committed fixture file each flow regenerates.
-FIXTURE_NAMES = {"chain": "server_sessions.jsonl.gz", "start": "server_sessions_start.jsonl.gz"}
+# The committed fixture file.
+FIXTURE_NAME = "server_sessions_start.jsonl.gz"
 
 
-def sessions_text(n_games: int, rounds: int, base_seed: int, stats=None,
-                  flow: str = "chain") -> str:
+def sessions_text(n_games: int, rounds: int, base_seed: int, stats=None) -> str:
     stats = Counter() if stats is None else stats
-    lines = [_dumps(session_record(game_seed(base_seed, g), rounds, game_config(g), stats, flow))
+    lines = [_dumps(session_record(game_seed(base_seed, g), rounds, game_config(g), stats))
              for g in range(n_games)]
     deck = list(__import__("shengji.engine.cards", fromlist=["make_deck"]).make_deck())
     DeckRng(game_seed(base_seed, 0)).shuffle(deck)
@@ -411,22 +392,20 @@ def main(argv=None) -> int:
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", type=Path)
-    ap.add_argument("--flow", choices=sorted(FIXTURE_NAMES), default="chain",
-                    help="how each game starts: the add_bot/start_game chain or create_room start")
     ap.add_argument("--dump", type=int, metavar="GAME",
                     help="print game GAME's normalised frames as JSON lines")
     args = ap.parse_args(argv)
     if args.dump is not None:
         for f in play_session(game_seed(args.seed, args.dump), args.rounds,
-                              game_config(args.dump), args.flow):
+                              game_config(args.dump)):
             print(canonical(f))
         return 0
     if args.out is None:
         ap.error("--out is required unless --dump is given")
     stats: Counter = Counter()
-    text = sessions_text(args.games, args.rounds, args.seed, stats, args.flow)
+    text = sessions_text(args.games, args.rounds, args.seed, stats)
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / FIXTURE_NAMES[args.flow]).write_bytes(_gzip_bytes(text))
+    (args.out / FIXTURE_NAME).write_bytes(_gzip_bytes(text))
     print(json.dumps(dict(sorted(stats.items()))))
     return 0
 

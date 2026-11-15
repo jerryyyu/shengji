@@ -38,14 +38,14 @@ def _set(store, user_id, rating, rounds=0):
 
 class Table:
     """A room whose four seats the test assigns (an int is a signed-in human,
-    None a guest, "bot" a bot), played in-process. It is a created room with
-    Ranked switched on unless ``ranked=False``: only a ranked room is rated."""
+    None a guest, "bot" a bot), played in-process. It is a queue-matched room
+    unless ``ranked=False``: only a ranked room is rated."""
 
     def __init__(self, srv, seats, code="RATE", ranked=True):
         from shengji.engine.game import Game
 
         self.srv = srv
-        self.room = srv.Room(code=code, ranked=ranked)
+        self.room = srv.Room(code=code, matched=ranked)
         self.room.seats = [
             srv.Seat(name=f"Bot {i}", is_bot=True) if s == "bot"
             else srv.Seat(name=f"P{i}", user_id=s, connected=True)
@@ -329,51 +329,38 @@ def test_an_unranked_created_room_rates_nobody(env, monkeypatch):
     assert "rating" not in srv.state_for(table.room, 0)["round_result"]
 
 
-def test_a_ranked_created_room_rates_beside_a_guest_without_voiding(env, monkeypatch):
-    """Unlike a queue-matched room, a created ranked room keeps a round with a
-    guest seated: the guest's seat counts as the bot anchor."""
+def test_a_queue_room_rates_beside_a_guest_at_the_bot_anchor(env, monkeypatch):
+    """A guest's seat counts as the bot anchor and the round is kept: the
+    worked expectation is the one it has always had."""
     srv, store, _ = env
     a, _ = _user(store, "alice")
     _force_outcome(monkeypatch, 30)
     table = Table(srv, [a, None, "bot", None])
-    assert table.room.matched is False
+    assert table.room.matched is True
     table.play_round(banker=0)
     [event] = _events(store)
     assert event["user_id"] == a
     assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
 
 
-def _socket_room(srv, client, headers, ranked):
-    ws = client.websocket_connect("/ws", headers=headers)
-    a = ws.__enter__()
-    a.send_json({"type": "create_room", "name": "Jerry"})
-    code = _drain(a, "room")["room"]
-    for _ in range(3):
-        a.send_json({"type": "add_bot"})
-    if ranked:
-        a.send_json({"type": "set_ranked", "on": True})
-    a.send_json({"type": "start_game"})
-    _drain(a, "state", tries=60)
-    return ws, srv.rooms[code]
-
-
-def test_play_bots_is_unrated_and_the_switch_rates_the_same_room(env):
-    """Play bots is a created room with bots in every other seat, never
-    switched to Ranked: it gets no rating state. The same room with Ranked
-    on is rated for its signed-in seat."""
-    srv, store, client = env
+def test_play_bots_is_unrated_and_the_queue_rates_its_bot_game(queue_env):
+    """Play bots is a created room with bots in every other seat: it gets no
+    rating state, and its old Ranked switch is refused as retired. The
+    ranked queue's game with bots is rated for its signed-in seat."""
+    srv, store, client = queue_env
     uid, headers = _user(store, "solo", "Solo")
-    ws, room = _socket_room(srv, client, headers, ranked=False)
-    try:
-        assert room.ratings is None
-    finally:
-        ws.__exit__(None, None, None)
-    ws, room = _socket_room(srv, client, headers, ranked=True)
-    try:
-        assert room.ranked is True
+    with client.websocket_connect("/ws", headers=headers) as a:
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        code = _drain(a, "room")["room"]
+        _drain(a, "state", tries=60)
+        a.send_json({"type": "set_ranked", "on": True})
+        assert _drain(a, "error", tries=400)["code"] == "retired"
+        assert srv.rooms[code].ratings is None
+        a.send_json({"type": "leave_room"})
+        _drain(a, "left", tries=400)
+        code, _ = _ranked_solo(srv, a)
+        room = srv.rooms[code]
         assert room.ratings is not None and room.ratings.present == {0: uid}
-    finally:
-        ws.__exit__(None, None, None)
 
 
 def test_a_queue_room_is_ranked_without_the_switch():
@@ -381,8 +368,7 @@ def test_a_queue_room_is_ranked_without_the_switch():
 
     assert ratings.ranked(srv.Room(code="Q", matched=True))
     assert not ratings.ranked(srv.Room(code="C"))
-    assert ratings.ranked(srv.Room(code="R", ranked=True))
-    test_room = srv.Room(code="X", ranked=True)
+    test_room = srv.Room(code="X", matched=True)
     test_room.experimental_policy = "w32"
     assert not ratings.ranked(test_room)
 
@@ -941,18 +927,13 @@ def test_recent_games_list_latest_first_even_within_one_second(env, monkeypatch,
     assert all("_last_event" not in g for g in games)
 
 
-def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
-    srv, store, client = env
+def test_leave_room_over_the_socket_marks_the_round_abandoned(queue_env, keypair):
+    srv, store, client = queue_env
     private_pem, _ = keypair
     cookie = _session_cookie(srv.accounts, client, private_pem)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-        a.send_json({"type": "create_room", "name": "Jerry"})
-        code = _drain(a, "room")["room"]
-        for _ in range(3):
-            a.send_json({"type": "add_bot"})
-        a.send_json({"type": "set_ranked", "on": True})     # only a ranked room is rated
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        code, _ = _ranked_solo(srv, a)
+        _drain(a, "state", tries=400)
         room = srv.rooms[code]
         assert room.ratings is not None and room.ratings.present == {0: 1}
         a.send_json({"type": "leave_room"})
@@ -960,27 +941,22 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(env, keypair):
         assert room.ratings.left == {1: 0}
 
 
-def test_a_deliberate_leave_keeps_every_rating_and_penalty_rule(env, keypair, monkeypatch):
+def test_a_deliberate_leave_keeps_every_rating_and_penalty_rule(queue_env, keypair, monkeypatch):
     """Leave hands the seat to the bot at once, but what a leave costs is
     unchanged: the round is recorded as left, the leaver is rated as an
     abandon whether or not the seat is marked as left, and no carried cap or
     queue cooldown is added for an ordinary seat."""
     from shengji.api import ratings
 
-    srv, store, client = env
+    srv, store, client = queue_env
     private_pem, _ = keypair
     ratings.CARRIED_CAPS.clear()
     cooldowns = []
     monkeypatch.setattr(srv.MATCHMAKER, "left_open_table", lambda *a: cooldowns.append(a))
     cookie = _session_cookie(srv.accounts, client, private_pem)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-        a.send_json({"type": "create_room", "name": "Jerry"})
-        code = _drain(a, "room")["room"]
-        for _ in range(3):
-            a.send_json({"type": "add_bot"})
-        a.send_json({"type": "set_ranked", "on": True})
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        code, _ = _ranked_solo(srv, a)
+        _drain(a, "state", tries=400)
         room = srv.rooms[code]
         a.send_json({"type": "leave_room"})
         _drain(a, "left", tries=200)
@@ -1002,27 +978,22 @@ def _wait_until(pred, timeout=60.0):
         time.sleep(0.01)
 
 
-def test_a_losing_leaver_is_rated_before_the_empty_room_closes(env, keypair, monkeypatch):
+def test_a_losing_leaver_is_rated_before_the_empty_room_closes(queue_env, keypair, monkeypatch):
     """The last human leaving a rated round of a ranked room: the bots finish
     it without pacing, the leaver is rated on its real result, then the room
     closes."""
     from shengji.ai.heuristic import HeuristicBot
     from shengji.api import ratings
 
-    srv, store, client = env
+    srv, store, client = queue_env
     private_pem, _ = keypair
     monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
     _force_outcome(monkeypatch, 165)           # attackers +2: the leaver's banker team loses
     monkeypatch.setattr(srv, "ROOM_TTL", 120.0)  # the round ends well before the backstop
     cookie = _session_cookie(srv.accounts, client, private_pem)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-        a.send_json({"type": "create_room", "name": "Jerry"})
-        code = _drain(a, "room")["room"]
-        for _ in range(3):
-            a.send_json({"type": "add_bot"})
-        a.send_json({"type": "set_ranked", "on": True})
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        code, _ = _ranked_solo(srv, a)
+        _drain(a, "state", tries=400)
         room = srv.rooms[code]
         a.send_json({"type": "leave_room"})
         _drain(a, "left", tries=200)
@@ -1035,7 +1006,7 @@ def test_a_losing_leaver_is_rated_before_the_empty_room_closes(env, keypair, mon
     assert room.seats[0].bot_announced
 
 
-def test_a_closing_ranked_round_is_finished_without_the_served_search(env, keypair, monkeypatch):
+def test_a_closing_ranked_round_is_finished_without_the_served_search(queue_env, keypair, monkeypatch):
     """Nobody is left to watch the round: the cheap heuristic bot finishes
     it, the served bot is never asked, and the leaver is rated exactly as
     before (abandoned, on the real result)."""
@@ -1044,7 +1015,7 @@ def test_a_closing_ranked_round_is_finished_without_the_served_search(env, keypa
     from shengji.ai.heuristic import HeuristicBot
     from shengji.api import ratings
 
-    srv, store, client = env
+    srv, store, client = queue_env
     private_pem, _ = keypair
     monkeypatch.setattr(HeuristicBot, "decide_declare", lambda *a, **kw: None)
     _force_outcome(monkeypatch, 165)
@@ -1078,16 +1049,11 @@ def test_a_closing_ranked_round_is_finished_without_the_served_search(env, keypa
 
     cookie = _session_cookie(srv.accounts, client, private_pem)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-        a.send_json({"type": "create_room", "name": "Jerry"})
-        code = _drain(a, "room")["room"]
+        code, _ = _ranked_solo(srv, a)
         room = srv.rooms[code]
         ServedBot.room = room
         room.bot = ServedBot()
-        for _ in range(3):
-            a.send_json({"type": "add_bot"})
-        a.send_json({"type": "set_ranked", "on": True})
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        _drain(a, "state", tries=400)
         a.send_json({"type": "leave_room"})
         _drain(a, "left", tries=200)
         _wait_until(lambda: code not in srv.rooms, timeout=20.0)
@@ -1442,15 +1408,13 @@ def _displaced_seat(srv, client, cookie, ranked=False):
     """Socket ``a`` starts a game at seat 0; ``b``, the same account in
     another tab, resumes the seat by its token and displaces ``a``."""
     a = client.websocket_connect("/ws", headers={"cookie": cookie}).__enter__()
-    a.send_json({"type": "create_room", "name": "Jerry"})
-    token = _drain(a, "resume")["token"]
-    code = _drain(a, "room")["room"]
-    for _ in range(3):
-        a.send_json({"type": "add_bot"})
     if ranked:
-        a.send_json({"type": "set_ranked", "on": True})
-    a.send_json({"type": "start_game"})
-    _drain(a, "state", tries=60)
+        code, token = _ranked_solo(srv, a)
+    else:
+        a.send_json({"type": "create_room", "name": "Jerry"})
+        token = _drain(a, "resume")["token"]
+        code = _drain(a, "room")["room"]
+    _drain(a, "state", tries=400)
     room = srv.rooms[code]
     b = client.websocket_connect("/ws", headers={"cookie": cookie}).__enter__()
     b.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
@@ -1481,9 +1445,9 @@ def test_leaving_from_a_displaced_tab_leaves_the_seat_and_closes_the_room(env, k
         a.__exit__(None, None, None)
 
 
-def test_a_displaced_tabs_leave_in_a_ranked_round_finishes_it_bot_covered(env, keypair,
+def test_a_displaced_tabs_leave_in_a_ranked_round_finishes_it_bot_covered(queue_env, keypair,
                                                                           monkeypatch):
-    srv, store, client = env
+    srv, store, client = queue_env
     private_pem, _ = keypair
     monkeypatch.setattr(srv, "ROOM_TTL", 120.0)
     cookie = _session_cookie(srv.accounts, client, private_pem)
@@ -1534,10 +1498,7 @@ def test_a_guest_displaced_socket_still_cannot_leave_for_the_seat(client):
         a.send_json({"type": "create_room", "name": "jerry"})
         token = _drain(a, "resume")["token"]
         code = _drain(a, "room")["room"]
-        for _ in range(3):
-            a.send_json({"type": "add_bot"})
-        a.send_json({"type": "start_game"})
-        _drain(a, "state", tries=60)
+        _drain(a, "state", tries=400)
         with client.websocket_connect("/ws") as b:
             b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
             _drain(b, "state", tries=80)

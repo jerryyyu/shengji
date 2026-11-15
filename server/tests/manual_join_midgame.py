@@ -12,11 +12,7 @@ async def main():
             m = json.loads(await a.recv())
             if m.get("type") == "room":
                 room = m["room"]; break
-        await a.send(json.dumps({"type": "add_bot"}))
-        await a.send(json.dumps({"type": "add_bot"}))
-        await a.send(json.dumps({"type": "add_bot"}))
-        await asyncio.sleep(0.5)
-        await a.send(json.dumps({"type": "start_game"}))
+        # the game starts at creation, with a bot in every other seat
         await asyncio.sleep(2.0)
         # second human joins the RUNNING game
         async with websockets.connect(uri) as b:

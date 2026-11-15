@@ -114,17 +114,16 @@ def test_report_over_the_socket_is_stored_and_confirmed_to_the_reporter(client, 
             client.websocket_connect("/ws", headers={"cookie": bea_cookie}) as b:
         a.send_json({"type": "create_room", "name": "Ada"})
         code = _drain(a, "room")["room"]
-        b.send_json({"type": "join_room", "room": code, "name": "Bea"})
-        _drain(b, "room")
-        a.send_json({"type": "add_bot"})
+        b.send_json({"type": "join_room", "room": code, "name": "Bea", "seat": 2})
+        _drain(b, "state", tries=400)
         b.send_json({"type": "chat", "text": "you are terrible"})
-        _drain(a, "chat")
-        # Bea joined in the host's partner seat; the bot took seat 1
+        _drain(a, "chat", tries=400)
+        # Bea took the bot's seat 2 in the running game; a bot keeps seat 1
         a.send_json({"type": "report_player", "seat": 2, "reason": "abuse"})
-        ack = _drain(a, "report_received")
+        ack = _drain(a, "report_received", tries=400)
         assert ack["seat"] == 2 and "Bea" in ack["message"]
         a.send_json({"type": "report_player", "seat": 1, "reason": "abuse"})
-        err = _drain(a, "error")
+        err = _drain(a, "error", tries=400)
         assert err["code"] == "report_bot"
     [rec] = _stored(reports_on)
     assert rec["room"] == code
@@ -142,11 +141,11 @@ def test_a_guest_cannot_report_over_the_socket(client, reports_on):
             client.websocket_connect("/ws", headers={"cookie": bea_cookie}) as b:
         a.send_json({"type": "create_room", "name": "Guest"})
         code = _drain(a, "room")["room"]
-        b.send_json({"type": "join_room", "room": code, "name": "Bea"})
-        _drain(b, "room")
-        a.send_json({"type": "report_player", "seat": 1, "reason": "abuse"})
-        assert _drain(a, "error")["code"] == "report_sign_in"
+        b.send_json({"type": "join_room", "room": code, "name": "Bea", "seat": 2})
+        _drain(b, "state", tries=400)
+        a.send_json({"type": "report_player", "seat": 2, "reason": "abuse"})
+        assert _drain(a, "error", tries=400)["code"] == "report_sign_in"
         # and a signed-in player cannot report a guest
         b.send_json({"type": "report_player", "seat": 0, "reason": "abuse"})
-        assert _drain(b, "error")["code"] == "report_guest"
+        assert _drain(b, "error", tries=400)["code"] == "report_guest"
     assert _stored(reports_on) == []

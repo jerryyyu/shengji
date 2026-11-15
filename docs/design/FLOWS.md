@@ -22,15 +22,18 @@ this spec wins.
 ## Approved
 
 **Section 1, one table UI for Play tables and rooms.**
-- A room is a `room` kind of the existing green panel (`web/src/queue/TablePanel.tsx`), inline on the Play
-  tab in Play's place. On desktop and iPad it sits in the Ranked card's place with the mini table.
+- A room has no panel before its game (Jerry 2026-11-14: "We can remove it"): every created room starts at once
+  with bots, a stale page's plain create included, so the green panel's pre-game `room` kind is removed and the
+  panel is the waiting (queue) table's only. A room is joined only once its game is on, through a bot's seat.
 - The full-screen Room lobby (`Room.tsx`) and the join-by-code seat picker (`Lobby.tsx:350-397`) are removed.
-- Anyone at the table may move to an empty seat until they tap Start.
+- At a waiting table, anyone may move to an empty seat until they tap Start.
 - Everyone taps Start ("N of M ready"). The opener gets Start now after 30 s.
 - Starting level is the opener's only. When the opener leaves, their controls pass to the next person and
   the table stays open.
-- A room adds three rows: the code with Invite link, Starting level, and the Ranked and Allow joiners switches.
-  Joiners see these as one summary line.
+- A created room has no Ranked switch: ranked play is the queue's.
+- The created room's lobby controls are retired (Jerry 2026-11-14): Add bot, Remove bot, Remove player, the
+  host's seat swap, the room's Start taps and Start now, and the room's Starting level after creation. An
+  out-of-date page that sends one is refused as out of date. A refused start returns the creator to Play.
 - **Allow joiners defaults to ON** for created rooms (a reversal of 11-13).
 - **Chat:** every table has chat from the moment you sit. A chat row in the panel opens the table's chat
   sheet, quick phrases first, and the same log carries into the game. Play tables before the game need a new
@@ -215,13 +218,13 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - Start rule (no auto-start alone): Jerry asked for more explanation. It goes to a mock with both variants before any decision.
 
 ## Deferred mock items (Jerry 2026-11-14: "Yea do deferred mock questions")
-- **Take back a Start.** At a waiting table or a room before its game, your Start is in until you tap the button
+- **Take back a Start.** At a waiting table, your Start is in until you tap the button
   again: "Waiting for Alice" (a quiet button) becomes "Start", and the "N of M ready" count drops. Each Duo member
-  takes back its own tap. The server's `table_unready` and a room's `lobby_ready {on: false}` do it.
+  takes back its own tap. The server's `table_unready` does it.
 - **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "Good game", "Nice!", "One more?",
   "Brb"), then the field. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
   path; nothing new is logged.
-- **The opener moves other people.** At a waiting table or a room before its game, the opener taps a person (the
+- **The opener moves other people.** At a waiting table, the opener taps a person (the
   seat is outlined), then an empty seat, then confirms once ("Move Alice here?", Cancel / Move). A Duo moves as one
   to a whole free team and is never split; a held partner seat is never a destination. The move takes back the
   moved person's Start, and they hear it in the one toast ("Jerry moved you to the other team."). Anyone else's

@@ -47,12 +47,6 @@ it("a matched game says Ranked, in gold, at the top of the menu", () => {
   expect(host.querySelector(".hud-menu")!.firstElementChild).toBe(label());
 });
 
-it("a created room its host switched to Ranked says the same", () => {
-  act(() => root.render(<Hud state={{ ...state(false), ranked: true }} practice={false} />));
-  openMenu();
-  expect(label()!.textContent).toBe("Ranked");
-});
-
 it("offline play has no mode label: it is plain from the screen", () => {
   act(() => root.render(<Hud state={state(false)} practice />));
   openMenu();

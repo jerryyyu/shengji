@@ -155,7 +155,7 @@ describe("connection intent", () => {
     FakeWS.last!.onopen?.();
     // ws.ts used to read localStorage here and send join_room itself, which
     // raced the invite flow. It must now report "open" and nothing else.
-    expect(FakeWS.last!.sent.filter((m) => m.type === "join_room")).toHaveLength(0);
+    expect(FakeWS.last!.sent.filter((m) => m.type === "table_join")).toHaveLength(0);
   });
 });
 

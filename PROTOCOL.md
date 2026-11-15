@@ -15,18 +15,18 @@ Two decks are used, so each code appears twice. Every physical card instance has
 
 | type | fields | when |
 |------|--------|------|
-| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`), optional `start: true`. The game starts at once with a bot in every empty seat, with `start` or without it: one `room` frame, then the game's frames. A refused start discards the room: the creator gets the `error`, then `left` | anytime before joining |
-| `allow_joiners` | `on: boolean` | the opener of an ordinary room in play, ranked or casual: whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
-| `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | from the lobby, to a room in play: claim a bot's or a dropped human's seat, or resume your own by `token`. A room whose game has not started answers `room_not_found` |
-| `peek_room` | `room` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found`, the refusal every client's peek already settles on |
+| `create_room` | `name` (player display name), optional `start_level` (rank both teams start at: `"2"`..`"10"`, `"J"`, `"Q"`, `"K"`, `"A"`; omit for `"2"`), optional `start: true`. The game starts at once with a bot in every empty seat, with `start` or without it (the client sends it; a create without it is counted as an out-of-date page's, see "Table messages"): one `room` frame, then the game's frames. A refused start discards the room: the creator gets the `error`, then `left` | anytime before joining |
+| `table_allow_joiners` | `on: boolean` | the opener of an ordinary room in play, ranked or casual: whether the queue may offer its bot seats to newcomers (see "Open tables"). On at creation; refused in a test room |
+| `table_join` | `code` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`), optional `expect: "room"` | from the lobby, to a room in play: claim a bot's or a dropped human's seat, or resume your own by `token`; a queued table's code sits at that table (see "Table messages"). A code that names neither answers `room_not_found` with `expect: "room"`, else `table_not_found` |
+| `table_peek` | `code` | from the lobby (not from a seat), WITHOUT joining — answered with `room_seats`, for a live room's code or a queued table's (see "Table codes"). A live room's code is not limited. Any other code shares `code_lookup`'s limit of 30 per account (a guest: per socket) per minute; past it the answer is `error` with code `room_not_found`, the refusal every client's peek already settles on |
 | `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
-| `chat` | `text` (<=300 chars) | seated in a game: the line goes to the table and the room log |
+| `table_chat` | `text` (<=300 chars) | seated in a game: the line goes to the table and the room log |
 | `declare` | `card_ids: number[]` (1 or 2 ids of a valid declaration) | anytime during `deal` or `declare` phase |
 | `pass_declare` | — | `declare` phase (marks you done with the declare window) |
 | `bury` | `card_ids: number[]` (exactly 8) | you are banker, phase `bury` |
 | `play` | `card_ids: number[]` | your play turn |
 | `next_round` | — | phase `round_end`; EVERY connected human must send it before the round advances |
-| `leave_room` | — | anytime after joining; server replies `{type:"left"}` |
+| `table_leave` | — | anytime after joining; server replies `{type:"left"}` |
 
 Invalid actions get an `error` message; state is unchanged.
 
@@ -42,9 +42,8 @@ between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no
 longer exists — the client should clear its saved room and return to the
-lobby instead of retrying), `"retired"` (`add_bot`, `remove_bot`,
-`remove_player` or `set_ranked`: a created room's old lobby control, which
-no table has; the page is out of date), and `"bad_start_level"` (`create_room` carried a
+lobby instead of retrying), `"retired"` (a retired message name, listed in
+"Table messages": the page is out of date), and `"bad_start_level"` (`create_room` carried a
 `start_level` that is not a known rank). An unknown `start_level` is REFUSED,
 never coerced to `"2"`: silently downgrading it would hand the player a game
 their own lobby misdescribes. No room is created, and the socket stays usable.
@@ -61,10 +60,9 @@ A room exists only to play its game: `create_room` starts it at once, and
 nobody sits at a room before its game. `opener` is the same seat as `host`:
 the creator, and when the opener leaves the game, the next person round the
 table. In a room, the messages that set a table up before its game
-(`swap_seats`, `lobby_ready`, `set_start_level`, `start_game`, and in the
-table family `table_move`, `table_start`, `table_start_now`,
-`table_start_bots`, `table_start_level`) are refused with "Game already
-started.". `allow_joiners` (every ordinary room; on at creation) says
+(`table_move`, `table_start`, `table_start_now`, `table_start_bots`,
+`table_start_level`) are refused with "Game already started.".
+Allow joiners (`table_allow_joiners`; every ordinary room; on at creation) says
 whether the queue may offer the room's bot seats.
 
 `start_level` is the rank BOTH teams begin at: set at `create_room` and
@@ -78,7 +76,7 @@ Only a ranked room's rounds are rated, and only the ranked queue makes one
 (`matched: true`). A room from the casual queue is an ordinary unranked room,
 with no move timer, and so is every room made with `create_room` (Play bots,
 a test room and a continued saved game included). A ranked room starts at
-level `"2"`, fixed, so every rated game is the same game: `set_start_level` is
+level `"2"`, fixed, so every rated game is the same game: `table_start_level` is
 refused there. Its signed-in seats are rated from the round-start snapshot;
 a guest seat counts at the bot anchor rating and is never rated itself. A
 person who claims a seat mid-round is rated from the next round. An unranked room is never rated: its `round_result` carries no
@@ -94,7 +92,7 @@ The voice announcer inferred it and called a two-pair 甩牌 a 拖拉机.
 
 ### `{type: "room_seats", room, in_game: bool, seats: [{seat, name, is_bot, connected, team, claimable, reserved_secs, controller}]}`
 
-Reply to `peek_room`. Read-only: it does not seat the asker and reveals no
+Reply to `table_peek`. Read-only: it does not seat the asker and reveals no
 private information. The lobby uses it to show a seat picker when a game is in
 progress and more than one bot seat is open — which bot you replace decides
 who your partner is.
@@ -144,7 +142,7 @@ its snapshot. Ids restart per room; always key the log by `room`.
 Sent on every attach. `token` is the seat's opaque identity — names are NOT
 identity, and the token is what lets a player resume their own seat even while
 a stale socket of theirs is still open. Store it and send it back in
-`join_room`. `gen` is the connection generation that now owns the seat.
+`table_join`. `gen` is the connection generation that now owns the seat.
 
 ### `{type: "state", ...GameState}`
 Full personalized game state:
@@ -234,24 +232,24 @@ A client that does not know which kind a code is sends
 `{type: "code_lookup", code}` and gets `{type: "code_kind", code, kind}`, with
 `code` normalised and `kind` one of:
 
-- `"room"`: a live room. Continue with `peek_room` / `join_room`.
+- `"room"`: a live room. Continue with `table_peek` / `table_join`.
 - `"party"`: a live pair. Continue with `party_join`, which needs sign-in (a
   guest gets `signed_in_only`).
 - `"table"`: a queued table that has not started (see "Table codes").
-  Continue with `queue_join {code}`. An older client reads it as no code.
+  Continue with `table_join {code}`. An older client reads it as no code.
 - `"none"`: nothing live has that code (or it is not 4 letters and digits).
 
 The lookup changes nothing on the server, works from a seat or the lobby,
 signed in or not, and is limited to 30 per account (a guest: per socket) per
 minute (`error` with code `rate_limited`). A room wins a code that a room and
 a pair both hold, which only codes issued before the shared space can do.
-`peek_room`, `join_room` and `party_join` are unchanged, so a client that
+`table_peek`, `table_join` and `party_join` are unchanged, so a client that
 never sends `code_lookup` keeps working. Invite links are `/?code=CODE`;
 `/?room=CODE` and `/?party=CODE` still open a room and a pair.
 
 ## Flow
 
-1. `create_room` → one `room` message with the code, then the game starts with a bot in every other seat; others `join_room` to claim a bot's seat.
+1. `create_room` → one `room` message with the code, then the game starts with a bot in every other seat; others `table_join` to claim a bot's seat.
 2. **deal**: cards are dealt one at a time (~10s for the full deal); each new state shows your hand growing and every player's `cards_left`. At ANY point during dealing, a player holding a valid declaration (`declare_options` non-empty) may send `declare`: single trump-rank card sets that suit; a pair of trump-rank cards beats a single; a joker pair beats both and declares NT. `turn` is null throughout — declaration is a race, not a rotation.
 3. **declare**: a short grace window (~5s) after the last card so anyone can still (over-)declare. `pass_declare` marks you done (you appear in `passed`); the window closes when every connected human has passed or the timer runs out — a new declaration resets both. If nobody declared at all, the server flips the kitty to fix trump. First round: first declarer's seat becomes banker; later rounds the banker is fixed by rotation and declaring only sets the suit.
 4. **bury**: banker's hand shows 33 cards (25 + 8 kitty); banker sends `bury` with 8 ids.
@@ -265,7 +263,10 @@ One family of `table_*` messages works at any table, whether the socket waits
 in the queue (alone or at a waiting table) or sits in a room's game. The server rewrites each into the message that place already
 handles, so every check, rate limit and refusal of that message applies; the
 frames that come back (`room`, `queue_state`, `room_seats`, `chat`,
-`table_chat` and the rest) are that message's. The older names stay accepted.
+`table_chat` and the rest) are that message's. The messages it rewrites into
+are the server's own: a client that sends one gets `error` with code
+`"retired"` ("This page is out of date. Reload to play."), and nothing else
+happens.
 
 | type | fields | in the queue | in a room |
 |------|--------|--------------|-----------|
@@ -277,22 +278,25 @@ frames that come back (`room`, `queue_state`, `room_seats`, `chat`,
 | `table_start_level` | `start_level` | `table_start_level` | refused, as `table_move` |
 | `table_chat` | `text` | `table_chat` | `chat` (logged) |
 | `table_leave` | — | `queue_leave`; with an invite Join waiting for its handover, `leave_room` | `leave_room` |
-| `table_join` | `code`, `name`, optional `seat`, `token` | a live room's code: `join_room {room: code}`; any other code: `queue_join {code}`; no code: `room_not_found` | `join_room`, refused from a seat as ever |
+| `table_join` | `code`, `name`, optional `seat`, `token`, `expect: "room"` | a live room's code: `join_room {room: code}`; else a queued table's code: `queue_join {code}`; a code that names neither: `room_not_found` with `expect: "room"` (a resume, a room's link, a peek that showed a room: the page ends the dead room), else `table_not_found`; no code: `room_not_found` | `join_room`, refused from a seat as ever |
 | `table_peek` | `code` | `peek_room {room: code}` (a room's or a queued table's code) | `peek_room`, refused from a seat as ever |
 
+The retired names, each refused with `"retired"`: `swap_seats`,
+`lobby_ready`, `table_unready`, `start_game`, `queue_start_bots`,
+`allow_joiners`, `set_start_level`, `chat`, `leave_room`, `queue_leave`,
+`join_room`, `queue_join` with a `code` (without one it is the search),
+`peek_room`, and the created room's old lobby controls `add_bot`,
+`remove_bot`, `remove_player`, `set_ranked`.
+
 `/healthz` carries `legacy_messages`: since the process started, how many
-times each older name arrived on a socket (`swap_seats`, `lobby_ready`,
-`table_unready`, `start_game`, `queue_start_bots`, `allow_joiners`,
-`set_start_level`, `chat`, `leave_room`, `queue_leave`, `join_room`,
-`queue_join` with a `code`, `peek_room`, `create_room` without `start:
-true`), plus the retired lobby controls that are refused (`add_bot`,
-`remove_bot`, `remove_player`, `set_ranked`). Only messages from a client count; the
+times each retired name arrived on a socket, and `create_room` without
+`start: true` (still answered). Only messages from a client count; the
 server's own start of a queue table does not. Plain counts, nothing else.
 
 ## Matchmaking queue
 
 Signed-in players can queue for a rated game instead of sharing a room code.
-Invite rooms (`create_room` / `join_room`) are unchanged. Every queue message is
+Invite rooms (`create_room` / `table_join`) are unchanged. Every queue message is
 sent from the lobby (a socket that holds no seat); a seated socket may send only
 `party_leave`, and anything else is refused with code `in_room`, except the
 `table_*` names of "Table messages", which reach the socket's room. Times
@@ -303,22 +307,22 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 
 | type | fields | effect |
 |------|--------|--------|
-| `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`), optional `code`, optional `allow_joiners` (default `true`), optional `start_level` (default `"2"`), optional `duo` (default `false`) | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode. `allow_joiners` and `start_level` are your own table's settings (see "Table codes"); a ranked table refuses any level but `"2"` with `ranked_level_fixed`. With `code`, sit at that queued table instead, in its mode and with its settings (the other four fields are ignored). `duo: true` opens your own table with your partner seat held for a friend (see "Duo tables"); a non-boolean is `bad_setting`, and a member of a full party queues as the pair, holding nothing |
+| `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`), optional `allow_joiners` (default `true`), optional `start_level` (default `"2"`), optional `duo` (default `false`) | queue alone, or (party leader only) as the pair; a member of a full party always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode. `allow_joiners` and `start_level` are your own table's settings (see "Table codes"); a ranked table refuses any level but `"2"` with `ranked_level_fixed`. `table_join {code}` sits at a queued table instead, in its mode and with its settings. `duo: true` opens your own table with your partner seat held for a friend (see "Duo tables"); a non-boolean is `bad_setting`, and a member of a full party queues as the pair, holding nothing |
 | `table_allow_joiners` | `on: boolean` | your table's Allow joiners, alone or at a waiting table; only the table's opener (its leader, for a pair) may switch it, anyone else is refused with `not_opener`, and the whole table takes it. 20 per account per minute (with `table_move`) |
 | `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change clears every Start at the table |
-| `queue_leave` | — | leave the queue (leader only for a pair); at a waiting table this frees your seat |
-| `table_start` | optional `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready until you take it back; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
-| `table_unready` | — | take back your Start before the table starts (the same who as `table_start`: a pair's leader for the pair, a table Duo's member its own tap, alone too); `not_seated` alone outside a Duo, `not_leader` for a pair's partner; nothing to take back is no change |
+| `table_leave` | — | leave the queue (leader only for a pair); at a waiting table this frees your seat |
+| `table_start` | optional `on: boolean`, `panel_seq` | tap Start at your waiting table (leader only for a pair, for both): your entry is ready until you take it back; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
+| `table_start {on: false}` | — | take back your Start before the table starts (the same who as `table_start`: a pair's leader for the pair, a table Duo's member its own tap, alone too); `not_seated` alone outside a Duo, `not_leader` for a pair's partner; nothing to take back is no change |
 | `table_move` | `seat`, optional `from` and `who` | move yourself to an empty seat at your waiting table: singles only (`pair_seats_fixed`), before your Start (`already_ready`); `seat_taken` for a seat someone holds, `bad_seat` for anything but 0-3. With `from`, another person's seat, and `who`, that seat's `sit` token as the opener confirmed it, the table's opener (its leader) moves that person instead (`not_opener` for anyone else, `bad_seat` for an empty `from` or your own pair's, `seat_changed` when `who` is missing or no longer that seat's sitting, so a delayed move never lands on whoever sat after): a single to the empty `seat`, a pair as one to the two seats of `seat`'s team (both free, the person at `from` into `seat`), never into a held seat (`seat_taken`); it takes back the moved entry's Start. 20 per account per minute |
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
 | `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
-| `queue_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` (what an older client's bar button sends) |
+| `table_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` |
 | `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`bots_at: null`, `wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
 | `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now (a new `bots_at`); the wait itself is kept |
 | `party_create` | — | create a pair party (or resend yours); answered with `party` |
 | `party_invite` | — | the same as `party_create`: the party's `code` is the invite |
 | `party_join` | `code` | join a friend's party by its code (pair codes share the room code space; see "Codes") |
-| `party_leave` | — | leave the party; it dissolves and the other member is told. A queued pair leaves the queue (and its seats); a Duo made at a table splits instead, as `queue_leave` does (see "Duo tables") |
+| `party_leave` | — | leave the party; it dissolves and the other member is told. A queued pair leaves the queue (and its seats); a Duo made at a table splits instead, as `table_leave` does (see "Duo tables") |
 | `match_accept`, `match_decline` | — | retired with the ready check: always refused with `no_match` |
 | `open_table_join` | `room`, `seat`, optional `panel_seq` | take that seat at the open table offered to you (see "Open tables"); the first confirm wins |
 | `open_table_wait` | — | keep looking instead; the offered table is not offered again by itself in this search (a fresh `queue_join` forgets it) |
@@ -339,7 +343,7 @@ seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
 `table_full`, `same_device` (a device of yours already sits at that table),
 `not_opener`, `ranked_level_fixed`, `bad_start_level`, `bad_setting`. A signed-in
 account with a connected seat in a ranked game in play is refused
-`queue_join`, `queue_start_bots`, `party_create`, `party_join` and `open_table_join` from any
+`queue_join`, `table_start_bots`, `party_create`, `party_join` and `open_table_join` from any
 other socket with `account_in_game`.
 
 ### Server → Client
@@ -408,7 +412,7 @@ other socket with `account_in_game`.
   hear `you: true` and `team_changed` (whether they are on the other team
   now). It comes right after the `queue_state` that shows the new seats.
 - `first_joiner {name, seat, move_secs, round_end}`: once per game started
-  alone (`queue_start_bots` or the entry's own timer), to its people, when the
+  alone (`table_start_bots` or the entry's own timer), to its people, when the
   first newcomer's Join lands. `move_secs` is the move clock that runs from
   now on (null without one); `round_end` says the newcomer plays from the
   next round.
@@ -417,9 +421,9 @@ other socket with `account_in_game`.
   connected lobby socket gets the current count if it is above zero.
 - `match_started {match_id, room, rated}`: the room was created and started
   for you; `match_id` is the waiting table's id, or null for a game started
-  alone (`queue_start_bots` or the entry's own timer). It arrives with the
+  alone (`table_start_bots` or the entry's own timer). It arrives with the
   usual `resume`, `chat_history`, `room` and `state` frames: the socket now
-  holds its seat exactly as after `join_room`. `room` and `state` of such a
+  holds its seat exactly as after `table_join`. `room` and `state` of such a
   room carry `matched: true`. There is no ready check before it. After
   `open_table_join` it is `match_started {match_id: null, room, rated,
   joining: true, seat}`: the seat is yours from the handover (see "Open
@@ -476,7 +480,7 @@ entry is dropped with `queue_removed {reason: "away"}`. A seated entry that
 has not tapped Start and sent nothing for 2 minutes is dropped with
 `queue_removed {reason: "idle"}`; at a table with no timer it is first asked
 "still here?" (`still_here_until`) and dropped 30 s later unless it answers. A disconnected entry that is not seated is
-not seated while it may still come back. `create_room` or `join_room` that
+not seated while it may still come back. `create_room` or `table_join` that
 seats the socket ends its queue entry (and frees its seat); a failed join
 leaves it queued.
 
@@ -495,7 +499,7 @@ the game still opens the room after it. A code is released when its entry
 leaves the queue, unless its table still sits; a departed opener that queues
 again gets a fresh code.
 
-`queue_join {code}` (the link, or a typed code that `code_lookup` calls
+`table_join {code}` (the link, or a typed code that `code_lookup` calls
 `"table"`) seats you at that table: opening it with its host when the host is
 alone, in the table's mode and with its settings, outside the rating window
 and whatever Allow joiners says. Every other queue rule holds: the cooldown,
@@ -523,7 +527,7 @@ holds the seat, a seated stranger cannot `table_move` into it
 another's (two Duo openers never share one). A table that starts first
 plays a bot in it.
 
-The first single who joins by the table's code (`queue_join {code}`) takes
+The first single who joins by the table's code (`table_join {code}`) takes
 the held seat, and the two become one paired entry (`queue_state.duo`, a
 `party` with `table: true`). From then on it is a pair: seated together,
 matched and moved as a unit, and a ranked Duo is rated as a pair. Each
@@ -531,11 +535,11 @@ member taps Start (`table_start`, either member, alone or at a table): the
 pair counts as two in the table's `ready`/`of` and is ready once both have
 tapped, and both taps made while alone carry to the table it sits at.
 Alone, `queue_state.duo_ready` counts the taps and `you_ready` is yours;
-the pair keeps searching, and `queue_start_bots` (its leader) still starts
+the pair keeps searching, and `table_start_bots` (its leader) still starts
 it with bots at once. A party pair keeps its leader's Start. Later code joiners, and a pair joining by
 the code, take the open seats as at any table.
 
-Before the game, one Leave (`queue_leave` or `party_leave`, from either
+Before the game, one Leave (`table_leave` or `party_leave`, from either
 member) ends the Duo for the leaver only; the other is told with
 `party_closed {by}` and keeps the table, its seat and its code. When the
 partner leaves (or signs in from a guest, takes a seat elsewhere or stays
@@ -549,7 +553,7 @@ its own table, becomes the opener, and nothing is held. After the game the
 pair stays paired, as a party pair does.
 
 A Duo table that starts while its seat is still held plays a bot there, and
-the room remembers the seat: a `join_room` by the room's code that names no
+the room remembers the seat: a `table_join` by the room's code that names no
 `seat` takes that bot's seat first (the friend arriving late; at a ranked
 room through the invite path, as any invite). A join that names a seat,
 and every later join, choose as usual.
@@ -561,7 +565,7 @@ its own code and its leader alone cancels it.
 
 A room in play, ranked or casual, is an open table while it has a bot seat, a
 person connected and "Allow joiners" on (`allow_joiners`, any seated person
-may send `{type: "allow_joiners", on}`; default on, created rooms included).
+may send `{type: "table_allow_joiners", on}`; default on, created rooms included).
 A test or evaluation room never is. Each open table has a mode: ranked
 (queue-matched) or casual (a created room, or a casual queue room), and the queue offers it only to
 entries of that mode. A newcomer who taps Play goes, in
@@ -588,10 +592,10 @@ at once if the seat owes nothing (dealing, declaring, someone else's bury, a
 trick it already played to, a round end), else at the end of the current
 trick, never in the middle of its bury. Until then the newcomer's socket gets
 the seat's `state` frames with `joining_you: true` and may send only
-`leave_room`; the table's frames carry `joining: [{seat, name, when}]`
+`table_leave`; the table's frames carry `joining: [{seat, name, when}]`
 (`when: "trick"`, then `"round"` for someone seated at a round end, who plays
 from the next round). At the handover the socket holds the seat as after
-`join_room` (`resume`, `chat_history`, `state`).
+`table_join` (`resume`, `chat_history`, `state`).
 
 A newcomer seated mid-round at a ranked table is not rated for that round
 (its `round_result` carries `unranked: "joined"`) and is rated from the next.
@@ -604,9 +608,9 @@ casual table costs nothing more, and neither does leaving at a round end, so
 a casual table's frames never set `joined_round`.
 
 A ranked table's invite link (its room code; "Copy invite link" stays in
-the game menu) is the table's consent: `peek_room` answers `room_seats` with
+the game menu) is the table's consent: `table_peek` answers `room_seats` with
 `ranked: true`, `full` and `claimable` on the seats a newcomer may take, and
-a signed-in account that holds no seat there joins with `join_room {room,
+a signed-in account that holds no seat there joins with `table_join {code,
 seat?}` exactly as from an offer (pending until the handover, first round
 unranked), even with Allow joiners off. The cooldown, never-again and
 carried-cap rules apply as to any newcomer. Refusals: `ranked_sign_in` for a
@@ -624,8 +628,8 @@ the front of the queue); once seated, the away player gets `left {reason:
 
 ## Reconnect & lifecycle
 
-Rejoining with `join_room` and the stored `token` (or, for a disconnected seat, the same name, trimmed and case-folded) reclaims the seat, and the current `state` is resent. Bots act automatically after a short delay.
+Rejoining with `table_join` and the stored `token` (or, for a disconnected seat, the same name, trimmed and case-folded) reclaims the seat, and the current `state` is resent. Bots act automatically after a short delay.
 
 A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **30 seconds**, the server's bot plays that turn (and keeps doing so until they reconnect).
 
-`leave_room` is the explicit exit: the seat is kept reclaimable (bots cover it, same as a disconnect) but the leaver's client should clear its saved room. The server confirms with `{type: "left"}`, after which the same connection may `create_room`/`join_room` again.
+`table_leave` is the explicit exit: the seat is kept reclaimable (bots cover it, same as a disconnect) but the leaver's client should clear its saved room. The server confirms with `{type: "left"}`, after which the same connection may `create_room`/`table_join` again.

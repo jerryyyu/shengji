@@ -227,7 +227,7 @@ class HumanDriver:
             self.rounds_done += 1
             if self.rounds_done >= self.rounds:
                 self.leaving = True
-                return [{"type": "leave_room"}]
+                return [{"type": "table_leave"}]
             return [{"type": "next_round"}]
         rnd = self.live_round()
         if rnd is None or not self._fresh(msg, rnd):

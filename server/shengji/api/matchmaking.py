@@ -1204,7 +1204,7 @@ class Matchmaker:
                     # The ready check is gone: the waiting table is the accept.
                     raise QueueError("no_match", "There is no ready check for you.")
                 elif t == "table_start" or (t == "queue_start_bots" and self._table(e) is not None):
-                    # An older client's Play bots at a table is its Start.
+                    # Play bots at a table is its Start.
                     if e is not None:
                         self._check_panel(e, msg)
                     await self._table_start(queue_id)

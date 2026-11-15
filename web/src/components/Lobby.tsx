@@ -203,7 +203,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
     clearInvite();
     lastJoin.current = { code: target, kind: "room", for: asker };
     const token = getResumeToken();
-    if (conn.send({ type: "join_room", room: target, name: trimmed, seat,
+    if (conn.send({ type: "table_join", code: target, name: trimmed, seat, expect: "room",
                     ...(token ? { token } : {}) })) {
       setStarting({ kind: "join", generation: conn.generation });
     }
@@ -384,12 +384,13 @@ export default function Lobby({ status, room = null, holdInvite = false,
   };
 
   // The panel's Join: under the name the chip shows (a guest's random one
-  // until they edit it), a room by join_room, a Play table through the queue.
+  // until they edit it), a room by its peek's seat, a Play table through the
+  // queue (and the room it has just become, if it started meanwhile).
   const joinFromPanel = () => {
     const v = joinRef.current;
     if (!v || v.full) return;
     // a room's plain Join waits for its peek to show a plain seat: a seatless
-    // join_room must never land in a dropped player's seat
+    // join must never land in a dropped player's seat
     if (v.kind === "room" && (v.peek === null || v.peek.table || plainSeat(v.peek) === null)) return;
     const as = nameOrRandom();
     if (v.kind === "table") {
@@ -397,7 +398,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
       clearInvite();
       setLinkRoom(null);
       lastJoin.current = { code: v.code, kind: "table", for: "panel" };
-      queue.join(v.code);
+      queue.join(v.code, as);
       return;
     }
     joinSeat(undefined, v.code, "panel", as);

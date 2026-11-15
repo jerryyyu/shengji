@@ -45,17 +45,10 @@ export type ClientMsg =
   | { type: "next_round" }
   /** Ranked table: the player is back after the move timer marked them away. */
   | { type: "im_back" }
-  /** Any ordinary table, ranked or casual: whether newcomers may be offered
-   *  a bot seat; anyone seated may switch it. */
-  | { type: "allow_joiners"; on: boolean }
-  | { type: "chat"; text: string }
   /** Report another seat's player; the server answers report_received or a coded error. */
   | { type: "report_player"; seat: number; reason: ReportReason }
-  | { type: "peek_room"; room: string }
   /** Which kind of thing a typed or linked code names (PROTOCOL.md "Codes"). */
   | { type: "code_lookup"; code: string }
-  | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
-  | { type: "leave_room" } // anytime after joining; server replies {type:"left"}
   /* The table family (PROTOCOL.md "Table messages"): the same names at a
    * queue table and in a room, which the server rewrites into the message
    * that place handles. A room takes them only once its game is in play;

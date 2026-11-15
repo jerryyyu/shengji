@@ -16,7 +16,7 @@ describe("connection intent precedence", () => {
   it("auto-joins an invite that carries a name", () => {
     const i = decideIntent({ invite: { room: "bbbb", name: "James" } });
     expect(intentToJoin(i)).toEqual({
-      type: "join_room", room: "BBBB", name: "James",
+      type: "table_join", code: "BBBB", expect: "room", name: "James",
     });
   });
 
@@ -27,7 +27,7 @@ describe("connection intent precedence", () => {
     });
     expect(i.kind).toBe("pending");
     expect(intentToJoin(i)).toEqual({
-      type: "join_room", room: "CCCC", name: "sk", seat: 2,
+      type: "table_join", code: "CCCC", expect: "room", name: "sk", seat: 2,
     });
   });
 
@@ -36,7 +36,7 @@ describe("connection intent precedence", () => {
       savedRoom: "dddd", savedName: "jerry", savedToken: "tok-1",
     });
     expect(intentToJoin(i)).toEqual({
-      type: "join_room", room: "DDDD", name: "jerry", token: "tok-1",
+      type: "table_join", code: "DDDD", expect: "room", name: "jerry", token: "tok-1",
     });
   });
 

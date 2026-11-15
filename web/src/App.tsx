@@ -128,7 +128,7 @@ export default function App() {
       });
       if (intent.kind !== "resume") return;   // Lobby owns invite + pending
       const join = intentToJoin(intent);
-      if (join) { resumingRef.current = true; conn.send(join as never); }
+      if (join) { resumingRef.current = true; conn.send(join); }
     });
     const unsubMsg = conn.subscribe((msg) => {
       switch (msg.type) {

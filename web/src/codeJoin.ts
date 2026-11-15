@@ -1,8 +1,8 @@
 // Every join box and the `?code=` link (and the older `?room=` and `?party=`
 // links, its aliases) take a room or table code: the code is looked up first (PROTOCOL.md
-// "Codes"), then the room flow (peek, join_room) or the table flow
-// (queue_join with the code; a table code is no room until its game starts,
-// and a Duo's table is joined this way too).
+// "Codes"), then the room flow (table_peek, then table_join of its seat) or
+// the table flow (table_join with the code; a table code is no room until its
+// game starts, and a Duo's table is joined this way too).
 
 import { useSyncExternalStore } from "react";
 import { CODE_LEN, NO_CODE, aliasInviteLink, normalizeCode } from "./codes";
@@ -13,8 +13,8 @@ import { conn } from "./ws";
 /** Where a lookup started: the Play box or a link. */
 export type CodeFrom = "play" | "link";
 
-/** What a code the Play screen opens names: a room (peek_room, join_room)
- *  or a queued table (queue_join with its code). */
+/** What a code the Play screen opens names: a room (table_peek, then a
+ *  table_join expecting a room) or a queued table (table_join with its code). */
 export type TableKind = "room" | "table";
 
 export interface CodeView {

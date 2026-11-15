@@ -14,6 +14,8 @@
  * a pending action because following a link is the most recent explicit intent.
  */
 
+import type { ClientMsg } from "./protocol";
+
 export type Intent =
   | { kind: "invite"; room: string; name?: string }
   | { kind: "pending"; room: string; name: string; seat?: number; token?: string }
@@ -49,25 +51,27 @@ export function decideIntent(i: IntentInputs): Intent {
   return { kind: "none" };
 }
 
-/** The join_room message an intent implies, or null when nothing should be
- *  sent. An invite WITHOUT a name is deliberately not auto-joined: the lobby
- *  prefills and focuses the name field instead, so a returning player is not
- *  thrown into a room before they can change their name. */
-export function intentToJoin(intent: Intent): Record<string, unknown> | null {
+/** The table_join an intent implies, or null when nothing should be sent.
+ *  Each expects a room, so a room that has gone answers room_not_found,
+ *  which ends it on the page. An invite WITHOUT a name is deliberately not
+ *  auto-joined: the lobby prefills and focuses the name field instead, so a
+ *  returning player is not thrown into a room before they can change their
+ *  name. */
+export function intentToJoin(intent: Intent): Extract<ClientMsg, { type: "table_join" }> | null {
   switch (intent.kind) {
     case "invite":
       return intent.name?.trim()
-        ? { type: "join_room", room: intent.room, name: intent.name.trim() }
+        ? { type: "table_join", code: intent.room, name: intent.name.trim(), expect: "room" }
         : null;
     case "pending":
       return {
-        type: "join_room", room: intent.room, name: intent.name,
+        type: "table_join", code: intent.room, name: intent.name, expect: "room",
         ...(intent.seat !== undefined ? { seat: intent.seat } : {}),
         ...(intent.token ? { token: intent.token } : {}),
       };
     case "resume":
       return {
-        type: "join_room", room: intent.room, name: intent.name,
+        type: "table_join", code: intent.room, name: intent.name, expect: "room",
         ...(intent.token ? { token: intent.token } : {}),
       };
     default:

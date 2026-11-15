@@ -356,7 +356,7 @@ def test_play_bots_is_unrated_and_the_queue_rates_its_bot_game(queue_env):
         a.send_json({"type": "set_ranked", "on": True})
         assert _drain(a, "error", tries=400)["code"] == "retired"
         assert srv.rooms[code].ratings is None
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=400)
         code, _ = _ranked_solo(srv, a)
         room = srv.rooms[code]
@@ -463,7 +463,7 @@ def queue_env(env):
 def _ranked_solo(srv, a):
     a.send_json({"type": "queue_join"})
     _drain(a, "queue_state")
-    a.send_json({"type": "queue_start_bots"})
+    a.send_json({"type": "table_start_bots"})
     started = _drain(a, "match_started", tries=40)
     assert started["rated"] is True
     return started["room"], srv.rooms[started["room"]].seats[0].token
@@ -481,9 +481,9 @@ def test_a_guest_with_no_device_key_cannot_join_a_ranked_room(queue_env):
         room = srv.rooms[code]
         before = _seats(room)
         with client.websocket_connect("/ws") as g:
-            g.send_json({"type": "join_room", "room": code, "name": "Guest"})
+            g.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Guest"})
             assert _drain(g, "error")["code"] == "ranked_queue_only"
-            g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 1})
+            g.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Guest", "seat": 1})
             assert _drain(g, "error")["code"] == "ranked_queue_only"
         assert _seats(room) == before
 
@@ -498,7 +498,7 @@ def test_another_account_joins_a_ranked_room_by_code_only_as_an_open_table_newco
         with client.websocket_connect("/ws", headers=h2) as b:
             # typing the holder's name is not a way into the holder's seat:
             # the code is an invite, taking a bot's seat from the handover
-            b.send_json({"type": "join_room", "room": code, "name": "Owner"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Owner"})
             started = _drain(b, "match_started")
             assert started["joining"] is True and started["seat"] != 0
             assert room.seats[0].user_id == owner
@@ -513,11 +513,11 @@ def test_the_seat_holder_comes_back_with_or_without_a_token(queue_env):
         code, token = _ranked_solo(srv, a)
     room = srv.rooms[code]
     with client.websocket_connect("/ws", headers=headers) as again:
-        again.send_json({"type": "join_room", "room": code, "name": "Owner", "token": token})
+        again.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Owner", "token": token})
         state = _drain(again, "state", tries=80)
         assert state["room"] == code and state["you"] == 0
     with client.websocket_connect("/ws", headers=headers) as other_device:
-        other_device.send_json({"type": "join_room", "room": code, "name": "Phone"})
+        other_device.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Phone"})
         state = _drain(other_device, "state", tries=80)
         assert state["room"] == code and state["you"] == 0
     assert room.seats[0].user_id == uid and [s.is_bot for s in room.seats[1:]] == [True] * 3
@@ -936,7 +936,7 @@ def test_leave_room_over_the_socket_marks_the_round_abandoned(queue_env, keypair
         _drain(a, "state", tries=400)
         room = srv.rooms[code]
         assert room.ratings is not None and room.ratings.present == {0: 1}
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         assert room.ratings.left == {1: 0}
 
@@ -958,7 +958,7 @@ def test_a_deliberate_leave_keeps_every_rating_and_penalty_rule(queue_env, keypa
         code, _ = _ranked_solo(srv, a)
         _drain(a, "state", tries=400)
         room = srv.rooms[code]
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         seat = room.seats[0]
         assert seat.left_by_choice and not seat.is_bot
@@ -995,7 +995,7 @@ def test_a_losing_leaver_is_rated_before_the_empty_room_closes(queue_env, keypai
         code, _ = _ranked_solo(srv, a)
         _drain(a, "state", tries=400)
         room = srv.rooms[code]
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         _wait_until(lambda: code not in srv.rooms)
     assert room.game.round_no == 1 and room.round.phase == "round_end"
@@ -1054,7 +1054,7 @@ def test_a_closing_ranked_round_is_finished_without_the_served_search(queue_env,
         ServedBot.room = room
         room.bot = ServedBot()
         _drain(a, "state", tries=400)
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         _wait_until(lambda: code not in srv.rooms, timeout=20.0)
     assert asked == []
@@ -1080,7 +1080,7 @@ def test_a_ranked_room_closed_by_its_last_leaver_leaves_nothing_in_the_queue(que
     with client.websocket_connect("/ws", headers=headers) as a:
         code, _ = _ranked_solo(srv, a)
         room = srv.rooms[code]
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         _wait_until(lambda: code not in srv.rooms)
         conn = srv.MATCHMAKER.conns[uid]
@@ -1417,7 +1417,7 @@ def _displaced_seat(srv, client, cookie, ranked=False):
     _drain(a, "state", tries=400)
     room = srv.rooms[code]
     b = client.websocket_connect("/ws", headers={"cookie": cookie}).__enter__()
-    b.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+    b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
     _drain(b, "state", tries=80)
     assert room.seats[0].connected
     return a, b, code, room
@@ -1432,7 +1432,7 @@ def test_leaving_from_a_displaced_tab_leaves_the_seat_and_closes_the_room(env, k
     cookie = _session_cookie(srv.accounts, client, private_pem)
     a, b, code, room = _displaced_seat(srv, client, cookie)
     try:
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         assert not room.seats[0].connected and not room.seats[0].is_bot
         assert code not in srv.rooms
@@ -1453,7 +1453,7 @@ def test_a_displaced_tabs_leave_in_a_ranked_round_finishes_it_bot_covered(queue_
     cookie = _session_cookie(srv.accounts, client, private_pem)
     a, b, code, room = _displaced_seat(srv, client, cookie, ranked=True)
     try:
-        a.send_json({"type": "leave_room"})
+        a.send_json({"type": "table_leave"})
         _drain(a, "left", tries=200)
         assert room.ratings.left == {1: 0}
         _wait_until(lambda: code not in srv.rooms)
@@ -1474,9 +1474,9 @@ def test_a_displaced_tabs_leave_beside_another_human_keeps_the_game(env, keypair
     a, b, code, room = _displaced_seat(srv, client, cookie)
     try:
         with client.websocket_connect("/ws") as guest:
-            guest.send_json({"type": "join_room", "room": code, "name": "amy", "seat": 2})
+            guest.send_json({"type": "table_join", "expect": "room", "code": code, "name": "amy", "seat": 2})
             _drain(guest, "state", tries=80)
-            a.send_json({"type": "leave_room"})
+            a.send_json({"type": "table_leave"})
             _drain(a, "left", tries=200)
             assert srv.rooms.get(code) is room and not room.closing
             assert not room.seats[0].connected
@@ -1500,9 +1500,9 @@ def test_a_guest_displaced_socket_still_cannot_leave_for_the_seat(client):
         code = _drain(a, "room")["room"]
         _drain(a, "state", tries=400)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry", "token": token})
             _drain(b, "state", tries=80)
-            a.send_json({"type": "leave_room"})
+            a.send_json({"type": "table_leave"})
             # the deal's queued state frames reach this socket first
             assert _drain(a, "error", tries=200)["code"] == "stale_connection"
             assert srv.rooms[code].seats[0].connected

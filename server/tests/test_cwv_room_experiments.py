@@ -78,7 +78,7 @@ def test_real_creation_gate_shares_weights_not_rooms_and_excludes_logs(client, m
         assert "limit" in _drain(excess, "error")["message"]
         assert len(srv.rooms) == 3
         # Joining a room with experimental fields cannot change its policy.
-        excess.send_json({"type": "join_room", "room": ordinary.code,
+        excess.send_json({"type": "table_join", "expect": "room", "code": ordinary.code,
                           "name": "guest", "test_policy": "w32", "test_access_key": KEY})
         assert "experimental_policy" not in _drain(excess, "state")
         assert ordinary.experimental_policy is None
@@ -141,5 +141,5 @@ def test_a_test_room_with_start_stays_unrated_and_closed_to_joiners(client, monk
         assert not srv._joinable(room) and not srv._joinable(room, invite=True)
         assert not room.log_dir.is_relative_to(srv.LOG_DIR)
         assert (room.log_dir / f"{room.code}.jsonl").exists()
-        ws.send_json({"type": "allow_joiners", "on": True})
+        ws.send_json({"type": "table_allow_joiners", "on": True})
         assert _drain(ws, "error")["message"] == "This table takes no joiners."

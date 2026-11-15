@@ -602,9 +602,11 @@ export class QueueStore {
 
   /** Queue now: as the pair when one is formed and you lead it, else alone.
    *  With `code` (a friend's table, from a link or the code box), sit at
-   *  that table instead, in its mode and with its settings. */
-  join(code?: string): void {
-    this.sendJoin(code, false);
+   *  that table instead, in its mode and with its settings, as `name`: the
+   *  room that table has just become, if it started meanwhile, seats you
+   *  under it. */
+  join(code?: string, name?: string): void {
+    this.sendJoin(code, false, name);
   }
 
   /** Duo: your own table, as Play opens it, with the partner seat held for
@@ -613,13 +615,13 @@ export class QueueStore {
     this.sendJoin(undefined, true);
   }
 
-  private sendJoin(code: string | undefined, duo: boolean): void {
+  private sendJoin(code: string | undefined, duo: boolean, name?: string): void {
     const p = this.view.party;
     const pair = p && p.members.length === 2 ? p : null;
     if (pair && !pair.you_lead && code === undefined) return;
     if (this.cooling()) return;
     const mode = this.view.playMode;
-    const sent = this.send(code !== undefined ? { type: "queue_join", code }
+    const sent = this.send(code !== undefined ? { type: "table_join", code, ...(name ? { name } : {}) }
       : pair ? { type: "queue_join", party_id: pair.party_id, mode }
       : duo ? { type: "queue_join", mode, duo: true } : { type: "queue_join", mode });
     if (!sent) {

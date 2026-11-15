@@ -56,8 +56,8 @@ const SURFACES = [
 const notAClient = (rel: string) =>
   rel === "protocol.ts" || rel === "queue/messages.ts" || rel.startsWith("offline/server/");
 
-/** Every file that sends a leave (table_leave, or the older leave_room) or
- *  leaves the queue. Target: one leave.ts. */
+/** Every file that sends a leave (table_leave; the retired leave_room is
+ *  matched too) or leaves the queue. Target: one leave.ts. */
 const LEAVE_SITES = [
   "App.tsx", // the leave sheet a link opens while you sit elsewhere
   "components/HudMenu.tsx", // ⋯ → Leave game
@@ -69,12 +69,14 @@ const LEAVE_SITES = [
   "ws.ts", // leaveToLobby: the socket's own leave, keeping the connection
 ];
 
-/** Every file that sends a join or peek (table_join / table_peek, or the
- *  older join_room / peek_room) or joins the queue. Target: codeJoin.ts only. */
+/** Every file that sends a join or peek (table_join / table_peek; the
+ *  retired join_room / peek_room are matched too) or joins the queue.
+ *  Target: codeJoin.ts only. */
 const JOIN_SITES = [
   "components/Lobby.tsx", // the code box and the Join panel a link opens
-  "intent.ts", // the join_room a saved intent resumes with
+  "intent.ts", // the table_join a saved intent resumes with
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
+  "queue/store.ts", // queue.join(code): the table_join the queue's join sites call
   "queue/tableModel.ts", // the panel's I’m back (your table, moved here from another device)
 ];
 

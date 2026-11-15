@@ -933,11 +933,6 @@ class NotOpener(IllegalPlay):
     code = "not_opener"
 
 
-class Retired(IllegalPlay):
-    """A created room's old lobby control (``tables.RETIRED``)."""
-    code = "retired"
-
-
 def _pass_opener_mid_game(room: Room, gone: int) -> None:
     """The opener's controls pass to the next person round the table when
     the opener leaves a game in progress, whether the seat stays theirs for a
@@ -2177,9 +2172,6 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         raise IllegalPlay("Evaluation session was invalidated by logging failure.")
     t = msg.get("type")
     game, rnd = room.game, room.round
-    if t in tables.RETIRED:
-        raise Retired(tables.RETIRED_MESSAGE)
-
     if t == "start_game":
         # The creator's start, sent for them by ``create_room``: the one way
         # a room's game begins.
@@ -2422,14 +2414,20 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 MATCHMAKER.return_to_lobby(conn)
             if (legacy := tables.legacy_name(msg)) is not None:
                 ACTIVITY.legacy_used(legacy)
+            if tables.retired(msg):
+                # an old page: the backend's own names are not a client's
+                await send(ws, {"type": "error", "code": "retired",
+                                "message": tables.RETIRED_MESSAGE})
+                continue
             # A canonical name becomes the message the socket's backend
             # handles before any guard reads ``t``, so each guard applies
-            # to both names alike.
+            # to it as to the backend's own name.
             canonical = t if isinstance(t, str) and t in tables.CANONICAL else None
             if canonical is not None:
                 if room is None or me is None:
                     msg = tables.for_queue(msg, joining=conn.joining is not None,
-                                           room_codes=rooms)
+                                           room_codes=rooms,
+                                           table_codes=MATCHMAKER.entry_codes)
                 else:
                     msg = tables.for_room(msg)
                 t = msg.get("type")
@@ -2446,10 +2444,6 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 telemetry.receive(conn, msg, signed_in=account_id() is not None)
                 continue
             if room is None or me is None:
-                if t in tables.RETIRED:
-                    await send(ws, {"type": "error", "code": Retired.code,
-                                    "message": tables.RETIRED_MESSAGE})
-                    continue
                 if t == "leave_room" and conn.joining is not None:
                     # Leave before the handover: the Join ends, with the
                     # join-then-leave cooldown, and the seat stays the bot's.

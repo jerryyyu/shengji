@@ -114,9 +114,9 @@ def test_report_over_the_socket_is_stored_and_confirmed_to_the_reporter(client, 
             client.websocket_connect("/ws", headers={"cookie": bea_cookie}) as b:
         a.send_json({"type": "create_room", "name": "Ada"})
         code = _drain(a, "room")["room"]
-        b.send_json({"type": "join_room", "room": code, "name": "Bea", "seat": 2})
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Bea", "seat": 2})
         _drain(b, "state", tries=400)
-        b.send_json({"type": "chat", "text": "you are terrible"})
+        b.send_json({"type": "table_chat", "text": "you are terrible"})
         _drain(a, "chat", tries=400)
         # Bea took the bot's seat 2 in the running game; a bot keeps seat 1
         a.send_json({"type": "report_player", "seat": 2, "reason": "abuse"})
@@ -141,7 +141,7 @@ def test_a_guest_cannot_report_over_the_socket(client, reports_on):
             client.websocket_connect("/ws", headers={"cookie": bea_cookie}) as b:
         a.send_json({"type": "create_room", "name": "Guest"})
         code = _drain(a, "room")["room"]
-        b.send_json({"type": "join_room", "room": code, "name": "Bea", "seat": 2})
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Bea", "seat": 2})
         _drain(b, "state", tries=400)
         a.send_json({"type": "report_player", "seat": 2, "reason": "abuse"})
         assert _drain(a, "error", tries=400)["code"] == "report_sign_in"

@@ -1,8 +1,10 @@
 // The canonical table_* names on the device, as server/shengji/api/tables.py
 // rewrites them: each becomes the message the offline server already handles,
-// so every check and refusal of that message applies to both names alike.
-// The rewrite keeps every field the client sent and changes only `type` and
-// the fields the target names differently.
+// so every check and refusal of that message applies to it. Those handled
+// names are the server's own: a frame that carries one is refused unread
+// (`RETIRED`), as the game server refuses it. The rewrite keeps every field
+// the client sent and changes only `type` and the fields the target names
+// differently.
 
 type Json = Record<string, unknown>;
 
@@ -15,9 +17,27 @@ export const CANONICAL: ReadonlySet<string> = new Set([
 /** tables.py LOBBY: what sets a table up before its game. A room's game has
  *  always started, so in a room each is refused. */
 export const LOBBY: ReadonlySet<string> = new Set([
-  "swap_seats", "lobby_ready", "set_start_level", "table_move", "table_start",
-  "table_start_now", "table_start_bots", "table_start_level",
+  "table_move", "table_start", "table_start_now", "table_start_bots", "table_start_level",
 ]);
+
+/** tables.py RETIRED: the names a canonical name replaced, and the created
+ *  room's old lobby controls. `queue_join` is one only with a `code`. */
+export const RETIRED: ReadonlySet<string> = new Set([
+  "swap_seats", "lobby_ready", "table_unready", "start_game", "queue_start_bots",
+  "allow_joiners", "set_start_level", "chat", "leave_room", "queue_leave",
+  "join_room", "queue_join", "peek_room",
+  "add_bot", "remove_bot", "remove_player", "set_ranked",
+]);
+
+/** tables.py RETIRED_MESSAGE. */
+export const RETIRED_MESSAGE = "This page is out of date. Reload to play.";
+
+/** tables.py retired: whether a client frame uses a retired name. */
+export function retired(msg: Json): boolean {
+  const t = msg.type;
+  if (typeof t !== "string" || !RETIRED.has(t)) return false;
+  return t !== "queue_join" || (msg.code !== undefined && msg.code !== null);
+}
 
 const as = (msg: Json, type: string, fields: Json = {}): Json => ({ ...msg, type, ...fields });
 

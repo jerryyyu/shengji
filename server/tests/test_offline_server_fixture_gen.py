@@ -38,6 +38,7 @@ def test_committed_sessions_cover_the_server_flows():
     stats = header["stats"]
     assert header["games"] >= 200 and header["rounds"] >= 2
     assert set(header["normalized"]) == {"room", "token", "t"}
+    assert header["onlineOnly"] == gen.ONLINE_ONLY
     for key in ("frames_state", "frames_room", "frames_left", "notice_frames",
                 "point_scored_rounds", "human_bury_frames", "human_declared_frames"):
         assert stats[key] > 0, key
@@ -54,6 +55,22 @@ def test_a_session_is_deterministic_and_only_normalizes_environment():
     assert a[0] == {"type": "resume", "token": "TOKEN", "gen": 1}
     assert a[-1] == {"type": "left"}
     assert all(f.get("room", "ROOM") == "ROOM" for f in a)
+
+
+def test_online_only_frames_and_keys_are_dropped_and_must_be_sent():
+    assert gen.strip_online_only({"type": "table", "code": "ROOM"}) is None
+    state = {"type": "state", "room": "R", "players": [{"seat": 0}]}
+    for key in gen.ONLINE_ONLY["state"]:
+        state[key] = None
+    for key in gen.ONLINE_ONLY["state.players"]:
+        state["players"][0][key] = None
+    assert gen.strip_online_only(state) == {"type": "state", "room": "R",
+                                            "players": [{"seat": 0}]}
+    with pytest.raises(KeyError, match="matched"):
+        gen.strip_online_only({k: v for k, v in state.items() if k != "matched"})
+    state["players"] = [{"seat": 0}]
+    with pytest.raises(KeyError, match="player lacks"):
+        gen.strip_online_only(state)
 
 
 def test_deck_rng_matches_its_typescript_port():

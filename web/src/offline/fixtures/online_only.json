@@ -1,0 +1,19 @@
+{
+  "frames": {
+    "table": "the table frame: the offline client draws its table from state alone"
+  },
+  "room": {
+    "experimental_policy": "W32 test rooms exist only on the server (null elsewhere)",
+    "matched": "a table built by the matchmaking queue"
+  },
+  "state": {
+    "experimental_policy": "W32 test rooms exist only on the server (null elsewhere)",
+    "guest": "a person with no account at a rated or queue-matched table",
+    "matched": "a table built by the matchmaking queue"
+  },
+  "state.players": {
+    "away": "the move timer marked this present player away",
+    "left": "the owner pressed Leave and a bot plays the seat",
+    "turn_deadline": "seconds left on the move timer"
+  }
+}

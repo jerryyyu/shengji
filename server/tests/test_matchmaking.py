@@ -2489,7 +2489,7 @@ def test_ws_a_guest_and_an_account_share_a_table_and_start(wsenv):
         state = _drain(g, "state", tries=80)
         human = [sd for sd in room.seats if not sd.is_bot]
         assert [(sd.user_id, sd.queue_id) for sd in human] == [(uid, uid), (None, -1)]
-        assert state["guest"] is True and "guest" not in _drain(a, "state", tries=80)
+        assert state["guest"] is True and _drain(a, "state", tries=80)["guest"] is False
         assert room.ratings.present == {0: uid}
         frames = seen_a + seen_g + [state]
         assert DEVICE_A not in str(frames) and DEVICE_B not in str(frames)
@@ -2661,7 +2661,7 @@ def test_ws_a_guest_who_signs_in_takes_its_matched_seat_back_as_the_account(wsen
     with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
         a.send_json({"type": "table_join", "expect": "room", "code": code, "token": token})
         state = _drain(a, "state", tries=80)
-        assert state["you"] == 0 and "guest" not in state
+        assert state["you"] == 0 and state["guest"] is False
         seat = room.seats[0]
         assert (seat.user_id, seat.queue_id, seat.name) == (uid, uid, "Acct")
         assert seat.connected and srv._holds_seat(room, uid) and not srv._holds_seat(room, -1)
@@ -3052,10 +3052,10 @@ def test_every_seat_without_an_account_at_a_matched_table_is_a_guest(otenv, monk
     # whether or not the room's rounds are rated
     monkeypatch.setattr(srv.ratings, "ranked", lambda r: False)
     assert srv.state_for(room, 1)["guest"] is True
-    assert "guest" not in srv.state_for(room, 0)
-    assert "guest" not in srv.state_for(room, 2)
+    assert srv.state_for(room, 0)["guest"] is False
+    assert srv.state_for(room, 2)["guest"] is False
     room.matched = False
-    assert "guest" not in srv.state_for(room, 1)
+    assert srv.state_for(room, 1)["guest"] is False
 
 
 def _created_game(srv, store, client, monkeypatch, device=DEVICE_A):

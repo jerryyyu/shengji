@@ -93,9 +93,11 @@ export interface RoomMsg {
   players: RoomPlayer[];
   /** Rank both teams start at, fixed when the room was created. */
   start_level: Rank;
-  /** Present only for rooms explicitly created with the W32 test policy. */
-  experimental_policy?: "w32";
-  /** Built by the matchmaking queue: a rated game between strangers. */
+  /** "w32" for rooms explicitly created with the W32 test policy, else
+   *  null. Absent offline (offline/fixtures/online_only.json). */
+  experimental_policy?: "w32" | null;
+  /** Built by the matchmaking queue: a rated game between strangers.
+   *  Absent offline. */
   matched?: boolean;
   /** The opener: the same seat as `host`, which holds the table's opener
    *  controls in play. */
@@ -126,14 +128,14 @@ export interface StatePlayer {
   reserved_secs: number | null;
   /** Move timer (ranked tables): seconds this seat has left for the decision
    *  it owes (a play, a bury or the round-end Next); null when no clock runs
-   *  for it. Tick it down locally, like takeover_in. Absent at a table
-   *  without the move timer (casual and offline). */
+   *  for it, as at every table without the move timer. Tick it down locally,
+   *  like takeover_in. Absent offline (offline/fixtures/online_only.json). */
   turn_deadline?: number | null;
   /** The move timer ran out too often: the bot is playing every decision for
-   *  this present player until they are back. Absent where turn_deadline is. */
+   *  this present player until they are back. Absent offline. */
   away?: boolean;
   /** The owner pressed Leave: a bot plays the seat at once, and the table
-   *  names it "Bot (Alice left)". Sent only while true. */
+   *  names it "Bot (Alice left)". Absent offline. */
   left?: boolean;
 }
 
@@ -210,11 +212,14 @@ export interface GameState {
   type: "state";
   room: string;
   you: number;
-  /** Present only for rooms explicitly created with the W32 test policy. */
-  experimental_policy?: "w32";
-  /** Built by the matchmaking queue: a rated game between strangers. */
+  /** "w32" for rooms explicitly created with the W32 test policy, else
+   *  null. Absent offline (offline/fixtures/online_only.json). */
+  experimental_policy?: "w32" | null;
+  /** Built by the matchmaking queue: a rated game between strangers.
+   *  Absent offline. */
   matched?: boolean;
-  /** This viewer sits as a guest: their rounds are not ranked. */
+  /** This viewer sits as a guest: their rounds are not ranked. Absent
+   *  offline. */
   guest?: boolean;
   /** The seat holding the table's opener controls: only it switches Allow
    *  joiners. Passes to the next person round the table when it leaves. */

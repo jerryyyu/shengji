@@ -4,7 +4,10 @@
 // games recorded by server/scripts/gen_offline_server_fixtures.py (same seeds,
 // same deck shuffle, same human driver) and compares every frame the human's
 // socket receives, after normalising the environmental fields the fixture
-// header lists. server_sessions_start.jsonl.gz starts each game with one
+// header lists. Frames and keys only the online server sends are dropped from
+// the recorded side; ../fixtures/online_only.json lists them, the generator
+// reads the same file, and the offline server must send none of them.
+// server_sessions_start.jsonl.gz starts each game with one
 // create_room {start: true}, as the client's Play bots does. Set
 // OFFLINE_SERVER_FIXTURES to a directory to replay another fixture set.
 import { describe, expect, it } from "vitest";
@@ -22,6 +25,10 @@ import { LOCAL_MESSAGES, LocalSocket } from "./socket";
 import { RETIRED } from "./tables";
 
 const DIR = process.env.OFFLINE_SERVER_FIXTURES ?? fileURLToPath(new URL("../fixtures", import.meta.url));
+type OnlineOnly = Record<string, Record<string, string>>;
+const ONLINE_ONLY = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../fixtures/online_only.json", import.meta.url)), "utf8"),
+) as OnlineOnly;
 
 interface Header {
   format: number;
@@ -30,6 +37,7 @@ interface Header {
   human: string;
   firstDeck: string[];
   normalized: Record<string, string>;
+  onlineOnly: OnlineOnly;
   stats: Record<string, number>;
 }
 interface SessionRecord {
@@ -50,6 +58,19 @@ function normalize(msg: Frame): Frame {
     out.messages = (out.messages as Frame[]).map((m) => ({ ...m, room: "ROOM", t: 0 }));
   }
   return out;
+}
+
+/** The online-only frame type or keys `msg` carries, as "type" or "type.key". */
+function onlineOnlyIn(msg: Frame): string[] {
+  if (msg.type in ONLINE_ONLY.frames) return [msg.type];
+  const found = Object.keys(ONLINE_ONLY[msg.type] ?? {})
+    .filter((k) => k in msg)
+    .map((k) => `${msg.type}.${k}`);
+  const playerKeys = Object.keys(ONLINE_ONLY[`${msg.type}.players`] ?? {});
+  for (const p of (msg.players as Record<string, unknown>[] | undefined) ?? []) {
+    for (const k of playerKeys) if (k in p) found.push(`${msg.type}.players.${k}`);
+  }
+  return [...new Set(found)];
 }
 
 function sortKeys(v: unknown): unknown {
@@ -113,6 +134,13 @@ describe("offline server vs server.py (recorded solo games)", () => {
     expect([r.nextU32(), r.nextU32(), r.nextU32()]).toEqual([2693262067, 11749833, 2265367787]);
   });
 
+  it("finds an online-only frame type and online-only keys", () => {
+    expect(onlineOnlyIn({ type: "table" })).toEqual(["table"]);
+    const state: Frame = { type: "state", matched: false, players: [{ seat: 0, left: false }, { seat: 1 }] };
+    expect(onlineOnlyIn(state)).toEqual(["state.matched", "state.players.left"]);
+    expect(onlineOnlyIn({ type: "state", players: [{ seat: 0 }] })).toEqual([]);
+  });
+
   it("deals the fixtures' decks from their seeds", () => {
     const first = JSON.parse(lines[0]) as SessionRecord;
     expect(new DeckRng(first.seed).deck()).toEqual(header.firstDeck);
@@ -122,14 +150,20 @@ describe("offline server vs server.py (recorded solo games)", () => {
     expect(header.format).toBe(1);
     expect(lines.length).toBe(header.games);
     expect(Object.keys(header.normalized).sort()).toEqual(["room", "t", "token"]);
+    // recorded against the list this checkout holds
+    expect(header.onlineOnly).toEqual(ONLINE_ONLY);
     const mismatches: string[] = [];
+    const leaks = new Set<string>();
     const counts: Record<string, number> = { games: 0, frames: 0 };
     for (const line of lines) {
       const rec = JSON.parse(line) as SessionRecord;
       const frames = await playSession(rec, header.human);
       counts.games += 1;
       counts.frames += frames.length;
-      for (const f of frames) counts[`frames_${f.type}`] = (counts[`frames_${f.type}`] ?? 0) + 1;
+      for (const f of frames) {
+        counts[`frames_${f.type}`] = (counts[`frames_${f.type}`] ?? 0) + 1;
+        for (const k of onlineOnlyIn(f)) leaks.add(k);
+      }
       const got = frames.map(digest).join("");
       if (got !== rec.digests || frames.length !== rec.frames) {
         let i = 0;
@@ -143,6 +177,8 @@ describe("offline server vs server.py (recorded solo games)", () => {
     }
     console.log(JSON.stringify({ dir: DIR, file, counts }));
     expect(mismatches).toEqual([]);
+    // a key the offline server starts sending leaves online_only.json
+    expect([...leaks]).toEqual([]);
     expect(counts.games).toBe(header.games);
     expect(counts.frames).toBe(header.stats.frames);
     // a game's only room frame is the one create_room sends

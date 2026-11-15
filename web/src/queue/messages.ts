@@ -11,35 +11,34 @@ export type QueueClientMsg = { name?: string } & (
    *  reverse. Guests may queue in either. */
   | {
       type: "queue_join"; party_id?: string; mode?: QueueMode;
-      /** A friend's table code (its invite link, or a code_kind "table"):
-       *  sit at that waiting table, in its mode and with its settings
-       *  (`mode`, `allow_joiners` and `start_level` are then ignored). */
-      code?: string;
       /** Your own table's Allow joiners (default true). */
       allow_joiners?: boolean;
       /** Your own casual table's starting level (default "2"); a ranked
        *  table refuses anything but "2" with `ranked_level_fixed`. */
       start_level?: string;
       /** Open your own table as a Duo: the seat opposite you is held for
-       *  the first single who joins by the table's code (ignored with
-       *  `code`, and for a full party, which queues as the pair). */
+       *  the first single who joins by the table's code (ignored for a
+       *  full party, which queues as the pair). */
       duo?: boolean;
     }
-  | { type: "queue_leave" }
-  /** Leave your search or waiting table (`queue_leave` at the queue). */
+  /** Join by a code: the live room it names, else the waiting table it
+   *  names (in its mode and with its settings), seated under `name`. A
+   *  code that names neither is refused with `room_not_found` when
+   *  `expect` is "room" (a resume, a room link, a peek that showed a
+   *  room), else with `table_not_found`. `seat` and `token` are a room's:
+   *  the seat picked from its peek, and this device's resume token. */
+  | { type: "table_join"; code: string; seat?: number; token?: string; expect?: "room" }
+  /** Leave your search, waiting table or room seat. */
   | { type: "table_leave" }
   /** `panel_seq` is the queue_state's: a Start sent against a panel that has
    *  since changed is refused with `panel_changed`. `on: false` takes your
    *  Start back before the table starts (a Duo member: its own). */
   | { type: "table_start"; on?: boolean; panel_seq?: number }
-  /** Take your Start back: the older name of `table_start {on: false}`. */
-  | { type: "table_unready" }
   /** The opener's Start now at a waiting table, from its `start_now_at`:
    *  the table starts at once with bots (`not_opener`, `too_soon`). */
   | { type: "table_start_now"; panel_seq?: number }
-  | { type: "queue_start_bots"; panel_seq?: number }
   /** Play bots: start your table now with bots in the open seats (at a
-   *  waiting table, your Start); `queue_start_bots` at the queue. */
+   *  waiting table, your Start). */
   | { type: "table_start_bots"; panel_seq?: number }
   /** Move yourself to an empty seat at your waiting table (singles only,
    *  before your Start). With `from`, another person's seat, the opener

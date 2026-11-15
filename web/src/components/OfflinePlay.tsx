@@ -101,7 +101,7 @@ export function OfflineControls({ local, status, room = null }: OfflineControlsP
   }, [local, showTable, online, inApp]);
 
   const leave = () => {
-    if (room) conn.send({ type: "leave_room" });
+    if (room) conn.send({ type: "table_leave" });
     // a Start whose room has not come back yet: the leave waits for that
     // room on the socket
     else if (sent) conn.leaveToLobby();

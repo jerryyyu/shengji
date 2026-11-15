@@ -70,7 +70,7 @@ export class HumanDriver {
       this.roundsDone += 1;
       if (this.roundsDone >= this.rounds) {
         this.leaving = true;
-        return [{ type: "leave_room" }];
+        return [{ type: "table_leave" }];
       }
       return [{ type: "next_round" }];
     }

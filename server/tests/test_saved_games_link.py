@@ -78,7 +78,7 @@ def _start_signed_in_with_a_guest(client, cookie):
     code = _started_room(a, "Jerry")
     g = client.websocket_connect("/ws")
     g.__enter__()
-    g.send_json({"type": "join_room", "room": code, "name": "Guest", "seat": 1})
+    g.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Guest", "seat": 1})
     _drain(g, "state", tries=400)
     return code, a, g
 
@@ -202,9 +202,9 @@ def test_no_log_record_carries_the_account(accounts_on, keypair, client):
         cookie2 = _session_cookie(accounts_on, client, private_pem, sub="222",
                                   email="other@example.com", name="Other Person")
         with client.websocket_connect("/ws", headers={"cookie": cookie2}) as b:
-            b.send_json({"type": "join_room", "room": code, "name": "Guest", "token": token})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Guest", "token": token})
             _drain(b, "state", tries=60)
-            a.send_json({"type": "chat", "text": "hi"})
+            a.send_json({"type": "table_chat", "text": "hi"})
             _drain(a, "chat", tries=400)
         game_id = srv.rooms[code].saved_game.id
         links = _rows(accounts_on.STORE,

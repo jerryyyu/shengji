@@ -115,7 +115,7 @@ it("at the table a drop shows the pill, Retry at 10 s, the full screen at 60 s, 
   // back online: the saved seat is asked for by its token, and every surface clears
   const back = latest();
   act(() => back.open());
-  expect(back.sent).toEqual([expect.objectContaining({ type: "join_room", room: "ABCD", token: "tok-1" })]);
+  expect(back.sent).toEqual([expect.objectContaining({ type: "table_join", code: "ABCD", expect: "room", token: "tok-1" })]);
   expect(lost()).toBeNull();
   expect(banner()).toBeNull();
   act(() => back.deliver(playing));

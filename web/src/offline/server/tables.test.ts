@@ -1,9 +1,10 @@
 // @vitest-environment node
 /// <reference types="node" />
 // The canonical table_* names on the device: each one, sent where the page
-// sends it, gets exactly the frames its old name gets (tables.py's rewrite,
-// mirrored by tables.ts); and every message the page can send offline is
-// either answered by the offline server or named here as one it never answers.
+// sends it, is answered (tables.py's rewrite, mirrored by tables.ts), and the
+// old name it replaced is refused as retired and changes nothing; and every
+// message the page can send offline is either answered by the offline server
+// or named here as one it never answers.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -11,7 +12,7 @@ import type { ClientMsg } from "../../protocol";
 import { VirtualClock } from "./clock";
 import { LocalServer } from "./server";
 import { LOCAL_MESSAGES, LocalSocket } from "./socket";
-import { CANONICAL, LOBBY } from "./tables";
+import { CANONICAL, LOBBY, RETIRED, RETIRED_MESSAGE } from "./tables";
 
 type Frame = Record<string, unknown> & { type: string };
 type Msg = Record<string, unknown>;
@@ -71,43 +72,72 @@ async function scenario(first: Step[], second: Step[] | null = null) {
 }
 
 // create_room starts the game at once, so every room step below is in play
-const CREATE = { type: "create_room", name: "You" };
+const CREATE = { type: "create_room", name: "You", start: true };
+const RETIRED_FRAME = { type: "error", code: "retired", message: RETIRED_MESSAGE };
 
-/** [label, old-name steps, canonical steps, optional second-socket steps for each]. */
-const PAIRS: [string, Step[], Step[], Step[]?, Step[]?][] = [
-  ["table_allow_joiners = allow_joiners",
-    [CREATE, { type: "allow_joiners", on: false, at: 1 }], [CREATE, { type: "table_allow_joiners", on: false, at: 1 }]],
-  ["table_chat = chat", [CREATE, { type: "chat", text: " hi ", at: 1 }], [CREATE, { type: "table_chat", text: " hi ", at: 1 }]],
-  ["table_leave = leave_room", [CREATE, { type: "leave_room", at: 1 }], [CREATE, { type: "table_leave", at: 1 }]],
-  ["table_leave outside a room = queue_leave", [{ type: "queue_leave" }, CREATE], [{ type: "table_leave" }, CREATE]],
-  ["table_start outside a room = its queue meaning", [{ type: "table_unready" }, CREATE], [{ type: "table_start", on: false }, CREATE]],
-  ["table_join = join_room (resume by token)",
-    [CREATE], [CREATE],
-    [{ type: "join_room", room: "$code", name: "You", token: "$token" }],
-    [{ type: "table_join", code: " $lcode ", name: "You", token: "$token" }]],
-  ["table_join unknown code = join_room unknown room",
-    [{ type: "join_room", room: "ZZZZ", name: "You" }], [{ type: "table_join", code: "ZZZZ", name: "You" }]],
-  ["table_join without a code = join_room without a room",
-    [{ type: "join_room", room: "", name: "You" }], [{ type: "table_join", name: "You" }]],
-  ["table_join from a seat = join_room from a seat",
-    [CREATE, { type: "join_room", room: "ZZZZ", name: "You" }], [CREATE, { type: "table_join", code: "ZZZZ", name: "You" }]],
-  ["table_peek = peek_room", [{ type: "peek_room", room: "ZZZZ" }], [{ type: "table_peek", code: "zzzz" }]],
-  ["table_peek from a seat = peek_room from a seat",
-    [CREATE, { type: "peek_room", room: "ZZZZ" }], [CREATE, { type: "table_peek", code: "ZZZZ" }]],
+/** [label, canonical steps, optional second-socket steps, what the frames
+ *  must show, the old name it replaced (in the step that carries `old`)]. */
+const CASES: [string, Step[], Step[] | null, string, Msg][] = [
+  ["table_allow_joiners", [CREATE, { type: "table_allow_joiners", on: false, at: 1 }], null,
+    '"allow_joiners":false', { type: "allow_joiners", on: false }],
+  ["table_chat", [CREATE, { type: "table_chat", text: " hi ", at: 1 }], null,
+    '"text":"hi"', { type: "chat", text: " hi " }],
+  ["table_leave", [CREATE, { type: "table_leave", at: 1 }], null, '"type":"left"', { type: "leave_room" }],
+  ["table_join (resume by token)", [CREATE],
+    [{ type: "table_join", code: " $lcode ", name: "You", token: "$token", expect: "room" }],
+    "You reconnected", { type: "join_room", room: "$code", name: "You", token: "$token" }],
+  ["table_join unknown code", [{ type: "table_join", code: "ZZZZ", name: "You" }], null,
+    '"room_not_found"', { type: "join_room", room: "ZZZZ", name: "You" }],
+  ["table_join without a code", [{ type: "table_join", name: "You" }], null,
+    '"room_not_found"', { type: "join_room", room: "", name: "You" }],
+  ["table_join from a seat", [CREATE, { type: "table_join", code: "ZZZZ", name: "You", at: 1 }], null,
+    "Unknown action: join_room", { type: "join_room", room: "ZZZZ", name: "You" }],
+  ["table_peek", [{ type: "table_peek", code: "zzzz" }], null, '"room_not_found"', { type: "peek_room", room: "ZZZZ" }],
+  ["table_peek from a seat", [CREATE, { type: "table_peek", code: "ZZZZ", at: 1 }], null,
+    "Unknown action: peek_room", { type: "peek_room", room: "ZZZZ" }],
 ];
 
-describe("each canonical table name gets its old name's frames", () => {
-  it.each(PAIRS)("%s", async (_label, old, canonical, oldSecond, canonicalSecond) => {
-    const a = await scenario(old, oldSecond ?? null);
-    const b = await scenario(canonical, canonicalSecond ?? null);
-    // a scenario that sent nothing back would compare equal for any name
-    expect(a.frames.length).toBeGreaterThan(0);
-    expect(b.frames).toEqual(a.frames);
+/** `steps` with the canonical message (the last one) replaced by `by`. */
+function swapLast(steps: Step[], by: Msg | null): Step[] {
+  const { at } = steps[steps.length - 1];
+  const head = steps.slice(0, -1);
+  return by === null ? head : [...head, { ...by, ...(at !== undefined ? { at } : {}) }];
+}
+
+describe("each canonical table name, and the old name it replaced", () => {
+  it.each(CASES)("%s is answered", async (_label, steps, second, sees) => {
+    const { frames } = await scenario(steps, second);
+    expect(JSON.stringify(frames)).toContain(sees);
+  });
+
+  it.each(CASES)("%s: the old name is refused and changes nothing", async (_label, steps, second, _sees, old) => {
+    const [first, again] = second === null ? [swapLast(steps, old), null] : [steps, swapLast(second, old)];
+    const [base, baseAgain] = second === null ? [swapLast(steps, null), null] : [steps, swapLast(second, null)];
+    const a = await scenario(first, again);
+    const b = await scenario(base, baseAgain);
+    const refused = a.frames.findIndex((f) => JSON.stringify(f) === JSON.stringify(RETIRED_FRAME));
+    expect(refused).toBeGreaterThanOrEqual(0);
+    // both runs stop at FRAME_CAP, the refused one a frame early
+    const rest = a.frames.filter((_, k) => k !== refused);
+    expect(rest.length).toBeGreaterThanOrEqual(Math.min(b.frames.length, FRAME_CAP - 1));
+    expect(rest).toEqual(b.frames.slice(0, rest.length));
   });
 
   it("covers every canonical name the offline server takes, the refused ones below", () => {
-    const named = new Set(PAIRS.flatMap(([, , c, , c2]) => [...c, ...(c2 ?? [])].map((m) => m.type as string)));
+    const named = new Set(CASES.flatMap(([, c, c2]) => [...c, ...(c2 ?? [])].map((m) => m.type as string)));
     expect([...CANONICAL].filter((t) => !named.has(t) && !LOBBY.has(t))).toEqual([]);
+  });
+
+  it("refuses every retired name, outside a room and from a seat", async () => {
+    for (const t of RETIRED) {
+      const m = { type: t, ...(t === "queue_join" ? { code: "ABCD" } : {}), on: false, text: "x" };
+      const outside = await scenario([m]);
+      expect(outside.frames, t).toEqual([RETIRED_FRAME]);
+      const seated = await scenario([CREATE, { ...m, at: 1 }]);
+      expect(seated.frames.filter((f) => (f as Frame).type === "error"), t).toEqual([RETIRED_FRAME]);
+    }
+    // the search keeps its name: the device has no queue, so it goes nowhere
+    expect((await scenario([{ type: "queue_join", mode: "casual" }])).frames).toEqual([]);
   });
 });
 
@@ -127,16 +157,14 @@ describe("a room's lobby controls, as server.py's", () => {
 // so the ClientMsg union is the page's sendable set; `satisfies` below makes
 // tsc refuse a union member this table leaves out, or a name it adds that
 // Sendable does not list. The rest of Sendable comes from outside the union:
-// the telemetry batch (telemetry.ts sends it untyped) and the canonical name
-// the page does not send (CANONICAL, checked against tables.py below). "local": the offline server answers it, so it must be in
-// LOCAL_MESSAGES; anything else is why the device never answers it, so it
-// must not be.
-type Sendable = ClientMsg["type"] | "client_event" | "table_join";
+// the telemetry batch (telemetry.ts sends it untyped). "local": the offline
+// server answers it, so it must be in LOCAL_MESSAGES; anything else is why
+// the device never answers it, so it must not be.
+type Sendable = ClientMsg["type"] | "client_event";
 const LOCAL = "local";
 const QUEUE = "the matchmaking queue, which the device does not have";
 const SENDABLE = {
-  create_room: LOCAL, join_room: LOCAL, peek_room: LOCAL, leave_room: LOCAL, chat: LOCAL,
-  allow_joiners: LOCAL, declare: LOCAL, pass_declare: LOCAL, bury: LOCAL,
+  create_room: LOCAL, declare: LOCAL, pass_declare: LOCAL, bury: LOCAL,
   play: LOCAL, next_round: LOCAL,
   table_start: LOCAL, table_start_now: LOCAL, table_start_bots: LOCAL, table_allow_joiners: LOCAL,
   table_start_level: LOCAL, table_chat: LOCAL, table_leave: LOCAL, table_join: LOCAL, table_peek: LOCAL,
@@ -146,9 +174,8 @@ const SENDABLE = {
   report_player: "moderation, a service of the game server",
   code_lookup: "codes name the game server's rooms and tables",
   client_event: "telemetry, collected by the game server",
-  queue_status: QUEUE, queue_join: QUEUE, queue_leave: QUEUE, table_unready: QUEUE,
-  queue_start_bots: QUEUE, table_here: QUEUE, queue_wait_players: QUEUE, queue_allow_bots: QUEUE,
-  party_create: QUEUE, party_join: QUEUE, party_leave: QUEUE,
+  queue_status: QUEUE, queue_join: QUEUE, table_here: QUEUE, queue_wait_players: QUEUE,
+  queue_allow_bots: QUEUE, party_create: QUEUE, party_join: QUEUE, party_leave: QUEUE,
   open_table_join: QUEUE, open_table_wait: QUEUE, open_table_show: QUEUE,
 } satisfies Record<Sendable, string>;
 
@@ -177,9 +204,16 @@ describe("every message the page can send offline is answered or named", () => {
     expect(names.length).toBeGreaterThan(0);
     expect(names.filter((t) => !(t in SENDABLE))).toEqual([]);
     expect(names.filter((t) => !CANONICAL.has(t))).toEqual([]);
-    const lobby = /LOBBY = frozenset\(\{([^}]*)\}\)/.exec(py);
-    expect(lobby).not.toBeNull();
-    expect([...lobby![1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort()).toEqual([...LOBBY].sort());
+    for (const [name, set] of [["LOBBY", LOBBY], ["RETIRED", RETIRED]] as const) {
+      const block = new RegExp(`\\n${name} = frozenset\\(\\{([^}]*)\\}\\)`).exec(py);
+      expect(block, name).not.toBeNull();
+      expect([...block![1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort(), name).toEqual([...set].sort());
+    }
+    expect(py).toContain(`RETIRED_MESSAGE = "${RETIRED_MESSAGE}"`);
+  });
+
+  it("sends no retired name the page could type", () => {
+    expect(Object.keys(SENDABLE).filter((t) => RETIRED.has(t) && t !== "queue_join")).toEqual([]);
   });
 
 });

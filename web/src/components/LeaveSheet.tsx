@@ -8,7 +8,7 @@ trackInputModality();
 interface LeaveSheetProps {
   /** Where the leave starts; it picks the title and the one line. */
   context: LeaveContext;
-  /** Does the leave (sends leave_room, or leaves the queue's table). */
+  /** Does the leave (sends table_leave, or leaves the queue's table). */
   onLeave: () => void;
   /** Closes the sheet without leaving: Stay, Escape. */
   onStay: () => void;

@@ -498,7 +498,7 @@ def test_a_socket_left_open_across_its_account_delete_is_signed_out(api):
         stranger, _h = _user(store, "unrelated-new-user")
         assert stranger != owner
         # The same socket leaves and opens a new table: a guest seat now.
-        ws.send_json({"type": "leave_room"})
+        ws.send_json({"type": "table_leave"})
         ws.send_json({"type": "create_room"})
         again = _drain(ws, "room", tries=400)
         assert again["room"] != room["room"]

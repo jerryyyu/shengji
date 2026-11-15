@@ -29,7 +29,7 @@ import { SmartBot, viewFor } from "../bot";
 import { type Clock, realClock, sleep } from "./clock";
 import { type ActionEntry, BotGate, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
-import { CANONICAL, LOBBY, forQueue, forRoom } from "./tables";
+import { CANONICAL, LOBBY, RETIRED_MESSAGE, forQueue, forRoom, retired } from "./tables";
 
 export const BOT_DELAY = 0.7;
 export const DEAL_DELAY = 0.2;
@@ -851,8 +851,13 @@ export class LocalConnection {
 
   private handle(msg: Json): void {
     const server = this.server;
+    if (retired(msg)) {
+      // the server's own names are not a client's
+      this.sendDirect({ type: "error", code: "retired", message: RETIRED_MESSAGE });
+      return;
+    }
     // A canonical name becomes the message this server handles before any
-    // check reads its type, so each check applies to both names alike.
+    // check reads its type, so each check applies to it.
     const canonical = typeof msg.type === "string" && CANONICAL.has(msg.type) ? msg.type : null;
     if (canonical !== null) {
       if (this.room === null || this.me === null) {

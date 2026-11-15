@@ -16,7 +16,7 @@ async def main():
         await asyncio.sleep(2.0)
         # second human joins the RUNNING game
         async with websockets.connect(uri) as b:
-            await b.send(json.dumps({"type": "join_room", "room": room, "name": "james"}))
+            await b.send(json.dumps({"type": "table_join", "code": room, "name": "james", "expect": "room"}))
             got = None
             for _ in range(8):
                 m = json.loads(await asyncio.wait_for(b.recv(), timeout=5))

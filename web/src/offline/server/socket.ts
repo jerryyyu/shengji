@@ -4,6 +4,7 @@
 // as they would cross the network.
 import { nativeRemoteBot } from "./pybot";
 import { LocalServer, type LocalConnection } from "./server";
+import { retired } from "./tables";
 
 let shared: LocalServer | null = null;
 
@@ -24,18 +25,20 @@ type Handler<E> = ((ev: E) => void) | null;
  *  heartbeats); offline they go nowhere, as to a server that has no such
  *  service, so none of them comes back as an error toast. */
 export const LOCAL_MESSAGES: ReadonlySet<string> = new Set([
-  "create_room", "join_room", "peek_room", "leave_room", "chat", "allow_joiners", "declare",
-  "pass_declare", "bury", "play", "next_round",
+  "create_room", "declare", "pass_declare", "bury", "play", "next_round",
   // the canonical table names (tables.ts): a room refuses the ones that set a
-  // table up before its game, and rewrites the rest to the ones above
+  // table up before its game, and rewrites the rest to its own
   "table_move", "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",
   "table_start_level", "table_chat", "table_leave", "table_join", "table_peek",
 ]);
 
+/** A message the device answers: one of LOCAL_MESSAGES, or a retired name,
+ *  which it refuses as the game server does. */
 function localType(data: string): boolean {
   try {
-    const msg = JSON.parse(data) as { type?: unknown };
-    return typeof msg?.type === "string" && LOCAL_MESSAGES.has(msg.type);
+    const msg = JSON.parse(data) as Record<string, unknown> | null;
+    if (typeof msg !== "object" || msg === null) return false;
+    return (typeof msg.type === "string" && LOCAL_MESSAGES.has(msg.type)) || retired(msg);
   } catch {
     return false;
   }

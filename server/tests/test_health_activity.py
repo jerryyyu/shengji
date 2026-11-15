@@ -116,7 +116,7 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
 
         # Writes resume without a restart; the last failure stays on show.
         failing = False
-        a.send_json({"type": "chat", "text": "again"})
+        a.send_json({"type": "table_chat", "text": "again"})
         _drain(a, "chat", tries=400)   # the deal's state frames interleave
         act = _activity(client)
         assert act["records_written"] >= 1
@@ -124,7 +124,7 @@ def test_write_failure_is_counted_with_its_errno_and_the_game_goes_on(
         assert act["last_record_failure"]["errno_name"] == "ENOSPC"
         assert (server.LOG_DIR / f"{code}.jsonl").exists()
         failures = act["record_write_failures"]
-        a.send_json({"type": "chat", "text": "and again"})
+        a.send_json({"type": "table_chat", "text": "and again"})
         _drain(a, "chat", tries=400)
         act = _activity(client)
         assert act["record_write_failures"] == failures

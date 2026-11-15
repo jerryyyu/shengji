@@ -220,7 +220,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 ## Deferred mock items (Jerry 2026-11-14: "Yea do deferred mock questions")
 - **Take back a Start.** At a waiting table, your Start is in until you tap the button
   again: "Waiting for Alice" (a quiet button) becomes "Start", and the "N of M ready" count drops. Each Duo member
-  takes back its own tap. The server's `table_unready` does it.
+  takes back its own tap. The server's `table_start {on: false}` does it.
 - **Quick chat phrases.** The chat sheet shows one row of phrases first ("Hi!", "Good game", "Nice!", "One more?",
   "Brb"), then the field. A tap sends the phrase as an ordinary line, through the same validated, rate-limited
   path; nothing new is logged.

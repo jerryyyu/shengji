@@ -1146,7 +1146,7 @@ describe("one code for rooms and tables", () => {
     say({ type: "code_kind", code: "WXYZ", kind: "room" });
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats("WXYZ"));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: "Jerry" });
   });
 
   it("the Play box with an older client's pair code: no table has it, and no pair is joined", async () => {
@@ -1181,10 +1181,10 @@ describe("one code for rooms and tables", () => {
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats("WXYZ"));
     await settle();
-    expect(sentTypes()).not.toContain("join_room");
+    expect(sentTypes()).not.toContain("table_join");
     expect(joinPanel()?.querySelector(".tp-title")?.textContent).toBe("Join Host");
     click(button("Join", joinPanel()!));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: "Jerry" });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: "Jerry" });
   });
 
   it("an older ?room= link reads as ?code=, and its ?name= is dropped: the guest joins under the chip's name", async () => {
@@ -1198,7 +1198,7 @@ describe("one code for rooms and tables", () => {
     expect(lastSent()).toEqual({ type: "table_peek", code: "WXYZ" });
     say(seats("WXYZ"));
     await settle();
-    expect(sentTypes()).not.toContain("join_room");
+    expect(sentTypes()).not.toContain("table_join");
     // no name sheet: the chip already shows a random name
     expect(q(".q-layer:not(.q-out) .q-sheet")).toBeNull();
     // the name the chip shows, read from the chip: storage can be written
@@ -1207,7 +1207,7 @@ describe("one code for rooms and tables", () => {
     expect(chipName).toBeTruthy();
     expect(chipName).not.toBe("Guest");
     click(button("Join", joinPanel()!));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: chipName });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: chipName });
     expect(lastSent()).not.toMatchObject({ name: "Ann" });
   });
 
@@ -1232,7 +1232,7 @@ describe("one code for rooms and tables", () => {
     expect(chipName).toBeTruthy();
     expect(chipName).not.toBe("Guest");
     click(button("Join", joinPanel()!));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: chipName });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "WXYZ", expect: "room", name: chipName });
   });
 
   it("an older ?party= link is a ?code= link: a Duo's table code opens its Join panel", async () => {
@@ -1242,10 +1242,10 @@ describe("one code for rooms and tables", () => {
     expect(q(".q-sheet")).toBeNull();
     say({ type: "code_kind", code: "4N5Z", kind: "table" });
     await settle();
-    expect(sentTypes()).not.toContain("queue_join");
+    expect(sentTypes()).not.toContain("table_join");
     expect(joinPanel()?.querySelector(".tp-title")?.textContent).toBe("Join 4N5Z");
     click(button("Join", joinPanel()!));
-    expect(lastSent()).toEqual({ type: "queue_join", code: "4N5Z" });
+    expect(lastSent()).toEqual({ type: "table_join", code: "4N5Z", name: expect.any(String) });
     expect(sentTypes()).not.toContain("party_join");
   });
 
@@ -1322,7 +1322,7 @@ describe("a code lookup that is interrupted or refused", () => {
     await settle();
     expect(lookups()).toHaveLength(1);
     expect(peeks()).toHaveLength(1);
-    expect(sentTypes()).not.toContain("join_room");
+    expect(sentTypes()).not.toContain("table_join");
   });
 
   it("an open room panel whose peek died with the socket asks again, and Join waits for it", async () => {
@@ -1622,7 +1622,7 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     viaPlayBox();
     tell(rankedSeats());
     expect(document.body.textContent).not.toContain("Take a seat");
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK" });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "RANK", expect: "room" });
     expect(lastSent()).not.toHaveProperty("seat");
   });
 
@@ -1632,7 +1632,7 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     viaPlayBox();
     tell(rankedSeats());
     expect(q(".ranked-gate")).toBeNull();
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "RANK" });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "RANK", expect: "room" });
   });
 
   it("same_device shows the server's message", async () => {
@@ -1653,7 +1653,7 @@ describe("a ranked table's invite and a pair's open-table offer", () => {
     expect(p.querySelector(".tp-line")?.textContent).toBe("Table is full");
     expect(button("Join", p)?.disabled).toBe(true);
     expect(q(".ranked-gate")).toBeNull();
-    expect(sentTypes()).not.toContain("join_room");
+    expect(sentTypes()).not.toContain("table_join");
     click(button("Not now", p));
     expect(q(".tp-join-code")).toBeNull();
     expect(q("button.play-main")).not.toBeNull();
@@ -2234,7 +2234,7 @@ describe("the unified table on the client", () => {
     expect(document.body.textContent?.match(/already in a game/g)?.length).toBe(1);   // no toast as well
     expect(q(".q-find")).toBeNull();
     click(button("I’m back"));
-    expect(lastSent()).toMatchObject({ type: "join_room", room: "GAME" });
+    expect(lastSent()).toMatchObject({ type: "table_join", code: "GAME", expect: "room" });
     expect(findBtn().textContent).toBe("Play");
   });
 

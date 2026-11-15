@@ -19,6 +19,7 @@ import { IllegalPlay } from "../engine/legal";
 import { DeckRng } from "./rng";
 import { LocalServer } from "./server";
 import { LOCAL_MESSAGES, LocalSocket } from "./socket";
+import { RETIRED } from "./tables";
 
 const DIR = process.env.OFFLINE_SERVER_FIXTURES ?? fileURLToPath(new URL("../fixtures", import.meta.url));
 
@@ -203,8 +204,11 @@ describe("starting a room with empty seats, as server.py does", () => {
     expect(room().game).not.toBeNull();
   });
 
-  it("add_bot and the other retired lobby controls are not the device's to answer", () => {
-    for (const t of ["add_bot", "remove_bot", "remove_player", "set_ranked"]) expect(LOCAL_MESSAGES.has(t)).toBe(false);
+  it("add_bot and the other retired names are refused, never answered as local messages", () => {
+    for (const t of ["add_bot", "remove_bot", "remove_player", "set_ranked"]) {
+      expect(LOCAL_MESSAGES.has(t)).toBe(false);
+      expect(RETIRED.has(t)).toBe(true);
+    }
   });
 
   it("a refused start discards the room: the creator gets the error, then left", async () => {

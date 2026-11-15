@@ -150,7 +150,7 @@ def test_peek_room_reports_seats_without_joining(client):
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "peek_room", "room": code})
+            b.send_json({"type": "table_peek", "code": code})
             m = _drain(b, "room_seats")
 
     assert m["room"] == code
@@ -170,7 +170,7 @@ def test_a_room_peek_frame_is_unchanged_in_play(client):
 
     with client.websocket_connect("/ws") as a, client.websocket_connect("/ws") as b:
         code = _room_with_bots(a)
-        b.send_json({"type": "peek_room", "room": code.lower()})
+        b.send_json({"type": "table_peek", "code": code.lower()})
         play = json.dumps(_drain(b, "room_seats"))
 
     def seat(i, name, bot):
@@ -184,7 +184,7 @@ def test_a_room_peek_frame_is_unchanged_in_play(client):
 
 def test_peek_unknown_room_errors(client):
     with client.websocket_connect("/ws") as a:
-        a.send_json({"type": "peek_room", "room": "ZZZZ"})
+        a.send_json({"type": "table_peek", "code": "ZZZZ"})
         m = _drain(a, "error")
     assert m["code"] == "room_not_found"
 
@@ -193,10 +193,10 @@ def test_peek_then_join_chosen_seat(client):
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "peek_room", "room": code})
+            b.send_json({"type": "table_peek", "code": code})
             seats = _drain(b, "room_seats")["seats"]
             want = [s["seat"] for s in seats if s["is_bot"]][-1]
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "james", "seat": want})
             st = _drain(b, "state", tries=400)
             assert st["you"] == want
@@ -211,7 +211,7 @@ def test_ready_ignores_disconnected_humans(client):
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
             _drain(b, "state", tries=400)
             room = srv.rooms[code]
             humans = [i for i, s in enumerate(room.seats) if not s.is_bot]
@@ -245,11 +245,11 @@ def test_seat_claim_chat_names_the_bot(client):
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "peek_room", "room": code})
+            b.send_json({"type": "table_peek", "code": code})
             seats = _drain(b, "room_seats")["seats"]
             want = [s["seat"] for s in seats if s["is_bot"]][-1]
             botname = next(s["name"] for s in seats if s["seat"] == want)
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "jerry mbp", "seat": want})
             line = _drain(b, "chat")
     assert line["text"] == f"jerry mbp took {botname}'s seat"
@@ -266,10 +266,10 @@ def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
     with client.websocket_connect("/ws") as host:
         code = _room_with_bots(host, "host")
         for i in range(60):
-            host.send_json({"type": "chat", "text": f"line-{i:02d}"})
+            host.send_json({"type": "table_chat", "text": f"line-{i:02d}"})
 
         with client.websocket_connect("/ws") as late:
-            late.send_json({"type": "join_room", "room": code,
+            late.send_json({"type": "table_join", "expect": "room", "code": code,
                             "name": "late"})
             history = _drain(late, "chat_history")
 
@@ -289,7 +289,7 @@ def test_room_chat_is_logged_and_reaches_the_scrollback(client):
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a, "host")
         room = srv.rooms[code]
-        a.send_json({"type": "chat", "text": "in-game-line"})
+        a.send_json({"type": "table_chat", "text": "in-game-line"})
         # the deal streams a state frame per card, so the echo can come late
         echo = _drain(a, "chat", tries=400)
         while echo.get("text") != "in-game-line":
@@ -297,7 +297,7 @@ def test_room_chat_is_logged_and_reaches_the_scrollback(client):
 
         bot_seat = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
         with client.websocket_connect("/ws") as c:
-            c.send_json({"type": "join_room", "room": code, "name": "late",
+            c.send_json({"type": "table_join", "expect": "room", "code": code, "name": "late",
                          "seat": bot_seat})
             history = _drain(c, "chat_history")
     assert "in-game-line" in [m["text"] for m in history["messages"]]
@@ -317,13 +317,13 @@ def test_two_clients_race_for_same_bot_seat(client):
         code = _room_with_bots(a)
         with client.websocket_connect("/ws") as b, \
                 client.websocket_connect("/ws") as c:
-            b.send_json({"type": "peek_room", "room": code})
+            b.send_json({"type": "table_peek", "code": code})
             want = [s["seat"] for s in _drain(b, "room_seats")["seats"]
                     if s["is_bot"]][0]
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "first", "seat": want})
             assert _drain(b, "state", tries=400)["you"] == want
-            c.send_json({"type": "join_room", "room": code,
+            c.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "second", "seat": want})
             err = _drain(c, "error")
     assert err["code"] == "seat_unavailable"
@@ -336,7 +336,7 @@ def test_malformed_seat_falls_back_to_any_bot(client):
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "odd", "seat": True})   # bool is not a seat
             st = _drain(b, "state", tries=400)
     assert st["you"] in (1, 2, 3)
@@ -440,7 +440,7 @@ def test_claim_preserves_private_hand_and_ids(client):
         want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
         before = sorted(room.round.hands[want])
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "late", "seat": want})
             st = _drain(b, "state", tries=60)
             assert st["you"] == want
@@ -502,7 +502,7 @@ def test_claim_during_bot_delay_is_atomic(client, monkeypatch):
             assert turn is not None and room.seats[turn].is_bot
             hand_before = list(room.round.hands[turn])
             with client.websocket_connect("/ws") as b:
-                b.send_json({"type": "join_room", "room": code,
+                b.send_json({"type": "table_join", "expect": "room", "code": code,
                              "name": "sniper", "seat": turn})
                 state = _drain(b, "state", tries=60)
                 assert state["you"] == turn and not release.is_set()
@@ -592,7 +592,7 @@ def test_claim_during_blocked_search_is_prompt_and_discards_snapshot(
 
         try:
             with client.websocket_connect("/ws") as claimant:
-                claimant.send_json({"type": "join_room", "room": code,
+                claimant.send_json({"type": "table_join", "expect": "room", "code": code,
                                     "name": "claimant", "seat": seat})
                 claimed = _drain(claimant, "state", tries=60)
                 # Receiving this before releasing the worker proves that the
@@ -628,7 +628,7 @@ def test_disconnect_takeover_and_reconnect_resets_each_absence(client):
             seat0.connected = False
             seat0.bot_announced = True          # as the watchdog would set it
             with client.websocket_connect("/ws") as b:
-                b.send_json({"type": "join_room", "room": code, "name": "jerry"})
+                b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry"})
                 _drain(b, "state", tries=60)
                 me = srv.rooms[code].seats[0]
                 assert me is seat0, "reconnect must reuse the SAME Seat object"
@@ -649,7 +649,7 @@ def test_reconnect_cancels_room_cleanup(client):
     assert room is not None, "room deleted immediately instead of after TTL"
     assert room.cleanup_task is not None
     with client.websocket_connect("/ws") as b:
-        b.send_json({"type": "join_room", "room": code, "name": "jerry"})
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry"})
         _drain(b, "state", tries=60)
         assert room.cleanup_task is None or room.cleanup_task.cancelled()
 
@@ -663,13 +663,13 @@ def test_claim_state_does_not_leak_across_rooms_on_one_socket(client):
         # A's bot, or a human, is leaked state.
         code_b = _room_with_bots(host_b, "hostb")
         with client.websocket_connect("/ws") as mover:
-            mover.send_json({"type": "join_room", "room": code_a,
+            mover.send_json({"type": "table_join", "expect": "room", "code": code_a,
                              "name": "wanderer", "seat": 3})
             first = _drain(mover, "chat", tries=400)
             assert first["text"] == "wanderer took Bot 3's seat"
-            mover.send_json({"type": "leave_room"})
+            mover.send_json({"type": "table_leave"})
             _drain(mover, "left", tries=400)
-            mover.send_json({"type": "join_room", "room": code_b,
+            mover.send_json({"type": "table_join", "expect": "room", "code": code_b,
                              "name": "wanderer", "seat": 1})
             line = _drain(mover, "chat", tries=400)
             while "wanderer" not in line["text"]:
@@ -685,7 +685,7 @@ def test_state_reports_takeover_countdown(client):
     with client.websocket_connect("/ws") as a:
         code, room = _start_game(client, a, to_play=True)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
             _drain(b, "state", tries=60)
             seat_b = next(i for i, sd in enumerate(room.seats)
                           if sd.name == "james")
@@ -716,7 +716,7 @@ def _four_humans(client, a, sockets: ExitStack):
         peer_stack = ExitStack()
         sockets.callback(peer_stack.close)
         w = peer_stack.enter_context(client.websocket_connect("/ws"))
-        w.send_json({"type": "join_room", "room": code, "name": n, "seat": seat})
+        w.send_json({"type": "table_join", "expect": "room", "code": code, "name": n, "seat": seat})
         assert _drain(w, "state", tries=400)["you"] == seat
         peers.append(w)
         peer_stacks.append(peer_stack)
@@ -743,30 +743,30 @@ def test_dropped_seat_is_reserved_during_grace_then_claimable(client, clock):
 
             # --- inside the grace window: reserved for amy ---
             with client.websocket_connect("/ws") as p:
-                p.send_json({"type": "peek_room", "room": code})
+                p.send_json({"type": "table_peek", "code": code})
                 seats = _drain(p, "room_seats")["seats"]
             assert not seats[1]["claimable"], \
                 "seat claimable during its grace window"
             assert seats[1]["reserved_secs"] is not None
             with client.websocket_connect("/ws") as q:
-                q.send_json({"type": "join_room", "room": code,
+                q.send_json({"type": "table_join", "expect": "room", "code": code,
                              "name": "vulture"})
                 assert _drain(q, "error")["code"] == "seat_reserved"
             # amy herself can still return.
             with client.websocket_connect("/ws") as amy:
-                amy.send_json({"type": "join_room", "room": code,
+                amy.send_json({"type": "table_join", "expect": "room", "code": code,
                                "name": "amy"})
                 assert _drain(amy, "state", tries=60)["you"] == 1
 
             # --- after it expires: anyone may take over ---
             clock["v"] += srv.TAKEOVER_AFTER + 1
             with client.websocket_connect("/ws") as p2:
-                p2.send_json({"type": "peek_room", "room": code})
+                p2.send_json({"type": "table_peek", "code": code})
                 seats2 = _drain(p2, "room_seats")["seats"]
             assert seats2[1]["claimable"], \
                 "seat still locked after the grace window"
             with client.websocket_connect("/ws") as r:
-                r.send_json({"type": "join_room", "room": code,
+                r.send_json({"type": "table_join", "expect": "room", "code": code,
                              "name": "newbie", "seat": 1})
                 st = _drain(r, "state", tries=60)
                 assert st["you"] == 1 and len(st["hand"]) > 0
@@ -780,7 +780,7 @@ def test_reclaim_is_case_and_space_insensitive(client):
                 client, a, sockets)
             peer_stacks[0].close()
             with client.websocket_connect("/ws") as back:
-                back.send_json({"type": "join_room", "room": code,
+                back.send_json({"type": "table_join", "expect": "room", "code": code,
                                 "name": " Amy "})
                 st = _drain(back, "state", tries=60)
                 assert st["you"] == 1, "did not reclaim the original seat"
@@ -796,7 +796,7 @@ def test_takeover_of_dropped_human_is_announced_as_such(client, clock):
             from shengji.api import server as srv
             clock["v"] += srv.TAKEOVER_AFTER + 1      # past the reservation
             with client.websocket_connect("/ws") as r:
-                r.send_json({"type": "join_room", "room": code,
+                r.send_json({"type": "table_join", "expect": "room", "code": code,
                              "name": "newbie", "seat": 1})
                 line = _drain(r, "chat")
             assert "took over for amy" in line["text"], line
@@ -817,7 +817,7 @@ def test_stale_socket_cannot_detach_a_newer_connection(client):
         seat0 = room.seats[0]
         old_gen = seat0.gen
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "jerry", "token": seat0.token})
             _drain(b, "state", tries=60)
             assert seat0.gen > old_gen, "attach did not bump the generation"
@@ -839,7 +839,7 @@ def test_resume_token_resumes_the_exact_seat(client):
             tok = room.seats[1].token          # amy's seat
             peer_stacks[0].close()
             with client.websocket_connect("/ws") as real:
-                real.send_json({"type": "join_room", "room": code,
+                real.send_json({"type": "table_join", "expect": "room", "code": code,
                                 "name": "totally-different-name",
                                 "token": tok})
                 st = _drain(real, "state", tries=60)
@@ -863,7 +863,7 @@ def test_name_reentry_is_allowed_but_does_not_inherit_the_token(client):
             original = room.seats[1].token
             peer_stacks[0].close()
             with client.websocket_connect("/ws") as other:
-                other.send_json({"type": "join_room", "room": code,
+                other.send_json({"type": "table_join", "expect": "room", "code": code,
                                  "name": "AMY ", "token": "not-the-token"})
                 st = _drain(other, "state", tries=60)
                 assert st["you"] == 1, \
@@ -879,7 +879,7 @@ def test_state_exposes_controller_not_inference(client):
     with client.websocket_connect("/ws") as a:
         code, room = _start_game(client, a, to_play=True)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
             _drain(b, "state", tries=60)
             seat_b = next(i for i, sd in enumerate(room.seats)
                           if sd.name == "james")
@@ -900,14 +900,14 @@ def test_explicit_leave_at_round_end_advances_the_round(client):
     with client.websocket_connect("/ws") as a:
         code, room = _start_game(client, a, to_play=True)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
             _drain(b, "state", tries=60)
             seat_b = next(i for i, sd in enumerate(room.seats)
                           if sd.name == "james")
             # Pretend the round ended with only `a` ready.
             room.ready.add(0)
             assert srv.pending_ready(room) == {seat_b}
-            b.send_json({"type": "leave_room"})
+            b.send_json({"type": "table_leave"})
             _drain(b, "left", tries=40)
         assert srv.pending_ready(room) == set(), \
             "the leaver is still being waited on"
@@ -940,7 +940,7 @@ def _turn_owner_drops(client, a, code, room):
     if room.seats[turn].is_bot:
         # Put a human on the seat that is about to act.
         with client.websocket_connect("/ws") as w:
-            w.send_json({"type": "join_room", "room": code,
+            w.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "onturn", "seat": turn})
             _drain(w, "state", tries=60)
     return turn
@@ -1015,7 +1015,7 @@ def test_reconnect_after_takeover_sees_the_bot_s_hand(client, clock):
             loop.close()
         expect = sorted(room.round.hands[seat])
         with client.websocket_connect("/ws") as back:
-            back.send_json({"type": "join_room", "room": code,
+            back.send_json({"type": "table_join", "expect": "room", "code": code,
                             "name": "onturn", "token": tok})
             st = _drain(back, "state", tries=60)
             assert st["you"] == seat
@@ -1035,7 +1035,7 @@ def test_overlapping_resume_race_is_stable(client):
         for i in range(25):
             gen_before = seat0.gen
             with client.websocket_connect("/ws") as w:
-                w.send_json({"type": "join_room", "room": code,
+                w.send_json({"type": "table_join", "expect": "room", "code": code,
                              "name": "jerry", "token": tok})
                 _drain(w, "state", tries=60)
                 assert seat0.gen > gen_before, \
@@ -1064,7 +1064,7 @@ def test_creator_refresh_does_not_duplicate_the_seat(client):
         tok = _drain(a, "resume")["token"]
         code = _drain(a, "room")["room"]
         with client.websocket_connect("/ws") as a2:
-            a2.send_json({"type": "join_room", "room": code,
+            a2.send_json({"type": "table_join", "expect": "room", "code": code,
                           "name": "jerry", "token": tok})
             st = _drain(a2, "state", tries=400)
             assert st["you"] == 0, "refresh landed on a different seat"
@@ -1081,17 +1081,17 @@ def test_displaced_socket_cannot_act(client):
         code = _room_with_bots(h, "host")
         with ExitStack() as sockets:
             old = sockets.enter_context(client.websocket_connect("/ws"))
-            old.send_json({"type": "join_room", "room": code, "name": "bob", "seat": 2})
+            old.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bob", "seat": 2})
             tok = _drain(old, "resume")["token"]
             _drain(old, "state", tries=400)
             new = sockets.enter_context(client.websocket_connect("/ws"))
-            new.send_json({"type": "join_room", "room": code,
+            new.send_json({"type": "table_join", "expect": "room", "code": code,
                            "name": "bob", "token": tok})
             _drain(new, "state", tries=400)
             room = srv.rooms[code]
             assert room.seats[2].connected
 
-            old.send_json({"type": "leave_room"})  # displaced socket acts
+            old.send_json({"type": "table_leave"})  # displaced socket acts
             err = _drain(old, "error", tries=400)
             assert err["code"] == "stale_connection"
             assert code in srv.rooms, "stale leave deleted the room"
@@ -1116,7 +1116,7 @@ def test_claiming_a_seat_rotates_its_token(client, clock):
             from shengji.api import server as srv
             clock["v"] += srv.TAKEOVER_AFTER + 1      # past the reservation
             with client.websocket_connect("/ws") as taker:
-                taker.send_json({"type": "join_room", "room": code,
+                taker.send_json({"type": "table_join", "expect": "room", "code": code,
                                  "name": "newbie", "seat": 1})
                 _drain(taker, "state", tries=60)
                 assert room.seats[1].token != old_tok, \
@@ -1125,7 +1125,7 @@ def test_claiming_a_seat_rotates_its_token(client, clock):
                     "claimed seat inherited the prior owner's bot announcement"
                 # The old token must no longer resume that seat.
                 with client.websocket_connect("/ws") as amy:
-                    amy.send_json({"type": "join_room", "room": code,
+                    amy.send_json({"type": "table_join", "expect": "room", "code": code,
                                    "name": "amy", "token": old_tok})
                     m = None
                     for _ in range(40):
@@ -1263,7 +1263,7 @@ def test_a_dead_writer_leaves_every_other_signal_saying_healthy(client):
             _drain(a, "never-sent", tries=10_000, timeout=1.0)
         assert "within 1.0s" in str(caught.value), str(caught.value)
 
-        a.send_json({"type": "chat", "text": "after the writer stopped"})
+        a.send_json({"type": "table_chat", "text": "after the writer stopped"})
         with pytest.raises(AssertionError) as caught:
             _drain(a, "chat", tries=2, timeout=1.0)
         assert "saw []" in str(caught.value), str(caught.value)
@@ -1342,7 +1342,7 @@ def test_reattaching_clears_a_stale_writer_error(client):
         _drain(a, "room")
         seat.writer_error = "stale: from an earlier socket"
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "jerry", "token": tok})
             _drain(b, "state", tries=400)
             assert seat.writer_error is None, "stale error survived a reattach"
@@ -1481,7 +1481,7 @@ def test_reattach_clears_the_exit_reason(client):
         _drain(a, "room")
         seat.writer_exit = "cancelled"
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code,
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
                          "name": "jerry", "token": tok})
             _drain(b, "state", tries=400)
             assert seat.writer_exit is None, "stale exit reason survived reattach"
@@ -1777,7 +1777,7 @@ def test_the_start_level_is_fixed_once_the_game_starts(client):
     from shengji.api import server as srv
     with client.websocket_connect("/ws") as a:
         code = _room_with_bots(a)
-        a.send_json({"type": "set_start_level", "start_level": "K"})
+        a.send_json({"type": "table_start_level", "start_level": "K"})
         # the refusal queues behind the deal's state frames, one per card
         assert _drain(a, "error", tries=400)["message"] == "Game already started."
         assert srv.rooms[code].start_level == "2"
@@ -2112,7 +2112,7 @@ def test_a_disconnected_turn_uses_takeover_and_is_not_a_timeout(client, clock, m
             code, room = _timer_game(client, a, monkeypatch)
             _tick(client, room)
             # a second human keeps the room alive once seat 0 drops
-            b.send_json({"type": "join_room", "room": code, "name": "bee", "seat": 1})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "seat": 1})
             _drain(b, "state", tries=200)
         _wait_for(lambda: not room.seats[0].connected)
         before = _plays_by(room, 0)
@@ -2194,12 +2194,12 @@ def test_the_last_humans_leaving_mid_game_close_the_room_at_once(client):
         code, room = _start_game(client, a, to_play=True)
         with client.websocket_connect("/ws") as b:
             want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
-            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
             _drain(b, "state", tries=60)
-            b.send_json({"type": "leave_room"})
+            b.send_json({"type": "table_leave"})
             _drain(b, "left", tries=200)
             assert srv.rooms.get(code) is room, "one human is still playing"
-            a.send_json({"type": "leave_room"})
+            a.send_json({"type": "table_leave"})
             _drain(a, "left", tries=200)
             assert code not in srv.rooms
             assert not room.closing           # nothing rated: no round to finish
@@ -2250,7 +2250,7 @@ def test_a_human_back_in_the_grace_restores_the_normal_pace(client, monkeypatch)
     time.sleep(0.6)
     assert len(room.round.trick.plays) == 1, "a bot moved at the normal pace in an empty room"
     with client.websocket_connect("/ws") as back:
-        back.send_json({"type": "join_room", "room": code, "name": "jerry"})
+        back.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry"})
         _drain(back, "state", tries=60)
         assert room.seats[0].connected and srv.rooms.get(code) is room
         started = time.monotonic()
@@ -2266,9 +2266,9 @@ def test_one_of_two_humans_leaving_leaves_the_game_running(client):
         code, room = _start_game(client, a, to_play=True)
         with client.websocket_connect("/ws") as b:
             want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
-            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
             _drain(b, "state", tries=60)
-            b.send_json({"type": "leave_room"})
+            b.send_json({"type": "table_leave"})
             _drain(b, "left", tries=200)
         assert srv.rooms.get(code) is room and not room.closing
         assert room.cleanup_task is None
@@ -2296,24 +2296,24 @@ def test_allow_joiners_in_game_is_the_openers_and_passes_when_the_opener_leaves(
         assert room.seats[opener].name and not room.seats[opener].is_bot
         with client.websocket_connect("/ws") as b:
             want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
-            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
             st = _drain(b, "state", tries=60)
             # every seat's state names the opener's seat
             assert st["opener"] == opener and srv.state_for(room, opener)["opener"] == opener
             # a person who is not the opener is refused, and nothing changes
-            b.send_json({"type": "allow_joiners", "on": False})
+            b.send_json({"type": "table_allow_joiners", "on": False})
             err = _drain(b, "error", tries=200)
             assert err["code"] == "not_opener"
             assert room.allow_joiners is True
             # the opener's switch works
-            a.send_json({"type": "allow_joiners", "on": False})
+            a.send_json({"type": "table_allow_joiners", "on": False})
             _wait_for(lambda: room.allow_joiners is False)
             # the opener leaves mid-game: the controls pass to the next person
-            a.send_json({"type": "leave_room"})
+            a.send_json({"type": "table_leave"})
             _drain(a, "left", tries=200)
             _wait_for(lambda: room.host == want)
             assert srv.state_for(room, want)["opener"] == want
-            b.send_json({"type": "allow_joiners", "on": True})
+            b.send_json({"type": "table_allow_joiners", "on": True})
             _wait_for(lambda: room.allow_joiners is True)
 
 
@@ -2431,14 +2431,14 @@ def test_seat_presence_and_ranked_are_in_the_room_log(client):
         code, room = _start_game(client, a)
         want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "james", "seat": want})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
             _drain(b, "state", tries=60)
         _wait_for(lambda: not room.seats[want].connected)
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "james"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
             _drain(b, "state", tries=60)
             assert room.seats[want].connected
-            b.send_json({"type": "leave_room"})
+            b.send_json({"type": "table_leave"})
             _drain(b, "left", tries=200)
         records = [json.loads(line) for line in
                    (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
@@ -2465,7 +2465,7 @@ def test_a_displaced_socket_closing_logs_no_disconnect(client):
         code, room = _start_game(client, a)
         token = room.seats[0].token
         with client.websocket_connect("/ws") as b:
-            b.send_json({"type": "join_room", "room": code, "name": "jerry", "token": token})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry", "token": token})
             _drain(b, "state", tries=60)
             a.__exit__(None, None, None)
             a = None
@@ -2492,7 +2492,7 @@ def test_a_created_room_allows_joiners_by_default_and_casual_rooms_take_the_swit
         first, _ = _created_room(host)
         code = first["room"]
         assert srv.rooms[code].allow_joiners is True and first["allow_joiners"] is True
-        host.send_json({"type": "allow_joiners", "on": False})
+        host.send_json({"type": "table_allow_joiners", "on": False})
         assert _state_until(host, lambda m: m["allow_joiners"] is False)["you"] == 0
         assert srv.rooms[code].allow_joiners is False
 
@@ -2615,7 +2615,7 @@ def test_ws_a_duo_table_seats_its_code_joiner_in_the_held_seat_and_starts_a_rate
         assert table["you"] == 1 and table["held_seat"] == 2 and table["code"] == code
         b.send_json({"type": "code_lookup", "code": code})
         assert _drain(b, "code_kind")["kind"] == "table"
-        b.send_json({"type": "queue_join", "code": code})            # the friend's link
+        b.send_json({"type": "table_join", "code": code})            # the friend's link
         mine = _next_where(b, "queue_state", lambda m: m.get("table"))
         assert mine["table"]["you"] == 2 and mine["held_seat"] is None and mine["duo"] is True
         assert _drain(b, "party")["table"] is True
@@ -2645,17 +2645,17 @@ def test_ws_a_duo_that_starts_without_its_friend_keeps_the_held_seat_for_the_fri
     with client.websocket_connect("/ws", headers=ha) as a:
         a.send_json({"type": "queue_join", "mode": "casual", "duo": True})
         code = _next_where(a, "queue_state", lambda m: m.get("queued"))["code"]
-        a.send_json({"type": "queue_start_bots"})
+        a.send_json({"type": "table_start_bots"})
         assert _drain(a, "match_started", tries=80)["room"] == code
         _drain(a, "state", tries=80)
         room = srv.rooms[code]
         assert room.friend_seat == 2 and room.seats[2].is_bot
         with client.websocket_connect("/ws", headers=hb) as b:
-            b.send_json({"type": "join_room", "room": code, "name": "Bo"})
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Bo"})
             assert _drain(b, "state", tries=80)["you"] == 2      # the late friend
             assert room.seats[2].user_id == bo
             with client.websocket_connect("/ws", headers=hc) as c:
-                c.send_json({"type": "join_room", "room": code, "name": "Cy"})
+                c.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Cy"})
                 assert _drain(c, "state", tries=80)["you"] == 1  # the usual first bot seat
 
 
@@ -2670,11 +2670,11 @@ def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_
         cy_code = _next_where(c, "queue_state", lambda m: m.get("queued"))["code"]
         a.send_json({"type": "queue_join", "duo": True})
         code = _next_where(a, "queue_state", lambda m: m.get("queued"))["code"]
-        b.send_json({"type": "queue_join", "code": code})
+        b.send_json({"type": "table_join", "code": code})
         _next_where(b, "queue_state", lambda m: m.get("duo"))
         c.send_json({"type": "table_allow_joiners", "on": True})     # the pair sits at Cy's table
         at_cy = _next_where(a, "queue_state", lambda m: m.get("table") and m["table"]["code"] == cy_code)
-        b.send_json({"type": "queue_leave"})
+        b.send_json({"type": "table_leave"})
         mine = _next_where(a, "queue_state", lambda m: m.get("table") and not m.get("duo"))
         assert mine["table"]["id"] == at_cy["table"]["id"]            # Ann stays where she is
         assert mine["held_seat"] is None and mine["table"]["held_seat"] is None
@@ -2692,7 +2692,7 @@ def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_
         # Ann's own code ended with the table; Bo joins the room the usual way
         b.send_json({"type": "code_lookup", "code": code})
         assert _drain(b, "code_kind")["kind"] == "none"
-        b.send_json({"type": "join_room", "room": cy_code, "name": "Bo"})
+        b.send_json({"type": "table_join", "expect": "room", "code": cy_code, "name": "Bo"})
         for _ in range(80):
             pj = room.pending_joins.get(open_seat)
             if (pj is not None and pj.uid == bo) or room.seats[open_seat].user_id == bo:
@@ -2778,7 +2778,7 @@ def test_create_room_start_true_seats_bots_and_starts(client):
         assert [sd.name for sd in room.seats] == ["P", "Bot 1", "Bot 2", "Bot 3"]
         assert [sd.is_bot for sd in room.seats] == [False, True, True, True]
         assert room.host == 0 and room.game is not None
-        ws.send_json({"type": "start_game"})
+        ws.send_json({"type": "table_start_now"})
         # the deal streams a state frame per card ahead of the refusal
         assert _drain(ws, "error", tries=400)["message"] == "Game already started."
 
@@ -2822,7 +2822,7 @@ def test_create_room_start_true_keeps_the_evaluation_start_refusal(client, monke
         assert room_msg["room"] not in srv.rooms
         assert room.game is None and room.deal_task is None and room.ratings is None
         # the discarded room took the socket out with it
-        ws.send_json({"type": "start_game"})
+        ws.send_json({"type": "play", "card_ids": []})
         assert _drain(ws, "error")["message"] == "Join a room first."
 
 
@@ -2847,9 +2847,6 @@ def test_a_retired_lobby_control_is_refused_and_still_counted(client, monkeypatc
 
 
 @pytest.mark.parametrize("msg", [
-    {"type": "swap_seats", "a": 0, "b": 1},
-    {"type": "lobby_ready"},
-    {"type": "set_start_level", "start_level": "5"},
     {"type": "table_move", "seat": 1},
     {"type": "table_start"},
     {"type": "table_start_now"},
@@ -2875,6 +2872,6 @@ def test_a_room_whose_game_has_not_started_cannot_be_joined(client):
 
     srv.rooms["WAIT"] = srv.Room(code="WAIT")
     with client.websocket_connect("/ws") as ws:
-        ws.send_json({"type": "join_room", "room": "WAIT", "name": "james"})
+        ws.send_json({"type": "table_join", "expect": "room", "code": "WAIT", "name": "james"})
         assert _drain(ws, "error")["code"] == "room_not_found"
     assert srv.rooms["WAIT"].seats == []

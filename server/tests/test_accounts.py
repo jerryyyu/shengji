@@ -468,7 +468,7 @@ def test_a_cookie_carrying_socket_gets_the_account_and_its_first_name(accounts_o
         assert seat.user_id == 1 and not seat.is_bot
         # A typed name does not replace the account's name.
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
-            b.send_json({"type": "join_room", "room": room["room"], "name": "JY", "seat": 2})
+            b.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": "JY", "seat": 2})
             joined = _drain(b, "state", tries=400)
             names = {p["seat"]: p["name"] for p in joined["players"]}
             assert names[2] == "Jerry"      # the bot seat the joiner took
@@ -524,7 +524,7 @@ def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, ke
     with client.websocket_connect("/ws") as guest:        # page open, no account
         cookie = _session_cookie(accounts_on, client, private_pem)
         # the stale socket keeps its handshake identity until it is replaced
-        guest.send_json({"type": "peek_room", "room": "NONE"})
+        guest.send_json({"type": "table_peek", "code": "NONE"})
         assert _drain(guest, "error")["code"] == "room_not_found"
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:   # the reconnect
         a.send_json({"type": "create_room", "name": "Jerry"})
@@ -532,7 +532,7 @@ def test_page_open_then_login_then_create_room_binds_the_account(accounts_on, ke
         assert srv.rooms[room["room"]].seats[0].user_id == 1
         # and a join from another freshly signed-in device
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
-            b.send_json({"type": "join_room", "room": room["room"], "name": "Phone",
+            b.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": "Phone",
                          "seat": 2})
             _drain(b, "state", tries=400)
             assert srv.rooms[room["room"]].seats[2].user_id == 1   # the seat it took
@@ -557,7 +557,7 @@ def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socke
     # Sign in: the client reconnects and resumes the saved room with its token.
     cookie = _session_cookie(accounts_on, client, private_pem)
     with client.websocket_connect("/ws", headers={"cookie": cookie}) as a:
-        a.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+        a.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
         st = _drain(a, "state", tries=60)
         assert st["you"] == 0 and srv.rooms[code].seats[0] is seat
         assert seat.user_id == 1 and seat.connected
@@ -565,13 +565,13 @@ def test_sign_in_switch_and_sign_out_mid_game_keep_the_seat_and_follow_the_socke
     # Switch accounts: a different Google sub, same seat, new identity.
     cookie2 = _session_cookie(accounts_on, client, private_pem, sub="222", email="other@example.com")
     with client.websocket_connect("/ws", headers={"cookie": cookie2}) as b:
-        b.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
         assert _drain(b, "state", tries=60)["you"] == 0
         assert seat.user_id == 2 and srv.rooms[code].seats[0] is seat
 
     # Sign out: the reconnect carries no cookie; the seat stays, the account clears.
     with client.websocket_connect("/ws") as c:
-        c.send_json({"type": "join_room", "room": code, "name": "Jerry", "token": token})
+        c.send_json({"type": "table_join", "expect": "room", "code": code, "name": "Jerry", "token": token})
         assert _drain(c, "state", tries=60)["you"] == 0
         assert seat.user_id is None and srv.rooms[code].seats[0] is seat
         assert len(srv.rooms[code].seats) == 4
@@ -767,12 +767,12 @@ def test_a_chosen_display_name_names_the_seat_whatever_name_is_typed(accounts_on
         assert room["players"][0]["name"] == "Captain"
         assert srv.rooms[room["room"]].seats[0].user_id == 1
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as b:
-            b.send_json({"type": "join_room", "room": room["room"], "name": "JY", "seat": 2})
+            b.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": "JY", "seat": 2})
             joined = _drain(b, "state", tries=400)
             names = {p["seat"]: p["name"] for p in joined["players"]}
             assert names[2] == "Captain"    # the bot seat the joiner took
         with client.websocket_connect("/ws", headers={"cookie": cookie}) as c:
-            c.send_json({"type": "join_room", "room": room["room"], "name": ""})
+            c.send_json({"type": "table_join", "expect": "room", "code": room["room"], "name": ""})
             joined = _drain(c, "state", tries=400)
             names = {p["seat"]: p["name"] for p in joined["players"]
                      if not p["is_bot"]}

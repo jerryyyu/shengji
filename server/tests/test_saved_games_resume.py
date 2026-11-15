@@ -207,3 +207,40 @@ def test_a_summary_that_disagrees_with_the_latest_logged_round_end_is_refused(en
     other = ["A", "A"] if list(last.new_levels) != ["A", "A"] else ["K", "K"]
     store.record_round_end(t.game_id, 2, other, list(last.games_won))
     assert saved_games.resume_point(uid, t.game_id) is None
+
+
+def test_continue_with_start_keeps_levels_banker_seat_and_link(env):
+    """``create_room`` with ``start: true`` starts the continued table at once:
+    the same levels, banker, seat and new linked saved game as Start would."""
+    srv, store, client, cookie, uid, _pem = env
+    t, last = _saved(srv, uid, seat=2, rounds=2)
+    ws = client.websocket_connect("/ws", headers={"cookie": cookie})
+    ws.__enter__()
+    try:
+        ws.send_json({"type": "create_room", "name": "", "resume_from": t.game_id,
+                      "start": True})
+        room_msg = _drain(ws, "room")
+        assert room_msg["you"] == 2 and room_msg["host"] == 2
+        assert [p["is_bot"] for p in room_msg["players"]] == [True, True, False, True]
+        state = _drain(ws, "state", tries=60)
+        assert state["you"] == 2 and state["levels"] == list(last.new_levels)
+        room = srv.rooms[room_msg["room"]]
+        assert [sd.name for sd in room.seats] == ["Bot 1", "Bot 2", "Jerry", "Bot 3"]
+        assert room.seats[2].user_id == uid
+        assert room.game.levels == tuple(last.new_levels)
+        assert room.round.banker == last.next_banker
+        assert room.round.trump_rank == last.new_levels[last.next_banker % 2]
+        assert room.saved_game is not None and room.saved_game.id != t.game_id
+        assert room.saved_game.open == {2: uid}
+        assert room.ratings is None          # a continued game is a casual room
+    finally:
+        ws.__exit__(None, None, None)
+
+
+def test_a_refused_resume_with_start_creates_nothing(env):
+    srv, store, client, cookie, uid, _pem = env
+    with client.websocket_connect("/ws", headers={"cookie": cookie}) as ws:
+        ws.send_json({"type": "create_room", "name": "", "resume_from": "0" * 32,
+                      "start": True})
+        assert _drain(ws, "error")["code"] == "resume_unavailable"
+        assert not srv.rooms

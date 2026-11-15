@@ -120,7 +120,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 1. Duo flow as mocked (core.html section 5, "Duo: one table, paired"): approved, build it.
 2. Allow joiners is the opener's switch only (server and client); others see nothing (copy rule).
 3. Offline copy: plain "Offline" (cut the subtext); "Offline · you'll play the bots on this device" and "Ranked needs a connection" are dropped.
-4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail.
+4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail. A guest gets no rating note (the "Guest" box is gone); a seat taken mid-round reads "Unranked · joined mid-round" as plain text under the result line, because it explains the missing number (Jerry 11-15).
 5. The guest line "Playing as a guest · Sign in to be ranked" stays.
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")

@@ -63,22 +63,13 @@ export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null 
   return mine === undefined || mine === winner ? null : mine;
 }
 
-/** The rating note for a ranked seat with no rating change to show: a seat
- *  taken mid-round from an open table is unranked for it, and a guest seat
- *  (the result's `unranked: "guest"` or the state's `guest`) reads "Guest".
- *  An account's rating may still be on its way, so it gets no note; an
- *  unranked room shows neither. */
-export function RatingLine({ result, ranked, guest = false }: {
-  result: RoundResult; ranked: boolean;
-  /** The viewer sits as a guest (the state's `guest`). */
-  guest?: boolean;
-}) {
-  if (!ranked) return null;
-  if (result.unranked === "joined") {
-    return <div className="rating-line rating-unranked"><span>Unranked · joined mid-round</span></div>;
-  }
-  if (result.unranked !== "guest" && !guest) return null;
-  return <div className="rating-line rating-unranked rating-guest-note"><span>Guest</span></div>;
+/** The note for a ranked seat whose rating change is missing because the
+ *  seat was taken mid-round from an open table. A guest's seat and an
+ *  account whose rating is still on its way get no note; an unranked room
+ *  shows none. */
+export function RatingLine({ result, ranked }: { result: RoundResult; ranked: boolean }) {
+  if (!ranked || result.unranked !== "joined") return null;
+  return <p className="rating-unranked">Unranked · joined mid-round</p>;
 }
 
 /** "+12", "−4" or "±0": a rating change short enough for the result line. */
@@ -172,7 +163,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
         {gameWon ? (
           <p className="result-games">Games: Us {result.games_won[us]} · Them {result.games_won[them]}</p>
         ) : null}
-        {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
+        {rating ? null : <RatingLine result={result} ranked={ranked} />}
 
         {hasDetails ? (
           <details className="result-details" onToggle={(e) => setOpen(e.currentTarget.open)}>

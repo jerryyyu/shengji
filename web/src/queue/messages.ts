@@ -215,8 +215,9 @@ export interface PresenceMsg {
  *  per table; `seat` is the sender's seat there (alone: the seat you take
  *  against bots). */
 export interface TableChatMsg {
-  /** The waiting table's id, or null while you wait alone at your own table. */
-  type: "table_chat"; table: string | null; id: number; seat: number; name: string; text: string; t: number;
+  /** The waiting table's id, or null while you wait alone at your own table.
+   *  `seat` is null for a line from someone no longer at the table. */
+  type: "table_chat"; table: string | null; id: number; seat: number | null; name: string; text: string; t: number;
 }
 
 /** Your table's chat so far, replacing what you hold: when you sit down at

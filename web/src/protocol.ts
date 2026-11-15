@@ -377,7 +377,8 @@ export interface ChatMsg {
   type: "chat";
   id: number;
   room: string;
-  seat: number;      // -1 marks a system line
+  /** -1 marks a system line; null a line from someone no longer at the table. */
+  seat: number | null;
   name: string;
   text: string;
   t: number;

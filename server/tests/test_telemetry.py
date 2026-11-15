@@ -94,7 +94,8 @@ def test_600_events_per_socket_per_hour(sink):
     assert written == telemetry.MAX_EVENTS_PER_HOUR == 600
     assert len(_records(sink)) == 600
     st = telemetry.state_for(sock)
-    assert st.take(5, now=st.window_start + telemetry.HOUR) == 5   # a new hour
+    # a new hour; a second past it, since (t + 3600.0) - t can round below 3600.0
+    assert st.take(5, now=st.window_start + telemetry.HOUR + 1) == 5
 
 
 # sink

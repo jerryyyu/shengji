@@ -3806,6 +3806,30 @@ def test_a_lone_entrys_chat_merges_into_the_table_a_stranger_forms():
     run(go())
 
 
+def test_a_duo_alone_that_loses_its_opener_keeps_its_lines_when_they_merge():
+    async def go():
+        env = Env()
+        await _duo_table(env, 1, friend=2)                        # paired while alone
+        assert env.mm._entry(2) is env.mm._entry(1) and not env.mm.tables
+        await env.send(1, "table_chat", text="from the opener")
+        env.clock.advance(1.0)
+        await env.send(2, "table_chat", text="from the partner")
+        env.clock.advance(1.0)
+        await env.send(1, "queue_leave")                          # the opener goes
+        e = env.mm._entry(2)
+        assert e is not None and e.members == [2] and e.table.seats.index(2) == 0
+        await env.join(3)                                         # it sits with a stranger
+        (t,) = env.mm.tables.values()
+        assert env.mm._entry(2).table is t and 1 not in t.seats
+        lines = [(m["seat"], m["name"], m["text"]) for m in t.chat]
+        assert lines == [(None, "P1", "from the opener"),
+                         (t.seats.index(2), "P2", "from the partner")]
+        for uid in (2, 3):
+            history = env.conns[uid].last("table_chat_history")
+            assert [(m["seat"], m["name"], m["text"]) for m in history["messages"]] == lines
+    run(go())
+
+
 def test_a_merged_lone_chat_keeps_the_table_cap():
     async def go():
         env = Env()

@@ -59,7 +59,8 @@ def test_a_server_state_change_requires_the_offline_parity_fixture():
 
 def test_a_matchmaking_change_runs_its_own_tests():
     plan = at.plan_for(["server/shengji/api/matchmaking.py"])
-    assert {"test_matchmaking", "test_offline_server_fixture_gen"} <= set(plan.pure)
+    assert {"test_matchmaking", "test_matchmaking_golden",
+            "test_offline_server_fixture_gen"} <= set(plan.pure)
 
 
 def test_fly_toml_requires_the_release_identity_tests():

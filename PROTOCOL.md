@@ -24,7 +24,7 @@ Two decks are used, so each code appears twice. Every physical card instance has
 | `join_room` | `room` (4-letter code), `name`, optional `seat`, optional `token` (from `resume`) | lobby, OR mid-game to claim a bot's or a dropped human's seat |
 | `peek_room` | `room` | anytime, WITHOUT joining — answered with `room_seats` |
 | `code_lookup` | `code` | anytime, guests too, WITHOUT joining — answered with `code_kind` (see "Codes") |
-| `chat` | `text` (<=300 chars) | after joining |
+| `chat` | `text` (<=300 chars) | after joining. A line sent in the lobby, before the game starts, is kept in memory only (the scrollback, `chat_history`), never in a log, as `table_chat` is; once the game has started a line is also written to the room log |
 | `add_bot` | — | host, in lobby or between rounds |
 | `remove_bot` | — | host, lobby (removes last bot) |
 | `start_game` | — | host (the opener), lobby: the game starts at once, bots in every empty seat ("Start now" once others sit; see "Room lobby") |

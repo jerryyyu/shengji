@@ -257,6 +257,63 @@ def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
     assert history["messages"][-1]["text"] == "line-59"
 
 
+def _logged_bytes(srv) -> bytes:
+    """Every byte the server wrote under its log root (room logs, saved
+    games, anything else it persists there)."""
+    root = srv.LOG_DIR
+    return b"".join(p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file())
+
+
+def test_lobby_chat_is_never_logged_but_reaches_the_table_and_scrollback(client):
+    """A room's pre-game chat is held in memory only, as a waiting table's is;
+    a line sent once the game has started is logged as before."""
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a, \
+            client.websocket_connect("/ws") as b:
+        a.send_json({"type": "create_room", "name": "host"})
+        code = _drain(a, "room")["room"]
+        b.send_json({"type": "join_room", "room": code, "name": "guest"})
+        _drain(b, "room")
+        a.send_json({"type": "chat", "text": "lobby-secret-line"})
+        heard = _drain(b, "chat")
+        while heard.get("seat") == -1:
+            heard = _drain(b, "chat")
+        assert heard["text"] == "lobby-secret-line"
+
+        a.send_json({"type": "add_bot"})
+        a.send_json({"type": "add_bot"})
+        a.send_json({"type": "start_game"})
+        _drain(a, "state", tries=60)
+        room = srv.rooms[code]
+        assert room.game is not None
+
+        a.send_json({"type": "chat", "text": "in-game-line"})
+        echo = _drain(a, "chat")
+        while echo.get("text") != "in-game-line":
+            echo = _drain(a, "chat")
+
+        bot_seat = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        with client.websocket_connect("/ws") as c:
+            c.send_json({"type": "join_room", "room": code, "name": "late",
+                         "seat": bot_seat})
+            history = _drain(c, "chat_history")
+    texts = [m["text"] for m in history["messages"]]
+    assert "lobby-secret-line" in texts and "in-game-line" in texts
+
+    logged = _logged_bytes(srv)
+    assert b"lobby-secret-line" not in logged
+    records = [json.loads(line)
+               for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines()]
+    chats = [r for r in records if r["e"] == "chat"]
+    assert len(chats) == 1
+    assert {k: chats[0][k] for k in ("e", "seat", "text", "bot", "room")} == {
+        "e": "chat", "seat": 0, "text": "in-game-line", "bot": False, "room": code}
+    assert chats[0]["round"] == room.game.round_no
+
+
 def test_two_clients_race_for_same_bot_seat(client):
     """The loser of a seat race must be refused, never silently reseated."""
     with client.websocket_connect("/ws") as a:

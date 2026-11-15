@@ -2385,7 +2385,10 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
         text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
         if not text:
             return
-        room.log_event("chat", seat=seat, text=text, bot=False)
+        # Pre-game chat lives only in the room's in-memory scrollback, as a
+        # waiting table's does; only a started game's chat reaches the log.
+        if room.game is not None:
+            room.log_event("chat", seat=seat, text=text, bot=False)
         chat_post(room, {"seat": seat, "name": room.seats[seat].name,
                          "text": text, "t": time.time()})
         return

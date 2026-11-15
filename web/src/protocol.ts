@@ -34,6 +34,9 @@ export type ClientMsg =
        *  with the account in its saved seat and bots in the other three, and
        *  starts at that game's last levels with its next banker. */
       resume_from?: string;
+      /** Start the game at once with a bot in every empty seat; a refused
+       *  start leaves the room in its lobby with an `error`. */
+      start?: boolean;
     }
   | { type: "add_bot" }
   /** Host only, before the game starts: the rank both teams begin at. */

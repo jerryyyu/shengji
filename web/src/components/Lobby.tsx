@@ -34,8 +34,6 @@ interface LobbyProps {
   onSeatedInvite?: (code: string) => void;
   /** Counts the times that question was answered Stay: the link is dropped. */
   inviteDropped?: number;
-  /** Offline, Start arms App's fill-with-bots-then-start chain before creating the room. */
-  onArmAutoFill?: () => void;
 }
 
 /** After this long without a connection the Play tab shows its offline state. */
@@ -87,7 +85,7 @@ function RankedUnavailable() {
 }
 
 export default function Lobby({ status, room = null, holdInvite = false,
-                                onSeatedInvite, inviteDropped = 0, onArmAutoFill }: LobbyProps) {
+                                onSeatedInvite, inviteDropped = 0 }: LobbyProps) {
   const stalled = useStalled(status);
   // Offline, the socket talks to the on-device server: Play's controls are
   // the offline ones, and links, peeks and the Join panel wait for the game server.
@@ -507,7 +505,7 @@ export default function Lobby({ status, room = null, holdInvite = false,
         {/* With no connection Play plays on this device, and what needs the
             server waits; the chip, How to play and an open sheet stay put. */}
         {offline ? (
-          <OfflineControls local status={status} room={room?.room ?? null} onArmAutoFill={onArmAutoFill} />
+          <OfflineControls local status={status} room={room?.room ?? null} />
         ) : stalled && !room ? <OfflineControls local={false} status={status} /> : (
           <>
             {joinUp && joinView ? (

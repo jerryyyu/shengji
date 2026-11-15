@@ -1,6 +1,6 @@
-// Continue a saved game: the row's Continue sends `create_room` with
-// `resume_from`, leaves the saved-games route, starts the filled room the
-// server answers with, and lands on the table at the saved levels.
+// Continue a saved game: the row's Continue sends one `create_room` with
+// `resume_from` and `start`, leaves the saved-games route, and lands on the
+// table at the saved levels when the server starts the filled room.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -59,7 +59,7 @@ afterEach(() => {
 
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
-it("Continue sends resume_from, starts the filled room and lands on the table", async () => {
+it("Continue sends one create_room with resume_from and start, then lands on the table", async () => {
   window.history.replaceState(null, "", "/#/me/games");
   const { saveName } = await import("./ws");
   saveName("Jerry");
@@ -78,15 +78,16 @@ it("Continue sends resume_from, starts the filled room and lands on the table", 
   expect(host.querySelector(".games-day-item .games-replay")?.textContent).toBe("Replay");
 
   await act(async () => { cont().click(); await new Promise((r) => setTimeout(r, 0)); });
-  expect(ws.sent).toContainEqual({ type: "create_room", name: "Jerry", resume_from: "g1" });
+  const sends = () => ws.sent.filter((m) => m.type !== "ping");
+  expect(sends()).toEqual([{ type: "create_room", name: "Jerry", resume_from: "g1", start: true }]);
   expect(window.location.hash).toBe("");
 
   // the server made the room with the account in its seat and bots around it
   act(() => ws.deliver({ type: "room", room: "WXYZ", you: 2, host: 2, start_level: "2",
                          players: [0, 1, 2, 3].map((s) => ({ seat: s, name: player(s).name,
                                                              is_bot: s !== 2, connected: true })) }));
-  expect(ws.sent.filter((m) => m.type === "add_bot")).toHaveLength(0);
-  expect(ws.sent.at(-1)).toEqual({ type: "start_game" });
+  // the server starts it: the client sends nothing more
+  expect(sends()).toHaveLength(1);
 
   act(() => ws.deliver({
     type: "state", room: "WXYZ", you: 2, phase: "deal", players: [0, 1, 2, 3].map(player),

@@ -161,6 +161,17 @@ it("Play opens your table with three bots, marked Offline, and Start deals under
   expect(assign).not.toHaveBeenCalled();
 });
 
+it("Start sends one create_room with start, and the local server deals it", async () => {
+  await mount();
+  const { conn } = await import("./ws");
+  const send = vi.spyOn(conn, "send");
+  await startGame();
+  const sent = send.mock.calls.map(([m]) => m).filter((m) => m.type !== "ping");
+  expect(sent).toEqual([{ type: "create_room", name: "Cheerful Tractor", start: true }]);
+  expect(host.querySelectorAll(".opponent").length).toBe(3);
+  send.mockRestore();
+});
+
 it("a browser sent to play offline opens straight at the offline table", async () => {
   await mount();
   await until(() => panel() !== null);
@@ -297,7 +308,7 @@ it("Leave on the offline table before Start puts online Play back in place", asy
   expectNoReload();
 });
 
-it("cancelling Start before its local room reply cannot fill a later online room with bots", async () => {
+it("cancelling Start before its local room reply sends nothing to a later online room", async () => {
   await mountOnline();
   act(() => playOfflineLink()!.click());
   await until(() => panel() !== null && button("Start")?.disabled === false);

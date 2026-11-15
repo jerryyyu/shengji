@@ -1206,6 +1206,31 @@ describe("one code for rooms and tables", () => {
     expect(lastSent()).not.toMatchObject({ name: "Ann" });
   });
 
+  it("a name another tab saves after this page read its own: the guest joins under the chip's name", async () => {
+    signedIn = false;
+    let answerMe: () => void = () => {};
+    const served = globalThis.fetch;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => String(input) === "/api/me"
+      ? new Promise<Response>((r) => { answerMe = () => r({ status: 401, json: async () => ({}) } as Response); })
+      : served(input)) as typeof fetch;
+    window.history.replaceState(null, "", "/?code=WXYZ");
+    await renderApp();
+    // this page has read storage (empty); another tab now saves its own fill
+    localStorage.setItem("shengji.name", "Other Tab");
+    await act(async () => { answerMe(); });
+    await settle();
+    say({ type: "code_kind", code: "WXYZ", kind: "room" });
+    await settle();
+    say(seats("WXYZ"));
+    await settle();
+    const chipName = q(".guest-pill .account-pill-name")?.textContent;
+    expect(chipName).toBeTruthy();
+    expect(chipName).not.toBe("Guest");
+    expect(localStorage.getItem("shengji.name")).toBe(chipName);
+    click(button("Join", joinPanel()!));
+    expect(lastSent()).toMatchObject({ type: "join_room", room: "WXYZ", name: chipName });
+  });
+
   it("an older ?party= link is a ?code= link: a Duo's table code opens its Join panel", async () => {
     window.history.replaceState(null, "", "/?party=4n5z");
     await renderApp();

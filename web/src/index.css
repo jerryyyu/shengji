@@ -5924,6 +5924,18 @@ button[role="switch"]:active .ios-switch {
 .games-round-delta { flex: none; font-size: var(--fs-13); }
 .games-actions .btn { flex: 1; min-height: 44px; }
 
+/* How to play, Support and Privacy are one layer on the page at every
+   width: no raised card behind the content. How to play keeps its two
+   columns from 900px; its diagrams and the form's fields keep their own
+   surfaces. */
+.howto-screen > .panel,
+.info-screen > .panel {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* My games and the replay on the redesign's charcoal: a top-aligned column
    with grouped surfaces, no card; the replay's felt stays green. */
 .screen.games-screen { background: var(--page); align-items: flex-start; }

@@ -71,6 +71,9 @@ full screen still comes (Jerry 11-15).
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
+A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
+two columns from 900px), Support or Privacy. Real surfaces keep theirs: the table panel, sheets and dialogs,
+grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
 
 **Section 6, settings.** One settings list (Coach, Sound, Haptics on native only, How to play) in both Me and
 the ⋯ menu. "Kitty 8 cards" moves out of ⋯.

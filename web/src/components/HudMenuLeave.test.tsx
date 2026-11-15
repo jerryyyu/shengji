@@ -98,6 +98,15 @@ describe("the leave sheet's first focus", () => {
     expect(alert()!.hasAttribute("data-pointer-open")).toBe(false);
   });
 
+  it("on a phone the menu scrolls and Leave game stays pinned at its foot", () => {
+    const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
+    const phone = css.slice(css.indexOf(":where(.phone-landscape) {"));
+    const leave = phone.slice(phone.indexOf(".hud-menu-row.leave {"), phone.indexOf("}", phone.indexOf(".hud-menu-row.leave {")));
+    expect(phone.indexOf(".hud-menu-row.leave {")).toBeGreaterThan(0);
+    expect(leave).toContain("position: sticky;");
+    expect(leave).toContain("background: #0a0c11;");
+  });
+
   it("the stylesheet drops the ring only while the alert is marked tap-opened", () => {
     const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
     expect(css).toContain(

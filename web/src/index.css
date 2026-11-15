@@ -2964,6 +2964,18 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     max-height: calc(100dvh - var(--safe-t) - var(--header-h) - 18px);
     overflow-y: auto;
   }
+  /* Leave game stays in view at the menu's foot while the rows above scroll */
+  .hud-menu-row.leave {
+    position: sticky;
+    bottom: -5px;
+    flex: none;
+    margin: 0 -5px -5px;
+    padding: 6px 15px 11px;
+    border-radius: 0 0 12px 12px;
+    border-top: 1px solid var(--panel-edge);
+    background: #0a0c11;
+  }
+  .hud-menu-sep:has(+ .hud-menu-row.leave) { display: none; }
 
   /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {

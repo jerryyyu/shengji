@@ -145,7 +145,7 @@ from itertools import count
 from typing import Any, Awaitable, Callable
 
 from ..engine.cards import RANKS
-from . import accounts, chat_filter, ratings, telemetry
+from . import accounts, chat_filter, limits, ratings, telemetry
 
 log = logging.getLogger(__name__)
 # One JSON line per queue event (join, leave and its reason, start): who is a
@@ -561,6 +561,7 @@ class Matchmaker:
     def __init__(self, *, clock: Callable[[], float] = time.time,
                  rating_of: Callable[[int], Awaitable[float | None]] | None = None,
                  start_room: StartRoom | None = None,
+                 room_capacity: Callable[[], bool] | None = None,
                  user_active: Callable[[int], bool] | None = None,
                  room_live: Callable[[str], bool] | None = None,
                  open_tables: Callable[[], list[dict]] | None = None,
@@ -571,6 +572,10 @@ class Matchmaker:
         self.clock = clock
         self.rating_of = rating_of or _store_rating
         self.start_room = start_room
+        # Whether the server's room cap admits one more room. It is asked
+        # just before a start takes its entries out of the queue, and the
+        # start reaches ``start_room``'s insertion with no await between.
+        self.room_capacity = room_capacity or (lambda: True)
         self.user_active = user_active or (lambda uid: not accounts.is_deleted(uid))
         # Whether a code names a live room: table codes avoid them.
         self.room_live = room_live or (lambda code: False)
@@ -613,6 +618,9 @@ class Matchmaker:
         self.barred: dict[int, set[str]] = {}
         self.cooldowns: dict[int, float] = {}
         self.joining: dict[int, tuple[str, Entry | None]] = {}
+        # Entries told ``server_busy`` while their due start waits for room;
+        # forgotten once a start is admitted.
+        self.busy_told: set[str] = set()
         self.join_limiter = accounts.RateLimiter(*JOIN_LIMIT)
         self.party_limiter = accounts.RateLimiter(*PARTY_LIMIT)
         self.lookup_limiter = accounts.RateLimiter(*LOOKUP_LIMIT)
@@ -1865,21 +1873,47 @@ class Matchmaker:
         An entry whose start failed is not tried again in the same pass."""
         tried: set[str] = set()
         while True:
-            now = self.clock()
-            t = next((t for t in sorted(self.tables.values(), key=lambda t: t.seq)
-                      if self._due(t, now) and not any(e.id in tried for e in t.entries)), None)
-            if t is not None:
-                tried.update(e.id for e in t.entries)
-                await self._launch_table(t)
-                continue
-            e = next((e for e in sorted(self.entries.values(), key=lambda e: e.seq)
-                      if e.table_id is None and e.bots_at is not None and e.id not in tried
-                      and not e.claiming
-                      and now >= e.bots_at and self._entry_available(e)), None)
-            if e is None:
+            t, e = self._next_due(tried)
+            if t is None and e is None:
                 return
-            tried.add(e.id)
-            await self._launch_alone(e)
+            entries = t.entries if t is not None else [e]
+            tried.update(x.id for x in entries)
+            if not self.room_capacity():
+                # At the room cap the start waits where it is, and comes
+                # due again on a later pass.
+                self._tell_busy(entries)
+                continue
+            self.busy_told.clear()
+            if t is not None:
+                await self._launch_table(t)
+            else:
+                await self._launch_alone(e)
+
+    def _next_due(self, tried: set[str]) -> tuple[Table | None, Entry | None]:
+        """The first due table, else the first lone entry whose bot timer ran
+        out, skipping entries in ``tried``."""
+        now = self.clock()
+        t = next((t for t in sorted(self.tables.values(), key=lambda t: t.seq)
+                  if self._due(t, now) and not any(e.id in tried for e in t.entries)), None)
+        if t is not None:
+            return t, None
+        e = next((e for e in sorted(self.entries.values(), key=lambda e: e.seq)
+                  if e.table_id is None and e.bots_at is not None and e.id not in tried
+                  and not e.claiming
+                  and now >= e.bots_at and self._entry_available(e)), None)
+        return None, e
+
+    def _tell_busy(self, entries: list[Entry]) -> None:
+        """``server_busy`` to each person of ``entries`` not yet told while
+        the room cap holds."""
+        err = QueueError("server_busy", limits.BUSY_MESSAGE)
+        for e in entries:
+            if e.id in self.busy_told:
+                continue
+            self.busy_told.add(e.id)
+            for u in e.members:
+                if (c := self._live(u)) is not None:
+                    self._error(c, err)
 
     async def _launch_table(self, t: Table) -> None:
         """Build the room for a due table. Synchronous up to the ``start_room``
@@ -1979,6 +2013,13 @@ class Matchmaker:
         for m in e.members:
             if not self._available(m):
                 raise QueueError("partner_unavailable", "Your partner is not in the lobby.")
+        if not self.room_capacity():
+            err = QueueError("server_busy", limits.BUSY_MESSAGE)
+            for m in e.members:
+                if m != uid and (c := self._live(m)) is not None:
+                    self._error(c, err)
+            raise err
+        self.busy_told.clear()
         t = e.table
         self._remove(e, "bots")
         self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))

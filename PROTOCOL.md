@@ -41,7 +41,10 @@ between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
 `rate_limited` (a client address past its limits: room creates, live rooms it
 opened, code lookups or queue starts) and `server_busy` (the server holds its
-most rooms; a `create_room` is refused until some close).
+most rooms, created and queued together; a `create_room` is refused until
+some close, and a queue start, by Play with bots or a due waiting table, stays
+in the queue with its table and seats, and starts once one closes; a due start
+tells each person once).
 
 Per client address (`Fly-Client-IP`): at most 40 open sockets (past it the
 handshake is refused with close code 1013), 12 live rooms it created and 30

@@ -26,9 +26,13 @@ def _env_int(name: str, default: int) -> int:
 # Open sockets per client address, and on the whole server.
 SOCKETS_PER_IP = _env_int("SHENGJI_SOCKETS_PER_IP", 40)
 MAX_SOCKETS = _env_int("SHENGJI_MAX_SOCKETS", 3000)
-# Live rooms (``create_room``) per client address, and on the whole server.
+# Live rooms ``create_room`` opened per client address, and live rooms of
+# every kind (created or started from the queue) on the whole server.
 ROOMS_PER_IP = _env_int("SHENGJI_ROOMS_PER_IP", 12)
 MAX_ROOMS = _env_int("SHENGJI_MAX_ROOMS", 300)
+# The ``server_busy`` refusal's text, for a room the cap keeps from opening.
+BUSY_MESSAGE = "The server is full right now. Try again in a few minutes."
+
 # ``create_room`` per client address per window.
 CREATE_LIMIT = (_env_int("SHENGJI_CREATES_PER_IP", 30), 600.0)
 # Code lookups (``peek_room``, ``join_room``) per client address per window,
@@ -44,6 +48,10 @@ WS_MAX_BYTES = 64 * 1024
 # Guest device keys remembered (each names a guest queue id); the least
 # recently seen is forgotten first.
 MAX_GUEST_IDS = _env_int("SHENGJI_MAX_GUEST_IDS", 50_000)
+
+
+class ServerBusy(Exception):
+    """A room the whole-server cap refused before anything was built."""
 
 
 def clock() -> float:

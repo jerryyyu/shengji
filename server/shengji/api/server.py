@@ -2389,13 +2389,20 @@ class _Caller:
         return self.account_id() if self.user_id is not None else self.guest_id
 
 
-BUSY_MESSAGE = "The server is full right now. Try again in a few minutes."
+BUSY_MESSAGE = limits.BUSY_MESSAGE
 SLOW_DOWN_MESSAGE = "Too many requests; wait a minute."
+
+
+def _room_capacity() -> bool:
+    """Whether the whole-server room cap admits one more room. Every room
+    insertion asks this with no await between the answer and the insertion,
+    so two opens cannot both take the last place."""
+    return len(rooms) < limits.MAX_ROOMS
 
 
 def _room_refusal(ip: str) -> dict | None:
     """Why ``ip`` may not open a room now (an ``error`` frame), or None."""
-    if len(rooms) >= limits.MAX_ROOMS:
+    if not _room_capacity():
         return {"type": "error", "code": "server_busy", "message": BUSY_MESSAGE}
     if (sum(1 for r in rooms.values() if r.origin_ip == ip) >= limits.ROOMS_PER_IP
             or not limits.allow(limits.CREATES, ip)):
@@ -3095,6 +3102,10 @@ async def start_matched_room(match_id: str | None, slots: list,
     registered, the room is unregistered and aborted, every attached seat is
     detached and every socket is back in the lobby with no adoption pending,
     before the error reaches the matchmaker that requeues these players."""
+    if not _room_capacity():
+        # The matchmaker asks the same question before it takes anyone out
+        # of the queue; this keeps the cap whoever calls.
+        raise limits.ServerBusy(BUSY_MESSAGE)
     ranked = mode != "casual"
     if not code or code in rooms or MATCHMAKER.has_code(code):
         code = new_code()
@@ -3665,6 +3676,7 @@ def _joined_round_ended(room: Room) -> None:
 
 
 MATCHMAKER = matchmaking.Matchmaker(start_room=start_matched_room,
+                                    room_capacity=_room_capacity,
                                     room_live=lambda code: code in rooms,
                                     open_tables=open_tables,
                                     join_table=join_open_table,

@@ -3222,3 +3222,93 @@ def test_guest_ids_are_bounded_and_never_reused(monkeypatch):
     assert c == -3 and len(ids) == 2
     assert "b" * 22 not in ids and ids.get("a" * 22) == -1
     assert ids.id_for("b" * 22) == -4          # forgotten, so a new id
+
+
+def test_a_queue_start_at_the_room_cap_keeps_its_place_until_a_room_closes(client, monkeypatch):
+    """The whole-server room cap holds for rooms the queue opens too: at the
+    cap a start with bots is refused ``server_busy`` and the entry stays
+    queued at its own table, no socket bound to any room; once a room
+    closes the same start opens one."""
+    from shengji.api import limits
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(limits, "MAX_ROOMS", 1)
+    mmk = srv.MATCHMAKER
+    with client.websocket_connect("/ws") as host:
+        _created_room(host)
+        with client.websocket_connect("/ws?device=" + "Z" * 22) as newcomer:
+            newcomer.send_json({"type": "queue_join", "name": "Guest"})
+            _next_where(newcomer, "queue_state", lambda m: m.get("queued"))
+            conn = next(c for c in mmk.conns.values() if c.device == "Z" * 22)
+            entry = mmk._entry(conn.queue_id)
+            table_id = entry.table.id
+            newcomer.send_json({"type": "table_start_bots"})
+            refused = _drain(newcomer, "error")
+            assert refused["code"] == "server_busy" and refused["message"] == limits.BUSY_MESSAGE
+            assert len(srv.rooms) == 1
+            assert mmk._entry(conn.queue_id) is entry and entry.table.id == table_id
+            assert conn.adopted is None and not conn.in_room
+            assert not any(s.queue_id == conn.queue_id for r in srv.rooms.values()
+                           for s in r.seats if s is not None)
+            host.send_json({"type": "table_leave"})
+            _drain(host, "left")
+            assert not srv.rooms
+            newcomer.send_json({"type": "table_start_bots"})
+            _drain(newcomer, "match_started")
+            assert _drain(newcomer, "state")["you"] == 0
+            assert len(srv.rooms) == 1 and mmk._entry(conn.queue_id) is None
+
+
+def test_competing_room_opens_at_one_below_the_cap_admit_exactly_one(client, monkeypatch):
+    """Two queue starts and a ``create_room`` sent together with one room
+    left under the cap: exactly one opens a room, the others are told
+    ``server_busy`` and the two queued players who lost stay queued."""
+    from shengji.api import limits
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(limits, "MAX_ROOMS", 2)
+    mmk = srv.MATCHMAKER
+    with ExitStack() as stack:
+        host = stack.enter_context(client.websocket_connect("/ws"))
+        _created_room(host)
+        queued = []
+        for d, mode in (("X", "ranked"), ("Y", "casual")):   # two tables, not one
+            ws = stack.enter_context(client.websocket_connect("/ws?device=" + d * 22))
+            ws.send_json({"type": "queue_join", "name": d, "mode": mode})
+            _next_where(ws, "queue_state", lambda m: m.get("queued"))
+            queued.append(ws)
+        creator = stack.enter_context(client.websocket_connect("/ws"))
+        for ws in queued:
+            ws.send_json({"type": "table_start_bots"})
+        creator.send_json({"type": "create_room", "name": "c"})
+        outcomes = [_frames_until(ws, lambda m: m.get("type") == "state"
+                                  or (m.get("type") == "error" and m.get("code") == "server_busy"),
+                                  "a state or server_busy")[-1]
+                    for ws in (*queued, creator)]
+        won = [m["type"] == "state" for m in outcomes]
+        assert sum(won) == 1, outcomes
+        assert len(srv.rooms) == 2
+        still = [c for c in mmk.conns.values()
+                 if c.device in ("X" * 22, "Y" * 22) and not c.in_room]
+        assert len(still) == 2 - sum(won[:2])
+        assert all(mmk._entry(c.queue_id) is not None and c.adopted is None for c in still)
+
+
+def test_the_matched_room_factory_keeps_the_room_cap_whoever_calls_it(client, monkeypatch):
+    """With the queue's own check bypassed, ``start_matched_room`` still
+    refuses at the cap before building anything: no room, no seat bound."""
+    from shengji.api import limits
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(limits, "MAX_ROOMS", 1)
+    monkeypatch.setattr(srv.MATCHMAKER, "room_capacity", lambda: True)
+    with client.websocket_connect("/ws") as host:
+        _created_room(host)
+        with client.websocket_connect("/ws?device=" + "W" * 22) as newcomer:
+            newcomer.send_json({"type": "queue_join", "name": "Guest"})
+            _next_where(newcomer, "queue_state", lambda m: m.get("queued"))
+            conn = next(c for c in srv.MATCHMAKER.conns.values() if c.device == "W" * 22)
+            newcomer.send_json({"type": "table_start_bots"})
+            assert _drain(newcomer, "error")["code"] == "start_failed"
+            assert len(srv.rooms) == 1
+            assert conn.adopted is None and not conn.in_room

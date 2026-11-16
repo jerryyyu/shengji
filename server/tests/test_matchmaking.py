@@ -15,6 +15,7 @@ import secrets
 
 import pytest
 
+from shengji.api import limits
 from shengji.api import matchmaking as mm
 from shengji.api import ratings
 
@@ -4793,3 +4794,78 @@ def test_ws_table_code_peeks_are_limited(wsenv):
         clock.advance(window + 1)
         g.send_json({"type": "table_peek", "code": table})
         assert _drain(g, "room_seats")["table"] is True
+
+
+# ------------------------------------------------- the server's room cap
+def _busy(conn):
+    return [m for m in conn.of("error") if m["code"] == "server_busy"]
+
+
+def _full_env():
+    env = Env()
+    full = {"v": True}
+    env.mm.room_capacity = lambda: not full["v"]
+    return env, full
+
+
+def test_while_rooms_are_full_the_bot_timer_waits_in_the_queue_and_is_told_once():
+    """At the room cap nothing due is taken out of the queue: a lone
+    entry's bot timer waits, told ``server_busy`` once, and starts on the
+    first pass with room."""
+    async def go():
+        env, full = _full_env()
+        await env.join(1)
+        entry = env.mm._entry(1)
+        for _ in range(3):
+            env.clock.advance(mm.BOT_FILL_SECS)
+            await env.mm.pump()
+        assert env.started == [] and env.mm._entry(1) is entry
+        busy, = _busy(env.conns[1])
+        assert busy["message"] == limits.BUSY_MESSAGE
+        full["v"] = False
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        (table_id, slots), = env.started
+        assert table_id is None and humans_of(slots) == [1]
+        assert env.mm._entry(1) is None
+    run(go())
+
+
+def test_while_rooms_are_full_a_started_table_keeps_its_seats_until_there_is_room():
+    async def go():
+        env, full = _full_env()
+        for uid in (1, 2):
+            await env.join(uid)
+            await env.send(uid, "queue_wait_players")
+        table = env.mm._entry(1).table
+        assert env.mm._entry(2).table is table
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        for _ in range(2):
+            env.clock.advance(mm.TICK_INTERVAL)
+            await env.mm.pump()
+        assert env.started == [] and env.mm.tables.get(table.id) is table
+        for uid in (1, 2):
+            assert env.mm._entry(uid).table is table and not env.conns[uid].in_room
+            assert len(_busy(env.conns[uid])) == 1, env.conns[uid].sent
+        full["v"] = False
+        env.clock.advance(mm.TICK_INTERVAL)
+        await env.mm.pump()
+        (table_id, slots), = env.started
+        assert table_id == table.id and humans_of(slots) == [1, 2]
+    run(go())
+
+
+def test_at_the_room_cap_start_with_bots_is_refused_and_the_entry_stays():
+    async def go():
+        env, full = _full_env()
+        await env.join(1)
+        entry = env.mm._entry(1)
+        await env.send(1, "queue_start_bots")
+        assert env.conns[1].last("error")["code"] == "server_busy"
+        assert env.started == [] and env.mm._entry(1) is entry
+        full["v"] = False
+        await env.send(1, "queue_start_bots")
+        (table_id, slots), = env.started
+        assert table_id is None and humans_of(slots) == [1]
+    run(go())

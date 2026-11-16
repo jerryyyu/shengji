@@ -430,7 +430,17 @@ describe("signed out, the guest names themselves", () => {
 });
 
 describe("no connection", () => {
-  afterEach(() => { vi.useRealTimers(); });
+  // the iOS app plays on the device; a browser has no offline play
+  beforeEach(() => {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }),
+    };
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  });
 
   async function renderAt(status: "open" | "closed" | "connecting") {
     if (!host || !host.isConnected) {
@@ -504,6 +514,27 @@ describe("no connection", () => {
     }
   });
 
+  it("in a browser, after 4 s Play keeps its own controls, disabled, and nothing offers the bots", async () => {
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    vi.useFakeTimers();
+    const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
+    try {
+      authState.current = { status: "in", clientId: "cid.apps", user: JERRY };
+      await renderAt("closed");
+      await act(async () => { vi.advanceTimersByTime(STALL_MS); });
+      expect(host.querySelector(".play-offline")).toBeNull();
+      expect(host.querySelector(".play-presence")?.textContent).toBe("Connecting…");
+      expect(buttonNamed("Play").disabled).toBe(true);
+      act(() => buttonNamed("Play").click());
+      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play");
+      expect(start).not.toHaveBeenCalled();
+      await renderAt("open");
+      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play");
+    } finally {
+      start.mockRestore();
+    }
+  });
+
   it("connected, Play queues online (never the offline game)", async () => {
     const start = vi.spyOn(offlineGame, "startFromPlay").mockImplementation(() => {});
     try {
@@ -562,7 +593,7 @@ describe("the lobby preview and the How to play entry", () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     const entry = host.querySelector(".howto-entry")!;
-    expect(entry.textContent).toBe("How to play·Play offline");
+    expect(entry.textContent).toBe("How to play");
     try {
       act(() => entry.querySelector<HTMLButtonElement>("button")!.click());
       expect(window.location.hash).toBe("#/howto");
@@ -579,7 +610,7 @@ describe("help and policy links", () => {
       authState.current = current;
       if (host) { act(() => root.unmount()); host.remove(); }
       await render();
-      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play·Play offline");
+      expect(host.querySelector(".howto-entry")?.textContent).toBe("How to play");
       expect(host.querySelector(".info-links")).toBeNull();
       expect(host.querySelector("a[href='/privacy'], a[href='/support']")).toBeNull();
     }

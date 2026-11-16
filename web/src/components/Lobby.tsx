@@ -17,7 +17,7 @@ import { codes, panelShown, useCodes } from "../codeJoin";
 import { normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
-import { offlineGame, useOfflineTable } from "./offlineGame";
+import { offlineGame, offlineOffered, useOfflineTable } from "./offlineGame";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -172,11 +172,14 @@ export default function Lobby({ status, room = null }: LobbyProps) {
     codes.join(as);
   };
 
+  // only the app plays on the device: a browser's Play tab with no
+  // connection keeps its own controls, disabled, until the server is back
+  const offlineUp = stalled && offlineOffered();
   const wide = useMediaQuery(WIDE);
   const screenRef = useRef<HTMLDivElement | null>(null);
   // a panel that opens puts the page back at its top, where the panel is
   const joinUp = panelShown(codeView) && !seated && !offline;
-  const panelUp = offline ? offlineTable : (queued || joinUp) && !stalled;
+  const panelUp = offline ? offlineTable : (queued || joinUp) && !offlineUp;
   useEffect(() => {
     if (panelUp && screenRef.current) screenRef.current.scrollTop = 0;
   }, [panelUp]);
@@ -188,7 +191,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
     ? <RankedUnavailable /> : <RankedSection online={status === "open"} room={room} />;
 
   return (
-    <div ref={screenRef} className={`screen lobby-screen play-tab${stalled || offline ? " play-offline" : ""}${panelUp ? " play-table-up" : ""}`}>
+    <div ref={screenRef} className={`screen lobby-screen play-tab${offlineUp || offline ? " play-offline" : ""}${panelUp ? " play-table-up" : ""}`}>
       <div className="panel lobby-panel">
         {/* one column at every width: the art, then the controls or the
             table panel */}
@@ -201,11 +204,12 @@ export default function Lobby({ status, room = null }: LobbyProps) {
         <div className="play-side">
         {signedIn ? <AccountChip user={signedIn} /> : <GuestChip />}
 
-        {/* With no connection Play plays on this device, and what needs the
-            server waits; the chip, How to play and an open sheet stay put. */}
+        {/* With no connection the app's Play plays on this device, and what
+            needs the server waits; the chip, How to play and an open sheet
+            stay put. */}
         {offline ? (
           <OfflineControls local status={status} room={room?.room ?? null} />
-        ) : stalled && !room ? <OfflineControls local={false} status={status} /> : (
+        ) : offlineUp && !room ? <OfflineControls local={false} status={status} /> : (
           <>
             {joinUp ? (
               <JoinCodePanel join={codeView}
@@ -225,7 +229,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
           <button className="howto-link" onClick={() => openHowto()}>How to play</button>
           {/* the bots on this device, on purpose: a game started here stays
               offline when the network comes back */}
-          {stalled || offline || seated || joinUp ? null : (
+          {stalled || offline || seated || joinUp || !offlineOffered() ? null : (
             <>
               <span className="howto-sep" aria-hidden="true">·</span>
               <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>Play offline</button>

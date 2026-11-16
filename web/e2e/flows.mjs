@@ -383,7 +383,14 @@ if (want("table")) {
 
 // ---------------------------------------------------------------- offline, Duo, the other tabs
 if (want("offline")) {
-  const page = await open(browser, "phone-port", { storage: { "shengji.coach": "on" } });
+  const web = await open(browser, "phone-port");
+  await scenario(rep, "offline: a browser's Play tab has no Play offline", web, async () => {
+    await web.waitForSelector(".play-main");
+    const links = await web.$$eval(".howto-entry button", (bs) => bs.map((b) => b.textContent));
+    await rep.check("offline: a browser shows How to play alone", links.join("|") === "How to play" ? null : `links: ${links.join(", ")}`, web);
+  });
+  await web.context().close();
+  const page = await open(browser, "phone-port", { storage: { "shengji.coach": "on" }, native: true });
   await scenario(rep, "offline: Play offline to a dealt table and back", page, async () => {
     await page.click("text=Play offline");
     await page.waitForSelector(".tp-primary");

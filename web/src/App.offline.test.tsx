@@ -4,7 +4,9 @@
 // offline and back in place: the socket swaps servers, nothing reloads or
 // navigates (the app's bundled page, which has no game server, loads the live
 // site to go online). An offline game stays offline until you leave it; then
-// Play is online again if the network is up.
+// Play is online again if the network is up. Only the iOS app offers this
+// (window.Capacitor present): in a browser no Play offline entry shows and the
+// on-device server is never loaded.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -51,6 +53,7 @@ beforeEach(() => {
     resume() { return Promise.resolve(); }
   };
   at("?offline=1&table=1");
+  inApp();
   fetched = [];
   globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
     fetched.push(String(input));
@@ -65,10 +68,25 @@ afterEach(() => {
   host.remove();
   Object.defineProperty(window, "location", { configurable: true, value: realLocation });
   Reflect.deleteProperty(navigator, "onLine");
+  delete (window as unknown as { Capacitor?: unknown }).Capacitor;
   globalThis.fetch = realFetch;
   sessionStorage.clear();
   pushState.mockRestore();
 });
+
+/** The page runs inside the iOS app's WebView: its bridge is injected and
+ *  every plugin call resolves to nothing. */
+function inApp() {
+  (window as unknown as { Capacitor: unknown }).Capacitor = {
+    isNativePlatform: () => true,
+    registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }),
+  };
+}
+
+/** A browser: no bridge. */
+function inBrowser() {
+  delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+}
 
 /** Nothing reloaded or navigated the page. */
 function expectNoReload() {
@@ -414,4 +432,78 @@ it("the offline Play block and its table, as drawn", async () => {
   // Start pressed, its room not back yet
   expect(markup(panel())).toMatchSnapshot();
   act(() => button("Leave")!.click());
+});
+
+/** A browser's Play tab, its socket open: the web build has no offline play. */
+async function mountWeb() {
+  inBrowser();
+  at("");
+  await mount("Cheerful Tractor", false);
+  act(() => latestWS().open());
+  await until(() => host.querySelector(".play-tab") !== null);
+}
+
+/** Every dynamic import of the on-device server goes through this mock, so
+ *  a test can see whether a page loaded it. */
+async function watchOfflineServer(): Promise<{ loaded: boolean }> {
+  // an earlier test's page may still have its idle-time load queued
+  await act(async () => { await new Promise((r) => setTimeout(r, 2100)); });
+  const seen = { loaded: false };
+  const real = await vi.importActual<typeof import("./offline/server")>("./offline/server");
+  vi.doMock("./offline/server", () => { seen.loaded = true; return real; });
+  return seen;
+}
+
+it("in a browser the Play tab shows How to play alone, with no Play offline", async () => {
+  await mountWeb();
+  const links = [...host.querySelectorAll(".howto-entry button")].map((b) => b.textContent);
+  expect(links).toEqual(["How to play"]);
+  expect(host.querySelector(".howto-sep")).toBeNull();
+  expect(host.textContent).not.toMatch(/Play offline/);
+});
+
+it("in the app the Play tab still shows How to play · Play offline", async () => {
+  await mountOnline();
+  const links = [...host.querySelectorAll(".howto-entry button")].map((b) => b.textContent);
+  expect(links).toEqual(["How to play", "Play offline"]);
+});
+
+it("a browser never loads the on-device server, connected and idle or with the connection lost", async () => {
+  const server = await watchOfflineServer();
+  const idle = vi.fn((cb: () => void) => cb());
+  (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = idle;
+  try {
+    await mountWeb();
+    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+    netUp = false;
+    act(() => latestWS().close());
+    // past the stall: the Play tab keeps its own controls, disabled, and offers no bots
+    await act(async () => { await new Promise((r) => setTimeout(r, 4500)); });
+    expect(host.querySelector(".play-offline")).toBeNull();
+    expect(host.querySelector(".play-presence.offline")).toBeNull();
+    expect(host.textContent).not.toMatch(/Play offline/);
+    const play = button("Play");
+    if (play) {
+      expect(play.disabled).toBe(true);
+      act(() => play.click());
+    }
+    expect(panel()).toBeNull();
+    expect(server.loaded).toBe(false);
+  } finally {
+    delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
+    vi.doUnmock("./offline/server");
+  }
+}, 15000);
+
+it("in the app the on-device server loads once the page is connected and idle", async () => {
+  const server = await watchOfflineServer();
+  const idle = vi.fn((cb: () => void) => cb());
+  (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = idle;
+  try {
+    await mountOnline();
+    await until(() => server.loaded);
+  } finally {
+    delete (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback;
+    vi.doUnmock("./offline/server");
+  }
 });

@@ -3,6 +3,7 @@ import { OFFLINE, setOffline } from "../offlineMode";
 import { conn } from "../ws";
 import { queue } from "../queue/store";
 import { clearToast } from "../toast";
+import { isNative } from "../native";
 
 /** The live site, for the app's bundled page to load when back online. */
 export const ONLINE_URL = "https://shengji.fly.dev/";
@@ -23,6 +24,13 @@ function arrivedForTable(): boolean {
 function resetServerState(): void {
   queue.reset();
   clearToast();
+}
+
+/** Whether this page offers offline play: only the iOS app does. A browser
+ *  has no service worker to load the page without a network, and the app
+ *  embeds the release bot. */
+export function offlineOffered(): boolean {
+  return isNative();
 }
 
 const listeners = new Set<() => void>();
@@ -83,9 +91,10 @@ export const offlineGame = {
     conn.useGameServer();
   },
   /** Loads the on-device server ahead of need, once the page is idle, so
-   *  Play offline works after the network has gone. */
+   *  Play offline works after the network has gone. Only the app offers
+   *  offline play, so a browser never downloads that server. */
   prefetch(): void {
-    if (prefetched || OFFLINE) return;
+    if (prefetched || OFFLINE || !offlineOffered()) return;
     prefetched = true;
     const load = () => { void import("../offline/server").catch(() => { prefetched = false; }); };
     const idle = (globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ConnStatus } from "../ws";
 import { conn } from "../ws";
-import { offlineGame } from "./offlineGame";
+import { offlineGame, offlineOffered } from "./offlineGame";
 import { lastInputModality } from "../inputModality";
 import { trapTab } from "../queue/Sheet";
 
@@ -150,9 +150,11 @@ function ConnectionLost({ inGame, onRetry }: { inGame: boolean; onRetry: () => v
       <h1 className="conn-lost-title" id={titleId}>No connection</h1>
       {inGame ? <p className="conn-lost-body" id={bodyId}>A bot holds your seat.</p> : null}
       <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>Retry</button>
-      <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
-        Play offline with the bots
-      </button>
+      {offlineOffered() ? (
+        <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
+          Play offline with the bots
+        </button>
+      ) : null}
     </dialog>
   );
 }

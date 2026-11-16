@@ -2512,12 +2512,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
      past the level strip (the strip's measured width, --hud-strip-w, from
      the safe edge) to a gap before Chat. It is centred over its slot when
      the stretch allows; otherwise it takes up to 96px of the stretch off
-     centre, and the name ends in an ellipsis. */
+     centre (136px with a countdown, which stays whole), and the name ends
+     in an ellipsis. */
+  .opponent.pos-top:has(.off-tag.counting) { --top-cap: 136px; }
   .opponent.pos-top {
     --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
     --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w));
     --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
-      min(96px, calc(var(--top-to) - var(--top-from)))));
+      min(var(--top-cap, 96px), calc(var(--top-to) - var(--top-from)))));
     top: calc(6px + var(--safe-t));
     left: clamp(calc(var(--top-from) + var(--top-w) / 2), calc(var(--view-w) / 2), calc(var(--top-to) - var(--top-w) / 2));
     height: var(--header-h);
@@ -2566,6 +2568,35 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     flex-shrink: 100;
     min-width: 0;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* the countdown keeps only its count ("28s"), whole; the name gives way
+     to an ellipsis instead, and the words before the count stay for screen
+     readers */
+  .opponent .opp-name > .off-tag.counting {
+    flex-shrink: 0;
+    margin-left: 0;
+  }
+
+  /* while the count runs it holds the turn dots' place at the label's end;
+     the gold fill still marks the turn */
+  .opponent:has(.off-tag.counting) .turn-dots {
+    display: none;
+  }
+
+  /* A word status ("offline", "bot playing") has no room beside a readable
+     name here; the dimmed pill says the seat is away, and the word stays
+     for screen readers. */
+  .opponent .opp-name > .off-tag:not(.counting),
+  .opponent .off-tag .off-lead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* a long name steps down once, to 12px, then ends in an ellipsis */

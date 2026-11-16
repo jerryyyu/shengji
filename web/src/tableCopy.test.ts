@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, StatePlayer } from "./protocol";
 import {
-  attackingTeam, bankerText, buryPointsText, declareHelp, seatStatus, teamWord,
+  attackingTeam, bankerText, buryPointsText, declareHelp, seatStatus, seatStatusParts, teamWord,
 } from "./tableCopy";
 
 function p(seat: number, name: string, extra: Partial<StatePlayer> = {}): StatePlayer {
@@ -50,5 +50,12 @@ describe("table copy", () => {
     expect(seatStatus(gone, 27.2)).toBe("offline — bot in 28s");
     expect(seatStatus(gone, null)).toBe("bot playing");
     expect(seatStatus(p(2, "Alice"), null)).toBeNull();
+  });
+
+  it("splits the countdown so the count can stay whole on its own", () => {
+    const gone = p(2, "Alice", { connected: false, controller: "bot_cover" });
+    expect(seatStatusParts(gone, 27.2)).toEqual({ lead: "offline — bot in ", count: "28s" });
+    expect(seatStatusParts(gone, null)).toBeNull();
+    expect(seatStatusParts({ ...gone, left: true }, 27.2)).toBeNull();
   });
 });

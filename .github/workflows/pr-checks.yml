@@ -820,6 +820,7 @@ jobs:
             tests/test_world_history_legal.py \
             tests/test_pv_belief_log.py \
             tests/test_pv_belief_capacity.py \
+            tests/test_pv_belief_play_reweight.py \
             tests/test_y_trajectory_runner.py \
             tests/test_pv_search_hooks.py \
             tests/test_pv_lead_tiebreak_prior.py \

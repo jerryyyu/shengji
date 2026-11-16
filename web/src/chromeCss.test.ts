@@ -3,7 +3,8 @@
 // Guards chrome rules in index.css that jsdom cannot render: the toast's fade
 // timing, Reduce Motion on the deal deck, How to play tap areas, one focus
 // ring on fields, the turned table's hand inset, the dimmed-card veil, the
-// capped text scale and the home tabs' touch targets.
+// capped text scale, the home tabs' touch targets and your crown beside
+// your own trick slot.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -191,5 +192,21 @@ describe("one layer on the page", () => {
     for (const d of ["background: none", "border: 0", "box-shadow: none"]) expect(flat).toContain(d);
     // the flattening comes after the shared .panel card, so it wins
     expect(css.indexOf(".howto-screen > .panel,")).toBeGreaterThan(css.indexOf(".panel {"));
+  });
+});
+
+describe("your crown beside your trick slot", () => {
+  it("steps left of your cards and their LEAD / WINS tags by half the wider of the two", () => {
+    const sel = ":where(.phone-landscape) .table-screen:not(.phase-bury) .you-row .you-tagline:has(.banker-crown)";
+    const bodies = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((m) => m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ") === sel)
+      .map((m) => m[2]);
+    const offset = bodies.find((b) => b.includes("--my-slot-n"));
+    expect(offset).toBeDefined();
+    expect(offset).toContain("margin-right: calc(min(1, var(--slot-n)) * max(var(--slot-cards-w), var(--slot-tags-w)) / 2 + 8px)");
+    // no slot, no step: the crown keeps its 8px beside the action
+    expect(offset).toContain("--slot-n: var(--my-slot-n, 0)");
+    // it comes after the rule that places the pill, so its margin wins
+    expect(css.indexOf(offset!)).toBeGreaterThan(css.indexOf(bodies[0]));
   });
 });

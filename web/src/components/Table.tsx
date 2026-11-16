@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
@@ -526,6 +526,10 @@ export default function Table({ state }: { state: GameState }) {
     state.phase === "deal" || state.phase === "declare" || state.phase === "bury"
       ? state.current_declaration
       : null;
+  // how many cards your own slot of the cross holds, so the phone row's
+  // crown can stand clear of them and of their LEAD / WINS tags
+  const mySlotCards = trickToShow?.plays.find((p) => p.seat === state.you)?.cards.length
+    ?? (declaration?.seat === state.you ? declaration.cards.length : 0);
 
   let actionBar: ReactNode = null;
   // the hand line's parts that the phase sets: why Play waits, and the
@@ -657,7 +661,7 @@ export default function Table({ state }: { state: GameState }) {
 
         <div className="you-area">
           {/* your name and your controls; a phone centres them as one row */}
-          <div className="you-row">
+          <div className="you-row" style={{ "--my-slot-n": mySlotCards } as CSSProperties}>
           <div className={`you-tagline team${me?.team ?? 0}${myTurn ? " on-turn" : ""}`}>
             {iAmBanker && me ? (
               <span className="banker-crown" role="img" aria-label={bankerText(me, state.you)}>👑</span>

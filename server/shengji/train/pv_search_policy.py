@@ -911,15 +911,18 @@ SAMPLER_RULES = {"REFUSAL_CONSTRAINTS": "refusal_constraints",
                  "WORLD_HISTORY_THROWS": "world_history_throws",
                  "BELIEF_WORLDS": "belief_worlds",
                  "BELIEF_CAPACITY": "belief_capacity", "PROPOSAL_CAPS": "proposal_caps",
+                 "BELIEF_PLAY_REWEIGHT": "belief_play_reweight",
                  "HISTORY_VALID_FILL": "history_valid_fill"}
 SAMPLER_DEFAULTS = dict(refusal_constraints=False, refusal_event_complete=False,
                         world_history_legal=False, world_history_draw=False,
-                        world_history_throws=False, belief_worlds=False, belief_capacity=False, proposal_caps=False, history_valid_fill=False)
+                        world_history_throws=False, belief_worlds=False, belief_capacity=False, proposal_caps=False, history_valid_fill=False,
+                        belief_play_reweight=False)
 #: name tokens, in name order, for the rules that are on
 SAMPLER_TOKENS = (("refusal_constraints", "rc"), ("refusal_event_complete", "rcec"),
                   ("world_history_legal", "whl"), ("world_history_draw", "whd"),
                   ("world_history_throws", "wht"),
-                  ("belief_worlds", "bw"), ("belief_capacity", "bwc"), ("proposal_caps", "pcaps"),
+                  ("belief_worlds", "bw"), ("belief_capacity", "bwc"),
+                  ("belief_play_reweight", "bpr"), ("proposal_caps", "pcaps"),
                   ("history_valid_fill", "hvf"))
 #: the optional selection rule (`policy_value_search`): env flag -> recipe key
 TIEBREAK_RULE = {"TIEBREAK_POINTS": "tiebreak_points"}
@@ -1341,6 +1344,9 @@ _BELIEF_REQUIRES = ("belief_worlds requires world_history_legal and world_histor
                     "and SHENGJI_PV_WORLD_HISTORY_DRAW=1)")
 _BELIEF_CAPACITY_REQUIRES = ("belief_capacity requires belief_worlds: it is the belief proposal's "
                              "draw (SHENGJI_PV_BELIEF_CAPACITY=1 needs SHENGJI_PV_BELIEF_WORLDS=1)")
+_BELIEF_PLAY_REWEIGHT_REQUIRES = ("belief_play_reweight requires belief_worlds: it resamples the "
+                                  "belief proposal's worlds (SHENGJI_PV_BELIEF_PLAY_REWEIGHT=1 needs "
+                                  "SHENGJI_PV_BELIEF_WORLDS=1)")
 #: the belief proposal's log flag: ``0`` or ``1``, unset (or empty) is the default
 BELIEF_LOG_ENV = "SHENGJI_PV_BELIEF_LOG"
 BELIEF_LOG_DEFAULT = True
@@ -1536,6 +1542,8 @@ class PVSearchConfig:
     belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"]
     # its capacity-aware draw (requires the proposal); the same contract
     belief_capacity: bool = SAMPLER_DEFAULTS["belief_capacity"]
+    # the play-likelihood resample of its worlds (requires the proposal); the same contract
+    belief_play_reweight: bool = SAMPLER_DEFAULTS["belief_play_reweight"]
     # the optional selection rule (#676 E); the same contract
     tiebreak_points: bool = TIEBREAK_DEFAULTS["tiebreak_points"]
     # the optional admission width rule (#676 C); the same contract
@@ -1976,6 +1984,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     belief_sha = payload.pop("belief_sha256")
     if config.belief_capacity and not config.belief_worlds:
         raise PVSearchPolicyError(_BELIEF_CAPACITY_REQUIRES)
+    if config.belief_play_reweight:
+        if not config.belief_worlds:
+            raise PVSearchPolicyError(_BELIEF_PLAY_REWEIGHT_REQUIRES)
+        from .belief_play_reweight import IDENTITY as _reweight_identity
+        payload["belief_play_reweight_rule"] = dict(_reweight_identity)
     if config.belief_worlds:
         if not (config.world_history_legal and config.world_history_draw):
             raise PVSearchPolicyError(_BELIEF_REQUIRES)
@@ -2553,6 +2566,10 @@ class PVSearchBot(PolicyValueBot):
         self.belief_capacity = bool(config.belief_capacity)
         if self.belief_capacity and not self.belief_worlds:
             raise PVSearchPolicyError(_BELIEF_CAPACITY_REQUIRES)
+        # the play-likelihood resample of the proposal's worlds (requires the proposal)
+        self.belief_play_reweight = bool(config.belief_play_reweight)
+        if self.belief_play_reweight and not self.belief_worlds:
+            raise PVSearchPolicyError(_BELIEF_PLAY_REWEIGHT_REQUIRES)
         for key in ("adaptive_worlds", "adaptive_worlds_leads"):
             if type(getattr(config, key)) is not bool:
                 raise PVSearchPolicyError(f"{key} must be a bool")
@@ -3555,8 +3572,13 @@ class PVSearchBot(PolicyValueBot):
             constraints = draw_constraints(rnd, seat)
             seed = self.sampler.rng.getrandbits(63)
             fast = self.world_fast
+            # the play-likelihood resample draws its candidates here and keeps self.worlds of them
+            reweight = getattr(self, "belief_play_reweight", False)
+            if reweight:
+                from . import belief_play_reweight
+            drawn = belief_play_reweight.CANDIDATES if reweight else self.worlds
             propose = BeliefProposal(self.belief_model, rnd, seat, refusals,
-                                     seed=seed, batch=self.worlds,
+                                     seed=seed, batch=drawn,
                                      forbidden=constraints, check_budget=check_budget,
                                      capacity=getattr(self, "belief_capacity", False),
                                      **({"native": True} if fast else {}))
@@ -3565,10 +3587,14 @@ class PVSearchBot(PolicyValueBot):
                 from .pv_native import world_completion
                 complete = world_completion(self.sampler, rnd, seat)
             worlds, attempts, stats = sample_worlds_history_legal(
-                self.sampler, rnd, seat, self.worlds, refusals, mem=mem,
+                self.sampler, rnd, seat, drawn, refusals, mem=mem,
                 check_budget=check_budget, propose=propose, constrain=True,
                 **({"complete": complete} if complete is not None else {}),
                 **self._history_throws_kw())
+            if reweight:
+                worlds, resampled = belief_play_reweight.resample(
+                    self, rnd, seat, worlds, self.worlds, seed, check_budget)
+                stats.update(resampled)
             stats.update(history_draw_constraints=len(constraints),
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),
@@ -4988,6 +5014,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        proposal_caps: bool = SAMPLER_DEFAULTS["proposal_caps"],
                        belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"],
                        belief_capacity: bool = SAMPLER_DEFAULTS["belief_capacity"],
+                       belief_play_reweight: bool = SAMPLER_DEFAULTS["belief_play_reweight"],
                        belief_checkpoint: str | None = None,
                        belief_sha256: str | None = None,
                        admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
@@ -5083,6 +5110,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             proposal_caps=proposal_caps,
                             belief_worlds=belief_worlds, belief_sha256=belief_sha256,
                             belief_capacity=belief_capacity,
+                            belief_play_reweight=belief_play_reweight,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -5223,6 +5251,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         proposal_caps: bool = SAMPLER_DEFAULTS["proposal_caps"],
                         belief_worlds: bool = SAMPLER_DEFAULTS["belief_worlds"],
                         belief_capacity: bool = SAMPLER_DEFAULTS["belief_capacity"],
+                        belief_play_reweight: bool = SAMPLER_DEFAULTS["belief_play_reweight"],
                         belief_checkpoint: str | None = None,
                         belief_sha256: str | None = None,
                         admission_diversity: bool = ADMISSION_DEFAULTS["admission_diversity"],
@@ -5299,6 +5328,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             proposal_caps=proposal_caps,
                             belief_worlds=belief_worlds, belief_sha256=belief_sha256,
                             belief_capacity=belief_capacity,
+                            belief_play_reweight=belief_play_reweight,
                             admission_diversity=admission_diversity,
                             admit_forced_single=admit_forced_single,
                             tiebreak_points=tiebreak_points, adaptive_k=adaptive_k,
@@ -5432,6 +5462,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                proposal_caps=config.proposal_caps,
                                belief_worlds=config.belief_worlds,
                                belief_capacity=config.belief_capacity,
+                               belief_play_reweight=config.belief_play_reweight,
                                belief_checkpoint=belief_checkpoint,
                                belief_sha256=config.belief_sha256,
                                admission_diversity=config.admission_diversity,

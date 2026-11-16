@@ -937,6 +937,7 @@ jobs:
             tests/test_world_weighting.py \
             tests/test_belief_seq_init.py \
             tests/test_unified_seq.py \
+            tests/test_search_free_play.py \
             tests/test_s134_v1_read.py \
             tests/test_pv_value_matrix.py \
             tests/test_pv_native_release48.py \

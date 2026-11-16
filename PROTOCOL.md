@@ -39,6 +39,18 @@ should re-peek and offer the picker rather than auto-taking one),
 `seat_unavailable` (the seat was claimed
 between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
+`rate_limited` (a client address past its limits: room creates, live rooms it
+opened, code lookups or queue starts) and `server_busy` (the server holds its
+most rooms; a `create_room` is refused until some close).
+
+Per client address (`Fly-Client-IP`): at most 40 open sockets (past it the
+handshake is refused with close code 1013), 12 live rooms it created and 30
+creates per 10 minutes, 120 code lookups (`table_peek`, `table_join` to a room)
+per minute and 30 lookups of codes that name nothing per 10 minutes (then
+lookups are refused: a peek with `room_not_found` and `peek`, a join with
+`rate_limited`), and 60 queue starts per 10 minutes. The server holds at most
+300 rooms and 3000 sockets. A WebSocket message over 64 KiB closes the socket.
+Each number is an environment setting (`SHENGJI_*`, `server/shengji/api/limits.py`).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no
 longer exists — the client should clear its saved room and return to the
 lobby instead of retrying), `"no_room"` (a room action from a socket that holds

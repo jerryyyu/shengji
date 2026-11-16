@@ -171,3 +171,13 @@ def _scratch_seed_windows(tmp_path, monkeypatch):
     """Each test gets its own fresh scratch registry (read the real ledger
     explicitly through ``shengji.seeds.DEFAULT_REGISTRY`` when wanted)."""
     monkeypatch.setenv("SHENGJI_SEED_WINDOWS", str(tmp_path / "seed_windows.json"))
+
+
+@pytest.fixture(autouse=True)
+def _fresh_connection_limits():
+    """Every test starts with no per-address counts: the suite's sockets
+    all come from one test-client address."""
+    limits = sys.modules.get("shengji.api.limits")
+    if limits is not None:
+        limits.reset()
+    yield

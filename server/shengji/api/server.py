@@ -30,7 +30,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, chat_filter, matchmaking, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, chat_filter, limits, matchmaking, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -427,6 +427,9 @@ class Room:
     # started (a bot plays it): a join by the room's code that names no
     # seat takes it first. Server-only.
     friend_seat: int | None = field(default=None, repr=False)
+    # The address that opened the room with ``create_room``, counted by the
+    # per-address room limit. Server-only and never logged.
+    origin_ip: str | None = field(default=None, repr=False)
     # Whether the people at a game started alone were told of its first
     # joiner (``first_joiner``): once per room, so the toast never repeats.
     first_joiner_told: bool = field(default=False, repr=False)
@@ -2340,7 +2343,7 @@ async def _resume_point(user_id: int | None, game_id: Any) -> dict | None:
 DEVICE_KEY_RE = re.compile(r"[A-Za-z0-9_-]{22,64}")
 # device key -> that guest's queue id: -1, -2, ... in order of first use, so
 # a reconnect from the same device keeps its place, pair and cooldown.
-GUEST_IDS: dict[str, int] = {}
+GUEST_IDS = limits.GuestIds()
 
 
 def device_key(raw: Any) -> str | None:
@@ -2350,10 +2353,7 @@ def device_key(raw: Any) -> str | None:
 
 def guest_queue_id(device: str) -> int:
     """The negative queue id of the guest on ``device``."""
-    qid = GUEST_IDS.get(device)
-    if qid is None:
-        qid = GUEST_IDS[device] = -(len(GUEST_IDS) + 1)
-    return qid
+    return GUEST_IDS.id_for(device)
 
 
 @dataclass
@@ -2369,6 +2369,8 @@ class _Caller:
     # The same device's guest id when this socket is signed in: the guest
     # signed in here.
     signed_in_guest: int | None
+    # The client's address, for the per-address limits; never logged.
+    ip: str = "unknown"
 
     def account_id(self) -> int | None:
         return None if self.user_id is None or accounts.is_deleted(self.user_id) else self.user_id
@@ -2385,6 +2387,20 @@ class _Caller:
         # device's guest id; None for a deleted account or a guest whose
         # client sent no device key, which the queue refuses.
         return self.account_id() if self.user_id is not None else self.guest_id
+
+
+BUSY_MESSAGE = "The server is full right now. Try again in a few minutes."
+SLOW_DOWN_MESSAGE = "Too many requests; wait a minute."
+
+
+def _room_refusal(ip: str) -> dict | None:
+    """Why ``ip`` may not open a room now (an ``error`` frame), or None."""
+    if len(rooms) >= limits.MAX_ROOMS:
+        return {"type": "error", "code": "server_busy", "message": BUSY_MESSAGE}
+    if (sum(1 for r in rooms.values() if r.origin_ip == ip) >= limits.ROOMS_PER_IP
+            or not limits.allow(limits.CREATES, ip)):
+        return {"type": "error", "code": "rate_limited", "message": SLOW_DOWN_MESSAGE}
+    return None
 
 
 async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | None:
@@ -2411,7 +2427,12 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
             await send(ws, {"type": "error", "code": "resume_unavailable",
                             "message": "That game can't be continued."})
             return None
-    room = Room(code=new_code(), start_level=start_level, resume=resume)
+    refused = _room_refusal(caller.ip)
+    if refused is not None:
+        await send(ws, refused)
+        return None
+    room = Room(code=new_code(), start_level=start_level, resume=resume,
+                origin_ip=caller.ip)
     rooms[room.code] = room
     # Through _attach, as every seat: it bumps the generation and issues
     # the resume token, so the creator has an identity and an overlapping
@@ -2435,11 +2456,22 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
     return room, me, my_gen
 
 
+def _lookup_allowed(ip: str) -> bool:
+    """One more code lookup from ``ip``: under its lookup rate and its
+    budget of codes that named nothing."""
+    return limits.misses_left(ip) and limits.allow(limits.LOOKUPS, ip)
+
+
 async def _peek_room(caller: _Caller, msg: dict) -> None:
     """A ``peek_room``: who is sitting where, without joining; the lobby
     offers a seat picker from it for a game in progress."""
     ws, conn, account_id = caller.ws, caller.conn, caller.account_id
     asked = matchmaking.normalize_code(msg.get("room"))
+    if not _lookup_allowed(caller.ip):
+        await send(ws, {"type": "error", "code": "room_not_found",
+                        "peek": asked[:matchmaking.CODE_LEN * 2],
+                        "message": SLOW_DOWN_MESSAGE})
+        return
     target = rooms.get(asked)
     if target is None:
         # Any other code is a queued table's or nothing,
@@ -2459,6 +2491,7 @@ async def _peek_room(caller: _Caller, msg: dict) -> None:
         if seats is not None:
             await send(ws, seats)
             return
+        limits.record_miss(caller.ip)
         await send(ws, {"type": "error", "code": "room_not_found",
                         "peek": echo, "message": PEEK_NOT_FOUND})
         return
@@ -2477,9 +2510,15 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
     took_from = ""
     took_over_human = False
     code = str(msg.get("room", "")).upper()
+    if not _lookup_allowed(caller.ip):
+        await send(ws, {"type": "error", "code": "rate_limited",
+                        "message": SLOW_DOWN_MESSAGE})
+        return None
     target = rooms.get(code)
     if target is None or target.game is None:
         # a room is joined only once its game is on
+        if target is None:
+            limits.record_miss(caller.ip)
         await send(ws, {"type": "error", "code": "room_not_found",
                         "message": "Room not found."})
         return None
@@ -2725,6 +2764,18 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
 # --------------------------------------------------------------- websocket
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    ip = accounts.client_ip(ws)
+    if not limits.SOCKETS.acquire(ip):
+        # refused at the handshake: the client's reconnect backs off
+        await ws.close(code=1013)
+        return
+    try:
+        await _ws_session(ws, ip)
+    finally:
+        limits.SOCKETS.release(ip)
+
+
+async def _ws_session(ws: WebSocket, ip: str) -> None:
     await ws.accept()
     if ws.query_params.get("heartbeat") == "1":
         await send(ws, {"type": "heartbeat_ready"})
@@ -2749,7 +2800,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
     # end now (a matched seat moves over on rejoin by its resume token).
     signed_in_guest = (GUEST_IDS.get(device)
                        if user_id is not None and device is not None else None)
-    caller = _Caller(ws, conn, user_id, device, guest_id, signed_in_guest)
+    caller = _Caller(ws, conn, user_id, device, guest_id, signed_in_guest, ip)
     account_id, queue_id = caller.account_id, caller.queue_id
     if signed_in_guest is not None:
         old_conn = MATCHMAKER.conns.get(signed_in_guest)
@@ -2837,6 +2888,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                     # person holds one seat, so this one does not queue.
                     await send(ws, {"type": "error", "code": "account_in_game",
                                     "message": ACCOUNT_PLAYING_MESSAGE})
+                    continue
+                if t in QUEUE_STARTS and not limits.allow(limits.QUEUE_STARTS, ip):
+                    await send(ws, {"type": "error", "code": "rate_limited",
+                                    "message": SLOW_DOWN_MESSAGE})
                     continue
                 if t in matchmaking.QUEUE_MESSAGES:
                     if account_id() is None and msg.get("name"):
@@ -3842,4 +3897,5 @@ if dist.is_dir():
 
 def main() -> None:
     import uvicorn
-    uvicorn.run("shengji.api.server:app", host="0.0.0.0", port=8000)
+    uvicorn.run("shengji.api.server:app", host="0.0.0.0", port=8000,
+                ws_max_size=limits.WS_MAX_BYTES)

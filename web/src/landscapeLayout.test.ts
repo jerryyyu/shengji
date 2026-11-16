@@ -2,7 +2,7 @@
 /// <reference types="node" />
 // Guards the phone table geometry in index.css (the `:where(.phone-landscape)`
 // block, which applies at the table under 500px of height and to the rotated portrait table). jsdom does no layout, so this evaluates the block's own
-// size tokens (calc, clamp, min, max, env, vw, vh) at real iPhone sizes and
+// size tokens (calc, clamp, min, max, env, vw, vh, dvh) at real iPhone sizes and
 // checks the regions the layout promises to keep apart: the trick cross sits
 // between the header and your row, your action is centred on the table and,
 // with the banker's crown beside it, never meets a trick slot, a seat or the
@@ -105,10 +105,11 @@ function evalLength(expr: string, vp: Viewport, vars: Record<string, string>, in
       if (fallback !== null) return evalLength(fallback, vp, vars, ints);
       throw new Error(`unknown ${name}`);
     }
-    const num = eat(/^-?[\d.]+(px|vw|vh)?/);
+    const num = eat(/^-?[\d.]+(px|d?vw|d?vh)?/);
     if (num) {
       const n = parseFloat(num);
       if (num.endsWith("vw")) return (n * vp.w) / 100;
+      // vp is the page: its vh and dvh agree (Safari's taller 100vh is the e2e suite's to imitate)
       if (num.endsWith("vh")) return (n * vp.h) / 100;
       return n;
     }

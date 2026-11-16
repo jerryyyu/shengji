@@ -2608,10 +2608,13 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
                  and not s.connected
                  and s.name.strip().casefold() == key),
                 None)
-            if named is not None and _reserved(target, named):
+            if (named is not None and _reserved(target, named)
+                    and not target.seats[named].left_by_choice):
                 # During the hold window a dropped seat is its owner's:
                 # only the seat's token (or its account) takes it back,
-                # never its name alone.
+                # never its name alone. A Leave holds nothing (the bot
+                # covers the seat at once) and clears the saved token, so
+                # the leaver comes back by the code under the name.
                 sd = target.seats[named]
                 if sd.user_id is None or sd.user_id != account_id():
                     secs = _takeover_in(target, named) or 0

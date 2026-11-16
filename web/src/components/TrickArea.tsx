@@ -4,7 +4,9 @@ import type { Declaration, GameState, Trick, TrickPlay } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, centerDelta, clamp, flightKeyframes, sweepKeyframes, unionBox } from "../motion";
 import Card from "./Card";
+import { winningSeat } from "../followRules";
 import type { HandRects } from "./Hand";
+import { declarationWhat, declaredBy } from "../tableCopy";
 
 type SidePos = "bottom" | "left" | "top" | "right";
 
@@ -87,7 +89,6 @@ function handOrigin(rects: HandRects | undefined, codes: string[], inHand: Set<n
 }
 
 export default function TrickArea({ state, trick, winner, declaration, handRects, sweepAfterMs = null }: TrickAreaProps) {
-  const nameOf = (seat: number) => state.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat}`;
   const areaRef = useRef<HTMLDivElement>(null);
   // Plays already on the table at the last non-empty render; only a play not
   // in this set flies in. Null until the first render, so a table restored
@@ -152,16 +153,19 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
     };
   }, [winner, trickKey, sweepAfterMs, state.you]);
 
+  // While a trick is open, the play currently taking it.
+  const winning = winner === null && trick ? winningSeat(trick.plays, state.trump) : null;
   return (
     <div className="trick-area" ref={areaRef}>
       {trick?.plays.map((play) => {
         const pos = seatPos(play.seat, state.you);
         const isLeader = play.seat === trick.leader;
         const isWinner = winner !== null && play.seat === winner;
+        const isWinning = winning !== null && play.seat === winning;
         const key = playKey(play);
         return (
           <div key={key} data-play={key} data-seat={play.seat}
-               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}`}
+               className={`trick-play pos-${pos}${isWinner ? " winner" : ""}${isWinning ? " winning" : ""}`}
                style={{ "--n": play.cards.length } as CSSProperties}>
             <div className="trick-cards">
               {play.cards.map((code, i) => (
@@ -185,7 +189,7 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
             ))}
           </div>
           <div className="trick-tag">
-            <span className="declare-tag">{nameOf(declaration.seat)} declares</span>
+            <span className="declare-tag">{declaredBy(declaration.seat, state)} {declarationWhat(declaration.cards)}</span>
           </div>
         </div>
       ) : null}

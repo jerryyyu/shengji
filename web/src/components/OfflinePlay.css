@@ -1,0 +1,21 @@
+/* The Play tab with no connection: the online page's controls in their
+   places, with what needs the server greyed. */
+/* grey, not the live green: nobody else is about */
+.play-presence.offline .play-presence-dot {
+  background: #6b7484;
+  box-shadow: none;
+}
+
+.play-offline .join-row {
+  opacity: 0.45;
+}
+
+/* Offline play: no chat to open. */
+.app.offline .chat-launch {
+  display: none;
+}
+
+/* no Chat in the header: the mode chip takes its slot */
+.app.offline .table-screen {
+  --chat-w: 0px;
+}

@@ -300,24 +300,3 @@ export type QueueServerMsg =
   | QueueRemovedMsg
   | PartyMsg
   | PartyClosedMsg;
-
-export type QueueErrorCode =
-  | "signed_in_only" | "in_room" | "rate_limited" | "not_leader"
-  | "bad_party" | "party_incomplete" | "party_changed" | "partner_unavailable"
-  | "not_queued" | "not_seated" | "no_match" | "start_failed"
-  | "party_not_found" | "party_full" | "party_busy" | "in_queue" | "in_party"
-  | "not_in_party" | "cooldown" | "no_offer" | "bad_seat" | "seat_taken" | "table_closed"
-  | "pair_seats_fixed" | "already_ready" | "panel_changed" | "bad_mode"
-  | "table_not_found" | "own_table" | "table_full" | "not_opener"
-  | "ranked_level_fixed" | "bad_setting" | "too_soon";
-
-export const QUEUE_ERROR_CODES: ReadonlySet<string> = new Set<QueueErrorCode>([
-  "signed_in_only", "in_room", "rate_limited", "not_leader",
-  "bad_party", "party_incomplete", "party_changed", "partner_unavailable",
-  "not_queued", "not_seated", "no_match", "start_failed",
-  "party_not_found", "party_full", "party_busy", "in_queue", "in_party",
-  "not_in_party", "cooldown", "no_offer", "bad_seat", "seat_taken", "table_closed",
-  "pair_seats_fixed", "already_ready", "panel_changed", "bad_mode",
-  "table_not_found", "own_table", "table_full", "not_opener",
-  "ranked_level_fixed", "bad_setting", "too_soon",
-]);

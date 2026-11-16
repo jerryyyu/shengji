@@ -188,3 +188,52 @@ def test_the_copy_scan_flags_a_mismatched_cooldown():
     assert match and _seconds(match) != cooldown
     assert DURATION.search("leaving means a 5-minute wait") is not None
     assert DURATION.search("five seconds left") is not None
+
+
+ERROR_CODES_TS = "web/src/errorCodes.ts"
+RAISED = (re.compile(r'QueueError\(\s*"([a-z_]+)"'), re.compile(r'ReportRefused\(\s*"([a-z_]+)"'))
+CODE_LITERAL = re.compile(r'"code":\s*"([a-z_]+)"')
+ERROR_FRAME = '"type": "error"'
+
+
+def server_error_codes() -> dict[str, set[str]]:
+    """Every code an ``error`` frame can carry, by the file that sends it:
+    ``QueueError``/``ReportRefused`` codes, ``"code"`` literals on a line that
+    builds ``"type": "error"`` or within three lines after one, and the keys
+    of ``INVITE_REFUSALS``."""
+    found: dict[str, set[str]] = {}
+    for path in sorted((REPO / "server/shengji/api").glob("*.py")):
+        text = path.read_text()
+        codes = {c for pattern in RAISED for c in pattern.findall(text)}
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if any(ERROR_FRAME in prior for prior in lines[max(0, i - 3):i + 1]):
+                codes.update(CODE_LITERAL.findall(line))
+        for node in ast.parse(text).body:
+            if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                    and any(isinstance(t, ast.Name) and t.id == "INVITE_REFUSALS" for t in node.targets)):
+                codes.update(k.value for k in node.value.keys if isinstance(k, ast.Constant))
+        if codes:
+            found[path.name] = codes
+    return found
+
+
+def client_error_routes() -> set[str]:
+    text = (REPO / ERROR_CODES_TS).read_text()
+    return set(re.findall(r"^\s+([a-z_]+): \{", text, re.MULTILINE))
+
+
+def test_the_error_code_scan_finds_each_way_a_code_is_sent():
+    found = server_error_codes()
+    assert {"seat_taken", "start_failed", "table_full"} <= found["matchmaking.py"]
+    assert {"report_guest", "report_rate_limited"} <= found["reports.py"]
+    # a literal on the frame's own line, one on the next line, and INVITE_REFUSALS only
+    assert {"retired", "ranked_queue_only", "table_left"} <= found["server.py"]
+
+
+def test_every_error_code_has_a_client_route():
+    server = set().union(*server_error_codes().values())
+    client = client_error_routes()
+    assert server == client, (
+        f"server codes with no row in {ERROR_CODES_TS}: {sorted(server - client)}; "
+        f"rows no server sends: {sorted(client - server)}")

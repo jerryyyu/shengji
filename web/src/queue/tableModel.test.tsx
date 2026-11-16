@@ -63,13 +63,18 @@ type Step =
   | { say: string }                 // typed into the chat sheet's field, then Send
   | { frames: () => unknown[] }     // more frames
   | { wait: number };               // ms on the fake clock
-interface Fixture { name: string; frames: () => unknown[]; steps?: Step[]; wide?: boolean; guest?: boolean }
+interface Fixture {
+  name: string; frames: () => unknown[]; steps?: Step[]; wide?: boolean; guest?: boolean;
+  /** The page's address at load, for a link's Join panel. */
+  link?: string;
+}
 
 async function boot(f: Fixture) {
   teardown();
   FakeWS.all = [];
   localStorage.clear();
   viewport(!!f.wide);
+  if (f.link) window.history.replaceState(null, "", f.link);
   (globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
   (window as unknown as { AudioContext: unknown }).AudioContext = class {
     state = "running";
@@ -107,7 +112,8 @@ async function boot(f: Fixture) {
 }
 
 /** The panel and everything it put up: the Play block(s), the announcer
- *  before each, open sheets and dialogs, the chat sheet and the toast. */
+ *  before each, a code's Join panel (in Play's place), open sheets and
+ *  dialogs, the chat sheet and the toast. */
 function scopes(): Element[] {
   const out: Element[] = [];
   for (const s of document.querySelectorAll(".play-section")) {
@@ -115,7 +121,7 @@ function scopes(): Element[] {
     if (before?.matches(".sr-only[role='status']")) out.push(before);
     out.push(s);
   }
-  for (const d of document.querySelectorAll("[role='alertdialog'], dialog, .chat-panel, .toast")) {
+  for (const d of document.querySelectorAll(".tp, [role='alertdialog'], dialog, .chat-panel, .toast")) {
     if (!out.some((o) => o.contains(d))) out.push(d);
   }
   return out;
@@ -254,6 +260,20 @@ const tableChat = () => ({ type: "table_chat_history", table: "t1", messages: [
 const two = () => [seat("Jerry", { you: true }), seat("Alice"), null, null];
 const three = () => [seat("Jerry", { you: true }), seat("Alice"), seat("Li"), null];
 
+/** A room's seat in a peek's answer: a bot, a dropped player (claimable,
+ *  a bot covering it) or a person. */
+const roomSeat = (seat: number, name: string, o: { bot?: boolean; away?: boolean } = {}) => ({
+  seat, name, is_bot: !!o.bot, connected: !o.away, team: seat % 2, claimable: !!o.bot || !!o.away,
+  controller: o.bot ? "bot" : o.away ? "bot_cover" : "human", reserved_secs: null,
+});
+const roomPeek = (seats: ReturnType<typeof roomSeat>[]) => ({ type: "room_seats", room: "WXYZ", in_game: true, seats });
+const tablePeek = (seats: [string, string | null, boolean?][], over: Record<string, unknown> = {}) => ({
+  type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false, allow_joiners: true,
+  full: false, closed: false,
+  seats: seats.map(([state, name, ready], seat) => ({ seat, team: seat % 2, state, name, ready: ready ?? false })),
+  ...over,
+});
+
 const QUEUES: Fixture[] = [
   { name: "own: ranked", frames: () => [coded({ count: 1 })] },
   { name: "own: ranked, wide", wide: true, frames: () => [coded({ count: 1 })] },
@@ -345,6 +365,17 @@ const QUEUES: Fixture[] = [
                                       seat("Li"), null])] }] },
   { name: "elsewhere: leader", frames: () => [queued({ elsewhere: true, count: 2, table: null, offer: null })] },
   { name: "elsewhere: follower", frames: () => [queued({ elsewhere: true, count: 2, leader: false, table: null, offer: null })] },
+  { name: "join code: a room with two bot seats", link: "/?code=WXYZ", frames: () => [roomPeek([
+    roomSeat(0, "Mei"), roomSeat(1, "Bot 1", { bot: true }), roomSeat(2, "Sam"), roomSeat(3, "Bot 3", { bot: true })])] },
+  { name: "join code: a dropped player's seat", link: "/?code=WXYZ", frames: () => [roomPeek([
+    roomSeat(0, "Mei"), roomSeat(1, "Alice", { away: true }), roomSeat(2, "Sam"), roomSeat(3, "Li")])] },
+  { name: "join code: a full room", link: "/?code=WXYZ", frames: () => [roomPeek([
+    roomSeat(0, "Mei"), roomSeat(1, "Alice"), roomSeat(2, "Sam"), roomSeat(3, "Li")])] },
+  { name: "join code: a queued table with a held Partner seat", link: "/?code=4N5Z", frames: () => [tablePeek(
+    [["taken", "Mei", true], ["held", null], ["held", null], ["open", null]])] },
+  { name: "join code: a ranked queued table", link: "/?code=4N5Z", frames: () => [tablePeek(
+    [["taken", "Mei"], ["taken", "Li", true], ["open", null], ["open", null]], { mode: "ranked" })] },
+  { name: "join code: a link mid-peek", link: "/?code=4N5Z", frames: () => [] },
 ];
 
 describe("the table panel, fixture by fixture", () => {

@@ -8,11 +8,11 @@ import AccountChip from "./AccountChip";
 import GuestChip from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
 import { RankedSection, TrophyIcon } from "../queue/Ranked";
+import { JoinCodePanel } from "../queue/TablePanel";
 import { useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
 import { useOffline } from "../offlineMode";
-import JoinPanel from "./JoinPanel";
 import { codes, panelShown, useCodes } from "../codeJoin";
 import { normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
@@ -172,10 +172,10 @@ export default function Lobby({ status, room = null }: LobbyProps) {
         ) : stalled && !room ? <OfflineControls local={false} status={status} /> : (
           <>
             {joinUp ? (
-              <JoinPanel code={codeView.code} peek={codeView.peek} seat={codeView.seat} full={codeView.full}
-                         busy={codeView.step === "joining" || (codeView.step === "peek" && codeView.peek !== null)
-                               || queuePending === "join"}
-                         onJoin={joinFromPanel} onCancel={closeJoin} onPick={(at) => codes.pick(at)} />
+              <JoinCodePanel join={codeView}
+                             busy={codeView.step === "joining" || (codeView.step === "peek" && codeView.peek !== null)
+                                   || queuePending === "join"}
+                             onJoin={joinFromPanel} onCancel={closeJoin} onPick={(at) => codes.pick(at)} />
             ) : ranked}
 
             {/* at a table the panel is the page: no code box until you leave it */}

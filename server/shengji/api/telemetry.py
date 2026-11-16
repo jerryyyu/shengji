@@ -15,10 +15,16 @@ Records go to ``$SHENGJI_TELEMETRY_DIR/ui-YYYYMMDD.jsonl`` (UTC date). The
 sink is off when the variable is unset, and refuses any directory inside
 the game-log directory (``SHENGJI_LOG_DIR``, ``/data/logs``): that tree is
 the human-play training corpus and UI events must never be mined as play.
+
+Files expire after ``RETENTION_DAYS``: the first write of each UTC day (so
+also the first after a restart) deletes day files whose whole day is older
+than that, at most ``MAX_PRUNE_PER_PASS`` per pass, and logs only the count.
+A pass that hits the cap leaves the day unmarked so the next write goes on.
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -32,6 +38,14 @@ MAX_EVENTS_PER_HOUR = 600
 MAX_MESSAGE_BYTES = 2048
 HOUR = 3600.0
 MAX_MS = 24 * 3600 * 1000
+DAY = 86400.0
+RETENTION_DAYS = 90
+MAX_PRUNE_PER_PASS = 64
+_DAY_FILE = re.compile(r"ui-(\d{8})\.jsonl")
+
+log = logging.getLogger(__name__)
+# (directory, UTC day) of the last pass that finished; one pass a day per sink.
+_pruned: tuple[Path, str] | None = None
 
 SCREENS = frozenset({
     "play", "howto", "name_sheet", "duo_sheet", "room", "waiting_table",
@@ -210,6 +224,52 @@ def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], d
     return kept, stamps
 
 
+def prune(directory: Path, now: float | None = None,
+          limit: int | None = None) -> tuple[int, bool]:
+    """Delete up to ``limit`` day files in ``directory`` whose day ended more
+    than ``RETENTION_DAYS`` before ``now``; returns (deleted, more remain)."""
+    now = time.time() if now is None else now
+    limit = MAX_PRUNE_PER_PASS if limit is None else limit
+    cutoff = now - RETENTION_DAYS * DAY
+    deleted, more = 0, False
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return 0, False
+    for name in names:
+        m = _DAY_FILE.fullmatch(name)
+        if m is None:
+            continue
+        try:
+            start = datetime.strptime(m.group(1), "%Y%m%d").replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            continue
+        if start + DAY > cutoff:
+            continue
+        if deleted >= limit:
+            more = True
+            break
+        try:
+            (directory / name).unlink()
+            deleted += 1
+        except FileNotFoundError:
+            pass
+        except OSError:
+            more = True
+    return deleted, more
+
+
+def _prune_once_a_day(directory: Path, now: float, day: str) -> None:
+    global _pruned
+    if _pruned == (directory, day):
+        return
+    deleted, more = prune(directory, now)
+    if deleted:
+        log.info("telemetry retention removed %d day files", deleted)
+    if not more:
+        _pruned = (directory, day)
+
+
 def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
     """Append records to today's file; False when the sink is off or the
     write failed. Telemetry never breaks the game."""
@@ -222,6 +282,7 @@ def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
     day = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d")
     try:
         directory.mkdir(parents=True, exist_ok=True)
+        _prune_once_a_day(directory, now, day)
         with open(directory / f"ui-{day}.jsonl", "a", encoding="utf-8") as f:
             for rec in records:
                 f.write(json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n")

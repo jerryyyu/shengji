@@ -29,6 +29,8 @@ describe("the privacy page", () => {
     expect(text).toContain("choose Delete account");
     expect(text).toContain("revoke the app’s access");
     expect(text).toContain("last 20 chat lines");
+    expect(text).toContain("for 90 days, and then our server deletes them");
+    expect(text).toContain("report another player at the table, signed in or a guest");
     expect(text).toContain("not directed at children under 13");
     expect(text).not.toContain("no ratings or leaderboards");
     expect(text).not.toContain("don’t use analytics");

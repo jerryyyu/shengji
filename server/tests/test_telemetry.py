@@ -131,6 +131,52 @@ def test_records_are_date_named_and_carry_no_identity(sink):
     assert rec["who"] == "account" and len(rec["sid"]) == 16
 
 
+# retention
+
+def _ts(day: str, hour: int = 12) -> float:
+    from datetime import datetime, timezone
+    return datetime.strptime(day, "%Y%m%d").replace(hour=hour, tzinfo=timezone.utc).timestamp()
+
+
+def test_day_files_older_than_90_days_are_removed_and_newer_kept(sink, monkeypatch, caplog):
+    monkeypatch.setattr(telemetry, "_pruned", None)
+    sink.mkdir(parents=True)
+    now = _ts("20261116")
+    # day 20260817 ended exactly 90 days before 20261116 00:00, so it goes at
+    # noon; 20260818 ends 12 h later and stays
+    for day in ("20250101", "20260816", "20260817", "20260818", "20261115"):
+        (sink / f"ui-{day}.jsonl").write_text('{"e":"tap"}\n')
+    (sink / "notes.txt").write_text("not a day file")
+    with caplog.at_level("INFO", logger="shengji.api.telemetry"):
+        assert telemetry.write([{"e": "tap", "id": "play"}], now=now)
+    assert sorted(p.name for p in sink.iterdir()) == [
+        "notes.txt", "ui-20260818.jsonl", "ui-20261115.jsonl", "ui-20261116.jsonl"]
+    assert "removed 3 day files" in caplog.text
+    # once a day: a file that ages out later the same day waits for tomorrow
+    (sink / "ui-20250102.jsonl").write_text("{}\n")
+    telemetry.write([{"e": "tap", "id": "play"}], now=now + 3600)
+    assert (sink / "ui-20250102.jsonl").exists()
+    telemetry.write([{"e": "tap", "id": "play"}], now=now + telemetry.DAY)
+    assert not (sink / "ui-20250102.jsonl").exists()
+    assert telemetry.RETENTION_DAYS == 90
+
+
+def test_a_retention_pass_is_bounded_and_the_backlog_drains_on_later_writes(sink, monkeypatch):
+    monkeypatch.setattr(telemetry, "_pruned", None)
+    monkeypatch.setattr(telemetry, "MAX_PRUNE_PER_PASS", 2)
+    sink.mkdir(parents=True)
+    for d in range(1, 6):
+        (sink / f"ui-202501{d:02d}.jsonl").write_text("{}\n")
+    assert telemetry.prune(sink, now=_ts("20261116"), limit=2) == (2, True)
+    assert len(list(sink.glob("ui-2025*.jsonl"))) == 3
+    now = _ts("20261116")
+    telemetry.write([{"e": "tap", "id": "play"}], now=now)
+    assert len(list(sink.glob("ui-2025*.jsonl"))) == 1
+    telemetry.write([{"e": "tap", "id": "play"}], now=now + 1)
+    assert list(sink.glob("ui-2025*.jsonl")) == []
+    assert (sink / "ui-20261116.jsonl").exists()
+
+
 def test_queue_events_share_the_socket_sid(sink):
     sock = _Sock()
     telemetry.receive(sock, {"v": 1, "events": [{"e": "tap", "id": "play"}]}, signed_in=False)

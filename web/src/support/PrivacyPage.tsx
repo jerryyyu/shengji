@@ -137,16 +137,17 @@ export default function PrivacyPage() {
           <p>
             The events hold no name, account id, email, IP address, device key, room code, cards,
             chat or anything you type, and nothing links them to you. We use them only to improve the
-            app. They are kept on our server, apart from the game records, until we delete them.
+            app. They are kept on our server, apart from the game records, for 90 days, and then
+            our server deletes them.
             Practice games played offline send nothing.
           </p>
         </Section>
 
         <Section title="Reporting a player">
           <p>
-            A signed-in player can report another signed-in player at the table. A report stores the
-            room and round, the reason chosen (abuse, spam, cheating or other), the name and account of
-            the person reporting and of the person reported, and the table’s last 20 chat lines, with
+            A signed-in player can report another player at the table, signed in or a guest. A report
+            stores the room and round, the reason chosen (abuse, spam, cheating or other), the names of
+            the two players, the account of each one who is signed in, and the table’s last 20 chat lines, with
             who wrote each and when. Only we read reports, to enforce the <TermsLink />; the reported
             player is not told about the report. Reports are kept until we delete them.
           </p>

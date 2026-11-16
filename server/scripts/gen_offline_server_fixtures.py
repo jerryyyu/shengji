@@ -362,6 +362,8 @@ def play_session(seed: int, rounds: int, config: dict) -> list[dict]:
     saved = (server.live_deck_rng, server._compute_bot_turn_off_loop)
     server.live_deck_rng = lambda: DeckRng(seed)
     server._compute_bot_turn_off_loop = _inline_bot_turn
+    # each session is one fresh client on a fresh server
+    server.limits.reset()
     loop = VirtualTimeLoop()
     try:
         return loop.run_until_complete(_session(seed, rounds, config))

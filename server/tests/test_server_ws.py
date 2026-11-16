@@ -1813,8 +1813,6 @@ class _FakeSocket:
         self._message = message
         self.accepted = False
         self.query_params = {}
-        self.headers = {}
-        self.client = None
 
     async def accept(self):
         self.accepted = True

@@ -2762,9 +2762,17 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
 
 
 # --------------------------------------------------------------- websocket
+def _socket_ip(ws: Any) -> str:
+    """The client's address for the per-address limits; a socket that
+    carries no handshake (an in-process harness) counts as one client."""
+    if getattr(ws, "headers", None) is None:
+        return "unknown"
+    return accounts.client_ip(ws)
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
-    ip = accounts.client_ip(ws)
+    ip = _socket_ip(ws)
     if not limits.SOCKETS.acquire(ip):
         # refused at the handshake: the client's reconnect backs off
         await ws.close(code=1013)

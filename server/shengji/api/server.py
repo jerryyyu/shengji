@@ -31,7 +31,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, matchmaking, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, chat_filter, matchmaking, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -2159,7 +2159,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif game is None or rnd is None:
         raise IllegalPlay("Game not started.")
     elif t == "chat":
-        text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
+        text = chat_filter.mask(str(msg.get("text", "")).strip()[:CHAT_MAX_LEN])
         if not text:
             return
         room.log_event("chat", seat=seat, text=text, bot=False)
@@ -2317,7 +2317,7 @@ class _Caller:
         # it up to date. A client-sent name is a guest's only.
         if self.account_id() is not None:
             return self.conn.name or "Player"
-        return str(raw or "Player")
+        return chat_filter.mask(str(raw or "Player"))
 
     def queue_id(self) -> int | None:
         # The queue's identity for this socket: the account, else the
@@ -2765,7 +2765,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 if t in matchmaking.QUEUE_MESSAGES:
                     if account_id() is None and msg.get("name"):
                         # a guest is called in the queue what it typed
-                        conn.name = str(msg["name"]).strip()[:accounts.DISPLAY_NAME_MAX]
+                        conn.name = chat_filter.mask(str(msg["name"]).strip()[:accounts.DISPLAY_NAME_MAX])
                     await MATCHMAKER.handle(conn, msg, queue_id())
                     continue
                 if t in ("create_room", "join_room"):

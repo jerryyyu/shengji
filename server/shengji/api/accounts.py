@@ -45,6 +45,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
+from . import chat_filter
+
 log = logging.getLogger(__name__)
 
 COOKIE = "sj_session"
@@ -80,10 +82,10 @@ BOT_NAME_RE = re.compile(r"^bot\s*\d*$")
 # (which includes every line break), surrogates, private use, and the line
 # and paragraph separators.
 _FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cs", "Co", "Zl", "Zp"})
-# Hook for a profanity or block-list check: a callable taking the normalised
-# name and returning True when it must be refused (reason ``not_allowed``).
-# None means no such filter is installed.
-DISPLAY_NAME_BLOCKLIST: Callable[[str], bool] | None = None
+# The profanity check: a callable taking the normalised name and returning
+# True when it must be refused (reason ``not_allowed``); the chat filter's
+# word list. None means no such filter is installed.
+DISPLAY_NAME_BLOCKLIST: Callable[[str], bool] | None = chat_filter.contains
 
 
 class AuthError(Exception):

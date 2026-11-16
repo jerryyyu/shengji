@@ -1,16 +1,16 @@
-// Support and Privacy are real paths (`/support`, `/privacy`), not hash
+// Support, Privacy and Terms are real paths (`/support`, `/privacy`, `/terms`), not hash
 // routes: App Store Connect links to them, and the server answers both paths
 // with the app, so a deep link or a reload lands on the page. Inside the app a
 // link moves with pushState, so a game in progress keeps its socket.
 import { useEffect, useState } from "react";
 
-export type InfoPage = "support" | "privacy";
+export type InfoPage = "support" | "privacy" | "terms";
 
 const STATE_KEY = "shengjiInfo";
 
 /** The page a path names, or null; a trailing slash is the same page. */
 export function parseInfoPath(pathname: string): InfoPage | null {
-  const m = /^\/(support|privacy)\/?$/.exec(pathname);
+  const m = /^\/(support|privacy|terms)\/?$/.exec(pathname);
   return m ? (m[1] as InfoPage) : null;
 }
 

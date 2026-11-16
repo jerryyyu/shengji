@@ -100,7 +100,7 @@ describe("signed in", () => {
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
       "Coach", "Sound", "How to play", "Show me on the leaderboard", "Edit name", "Privacy policy",
-      "Support", "Sign out", "Delete account"]);
+      "Terms of use", "Support", "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
     expect(host.querySelector(".segmented-btn[aria-pressed=true]")?.textContent).toBe("Stats");
@@ -125,7 +125,7 @@ describe("signed in", () => {
   it("the account's settings and help rows sit under Games too, below the games", async () => {
     await render("games");
     expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Show me on the leaderboard", "Edit name",
-      "Privacy policy", "Support", "Sign out", "Delete account"]);
+      "Privacy policy", "Terms of use", "Support", "Sign out", "Delete account"]);
     const list = host.querySelector(".games-day-row")!;
     const settings = host.querySelector(".me-visible")!;
     expect(list.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -260,9 +260,9 @@ describe("a guest", () => {
     // no sign-in buttons on the page: the name row opens the sheet that has them
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(host.querySelector(".signin-card")).toBeNull();
-    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support"]);
     expect(rowNamed("Gentle Tractor").querySelector(".grp-value.chev")).not.toBeNull();
-    expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/support"]);
+    expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/terms", "/support"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
   });
@@ -278,14 +278,30 @@ describe("a guest", () => {
     expect(sheet.querySelector(".google-signin")).not.toBeNull();
     expect(sheet.querySelector("[data-testid='apple-signin']")).toBeNull();
     expect(sheet.textContent).not.toContain("Apple");
-    expect(sheet.querySelector("p")).toBeNull();
+    // the sheet's one line of copy: what signing in agrees to
+    expect([...sheet.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "By signing in you agree to the Terms of use."]);
+    expect(sheet.querySelector(".identity-terms a")?.getAttribute("href")).toBe("/terms");
     act(() => guestName.close());
+  });
+
+  it("the sheet's Terms of use link keeps the name, closes the sheet and opens the terms", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    act(() => rowNamed("Gentle Tractor").click());
+    act(() => guestName.setName("Mei"));
+    act(() => document.querySelector<HTMLAnchorElement>(".identity-sheet .identity-terms a")!.click());
+    expect(document.querySelector(".identity-sheet")).toBeNull();
+    expect(guestName.getSnapshot().editing).toBe(false);
+    expect(guestName.name).toBe("Mei");
+    expect(window.location.pathname).toBe("/terms");
+    window.history.replaceState(null, "", "/");
   });
 
   it("with the server unreachable the name row's sheet shows sign-in unavailable with one line saying why", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support"]);
     act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     const btn = sheet.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
@@ -298,10 +314,11 @@ describe("a guest", () => {
   it("with sign-in off the name row's sheet is the name only", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Support"]);
+    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support"]);
     act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     expect(sheet.querySelector(".identity-signin")).toBeNull();
+    expect(sheet.querySelector(".identity-terms")).toBeNull();
     act(() => guestName.close());
   });
 

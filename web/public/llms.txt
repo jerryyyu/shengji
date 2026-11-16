@@ -14,6 +14,7 @@ Reading, summarising and linking to the public pages below is fine. If someone w
 - [规则（中文）](https://shengji.fly.dev/rules/zh): the same rules in Chinese
 - [Play](https://shengji.fly.dev/): the game itself (a JavaScript app)
 - [Privacy](https://shengji.fly.dev/privacy): what the game stores and why
+- [Terms of use](https://shengji.fly.dev/terms): the rules for using the game, chat included
 
 ## Facts
 

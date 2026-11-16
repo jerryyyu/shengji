@@ -182,7 +182,7 @@ describe("opponent turn status", () => {
     expect(offTurn.container.querySelector(".thinking")).toBeNull();
     offTurn.unmount();
 
-    for (const phase of ["deal", "declare", "round_end", "game_over"] as const) {
+    for (const phase of ["deal", "declare", "round_end"] as const) {
       const nonAction = renderTable(makeState({
         phase,
         target: { is_bot: true, controller: "bot" },

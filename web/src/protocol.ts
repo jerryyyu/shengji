@@ -10,7 +10,7 @@ export interface HandCard {
   code: string;
 }
 
-export type Phase = "deal" | "declare" | "bury" | "play" | "round_end" | "game_over";
+export type Phase = "deal" | "declare" | "bury" | "play" | "round_end";
 
 /** Ranks a game is played at, low to high. A team climbs through these, so the
  *  same list is the set of levels a room can be started at.
@@ -246,7 +246,7 @@ export interface GameState {
   last_trick: LastTrick | null;
   attacker_points: number;
   kitty_count: number;
-  // round_end / game_over
+  // round_end
   round_result: RoundResult | null;
   message: string | null;
   /** A notice outlives `message`, which the very next play clears. Today the

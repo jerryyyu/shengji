@@ -19,6 +19,7 @@ import HowTo from "./howto/HowTo";
 import { useHowtoRoute } from "./howto/route";
 import SupportPage from "./support/SupportPage";
 import PrivacyPage from "./support/PrivacyPage";
+import TermsPage from "./support/TermsPage";
 import { useInfoRoute } from "./support/route";
 import Leaderboard from "./components/Leaderboard";
 import MePage from "./components/MePage";
@@ -258,7 +259,7 @@ export default function App() {
   // exactly one toast is mounted: the table's, else this one at the page's top
   let screenIsTable = false;
   if (infoRoute) {
-    screen = infoRoute === "support" ? <SupportPage /> : <PrivacyPage />;
+    screen = infoRoute === "support" ? <SupportPage /> : infoRoute === "terms" ? <TermsPage /> : <PrivacyPage />;
   } else if (howtoRoute) {
     screen = <HowTo route={howtoRoute} />;
   } else if (gamesRoute) {

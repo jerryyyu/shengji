@@ -145,7 +145,7 @@ from itertools import count
 from typing import Any, Awaitable, Callable
 
 from ..engine.cards import RANKS
-from . import accounts, ratings, telemetry
+from . import accounts, chat_filter, ratings, telemetry
 
 log = logging.getLogger(__name__)
 # One JSON line per queue event (join, leave and its reason, start): who is a
@@ -1701,7 +1701,7 @@ class Matchmaker:
         e = self._entry(uid)
         if e is None:
             raise QueueError("not_seated", "You are not at a table.")
-        text = str(msg.get("text", "")).strip()[:CHAT_MAX_LEN]
+        text = chat_filter.mask(str(msg.get("text", "")).strip()[:CHAT_MAX_LEN])
         if not text:
             return
         t = e.table

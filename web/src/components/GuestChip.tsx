@@ -4,6 +4,7 @@ import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
 import Sheet from "../queue/Sheet";
 import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
+import { followInfoLink } from "../support/route";
 
 /** A guest's chip, in the signed-in chip's place: the name's initial, the
  *  name, the guest line where a rating would be, and a pencil, since a tap
@@ -24,8 +25,8 @@ export default function GuestChip({ compact = false }: { compact?: boolean }) {
 }
 
 /** A guest's one identity sheet: the name field with its random-name die,
- *  then the sign-in buttons (Google, and Apple where the app offers it),
- *  then Done, which keeps the name for next time. App mounts it once, and the
+ *  then the sign-in buttons (Google, and Apple where the app offers it) with
+ *  the one line that signing in agrees to the Terms of use, then Done, which keeps the name for next time. App mounts it once, and the
  *  chip, Me's Edit name and every Sign in open it with `guestName.open()`;
  *  signing in closes it, and an account never sees it. */
 export function IdentitySheet() {
@@ -73,6 +74,12 @@ export function IdentitySheet() {
           </div>
         </div>
         {signIn ? <div className="identity-signin">{signIn}</div> : null}
+        {account.status === "out" && account.clientId ? (
+          <p className="identity-terms">
+            By signing in you agree to the{" "}
+            <a href="/terms" onClick={(e) => { done(); followInfoLink(e, "terms"); }}>Terms of use</a>.
+          </p>
+        ) : null}
         <button type="button" className="btn gold" onClick={done}>Done</button>
       </div>
     </Sheet>

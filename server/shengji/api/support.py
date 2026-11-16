@@ -1,4 +1,4 @@
-"""The public support form and the two public pages App Store Connect links to.
+"""The public support form and the public pages App Store Connect links to.
 
 ``POST /api/support`` appends one JSON line per message to
 ``support_messages.jsonl`` in ``accounts.data_dir()`` (the Fly volume in
@@ -6,7 +6,7 @@ production). Nothing is emailed and nothing stored is ever sent back: the
 answer is ``{"ok": true}`` or an error code. A filled honeypot field reads as
 success to its sender and is not stored.
 
-``GET /support`` and ``GET /privacy`` answer with the built page's
+``GET /support``, ``GET /privacy`` and ``GET /terms`` answer with the built page's
 ``index.html`` so a deep link or a reload lands on the page; the web app
 picks the screen from the path. ``GET /rules`` and ``GET /rules/zh`` answer
 with the static rules pages, which need no script.
@@ -214,7 +214,7 @@ def register_support(app, dist: Path) -> None:
         return _html(dist / "index.html")
 
     pages = APIRouter()
-    for path in ("/support", "/support/", "/privacy", "/privacy/"):
+    for path in ("/support", "/support/", "/privacy", "/privacy/", "/terms", "/terms/"):
         pages.add_api_route(path, page, methods=["GET", "HEAD"], include_in_schema=False)
     for path, rel in RULES_PAGES.items():
         for variant in (path, path + "/"):

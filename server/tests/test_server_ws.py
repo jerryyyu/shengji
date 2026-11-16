@@ -319,6 +319,32 @@ def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
     assert history["messages"][-1]["text"] == "line-59"
 
 
+def test_room_chat_and_a_guests_name_are_masked_where_the_server_takes_them(client):
+    """The chat filter runs where a room chat line is accepted, so the echo,
+    the scrollback and the round log all hold the masked line; a guest's
+    typed name is masked where its seat takes it."""
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        room_frame, _ = _created_room(a, "shithead")
+        code = room_frame["room"]
+        room = srv.rooms[code]
+        assert room.seats[0].name == "********"
+        a.send_json({"type": "table_chat", "text": "well fuck, a class play"})
+        echo = _drain(a, "chat")
+        while echo.get("seat") != 0:
+            echo = _drain(a, "chat")
+        assert echo["text"] == "well ****, a class play"
+    assert [m["text"] for m in room.chat if m["seat"] == 0] == ["well ****, a class play"]
+    records = [json.loads(line)
+               for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines()]
+    assert [r["text"] for r in records if r["e"] == "chat"] == ["well ****, a class play"]
+    assert not any("fuck" in line or "shithead" in line
+                   for line in (room.log_dir / f"{code}.jsonl").read_text().splitlines())
+
+
 def test_room_chat_is_logged_and_reaches_the_scrollback(client):
     """A room's chat is always a game's chat, so every line is logged."""
     import json

@@ -704,6 +704,18 @@ def test_the_blocklist_hook_refuses_with_not_allowed(accounts_on, monkeypatch):
     assert info.value.reason == "not_allowed"
 
 
+@pytest.mark.parametrize("name", ["Fuck Off", "sh1thead", "傻逼", "a$$hole"])
+def test_the_chat_filter_refuses_an_objectionable_display_name(accounts_on, name):
+    with pytest.raises(accounts_on.DisplayNameError) as info:
+        accounts_on.validate_display_name(name)
+    assert info.value.reason == "not_allowed"
+
+
+@pytest.mark.parametrize("name", ["Classy Cass", "Scunthorpe Fan", "Cao Cao 曹操", "Glass Bass"])
+def test_the_chat_filter_keeps_an_ordinary_display_name(accounts_on, name):
+    assert accounts_on.validate_display_name(name) == name
+
+
 def test_patch_me_sets_clears_and_refuses_display_names(accounts_on, keypair, client):
     private_pem, _ = keypair
     # Unauthenticated: 401, and nothing stored.

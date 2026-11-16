@@ -1,5 +1,5 @@
-"""The support form (``POST /api/support``), the ``/support`` and
-``/privacy`` page routes, and the crawler files and static rules pages
+"""The support form (``POST /api/support``), the ``/support``, ``/privacy``
+and ``/terms`` page routes, and the crawler files and static rules pages
 served from ``web/public`` (``shengji.api.support``).
 
 Messages land in a private data dir; the answer never carries what was
@@ -161,7 +161,7 @@ def _page_client(tmp_path):
     return TestClient(app)
 
 
-@pytest.mark.parametrize("path", ["/support", "/privacy", "/support/", "/privacy/"])
+@pytest.mark.parametrize("path", ["/support", "/privacy", "/terms", "/support/", "/privacy/", "/terms/"])
 def test_the_pages_serve_the_app_on_a_deep_link_or_reload(tmp_path, path):
     r = _page_client(tmp_path).get(path)
     assert r.status_code == 200
@@ -178,6 +178,7 @@ def test_the_pages_are_404_without_a_build(tmp_path):
     c = TestClient(app)
     assert c.get("/support").status_code == 404
     assert c.get("/privacy").status_code == 404
+    assert c.get("/terms").status_code == 404
 
 
 
@@ -227,7 +228,7 @@ def test_the_sitemap_lists_every_public_page(tmp_path):
     root = ET.fromstring(_public_client(tmp_path).get("/sitemap.xml").content)
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [e.text for e in root.findall("s:url/s:loc", ns)]
-    assert locs == ["https://shengji.fly.dev/" + p for p in ("", "rules", "rules/zh", "privacy")]
+    assert locs == ["https://shengji.fly.dev/" + p for p in ("", "rules", "rules/zh", "privacy", "terms")]
 
 
 def test_llms_txt_states_the_automated_play_clause(tmp_path):

@@ -143,6 +143,9 @@ function InfoRows() {
       <li><a className="grp-row" href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>
         <span className="grp-label">Privacy policy</span><span className="grp-value chev" />
       </a></li>
+      <li><a className="grp-row" href="/terms" onClick={(e) => followInfoLink(e, "terms")}>
+        <span className="grp-label">Terms of use</span><span className="grp-value chev" />
+      </a></li>
       <li><a className="grp-row" href="/support" onClick={(e) => followInfoLink(e, "support")}>
         <span className="grp-label">Support</span><span className="grp-value chev" />
       </a></li>

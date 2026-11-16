@@ -72,10 +72,10 @@ full screen still comes (Jerry 11-15).
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
 A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
-two columns from 900px, a sideways phone excepted), Support or Privacy. Real surfaces keep theirs: the table panel, sheets and dialogs,
+two columns from 900px, a sideways phone excepted), Support, Privacy or Terms of use. Real surfaces keep theirs: the table panel, sheets and dialogs,
 grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
 The phone lobby is portrait (Jerry 2026-11-15: "Yes let's lock lobby to portrait"): the app locks every lobby
-screen (Play and its panels and sheets, Leaderboard, Me, How to play, saved games, Support, Privacy) to portrait
+screen (Play and its panels and sheets, Leaderboard, Me, How to play, saved games, Support, Privacy, Terms of use) to portrait
 on an iPhone and the table to both landscapes; the web cannot lock, so a phone held sideways (under 501px tall)
 shows the same portrait column, centred under a capped tab bar, and scrolls. The lobby has no sideways design
 of its own; the table keeps its landscape layout.
@@ -158,7 +158,8 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      and `TablePanel.tsx` draws it, with the CASUAL tag on a casual table and Enter pressing Join.
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
    (`IdentitySheet` in `components/GuestChip.tsx`, mounted once by App): "Your name" with the field and its
-   dice, then the sign-in buttons, then Done. Every Sign in opens that same sheet: the Play tab's guest line
+   dice, then the sign-in buttons with one line under them, "By signing in you agree to the Terms of use."
+   (the sheet's only copy; App Store guideline 1.2, Jerry 2026-11-16), then Done. Every Sign in opens that same sheet: the Play tab's guest line
    ("Playing as a guest · Sign in to be ranked", which stays), a guest's one name row on Me, the
    Leaderboard's one row "Sign in to be ranked ›" (its card and its sentence on ratings are gone; saying
    what ranked means in How to play is a follow-up) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
@@ -166,6 +167,11 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
    - Sign in with Apple shows where it works today: the iOS app, when `nativeAuth` reports the Apple
      provider ready, above Google. The website shows Google only, until web Apple sign-in has its Services
      ID, return URL and server audience.
+   - Terms of use is a page like Privacy (`support/TermsPage.tsx`, the real path `/terms`): Me lists
+     "Terms of use" between Privacy policy and Support, and the sheet's line links it, keeping the typed
+     name and closing the sheet. Chat lines and guest names are masked by the server's word filter
+     (`api/chat_filter.py`); an account's display name with a listed word is refused ("That name is not
+     allowed.").
    - A signed-in player still edits their name inline in Me (`NameEditForm`, saved to the account); the
      sheet is a guest's.
 5. **One toast and one line above the hand.** Every message that comes and goes is the one toast

@@ -3676,6 +3676,29 @@ def test_table_chat_limits_match_room_chat():
     assert (mm.CHAT_MAX_LEN, mm.CHAT_KEEP) == (srv.CHAT_MAX_LEN, srv.CHAT_KEEP)
 
 
+def test_ws_table_chat_is_masked_before_anyone_hears_it(wsenv):
+    srv, store, client, clock = wsenv
+    (u1, h1), (u2, h2) = _user(store, "m1", "One"), _user(store, "m2", "Two")
+    with client.websocket_connect("/ws", headers=h1) as a, \
+            client.websocket_connect("/ws", headers=h2) as b:
+        a.send_json({"type": "queue_join", "mode": "casual"})
+        _drain(a, "queue_state")
+        b.send_json({"type": "queue_join", "mode": "casual"})
+        assert _drain(b, "queue_state")["table"]["of"] == 2
+        b.send_json({"type": "table_chat", "text": "傻逼 pass the f*ing ball, sh1t"})
+        assert _drain(a, "table_chat")["text"] == "** pass the f*ing ball, ****"
+        assert _drain(b, "table_chat")["text"] == "** pass the f*ing ball, ****"
+
+
+def test_a_guests_queue_name_is_masked(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "mode": "casual", "name": "bitch"})
+        state = _drain(g, "queue_state")
+    assert "bitch" not in str(state)
+    assert [c.name for c in srv.MATCHMAKER.conns.values()] == ["*****"]
+
+
 def test_ws_table_chat_becomes_the_rooms_scrollback_and_is_never_logged(wsenv):
     srv, store, client, clock = wsenv
     (u1, h1), (u2, h2) = _user(store, "c1", "One"), _user(store, "c2", "Two")

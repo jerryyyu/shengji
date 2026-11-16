@@ -8,6 +8,8 @@ describe("the support and privacy paths", () => {
     expect(parseInfoPath("/support")).toBe("support");
     expect(parseInfoPath("/support/")).toBe("support");
     expect(parseInfoPath("/privacy")).toBe("privacy");
+    expect(parseInfoPath("/terms")).toBe("terms");
+    expect(parseInfoPath("/terms/")).toBe("terms");
     expect(parseInfoPath("/")).toBeNull();
     expect(parseInfoPath("/supportx")).toBeNull();
     expect(parseInfoPath("/support/more")).toBeNull();

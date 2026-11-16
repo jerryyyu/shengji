@@ -63,8 +63,9 @@ export default function PrivacyPage() {
           <p>
             Table chat passes through an automatic filter that hides offensive words before anyone
             sees it. Chat during a game is written to the game record, as filtered, with the seat it
-            came from. Chat at a table before its game starts is held only in memory and is not
-            written to any record, though it stays on screen when the game begins. Muting a player
+            came from. Chat at a table before its game starts is held in memory and carried into the
+            game’s on-screen scrollback, rather than written to its game record; recent lines may
+            also be saved with a player report. Muting a player
             hides their chat on your screen only and is not sent to us.
           </p>
         </Section>
@@ -82,9 +83,9 @@ export default function PrivacyPage() {
           <p>
             With Apple we store your Apple account id and the name and email address Apple shares with
             us, if any. Apple shares your name only the first time you sign in, and the email address
-            may be a private relay address if you chose to hide yours. We also store a token from Apple
-            that is used only to revoke the app’s access when you delete your account; it never leaves
-            our server.
+            may be a private relay address if you chose to hide yours. We also keep a token from Apple
+            on our server and send it only to Apple, to revoke the app’s access when you delete your
+            account; it is not returned to your device.
           </p>
           <p>
             Signing in sets a cookie holding a random session token that lasts 30 days. We store only

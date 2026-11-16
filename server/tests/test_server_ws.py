@@ -3080,3 +3080,235 @@ def test_a_live_table_deals_and_names_itself_from_the_os_generator(client):
     with client.websocket_connect("/ws") as a:
         _, room = _start_game(client, a)
         assert isinstance(room.game.rng, random.SystemRandom)
+
+
+# ------------------------------------------------- per-address limits
+@pytest.fixture()
+def limit_clock(monkeypatch):
+    """The limits' clock, advanced by hand."""
+    from shengji.api import limits
+
+    t = {"v": 5000.0}
+    monkeypatch.setattr(limits, "clock", lambda: t["v"])
+    return t
+
+
+def test_sockets_per_address_are_capped_and_freed_on_close(client, monkeypatch):
+    from starlette.websockets import WebSocketDisconnect
+
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits, "SOCKETS_PER_IP", 2)
+    with client.websocket_connect("/ws") as a, client.websocket_connect("/ws"):
+        with pytest.raises(WebSocketDisconnect) as refused:
+            with client.websocket_connect("/ws"):
+                pass
+        assert refused.value.code == 1013
+        assert limits.SOCKETS.open == {"testclient": 2}
+        a.send_json({"type": "ping", "nonce": 1})
+        assert _drain(a, "pong")["nonce"] == 1
+    assert limits.SOCKETS.open == {}
+    with client.websocket_connect("/ws") as c:
+        c.send_json({"type": "ping", "nonce": 2})
+        assert _drain(c, "pong")["nonce"] == 2
+
+
+def test_live_rooms_per_address_and_in_total_are_capped(client, monkeypatch):
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits, "ROOMS_PER_IP", 2)
+    with ExitStack() as stack:
+        for n in range(2):
+            ws = stack.enter_context(client.websocket_connect("/ws"))
+            _created_room(ws, name=f"p{n}")
+        extra = stack.enter_context(client.websocket_connect("/ws"))
+        extra.send_json({"type": "create_room", "name": "p2"})
+        assert _drain(extra, "error")["code"] == "rate_limited"
+        monkeypatch.setattr(limits, "ROOMS_PER_IP", 10)
+        monkeypatch.setattr(limits, "MAX_ROOMS", 2)
+        extra.send_json({"type": "create_room", "name": "p2"})
+        assert _drain(extra, "error")["code"] == "server_busy"
+        monkeypatch.setattr(limits, "MAX_ROOMS", 3)
+        extra.send_json({"type": "create_room", "name": "p2"})
+        assert _drain(extra, "room")["room"]
+
+
+def test_room_creates_per_address_are_rate_limited(client, monkeypatch, limit_clock):
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits.CREATES, "limit", 1)
+    with client.websocket_connect("/ws") as a:
+        _created_room(a)
+        a.send_json({"type": "table_leave"})
+        _drain(a, "left")
+        a.send_json({"type": "create_room", "name": "again"})
+        assert _drain(a, "error")["code"] == "rate_limited"
+        limit_clock["v"] += limits.CREATES.window + 1
+        a.send_json({"type": "create_room", "name": "again"})
+        assert _drain(a, "room")["room"]
+
+
+def test_code_lookups_that_name_nothing_are_bounded_per_address(client, monkeypatch, limit_clock):
+    """A sweep of the code space is bounded per address, not per socket:
+    past its misses an address learns nothing, even about a live code."""
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits.MISSES, "limit", 3)
+    with client.websocket_connect("/ws") as host:
+        code = _room_with_bots(host)
+        for n in range(3):
+            with client.websocket_connect("/ws") as s:      # a fresh socket each time
+                s.send_json({"type": "table_peek", "code": f"ZZZ{n}"})
+                err = _drain(s, "error")
+                assert err["code"] == "room_not_found" and err["peek"] == f"ZZZ{n}"
+        with client.websocket_connect("/ws") as s:
+            s.send_json({"type": "table_peek", "code": code})
+            err = _drain(s, "error")
+            assert err["code"] == "room_not_found" and err["peek"] == code
+            s.send_json({"type": "table_join", "expect": "room", "code": code, "name": "x"})
+            assert _drain(s, "error")["code"] == "rate_limited"
+        limit_clock["v"] += limits.MISSES.window + 1
+        with client.websocket_connect("/ws") as s:
+            s.send_json({"type": "table_peek", "code": code})
+            assert _drain(s, "room_seats")["room"] == code
+
+
+def test_code_lookups_per_address_are_rate_limited(client, monkeypatch, limit_clock):
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits.LOOKUPS, "limit", 2)
+    with client.websocket_connect("/ws") as host:
+        code = _room_with_bots(host)
+        with client.websocket_connect("/ws") as s:
+            for _ in range(2):
+                s.send_json({"type": "table_peek", "code": code})
+                _drain(s, "room_seats")
+            s.send_json({"type": "table_peek", "code": code})
+            assert _drain(s, "error")["code"] == "room_not_found"
+            limit_clock["v"] += limits.LOOKUPS.window + 1
+            s.send_json({"type": "table_peek", "code": code})
+            _drain(s, "room_seats")
+
+
+def test_queue_starts_per_address_are_rate_limited(client, monkeypatch, limit_clock):
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits.QUEUE_STARTS, "limit", 0)
+    with client.websocket_connect("/ws?device=" + "q" * 22) as a:
+        a.send_json({"type": "queue_join"})
+        assert _drain(a, "error")["code"] == "rate_limited"
+
+
+def test_the_server_reads_websocket_messages_of_at_most_64_kib(monkeypatch):
+    import uvicorn
+
+    from shengji.api import server as srv
+
+    seen = {}
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: seen.update(kw))
+    srv.main()
+    assert seen["ws_max_size"] == 64 * 1024
+
+
+def test_guest_ids_are_bounded_and_never_reused(monkeypatch):
+    from shengji.api import limits
+
+    monkeypatch.setattr(limits, "MAX_GUEST_IDS", 2)
+    ids = limits.GuestIds()
+    a, b = ids.id_for("a" * 22), ids.id_for("b" * 22)
+    assert (a, b) == (-1, -2)
+    assert ids.id_for("a" * 22) == -1          # seen again: now the newest
+    c = ids.id_for("c" * 22)
+    assert c == -3 and len(ids) == 2
+    assert "b" * 22 not in ids and ids.get("a" * 22) == -1
+    assert ids.id_for("b" * 22) == -4          # forgotten, so a new id
+
+
+def test_a_queue_start_at_the_room_cap_keeps_its_place_until_a_room_closes(client, monkeypatch):
+    """The whole-server room cap holds for rooms the queue opens too: at the
+    cap a start with bots is refused ``server_busy`` and the entry stays
+    queued at its own table, no socket bound to any room; once a room
+    closes the same start opens one."""
+    from shengji.api import limits
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(limits, "MAX_ROOMS", 1)
+    mmk = srv.MATCHMAKER
+    with client.websocket_connect("/ws") as host:
+        _created_room(host)
+        with client.websocket_connect("/ws?device=" + "Z" * 22) as newcomer:
+            newcomer.send_json({"type": "queue_join", "name": "Guest"})
+            _next_where(newcomer, "queue_state", lambda m: m.get("queued"))
+            conn = next(c for c in mmk.conns.values() if c.device == "Z" * 22)
+            entry = mmk._entry(conn.queue_id)
+            table_id = entry.table.id
+            newcomer.send_json({"type": "table_start_bots"})
+            refused = _drain(newcomer, "error")
+            assert refused["code"] == "server_busy" and refused["message"] == limits.BUSY_MESSAGE
+            assert len(srv.rooms) == 1
+            assert mmk._entry(conn.queue_id) is entry and entry.table.id == table_id
+            assert conn.adopted is None and not conn.in_room
+            assert not any(s.queue_id == conn.queue_id for r in srv.rooms.values()
+                           for s in r.seats if s is not None)
+            host.send_json({"type": "table_leave"})
+            _drain(host, "left")
+            assert not srv.rooms
+            newcomer.send_json({"type": "table_start_bots"})
+            _drain(newcomer, "match_started")
+            assert _drain(newcomer, "state")["you"] == 0
+            assert len(srv.rooms) == 1 and mmk._entry(conn.queue_id) is None
+
+
+def test_competing_room_opens_at_one_below_the_cap_admit_exactly_one(client, monkeypatch):
+    """Two queue starts and a ``create_room`` sent together with one room
+    left under the cap: exactly one opens a room, the others are told
+    ``server_busy`` and the two queued players who lost stay queued."""
+    from shengji.api import limits
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(limits, "MAX_ROOMS", 2)
+    mmk = srv.MATCHMAKER
+    with ExitStack() as stack:
+        host = stack.enter_context(client.websocket_connect("/ws"))
+        _created_room(host)
+        queued = []
+        for d, mode in (("X", "ranked"), ("Y", "casual")):   # two tables, not one
+            ws = stack.enter_context(client.websocket_connect("/ws?device=" + d * 22))
+            ws.send_json({"type": "queue_join", "name": d, "mode": mode})
+            _next_where(ws, "queue_state", lambda m: m.get("queued"))
+            queued.append(ws)
+        creator = stack.enter_context(client.websocket_connect("/ws"))
+        for ws in queued:
+            ws.send_json({"type": "table_start_bots"})
+        creator.send_json({"type": "create_room", "name": "c"})
+        outcomes = [_frames_until(ws, lambda m: m.get("type") == "state"
+                                  or (m.get("type") == "error" and m.get("code") == "server_busy"),
+                                  "a state or server_busy")[-1]
+                    for ws in (*queued, creator)]
+        won = [m["type"] == "state" for m in outcomes]
+        assert sum(won) == 1, outcomes
+        assert len(srv.rooms) == 2
+        still = [c for c in mmk.conns.values()
+                 if c.device in ("X" * 22, "Y" * 22) and not c.in_room]
+        assert len(still) == 2 - sum(won[:2])
+        assert all(mmk._entry(c.queue_id) is not None and c.adopted is None for c in still)
+
+
+def test_the_matched_room_factory_keeps_the_room_cap_whoever_calls_it(client, monkeypatch):
+    """With the queue's own check bypassed, ``start_matched_room`` still
+    refuses at the cap before building anything: no room, no seat bound."""
+    from shengji.api import limits
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(limits, "MAX_ROOMS", 1)
+    monkeypatch.setattr(srv.MATCHMAKER, "room_capacity", lambda: True)
+    with client.websocket_connect("/ws") as host:
+        _created_room(host)
+        with client.websocket_connect("/ws?device=" + "W" * 22) as newcomer:
+            newcomer.send_json({"type": "queue_join", "name": "Guest"})
+            _next_where(newcomer, "queue_state", lambda m: m.get("queued"))
+            conn = next(c for c in srv.MATCHMAKER.conns.values() if c.device == "W" * 22)
+            newcomer.send_json({"type": "table_start_bots"})
+            assert _drain(newcomer, "error")["code"] == "start_failed"
+            assert len(srv.rooms) == 1
+            assert conn.adopted is None and not conn.in_room

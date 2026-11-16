@@ -4,7 +4,8 @@
 // debug token manually in the devtools console —
 //     localStorage.setItem("shengji.debug", "<SHENGJI_DEBUG_TOKEN>")
 // then press "x" on the Table screen to toggle this panel. The server only
-// answers /debug/xray when it was started with a matching SHENGJI_DEBUG_TOKEN.
+// mounts /debug/xray when started with SHENGJI_DEBUG_XRAY=1 and a
+// SHENGJI_DEBUG_TOKEN, which the panel sends in the X-Debug-Token header.
 
 import { useEffect, useState } from "react";
 import type { GameState } from "../protocol";
@@ -481,8 +482,8 @@ export default function XrayPanel({ state, onClose }: { state: GameState; onClos
     // Same origin as the WS: the vite dev server proxies nothing, so target
     // the backend port directly in dev.
     const base = import.meta.env.DEV ? `http://${location.hostname}:8000` : "";
-    const url = `${base}/debug/xray?room=${encodeURIComponent(room)}&seat=${seat}&token=${encodeURIComponent(token)}`;
-    fetch(url)
+    const url = `${base}/debug/xray?room=${encodeURIComponent(room)}&seat=${seat}`;
+    fetch(url, { headers: { "X-Debug-Token": token } })
       .then((r) => r.json() as Promise<XrayResp>)
       .then((d) => {
         if (!cancelled) setData(d);

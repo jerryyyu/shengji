@@ -3057,3 +3057,26 @@ def test_a_ranked_table_counts_an_accounts_seat_by_the_account(client):
         out = client.portal.call(srv.join_by_invite, room, None, 41, "Again", _Conn())
         assert out == "table_full"
         assert sum(1 for sd in room.seats if not sd.is_bot and sd.user_id == 41) == 1
+
+
+def test_http_responses_carry_the_security_headers_and_the_api_schema_is_off(client):
+    r = client.get("/healthz")
+    assert r.status_code == 200
+    assert r.headers["strict-transport-security"].startswith("max-age=")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404, path
+
+
+def test_a_live_table_deals_and_names_itself_from_the_os_generator(client):
+    import random
+    import secrets as _secrets
+
+    from shengji.api import server as srv
+
+    assert isinstance(srv._ROOM_CODE_RNG, _secrets.SystemRandom)
+    with client.websocket_connect("/ws") as a:
+        _, room = _start_game(client, a)
+        assert isinstance(room.game.rng, random.SystemRandom)

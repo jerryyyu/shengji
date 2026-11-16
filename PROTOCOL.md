@@ -616,7 +616,8 @@ partner is picked by default). The bot keeps playing it until the handover:
 at once if the seat owes nothing (dealing, declaring, someone else's bury, a
 trick it already played to, a round end), else at the end of the current
 trick, never in the middle of its bury. Until then the newcomer's socket gets
-the seat's `state` frames with `joining_you: true` and may send only
+the seat's `state` frames with `joining_you: true` (with `hand` and
+`declare_options` empty: the seat's cards arrive at the handover) and may send only
 `table_leave`; the table's frames carry `joining: [{seat, name, when}]`
 (`when: "trick"`, then `"round"` for someone seated at a round end, who plays
 from the next round). At the handover the socket holds the seat as after
@@ -653,7 +654,7 @@ the front of the queue); once seated, the away player gets `left {reason:
 
 ## Reconnect & lifecycle
 
-Rejoining with `table_join` and the stored `token` (or, for a disconnected seat, the same name, trimmed and case-folded) reclaims the seat, and the current `state` is resent. Bots act automatically after a short delay.
+Rejoining with `table_join` and the stored `token` reclaims the seat, and the current `state` is resent. A disconnected seat is reclaimed by the same name (trimmed and case-folded) only after its 60-second hold; during the hold only its token (or, for a seat held by an account, that account signed in) takes it back, and the name alone is refused with `seat_reserved`. Bots act automatically after a short delay.
 
 A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **60 seconds** (`TAKEOVER_AFTER`, the move timer's length, in casual and timed rooms alike), the server's bot plays that turn (and keeps doing so until they reconnect); until then the seat stays reserved for them. A `table_leave` does not wait: the bot covers the seat at once.
 

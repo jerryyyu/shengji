@@ -10,6 +10,7 @@
 :root .app:not(.rotated) .chat-panel.chat-short {
   top: calc(var(--chat-vv-top, 0px) + 6px + env(safe-area-inset-top, 0px));
   bottom: auto;
+  height: calc(var(--chat-vv-h, 100dvh) - 12px - env(safe-area-inset-top, 0px));
   max-height: calc(var(--chat-vv-h, 100dvh) - 12px - env(safe-area-inset-top, 0px));
   transform-origin: top right;
 }

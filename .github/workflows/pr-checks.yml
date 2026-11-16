@@ -1120,7 +1120,8 @@ jobs:
   e2e:
     needs: changes
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    # Playwright 1.58 ships no Chromium build for the newer ubuntu-latest image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     continue-on-error: true
     defaults:
@@ -1155,7 +1156,8 @@ jobs:
         run: |
           echo "e2e outcome: ${{ steps.e2e.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           for f in e2e/out/matrix.json e2e/out/client.json; do
-            [ -f "$f" ] && node -e 'const r=require("./"+process.argv[1]); console.log(`- ${r.suite}: ${r.checks} checks, ${r.failed} failed, ${r.known} known, ${r.stale.length} stale known, ${Math.round(r.seconds)} s`)' "$f" >> "$GITHUB_STEP_SUMMARY"
+            [ -f "$f" ] || continue
+            node -e 'const r=require("./"+process.argv[1]); console.log(`- ${r.suite}: ${r.checks} checks, ${r.failed} failed, ${r.known} known, ${r.stale.length} stale known, ${Math.round(r.seconds)} s`)' "$f" >> "$GITHUB_STEP_SUMMARY"
           done
       - uses: actions/upload-artifact@v4
         if: steps.e2e.outcome == 'failure'

@@ -1,9 +1,11 @@
-// The table panel's one model, from the queue's table (`fromQueue`). The
-// panel draws only the model and answers only `TableAction`s; the queue's
-// dispatcher turns an action into its frame, with the table's sitting token
-// added there.
+// The table panel's one model, from the queue's table (`fromQueue`) or a
+// code's peek (`fromCode`). The panel draws only the model and answers only
+// `PanelAction`s; the queue's dispatcher turns a `TableAction` into its
+// frame, with the table's sitting token added there.
+import type { CodeJoin } from "../codeJoin";
 import type { LeaveContext } from "../components/leaveCopy";
-import type { ChatMsg, Rank } from "../protocol";
+import { hostName, roomChoices, tableHostName, takeoverSeats } from "../joinSeats";
+import type { ChatMsg, Rank, RoomSeats, TableSeats } from "../protocol";
 import { BOT_FILL_MS, partnerName, queue, tableDuo } from "./store";
 import type { OfferView, QueueView, TableView } from "./store";
 import {
@@ -50,10 +52,18 @@ export type TableAction =
   | { type: "offer_wait" }
   | { type: "offer_pick"; seat: number };
 
+/** What a code's Join panel does: choose the seat Join takes, Join, Not now. */
+export type CodeAction =
+  | { type: "code_pick"; seat: number }
+  | { type: "code_join" }
+  | { type: "code_cancel" };
+
 /** What the panel answers itself: the leave sheet, and the opener's tap on
- *  a person and then on the seat they go to (one confirm sends the move). */
+ *  a person and then on the seat they go to (one confirm sends the move);
+ *  and a code's Join panel's actions. */
 export type PanelAction =
   | TableAction
+  | CodeAction
   | { type: "ask_leave" }
   | { type: "pick_person"; at: number }
   | { type: "move_to"; at: number };
@@ -72,6 +82,8 @@ export interface TableButton {
   searching?: boolean;
   /** Your Start is in, and a tap takes it back. */
   waiting?: boolean;
+  /** Drawn as `aria-busy`: the press is on its way. */
+  busy?: boolean;
 }
 
 /** The settings rows: the code with its Invite link, Starting level on a
@@ -93,9 +105,10 @@ export type MoverSeat = { name: string; sit?: string | null; pair?: boolean } | 
 /** A panel is its title, its seats, at most one live status line, its rows
  *  and its buttons; explanations live in How to play and the coach. */
 export interface TableModel {
-  kind: Exclude<PanelKind, "play">;
+  /** Drawn as the class `tp-${kind}`. */
+  kind: Exclude<PanelKind, "play"> | "join-code" | "offline";
   /** The mode tag above the title; a ranked table has none. */
-  tag?: "Casual";
+  tag?: "Casual" | "Offline";
   title: string;
   status?: { text: string; warn?: boolean };
   seats: ModelSeat[] | null;
@@ -324,6 +337,76 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     };
   }
   return null;
+}
+
+/** A room's four seats as the panel draws them: you, glowing, in the seat
+ *  Join takes; every other seat Join may take is a button that moves you
+ *  there. A dropped player's seat is drawn as "Name (away)", glowing too
+ *  when it is the one chosen. */
+function roomSeats(peek: RoomSeats, you: number | null, busy: boolean): ModelSeat[] {
+  const away = new Set(takeoverSeats(peek).map((d) => d.seat));
+  const choices = new Set(roomChoices(peek));
+  const from = you ?? 0;
+  return [0, 1, 2, 3].map((at): ModelSeat => {
+    const sd = peek.seats.find((s) => s.seat === at);
+    const ours = (at - from + 4) % 2 === 0;
+    const move = choices.has(at) ? { act: { type: "code_pick", seat: at } as const, busy } : {};
+    if (sd && away.has(at)) {
+      // a dropped player's seat keeps their name, glowing when chosen: Join asks first
+      return at === you
+        ? { at, look: "open", picked: true, name: `${shortName(sd.name)} (away)`, sub: "",
+            label: `${sd.name} is away, ${teamWord(true)}. Your seat` }
+        : { at, look: "open", name: `${shortName(sd.name)} (away)`, sub: "",
+            label: `${sd.name} is away, ${teamWord(ours)}. Sit here`, ...move };
+    }
+    if (at === you) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
+    if (!sd) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}`, ...move };
+    if (sd.is_bot) {
+      return { at, look: "bot", name: "Bot", sub: "",
+               label: `Bot, ${teamWord(ours)}${choices.has(at) ? ". Sit here" : ""}`, ...move };
+    }
+    return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}` };
+  });
+}
+
+/** A queued table's four seats as they stand: who sits there (with their
+ *  Start), the open seats and a Duo's held partner seat, and you, glowing,
+ *  where a code join sits you (the server seats it by its own rule, so no
+ *  other seat is offered). */
+function queuedSeats(peek: TableSeats, you: number | null): ModelSeat[] {
+  const from = you ?? 0;
+  return [0, 1, 2, 3].map((at): ModelSeat => {
+    const sd = peek.seats.find((s) => s.seat === at);
+    const ours = (at - from + 4) % 2 === 0;
+    if (at === you) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
+    if (sd?.state === "held") return { at, look: "held", name: "Partner", sub: "", label: `Partner seat, held, ${teamWord(ours)}` };
+    if (sd?.state !== "taken" || !sd.name) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    return { at, look: "person", name: shortName(sd.name), sub: "", tick: sd.ready,
+             label: [sd.name, sd.ready ? "ready" : null, teamWord(ours)].filter(Boolean).join(", ") };
+  });
+}
+
+/** A code's Join panel, in Play's place: the table's seats with you glowing
+ *  in the seat Join takes, then Join and Not now. A full table shows the
+ *  same panel with Join disabled; before the peek answers, the code alone. */
+export function fromCode(j: CodeJoin, busy: boolean): TableModel {
+  const room = j.peek && !j.peek.table ? j.peek : null;
+  const queued = j.peek?.table ? j.peek : null;
+  const who = room ? hostName(room) : queued ? tableHostName(queued) : null;
+  // a room's Join needs a seat to name; a Play table's is seated by the
+  // server, which answers table_full when it is full
+  const canJoin = !j.full && !busy && j.peek !== null && (queued !== null || j.seat !== null);
+  return {
+    kind: "join-code",
+    title: `Join ${who ? shortName(who) : j.code}`,
+    status: j.full ? { text: "Table is full" } : undefined,
+    seats: room ? roomSeats(room, j.seat, busy) : queued ? queuedSeats(queued, j.seat) : null,
+    you: j.seat ?? 0,
+    rows: null, waitSwitch: null, chat: null,
+    primary: { label: busy ? "Joining…" : "Join", disabled: !canJoin, act: { type: "code_join" } },
+    secondary: { label: "Not now", disabled: false, act: { type: "code_cancel" } },
+    leave: { kind: "queue", others: [] },
+  };
 }
 
 /** The queue's dispatcher: each action through the store, which keeps the

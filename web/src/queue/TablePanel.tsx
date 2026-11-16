@@ -8,12 +8,15 @@ import LeaveSheet from "../components/LeaveSheet";
 import ConfirmSheet from "../components/ConfirmSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
 import { COPIED_MS, shareInvite } from "../codes";
+import type { CodeJoin } from "../codeJoin";
+import { takeoverSeats } from "../joinSeats";
+import type { DroppedSeat } from "../joinSeats";
 import type { ChatMsg, Rank } from "../protocol";
 import { RANKS } from "../protocol";
 import Sheet from "./Sheet";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
-import { fromQueue, queueSend } from "./tableModel";
+import { fromCode, fromQueue, queueSend } from "./tableModel";
 import type { MoverSeat, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
 import "./tablePanel.css";
@@ -139,7 +142,8 @@ function PanelView({ m, guarded, sheet, act }: {
           {m.primary ? (
             <button ref={primaryRef} type="button"
                     className={`tp-primary${m.primary.searching ? " searching" : ""}${m.primary.waiting ? " waiting" : ""}`}
-                    disabled={m.primary.disabled || guarded} onClick={press(m.primary)}>
+                    disabled={m.primary.disabled || guarded} aria-busy={m.primary.busy || undefined}
+                    onClick={press(m.primary)}>
               {ringOf(m.primary.ring)}
               {m.primary.label}
             </button>
@@ -174,7 +178,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
     if (a.type === "ask_leave") setAsking(true);
     else if (a.type === "pick_person") mover.pick(a.at);
     else if (a.type === "move_to") mover.to(a.at);
-    else queueSend(a);
+    else if (a.type !== "code_pick" && a.type !== "code_join" && a.type !== "code_cancel") queueSend(a);
   };
   const sheet = asking ? (
     <LeaveSheet context={m.leave}
@@ -182,6 +186,41 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
                 onLeave={() => { setAsking(false); queueSend({ type: "leave" }); }} />
   ) : mover.sheet;
   return <PanelView m={m} guarded={guarded} sheet={sheet} act={act} />;
+}
+
+/** The one code path's panel, in Play's place: a code from the Play box or
+ *  a link shows its table (`fromCode`). A dropped player's seat is taken
+ *  only after confirming. */
+export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
+  join: CodeJoin; busy: boolean; onJoin: () => void; onCancel: () => void; onPick: (seat: number) => void;
+}) {
+  const [asking, setAsking] = useState<DroppedSeat | null>(null);
+  const m = fromCode(join, busy);
+  const act = (a: PanelAction) => {
+    if (a.type === "code_pick") onPick(a.seat);
+    else if (a.type === "code_cancel") onCancel();
+    else if (a.type === "code_join") {
+      const room = join.peek && !join.peek.table ? join.peek : null;
+      const dropped = room ? takeoverSeats(room).find((d) => d.seat === join.seat) : undefined;
+      if (dropped) setAsking(dropped);
+      else onJoin();
+    }
+  };
+  const sheet = asking ? (
+    <TakeoverConfirm name={asking.name}
+                     onCancel={() => setAsking(null)}
+                     onTake={() => { setAsking(null); onJoin(); }} />
+  ) : null;
+  return <PanelView m={m} guarded={false} sheet={sheet} act={act} />;
+}
+
+/** The confirm before taking a dropped player's seat: one question, then
+ *  Cancel and Take seat, on the one confirm sheet. */
+function TakeoverConfirm({ name, onTake, onCancel }: { name: string; onTake: () => void; onCancel: () => void }) {
+  return (
+    <ConfirmSheet title={`${shortName(name)} dropped out. Take their seat?`} cancel="Cancel" confirm="Take seat"
+                  confirmClass="seat-take-confirm" onConfirm={onTake} onCancel={onCancel} />
+  );
 }
 
 /** The opener's move of someone else, for a table's seats: the

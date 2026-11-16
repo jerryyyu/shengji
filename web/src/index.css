@@ -1588,6 +1588,12 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   animation: hand-line-in 160ms var(--ease-out) both;
 }
 
+/* the line stays back while your own slot shows cards (a finished trick
+   lingering, your declaration); burying, the declaration gives way instead */
+.table-screen:not(.phase-bury):has(.trick-play.pos-bottom .trick-cards) .hand-line {
+  display: none;
+}
+
 @keyframes hand-line-in {
   from { opacity: 0; }
 }
@@ -2717,15 +2723,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     position: absolute;
     left: 50%;
     top: 50%;
-    translate: -50% -50%;
+    /* lifted a little, so its count clears the line above your row */
+    translate: -50% calc(-50% - 8px);
     flex-direction: column;
     align-items: center;
     gap: 8px;
   }
 
-  /* a declaration in the top or your slot takes the middle; the seat counts
-     and your hand still show the deal's progress */
-  .trick-area:has(.declaration.pos-top, .declaration.pos-bottom) .deal-deck {
+  /* a declaration in any slot takes the middle (a side one's tag reaches
+     it); the seat counts and your hand still show the deal's progress */
+  .trick-area:has(.declaration) .deal-deck {
     display: none;
   }
 
@@ -3036,6 +3043,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin: 0;
     font-size: var(--fs-12);
     transform: translateX(-50%);
+  }
+
+  /* In play the coach's line stands in your row, just right of "Your turn"
+     (it shows only while nothing is chosen, so Clear is not there): below
+     every slot, so it never reaches a side slot's cards or tags. It wraps
+     to a second line rather than leave the row. */
+  .table-screen.phase-play .hand-line.coach {
+    left: calc(50% + 51px + var(--space-s));
+    bottom: calc(var(--zone-bottom) + var(--row-h) / 2);
+    transform: translateY(50%);
+    width: max-content;
+    max-width: calc(var(--view-w) / 2 - 51px - 2 * var(--space-s) - var(--safe-r));
+    white-space: normal;
+    text-align: left;
+    line-height: 15px;
+    padding: 4px 12px;
+    border-radius: 14px;
   }
 
   .phase-play .action-bar .play-wrap {

@@ -1,8 +1,8 @@
 [
   {
     "suite": "matrix",
-    "match": "\"pair\":\"(handLine\\+(trickCards|trickTag|leadTag|winTag)|declareTag\\+handLine)\"",
-    "why": "QA1-4: the hint line above the hand covers trick cards and their LEAD / WINS / declared tags"
+    "match": "phone-land-safari-short_.*\"pair\":\"(handLine\\+(trickCards|trickTag|leadTag|winTag|dealCount)|(declareTag|dealCount)\\+handLine)\"",
+    "why": "QA1-3: Mobile Safari sideways (100vh taller than the page): the cross is placed for a taller screen, so its slots reach the line above your row"
   },
   {
     "suite": "matrix",

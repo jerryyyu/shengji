@@ -322,23 +322,94 @@ def test_collector_never_stores_rejected_keys_or_error_text(
         assert SECRET not in text and "s3cr3t" not in text
 
 
-def _report(age_h, room="AB12"):
-    return {"t": NOW - age_h * 3600, "room": room, "round": 1, "reason": "spam",
-            "reported": "x", "reporter": "y"}
+def _report(age_h, room="AB12", reason="spam", reported="x", reporter="y", rnd=1):
+    """One stored record as the server writes it (a guest target has no account)."""
+    return {"ts": NOW - age_h * 3600, "room": room, "round": rnd, "reason": reason,
+            "reported": {"seat": 1, "name": reported, "guest": True},
+            "reporter": {"seat": 0, "name": reporter, "account_id": 7}}
 
 
-def test_only_unhandled_reports_turn_the_state_amber_or_red():
-    rows = [_report(30, "OLD1"), _report(14, "MID1"), _report(2, "NEW1")]
-    rep = {"available": True, "total": 3, "latest": rows}
+def _reports(tmp_path, records):
+    """``records`` through the real query, checked by the collector's schema."""
+    path = tmp_path / "player_reports.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in records))
+    rep = query.player_reports(path, NOW)
+    collector.check_schema({"reports": rep})
+    return rep
+
+
+def _id_at(rep, room):
+    return next(r["id"] for r in rep["latest"] if r["room"] == room)
+
+
+def test_only_unhandled_reports_turn_the_state_amber_or_red(tmp_path):
+    rep = _reports(tmp_path, [_report(30, "OLD1"), _report(14, "MID1"), _report(2, "NEW1")])
     assert collector.reports_state(rep, NOW)["state"] == "red"
-    handled = {collector.report_id(rows[0]): NOW}
+    handled = {_id_at(rep, "OLD1"): NOW}
     st = collector.reports_state(rep, NOW, handled)
     assert st["state"] == "amber" and "1 handled" in st["reason"]
-    handled[collector.report_id(rows[1])] = NOW
+    handled[_id_at(rep, "MID1")] = NOW
     assert collector.reports_state(rep, NOW, handled)["state"] == "green"
-    # the id is stable and names no one
-    assert collector.report_id(dict(rows[0])) == collector.report_id(rows[0])
-    assert len(collector.report_id(rows[0])) == 16
+    # an id from an older scheme or a mangled one matches nothing and is harmless
+    handled.update({"0123456789abcdef": NOW, "not-an-id": NOW, 5: NOW})
+    assert collector.reports_state(rep, NOW, handled)["state"] == "green"
+
+
+def test_an_unhandled_report_beyond_the_newest_rows_keeps_the_state_red(tmp_path, collector_home):
+    serve = _load("serve")
+    records = [_report(30, "OLD1")] + [_report(i / 3600, f"NEW{i}") for i in range(20)]
+    rep = _reports(tmp_path, records)
+    assert len(rep["latest"]) == query.REPORT_LIMIT and rep["n_7d"] == 21
+    assert "OLD1" not in {r["room"] for r in rep["latest"]}
+    assert collector.reports_state(rep, NOW)["state"] == "red"
+    # the dashboard lists it first, and marking it clears the state
+    (collector_home / "latest.json").write_text(json.dumps({"collected_at": NOW,
+                                                            "db": {"reports": rep}}))
+    snap = json.loads(serve.with_handled((collector_home / "latest.json").read_bytes(),
+                                         collector_home))
+    assert snap["reports_state"]["state"] == "red"
+    older = snap["db"]["reports"]["older"]
+    assert [r["t"] for r in older] == [round(NOW - 30 * 3600, 1)] and "watch" not in snap["db"]["reports"]
+    serve.mark_handled(collector_home, older[0]["id"], True)
+    snap = json.loads(serve.with_handled((collector_home / "latest.json").read_bytes(),
+                                         collector_home))
+    assert snap["reports_state"]["state"] == "green" and snap["db"]["reports"]["older"] == []
+
+
+def test_reports_left_out_of_the_watch_list_turn_the_state_red(tmp_path, monkeypatch):
+    monkeypatch.setattr(query, "WATCH_MAX", 3)
+    rep = _reports(tmp_path, [_report(i / 3600) for i in range(5)])
+    assert len(rep["watch"]) == 3 and rep["watch_omitted"] == 2
+    handled = {r["id"]: NOW for r in rep["watch"]}
+    st = collector.reports_state(rep, NOW, handled)
+    assert st["state"] == "red" and "2 older reports not checked" in st["reason"]
+
+
+def test_near_simultaneous_reports_have_distinct_ids(tmp_path):
+    first, second = _report(30), _report(30, reason="cheating")
+    first["ts"] += 0.011
+    second["ts"] += 0.022
+    duplicate = dict(first)
+    rep = _reports(tmp_path, [first, second, duplicate])
+    ids = [r["id"] for r in rep["latest"]]
+    assert len(set(ids)) == 3
+    assert {r["t"] for r in rep["latest"]} == {round(first["ts"], 1)}
+    st = collector.reports_state(rep, NOW, {ids[0]: NOW})
+    assert st["state"] == "red" and st["reason"].startswith("2 unhandled")
+    # ids are 16 hex digits, carry no name, and match the watch list
+    assert all(collector.is_report_id(i) for i in ids)
+    assert {r["id"] for r in rep["watch"]} == set(ids)
+
+
+def test_report_ids_are_stable_across_runs(tmp_path):
+    records = [_report(30), _report(2, "NEW1"), _report(2, "NEW1")]
+    one = _reports(tmp_path, records)
+    path = tmp_path / "player_reports.jsonl"
+    with open(path, "a") as fh:                       # a new report arrives
+        fh.write(json.dumps(_report(1, "NEW2")) + "\n")
+    two = query.player_reports(path, NOW + 300)
+    assert [r["id"] for r in two["latest"][:3]] == [r["id"] for r in one["latest"]]
+    assert query.player_reports(path, NOW + 300) == two
 
 
 @pytest.fixture
@@ -349,9 +420,8 @@ def dash(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "token").write_text("t" * 20)
-    rows = [_report(30, "OLD1"), _report(2, "NEW1")]
-    (home / "latest.json").write_text(json.dumps(
-        {"collected_at": NOW, "db": {"reports": {"available": True, "total": 2, "latest": rows}}}))
+    rep = _reports(tmp_path, [_report(30, "OLD1"), _report(2, "NEW1")])
+    (home / "latest.json").write_text(json.dumps({"collected_at": NOW, "db": {"reports": rep}}))
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), serve.make_handler(home, "t" * 20))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield serve, home, f"http://127.0.0.1:{httpd.server_address[1]}"
@@ -394,6 +464,6 @@ def test_mark_handled_writes_only_the_local_list_and_clears_the_state(dash):
 def test_mark_handled_refuses_a_non_loopback_listener(dash, monkeypatch):
     serve, home, base = dash
     monkeypatch.setattr(serve, "LOOPBACK", {"192.0.2.1"})
-    rid = collector.report_id(_report(30, "OLD1"))
+    rid = "0123456789abcdef"
     assert _http(f"{base}/api/reports/handled?t={'t' * 20}", {"id": rid, "handled": True})[0] == 403
     assert not (home / "state").exists()

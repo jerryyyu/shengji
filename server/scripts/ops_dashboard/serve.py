@@ -30,7 +30,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from collector import HANDLED_FILE, load_handled, report_id, reports_state  # noqa: E402
+from collector import HANDLED_FILE, is_report_id, load_handled, reports_state  # noqa: E402
 
 PAGE = Path(__file__).resolve().with_name("index.html")
 HISTORY_LINES = 2016          # seven days at one snapshot per 5 minutes
@@ -42,8 +42,10 @@ _handled_lock = threading.Lock()
 
 
 def with_handled(body: bytes, home: Path) -> bytes:
-    """``latest.json`` with each report row's ``id`` and ``handled`` flag, and
-    ``reports_state`` recomputed from the current acknowledge list."""
+    """``latest.json`` with ``reports_state`` recomputed from the current
+    acknowledge list, each displayed report row's ``handled`` flag, and
+    ``older``: the unhandled watch-window reports not among the displayed
+    newest rows (oldest first, id and time only), so they can be marked."""
     try:
         snap = json.loads(body)
     except ValueError:
@@ -52,10 +54,18 @@ def with_handled(body: bytes, home: Path) -> bytes:
     if not isinstance(rep, dict):
         return body
     handled = load_handled(home)
-    for r in rep.get("latest") or ():
-        r["id"] = report_id(r)
-        r["handled"] = r["id"] in handled
     snap["reports_state"] = reports_state(rep, snap.get("collected_at") or time.time(), handled)
+    shown = set()
+    for r in rep.get("latest") or ():
+        if not is_report_id(r.get("id")):
+            r.pop("id", None)
+        r["handled"] = r.get("id") in handled
+        shown.add(r.get("id"))
+    older = [{"id": r["id"], "t": r["t"], "handled": False}
+             for r in rep.pop("watch", None) or ()
+             if is_report_id(r.get("id")) and r["id"] not in shown
+             and r["id"] not in handled and isinstance(r.get("t"), (int, float))]
+    rep["older"] = sorted(older, key=lambda r: r["t"])
     return json.dumps(snap, separators=(",", ":")).encode()
 
 
@@ -144,8 +154,7 @@ def make_handler(home: Path, token: str):
                 rid, on = req["id"], req["handled"]
             except (ValueError, TypeError, KeyError):
                 return self._send(400, b"bad request\n", "text/plain")
-            if (not isinstance(rid, str) or len(rid) != 16
-                    or any(c not in "0123456789abcdef" for c in rid) or not isinstance(on, bool)):
+            if not is_report_id(rid) or not isinstance(on, bool):
                 return self._send(400, b"bad request\n", "text/plain")
             out = mark_handled(home, rid, on)
             return self._send(200, json.dumps(out).encode(), "application/json")

@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import datetime as dt
 import fcntl
 import json
@@ -47,11 +46,13 @@ ERROR_CODES = ("healthz_failed", "query_failed", "query_timeout", "query_bad_jso
                "schema_violation", "speed_store_failed")
 
 # Leaf kinds: NUM is an int or finite float (not a bool) or null; BOOL is a
-# bool; [NUM] is a list of NUM. Every dict below lists all its allowed keys.
-# The only strings allowed are in player-report rows: ROOM (a short
-# alphanumeric room code), REASON (one of the report reasons) and NAME (a
-# seat's table name, at most 40 printable characters), each or null.
-NUM, BOOL, ROOM, REASON, NAME = "num", "bool", "room", "reason", "name"
+# bool; [NUM] is a list of at most MAX_LIST NUMs, [NUM, n] of at most n.
+# Every dict below lists all its allowed keys. The only strings allowed are
+# in player-report rows: RID (a report's opaque id, 16 lowercase hex digits),
+# ROOM (a short alphanumeric room code), REASON (one of the report reasons)
+# and NAME (a seat's table name, at most 40 printable characters), each or
+# null.
+NUM, BOOL, RID, ROOM, REASON, NAME = "num", "bool", "rid", "room", "reason", "name"
 REPORT_REASONS = ("abuse", "spam", "cheating", "other")
 _BY_ROSTER = {k: NUM for k in ("1", "2", "3", "4")}
 _WINDOW = {
@@ -87,10 +88,13 @@ QUERY_SCHEMA["bot_speed"] = {
                                 "rooms_max")}],
     "slow": [{k: NUM for k in ("t", "phase", "s", "rooms")}],
 }
+WATCH_MAX = 1000
 QUERY_SCHEMA["reports"] = {
     "available": BOOL, "file": BOOL, "total": NUM, "n_24h": NUM, "n_7d": NUM,
-    "latest": [{"t": NUM, "room": ROOM, "round": NUM, "reason": REASON,
+    "latest": [{"id": RID, "t": NUM, "room": ROOM, "round": NUM, "reason": REASON,
                 "reported": NAME, "reporter": NAME}],
+    "watch": [{"id": RID, "t": NUM}, WATCH_MAX],
+    "watch_omitted": NUM,
 }
 SPEED_STORE = "botspeed.json"
 SPEED_HOURS_KEPT = 45 * 86400
@@ -123,17 +127,20 @@ def check_schema(value, schema=QUERY_SCHEMA) -> None:
         for k, v in value.items():
             check_schema(v, schema[k])
     elif isinstance(schema, list):
-        if not isinstance(value, list) or len(value) > MAX_LIST:
+        limit = schema[1] if len(schema) > 1 else MAX_LIST
+        if not isinstance(value, list) or len(value) > limit:
             raise LeakError()
         for v in value:
             check_schema(v, schema[0])
     elif schema == BOOL:
         if not isinstance(value, bool):
             raise LeakError()
-    elif schema in (ROOM, REASON, NAME):
+    elif schema in (RID, ROOM, REASON, NAME):
         if value is None:
             return
         if not isinstance(value, str) or not value.isprintable():
+            raise LeakError()
+        if schema == RID and not is_report_id(value):
             raise LeakError()
         if schema == ROOM and not (value.isalnum() and value.isascii() and len(value) <= 8):
             raise LeakError()
@@ -225,11 +232,10 @@ REPORT_AMBER_S, REPORT_RED_S, REPORT_WATCH_S = 12 * 3600, 24 * 3600, 7 * 86400
 HANDLED_FILE = Path("state") / "reports_handled.json"
 
 
-def report_id(r: dict) -> str:
-    """A stable id for one report row: its time, room, round and the two
-    seats' names, hashed so the handled list holds no name."""
-    key = f"{r.get('t')}|{r.get('room')}|{r.get('round')}|{r.get('reported')}|{r.get('reporter')}"
-    return hashlib.sha256(key.encode()).hexdigest()[:16]
+def is_report_id(value) -> bool:
+    """A report id as ``query.report_id`` makes it: 16 lowercase hex digits."""
+    return (isinstance(value, str) and len(value) == 16
+            and all(c in "0123456789abcdef" for c in value))
 
 
 def load_handled(home: Path) -> dict:
@@ -243,33 +249,49 @@ def load_handled(home: Path) -> dict:
     return {k: v for k, v in handled.items() if isinstance(k, str)} if isinstance(handled, dict) else {}
 
 
+def report_rows(rep: dict) -> list[dict]:
+    """Every report the state is computed from: id and time of each report
+    in the watch window. A snapshot without ``watch`` falls back to the
+    displayed rows; a row without a valid id can never be marked handled."""
+    rows = rep.get("watch")
+    if not isinstance(rows, list):
+        rows = rep.get("latest") or []
+    return [r for r in rows if isinstance(r, dict) and isinstance(r.get("t"), (int, float))]
+
+
 def reports_state(rep: dict, now: float, handled: dict | None = None) -> dict:
     """The server stores no "handled" mark on a report; this Mac keeps one
     (``state/reports_handled.json``). Only unhandled reports count: red while
-    one from the last 7 days is over 24 h old, amber while one is over 12 h."""
+    one from the last 7 days is over 24 h old, amber while one is over 12 h.
+    The state reads every report in the watch window, not just the displayed
+    newest rows; if the query had to leave reports out (``watch_omitted``),
+    the state is red, since those are the oldest and cannot be checked."""
     if not rep.get("available"):
         return {"state": "unknown", "reason": "reports file unreadable"}
+    if not rep.get("total"):
+        return {"state": "green", "reason": "no reports filed yet"}
     handled = handled or {}
-    rows = [r for r in rep.get("latest") or () if now - r["t"] <= REPORT_WATCH_S]
-    n_handled = sum(1 for r in rows if report_id(r) in handled)
-    ages = [now - r["t"] for r in rows if report_id(r) not in handled]
-    if any(a > REPORT_RED_S for a in ages):
+    rows = [r for r in report_rows(rep) if now - r["t"] <= REPORT_WATCH_S]
+    is_handled = [is_report_id(r.get("id")) and r["id"] in handled for r in rows]
+    n_handled = sum(is_handled)
+    ages = [now - r["t"] for r, h in zip(rows, is_handled) if not h]
+    omitted = rep.get("watch_omitted") or 0
+    if omitted or any(a > REPORT_RED_S for a in ages):
         state = "red"
     elif any(a > REPORT_AMBER_S for a in ages):
         state = "amber"
     else:
         state = "green"
-    if not rep.get("total"):
-        return {"state": "green", "reason": "no reports filed yet"}
-    oldest = max(ages) if ages else None
     if ages:
-        reason = f"{len(ages)} unhandled in the last 7 d, oldest {oldest / 3600:.0f} h"
+        reason = f"{len(ages)} unhandled in the last 7 d, oldest {max(ages) / 3600:.0f} h"
     elif rows:
         reason = "none unhandled in the last 7 d"
     else:
         reason = "none in the last 7 d"
     if n_handled:
         reason += f"; {n_handled} handled"
+    if omitted:
+        reason += f"; {omitted} older reports not checked"
     return {"state": state, "reason": reason}
 
 

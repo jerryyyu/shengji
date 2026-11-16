@@ -13,9 +13,9 @@ Tailscale address, set in the LaunchAgent, never in this repo); `--bind` accepts
 | `index.html` | the browser | one inline page (no external requests), refreshes every 60 s |
 | `backfill_botspeed.py` | Mini, by hand, once | fills `botspeed.json` from a local copy of the room logs (read only), with the same code `query.py` runs on Fly |
 
-Privacy: the page shows counts, except the player-report rows: time, room
-code, round, reason and the two seats' table names (`QUERY_SCHEMA["reports"]`
-allows exactly those strings). `query.py` prints no email, account id, IP or
+Privacy: the page shows counts, except the player-report rows: an opaque id,
+time, room code, round, reason and the two seats' table names
+(`QUERY_SCHEMA["reports"]` allows exactly those strings). `query.py` prints no email, account id, IP or
 message text. Before anything is stored,
 `collector.check_schema` requires the output to use only the key paths in
 `collector.QUERY_SCHEMA`, each holding a number (a bool or null where listed);
@@ -42,7 +42,7 @@ container (measured 0.055-0.08 s on 2026-11-12 with 46 log files, 29 MB).
 | signed-in / unknown / guest roster seat-rounds (estimate) | each logged round's non-bot roster seats, by that round's timestamp. Signed in: a saved-game link (`games.log_offset` locates the game in the log, `game_players` seat and round range; an open link has no upper round) covers the seat in that round. Unknown: not covered, and the database may lag the log (the round is past the game's stored `last_round`, or it started within 120 s of the database snapshot). Guest estimate: the rest. A signed-in seat whose game has no `log_offset` (its first log write failed) counts as a guest |
 | return after 1 / 7 days | `users.created_at` vs later rated rounds or saved games |
 | support messages, player reports (7 d) | `support_messages.jsonl`, `player_reports.jsonl` (`ts` only) |
-| latest player reports and their state | `player_reports.jsonl` (the 20 newest rows). The server keeps no handled mark, so **Mark handled** (on `127.0.0.1` only) adds the row's id (a hash of its time, room, round and names) to `~/shengji-ops/state/reports_handled.json` on the Mini; amber/red count only unhandled reports over 12 h / 24 h old |
+| latest player reports and their state | `player_reports.jsonl`: the 20 newest rows, plus id and time of every report from the last 7 days. Each id is an opaque hash of the whole stored record (and its count among identical records), made in the container. The server keeps no handled mark, so **Mark handled** (on `127.0.0.1` only) adds the id to `~/shengji-ops/state/reports_handled.json` on the Mini; amber/red count every unhandled report of the last 7 days over 12 h / 24 h old, not only the displayed ones, and unhandled ones older than the newest 20 are listed first so they can be marked |
 | bot decision time | room logs' decision timings, folded into `~/shengji-ops/botspeed.json` by day and hour |
 
 Not available without a server change: players right now split into

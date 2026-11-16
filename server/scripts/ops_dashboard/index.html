@@ -105,8 +105,9 @@
   <p class="note">From <code>player_reports.jsonl</code> on the Fly volume (read only). Shown: time,
     room, round, reason and the two seats' table names; no account, email or chat. The server keeps
     no "handled" mark; <b>Mark handled</b> keeps one on this Mac (<code>state/reports_handled.json</code>,
-    from <code>127.0.0.1</code> only). The state counts unhandled reports by age: amber while one from
-    the last 7 days is over 12 h old, red over 24 h.</p>
+    from <code>127.0.0.1</code> only). The state counts every unhandled report of the last 7 days by
+    age, not only the rows shown: amber while one is over 12 h old, red over 24 h. Unhandled reports
+    older than the latest rows are listed first.</p>
 
   <h2>Bot speed</h2>
   <div class="chip" id="speedchip"><span class="dot"></span><span>loading…</span></div><br>
@@ -317,15 +318,19 @@ function renderReports(d) {
     tile(fmt(r.n_24h), "Reports, last 24 h"), tile(fmt(r.n_7d), "Reports, last 7 d"),
     tile(fmt(r.total), "Reports, all time", r.file ? "" : "no report file yet"),
   ].join("");
-  const rows = (r.latest || []).slice().reverse();
-  document.getElementById("replist").innerHTML = `<div class="cap">Latest ${rows.length ? rows.length : ""} reports${rows.length ? "" : ": none filed"}</div>` +
+  const older = (r.older || []).map(x => Object.assign({older: true}, x));
+  const rows = older.concat((r.latest || []).slice().reverse());
+  const cap = (r.latest || []).length ? `Latest ${(r.latest || []).length} reports` : "Latest reports: none filed";
+  document.getElementById("replist").innerHTML = `<div class="cap">${older.length ? `${older.length} older unhandled, then ` : ""}${cap}</div>` +
     (rows.length ? `<table><tr><th>time (ET)</th><th>age</th><th>room</th><th>round</th><th>reason</th><th>reported</th><th>by</th><th></th></tr>` +
       rows.map(x => {
         const age = now - x.t, cls = x.handled || age > 7 * 86400 ? "dim" : age > 86400 ? "bad" : age > 43200 ? "warn" : "";
         const btn = !x.id ? "" : `<button class="mark" data-id="${esc(x.id)}" data-on="${x.handled ? "0" : "1"}"` +
           (LOCAL ? "" : ` disabled title="Works on this Mac only (127.0.0.1)"`) + `>${x.handled ? "Handled ✓" : "Mark handled"}</button>`;
-        return `<tr${x.handled ? ' class="handled"' : ""}><td>${etTime(x.t)}</td><td class="${cls}">${ago(age)}</td><td>${fmt(x.room)}</td><td>${fmt(x.round)}</td>` +
-          `<td>${fmt(x.reason)}</td><td>${fmt(x.reported)}</td><td>${fmt(x.reporter)}</td><td>${btn}</td></tr>`;
+        return `<tr${x.handled ? ' class="handled"' : ""}><td>${etTime(x.t)}</td><td class="${cls}">${ago(age)}</td>` +
+          (x.older ? `<td colspan="5" class="dim">older than the latest ${(r.latest || []).length}; details by time in the report file</td>` :
+          `<td>${fmt(x.room)}</td><td>${fmt(x.round)}</td><td>${fmt(x.reason)}</td><td>${fmt(x.reported)}</td><td>${fmt(x.reporter)}</td>`) +
+          `<td>${btn}</td></tr>`;
       }).join("") + "</table>" : "");
 }
 

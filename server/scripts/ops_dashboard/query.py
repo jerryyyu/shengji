@@ -8,8 +8,8 @@ database query inside one read transaction, so the counts come from one
 consistent snapshot that includes rows the server has committed to its WAL. It
 opens every other file for reading only and prints one JSON object of counts.
 No email, account id, name, room code, IP or message text is printed: every
-value is a count, a ratio or a timestamp, except the player-report rows: room
-code, reason and the two seats' table names (``player_reports``).
+value is a count, a ratio or a timestamp, except the player-report rows: an
+opaque id, room code, reason and the two seats' table names (``player_reports``).
 
 Stdlib only, and cheap: the room-log scan reads only files changed in the last
 30 days and parses only ``round_start`` lines; the bot-latency scan reads only
@@ -19,6 +19,7 @@ files changed since yesterday's start (or 48 h ago) and parses only completed
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -406,11 +407,13 @@ def bot_speed(log_dir: Path, now: float, day_starts: list[float]) -> dict:
 
 
 # Player reports (``player_reports.jsonl``). Only these leave the container:
-# time, room code, round, reason and the two seats' table names. No account
-# id, account name, email or chat line is read out of a record.
+# an opaque id, time, room code, round, reason and the two seats' table names.
+# No account id, account name, email or chat line is read out of a record.
 REPORT_LIMIT = 20
 REPORT_REASONS = ("abuse", "spam", "cheating", "other")
 NAME_MAX = 40
+WATCH_S = 7 * DAY
+WATCH_MAX = 1000
 
 
 def _clean_name(value) -> str | None:
@@ -420,10 +423,26 @@ def _clean_name(value) -> str | None:
     return value or None
 
 
+def report_id(rec: dict, occurrence: int) -> str:
+    """An opaque id for one stored report: the hash of the whole record as
+    canonical JSON, before any field is dropped or rounded, plus how many
+    identical records came before it in the file. Two distinct records never
+    share an id, and the same record keeps its id on every run."""
+    key = json.dumps({"rec": rec, "n": occurrence}, sort_keys=True, separators=(",", ":"),
+                     ensure_ascii=True)
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
 def player_reports(path: Path, now: float) -> dict:
+    """``latest``: the ``REPORT_LIMIT`` newest rows, for display. ``watch``:
+    id and time of every report from the last 7 days (the newest
+    ``WATCH_MAX``; ``watch_omitted`` counts the rest), so the alert state
+    sees reports beyond the displayed rows."""
     if not path.is_file():
-        return {"available": True, "file": False, "total": 0, "n_24h": 0, "n_7d": 0, "latest": []}
+        return {"available": True, "file": False, "total": 0, "n_24h": 0, "n_7d": 0,
+                "latest": [], "watch": [], "watch_omitted": 0}
     rows = []
+    seen: dict[str, int] = {}
     with open(path, "rb") as fh:
         for line in fh:
             try:
@@ -431,22 +450,36 @@ def player_reports(path: Path, now: float) -> dict:
                 t = float(rec.get("ts"))
             except (ValueError, TypeError, AttributeError):
                 continue
+            if t != t:
+                continue
+            canon = json.dumps(rec, sort_keys=True, separators=(",", ":"))
+            occurrence = seen.get(canon, 0)
+            seen[canon] = occurrence + 1
             room = rec.get("room")
             rnd = rec.get("round")
             reason = rec.get("reason")
+            reported = rec.get("reported") if isinstance(rec.get("reported"), dict) else {}
+            reporter = rec.get("reporter") if isinstance(rec.get("reporter"), dict) else {}
             rows.append({
+                "id": report_id(rec, occurrence),
                 "t": round(t, 1),
+                "ts": t,
                 "room": room if isinstance(room, str) and room.isalnum() and len(room) <= 8 else None,
                 "round": rnd if isinstance(rnd, int) and not isinstance(rnd, bool) else None,
                 "reason": reason if reason in REPORT_REASONS else None,
-                "reported": _clean_name((rec.get("reported") or {}).get("name")),
-                "reporter": _clean_name((rec.get("reporter") or {}).get("name")),
+                "reported": _clean_name(reported.get("name")),
+                "reporter": _clean_name(reporter.get("name")),
             })
-    rows.sort(key=lambda r: r["t"])
+    rows.sort(key=lambda r: (r["ts"], r["id"]))
+    watch = [{"id": r["id"], "t": r["t"]} for r in rows if r["ts"] >= now - WATCH_S]
+    for r in rows:
+        del r["ts"]
     return {"available": True, "file": True, "total": len(rows),
             "n_24h": sum(1 for r in rows if r["t"] >= now - DAY),
-            "n_7d": sum(1 for r in rows if r["t"] >= now - 7 * DAY),
-            "latest": rows[-REPORT_LIMIT:]}
+            "n_7d": len(watch),
+            "latest": rows[-REPORT_LIMIT:],
+            "watch": watch[-WATCH_MAX:],
+            "watch_omitted": max(0, len(watch) - WATCH_MAX)}
 
 
 def count_jsonl_since(path: Path, since: float, key: str = "ts") -> int | None:

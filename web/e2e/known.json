@@ -1,0 +1,33 @@
+[
+  {
+    "suite": "matrix",
+    "match": "phone-land-safari-short_.*\"pair\":\"(handLine\\+(trickCards|trickTag|leadTag|winTag|dealCount)|(declareTag|dealCount)\\+handLine)\"",
+    "why": "QA1-3: Mobile Safari sideways (100vh taller than the page): the cross is placed for a taller screen, so its slots reach the line above your row"
+  },
+  {
+    "suite": "matrix",
+    "match": "\"pair\":\"toast\\+trickCards\"",
+    "why": "QA1-9: a table toast covers the top trick slot"
+  },
+  {
+    "suite": "matrix",
+    "match": "phone-land-se_.*(trickTag|declareTag)#\\d+\",\"text\":\"[^\"]*declared[^\"]*\",\"cut\":\"left",
+    "why": "QA1-10: a long declarer name runs the declared tag off the left edge"
+  },
+  {
+    "suite": "matrix",
+    "match": "(ipad|desktop)_.*\"pair\":\"(oppName\\+trickCards|oppCards\\+trickCards|oppCards\\+trickTag|declareTag\\+oppCards)\"",
+    "why": "QA1-11: iPad / desktop: a 20-character name's pill and count reach the side trick slot"
+  },
+  {
+    "suite": "matrix",
+    "platform": "linux",
+    "match": "^ipad_long_l1_n[13] .*\"pair\":\"leadTag\\+oppCards\"",
+    "why": "QA1-11 with Linux fonts: the left opponent's card count reaches the LEAD tag of its trick slot by 5x7 px; macOS metrics keep them apart"
+  },
+  {
+    "suite": "client",
+    "match": "chat-phone-port-safari: panel, field, Send and Close above the keyboard",
+    "why": "QA1-5: the turned table's chat panel stays behind Mobile Safari's keyboard"
+  }
+]

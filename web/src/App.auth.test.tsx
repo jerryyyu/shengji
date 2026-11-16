@@ -79,14 +79,14 @@ it("sign-in and sign-out mid-game rejoin the same seat with the resume token", a
   saveName("Me"); saveRoom("ABCD"); saveResumeToken("tok-1");
   const first = FakeWS.all[0];
   act(() => first.onopen?.());
-  expect(first.sent).toEqual([{ type: "join_room", room: "ABCD", name: "Me", token: "tok-1" }]);
+  expect(first.sent).toEqual([{ type: "table_join", code: "ABCD", expect: "room", name: "Me", token: "tok-1" }]);
 
   act(() => auth.signedIn({ name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" }));
   act(() => { vi.advanceTimersByTime(0); });
   const second = FakeWS.all[1];
   expect(second).toBeTruthy();
   act(() => second.onopen?.());
-  expect(second.sent).toEqual([{ type: "join_room", room: "ABCD", name: "Me", token: "tok-1" }]);
+  expect(second.sent).toEqual([{ type: "table_join", code: "ABCD", expect: "room", name: "Me", token: "tok-1" }]);
   expect(host.querySelector(".reconnect-banner")).toBeNull();   // back to "open"
 
   await act(async () => { await auth.signOut(); });
@@ -94,6 +94,6 @@ it("sign-in and sign-out mid-game rejoin the same seat with the resume token", a
   expect(FakeWS.all).toHaveLength(3);
   const third = FakeWS.all[2];
   act(() => third.onopen?.());
-  expect(third.sent).toEqual([{ type: "join_room", room: "ABCD", name: "Me", token: "tok-1" }]);
+  expect(third.sent).toEqual([{ type: "table_join", code: "ABCD", expect: "room", name: "Me", token: "tok-1" }]);
   expect(auth.state.status).toBe("out");
 });

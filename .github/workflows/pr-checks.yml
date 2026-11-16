@@ -21,12 +21,14 @@ jobs:
   # documentation; `luna`, `train` and `search` are false only when no changed
   # path can reach that job; `server_full` is false when every code path is
   # under web/, and then `server_web_only` runs just the server test modules
-  # that read web/ files (server-web). Any error, or an empty diff, runs everything.
+  # that read web/ files (server-web); `web` is true when a path under web/ (or
+  # this workflow) changed. Any error, or an empty diff, runs everything.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       code: ${{ steps.classify.outputs.code }}
+      web: ${{ steps.classify.outputs.web }}
       luna: ${{ steps.classify.outputs.luna }}
       train: ${{ steps.classify.outputs.train }}
       search: ${{ steps.classify.outputs.search }}
@@ -196,6 +198,10 @@ jobs:
                   return path in search_tests
               return True
 
+          def reaches_web(path):
+              # The interaction suites drive the built web client; the workflow runs them.
+              return path == WORKFLOW or (path.startswith("web/") and not is_doc(path))
+
           def reaches_server(path):
               # The server job runs in full for any code path outside web/.
               return not is_doc(path) and not path.startswith("web/")
@@ -213,6 +219,7 @@ jobs:
               server_full = any(reaches_server(path) for path in paths)
               out = {
                   "code": code,
+                  "web": any(reaches_web(path) for path in paths),
                   "luna": any(reaches_luna(path, luna_tests) for path in paths),
                   "train": any(reaches_train(path, train_tests, train_web) for path in paths),
                   "search": any(reaches_search(path, search_tests, search_web, search_api) for path in paths),
@@ -237,7 +244,7 @@ jobs:
                         f"{'server' if reaches_server(path) else '      '} {path}")
               return out
 
-          EVERYTHING = {"code": True, "luna": True, "train": True, "search": True,
+          EVERYTHING = {"code": True, "web": True, "luna": True, "train": True, "search": True,
                         "server_full": True, "server_web_only": False,
                         "server_web_pure": [], "server_web_compiled": []}
 
@@ -1104,3 +1111,55 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm audit --audit-level=high
+
+  # The interaction suites (web/e2e: the table-state matrix and the scripted-socket
+  # client checks) drive the built app in headless Chromium. Non-blocking while its
+  # known list, made on macOS, settles on Linux fonts: a failure shows as a warning
+  # and the job summary, and the screenshots are uploaded. The live flows need the
+  # game server and are not run here (`npm run e2e:full` locally).
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p 'require("playwright-core/package.json").version')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-shell-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - name: Install headless Chromium and its system libraries
+        run: npx playwright-core install --with-deps --only-shell chromium
+      - run: npm run build
+      - name: Interaction suites (matrix + client)
+        id: e2e
+        continue-on-error: true
+        run: npm run e2e
+      - name: Summary
+        if: always()
+        run: |
+          echo "e2e outcome: ${{ steps.e2e.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          for f in e2e/out/matrix.json e2e/out/client.json; do
+            [ -f "$f" ] && node -e 'const r=require("./"+process.argv[1]); console.log(`- ${r.suite}: ${r.checks} checks, ${r.failed} failed, ${r.known} known, ${r.stale.length} stale known, ${Math.round(r.seconds)} s`)' "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@v4
+        if: steps.e2e.outcome == 'failure'
+        with:
+          name: e2e-out
+          path: web/e2e/out
+          retention-days: 14

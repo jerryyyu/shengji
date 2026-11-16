@@ -48,10 +48,5 @@
     "suite": "flows",
     "match": "lobby-phone-land: the code box and the links can be scrolled clear of the tab bar",
     "why": "QA1-7: a phone held sideways in the web lobby: the code box and the links stay under the tab bar"
-  },
-  {
-    "suite": "flows",
-    "match": "joined mid-game: still at the table after a reconnect|round end: Next round starts the next deal",
-    "why": "QA1-1: a seat taken by code in a running game is not remembered: after any reconnect the server answers \"Join a room first.\" and the table is frozen"
   }
 ]

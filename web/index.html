@@ -32,21 +32,66 @@
     <meta name="twitter:description" content="Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends." />
     <meta name="twitter:image" content="https://shengji.fly.dev/og/preview.jpg" />
     <meta name="twitter:image:alt" content="Four cards on a green card table: the ace of spades led and the big joker glowing gold as it wins the trick." />
+    <!-- Structured data for search engines; the browser ignores this script type. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": ["VideoGame", "SoftwareApplication"],
+        "name": "Sheng Ji 升级",
+        "alternateName": ["Sheng Ji", "升级", "Tractor", "拖拉机"],
+        "url": "https://shengji.fly.dev/",
+        "description": "Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends.",
+        "image": "https://shengji.fly.dev/og/preview.jpg",
+        "genre": ["Card game", "Trick-taking game"],
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web browser",
+        "gamePlatform": "Web browser",
+        "playMode": ["MultiPlayer", "SinglePlayer"],
+        "numberOfPlayers": {"@type": "QuantitativeValue", "value": 4},
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+        "subjectOf": [
+          {"@type": "WebPage", "name": "How to play Sheng Ji", "url": "https://shengji.fly.dev/rules", "inLanguage": "en"},
+          {"@type": "WebPage", "name": "升级玩法规则", "url": "https://shengji.fly.dev/rules/zh", "inLanguage": "zh-Hans"}
+        ]
+      }
+    </script>
     <!-- Static first paint: shown until React mounts (and replaces #root's
          contents), so a slow phone network gets the title instead of a blank
          page while the script downloads. Plain inline CSS, no script. -->
     <style>
       html, body { margin: 0; height: 100%; background: #14171e; }
-      .boot { height: 100%; display: flex; flex-direction: column; align-items: center;
+      .boot { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; align-items: center;
               justify-content: center; gap: 14px; text-align: center; color: #9aa3b2;
-              font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+              font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+              padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+                       max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
       .boot-title { margin: 0; font-size: 52px; letter-spacing: 0.05em; color: #f2c14e; }
       .boot-title span { display: block; margin-top: 6px; font-size: 18px; letter-spacing: 0.35em; color: #9aa3b2; }
       .boot-status { font-size: 13px; }
+      .boot-retry { min-width: 96px; min-height: 44px; padding: 0 20px; border-radius: 10px;
+                    border: 1px solid #3a4150; background: #232833; color: #e8ecf2;
+                    font: 600 15px system-ui, -apple-system, sans-serif; }
     </style>
   </head>
   <body>
-    <div id="root"><div class="boot"><h1 class="boot-title">升级 <span>SHENG JI</span></h1><div class="boot-status">Loading…</div></div></div>
+    <div id="root"><div class="boot"><h1 class="boot-title">升级 <span>SHENG JI</span></h1><div class="boot-status" role="status">Loading…</div></div></div>
+    <script>
+      // The app replaces this page once its script runs. If that has not
+      // happened by now the network is slow or down: say so, and offer a reload.
+      setTimeout(function () {
+        var status = document.querySelector(".boot-status");
+        if (!status || document.querySelector(".boot-retry")) return;
+        status.textContent = "Connecting… check your network";
+        var retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "boot-retry";
+        retry.textContent = "Retry";
+        retry.onclick = function () { location.reload(); };
+        status.parentNode.appendChild(retry);
+      }, 4000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

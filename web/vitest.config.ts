@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",     // localStorage + a DOM for component tests later
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    setupFiles: ["src/testSetup.ts"],
   },
 });

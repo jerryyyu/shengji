@@ -3445,7 +3445,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   width: min(320px, 82vw);
   max-height: min(380px, calc(100dvh - 80px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
   display: flex; flex-direction: column;
-  background: rgba(16, 22, 18, 0.97); color: #eee;
+  background: #101612; color: #eee;
   border: 1px solid rgba(255,255,255,0.16); border-radius: 12px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.45);
 }

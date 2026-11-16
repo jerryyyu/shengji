@@ -29,15 +29,10 @@ One rated round, for each rated account on team ``t``:
   2 levels 0.833, 3 or more 1.0) and the loser ``1 - S``; attackers who take
   the deal without going up a level (80 to 115 points) score
   ``TAKEOVER_WIN_SCORE`` and the bankers ``1 - TAKEOVER_WIN_SCORE``;
-* ``delta = K * (S - E)`` with ``K = K_PROVISIONAL`` for an account's first
-  ``PROVISIONAL_ROUNDS`` rated rounds and ``K_ESTABLISHED`` after; an
-  established account's ``K`` is halved when another rated player in the
-  round was still provisional at its start,
-  so a stranger's uncalibrated number moves an established one less.
+* ``delta = K * (S - E)`` with one ``K`` for every rated account.
 
-Partners share ``R_t``, ``E`` and ``S``, so two established partners move by
-the same amount; only a provisional partner's larger ``K`` (and the halving it
-causes for the other) makes them differ.
+Partners share ``R_t``, ``E``, ``S`` and ``K``, so they always move by the
+same amount.
 
 Abandoning: a signed-in player who leaves a round in play (``leave_room``),
 or whose seat the bot takes over after a disconnect and who has not
@@ -87,9 +82,8 @@ GUEST_RATING = BOT_RATING
 # 80) is worth this much team strength; the value is a starting estimate to
 # be calibrated from the round logs' banker win rate.
 BANKER_ADVANTAGE = 40.0
-PROVISIONAL_ROUNDS = 20
-K_PROVISIONAL = 40.0
-K_ESTABLISHED = 20.0
+PROVISIONAL_ROUNDS = 20   # the leaderboard's "new" label only; K is the same for everyone
+K = 40.0
 # Attackers who reach 80 to 115 points take the deal but gain no level.
 TAKEOVER_WIN_SCORE = 0.6
 LEAVER_SCORE_CAP = 0.5
@@ -132,14 +126,10 @@ def is_provisional(rated_rounds: int) -> bool:
     return rated_rounds < PROVISIONAL_ROUNDS
 
 
-def k_factor(rated_rounds: int, provisional_opponent: bool = False) -> float:
-    """``provisional_opponent``: another rated player in the round, partner
-    or opponent, was provisional when it started. Only an established
-    account's ``K`` is halved for it; a provisional account keeps the full
-    ``K_PROVISIONAL`` so it calibrates at the intended pace."""
-    if is_provisional(rated_rounds):
-        return K_PROVISIONAL
-    return K_ESTABLISHED / 2 if provisional_opponent else K_ESTABLISHED
+def k_factor(rated_rounds: int = 0, provisional_opponent: bool = False) -> float:
+    """One ``K`` for every rated account. The arguments are kept so callers
+    and stored events stay as they are."""
+    return K
 
 
 def team_strengths(seat_ratings: list[float], banker_team: int) -> tuple[float, float]:

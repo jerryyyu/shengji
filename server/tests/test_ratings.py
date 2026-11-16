@@ -125,7 +125,7 @@ def test_expected_score_and_round_score_worked_numbers():
     # attackers taking the deal at 80..115 points gain no level
     assert r.round_score(True, 0) == pytest.approx(0.6)
     assert r.round_score(False, 0) == pytest.approx(0.4)
-    assert r.k_factor(0) == 40 and r.k_factor(19) == 40 and r.k_factor(20) == 20
+    assert r.k_factor(0) == 40 and r.k_factor(19) == 40 and r.k_factor(20) == 40
 
 
 def test_team_strength_is_the_seat_mean_plus_the_banker_side():
@@ -208,7 +208,7 @@ def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monk
     # team 0 = (1100 + 1000) / 2 = 1050; team 1 = guest 1000 + bot 1000, banker +40
     exp = 1 / (1 + 10 ** ((1040 - 1050) / 400))
     assert events[0]["expected"] == pytest.approx(exp)
-    assert da == pytest.approx(20 * (2 / 3 - exp))
+    assert da == pytest.approx(40 * (2 / 3 - exp))
     with closing(sqlite3.connect(store.path)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 2
 
@@ -223,7 +223,7 @@ def test_a_guest_seat_counts_1000_whatever_the_guest_is_called(env, monkeypatch)
     assert event["partner_bot"] == 0 and event["partner"] == "P2" and event["opponents_bots"] == 0
 
 
-def test_a_provisional_player_moves_faster_than_an_established_partner(env, monkeypatch):
+def test_a_new_player_and_an_established_partner_move_together(env, monkeypatch):
     srv, store, _ = env
     new, _ = _user(store, "newbie")
     old, _ = _user(store, "veteran")
@@ -231,9 +231,9 @@ def test_a_provisional_player_moves_faster_than_an_established_partner(env, monk
     _force_outcome(monkeypatch, 30)
     Table(srv, [new, "bot", old, "bot"]).play_round(banker=0)
     by = {e["user_id"]: e for e in _events(store)}
-    # the veteran's K halves because the partner is provisional
-    assert by[new]["k"] == 40 and by[old]["k"] == 10
-    assert by[new]["delta"] == pytest.approx(4 * by[old]["delta"])
+    # one K for everyone: a new partner no longer shrinks the veteran's move
+    assert by[new]["k"] == by[old]["k"] == 40
+    assert by[new]["delta"] == pytest.approx(by[old]["delta"])
 
 
 @pytest.mark.parametrize("seats", [
@@ -250,11 +250,11 @@ def test_k_is_unchanged_when_no_other_rated_player_is_provisional(env, monkeypat
         _set(store, ids[name], 1000, rounds=40)
     _force_outcome(monkeypatch, 30)
     Table(srv, [ids.get(s, s) if isinstance(s, str) else s for s in seats]).play_round(banker=0)
-    assert {e["k"] for e in _events(store)} == {20}
+    assert {e["k"] for e in _events(store)} == {40}
 
 
 @pytest.mark.parametrize("other_seat", [1, 2])     # an opponent, the partner
-def test_k_halves_when_another_rated_player_is_provisional(env, monkeypatch, other_seat):
+def test_a_new_player_at_the_table_changes_no_one_s_k(env, monkeypatch, other_seat):
     from shengji.api import ratings
 
     srv, store, _ = env
@@ -267,13 +267,12 @@ def test_k_halves_when_another_rated_player_is_provisional(env, monkeypatch, oth
     seats[other_seat] = newer
     Table(srv, seats).play_round(banker=0)
     by = {e["user_id"]: e for e in _events(store)}
-    assert by[vet]["k"] == ratings.K_ESTABLISHED / 2
-    assert by[newer]["k"] == ratings.K_PROVISIONAL          # the veteran is established
-    assert by[vet]["delta"] == pytest.approx(ratings.K_ESTABLISHED / 2
-                                             * (by[vet]["actual"] - by[vet]["expected"]))
+    assert by[vet]["k"] == by[newer]["k"] == ratings.K
+    if other_seat == 2:                                    # partners move together
+        assert by[vet]["delta"] == pytest.approx(by[newer]["delta"])
 
 
-def test_two_provisional_players_keep_the_full_provisional_k(env, monkeypatch):
+def test_two_new_players_get_the_one_k(env, monkeypatch):
     from shengji.api import ratings
 
     srv, store, _ = env
@@ -281,15 +280,15 @@ def test_two_provisional_players_keep_the_full_provisional_k(env, monkeypatch):
     b, _ = _user(store, "bert")
     _force_outcome(monkeypatch, 30)
     Table(srv, [a, "bot", b, "bot"]).play_round(banker=0)
-    assert {e["k"] for e in _events(store)} == {ratings.K_PROVISIONAL}
+    assert {e["k"] for e in _events(store)} == {ratings.K}
 
 
-def test_k_factor_halves_only_an_established_account():
+def test_k_factor_is_one_k_for_everyone():
     from shengji.api import ratings as r
 
-    assert r.k_factor(0, provisional_opponent=True) == r.K_PROVISIONAL
-    assert r.k_factor(r.PROVISIONAL_ROUNDS, provisional_opponent=True) == r.K_ESTABLISHED / 2
-    assert r.k_factor(r.PROVISIONAL_ROUNDS) == r.K_ESTABLISHED
+    for rounds in (0, r.PROVISIONAL_ROUNDS - 1, r.PROVISIONAL_ROUNDS, 500):
+        for prov in (False, True):
+            assert r.k_factor(rounds, provisional_opponent=prov) == r.K == 40
 
 
 def test_a_rated_round_is_never_rated_twice(env, monkeypatch):
@@ -398,7 +397,7 @@ def test_a_mid_round_claimant_does_not_change_the_round_for_the_others(env, monk
     [event] = _events(store)
     assert event["user_id"] == host
     assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # seat 1 was a bot
-    assert event["k"] == 20             # the provisional claimant was not in the round
+    assert event["k"] == 40
 
 
 def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, monkeypatch):
@@ -414,9 +413,9 @@ def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, m
     table.play_round(banker=0)
     [event] = _events(store)
     assert event["user_id"] == a
-    assert event["k"] == 20                                # established, not halved
+    assert event["k"] == 40
     assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # the guest is 1000
-    assert event["delta"] == pytest.approx(5.52, abs=0.005)
+    assert event["delta"] == pytest.approx(11.04, abs=0.005)
     assert store.user(a)["rated_rounds"] == 31
 
 
@@ -854,8 +853,8 @@ def test_overlapping_rounds_take_k_from_the_round_start(env, monkeypatch):
     second.finish()
     ratings.flush()
     a, b = _events(store)
-    assert a["k"] == ratings.K_PROVISIONAL
-    assert b["k"] == ratings.K_PROVISIONAL
+    assert a["k"] == ratings.K
+    assert b["k"] == ratings.K
     assert b["rating_before"] == pytest.approx(a["rating_after"])
 
 

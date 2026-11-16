@@ -43,10 +43,5 @@
     "suite": "client",
     "match": "chat-phone-port-safari: panel, field, Send and Close above the keyboard",
     "why": "QA1-5: the turned table's chat panel stays behind Mobile Safari's keyboard"
-  },
-  {
-    "suite": "flows",
-    "match": "lobby-phone-land: the code box and the links can be scrolled clear of the tab bar",
-    "why": "QA1-7: a phone held sideways in the web lobby: the code box and the links stay under the tab bar"
   }
 ]

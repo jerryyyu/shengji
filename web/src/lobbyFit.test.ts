@@ -110,6 +110,9 @@ describe("the Play tab on a phone", () => {
     const panel = rule(".home-narrow .play-tab:not(.play-table-up) > .lobby-panel");
     expect(panel["align-self"]).toBe("stretch");
     expect(panel["margin-bottom"]).toBe("0");      // an auto margin would stop the stretch
+    // ...and on a screen too short for it (a phone held sideways) it grows to its
+    // content, so the screen's tab-bar clearance comes after the last row
+    expect(panel["min-height"]).toBe("min-content");
     // every other item keeps its height; the art takes what is left, 120 to 200px
     expect(rule(".home-narrow .play-tab:not(.play-table-up) .lobby-panel > :not(.lobby-preview), "
                 + ".home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview), "

@@ -4701,7 +4701,10 @@ body.keyboard-open .tabbar { display: none; }
 .home-narrow .play-tab > .lobby-panel:has(.lobby-preview) { padding-top: 0; }
 .home-narrow .play-tab .game-title { font-size: 44px; line-height: 1.1; }
 .home-narrow .play-tab .game-title-en { font-size: 15px; margin-top: 2px; }
-.home-narrow .play-tab:not(.play-table-up) > .lobby-panel { align-self: stretch; margin-bottom: 0; }
+/* Held sideways the column is taller than the screen: the panel then grows
+   to its content rather than overflowing itself, so the screen scrolls the
+   code box and How to play clear of the tab bar. */
+.home-narrow .play-tab:not(.play-table-up) > .lobby-panel { align-self: stretch; margin-bottom: 0; min-height: min-content; }
 .home-narrow .play-tab:not(.play-table-up) .lobby-panel > :not(.lobby-preview),
 .home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview),
 .home-narrow .play-tab:not(.play-table-up) .play-side > * { flex-shrink: 0; }

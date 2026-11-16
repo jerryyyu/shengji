@@ -30,11 +30,50 @@ function ensureCtx(): AudioContext {
     window.AudioContext ??
     (window as unknown as { webkitAudioContext: typeof AudioContext })
       .webkitAudioContext;
-  if (!ctx) ctx = new AC();
-  if (ctx.state === "suspended") {
+  if (!ctx || (ctx.state as string) === "closed") ctx = watch(new AC());
+  if ((ctx.state as string) !== "running") {
     void ctx.resume().catch(() => {});
   }
   return ctx;
+}
+
+/** iOS WebKit moves a running context to "interrupted" (the keyboard's
+ *  dictation, a call, Siri, another app's audio) or "suspended" without any
+ *  visibility change. The gesture listeners were detached once audio first
+ *  ran, so each such change re-arms them; otherwise the page stays silent
+ *  until a reload. */
+function watch(c: AudioContext): AudioContext {
+  c.onstatechange = () => {
+    const state = c.state as string;
+    if (state === "running" || state === "closed") return;
+    void c.resume().catch(() => {});
+    armUnlock();
+  };
+  return c;
+}
+
+/** Creates the audio context while the lobby is idle. Creating one is a long
+ *  task (100 ms and more on a phone); done inside the first tap it lands on
+ *  Play vs bots and stalls the table's first frames. A context made outside a
+ *  gesture starts suspended, and the unlock below resumes it on the next tap. */
+export function prewarmAudio(): void {
+  if (ctx || typeof window === "undefined") return;
+  const AC = window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return;
+  const make = () => {
+    if (ctx) return;
+    try {
+      ctx = watch(new AC());
+    } catch {
+      /* no audio here; the unlock path tries again on a tap */
+    }
+  };
+  const idle = (window as unknown as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  }).requestIdleCallback;
+  if (idle) idle(make, { timeout: 2000 });
+  else window.setTimeout(make, 500);
 }
 
 /** Resolve once the context is running, or immediately if it stays blocked. */
@@ -79,6 +118,16 @@ function disarmUnlock(): void {
 }
 
 function unlockHandler(): void {
+  // A context iOS left "interrupted" (after a call, dictation or a trip to
+  // the background) can refuse every later resume. A context made inside a
+  // gesture may start, so the stuck one is replaced here, synchronously, while
+  // the gesture still counts. Decoded clips are AudioBuffers and play in any
+  // context.
+  if (ctx !== null && (ctx.state as string) === "interrupted") {
+    const stuck = ctx;
+    ctx = null;
+    void stuck.close().catch(() => {});
+  }
   void ensureRunning().then((c) => {
     if (c.state === "running") disarmUnlock();
   });

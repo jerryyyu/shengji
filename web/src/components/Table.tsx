@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
@@ -10,10 +10,31 @@ import { DUR } from "../motion";
 import Hud from "./Hud";
 import RoundEndModal from "./RoundEndModal";
 import TrickArea, { seatPos } from "./TrickArea";
-import XrayPanel from "./XrayPanel";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
+import ChatBubbles from "./ChatBubbles";
+import OpponentActions from "./OpponentActions";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
+import Toast from "./Toast";
+import HandLine from "./HandLine";
+import { leadToFollow } from "../follow";
+import { followHint, followsSuit } from "../followRules";
+import { TimerRing } from "./MoveClock";
+import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
+import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
+import { showToast } from "../toast";
+import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
+import { BURY_HELP, bankerText, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
+import LastTrickPanel from "./LastTrickPanel";
+import LeaveSheet from "./LeaveSheet";
+import { SeatHeldPill } from "./ConnectionPill";
+import { useAnyTapIsBack } from "./seatHeld";
+
+// the debug overlay loads on its first open, so a player's page never carries it
+const XrayPanel = lazy(() => import("./XrayPanel"));
+
+/** The declare window's full length, for the countdown ring (server.py DECLARE_GRACE). */
+const DECLARE_WINDOW_SECS = 5;
 
 const LAST_TRICK_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
@@ -63,22 +84,19 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
   }, [phase]);
   return (
     <>
-      <div className="thinking" role="status" aria-live="polite">
+      {/* The seat's gold edge shows whose turn it is; this status is for screen readers. */}
+      <div className="thinking sr-only" role="status" aria-live="polite">
         {phase === "bury" ? "Choosing 8 cards to bury…" : "Considering the next play…"}
-      </div>
-      <div className="bot-progress" role="progressbar"
-        title="Working — completion percentage is not available."
-        aria-label={phase === "bury" ? "Bot choosing cards to bury" : "Bot considering its play"}>
-        <span />
       </div>
       {/* Cosmetic copy only; no card identities, scores, or search reasoning.
           Keep rotation outside the live region so screen readers are not spammed. */}
-      <div className="bot-banter" title="Playful flavor, not model reasoning.">
-        <span className="bot-banter-label">Bot banter: </span>{BOT_BANTER[phase][line]}
-      </div>
+      <div className="bot-banter">{BOT_BANTER[phase][line]}</div>
     </>
   );
 }
+
+/** How long a refused Play's hint stays above the hand. */
+export const HINT_MS = 2600;
 
 /** How long the full-name popover stays up after a tap or long press. */
 const FULL_NAME_MS = 2500;
@@ -88,6 +106,10 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const pos = seatPos(player.seat, state.you);
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
+  // a long press (or a right click) on a person's seat also offers mute and
+  // report; offline play seats only bots, so it never offers them there
+  const [actions, setActions] = useState(false);
+  const canAct = !player.is_bot;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   useEffect(() => {
@@ -100,6 +122,11 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
     if (pressTimer.current !== null) { window.clearTimeout(pressTimer.current); pressTimer.current = null; }
   };
   const takeover = useCountdown(player.takeover_in ?? null);
+  // the seat's own move clock, so everyone sees whom the table waits for;
+  // only the seat's owner is buzzed
+  const moveClock = useMoveClock(player.turn_deadline, state, false);
+  const status = seatStatus(player, takeover);
+  const countdown = seatStatusParts(player, takeover);
   const onTurn = state.turn === player.seat;
   const actionPhase = state.phase === "bury" || state.phase === "play";
   const botControlled = player.is_bot || player.controller === "bot_cover";
@@ -117,25 +144,43 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
            longPressed.current = false;
            pressTimer.current = window.setTimeout(() => {
              pressTimer.current = null; longPressed.current = true; setFullName(true);
+             if (canAct) setActions(true);
            }, LONG_PRESS_MS);
+         }}
+         onContextMenu={(event) => {
+           if (!canAct) return;
+           event.preventDefault();
+           setActions(true);
          }}
          onPointerUp={endPress}
          onPointerLeave={endPress}
          onPointerCancel={endPress}>
       {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
+      {actions && canAct ? (
+        <OpponentActions room={state.room} seat={player.seat} name={player.name} onClose={() => setActions(false)} />
+      ) : null}
       <div className="opp-name">
-        {player.is_banker ? <span className="banker-crown" title="Banker">👑</span> : null}
-        <span className="opp-name-text">{player.name}</span>
+        {/* the phone pill carries the team as a dot and the turn as a gold
+            fill ending in "…" */}
+        <span className={`seat-dot t${player.team}`} aria-hidden="true" />
+        {/* the crown alone marks the banker; its label says so in words */}
+        {player.is_banker ? (
+          <span className="banker-crown" role="img" aria-label={bankerText(player, state.you)}>👑</span>
+        ) : null}
+        {/* a seat whose owner left is the bot's now: "Bot (Alice left)" is its name */}
+        <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : player.name}</span>
+        {/* always drawn, so the label's width never changes with the turn */}
+        <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
+        <TimerRing left={moveClock} total={MOVE_SECS} thin />
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
-        {!player.connected && !player.is_bot ? (
-          <span className="off-tag">
-            {takeover !== null && takeover > 0
-              ? `offline — bot in ${Math.ceil(takeover)}s`
-              : player.controller === "bot_cover"
-                ? "bot playing"
-                : "offline"}
-          </span>
+        {player.away && player.connected ? <span className="away-tag">Away</span> : null}
+        {/* the phone pill keeps the count whole and drops the words before it
+            (they stay for screen readers) */}
+        {status !== null && !player.left ? (
+          countdown ? (
+            <span className="off-tag counting"><span className="off-lead">{countdown.lead}</span>{countdown.count}</span>
+          ) : <span className="off-tag">{status}</span>
         ) : null}
       </div>
       <div className="opp-cards">
@@ -162,9 +207,10 @@ function isYourTurnCue(state: GameState): boolean {
 }
 
 /** Haptic ticks on the moments that matter (no-ops outside the iOS app):
- *  your turn arriving, a declare option appearing, your team taking a trick
- *  or the round. Each fires on the transition, never on a repeat state. */
-function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
+ *  your turn arriving, a declare option appearing and your team taking the
+ *  round. Each fires on the transition, never on a repeat state; a won trick
+ *  is shown, not felt, since it comes about 25 times a round. */
+function useTableHaptics(state: GameState) {
   const turn = isYourTurnCue(state);
   const canDeclare = (state.phase === "deal" || state.phase === "declare") && state.declare_options.length > 0;
   const myTeam = state.players.find((p) => p.seat === state.you)?.team ?? null;
@@ -174,14 +220,59 @@ function useTableHaptics(state: GameState, shownLastTrick: LastTrick | null) {
     if (canDeclare && !prev.current.canDeclare) haptic("declare");
     prev.current = { turn, canDeclare };
   }, [turn, canDeclare]);
+  // every server state is a fresh object, so the round's arrival is the
+  // transition from no result to one, not a change of identity
+  const wonRound = state.round_result !== null && myTeam !== null && state.round_result.winner_team === myTeam;
+  const hadResult = state.round_result !== null;
+  const prevResult = useRef(hadResult);
   useEffect(() => {
-    if (!shownLastTrick || myTeam === null) return;
-    if (state.players.find((p) => p.seat === shownLastTrick.winner)?.team === myTeam) haptic("won");
-  }, [shownLastTrick]);   // once per finished trick, not on every state
-  const result = state.round_result;
+    if (hadResult && !prevResult.current && wonRound) haptic("won");
+    prevResult.current = hadResult;
+  }, [hadResult, wonRound]);
+}
+
+/** The joins still outstanding at each room, once told, so a remount of the
+ *  table (How to play and back) tells none of them again. A join that is no
+ *  longer listed is forgotten, so the same join later is news. */
+const toldJoins = new Map<string, Set<string>>();
+
+/** An open-table newcomer is told once, as a toast: "Alice joins next trick"
+ *  before the handover, "Alice joins next round" when seated at the round
+ *  end. The newcomer itself is not told. */
+function useJoinToasts(state: GameState) {
+  const lines = (state.joining ?? []).filter((j) => j.seat !== state.you && !state.joining_you);
+  const keys = lines.map((j) => `${j.seat}:${j.when}:${j.name}`);
   useEffect(() => {
-    if (result && myTeam !== null && result.winner_team === myTeam) haptic("won");
-  }, [result]);           // once per round result
+    const told = toldJoins.get(state.room) ?? new Set<string>();
+    toldJoins.set(state.room, new Set(keys));
+    lines.forEach((j, i) => {
+      if (told.has(keys[i])) return;
+      showToast(`${j.name} joins next ${j.when === "round" ? "round" : "trick"}`, { info: true, dot: (j.seat % 2) as 0 | 1 });
+    });
+    // told on a new key only; the lines are read with it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.room, keys.join("|")]);
+}
+
+/** The decision whose clock is running, kept across a remount of the
+ *  table (opening How to play and coming back is the same decision). */
+let openTurn: { key: string; clock: TurnClock; watched: boolean } | null = null;
+
+/** The joining pill's Leave: the seat is not yours until this trick ends,
+ *  but leaving still costs what leaving the joined round costs, so it asks
+ *  through the leave sheet like every other leave. */
+function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button className="btn join-leave" onClick={() => setAsking(true)}>Leave</button>
+      {asking ? (
+        <LeaveSheet context={{ kind: "game", ranked, guest }}
+                    onStay={() => setAsking(false)}
+                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
+      ) : null}
+    </>
+  );
 }
 
 export default function Table({ state }: { state: GameState }) {
@@ -228,11 +319,17 @@ export default function Table({ state }: { state: GameState }) {
   // - an error comes back: pending clears and the selection stays.
   // The socket opening alone settles nothing, and neither does a same-hand
   // broadcast on the connection the play was sent on.
-  const [pending, setPending] = useState<{ handKey: string; turn: number | null; generation: number } | null>(null);
+  const [pending, setPending] = useState<{ kind: "play" | "bury"; handKey: string; turn: number | null; generation: number } | null>(null);
   const handKey = state.hand.map((c) => c.id).join(",");
+  // your own plays so far in this browser; the first few get the coach
+  const [plays, setPlays] = useState(playsMade);
   useEffect(() => {
     if (!pending) return;
     if (handKey !== pending.handKey || state.turn !== pending.turn) {
+      // Only a state on the connection the play went out on proves it was
+      // yours: across a reconnect the seat's bot may have moved instead.
+      const sameLink = conn.generation === pending.generation;
+      if (pending.kind === "play" && sameLink && isNewcomer(plays)) setPlays(recordPlay());
       setPending(null);
       setSelected(new Set());
     } else if (conn.generation !== pending.generation) {
@@ -241,16 +338,28 @@ export default function Table({ state }: { state: GameState }) {
     // settles on each new state, so a re-render of the same state is no answer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+  // the turn telemetry reads the send in flight when a turn ends or an error comes
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  const turnRef = useRef<TurnClock | null>(null);
   useEffect(() => conn.subscribe((msg: ServerMsg) => {
-    if (msg.type === "error") setPending(null);
+    if (msg.type !== "error") return;
+    if (pendingRef.current !== null && turnRef.current !== null) {
+      turnRef.current.refused += 1;
+      telemetry.notice("illegal_play", "table");
+    }
+    setPending(null);
   }), []);
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const online = status === "open";
+  // What Play or Bury says while its send is unanswered: the cards stay put
+  // until the server's state moves them, and a dropped connection says so
+  // instead of waiting silently.
+  const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
-    haptic("play");
-    setPending({ handKey, turn: state.turn, generation: conn.generation });
+    setPending({ kind: msg.type, handKey, turn: state.turn, generation: conn.generation });
   };
 
   // When the trick resets and last_trick changed, linger on the finished trick
@@ -286,17 +395,123 @@ export default function Table({ state }: { state: GameState }) {
 
   const me = state.players.find((p) => p.seat === state.you) ?? null;
   const opponents = state.players.filter((p) => p.seat !== state.you);
-  const myTurn = state.turn === state.you;
+  // a newcomer waiting for the handover watches its seat: the bot plays it
+  const watching = state.joining_you === true;
+  const myTurn = state.turn === state.you && !watching;
   const iAmBanker = me?.is_banker ?? false;
 
-  const selectable =
-    (state.phase === "bury" && iAmBanker) || state.phase === "play";
+  const selectable = !watching &&
+    ((state.phase === "bury" && iAmBanker) || state.phase === "play");
 
-  useTableHaptics(state, shownLastTrick);
+  const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
+
+  useTableHaptics(state);
+  // your move timer (ranked tables): the ring for the whole decision, red in
+  // its last seconds, and a haptic at five
+  const clock = useMoveClock(me?.turn_deadline, state);
+  // the post-deal declare window: a ring on its buttons, no haptic
+  const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
+  const away = me?.away ?? false;
+  // a bot holds your seat: one pill, and any tap or key counts as back; while
+  // the socket is down the connection pill says Reconnecting in its place
+  const held = away && !watching && online;
+  const back = useAnyTapIsBack(held, () => conn.send({ type: "im_back" }));
+
+
+  // The last trick, reopened on request; it stays until dismissed.
+  const [lastOpen, setLastOpen] = useState(false);
+  useEffect(() => { if (state.phase !== "play") setLastOpen(false); }, [state.phase]);
+
+  // A tap on a Play that cannot go yet says why, once, above the hand.
+  const [hint, setHint] = useState<{ text: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!hint) return;
+    const t = window.setTimeout(() => setHint(null), HINT_MS);
+    return () => window.clearTimeout(t);
+  }, [hint]);
+  useEffect(() => { setHint(null); }, [selected, state.turn, state.phase]);
+
+  // A newcomer's turn says what to tap, lights the cards that follow the
+  // lead, and after NUDGE_MS with nothing chosen nudges once more.
+  // The switch in the menu pins the coach on or off; untouched, it follows
+  // the newcomer count and the account's rounds. Flipping it says so in a toast.
+  const coachSwitch = useCoachSetting();
+  const newAccount = useAccountNewcomer();
+  useEffect(() => subscribeCoach((s) => {
+    telemetry.tap(s === "on" ? "coach_on" : "coach_off");
+    showToast(s === "on" ? "Coach on" : "Coach off", { info: true });
+  }), []);
+  useJoinToasts(state);
+  // One decision for all teaching text at the table: the coach's cues and
+  // the declare and bury help. A refused tap's reason is feedback, not
+  // teaching, and shows either way.
+  const coachOn = coachShows(coachSwitch, plays, newAccount);
+  const coach = state.phase === "play" && myTurn && pending === null && coachOn
+    ? coachFor(state.hand, lead, state.trump)
+    : null;
+  const coaching = coach !== null;
+
+  // One of your decisions, from the state that hands it to you to the state
+  // that moves past it. The key advances when a play lands or a new trick
+  // starts (the trick's leader and size, your hand's size), so a last
+  // follower who wins and leads at once closes one decision and opens the
+  // next, while a broadcast that changes neither is the same decision. It
+  // ends as yours when this socket's own send was in flight, else the bot's
+  // (away) or the move timer's. Leaving the table is no transition: the
+  // open clock is kept for a remount and never reported as a finished turn.
+  useScreen("table");
+  const turnActive = !watching &&
+    ((state.phase === "bury" && iAmBanker) || (state.phase === "play" && myTurn));
+  const decisionKey = turnActive
+    ? `${state.room}:${state.phase}:${state.trick?.leader ?? "-"}:${state.trick?.plays.length ?? 0}:${state.hand.length}`
+    : null;
+  useEffect(() => {
+    const open = openTurn;
+    if (open !== null && open.key !== decisionKey) {
+      openTurn = null;
+      turnRef.current = null;
+      // seen ending only if this mount watched it: a turn that ended while
+      // the table was not shown has no observed outcome and is dropped
+      if (open.watched) {
+        // the settle effect has not re-rendered yet, so pendingRef still
+        // holds the send (if any) that this state answered
+        const sent = pendingRef.current;
+        const mine = sent !== null && sent.generation === conn.generation;
+        telemetry.turnDone(open.clock.finish(mine ? "you" : me?.away ? "bot" : "timer"));
+      }
+    }
+    if (decisionKey === null) return;
+    if (openTurn === null) {
+      const phase = state.phase === "bury" ? "bury" : "play";
+      openTurn = {
+        key: decisionKey, watched: true,
+        clock: new TurnClock(phase, phase === "bury" ? 8 : lead ? lead.length : 0,
+                             lead ? leadKind(lead) : undefined, coaching, nextTurnNumber()),
+      };
+    }
+    openTurn.watched = true;
+    turnRef.current = openTurn.clock;
+    // the decision is its key; the rest is read when it opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisionKey]);
+  useEffect(() => () => {
+    // unmounting: keep the clock for a remount, but this mount no longer sees it end
+    if (openTurn !== null) openTurn.watched = false;
+    turnRef.current = null;
+  }, []);
+  const nothingChosen = selected.size === 0;
+  const [nudge, setNudge] = useState(false);
+  useEffect(() => {
+    setNudge(false);
+    if (!coaching || !nothingChosen) return;
+    const t = window.setTimeout(() => setNudge(true), NUDGE_MS);
+    return () => window.clearTimeout(t);
+  }, [coaching, nothingChosen, state.turn, handKey]);
 
   // Stable identity so memoized hand cards skip re-rendering (see Hand).
   const toggle = useCallback((id: number) => {
     haptic("select");
+    turnRef.current?.select();
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -311,22 +526,34 @@ export default function Table({ state }: { state: GameState }) {
   const showingLast = shownLastTrick !== null;
   const trickToShow = showingLast
     ? shownLastTrick
-    : state.phase === "play" || state.phase === "round_end" || state.phase === "game_over"
+    : state.phase === "play" || state.phase === "round_end"
       ? state.trick
       : null;
   const declaration =
     state.phase === "deal" || state.phase === "declare" || state.phase === "bury"
       ? state.current_declaration
       : null;
+  // how many cards your own slot of the cross holds, so the phone row's
+  // crown can stand clear of them and of their LEAD / WINS tags
+  const mySlotCards = trickToShow?.plays.find((p) => p.seat === state.you)?.cards.length
+    ?? (declaration?.seat === state.you ? declaration.cards.length : 0);
 
   let actionBar: ReactNode = null;
-  if (state.phase === "deal" || state.phase === "declare") {
+  // the hand line's parts that the phase sets: why Play waits, and the
+  // phase's help while the coach is on
+  let blocked: string | null = null;
+  let phaseHelp: string | null = null;
+  if (watching) {
+    actionBar = null;
+  } else if (state.phase === "deal" || state.phase === "declare") {
     // Declaration is a race: options can appear for anyone during dealing and
     // during the short declare window afterwards. No Pass while dealing.
     const canDeclare = state.declare_options.length > 0;
     const iPassed = state.passed.includes(state.you);
+    if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
+        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}
@@ -345,33 +572,62 @@ export default function Table({ state }: { state: GameState }) {
             {iPassed ? "Passed" : "Pass"}
           </button>
         ) : null}
-        {!canDeclare ? (
-          <span className="action-hint">
-            {state.phase === "deal" ? "Dealing cards…" : "Waiting for declarations…"}
-          </span>
-        ) : null}
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
+    if (coachOn) phaseHelp = BURY_HELP;
     actionBar = (
+      <>
+      <TimerRing left={clock} total={MOVE_SECS} />
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
+        aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        Bury 8 cards ({selectedIds.length}/8)
+        {pendingLabel ?? `Bury (${selectedIds.length}/8)`}
       </button>
+      {/* the points are teaching, like the phase's help: shown only with the coach */}
+      {coachOn ? <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span> : null}
+      </>
     );
   } else if (state.phase === "play" && myTurn) {
+    const choosing = selectedIds.length === 0 && pending === null;
+    // following, a play is exactly as many cards as the lead
+    const need = lead ? lead.length : null;
+    const countWrong = need !== null && selectedIds.length !== need;
+    // the right count but too few of the led suit: Play waits and says why
+    const offSuit = lead !== null && !countWrong
+      && followsSuit(state.hand, selectedIds, lead, state.trump) === false;
+    const playLabel = selectedIds.length === 0
+      ? "Play"
+      : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
+    const playDisabled = selectedIds.length === 0 || countWrong || offSuit || pending !== null || !online;
+    // a disabled button takes no taps, so its wrapper hears them and explains
+    const whyNot = () => {
+      if (!playDisabled || pending !== null || !online) return;
+      const text = lead ? followHint(lead, state.trump) : "Choose the cards to lead";
+      if (turnRef.current) turnRef.current.disabledTaps += 1;
+      telemetry.notice(lead ? "follow_hint" : "lead_hint", "table");
+      setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
+      haptic("error");
+    };
+    if (offSuit && lead) blocked = followHint(lead, state.trump);
     actionBar = (
       <>
-        <button
-          className="btn primary"
-          disabled={selectedIds.length === 0 || pending !== null || !online}
-          onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
-        >
-          Play {selectedIds.length > 0 ? `(${selectedIds.length})` : ""}
-        </button>
+        <TimerRing left={clock} total={MOVE_SECS} />
+        <span className="play-wrap" onClick={whyNot}>
+          <button
+            className={`btn primary${choosing ? " your-turn" : ""}`}
+            disabled={playDisabled}
+            aria-busy={pending !== null || undefined}
+            onClick={() => sendAction({ type: "play", card_ids: selectedIds })}
+          >
+            {/* a phone shows "Your turn" on Play until you choose a card */}
+            <span className="play-text">{pendingLabel ?? playLabel}</span>
+            <span className="your-turn-text">Your turn</span>
+          </button>
+        </span>
         <button
           className="btn subtle"
           disabled={selectedIds.length === 0 || pending !== null}
@@ -381,9 +637,6 @@ export default function Table({ state }: { state: GameState }) {
         </button>
       </>
     );
-  } else if (state.turn !== null && !myTurn) {
-    const turnPlayer = state.players.find((p) => p.seat === state.turn);
-    actionBar = <span className="action-hint">Waiting for {turnPlayer?.name ?? "…"}</span>;
   }
 
   return (
@@ -393,6 +646,16 @@ export default function Table({ state }: { state: GameState }) {
         {opponents.map((p) => (
           <OpponentPanel key={p.seat} player={p} state={state} />
         ))}
+
+        {state.phase === "play" && state.last_trick ? (
+          <button className="btn subtle last-trick-btn" aria-expanded={lastOpen}
+                  onClick={() => setLastOpen((o) => !o)}>
+            Last trick
+          </button>
+        ) : null}
+        {lastOpen && state.last_trick ? (
+          <LastTrickPanel state={state} trick={state.last_trick} onClose={() => setLastOpen(false)} />
+        ) : null}
 
         <TrickArea
           state={state}
@@ -405,35 +668,55 @@ export default function Table({ state }: { state: GameState }) {
 
         <div className="you-area">
           {/* your name and your controls; a phone centres them as one row */}
-          <div className="you-row">
+          <div className="you-row" style={{ "--my-slot-n": mySlotCards } as CSSProperties}>
           <div className={`you-tagline team${me?.team ?? 0}${myTurn ? " on-turn" : ""}`}>
-            {iAmBanker ? <span className="banker-crown" title="Banker">👑</span> : null}
+            {iAmBanker && me ? (
+              <span className="banker-crown" role="img" aria-label={bankerText(me, state.you)}>👑</span>
+            ) : null}
             <span className="you-name">{me?.name ?? "You"}</span>
             {myTurn ? <span className="your-turn-tag">your turn</span> : null}
             {state.phase === "declare" && state.passed.includes(state.you) ? (
               <span className="ready-tag">ready</span>
             ) : null}
           </div>
-          <div className="action-bar">{actionBar}</div>
+          <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{actionBar}</div>
           </div>
+          {/* the one line between the trick and your hand */}
+          <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
+                    tap={hint?.n ?? 0} nudge={nudge} />
           <Hand hand={state.hand} selected={selected} selectable={selectable} onToggle={toggle}
-                rects={handRects} />
+                rects={handRects} lit={coach?.follow ?? null} />
         </div>
       </div>
 
-      {(state.phase === "round_end" || state.phase === "game_over") && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} />
+      {state.phase === "round_end" && state.round_result ? (
+        <RoundEndModal state={state} result={state.round_result} clock={clock} />
       ) : null}
 
-      {xrayOpen ? <XrayPanel state={state} onClose={() => setXrayOpen(false)} /> : null}
+      {xrayOpen ? (
+        <Suspense fallback={null}>
+          <XrayPanel state={state} onClose={() => setXrayOpen(false)} />
+        </Suspense>
+      ) : null}
       {state.players.filter((p) => !p.is_bot).length > 1 && (
         <button className="chat-launch" onClick={() => setChatOpen((o) => !o)}
                 aria-label="Chat">
           💬{unread > 0 && <span className="chat-badge">{unread}</span>}
         </button>
       )}
+      <ChatBubbles state={state} open={chatOpen} onOpen={() => setChatOpen(true)} />
       <ChatPanel messages={chat} you={state.you} open={chatOpen}
                  onClose={() => setChatOpen(false)} />
+      {watching ? (
+        <div className="away-pill join-pill" role="status">
+          <span className="away-pill-text">
+            <b>Joining after this trick</b>
+          </span>
+          <JoinPillLeave ranked={!!state.matched} guest={state.guest === true} />
+        </div>
+      ) : null}
+      {held ? <SeatHeldPill onBack={back} /> : null}
+      <Toast place="table" />
     </div>
   );
 }

@@ -11,6 +11,8 @@ import copy
 import os
 import time
 
+from fastapi import Request
+
 
 _BURY_WORK_FIELDS = (
     "cap",
@@ -529,16 +531,40 @@ async def _xray_room(room, seat: int, fallback_bot) -> dict:
     return await run_debug_search(compute)
 
 
+XRAY_FLAG = "SHENGJI_DEBUG_XRAY"
+XRAY_HEADER = "x-debug-token"
+# A heavy search per call: a handful a minute is enough for a person
+# watching one table.
+XRAY_LIMIT = (20, 60.0)
+
+
+def xray_enabled() -> bool:
+    """The X-ray shows any seat's hand, so it exists only on a server
+    started with the flag set and a token to check against."""
+    return (os.environ.get(XRAY_FLAG, "") == "1"
+            and bool(os.environ.get("SHENGJI_DEBUG_TOKEN", "")))
+
+
 def register_debug(app, rooms) -> None:
-    # ------------------------------------------------------------------- debug
-    DEBUG_TOKEN = os.environ.get("SHENGJI_DEBUG_TOKEN", "")
+    """Mount ``/debug/xray`` only when :func:`xray_enabled`; otherwise the
+    route does not exist and the path is the static app's 404."""
+    if not xray_enabled():
+        return
+    import hmac
+
+    from . import accounts
     from ..ai.mcbot import MCBot as _XrayBot  # noqa: E402
+
+    debug_token = os.environ["SHENGJI_DEBUG_TOKEN"].encode()
+    limiter = accounts.RateLimiter(*XRAY_LIMIT)
     room_bot_for_xray = _XrayBot(seed=1234)
 
-
     @app.get("/debug/xray")
-    async def debug_xray(room: str, seat: int, token: str = "") -> dict:
-        if not DEBUG_TOKEN or token != DEBUG_TOKEN:
+    async def debug_xray(request: Request, room: str, seat: int) -> dict:
+        if not limiter.allow(accounts.client_ip(request)):
+            return {"error": "not found"}
+        given = request.headers.get(XRAY_HEADER, "").encode()
+        if not hmac.compare_digest(given, debug_token):
             return {"error": "not found"}
         r = rooms.get(room.upper())
         if r is None:

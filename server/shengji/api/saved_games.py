@@ -52,7 +52,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from ..engine.cards import RANKS
-from ..engine.round import HAND_SIZE, KITTY_SIZE
+from ..engine.round import HAND_SIZE
 from . import accounts
 
 log = logging.getLogger(__name__)
@@ -268,7 +268,6 @@ LIST_LIMIT_MAX = 50
 READ_LIMITER = accounts.RateLimiter(limit=120, window=60.0)
 GAME_ID_RE = re.compile(r"[0-9a-f]{32}")
 DEAL_CARDS = 4 * HAND_SIZE
-DECK_CARDS = DEAL_CARDS + KITTY_SIZE
 _COMMON_KEYS = ("t", "room", "round", "e")
 # What each record kind may show. A kind not named here is never served
 # (``model_search``, ``bot_timing``, ``declare_decision``, ``chat``, ...), and

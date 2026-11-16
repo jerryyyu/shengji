@@ -135,7 +135,7 @@ export function ReplayBoard({ replay }: { replay: Replay }) {
     <div className="replay">
       <div className="replay-info">
         <span className="chip">Trump <TrumpLabel suit={setup.trumpSuit} rank={setup.trumpRank} /></span>
-        <span className="chip">Levels: you {setup.levels[myTeam]} · them {setup.levels[1 - myTeam]}</span>
+        <span className="chip">Levels {setup.levels[myTeam]}–{setup.levels[1 - myTeam]}</span>
         <span className="chip">Attackers {frame.attackerPoints}</span>
       </div>
       <div className="replay-seats">

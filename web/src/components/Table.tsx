@@ -404,7 +404,7 @@ export default function Table({ state }: { state: GameState }) {
   const clock = useMoveClock(me?.turn_deadline, state);
   // the post-deal declare window: a ring on its buttons, no haptic
   const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
-  const away = (me?.away ?? false) && state.phase !== "game_over";
+  const away = me?.away ?? false;
   // a bot holds your seat: one pill, and any tap or key counts as back; while
   // the socket is down the connection pill says Reconnecting in its place
   const held = away && !watching && online;
@@ -519,7 +519,7 @@ export default function Table({ state }: { state: GameState }) {
   const showingLast = shownLastTrick !== null;
   const trickToShow = showingLast
     ? shownLastTrick
-    : state.phase === "play" || state.phase === "round_end" || state.phase === "game_over"
+    : state.phase === "play" || state.phase === "round_end"
       ? state.trick
       : null;
   const declaration =
@@ -678,7 +678,7 @@ export default function Table({ state }: { state: GameState }) {
         </div>
       </div>
 
-      {(state.phase === "round_end" || state.phase === "game_over") && state.round_result ? (
+      {state.phase === "round_end" && state.round_result ? (
         <RoundEndModal state={state} result={state.round_result} clock={clock} />
       ) : null}
 

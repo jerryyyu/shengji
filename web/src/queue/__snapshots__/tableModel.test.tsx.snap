@@ -104,6 +104,7 @@ exports[`the table panel, fixture by fixture > join code: a dropped player's sea
 {
   "dom": [
     "<section class="tp tp-join-code" aria-labelledby="«id0»">",
+    "<p class="tp-tag">Casual</p>",
     "<h2 class="tp-title" id="«id0»">Join Mei</h2>",
     "<div class="tp-teams">",
     "<span class="tp-team-label ours" aria-hidden="true">Us</span>",
@@ -155,7 +156,7 @@ exports[`the table panel, fixture by fixture > join code: a dropped player's sea
   "taps": [
     {
       "change": {
-        "at": 41,
+        "at": 42,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",
@@ -177,7 +178,7 @@ exports[`the table panel, fixture by fixture > join code: a dropped player's sea
     {
       "change": {
         "at": 0,
-        "cut": 41,
+        "cut": 42,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">",
           "</div>",
@@ -210,6 +211,7 @@ exports[`the table panel, fixture by fixture > join code: a full room 1`] = `
 {
   "dom": [
     "<section class="tp tp-join-code" aria-labelledby="«id0»">",
+    "<p class="tp-tag">Casual</p>",
     "<h2 class="tp-title" id="«id0»">Join Mei</h2>",
     "<p class="tp-line">Table is full</p>",
     "<div class="tp-teams">",
@@ -263,7 +265,7 @@ exports[`the table panel, fixture by fixture > join code: a full room 1`] = `
     {
       "change": {
         "at": 0,
-        "cut": 42,
+        "cut": 43,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">",
           "</div>",
@@ -346,6 +348,7 @@ exports[`the table panel, fixture by fixture > join code: a queued table with a 
 {
   "dom": [
     "<section class="tp tp-join-code" aria-labelledby="«id0»">",
+    "<p class="tp-tag">Casual</p>",
     "<h2 class="tp-title" id="«id0»">Join Mei</h2>",
     "<div class="tp-teams">",
     "<span class="tp-team-label ours" aria-hidden="true">Us</span>",
@@ -398,7 +401,7 @@ exports[`the table panel, fixture by fixture > join code: a queued table with a 
   "taps": [
     {
       "change": {
-        "at": 39,
+        "at": 40,
         "cut": 1,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Joining…</button>",
@@ -416,7 +419,7 @@ exports[`the table panel, fixture by fixture > join code: a queued table with a 
     {
       "change": {
         "at": 0,
-        "cut": 42,
+        "cut": 43,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">",
           "</div>",
@@ -552,6 +555,7 @@ exports[`the table panel, fixture by fixture > join code: a room with two bot se
 {
   "dom": [
     "<section class="tp tp-join-code" aria-labelledby="«id0»">",
+    "<p class="tp-tag">Casual</p>",
     "<h2 class="tp-title" id="«id0»">Join Mei</h2>",
     "<div class="tp-teams">",
     "<span class="tp-team-label ours" aria-hidden="true">Us</span>",
@@ -603,7 +607,7 @@ exports[`the table panel, fixture by fixture > join code: a room with two bot se
   "taps": [
     {
       "change": {
-        "at": 23,
+        "at": 24,
         "cut": 10,
         "put": [
           "<div class="tp-seat person team1" role="group" aria-label="Mei, other team">",
@@ -623,7 +627,7 @@ exports[`the table panel, fixture by fixture > join code: a room with two bot se
     },
     {
       "change": {
-        "at": 8,
+        "at": 9,
         "cut": 31,
         "put": [
           "<button type="button" class="tp-seat bot team0" aria-label="Bot, your team. Sit here" disabled="">",
@@ -673,7 +677,7 @@ exports[`the table panel, fixture by fixture > join code: a room with two bot se
     {
       "change": {
         "at": 0,
-        "cut": 41,
+        "cut": 42,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">",
           "</div>",

@@ -396,8 +396,11 @@ export function fromCode(j: CodeJoin, busy: boolean): TableModel {
   // a room's Join needs a seat to name; a Play table's is seated by the
   // server, which answers table_full when it is full
   const canJoin = !j.full && !busy && j.peek !== null && (queued !== null || j.seat !== null);
+  // a room that is not ranked is casual; before the peek answers, no tag
+  const casual = room ? !room.ranked : queued?.mode === "casual";
   return {
     kind: "join-code",
+    tag: casual ? "Casual" : undefined,
     title: `Join ${who ? shortName(who) : j.code}`,
     status: j.full ? { text: "Table is full" } : undefined,
     seats: room ? roomSeats(room, j.seat, busy) : queued ? queuedSeats(queued, j.seat) : null,

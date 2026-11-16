@@ -76,8 +76,18 @@ export function buryPointsText(hand: HandCard[], selected: Set<number>): string 
 export function seatStatus(player: StatePlayer, takeover: number | null): string | null {
   if (player.is_bot || player.connected) return null;
   if (player.left) return `Bot (${player.name} left)`;
-  if (takeover !== null && takeover > 0) return `offline — bot in ${Math.ceil(takeover)}s`;
+  const parts = seatStatusParts(player, takeover);
+  if (parts) return parts.lead + parts.count;
   return player.controller === "bot_cover" ? "bot playing" : "offline";
+}
+
+/** The countdown status split so a narrow pill can keep the count whole and
+ *  drop the words before it: "offline — bot in " + "28s". Null when the seat
+ *  shows no countdown. */
+export function seatStatusParts(player: StatePlayer, takeover: number | null): { lead: string; count: string } | null {
+  if (player.is_bot || player.connected || player.left) return null;
+  if (takeover !== null && takeover > 0) return { lead: "offline — bot in ", count: `${Math.ceil(takeover)}s` };
+  return null;
 }
 
 /** "You & Sam": the team's players, you first. */

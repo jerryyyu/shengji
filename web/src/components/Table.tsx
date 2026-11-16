@@ -24,7 +24,7 @@ import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
-import { BURY_HELP, bankerText, buryPointsText, declareHelp, seatStatus } from "../tableCopy";
+import { BURY_HELP, bankerText, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
 import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
@@ -126,6 +126,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   // only the seat's owner is buzzed
   const moveClock = useMoveClock(player.turn_deadline, state, false);
   const status = seatStatus(player, takeover);
+  const countdown = seatStatusParts(player, takeover);
   const onTurn = state.turn === player.seat;
   const actionPhase = state.phase === "bury" || state.phase === "play";
   const botControlled = player.is_bot || player.controller === "bot_cover";
@@ -174,7 +175,13 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         {player.is_bot ? <span className="bot-tag">BOT</span> : null}
         {hasPassed ? <span className="ready-tag">ready</span> : null}
         {player.away && player.connected ? <span className="away-tag">Away</span> : null}
-        {status !== null && !player.left ? <span className="off-tag">{status}</span> : null}
+        {/* the phone pill keeps the count whole and drops the words before it
+            (they stay for screen readers) */}
+        {status !== null && !player.left ? (
+          countdown ? (
+            <span className="off-tag counting"><span className="off-lead">{countdown.lead}</span>{countdown.count}</span>
+          ) : <span className="off-tag">{status}</span>
+        ) : null}
       </div>
       <div className="opp-cards">
         <div className="back-stack">

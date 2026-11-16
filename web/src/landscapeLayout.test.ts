@@ -518,7 +518,10 @@ describe("phone controls", () => {
     expect([dots.display, dots.width, dots.visibility]).toEqual(["inline-block", "1.1em", "hidden"]);
     expect(rule(block, ".opponent .turn-dots.shown").visibility).toBe("visible");
     expect(rule(block, ".opponent.on-turn .seat-dot").display).toBeUndefined();
-    expect(block).not.toMatch(/\.turn-dots[^{]*\{[^}]*display: none/);
+    // a running countdown takes the dots' place in both turn states alike
+    const counting = ".opponent:has(.off-tag.counting) .turn-dots";
+    expect(rule(block, counting).display).toBe("none");
+    expect(block.split(counting).join("")).not.toMatch(/\.turn-dots[^{]*\{[^}]*display: none/);
   });
 
   it("gives a seat's label a 44px tall tap area", () => {

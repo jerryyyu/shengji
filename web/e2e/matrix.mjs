@@ -51,6 +51,7 @@ function states() {
   out.push(["bury_other", base({ phase: "bury", banker: 1, turn: 1, trick: null, attacker_points: 0 }, { banker: 1 })]);
   // people away, a bot holding a seat, someone joining
   out.push(["away_partner", (() => { const s = base({ trick: { leader: 1, plays: plays(1, 1, 1) }, turn: 2 }, { banker: 0 }); s.players[2].connected = false; s.players[2].takeover_in = 22; return s; })()]);
+  out.push(["away_partner_long", (() => { const s = base({ trick: { leader: 1, plays: plays(1, 1, 1) }, turn: 2 }, { banker: 0, humans: [0, 1, 2, 3], names: ["Cheerful Tractor", "Stephanie", LONG_NAMES[0], LONG_NAMES[3]] }); for (const p of s.players.slice(1)) p.connected = false; s.players[1].controller = "bot_cover"; s.players[2].takeover_in = 22; s.players[3].takeover_in = 15; return s; })()]);
   out.push(["bot_holds_partner", (() => { const s = base({ trick: { leader: 1, plays: plays(1, 2, 2) }, turn: 3 }, { banker: 2 }); s.players[2].controller = "bot"; s.players[2].reserved_for = "Alice"; s.players[2].reserved_secs = 90; return s; })()]);
   out.push(["joining", base({ trick: { leader: 1, plays: plays(1, 2, 1) }, turn: 3, joining: [{ seat: 3, name: "Maximilian Featherst", when: "trick" }] }, { banker: 0 })]);
   out.push(["failed_throw", base({ trick: { leader: 0, plays: plays(0, 1, 1) }, turn: 1, notice: { id: 1, kind: "failed_throw", seat: 0, attempted: ["SA", "SK", "S9"], forced: ["S9"] } }, { banker: 0 })]);
@@ -80,7 +81,7 @@ async function runDevice(device) {
       for (const f of frames) { await push(page, f); await sleep(frames.length > 1 ? 120 : 0); }
       await sleep(110);
       const name = `${device}_${coach === "on" ? "coach_" : ""}${id}`;
-      await rep.check(name, await lint(page), page);
+      await rep.check(name, [...await lint(page), ...await tagsInPills(page)], page);
       if (SHOTS && SHOTS.test(name)) await shot(page, name);
       if (page.qa.errors.length) { await rep.check(`${name}_pageerror`, page.qa.errors.splice(0)); }
     }
@@ -114,6 +115,14 @@ const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-lan
 // a few devices at a time: each is its own page, and the checks are independent
 const lanes = Number(process.env.LANES ?? 3);
 await Promise.all(Array.from({ length: lanes }, async () => { for (let d; (d = devices.shift()); ) await runDevice(d); }));
+/** A seat pill's status tag stays inside the pill (the pill clips nothing, so a tag pushed out shows past its edge). */
+function tagsInPills(page) {
+  return page.evaluate(() => [...document.querySelectorAll(".opponent .opp-name > [class*='-tag']")].flatMap((t) => {
+    const a = t.getBoundingClientRect(), p = t.closest(".opponent").getBoundingClientRect();
+    if (!a.width || (a.left >= p.left - 1 && a.right <= p.right + 1)) return [];
+    return [`tag outside its seat pill: ${t.className} "${t.textContent.trim().slice(0, 30)}" by ${Math.round(Math.max(p.left - a.left, a.right - p.right))}px`];
+  }));
+}
 function f_has_toast(frames) { const f = frames[frames.length - 1]; return !!f.notice || (f.joining ?? []).length > 0; }
 function id_round_details(list) { return list.some(([id]) => id === "round_end"); }
 await browser.close();

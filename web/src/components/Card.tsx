@@ -20,6 +20,19 @@ export function codeLabel(code: string): string {
   return (SUIT_SYMBOL[code[0]] ?? code[0]) + code.slice(1);
 }
 
+const SUIT_NAME: Record<string, string> = { S: "spades", H: "hearts", D: "diamonds", C: "clubs" };
+const RANK_NAME: Record<string, string> = { J: "Jack", Q: "Queen", K: "King", A: "Ace" };
+
+/** What a screen reader says for a card code: "H10" -> "10 of hearts",
+ *  "SA" -> "Ace of spades", "BJ" -> "Big joker". VoiceOver reads "♠3" as
+ *  "black spade suit 3" and "BJ" letter by letter. */
+export function spokenLabel(code: string): string {
+  if (code === "BJ") return "Big joker";
+  if (code === "LJ") return "Little joker";
+  const rank = code.slice(1);
+  return `${RANK_NAME[rank] ?? rank} of ${SUIT_NAME[code[0]] ?? code[0]}`;
+}
+
 /** Compact label for a card code, e.g. "H10" -> "♥10"; jokers stay "LJ"/"BJ". */
 export function shortLabel(code: string): string {
   if (code === "BJ" || code === "LJ") return code;
@@ -36,9 +49,12 @@ interface CardProps {
 
 function Card({ code, selected = false, onClick, className }: CardProps) {
   const Face = onClick ? "button" : "div";
+  // a tappable card is a toggle button; any other face is one image, so its
+  // corner and pip glyphs are not read out one by one
+  const label = code ? spokenLabel(code) : undefined;
   const accessibility = onClick
-    ? { type: "button" as const, "aria-pressed": selected, "aria-label": code ? codeLabel(code) : undefined }
-    : {};
+    ? { type: "button" as const, "aria-pressed": selected, "aria-label": label }
+    : { role: "img", "aria-label": label };
   const cls = (extra: string) =>
     ["card", extra, selected ? "selected" : "", onClick ? "clickable" : "", className ?? ""]
       .filter(Boolean)
@@ -52,8 +68,8 @@ function Card({ code, selected = false, onClick, className }: CardProps) {
     const red = code === "BJ";
     return (
       <Face {...accessibility} className={cls(`joker ${red ? "red" : "black"}`)} onClick={onClick} title={codeLabel(code)}>
-        <span className="joker-text">JOKER</span>
-        <span className="joker-star">{red ? "★" : "☆"}</span>
+        <span className="joker-text" aria-hidden="true">JOKER</span>
+        <span className="joker-star" aria-hidden="true">{red ? "★" : "☆"}</span>
       </Face>
     );
   }
@@ -65,12 +81,12 @@ function Card({ code, selected = false, onClick, className }: CardProps) {
 
   return (
     <Face {...accessibility} className={cls(red ? "red" : "black")} onClick={onClick} title={codeLabel(code)}>
-      <span className="corner tl">
+      <span className="corner tl" aria-hidden="true">
         <span className="corner-rank">{rank}</span>
         <span className="corner-suit">{symbol}</span>
       </span>
-      <span className="pip">{symbol}</span>
-      <span className="corner br">
+      <span className="pip" aria-hidden="true">{symbol}</span>
+      <span className="corner br" aria-hidden="true">
         <span className="corner-rank">{rank}</span>
         <span className="corner-suit">{symbol}</span>
       </span>

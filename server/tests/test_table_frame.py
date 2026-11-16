@@ -8,6 +8,10 @@ what the ``queue_state`` says (``from_queue_state`` maps old to new). The
 room side is checked against ``room``, ``state`` and ``room_seats``."""
 from __future__ import annotations
 
+import json
+import sys
+from pathlib import Path
+
 import pytest
 
 from tests import test_matchmaking_golden as golden
@@ -89,6 +93,20 @@ def _agrees(frame: dict, qs: dict) -> None:
         assert qs["duo_ready"] == sum(s["ready"] for s in taken if s["pair"] and s["team"] == mine)
     assert qs["opener"] == (frame["opener"] == frame["you"])
     assert frame["seats"][frame["you"]]["you"]
+    # the client's panel kind (web/src/queue/tableText.ts panelKind) reads
+    # the frame alone: shared iff someone other than you and your Duo
+    # partner sits there
+    assert shared(frame) == (qs["table"] is not None)
+
+
+def shared(frame: dict) -> bool:
+    """Someone else sits at the table: a taken seat that is neither you nor
+    your Duo partner (across from you, both seats ``pair``)."""
+    you = frame["you"]
+    mine = frame["seats"][you]
+    partner = (you + 2) % 4 if mine["pair"] else None
+    return any(s["state"] == "taken" and not s["you"]
+               and not (s["seat"] == partner and s["pair"]) for s in frame["seats"])
 
 
 @pytest.mark.parametrize("name", sorted(golden.SCENARIOS))
@@ -110,6 +128,55 @@ def test_every_held_queue_state_is_followed_by_its_table_frame(name):
                 _agrees(nxt, m)
                 pairs += 1
     assert pairs, "the scenario never held an entry"
+
+
+# The client's port of ``from_queue_state`` (web/src/queue/testFrames.ts)
+# is checked against these pairs: one per kind of held queue_state.
+WEB_FIXTURE = (Path(__file__).resolve().parents[2] / "web" / "src" / "queue" / "fixtures"
+               / "table_frames.json")
+
+
+def _kind(qs: dict, frame: dict) -> tuple:
+    return (qs["table"] is not None, qs["duo"], qs["duo_ready"] is not None, qs["leader"],
+            qs["opener"], qs["held_seat"] is not None, qs["you_ready"])
+
+
+def web_pairs() -> list[dict]:
+    """``(party, queue_state, table)`` for the first held queue_state of each
+    kind over the golden scenarios, normalized as the goldens are. ``party``
+    names a pair's partner: the socket's pair frame of that ``party_id``
+    (the server may send it just after the queue_state), else null."""
+    out, seen = [], set()
+    for name in sorted(golden.SCENARIOS):
+        env = golden.run_env(golden.SCENARIOS[name])
+        for conn in env.all_conns:
+            for i, m in enumerate(conn.sent):
+                holds = (m["type"] == "queue_state" and m.get("queued")
+                         and not m.get("elsewhere"))
+                if not holds:
+                    continue
+                pid = m.get("party_id")
+                near = sorted((abs(j - i), j) for j, p in enumerate(conn.sent)
+                              if pid and p["type"] == "party" and p["party_id"] == pid)
+                party = conn.sent[near[0][1]] if near else None
+                k = _kind(m, conn.sent[i + 1])
+                if k in seen:
+                    continue
+                seen.add(k)
+                ev = golden.normalize([["pair", party, m, conn.sent[i + 1]]])[0]
+                out.append({"scenario": name, "party": ev[1], "queue_state": ev[2], "table": ev[3]})
+    return out
+
+
+def _web_fixture_text() -> str:
+    rows = [json.dumps(p, sort_keys=True, separators=(",", ":")) for p in web_pairs()]
+    return "[\n" + ",\n".join(rows) + "\n]\n"
+
+
+def test_the_web_frame_fixture_is_current():
+    """Regenerate with ``python -m tests.test_table_frame --write`` (from
+    ``server/``)."""
+    assert WEB_FIXTURE.read_text() == _web_fixture_text()
 
 
 def test_the_golden_log_never_holds_the_table_frame():
@@ -212,3 +279,12 @@ def test_a_room_table_frame_names_its_seats_as_a_peek_does(client):
         peek = _drain(b, "room_seats")
     for s, p in zip(frame["seats"], peek["seats"]):
         assert (s["name"], s["team"], s["state"] == "bot") == (p["name"], p["team"], p["is_bot"])
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["--write"]:
+        print("usage: python -m tests.test_table_frame --write", file=sys.stderr)
+        raise SystemExit(2)
+    WEB_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+    WEB_FIXTURE.write_text(_web_fixture_text())
+    print(f"wrote {WEB_FIXTURE}")

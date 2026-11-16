@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
+import { framer } from "./testFrames";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -60,7 +61,9 @@ describe("online panels", () => {
     constructor() { FakeWS.all.push(this); }
     send(data: string) { this.sent.push(JSON.parse(data)); }
     close() { this.readyState = 3; this.onclose?.(); }
-    deliver(msg: unknown) { this.onmessage?.({ data: JSON.stringify(msg) }); }
+    /** As the server sends it: a held queue_state, then its table frame. */
+    private frames = framer();
+    deliver(msg: unknown) { for (const m of this.frames(msg)) this.onmessage?.({ data: JSON.stringify(m) }); }
   }
   // frames go to every socket opened in this test, as queue.test.tsx does
   const tell = (msg: unknown) => act(() => { for (const w of FakeWS.all) w.deliver(msg); });

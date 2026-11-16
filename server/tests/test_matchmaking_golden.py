@@ -7,8 +7,8 @@ chat, code, Allow joiners, starting level, friend seat), every queue log line
 and every ``peek``. The committed fixture holds those logs; a change to the
 queue that keeps its behaviour keeps them byte for byte.
 
-Ids and sitting tokens (``secrets.token_hex``) and table codes (random from
-``CODE_ALPHABET``) are the only normalized values: each distinct one is named
+Ids and sitting tokens (``secrets.token_hex``) and table codes (seeded, from
+``CODE_ALPHABET``'s letters) are the only normalized values: each distinct one is named
 by its first appearance in the log, so the structure of who shares which id
 or code is still held. Times are the injected clock's and stay as they are.
 
@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import re
 import secrets
 import subprocess
@@ -662,14 +663,29 @@ async def a_guest_signs_in_and_one_device_never_sits_twice(env: Env) -> None:
 
 
 # ------------------------------------------------------------------ runner
+class _LetterCodes:
+    """Seeded table codes drawn from the alphabet's letters only, so a code
+    typed in lower case always differs from the code (an all-digit code
+    would not) and every run draws the same codes."""
+
+    def __init__(self) -> None:
+        self._rng = random.Random(0)
+
+    def choices(self, population: str, k: int) -> list[str]:
+        return self._rng.choices([c for c in population if c.isalpha()], k=k)
+
+
 def run_env(fn: Scenario) -> Env:
     env = Env()
     kept = list(mm.qlog.handlers)
+    kept_rng = mm._CODE_RNG
     mm.qlog.handlers = [_QlogCapture(env)]
+    mm._CODE_RNG = _LetterCodes()
     try:
         asyncio.run(fn(env))
     finally:
         mm.qlog.handlers = kept
+        mm._CODE_RNG = kept_rng
     return env
 
 
@@ -713,6 +729,17 @@ def test_each_scenario_replays_its_golden_transcript(name):
 def test_a_scenario_is_deterministic():
     fn = SCENARIOS["two_lone_entries_meet_at_the_openers_table"]
     assert run_scenario(fn) == run_scenario(fn)
+
+
+def test_a_lower_case_code_join_keeps_its_tag_whatever_codes_the_server_draws(monkeypatch):
+    class AllDigits:
+        def choices(self, population: str, k: int) -> list[str]:
+            return random.choices([c for c in population if c.isdigit()], k=k)
+
+    monkeypatch.setattr(mm, "_CODE_RNG", AllDigits())
+    log = run_scenario(SCENARIOS["code_joins_follow_a_table_for_its_whole_life"])
+    assert "<code0>.lower" in _line(log)
+    assert isinstance(mm._CODE_RNG, AllDigits)
 
 
 def main(argv: list[str]) -> int:

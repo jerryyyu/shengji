@@ -179,13 +179,13 @@ def test_the_web_frame_fixture_is_current():
     assert WEB_FIXTURE.read_text() == _web_fixture_text()
 
 
-def test_the_golden_log_never_holds_the_table_frame():
-    """The goldens of the old frames stay byte for byte: the harness keeps
-    the additive frame out of the log."""
+def test_the_golden_log_holds_every_table_frame():
+    """The table frame is the table: the goldens record it as sent."""
     for name, fn in golden.SCENARIOS.items():
         env = golden.run_env(fn)
-        assert any(m["type"] == "table" for c in env.all_conns for m in c.sent), name
-        assert not any(ev[0] == "frame" and ev[2]["type"] == "table" for ev in env.log), name
+        sent = [m for c in env.all_conns for m in c.sent if m["type"] == "table"]
+        logged = [ev[2] for ev in env.log if ev[0] == "frame" and ev[2]["type"] == "table"]
+        assert sent and len(logged) == len(sent), name
 
 
 # ------------------------------------------------------------------ rooms

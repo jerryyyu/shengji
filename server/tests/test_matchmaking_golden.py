@@ -51,10 +51,7 @@ class GoldenConn(mm.Conn):
             return
         frame = json.loads(json.dumps(payload))
         self.sent.append(frame)
-        # the additive ``table`` frame is checked against its queue_state by
-        # test_table_frame.py; the old frames' goldens stay byte for byte
-        if frame.get("type") != "table":
-            self.env.log.append(["frame", self.label, frame])
+        self.env.log.append(["frame", self.label, frame])
 
     def last(self, kind: str) -> dict | None:
         return next((m for m in reversed(self.sent) if m.get("type") == kind), None)
@@ -175,15 +172,14 @@ class Env:
         m._send_party(p)
 
     def code(self, uid: int) -> str:
-        state = self.conns[uid].last("queue_state")
-        assert state is not None and state.get("code"), (uid, state)
-        return state["code"]
+        frame = self.conns[uid].last("table")
+        assert frame is not None and frame.get("code"), (uid, frame)
+        return frame["code"]
 
     def sit(self, uid: int, seat: int) -> str | None:
         """The sitting token of the person at ``seat`` as ``uid`` sees it."""
-        table = self.conns[uid].last("queue_state")["table"]
-        taken = table["seats"][seat] if table is not None else None
-        return taken["sit"] if taken is not None else None
+        frame = self.conns[uid].last("table")
+        return frame["seats"][seat]["sit"] if frame is not None else None
 
     # time and reads
     async def advance(self, dt: float, *, pump: bool = True) -> None:

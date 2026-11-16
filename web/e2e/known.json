@@ -6,11 +6,6 @@
   },
   {
     "suite": "matrix",
-    "match": "phone-land-safari-short_.*\"pair\":\"(?!handLine|toast)",
-    "why": "QA1-3: Mobile Safari sideways (100vh taller than the page): the trick slots are placed for a taller screen, so the partner's pill covers the partner's card and your own slot sinks into the hand"
-  },
-  {
-    "suite": "matrix",
     "match": "\"pair\":\"toast\\+trickCards\"",
     "why": "QA1-9: a table toast covers the top trick slot"
   },

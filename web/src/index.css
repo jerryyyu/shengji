@@ -1696,7 +1696,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 .away-pill {
   position: fixed;
   left: 50%;
-  bottom: max(112px, 32vh);
+  bottom: max(112px, 32dvh);
   transform: translateX(-50%);
   z-index: 71;
   display: flex;
@@ -2133,9 +2133,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .table-screen {
     position: relative;         /* the floating HUD's frame */
     /* The frame the table is laid out in: the viewport, or the rotated
-       frame's size and its safe areas turned with it (--frame-*). */
+       frame's size and its safe areas turned with it (--frame-*). The
+       height is the page's own (dvh): Mobile Safari's 100vh is the height
+       without its toolbar, taller than the page while the toolbar shows. */
     --view-w: var(--frame-w, 100vw);
-    --view-h: var(--frame-h, 100vh);
+    --view-h: var(--frame-h, 100dvh);
     --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
     --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
     --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));

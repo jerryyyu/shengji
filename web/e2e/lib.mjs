@@ -21,7 +21,8 @@ export const DEVICES = {
   // top (the page is told through the top safe area) or takes the height away; its
   // keyboard brings an accessory bar, so it is taller than the app's.
   "phone-land-safari": { w: 844, h: 390, touch: true, kb: 286, safe: { t: 64, r: 59, b: 21, l: 59 } },
-  // ...and there 100vh stays the toolbar-less height (390) while the page is 326 tall
+  // ...and there 100vh stays the toolbar-less height (390) while the page is 326 tall:
+  // the page's vh lengths are rewritten to that height, dvh and svh keep the page's
   "phone-land-safari-short": { w: 844, h: 326, touch: true, kb: 222, safe: { t: 0, r: 59, b: 21, l: 59 }, vh: 390 },
   "phone-port": { w: 390, h: 844, touch: true, kb: 336 },     // iPhone 14 Pro, lobby
   "phone-port-se": { w: 375, h: 667, touch: true, kb: 260 },
@@ -67,11 +68,44 @@ export async function open(browser, device, { url = "", storage = {}, base = BAS
   // toolbar can be put there. The lobby reads env() directly, which no browser lets a test set.
   if (d.safe) {
     await page.addInitScript(`document.addEventListener("DOMContentLoaded", () => { const s = document.createElement("style");
-      s.textContent = ":root{--frame-safe-t:${d.safe.t}px;--frame-safe-r:${d.safe.r}px;--frame-safe-b:${d.safe.b}px;--frame-safe-l:${d.safe.l}px${d.vh ? `;--frame-h:${d.vh}px` : ""}}"; document.head.appendChild(s); });`);
+      s.textContent = ":root{--frame-safe-t:${d.safe.t}px;--frame-safe-r:${d.safe.r}px;--frame-safe-b:${d.safe.b}px;--frame-safe-l:${d.safe.l}px}"; document.head.appendChild(s); });`);
   }
+  if (d.vh) await page.addInitScript(vhAs, d.vh);
   if (fakeSocket) await page.addInitScript(fakeSocket);
   await page.goto(base + url);
   return page;
+}
+
+/** Init script: every `vh` length in the page's style sheets becomes `vh`% of
+ *  `px`, as Mobile Safari resolves 100vh to the toolbar-less height. `dvh`,
+ *  `svh` and `lvh` are left alone. Rewrites each sheet once it has loaded. */
+function vhAs(px) {
+  const VH = /(^|[^a-z0-9.-])(\d*\.?\d+)vh\b/gi;
+  const done = new WeakSet();
+  const fix = (rules) => {
+    for (const r of rules) {
+      if (r.cssRules) fix(r.cssRules);
+      const st = r.style;
+      if (!st) continue;
+      for (let i = 0; i < st.length; i++) {
+        const name = st[i];
+        const v = st.getPropertyValue(name);
+        if (!/vh\b/i.test(v)) continue;
+        const w = v.replace(VH, (_, pre, n) => `${pre}${(parseFloat(n) * px) / 100}px`);
+        if (w !== v) st.setProperty(name, w, st.getPropertyPriority(name));
+      }
+    }
+  };
+  const sweep = () => {
+    for (const sh of document.styleSheets) {
+      if (done.has(sh)) continue;
+      try { fix(sh.cssRules); done.add(sh); } catch { /* not readable yet */ }
+    }
+  };
+  new MutationObserver(sweep).observe(document, { childList: true, subtree: true });
+  document.addEventListener("DOMContentLoaded", sweep);
+  window.addEventListener("load", sweep);
+  document.addEventListener("load", sweep, true);
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

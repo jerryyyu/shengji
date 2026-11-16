@@ -387,3 +387,31 @@ it("cancelling Start before its room comes back, with no network, deals no game"
   act(() => button("Play")!.click());
   await startGame();
 });
+
+/** React's generated ids, renumbered by first appearance, one tag per line. */
+function markup(el: Element | null): string {
+  const seen = new Map<string, string>();
+  return (el?.outerHTML ?? "").replace(/«[^»]+»|:r[0-9a-z]+:|_r_[0-9a-z]+_/g, (id) => {
+    if (!seen.has(id)) seen.set(id, `«id${seen.size}»`);
+    return seen.get(id)!;
+  }).replace(/></g, ">\n<");
+}
+
+it("the offline Play block and its table, as drawn", async () => {
+  at("", "capacitor:");
+  netUp = false;
+  await mount();
+  await until(() => host.querySelector(".play-offline") !== null);
+  // the controls between the chip and How to play
+  const side = host.querySelector(".play-side")!;
+  const controls = [".play-mode", ".play-ranked-row", ".play-presence", ".join-row"]
+    .map((s) => markup(side.querySelector(s))).join("\n");
+  expect(controls).toMatchSnapshot();
+  act(() => button("Play")!.click());
+  await until(() => panel() !== null && button("Start")?.disabled === false);
+  expect(markup(panel())).toMatchSnapshot();
+  act(() => button("Start")!.click());
+  // Start pressed, its room not back yet
+  expect(markup(panel())).toMatchSnapshot();
+  act(() => button("Leave")!.click());
+});

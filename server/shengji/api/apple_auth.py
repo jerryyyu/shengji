@@ -316,6 +316,7 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
     name = first_authorization_name(body.given_name, body.family_name)
     store = accounts.STORE
     user = await store.run(store.upsert_apple_user, claims["sub"], email, name)
+    accounts.refuse_suspended(user)
     code = body.authorization_code
     if code and len(code) <= CODE_MAX:
         if not configured():

@@ -841,7 +841,7 @@ def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_p
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     assert _columns(path, "users") == [
         "id", "google_sub", "email", "name", "picture", "created_at", "last_login_at",
-        "display_name", "rating", "rated_rounds", "leaderboard_visible", "apple_sub"]
+        "display_name", "rating", "rated_rounds", "leaderboard_visible", "apple_sub", "suspended_at"]
     # The sessions still follow their users, and the highest id is never
     # handed out again after its account is deleted.
     store.link_seat(_game(), 2, 0, 1)
@@ -1005,3 +1005,113 @@ def test_hide_and_account_delete(accounts_on):
         games = {r[0] for r in db.execute("SELECT id FROM games")}
     assert games == {"shared"}                             # b still links it
     assert store.delete_user(a) is False
+
+
+# -------------------------------------------------------------- suspension
+def _rating_rows(path):
+    with accounts_sqlite(path) as db:
+        user = db.execute("SELECT rating, rated_rounds FROM users WHERE id = 1").fetchone()
+        events = db.execute("SELECT COUNT(*) FROM rating_events").fetchone()
+        links = db.execute("SELECT COUNT(*) FROM game_players").fetchone()
+    return tuple(user), tuple(events), tuple(links)
+
+
+def test_a_suspended_account_is_refused_at_sign_in_and_on_every_session_use(accounts_on, keypair, client):
+    private_pem, _ = keypair
+    store = accounts_on.STORE
+    cookie = _session_cookie(accounts_on, client, private_pem)
+    session = {"cookie": cookie}
+    assert client.get("/api/me", headers=session).status_code == 200
+    with accounts_sqlite(store.path) as db:
+        db.execute("UPDATE users SET rating = 1234.5, rated_rounds = 7 WHERE id = 1")
+        db.commit()
+    store.link_seat(_game(), 1, 0, 1)
+    before = _rating_rows(store.path)
+
+    row = store.set_suspended(1, True, now=1_800_000_000)
+    assert row["suspended_at"] == 1_800_000_000
+    assert store.set_suspended(1, True, now=1_900_000_000)["suspended_at"] == 1_800_000_000
+
+    # signed out: the session reads as no one, over HTTP and on a socket
+    assert client.get("/api/me", headers=session).status_code == 401
+    assert client.get("/api/me/games", headers=session).status_code == 401
+    with client.websocket_connect("/ws", headers=session) as ws:
+        frame = ws.receive_json()
+        assert frame == {"type": "error", "code": "account_suspended",
+                         "message": accounts_on.SUSPENDED_MESSAGE}
+        ws.send_json({"type": "create_room", "name": "Guest"})
+        room = _drain(ws, "room")
+        assert room["players"][0]["name"] == "Guest"
+    from shengji.api import server as srv
+    assert srv.rooms[room["room"]].seats[0].user_id is None
+    # refused at sign-in, with no new session
+    sessions = store.count_sessions(1)
+    resp = _login(client, _sign(private_pem, _claims()))
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == accounts_on.SUSPENDED_MESSAGE
+    assert "set-cookie" not in resp.headers
+    assert store.count_sessions(1) == sessions
+
+    # unsuspended: the same session and a new sign-in work again, and the
+    # ratings, rating history and saved games are as they were
+    assert store.set_suspended(1, False)["suspended_at"] is None
+    assert _rating_rows(store.path) == before
+    assert client.get("/api/me", headers=session).status_code == 200
+    assert _login(client, _sign(private_pem, _claims())).status_code == 200
+    with client.websocket_connect("/ws", headers=session) as ws:
+        ws.send_json({"type": "create_room"})
+        room = _drain(ws, "room")
+        assert room["players"][0]["name"] == "Jerry"
+    assert srv.rooms[room["room"]].seats[0].user_id == 1
+
+
+def test_suspension_needs_an_account(accounts_on):
+    assert accounts_on.STORE.set_suspended(99, True) is None
+    assert accounts_on.STORE.session_account("x" * 43) is None
+
+
+def test_a_v6_database_gains_the_suspension_column_once(accounts_on):
+    store = accounts_on.STORE
+    store.upsert_user(_claims())
+    assert "suspended_at" in _columns(store.path, "users")
+    with accounts_sqlite(store.path) as db:
+        db.execute("ALTER TABLE users DROP COLUMN suspended_at")
+        db.execute("UPDATE schema_version SET version = 6")
+        db.commit()
+    again = accounts_on.Store(store.path)
+    assert again.user(1)["suspended_at"] is None
+    assert again.schema_version() == len(accounts_on.SCHEMA)
+    assert "suspended_at" in _columns(store.path, "users")
+    assert again.user(1)["email"] == "jerry@example.com"
+
+
+def test_the_operator_script_suspends_and_unsuspends_by_id_or_email(accounts_on, capsys, tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location(
+        "suspend_account", Path(__file__).resolve().parents[1] / "scripts" / "suspend_account.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    store = accounts_on.STORE
+    store.upsert_user(_claims())
+    db = ["--db", str(store.path)]
+
+    assert script.main(["suspend", "--email", "JERRY@example.com", *db]) == 0
+    assert "id=1 " in capsys.readouterr().out
+    assert store.user(1)["suspended_at"] is not None
+    assert script.main(["show", "--id", "1", *db]) == 0
+    assert "suspended since" in capsys.readouterr().out
+    assert script.main(["unsuspend", "--id", "1", *db]) == 0
+    assert capsys.readouterr().out.startswith("id=1 provider=google email=jerry@example.com")
+    assert store.user(1)["suspended_at"] is None
+
+    assert script.main(["suspend", "--id", "5", *db]) == 1
+    assert "no account with id 5" in capsys.readouterr().err
+    store.upsert_apple_user("001.apple", "jerry@example.com", "Jerry Apple")
+    assert script.main(["suspend", "--email", "jerry@example.com", *db]) == 1
+    assert "2 accounts have email" in capsys.readouterr().err
+    assert store.user(1)["suspended_at"] is None and store.user(2)["suspended_at"] is None
+    with pytest.raises(SystemExit) as usage:
+        script.main(["suspend", *db])
+    assert usage.value.code == 2

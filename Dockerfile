@@ -29,6 +29,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app/server
 COPY server/pyproject.toml server/uv.lock* ./
 COPY server/shengji ./shengji
+# The operator's account-suspension tool, run through `fly ssh console`.
+COPY server/scripts/suspend_account.py ./scripts/suspend_account.py
 # Trained value head for the mc-vleaf hybrid (numpy weights, ~2MB — the
 # server does NOT install torch; see server/shengji/rl/npnet.py)
 COPY server/snapshots_v7w/ep02.npz ./snapshots_v7w/ep02.npz

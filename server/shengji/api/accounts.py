@@ -443,6 +443,12 @@ def _set_sequence(conn: sqlite3.Connection, table: str, floor: int) -> None:
         conn.execute("INSERT INTO sqlite_sequence(name, seq) VALUES (?, ?)", (table, floor))
 
 
+def _migrate_v7(conn: sqlite3.Connection) -> None:
+    """Add ``users.suspended_at``: NULL for an account in good standing, else
+    when an operator suspended it (``scripts/suspend_account.py``)."""
+    _add_column_if_missing(conn, "users", "suspended_at", "INTEGER")
+
+
 def _migrate_v6(conn: sqlite3.Connection) -> None:
     """Rebuild ``users`` with a nullable ``google_sub``, an ``apple_sub`` and
     the at-least-one CHECK, and add ``apple_tokens``.
@@ -519,6 +525,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v5,
     # version 6: Sign in with Apple accounts.
     _migrate_v6,
+    # version 7: operator account suspension.
+    _migrate_v7,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -688,7 +696,14 @@ class Store:
         return token
 
     def session_user(self, token: str | None, now: float | None = None) -> dict | None:
-        """The user behind a live session token, else None."""
+        """The user behind a live session token, else None. A suspended
+        account's sessions read as signed out wherever a session is used."""
+        row = self.session_account(token, now)
+        return None if row is None or is_suspended(row) else row
+
+    def session_account(self, token: str | None, now: float | None = None) -> dict | None:
+        """The account behind a live session token, suspended or not; only
+        what tells a suspended player so reads this instead of ``session_user``."""
         if not token or not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", token):
             return None
         t = int(now if now is not None else time.time())
@@ -704,6 +719,30 @@ class Store:
             return
         with closing(self._open()) as conn:
             conn.execute("DELETE FROM sessions WHERE token_hash = ?", (_hash_token(token),))
+
+    # -- suspension
+    def set_suspended(self, user_id: int, suspended: bool, now: float | None = None) -> dict | None:
+        """Suspend (keeping the first suspension time) or unsuspend an account;
+        returns the updated row, or None for an unknown id. Sessions, ratings
+        and saved games are kept: a suspended account's sessions are refused
+        on use, and unsuspending makes them good again until they expire."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            if suspended:
+                conn.execute("UPDATE users SET suspended_at = COALESCE(suspended_at, ?) WHERE id = ?",
+                             (t, user_id))
+            else:
+                conn.execute("UPDATE users SET suspended_at = NULL WHERE id = ?", (user_id,))
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            return dict(row) if row else None
+
+    def users_by_email(self, email: str) -> list[dict]:
+        """Every account with this email, case-insensitively (a Google and an
+        Apple account can share one)."""
+        with closing(self._open()) as conn:
+            rows = conn.execute("SELECT * FROM users WHERE lower(email) = lower(?) ORDER BY id",
+                                (email.strip(),)).fetchall()
+            return [dict(r) for r in rows]
 
     def count_sessions(self, user_id: int) -> int:
         with closing(self._open()) as conn:
@@ -1245,6 +1284,7 @@ async def auth_google(body: GoogleLogin, request: Request, response: Response) -
     if body.nonce is not None and claims.get("nonce") != body.nonce:
         raise HTTPException(status_code=401, detail="Sign-in rejected (nonce).")
     user = await STORE.run(STORE.upsert_user, claims)
+    refuse_suspended(user)
     token = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, token)
     return await account_payload(STORE, user)
@@ -1295,6 +1335,20 @@ USER_RENAMED_HOOKS: list[Callable[[int, str], None]] = []
 # Called on the event loop with the id, before the row is deleted: the game
 # server detaches the id from every live seat.
 USER_DELETED_HOOKS: list[Callable[[int], None]] = []
+
+
+SUSPENDED_MESSAGE = "This account is suspended. Contact support if you think this is a mistake."
+
+
+def is_suspended(row: Mapping[str, Any]) -> bool:
+    return row.get("suspended_at") is not None
+
+
+def refuse_suspended(row: Mapping[str, Any]) -> None:
+    """Sign-in's check, after the identity is verified: a suspended account
+    gets no session."""
+    if is_suspended(row):
+        raise HTTPException(status_code=403, detail=SUSPENDED_MESSAGE)
 
 
 def is_deleted(user_id: int) -> bool:
@@ -1350,16 +1404,24 @@ async def websocket_user(ws: WebSocket) -> dict | None:
     """The signed-in user behind a websocket's ``sj_session`` cookie, or None.
     No cookie means no database access at all: a guest's handshake is
     unchanged. A storage error is logged and read as a guest, never a
-    refused game."""
+    refused game. A suspended account's socket is told so (the socket is
+    already accepted) and plays on as a guest."""
     cookies = getattr(ws, "cookies", None) or {}   # a socket without a cookie jar is a guest
     token = cookies.get(COOKIE)
     if not token:
         return None
     try:
-        return await STORE.run(STORE.session_user, token)
+        row = await STORE.run(STORE.session_account, token)
     except Exception as exc:            # noqa: BLE001 - gameplay over identity
         log.warning("session lookup failed on websocket (%s)", type(exc).__name__)
         return None
+    if row is not None and is_suspended(row):
+        try:
+            await ws.send_json({"type": "error", "code": "account_suspended", "message": SUSPENDED_MESSAGE})
+        except Exception:               # noqa: BLE001 - a gone socket ends on its own
+            pass
+        return None
+    return row
 
 
 def health() -> dict:

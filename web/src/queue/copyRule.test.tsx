@@ -114,8 +114,9 @@ describe("online panels", () => {
   });
   const offerSeat = (name: string, bot: boolean, open: boolean) => ({ name, bot, open });
 
-  /** Each panel kind, as the server's frames put it on screen. */
-  const KINDS: { kind: string; sel: string; frames: () => unknown[] }[] = [
+  /** Each panel kind, as the server's frames put it on screen (a code's
+   *  Join panel from a link, then its peek's answer). */
+  const KINDS: { kind: string; sel: string; frames: () => unknown[]; link?: string }[] = [
     { kind: "join", sel: ".tp-join", frames: () => [queued({
       offer: { room: "OPEN", pick: 2, expires_at: nowSecs() + 20, round_end: false,
                seats: [offerSeat("Mei", false, false), offerSeat("Bot 1", true, true),
@@ -134,12 +135,17 @@ describe("online panels", () => {
       table: { id: "t1", code: "4N5Z", opener: 0, you: 0, timer: null, ready: 1, of: 2, you_ready: true,
                waiting_for: ["Alice"],
                seats: [seat("Jerry", { you: true, ready: true }), seat("Alice"), null, null] } })] },
+    { kind: "join-code", sel: ".tp-join-code", link: "/?code=4N5Z", frames: () => [{
+      type: "room_seats", room: "4N5Z", table: true, mode: "casual", in_game: false, allow_joiners: true,
+      full: true, closed: false,
+      seats: ["Mei", "Li", "Sam", "Ana"].map((name, at) => ({ seat: at, team: at % 2, state: "taken", name, ready: false })) }] },
   ];
 
   for (const wide of [false, true]) {
-    for (const { kind, sel, frames } of KINDS) {
+    for (const { kind, sel, frames, link } of KINDS) {
       it(`${kind}${wide ? ", wide" : ", phone"}: labels only, one status, the ring is the clock`, async () => {
         viewport(wide);
+        if (link) window.history.replaceState(null, "", link);
         await renderApp();
         for (const f of frames()) tell(f);
         await settle();

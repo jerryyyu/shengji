@@ -154,8 +154,8 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      you see who is there before you sit.
    - One step: the page peeks a code directly (`table_peek`; the old `code_lookup` → `code_kind` is
      retired), and the store in `codeJoin.ts` holds the whole join as one value.
-   - The Join panel is drawn by `components/JoinPanel.tsx` from TablePanel's exported seat layouts; folding
-     it into `TablePanel.tsx` as a panel kind is a follow-up.
+   - The Join panel is a kind of the one panel (`join-code`): `fromCode` in `queue/tableModel.ts` builds it
+     and `TablePanel.tsx` draws it, with the CASUAL tag on a casual table and Enter pressing Join.
 3. **One identity sheet.** The name chip is the only identity control. A guest's chip opens one sheet
    (`IdentitySheet` in `components/GuestChip.tsx`, mounted once by App): "Your name" with the field and its
    dice, then the sign-in buttons, then Done. Every Sign in opens that same sheet: the Play tab's guest line

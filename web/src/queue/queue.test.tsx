@@ -69,8 +69,11 @@ beforeEach(() => {
   }) as typeof fetch;
   vi.resetModules();
 });
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
+  // this test's store stops its timers: a periodic status check from it
+  // would otherwise send, and save its guest name, during a later test
+  (await import("./store")).queue.reset();
   act(() => root.unmount());
   host.remove();
   window.matchMedia = realMatchMedia;

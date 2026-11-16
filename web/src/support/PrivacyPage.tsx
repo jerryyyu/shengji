@@ -74,7 +74,8 @@ export default function PrivacyPage() {
           <p>
             Signing in is optional; it lets you keep your games and get a rating. You can sign in with
             Google, or with Apple in the iOS app. For either, we store the display name you choose (if
-            any) and when you signed up and last signed in.
+            any) and when you signed up and last signed in, and, if we suspend the account under the
+            Terms, when we did.
           </p>
           <p>
             With Google we store your Google account id, email address, name and profile picture link

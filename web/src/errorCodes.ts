@@ -73,6 +73,7 @@ const OTHER_ROUTES = {
   bad_start_level: { says: "toast" },
   resume_unavailable: { says: "toast" },
   stale_connection: { says: "toast" },
+  account_suspended: { says: "toast" },
   server_busy: { says: "toast" },
   retired: { says: "toast" },
   report_sign_in: { says: "toast" },

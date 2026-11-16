@@ -402,7 +402,7 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
         before_links = sorted(db.execute("SELECT * FROM game_players"))
         before_events = sorted(db.execute("SELECT * FROM rating_events"))
     store = accounts.Store(path)
-    assert store.schema_version() == len(accounts.SCHEMA) == 6
+    assert store.schema_version() == len(accounts.SCHEMA) == 7
     with closing(sqlite3.connect(path)) as db:
         after_users = db.execute(
             f"SELECT {accounts._USER_COLUMNS_V5} FROM users ORDER BY id").fetchall()
@@ -446,7 +446,7 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
         db.row_factory = sqlite3.Row
         accounts._migrate_v6(db)
         db.commit()
-    assert accounts.Store(path).schema_version() == 6
+    assert accounts.Store(path).schema_version() == 7
     assert accounts.Store(path).user(1)["display_name"] == "Champ"
 
 
@@ -488,3 +488,20 @@ def test_google_sign_in_is_unchanged_after_the_migration(apple_on, tmp_path, mon
                            "display_name": "Champ", "name_shown": "Champ",
                            "rounds_played": 1}   # its v5 saved game's one round
     assert accounts.STORE.user(1)["google_sub"] == "g-1"
+
+
+def test_a_suspended_apple_account_is_refused_and_nothing_is_exchanged(
+        apple_on, rsa_key, client, secrets_on):
+    from shengji.api import accounts
+
+    apple_auth, fake = apple_on
+    assert _post(client, _sign(rsa_key, _claims())).status_code == 200
+    accounts.STORE.set_suspended(1, True)
+    sessions = accounts.STORE.count_sessions(1)
+    calls = len(fake.calls)
+    resp = _post(client, _sign(rsa_key, _claims()), authorization_code="code-2")
+    assert resp.status_code == 403 and resp.json()["detail"] == accounts.SUSPENDED_MESSAGE
+    assert "set-cookie" not in resp.headers
+    assert accounts.STORE.count_sessions(1) == sessions and len(fake.calls) == calls
+    accounts.STORE.set_suspended(1, False)
+    assert _post(client, _sign(rsa_key, _claims())).status_code == 200

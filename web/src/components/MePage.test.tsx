@@ -95,7 +95,7 @@ describe("signed in", () => {
     await render();
     expect(host.querySelector(".large-title")?.textContent).toBe("Me");
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
-    expect(host.querySelector(".me-sub")?.textContent).toBe("1532 · #12 all time · ▲ 8 this week");
+    expect(host.querySelector(".me-sub")?.textContent).toBe("1,532 · #12 all time · ▲ 8 this week");
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
@@ -360,13 +360,13 @@ describe("a guest", () => {
 it("review: a new account must not render previous account stats while loading", async () => {
   authState.current = {status:"in",clientId:"cid",user:JERRY};
   await render();
-  expect(host.textContent).toContain("1532");
+  expect(host.textContent).toContain("1,532");
   globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
   authState.current = {status:"out",clientId:"cid",user:null};
   await act(async () => {root.render(<MePage section="stats" />);});
   authState.current = {status:"in",clientId:"cid",user:{...JERRY,email:"a@x",name_shown:"Alice"}};
   await act(async () => {root.render(<MePage section="stats" />);});
-  expect(host.textContent).not.toContain("1532");
+  expect(host.textContent).not.toContain("1,532");
 });
 
 describe("account changes", () => {
@@ -405,24 +405,24 @@ describe("account changes", () => {
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
     await as(IN(JERRY));
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
-    expect(sub()).toContain("1532");
+    expect(sub()).toContain("1,532");
     expect(calls.filter((c) => c.url === "/api/me/stats")).toHaveLength(1);
   });
 
   it("account A, guest, account B: B sees only B's stats, settings and games", async () => {
     authState.current = IN(JERRY);
     await render();
-    expect(sub()).toContain("1532");
+    expect(sub()).toContain("1,532");
     await as(OUT);
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     statsMode = "hold";
     await as(IN(ALICE));
     expect(host.querySelector(".me-name")?.textContent).toBe("Alice");
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     await act(async () => { held.forEach((r) => r(ok(ALICE_STATS))); });
     await settle();
-    expect(sub()).toContain("1404");
-    expect(host.textContent).not.toContain("1532");
+    expect(sub()).toContain("1,404");
+    expect(host.textContent).not.toContain("1,532");
     expect(host.textContent).not.toContain("412");
     expect(host.querySelector(".me-visible")?.getAttribute("aria-checked")).toBe("false");
   });
@@ -434,14 +434,14 @@ describe("account changes", () => {
     statsMode = "hold";
     await as(OUT);
     await as(IN(ALICE));
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     expect(host.textContent).not.toContain("412");
     expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
     expect(host.querySelector(".me-visible")?.getAttribute("aria-checked")).toBe("false");
     expect(host.querySelector<HTMLButtonElement>(".me-visible")?.disabled).toBe(true);
     await act(async () => { held.forEach((r) => r(ok(ALICE_STATS))); });
     await settle();
-    expect(sub()).toContain("1404");
+    expect(sub()).toContain("1,404");
   });
 
   it("a failed refresh for a new account says so instead of showing the previous one's stats", async () => {
@@ -449,10 +449,10 @@ describe("account changes", () => {
     await render();
     statsMode = "hold";
     await as(IN(ALICE));
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     await act(async () => { held.forEach((r) => r({ status: 503, json: async () => ({}) } as Response)); });
     await settle();
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     expect(host.querySelector(".lobby-error")?.textContent).toBe("Could not load your stats (503).");
   });
 
@@ -464,23 +464,23 @@ describe("account changes", () => {
     // Jerry's cached stats are drawn while his refresh is still out
     statsMode = "hold";
     await render();
-    expect(sub()).toContain("1532");
+    expect(sub()).toContain("1,532");
     expect(held).toHaveLength(1);
     const jerrys = held[0];
     await as(IN(ALICE));
     expect(held).toHaveLength(2);
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     await act(async () => { held[1](ok(ALICE_STATS)); });
     await settle();
-    expect(sub()).toContain("1404");
+    expect(sub()).toContain("1,404");
     await act(async () => { jerrys(ok(STATS)); });
     await settle();
-    expect(sub()).toContain("1404");
-    expect(host.textContent).not.toContain("1532");
+    expect(sub()).toContain("1,404");
+    expect(host.textContent).not.toContain("1,532");
     act(() => root.unmount());
     host.remove();
     await render();
-    expect(sub()).toContain("1404");
+    expect(sub()).toContain("1,404");
   });
 
   it("a response from a session that ended is dropped even for the same account", async () => {
@@ -492,7 +492,7 @@ describe("account changes", () => {
     forgetPrivateSession();
     await act(async () => { held[0](ok(STATS)); });
     await settle();
-    expect(host.textContent).not.toContain("1532");
+    expect(host.textContent).not.toContain("1,532");
     expect(host.querySelector(".lb-note[role=status]")?.textContent).toBe("Loading…");
   });
 
@@ -503,7 +503,7 @@ describe("account changes", () => {
     host.remove();
     statsMode = "hold";
     await render();
-    expect(sub()).toContain("1532");
+    expect(sub()).toContain("1,532");
     expect(host.querySelector(".me-tile")).not.toBeNull();
     expect(host.querySelector(".lb-note[role=status]")).toBeNull();
   });

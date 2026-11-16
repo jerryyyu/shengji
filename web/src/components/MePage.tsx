@@ -59,7 +59,7 @@ function Identity({ user, stats }: { user: AuthUser; stats: Stats | null }) {
   if (stats) {
     sub = (
       <>
-        {stats.rating}
+        {stats.rating.toLocaleString()}
         {stats.rank !== null ? ` · #${stats.rank} all time` : " · unranked"}
         {" · "}
         <b className={deltaClass(stats.week_delta)}>{deltaText(stats.week_delta)}</b> this week

@@ -94,7 +94,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - Section 8, game over / Next game.
 
 ## Offline (Jerry 2026-11-14: "we should just keep offline, dont go online")
-- With no connection, Play opens your table with 3 bots on the device: the same panel, "Offline · not rated", Casual only (Ranked disabled with "Ranked needs a connection"). Duo, rooms and chat are disabled with a one-line reason.
+- With no connection, Play opens your table with 3 bots on the device: the same panel, "Offline · not rated", Casual only (Ranked disabled with "Ranked needs a connection"). Duo, rooms and chat are disabled with a one-line reason. The offline table is the panel's `offline` kind (`offlineModel` in `queue/tableModel.ts`, drawn by `TablePanel.tsx`), and the offline Play block draws the online Play controls (`ModeSwitch`, `PlayRow`, `PresenceLine` in `queue/Ranked.tsx`, `CodeRow` in `Lobby.tsx`) disabled.
 - The presence line becomes a grey "Offline · you'll play the bots on this device".
 - **An offline game stays offline.** When the connection returns there is no automatic switch and no mid-game prompt. The game continues on the device. `offlineGame.goOnline()` runs only once the offline table is left (`components/OfflinePlay.tsx`). After you leave the offline table, Play is online again as normal, in place (simplification 7).
 - The section 4 full-screen connection state offers "Play offline with the bots" next to Retry, replacing today's silent switch inside "Play bots" (`Lobby.tsx:244-247`).

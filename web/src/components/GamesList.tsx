@@ -115,7 +115,7 @@ function Summary({ game }: { game: GameRow }) {
   return (
     <span className="games-meta">
       <span>{n} round{n === 1 ? "" : "s"}</span>
-      {levels ? <span>Levels: you {levels[mine]} · them {levels[1 - mine]}</span> : null}
+      {levels ? <span>Levels {levels[mine]}–{levels[1 - mine]}</span> : null}
       {won ? <span>Games won: {won[mine]}–{won[1 - mine]}</span> : null}
       {game.rating_change !== undefined ? (
         <span className="games-meta-rating">
@@ -187,7 +187,7 @@ function GameView({ id }: { id: string }) {
   } else {
     const game = res.data;
     const results = new Map((game.round_results ?? []).map((r) => [r.round, r]));
-    sub = `${when(game.started_at)} · room ${game.room_code}`;
+    sub = when(game.started_at);
     body = (
       <>
         <div className="games-row static">

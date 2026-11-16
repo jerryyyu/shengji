@@ -16,7 +16,7 @@ import { RANKS } from "../protocol";
 import Sheet from "./Sheet";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
-import { fromCode, fromQueue, queueSend } from "./tableModel";
+import { fromCode, fromQueue, offlineModel, queueSend } from "./tableModel";
 import type { MoverSeat, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
 import "./tablePanel.css";
@@ -61,7 +61,7 @@ function Seat({ s, team }: { s: SeatItem; team: 0 | 1 }) {
 
 /** The seats at every width: your team on the left, partner above you,
  *  the other team on the right. */
-export function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
+function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
   const ours = [(you + 2) % 4, you].map((at) => seats[at]);
   const theirs = [(you + 1) % 4, (you + 3) % 4].map((at) => seats[at]);
   return (
@@ -98,7 +98,7 @@ function useEnterIsPrimary(primary: RefObject<HTMLButtonElement | null>, box: Re
 }
 
 /** The small mode tag above a panel's title, set in capitals by CSS. */
-export function ModeTag({ tag }: { tag: "Casual" | "Offline" }) {
+function ModeTag({ tag }: { tag: "Casual" | "Offline" }) {
   return <p className="tp-tag">{tag}</p>;
 }
 
@@ -136,7 +136,11 @@ function PanelView({ m, guarded, sheet, act }: {
       {seats ? <TeamColumns seats={seats} you={m.you} /> : null}
       {m.rows ? <TableRows rows={m.rows} act={act} /> : null}
       {m.waitSwitch ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
-      {m.chat ? <ChatRow messages={m.chat.messages} you={m.chat.you} onSend={(text) => act({ type: "chat", text })} /> : null}
+      {m.chat && "disabled" in m.chat ? (
+        <button type="button" className="tp-chat" disabled aria-label="Chat needs a connection">
+          <span className="tp-chat-label" aria-hidden="true">Chat</span>
+        </button>
+      ) : m.chat ? <ChatRow messages={m.chat.messages} you={m.chat.you} onSend={(text) => act({ type: "chat", text })} /> : null}
       {m.led ? <p className="tp-led">{ringOf(m.primary?.ring)}{m.led}</p> : (
         <div className="tp-acts">
           {m.primary ? (
@@ -178,7 +182,8 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
     if (a.type === "ask_leave") setAsking(true);
     else if (a.type === "pick_person") mover.pick(a.at);
     else if (a.type === "move_to") mover.to(a.at);
-    else if (a.type !== "code_pick" && a.type !== "code_join" && a.type !== "code_cancel") queueSend(a);
+    else if (a.type !== "code_pick" && a.type !== "code_join" && a.type !== "code_cancel"
+             && a.type !== "offline_start" && a.type !== "offline_leave") queueSend(a);
   };
   const sheet = asking ? (
     <LeaveSheet context={m.leave}
@@ -212,6 +217,18 @@ export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
                      onTake={() => { setAsking(null); onJoin(); }} />
   ) : null;
   return <PanelView m={m} guarded={false} sheet={sheet} act={act} />;
+}
+
+/** Your offline table in Play's place (`offlineModel`). Leave asks
+ *  nothing: no one else sits at it. */
+export function OfflinePanel({ ready, starting, onStart, onLeave }: {
+  ready: boolean; starting: boolean; onStart: () => void; onLeave: () => void;
+}) {
+  const act = (a: PanelAction) => {
+    if (a.type === "offline_start") onStart();
+    else if (a.type === "offline_leave") onLeave();
+  };
+  return <PanelView m={offlineModel({ ready, starting })} guarded={false} act={act} />;
 }
 
 /** The confirm before taking a dropped player's seat: one question, then

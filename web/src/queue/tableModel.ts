@@ -1,5 +1,5 @@
-// The table panel's one model, from the queue's table (`fromQueue`) or a
-// code's peek (`fromCode`). The panel draws only the model and answers only
+// The table panel's one model, from the queue's table (`fromQueue`), a
+// code's peek (`fromCode`) or the offline table (`offlineModel`). The panel draws only the model and answers only
 // `PanelAction`s; the queue's dispatcher turns a `TableAction` into its
 // frame, with the table's sitting token added there.
 import type { CodeJoin } from "../codeJoin";
@@ -58,12 +58,16 @@ export type CodeAction =
   | { type: "code_join" }
   | { type: "code_cancel" };
 
+/** What the offline table does: Start deals at once; Leave puts Play back. */
+export type OfflineAction = { type: "offline_start" } | { type: "offline_leave" };
+
 /** What the panel answers itself: the leave sheet, and the opener's tap on
  *  a person and then on the seat they go to (one confirm sends the move);
  *  and a code's Join panel's actions. */
 export type PanelAction =
   | TableAction
   | CodeAction
+  | OfflineAction
   | { type: "ask_leave" }
   | { type: "pick_person"; at: number }
   | { type: "move_to"; at: number };
@@ -116,7 +120,9 @@ export interface TableModel {
   rows: TableRows | null;
   /** The leader's Wait for people on your own table. */
   waitSwitch: { on: boolean; disabled: boolean } | null;
-  chat: { messages: ChatMsg[]; you: number } | null;
+  /** The table's chat row; `disabled` draws it greyed, for a table with
+   *  no server to chat through. */
+  chat: { messages: ChatMsg[]; you: number } | { disabled: true } | null;
   primary: TableButton | null;
   secondary: TableButton | null;
   /** A Duo's other member: who presses the buttons instead. */
@@ -408,6 +414,33 @@ export function fromCode(j: CodeJoin, busy: boolean): TableModel {
     rows: null, waitSwitch: null, chat: null,
     primary: { label: busy ? "Joining…" : "Join", disabled: !canJoin, act: { type: "code_join" } },
     secondary: { label: "Not now", disabled: false, act: { type: "code_cancel" } },
+    leave: { kind: "queue", others: [] },
+  };
+}
+
+/** You at the bottom, Bot 2 across as your partner, Bots 1 and 3 opposite,
+ *  as the offline server seats them. */
+const OFFLINE_SEATS: ModelSeat[] = [
+  { at: 0, look: "you", name: "You", sub: "", label: "You, your team" },
+  { at: 1, look: "bot", name: "Bot 1", sub: "", label: "Bot 1, other team" },
+  { at: 2, look: "bot", name: "Bot 2", sub: "", label: "Bot 2, your team" },
+  { at: 3, look: "bot", name: "Bot 3", sub: "", label: "Bot 3, other team" },
+];
+
+/** Your offline table in Play's place, its mode tag saying Offline: the
+ *  chat row greyed (chat needs the server), Start and Leave. `ready` is the
+ *  on-device server's socket being open; `starting`, a Start on its way. */
+export function offlineModel({ ready, starting }: { ready: boolean; starting: boolean }): TableModel {
+  return {
+    kind: "offline",
+    tag: "Offline",
+    title: "You and 3 bots",
+    seats: OFFLINE_SEATS,
+    you: 0,
+    rows: null, waitSwitch: null, chat: { disabled: true },
+    primary: { label: starting ? "Starting…" : "Start", disabled: !ready || starting, busy: starting,
+               act: { type: "offline_start" } },
+    secondary: { label: "Leave", disabled: false, act: { type: "offline_leave" } },
     leave: { kind: "queue", others: [] },
   };
 }

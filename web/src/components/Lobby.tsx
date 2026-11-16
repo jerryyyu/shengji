@@ -56,6 +56,42 @@ function RankedUnavailable() {
   );
 }
 
+/** Play's code box: a table's four-letter code, and Join, which opens its
+ *  panel. `looking`: the code's seats are on their way. Disabled, it holds
+ *  its place with no connection to look a code up on. */
+export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin }: {
+  disabled: boolean; code?: string; looking?: boolean; onCode?: (code: string) => void; onJoin?: () => void;
+}) {
+  return (
+    <div className="join-row">
+      <input
+        className="room-input"
+        value={code}
+        maxLength={4}
+        placeholder="CODE"
+        aria-label="Table code"
+        disabled={disabled}
+        autoCapitalize="characters"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint="go"
+        onChange={(e) => onCode?.(e.target.value.toUpperCase())}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onJoin?.();
+        }}
+      />
+      <button
+        className="btn"
+        disabled={disabled || looking || code.trim().length !== 4}
+        onClick={onJoin}
+        aria-busy={looking || undefined}
+      >
+        {looking ? "Joining…" : "Join"}
+      </button>
+    </div>
+  );
+}
+
 export default function Lobby({ status, room = null }: LobbyProps) {
   const stalled = useStalled(status);
   // Offline, the socket talks to the on-device server: Play's controls are
@@ -179,32 +215,9 @@ export default function Lobby({ status, room = null }: LobbyProps) {
             ) : ranked}
 
             {/* at a table the panel is the page: no code box until you leave it */}
-            {seated || joinUp ? null : <div className="join-row">
-              <input
-                className="room-input"
-                value={roomCode}
-                maxLength={4}
-                placeholder="CODE"
-                aria-label="Table code"
-                disabled={status !== "open"}
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-                enterKeyHint="go"
-                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") join();
-                }}
-              />
-              <button
-                className="btn"
-                disabled={!ready || looking || roomCode.trim().length !== 4}
-                onClick={join}
-                aria-busy={looking || undefined}
-              >
-                {looking ? "Joining…" : "Join"}
-              </button>
-            </div>}
+            {seated || joinUp ? null : (
+              <CodeRow disabled={!ready} code={roomCode} looking={looking} onCode={setRoomCode} onJoin={join} />
+            )}
           </>
         )}
 

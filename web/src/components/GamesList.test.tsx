@@ -270,6 +270,9 @@ describe("rating change", () => {
     await mount({ page: "game", id: "g1" });
     expect(q(".games-meta-rating")).toBeNull();
     expect(q(".rating-change")).toBeNull();
+    // the levels as the list row says them, yours first; no table code once the game is over
+    expect(q(".games-meta")!.textContent).toContain("Levels 5–3");
+    expect(host.textContent).not.toMatch(/ABCD|you 5|them 3/);
   });
 });
 

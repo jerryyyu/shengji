@@ -152,15 +152,25 @@ export default function App() {
         case "error": {
           // a peek's refusal is the code store's to say, and answers no resume
           if (msg.peek !== undefined) break;
+          // a move refused while a resume is in flight is not the resume's
+          // answer: the flag stays up until that answer arrives
+          if (msg.code === "no_room" && resumingRef.current) break;
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
+          // the one ask for a lost seat was refused: the table it showed is
+          // gone, so it goes now, not on the next refused move
+          if (wasResuming && reaskedRef.current && msg.code !== "ranked_queue_only") {
+            reaskedRef.current = false;
+            resetToLobby();
+            showToast("You're no longer at a table.");
+            break;
+          }
           // the queue and Join panels say their own codes: one status, not two
           const says = routeOf(msg).says;
           if (says !== "toast" && says !== "app") break;
           if (msg.code === "no_room") {
             // A move answered "not in a room" while a table is shown: the
             // socket lost its seat. Ask for it back once, else go to Play.
-            if (wasResuming) break;          // the resume's own answer follows
             if (!seededRef.current) { showToast(msg.message); break; }
             if (!reaskedRef.current) {
               reaskedRef.current = true;

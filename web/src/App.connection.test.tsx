@@ -332,10 +332,15 @@ it("a move refused for want of a seat asks for the seat back once, then goes to 
   act(() => sock.deliver({ type: "error", code: "no_room", message: "Join a room first." }));
   expect(sock.sent.at(-1)).toEqual(expect.objectContaining({ type: "table_join", code: "ABCD", token: "tok-mid" }));
   expect(host.querySelector(".table-screen")).not.toBeNull();
-  // the ask is refused, and the next move is refused again: the table goes
-  act(() => sock.deliver({ type: "error", code: "seat_unavailable", message: "That seat was just taken." }));
+  // moves sent before the refusal arrived are refused too: they are not the
+  // ask's answer, so the table stays and nothing more is asked
   const asked = sock.sent.length;
   act(() => sock.deliver({ type: "error", code: "no_room", message: "Join a room first." }));
+  act(() => sock.deliver({ type: "error", code: "no_room", message: "Join a room first." }));
+  expect(sock.sent.length).toBe(asked);
+  expect(host.querySelector(".table-screen")).not.toBeNull();
+  // the ask itself is refused: the table goes at once
+  act(() => sock.deliver({ type: "error", code: "seat_unavailable", message: "That seat was just taken." }));
   expect(sock.sent.length).toBe(asked);
   expect(host.querySelector(".table-screen")).toBeNull();
   expect(host.querySelector(".lobby-panel")).not.toBeNull();

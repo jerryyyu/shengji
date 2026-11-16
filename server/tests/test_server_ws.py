@@ -2954,3 +2954,35 @@ def test_a_room_whose_game_has_not_started_cannot_be_joined(client):
         ws.send_json({"type": "table_join", "expect": "room", "code": "WAIT", "name": "james"})
         assert _drain(ws, "error")["code"] == "room_not_found"
     assert srv.rooms["WAIT"].seats == []
+
+
+def test_a_seat_taken_mid_game_by_code_comes_back_by_its_token_and_plays_on(client, monkeypatch):
+    """A friend who takes a bot's seat in a game already on is sent no
+    ``room`` frame: its first state (which names the room) and its ``resume``
+    token are what a reconnect asks with. A move from a socket holding no
+    seat is refused with ``no_room``, which the page answers by asking for
+    the seat back."""
+    with client.websocket_connect("/ws") as a:
+        code, room = _banker_leads(client, a, monkeypatch, bot_delay=0.0)
+        with client.websocket_connect("/ws") as c:
+            c.send_json({"type": "table_join", "expect": "room", "code": code,
+                         "name": "Cee", "seat": 2})
+            seen = _frames_until(c, lambda m: m.get("type") == "state" and m.get("you") == 2
+                                 and not m.get("joining_you"), "C's seat", DRAIN_TIMEOUT)
+            kinds = [m.get("type") for m in seen]
+            assert "room" not in kinds
+            assert seen[-1]["room"] == code
+            token = next(m for m in seen if m.get("type") == "resume")["token"]
+            assert not room.seats[2].is_bot and room.seats[2].name == "Cee"
+        _wait_for(lambda: not room.seats[2].connected)
+        with client.websocket_connect("/ws") as c2:
+            c2.send_json({"type": "play", "card_ids": []})
+            refused = _drain(c2, "error")
+            assert refused["code"] == "no_room" and refused["message"] == "Join a room first."
+            c2.send_json({"type": "table_join", "expect": "room", "code": code,
+                          "name": "Cee", "token": token})
+            assert _next_where(c2, "state", lambda m: m["you"] == 2)["room"] == code
+            assert room.seats[2].connected and room.seats[2].name == "Cee"
+            _real_play(client, a, room, seat=0)
+            _wait_for(lambda: _my_turn(room, 2))
+            _real_play(client, c2, room, seat=2)

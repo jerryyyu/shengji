@@ -61,6 +61,7 @@ const QUEUE_ROUTES = {
 const OTHER_ROUTES = {
   account_in_game: { says: "queue" },
   room_not_found: { says: "app" },
+  no_room: { says: "app" },
   ranked_queue_only: { says: "app" },
   room_full: { says: "toast" },
   choose_seat: { says: "toast" },

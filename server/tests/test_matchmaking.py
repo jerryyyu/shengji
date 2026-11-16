@@ -1294,13 +1294,15 @@ def test_code_peeks_are_rate_limited_per_account():
 
 
 def test_ws_room_code_never_repeats_a_queued_tables_code(wsenv, monkeypatch):
-    import random
-
     srv, store, client, clock = wsenv
     _, headers = _user(store, "pairer", "Pairer")
     monkeypatch.setattr(mm, "_CODE_RNG", ScriptedCodes("PQRS"))
     rolls = iter(["PQRS", "TUVW"])
-    monkeypatch.setattr(random, "choices", lambda population, k: list(next(rolls)))
+
+    class _Rolls:
+        def choices(self, population, k):
+            return list(next(rolls))
+    monkeypatch.setattr(srv, "_ROOM_CODE_RNG", _Rolls())
     with client.websocket_connect("/ws", headers=headers) as a, \
             client.websocket_connect("/ws") as b:
         a.send_json({"type": "queue_join"})
@@ -4023,7 +4025,7 @@ def test_new_room_and_pair_codes_avoid_queued_table_codes(monkeypatch):
         class Rng:
             def choices(self, alphabet, k):
                 return list(next(draws))
-        monkeypatch.setattr(srv, "random", Rng())
+        monkeypatch.setattr(srv, "_ROOM_CODE_RNG", Rng())
         assert srv.new_code() == "FREE"
         assert srv.MATCHMAKER.has_code("TAKN")
     finally:

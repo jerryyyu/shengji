@@ -8,7 +8,6 @@ import errno
 import json
 import logging
 import math
-import random
 import re
 import time
 import weakref
@@ -141,7 +140,51 @@ MOVE_TIMER_POLL = 1.0      # watchdog period in a room with the move timer
 LOG_DIR = Path(os.environ.get(
     "SHENGJI_LOG_DIR",
     Path(__file__).resolve().parents[3] / "logs" / "local"))
-app = FastAPI(title="shengji")
+# The schema and its explorer pages describe every route to anyone; they
+# are served only to a developer who asks for them.
+_API_DOCS = os.environ.get("SHENGJI_API_DOCS", "") == "1"
+app = FastAPI(title="shengji",
+              docs_url="/docs" if _API_DOCS else None,
+              redoc_url="/redoc" if _API_DOCS else None,
+              openapi_url="/openapi.json" if _API_DOCS else None)
+
+
+# Sent on every HTTP response. The policy restricts framing, plugins and the
+# base URL only; scripts and styles stay unrestricted so the sign-in widgets
+# and inline styles keep working.
+SECURITY_HEADERS = (
+    (b"strict-transport-security", b"max-age=31536000"),
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+    (b"content-security-policy",
+     b"frame-ancestors 'none'; base-uri 'self'; object-src 'none'"),
+)
+
+
+class SecurityHeaders:
+    """Pure ASGI, so WebSocket traffic passes through untouched."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send_):
+        if scope["type"] != "http":
+            await self.inner(scope, receive, send_)
+            return
+
+        async def with_headers(message):
+            if message["type"] == "http.response.start":
+                have = {k.lower() for k, _ in message.get("headers", [])}
+                extra = [(k, v) for k, v in SECURITY_HEADERS if k not in have]
+                message = {**message,
+                           "headers": [*message.get("headers", []), *extra]}
+            await send_(message)
+
+        await self.inner(scope, receive, with_headers)
+
+
+app.add_middleware(SecurityHeaders)
 
 rooms: dict[str, "Room"] = {}
 
@@ -2078,11 +2121,21 @@ async def run_deal(room: Room) -> None:
 
 
 # ------------------------------------------------------------------ actions
+# Room codes guard entry to a table, so they come from the OS generator,
+# never a stream another draw could reveal.
+_ROOM_CODE_RNG = secrets.SystemRandom()
+
+
+def live_deck_rng() -> Any:
+    """A live table's deck generator: the OS's, since a table's decks are
+    shown after each round and must not let anyone predict the next one.
+    The one seam a seeded harness replaces to deal known decks."""
+    return secrets.SystemRandom()
+
+
 def new_code() -> str:
-    # The module RNG, as before: choices() draws once per character whatever
-    # the alphabet, so the stream that seeded fixtures read is unchanged.
     return matchmaking.new_code(
-        lambda c: c in rooms or MATCHMAKER.has_code(c), random)
+        lambda c: c in rooms or MATCHMAKER.has_code(c), _ROOM_CODE_RNG)
 
 
 def _card_ids(msg: dict) -> list[int]:
@@ -2129,7 +2182,8 @@ def _start_game(room: Room) -> None:
                                else guest_queue_id(sd.device) if sd.device else None)
     # games_to_win=None: a table keeps playing. Holding A scores a
     # point and the levels restart, rather than ending the session.
-    room.game = Game(start_level=room.start_level, games_to_win=None)
+    room.game = Game(rng=live_deck_rng(),
+                     start_level=room.start_level, games_to_win=None)
     if room.resume is not None:
         # The engine reads a game's levels and banker only through these
         # two fields, so setting them before the first round starts the

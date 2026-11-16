@@ -207,8 +207,9 @@ C14 training run, which closed inconclusive (v96c14e11); the open rows are on th
 
 - `scripts/replay.py` — render any room log (`logs/<ROOM>.jsonl`) as a full
   transcript with all hands.
-- `scripts/xray.py` / the in-game X-ray (press `x`; needs
-  `SHENGJI_DEBUG_TOKEN`) — what the bot sees and would play from any position,
+- `scripts/xray.py` / the in-game X-ray (press `x`; the server must start
+  with `SHENGJI_DEBUG_XRAY=1` and `SHENGJI_DEBUG_TOKEN`, so it is off in
+  production) — what the bot sees and would play from any position,
   on an isolated snapshot (the live bot's RNG is untouched). It decodes
   shortlist-era records (W32 nominations, MC selection estimates, the report-gap
   decision). For the pv-search bot it shows the pick and the bot's memory, not

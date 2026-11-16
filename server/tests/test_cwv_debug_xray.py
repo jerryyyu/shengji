@@ -121,24 +121,32 @@ def test_allowlist_caps_rows_keeps_finalists_and_redacts_unknown_fields():
 
 def test_route_authentication_and_invalid_seat_do_not_start_search(monkeypatch):
     monkeypatch.setenv('SHENGJI_DEBUG_TOKEN', 'test-token')
+    monkeypatch.setenv('SHENGJI_DEBUG_XRAY', '1')
     rnd, _ = _lead_state()
     room = SimpleNamespace(round=rnd, bot=_RecordingBot(), lock=asyncio.Lock())
     app = FastAPI(); debug.register_debug(app, {'TEST': room})
     monkeypatch.setattr(debug, '_snapshot_xray', lambda *a: pytest.fail('must not snapshot'))
     with TestClient(app) as client:
         assert client.get('/debug/xray?room=TEST&seat=0').json() == {'error': 'not found'}
-        assert client.get('/debug/xray?room=TEST&seat=4&token=test-token').json() == {'error': 'invalid seat'}
+        # the token travels in a header only; in the query it is ignored
+        assert client.get('/debug/xray?room=TEST&seat=0&token=test-token').json() == {'error': 'not found'}
+        assert client.get('/debug/xray?room=TEST&seat=0',
+                          headers={'X-Debug-Token': 'test-tokeX'}).json() == {'error': 'not found'}
+        assert client.get('/debug/xray?room=TEST&seat=4',
+                          headers={'X-Debug-Token': 'test-token'}).json() == {'error': 'invalid seat'}
 
 
 def test_authenticated_route_returns_isolated_analysis_without_mutating_room(monkeypatch):
     monkeypatch.setenv('SHENGJI_DEBUG_TOKEN', 'test-token')
+    monkeypatch.setenv('SHENGJI_DEBUG_XRAY', '1')
     rnd, seat = _lead_state()
     bot = _RecordingBot()
     rng_before = bot.rng.getstate()
     room = SimpleNamespace(round=rnd, bot=bot, lock=asyncio.Lock())
     app = FastAPI(); debug.register_debug(app, {'TEST': room})
     with TestClient(app) as client:
-        response = client.get(f'/debug/xray?room=test&seat={seat}&token=test-token')
+        response = client.get(f'/debug/xray?room=test&seat={seat}',
+                              headers={'X-Debug-Token': 'test-token'})
     assert response.status_code == 200
     out = response.json()
     assert out['analysis']['source'] == 'isolated_current_state_replay'
@@ -254,3 +262,34 @@ def test_root_preview_is_not_the_scored_candidate_input(monkeypatch):
     assert root["scope"] == scored["scope"] == "root_state_preview"
     # the preview's own-hand plane still holds the card the candidate played
     assert candidate[0] in root["groups"]["own_hand"]["value"]
+
+
+def test_xray_is_not_mounted_without_its_flag(monkeypatch):
+    """A production server (a token secret but no flag) has no X-ray route."""
+    monkeypatch.setenv('SHENGJI_DEBUG_TOKEN', 'test-token')
+    monkeypatch.delenv('SHENGJI_DEBUG_XRAY', raising=False)
+    rnd, _ = _lead_state()
+    room = SimpleNamespace(round=rnd, bot=_RecordingBot(), lock=asyncio.Lock())
+    app = FastAPI(); debug.register_debug(app, {'TEST': room})
+    assert not any(getattr(r, 'path', '') == '/debug/xray' for r in app.routes)
+    with TestClient(app) as client:
+        r = client.get('/debug/xray?room=TEST&seat=0', headers={'X-Debug-Token': 'test-token'})
+    assert r.status_code == 404
+    monkeypatch.setenv('SHENGJI_DEBUG_XRAY', '1')
+    monkeypatch.delenv('SHENGJI_DEBUG_TOKEN')
+    app = FastAPI(); debug.register_debug(app, {'TEST': room})
+    assert not any(getattr(r, 'path', '') == '/debug/xray' for r in app.routes)
+
+
+def test_xray_calls_are_rate_limited_per_client(monkeypatch):
+    monkeypatch.setenv('SHENGJI_DEBUG_TOKEN', 'test-token')
+    monkeypatch.setenv('SHENGJI_DEBUG_XRAY', '1')
+    monkeypatch.setattr(debug, 'XRAY_LIMIT', (2, 60.0))
+    rnd, _ = _lead_state()
+    room = SimpleNamespace(round=rnd, bot=_RecordingBot(), lock=asyncio.Lock())
+    app = FastAPI(); debug.register_debug(app, {'TEST': room})
+    hdr = {'X-Debug-Token': 'test-token'}
+    with TestClient(app) as client:
+        assert client.get('/debug/xray?room=TEST&seat=4', headers=hdr).json() == {'error': 'invalid seat'}
+        assert client.get('/debug/xray?room=TEST&seat=4', headers=hdr).json() == {'error': 'invalid seat'}
+        assert client.get('/debug/xray?room=TEST&seat=4', headers=hdr).json() == {'error': 'not found'}

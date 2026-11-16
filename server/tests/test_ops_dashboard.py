@@ -112,7 +112,7 @@ def world(tmp_path):
 
 def test_collect_counts_and_shape(world):
     data, logs = world
-    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)
+    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY, [TODAY])
 
     a = out["accounts"]
     assert (a["total"], a["google"], a["apple"]) == (5, 4, 1)
@@ -155,7 +155,7 @@ def test_collect_counts_and_shape(world):
 
 def test_output_carries_counts_only(world):
     data, logs = world
-    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)
+    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY, [TODAY])
     collector.check_schema(out)
     text = json.dumps(out)
     for secret in ("example.com", "a@b.c", "ROOM", "p0", "g1", "a1", "hi"):
@@ -173,7 +173,7 @@ def test_query_leaves_the_database_file_unchanged(world):
     db = data / "accounts.sqlite3"
     digest = hashlib.sha256(db.read_bytes()).hexdigest()
     before = {p.name for p in data.iterdir()}
-    query.collect(db, logs, data, NOW, TODAY)
+    query.collect(db, logs, data, NOW, TODAY, [TODAY])
     assert hashlib.sha256(db.read_bytes()).hexdigest() == digest
     # The server keeps these WAL side files itself; nothing else may appear.
     assert {p.name for p in data.iterdir()} - before <= {db.name + "-wal", db.name + "-shm"}
@@ -194,7 +194,7 @@ def test_query_reads_rows_committed_to_a_live_wal(world):
             assert immutable.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 5
         finally:
             immutable.close()
-        out = query.collect(db, logs, data, NOW, TODAY)
+        out = query.collect(db, logs, data, NOW, TODAY, [TODAY])
         assert out["accounts"]["total"] == 6
         assert out["accounts"]["new_24h"] == 2
     finally:
@@ -217,7 +217,7 @@ def test_guest_estimate_attributes_each_round_by_its_own_time(tmp_path):
     conn.close()
     (logs / "ROOM.jsonl").write_text(_round_start(TODAY + 60, [False, True, True, True]) + "\n")
     os.utime(logs / "ROOM.jsonl", (NOW - 60, NOW - 60))
-    today = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)["windows"]["today"]
+    today = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY, [TODAY])["windows"]["today"]
     assert today["roster_seat_rounds"] == 1
     assert today["signed_in_roster_seat_rounds"] == 1
     assert today["guest_roster_seat_rounds_est"] == 0
@@ -240,7 +240,7 @@ def _one_game_world(tmp_path, last_round, link_to, rounds):
     (logs / "ROOM.jsonl").write_text("".join(_round_start(t, bots, rnd=r) + "\n"
                                              for t, r, bots in rounds))
     os.utime(logs / "ROOM.jsonl", (NOW - 60, NOW - 60))
-    return query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)["windows"]["today"]
+    return query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY, [TODAY])["windows"]["today"]
 
 
 def test_open_link_covers_rounds_the_database_has_not_recorded(tmp_path):
@@ -295,7 +295,7 @@ def _stored_text(home):
 
 def test_collector_stores_a_valid_query_output(world, collector_home, monkeypatch):
     data, logs = world
-    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY)
+    out = query.collect(data / "accounts.sqlite3", logs, data, NOW, TODAY, [TODAY])
     _fake_fly(monkeypatch, "noise\nOPS_JSON " + json.dumps(out) + "\n")
     assert collector.collect(collector_home) == 0
     latest = json.loads((collector_home / "latest.json").read_text())
@@ -320,3 +320,80 @@ def test_collector_never_stores_rejected_keys_or_error_text(
     printed = capsys.readouterr()
     for text in (_stored_text(collector_home), printed.out, printed.err):
         assert SECRET not in text and "s3cr3t" not in text
+
+
+def _report(age_h, room="AB12"):
+    return {"t": NOW - age_h * 3600, "room": room, "round": 1, "reason": "spam",
+            "reported": "x", "reporter": "y"}
+
+
+def test_only_unhandled_reports_turn_the_state_amber_or_red():
+    rows = [_report(30, "OLD1"), _report(14, "MID1"), _report(2, "NEW1")]
+    rep = {"available": True, "total": 3, "latest": rows}
+    assert collector.reports_state(rep, NOW)["state"] == "red"
+    handled = {collector.report_id(rows[0]): NOW}
+    st = collector.reports_state(rep, NOW, handled)
+    assert st["state"] == "amber" and "1 handled" in st["reason"]
+    handled[collector.report_id(rows[1])] = NOW
+    assert collector.reports_state(rep, NOW, handled)["state"] == "green"
+    # the id is stable and names no one
+    assert collector.report_id(dict(rows[0])) == collector.report_id(rows[0])
+    assert len(collector.report_id(rows[0])) == 16
+
+
+@pytest.fixture
+def dash(tmp_path):
+    import threading
+    from http.server import ThreadingHTTPServer
+    serve = _load("serve")
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "token").write_text("t" * 20)
+    rows = [_report(30, "OLD1"), _report(2, "NEW1")]
+    (home / "latest.json").write_text(json.dumps(
+        {"collected_at": NOW, "db": {"reports": {"available": True, "total": 2, "latest": rows}}}))
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), serve.make_handler(home, "t" * 20))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield serve, home, f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def _http(url, body=None, ctype="application/json"):
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(),
+                                 headers={"Content-Type": ctype}, method="GET" if body is None else "POST")
+    try:
+        with urllib.request.urlopen(req) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, None
+
+
+def test_mark_handled_writes_only_the_local_list_and_clears_the_state(dash):
+    serve, home, base = dash
+    code, snap = _http(f"{base}/api/latest?t={'t' * 20}")
+    assert code == 200 and snap["reports_state"]["state"] == "red"
+    old = snap["db"]["reports"]["latest"][0]
+    assert old["handled"] is False
+    latest_before = (home / "latest.json").read_bytes()
+    assert _http(f"{base}/api/reports/handled?t=wrong", {"id": old["id"], "handled": True})[0] == 403
+    assert _http(f"{base}/api/reports/handled?t={'t' * 20}", {"id": "../x", "handled": True})[0] == 400
+    assert _http(f"{base}/api/reports/handled?t={'t' * 20}", {"id": old["id"], "handled": True},
+                 ctype="text/plain")[0] == 415
+    assert _http(f"{base}/api/reports/handled?t={'t' * 20}", {"id": old["id"], "handled": True})[0] == 200
+    code, snap = _http(f"{base}/api/latest?t={'t' * 20}")
+    assert snap["reports_state"]["state"] == "green"
+    assert snap["db"]["reports"]["latest"][0]["handled"] is True
+    assert (home / "latest.json").read_bytes() == latest_before
+    assert list(json.loads((home / "state" / "reports_handled.json").read_text())["handled"]) == [old["id"]]
+    assert _http(f"{base}/api/reports/handled?t={'t' * 20}", {"id": old["id"], "handled": False})[0] == 200
+    assert json.loads((home / "state" / "reports_handled.json").read_text())["handled"] == {}
+
+
+def test_mark_handled_refuses_a_non_loopback_listener(dash, monkeypatch):
+    serve, home, base = dash
+    monkeypatch.setattr(serve, "LOOPBACK", {"192.0.2.1"})
+    rid = collector.report_id(_report(30, "OLD1"))
+    assert _http(f"{base}/api/reports/handled?t={'t' * 20}", {"id": rid, "handled": True})[0] == 403
+    assert not (home / "state").exists()

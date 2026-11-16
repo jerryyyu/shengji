@@ -1,10 +1,33 @@
-/* The chat's quick phrases: one row of chips above the field. The phrases
-   are short enough that all five fit the narrowest chat, so the row never
-   scrolls or wraps; the chips share out any spare width. */
-.chat-quick {
-  display: flex; gap: 6px; flex-shrink: 0; padding: 8px 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+/* The in-game panel is one opaque layer: when height runs short the log
+   gives way first, and nothing in the panel ever draws past its edge onto
+   the table. */
+.chat-panel { overflow: hidden; }
+
+/* A short visible area (a phone held sideways with its keyboard up, or
+   mobile Safari's keyboard over the page): the panel fills the visible
+   area's height from its top, so the field and Send sit above the keyboard.
+   The turned table keeps its own frame rule. */
+:root .app:not(.rotated) .chat-panel.chat-short {
+  top: calc(var(--chat-vv-top, 0px) + 6px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  max-height: calc(var(--chat-vv-h, 100dvh) - 12px - env(safe-area-inset-top, 0px));
+  transform-origin: top right;
 }
+.chat-panel.chat-short .chat-head { padding-top: 0; padding-bottom: 0; }
+.chat-panel.chat-short .chat-close { min-height: 32px; }
+.chat-panel.chat-short .chat-quick { padding-top: 4px; }
+.chat-panel.chat-short .chat-quick-btn { min-height: 30px; }
+.chat-panel.chat-short .chat-input { padding: 4px 8px 6px; }
+
+/* The chat's quick phrases: one row of chips above the field. The chips
+   share out any spare width; when the chat is narrower than all five, the
+   row scrolls sideways rather than wrapping or squeezing them. */
+.chat-quick {
+  display: flex; flex-wrap: nowrap; gap: 6px; flex-shrink: 0; padding: 8px 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+}
+.chat-quick::-webkit-scrollbar { display: none; }
 .chat-quick + .chat-input { border-top: 0; }
 .chat-quick-btn {
   appearance: none; flex: 1 0 auto; min-height: 36px; padding: 0 10px; border-radius: 18px;

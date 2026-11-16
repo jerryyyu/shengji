@@ -1,14 +1,14 @@
 export type { ChatMsg } from "../protocol";
 import type { ChatMsg } from "../protocol";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { conn } from "../ws";
 import { usePresence } from "../usePresence";
 import { useMutes } from "../chatMute";
 import "./ChatPanel.css";
 
 /** The chat sheet's quick phrases, above the field: a tap sends one as an
- *  ordinary line, through the same validated, rate-limited path. All five fit
- *  one row of the narrowest chat. */
+ *  ordinary line, through the same validated, rate-limited path. They stay
+ *  one row, which scrolls sideways when the chat is narrower than all five. */
 const QUICK_PHRASES = ["Hi!", "GG", "Nice!", "One more?", "Brb"] as const;
 
 interface ChatProps {
@@ -36,7 +36,9 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement;
-    inputRef.current?.focus();
+    // A touch screen raises its keyboard on focus, which would cover the
+    // table before the player picks a quick phrase or taps the field.
+    if (!touchFirst()) inputRef.current?.focus();
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
@@ -101,6 +103,56 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
   );
 }
 
+function touchFirst(): boolean {
+  try {
+    return typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return false;
+  }
+}
+
+/** Below this visible height (a phone held sideways with its keyboard up)
+ *  the panel fills the visible area instead of floating above the launcher. */
+export const SHORT_VISIBLE_PX = 300;
+/** More of the page's bottom hidden than this is a keyboard, not a toolbar. */
+const KEYBOARD_COVER_PX = 80;
+
+export interface VisibleArea {
+  /** The visible area's top, from the layout viewport's top. */
+  top: number;
+  height: number;
+  /** How much of the layout viewport's bottom the keyboard covers. */
+  covered: number;
+}
+
+/** The part of the page the player can see: the visual viewport. In mobile
+ *  Safari the keyboard covers the layout viewport's bottom and 100dvh does
+ *  not shrink; in the app the WebView itself shrinks, and the two agree. */
+export function visibleArea(win: Pick<Window, "innerHeight" | "visualViewport">): VisibleArea | null {
+  const vv = win.visualViewport;
+  if (!vv) return null;
+  const top = Math.max(0, vv.offsetTop);
+  return { top, height: vv.height, covered: Math.max(0, win.innerHeight - vv.height - top) };
+}
+
+/** Keeps the open panel inside the visible area, above the keyboard. */
+function useVisibleArea(open: boolean): VisibleArea | null {
+  const [area, setArea] = useState<VisibleArea | null>(null);
+  useLayoutEffect(() => {
+    if (!open || typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const update = () => setArea(visibleArea(window));
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [open]);
+  return open ? area : null;
+}
+
 /** In a game: a toggled overlay, not a side panel. In landscape the table
  *  already fills the screen, so chat slides over it and closes again. Unread
  *  count lives on the launcher button. Off the felt, chat opens in the
@@ -110,10 +162,17 @@ export default function ChatPanel({ messages, you, open, onClose, onSend }: Chat
   onClose: () => void;
 }) {
   const presence = usePresence(open);
+  const area = useVisibleArea(open);
   if (!presence.mounted) return null;
+  const short = area !== null && (area.height < SHORT_VISIBLE_PX || area.covered > KEYBOARD_COVER_PX);
+  const style = area && ({
+    "--chat-vv-top": `${area.top}px`,
+    "--chat-vv-h": `${area.height}px`,
+    "--chat-kb": `${area.covered}px`,
+  } as CSSProperties);
   return (
-    <div className={`chat-panel${presence.className ? ` ${presence.className}` : ""}`} role="region"
-         aria-label="Chat" aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
+    <div className={`chat-panel${short ? " chat-short" : ""}${presence.className ? ` ${presence.className}` : ""}`}
+         style={style || undefined} role="region" aria-label="Chat" aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
       if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
       event.stopPropagation();
     }}>

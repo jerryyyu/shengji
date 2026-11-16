@@ -1,4 +1,5 @@
 """CI wiring: both modes overlap, both finish, either failure rejects."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -105,29 +106,37 @@ def test_an_unknown_shard_or_a_missing_shard1_module_refuses(tmp_path):
 
 
 POLICY_SCRIPT = Path(__file__).parents[1] / "scripts" / "ci_policy_modes.sh"
+POLICY_SELECTION = sorted([
+    "tests/test_policy_*.py", "tests/test_exact_resume.py", "tests/test_harvest_trajectory_pv.py",
+    "tests/test_runij_split_binding.py", "tests/test_screen_policy_arm.py",
+    "tests/test_screen_deadline_child.py", "tests/test_screen_shadow_arm.py",
+    "tests/test_search_policy.py", "tests/test_split_selector.py"])
 
 
 def _policy_run(tmp_path, engine, fail=""):
-    """Run ci_policy_modes.sh against a fake uv; return (result, modes that reached pytest)."""
+    """Run ci_policy_modes.sh against a fake uv; return (result, {mode: [file lists]})."""
     binary = tmp_path / "uv"
     binary.write_text(f"#!{sys.executable}\n" + '''
-import os, pathlib, sys
+import json, os, pathlib, sys, uuid
 args = sys.argv[1:]
 assert args[:7] == ["run", "python", "-B", "-m", "pytest", "-q", "--durations=10"], args
-assert "tests/test_screen_deadline_child.py" in args and "tests/test_split_selector.py" in args
 flag = os.environ.get("SHENGJI_FAST")
 assert flag in (None, "1")
 mode = "compiled" if flag == "1" else "pure"
-pathlib.Path(mode + ".ran").write_text(" ".join(args))
+pathlib.Path(f"{mode}.{uuid.uuid4().hex}.ran").write_text(json.dumps(args[7:]))
 sys.exit(9 if mode in os.environ["FAIL_MODES"].split(",") else 0)
 ''')
     binary.chmod(0o700)
+    (tmp_path / "tests").mkdir(exist_ok=True)     # no match: the glob reaches the fake literally
     result = subprocess.run(
         ["bash", str(POLICY_SCRIPT), *([engine] if engine else [])], cwd=tmp_path,
         capture_output=True, text=True,
         env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
              "SHENGJI_FAST": "inherited-must-not-leak", "FAIL_MODES": fail}, timeout=10)
-    return result, {p.stem for p in tmp_path.glob("*.ran")}
+    ran: dict[str, list[list[str]]] = {}
+    for p in tmp_path.glob("*.ran"):
+        ran.setdefault(p.name.split(".")[0], []).append(json.loads(p.read_text()))
+    return result, ran
 
 
 @pytest.mark.parametrize("engine,modes", [
@@ -135,14 +144,18 @@ sys.exit(9 if mode in os.environ["FAIL_MODES"].split(",") else 0)
 @pytest.mark.parametrize("fail", ["", "pure", "compiled"])
 def test_policy_runner_runs_exactly_the_named_engine_and_propagates_its_failure(tmp_path, engine, modes, fail):
     result, ran = _policy_run(tmp_path, engine, fail)
-    assert ran == modes, result.stdout + result.stderr
+    assert set(ran) == modes, result.stdout + result.stderr
     assert result.returncode == (1 if fail in modes else 0), result.stdout + result.stderr
 
 
-def test_policy_runner_gives_both_engines_the_same_selection(tmp_path):
+def test_each_engine_runs_the_whole_selection_in_two_disjoint_halves(tmp_path):
     result, ran = _policy_run(tmp_path, "both")
-    assert result.returncode == 0 and ran == {"pure", "compiled"}
-    assert (tmp_path / "pure.ran").read_text() == (tmp_path / "compiled.ran").read_text()
+    assert result.returncode == 0, result.stdout + result.stderr
+    for mode in ("pure", "compiled"):
+        halves = ran[mode]
+        assert len(halves) == 2
+        assert not set(halves[0]) & set(halves[1])
+        assert sorted(halves[0] + halves[1]) == POLICY_SELECTION
 
 
 def test_policy_runner_refuses_an_unknown_engine(tmp_path):

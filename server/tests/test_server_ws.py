@@ -2431,6 +2431,65 @@ def test_one_of_two_humans_leaving_leaves_the_game_running(client):
         assert seat["reserved_secs"] is not None and srv._reserved(room, want)
 
 
+def test_a_leaver_back_by_code_under_a_new_name_takes_their_own_seat(client):
+    """After a Leave the device holds no seat token: the seat it left is
+    found by the device key, renamed to the name brought back, and no bot
+    seat on the other team is taken. Another device bringing the same new
+    name gets a bot's seat, and the left seat stays the leaver's."""
+    from shengji.api import server as srv
+
+    dev_b = "b" * 24
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        with client.websocket_connect(f"/ws?device={dev_b}") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
+                         "name": "james", "seat": want})
+            _drain(b, "state")
+            b.send_json({"type": "table_leave"})
+            _drain(b, "left")
+        assert room.seats[want].left_by_choice and room.seats[want].name == "james"
+        bots_before = [i for i, sd in enumerate(room.seats) if sd.is_bot]
+
+        with client.websocket_connect("/ws?device=" + "c" * 24) as other:
+            other.send_json({"type": "table_join", "expect": "room", "code": code,
+                             "name": "james two"})
+            _drain(other, "state")
+            assert room.seats[want].name == "james" and not room.seats[want].connected
+            taken = next(i for i, sd in enumerate(room.seats)
+                         if sd.connected and sd.name == "james two")
+            assert taken in bots_before
+
+            with client.websocket_connect(f"/ws?device={dev_b}") as back:
+                back.send_json({"type": "table_join", "expect": "room", "code": code,
+                                "name": "james two"})
+                st = _drain(back, "state")
+                assert st["you"] == want
+                seat = room.seats[want]
+                assert seat.connected and not seat.left_by_choice and seat.name == "james two"
+                assert [p["name"] for p in st["players"] if p["seat"] == want] == ["james two"]
+                assert srv.rooms.get(code) is room
+
+
+def test_a_left_seat_is_found_by_its_device_or_its_account_only_while_it_is_left():
+    from shengji.api import server as srv
+
+    room = srv.Room(code="LEFT")
+    left = srv.Seat(name="james", is_bot=False, connected=False, left_by_choice=True,
+                    device="d" * 24, user_id=7)
+    room.seats = [srv.Seat(name="jerry", is_bot=False, connected=True), left,
+                  srv.Seat(name="Bot 2", is_bot=True), srv.Seat(name="Bot 3", is_bot=True)]
+    assert srv._left_seat_of(room, "d" * 24, None) is left
+    assert srv._left_seat_of(room, None, 7) is left
+    assert srv._left_seat_of(room, "e" * 24, 8) is None
+    assert srv._left_seat_of(room, None, None) is None
+    # a dropped seat (no Leave) is its token's, and a taken one is not left
+    left.left_by_choice = False
+    assert srv._left_seat_of(room, "d" * 24, 7) is None
+    left.left_by_choice, left.connected = True, True
+    assert srv._left_seat_of(room, "d" * 24, 7) is None
+
+
 def test_allow_joiners_in_game_is_the_openers_and_passes_when_the_opener_leaves(client):
     from shengji.api import server as srv
 

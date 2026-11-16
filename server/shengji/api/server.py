@@ -2600,6 +2600,14 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
         if held is not None:
             reclaim = held
         by_name = False
+        # A Leave drops the seat's token on the device, so a casual seat
+        # its owner left by choice is found next by the socket's device key
+        # or the account that held it: back by code, under whatever name
+        # they bring, they take their own seat rather than the next bot's.
+        left_seat = (_left_seat_of(target, device, account_id())
+                     if reclaim is None and not target.matched else None)
+        if left_seat is not None:
+            reclaim = left_seat
         if reclaim is None:
             key = name.strip().casefold()
             named = next(
@@ -2642,7 +2650,7 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             # sign-out reconnect (or a guest's by-name
             # re-entry) brings none and clears it.
             me.user_id = account_id()
-            if me.user_id is not None and me.name != name:
+            if (me.user_id is not None or left_seat is not None) and me.name != name:
                 _rename_seat(target, me, name)
             saved_games.seat_changed(target, target.seats.index(me))
         else:
@@ -2751,6 +2759,7 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             _log_seat(room, "seat_reconnected", me,
                       "name" if by_name
                       else "account" if held is not None
+                      else "left_seat" if left_seat is not None
                       else "token")
             chat_system(
                 room,
@@ -3309,6 +3318,17 @@ def _token_seat(room: Room, tok: Any) -> Seat | None:
         return None
     return next((s for s in room.seats if s is not None and not s.is_bot
                  and secrets.compare_digest(s.token, tok)), None)
+
+
+def _left_seat_of(room: Room, device: str | None, user_id: int | None) -> Seat | None:
+    """The seat this device or account left by choice and nobody has taken
+    since (it is still the leaver's, bot-covered)."""
+    if device is None and user_id is None:
+        return None
+    return next((s for s in room.seats if s is not None and not s.is_bot
+                 and not s.connected and s.left_by_choice
+                 and ((device is not None and s.device == device)
+                      or (user_id is not None and s.user_id == user_id))), None)
 
 
 def _guest_seat_of(room: Room, tok: Any, guest: int | None = None) -> Seat | None:

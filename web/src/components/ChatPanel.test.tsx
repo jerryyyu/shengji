@@ -2,7 +2,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import ChatPanel, { SHORT_VISIBLE_PX, visibleArea } from "./ChatPanel";
+import ChatPanel from "./ChatPanel";
+import { SHORT_VISIBLE_PX, visibleArea } from "../visibleArea";
 
 const send = vi.fn();
 vi.mock("../ws", () => ({ conn: { send: (...args: unknown[]) => send(...args) } }));

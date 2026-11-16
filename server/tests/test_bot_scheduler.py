@@ -118,7 +118,7 @@ def test_cheap_declare_gate_precedes_copy_and_model_admission(monkeypatch):
     assert room.bot is bot and bot.calls == 1
 
 
-@pytest.mark.parametrize("change", [None, "claim", "round", "declare", "hand", "bot", "invalid"])
+@pytest.mark.parametrize("change", [None, "claim", "round", "declare", "hand", "bot"])
 def test_declare_worker_is_off_loop_and_discards_stale_state(change):
     async def scenario():
         room = _declare_room()
@@ -158,9 +158,6 @@ def test_declare_worker_is_off_loop_and_discards_stale_state(change):
                         room.round.hands[0].reverse()
                     elif change == "bot":
                         room.bot = HeuristicBot()
-                    elif change == "invalid":
-                        room.evaluation = object()
-                        room.evaluation_invalidated = True
         finally:
             release.set()
         await task

@@ -27,9 +27,6 @@ export type ClientMsg =
       name: string;
       /** Rank both teams start at. Omit for the standard game (2). */
       start_level?: Rank;
-      /** Experimental W32 is available only through the guarded lobby UI. */
-      test_policy?: "w32";
-      test_access_key?: string;
       /** Continue this saved game of the signed-in account: the room is made
        *  with the account in its saved seat and bots in the other three, and
        *  starts at that game's last levels with its next banker. */
@@ -92,9 +89,6 @@ export interface RoomMsg {
   players: RoomPlayer[];
   /** Rank both teams start at, fixed when the room was created. */
   start_level: Rank;
-  /** "w32" for rooms explicitly created with the W32 test policy, else
-   *  null. Absent offline (offline/fixtures/online_only.json). */
-  experimental_policy?: "w32" | null;
   /** Built by the matchmaking queue: a rated game between strangers.
    *  Absent offline. */
   matched?: boolean;
@@ -102,7 +96,7 @@ export interface RoomMsg {
    *  controls in play. */
   opener?: number;
   /** Whether newcomers may be offered a bot seat once the game is in play
-   *  (any ordinary room; on at creation). Absent on a test room. */
+   *  (on at creation). */
   allow_joiners?: boolean;
 }
 
@@ -211,9 +205,6 @@ export interface GameState {
   type: "state";
   room: string;
   you: number;
-  /** "w32" for rooms explicitly created with the W32 test policy, else
-   *  null. Absent offline (offline/fixtures/online_only.json). */
-  experimental_policy?: "w32" | null;
   /** Built by the matchmaking queue: a rated game between strangers.
    *  Absent offline. */
   matched?: boolean;
@@ -333,7 +324,6 @@ export type ErrorCode =
   | "account_in_game"
   | "table_full"
   | "table_left"
-  | "test_room_unavailable"
   | "bad_start_level"
   | "resume_unavailable"
   | "stale_connection"

@@ -4682,9 +4682,6 @@ body.keyboard-open .tabbar { display: none; }
   color: #7a8494;
 }
 .play-tab .room-input:disabled { background: #1a1e26; color: #7a8494; }
-.play-grp { border: 1px solid var(--grp-edge); border-radius: 14px; }
-.play-grp .grp-row { min-height: 50px; }
-.play-grp .grp-row:disabled { color: #7a8494; }
 .play-tab .howto-entry { font-size: var(--fs-15); }
 /* How to play and Play offline, two quiet links on one line, each tapped as 44px */
 .play-tab .howto-sep { margin: 0 14px; color: #6b7484; }

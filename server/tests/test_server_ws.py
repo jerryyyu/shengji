@@ -2326,7 +2326,6 @@ def test_allow_joiners_in_game_is_the_openers_and_passes_when_the_opener_leaves(
 
     with client.websocket_connect("/ws") as a:
         code, room = _start_game(client, a, to_play=True)
-        assert srv._takes_joiners(room)
         opener = room.host
         assert room.seats[opener].name and not room.seats[opener].is_bot
         with client.websocket_connect("/ws") as b:
@@ -2808,49 +2807,6 @@ def test_create_room_start_true_seats_bots_and_starts(client):
         ws.send_json({"type": "table_start_now"})
         # the deal streams a state frame per card ahead of the refusal
         assert _drain(ws, "error")["message"] == "Game already started."
-
-
-class _EvaluationRooms:
-    """Room options that make the created room a human evaluation room."""
-
-    def __init__(self, log_dir):
-        self.log_dir = log_dir
-
-    def room_options(self, msg, rooms, ordinary_log_root):
-        from types import SimpleNamespace
-
-        from tests.test_human_eval_contract import _context
-        return {"evaluation": _context(), "log_dir": self.log_dir,
-                "bot": SimpleNamespace(policy_name="candidate-policy")}
-
-
-def test_create_room_start_true_keeps_the_evaluation_start_refusal(client, monkeypatch,
-                                                                   tmp_path):
-    from shengji.api import server as srv
-
-    monkeypatch.setattr(srv, "SHORTLIST_TEST_ROOMS", _EvaluationRooms(tmp_path / "evaluation"))
-    # the refusal discards the room before a test could look it up by code
-    made = []
-    real_room = srv.Room
-
-    def room_of(*args, **kwargs):
-        made.append(real_room(*args, **kwargs))
-        return made[-1]
-
-    monkeypatch.setattr(srv, "Room", room_of)
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"type": "create_room", "name": "P", "start": True})
-        room_msg = _drain(ws, "room")
-        [room] = made
-        assert room.code == room_msg["room"]
-        error = _drain(ws, "error")
-        assert error["message"] == "Evaluation participant identity mismatch."
-        assert _next(ws, "left") == {"type": "left"}
-        assert room_msg["room"] not in srv.rooms
-        assert room.game is None and room.deal_task is None and room.ratings is None
-        # the discarded room took the socket out with it
-        ws.send_json({"type": "play", "card_ids": []})
-        assert _drain(ws, "error")["message"] == "Join a room first."
 
 
 @pytest.mark.parametrize("kind", ["add_bot", "remove_bot", "remove_player", "set_ranked"])

@@ -32,9 +32,7 @@ from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
 from . import accounts, matchmaking, ratings, reports, saved_games, support, tables, telemetry
-from .human_eval import HUMAN_SEATS, HumanEvaluationContext
 from .model_serving import run_model_search
-from .room_experiments import SHORTLIST_TEST_ROOMS, TestRoomUnavailable
 
 
 #: the pv-search DIAGNOSTIC flags the game server refuses outright (#707 S16:
@@ -258,9 +256,6 @@ class Seat:
     # seat, and a returning player must be able to resume even while their
     # stale socket is still open.
     token: str = field(default_factory=lambda: secrets.token_urlsafe(12))
-    # Assigned only by a future reviewed HUMAN-C1 ingress.  It is server-only;
-    # ordinary rooms and client state never use or expose it.
-    evaluation_participant_id: str | None = None
     # The signed-in account (accounts.users.id) whose cookie the socket that
     # took this seat carried; None for a guest. Server-only: it enters no
     # state frame, no log record and no game decision.
@@ -346,20 +341,10 @@ class Room:
     # test fixture's cancel-on-teardown never reaches). Absent key: the task
     # was never spawned or is still running -- read the task for which.
     task_exits: dict[str, str] = field(default_factory=dict)
-    # Ordinary rooms use LOG_DIR.  A reviewed human evaluation must provide a
-    # different root plus an immutable server-only identity; no websocket path
-    # can construct one yet.
+    # The directory the room's event log goes to; None means LOG_DIR.
     log_dir: Path | None = None
     # Bound warnings during a persistent disk failure without stopping retries.
     _log_error_reported: bool = field(default=False, init=False, repr=False)
-    evaluation: HumanEvaluationContext | None = None
-    # Any missing evaluation event destroys the assigned session's evidence
-    # chain.  Keep the room terminally unusable rather than allowing a retry or
-    # subsequent play to create an apparently complete but selectively logged
-    # HUMAN-C1 block.
-    evaluation_invalidated: bool = False
-    # Fixed at creation, never set from join/action messages. Not HUMAN-C1.
-    experimental_policy: str | None = None
     # The saved-game link of the running game (``saved_games.GameLink``), or
     # None. Server-only: it enters no state frame and no log record.
     saved_game: Any = field(default=None, init=False, repr=False)
@@ -422,26 +407,6 @@ class Room:
             self.log_dir = LOG_DIR
         else:
             self.log_dir = Path(self.log_dir)
-        if self.experimental_policy is not None:
-            if self.experimental_policy != "w32" or self.evaluation is not None:
-                raise ValueError("invalid experimental room context")
-            test_root, ordinary_root = self.log_dir.resolve(), LOG_DIR.resolve()
-            if (test_root == ordinary_root or test_root.is_relative_to(ordinary_root)
-                    or ordinary_root.is_relative_to(test_root)):
-                raise ValueError("test rooms require a disjoint log root")
-        if self.evaluation is not None:
-            evaluation_root = self.log_dir.resolve()
-            training_root = LOG_DIR.resolve()
-            if (evaluation_root == training_root
-                    or evaluation_root.is_relative_to(training_root)
-                    or training_root.is_relative_to(evaluation_root)):
-                raise ValueError(
-                    "human evaluation rooms require a disjoint log root")
-        if (self.evaluation is not None
-                and getattr(self.bot, "policy_name", None)
-                != self.evaluation.active_policy):
-            raise ValueError(
-                "human evaluation policy identity does not match room bot")
 
     @property
     def round(self) -> Round | None:
@@ -451,9 +416,7 @@ class Room:
         """Append one JSONL record; returns the byte offset it starts at, or
         None when it did not reach disk.
 
-        Ordinary game logging remains best-effort.  Evaluation logging fails
-        closed because continuing an unrecorded assigned session would create
-        evidence that cannot be audited.
+        Game logging is best-effort: a failed write never stops play.
         """
         offset: int | None = None
         try:
@@ -462,19 +425,6 @@ class Room:
             rec = {"t": round(time.time(), 3), "room": self.code,
                    "round": self.game.round_no if self.game else 0,
                    "e": kind, **data}
-            if self.experimental_policy is not None:
-                rec["experimental_policy"] = self.experimental_policy
-                rec["policy"] = self.bot.policy_name
-                rec["training_excluded"] = True
-            if self.evaluation is not None:
-                if kind == "chat":
-                    rec = {
-                        "t": rec["t"], "room": rec["room"],
-                        "round": rec["round"], "e": kind,
-                        "seat": data.get("seat"), "content_recorded": False,
-                    }
-                rec["experiment"] = self.evaluation.log_payload()
-                rec["training_excluded"] = True
             # Binary append: the offset is an exact byte position, and the
             # bytes are the same as a text write (json.dumps emits ASCII).
             with open(self.log_dir / f"{self.code}.jsonl", "ab") as f:
@@ -485,9 +435,6 @@ class Room:
             ACTIVITY.record_failed(exc)
             if self.saved_game is not None:
                 saved_games.log_failed(self)
-            if self.evaluation is not None:
-                self.evaluation_invalidated = True
-                raise  # evidence rooms fail closed instead of silently playing
             if not self._log_error_reported:
                 self._log_error_reported = True
                 # Do not send event payloads, chat, or exception paths to
@@ -837,7 +784,6 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
     guest_seat = guest or (room.matched and not me.is_bot and me.user_id is None)
     return {
         "type": "state",
-        "experimental_policy": room.experimental_policy,
         "room": room.code,
         "you": seat,
         # The round-end tally lives here too: in-game broadcasts send ONLY
@@ -916,8 +862,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
         "matched": room.matched,
         # the seat holding the opener's controls (Allow joiners)
         "opener": room.host,
-        **({"allow_joiners": room.allow_joiners, "joining": _join_notices(room)}
-           if _takes_joiners(room) else {}),
+        "allow_joiners": room.allow_joiners, "joining": _join_notices(room),
         "guest": guest_seat,
         # took this seat from an open table during this round: the round is
         # not ranked for them, and leaving it costs a queue wait (a casual
@@ -946,12 +891,6 @@ def _pass_opener_mid_game(room: Room, gone: int) -> None:
             return
 
 
-def _takes_joiners(room: Room) -> bool:
-    """A room that can become an open table: any ordinary room, ranked or
-    casual. A test or evaluation room never seats a stranger."""
-    return ratings.eligible(room)
-
-
 def room_json(room: Room, seat: int) -> dict:
     """The one frame a created room sends before its game starts, from which
     the client saves the room."""
@@ -960,9 +899,8 @@ def room_json(room: Room, seat: int) -> dict:
         # the same seat as ``host``, named for what it is in the room panel
         "opener": room.host,
         "start_level": room.start_level,
-        "experimental_policy": room.experimental_policy,
         "matched": room.matched,
-        **({"allow_joiners": room.allow_joiners} if _takes_joiners(room) else {}),
+        "allow_joiners": room.allow_joiners,
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
                     for i, s in enumerate(room.seats) if s is not None],
@@ -1026,7 +964,7 @@ def room_table_frame(room: Room, seat: int) -> dict:
         "type": "table", "code": room.code, "phase": "playing",
         "mode": "ranked" if ratings.ranked(room) else "casual",
         "you": seat, "opener": room.host, "seats": seats,
-        "settings": {"allow_joiners": room.allow_joiners if _takes_joiners(room) else None,
+        "settings": {"allow_joiners": room.allow_joiners,
                      "start_level": room.start_level},
         "timers": {"bots": None, "start_now_at": None},
         "your_ready": None, "waiting_for": None, "chat_log": room.code,
@@ -1370,8 +1308,6 @@ async def advance_if_all_ready(room: Room) -> bool:
     remaining players wait forever on a browser that is never coming back
     (Jerry, 2026-08-03).
     """
-    if room.evaluation is not None and room.evaluation_invalidated:
-        return False
     rnd, game = room.round, room.game
     if game is None or rnd is None or rnd.phase != "round_end" or game.game_over:
         return False
@@ -1396,21 +1332,10 @@ async def advance_if_all_ready(room: Room) -> bool:
 def _log_round_start(room: Room) -> int | None:
     rnd, game = room.round, room.game
     assert rnd is not None and game is not None
-    if room.evaluation is None:
-        players = [
-            {"seat": i, "name": seat.name, "is_bot": seat.is_bot}
-            for i, seat in enumerate(room.seats)
-        ]
-    else:
-        players = [
-            {
-                "seat": i,
-                "is_bot": seat.is_bot,
-                **({"participant_id": seat.evaluation_participant_id}
-                   if not seat.is_bot else {}),
-            }
-            for i, seat in enumerate(room.seats)
-        ]
+    players = [
+        {"seat": i, "name": seat.name, "is_bot": seat.is_bot}
+        for i, seat in enumerate(room.seats)
+    ]
     # Room logs never carry account ids (test_no_log_record_carries_the_account);
     # seats map to accounts through the game_players links instead.
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
@@ -1463,8 +1388,6 @@ def _log_round_end(room: Room) -> None:
 
 def bot_step(room: Room, seat: int) -> bool:
     """One bot decision for ``seat`` (caller holds the lock). True if acted."""
-    if room.evaluation is not None and room.evaluation_invalidated:
-        return False
     game, rnd = room.game, room.round
     if game is None or rnd is None or game.game_over:
         return False
@@ -1529,8 +1452,6 @@ class _PreparedBotTurn:
 
 def _turn_eligible(room: Room, seat: int, mode: str, *,
                    owner_left_at: float | None = None) -> bool:
-    if room.evaluation is not None and room.evaluation_invalidated:
-        return False
     if current_actor(room) != seat or not 0 <= seat < len(room.seats):
         return False
     owner = room.seats[seat]
@@ -2006,8 +1927,7 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
         async with room.lock:
             rnd = room.round
             if (rnd is not original_round or rnd is None
-                    or rnd.phase not in ("deal", "declare")
-                    or (room.evaluation is not None and room.evaluation_invalidated)):
+                    or rnd.phase not in ("deal", "declare")):
                 return False
             if s >= len(room.seats) or not room.seats[s].is_bot:
                 continue
@@ -2051,8 +1971,7 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                     or rnd.declaration is not declaration
                     or tuple(tuple(hand) for hand in rnd.hands) != hands
                     or s >= len(room.seats) or room.seats[s] is not owner
-                    or not owner.is_bot
-                    or (room.evaluation is not None and room.evaluation_invalidated)):
+                    or not owner.is_bot):
                 complete = False
                 continue
             if cards:
@@ -2078,8 +1997,6 @@ async def run_deal(room: Room) -> None:
         async with room.lock:
             if room.round is not rnd:
                 return
-            if room.evaluation is not None and room.evaluation_invalidated:
-                return
             if rnd.phase != "deal":
                 break
             seat, idx, code = rnd.deal_next()
@@ -2098,8 +2015,7 @@ async def run_deal(room: Room) -> None:
     loop = asyncio.get_event_loop()
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
-        if (room.round is not rnd or rnd.phase != "declare"
-                or (room.evaluation is not None and room.evaluation_invalidated)):
+        if room.round is not rnd or rnd.phase != "declare":
             return
         for s in range(4):
             if room.seats[s].is_bot and not needs_response:
@@ -2111,8 +2027,6 @@ async def run_deal(room: Room) -> None:
     while True:
         await asyncio.sleep(0.0 if room.closing else 0.25)
         async with room.lock:
-            if room.evaluation is not None and room.evaluation_invalidated:
-                return
             if room.round is not rnd or rnd.phase != "declare":
                 return
             if needs_response or rnd.declaration is not last_declaration:
@@ -2124,8 +2038,7 @@ async def run_deal(room: Room) -> None:
         if respond:
             needs_response = not await _bot_declares(room, list(range(4)), final=True)
         async with room.lock:
-            if (room.round is not rnd or rnd.phase != "declare"
-                    or (room.evaluation is not None and room.evaluation_invalidated)):
+            if room.round is not rnd or rnd.phase != "declare":
                 return
             if needs_response:
                 # A human changed the position during search. Do not mark a
@@ -2174,27 +2087,6 @@ def _card_ids(msg: dict) -> list[int]:
     return ids
 
 
-def validate_human_evaluation_start(room: Room) -> None:
-    """Refuse a HUMAN-C1 start unless the clean 2-human/2-bot estimand holds."""
-    context = room.evaluation
-    if context is None:
-        return
-    if room.evaluation_invalidated:
-        raise IllegalPlay("Evaluation session was invalidated by logging failure.")
-    if len(room.seats) != 4:
-        raise IllegalPlay("Evaluation requires exactly four assigned seats.")
-    for seat in (0, 2):
-        occupant = room.seats[seat]
-        expected = context.participant_ids_by_human_seat[seat // 2]
-        if occupant.is_bot or not occupant.connected:
-            raise IllegalPlay(
-                "Evaluation requires connected humans at seats 0 and 2.")
-        if occupant.evaluation_participant_id != expected:
-            raise IllegalPlay("Evaluation participant identity mismatch.")
-    if any(not room.seats[seat].is_bot for seat in (1, 3)):
-        raise IllegalPlay("Evaluation requires bots at seats 1 and 3.")
-
-
 class SameDevice(IllegalPlay):
     """A ranked game with two human seats on one device."""
 
@@ -2219,7 +2111,6 @@ def _start_game(room: Room) -> None:
     # A bot plays every seat nobody took, in that seat.
     room.seats = [sd if sd is not None else Seat(name=f"Bot {i}", is_bot=True)
                   for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
-    validate_human_evaluation_start(room)
     if ratings.ranked(room):
         room.start_level = RANKS[0]      # every rated game starts at the same level
     if not room.matched:
@@ -2251,8 +2142,6 @@ def _start_game(room: Room) -> None:
 
 async def handle_action(room: Room, seat: int, msg: dict) -> None:
     """Caller holds room.lock. Raises IllegalPlay on bad input."""
-    if room.evaluation is not None and room.evaluation_invalidated:
-        raise IllegalPlay("Evaluation session was invalidated by logging failure.")
     t = msg.get("type")
     game, rnd = room.game, room.round
     if t == "start_game":
@@ -2280,7 +2169,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
     elif t == "allow_joiners":
         # The table's opener switches it either way, ranked or casual; a
         # Join already waiting for its trick goes ahead.
-        if not _takes_joiners(room) or room.seats[seat].is_bot:
+        if room.seats[seat].is_bot:
             raise IllegalPlay("This table takes no joiners.")
         if seat != room.host:
             raise NotOpener("Only the table's opener sets Allow joiners.")
@@ -2375,11 +2264,11 @@ async def _start_created_room(room: Room, me: Seat) -> None:
         me.token = secrets.token_urlsafe(12)
 
 
-async def _resume_point(user_id: int | None, game_id: Any, options: dict) -> dict | None:
+async def _resume_point(user_id: int | None, game_id: Any) -> dict | None:
     """The ``create_room`` ``resume_from`` option: a saved game of the
     signed-in caller's own account, in an ordinary room. None refuses it
     (a guest, another account's game, an unknown id, no level data)."""
-    if user_id is None or options or not isinstance(game_id, str):
+    if user_id is None or not isinstance(game_id, str):
         return None
     return await accounts.STORE.run(saved_games.resume_point, user_id, game_id)
 
@@ -2443,12 +2332,6 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
     removed); None when the request is refused before any room exists."""
     ws, device = caller.ws, caller.device
     account_id, player_name = caller.account_id, caller.player_name
-    try:
-        options = SHORTLIST_TEST_ROOMS.room_options(msg, rooms, LOG_DIR)
-    except TestRoomUnavailable as error:
-        await send(ws, {"type": "error", "code": "test_room_unavailable",
-                        "message": str(error)})
-        return None
     # Absent means "the standard game"; PRESENT AND WRONG is
     # refused rather than coerced, so a client sending a level
     # this server does not know cannot silently get a game at
@@ -2462,13 +2345,12 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
         return None
     resume = None
     if "resume_from" in msg:
-        resume = await _resume_point(account_id(), msg.get("resume_from"), options)
+        resume = await _resume_point(account_id(), msg.get("resume_from"))
         if resume is None:
             await send(ws, {"type": "error", "code": "resume_unavailable",
                             "message": "That game can't be continued."})
             return None
-    room = Room(code=new_code(), start_level=start_level, resume=resume,
-                **options)
+    room = Room(code=new_code(), start_level=start_level, resume=resume)
     rooms[room.code] = room
     # Through _attach, as every seat: it bumps the generation and issues
     # the resume token, so the creator has an identity and an overlapping
@@ -3163,8 +3045,8 @@ def _joinable(room: Room, invite: bool = False) -> bool:
     joiners and still has a person connected at it. An invite link is the
     table's own consent, so it does not need Allow joiners."""
     game = room.game
-    return (_takes_joiners(room) and not room.aborted and rooms.get(room.code) is room
-            and (room.allow_joiners or invite) and room.evaluation is None
+    return (not room.aborted and rooms.get(room.code) is room
+            and (room.allow_joiners or invite)
             and game is not None and room.round is not None and not game.game_over
             and any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats))
 
@@ -3312,11 +3194,10 @@ def _account_seat_on(room: Room, device: str) -> Seat | None:
 
 
 def _live_ranked_room(room: Room) -> bool:
-    """A ranked game in play: queue-matched, not aborted, closing, over or
-    under evaluation."""
+    """A ranked game in play: queue-matched, not aborted, closing or over."""
     game = room.game
     return (room.matched and not room.aborted and not room.closing
-            and room.evaluation is None and game is not None and not game.game_over)
+            and game is not None and not game.game_over)
 
 
 def _account_playing(uid: int) -> Room | None:
@@ -3687,26 +3568,6 @@ def _detach(seat: Seat, room: Room | None = None,
     """
     if gen is not None and gen != seat.gen:
         return                       # a newer socket owns this seat now
-    if (room is not None and room.evaluation is not None
-            and room.game is not None and not room.game.game_over
-            and seat in room.seats
-            and room.seats.index(seat) in HUMAN_SEATS
-            and not room.evaluation_invalidated):
-        # HUMAN-C1 cannot let selective dropout turn into bot-cover play or a
-        # shorter favorable session.  The assignment is terminal as soon as a
-        # bound participant leaves after the game starts.  Log only the seat
-        # and a fixed reason; the immutable experiment context already carries
-        # pseudonymous identity and raw names never enter this root.
-        room.evaluation_invalidated = True
-        try:
-            room.log_event(
-                "evaluation_invalidated", seat=room.seats.index(seat),
-                reason="participant_disconnect", terminal=True,
-            )
-        except OSError:
-            # log_event also marks the room invalid.  Socket cleanup must still
-            # finish so neither takeover nor a stale connection can act.
-            pass
     if room is not None and seat in room.seats:
         room.ready.discard(room.seats.index(seat))
     seat.ws, seat.connected = None, False
@@ -3767,7 +3628,7 @@ LIVE_CONNS: "weakref.WeakSet[matchmaking.Conn]" = weakref.WeakSet()
 
 def _rename_seat(room: Room, seat: Seat, name: str) -> None:
     seat.name = name
-    if room.game is not None and room.evaluation is None and seat in room.seats:
+    if room.game is not None and seat in room.seats:
         room.log_event("seat_renamed", seat=room.seats.index(seat), name=name)
 
 

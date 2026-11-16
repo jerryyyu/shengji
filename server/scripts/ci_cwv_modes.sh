@@ -45,7 +45,6 @@ SHARD1=(
     tests/test_cwv_public_history_serving.py
     tests/test_cwv_receipt_cache_index.py
     tests/test_cwv_residual_diagnostic.py
-    tests/test_cwv_room_experiments.py
     tests/test_cwv_screen_fixed_banker.py
     tests/test_cwv_served_rank.py
     tests/test_cwv_serving_gate.py

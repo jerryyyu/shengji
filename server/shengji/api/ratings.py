@@ -450,12 +450,6 @@ class RoomRatings:
     game_delta: dict[int, float] = field(default_factory=dict)
 
 
-def eligible(room: Any) -> bool:
-    """Ordinary rooms only: an experimental policy or a human evaluation is
-    not the served bot, so its rounds are not rated."""
-    return room.experimental_policy is None and room.evaluation is None
-
-
 def _guarded(fn):
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
@@ -476,9 +470,8 @@ def _signed_in(seat: Any) -> int | None:
 
 
 def ranked(room: Any) -> bool:
-    """Whether the room's rounds are rated: a queue-matched room, never one
-    that is not ``eligible``."""
-    return eligible(room) and bool(getattr(room, "matched", False))
+    """Whether the room's rounds are rated: a queue-matched room."""
+    return bool(getattr(room, "matched", False))
 
 
 @_guarded

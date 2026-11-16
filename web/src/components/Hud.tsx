@@ -229,11 +229,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
     <div className="hud">
       <div className="hud-bar" ref={barRef}>
         {/* game state only: the table's code, the settings and Leave live in the ⋯ menu */}
-        <div className="hud-group">
-          {state.experimental_policy === "w32" ? (
-            <span className="chip experimental-marker">Experimental W32</span>
-          ) : null}
-        </div>
+        {/* empty: the bar's layout places the groups by position */}
+        <div className="hud-group" />
 
         <div className="hud-group">
           {/* your team first */}

@@ -26,7 +26,6 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ..api.human_eval import SCHEMA as HUMAN_EVALUATION_SCHEMA
 from ..engine.cards import total_points
 from ..engine.round import KITTY_SIZE, Round
 from .actions import enumerate_actions
@@ -39,6 +38,8 @@ from .encode_versions import (ENC_VERSION, OBS_SCHEMA_BY_VERSION, check_version,
 from .replay_log import EXCLUDE_PLAYERS, group_rounds, rebuild_round
 
 CORPUS_SCHEMA = "human-decision-corpus-v1"
+#: the ``experiment.schema`` tag of a human-evaluation room's log records
+HUMAN_EVALUATION_SCHEMA = "human-vs-bot-evaluation-v1"
 PLAYER_HASH_DOMAIN = b"shengji-human-player-v1\0"
 PLAY_BALLOT = "exhaustive-follows+throws-v1"
 RETURN_TARGET = "signed-level-bracket-from-completed-round"
@@ -142,10 +143,9 @@ def _error_key(exc: BaseException) -> str:
 def _refuse_evaluation_round(events: list[dict], reference: str) -> None:
     """Keep people-facing evaluation evidence out of every training corpus.
 
-    HUMAN-C1 will live under a physically separate log root, but paths can be
-    copied or globbed incorrectly.  The immutable log tag is therefore a
-    second, content-level boundary; scan the whole round so moving the tag
-    cannot bypass it.  Refuse the whole publication rather than silently
+    A log a training-excluded room wrote may be copied or globbed into the
+    corpus inputs, so its records' tags are a content-level boundary; scan the
+    whole round so moving the tag cannot bypass it.  Refuse the whole publication rather than silently
     dropping a favorable or unfavorable evaluation subset.
     """
     for event in events:

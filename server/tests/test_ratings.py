@@ -305,16 +305,6 @@ def test_a_rated_round_is_never_rated_twice(env, monkeypatch):
     assert len(_events(store)) == 1 and store.user(uid)["rated_rounds"] == 1
 
 
-def test_experimental_rooms_are_not_rated(env, monkeypatch):
-    srv, store, _ = env
-    uid, _ = _user(store, "tester")
-    _force_outcome(monkeypatch, 30)
-    table = Table(srv, [uid, "bot", "bot", "bot"])
-    table.room.experimental_policy = "w32"
-    table.play_round(banker=0)
-    assert table.room.ratings is None and _events(store) == []
-
-
 # ------------------------------------------------------------ ranked switch
 def test_an_unranked_created_room_rates_nobody(env, monkeypatch):
     srv, store, _ = env
@@ -368,9 +358,6 @@ def test_a_queue_room_is_ranked_without_the_switch():
 
     assert ratings.ranked(srv.Room(code="Q", matched=True))
     assert not ratings.ranked(srv.Room(code="C"))
-    test_room = srv.Room(code="X", matched=True)
-    test_room.experimental_policy = "w32"
-    assert not ratings.ranked(test_room)
 
 
 # --------------------------------------------------------- frozen at start

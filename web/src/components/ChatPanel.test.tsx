@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import ChatPanel from "./ChatPanel";
-import { SHORT_VISIBLE_PX, visibleArea } from "../visibleArea";
+import { SHORT_VISIBLE_PX, TIGHT_VISIBLE_PX, visibleArea } from "../visibleArea";
 
 const send = vi.fn();
 vi.mock("../ws", () => ({ conn: { send: (...args: unknown[]) => send(...args) } }));
@@ -187,8 +187,13 @@ it("fills the visible area when it is short, and not otherwise", () => {
     act(() => { height = SHORT_VISIBLE_PX - 120; target.dispatchEvent(new Event("resize")); });
     expect(panel().classList.contains("chat-short")).toBe(true);
     expect(panel().style.getPropertyValue("--chat-vv-h")).toBe("180px");
+    expect(panel().classList.contains("chat-tight")).toBe(false);
+    // mobile Safari sideways: toolbar and keyboard leave only the field row's height
+    act(() => { height = TIGHT_VISIBLE_PX - 36; target.dispatchEvent(new Event("resize")); });
+    expect(panel().classList.contains("chat-tight")).toBe(true);
     act(() => { height = 390; target.dispatchEvent(new Event("resize")); });
     expect(panel().classList.contains("chat-short")).toBe(false);
+    expect(panel().classList.contains("chat-tight")).toBe(false);
   } finally {
     if (had) Object.defineProperty(window, "visualViewport", had);
     else Reflect.deleteProperty(window, "visualViewport");
@@ -229,4 +234,24 @@ it("keeps the quick phrases on a desktop, whose field takes focus on open", () =
   act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} />));
   expect(document.activeElement).toBe(host.querySelector("input"));
   expect(host.querySelector(".chat-quick")).not.toBeNull();
+});
+
+it("keeps the field focused when Send or × is pressed, so nothing moves under the finger", () => {
+  const input = host.querySelector<HTMLInputElement>(".chat-input input")!;
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  act(() => { setValue.call(input, "gg"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  const sendBtn = host.querySelector<HTMLButtonElement>(".chat-input .btn")!;
+  expect(sendBtn.disabled).toBe(false);
+  const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  act(() => { sendBtn.dispatchEvent(press); });
+  expect(press.defaultPrevented).toBe(true);
+  const closePress = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  act(() => { host.querySelector(".chat-close")!.dispatchEvent(closePress); });
+  expect(closePress.defaultPrevented).toBe(true);
+});
+
+it("lays the tight panel out as one row on the keyboard, with no log or phrases", () => {
+  const own = readFileSync(`${import.meta.dirname}/ChatPanel.css`, "utf8");
+  expect(own).toMatch(/\.chat-panel\.chat-short\.chat-tight \{[^}]*bottom: calc\(var\(--chat-kb, 0px\) \+ 2px\)[^}]*flex-direction: row/);
+  expect(own).toMatch(/\.chat-panel\.chat-tight \.chat-log,\s*\.chat-panel\.chat-tight \.chat-quick,[^{]*\{ display: none; \}/);
 });

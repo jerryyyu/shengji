@@ -20,6 +20,27 @@
 .chat-panel.chat-short .chat-quick-btn { min-height: 30px; }
 .chat-panel.chat-short .chat-input { padding: 4px 8px 6px; }
 
+/* A tight visible area (mobile Safari sideways: toolbar above, keyboard
+   below, about 45 pt between): the panel is one row sitting on the
+   keyboard, the field, Send and the close button; the header's title, the
+   log and the quick phrases give way until the keyboard goes. */
+:root .app:not(.rotated) .chat-panel.chat-short.chat-tight {
+  top: auto;
+  bottom: calc(var(--chat-kb, 0px) + 2px);
+  height: auto;
+  max-height: none;
+  flex-direction: row;
+  align-items: center;
+  transform-origin: bottom right;
+}
+.chat-panel.chat-tight .chat-log,
+.chat-panel.chat-tight .chat-quick,
+.chat-panel.chat-tight .chat-head > span { display: none; }
+.chat-panel.chat-tight .chat-head { order: 2; padding: 0 6px 0 0; border-bottom: 0; }
+.chat-panel.chat-tight .chat-input { flex: 1; min-width: 0; padding: 1px 4px 1px 1px; border-top: 0; }
+.chat-panel.chat-tight .chat-input input { padding-top: 4px; padding-bottom: 4px; outline-offset: -2px; }
+.chat-panel.chat-tight .chat-input .btn { min-height: 34px; padding-top: 0; padding-bottom: 0; }
+
 /* The chat's quick phrases: one row of chips above the field. The chips
    share out any spare width; when the chat is narrower than all five, the
    row scrolls sideways rather than wrapping or squeezing them. */

@@ -28,6 +28,9 @@ interface BodyProps extends ChatProps {
  *  field, which takes focus when it opens and gives it back when it closes. */
 export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
   const [draft, setDraft] = useState("");
+  // On a touch screen the field's focus means the keyboard is up; the quick
+  // phrases then give their row to the field.
+  const [typing, setTyping] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // a muted seat's lines stay hidden for this viewer; system lines never mute
@@ -76,13 +79,15 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
         )}
         <div ref={endRef} />
       </div>
-      <div className="chat-quick" role="group" aria-label="Quick phrases">
-        {QUICK_PHRASES.map((phrase) => (
-          <button key={phrase} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
-            {phrase}
-          </button>
-        ))}
-      </div>
+      {typing && touchFirst() ? null : (
+        <div className="chat-quick" role="group" aria-label="Quick phrases">
+          {QUICK_PHRASES.map((phrase) => (
+            <button key={phrase} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
+              {phrase}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="chat-input">
         <input
           ref={inputRef}
@@ -92,6 +97,8 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
           aria-label="Chat message"
           enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setTyping(true)}
+          onBlur={() => setTyping(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) send();
           }}

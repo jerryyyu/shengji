@@ -207,3 +207,26 @@ it("leaves the keyboard down on a touch screen when chat opens", () => {
     window.matchMedia = mm;
   }
 });
+
+it("gives the quick phrases' row to the field while the keyboard is up on a touch screen", () => {
+  const mm = window.matchMedia;
+  window.matchMedia = ((q: string) => ({ matches: q.includes("coarse"), media: q })) as unknown as typeof window.matchMedia;
+  try {
+    act(() => root.render(<ChatPanel messages={[]} you={0} open={false} onClose={() => {}} />));
+    act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} />));
+    expect(host.querySelector(".chat-quick")).not.toBeNull();
+    const input = host.querySelector("input")!;
+    act(() => input.focus());
+    expect(host.querySelector(".chat-quick")).toBeNull();
+    act(() => input.blur());
+    expect(host.querySelector(".chat-quick")).not.toBeNull();
+  } finally {
+    window.matchMedia = mm;
+  }
+});
+
+it("keeps the quick phrases on a desktop, whose field takes focus on open", () => {
+  act(() => root.render(<ChatPanel messages={[]} you={0} open onClose={() => {}} />));
+  expect(document.activeElement).toBe(host.querySelector("input"));
+  expect(host.querySelector(".chat-quick")).not.toBeNull();
+});

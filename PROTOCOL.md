@@ -41,7 +41,9 @@ between a peek and the join — the client should re-peek rather than accept a
 different seat, since a different seat means a different TEAM).
 `code` is set for machine-readable cases: `"room_not_found"` (the room no
 longer exists — the client should clear its saved room and return to the
-lobby instead of retrying), `"retired"` (a retired message name, listed in
+lobby instead of retrying), `"no_room"` (a room action from a socket that holds
+no seat: a page still showing a table asks for its saved seat back once, else
+returns to the lobby), `"retired"` (a retired message name, listed in
 "Table messages": the page is out of date), and `"bad_start_level"` (`create_room` carried a
 `start_level` that is not a known rank). An unknown `start_level` is REFUSED,
 never coerced to `"2"`: silently downgrading it would hand the player a game

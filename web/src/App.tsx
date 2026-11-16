@@ -55,6 +55,8 @@ export default function App() {
   const seededRef = useRef(false);
   // True from an automatic resume of the saved room until the server answers it.
   const resumingRef = useRef(false);
+  // A refused move already asked for the seat back once since the last state.
+  const reaskedRef = useRef(false);
   // A saved game and its replays, How to play, the info pages and the
   // Leaderboard and Me tabs are routes that sit over whatever screen is
   // live; the socket and any game in progress keep running underneath.
@@ -84,6 +86,17 @@ export default function App() {
       setGame(null);
       seededRef.current = false;
       resetAnnouncer();
+    };
+
+    // Ask for the saved seat back; false when nothing is saved.
+    const resumeSaved = (): boolean => {
+      const join = intentToJoin(decideIntent({
+        savedRoom: getSavedRoom(), savedName: getSavedName() || "Player", savedToken: getResumeToken(),
+      }));
+      if (!join) return false;
+      resumingRef.current = true;
+      conn.send(join);
+      return true;
     };
 
     const unsubStatus = conn.subscribeStatus((s) => {
@@ -128,6 +141,10 @@ export default function App() {
           break;
         case "state":
           resumingRef.current = false;
+          reaskedRef.current = false;
+          // A seat taken in a game already on gets no "room" frame: its first
+          // state is what the device remembers it by, so a reconnect resumes it.
+          if (!OFFLINE && !msg.joining_you && msg.room && getSavedRoom() !== msg.room) saveRoom(msg.room);
           announceState(msg, !seededRef.current);
           seededRef.current = true;
           setGame(msg);
@@ -140,7 +157,18 @@ export default function App() {
           // the queue and Join panels say their own codes: one status, not two
           const says = routeOf(msg).says;
           if (says !== "toast" && says !== "app") break;
-          if (msg.code === "start_failed") {
+          if (msg.code === "no_room") {
+            // A move answered "not in a room" while a table is shown: the
+            // socket lost its seat. Ask for it back once, else go to Play.
+            if (wasResuming) break;          // the resume's own answer follows
+            if (!seededRef.current) { showToast(msg.message); break; }
+            if (!reaskedRef.current) {
+              reaskedRef.current = true;
+              if (resumeSaved()) break;
+            }
+            resetToLobby();
+            showToast("You're no longer at a table.");
+          } else if (msg.code === "start_failed") {
             // a queue game with bots that failed to start was unwound on the server
             resetToLobby();
             showToast(msg.message);

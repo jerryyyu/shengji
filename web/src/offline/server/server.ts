@@ -908,7 +908,7 @@ export class LocalConnection {
         server.kickBots(room);
         server.broadcast(room);
       } else {
-        this.sendDirect({ type: "error", message: "Join a room first." });
+        this.sendDirect({ type: "error", code: "no_room", message: "Join a room first." });
       }
       return;
     }

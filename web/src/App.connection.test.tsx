@@ -297,3 +297,49 @@ it("with the leave sheet open at the table, the full screen still takes focus", 
   expect(document.activeElement).toBe(retry);
   expect(alert.closest("[inert]")).not.toBeNull();
 });
+
+it("a seat taken in a game already on is saved from its first state, so a reconnect resumes it by its token", async () => {
+  // a mid-game seat gets no "room" frame: the device remembers it by its first state
+  const { ws } = await mount();
+  ws.saveName("Cee");
+  act(() => latest().open());
+  expect(latest().sent).toEqual([]);
+  // watching the seat until the handover is not holding it yet
+  act(() => latest().deliver({ ...playing, you: 2, joining_you: true }));
+  expect(ws.getSavedRoom()).toBeNull();
+  act(() => latest().deliver({ type: "resume", token: "tok-mid", gen: 1 }));
+  act(() => latest().deliver({ ...playing, you: 2 }));
+  expect(ws.getSavedRoom()).toBe("ABCD");
+  expect(host.querySelector(".table-screen")).not.toBeNull();
+
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(600); });
+  const back = latest();
+  act(() => back.open());
+  expect(back.sent).toEqual([expect.objectContaining({ type: "table_join", code: "ABCD", expect: "room", token: "tok-mid" })]);
+  act(() => back.deliver({ type: "resume", token: "tok-mid", gen: 2 }));
+  act(() => back.deliver({ ...playing, you: 2 }));
+  expect(host.querySelector(".table-screen")).not.toBeNull();
+});
+
+it("a move refused for want of a seat asks for the seat back once, then goes to Play with one toast", async () => {
+  const { ws } = await mount();
+  ws.saveName("Cee");
+  act(() => latest().open());
+  act(() => latest().deliver({ type: "resume", token: "tok-mid", gen: 1 }));
+  act(() => latest().deliver({ ...playing, you: 2 }));
+  const sock = latest();
+  act(() => sock.deliver({ type: "error", code: "no_room", message: "Join a room first." }));
+  expect(sock.sent.at(-1)).toEqual(expect.objectContaining({ type: "table_join", code: "ABCD", token: "tok-mid" }));
+  expect(host.querySelector(".table-screen")).not.toBeNull();
+  // the ask is refused, and the next move is refused again: the table goes
+  act(() => sock.deliver({ type: "error", code: "seat_unavailable", message: "That seat was just taken." }));
+  const asked = sock.sent.length;
+  act(() => sock.deliver({ type: "error", code: "no_room", message: "Join a room first." }));
+  expect(sock.sent.length).toBe(asked);
+  expect(host.querySelector(".table-screen")).toBeNull();
+  expect(host.querySelector(".lobby-panel")).not.toBeNull();
+  expect(host.querySelectorAll(".toast")).toHaveLength(1);
+  expect(host.querySelector(".toast")?.textContent).toBe("You're no longer at a table.");
+  expect(ws.getSavedRoom()).toBeNull();
+});

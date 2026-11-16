@@ -2786,7 +2786,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
                         if got is not None:
                             room, me, my_gen = got
                     else:
-                        await send(ws, {"type": "error", "message": "Join a room first."})
+                        await send(ws, {"type": "error", "code": "no_room",
+                                        "message": "Join a room first."})
                 finally:
                     # A failed create or join returns the socket to the lobby;
                     # a seat taken elsewhere ends its queue entry.

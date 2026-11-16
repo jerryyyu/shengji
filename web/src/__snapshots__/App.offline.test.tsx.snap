@@ -1,13 +1,12 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`the offline Play block and its table, as drawn 1`] = `
-"<div class="play-mode" role="group" aria-labelledby="«id0»">
-<span class="sr-only" id="«id0»">Mode</span>
+"<div class="play-mode" role="group" aria-label="Mode">
 <button type="button" class="play-mode-opt" aria-pressed="false" disabled="">Ranked</button>
 <button type="button" class="play-mode-opt on" aria-pressed="true">Casual</button>
 </div>
 <div class="play-ranked-row">
-<button type="button" class="btn gold play-main">Play</button>
+<button type="button" class="btn gold play-main q-find">Play</button>
 <button type="button" class="btn play-duo" disabled="">Duo</button>
 </div>
 <p class="play-presence offline" role="status">
@@ -16,7 +15,7 @@ exports[`the offline Play block and its table, as drawn 1`] = `
 <span>Offline</span>
 </p>
 <div class="join-row">
-<input class="room-input" placeholder="CODE" aria-label="Table code" disabled="">
+<input class="room-input" maxlength="4" placeholder="CODE" aria-label="Table code" disabled="" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" value="">
 <button class="btn" disabled="">Join</button>
 </div>"
 `;

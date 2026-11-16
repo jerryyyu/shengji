@@ -110,6 +110,11 @@ it("the table panel's frame is rendered only from TablePanel.tsx", () => {
   expect(panel.code, "PanelView stays private to TablePanel.tsx").not.toMatch(/export[^;\n]*\bPanelView\b/);
 });
 
+it("the panel's frame is drawn only by PanelView", () => {
+  expect(matching(/className=\{?["'`]tp[ "'`]|\btp-acts\b|<TeamColumns\b/),
+    "the panel's frame is drawn only by PanelView").toEqual(PANEL_VIEW_SITES);
+});
+
 /** The one file that draws a toast: every message off the hand line passes through it. */
 const TOAST_VIEW_SITES = ["components/Toast.tsx"];
 

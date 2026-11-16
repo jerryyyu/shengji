@@ -43,14 +43,16 @@ function GuestLine({ online }: { online: boolean }) {
 
 /** The counts under Play and Duo: who is about, never a button. When both
  *  modes have tables, the selected mode's count is lit. Until the socket
- *  opens it is Play's connection status: "Connecting…", then the offline
- *  controls' "Offline". */
-function PresenceLine({ q, online }: { q: ReturnType<typeof useQueue>; online: boolean }) {
-  if (!online) {
+ *  opens it is Play's connection status: "Connecting…", then, with `offline`
+ *  (the offline controls), a grey "Offline". */
+export function PresenceLine({ q, online, offline = false }: {
+  q: ReturnType<typeof useQueue> | null; online: boolean; offline?: boolean;
+}) {
+  if (offline || !online || !q) {
     return (
-      <p className="play-presence connecting" role="status">
+      <p className={`play-presence ${offline ? "offline" : "connecting"}`} role="status">
         <span className="play-presence-dot" aria-hidden="true" />
-        <span>Connecting…</span>
+        <span>{offline ? "Offline" : "Connecting…"}</span>
       </p>
     );
   }
@@ -69,17 +71,37 @@ function PresenceLine({ q, online }: { q: ReturnType<typeof useQueue>; online: b
 const MODES: { mode: QueueMode; label: string }[] = [{ mode: "ranked", label: "Ranked" }, { mode: "casual", label: "Casual" }];
 
 /** Ranked / Casual above Play, remembered on this device. At a table it
- *  shows that table's mode and holds still. */
-function ModeSwitch({ value, disabled }: { value: QueueMode; disabled: boolean }) {
+ *  shows that table's mode and holds still. With `rankedOff` (no game
+ *  server) only Ranked is disabled, and a tap changes nothing remembered. */
+export function ModeSwitch({ value, disabled, rankedOff = false }: {
+  value: QueueMode; disabled: boolean; rankedOff?: boolean;
+}) {
   return (
     <div className="play-mode" role="group" aria-label="Mode">
       {MODES.map(({ mode, label }) => (
         <button key={mode} type="button" className={`play-mode-opt${value === mode ? " on" : ""}`}
-                aria-pressed={value === mode} disabled={disabled}
-                onClick={() => queue.setPlayMode(mode)}>
+                aria-pressed={value === mode} disabled={disabled || (rankedOff && mode === "ranked")}
+                onClick={rankedOff ? undefined : () => queue.setPlayMode(mode)}>
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** The gold Play, wide, and Duo beside it. `busy`: a Play on its way. */
+export function PlayRow({ label, disabled, busy = false, onPlay, onDuo, duoDisabled }: {
+  label: string; disabled: boolean; busy?: boolean; onPlay: () => void; onDuo?: () => void; duoDisabled: boolean;
+}) {
+  return (
+    <div className="play-ranked-row">
+      <button type="button" className={`btn gold play-main q-find${busy ? " searching" : ""}`}
+              disabled={disabled} aria-busy={busy || undefined} onClick={onPlay}>
+        {label}
+      </button>
+      <button type="button" className="btn play-duo" disabled={duoDisabled} onClick={onDuo}>
+        Duo
+      </button>
     </div>
   );
 }
@@ -187,15 +209,8 @@ export function RankedSection({ online, room = null }: {
     <>
       {pairRow}
       {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}
-      <div className="play-ranked-row">
-        <button type="button" className={`btn gold play-main q-find${joining ? " searching" : ""}`}
-                disabled={disabled} aria-busy={joining || undefined} onClick={() => queue.join()}>
-          {label}
-        </button>
-        <button type="button" className="btn play-duo" disabled={disabled} onClick={() => queue.joinDuo()}>
-          Duo
-        </button>
-      </div>
+      <PlayRow label={label} disabled={disabled} busy={joining} duoDisabled={disabled}
+               onPlay={() => queue.join()} onDuo={() => queue.joinDuo()} />
       {cooling ? null : <PresenceLine q={q} online={online} />}
     </>
   );

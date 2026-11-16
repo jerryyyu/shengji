@@ -1,6 +1,6 @@
 // What the table panel says, as plain functions of the queue's state.
-import { clock } from "./store";
-import type { OfferView, Presence, QueueView, TableView } from "./store";
+import { clock, namesAt, sharedTable, yourReady } from "./store";
+import type { OfferView, Presence, QueueView, TableFrame } from "./store";
 import type { FirstJoinerMsg, QueueMode } from "./messages";
 
 /** A seat taken this recently reads "Just joined". */
@@ -21,7 +21,7 @@ export type PanelKind = "play" | "join" | "own" | "shared" | "elsewhere";
 export function panelKind(q: QueueView): PanelKind {
   if (!q.queued) return "play";
   if (q.elsewhere) return "elsewhere";
-  if (q.table) return "shared";
+  if (sharedTable(q.frame)) return "shared";
   if (q.offer) return "join";
   return "own";
 }
@@ -54,32 +54,38 @@ export function joinTitle(o: OfferView): string {
  *  ring on Start with bots. */
 export function ownBotsAt(q: QueueView): number | null {
   if (q.waitPlayers || q.botsPaused) return null;
-  return q.botsAt;
+  return q.frame?.timers.bots?.at ?? null;
+}
+
+/** Your table holds a seat for a Duo opener's friend. */
+function holdsSeat(q: QueueView): boolean {
+  return q.frame?.seats.some((s) => s.state === "held") === true;
 }
 
 /** Your own table's title: "Your table", "Your Duo" while the partner
  *  seat is held, or "You and Alice" once your Duo partner sits. */
 export function ownTitle(q: QueueView, partner: string | null): string {
   if (partner) return `You and ${shortName(partner)}`;
-  return q.duo && q.heldSeat !== null ? "Your Duo" : "Your table";
+  return q.duo && holdsSeat(q) ? "Your Duo" : "Your table";
 }
 
 /** A Duo's own-table button: Start until you tap it, then who it waits
  *  for, then the search the pair is in. */
 export function duoStartLabel(q: QueueView, partner: string): string {
-  if (!q.youReady) return "Start";
+  if (!yourReady(q)) return "Start";
   return (q.duoReady ?? 0) >= 2 ? "Finding a table" : `Waiting for ${shortName(partner)}`;
 }
 
 /** A shared table's one status line: who is ready. The bots' countdown is
  *  the ring on the Start button, never a line. */
-export function sharedStatusLine(t: TableView): string {
-  return `${t.ready} of ${t.of} ready`;
+export function sharedStatusLine(f: TableFrame): string {
+  const taken = f.seats.filter((s) => s.state === "taken");
+  return `${taken.filter((s) => s.ready).length} of ${taken.length} ready`;
 }
 
 /** "You and Alice", "You, Alice and Li". */
-export function sharedTitle(t: TableView): string {
-  const others = t.seats.filter((s) => s && !s.you).map((s) => shortName(s!.name));
+export function sharedTitle(f: TableFrame): string {
+  const others = namesAt(f).map(shortName);
   if (others.length === 0) return "Your table";
   if (others.length === 1) return `You and ${others[0]}`;
   return `You, ${others.slice(0, -1).join(", ")} and ${others[others.length - 1]}`;
@@ -87,9 +93,9 @@ export function sharedTitle(t: TableView): string {
 
 /** The Start button's words: Start until you tap it, then who the table is
  *  waiting for. */
-export function startLabel(t: TableView): string {
-  if (!t.youReady) return "Start";
-  const w = t.waitingFor;
+export function startLabel(f: TableFrame): string {
+  if (!f.your_ready) return "Start";
+  const w = f.waiting_for ?? [];
   if (w.length === 0) return "Starting…";
   if (w.length === 1) return `Waiting for ${shortName(w[0])}`;
   return `Waiting for ${w.length} players`;
@@ -122,16 +128,16 @@ export function announcement(q: QueueView): string {
     return `${ownTitle(q, partner)}. ${q.duoReady} of 2 ready.`;
   }
   if (kind === "own") {
-    const who = q.partyId ? "Your Duo's table" : q.duo && q.heldSeat !== null ? "Your Duo" : "Your table";
+    const who = q.partyId ? "Your Duo's table" : q.duo && holdsSeat(q) ? "Your Duo" : "Your table";
     return `${who}. Waiting for players.${q.waitPlayers ? " No timer." : ""}`;
   }
-  if (kind === "shared" && q.table && q.stillHereUntil !== null) {
+  if (kind === "shared" && q.stillHereUntil !== null) {
     return "Tap I’m back to stay at the table.";
   }
-  if (kind === "shared" && q.table) {
-    const t = q.table;
-    const after = t.youReady ? ` ${startLabel(t)}.` : "";
-    return `Table. ${sharedTitle(t)}. ${t.ready} of ${t.of} ready.${after}`;
+  if (kind === "shared" && q.frame) {
+    const f = q.frame;
+    const after = f.your_ready ? ` ${startLabel(f)}.` : "";
+    return `Table. ${sharedTitle(f)}. ${sharedStatusLine(f)}.${after}`;
   }
   if (kind === "elsewhere") return "Your table is open on another device.";
   return "";

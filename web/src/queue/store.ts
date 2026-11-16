@@ -12,8 +12,8 @@ import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ChatMsg, ServerMsg } from "../protocol";
 import type {
-  OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, TableMovedMsg,
-  WaitingTableMsg,
+  OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, QueueStateMsg, TableFrameMsg,
+  TableMovedMsg,
 } from "./messages";
 import { ERROR_ROUTES, QUEUE_ANSWERS } from "../errorCodes";
 
@@ -31,34 +31,10 @@ export const CONFIRM_MS = 3000;
 /** While searching, how often the client asks the server what it holds. */
 export const CHECK_MS = 15_000;
 
-/** A seat at the waiting table, times in local ms. */
-export interface TableSeat {
-  name: string;
-  you: boolean;
-  ready: boolean;
-  reconnecting: boolean;
-  since: number | null;
-  sit: string | null;
-  pair: boolean;
-  leader: boolean;
-}
-
-/** The shared waiting table you sit at, times in local ms. */
-export interface TableView {
-  id: string;
-  /** Seat order; null is empty (a bot plays it). */
-  seats: (TableSeat | null)[];
-  you: number;
-  timer: { at: number; name: string; you: boolean } | null;
-  ready: number;
-  of: number;
-  youReady: boolean;
-  waitingFor: string[];
-  /** The empty seats held for a Duo opener's friend. */
-  heldSeats: number[];
-  /** When the opener's Start now unlocks, local ms; null from an older server. */
-  startNowAt: number | null;
-}
+/** The table you sit at before its game: the last `table` frame, its
+ *  times (`since`, `timers`) in local ms. Alone it is your own table. */
+export type TableFrame = Omit<TableFrameMsg, "type">;
+export type FrameSeat = TableFrame["seats"][number];
 
 /** An open table offered to you, times in local ms; `pick` is the seat you
  *  have chosen (the server's pick until you tap another). */
@@ -108,16 +84,15 @@ export interface QueueView {
   queued: boolean;
   /** Local ms. */
   since: number | null;
-  /** Local ms of the bot fill; null when none is due. */
-  botsAt: number | null;
   /** The entry waits for real players only: no bot fill. */
   waitPlayers: boolean;
   front: boolean;
   leader: boolean;
   partyId: string | null;
   pending: null | "join" | "leave" | "bots" | "start" | "offer";
-  /** The waiting table you sit at; null while alone in the queue. */
-  table: TableView | null;
+  /** Queued: your table (alone, your own), from the `table` frame; null
+   *  when not queued or when the search is held elsewhere. */
+  frame: TableFrame | null;
   /** An open table offered to you now. */
   offer: OfferView | null;
   /** Open tables you waited on that can still be joined. */
@@ -150,38 +125,26 @@ export interface QueueView {
   /** Your table's chat, as room chat lines (`room` is the waiting table's
    *  id, empty alone at your own table); empty when not queued. */
   tableChat: ChatMsg[];
-  /** Queued: your table's code (your own alone, the opener's at a waiting
-   *  table); null when not queued. */
-  tableCode: string | null;
-  /** Queued: your table's Allow joiners and starting level. */
-  allowJoiners: boolean;
-  startLevel: string;
-  /** Queued: you opened this table (alone, always), so you set its level
-   *  and Allow joiners. */
-  opener: boolean;
   /** Queued: a Duo table's opener, or either member of a Duo made there. */
   duo: boolean;
-  /** Queued: the seat your entry holds for your friend (2 while alone),
-   *  else your table's first held seat; null when none is held. */
-  heldSeat: number | null;
   /** Queued in a Duo made at a table: how many of you tapped Start; null
    *  for anyone else. */
   duoReady: number | null;
-  /** Queued: your own Start is in (a Duo member's, alone or at a table). */
-  youReady: boolean;
 }
 
-const EMPTY: QueueView = {
-  count: 0, queued: false, since: null, botsAt: null, waitPlayers: false, front: false, leader: true,
-  partyId: null, pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-  cooldownUntil: null, cooldownTold: false, party: null, note: null,
-  presence: null, panelSeq: null, stillHereUntil: null, inGame: null, playMode: "ranked", queueMode: null,
-  tableChat: [], tableCode: null, allowJoiners: true, startLevel: "2", opener: true,
-  duo: false, heldSeat: null, duoReady: null, youReady: false,
+/** What a table's end clears: no search, no table, nothing it showed. */
+const NOT_SEATED: Pick<QueueView, "queued" | "frame" | "pending" | "since" | "waitPlayers" | "front" | "offer"
+  | "openTables" | "botsPaused" | "elsewhere" | "panelSeq" | "stillHereUntil" | "queueMode" | "tableChat" | "duo"
+  | "duoReady"> = {
+  queued: false, frame: null, pending: null, since: null, waitPlayers: false, front: false, offer: null,
+  openTables: 0, botsPaused: false, elsewhere: false, panelSeq: null, stillHereUntil: null, queueMode: null,
+  tableChat: [], duo: false, duoReady: null,
 };
 
-/** What a queue entry's Duo fields are once it is no longer queued. */
-const NO_DUO = { duo: false, heldSeat: null, duoReady: null, youReady: false } as const;
+const EMPTY: QueueView = {
+  ...NOT_SEATED, count: 0, leader: true, partyId: null, cooldownUntil: null, cooldownTold: false,
+  party: null, note: null, presence: null, inGame: null, playMode: "ranked",
+};
 
 /** The name you play under: the account's, or a guest's own. */
 function myName(): string {
@@ -208,9 +171,37 @@ export function partnerName(party: PartyMsg | null): string | null {
   return party?.members.find((m) => !m.you)?.name ?? null;
 }
 
-/** The names of the others at a waiting table. */
-export function othersAt(t: TableView | null): string[] {
-  return t ? t.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
+/** Whether a seat at `f` is your Duo partner's: across from you, both
+ *  seats a pair's. */
+function partnerSeat(f: TableFrame, s: FrameSeat): boolean {
+  return s.pair && f.seats[f.you]?.pair === true && s.seat === (f.you + 2) % 4;
+}
+
+/** The people at your table besides you and your Duo partner. */
+export function othersAt(f: TableFrame | null): string[] {
+  return f ? f.seats.flatMap((s) => (s.state === "taken" && !s.you && !partnerSeat(f, s) ? [s.name ?? ""] : [])) : [];
+}
+
+/** Someone besides you and your Duo partner sits at your table: a shared
+ *  table, not your own. */
+export function sharedTable(f: TableFrame | null): boolean {
+  return othersAt(f).length > 0;
+}
+
+/** The names at your table besides yours, your Duo partner's too. */
+export function namesAt(f: TableFrame | null): string[] {
+  return f ? f.seats.flatMap((s) => (s.state === "taken" && !s.you ? [s.name ?? ""] : [])) : [];
+}
+
+/** You opened your table (alone, always), so you set its level and Allow
+ *  joiners and may move people. */
+export function isOpener(q: QueueView): boolean {
+  return q.frame !== null && q.frame.opener === q.frame.you;
+}
+
+/** Your own Start is in (a Duo member's, alone or at a table). */
+export function yourReady(q: QueueView): boolean {
+  return q.frame?.your_ready === true;
 }
 
 export class QueueStore {
@@ -219,6 +210,9 @@ export class QueueStore {
   /** Server clock minus local clock, ms. */
   private skew = 0;
   private joinSentAt: number | null = null;
+  /** A queue_state that holds the entry, kept until its `table` frame,
+   *  which the server sends right after it: the two are one update. */
+  private heldState: QueueStateMsg | null = null;
   /** A table's chat history that came before the queue_state seating you
    *  there (the server sends it as you sit): taken up when that state lands. */
   private chatAhead: { table: string | null; lines: ChatMsg[] } | null = null;
@@ -353,6 +347,7 @@ export class QueueStore {
     if (s !== "open" && was === "open" && (this.view.queued || this.view.pending)) {
       this.droppedWhileQueued = true;
     }
+    if (s !== "open") this.heldState = null;
     // Pairs live in the server's memory: a restart forgets them, and a
     // reconnect that gets no pair back means this one is gone.
     // a new socket hears the counts again only when some count is above zero
@@ -377,8 +372,7 @@ export class QueueStore {
         const held = this.view.queued;
         if (!held && !this.view.pending) return;
         this.joinSentAt = null;
-        this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false, front: false,
-                   offer: null, openTables: 0, botsPaused: false, elsewhere: false, ...NO_DUO });
+        this.set(NOT_SEATED);
         if (held) this.notify("You left the table while away.", "No cooldown.");
       }, RESYNC_MS);
     }
@@ -393,7 +387,7 @@ export class QueueStore {
         break;
       case "table_chat_history": {
         const lines = msg.messages.slice(-100).map((m): ChatMsg => ({ ...m, type: "chat", room: msg.table ?? "" }));
-        if (this.view.queued && (this.view.table?.id ?? null) === msg.table) {
+        if (this.view.queued && (this.view.frame?.chat_log ?? null) === msg.table) {
           this.chatAhead = null;
           this.set({ tableChat: lines });
         } else {
@@ -403,7 +397,7 @@ export class QueueStore {
       }
       case "table_chat": {
         // the waiting table's line, or (table null) your own table's while alone
-        if (!this.view.queued || (this.view.table?.id ?? null) !== msg.table
+        if (!this.view.queued || (this.view.frame?.chat_log ?? null) !== msg.table
             || this.view.tableChat.some((m) => m.id === msg.id)) break;
         const line: ChatMsg = { type: "chat", id: msg.id, room: msg.table ?? "", seat: msg.seat, name: msg.name,
                                 text: msg.text, t: msg.t };
@@ -413,6 +407,9 @@ export class QueueStore {
       case "table_moved":
         this.notify(movedNote(msg));
         break;
+      case "left":
+        this.heldState = null;
+        break;
       case "room":
       case "state":
         // in a room: whatever refused Play no longer stands
@@ -420,14 +417,13 @@ export class QueueStore {
         break;
       case "queue_state": {
         this.clearResync();
+        this.heldState = null;
         if (!msg.queued) {
           const wasQueued = this.view.queued && !this.view.elsewhere;
           const leaving = this.view.pending === "leave";
-          this.set({ queued: false, count: msg.count, since: null, botsAt: null, waitPlayers: false, front: false,
-                     pending: null, table: null, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null,
-                     cooldownTold: false, panelSeq: null, stillHereUntil: null, queueMode: null, tableChat: [], tableCode: null,
-                     ...NO_DUO });
+          // the one difference from any other end: a cooldown may run
+          this.set({ ...NOT_SEATED, count: msg.count, cooldownTold: false,
+                     cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null });
           if (msg.replaced && wasQueued) {
             const there = msg.by === "window" ? "window" : "device";
             this.notify(msg.stopped ? `Your table was closed from another ${there}.` : `Your table moved to another ${there}.`);
@@ -441,59 +437,29 @@ export class QueueStore {
           this.joinSentAt = null;
           this.set({ queued: true, elsewhere: true, count: msg.count,
                      since: msg.since !== undefined ? this.local(msg.since) : now,
-                     botsAt: null, waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
-                     partyId: msg.party_id ?? null, pending: null, table: null, offer: null,
+                     waitPlayers: false, front: !!msg.front, leader: msg.leader !== false,
+                     partyId: msg.party_id ?? null, pending: null, frame: null, offer: null,
                      openTables: 0, botsPaused: false, cooldownUntil: null, inGame: null,
-                     panelSeq: msg.panel_seq ?? null, stillHereUntil: null, ...NO_DUO });
+                     panelSeq: msg.panel_seq ?? null, stillHereUntil: null, duo: false, duoReady: null });
           break;
         }
-        if (this.joinSentAt !== null && !msg.front && msg.since !== undefined) {
-          // a fresh entry: `since` is the server's clock at our join
-          this.skew = msg.since * 1000 - this.joinSentAt;
-        }
-        this.joinSentAt = null;
-        const table = msg.table ? this.tableView(msg.table) : null;
-        // someone sat down with you: your table becomes a shared one
-        if (table && !this.view.table) haptic("declare");
-        const left = othersAt(this.view.table).filter((n) => !othersAt(table).includes(n));
-        const youReady = table ? table.youReady : msg.you_ready === true;
-        const duoReady = msg.duo_ready ?? null;
-        // a Start alone counts only in a Duo made at your table
-        const pending = this.view.pending === "bots" ? "bots"
-          : this.view.pending === "start" && (table || duoReady !== null) && !youReady ? "start" : null;
-        const offer = msg.offer ? this.offerView(msg.offer) : null;
-        if (offer && !this.view.offer) haptic("declare");
-        // a table's chat belongs to that table: another table starts empty,
-        // or with the history the server sent as you sat down
-        const tableId = table?.id ?? null;
-        const same = this.view.queued && (this.view.table?.id ?? null) === tableId;
-        let tableChat = same ? this.view.tableChat : [];
-        if (this.chatAhead && this.chatAhead.table === tableId) tableChat = this.chatAhead.lines;
-        this.chatAhead = null;
-        this.set({
-          queueMode: msg.mode ?? this.view.queueMode ?? "ranked", tableChat,
-          tableCode: msg.code ?? null, allowJoiners: msg.allow_joiners !== false,
-          startLevel: msg.start_level ?? "2", opener: msg.opener !== false,
-          duo: msg.duo === true, heldSeat: msg.held_seat ?? null, duoReady, youReady,
-          queued: true, count: msg.count,
-          since: msg.since !== undefined ? this.local(msg.since) : now,
-          botsAt: msg.bots_at != null ? this.local(msg.bots_at) : null,
-          waitPlayers: msg.wait_players === true,
-          front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
-          pending, table, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
-          elsewhere: false, cooldownUntil: null, inGame: null, panelSeq: msg.panel_seq ?? null,
-          stillHereUntil: table && msg.still_here_until != null ? this.local(msg.still_here_until) : null,
-        });
-        if (left.length === 1) this.notify(`${left[0]} left the table.`);
-        else if (left.length > 1) this.notify(`${left.join(" and ")} left the table.`);
+        // the table frame follows on this socket: the view changes with it
+        this.heldState = msg;
+        break;
+      }
+      case "table": {
+        if (msg.phase !== "open") break;
+        const held = this.heldState;
+        this.heldState = null;
+        if (held) this.seat(held, msg);
+        else if (this.view.queued && !this.view.elsewhere && this.view.frame) this.reseat(this.frameView(msg));
         break;
       }
       case "match_started":
         this.clearResync();
-        this.set({ queued: false, table: null, pending: null, offer: null, openTables: 0, botsPaused: false,
-                   since: null, botsAt: null, waitPlayers: false, front: false, note: null, elsewhere: false,
-                   panelSeq: null, stillHereUntil: null, inGame: null, queueMode: null, tableChat: [], tableCode: null,
-                   ...NO_DUO });
+        this.heldState = null;
+        // a game clears its notice and an in-game refusal too
+        this.set({ ...NOT_SEATED, note: null, inGame: null });
         break;
       case "match_cancelled":
         this.set({ pending: null });
@@ -505,9 +471,8 @@ export class QueueStore {
         this.clearResync();
         const me = myName();
         const by = msg.by && msg.by !== me ? msg.by : null;
-        this.set({ queued: false, table: null, pending: null, since: null, botsAt: null, waitPlayers: false,
-                   front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false,
-                   panelSeq: null, stillHereUntil: null, queueMode: null, tableChat: [], tableCode: null, ...NO_DUO });
+        this.heldState = null;
+        this.set(NOT_SEATED);
         if (msg.reason === "idle") {
           this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
         } else if (msg.reason === "away") {
@@ -584,8 +549,7 @@ export class QueueStore {
           this.notify(...ERROR_ROUTES.bad_seat.text);
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
-          this.set({ pending: null, queued: false, table: null, since: null, botsAt: null, waitPlayers: false,
-                     front: false, offer: null, openTables: 0, botsPaused: false, elsewhere: false, ...NO_DUO });
+          this.set(NOT_SEATED);
         } else {
           this.set({ pending: null });
         }
@@ -593,6 +557,54 @@ export class QueueStore {
       default:
         break;
     }
+  }
+
+  /** A queue_state that holds the entry, with the table frame that came
+   *  right after it. */
+  private seat(msg: QueueStateMsg, raw: TableFrameMsg): void {
+    const now = Date.now();
+    if (this.joinSentAt !== null && !msg.front && msg.since !== undefined) {
+      // a fresh entry: `since` is the server's clock at our join
+      this.skew = msg.since * 1000 - this.joinSentAt;
+    }
+    this.joinSentAt = null;
+    const frame = this.frameView(raw);
+    const shared = sharedTable(frame);
+    const youReady = frame.your_ready === true;
+    const duoReady = msg.duo_ready ?? null;
+    // a Start alone counts only in a Duo made at your table
+    const pending = this.view.pending === "bots" ? "bots"
+      : this.view.pending === "start" && (shared || duoReady !== null) && !youReady ? "start" : null;
+    const offer = msg.offer ? this.offerView(msg.offer) : null;
+    if (offer && !this.view.offer) haptic("declare");
+    // a table's chat belongs to that table: another table starts empty,
+    // or with the history the server sent as you sat down
+    const same = this.view.queued && (this.view.frame?.chat_log ?? null) === frame.chat_log;
+    let tableChat = same ? this.view.tableChat : [];
+    if (this.chatAhead && this.chatAhead.table === frame.chat_log) tableChat = this.chatAhead.lines;
+    this.chatAhead = null;
+    this.reseat(frame, {
+      queueMode: msg.mode ?? this.view.queueMode ?? "ranked", tableChat,
+      duo: msg.duo === true, duoReady,
+      queued: true, count: msg.count,
+      since: msg.since !== undefined ? this.local(msg.since) : now,
+      waitPlayers: msg.wait_players === true,
+      front: !!msg.front, leader: msg.leader !== false, partyId: msg.party_id ?? null,
+      pending, offer, openTables: msg.open_tables ?? 0, botsPaused: msg.bots_paused === true,
+      elsewhere: false, cooldownUntil: null, inGame: null, panelSeq: msg.panel_seq ?? null,
+      stillHereUntil: shared && msg.still_here_until != null ? this.local(msg.still_here_until) : null,
+    });
+  }
+
+  /** Your table is now `frame`: someone sitting down buzzes, and anyone
+   *  besides your Duo partner who got up is named. */
+  private reseat(frame: TableFrame, rest: Partial<QueueView> = {}): void {
+    const was = this.view.frame;
+    if (sharedTable(frame) && !sharedTable(was)) haptic("declare");
+    const left = othersAt(was).filter((n) => !othersAt(frame).includes(n));
+    this.set({ ...rest, frame });
+    if (left.length === 1) this.notify(`${left[0]} left the table.`);
+    else if (left.length > 1) this.notify(`${left.join(" and ")} left the table.`);
   }
 
   // ---- actions
@@ -650,13 +662,13 @@ export class QueueStore {
   /** Your table's Allow joiners, alone or at a waiting table (the opener
    *  only). */
   setAllowJoiners(on: boolean): void {
-    if (!this.view.queued || !this.view.opener) return;
+    if (!this.view.queued || !isOpener(this.view)) return;
     this.send({ type: "table_allow_joiners", on });
   }
 
   /** Your casual table's starting level (the opener only). */
   setStartLevel(level: string): void {
-    if (!this.view.queued || !this.view.opener) return;
+    if (!this.view.queued || !isOpener(this.view)) return;
     this.send({ type: "table_start_level", start_level: level });
   }
 
@@ -687,38 +699,37 @@ export class QueueStore {
 
   /** Turn the bot fill off; the server's queue_state confirms it. */
   waitForPlayers(): void {
-    if (this.send({ type: "queue_wait_players" })) this.set({ waitPlayers: true, botsAt: null });
+    if (this.send({ type: "queue_wait_players" })) this.set({ waitPlayers: true });
   }
 
-  /** Turn the bot fill back on, due a minute from now. */
+  /** Turn the bot fill back on, due a minute from now on your own table. */
   allowBots(): void {
-    if (this.send({ type: "queue_allow_bots" })) {
-      this.set({ waitPlayers: false, botsAt: Date.now() + BOT_FILL_MS });
-    }
+    if (!this.send({ type: "queue_allow_bots" })) return;
+    const f = this.view.frame;
+    const bots = { at: Date.now() + BOT_FILL_MS, name: f?.timers.bots?.name ?? myName(), you: true };
+    this.set({ waitPlayers: false,
+               frame: f && !sharedTable(f) ? { ...f, timers: { ...f.timers, bots } } : f });
   }
 
   /** Start at the waiting table, or as a member of a Duo made at your own
    *  table: your tick is in for good. */
   tableStart(): void {
-    const t = this.view.table;
-    if (!t && !tableDuo(this.view)) return;
-    if ((t ? t.youReady : this.view.youReady) || this.view.pending !== null) return;
+    if (!sharedTable(this.view.frame) && !tableDuo(this.view)) return;
+    if (yourReady(this.view) || this.view.pending !== null) return;
     if (this.send({ type: "table_start", ...this.seq() })) this.set({ pending: "start" });
   }
 
   /** The opener's Start now at a waiting table: it starts at once with
    *  bots. The server refuses it before `start_now_at`. */
   tableStartNow(): void {
-    const t = this.view.table;
-    if (!t || !this.view.opener || this.view.pending !== null) return;
+    if (!sharedTable(this.view.frame) || !isOpener(this.view) || this.view.pending !== null) return;
     if (this.send({ type: "table_start_now", ...this.seq() })) this.set({ pending: "start" });
   }
 
   /** Take your Start back while the table waits: Start shows again. */
   tableUnready(): void {
-    const t = this.view.table;
-    if (!t && !tableDuo(this.view)) return;
-    if (!(t ? t.youReady : this.view.youReady) || this.view.pending !== null) return;
+    if (!sharedTable(this.view.frame) && !tableDuo(this.view)) return;
+    if (!yourReady(this.view) || this.view.pending !== null) return;
     this.send({ type: "table_start", on: false });
   }
 
@@ -727,17 +738,18 @@ export class QueueStore {
    *  refuses a seat whose sitting changed, and its queue_state shows the
    *  new seats. */
   tableMoveOther(from: number, seat: number, who: string): void {
-    const t = this.view.table;
-    if (!t || !this.view.opener || this.view.pending !== null || from === t.you) return;
-    if (!t.seats[from] || t.seats[from]!.sit !== who || t.seats[seat] !== null) return;
+    const f = this.view.frame;
+    if (!f || !sharedTable(f) || !isOpener(this.view) || this.view.pending !== null || from === f.you) return;
+    if (f.seats[from]?.state !== "taken" || f.seats[from].sit !== who || f.seats[seat]?.state === "taken") return;
     this.send({ type: "table_move", seat, from, who });
   }
 
   /** A single at a shared table moves to an empty seat before its Start;
    *  the server's queue_state shows the new seats. */
   tableMove(seat: number): void {
-    const t = this.view.table;
-    if (!t || t.youReady || this.view.partyId || this.view.pending !== null || t.seats[seat] !== null) return;
+    const f = this.view.frame;
+    if (!f || !sharedTable(f) || f.your_ready || this.view.partyId || this.view.pending !== null) return;
+    if (f.seats[seat]?.state === "taken") return;
     this.send({ type: "table_move", seat });
   }
 
@@ -798,13 +810,15 @@ export class QueueStore {
              partner };
   }
 
-  private tableView(t: WaitingTableMsg): TableView {
+  /** A table frame with its server times made local. */
+  private frameView({ type: _type, ...f }: TableFrameMsg): TableFrame {
     return {
-      id: t.id, you: t.you, ready: t.ready, of: t.of, youReady: t.you_ready, waitingFor: t.waiting_for,
-      seats: t.seats.map((s) => (s ? { ...s, since: s.since !== null ? this.local(s.since) : null, sit: s.sit ?? null } : null)),
-      timer: t.timer ? { ...t.timer, at: this.local(t.timer.at) } : null,
-      heldSeats: t.held_seats ?? (t.held_seat != null ? [t.held_seat] : []),
-      startNowAt: t.start_now_at != null ? this.local(t.start_now_at) : null,
+      ...f,
+      seats: f.seats.map((s) => ({ ...s, since: s.since !== null ? this.local(s.since) : null })),
+      timers: {
+        bots: f.timers.bots ? { ...f.timers.bots, at: this.local(f.timers.bots.at) } : null,
+        start_now_at: f.timers.start_now_at !== null ? this.local(f.timers.start_now_at) : null,
+      },
     };
   }
 
@@ -826,6 +840,7 @@ export class QueueStore {
     this.view = { ...EMPTY, playMode: readPlayMode() };
     this.skew = 0;
     this.joinSentAt = null;
+    this.heldState = null;
     this.droppedWhileQueued = false;
   }
 }

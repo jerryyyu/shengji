@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
 import { GUARD_MS } from "./useKindGuard";
-import { framer } from "./testFrames";
+import { framer, tableFrameFor } from "./testFrames";
 
 class FakeWS {
   static OPEN = 1;
@@ -2404,5 +2404,47 @@ describe("deferred mock items: take back a Start, the opener moves people", () =
     expect(q(".toast")?.textContent).toBe("Jerry moved your seat.");
     say({ type: "table_moved", name: "Li", seat: 1, your_team: false, by: "Jerry" });
     expect(q(".toast")?.textContent).toBe("Jerry moved Li to the other team.");
+  });
+});
+
+describe("the table frame is the table", () => {
+  /** One frame as the socket sends it, with no table frame added. */
+  const raw = (msg: unknown) => act(() => ws().onmessage?.({ data: JSON.stringify(msg) }));
+  const title = () => panel()?.querySelector(".tp-title")?.textContent ?? null;
+
+  it("the panel draws the table frame, never queue_state's own copy of the table", async () => {
+    await renderApp();
+    const state = atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], { code: "4N5Z" },
+                          { code: "4N5Z", mode: "ranked", allow_joiners: true, start_level: "2", opener: true });
+    // queue_state's copy says something else: Ghost sits there, under another code
+    const table = (state as unknown as { table: Record<string, unknown> }).table;
+    const stale = { ...state, code: "OLD1", table: { ...table, code: "OLD1", seats: [
+      seat("Jerry", { you: true }), seat("Ghost"), null, null], ready: 0, of: 2, waiting_for: ["Ghost"] } };
+    raw(stale);
+    expect(panel()).toBeNull();                     // nothing until its table frame
+    raw(tableFrameFor(state));
+    expect(title()).toBe("You and Alice");
+    expect(panel()!.querySelector(".tp-code")?.textContent).toBe("4N5Z");
+    expect(panel()!.textContent).not.toContain("Ghost");
+  });
+
+  it("alone, your own table's seats come from the frame: a lone queue_state draws nothing", async () => {
+    await renderApp();
+    raw(queued({ duo: true, held_seat: 2, code: "4N5Z", opener: true }));
+    expect(panel()).toBeNull();
+    // the stash is dropped by the search's end, so a late frame changes nothing
+    raw({ type: "queue_state", queued: false, count: 0 });
+    raw(tableFrameFor(queued({ duo: true, held_seat: 2, code: "4N5Z", opener: true })));
+    expect(panel()).toBeNull();
+    say(queued({ duo: true, held_seat: 2, code: "4N5Z", opener: true }));
+    expect(title()).toBe("Your Duo");
+    expect(panel()!.querySelector(".tp-seat.held")?.getAttribute("aria-label")).toBe("Partner seat, held for your friend");
+  });
+
+  it("a game's table frame leaves the queue's panel alone", async () => {
+    await renderApp();
+    say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null]));
+    raw({ ...tableFrameFor(queued()), phase: "playing" });
+    expect(title()).toBe("You and Alice");
   });
 });

@@ -6,8 +6,8 @@ import type { CodeJoin } from "../codeJoin";
 import type { LeaveContext } from "../components/leaveCopy";
 import { hostName, roomChoices, tableHostName, takeoverSeats } from "../joinSeats";
 import type { ChatMsg, Rank, RoomSeats, TableSeats } from "../protocol";
-import { BOT_FILL_MS, partnerName, queue, tableDuo } from "./store";
-import type { OfferView, QueueView, TableView } from "./store";
+import { BOT_FILL_MS, isOpener, namesAt, partnerName, queue, tableDuo, yourReady } from "./store";
+import type { OfferView, QueueView, TableFrame } from "./store";
 import {
   JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, moveTargets, ownBotsAt, ownTitle, panelKind,
   sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
@@ -162,47 +162,30 @@ function heldSeat(at: number, ours: boolean): ModelSeat {
            label: ours ? "Partner seat, held for your friend" : `Partner seat, held, ${teamWord(false)}` };
 }
 
-/** Your own table, drawn from the lone queue entry: the server keeps no
- *  table for one, so you sit at the bottom and a Duo partner, or the seat
- *  held for one, across. In a Duo made there each member's Start shows. */
-function ownSeats(q: QueueView): ModelSeat[] {
-  const partner = q.partyId ? partnerName(q.party) : null;
-  const duo = tableDuo(q);
-  const partnerReady = duo && (q.duoReady ?? 0) - (q.youReady ? 1 : 0) > 0;
-  return [0, 1, 2, 3].map((at): ModelSeat => {
-    if (at === 0) {
-      return { at, look: "you", name: "You", sub: "", tick: duo && q.youReady,
-               label: duo && q.youReady ? "You, ready" : "You, your team" };
-    }
-    if (at === 2 && partner) {
-      return { at, look: "friend", name: shortName(partner), sub: "", tick: partnerReady,
-               label: [partner, partnerReady ? "ready" : null, "your Duo partner"].filter(Boolean).join(", ") };
-    }
-    if (at === 2 && q.heldSeat === 2) return heldSeat(at, true);
-    const ours = at === 2;
-    return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
-  });
-}
-
 /** Whether you may move seats: a single, before your Start, with someone
  *  else at the table. A Duo's seats stay together. */
-function canMove(q: QueueView): boolean {
-  const t = q.table;
-  return !!t && !q.partyId && !t.youReady && t.of >= 2 && q.stillHereUntil === null;
+function canMove(q: QueueView, f: TableFrame): boolean {
+  return !q.partyId && !f.your_ready && f.seats.filter((s) => s.state === "taken").length >= 2
+    && q.stillHereUntil === null;
 }
 
-/** A shared table's seats; with `move`, an empty seat moves you there;
- *  with `opener`, the opener taps another person, then a seat for them
- *  (`picked`: the person tapped). */
-function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean, opener: boolean,
-                     picked: number | null): ModelSeat[] {
-  const targets = opener && picked !== null ? moveTargets(t.seats, t.heldSeats, picked) : null;
+/** The seats of your table, from its frame. `alone`: your own table, where
+ *  nobody else's status shows and your seat names your team. With `move`,
+ *  an empty seat moves you there; with `opener`, the opener taps another
+ *  person, then a seat for them (`picked`: the person tapped). */
+function frameSeats(f: TableFrame, now: number, { alone = false, move = false, busy = false, opener = false,
+                                                   picked = null }: {
+  alone?: boolean; move?: boolean; busy?: boolean; opener?: boolean; picked?: number | null;
+} = {}): ModelSeat[] {
+  const held = f.seats.filter((s) => s.state === "held").map((s) => s.seat);
+  const people = f.seats.map((s) => (s.state === "taken" ? s : null));
+  const targets = opener && picked !== null ? moveTargets(people, held, picked) : null;
   return [0, 1, 2, 3].map((at): ModelSeat => {
-    const s = t.seats[at] ?? null;
-    const ours = (at - t.you + 4) % 2 === 0;
-    if (!s && t.heldSeats.includes(at)) return heldSeat(at, ours);
+    const s = people[at] ?? null;
+    const ours = (at - f.you + 4) % 2 === 0;
+    if (!s && held.includes(at)) return heldSeat(at, ours);
     if (!s && targets) {
-      const name = t.seats[picked!]?.name ?? "";
+      const name = people[picked!]?.name ?? "";
       return targets.includes(at)
         ? { at, look: "open", name: "Open seat", sub: "", busy,
             label: `Open seat, ${teamWord(ours)}. Move ${name} here`, act: { type: "move_to", at } }
@@ -213,17 +196,21 @@ function sharedSeats(t: TableView, now: number, move: boolean, busy: boolean, op
                label: `Open seat, ${teamWord(ours)}. Move here`, act: { type: "move", seat: at } };
     }
     if (!s) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
-    const status = s.reconnecting ? "Reconnecting"
-      : !s.you && !s.ready && s.since !== null && now - s.since < JUST_JOINED_MS ? "Just joined"
+    const name = s.name ?? "";
+    const ready = s.ready === true;
+    const status = alone ? ""
+      : s.reconnecting ? "Reconnecting"
+      : !s.you && !ready && s.since !== null && now - s.since < JUST_JOINED_MS ? "Just joined"
       : "";
     if (s.you) {
-      return { at, look: "you", name: "You", sub: status, tick: s.ready,
-               label: ["You", s.ready ? "ready" : null, status || null].filter(Boolean).join(", ") };
+      return { at, look: "you", name: "You", sub: status, tick: ready,
+               label: alone && !ready ? "You, your team"
+                 : ["You", ready ? "ready" : null, status || null].filter(Boolean).join(", ") };
     }
     const partner = s.pair && ours;
     const item: ModelSeat = {
-      at, look: partner ? "friend" : "person", name: shortName(s.name), sub: status, tick: s.ready,
-      label: [s.name, s.ready ? "ready" : null, status || null, partner ? "your Duo partner" : teamWord(ours)]
+      at, look: partner ? "friend" : "person", name: shortName(name), sub: status, tick: ready,
+      label: [name, ready ? "ready" : null, status || null, partner ? "your Duo partner" : teamWord(ours)]
         .filter(Boolean).join(", "),
     };
     if (!opener || partner) return item;
@@ -245,10 +232,9 @@ function botsRing(at: number | null, now: number): Ring | null {
  *  keeps when you go; your own table has nobody else, but for a Duo
  *  partner, who keeps it. */
 export function queueLeaveContext(q: QueueView): LeaveContext {
-  const others = panelKind(q) === "shared" && q.table
-    ? q.table.seats.flatMap((s) => (s && !s.you ? [s.name] : [])) : [];
+  const others = panelKind(q) === "shared" ? namesAt(q.frame) : [];
   const duoPartner = tableDuo(q) ? partnerName(q.party) : null;
-  return duoPartner ? { kind: "duo", partner: duoPartner, opener: q.opener } : { kind: "queue", others };
+  return duoPartner ? { kind: "duo", partner: duoPartner, opener: isOpener(q) } : { kind: "queue", others };
 }
 
 /** The queue's table, by the kind its state calls for; null on Play. */
@@ -260,8 +246,10 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   const leaveBtn: TableButton = { label: "Leave", disabled: q.pending === "leave", act: { type: "ask_leave" } };
   const ranked = (q.queueMode ?? q.playMode) === "ranked";
   const tag = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere" ? "Casual" as const : undefined;
-  const rows: TableRows = { code: q.tableCode, ranked, opener: q.opener, level: q.startLevel,
-                            joiners: q.opener ? q.allowJoiners : undefined };
+  const f = q.frame;
+  const opener = isOpener(q);
+  const rows: TableRows = { code: f?.code ?? null, ranked, opener, level: f?.settings.start_level ?? "2",
+                            joiners: opener ? f?.settings.allow_joiners !== false : undefined };
   const leave = queueLeaveContext(q);
   const base = { tag, leave, rows: null, waitSwitch: null, chat: null };
   if (kind === "join" && q.offer) {
@@ -274,63 +262,67 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       secondary: { label: "Keep looking", disabled: busy, act: { type: "offer_wait" } },
     };
   }
-  if (kind === "own") {
+  if (kind === "own" && f) {
     const extra = {
       rows,
       waitSwitch: q.leader ? { on: q.waitPlayers, disabled: q.pending !== null } : null,
-      chat: { messages: q.tableChat, you: q.leader ? 0 : 2 },
+      chat: { messages: q.tableChat, you: f.you },
     };
+    const seats = frameSeats(f, now, { alone: true });
+    const youReady = yourReady(q);
     const ring = botsRing(ownBotsAt(q), now);
     if (tableDuo(q) && partner) {
       // the pair's own table: both tap Start, then it searches as one
       return {
         ...base, ...extra, kind,
         title: ownTitle(q, partner), status: { text: `${q.duoReady ?? 0} of 2 ready` },
-        seats: ownSeats(q), you: 0,
+        seats, you: f.you,
         primary: { label: q.pending === "start" ? "Starting…" : duoStartLabel(q, partner),
                    disabled: q.pending !== null,
-                   act: q.youReady ? { type: "unready" } : { type: "start" },
+                   act: youReady ? { type: "unready" } : { type: "start" },
                    ring: q.pending === "start" ? null : ring,
-                   searching: q.youReady && (q.duoReady ?? 0) >= 2, waiting: q.youReady },
+                   searching: youReady && (q.duoReady ?? 0) >= 2, waiting: youReady },
         secondary: leaveBtn,
       };
     }
     return {
       ...base, ...extra, kind,
-      title: ownTitle(q, partner), seats: ownSeats(q), you: 0, led,
+      title: ownTitle(q, partner), seats, you: f.you, led,
       primary: { label: q.pending === "bots" ? "Starting…" : "Start with bots", disabled: q.pending !== null,
                  act: { type: "start_bots" }, ring: q.pending === "bots" ? null : ring },
       secondary: leaveBtn,
     };
   }
-  if (kind === "shared" && q.table) {
-    const t = q.table;
-    const seats = sharedSeats(t, now, canMove(q), q.pending !== null, q.opener && q.stillHereUntil === null, picked);
+  if (kind === "shared" && f) {
+    const seats = frameSeats(f, now, { move: canMove(q, f), busy: q.pending !== null,
+                                       opener: opener && q.stillHereUntil === null, picked });
     if (q.stillHereUntil !== null) {
       // a table with no timer asks before it drops a seat nobody is at; the
       // same I’m back as a game's held seat, and any tap counts
       return {
         ...base, kind,
-        title: sharedTitle(t), status: { text: stillHereLine(q.stillHereUntil, now), warn: true },
-        seats, you: t.you,
+        title: sharedTitle(f), status: { text: stillHereLine(q.stillHereUntil, now), warn: true },
+        seats, you: f.you,
         primary: { label: "I’m back", disabled: false, act: { type: "here" } },
         secondary: leaveBtn,
       };
     }
-    const ring = q.pending === "start" ? null : botsRing(t.timer?.at ?? null, now);
+    const ring = q.pending === "start" ? null : botsRing(f.timers.bots?.at ?? null, now);
     // the opener's Start now, 30 s after the latest arrival; everyone
     // else's button stays Start
-    const startNow = q.opener && t.startNowAt !== null && now >= t.startNowAt;
+    const startAt = f.timers.start_now_at;
+    const startNow = opener && startAt !== null && now >= startAt;
+    const youReady = f.your_ready === true;
     return {
-      ...base, kind, rows, chat: { messages: q.tableChat, you: t.you },
-      title: sharedTitle(t), status: { text: sharedStatusLine(t) },
-      seats, you: t.you, led,
+      ...base, kind, rows, chat: { messages: q.tableChat, you: f.you },
+      title: sharedTitle(f), status: { text: sharedStatusLine(f) },
+      seats, you: f.you, led,
       primary: startNow
         ? { label: q.pending === "start" ? "Starting…" : "Start now", disabled: q.pending !== null,
             act: { type: "start_now" }, ring }
-        : { label: q.pending === "start" ? "Starting…" : startLabel(t),
-            disabled: q.pending !== null || (t.youReady && t.waitingFor.length === 0),
-            act: t.youReady ? { type: "unready" } : { type: "start" }, ring, waiting: t.youReady },
+        : { label: q.pending === "start" ? "Starting…" : startLabel(f),
+            disabled: q.pending !== null || (youReady && (f.waiting_for ?? []).length === 0),
+            act: youReady ? { type: "unready" } : { type: "start" }, ring, waiting: youReady },
       secondary: leaveBtn,
     };
   }

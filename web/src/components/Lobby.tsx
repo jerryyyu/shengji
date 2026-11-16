@@ -134,9 +134,9 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   // takes. Join is the player's tap; a full table shows the same panel with
   // Join disabled. This screen tells the store where it stands.
   const codeView = useCodes();
-  const { queued, tableCode, pending: queuePending } = useQueue();
+  const { queued, frame, pending: queuePending } = useQueue();
   const seated = room !== null || queued;
-  const seatedAt = seated ? (room?.room ?? tableCode ?? "") : null;
+  const seatedAt = seated ? (room?.room ?? frame?.code ?? "") : null;
   const ready = status === "open";
   useEffect(() => {
     codes.setPlace({ ready: status === "open" && !offline, seatedAt });

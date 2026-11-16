@@ -92,7 +92,7 @@ function ResultPanel({ replay, frame }: { replay: Replay; frame: ReplayFrame }) 
       <div>Attackers scored {r.attacker_points} points{r.kitty_points ? ` (kitty ${r.kitty_points})` : ""}.</div>
       <div>
         {r.level_change > 0 ? `Up ${r.level_change} level${r.level_change === 1 ? "" : "s"}. ` : "No level change. "}
-        Levels now: you {r.new_levels[myTeam]}, them {r.new_levels[1 - myTeam]}.
+        Levels {r.new_levels[myTeam]}–{r.new_levels[1 - myTeam]}.
       </div>
       {kitty && kitty.length ? (
         <div className="replay-mini-cards" aria-label="Kitty">

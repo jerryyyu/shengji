@@ -363,11 +363,14 @@ export class Report {
   /** `partial`: only some checks ran (a filter was given), so an unmatched known issue proves nothing. */
   constructor(suite, { partial = false } = {}) {
     this.suite = suite; this.rows = []; this.t0 = Date.now(); this.partial = partial;
-    // Open findings the suite already fails on: [{ suite, match, why }]. A known failure does not
-    // fail the run; a known entry that no longer fails does, so the list only ever shrinks.
+    // Open findings the suite already fails on: [{ suite, match, why, platform? }]. A known failure
+    // does not fail the run; a known entry that no longer fails does, so the list only ever shrinks.
+    // `platform` (a process.platform value) scopes an entry to the fonts of that OS: elsewhere the
+    // entry is absent, so it neither excuses a failure nor goes stale there.
     const file = path.join(HERE, "known.json");
     this.known = (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [])
-      .filter((k) => k.suite === suite).map((k) => ({ ...k, re: new RegExp(k.match), hits: 0 }));
+      .filter((k) => k.suite === suite && (!k.platform || k.platform === process.platform))
+      .map((k) => ({ ...k, re: new RegExp(k.match), hits: 0 }));
   }
   async check(id, violations, page = null) {
     const bad = (Array.isArray(violations) ? violations : violations ? [violations] : []).filter(Boolean);

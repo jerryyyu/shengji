@@ -31,8 +31,10 @@ One rated round, for each rated account on team ``t``:
   ``TAKEOVER_WIN_SCORE`` and the bankers ``1 - TAKEOVER_WIN_SCORE``;
 * ``delta = K * (S - E)`` with one ``K`` for every rated account.
 
-Partners share ``R_t``, ``E``, ``S`` and ``K``, so they always move by the
-same amount.
+Partners share ``R_t``, ``E``, ``S`` and ``K``, so they move by the same
+amount, except when one of them is capped: a partner who abandons the round,
+or who carries the leaver cap into it, scores at most ``LEAVER_SCORE_CAP``
+(below), so after a win that partner gains less than the other.
 
 Abandoning: a signed-in player who leaves a round in play (``leave_room``),
 or whose seat the bot takes over after a disconnect and who has not

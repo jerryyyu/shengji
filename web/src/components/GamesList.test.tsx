@@ -306,6 +306,8 @@ describe("the replay page", () => {
     while (!button("Next play").disabled) await click(button("Next play"));
     expect(q(".replay-result")?.textContent).toContain("Your team lost the round");
     expect(q(".replay-result")?.textContent).toContain("Attackers scored 110 points");
+    expect(q(".replay-result")?.textContent).toContain("No level change. Levels 4–4.");
+    expect(q(".replay-result")?.textContent).not.toContain("Levels now");
     expect(qa(".replay-hand .hand-slot")).toHaveLength(0);
     expect(button("Show other hands")).toBeDefined();
     expect(q(".chat-launch")).toBeNull();

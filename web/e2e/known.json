@@ -20,6 +20,12 @@
     "why": "QA1-11: iPad / desktop: a 20-character name's pill and count reach the side trick slot"
   },
   {
+    "suite": "matrix",
+    "platform": "linux",
+    "match": "^ipad_long_l1_n[13] .*\"pair\":\"leadTag\\+oppCards\"",
+    "why": "QA1-11 with Linux fonts: the left opponent's card count reaches the LEAD tag of its trick slot by 5x7 px; macOS metrics keep them apart"
+  },
+  {
     "suite": "client",
     "match": "chat-phone-port-safari: panel, field, Send and Close above the keyboard",
     "why": "QA1-5: the turned table's chat panel stays behind Mobile Safari's keyboard"

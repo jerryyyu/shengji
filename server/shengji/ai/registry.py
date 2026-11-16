@@ -741,3 +741,18 @@ _register_cwv_shortlist_from_env()
 _register_pv_search_from_env()
 _register_exploit_from_env()
 _register_cwv_bury_from_env()
+
+
+def _register_search_free_from_env() -> None:
+    """``SHENGJI_SEARCH_FREE_CKPT`` + ``SHENGJI_SEARCH_FREE_SHA256`` register
+    ``<SHENGJI_BOT>-sf<sha8>``: the served bot with its card play replaced by the
+    search-free decision (`train.search_free_play`).  Without them this does
+    nothing and the module is not imported."""
+    import os
+    if not (os.environ.get("SHENGJI_SEARCH_FREE_CKPT") or os.environ.get("SHENGJI_SEARCH_FREE_SHA256")):
+        return
+    from ..train.search_free_play import registry_entries
+    REGISTRY.update(registry_entries(REGISTRY))
+
+
+_register_search_free_from_env()

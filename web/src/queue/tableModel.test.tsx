@@ -338,7 +338,7 @@ const QUEUES: Fixture[] = [
     [seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1, start_now_at: nowSecs() - 1 },
     { opener: false })] },
   { name: "shared: no timer, waiting for people", frames: () => [atTable(
-    [seat("Jerry", { you: true }), seat("Alice")], {}, { bots_at: null, wait_players: true })] },
+    [seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { bots_at: null, wait_players: true })] },
   { name: "shared: a Duo at the table", frames: () => [atTable(
     [seat("Jerry", { you: true, pair: true }), seat("Li"), seat("Kai", { pair: true }), null], {},
     { party_id: "p1" })] },

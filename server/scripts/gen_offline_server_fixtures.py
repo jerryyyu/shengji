@@ -22,7 +22,7 @@ Determinism:
 - bot search runs inline instead of in a worker thread (the same
   ``_compute_bot_turn`` on the same snapshot);
 - the deck order comes from a small seeded shuffle (``DeckRng``) that the
-  TypeScript server reproduces exactly; ``Game`` receives it as its ``rng``.
+  TypeScript server reproduces exactly; ``live_deck_rng`` hands it to ``Game`` as its ``rng``.
 The room bot is SmartBot (``SHENGJI_BOT=smart``), the offline bot.
 
 Usage::
@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import functools
 import hashlib
 import json
 import os
@@ -61,7 +60,6 @@ from starlette.websockets import WebSocketDisconnect, WebSocketState  # noqa: E4
 import shengji.api.server as server  # noqa: E402
 from shengji.ai.smart import SmartBot  # noqa: E402
 from shengji.engine.combos import decompose  # noqa: E402
-from shengji.engine.game import Game  # noqa: E402
 
 FORMAT = 1
 HUMAN_NAME = "You"
@@ -361,8 +359,8 @@ async def _session(seed: int, rounds: int, config: dict) -> list[dict]:
 
 def play_session(seed: int, rounds: int, config: dict) -> list[dict]:
     """Every frame seat 0 receives in one seeded solo game of ``rounds`` rounds."""
-    saved = (server.Game, server._compute_bot_turn_off_loop)
-    server.Game = functools.partial(Game, DeckRng(seed))
+    saved = (server.live_deck_rng, server._compute_bot_turn_off_loop)
+    server.live_deck_rng = lambda: DeckRng(seed)
     server._compute_bot_turn_off_loop = _inline_bot_turn
     loop = VirtualTimeLoop()
     try:
@@ -375,7 +373,7 @@ def play_session(seed: int, rounds: int, config: dict) -> list[dict]:
             loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
         loop.close()
         server.rooms.clear()
-        server.Game, server._compute_bot_turn_off_loop = saved
+        server.live_deck_rng, server._compute_bot_turn_off_loop = saved
 
 
 def game_seed(base: int, g: int) -> int:

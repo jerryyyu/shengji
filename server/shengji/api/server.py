@@ -2126,6 +2126,13 @@ async def run_deal(room: Room) -> None:
 _ROOM_CODE_RNG = secrets.SystemRandom()
 
 
+def live_deck_rng() -> Any:
+    """A live table's deck generator: the OS's, since a table's decks are
+    shown after each round and must not let anyone predict the next one.
+    The one seam a seeded harness replaces to deal known decks."""
+    return secrets.SystemRandom()
+
+
 def new_code() -> str:
     return matchmaking.new_code(
         lambda c: c in rooms or MATCHMAKER.has_code(c), _ROOM_CODE_RNG)
@@ -2175,9 +2182,7 @@ def _start_game(room: Room) -> None:
                                else guest_queue_id(sd.device) if sd.device else None)
     # games_to_win=None: a table keeps playing. Holding A scores a
     # point and the levels restart, rather than ending the session.
-    # A live table's deals come from the OS generator: its decks are shown
-    # after each round, and they must not let anyone predict the next one.
-    room.game = Game(rng=secrets.SystemRandom(),
+    room.game = Game(rng=live_deck_rng(),
                      start_level=room.start_level, games_to_win=None)
     if room.resume is not None:
         # The engine reads a game's levels and banker only through these

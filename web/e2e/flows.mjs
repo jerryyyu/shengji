@@ -292,11 +292,17 @@ if (want("table")) {
     await settled(a);
     await rep.check("leave: the sheet fits a sideways phone", [await onShow(a, ".leave-sheet-leave", "Leave"), await onShow(a, ".leave-sheet-stay", "Stay"), ...(await textCuts(a))], a);
     await shot(a, "leave_sheet");
+    const seatBefore = (await state(a))?.you;
     await a.click(".leave-sheet-leave");
     await a.waitForSelector(".room-input", { timeout: 8000 });
     await rotate(a, "phone-port");
     await sleep(500);
     await shot(a, "left_lobby");
+    // back under another name: the seat is found by the device, not the name
+    await a.click(".guest-pill");
+    await a.fill("input[placeholder*='Jerry']", "Maximilian Two");
+    await a.click(".btn.gold:has-text('Done')");
+    await sleep(500);
     await a.fill(".room-input", code);
     await a.keyboard.press("Enter");
     await a.waitForSelector(".tp-primary", { timeout: 8000 });
@@ -307,6 +313,11 @@ if (want("table")) {
     await a.click(".tp-primary");
     const seated = await until(a, () => window.__qa.state !== null && !window.__qa.state.joining_you, { timeout: 90000 });
     await rep.check("rejoin: seated again", seated ? null : "no seat 90 s after tapping Join", a);
+    const back = await state(a);
+    const mine = back?.players.find((p) => p.seat === back.you);
+    await rep.check("rejoin: renamed, back in the seat it left, under the new name",
+      back && back.you === seatBefore && mine?.name === "Maximilian Two" ? null
+        : `left seat ${seatBefore}; back in seat ${back?.you} as ${JSON.stringify(mine?.name)}; seats ${JSON.stringify(back?.players.map((p) => [p.seat, p.name]))}`, a);
     await rotate(a, "phone-land");
     await shot(a, "rejoin_seated");
   });

@@ -80,8 +80,6 @@ export interface QueueStateMsg {
   front?: boolean;
   party_id?: string | null;
   leader?: boolean;
-  /** Null while the entry waits for real players only. */
-  bots_at?: number | null;
   wait_players?: boolean;
   /** Another socket of yours took the search over: on another device or
    *  in another window of this one (`by`), stopping it (`stopped`) or
@@ -94,8 +92,6 @@ export interface QueueStateMsg {
   /** Another socket of yours (another device or window) holds the search:
    *  no table, offer or timer is sent here; any queue action takes it over. */
   elsewhere?: boolean;
-  /** The waiting table you sit at; null while you are alone in the queue. */
-  table?: WaitingTableMsg | null;
   /** Your bot wait stands still: an open table is offered or can be joined. */
   bots_paused?: boolean;
   /** An open table offered to you now; null when none is. */
@@ -109,25 +105,11 @@ export interface QueueStateMsg {
   /** Asked "still here?" at a table with no timer: answer with table_here
    *  before then, or you leave the table (queue_removed idle). */
   still_here_until?: number | null;
-  /** Queued: your table's code (alone, your own; at a waiting table, its
-   *  opener's). Invite links are `/?code=CODE`; the room the table starts
-   *  has this code. */
-  code?: string;
-  /** Queued: your table's Allow joiners and starting level. */
-  allow_joiners?: boolean;
-  start_level?: string;
-  /** Queued: you opened this table (alone, always), so you set its level
-   *  and Allow joiners. */
-  opener?: boolean;
   /** Queued: a Duo table's opener, or either member of a Duo made there. */
   duo?: boolean;
-  /** Queued: the seat your entry holds for your friend (2 while alone),
-   *  else your table's first held seat, or null. */
-  held_seat?: number | null;
   /** Queued in a Duo made at a table: how many of you tapped Start (each
-   *  member taps; null otherwise), and whether you did. */
+   *  member taps; null otherwise). */
   duo_ready?: number | null;
-  you_ready?: boolean;
 }
 
 /** A seat at an offered open table, in seat order (team 0 at seats 0+2). */
@@ -152,50 +134,6 @@ export interface OpenTableOfferMsg {
   /** A Duo's offer: your partner's seat (opposite yours) and name. Neither
    *  of you picks; either Join takes both seats. */
   partner?: { seat: number; name: string } | null;
-}
-
-/** One taken seat at a waiting table. */
-export interface TableSeatMsg {
-  name: string;
-  you: boolean;
-  /** Tapped Start (for a pair, its leader did). */
-  ready: boolean;
-  /** The app is away; the seat is held for a minute. */
-  reconnecting: boolean;
-  /** When this person sat down. */
-  since: number | null;
-  /** This sitting's opaque token, fresh each time someone sits; an
-   *  opener's `table_move` names it as `who`. */
-  sit?: string | null;
-  pair: boolean;
-  leader: boolean;
-}
-
-/** A shared ranked waiting table: four seats in seat order (team 0 at seats
- *  0+2), null for an empty one, which a bot takes when the table starts. */
-export interface WaitingTableMsg {
-  id: string;
-  /** The table's code (its opener's), which the room keeps. */
-  code?: string;
-  /** The opener's seat. */
-  opener?: number;
-  /** When the opener's Start now unlocks (server clock, seconds): 30 s
-   *  after the latest person sat. */
-  start_now_at?: number;
-  /** The empty seat held for the table opener's friend (at most one; null
-   *  when none), also as a list. */
-  held_seat?: number | null;
-  held_seats?: number[];
-  seats: (TableSeatMsg | null)[];
-  you: number;
-  /** The table's bot timer and whose it is; null when every switch is on. */
-  timer: { at: number; name: string; you: boolean } | null;
-  /** People whose Start is in, of the people seated. */
-  ready: number;
-  of: number;
-  you_ready: boolean;
-  /** Who else has yet to tap Start, by name (a pair by its leader). */
-  waiting_for: string[];
 }
 
 /** One seat of a table frame, in seat order (team 0 at seats 0+2). */

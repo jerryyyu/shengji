@@ -89,7 +89,7 @@ if (want("table")) {
     await rep.check("table: waiting panel layout", await textCuts(a), a);
     b = await open(browser, "phone-port", { url: `?code=${code}`, storage: { "shengji.coach": "on", "shengji.name": "张伟张伟张伟张伟" } });
     await b.click(".tp-primary");                        // Join, from the invite link
-    await until(a, () => (window.__qa.last.queue_state?.table?.seats ?? []).filter(Boolean).length === 2);
+    await until(a, () => (window.__qa.last.table?.seats ?? []).filter((s) => s.state === "taken").length === 2);
     await sleep(400);
     await rep.check("table: two long names at the waiting table", await textCuts(a), a);
     await shot(a, "table_waiting_two");

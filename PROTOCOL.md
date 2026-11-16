@@ -303,10 +303,9 @@ server's own start of a queue table does not. Plain counts, nothing else.
 `{type: "table", code, phase, mode, you, opener, seats, settings, timers, your_ready, waiting_for, chat_log}`
 describes the table a socket sits at the same way whether it is a queued
 table (`phase: "open"`: alone or waiting) or a room in play (`phase:
-"playing"`). Before a game it is the table: the web client draws the
-queue's table from it alone and reads `queue_state` only for the search.
-The frames it replaces are still sent, unchanged, for clients from before
-it; a room's client does not read it yet. Design and field mapping:
+"playing"`). Before a game it is the table: `queue_state` says only the
+search. In a room the `room` and `state` frames still carry the seats, and
+a room's client does not read the frame yet. Design and field mapping:
 `docs/design/TABLE_FRAME.md`.
 
 - `seats`: four, in seat order, each `{seat, team, state, name, you, ready,
@@ -314,18 +313,24 @@ it; a room's client does not read it yet. Design and field mapping:
   `"open"` (empty; a bot fills it when the game starts), `"held"` (kept for
   a Duo opener's friend) or `"bot"` (a bot plays it in the game; `left`
   when its owner pressed Leave). An open or held seat has `name: null`.
-  `ready`, `since`, `sit`, `pair` and `leader` are `queue_state.table`'s
-  seat fields (`ready` is null in a room; `sit` null alone and in a room);
-  `reconnecting` is a person's seat whose socket is gone.
+  `ready`: the person's Start is in (a pair's leader's tap, a Duo made at
+  a table: each member's own; null in a room); `since`: when they sat
+  down; `sit`: an opaque token, fresh each time someone sits down and kept
+  through moves, that an opener's `table_move` names as `who` (null in a
+  room); `pair`: they sit as a pair, `leader` its leader; `reconnecting`:
+  a person's seat whose socket is gone.
 - `mode`: `"ranked"` or `"casual"`. `opener`: the opener's seat.
 - `settings`: `{allow_joiners, start_level}`; `allow_joiners` is null in a
   room that never takes joiners (a test room).
-- `timers`: `{bots, start_now_at}`: `bots` is `queue_state.table.timer`'s
-  `{at, name, you}` (alone: your entry's own `bots_at`), null when no timer
-  runs and in a room; `start_now_at` as `queue_state.table`, null alone and
-  in a room.
+- `timers`: `{bots, start_now_at}`: `bots` is `{at, name, you}`, when the
+  table's timer starts it with bots (the earliest among its entries with
+  "Only tables with people" off; alone, your entry's own), named by that
+  entry's leader, `you` when it is yours; null when no timer runs and in a
+  room. `start_now_at`: when the opener's Start now unlocks, 30 s after the
+  latest person sat; null alone and in a room.
 - `your_ready`: whether your Start is in (null in a room); `waiting_for`:
-  as `queue_state.table` (alone: a Duo partner yet to tap), null in a room.
+  the others yet to tap Start, by name (a pair by its leader; alone, a Duo
+  partner yet to tap), null in a room.
 - `chat_log`: the key the table's chat frames carry: `table_chat.table`
   (null alone) or, in a room, its code.
 
@@ -345,7 +350,7 @@ Invite rooms (`create_room` / `table_join`) are unchanged. Every queue message i
 sent from the lobby (a socket that holds no seat); a seated socket may send only
 `party_leave`, and anything else is refused with code `in_room`, except the
 `table_*` names of "Table messages", which reach the socket's room. Times
-(`since`, `expires_at`, `bots_at`, a table's `timer.at` and seat `since`) are
+(`since`, `expires_at`, the table frame's `timers` and seat `since`) are
 Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 
 ### Client → Server
@@ -362,8 +367,8 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 | `table_here` | — | answer the "still here?" prompt (`queue_state.still_here_until`); any other queue message from the table answers it too |
 | `table_chat` | `text` | a chat line to everyone at your table (`not_seated` when you are not queued): your waiting table, or while you wait alone your own table, which only you (and a Duo partner) hear. Validated as room `chat` is: trimmed, at most 300 chars, an empty line ignored; 30 per person per minute (`rate_limited`). Kept in memory only (the last 50), never in a log. Lines sent alone merge into the waiting table you sit at, in time order, and either log is the room's opening scrollback (`chat_history`) when the game starts |
 | `table_start_bots` | optional `panel_seq` | alone in the queue: leave it and start a rated game at once: solo = you + 3 bots; pair (leader only) = the pair (seats 0+2) vs 2 bots. At a waiting table it is `table_start` |
-| `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`bots_at: null`, `wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
-| `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now (a new `bots_at`); the wait itself is kept |
+| `queue_wait_players` | — | "Only tables with people" on (leader only for a pair): the entry keeps its wait, place in line and seat, but its own timer never starts a bot game (`wait_players: true`); it still sits at a table and rides a switch-off player's timer there. Leaving and queueing again turns it off |
+| `queue_allow_bots` | — | undo `queue_wait_players` (leader only): the entry's timer is due 60 s from now; the wait itself is kept |
 | `party_leave` | — | leave your Duo; it dissolves and the other member is told. A queued Duo splits, as `table_leave` does (see "Duo tables") |
 | `open_table_join` | `room`, `seat`, optional `panel_seq` | take that seat at the open table offered to you (see "Open tables"); the first confirm wins |
 | `open_table_wait` | — | keep looking instead; the offered table is not offered again by itself in this search (a fresh `queue_join` forgets it) |
@@ -388,43 +393,22 @@ other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
-  your entry, after every change to it or to its table, and on reconnect.
-  `mode` is the search's mode (`"ranked"` or `"casual"`). The table
-  fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
-  `held_seat`, `you_ready`) are sent until the table frame's step 3
-  (`docs/design/TABLE_FRAME.md` "Migration") and unread by the web client,
-  which takes them from the table frame that follows. `code`,
-  `allow_joiners` and `start_level` are your table's, alone or at a waiting
-  table (see "Table codes"); `opener` is true when you opened it (always,
-  alone), so you set its level and Allow joiners. `duo` is true for a Duo
-  table's opener and for both members of a Duo made there; `held_seat` is
-  the seat your entry holds for your friend (2 while alone), else the
-  table's `held_seat`, or null.
-  `bots_at` is when this entry's own timer starts a bot game (60 s after
-  joining, or after `queue_allow_bots`); it is null and `wait_players` is true
-  while the switch is on. `front` marks an entry put back at the front after
-  its room failed to start. `table` is null while you are alone in the queue,
-  else your waiting table:
-  `{id, code, opener, held_seat, held_seats, seats, you, timer, ready, of, you_ready, waiting_for}`
-  (`code` the table's code, `opener` the opener's seat, `held_seats` the
-  empty seats held for a Duo opener's friend, at most one, and `held_seat`
-  that seat, else null). `seats` has
-  four items in seat order (team 0 at seats 0+2), `null` for an empty seat (a
-  bot plays it), else `{name, you, ready, reconnecting, since, sit, pair, leader}` (`sit`: an opaque token, fresh each time someone sits down and kept through moves);
-  `you` is your seat; `timer` is `{at, name, you}` (the earliest `bots_at`
-  among the table's switch-off entries, named by that entry's leader) or null
-  when every switch is on; `ready`/`of` count people; `waiting_for` names the
-  other entries (by leader) yet to tap Start. `replaced: true` tells an older
-  socket that a newer one of the same account now holds the entry (one entry
-  per account). Older clients ignore `table`. `offer` is an open table
-  offered to you now, `{room, seats, pick, expires_at, round_end}`: `seats`
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, wait_players?, bots_paused?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, duo?, duo_ready?}`:
+  your entry's search, after every change to it or to its table, and on
+  reconnect; the table itself is the `table` frame that follows it (see
+  "The table frame"). `mode` is the search's mode (`"ranked"` or
+  `"casual"`). `duo` is true for a Duo table's opener and for both members
+  of a Duo made there. `wait_players` is true while "Only tables with
+  people" is on: the entry's own timer then starts no bot game. `front`
+  marks an entry put back at the front after its room failed to start.
+  `replaced: true` tells an older socket that a newer one of the same
+  account now holds the entry (one entry per account). `offer` is an open
+  table offered to you now, `{room, seats, pick, expires_at, round_end}`: `seats`
   in seat order, each `{name, bot, open}` (`open`: you may take it), `pick`
   the seat picked for you; null when none is. `open_tables` counts the open
   tables you waited on that can still be joined; `bots_paused` is true while
-  an offer is up or such a table exists, and `bots_at` is then null (the
-  wait stands still and runs on from where it stopped). `panel_seq` is a
-  number, increasing across the server process, that changes whenever what
+  an offer is up or such a table exists, and your timer then stands still
+  (it runs on from where it stopped). `panel_seq` is a number, increasing across the server process, that changes whenever what
   your panel shows changes kind or target (alone, an offer of one room, a
   waiting table) and stays put across re-renders of the same panel; send it
   back with a Start or Join so a tap aimed at one panel never acts on the
@@ -511,7 +495,7 @@ A waiting table starts, with bots in its empty seats, when it has four
 people, when every entry at it has tapped Start, or at its timer. The first
 two wait while a member is reconnecting; the timer does not, and an entry
 whose socket is still gone at that moment leaves (`away`). An entry alone in
-the queue starts with bots at its own `bots_at`. The room is an ordinary
+the queue starts with bots at its own timer (`timers.bots`). The room is an ordinary
 rated room (ratings are the round-start snapshot of signed-in seats); the
 server records on it the table it came from and how many people sat there.
 
@@ -529,8 +513,7 @@ leaves it queued.
 ### Table codes
 
 Every queued entry has a table code, from the moment it joins: alone, the
-code of its own table (`queue_state.code`, with `table` still null, so an
-older client sees no change). A waiting table takes its opener's code when
+code of its own table (the table frame's `code`). A waiting table takes its opener's code when
 it forms and keeps it for its whole life, and every seated entry's own code
 still leads to that table. When the opener leaves, the table keeps the code
 (the next person takes the opener's controls, not the code); when one entry
@@ -560,7 +543,7 @@ so they stay when its opener leaves.
 ### Duo tables
 
 `queue_join {mode, duo: true}` opens your own table, as Play does, with the
-seat opposite you held for a friend (`held_seat`). There is no Duo code: the
+seat opposite you held for a friend (a `"held"` seat in the table frame). There is no Duo code: the
 table's code and its invite link are the Duo invite. The held seat is never
 a stranger's: Play seats strangers in the other two seats only (under Allow
 joiners, as at any table), a Duo opener is offered no open table while it
@@ -574,9 +557,9 @@ the held seat, and the two become one paired entry (`queue_state.duo`, a
 `party` with `table: true`). From then on it is a pair: seated together,
 matched and moved as a unit, and a ranked Duo is rated as a pair. Each
 member taps Start (`table_start`, either member, alone or at a table): the
-pair counts as two in the table's `ready`/`of` and is ready once both have
+pair counts as two seats at the table and is ready once both have
 tapped, and both taps made while alone carry to the table it sits at.
-Alone, `queue_state.duo_ready` counts the taps and `you_ready` is yours;
+Alone, `queue_state.duo_ready` counts the taps and `your_ready` is yours;
 the pair keeps searching, and `table_start_bots` (its leader) still starts
 it with bots at once. Later code joiners, and a pair joining by
 the code, take the open seats as at any table.

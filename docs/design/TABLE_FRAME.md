@@ -1,10 +1,10 @@
 # One table frame
 
 A table is open (a matchmaker `Table`: alone or waiting) or playing (a
-`Room`). Today the client reads the open phase from `queue_state.table` plus
-`queue_state`'s own table fields, and the playing phase from `room`, `state`
-and `room_seats`, and translates each into one `TableModel`. One frame,
-`table`, says the same thing from either source.
+`Room`). One frame, `table`, says the same thing from either source. The
+client reads the open phase from it alone ("Migration" 3); the playing
+phase still from `room`, `state` and `room_seats`, translated into one
+`TableModel`.
 
 ## The frame
 
@@ -39,6 +39,9 @@ fresh socket always gets it. `queue_state {queued: false}`, `queue_removed`,
 `match_started` (the room's frame follows) and `left` end a table, as today.
 
 ## Field mapping
+
+The open column names the `queue_state` fields each frame field took over;
+`queue_state` no longer sends them ("Migration" 3).
 
 | table frame | open: `queue_state` | playing: `room` / `state` |
 |---|---|---|
@@ -86,6 +89,12 @@ Not carried: `table.id` beyond `chat_log`, `experimental_policy` and
    held `queue_state` (`web/src/queue/testFrames.ts`, held to the server's
    pairs in `web/src/queue/fixtures/table_frames.json`). Not yet: a room's
    seats from the `playing` frame, and the offline server's `table`.
-3. **Retire**: drop `queue_state.table` and its table fields (`code`,
-   `allow_joiners`, `start_level`, `opener`, `held_seat`, `you_ready`) and
-   `room`'s seat list once no client in the field reads them.
+3. **Retire, the queue's table** (done): `queue_state` carries the search
+   alone; `table`, `code`, `allow_joiners`, `start_level`, `opener`,
+   `held_seat`, `you_ready` and `bots_at` are gone (`bots_at` is
+   `timers.bots`). The matchmaker goldens record the `table` frame, and the
+   client's test sockets send each queue_state without those names. Not
+   yet: `room`'s seat list, once a room's client reads the `playing` frame.
+   The matcher keeps `Entry.code` (the code registry) and `Table.waiting`
+   (a lone table and a waiting one start, time out and take joiners
+   differently).

@@ -1,11 +1,43 @@
-// Test doubles' table frames: the `table` frame the server sends right
-// after a queue_state that holds the entry, built from that queue_state
-// (a port of server/tests/test_table_frame.py `from_queue_state`, plus the
-// seats the server sends while you are alone). `fixtures/table_frames.json`
-// holds the server's own pairs, which `testFrames.test.ts` holds this to.
-import type { PartyMsg, TableFrameMsg, TableFrameSeatMsg, WaitingTableMsg } from "./messages";
+// Test doubles' queue frames. A test describes a held queue in one object:
+// the queue_state's search fields plus the table's, under the names
+// server/tests/table_view.py reads them by (`table`, `code`,
+// `allow_joiners`, `start_level`, `opener`, `held_seat`, `you_ready`,
+// `bots_at`). A test socket delivers it as the server does: the
+// queue_state without the table's names, then the `table` frame built
+// from it. `fixtures/table_frames.json` holds the server's own pairs,
+// which `testFrames.test.ts` holds this to.
+import type { PartyMsg, TableFrameMsg, TableFrameSeatMsg } from "./messages";
 
 type QueueStateLike = Record<string, unknown>;
+
+/** The names a test's description uses for its table, which the server's
+ *  queue_state does not carry. */
+export const TABLE_NAMES = ["table", "code", "allow_joiners", "start_level", "opener", "held_seat",
+                            "you_ready", "bots_at"] as const;
+
+/** A waiting table as a test describes it: seats in seat order, null for an
+ *  empty one. */
+export interface WaitingTableSpec {
+  id: string;
+  code?: string;
+  opener?: number;
+  start_now_at?: number | null;
+  held_seat?: number | null;
+  held_seats?: number[];
+  seats: ({ name: string; you: boolean; ready: boolean; reconnecting: boolean; since: number | null;
+            sit?: string | null; pair: boolean; leader: boolean } | null)[];
+  you: number;
+  timer: { at: number; name: string; you: boolean } | null;
+  you_ready: boolean;
+  waiting_for: string[];
+}
+
+/** The queue_state the server sends for a test's description. */
+export function queueStateOf(spec: QueueStateLike): QueueStateLike {
+  const out = { ...spec };
+  for (const k of TABLE_NAMES) delete out[k];
+  return out;
+}
 
 function emptySeat(seat: number, state: "open" | "held"): TableFrameSeatMsg {
   return { seat, team: (seat % 2) as 0 | 1, state, name: null, you: false, ready: false, reconnecting: false,
@@ -23,12 +55,12 @@ export function holdsEntry(m: unknown): m is QueueStateLike {
   return !!q && q.type === "queue_state" && q.queued === true && q.elsewhere !== true;
 }
 
-/** The table frame the server sends after `qs`. Alone, `party` names your
+/** The table frame the server sends after the queue described by `qs`. Alone, `party` names your
  *  Duo partner: you sit at 0 (2 when your partner leads), your partner
  *  across, or the seat held for one; the other seats are open. */
 export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
                               extra: Partial<TableFrameMsg> = {}): TableFrameMsg {
-  const t = (qs.table ?? null) as WaitingTableMsg | null;
+  const t = (qs.table ?? null) as WaitingTableSpec | null;
   const youReady = t ? t.you_ready : qs.you_ready === true;
   const settings = { allow_joiners: qs.allow_joiners !== false, start_level: (qs.start_level as string) ?? "2" };
   const base = { type: "table" as const, phase: "open" as const, code: (qs.code as string | undefined) ?? t?.code ?? "",
@@ -37,7 +69,7 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
     const held = t.held_seats ?? (t.held_seat != null ? [t.held_seat] : []);
     const seats = t.seats.map((s, at) => (s ? takenSeat(at, { ...s, sit: s.sit ?? null })
       : emptySeat(at, held.includes(at) ? "held" : "open")));
-    // queue_state's own `opener` is what you may set; the frame names the seat
+    // the description's `opener` is what you may set; the frame names the seat
     const opener = qs.opener !== false ? t.you
       : t.opener !== undefined && t.opener !== t.you ? t.opener
       : seats.find((s) => s.state === "taken" && !s.you)?.seat ?? (t.you + 1) % 4;
@@ -66,11 +98,12 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
            waiting_for: partner && !partnerReady ? [partner.name] : [], chat_log: null, ...extra };
 }
 
-/** A test socket's deliveries as the server sends them: a queue_state that
- *  holds the entry, then its table frame. It remembers the socket's last
- *  pair frame, which names a lone Duo's partner; a pair frame that comes
- *  after its queue_state (as the server may send it) is followed by the
- *  table frame again, now with the partner's name. */
+/** A test socket's deliveries as the server sends them: every queue_state
+ *  without the table's names, and after one that holds the entry its table
+ *  frame. It remembers the socket's last pair frame, which names a lone
+ *  Duo's partner; a pair frame that comes after its queue_state (as the
+ *  server may send it) is followed by the table frame again, now with the
+ *  partner's name. */
 export function framer(): (msg: unknown) => unknown[] {
   let party: PartyMsg | null = null;
   let held: QueueStateLike | null = null;
@@ -78,7 +111,7 @@ export function framer(): (msg: unknown) => unknown[] {
     const m = msg as { type?: string } | null;
     if (holdsEntry(msg)) {
       held = msg;
-      return [msg, tableFrameFor(msg, party)];
+      return [queueStateOf(msg), tableFrameFor(msg, party)];
     }
     if (m?.type === "queue_state" || m?.type === "queue_removed" || m?.type === "match_started") held = null;
     if (m?.type === "party_closed") party = null;
@@ -86,6 +119,6 @@ export function framer(): (msg: unknown) => unknown[] {
       party = m as PartyMsg;
       if (held && !held.table && held.party_id === party.party_id) return [msg, tableFrameFor(held, party)];
     }
-    return [msg];
+    return [m?.type === "queue_state" ? queueStateOf(msg as QueueStateLike) : msg];
   };
 }

@@ -9,7 +9,7 @@ export async function toTable(page, mode = "casual") {
   if (mode === "casual") await page.click(".play-mode-opt:has-text('Casual')");
   await page.click(".play-main");
   await page.waitForSelector(".tp-primary");
-  return until(page, () => window.__qa.last.queue_state?.code ?? null);
+  return until(page, () => window.__qa.last.table?.code ?? null);
 }
 
 export async function startWithBots(page) {

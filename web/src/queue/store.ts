@@ -19,7 +19,7 @@ import { ERROR_ROUTES, QUEUE_ANSWERS } from "../errorCodes";
 
 /** From this long before the bot fill the bar turns amber. */
 export const BOTS_WARN_MS = 10_000;
-/** The server's bot fill delay (BOT_FILL_SECS); `bots_at` from the server wins. */
+/** The server's bot fill delay (BOT_FILL_SECS); the frame's `timers.bots` wins. */
 export const BOT_FILL_MS = 60_000;
 /** After a reconnect, how long the server has to hand a queued entry back
  *  before the client concludes it was dropped while away. */

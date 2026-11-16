@@ -87,7 +87,7 @@ def test_a_bot_it_was_not_installed_on_decides_as_before(package, model):
     record = {k: v for k, v in before.last_decision_record.items() if "seconds" not in k}
     us.install_root_prior(_bot(package), model)
     after = _bot(package)
-    assert "scores" not in vars(after) and after.policy_name == before.policy_name
+    assert "scores" not in vars(after) and "policy_name" not in vars(after)
     assert after.decide_play(copy.deepcopy(rnd), seat) == played
     assert {k: v for k, v in after.last_decision_record.items() if "seconds" not in k} == record
 

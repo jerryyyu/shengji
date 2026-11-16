@@ -69,5 +69,5 @@ def install_root_prior(bot, model):
     bot.unified_prior_model = model
     bot.unified_prior_calls = 0
     bot.scores = types.MethodType(_unified_scores, bot)
-    bot.policy_name = f"{bot.policy_name}-{TOKEN}{sha[:8]}"
+    bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{TOKEN}{sha[:8]}"
     return bot

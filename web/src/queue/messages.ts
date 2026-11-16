@@ -198,6 +198,57 @@ export interface WaitingTableMsg {
   waiting_for: string[];
 }
 
+/** One seat of a table frame, in seat order (team 0 at seats 0+2). */
+export interface TableFrameSeatMsg {
+  seat: number;
+  team: 0 | 1;
+  /** `held`: kept for a Duo opener's friend; `bot`: a bot plays it in a game. */
+  state: "taken" | "open" | "held" | "bot";
+  name: string | null;
+  you: boolean;
+  /** Tapped Start (a Duo member: its own); null in a game. */
+  ready: boolean | null;
+  reconnecting: boolean;
+  /** When this person sat down; null in a game. */
+  since: number | null;
+  /** This sitting's opaque token at a waiting table (an opener's
+   *  `table_move` names it as `who`), else null. */
+  sit: string | null;
+  pair: boolean;
+  leader: boolean;
+  left: boolean;
+}
+
+/** The table you sit at, before its game (`phase: "open"`, right after each
+ *  queue_state that holds your entry) or in it (`"playing"`, after a seat's
+ *  state when it changes). docs/design/TABLE_FRAME.md. */
+export interface TableFrameMsg {
+  type: "table";
+  code: string;
+  phase: "open" | "playing";
+  mode: QueueMode;
+  /** Your seat. */
+  you: number;
+  /** The opener's seat: the opener sets the level and Allow joiners and
+   *  moves people. */
+  opener: number;
+  seats: TableFrameSeatMsg[];
+  settings: { allow_joiners: boolean | null; start_level: string };
+  timers: {
+    /** The table's bot timer and whose it is; null when none runs. */
+    bots: { at: number; name: string; you: boolean } | null;
+    /** When the opener's Start now unlocks; null alone and in a game. */
+    start_now_at: number | null;
+  };
+  /** Your own Start is in; null in a game. */
+  your_ready: boolean | null;
+  /** Who else has yet to tap Start, by name (a pair by its leader). */
+  waiting_for: string[] | null;
+  /** The key the table's chat frames carry: `table_chat.table` (null
+   *  alone), or the room's code in a game. */
+  chat_log: string | null;
+}
+
 /** The Play tab's presence line, to every lobby socket on change. Counts
  *  only: open tables, connected people at them, people queued, and the open
  *  tables split by mode (`ranked` + `casual` = `tables`). */
@@ -290,6 +341,7 @@ export interface PartyClosedMsg {
 
 export type QueueServerMsg =
   | QueueStateMsg
+  | TableFrameMsg
   | PresenceMsg
   | TableChatMsg
   | TableChatHistoryMsg

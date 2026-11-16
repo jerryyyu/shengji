@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import { TimerRing } from "../components/MoveClock";
 import { openTab } from "../home/route";
-import { BOTS_WARN_MS, BOT_FILL_MS, useNow, useQueue } from "./store";
+import { BOTS_WARN_MS, BOT_FILL_MS, sharedTable, useNow, useQueue } from "./store";
 import type { QueueView } from "./store";
 import { SeatedAtContext } from "./seatedAt";
 import type { SeatedAt } from "./seatedAt";
@@ -13,8 +13,8 @@ interface PillText { label: string; left: number | null; warn: boolean }
  *  a search held on another device). */
 function botsAt(q: QueueView): number | null {
   if (q.elsewhere) return null;
-  if (q.table) return q.table.timer?.at ?? null;
-  return q.waitPlayers ? null : q.botsAt;
+  const at = q.frame?.timers.bots?.at ?? null;
+  return sharedTable(q.frame) || !q.waitPlayers ? at : null;
 }
 
 function pillText(at: SeatedAt, q: QueueView, now: number): PillText | null {

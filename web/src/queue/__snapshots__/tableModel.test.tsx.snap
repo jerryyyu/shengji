@@ -12537,7 +12537,12 @@ exports[`the table panel, fixture by fixture > shared: no timer, waiting for peo
     {
       "change": null,
       "control": "button "Open seat, your team. Move here"",
-      "sent": [],
+      "sent": [
+        {
+          "seat": 2,
+          "type": "table_move",
+        },
+      ],
     },
     {
       "change": {
@@ -12574,7 +12579,12 @@ exports[`the table panel, fixture by fixture > shared: no timer, waiting for peo
     {
       "change": null,
       "control": "button "Open seat, other team. Move here"",
-      "sent": [],
+      "sent": [
+        {
+          "seat": 3,
+          "type": "table_move",
+        },
+      ],
     },
     {
       "change": {

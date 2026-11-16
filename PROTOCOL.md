@@ -281,13 +281,15 @@ times each retired name arrived on a socket, and `create_room` without
 `start: true` (still answered). Only messages from a client count; the
 server's own start of a queue table does not. Plain counts, nothing else.
 
-## The table frame (new, additive)
+## The table frame
 
 `{type: "table", code, phase, mode, you, opener, seats, settings, timers, your_ready, waiting_for, chat_log}`
 describes the table a socket sits at the same way whether it is a queued
 table (`phase: "open"`: alone or waiting) or a room in play (`phase:
-"playing"`). It is sent next to the frames it will replace, which are
-unchanged; a client may ignore it. Design and field mapping:
+"playing"`). Before a game it is the table: the web client draws the
+queue's table from it alone and reads `queue_state` only for the search.
+The frames it replaces are still sent, unchanged, for clients from before
+it; a room's client does not read it yet. Design and field mapping:
 `docs/design/TABLE_FRAME.md`.
 
 - `seats`: four, in seat order, each `{seat, team, state, name, you, ready,
@@ -371,7 +373,11 @@ other socket with `account_in_game`.
 
 - `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
   your entry, after every change to it or to its table, and on reconnect.
-  `mode` is the search's mode (`"ranked"` or `"casual"`). `code`,
+  `mode` is the search's mode (`"ranked"` or `"casual"`). The table
+  fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
+  `held_seat`, `you_ready`) are sent until the table frame's step 3
+  (`docs/design/TABLE_FRAME.md` "Migration") and unread by the web client,
+  which takes them from the table frame that follows. `code`,
   `allow_joiners` and `start_level` are your table's, alone or at a waiting
   table (see "Table codes"); `opener` is true when you opened it (always,
   alone), so you set its level and Allow joiners. `duo` is true for a Duo

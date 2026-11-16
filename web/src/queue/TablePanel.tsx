@@ -175,7 +175,9 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
   const [asking, setAsking] = useState(false);
   // "still here?": any tap or key on the page answers it, as at a held seat
   useAnyTapIsBack(kind === "shared" && q.stillHereUntil !== null, () => queue.here());
-  const mover = useOpenerMove(q.table?.seats ?? null, (from, to, sit) => queueSend({ type: "move_other", from, to, sit }));
+  const people = kind === "shared" && q.frame
+    ? q.frame.seats.map((s) => (s.state === "taken" ? { name: s.name ?? "", sit: s.sit, pair: s.pair } : null)) : null;
+  const mover = useOpenerMove(people, (from, to, sit) => queueSend({ type: "move_other", from, to, sit }));
   const m = fromQueue(q, { now, picked: mover.picked });
   if (!m) return null;
   const act = (a: PanelAction) => {
@@ -371,7 +373,7 @@ export function TableAnnouncer({ q }: { q: QueueView }) {
   const base = announcement(q);
   let soon = "";
   if (kind === "join" && q.offer && q.offer.expiresAt - now <= OFFER_CLOCK_MS) soon = " 10 seconds left to join.";
-  const botsAt = kind === "own" && !q.waitPlayers ? q.botsAt : kind === "shared" ? q.table?.timer?.at ?? null : null;
+  const botsAt = kind === "shared" || (kind === "own" && !q.waitPlayers) ? q.frame?.timers.bots?.at ?? null : null;
   if (botsAt !== null && botsAt - now <= BOTS_WARN_MS && botsAt > now) soon = " Bots fill the empty seats in 10 seconds.";
   return <div className="sr-only" role="status" aria-live="polite">{base ? base + soon : ""}</div>;
 }

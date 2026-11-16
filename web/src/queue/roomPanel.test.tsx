@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
+import { framer } from "./testFrames";
 
 class FakeWS {
   static OPEN = 1;
@@ -19,7 +20,9 @@ class FakeWS {
   constructor() { FakeWS.all.push(this); }
   send(data: string) { this.sent.push(JSON.parse(data)); }
   close() { this.readyState = 3; this.onclose?.(); }
-  deliver(msg: unknown) { this.onmessage?.({ data: JSON.stringify(msg) }); }
+  /** As the server sends it: a held queue_state, then its table frame. */
+  private frames = framer();
+  deliver(msg: unknown) { for (const m of this.frames(msg)) this.onmessage?.({ data: JSON.stringify(m) }); }
 }
 
 const ws = () => FakeWS.all[FakeWS.all.length - 1];

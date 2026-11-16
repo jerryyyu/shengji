@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
 import { GUARD_MS } from "./useKindGuard";
+import { framer } from "./testFrames";
 
 class FakeWS {
   static OPEN = 1;
@@ -22,7 +23,9 @@ class FakeWS {
   constructor() { FakeWS.all.push(this); }
   send(data: string) { this.sent.push(JSON.parse(data)); }
   close() { this.readyState = 3; this.onclose?.(); }
-  deliver(msg: unknown) { this.onmessage?.({ data: JSON.stringify(msg) }); }
+  /** As the server sends it: a held queue_state, then its table frame. */
+  private frames = framer();
+  deliver(msg: unknown) { for (const m of this.frames(msg)) this.onmessage?.({ data: JSON.stringify(m) }); }
 }
 
 /** The fixed instant every fixture is rendered at. */
@@ -335,7 +338,7 @@ const QUEUES: Fixture[] = [
     [seat("Jerry"), seat("Alice", { you: true }), null, null], { you: 1, start_now_at: nowSecs() - 1 },
     { opener: false })] },
   { name: "shared: no timer, waiting for people", frames: () => [atTable(
-    [seat("Jerry", { you: true }), seat("Alice")], {}, { bots_at: null, wait_players: true })] },
+    [seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { bots_at: null, wait_players: true })] },
   { name: "shared: a Duo at the table", frames: () => [atTable(
     [seat("Jerry", { you: true, pair: true }), seat("Li"), seat("Kai", { pair: true }), null], {},
     { party_id: "p1" })] },

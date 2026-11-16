@@ -74,10 +74,18 @@ Not carried: `table.id` beyond `chat_log`, `experimental_policy` and
    `tests/test_table_frame.py` holds the frame to the old frames for every
    golden scenario and the room paths. The offline TS server does not send it
    yet.
-2. **Client switch**: `TableModel` reads `table` alone for seats, settings
-   and timers (no `fromQueue` seat translation, no room translation);
-   `queue_state` keeps the search; the offline server sends `table` and its
-   fixtures drop the filter.
+2. **Client switch, the queue's table** (done): the queue store commits a
+   held `queue_state` together with the `table` frame that follows it, and
+   `fromQueue` draws seats, settings, timers and the panel's kind from the
+   frame alone, with one seat builder for a table alone or shared.
+   `queue_state` still carries the search (`since`, `count`, `front`,
+   `party_id`, `leader`, `wait_players`, `bots_paused`, `offer`,
+   `open_tables`, `panel_seq`, `still_here_until`, `duo`, `duo_ready`,
+   `mode`, `cooldown_until`, `elsewhere`); its table fields are still sent
+   and no longer read. The client's test sockets build the frame from each
+   held `queue_state` (`web/src/queue/testFrames.ts`, held to the server's
+   pairs in `web/src/queue/fixtures/table_frames.json`). Not yet: a room's
+   seats from the `playing` frame, and the offline server's `table`.
 3. **Retire**: drop `queue_state.table` and its table fields (`code`,
    `allow_joiners`, `start_level`, `opener`, `held_seat`, `you_ready`) and
    `room`'s seat list once no client in the field reads them.

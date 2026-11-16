@@ -104,7 +104,7 @@ export default function App() {
       if (s !== "open") return;
       // the on-device server knows no saved room and no link: Play starts there
       if (OFFLINE) return;
-      // Play offline must work once the network has gone: its server loads now
+      // the app's Play offline must work once the network has gone: its server loads now
       offlineGame.prefetch();
       // ONE decision, made in intent.ts and unit-tested there. An invite opens
       // the Lobby's Join panel and never joins by itself, so the only thing to

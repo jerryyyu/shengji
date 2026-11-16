@@ -65,8 +65,8 @@ The host role passes on, and a ranked leave keeps "at best a draw".
 bad code shown inline under the code box. One wording. The same pill, in the same place, says "A bot holds your
 seat · I'm back" once the socket is open again while a bot still plays your seat (simplification 4, below).
 The pill shows at a table or in a game. On the Play tab with no table the presence line is the one status:
-"Connecting…" until the socket opens, then the counts, or "Offline" once Play plays on this device; the 60 s
-full screen still comes (Jerry 11-15).
+"Connecting…" until the socket opens, then the counts, or "Offline" once the app's Play plays on this device
+(a browser stays on "Connecting…"); the 60 s full screen still comes (Jerry 11-15).
 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
@@ -94,6 +94,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - Section 8, game over / Next game.
 
 ## Offline (Jerry 2026-11-14: "we should just keep offline, dont go online")
+- **App only** (Jerry 2026-11-16: "Let's remove it from web"). Every offline entry below shows only in the iOS app, detected by `isNative()` in `native.ts` through `offlineOffered()` in `components/offlineGame.ts`. A browser has no service worker, so its offline play worked only on a page already open, and against SmartBot rather than the app's release bot. In a browser the Play tab's line reads "How to play" alone, the full screen offers Retry alone, Play with no connection keeps its own controls disabled under "Connecting…", and the on-device server chunk is never fetched. `?offline=1` still opens a page offline (tests and development).
 - With no connection, Play opens your table with 3 bots on the device: the same panel, "Offline · not rated", Casual only (Ranked disabled with "Ranked needs a connection"). Duo, rooms and chat are disabled with a one-line reason. The offline table is the panel's `offline` kind (`offlineModel` in `queue/tableModel.ts`, drawn by `TablePanel.tsx`), and the offline Play block draws the online Play controls (`ModeSwitch`, `PlayRow`, `PresenceLine` in `queue/Ranked.tsx`, `CodeRow` in `Lobby.tsx`) disabled.
 - The presence line becomes a grey "Offline · you'll play the bots on this device".
 - **An offline game stays offline.** When the connection returns there is no automatic switch and no mid-game prompt. The game continues on the device. `offlineGame.goOnline()` runs only once the offline table is left (`components/OfflinePlay.tsx`). After you leave the offline table, Play is online again as normal, in place (simplification 7).
@@ -194,7 +195,7 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      A bot on turn is its seat's gold edge and, on desktop, one plain line of banter; the "Considering the
      next play…" line and the progress bar are gone, and that status is read to screen readers only (Jerry 11-15).
      The bury button reads "Bury (3/8)"; "Burying 10 points" is teaching and shows only while the coach shows (Jerry 11-15).
-7. **Offline without a reload.** Offline is a state of the one Play page, not a page of its own. Play on
+7. **Offline without a reload** (app only). Offline is a state of the one Play page, not a page of its own. Play on
    the greyed Play tab (no connection), the Play offline link beside How to play, and the full-screen
    connection state's "Play offline with the bots" all swap the socket to the on-device server in place
    (`conn.useLocalServer()` in `ws.ts`, through `offlineGame.startFromPlay()`) and open the same offline
@@ -210,8 +211,8 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
      chain ends with that `left`, as does a Start cancelled before its room came back. Telemetry collects
      only online: an online page's buffered events go before it turns offline, and nothing buffered on
      either side is kept across the switch.
-   - An online page loads the on-device server once it is connected and idle, so Play offline still works
-     after the network has gone. The separate offline page shell (`offline/server/ui.tsx`, OfflinePlay's
+   - An online page in the app loads the on-device server once it is connected and idle, so Play offline
+     still works after the network has gone; a browser never loads it. The separate offline page shell (`offline/server/ui.tsx`, OfflinePlay's
      whole-page component) and the `?offline=0` / `?offline=1&table=1` reloads are removed; `?offline=1`
      still opens a page offline (tests and development).
 

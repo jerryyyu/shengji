@@ -1,7 +1,8 @@
 // One connection surface: a dropped socket shows the pill at a table or in a
 // game (Play with no table says it on its presence line), Retry joins it after RETRY_AFTER_MS, one full screen
 // takes over after LOST_AFTER_MS, and a reconnect clears all of it while the
-// saved seat is resumed exactly as before.
+// saved seat is resumed exactly as before. The iOS app's full screen also
+// offers its bots on the device; a browser's offers Retry alone.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -51,12 +52,18 @@ beforeEach(() => {
     resume() { return Promise.resolve(); }
   };
   Object.defineProperty(window, "location", { configurable: true, value: { ...realLocation, assign, search: "" } });
+  // inside the iOS app, unless a test says otherwise
+  (window as unknown as { Capacitor: unknown }).Capacitor = {
+    isNativePlatform: () => true,
+    registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }),
+  };
   vi.resetModules();
 });
 afterEach(() => {
   act(() => root.unmount());
   host.remove();
   Object.defineProperty(window, "location", { configurable: true, value: realLocation });
+  delete (window as unknown as { Capacitor?: unknown }).Capacitor;
   vi.useRealTimers();
 });
 
@@ -347,4 +354,19 @@ it("a move refused for want of a seat asks for the seat back once, then goes to 
   expect(host.querySelectorAll(".toast")).toHaveLength(1);
   expect(host.querySelector(".toast")?.textContent).toBe("You're no longer at a table.");
   expect(ws.getSavedRoom()).toBeNull();
+});
+
+it("in a browser the full screen offers Retry alone, and Play keeps its own controls, disabled", async () => {
+  delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+  const { LOST_AFTER_MS } = await mount();
+  act(() => latest().open());
+  act(() => latest().close());
+  act(() => { vi.advanceTimersByTime(LOST_AFTER_MS); });
+  expect(lost()?.querySelector("h1")?.textContent).toBe("No connection");
+  expect([...lost()!.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Retry"]);
+  expect(host.querySelector(".play-offline")).toBeNull();
+  expect(host.querySelector(".play-presence")?.textContent).toBe("Connecting…");
+  expect(host.textContent).not.toMatch(/Play offline/);
+  act(() => latest().open());
+  expect(lost()).toBeNull();
 });

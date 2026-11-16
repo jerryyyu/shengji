@@ -46,8 +46,14 @@ export async function launch() {
 
 const INJECT = fs.readFileSync(path.join(HERE, "inject.js"), "utf8");
 
-/** A page at one device size with the taps installed. `storage` seeds localStorage. */
-export async function open(browser, device, { url = "", storage = {}, base = BASE, fakeSocket = null, still = false } = {}) {
+/** The iOS app's bridge, as its WebView injects it: the page takes itself
+ *  for the app, and every plugin call resolves to nothing. */
+const NATIVE = `window.Capacitor = { isNativePlatform: () => true,
+  registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }) };`;
+
+/** A page at one device size with the taps installed. `storage` seeds localStorage;
+ *  `native` makes it the iOS app's page rather than a browser's. */
+export async function open(browser, device, { url = "", storage = {}, base = BASE, fakeSocket = null, still = false, native = false } = {}) {
   const d = DEVICES[device];
   const ctx = await browser.newContext({
     viewport: { width: d.w, height: d.h }, deviceScaleFactor: 2, colorScheme: "dark",
@@ -63,6 +69,7 @@ export async function open(browser, device, { url = "", storage = {}, base = BAS
     await page.addInitScript(`for (const [k, v] of Object.entries(${JSON.stringify(storage)})) { try { if (localStorage.getItem(k) === null) localStorage.setItem(k, v); } catch {} }`);
   }
   await page.addInitScript(INJECT);
+  if (native) await page.addInitScript(NATIVE);
   // The table reads its safe areas through --frame-safe-* (index.css), so a notch and a
   // toolbar can be put there. The lobby reads env() directly, which no browser lets a test set.
   if (d.safe) {

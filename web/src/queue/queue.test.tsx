@@ -374,17 +374,30 @@ describe("your own table", () => {
     await renderApp();
     expect(q(".lobby-preview")).not.toBeNull();
     expect(q(".join-row")).not.toBeNull();
-    expect(button("Play offline")).toBeDefined();
     say(queued());
     expect(panel()).not.toBeNull();
     expect(q(".lobby-preview")).toBeNull();
     expect(q(".play-tab")!.classList.contains("play-table-up")).toBe(true);
-    // seated, the panel is the page: no code box and no way to the offline table
+    // seated, the panel is the page: no code box
     expect(q(".join-row")).toBeNull();
-    expect(button("Play offline")).toBeUndefined();
     say({ type: "queue_state", queued: false, count: 0 });
     expect(q(".lobby-preview")).not.toBeNull();
     expect(q(".join-row")).not.toBeNull();
+  });
+
+  it("in the app, seated, the panel leaves no way to the offline table", async () => {
+    (window as unknown as { Capacitor: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }),
+    };
+    try {
+      await renderApp();
+      expect(button("Play offline")).toBeDefined();
+      say(queued());
+      expect(button("Play offline")).toBeUndefined();
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
   });
 
   it("the panel opening puts the Play page back at its top", async () => {

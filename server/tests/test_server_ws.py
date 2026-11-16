@@ -3036,6 +3036,27 @@ def test_a_held_seat_is_not_taken_back_by_its_name_alone(client, clock):
 
 
 
+def test_a_seat_left_by_choice_is_taken_back_by_its_name(client, clock):
+    """Leave ends the hold at once (the bot covers the seat with no grace),
+    and a Leave clears the saved token: the leaver coming back by the code
+    under the same name, inside 60 s, sits in that seat again. A seat that
+    only dropped stays held against its name alone."""
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
+            _drain(b, "state")
+            a.send_json({"type": "table_leave"})
+            _drain(a, "left")
+            assert room.seats[0].left_by_choice and not room.seats[0].connected
+            with client.websocket_connect("/ws") as back:
+                back.send_json({"type": "table_join", "expect": "room", "code": code,
+                                "name": "Jerry ", "seat": 0})
+                st = _drain(back, "state")
+                assert st["you"] == 0 and len(st["hand"]) > 0
+                assert room.seats[0].connected and not room.seats[0].left_by_choice
+
+
 def test_a_ranked_table_counts_an_accounts_seat_by_the_account(client):
     """One seat per account at a ranked table: a seat the account holds
     counts as held whatever queue id the seat carries, so neither an

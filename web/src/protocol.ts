@@ -2,7 +2,8 @@
 // Card codes: suited = suit letter (S H D C) + rank ("S2".."SA", "H10", ...);
 // jokers = "LJ" (little/black) and "BJ" (big/red).
 
-import type { QueueClientMsg, QueueErrorCode, QueueServerMsg } from "./queue/messages";
+import type { ErrorCode } from "./errorCodes";
+import type { QueueClientMsg, QueueServerMsg } from "./queue/messages";
 
 export interface HandCard {
   id: number;
@@ -307,37 +308,8 @@ export interface ReportReceivedMsg {
   message: string;
 }
 
-/** Every coded error the server can send. Keep in sync with server.py —
- *  an unlisted code silently falls through to a generic toast. */
-export type ErrorCode =
-  | "room_not_found"
-  | "room_full"
-  | "choose_seat"
-  | "seat_unavailable"
-  | "seat_reserved"
-  | "ranked_sign_in"
-  | "ranked_queue_only"
-  /** This device already holds a seat at the table (another tab). */
-  | "same_device"
-  /** The account plays a ranked game on another socket (or this device's
-   *  signed-out guest would sit beside its own account's seat). */
-  | "account_in_game"
-  | "table_full"
-  | "table_left"
-  | "bad_start_level"
-  | "resume_unavailable"
-  | "stale_connection"
-  /** A lobby control an out-of-date page sent (add_bot, remove_bot,
-   *  remove_player, set_ranked); no table has it. */
-  | "retired"
-  | "report_sign_in"
-  | "report_bad_seat"
-  | "report_bad_reason"
-  | "report_bot"
-  | "report_guest"
-  | "report_rate_limited"
-  | "report_not_stored"
-  | QueueErrorCode;
+/** Every coded error the server can send: the keys of `ERROR_ROUTES`. */
+export type { ErrorCode } from "./errorCodes";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */

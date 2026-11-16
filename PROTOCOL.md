@@ -46,9 +46,9 @@ lobby instead of retrying), `"retired"` (a retired message name, listed in
 `start_level` that is not a known rank). An unknown `start_level` is REFUSED,
 never coerced to `"2"`: silently downgrading it would hand the player a game
 their own lobby misdescribes. No room is created, and the socket stays usable.
-`"test_room_unavailable"` refuses a `create_room` that asks for a guarded test
-room (`test_policy`) when the server has them off (production does); such rooms
-add an `experimental_policy` field to `room` and `state`.
+The full list of codes, and who says each one to the player, is
+`ERROR_ROUTES` in `web/src/errorCodes.ts`; a server test fails when a code the
+server sends has no row there, or a row names a code no server sends.
 
 ### `{type: "room", room: string, you: number, host: number, opener: number, start_level: string, players: RoomPlayer[], allow_joiners?: boolean}`
 Sent once by `create_room`, before its game starts: the frame the client saves the room from. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.

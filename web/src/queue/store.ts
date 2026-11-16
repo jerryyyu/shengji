@@ -15,7 +15,7 @@ import type {
   OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, TableMovedMsg,
   WaitingTableMsg,
 } from "./messages";
-import { QUEUE_ERROR_CODES } from "./messages";
+import { ERROR_ROUTES, QUEUE_ANSWERS } from "../errorCodes";
 
 /** From this long before the bot fill the bar turns amber. */
 export const BOTS_WARN_MS = 10_000;
@@ -544,7 +544,7 @@ export class QueueStore {
           this.set({ pending: null, inGame: { message: msg.message, canReturn } });
           break;
         }
-        if (!msg.code || !QUEUE_ERROR_CODES.has(msg.code)) {
+        if (!msg.code || !QUEUE_ANSWERS.has(msg.code)) {
           // An error the queue does not name may still be the answer to a
           // Play: never keep searching on it; the server says what it holds.
           if (this.view.pending === "join" && !("peek" in msg)) {
@@ -565,23 +565,23 @@ export class QueueStore {
                      cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : this.view.cooldownUntil });
         } else if (msg.code === "seat_taken") {
           this.set({ pending: null });
-          this.notify("That seat was just taken.", "Pick another.");
+          this.notify(...ERROR_ROUTES.seat_taken.text);
         } else if (msg.code === "table_closed" || msg.code === "no_offer") {
           this.set({ pending: null, offer: null });
-          this.notify("That table is no longer open.");
+          this.notify(...ERROR_ROUTES[msg.code].text);
         } else if (msg.code === "panel_changed") {
           // the fresh panel is on its way; the tap was for the old one
           this.set({ pending: null });
           this.askStatus();
         } else if (msg.code === "pair_seats_fixed") {
           this.set({ pending: null });
-          this.notify("A Duo's seats stay together.");
+          this.notify(...ERROR_ROUTES.pair_seats_fixed.text);
         } else if (msg.code === "already_ready") {
           this.set({ pending: null });
-          this.notify("You tapped Start, so your seat is set.");
+          this.notify(...ERROR_ROUTES.already_ready.text);
         } else if (msg.code === "bad_seat") {
           this.set({ pending: null });
-          this.notify("Pick one of the open seats.");
+          this.notify(...ERROR_ROUTES.bad_seat.text);
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
           this.set({ pending: null, queued: false, table: null, since: null, botsAt: null, waitPlayers: false,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { GameState, RoomMsg } from "./protocol";
+import { routeOf } from "./errorCodes";
 import { decideIntent, intentToJoin } from "./intent";
 import type { ConnStatus } from "./ws";
 import { OFFLINE, useOffline } from "./offlineMode";
@@ -130,25 +131,14 @@ export default function App() {
           seededRef.current = true;
           setGame(msg);
           break;
-        case "error":
-          // a peek's refusal is the code store's to say
+        case "error": {
+          // a peek's refusal is the code store's to say, and answers no resume
           if (msg.peek !== undefined) break;
           const wasResuming = resumingRef.current;
           resumingRef.current = false;
-          if (msg.code === "not_in_party") {
-            // a pair the server no longer holds: the queue store drops the chip
-            break;
-          }
-          if (msg.code === "account_in_game" || msg.code === "panel_changed"
-              || msg.code === "pair_seats_fixed" || msg.code === "already_ready") {
-            // the queue panel says these in its own place, or (a panel that
-            // changed under a tap) refreshes without a word
-            break;
-          }
-          if (msg.code === "table_full") {
-            // the Join panel says "Table is full" itself: one status, not two
-            break;
-          }
+          // the queue and Join panels say their own codes: one status, not two
+          const says = routeOf(msg).says;
+          if (says !== "toast" && says !== "app") break;
           if (msg.code === "start_failed") {
             // a queue game with bots that failed to start was unwound on the server
             resetToLobby();
@@ -175,6 +165,7 @@ export default function App() {
             showToast(msg.message);
           }
           break;
+        }
         case "first_joiner":
           // a game started alone turns shared: said once, politely
           showToast(firstJoinerText(msg), true);

@@ -182,6 +182,15 @@ describe("error routes, as a player sees them", () => {
     expect(toastNow()).toEqual({ text: words, info: true });
   });
 
+  it.each(["seat_taken", "table_closed", "no_offer", "bad_seat", "pair_seats_fixed", "already_ready"])(
+    "%s is said once: the queue's words, with no toast of the server's before them", async (code) => {
+      await atSharedTable();
+      say(err(code, "server words"));
+      expect(shown).toHaveLength(1);
+      expect(shown[0].info).toBe(true);
+      expect(shown[0].text).not.toBe("server words");
+    });
+
   it("table_full while joining: the Join panel says Table is full, no toast", async () => {
     await joining();
     say(err("table_full", "That table is full."));

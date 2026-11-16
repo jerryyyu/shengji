@@ -1,0 +1,14 @@
+{
+ "name": "ut-inside1-dev-2632000000",
+ "purpose": "screen",
+ "seed0": 2632000000,
+ "clusters": 3000,
+ "span": [
+  2632000000,
+  2632003000
+ ],
+ "created_at": "2026-11-16T20:10:00Z",
+ "host": "ultra",
+ "git_head": "844be92c",
+ "note": "Unified model inside release 52's search (Jerry 2026-11-16: one transformer for policy, value and belief; search unchanged), tier-i DEV slot duels vs release 52 as served, 1,000 paired seat-swapped rank-mixed deals per arm on the M5 Ultra; branch claude/ut-inside1. Arm P [2632000000, 2632001000): root prior = the unified policy head (stage-1 package 268175b4). Arm PB [2632001000, 2632002000): root prior + belief package from the U2 retrain. Arm B [2632002000, 2632003000): belief package only (conditional). Bars and validity: inside1/PREDECLARE.md. Clearance vs G3A e04 / FT1 / B1a lineages and the unified models' training stores: inside1/clear. Tier i, no seed gate in the runner. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

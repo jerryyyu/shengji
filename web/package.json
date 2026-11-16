@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "capture:lobby": "node scripts/capture_lobby.mjs",
+    "e2e": "node e2e/run.mjs ci",
+    "e2e:full": "node e2e/run.mjs full",
     "ios:sync": "npm run build && cap sync ios"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 """The workflow's path classifier: which changes run which heavy jobs.
 
-The ``changes`` job's classify step decides the ``code``, ``luna``,
+The ``changes`` job's classify step decides the ``code``, ``web``, ``luna``,
 ``train``, ``search`` and ``server_*`` outputs. These tests load that step's exact Python from the workflow
 and call its functions on this checkout, so a change to the rule, to the
 train-* job selections or to the web fixtures they read is checked here.
@@ -196,6 +196,19 @@ def test_the_search_rule_follows_its_imports(classifier):
     assert reaches("web/src/App.tsx", tests, True, False)
 
 
+@pytest.mark.parametrize("paths, web", [
+    (("web/src/App.tsx",), True),
+    (("web/e2e/known.json",), True),
+    (("web/package-lock.json", "server/shengji/api/server.py"), True),
+    ((".github/workflows/pr-checks.yml",), True),
+    (("web/README.md",), False),
+    (("server/shengji/api/server.py",), False),
+    (("docs/notes.md",), False),
+])
+def test_which_paths_run_the_interaction_suites(classify, paths, web):
+    assert classify(*paths)["web"] is web
+
+
 def test_any_error_runs_everything(classifier, monkeypatch):
     def broken():
         raise ImportError("broken")
@@ -203,6 +216,7 @@ def test_any_error_runs_everything(classifier, monkeypatch):
     with pytest.raises(ImportError):
         in_root(classifier["classify_paths"], ["web/src/App.tsx"])
     everything = classifier["EVERYTHING"]
-    assert everything["server_full"] and everything["search"] and not everything["server_web_only"]
+    assert everything["server_full"] and everything["search"] and everything["web"]
+    assert not everything["server_web_only"]
     lines = classifier["output_lines"]({**everything, "server_web_pure": ["test_a", "test_b"]})
     assert "server_full=true" in lines and "server_web_pure=tests/test_a.py tests/test_b.py" in lines

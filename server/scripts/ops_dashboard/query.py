@@ -8,14 +8,18 @@ database query inside one read transaction, so the counts come from one
 consistent snapshot that includes rows the server has committed to its WAL. It
 opens every other file for reading only and prints one JSON object of counts.
 No email, account id, name, room code, IP or message text is printed: every
-value is a count, a ratio or a timestamp.
+value is a count, a ratio or a timestamp, except the player-report rows: an
+opaque id, room code, reason and the two seats' table names (``player_reports``).
 
 Stdlib only, and cheap: the room-log scan reads only files changed in the last
-30 days and parses only ``round_start`` lines.
+30 days and parses only ``round_start`` lines; the bot-latency scan reads only
+files changed since yesterday's start (or 48 h ago) and parses only completed
+``model_search`` lines.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -259,6 +263,225 @@ def scan_logs(log_dir: Path, now: float, starts: dict[str, float],
             "last_round_start": last_round_start}
 
 
+# Bot decision latency. Each bot decision writes ``model_search`` lines to its
+# room log; the ``completed`` one carries ``elapsed_seconds``. Only phase,
+# elapsed time, time and a per-room count leave here: no room code, seat,
+# policy name or account.
+PHASES = ("play", "bury", "declare", "other")
+BUDGET_S = {"play": 3.0, "bury": 2.0, "declare": 3.0, "other": 3.0}
+CONCURRENT_S = 60          # rooms "at the time": a bot decision within +-60 s
+SPEED_HOURS = 48
+SLOW_LIMIT = 20
+SLOT_S = 600               # the last hour splits into six 10-minute slots
+
+
+def read_decisions(paths, since: float) -> list[tuple[float, str, str, float]]:
+    """``(t, room file, phase, elapsed)`` for each completed bot decision at or
+    after ``since``, sorted by time."""
+    out = []
+    for path in paths:
+        name = os.path.basename(path)
+        with open(path, "rb") as fh:
+            for line in fh:
+                if b'"model_search"' not in line or b'"completed"' not in line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except ValueError:
+                    continue
+                if rec.get("e") != "model_search" or rec.get("event") != "completed":
+                    continue
+                try:
+                    t = float(rec.get("t"))
+                    s = float(rec.get("elapsed_seconds"))
+                except (TypeError, ValueError):
+                    continue
+                if t < since or s != s:
+                    continue
+                phase = rec.get("phase")
+                out.append((t, name, phase if phase in BUDGET_S else "other", s))
+    out.sort()
+    return out
+
+
+def concurrent_rooms(decisions) -> list[int]:
+    """For each decision, the distinct rooms with a decision within
+    ``CONCURRENT_S`` of it (two-pointer sweep over the sorted list)."""
+    from collections import Counter
+    counts: Counter = Counter()
+    res = []
+    lo = hi = 0
+    n = len(decisions)
+    for t, _, _, _ in decisions:
+        while hi < n and decisions[hi][0] <= t + CONCURRENT_S:
+            counts[decisions[hi][1]] += 1
+            hi += 1
+        while decisions[lo][0] < t - CONCURRENT_S:
+            room = decisions[lo][1]
+            counts[room] -= 1
+            if not counts[room]:
+                del counts[room]
+            lo += 1
+        res.append(len(counts))
+    return res
+
+
+def latency_stats(values: list[float], budget: float) -> dict:
+    """Nearest-rank percentiles (``v[int(q * n)]``) of one phase's times."""
+    n = len(values)
+    if not n:
+        return {"n": 0}
+    v = sorted(values)
+    q = lambda x: round(v[min(n - 1, int(x * n))], 3)  # noqa: E731
+    return {"n": n, "mean": round(sum(v) / n, 3), "p50": q(0.5), "p90": q(0.9),
+            "p99": q(0.99), "max": round(v[-1], 3), "over": sum(1 for x in v if x > budget)}
+
+
+def speed_window(decisions, conc, lo: float, hi: float) -> dict:
+    by = {p: [] for p in PHASES}
+    rooms = set()
+    rooms_max = 0
+    for (t, room, phase, s), c in zip(decisions, conc):
+        if lo <= t < hi:
+            by[phase].append(s)
+            rooms.add(room)
+            rooms_max = max(rooms_max, c)
+    out = {p: latency_stats(by[p], BUDGET_S[p]) for p in PHASES}
+    out["rooms"] = len(rooms)
+    out["rooms_max"] = rooms_max
+    return out
+
+
+def speed_hour(decisions, conc, lo: float) -> dict | None:
+    play, over, rooms_max, n = [], 0, 0, 0
+    for (t, _, phase, s), c in zip(decisions, conc):
+        if lo <= t < lo + 3600:
+            n += 1
+            if phase == "play":
+                play.append(s)
+            if s > BUDGET_S[phase]:
+                over += 1
+            rooms_max = max(rooms_max, c)
+    if not n:
+        return None
+    st = latency_stats(play, BUDGET_S["play"])
+    return {"start": lo, "n": n, "play_n": st["n"], "p50": st.get("p50"), "p90": st.get("p90"),
+            "p99": st.get("p99"), "max": st.get("max"), "over": over, "rooms_max": rooms_max}
+
+
+def bot_speed(log_dir: Path, now: float, day_starts: list[float]) -> dict:
+    """Latency windows for the last hour and day, the ET days starting at
+    ``day_starts`` (each runs to the next, the last to ``now``), the last
+    ``SPEED_HOURS`` UTC hours, and the newest over-budget decisions.
+
+    A file whose mtime is before ``since`` holds no line at or after it, so
+    only files changed since then are read."""
+    t0 = time.process_time()
+    hour0 = (now - SPEED_HOURS * 3600) // 3600 * 3600
+    since = min([hour0, now - DAY] + list(day_starts))
+    if not log_dir.is_dir():
+        return {"available": False}
+    paths = [e.path for e in os.scandir(log_dir)
+             if e.name.endswith(".jsonl") and e.is_file() and e.stat().st_mtime >= since]
+    dec = read_decisions(paths, since)
+    conc = concurrent_rooms(dec)
+    ends = list(day_starts[1:]) + [now + 1]
+    days = []
+    for lo, hi in zip(day_starts, ends):
+        w = speed_window(dec, conc, lo, hi)
+        w["start"] = lo
+        days.append(w)
+    hours = [h for h in (speed_hour(dec, conc, hour0 + i * 3600)
+                         for i in range(int((now - hour0) // 3600) + 1)) if h]
+    slow = [{"t": round(t, 1), "phase": PHASES.index(phase), "s": round(s, 2), "rooms": c}
+            for (t, _, phase, s), c in zip(dec, conc)
+            if t >= now - DAY and s > BUDGET_S[phase]][-SLOW_LIMIT:]
+    slots = {int((now - t) // SLOT_S) for (t, _, phase, s) in dec
+             if now - SLOT_S * 6 <= t <= now and s > BUDGET_S[phase]}
+    return {"available": True, "files_scanned": len(paths), "since": since,
+            "windows": {"60m": speed_window(dec, conc, now - 3600, now + 1),
+                        "24h": speed_window(dec, conc, now - DAY, now + 1)},
+            "days": days, "hours": hours, "slow": slow,
+            "slots_over_60m": len(slots & set(range(6))),
+            "cpu_s": round(time.process_time() - t0, 3)}
+
+
+# Player reports (``player_reports.jsonl``). Only these leave the container:
+# an opaque id, time, room code, round, reason and the two seats' table names.
+# No account id, account name, email or chat line is read out of a record.
+REPORT_LIMIT = 20
+REPORT_REASONS = ("abuse", "spam", "cheating", "other")
+NAME_MAX = 40
+WATCH_S = 7 * DAY
+WATCH_MAX = 1000
+
+
+def _clean_name(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = "".join(ch for ch in value if ch.isprintable())[:NAME_MAX]
+    return value or None
+
+
+def report_id(rec: dict, occurrence: int) -> str:
+    """An opaque id for one stored report: the hash of the whole record as
+    canonical JSON, before any field is dropped or rounded, plus how many
+    identical records came before it in the file. Two distinct records never
+    share an id, and the same record keeps its id on every run."""
+    key = json.dumps({"rec": rec, "n": occurrence}, sort_keys=True, separators=(",", ":"),
+                     ensure_ascii=True)
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def player_reports(path: Path, now: float) -> dict:
+    """``latest``: the ``REPORT_LIMIT`` newest rows, for display. ``watch``:
+    id and time of every report from the last 7 days (the newest
+    ``WATCH_MAX``; ``watch_omitted`` counts the rest), so the alert state
+    sees reports beyond the displayed rows."""
+    if not path.is_file():
+        return {"available": True, "file": False, "total": 0, "n_24h": 0, "n_7d": 0,
+                "latest": [], "watch": [], "watch_omitted": 0}
+    rows = []
+    seen: dict[str, int] = {}
+    with open(path, "rb") as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+                t = float(rec.get("ts"))
+            except (ValueError, TypeError, AttributeError):
+                continue
+            if t != t:
+                continue
+            canon = json.dumps(rec, sort_keys=True, separators=(",", ":"))
+            occurrence = seen.get(canon, 0)
+            seen[canon] = occurrence + 1
+            room = rec.get("room")
+            rnd = rec.get("round")
+            reason = rec.get("reason")
+            reported = rec.get("reported") if isinstance(rec.get("reported"), dict) else {}
+            reporter = rec.get("reporter") if isinstance(rec.get("reporter"), dict) else {}
+            rows.append({
+                "id": report_id(rec, occurrence),
+                "t": round(t, 1),
+                "ts": t,
+                "room": room if isinstance(room, str) and room.isalnum() and len(room) <= 8 else None,
+                "round": rnd if isinstance(rnd, int) and not isinstance(rnd, bool) else None,
+                "reason": reason if reason in REPORT_REASONS else None,
+                "reported": _clean_name(reported.get("name")),
+                "reporter": _clean_name(reporter.get("name")),
+            })
+    rows.sort(key=lambda r: (r["ts"], r["id"]))
+    watch = [{"id": r["id"], "t": r["t"]} for r in rows if r["ts"] >= now - WATCH_S]
+    for r in rows:
+        del r["ts"]
+    return {"available": True, "file": True, "total": len(rows),
+            "n_24h": sum(1 for r in rows if r["t"] >= now - DAY),
+            "n_7d": len(watch),
+            "latest": rows[-REPORT_LIMIT:],
+            "watch": watch[-WATCH_MAX:],
+            "watch_omitted": max(0, len(watch) - WATCH_MAX)}
+
+
 def count_jsonl_since(path: Path, since: float, key: str = "ts") -> int | None:
     if not path.is_file():
         return 0
@@ -273,7 +496,8 @@ def count_jsonl_since(path: Path, since: float, key: str = "ts") -> int | None:
     return n
 
 
-def collect(db: Path, log_dir: Path, data_dir: Path, now: float, today_start: float) -> dict:
+def collect(db: Path, log_dir: Path, data_dir: Path, now: float, today_start: float,
+            day_starts: list[float]) -> dict:
     t0 = time.process_time()
     starts = {"today": today_start, "7d": now - 7 * DAY, "30d": now - 30 * DAY}
     conn = _connect(db)
@@ -305,6 +529,14 @@ def collect(db: Path, log_dir: Path, data_dir: Path, now: float, today_start: fl
             w["share_2plus_roster_seats"] = (round(sum(lw["by_roster"][k] for k in "234")
                                              / lw["rounds"], 3) if lw["rounds"] else None)
         del logs["windows"]
+    try:
+        out["bot_speed"] = bot_speed(log_dir, now, day_starts)
+    except Exception:  # noqa: BLE001 - the counts above still go out
+        out["bot_speed"] = {"available": False}
+    try:
+        out["reports"] = player_reports(data_dir / "player_reports.jsonl", now)
+    except Exception:  # noqa: BLE001 - the counts above still go out
+        out["reports"] = {"available": False}
     out["support_7d"] = count_jsonl_since(data_dir / "support_messages.jsonl", now - 7 * DAY)
     out["reports_7d"] = count_jsonl_since(data_dir / "player_reports.jsonl", now - 7 * DAY)
     out["query_cpu_s"] = round(time.process_time() - t0, 3)
@@ -314,9 +546,13 @@ def collect(db: Path, log_dir: Path, data_dir: Path, now: float, today_start: fl
 def main(argv: list[str]) -> int:
     now = float(argv[1]) if len(argv) > 1 else time.time()
     today_start = float(argv[2]) if len(argv) > 2 else (now // DAY) * DAY
+    # The collector passes yesterday's start too: a DST change makes it not
+    # exactly one day before today's.
+    yesterday_start = float(argv[3]) if len(argv) > 3 else today_start - DAY
     data_dir = Path(os.environ.get("SHENGJI_DATA_DIR") or "/data")
     log_dir = Path(os.environ.get("SHENGJI_LOG_DIR") or data_dir / "logs")
-    out = collect(data_dir / "accounts.sqlite3", log_dir, data_dir, now, today_start)
+    out = collect(data_dir / "accounts.sqlite3", log_dir, data_dir, now, today_start,
+                  [yesterday_start, today_start])
     print("OPS_JSON " + json.dumps(out, separators=(",", ":")))
     return 0
 

@@ -53,6 +53,31 @@
   .hum div { flex: 1; text-align: center; background: var(--bg); border-radius: 6px; padding: 4px 0; }
   .hum b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
   .hum span { font-size: 11px; color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2);
+    margin-bottom: 8px; }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; margin-top: 8px; }
+  .tbl table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .tbl th { font-size: 11px; font-weight: 600; color: var(--muted); text-align: right;
+    padding: 7px 8px 5px; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  .tbl td { text-align: right; padding: 5px 8px; white-space: nowrap; border-top: 1px solid var(--line); }
+  .tbl tr:first-child td { border-top: 0; }
+  .tbl th:first-child, .tbl td:first-child { text-align: left; color: var(--ink2); }
+  .tbl td.warn { color: var(--warn); font-weight: 600; }
+  .tbl td.bad { color: var(--bad); font-weight: 600; }
+  .tbl td.dim { color: var(--muted); }
+  .tbl .cap { font-size: 12px; color: var(--ink2); padding: 9px 10px 2px; }
+  .tbl tr.handled td { color: var(--muted); font-weight: 400; }
+  .tbl button.mark { background: none; border: 1px solid var(--line); color: var(--ink2); font: inherit;
+    font-size: 12px; padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+  .tbl button.mark:hover:not(:disabled) { color: var(--ink); border-color: var(--muted); }
+  .tbl button.mark:disabled { cursor: default; opacity: 0.6; }
+  .spark.tall { height: 84px; }
+  .spark line.budget { stroke: var(--bad); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
+  .spark rect.bar.warn { fill: var(--warn); }
+  .spark rect.bar.bad { fill: var(--bad); }
   #tip { position: fixed; pointer-events: none; background: #000c; color: var(--ink);
     font-size: 12px; padding: 4px 8px; border-radius: 6px; display: none; z-index: 5; }
 </style>
@@ -72,6 +97,40 @@
     <svg class="spark" id="roomspark" preserveAspectRatio="none"></svg>
     <div class="axis"><span>24 h ago</span><span>now</span></div>
   </div>
+
+  <h2>Player reports</h2>
+  <div class="chip" id="repchip"><span class="dot"></span><span>loading…</span></div>
+  <div class="grid" id="reptiles"></div>
+  <div class="tbl" id="replist"></div>
+  <p class="note">From <code>player_reports.jsonl</code> on the Fly volume (read only). Shown: time,
+    room, round, reason and the two seats' table names; no account, email or chat. The server keeps
+    no "handled" mark; <b>Mark handled</b> keeps one on this Mac (<code>state/reports_handled.json</code>,
+    from <code>127.0.0.1</code> only). The state counts every unhandled report of the last 7 days by
+    age, not only the rows shown: amber while one is over 12 h old, red over 24 h. Unhandled reports
+    older than the latest rows are listed first.</p>
+
+  <h2>Bot speed</h2>
+  <div class="chip" id="speedchip"><span class="dot"></span><span>loading…</span></div><br>
+  <div class="tabs" role="group" aria-label="Bot speed window" id="speedtabs">
+    <button data-s="60m" aria-pressed="true">Last 60 min</button>
+    <button data-s="24h" aria-pressed="false">Last 24 h</button>
+  </div>
+  <div class="grid" id="speedtiles"></div>
+  <div class="tbl" id="speedwin"></div>
+  <div class="tile wide" style="margin-top:8px">
+    <div class="l">Play p99 per hour, last 48 h (dashed line: 3 s budget; amber/red: an hour with a decision over budget)</div>
+    <svg class="spark tall" id="speedspark" preserveAspectRatio="none"></svg>
+    <div class="axis"><span>48 h ago</span><span>now</span></div>
+  </div>
+  <div class="tbl" id="speedslow"></div>
+  <div class="tbl" id="speeddays"></div>
+  <p class="note">Seconds per bot decision, from the completed <code>model_search</code> line each
+    decision writes to its room log. Budgets: play 3 s, bury 2 s (declare shown against 3 s).
+    "Over" counts decisions past their phase budget. Rooms = distinct rooms with a bot
+    decision; "rooms at the time" counts rooms with a bot decision within 60 s of it. Percentiles
+    are nearest-rank. Amber: any decision over budget, or play p99 over 3 s, in the last hour; red:
+    over-budget decisions in two or more of the hour's six 10-minute slots, or ten or more.
+    Days start at midnight ET; "other" is September logs written before decisions named their phase.</p>
 
   <h2>Accounts</h2>
   <div class="grid" id="accounts"></div>
@@ -108,7 +167,7 @@
 <script>
 "use strict";
 const token = new URLSearchParams(location.search).get("t") || "";
-let latest = null, win = localGet("win") || "today";
+let latest = null, win = localGet("win") || "today", speedWin = localGet("speedwin") || "60m", speedStore = null;
 
 function localGet(k) { try { return localStorage.getItem("ops." + k); } catch (e) { return null; } }
 function localSet(k, v) { try { localStorage.setItem("ops." + k, v); } catch (e) {} }
@@ -172,7 +231,7 @@ function renderAccounts(d) {
 function renderActivity(d) {
   const w = (((d.db || {}).windows) || {})[win];
   const el = document.getElementById("activity");
-  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.w === win)));
+  document.querySelectorAll(".tabs button[data-w]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.w === win)));
   if (!w) { el.innerHTML = na("Activity", "no data"); return; }
   const logs = "log_rounds" in w;
   el.innerHTML = [
@@ -200,6 +259,134 @@ function renderSupport(d) {
   const db = d.db || {};
   document.getElementById("support").innerHTML =
     tile(fmt(db.support_7d), "Support messages") + tile(fmt(db.reports_7d), "Player reports");
+}
+
+const PH = ["play", "bury", "declare", "other"], BUDGET = {play: 3, bury: 2, declare: 3, other: 3};
+const sec = v => v === null || v === undefined ? "–" : v.toFixed(2);
+const sumN = (w, k) => PH.reduce((a, p) => a + ((w[p] || {})[k] || 0), 0);
+const STATE_COLOR = {green: "var(--good)", amber: "var(--warn)", red: "var(--bad)", idle: "var(--muted)", unknown: "var(--muted)"};
+const tdSec = (v, budget) => `<td class="${v === null || v === undefined ? "dim" : v > budget ? "bad" : ""}">${sec(v)}</td>`;
+const tdOver = v => `<td class="${v ? "warn" : "dim"}">${fmt(v || 0)}</td>`;
+const etTime = t => new Date(t * 1000).toLocaleString([], {timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"});
+
+function phaseRows(w, phases) {
+  return phases.map(p => {
+    const s = w[p] || {n: 0};
+    if (!s.n) return `<tr><td>${p}</td><td class="dim">0</td>${"<td class=dim>–</td>".repeat(5)}<td class="dim">–</td></tr>`;
+    return `<tr><td>${p}</td><td>${fmt(s.n)}</td><td>${sec(s.mean)}</td><td>${sec(s.p50)}</td>` +
+      tdSec(s.p90, BUDGET[p]) + tdSec(s.p99, BUDGET[p]) + tdSec(s.max, BUDGET[p]) + tdOver(s.over) + "</tr>";
+  }).join("");
+}
+
+function renderSpeed(d) {
+  const bs = (d.db || {}).bot_speed || {}, st = d.bot_speed_state || {state: "unknown", reason: "no data"};
+  const chip = document.getElementById("speedchip");
+  chip.innerHTML = `<span class="dot" style="background:${STATE_COLOR[st.state] || "var(--muted)"}"></span>` +
+    `<span><b>${esc(st.state)}</b> · ${esc(st.reason)}</span>`;
+  document.querySelectorAll("#speedtabs button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === speedWin)));
+  const w = (bs.windows || {})[speedWin];
+  if (!bs.available || !w) {
+    document.getElementById("speedtiles").innerHTML = na("Bot decisions", "room logs unavailable");
+    document.getElementById("speedwin").innerHTML = ""; document.getElementById("speedslow").innerHTML = "";
+    return;
+  }
+  const play = w.play || {}, over = sumN(w, "over");
+  document.getElementById("speedtiles").innerHTML = [
+    tile(fmt(sumN(w, "n")), "Bot decisions", `${fmt(play.n || 0)} play · ${fmt((w.bury || {}).n || 0)} bury · ${fmt((w.declare || {}).n || 0)} declare`),
+    tile(play.n ? sec(play.mean) + " s" : "–", "Play mean", play.n ? `p50 ${sec(play.p50)} · p90 ${sec(play.p90)} s` : ""),
+    tile(play.n ? sec(play.p99) + " s" : "–", "Play p99", play.n ? `max ${sec(play.max)} s` : ""),
+    tile(fmt(over), "Over budget", `${fmt(w.rooms)} rooms · up to ${fmt(w.rooms_max)} at once`),
+  ].join("");
+  document.getElementById("speedwin").innerHTML = `<table><tr><th>phase</th><th>n</th><th>mean</th><th>p50</th><th>p90</th><th>p99</th><th>max</th><th>over</th></tr>` +
+    phaseRows(w, ["play", "bury", "declare"]) + "</table>";
+  const slow = (bs.slow || []).slice().reverse().slice(0, 10);
+  document.getElementById("speedslow").innerHTML = `<div class="cap">Decisions over budget, last 24 h${slow.length ? ` (newest ${slow.length} of ${fmt(sumN((bs.windows || {})["24h"] || {}, "over"))})` : ": none"}</div>` +
+    (slow.length ? `<table><tr><th>time (ET)</th><th>phase</th><th>seconds</th><th>rooms at the time</th></tr>` +
+      slow.map(r => `<tr><td>${etTime(r.t)}</td><td>${PH[r.phase] || "?"}</td><td class="bad">${sec(r.s)}</td><td>${fmt(r.rooms)}</td></tr>`).join("") + "</table>" : "");
+}
+
+function renderReports(d) {
+  const r = (d.db || {}).reports, st = d.reports_state || {state: "unknown", reason: "no data"};
+  document.getElementById("repchip").innerHTML = `<span class="dot" style="background:${STATE_COLOR[st.state] || "var(--muted)"}"></span>` +
+    `<span><b>${esc(st.state)}</b> · ${esc(st.reason)}</span>`;
+  if (!r || !r.available) {
+    document.getElementById("reptiles").innerHTML = na("Reports", "unavailable");
+    document.getElementById("replist").innerHTML = ""; return;
+  }
+  const now = Date.now() / 1000;
+  document.getElementById("reptiles").innerHTML = [
+    tile(fmt(r.n_24h), "Reports, last 24 h"), tile(fmt(r.n_7d), "Reports, last 7 d"),
+    tile(fmt(r.total), "Reports, all time", r.file ? "" : "no report file yet"),
+  ].join("");
+  const older = (r.older || []).map(x => Object.assign({older: true}, x));
+  const rows = older.concat((r.latest || []).slice().reverse());
+  const cap = (r.latest || []).length ? `Latest ${(r.latest || []).length} reports` : "Latest reports: none filed";
+  document.getElementById("replist").innerHTML = `<div class="cap">${older.length ? `${older.length} older unhandled, then ` : ""}${cap}</div>` +
+    (rows.length ? `<table><tr><th>time (ET)</th><th>age</th><th>room</th><th>round</th><th>reason</th><th>reported</th><th>by</th><th></th></tr>` +
+      rows.map(x => {
+        const age = now - x.t, cls = x.handled || age > 7 * 86400 ? "dim" : age > 86400 ? "bad" : age > 43200 ? "warn" : "";
+        const btn = !x.id ? "" : `<button class="mark" data-id="${esc(x.id)}" data-on="${x.handled ? "0" : "1"}"` +
+          (LOCAL ? "" : ` disabled title="Works on this Mac only (127.0.0.1)"`) + `>${x.handled ? "Handled ✓" : "Mark handled"}</button>`;
+        return `<tr${x.handled ? ' class="handled"' : ""}><td>${etTime(x.t)}</td><td class="${cls}">${ago(age)}</td>` +
+          (x.older ? `<td colspan="5" class="dim">older than the latest ${(r.latest || []).length}; details by time in the report file</td>` :
+          `<td>${fmt(x.room)}</td><td>${fmt(x.round)}</td><td>${fmt(x.reason)}</td><td>${fmt(x.reported)}</td><td>${fmt(x.reporter)}</td>`) +
+          `<td>${btn}</td></tr>`;
+      }).join("") + "</table>" : "");
+}
+
+const LOCAL = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
+document.getElementById("replist").addEventListener("click", async ev => {
+  const b = ev.target.closest("button.mark");
+  if (!b || b.disabled) return;
+  b.disabled = true;
+  try {
+    const r = await fetch(`api/reports/handled?t=${encodeURIComponent(token)}`, {
+      method: "POST", headers: {"Content-Type": "application/json"}, cache: "no-store",
+      body: JSON.stringify({id: b.dataset.id, handled: b.dataset.on === "1"}),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    latest = await getJSON("api/latest");
+    renderReports(latest);
+  } catch (e) {
+    b.disabled = false;
+    document.getElementById("errors").textContent = "Could not mark the report: " + e.message;
+  }
+});
+
+function renderSpeedHistory(store, now) {
+  const hours = store.hours || {}, t0 = Math.floor((now - 48 * 3600) / 3600) * 3600;
+  const vals = [];
+  for (let h = t0; h <= now; h += 3600) vals.push(hours[String(h)] || null);
+  const svg = document.getElementById("speedspark"), W = 300, H = 84, n = vals.length;
+  const max = Math.max(3.5, ...vals.map(v => (v && v.p99) || 0)), bw = W / n;
+  const Y = v => H - 2 - (v / max) * (H - 6);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = vals.map((v, i) => {
+    const x = i * bw;
+    const bar = v && v.p99 !== null && v.p99 !== undefined
+      ? `<rect class="bar ${v.p99 > 3 ? "bad" : v.over ? "warn" : ""}" x="${x + 0.5}" y="${Y(v.p99)}" width="${Math.max(0.5, bw - 1)}" height="${Math.max(1, H - 2 - Y(v.p99))}" rx="1"></rect>`
+      : `<rect class="bar" x="${x + 0.5}" y="${H - 1}" width="${Math.max(0.5, bw - 1)}" height="1" opacity="0.3"></rect>`;
+    return `<g data-i="${i}"><rect class="hit" x="${x}" y="0" width="${bw}" height="${H}"></rect>${bar}</g>`;
+  }).join("") + `<line class="budget" x1="0" x2="${W}" y1="${Y(3)}" y2="${Y(3)}" vector-effect="non-scaling-stroke"></line>`;
+  svg.querySelectorAll("g").forEach(g => {
+    const i = +g.dataset.i, v = vals[i], t = t0 + i * 3600;
+    const when = new Date(t * 1000).toLocaleString([], {timeZone: "America/New_York", weekday: "short", hour: "numeric"});
+    g.addEventListener("pointermove", ev => showTip(ev, v
+      ? `${when} ET: ${v.n} decisions, play p50 ${sec(v.p50)} p90 ${sec(v.p90)} p99 ${sec(v.p99)} max ${sec(v.max)} s, ${v.over} over, up to ${v.rooms_max} rooms`
+      : `${when} ET: no bot decisions`));
+    g.addEventListener("pointerleave", hideTip);
+  });
+  const days = Object.keys(store.days || {}).sort().reverse();
+  document.getElementById("speeddays").innerHTML = `<div class="cap">Per day (ET), last 21 days with bot decisions; play columns in seconds</div>` +
+    `<table><tr><th>day</th><th>n</th><th>play mean</th><th>p50</th><th>p90</th><th>p99</th><th>max</th><th>over</th><th>bury mean</th><th>declare mean</th><th>rooms</th><th>at once</th></tr>` +
+    days.slice(0, 21).map(k => {
+      const w = store.days[k], p = w.play || {}, n = sumN(w, "n");
+      if (!n) return "";
+      const label = new Date(k + "T12:00:00").toLocaleDateString([], {weekday: "short", month: "short", day: "numeric"});
+      return `<tr><td>${label}</td><td>${fmt(n)}</td><td>${sec(p.mean)}</td><td>${sec(p.p50)}</td>` +
+        tdSec(p.p90, 3) + tdSec(p.p99, 3) + tdSec(p.max, 3) + tdOver(sumN(w, "over")) +
+        `<td>${sec((w.bury || {}).mean)}</td><td>${sec((w.declare || {}).mean)}</td><td>${fmt(w.rooms)}</td><td>${fmt(w.rooms_max)}</td></tr>`;
+    }).join("") + "</table>";
 }
 
 function renderStatus(d) {
@@ -268,7 +455,7 @@ async function refresh() {
   try {
     latest = await getJSON("api/latest");
     renderStatus(latest); renderLive(latest); renderAccounts(latest);
-    renderActivity(latest); renderReturns(latest); renderSupport(latest);
+    renderActivity(latest); renderReturns(latest); renderSupport(latest); renderReports(latest); renderSpeed(latest);
   } catch (e) {
     document.getElementById("errors").textContent = "Could not load: " + e.message;
   }
@@ -277,10 +464,17 @@ async function refresh() {
     const pts = hist.filter(h => h.t >= now - 86400 && typeof h.rooms === "number").map(h => ({t: h.t, v: h.rooms}));
     line(document.getElementById("roomspark"), pts, now - 86400, now);
   } catch (e) {}
+  try {
+    speedStore = await getJSON("api/botspeed");
+    renderSpeedHistory(speedStore, Date.now() / 1000);
+  } catch (e) {}
 }
 
-document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+document.querySelectorAll(".tabs button[data-w]").forEach(b => b.addEventListener("click", () => {
   win = b.dataset.w; localSet("win", win); if (latest) renderActivity(latest);
+}));
+document.querySelectorAll("#speedtabs button").forEach(b => b.addEventListener("click", () => {
+  speedWin = b.dataset.s; localSet("speedwin", speedWin); if (latest) renderSpeed(latest);
 }));
 refresh();
 setInterval(refresh, 60000);

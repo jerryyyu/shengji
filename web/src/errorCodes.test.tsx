@@ -261,7 +261,7 @@ describe("error routes, as a player sees them", () => {
       expect(joinPanel()).toBeNull();
     });
 
-  it.each(["room_full", "seat_changed", "retired", "rate_limited", "report_guest", undefined])(
+  it.each(["room_full", "seat_changed", "retired", "rate_limited", "report_bot", undefined])(
     "%s: a toast in the server's words", async (code) => {
       await atSharedTable();
       say(err(code, "Server words."));

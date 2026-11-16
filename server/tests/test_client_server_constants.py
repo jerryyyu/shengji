@@ -226,7 +226,7 @@ def client_error_routes() -> set[str]:
 def test_the_error_code_scan_finds_each_way_a_code_is_sent():
     found = server_error_codes()
     assert {"seat_taken", "start_failed", "table_full"} <= found["matchmaking.py"]
-    assert {"report_guest", "report_rate_limited"} <= found["reports.py"]
+    assert {"report_bot", "report_rate_limited"} <= found["reports.py"]
     # a literal on the frame's own line, one on the next line, and INVITE_REFUSALS only
     assert {"retired", "ranked_queue_only", "table_left"} <= found["server.py"]
 

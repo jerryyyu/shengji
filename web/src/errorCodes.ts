@@ -78,7 +78,6 @@ const OTHER_ROUTES = {
   report_bad_seat: { says: "toast" },
   report_bad_reason: { says: "toast" },
   report_bot: { says: "toast" },
-  report_guest: { says: "toast" },
   report_rate_limited: { says: "toast" },
   report_not_stored: { says: "toast" },
 } as const satisfies Record<string, ErrorRoute>;

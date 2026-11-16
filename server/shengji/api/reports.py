@@ -2,13 +2,15 @@
 
 A report appends one JSON line to ``player_reports.jsonl`` in
 ``accounts.data_dir()``, beside the support messages: the room, the round,
-both seats' names and accounts, the reason and the room's last
-``CHAT_LINES`` chat lines as the reporter saw them. Nothing stored is sent
-back; the reporter gets a confirmation or a refusal with a short code.
+both seats' table names, the account of each signed-in side, the reason and
+the room's last ``CHAT_LINES`` chat lines as the reporter saw them. Nothing
+stored is sent back; the reporter gets a confirmation or a refusal with a
+short code.
 
-Only a signed-in player may report, and only another seat held by a
-signed-in player: a bot says nothing of its own and a guest has no account
-to act on. Reports are limited per reporting account.
+Only a signed-in player may report, so every report spends one account's
+budget of ``RATE_LIMIT`` an hour. The target is any other seat held by a
+person: a guest is recorded by seat and table name with ``"guest": true``
+and no ``account_id``, since a guest has none; a bot says nothing of its own.
 """
 
 from __future__ import annotations
@@ -63,8 +65,6 @@ def build(room: Any, reporter_seat: int, reporter_account: int | None, msg: dict
     seat = room.seats[target]
     if seat.is_bot:
         raise ReportRefused("report_bot", "Bots cannot be reported.")
-    if seat.user_id is None:
-        raise ReportRefused("report_guest", "Only signed-in players can be reported.")
     if not LIMITER.allow(str(reporter_account), now):
         raise ReportRefused("report_rate_limited", "Too many reports. Try again later.")
     game = getattr(room, "game", None)
@@ -76,7 +76,8 @@ def build(room: Any, reporter_seat: int, reporter_account: int | None, msg: dict
         "reason": reason,
         "reporter": {"seat": reporter_seat, "name": room.seats[reporter_seat].name,
                      "account_id": int(reporter_account)},
-        "reported": {"seat": target, "name": seat.name, "account_id": int(seat.user_id)},
+        "reported": ({"seat": target, "name": seat.name, "guest": True} if seat.user_id is None
+                     else {"seat": target, "name": seat.name, "account_id": int(seat.user_id)}),
         "chat": [{"seat": line.get("seat"), "name": line.get("name"), "text": line.get("text"),
                   "t": line.get("t")}
                  for line in list(room.chat)[-CHAT_LINES:]],
@@ -92,10 +93,12 @@ def _account_name(user_id: int) -> str | None:
 
 
 def store(record: dict) -> None:
-    """Append ``record`` with both accounts' current names; blocking, so the
-    socket loop runs it off the event loop. Raises ``OSError`` if not stored."""
+    """Append ``record`` with each account's current name (a guest side has
+    none); blocking, so the socket loop runs it off the event loop. Raises
+    ``OSError`` if not stored."""
     for side in ("reporter", "reported"):
-        record[side]["account_name"] = _account_name(record[side]["account_id"])
+        if "account_id" in record[side]:
+            record[side]["account_name"] = _account_name(record[side]["account_id"])
     line = (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
     path = reports_path()
     with _write_lock:

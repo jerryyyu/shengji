@@ -1,8 +1,9 @@
 """Player reports (``report_player``, ``shengji.api.reports``).
 
 A report is stored as one JSON line with the room, round, both seats and the
-last chat lines; a guest reporter, a bot or guest target, a bad seat or
-reason, and a reporter over the hourly limit are refused and store nothing.
+last chat lines; a guest target is stored by seat and table name with no
+account id. A guest reporter, a bot target, a bad seat or reason, and a
+reporter over the hourly limit are refused and store nothing.
 The socket test drives the real message through ``/ws``.
 """
 from __future__ import annotations
@@ -70,7 +71,6 @@ def test_a_report_stores_room_round_both_seats_and_the_last_twenty_lines(reports
 @pytest.mark.parametrize("reporter_account, msg, code", [
     (None, {"seat": 2, "reason": "abuse"}, "report_sign_in"),
     (11, {"seat": 1, "reason": "abuse"}, "report_bot"),
-    (11, {"seat": 3, "reason": "abuse"}, "report_guest"),
     (11, {"seat": 0, "reason": "abuse"}, "report_bad_seat"),
     (11, {"seat": 4, "reason": "abuse"}, "report_bad_seat"),
     (11, {"seat": True, "reason": "abuse"}, "report_bad_seat"),
@@ -85,6 +85,31 @@ def test_refused_reports_store_nothing_and_spend_no_budget(reports_on, reporter_
     assert _stored(reports_on) == []
     for _ in range(5):
         reports_on.build(_room(), 0, 11, {"seat": 2, "reason": "spam"})
+
+
+def test_a_signed_in_player_can_report_a_guest_by_table_name(reports_on):
+    from shengji.api import accounts
+
+    reporter = accounts.STORE.upsert_user({"sub": "g-1", "email": "a@example.com", "name": "Ada Lovelace"})
+    room = _room()
+    room.seats[0].user_id = reporter["id"]
+    reports_on.store(reports_on.build(room, 0, reporter["id"], {"seat": 3, "reason": "spam"}, now=7.0))
+    [rec] = _stored(reports_on)
+    assert rec["reported"] == {"seat": 3, "name": "Guest", "guest": True}
+    assert rec["reporter"]["account_id"] == reporter["id"]
+    assert rec["room"] == "ABCD" and rec["round"] == 3 and rec["reason"] == "spam"
+    assert len(rec["chat"]) == reports_on.CHAT_LINES
+
+
+def test_reports_on_guests_spend_the_same_account_budget(reports_on):
+    room = _room()
+    for i in range(3):
+        reports_on.build(room, 0, 11, {"seat": 3, "reason": "spam"}, now=1000.0 + i)
+    for i in range(2):
+        reports_on.build(room, 0, 11, {"seat": 2, "reason": "spam"}, now=1003.0 + i)
+    with pytest.raises(reports_on.ReportRefused) as refused:
+        reports_on.build(room, 0, 11, {"seat": 3, "reason": "spam"}, now=1010.0)
+    assert refused.value.code == "report_rate_limited"
 
 
 def test_reports_are_limited_per_account(reports_on):
@@ -133,7 +158,7 @@ def test_report_over_the_socket_is_stored_and_confirmed_to_the_reporter(client, 
     assert code in srv.rooms
 
 
-def test_a_guest_cannot_report_over_the_socket(client, reports_on):
+def test_a_guest_cannot_report_but_can_be_reported_over_the_socket(client, reports_on):
     from shengji.api import accounts
 
     _, bea_cookie = _cookie(accounts, "g-b", "Bea Smith")
@@ -145,7 +170,10 @@ def test_a_guest_cannot_report_over_the_socket(client, reports_on):
         _drain(b, "state")
         a.send_json({"type": "report_player", "seat": 2, "reason": "abuse"})
         assert _drain(a, "error")["code"] == "report_sign_in"
-        # and a signed-in player cannot report a guest
+        # a signed-in player can report the guest, by table name
         b.send_json({"type": "report_player", "seat": 0, "reason": "abuse"})
-        assert _drain(b, "error")["code"] == "report_guest"
-    assert _stored(reports_on) == []
+        ack = _drain(b, "report_received")
+        assert ack["seat"] == 0 and "Guest" in ack["message"]
+    [rec] = _stored(reports_on)
+    assert rec["room"] == code
+    assert rec["reported"] == {"seat": 0, "name": "Guest", "guest": True}

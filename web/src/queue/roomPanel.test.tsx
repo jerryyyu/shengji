@@ -413,6 +413,19 @@ describe("every Play table has a code", () => {
     expect(window.location.search).toBe("");
   });
 
+  it("the Join panel is a kind of the one panel: a casual table's tag, and Enter presses Join", async () => {
+    window.history.replaceState(null, "", "/?code=4N5Z");
+    await renderApp();
+    await settle();
+    say(tableSeats());
+    await settle();
+    const p = q(".tp-join-code")!;
+    expect(p.querySelector(".tp-tag")?.textContent).toBe("Casual");
+    expect(sentOf("table_join")).toHaveLength(0);
+    act(() => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(lastSent()).toEqual({ type: "table_join", code: "4N5Z", name: expect.any(String) });
+  });
+
   it("a table code typed in the code box opens its seats, and Join joins that table", async () => {
     await renderApp();
     typeCode("4n5z");

@@ -87,7 +87,11 @@ Failures:
       or a compiled selection and is not listed in the engine-mode exclusions;
   (f) a stale engine-mode exclusion (the file is gone, no longer imports the
       boundary, is selection-excluded, or is now selected in both modes);
-  (g) a test module that cannot be parsed for its imports.
+  (g) a test module that cannot be parsed for its imports;
+  (h) a step ``if:`` that compares a matrix key with a value the job's matrix
+      does not list (``matrix.k == 'v'`` or ``startsWith(matrix.k, 'v')``,
+      outside any ``||``): that step never runs, yet its tests would count as
+      selected, so a shard dropped from the matrix list fails here.
 """
 
 from __future__ import annotations
@@ -131,6 +135,10 @@ MATRIX_REF = re.compile(r"\$\{\{\s*matrix\.([A-Za-z0-9_-]+)\s*\}\}")
 KEY_LINE = re.compile(r"^(\s*)(?:-\s+)?([A-Za-z0-9_-]+):(?:\s+(.*?))?\s*$")
 BLOCK_INDICATOR = re.compile(r"^([|>])[+-]?[0-9]?\s*(?:#.*)?$")
 GLOB_CHARS = set("*?[")
+MATRIX_EQUALS = re.compile(
+    r"matrix\.([A-Za-z0-9_-]+)\s*==\s*(?:'([^']*)'|\"([^\"]*)\"|([A-Za-z0-9_.-]+))"
+)
+MATRIX_STARTS = re.compile(r"startsWith\(\s*matrix\.([A-Za-z0-9_-]+)\s*,\s*'([^']*)'\s*\)")
 
 
 def _indent(line: str) -> int:
@@ -333,6 +341,29 @@ def run_blocks(workflow_text: str) -> list[tuple[str, str]]:
                     return MATRIX_REF.sub(lambda r: values.get(r.group(1), r.group(0)), raw)
 
                 out.append((sub(text), _engine_state(None if env_value is None else sub(env_value))))
+    return out
+
+
+def unreachable_matrix_steps(workflow_text: str) -> list[str]:
+    """``if:`` values that compare a matrix key with a value the job's matrix never takes."""
+    out: list[str] = []
+    for job in _job_blocks(workflow_text.splitlines()):
+        matrix = _matrix_values(job)
+        name = job[0].strip().rstrip(":")
+        for line in job:
+            m = KEY_LINE.match(line)
+            if not m or m.group(2) != "if" or line.lstrip().startswith("#"):
+                continue
+            condition = _strip_yaml_comment(m.group(3) or "")
+            if "||" in condition:
+                continue
+            for key, *literals in MATRIX_EQUALS.findall(condition):
+                value = next((v for v in literals if v), "")
+                if value not in matrix.get(key, []):
+                    out.append(f"{name}: if: {condition}  (matrix.{key} never equals {value!r})")
+            for key, prefix in MATRIX_STARTS.findall(condition):
+                if not any(v.startswith(prefix) for v in matrix.get(key, [])):
+                    out.append(f"{name}: if: {condition}  (no matrix.{key} value starts with {prefix!r})")
     return out
 
 
@@ -783,7 +814,15 @@ def run(root: Path, *, print_unselected: bool = False, print_engine_modes: bool 
     engine_duplicates = sorted({e for e in engine_exclusions if engine_exclusions.count(e) > 1})
     engine_ok = not (engine_missing or engine_stale or engine_duplicates or broken)
 
-    ok = engine_ok and not (missing or stale_selected or stale_gone or duplicates or dangling or unparsed)
+    wf_dir = root / ".github" / "workflows"
+    unreachable = [
+        f"{path.relative_to(root).as_posix()}: {entry}"
+        for path in sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")])
+        for entry in unreachable_matrix_steps(path.read_text(encoding="utf-8"))
+    ]
+    ok = engine_ok and not (
+        missing or stale_selected or stale_gone or duplicates or dangling or unparsed or unreachable
+    )
     if missing:
         print(f"FAIL: {len(missing)} test file(s) selected by no CI job and not excluded:")
         for path in missing:
@@ -809,6 +848,10 @@ def run(root: Path, *, print_unselected: bool = False, print_engine_modes: bool 
     if unparsed:
         print(f"FAIL: {len(unparsed)} pytest command line(s) could not be tokenized:")
         for ref in unparsed:
+            print(f"  {ref}")
+    if unreachable:
+        print(f"FAIL: {len(unreachable)} step condition(s) name a matrix value the job never takes:")
+        for ref in unreachable:
             print(f"  {ref}")
     if engine_missing:
         print(

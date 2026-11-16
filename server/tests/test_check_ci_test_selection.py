@@ -613,3 +613,58 @@ def test_script_inherits_and_overrides_engine_mode(tmp_path):
     assert modes_of(root, "test_b.py") == {"pure", "compiled"}
     assert modes_of(root, "test_c.py") == {"pure", "compiled"}
     assert check.run(root) == 0
+
+
+SHARDED = """jobs:
+  server:
+    strategy:
+      matrix:
+        shard: [pure-1, pure-2, compiled-1]
+    steps:
+      - name: Part 1
+        if: matrix.shard == 'pure-1'
+        run: uv run python scripts/test_checkout.py --engine pure -- -q tests/test_a.py
+      - name: Part 2
+        if: matrix.shard == 'pure-2'
+        run: uv run python scripts/test_checkout.py --engine pure -- -q tests/test_b.py
+      - name: Fetch
+        if: startsWith(matrix.shard, 'compiled')
+        run: echo fetch
+"""
+
+
+def test_every_shard_step_names_a_matrix_value(tmp_path):
+    root = make_tree(tmp_path, workflow=SHARDED, tests=["test_a.py", "test_b.py"])
+    assert check.run(root) == 0
+
+
+def test_a_shard_dropped_from_the_matrix_fails(tmp_path, capsys):
+    workflow = SHARDED.replace("[pure-1, pure-2, compiled-1]", "[pure-1, compiled-1]")
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_a.py", "test_b.py"])
+    assert check.run(root) == 1
+    assert "matrix.shard never equals 'pure-2'" in capsys.readouterr().out
+
+
+def test_a_prefix_no_shard_takes_fails(tmp_path, capsys):
+    workflow = SHARDED.replace("compiled-1]", "native-1]")
+    root = make_tree(tmp_path, workflow=workflow, tests=["test_a.py", "test_b.py"])
+    assert check.run(root) == 1
+    assert "no matrix.shard value starts with 'compiled'" in capsys.readouterr().out
+
+
+def test_numeric_shards_and_alternatives(tmp_path):
+    steps = check.unreachable_matrix_steps("""jobs:
+  search:
+    strategy:
+      matrix:
+        engine: [pure, compiled]
+        shard: [1, 2]
+    steps:
+      - if: matrix.shard == 2
+        run: echo two
+      - if: matrix.shard == 3
+        run: echo three
+      - if: matrix.shard == 3 || matrix.engine == 'pure'
+        run: echo either
+""")
+    assert steps == ["search: if: matrix.shard == 3  (matrix.shard never equals '3')"]

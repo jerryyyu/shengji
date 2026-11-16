@@ -322,8 +322,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.server_full == 'true'
     runs-on: ubuntu-latest
-    # Four shards side by side, balanced by measured per-file time: `pure-1`
-    # and `pure-2` each run half of the core suite (pure-2 also the Sol
+    # Five shards side by side, balanced by measured per-file time: `pure-1`
+    # to `pure-3` each run a third of the core suite (pure-3 also the Sol
     # benchmark contracts); `compiled-1` runs compiled parity and the release
     # manifests; `compiled-2` loads the production package on this tree. Both
     # compiled shards fetch every pinned package. Each module of the core
@@ -333,7 +333,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [pure-1, pure-2, compiled-1, compiled-2]
+        shard: [pure-1, pure-2, pure-3, compiled-1, compiled-2]
     defaults:
       run:
         working-directory: server
@@ -348,85 +348,94 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      - name: Test core server behavior in pure mode (part 1 of 2)
+      - name: Test core server behavior in pure mode (part 1 of 3)
         if: matrix.shard == 'pure-1'
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout_reexec.py
           tests/test_release_ladder.py
-          tests/test_panel_root_import.py
           tests/test_prepared_panel_runner.py
-          tests/test_panel_memory_reader.py
-          tests/test_launch_sol_recovery.py
-          tests/test_sol_recovery_memory_wait.py
-          tests/test_sealed_readout_wrapper.py
-          tests/test_engine.py
-          tests/test_heuristic_lowest.py
-          tests/test_heuristic_suit_groups.py
-          tests/test_offline_fixture_gen.py
-          tests/test_offline_bot.py
-          tests/test_banker_sampler.py
-          tests/test_bot_scheduler.py
-          tests/test_server_ws.py
-          tests/test_health_activity.py
-          tests/test_accounts.py
-          tests/test_saved_games_link.py
+          tests/test_sol_release_gate.py
+          tests/test_engine_parity.py
+          tests/test_pybot_inputs.py
+          tests/test_saved_games_api.py
           tests/test_saved_games_resume.py
           tests/test_support.py
           tests/test_player_reports.py
-          tests/test_matchmaking.py
-          tests/test_table_router.py
-          tests/test_table_frame.py
-          tests/test_telemetry.py
-          tests/test_human_pointer_attribution.py
+          tests/test_matchmaking_golden.py
+          tests/test_web_cache_headers.py
           tests/test_oracle_screen.py
           tests/test_report_world_reuse.py
           tests/test_served_config.py
+          tests/test_check_ci_test_selection.py
           tests/test_check_flow_map.py
           tests/test_check_doc_claims.py
           tests/test_check_lane_scripts.py
-          tests/test_mistake_dashboard.py
-          tests/test_safe_rm.py
-          tests/test_pr_ship.py
-          tests/test_ops_dashboard.py
-          tests/test_fast_parity.py
-      - name: Test core server behavior in pure mode (part 2 of 2)
+          tests/test_affected_tests.py
+          tests/test_pv_exact_follow.py
+      - name: Test core server behavior in pure mode (part 2 of 3)
         if: matrix.shard == 'pure-2'
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout.py
-          tests/test_production_package_gate.py
           tests/test_decision_diagram.py
-          tests/test_search_models.py
           tests/test_prepare_llm_panel_roots.py
+          tests/test_panel_root_import.py
+          tests/test_launch_sol_recovery.py
+          tests/test_sol_recovery_memory_wait.py
+          tests/test_sealed_panel_reader.py
+          tests/test_sealed_readout_wrapper.py
+          tests/test_offline_bot.py
+          tests/test_bot_scheduler.py
+          tests/test_server_ws.py
+          tests/test_health_activity.py
+          tests/test_accounts.py
+          tests/test_apple_signin.py
+          tests/test_saved_games_link.py
+          tests/test_matchmaking.py
+          tests/test_table_frame.py
+          tests/test_harvest_trajectory.py
+          tests/test_human_pointer_attribution.py
+          tests/test_harvest_ballot_capture.py
+          tests/test_bury_fly_config.py
+          tests/test_ci_review_ledger_step.py
+          tests/test_safe_rm.py
+          tests/test_pr_ship.py
+          tests/test_client_server_constants.py
+          tests/test_ops_dashboard.py
+          tests/test_seed_windows_dir.py
+          tests/test_fast_parity.py
+      - name: Test core server behavior in pure mode (part 3 of 3)
+        if: matrix.shard == 'pure-3'
+        run: >-
+          uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
+          tests/test_production_package_gate.py
+          tests/test_search_models.py
           tests/test_panel_forfeit_alignment.py
+          tests/test_panel_memory_reader.py
           tests/test_production_llm_panel_readout.py
           tests/test_production_llm_panel.py
           tests/test_launch_production_llm_panel.py
           tests/test_sol_linux_memory_guard.py
-          tests/test_sol_release_gate.py
-          tests/test_sealed_panel_reader.py
           tests/test_stage1_seal_plan.py
+          tests/test_engine.py
+          tests/test_heuristic_lowest.py
+          tests/test_heuristic_suit_groups.py
           tests/test_prepared_play_error_hook.py
-          tests/test_engine_parity.py
+          tests/test_offline_fixture_gen.py
           tests/test_offline_server_fixture_gen.py
-          tests/test_pybot_inputs.py
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_memory.py
-          tests/test_apple_signin.py
-          tests/test_saved_games_api.py
+          tests/test_banker_sampler.py
           tests/test_ratings.py
-          tests/test_matchmaking_golden.py
-          tests/test_web_cache_headers.py
+          tests/test_table_router.py
+          tests/test_telemetry.py
           tests/test_deploy_web_only.py
           tests/test_hybrid_duel_quality.py
           tests/test_room_bot_seed.py
           tests/test_structured_bury.py
-          tests/test_harvest_trajectory.py
-          tests/test_harvest_ballot_capture.py
           tests/test_mc_benchmark_normalization.py
-          tests/test_bury_fly_config.py
           tests/test_release46_fly_config.py
           tests/test_release48_fly_config.py
           tests/test_release49_fly_config.py
@@ -435,21 +444,16 @@ jobs:
           tests/test_release52_fly_config.py
           tests/test_expert_label_producer.py
           tests/test_expert_label_check.py
-          tests/test_check_ci_test_selection.py
           tests/test_check_comment_provenance.py
           tests/test_lane_lib.py
-          tests/test_ci_review_ledger_step.py
           tests/test_ci_path_classifier.py
           tests/test_receipt_summary.py
-          tests/test_affected_tests.py
-          tests/test_client_server_constants.py
-          tests/test_seed_windows_dir.py
+          tests/test_mistake_dashboard.py
           tests/test_paired_window_stats.py
           tests/test_comparator_bank.py
-          tests/test_pv_exact_follow.py
       # New modules in these families are selected without editing this list.
       - name: Test Sol benchmark contracts in pure mode
-        if: matrix.shard == 'pure-2'
+        if: matrix.shard == 'pure-3'
         run: >-
           uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_benchmark_*.py

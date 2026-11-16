@@ -1,6 +1,10 @@
 /** Below this visible height (a phone held sideways with its keyboard up)
  *  the panel fills the visible area instead of floating above the launcher. */
 export const SHORT_VISIBLE_PX = 300;
+/** Below this visible height (mobile Safari sideways: its toolbar and its
+ *  keyboard leave about 45 pt) only the field row fits: it sits on the
+ *  keyboard, and the header, the log and the quick phrases give way. */
+export const TIGHT_VISIBLE_PX = 140;
 /** More of the page's bottom hidden than this is a keyboard, not a toolbar. */
 export const KEYBOARD_COVER_PX = 80;
 

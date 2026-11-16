@@ -26,16 +26,6 @@
   },
   {
     "suite": "client",
-    "match": "chat-phone-land-safari-safari: (panel, field, Send and Close above the keyboard|Send sends)",
-    "why": "QA1-2: Mobile Safari sideways: the chat field has no room between the toolbar and the keyboard"
-  },
-  {
-    "suite": "client",
-    "match": "chat-phone-land-safari-short-safari: Send sends",
-    "why": "QA1-2: in a short visible area the quick phrases come back as Send is tapped and the tap misses"
-  },
-  {
-    "suite": "client",
     "match": "chat-phone-port-safari: panel, field, Send and Close above the keyboard",
     "why": "QA1-5: the turned table's chat panel stays behind Mobile Safari's keyboard"
   },

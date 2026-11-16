@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { conn } from "../ws";
 import { usePresence } from "../usePresence";
 import { useMutes } from "../chatMute";
-import { KEYBOARD_COVER_PX, SHORT_VISIBLE_PX, visibleArea, type VisibleArea } from "../visibleArea";
+import { KEYBOARD_COVER_PX, SHORT_VISIBLE_PX, TIGHT_VISIBLE_PX, visibleArea, type VisibleArea } from "../visibleArea";
 import "./ChatPanel.css";
 
 /** The chat sheet's quick phrases, above the field: a tap sends one as an
@@ -103,7 +103,9 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) send();
           }}
         />
-        <button className="btn" onClick={send} disabled={!draft.trim()}>
+        {/* Send keeps the field's focus, so the keyboard stays up and the
+            row does not move between the press and the click. */}
+        <button className="btn" onMouseDown={(e) => e.preventDefault()} onClick={send} disabled={!draft.trim()}>
           Send
         </button>
       </div>
@@ -149,20 +151,23 @@ export default function ChatPanel({ messages, you, open, onClose, onSend }: Chat
   const area = useVisibleArea(open);
   if (!presence.mounted) return null;
   const short = area !== null && (area.height < SHORT_VISIBLE_PX || area.covered > KEYBOARD_COVER_PX);
+  const tight = short && area.height < TIGHT_VISIBLE_PX;
   const style = area && ({
     "--chat-vv-top": `${area.top}px`,
     "--chat-vv-h": `${area.height}px`,
     "--chat-kb": `${area.covered}px`,
   } as CSSProperties);
   return (
-    <div className={`chat-panel${short ? " chat-short" : ""}${presence.className ? ` ${presence.className}` : ""}`}
+    <div className={`chat-panel${short ? " chat-short" : ""}${tight ? " chat-tight" : ""}${presence.className ? ` ${presence.className}` : ""}`}
          style={style || undefined} role="region" aria-label="Chat" aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
       if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
       event.stopPropagation();
     }}>
       <div className="chat-head">
         <span>Chat</span>
-        <button className="chat-close" onClick={onClose} aria-label="Close chat">
+        {/* pressing × leaves the field's focus alone: a blur would bring the
+            quick phrases back and move × from under the finger */}
+        <button className="chat-close" onMouseDown={(e) => e.preventDefault()} onClick={onClose} aria-label="Close chat">
           ×
         </button>
       </div>

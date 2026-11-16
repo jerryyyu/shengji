@@ -1161,9 +1161,12 @@ async def broadcast(room: Room) -> None:
             else:
                 enqueue(seat, room_json(room, i))
     if room.game and room.round:
-        # a newcomer waiting for the handover watches the seat it takes
+        # A newcomer waiting for the handover watches the seat it takes,
+        # but holds none of its hidden cards until the seat is theirs: a
+        # join abandoned before the handover must not have shown the hand.
         for i, pj in list(room.pending_joins.items()):
-            pj.conn.push({**state_for(room, i), "joining_you": True})
+            pj.conn.push({**state_for(room, i), "joining_you": True,
+                          "hand": [], "declare_options": []})
 
 
 # ----------------------------------------------------------------- bot pump
@@ -2499,12 +2502,27 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
         by_name = False
         if reclaim is None:
             key = name.strip().casefold()
-            reclaim = next(
-                (s for s in target.seats
+            named = next(
+                (i for i, s in enumerate(target.seats)
                  if s is not None and not s.is_bot
                  and not s.connected
                  and s.name.strip().casefold() == key),
                 None)
+            if named is not None and _reserved(target, named):
+                # During the hold window a dropped seat is its owner's:
+                # only the seat's token (or its account) takes it back,
+                # never its name alone.
+                sd = target.seats[named]
+                if sd.user_id is None or sd.user_id != account_id():
+                    secs = _takeover_in(target, named) or 0
+                    await send(ws, {
+                        "type": "error", "code": "seat_reserved",
+                        "message": f"A player just dropped — "
+                                   f"their seat is held for "
+                                   f"{secs:.0f}s in case they "
+                                   f"come back."})
+                    return None
+            reclaim = target.seats[named] if named is not None else None
             by_name = reclaim is not None
         if (target.matched and device is not None
                 and _device_seated(target, device, reclaim)):
@@ -3138,7 +3156,10 @@ async def join_open_table(code: str, seat: int, uid: int, name: str, conn: Any) 
 def _holds_seat(room: Room, qid: int) -> bool:
     """Whether queue id ``qid`` holds a seat at the matched room, or a Join
     waiting for one."""
-    return any(sd is not None and not sd.is_bot and sd.queue_id == qid
+    account = _account_of(qid)
+    return any(sd is not None and not sd.is_bot
+               and (sd.queue_id == qid
+                    or (account is not None and sd.user_id == account))
                for sd in room.seats) or any(
         pj.uid == qid for pj in room.pending_joins.values())
 

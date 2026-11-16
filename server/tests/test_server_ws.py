@@ -693,7 +693,8 @@ def test_disconnect_takeover_and_reconnect_resets_each_absence(client):
             seat0.connected = False
             seat0.bot_announced = True          # as the watchdog would set it
             with client.websocket_connect("/ws") as b:
-                b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry"})
+                b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry",
+                             "token": seat0.token})
                 _drain(b, "state")
                 me = srv.rooms[code].seats[0]
                 assert me is seat0, "reconnect must reuse the SAME Seat object"
@@ -714,7 +715,8 @@ def test_reconnect_cancels_room_cleanup(client):
     assert room is not None, "room deleted immediately instead of after TTL"
     assert room.cleanup_task is not None
     with client.websocket_connect("/ws") as b:
-        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry"})
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry",
+                     "token": room.seats[0].token})
         _drain(b, "state")
         assert room.cleanup_task is None or room.cleanup_task.cancelled()
 
@@ -804,6 +806,7 @@ def test_dropped_seat_is_reserved_during_grace_then_claimable(client, clock):
         with ExitStack() as sockets:
             code, room, socks, peer_stacks = _four_humans(
                 client, a, sockets)
+            amy_token = room.seats[1].token
             peer_stacks[0].close()                     # amy drops
 
             # --- inside the grace window: reserved for amy ---
@@ -817,10 +820,15 @@ def test_dropped_seat_is_reserved_during_grace_then_claimable(client, clock):
                 q.send_json({"type": "table_join", "expect": "room", "code": code,
                              "name": "vulture"})
                 assert _drain(q, "error")["code"] == "seat_reserved"
-            # amy herself can still return.
+            # nor by her name alone
+            with client.websocket_connect("/ws") as q:
+                q.send_json({"type": "table_join", "expect": "room", "code": code,
+                             "name": "amy"})
+                assert _drain(q, "error")["code"] == "seat_reserved"
+            # amy herself, by her seat's token, can still return.
             with client.websocket_connect("/ws") as amy:
                 amy.send_json({"type": "table_join", "expect": "room", "code": code,
-                               "name": "amy"})
+                               "name": "amy", "token": amy_token})
                 assert _drain(amy, "state")["you"] == 1
 
             # --- after it expires: anyone may take over ---
@@ -837,13 +845,16 @@ def test_dropped_seat_is_reserved_during_grace_then_claimable(client, clock):
                 assert st["you"] == 1 and len(st["hand"]) > 0
 
 
-def test_reclaim_is_case_and_space_insensitive(client):
-    """Coming back as 'Amy ' must reclaim the seat left by 'amy'."""
+def test_reclaim_is_case_and_space_insensitive(client, clock):
+    """Coming back as 'Amy ' after the hold must reclaim the seat left by 'amy'."""
+    from shengji.api import server as srv
+
     with client.websocket_connect("/ws") as a:
         with ExitStack() as sockets:
             code, room, socks, peer_stacks = _four_humans(
                 client, a, sockets)
             peer_stacks[0].close()
+            clock["v"] += srv.TAKEOVER_AFTER + 1
             with client.websocket_connect("/ws") as back:
                 back.send_json({"type": "table_join", "expect": "room", "code": code,
                                 "name": " Amy "})
@@ -911,12 +922,12 @@ def test_resume_token_resumes_the_exact_seat(client):
                 assert st["you"] == 1
 
 
-def test_name_reentry_is_allowed_but_does_not_inherit_the_token(client):
+def test_name_reentry_is_allowed_but_does_not_inherit_the_token(client, clock):
     """The house trust model, asserted honestly rather than wished away.
 
-    Typing a dropped player's name DOES re-enter their seat — the same
-    permission the seat picker already grants deliberately, so the name path
-    is not a privilege escalation. What it must NOT do is hand over that
+    After the hold window, typing a dropped player's name DOES re-enter
+    their seat — the same permission the seat picker then grants, so the
+    name path is not a privilege escalation. What it must NOT do is hand over that
     seat's existing token, or an impersonator could later displace the real
     owner. An earlier version of this test claimed the opposite of what it
     asserted (Codex, 2026-08-04).
@@ -927,6 +938,8 @@ def test_name_reentry_is_allowed_but_does_not_inherit_the_token(client):
                 client, a, sockets)
             original = room.seats[1].token
             peer_stacks[0].close()
+            from shengji.api import server as srv
+            clock["v"] += srv.TAKEOVER_AFTER + 1
             with client.websocket_connect("/ws") as other:
                 other.send_json({"type": "table_join", "expect": "room", "code": code,
                                  "name": "AMY ", "token": "not-the-token"})
@@ -2381,7 +2394,8 @@ def test_a_human_back_in_the_grace_restores_the_normal_pace(client, monkeypatch)
     time.sleep(0.6)
     assert len(room.round.trick.plays) == 1, "a bot moved at the normal pace in an empty room"
     with client.websocket_connect("/ws") as back:
-        back.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry"})
+        back.send_json({"type": "table_join", "expect": "room", "code": code, "name": "jerry",
+                        "token": room.seats[0].token})
         _drain(back, "state")
         assert room.seats[0].connected and srv.rooms.get(code) is room
         started = time.monotonic()
@@ -2552,7 +2566,7 @@ def test_a_refused_human_play_is_logged_with_its_cards(client, monkeypatch):
         assert rec["phase"] == "play" and rec["round"] == 1
 
 
-def test_seat_presence_and_ranked_are_in_the_room_log(client):
+def test_seat_presence_and_ranked_are_in_the_room_log(client, clock):
     import json
 
     from shengji.api import server as srv
@@ -2564,6 +2578,7 @@ def test_seat_presence_and_ranked_are_in_the_room_log(client):
             b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
             _drain(b, "state")
         _wait_for(lambda: not room.seats[want].connected)
+        clock["v"] += srv.TAKEOVER_AFTER + 1        # past the hold: a name takes it back
         with client.websocket_connect("/ws") as b:
             b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
             _drain(b, "state")
@@ -2986,3 +3001,59 @@ def test_a_seat_taken_mid_game_by_code_comes_back_by_its_token_and_plays_on(clie
             _real_play(client, a, room, seat=0)
             _wait_for(lambda: _my_turn(room, 2))
             _real_play(client, c2, room, seat=2)
+
+
+def test_a_held_seat_is_not_taken_back_by_its_name_alone(client, clock):
+    """During the hold window a dropped seat (and its hand) is its owner's:
+    typing the owner's name is refused; the owner's token still resumes it,
+    and after the window the name path is the seat picker's permission."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a)
+        want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
+                         "name": "james", "seat": want})
+            _drain(b, "state")
+            token = room.seats[want].token
+        _wait_for(lambda: not room.seats[want].connected)
+        with client.websocket_connect("/ws") as x:
+            x.send_json({"type": "table_join", "expect": "room", "code": code, "name": "James "})
+            assert _drain(x, "error")["code"] == "seat_reserved"
+        assert not room.seats[want].connected and room.seats[want].token == token
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code,
+                         "name": "james", "token": token})
+            assert _drain(b, "state")["you"] == want
+            assert room.seats[want].connected and room.seats[want].token == token
+        _wait_for(lambda: not room.seats[want].connected)
+        clock["v"] += srv.TAKEOVER_AFTER + 1
+        with client.websocket_connect("/ws") as x:
+            x.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james"})
+            assert _drain(x, "state")["you"] == want
+            assert room.seats[want].token != token
+
+
+
+def test_a_ranked_table_counts_an_accounts_seat_by_the_account(client):
+    """One seat per account at a ranked table: a seat the account holds
+    counts as held whatever queue id the seat carries, so neither an
+    invite link nor an open-table confirm gives it a second hand."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a)
+        room.matched = True
+        mine = room.seats[0]
+        mine.user_id, mine.queue_id = 41, None
+        assert srv._holds_seat(room, 41)
+        assert not srv._holds_seat(room, 42)
+        assert not srv._holds_seat(room, -41)            # a guest id is not the account
+
+        class _Conn:
+            device = None
+        room.allow_joiners = True
+        out = client.portal.call(srv.join_by_invite, room, None, 41, "Again", _Conn())
+        assert out == "table_full"
+        assert sum(1 for sd in room.seats if not sd.is_bot and sd.user_id == 41) == 1

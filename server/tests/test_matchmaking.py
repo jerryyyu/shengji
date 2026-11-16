@@ -1737,6 +1737,10 @@ def test_the_bot_plays_on_until_the_trick_ends_then_the_newcomer_holds_the_seat(
         assert room.seats[2].is_bot and 2 in room.pending_joins
         frame = conn.last("state")
         assert frame["joining_you"] is True and frame["you"] == 2
+        # watching is not holding: none of the seat's hidden cards yet
+        assert frame["hand"] == [] and frame["declare_options"] == []
+        assert all(f["hand"] == [] for f in conn.sent
+                   if f.get("type") == "state" and f.get("joining_you"))
         assert srv.state_for(room, 0)["joining"] == [{"seat": 2, "name": "Alice", "when": "trick"}]
         # the seat is not open to anyone else meanwhile
         assert [s["open"] for s in srv.open_tables()[0]["seats"]] == [False, True, False, True]
@@ -1748,6 +1752,7 @@ def test_the_bot_plays_on_until_the_trick_ends_then_the_newcomer_holds_the_seat(
         assert seat.connected and seat.joined_round == room.game.round_no
         assert conn.adopted is not None and conn.adopted[1] is seat
         assert room.pending_joins == {} and new not in env.mm.joining
+        assert srv.state_for(room, 2)["hand"]     # the seat's cards once it is theirs
         assert srv.state_for(room, 0)["joining"] == []
     run(go())
 

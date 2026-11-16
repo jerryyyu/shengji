@@ -137,8 +137,8 @@ export default function PrivacyPage() {
           <p>
             The events hold no name, account id, email, IP address, device key, room code, cards,
             chat or anything you type, and nothing links them to you. We use them only to improve the
-            app. They are kept on our server, apart from the game records, for 90 days, and then
-            our server deletes them.
+            app. They are kept on our server, apart from the game records, and our server removes
+            the days older than 90 days as new events arrive.
             Practice games played offline send nothing.
           </p>
         </Section>

@@ -38,7 +38,10 @@ function states() {
     out.push([`long_l${leader}_n${n}`, base({ trick: { leader, plays: plays(leader, n, 2) }, turn: (leader + n) % 4 }, { banker: 0, names: LONG_NAMES })]);
   }
   // declare window
+  const DEAL14 = ["S3", "S5", "S9", "SK", "SA", "H3", "H4", "H10", "HK", "HA", "D6", "C2", "H2", "BJ"];
   const dealt = { phase: "declare", banker: null, trump: null, turn: null, trick: null, attacker_points: 0, declare_deadline: 12 };
+  out.push(["deal_open", base({ ...dealt, phase: "deal", hand: hand(DEAL14), declare_options: [[12], [13]] }, { banker: null })]);
+  out.push(["deal_by1", base({ ...dealt, phase: "deal", hand: hand(DEAL14), declare_options: [[12]], current_declaration: { seat: 1, cards: ["H2"] } }, { banker: null })]);
   out.push(["declare_open", base({ ...dealt, declare_options: [[18], [24]] }, { banker: null })]);
   out.push(["declare_none", base({ ...dealt }, { banker: null })]);
   out.push(["declare_passed", base({ ...dealt, passed: [0, 1, 3] }, { banker: null })]);
@@ -77,7 +80,7 @@ async function runDevice(device) {
     await page.waitForSelector(".table-screen", { timeout: 10000 });
     for (const [id, ...frames] of all) {
       // the coach changes only the line above the hand: a thinner pass is enough
-      if (coach === "on" && !/_b[01]_l[0-3]_n[13]_w[16]|declare|bury|few|full_b0/.test(id)) continue;
+      if (coach === "on" && !/_b[01]_l[0-3]_n[13]_w[16]|deal|declare|bury|few|full_b0/.test(id)) continue;
       for (const f of frames) { await push(page, f); await sleep(frames.length > 1 ? 120 : 0); }
       await sleep(110);
       const name = `${device}_${coach === "on" ? "coach_" : ""}${id}`;

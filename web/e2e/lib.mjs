@@ -179,6 +179,7 @@ export const KEY = {
   yourTurn: ".your-turn-tag",
   theirTurn: ".their-turn",
   handLine: ".hand-line",
+  dealCount: ".deal-deck-count",
   hand: ".hand",
   action: ".action-bar .btn",
   chatLaunch: ".chat-launch",

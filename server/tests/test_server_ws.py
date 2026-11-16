@@ -15,6 +15,8 @@ from contextlib import ExitStack
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.table_view import _next_seen_where
+
 os.environ.setdefault("SHENGJI_BOT", "heuristic")  # fast; these tests are protocol-level
 
 
@@ -2803,26 +2805,26 @@ def test_ws_a_duo_table_seats_its_code_joiner_in_the_held_seat_and_starts_a_rate
             client.websocket_connect("/ws", headers=hb) as b, \
             client.websocket_connect("/ws", headers=hc) as c:
         a.send_json({"type": "queue_join", "mode": "ranked", "duo": True})
-        own = _next_where(a, "queue_state", lambda m: m.get("queued"))
+        own = _next_seen_where(a, lambda m: m.get("queued"))
         assert own["duo"] is True and own["held_seat"] == 2 and own["table"] is None
         code = own["code"]
         c.send_json({"type": "queue_join", "mode": "ranked"})       # a stranger on Play
-        table = _next_where(c, "queue_state", lambda m: m.get("table"))["table"]
+        table = _next_seen_where(c, lambda m: m.get("table"))["table"]
         assert table["you"] == 1 and table["held_seat"] == 2 and table["code"] == code
         b.send_json({"type": "table_peek", "code": code})
         assert _drain(b, "room_seats")["table"] is True
         b.send_json({"type": "table_join", "code": code})            # the friend's link
-        mine = _next_where(b, "queue_state", lambda m: m.get("table"))
+        mine = _next_seen_where(b, lambda m: m.get("table"))
         assert mine["table"]["you"] == 2 and mine["held_seat"] is None and mine["duo"] is True
         assert _drain(b, "party")["table"] is True
         b.send_json({"type": "table_allow_joiners", "on": False})
         assert _drain(b, "error")["code"] == "not_opener"
         # each Duo player taps Start; the pair is ready once both have
         b.send_json({"type": "table_start"})
-        seen = _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 1)["table"]
+        seen = _next_seen_where(a, lambda m: m["table"]["ready"] == 1)["table"]
         assert seen["seats"][2]["ready"] and not seen["you_ready"]
         c.send_json({"type": "table_start"})
-        _next_where(a, "queue_state", lambda m: m["table"]["ready"] == 2)
+        _next_seen_where(a, lambda m: m["table"]["ready"] == 2)
         assert srv.MATCHMAKER.tables                       # the pair is not ready yet
         a.send_json({"type": "table_start"})
         started = [_drain(ws, "match_started") for ws in (a, b, c)]
@@ -2840,7 +2842,7 @@ def test_ws_a_duo_that_starts_without_its_friend_keeps_the_held_seat_for_the_fri
     srv, ((ann, ha), (bo, hb), (cy, hc), _) = duo_queue
     with client.websocket_connect("/ws", headers=ha) as a:
         a.send_json({"type": "queue_join", "mode": "casual", "duo": True})
-        code = _next_where(a, "queue_state", lambda m: m.get("queued"))["code"]
+        code = _next_seen_where(a, lambda m: m.get("queued"))["code"]
         a.send_json({"type": "table_start_bots"})
         assert _drain(a, "match_started")["room"] == code
         _drain(a, "state")
@@ -2863,20 +2865,20 @@ def test_ws_a_duo_split_at_a_strangers_table_stays_seated_and_the_room_promises_
             client.websocket_connect("/ws", headers=hc) as c, \
             client.websocket_connect("/ws", headers=hd) as d:
         c.send_json({"type": "queue_join", "allow_joiners": False})   # first in line, private
-        cy_code = _next_where(c, "queue_state", lambda m: m.get("queued"))["code"]
+        cy_code = _next_seen_where(c, lambda m: m.get("queued"))["code"]
         a.send_json({"type": "queue_join", "duo": True})
-        code = _next_where(a, "queue_state", lambda m: m.get("queued"))["code"]
+        code = _next_seen_where(a, lambda m: m.get("queued"))["code"]
         b.send_json({"type": "table_join", "code": code})
-        _next_where(b, "queue_state", lambda m: m.get("duo"))
+        _next_seen_where(b, lambda m: m.get("duo"))
         c.send_json({"type": "table_allow_joiners", "on": True})     # the pair sits at Cy's table
-        at_cy = _next_where(a, "queue_state", lambda m: m.get("table") and m["table"]["code"] == cy_code)
+        at_cy = _next_seen_where(a, lambda m: m.get("table") and m["table"]["code"] == cy_code)
         b.send_json({"type": "table_leave"})
-        mine = _next_where(a, "queue_state", lambda m: m.get("table") and not m.get("duo"))
+        mine = _next_seen_where(a, lambda m: m.get("table") and not m.get("duo"))
         assert mine["table"]["id"] == at_cy["table"]["id"]            # Ann stays where she is
         assert mine["held_seat"] is None and mine["table"]["held_seat"] is None
         assert mine["table"]["you"] == at_cy["table"]["you"]
         d.send_json({"type": "queue_join"})
-        _next_where(d, "queue_state", lambda m: m.get("table"))
+        _next_seen_where(d, lambda m: m.get("table"))
         for ws in (a, c, d):
             ws.send_json({"type": "table_start"})
         started = _drain(a, "match_started")

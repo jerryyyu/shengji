@@ -1,11 +1,11 @@
 """The ``table`` frame (PROTOCOL.md "The table frame"): one description of a
 table, from a queue ``Table`` (``Matchmaker.table_frame``) or a ``Room`` in
-play (``server.room_table_frame``), sent next to the frames it will replace.
+play (``server.room_table_frame``).
 
 Every matchmaking golden scenario is replayed: each ``queue_state`` that holds
-the entry is followed by exactly one ``table`` frame, and that frame says
-what the ``queue_state`` says (``from_queue_state`` maps old to new). The
-room side is checked against ``room``, ``state`` and ``room_seats``."""
+the entry is followed by exactly one ``table`` frame, and that queue_state
+says nothing of the table but your Duo's own Start count. The room side is
+checked against ``room``, ``state`` and ``room_seats``."""
 from __future__ import annotations
 
 import json
@@ -15,14 +15,16 @@ from pathlib import Path
 import pytest
 
 from tests import test_matchmaking_golden as golden
+from tests.table_view import shared
 from tests.test_server_ws import _drain, client  # noqa: F401
 
 FRAME_KEYS = {"type", "code", "phase", "mode", "you", "opener", "seats", "settings",
               "timers", "your_ready", "waiting_for", "chat_log"}
 SEAT_KEYS = {"seat", "team", "state", "name", "you", "ready", "reconnecting", "since",
              "sit", "pair", "leader", "left"}
-# a seat's fields from queue_state.table that the table frame carries as is
-QUEUE_SEAT_FIELDS = ("name", "you", "ready", "reconnecting", "since", "sit", "pair", "leader")
+# the names queue_state no longer carries: the table frame says them
+RETIRED_QUEUE_FIELDS = {"table", "code", "allow_joiners", "start_level", "opener",
+                        "held_seat", "you_ready", "bots_at"}
 
 
 def _shape(frame: dict) -> None:
@@ -40,73 +42,17 @@ def _shape(frame: dict) -> None:
     assert set(frame["timers"]) == {"bots", "start_now_at"}
 
 
-def from_queue_state(qs: dict) -> dict:
-    """What a ``queue_state`` that holds the entry says about its table, in
-    the table frame's terms. A waiting table (``qs.table``) fills every
-    field; alone, ``qs.table`` is null and only the table-wide fields and
-    your own Start are said."""
-    out: dict = {"type": "table", "phase": "open", "code": qs["code"], "mode": qs["mode"],
-                 "settings": {"allow_joiners": qs["allow_joiners"],
-                              "start_level": qs["start_level"]},
-                 "your_ready": qs["you_ready"]}
-    t = qs["table"]
-    if t is None:
-        out["chat_log"] = None
-        return out
-    seats = []
-    for i, s in enumerate(t["seats"]):
-        if s is None:
-            seats.append({"seat": i, "state": "held" if i in t["held_seats"] else "open",
-                          "name": None})
-        else:
-            seats.append({"seat": i, "state": "taken", **{k: s[k] for k in QUEUE_SEAT_FIELDS}})
-    out.update(code=t["code"], you=t["you"], opener=t["opener"], seats=seats,
-               timers={"bots": t["timer"], "start_now_at": t["start_now_at"]},
-               your_ready=t["you_ready"], waiting_for=t["waiting_for"], chat_log=t["id"])
-    return out
-
-
 def _agrees(frame: dict, qs: dict) -> None:
+    """The frame is well formed, names you, and says what is left of your
+    table in the queue_state before it: your Duo's own Start count."""
     _shape(frame)
-    want = from_queue_state(qs)
-    for k, v in want.items():
-        if k == "seats":
-            for got, w in zip(frame["seats"], v):
-                assert {f: got[f] for f in w} == w, (got, w)
-        else:
-            assert frame[k] == v, (k, frame[k], v)
-    # the rest of queue_state's table fields follow from the frame's seats
-    taken = [s for s in frame["seats"] if s["state"] == "taken"]
-    if qs["table"] is not None:
-        assert qs["table"]["ready"] == sum(s["ready"] for s in taken)
-        assert qs["table"]["of"] == len(taken)
-        assert qs["table"]["held_seat"] == next(
-            (s["seat"] for s in frame["seats"] if s["state"] == "held"), None)
-    else:
-        assert frame["timers"]["start_now_at"] is None
-        assert frame["timers"]["bots"] == (None if qs["bots_at"] is None else
-                                           {**frame["timers"]["bots"], "at": qs["bots_at"]})
-    if qs["held_seat"] is not None:
-        assert frame["seats"][qs["held_seat"]]["state"] == "held"
+    assert frame["seats"][frame["you"]]["you"]
+    assert frame["mode"] == qs["mode"]
+    assert not RETIRED_QUEUE_FIELDS & set(qs), sorted(RETIRED_QUEUE_FIELDS & set(qs))
     if qs["duo_ready"] is not None:
         mine = frame["seats"][frame["you"]]["team"]
+        taken = [s for s in frame["seats"] if s["state"] == "taken"]
         assert qs["duo_ready"] == sum(s["ready"] for s in taken if s["pair"] and s["team"] == mine)
-    assert qs["opener"] == (frame["opener"] == frame["you"])
-    assert frame["seats"][frame["you"]]["you"]
-    # the client's panel kind (web/src/queue/tableText.ts panelKind) reads
-    # the frame alone: shared iff someone other than you and your Duo
-    # partner sits there
-    assert shared(frame) == (qs["table"] is not None)
-
-
-def shared(frame: dict) -> bool:
-    """Someone else sits at the table: a taken seat that is neither you nor
-    your Duo partner (across from you, both seats ``pair``)."""
-    you = frame["you"]
-    mine = frame["seats"][you]
-    partner = (you + 2) % 4 if mine["pair"] else None
-    return any(s["state"] == "taken" and not s["you"]
-               and not (s["seat"] == partner and s["pair"]) for s in frame["seats"])
 
 
 @pytest.mark.parametrize("name", sorted(golden.SCENARIOS))
@@ -130,15 +76,16 @@ def test_every_held_queue_state_is_followed_by_its_table_frame(name):
     assert pairs, "the scenario never held an entry"
 
 
-# The client's port of ``from_queue_state`` (web/src/queue/testFrames.ts)
-# is checked against these pairs: one per kind of held queue_state.
+# The client's test sockets (web/src/queue/testFrames.ts) are checked
+# against these pairs: one per kind of held queue_state.
 WEB_FIXTURE = (Path(__file__).resolve().parents[2] / "web" / "src" / "queue" / "fixtures"
                / "table_frames.json")
 
 
 def _kind(qs: dict, frame: dict) -> tuple:
-    return (qs["table"] is not None, qs["duo"], qs["duo_ready"] is not None, qs["leader"],
-            qs["opener"], qs["held_seat"] is not None, qs["you_ready"])
+    return (shared(frame), qs["duo"], qs["duo_ready"] is not None, qs["leader"],
+            frame["opener"] == frame["you"],
+            any(s["state"] == "held" for s in frame["seats"]), frame["your_ready"])
 
 
 def web_pairs() -> list[dict]:

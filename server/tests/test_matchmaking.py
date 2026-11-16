@@ -22,6 +22,7 @@ from shengji.api import ratings
 from tests.test_accounts import accounts_on, keypair  # noqa: F401
 from tests.test_ratings import _set, _user
 from tests.test_server_ws import _drain, _frames_until, _next_where, client  # noqa: F401
+from tests.table_view import _drain_seen, seen, seen_all, shared, waiting_table
 
 
 # ---------------------------------------------------------------- harness
@@ -150,7 +151,7 @@ def test_alone_in_the_queue_there_is_no_table():
     async def go():
         env = Env()
         await env.join(1)
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["queued"] and state["table"] is None
         assert env.mm.tables == {}
     run(go())
@@ -164,7 +165,7 @@ def test_two_singles_form_one_table_on_the_second_ones_arrival_as_partners():
         (t,) = env.mm.tables.values()
         assert t.seats == [1, None, 2, None]
         for uid, seat in ((1, 0), (2, 2)):
-            table = env.conns[uid].last("queue_state")["table"]
+            table = seen(env.conns[uid])["table"]
             assert table["id"] == t.id and table["you"] == seat
             assert [s and s["name"] for s in table["seats"]] == ["P1", None, "P2", None]
             assert table["seats"][seat]["you"] is True
@@ -198,7 +199,7 @@ def test_a_pair_sits_as_partners_on_the_free_team():
         await env.send(2, "queue_join")
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 2, None, 3]
-        table = env.conns[3].last("queue_state")["table"]
+        table = seen(env.conns[3])["table"]
         assert table["you"] == 3 and table["seats"][1]["pair"] and table["seats"][1]["leader"]
         assert not table["seats"][3]["leader"]
     run(go())
@@ -238,7 +239,7 @@ def test_a_pair_never_splits_across_teams_to_fit_a_table():
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 3, 2, None]
         assert env.mm._entry(4).table_id is None
-        assert env.conns[5].last("queue_state")["table"] is None
+        assert seen(env.conns[5])["table"] is None
     run(go())
 
 
@@ -304,11 +305,11 @@ def test_every_start_tapped_starts_the_table_with_bots_and_a_newcomer_keeps_the_
         await env.join(2)
         await env.send(1, "table_start")
         assert env.started == []
-        mine = env.conns[1].last("queue_state")["table"]
+        mine = seen(env.conns[1])["table"]
         assert mine["you_ready"] and mine["ready"] == 1 and mine["waiting_for"] == ["P2"]
         assert mine["seats"][0]["ready"] and not mine["seats"][2]["ready"]
         await env.join(3)                     # a newcomer does not clear the tick
-        mine = env.conns[1].last("queue_state")["table"]
+        mine = seen(env.conns[1])["table"]
         assert mine["ready"] == 1 and mine["of"] == 3 and mine["waiting_for"] == ["P2", "P3"]
         await env.send(2, "table_start")
         await env.send(2, "table_start")      # twice is once
@@ -326,7 +327,7 @@ def test_the_openers_start_now_unlocks_30_s_after_the_latest_arrival_and_starts_
             await env.join(uid)
             await env.send(uid, "queue_wait_players")   # no bot timer: only Start now starts it
         formed = env.clock.t
-        table = env.conns[2].last("queue_state")["table"]
+        table = seen(env.conns[2])["table"]
         assert table["start_now_at"] == formed + mm.START_NOW_SECS == formed + 30.0
         env.clock.advance(29.9)
         await env.send(1, "table_start_now")
@@ -350,12 +351,12 @@ def test_a_new_arrival_restarts_the_start_now_wait_and_a_move_does_not():
         await env.join(3)
         await env.send(3, "queue_wait_players")
         arrived = env.clock.t
-        assert env.conns[1].last("queue_state")["table"]["start_now_at"] == arrived + 30.0
+        assert seen(env.conns[1])["table"]["start_now_at"] == arrived + 30.0
         env.clock.advance(10)                            # 35 s after the table formed
         await env.send(1, "table_start_now")
         assert env.conns[1].last("error")["code"] == "too_soon"
         await env.send(3, "table_move", seat=3)
-        assert env.conns[1].last("queue_state")["table"]["start_now_at"] == arrived + 30.0
+        assert seen(env.conns[1])["table"]["start_now_at"] == arrived + 30.0
         env.clock.advance(20)
         await env.send(1, "table_start_now")
         (_, slots), = env.started
@@ -382,11 +383,11 @@ def test_the_table_timer_is_the_earliest_switch_off_players_and_switch_on_player
         bots_at_2 = env.mm._entry(2).bots_at
         env.clock.advance(5)
         await env.join(3)
-        timer = env.conns[1].last("queue_state")["table"]["timer"]
+        timer = seen(env.conns[1])["table"]["timer"]
         assert timer == {"at": bots_at_2, "name": "P2", "you": False}
-        assert env.conns[2].last("queue_state")["table"]["timer"]["you"] is True
+        assert seen(env.conns[2])["table"]["timer"]["you"] is True
         await env.send(2, "queue_leave")      # the owner leaves: the next switch-off one owns it
-        timer = env.conns[1].last("queue_state")["table"]["timer"]
+        timer = seen(env.conns[1])["table"]["timer"]
         assert timer["name"] == "P3" and timer["at"] == env.mm._entry(3).bots_at
         env.clock.t = env.mm._entry(3).bots_at - 0.1
         await env.mm.tick()
@@ -404,7 +405,7 @@ def test_with_every_switch_on_there_is_no_timer_and_only_every_start_starts_it()
         for uid in (1, 2):
             await env.join(uid)
             await env.send(uid, "queue_wait_players")
-        assert env.conns[1].last("queue_state")["table"]["timer"] is None
+        assert seen(env.conns[1])["table"]["timer"] is None
         env.clock.advance(100)
         await env.mm.pump()
         assert env.started == []
@@ -458,7 +459,7 @@ def test_an_older_clients_play_bots_at_a_table_is_its_start():
         await env.join(1)
         await env.join(2)
         await env.send(1, "queue_start_bots")
-        assert env.started == [] and env.conns[1].last("queue_state")["table"]["you_ready"]
+        assert env.started == [] and seen(env.conns[1])["table"]["you_ready"]
         await env.send(2, "queue_start_bots")
         (_, slots), = env.started
         assert [s.user_id for s in slots] == [1, None, 2, None]
@@ -474,8 +475,8 @@ def test_leaving_frees_the_seat_and_nobody_moves():
         await env.send(2, "queue_leave")
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 3, None, None]
-        assert env.conns[2].last("queue_state")["queued"] is False
-        assert env.conns[1].last("queue_state")["table"]["seats"][2] is None
+        assert seen(env.conns[2])["queued"] is False
+        assert seen(env.conns[1])["table"]["seats"][2] is None
         await env.join(4)
         assert t.seats == [1, 3, 4, None]
     run(go())
@@ -489,10 +490,10 @@ def test_the_last_one_left_at_a_table_is_alone_again_with_its_own_timer():
         await env.send(1, "table_start")
         await env.send(2, "queue_leave")
         assert env.mm.tables == {}
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["queued"] and state["table"] is None
         await env.join(3)                     # a fresh table: the old tick is gone
-        assert env.conns[1].last("queue_state")["table"]["you_ready"] is False
+        assert seen(env.conns[1])["table"]["you_ready"] is False
     run(go())
 
 
@@ -504,21 +505,21 @@ def test_a_seated_socket_that_closes_holds_its_seat_sixty_seconds_reconnecting()
         await env.join(2)
         await env.send(2, "table_start")
         env.mm.disconnect(env.conns[2])
-        seat = env.conns[1].last("queue_state")["table"]["seats"][2]
+        seat = seen(env.conns[1])["table"]["seats"][2]
         assert seat["reconnecting"] is True and seat["ready"] is True
         env.clock.advance(mm.TABLE_AWAY_SECS - 1)
         await env.mm.pump()
         assert env.mm._entry(2) is not None
         back = FakeConn(2, "P2")
         env.mm.connect(back)                 # the app comes back: resync, readiness kept
-        table = back.last("queue_state")["table"]
+        table = seen(back)["table"]
         assert table["you"] == 2 and table["you_ready"] is True
-        assert env.conns[1].last("queue_state")["table"]["seats"][2]["reconnecting"] is False
+        assert seen(env.conns[1])["table"]["seats"][2]["reconnecting"] is False
         env.mm.disconnect(back)
         env.clock.advance(mm.TABLE_AWAY_SECS + 1)
         await env.mm.pump()
         assert env.mm._entry(2) is None and env.mm.tables == {}
-        assert env.conns[1].last("queue_state")["table"] is None
+        assert seen(env.conns[1])["table"] is None
     run(go())
 
 
@@ -553,9 +554,9 @@ def test_at_a_table_with_no_timer_two_minutes_idle_asks_still_here_and_half_a_mi
         env.clock.advance(mm.TABLE_IDLE_SECS - 100)
         await env.mm.pump()
         assert env.conns[2].last("queue_removed") is None
-        asked = env.conns[2].last("queue_state")
+        asked = seen(env.conns[2])
         assert asked["still_here_until"] == env.clock.t + mm.STILL_HERE_SECS
-        assert env.conns[3].last("queue_state")["still_here_until"] is None
+        assert seen(env.conns[3])["still_here_until"] is None
         env.clock.advance(mm.STILL_HERE_SECS)
         await env.mm.pump()
         removed = env.conns[2].last("queue_removed")
@@ -687,7 +688,7 @@ def test_a_pair_is_one_entry_at_its_average_rating():
         e = env.mm._entry(1)
         assert e is env.mm._entry(2) and e.rating == 1050 and e.size == 2
         assert env.mm.count() == 2
-        assert env.conns[2].last("queue_state")["leader"] is False
+        assert seen(env.conns[2])["leader"] is False
     run(go())
 
 
@@ -769,23 +770,23 @@ def test_a_cooldown_is_pushed_to_the_lobby_and_counted_down_by_queue_state():
         env.mm.left_open_table(1, "OPEN")
         until = env.clock.t + mm.JOIN_COOLDOWN_SECS
         # a lobby tab hears at once; the leaving socket as it gets back
-        assert other_tab.last("queue_state") == {"type": "queue_state", "queued": False,
+        assert seen(other_tab) == {"type": "queue_state", "queued": False,
                                                  "count": 0, "cooldown_until": until}
         env.conns[1].clear()
         env.mm.return_to_lobby(env.conns[1])
-        assert env.conns[1].last("queue_state")["cooldown_until"] == until
+        assert seen(env.conns[1])["cooldown_until"] == until
         fresh = FakeConn(1, "P1")
         env.mm.connect(fresh)
-        assert fresh.last("queue_state")["cooldown_until"] == until
+        assert seen(fresh)["cooldown_until"] == until
         env.clock.advance(48)
         await env.send(1, "queue_status")
-        assert env.conns[1].last("queue_state")["cooldown_until"] == until
+        assert seen(env.conns[1])["cooldown_until"] == until
         await env.send(1, "queue_join")
         err = env.conns[1].last("error")
         assert err["code"] == "cooldown" and err["message"].endswith("Play again in 0:12.")
         env.clock.advance(mm.JOIN_COOLDOWN_SECS)
         await env.send(1, "queue_status")
-        assert "cooldown_until" not in env.conns[1].last("queue_state")
+        assert "cooldown_until" not in seen(env.conns[1])
     run(go())
 
 
@@ -801,7 +802,7 @@ def test_leave_queue_on_another_device_tells_the_holder_it_was_stopped_there():
         desk.device = DEVICE_B
         env.mm.connect(desk)
         await env.mm.handle(desk, {"type": "queue_leave"}, 1)
-        told = [m for m in phone.of("queue_state") if m.get("replaced")]
+        told = [m for m in seen_all(phone) if m.get("replaced")]
         assert told and told[-1]["by"] == "device" and told[-1]["stopped"] is True
         assert env.mm._entry(1) is None
         # a Play from another window of the same device moves the search
@@ -810,7 +811,7 @@ def test_leave_queue_on_another_device_tells_the_holder_it_was_stopped_there():
         env.mm.connect(win)
         await env.mm.handle(desk, {"type": "queue_join"}, 1)
         await env.mm.handle(win, {"type": "queue_join"}, 1)
-        told = [m for m in desk.of("queue_state") if m.get("replaced")]
+        told = [m for m in seen_all(desk) if m.get("replaced")]
         assert told[-1]["by"] == "window" and "stopped" not in told[-1]
     run(go())
 
@@ -852,12 +853,12 @@ def test_one_entry_per_account_and_a_second_socket_takes_it_over():
         env.mm.connect(second)
         await env.mm.handle(second, {"type": "queue_join"}, 1)
         assert len(env.mm.entries) == 1 and env.mm.count() == 1
-        states = env.conns[1].of("queue_state")
+        states = seen_all(env.conns[1])
         assert any(m.get("replaced") is True and m["queued"] is False for m in states)
         # the first socket then shows the search as held elsewhere
         assert states[-1]["queued"] is True and states[-1]["elsewhere"] is True
-        assert env.mm.conns[1] is second and second.last("queue_state")["queued"]
-        assert "elsewhere" not in second.last("queue_state")
+        assert env.mm.conns[1] is second and seen(second)["queued"]
+        assert "elsewhere" not in seen(second)
     run(go())
 
 
@@ -1109,12 +1110,12 @@ def test_ws_four_players_fill_a_waiting_table_and_land_in_a_started_rated_room(w
             assert _drain(a, "pong")["nonce"] == 1
         socks = [a, b, c, d]
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "queue_state")["table"] is None
+        assert _drain_seen(a)["table"] is None
         b.send_json({"type": "queue_join"})
-        table = _drain(b, "queue_state")["table"]
+        table = _drain_seen(b)["table"]
         assert table["you"] == 2 and [s["name"] for s in table["seats"][::2]] == ["Player0", "Player1"]
         c.send_json({"type": "queue_join"})
-        assert _drain(c, "queue_state")["table"]["you"] == 1
+        assert _drain_seen(c)["table"]["you"] == 1
         d.send_json({"type": "queue_join"})
         for ws in socks:
             seen = _until(ws, "match_started")
@@ -1153,7 +1154,7 @@ def test_ws_start_bots_solo_starts_a_rated_game(wsenv):
     uid, headers = _user(store, "solo", "Solo")
     with client.websocket_connect("/ws", headers=headers) as a:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         a.send_json({"type": "table_start_bots"})
         started = _drain(a, "match_started")
         assert started["match_id"] is None and started["rated"] is True
@@ -1166,7 +1167,7 @@ def test_ws_start_bots_solo_starts_a_rated_game(wsenv):
 def _ws_duo(a, b):
     """A Duo made at ``a``'s table, ``b`` joining by its code."""
     a.send_json({"type": "queue_join", "duo": True})
-    code = _drain(a, "queue_state")["code"]
+    code = _drain_seen(a)["code"]
     b.send_json({"type": "table_join", "code": code})
     party = _drain(b, "party")
     assert len(party["members"]) == 2
@@ -1193,11 +1194,11 @@ def test_ws_two_starts_take_a_waiting_table_to_a_rated_game_with_bots(wsenv):
     with client.websocket_connect("/ws", headers=h1) as a, \
             client.websocket_connect("/ws", headers=h2) as b:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         b.send_json({"type": "queue_join"})
-        assert _drain(b, "queue_state")["table"]["of"] == 2
+        assert _drain_seen(b)["table"]["of"] == 2
         a.send_json({"type": "table_start"})
-        table = _drain(b, "queue_state")["table"]
+        table = _drain_seen(b)["table"]
         assert table["ready"] == 1 and table["seats"][0]["ready"] and table["waiting_for"] == []
         b.send_json({"type": "table_start"})
         started = _drain(a, "match_started")
@@ -1213,7 +1214,7 @@ def test_ws_away_socket_is_dropped_and_a_quick_reconnect_keeps_its_place(wsenv):
     uid, headers = _user(store, "away")
     with client.websocket_connect("/ws", headers=headers) as a:
         a.send_json({"type": "queue_join"})
-        since = _drain(a, "queue_state")["since"]
+        since = _drain_seen(a)["since"]
     # The receive loop's cleanup runs on the server's loop; pump until seen.
     for _ in range(50):
         _pump(client, srv)
@@ -1221,7 +1222,7 @@ def test_ws_away_socket_is_dropped_and_a_quick_reconnect_keeps_its_place(wsenv):
             break
     clock.advance(5)
     with client.websocket_connect("/ws", headers=headers) as a2:
-        state = _drain(a2, "queue_state")
+        state = _drain_seen(a2)
         assert state["queued"] and state["since"] == since
     for _ in range(50):
         _pump(client, srv)
@@ -1237,7 +1238,7 @@ def test_ws_joining_a_room_leaves_the_queue_and_leaving_it_returns_to_the_lobby(
     uid, headers = _user(store, "roomie")
     with client.websocket_connect("/ws", headers=headers) as a:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         a.send_json({"type": "table_join", "expect": "room", "code": "NOPE", "name": "x"})
         _drain(a, "error")
         assert srv.MATCHMAKER._entry(uid) is not None      # a failed join keeps the place
@@ -1250,7 +1251,7 @@ def test_ws_joining_a_room_leaves_the_queue_and_leaving_it_returns_to_the_lobby(
         a.send_json({"type": "table_leave"})
         _drain(a, "left")
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "queue_state")["queued"] is True
+        assert _drain_seen(a)["queued"] is True
 
 
 # ----------------------------------------------------- one code space
@@ -1278,7 +1279,7 @@ def test_a_table_code_never_repeats_a_live_room_code(monkeypatch):
         env.mm.room_live = {"WXYZ"}.__contains__
         monkeypatch.setattr(mm, "_CODE_RNG", ScriptedCodes("WXYZ", "WXYZ", "PQRS"))
         await env.join(1)
-        assert env.conns[1].last("queue_state")["code"] == "PQRS"
+        assert seen(env.conns[1])["code"] == "PQRS"
     run(go())
 
 
@@ -1307,7 +1308,7 @@ def test_ws_room_code_never_repeats_a_queued_tables_code(wsenv, monkeypatch):
     with client.websocket_connect("/ws", headers=headers) as a, \
             client.websocket_connect("/ws") as b:
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "queue_state")["code"] == "PQRS"
+        assert _drain_seen(a)["code"] == "PQRS"
         b.send_json({"type": "create_room", "name": "host"})
         assert _drain(b, "room")["room"] == "TUVW"
 
@@ -1321,7 +1322,7 @@ def test_ws_a_peek_names_rooms_tables_and_nothing_and_code_lookup_is_retired(wse
             client.websocket_connect("/ws") as host, \
             client.websocket_connect("/ws") as g:
         a.send_json({"type": "queue_join"})
-        table = _drain(a, "queue_state")["code"]
+        table = _drain_seen(a)["code"]
         host.send_json({"type": "create_room", "name": "host"})
         room = _drain(host, "room")["room"]
         assert all(c in mm.CODE_ALPHABET for c in room + table)
@@ -1398,7 +1399,7 @@ def test_a_newcomer_alone_is_offered_an_open_table_with_the_partner_seat_picked(
         tables = Tables(env)
         tables.add("OPEN", [50, "bot", "bot", "bot"])
         await env.join(1)
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         offer = state["offer"]
         assert offer["room"] == "OPEN" and offer["pick"] == 2 and offer["round_end"] is False
         assert offer["expires_at"] == env.clock.t + mm.OFFER_SECS
@@ -1420,13 +1421,13 @@ def test_a_waiting_table_outranks_an_open_table():
         await env.join(1)
         tables.add("OPEN", [50, "bot", "bot", "bot"])
         await env.mm.tick()                           # an alone waiter gets the new table
-        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        assert seen(env.conns[1])["offer"]["room"] == "OPEN"
         env.clock.advance(3)
         await env.join(2)                             # someone queued: they share a table
         (t,) = env.mm.tables.values()
         assert t.seats == [1, None, 2, None]
         for uid in (1, 2):
-            state = env.conns[uid].last("queue_state")
+            state = seen(env.conns[uid])
             assert state["offer"] is None and state["table"] is not None
         # the wait stood still under the offer and runs on as the table's timer
         assert env.mm._entry(1).bots_at == env.clock.t + mm.BOT_FILL_SECS
@@ -1448,7 +1449,7 @@ def test_a_seat_another_newcomer_took_first_re_renders_the_offer():
         tables.take("OPEN", 2, 77)                    # another newcomer confirmed seat 2 first
         await env.send(1, "open_table_join", room="OPEN", seat=2)
         assert env.conns[1].last("error")["code"] == "seat_taken"
-        offer = env.conns[1].last("queue_state")["offer"]
+        offer = seen(env.conns[1])["offer"]
         assert offer["seats"][2] == {"name": "P77", "bot": False, "open": False}
         assert offer["pick"] == 1 and env.mm._entry(1) is not None
         await env.send(1, "open_table_join", room="OPEN", seat=3)
@@ -1464,14 +1465,14 @@ def test_a_tick_re_renders_a_standing_offer_when_its_seat_goes():
         tables = Tables(env)
         tables.add("OPEN", [50, "bot", 60, "bot"])
         await env.join(1)
-        assert env.conns[1].last("queue_state")["offer"]["pick"] == 1
+        assert seen(env.conns[1])["offer"]["pick"] == 1
         tables.take("OPEN", 1, 77)
         await env.mm.tick()
-        offer = env.conns[1].last("queue_state")["offer"]
+        offer = seen(env.conns[1])["offer"]
         assert offer["pick"] == 3 and offer["seats"][1]["open"] is False
         tables.take("OPEN", 3, 78)                    # four people: no longer open
         await env.mm.tick()
-        assert env.conns[1].last("queue_state")["offer"] is None
+        assert seen(env.conns[1])["offer"] is None
     run(go())
 
 
@@ -1483,12 +1484,12 @@ def test_wait_keeps_queuing_resumes_the_bot_timer_and_never_re_offers_by_itself(
         env.clock.advance(20)                         # 40 s of bot wait left
         tables.add("OPEN", [50, "bot", "bot", "bot"])
         await env.mm.tick()
-        assert env.conns[1].last("queue_state")["bots_paused"] is True   # the offer is up
+        assert seen(env.conns[1])["bots_paused"] is True   # the offer is up
         env.clock.advance(5)
         await env.send(1, "open_table_wait")
         # after Wait the countdown runs on from where it stopped; the table
         # stays one tap away on the chip
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["queued"] and state["offer"] is None
         assert state["open_tables"] == 1 and state["bots_paused"] is False
         assert state["bots_at"] == env.clock.t + 40
@@ -1498,12 +1499,12 @@ def test_wait_keeps_queuing_resumes_the_bot_timer_and_never_re_offers_by_itself(
         assert env.started == [] and env.mm._entry(1).offer is None
         # the chip brings the offer back, with a fresh clock, and holds the timer again
         await env.send(1, "open_table_show")
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         offer = state["offer"]
         assert offer["room"] == "OPEN" and offer["expires_at"] == env.clock.t + mm.OFFER_SECS
         assert state["bots_paused"] is True
         await env.send(1, "open_table_wait")
-        assert env.conns[1].last("queue_state")["bots_at"] == env.clock.t + 20
+        assert seen(env.conns[1])["bots_at"] == env.clock.t + 20
         env.clock.advance(20)
         await env.mm.tick()
         assert [humans_of(slots) for _, slots in env.started] == [[1]]
@@ -1518,7 +1519,7 @@ def test_an_unanswered_offer_lapses_into_wait():
         await env.join(1)
         env.clock.advance(mm.OFFER_SECS)
         await env.mm.pump()
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["offer"] is None and state["open_tables"] == 1
         await env.send(1, "open_table_join", room="OPEN", seat=1)
         assert env.conns[1].last("error")["code"] == "no_offer"
@@ -1537,7 +1538,7 @@ def test_a_reclaimed_join_puts_the_newcomer_back_at_the_front():
         e = env.mm._entry(1)
         assert e is not None and e.front and 1 not in env.mm.joining
         assert "OPEN" in env.mm.declined[1] and 1 not in env.mm.cooldowns
-        assert env.conns[1].last("queue_state")["queued"] is True
+        assert seen(env.conns[1])["queued"] is True
     run(go())
 
 
@@ -1564,7 +1565,7 @@ def test_join_then_leave_costs_a_cooldown_and_the_table_is_never_offered_again(s
         assert err["cooldown_until"] == env.clock.t + mm.JOIN_COOLDOWN_SECS
         env.clock.advance(mm.JOIN_COOLDOWN_SECS)
         await env.join(1)
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["offer"] is None and state["open_tables"] == 0
         await env.send(1, "open_table_show")
         assert env.conns[1].last("error")["code"] == "table_closed"
@@ -1583,7 +1584,7 @@ def test_a_guest_never_sees_an_open_table():
         for kind in ("queue_join", "open_table_join", "open_table_show"):
             await env.mm.handle(guest, {"type": kind, "room": "OPEN", "seat": 1}, None)
             assert guest.last("error")["code"] == "signed_in_only"
-        assert guest.of("queue_state") == [] and tables.joins == []
+        assert seen_all(guest) == [] and tables.joins == []
     run(go())
 
 
@@ -1682,7 +1683,7 @@ async def _newcomer_joins(env, uid, seat, name, code="OPEN"):
     conn = env.player(uid, name=name)
     conn.ws = _FakeWS()
     await env.send(uid, "queue_join")
-    offer = conn.last("queue_state")["offer"]
+    offer = seen(conn)["offer"]
     assert offer is not None and offer["room"] == code, conn.sent
     await env.send(uid, "open_table_join", room=code, seat=seat)
     assert conn.last("error") is None, conn.last("error")
@@ -1802,7 +1803,7 @@ def test_at_a_round_end_the_newcomer_sits_at_once_and_is_ranked_next_round(otenv
         conn = env.player(new, name="Alice")
         conn.ws = _FakeWS()
         await env.send(new, "queue_join")
-        assert conn.last("queue_state")["offer"]["round_end"] is True
+        assert seen(conn)["offer"]["round_end"] is True
         await env.send(new, "open_table_join", room="OPEN", seat=2)
         seat = t.room.seats[2]
         assert seat.user_id == new and seat.joined_round is None
@@ -1931,7 +1932,7 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
     with client.websocket_connect("/ws", headers=host_headers) as h, \
             client.websocket_connect("/ws", headers=alice_headers) as a:
         h.send_json({"type": "queue_join"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         code = _drain(h, "match_started")["room"]
         room = srv.rooms[code]
@@ -1939,7 +1940,7 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
         client.portal.call(srv.kick_bots, room)
         _wait_until(lambda: room.round is not None and room.round.phase == "play")
         a.send_json({"type": "queue_join"})
-        offer = _drain(a, "queue_state")["offer"]
+        offer = _drain_seen(a)["offer"]
         assert offer["room"] == code and offer["pick"] == 2
         a.send_json({"type": "open_table_join", "room": code, "seat": 2})
         started = _drain(a, "match_started")
@@ -1956,7 +1957,7 @@ def test_ws_join_then_leave_gives_the_seat_back_to_a_bot_with_a_cooldown_and_a_c
         assert err["code"] == "cooldown"
         clock.advance(mm.JOIN_COOLDOWN_SECS + 1)
         a.send_json({"type": "queue_join"})
-        state = _drain(a, "queue_state")
+        state = _drain_seen(a)
         assert state["queued"] and state["offer"] is None and state["open_tables"] == 0
     ratings.CARRIED_CAPS.clear()
 
@@ -1975,7 +1976,7 @@ def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, mo
             client.websocket_connect("/ws", headers=bob_headers) as b, \
             client.websocket_connect("/ws", headers=cara_headers) as c:
         h.send_json({"type": "queue_join"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         code = _drain(h, "match_started")["room"]
         room = srv.rooms[code]
@@ -1985,7 +1986,7 @@ def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, mo
         assert room.host == 0
         for ws, uid, seat in ((b, bob, 1), (c, cara, 2)):
             ws.send_json({"type": "queue_join"})
-            assert _drain(ws, "queue_state")["offer"]["room"] == code
+            assert _drain_seen(ws)["offer"]["room"] == code
             ws.send_json({"type": "open_table_join", "room": code, "seat": seat})
             _drain(ws, "match_started")
             _wait_until(lambda uid=uid, seat=seat: room.seats[seat].user_id == uid)
@@ -2023,7 +2024,7 @@ def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
     with client.websocket_connect("/ws", headers=host_headers) as h, \
             client.websocket_connect("/ws", headers=alice_headers) as a:
         h.send_json({"type": "queue_join"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         code = _drain(h, "match_started")["room"]
         room = srv.rooms[code]
@@ -2031,7 +2032,7 @@ def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
         client.portal.call(srv.kick_bots, room)
         _wait_until(lambda: room.round is not None and room.round.phase == "play")
         a.send_json({"type": "queue_join"})
-        offer = _drain(a, "queue_state")["offer"]
+        offer = _drain_seen(a)["offer"]
         assert offer["room"] == code and offer["pick"] == 2
         a.send_json({"type": "open_table_join", "room": code, "seat": 2})
         _drain(a, "match_started")
@@ -2050,7 +2051,7 @@ def test_a_newcomer_leaving_at_the_end_of_the_round_it_joined_carries_no_cap(
         _drain(a, "left")
         assert alice not in ratings.CARRIED_CAPS
         a.send_json({"type": "queue_join"})
-        state = _drain(a, "queue_state")
+        state = _drain_seen(a)
         assert state["queued"]
     ratings.CARRIED_CAPS.clear()
 
@@ -2088,7 +2089,7 @@ def _ranked_host(srv, store, client, monkeypatch):
 
 def _start_ranked(srv, h):
     h.send_json({"type": "queue_join"})
-    _drain(h, "queue_state")
+    _drain_seen(h)
     h.send_json({"type": "table_start_bots"})
     code = _drain(h, "match_started")["room"]
     return code, srv.rooms[code]
@@ -2193,7 +2194,7 @@ def test_a_pair_is_offered_two_free_partner_seats_together(pairenv):
         t = OpenRoom(srv, [host, "bot", "bot", "bot"])
         t.first_round(banker=0)
         cl, cp = await _queued_pair(env, lee, pat)
-        lo, po = cl.last("queue_state")["offer"], cp.last("queue_state")["offer"]
+        lo, po = seen(cl)["offer"], seen(cp)["offer"]
         assert lo["room"] == "OPEN" and (lo["pick"], lo["partner"]["seat"]) == (1, 3)
         assert lo["partner"]["name"] == "Pat"
         assert (po["pick"], po["partner"]) == (3, {"seat": 1, "name": "Lee"})
@@ -2212,14 +2213,14 @@ def test_a_pair_is_never_offered_two_bot_seats_that_are_not_partners(pairenv):
         t = OpenRoom(srv, [host, "bot", "bot", other])      # bots at 1 and 2: adjacent
         t.first_round(banker=0)
         cl, cp = await _queued_pair(env, lee, pat)
-        assert cl.last("queue_state")["offer"] is None and cp.last("queue_state")["offer"] is None
+        assert seen(cl)["offer"] is None and seen(cp)["offer"] is None
         await env.mm.tick()
         assert env.mm._entry(lee).offer is None
         await env.send(lee, "queue_leave")
         await env.send(pat, "queue_leave")
         conn = env.player(solo, name="Solo")
         await env.send(solo, "queue_join")
-        assert conn.last("queue_state")["offer"]["room"] == "OPEN"   # a single still is
+        assert seen(conn)["offer"]["room"] == "OPEN"   # a single still is
     run(go())
 
 
@@ -2235,7 +2236,7 @@ def test_one_partner_waiting_cancels_the_pair_offer_with_no_cost(pairenv):
         cl, cp = await _queued_pair(env, lee, pat)
         await env.send(pat, "open_table_wait")                  # the member, not the leader
         for c in (cl, cp):
-            state = c.last("queue_state")
+            state = seen(c)
             assert state["queued"] and state["offer"] is None and state["open_tables"] == 1
         assert {"OPEN"} <= env.mm.declined[lee] and {"OPEN"} <= env.mm.declined[pat]
         assert env.mm.cooldowns == {}
@@ -2309,7 +2310,7 @@ def test_ws_a_rename_on_an_open_socket_names_the_queued_seat(wsenv):
         assert client.patch("/api/me", json={"display_name": "Newname"},
                             headers=headers).status_code == 200
         a.send_json({"type": "queue_join", "name": "Stale"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         a.send_json({"type": "table_start_bots"})
         started = _drain(a, "match_started")
         state = _drain(a, "state")
@@ -2398,11 +2399,11 @@ def test_an_open_table_holding_the_device_is_not_offered():
         tables.tables["OPEN"]["seats"][0]["device"] = DEVICE_A
         _guest(env, -1, DEVICE_A)
         await env.join(-1)
-        assert env.conns[-1].last("queue_state")["offer"] is None
+        assert seen(env.conns[-1])["offer"] is None
         await env.send(-1, "queue_leave")
         _guest(env, -2, DEVICE_B)
         await env.join(-2)
-        assert env.conns[-2].last("queue_state")["offer"]["room"] == "OPEN"
+        assert seen(env.conns[-2])["offer"]["room"] == "OPEN"
     run(go())
 
 
@@ -2410,7 +2411,7 @@ def test_ws_a_guest_with_a_device_key_queues(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "name": "Guesty"})
-        state = _drain(g, "queue_state")
+        state = _drain_seen(g)
         assert state["queued"] is True and state["table"] is None
         assert srv.MATCHMAKER.entry_of.keys() == {-1}
     # a malformed key is no key
@@ -2425,9 +2426,9 @@ def test_ws_a_guest_and_an_account_share_a_table_and_start(wsenv):
     with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a, \
             client.websocket_connect(f"/ws?device={DEVICE_B}") as g:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         g.send_json({"type": "queue_join", "name": "Guesty"})
-        table = _drain(g, "queue_state")["table"]
+        table = _drain_seen(g)["table"]
         assert [s and s["name"] for s in table["seats"]] == ["Acct", None, "Guesty", None]
         a.send_json({"type": "table_start"})
         g.send_json({"type": "table_start"})
@@ -2451,7 +2452,7 @@ def test_ws_a_guest_comes_back_to_its_matched_seat_by_token_only(wsenv, monkeypa
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "name": "Guesty"})
-        _drain(g, "queue_state")
+        _drain_seen(g)
         g.send_json({"type": "table_start_bots"})
         seen = _until(g, "match_started")
         code = seen[-1]["room"]
@@ -2472,12 +2473,12 @@ def test_ws_the_same_device_gets_the_same_guest_id_after_a_reconnect(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join"})
-        assert _drain(g, "queue_state")["queued"] is True
+        assert _drain_seen(g)["queued"] is True
     with client.websocket_connect(f"/ws?device={DEVICE_B}") as other:
         other.send_json({"type": "queue_join"})
-        _drain(other, "queue_state")
+        _drain_seen(other)
         with client.websocket_connect(f"/ws?device={DEVICE_A}") as again:
-            assert _drain(again, "queue_state")["queued"] is True   # its entry, back
+            assert _drain_seen(again)["queued"] is True   # its entry, back
             assert srv.MATCHMAKER.conns[-1].ws is not None
             assert srv.guest_queue_id(DEVICE_A) == -1 and srv.guest_queue_id(DEVICE_B) == -2
 
@@ -2586,7 +2587,7 @@ def _guest_match(client, device=DEVICE_A):
     """A guest on ``device`` starts a matched game with bots: (room code, token)."""
     with client.websocket_connect(f"/ws?device={device}") as g:
         g.send_json({"type": "queue_join", "name": "Guesty"})
-        _drain(g, "queue_state")
+        _drain_seen(g)
         g.send_json({"type": "table_start_bots"})
         seen = _until(g, "match_started")
         token = next(m for m in seen if m["type"] == "resume")["token"]
@@ -2632,7 +2633,7 @@ def test_ws_a_signed_out_account_cannot_take_its_matched_seat_as_a_guest(wsenv, 
     uid, headers = _user(store, "leaver", "Lea Ver")
     with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         a.send_json({"type": "table_start_bots"})
         seen = _until(a, "match_started")
         code = seen[-1]["room"]
@@ -2652,9 +2653,9 @@ def test_ws_a_guest_who_signs_in_at_a_waiting_table_leaves_it_and_the_table_is_t
     with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=other_headers) as b:
         with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
             g.send_json({"type": "queue_join", "name": "Guesty"})
-            _drain(g, "queue_state")
+            _drain_seen(g)
             b.send_json({"type": "queue_join"})
-            _next(b, "queue_state", lambda m: m["table"] is not None)
+            _next(b, "table", shared)
             assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
         uid, headers = _user(store, "signer", "Acct Person")
         with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
@@ -2662,11 +2663,11 @@ def test_ws_a_guest_who_signs_in_at_a_waiting_table_leaves_it_and_the_table_is_t
             # the guest's place is gone; the account holds nothing until Play
             assert srv.MATCHMAKER.entry_of.keys() == {other}
             assert srv.MATCHMAKER.tables == {}
-            alone = _next(b, "queue_state", lambda m: m["table"] is None)
-            assert alone["queued"] is True
+            alone = _next(b, "table", lambda m: not shared(m))
+            assert alone["phase"] == "open"
             assert srv.MATCHMAKER.count() == 1
             a.send_json({"type": "queue_join"})
-            table = _next(a, "queue_state", lambda m: m["table"] is not None)["table"]
+            table = waiting_table(_next(a, "table", shared))
             assert srv.MATCHMAKER.entry_of.keys() == {other, uid}
             assert sorted(s["name"] for s in table["seats"] if s) == ["Acct", "Other"]
 
@@ -2675,13 +2676,13 @@ def test_ws_a_guest_who_signs_in_while_searching_alone_leaves_the_queue(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "name": "Guesty"})
-        _drain(g, "queue_state")
+        _drain_seen(g)
     uid, headers = _user(store, "signer", "Acct Person")
     with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
         _settled(a)
         assert srv.MATCHMAKER.entry_of == {} and srv.MATCHMAKER.count() == 0
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "queue_state")["queued"] is True
+        assert _drain_seen(a)["queued"] is True
         assert srv.MATCHMAKER.entry_of.keys() == {uid}
 
 
@@ -2691,7 +2692,7 @@ def test_ws_a_guest_who_signs_in_in_a_pair_ends_the_pair(wsenv):
     with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=friend_headers) as f:
         with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
             f.send_json({"type": "queue_join", "duo": True})
-            code = _drain(f, "queue_state")["code"]
+            code = _drain_seen(f)["code"]
             g.send_json({"type": "table_join", "code": code, "name": "Guesty"})
             _drain(g, "party")
             assert srv.MATCHMAKER.entry_of.keys() == {friend, -1}
@@ -2711,11 +2712,11 @@ def test_ws_a_guest_reconnecting_as_a_guest_keeps_its_waiting_table_seat(wsenv):
     with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=other_headers) as b:
         with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
             g.send_json({"type": "queue_join", "name": "Guesty"})
-            _drain(g, "queue_state")
+            _drain_seen(g)
             b.send_json({"type": "queue_join"})
-            _next(b, "queue_state", lambda m: m["table"] is not None)
+            _next(b, "table", shared)
         with client.websocket_connect(f"/ws?device={DEVICE_A}") as again:
-            assert _next(again, "queue_state", lambda m: m["table"] is not None)["queued"]
+            assert _next(again, "table", shared)["phase"] == "open"
             assert srv.MATCHMAKER.entry_of.keys() == {-1, other}
             [t] = srv.MATCHMAKER.tables.values()
             assert -1 in t.seats and other in t.seats
@@ -2740,14 +2741,14 @@ def test_every_socket_of_an_account_shows_the_search_the_server_holds():
         await env.join(1)
         other = FakeConn(1, "P1")                   # the same account in another tab
         env.mm.connect(other)
-        held = other.last("queue_state")
-        assert held["queued"] is True and held["elsewhere"] is True and held["table"] is None
+        held = seen(other)
+        assert held["queued"] is True and held["elsewhere"] is True and "table" not in held
         await env.join(2)                           # a table forms on the first socket
-        assert env.conns[1].last("queue_state")["table"] is not None
-        assert other.last("queue_state")["elsewhere"] is True
+        assert seen(env.conns[1])["table"] is not None
+        assert seen(other)["elsewhere"] is True
         await env.send(1, "queue_leave")
-        assert env.conns[1].last("queue_state")["queued"] is False
-        assert other.last("queue_state")["queued"] is False
+        assert seen(env.conns[1])["queued"] is False
+        assert seen(other)["queued"] is False
     run(go())
 
 
@@ -2761,7 +2762,7 @@ def test_a_search_dropped_while_its_socket_is_away_clears_the_accounts_other_tab
         env.clock.advance(mm.AWAY_SECS + 1)
         await env.mm.pump()
         assert env.mm._entry(1) is None
-        assert other.last("queue_state")["queued"] is False
+        assert seen(other)["queued"] is False
     run(go())
 
 
@@ -2772,7 +2773,7 @@ def test_a_match_start_clears_the_accounts_other_tabs():
         other = FakeConn(1, "P1")
         env.mm.connect(other)
         await env.send(1, "queue_start_bots")
-        assert env.started and other.last("queue_state")["queued"] is False
+        assert env.started and seen(other)["queued"] is False
     run(go())
 
 
@@ -2784,18 +2785,18 @@ def test_queue_status_answers_each_socket_with_what_the_server_holds_for_it():
         env.mm.connect(other)
         other.clear()
         await env.mm.handle(env.conns[1], {"type": "queue_status"}, 1)
-        mine = env.conns[1].last("queue_state")
+        mine = seen(env.conns[1])
         assert mine["queued"] is True and "elsewhere" not in mine
         await env.mm.handle(other, {"type": "queue_status"}, 1)
-        assert other.last("queue_state")["elsewhere"] is True
+        assert seen(other)["elsewhere"] is True
         assert env.mm.conns[1] is env.conns[1]      # asking never takes the entry over
         nobody = FakeConn(None, "")
         env.mm.connect(nobody)
         await env.mm.handle(nobody, {"type": "queue_status"}, None)
-        assert nobody.last("queue_state")["queued"] is False and not nobody.of("error")
+        assert seen(nobody)["queued"] is False and not nobody.of("error")
         lone = env.player(3)
         await env.send(3, "queue_status")
-        assert lone.last("queue_state")["queued"] is False
+        assert seen(lone)["queued"] is False
     run(go())
 
 
@@ -2808,15 +2809,15 @@ def test_queue_status_for_a_guest_and_from_a_seated_socket():
         await env.send(-4, "queue_join")
         guest.clear()
         await env.send(-4, "queue_status")
-        assert guest.last("queue_state")["queued"] is True
+        assert seen(guest)["queued"] is True
         tab = FakeConn(-4, "Guest")
         env.mm.connect(tab)
         await env.mm.handle(tab, {"type": "queue_status"}, -4)
-        assert tab.last("queue_state")["elsewhere"] is True
+        assert seen(tab)["elsewhere"] is True
         await env.send(-4, "queue_start_bots")      # seated in a room now
-        assert tab.last("queue_state")["queued"] is False
+        assert seen(tab)["queued"] is False
         await env.send(-4, "queue_status")
-        assert guest.last("queue_state")["queued"] is False and not guest.of("error")
+        assert seen(guest)["queued"] is False and not guest.of("error")
     run(go())
 
 
@@ -2833,14 +2834,14 @@ def test_a_new_socket_from_the_same_device_takes_the_search_over():
         again.device = DEVICE_A
         env.mm.connect(again)
         assert env.mm.conns[1] is again
-        state = again.last("queue_state")
+        state = seen(again)
         assert state["queued"] is True and "elsewhere" not in state
-        assert any(m.get("replaced") for m in first.of("queue_state"))
+        assert any(m.get("replaced") for m in seen_all(first))
         # another device of the account does not take it
         phone = FakeConn(1, "P1")
         phone.device = DEVICE_B
         env.mm.connect(phone)
-        assert env.mm.conns[1] is again and phone.last("queue_state")["elsewhere"] is True
+        assert env.mm.conns[1] is again and seen(phone)["elsewhere"] is True
     run(go())
 
 
@@ -2913,17 +2914,17 @@ def test_ws_two_sockets_of_one_account_both_see_the_true_search(wsenv):
         _settled(a)
         _settled(b)
         a.send_json({"type": "queue_join"})
-        assert _drain(a, "queue_state")["queued"] is True
-        held = _drain(b, "queue_state")
+        assert _drain_seen(a)["queued"] is True
+        held = _drain_seen(b)
         assert held["queued"] is True and held["elsewhere"] is True
         b.send_json({"type": "queue_status"})
-        assert _drain(b, "queue_state")["elsewhere"] is True
+        assert _drain_seen(b)["elsewhere"] is True
         a.send_json({"type": "table_leave"})
-        assert _drain(a, "queue_state")["queued"] is False
-        assert _drain(b, "queue_state")["queued"] is False
+        assert _drain_seen(a)["queued"] is False
+        assert _drain_seen(b)["queued"] is False
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_status", "name": "Guesty"})
-        assert _drain(g, "queue_state")["queued"] is False
+        assert _drain_seen(g)["queued"] is False
 
 
 # ------------------------------------- signed out while the account plays ranked
@@ -2933,7 +2934,7 @@ def _account_match(srv, store, client, device=DEVICE_A):
     _, headers = _user(store, "leaver", "Lea Ver")
     with client.websocket_connect(f"/ws?device={device}", headers=headers) as a:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         a.send_json({"type": "table_start_bots"})
         seen = _until(a, "match_started")
         return seen[-1]["room"], next(m for m in seen if m["type"] == "resume")["token"]
@@ -2953,7 +2954,7 @@ def test_ws_the_signed_out_guest_cannot_queue_while_its_accounts_game_is_in_play
     # another device's guest queues as ever
     with client.websocket_connect(f"/ws?device={DEVICE_B}") as other:
         other.send_json({"type": "queue_join", "name": "Other"})
-        assert _drain(other, "queue_state")["queued"]
+        assert _drain_seen(other)["queued"]
 
 
 def test_ws_the_signed_out_guest_asking_for_the_seat_without_a_token_is_told_to_sign_in(wsenv, monkeypatch):
@@ -3020,7 +3021,7 @@ def test_ws_a_casual_created_game_does_not_hold_the_signed_out_guest(wsenv, monk
     _created_game(srv, store, client, monkeypatch)
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "name": "Cre"})
-        assert _drain(g, "queue_state")["queued"]
+        assert _drain_seen(g)["queued"]
 
 
 def test_live_ranked_room_excludes_a_finished_or_closing_game(wsenv, monkeypatch):
@@ -3049,7 +3050,7 @@ def test_ws_a_joined_seat_reconnecting_gets_joined_round_in_its_state_frames(wse
     alice, alice_headers = _user(store, "alice", "Alice")
     with client.websocket_connect("/ws", headers=host_headers) as h:
         h.send_json({"type": "queue_join"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         code = _drain(h, "match_started")["room"]
         room = srv.rooms[code]
@@ -3058,7 +3059,7 @@ def test_ws_a_joined_seat_reconnecting_gets_joined_round_in_its_state_frames(wse
         _wait_until(lambda: room.round is not None and room.round.phase == "play")
         with client.websocket_connect("/ws", headers=alice_headers) as a:
             a.send_json({"type": "queue_join"})
-            assert _drain(a, "queue_state")["offer"]["room"] == code
+            assert _drain_seen(a)["offer"]["room"] == code
             a.send_json({"type": "open_table_join", "room": code, "seat": 2})
             assert _drain(a, "match_started")["joining"] is True
             _wait_until(lambda: room.seats[2].user_id == alice)
@@ -3084,7 +3085,7 @@ def test_ws_an_account_playing_ranked_cannot_press_play_on_a_second_device(wsenv
     _, headers = _user(store, "twodev", "Two Dev")
     with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
         a.send_json({"type": "queue_join"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         a.send_json({"type": "table_start_bots"})
         _until(a, "match_started")
         _drain(a, "state")
@@ -3096,7 +3097,7 @@ def test_ws_an_account_playing_ranked_cannot_press_play_on_a_second_device(wsenv
             a.send_json({"type": "table_leave"})
             _drain(a, "left")
             b.send_json({"type": "queue_join"})
-            assert _drain(b, "queue_state")["queued"] is True
+            assert _drain_seen(b)["queued"] is True
 
 
 # ------------------------------------------------------- the unified table
@@ -3109,8 +3110,8 @@ def test_a_single_at_a_waiting_table_moves_to_an_empty_seat_and_the_table_is_tol
         assert t.seats == [1, None, 2, None]
         await env.send(2, "table_move", seat=1)
         assert t.seats == [1, 2, None, None]
-        assert env.conns[2].last("queue_state")["table"]["you"] == 1
-        assert env.conns[1].last("queue_state")["table"]["seats"][1]["name"] == "P2"
+        assert seen(env.conns[2])["table"]["you"] == 1
+        assert seen(env.conns[1])["table"]["seats"][1]["name"] == "P2"
         assert env.conns[1].last("table_moved") == {"type": "table_moved", "name": "P2",
                                                     "seat": 1, "your_team": False}
         assert env.conns[2].last("table_moved") is None
@@ -3157,18 +3158,18 @@ def test_keep_looking_is_forgotten_on_the_next_play_but_a_table_left_stays_barre
         env.mm.left_open_table(1, "LEFT")
         env.clock.advance(mm.JOIN_COOLDOWN_SECS + 1)
         await env.join(1)
-        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        assert seen(env.conns[1])["offer"]["room"] == "OPEN"
         await env.send(1, "open_table_wait")
         await env.mm.tick()
-        assert env.conns[1].last("queue_state")["offer"] is None
+        assert seen(env.conns[1])["offer"] is None
         await env.send(1, "queue_leave")
         await env.join(1)                    # a fresh Play: offered again
-        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        assert seen(env.conns[1])["offer"]["room"] == "OPEN"
         await env.send(1, "open_table_wait")
         await env.send(1, "queue_leave")
         tables.tables.pop("OPEN")
         await env.join(1)                    # the left table is never offered
-        assert env.conns[1].last("queue_state")["offer"] is None
+        assert seen(env.conns[1])["offer"] is None
     run(go())
 
 
@@ -3207,15 +3208,15 @@ def test_still_here_is_answered_by_table_here_and_asked_again_after_another_idle
         await env.send(1, "table_start")
         env.clock.advance(mm.TABLE_IDLE_SECS)
         await env.mm.pump()
-        assert env.conns[2].last("queue_state")["still_here_until"] is not None
+        assert seen(env.conns[2])["still_here_until"] is not None
         await env.send(2, "table_here")
-        assert env.conns[2].last("queue_state")["still_here_until"] is None
+        assert seen(env.conns[2])["still_here_until"] is None
         env.clock.advance(mm.STILL_HERE_SECS + 1)
         await env.mm.pump()
         assert env.mm._entry(2) is not None and env.conns[2].last("queue_removed") is None
         env.clock.advance(mm.TABLE_IDLE_SECS - mm.STILL_HERE_SECS - 1)
         await env.mm.pump()
-        assert env.conns[2].last("queue_state")["still_here_until"] == (
+        assert seen(env.conns[2])["still_here_until"] == (
             env.clock.t + mm.STILL_HERE_SECS)
         await env.send(3, "table_here", conn=env.player(3))
         assert env.conns[3].last("error")["code"] == "not_seated"
@@ -3254,7 +3255,7 @@ def test_ws_presence_counts_a_solo_ranked_game_and_its_connected_player(wsenv, m
     _, headers = _user(store, "solo", "Solo")
     with client.websocket_connect("/ws", headers=headers) as h:
         h.send_json({"type": "queue_join"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         room = srv.rooms[_drain(h, "match_started")["room"]]
         _wait_until(lambda: room.round is not None)
@@ -3274,10 +3275,10 @@ def test_a_start_sent_against_a_panel_that_changed_is_refused():
         tables = Tables(env)
         tables.add("OPEN", [50, "bot", "bot", "bot"])
         await env.join(1)
-        shown = env.conns[1].last("queue_state")
+        shown = seen(env.conns[1])
         assert shown["offer"]["room"] == "OPEN"
         await env.join(2)                             # 1's panel turns into a waiting table
-        now = env.conns[1].last("queue_state")
+        now = seen(env.conns[1])
         assert now["table"] is not None and now["panel_seq"] > shown["panel_seq"]
         await env.send(1, "table_start", panel_seq=shown["panel_seq"])
         assert env.conns[1].last("error")["code"] == "panel_changed"
@@ -3285,7 +3286,7 @@ def test_a_start_sent_against_a_panel_that_changed_is_refused():
         assert t.ready == set()
         env.clock.advance(1)
         await env.send(2, "table_move", seat=1)       # a re-render keeps the number
-        assert env.conns[1].last("queue_state")["panel_seq"] == now["panel_seq"]
+        assert seen(env.conns[1])["panel_seq"] == now["panel_seq"]
         await env.send(1, "table_start", panel_seq=now["panel_seq"])
         assert env.mm._entry(1).id in t.ready
     run(go())
@@ -3347,14 +3348,14 @@ def test_ws_the_first_joiner_of_a_game_started_alone_is_announced_once(wsenv, mo
     with client.websocket_connect("/ws", headers=host_headers) as h, \
             client.websocket_connect("/ws", headers=alice_headers) as a:
         h.send_json({"type": "queue_join"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         code = _drain(h, "match_started")["room"]
         room = srv.rooms[code]
         _wait_until(lambda: room.round is not None and room.round.phase == "play")
         assert code in [t["code"] for t in srv.open_tables()]     # joinable as ever
         a.send_json({"type": "queue_join"})
-        offer = _drain(a, "queue_state")["offer"]
+        offer = _drain_seen(a)["offer"]
         a.send_json({"type": "open_table_join", "room": code, "seat": offer["pick"]})
         _drain(a, "match_started")
         note = _drain(h, "first_joiner")
@@ -3378,8 +3379,8 @@ def test_casual_entries_never_share_a_table_with_ranked_ones():
         await env.join(1)                              # ranked: no mode is ranked
         await env.join(2, mode="casual")
         assert env.mm.tables == {}                     # alone in each mode
-        assert env.conns[2].last("queue_state")["mode"] == "casual"
-        assert env.conns[1].last("queue_state")["mode"] == "ranked"
+        assert seen(env.conns[2])["mode"] == "casual"
+        assert seen(env.conns[1])["mode"] == "ranked"
         await env.join(3, mode="casual")
         await env.join(4, mode="ranked")
         by_mode = {t.mode: sorted(u for u in t.seats if u is not None)
@@ -3418,13 +3419,13 @@ def test_open_table_offers_are_of_the_entrys_own_mode():
         tables.add("RANK", [50, "bot", "bot", "bot"])
         tables.add("CASU", [60, "bot", "bot", "bot"], mode="casual")
         await env.join(1)
-        assert env.conns[1].last("queue_state")["offer"]["room"] == "RANK"
+        assert seen(env.conns[1])["offer"]["room"] == "RANK"
         await env.join(2, mode="casual")
-        assert env.conns[2].last("queue_state")["offer"]["room"] == "CASU"
+        assert seen(env.conns[2])["offer"]["room"] == "CASU"
         # a casual searcher is never offered a ranked table, even the only one
         del tables.tables["CASU"]
         await env.mm.tick()
-        assert env.conns[2].last("queue_state")["offer"] is None
+        assert seen(env.conns[2])["offer"] is None
         await env.send(2, "open_table_show", room="RANK")
         assert env.conns[2].last("error")["code"] == "table_closed"
         await env.send(2, "open_table_join", room="RANK", seat=1)
@@ -3629,7 +3630,7 @@ def test_a_code_joiner_hears_the_lone_hosts_chat():
         env = Env()
         await env.join(1, mode="casual", allow_joiners=False)
         await env.send(1, "table_chat", text="come sit")
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         env.player(2)
         await env.send(2, "queue_join", code=code)
         (t,) = env.mm.tables.values()
@@ -3690,9 +3691,9 @@ def test_ws_table_chat_is_masked_before_anyone_hears_it(wsenv):
     with client.websocket_connect("/ws", headers=h1) as a, \
             client.websocket_connect("/ws", headers=h2) as b:
         a.send_json({"type": "queue_join", "mode": "casual"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         b.send_json({"type": "queue_join", "mode": "casual"})
-        assert _drain(b, "queue_state")["table"]["of"] == 2
+        assert _drain_seen(b)["table"]["of"] == 2
         b.send_json({"type": "table_chat", "text": "傻逼 pass the f*ing ball, sh1t"})
         assert _drain(a, "table_chat")["text"] == "** pass the f*ing ball, ****"
         assert _drain(b, "table_chat")["text"] == "** pass the f*ing ball, ****"
@@ -3702,7 +3703,7 @@ def test_a_guests_queue_name_is_masked(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "mode": "casual", "name": "bitch"})
-        state = _drain(g, "queue_state")
+        state = _drain_seen(g)
     assert "bitch" not in str(state)
     assert [c.name for c in srv.MATCHMAKER.conns.values()] == ["*****"]
 
@@ -3713,9 +3714,9 @@ def test_ws_table_chat_becomes_the_rooms_scrollback_and_is_never_logged(wsenv):
     with client.websocket_connect("/ws", headers=h1) as a, \
             client.websocket_connect("/ws", headers=h2) as b:
         a.send_json({"type": "queue_join", "mode": "casual"})
-        _drain(a, "queue_state")
+        _drain_seen(a)
         b.send_json({"type": "queue_join", "mode": "casual"})
-        assert _drain(b, "queue_state")["table"]["of"] == 2
+        assert _drain_seen(b)["table"]["of"] == 2
         b.send_json({"type": "table_chat", "text": "secret-table-line"})
         assert _drain(a, "table_chat")["text"] == "secret-table-line"
         a.send_json({"type": "table_start"})
@@ -3754,10 +3755,10 @@ def test_ws_a_casual_created_room_is_an_open_table_of_the_casual_queue_only(wsen
         assert srv.presence_counts() == (1, 1, 0, 1)
         with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=h3) as r:
             r.send_json({"type": "queue_join"})
-            assert _drain(r, "queue_state")["offer"] is None
+            assert _drain_seen(r)["offer"] is None
         with client.websocket_connect(f"/ws?device={DEVICE_B}", headers=h2) as c:
             c.send_json({"type": "queue_join", "mode": "casual"})
-            assert _drain(c, "queue_state")["offer"]["room"] == code
+            assert _drain_seen(c)["offer"]["room"] == code
 
 
 def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred(
@@ -3770,7 +3771,7 @@ def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred
     with client.websocket_connect("/ws", headers=host_headers) as h, \
             client.websocket_connect("/ws", headers=alice_headers) as a:
         h.send_json({"type": "queue_join", "mode": "casual"})
-        _drain(h, "queue_state")
+        _drain_seen(h)
         h.send_json({"type": "table_start_bots"})
         started = _drain(h, "match_started")
         assert started["rated"] is False
@@ -3783,7 +3784,7 @@ def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred
         client.portal.call(srv.kick_bots, room)
         _wait_until(lambda: room.round is not None and room.round.phase == "play")
         a.send_json({"type": "queue_join", "mode": "casual"})
-        offer = _drain(a, "queue_state")["offer"]
+        offer = _drain_seen(a)["offer"]
         assert offer["room"] == code and offer["pick"] == 2
         a.send_json({"type": "open_table_join", "room": code, "seat": 2})
         assert _drain(a, "match_started")["rated"] is False
@@ -3797,7 +3798,7 @@ def test_ws_leaving_a_casual_table_one_joined_is_free_but_the_table_stays_barred
         assert alice not in srv.MATCHMAKER.cooldowns
         assert code in srv.MATCHMAKER.barred[alice]
         a.send_json({"type": "queue_join", "mode": "casual"})
-        state = _drain(a, "queue_state")
+        state = _drain_seen(a)
         assert state["queued"] and state["offer"] is None
     ratings.CARRIED_CAPS.clear()
 
@@ -3847,7 +3848,7 @@ def test_a_lone_entry_has_its_own_table_code():
     async def go():
         env = Env()
         await env.join(1)
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["table"] is None             # an older client still sees itself alone
         code = state["code"]
         assert len(code) == mm.CODE_LEN and set(code) <= set(mm.CODE_ALPHABET)
@@ -3865,13 +3866,13 @@ def test_a_friend_joins_by_code_before_the_game_and_the_code_is_the_room_code():
     async def go():
         env = Env()
         await env.join(1, mode="casual", allow_joiners=False)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         env.player(2, rating=1900.0)               # far outside any window: a friend sits anyway
         await env.send(2, "queue_join", code=code)
         (t,) = env.mm.tables.values()
         assert t.seats == [1, None, 2, None] and t.mode == "casual"
         for uid in (1, 2):
-            state = env.conns[uid].last("queue_state")
+            state = seen(env.conns[uid])
             assert state["code"] == code and state["table"]["code"] == code
             assert state["table"]["opener"] == 0 and state["opener"] is (uid == 1)
             assert state["mode"] == "casual" and state["allow_joiners"] is False
@@ -3892,7 +3893,7 @@ def test_a_game_started_alone_keeps_the_entry_code():
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         await env.send(1, "queue_start_bots")
         assert env.rooms == [{"code": code, "allow_joiners": True, "start_level": "2"}]
     run(go())
@@ -3902,7 +3903,7 @@ def test_joining_by_code_takes_the_tables_mode_and_keeps_the_queue_guards():
     async def go():
         env = Env()
         await env.join(1)                          # ranked
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         # the code decides the mode, whatever the joiner's tab says
         env.player(-7, name="Guest")
         await env.send(-7, "queue_join", code=code, mode="casual")
@@ -3951,19 +3952,19 @@ def test_a_ranked_table_refuses_a_starting_level_and_a_casual_one_takes_it():
         await env.send(1, "queue_join")
         await env.send(1, "table_start_level", start_level="5")
         assert env.conns[1].last("error")["code"] == "ranked_level_fixed"
-        assert env.conns[1].last("queue_state")["start_level"] == "2"
+        assert seen(env.conns[1])["start_level"] == "2"
         await env.send(1, "queue_leave")
 
         await env.send(1, "queue_join", mode="casual", start_level="5")
-        assert env.conns[1].last("queue_state")["start_level"] == "5"
-        code = env.conns[1].last("queue_state")["code"]
+        assert seen(env.conns[1])["start_level"] == "5"
+        code = seen(env.conns[1])["code"]
         env.player(2)
         await env.send(2, "queue_join", code=code)
         await env.send(2, "table_start")
         await env.send(2, "table_start_level", start_level="9")
         assert env.conns[2].last("error")["code"] == "not_opener"
         await env.send(1, "table_start_level", start_level="9")
-        state = env.conns[2].last("queue_state")
+        state = seen(env.conns[2])
         assert state["start_level"] == "9" and state["table"]["ready"] == 0   # Start agreed to 5
         await env.send(1, "table_start_level", start_level="1")
         assert env.conns[1].last("error")["code"] == "bad_start_level"
@@ -3977,11 +3978,11 @@ def test_allow_joiners_off_hides_the_table_from_play_but_not_from_its_code():
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         await env.send(1, "table_allow_joiners", on=False)
-        assert env.conns[1].last("queue_state")["allow_joiners"] is False
+        assert seen(env.conns[1])["allow_joiners"] is False
         await env.join(2)                           # a stranger on Play
-        assert env.mm.tables == {} and env.conns[2].last("queue_state")["table"] is None
+        assert env.mm.tables == {} and seen(env.conns[2])["table"] is None
         env.player(3)
         await env.send(3, "queue_join", code=code)  # the link
         (t,) = env.mm.tables.values()
@@ -4008,11 +4009,11 @@ def test_allow_joiners_off_offers_no_open_table():
             {"name": "Bot 3", "bot": True, "open": True}]}]
         env.mm.open_tables = lambda: tables
         await env.join(1, allow_joiners=False)
-        assert env.conns[1].last("queue_state")["offer"] is None
+        assert seen(env.conns[1])["offer"] is None
         await env.send(1, "table_allow_joiners", on=True)
-        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        assert seen(env.conns[1])["offer"]["room"] == "OPEN"
         await env.send(1, "table_allow_joiners", on=False)
-        assert env.conns[1].last("queue_state")["offer"] is None
+        assert seen(env.conns[1])["offer"] is None
     run(go())
 
 
@@ -4039,11 +4040,11 @@ def test_ws_a_friend_joins_a_table_by_its_code_and_the_room_has_that_code(wsenv)
     with client.websocket_connect("/ws", headers=host_headers) as h, \
             client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         h.send_json({"type": "queue_join"})
-        code = _drain(h, "queue_state")["code"]
+        code = _drain_seen(h)["code"]
         g.send_json({"type": "table_peek", "code": code})
         assert _drain(g, "room_seats")["table"] is True
         g.send_json({"type": "table_join", "code": code, "name": "Guest"})
-        table = _drain(g, "queue_state")["table"]
+        table = _drain_seen(g)["table"]
         assert table["code"] == code and table["you"] == 2
         h.send_json({"type": "table_start"})
         g.send_json({"type": "table_start"})
@@ -4057,7 +4058,7 @@ def test_ws_a_casual_tables_starting_level_reaches_its_room(wsenv):
     srv, store, client, clock = wsenv
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "mode": "casual", "start_level": "5", "name": "Guest"})
-        state = _drain(g, "queue_state")
+        state = _drain_seen(g)
         assert state["start_level"] == "5"
         g.send_json({"type": "table_start_bots"})
         code = _drain(g, "match_started")["room"]
@@ -4078,7 +4079,7 @@ async def _duo_table(env, opener=1, friend=None, strangers=()):
     """A Duo table: ``opener`` opens it, ``strangers`` sit there from Play,
     and ``friend`` (if any) joins by the table's code."""
     await env.join(opener, duo=True)
-    code = env.conns[opener].last("queue_state")["code"]
+    code = seen(env.conns[opener])["code"]
     for uid in strangers:
         await env.join(uid)
     if friend is not None:
@@ -4091,7 +4092,7 @@ def test_a_duo_open_holds_the_partner_seat_with_the_tables_code_as_its_invite():
     async def go():
         env = Env()
         await env.join(1, duo=True)
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["queued"] and state["duo"] is True and state["held_seat"] == 2
         assert state["table"] is None and state["opener"] is True
         e = env.mm._entry(1)
@@ -4110,10 +4111,10 @@ def test_a_strangers_play_never_takes_the_held_seat():
         await env.join(2)                    # waiting before the Duo opens
         await _duo_table(env, 1, strangers=(3,))
         (t,) = env.mm.tables.values()
-        assert t.seats == [1, 2, None, 3] and t.held_seat() == 2
+        assert t.seats == [1, 2, None, 3] and t.held_seats() == [2]
         assert t.entries[0] is env.mm._entry(1)           # the Duo opener's table
-        table = env.conns[2].last("queue_state")["table"]
-        assert table["held_seat"] == 2 and table["code"] == env.conns[1].last("queue_state")["code"]
+        table = seen(env.conns[2])["table"]
+        assert table["held_seat"] == 2 and table["code"] == seen(env.conns[1])["code"]
         assert table["opener"] == 0
         await env.join(4)                    # only the held seat is empty
         assert env.mm._entry(4).table_id is None and 4 not in t.seats
@@ -4141,14 +4142,14 @@ def test_an_open_table_offer_skips_a_duo_opener_waiting_for_its_friend():
         env.mm.open_tables = lambda: [OPEN_TABLE]
         await env.join(1, duo=True)
         await env.mm.tick()
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["offer"] is None and state["open_tables"] == 0
         await env.send(1, "open_table_show", room="OPEN")
         assert env.conns[1].last("error")["code"] == "table_closed"
         # once paired it is offered two partner seats, as any pair
         env.player(2)
         await env.send(2, "queue_join", code=state["code"])
-        offer = env.conns[1].last("queue_state")["offer"]
+        offer = seen(env.conns[1])["offer"]
         assert offer["room"] == "OPEN" and (offer["pick"], offer["partner"]["seat"]) == (1, 3)
     run(go())
 
@@ -4158,12 +4159,12 @@ def test_the_first_code_joiner_takes_the_held_seat_and_the_two_become_one_paired
         env = Env()
         await _duo_table(env, 1, friend=3, strangers=(2,))
         (t,) = env.mm.tables.values()
-        assert t.seats == [1, 2, 3, None] and t.held_seat() is None
+        assert t.seats == [1, 2, 3, None] and t.held_seats() == []
         e = env.mm._entry(1)
         assert e is env.mm._entry(3) and e.size == 2 and e.members == [1, 3] and not e.hold
         p = env.mm._party(1)
         assert p is env.mm._party(3) and p.members == [1, 3]
-        state = env.conns[3].last("queue_state")
+        state = seen(env.conns[3])
         assert state["table"]["you"] == 2 and state["duo"] is True and state["held_seat"] is None
         assert state["leader"] is False and state["table"]["seats"][2]["pair"]
         party = env.conns[3].last("party")
@@ -4177,7 +4178,7 @@ def test_the_first_code_joiner_takes_the_held_seat_and_the_two_become_one_paired
         env = Env()
         await _duo_table(env, 1, friend=2)
         assert env.mm.tables == {} and env.mm._entry(2) is env.mm._entry(1)
-        assert env.conns[2].last("queue_state")["held_seat"] is None
+        assert seen(env.conns[2])["held_seat"] is None
     run(go())
 
 
@@ -4225,13 +4226,13 @@ def test_a_partner_leaving_before_the_game_holds_its_seat_again():
         (t,) = env.mm.tables.values()
         await env.send(1, "table_start")
         await env.send(3, "queue_leave")
-        assert t.seats == [1, 2, None, None] and t.held_seat() == 2
+        assert t.seats == [1, 2, None, None] and t.held_seats() == [2]
         e = env.mm._entry(1)
         assert e.hold and e.members == [1] and e.party_id is None and e.id not in t.ready
         assert env.mm._entry(3) is None and env.mm.parties == {} and env.mm.party_of == {}
-        assert env.conns[3].last("queue_state")["queued"] is False
+        assert seen(env.conns[3])["queued"] is False
         assert env.conns[1].last("party_closed")["by"] == "P3"
-        assert env.conns[1].last("queue_state")["held_seat"] == 2
+        assert seen(env.conns[1])["held_seat"] == 2
         await env.join(4)                    # a stranger takes the other seat
         assert t.seats == [1, 2, None, 4]
         # the held seat is the next code joiner's
@@ -4244,7 +4245,7 @@ def test_a_partner_leaving_before_the_game_holds_its_seat_again():
         await _duo_table(env, 1, friend=2)
         await env.send(2, "party_leave")
         assert env.mm._entry(1).hold and env.mm._entry(2) is None
-        assert env.conns[1].last("queue_state")["held_seat"] == 2
+        assert seen(env.conns[1])["held_seat"] == 2
     run(go())
 
 
@@ -4254,23 +4255,23 @@ def test_an_opener_leaving_before_the_game_hands_the_table_and_its_code_to_the_p
         code = await _duo_table(env, 1, friend=3, strangers=(2,))
         (t,) = env.mm.tables.values()
         await env.send(1, "queue_leave")
-        assert t.seats == [None, 2, 3, None] and t.held_seat() is None
+        assert t.seats == [None, 2, 3, None] and t.held_seats() == []
         e = env.mm._entry(3)
         assert e.leader == 3 and e.members == [3] and not e.hold and e.code == code
         assert t.entries[0] is e and env.mm.parties == {}
-        state = env.conns[3].last("queue_state")
+        state = seen(env.conns[3])
         assert state["opener"] is True and state["code"] == code and state["duo"] is False
         assert state["table"]["opener"] == 2
-        assert env.conns[1].last("queue_state")["queued"] is False
+        assert seen(env.conns[1])["queued"] is False
         await env.send(3, "table_allow_joiners", on=False)
-        assert env.conns[3].last("queue_state")["allow_joiners"] is False
+        assert seen(env.conns[3])["allow_joiners"] is False
         # lone: the partner keeps its own table under the same code
         env = Env()
         code = await _duo_table(env, 1, friend=2)
         await env.send(1, "queue_leave")
         e = env.mm._entry(2)
         assert e.leader == 2 and e.code == code and not e.hold
-        assert env.conns[2].last("queue_state")["held_seat"] is None
+        assert seen(env.conns[2])["held_seat"] is None
     run(go())
 
 
@@ -4281,9 +4282,9 @@ def test_allow_joiners_from_anyone_but_the_tables_opener_is_refused():
         await env.join(2)
         await env.send(2, "table_allow_joiners", on=False)
         assert env.conns[2].last("error")["code"] == "not_opener"
-        assert env.conns[1].last("queue_state")["allow_joiners"] is True
+        assert seen(env.conns[1])["allow_joiners"] is True
         await env.send(1, "table_allow_joiners", on=False)
-        assert env.conns[2].last("queue_state")["allow_joiners"] is False
+        assert seen(env.conns[2])["allow_joiners"] is False
         # a Duo's partner is not the opener either
         env = Env()
         await _duo_table(env, 1, friend=2)
@@ -4306,7 +4307,7 @@ def test_a_duo_split_at_a_strangers_table_stays_seated_there_with_nothing_held()
         assert env.mm.tables == {t.id: t} and t.seats == [5, 1, None, None]
         e = env.mm._entry(1)
         assert not e.hold and e.size == 1 and t.held_seats() == []
-        state = env.conns[1].last("queue_state")
+        state = seen(env.conns[1])
         assert state["held_seat"] is None and state["duo"] is False
         assert state["table"]["held_seat"] is None and state["code"] == host_code
         await env.join(8)                           # any free seat is a stranger's
@@ -4332,10 +4333,10 @@ def test_each_duo_member_taps_start_and_the_pair_is_ready_once_both_have():
         e = env.mm._entry(1)
         await env.send(3, "table_start")                 # the partner's Start counts
         assert env.conns[3].last("error") is None
-        table = env.conns[2].last("queue_state")["table"]
+        table = seen(env.conns[2])["table"]
         assert table["ready"] == 1 and table["of"] == 3 and table["seats"][2]["ready"]
         assert table["waiting_for"] == ["P1"]
-        mine = env.conns[3].last("queue_state")["table"]
+        mine = seen(env.conns[3])["table"]
         assert mine["you_ready"] is True and mine["waiting_for"] == ["P1", "P2"]
         await env.send(2, "table_start")
         assert env.started == [] and e.id not in t.ready  # one member is not a pair
@@ -4346,9 +4347,9 @@ def test_each_duo_member_taps_start_and_the_pair_is_ready_once_both_have():
         env = Env()
         await _duo_table(env, 1, friend=2)
         await env.send(2, "table_start")
-        assert env.conns[1].last("queue_state")["duo_ready"] == 1
+        assert seen(env.conns[1])["duo_ready"] == 1
         await env.send(1, "table_start")
-        state = env.conns[2].last("queue_state")
+        state = seen(env.conns[2])
         assert state["duo_ready"] == 2 and state["you_ready"] and env.started == []
         await env.join(3)
         (t,) = env.mm.tables.values()
@@ -4361,7 +4362,7 @@ def test_each_duo_member_taps_start_and_the_pair_is_ready_once_both_have():
         await env.send(1, "table_start")
         env.player(3)
         await env.send(3, "queue_join", code=env.mm._entry(1).code)
-        assert env.conns[3].last("queue_state")["table"]["ready"] == 1
+        assert seen(env.conns[3])["table"]["ready"] == 1
     run(go())
 
 
@@ -4393,13 +4394,13 @@ def test_a_start_is_taken_back_before_the_table_starts_and_the_ready_count_drops
         (t,) = env.mm.tables.values()
         await env.send(1, "table_start")
         await env.send(2, "table_start")
-        mine = env.conns[3].last("queue_state")["table"]
+        mine = seen(env.conns[3])["table"]
         assert mine["ready"] == 2 and mine["waiting_for"] == []
         await env.send(2, "table_unready")
-        table = env.conns[2].last("queue_state")["table"]
+        table = seen(env.conns[2])["table"]
         assert table["you_ready"] is False and table["ready"] == 1 and table["of"] == 3
         assert table["waiting_for"] == ["P3"] and not table["seats"][2]["ready"]
-        assert env.conns[1].last("queue_state")["table"]["waiting_for"] == ["P2", "P3"]
+        assert seen(env.conns[1])["table"]["waiting_for"] == ["P2", "P3"]
         await env.send(2, "table_unready")            # twice is once
         assert env.conns[2].last("error") is None
         # the last Start no longer starts it: the taken-back one is missing
@@ -4422,10 +4423,10 @@ def test_a_table_duo_member_takes_back_its_own_tap_and_a_pair_partner_cannot_for
         await _duo_table(env, 1, friend=2)
         await env.send(1, "table_start")
         await env.send(2, "table_start")
-        assert env.conns[1].last("queue_state")["duo_ready"] == 2
+        assert seen(env.conns[1])["duo_ready"] == 2
         await env.send(2, "table_unready")
-        assert env.conns[1].last("queue_state")["duo_ready"] == 1
-        assert env.conns[2].last("queue_state")["you_ready"] is False
+        assert seen(env.conns[1])["duo_ready"] == 1
+        assert seen(env.conns[2])["you_ready"] is False
         await env.join(3)                             # the pair sits: one tap is not the pair's Start
         (t,) = env.mm.tables.values()
         assert env.mm._entry(1).id not in t.ready
@@ -4433,7 +4434,7 @@ def test_a_table_duo_member_takes_back_its_own_tap_and_a_pair_partner_cannot_for
         assert env.mm._entry(1).id in t.ready
         await env.send(1, "table_unready")
         assert env.mm._entry(1).id not in t.ready and env.mm._entry(1).taps == {2}
-        assert env.conns[3].last("queue_state")["table"]["waiting_for"] == ["P1"]
+        assert seen(env.conns[3])["table"]["waiting_for"] == ["P1"]
     run(go())
 
 
@@ -4455,7 +4456,7 @@ def test_a_delayed_opener_move_never_lands_on_whoever_sat_after():
             await env.join(uid)
         (t,) = env.mm.tables.values()
         assert t.seats == [1, 3, 2, None]
-        assert env.conns[1].last("queue_state")["table"]["seats"][2]["sit"] == t.sit_ids[2]
+        assert seen(env.conns[1])["table"]["seats"][2]["sit"] == t.sit_ids[2]
         # the opener confirms moving player 2; the frame is delayed in transit
         delayed = {"type": "table_move", "from": 2, "seat": 3, "who": t.sit_ids[2]}
         await env.send(2, "queue_leave")
@@ -4495,7 +4496,7 @@ def test_the_opener_moves_another_single_to_an_empty_seat_and_the_moved_one_is_t
         assert env.conns[1].last("table_moved") is None
         # the Start agreed to the old seat: it is taken back
         assert env.mm._entry(2).id not in t.ready
-        assert env.conns[2].last("queue_state")["table"]["you"] == 3
+        assert seen(env.conns[2])["table"]["you"] == 3
         # only the opener moves others, and only into an empty seat
         await _opener_move(env, 3, 0, 2)
         assert env.conns[3].last("error")["code"] == "not_opener"
@@ -4547,7 +4548,7 @@ def test_the_opener_never_splits_a_duo_nor_moves_anyone_into_a_held_seat():
         env = Env()
         await _duo_table(env, 1, strangers=(2, 3))
         (t,) = env.mm.tables.values()
-        assert t.held_seat() == 2 and t.seats == [1, 2, None, 3]
+        assert t.held_seats() == [2] and t.seats == [1, 2, None, 3]
         await _opener_move(env, 1, 1, 2)
         assert env.conns[1].last("error")["code"] == "seat_taken" and t.seats[2] is None
     run(go())
@@ -4558,7 +4559,7 @@ def test_a_table_keeps_its_code_when_its_opener_leaves_and_the_room_starts_on_it
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         await env.join(2)
         await env.join(3)
         (t,) = env.mm.tables.values()
@@ -4566,15 +4567,15 @@ def test_a_table_keeps_its_code_when_its_opener_leaves_and_the_room_starts_on_it
         await env.send(1, "queue_leave")
         assert t.seats == [None, 3, 2, None]
         for uid in (2, 3):
-            state = env.conns[uid].last("queue_state")
+            state = seen(env.conns[uid])
             assert state["code"] == code and state["table"]["code"] == code
-        assert env.conns[2].last("queue_state")["opener"] is True   # the controls pass on
+        assert seen(env.conns[2])["opener"] is True   # the controls pass on
         assert env.mm.peek(code) is not None
         assert env.mm.entry_codes[code] == t.id
         # the departed opener queues again under a fresh code
         await env.join(1)
         assert env.mm._entry(1).code != code and env.mm._entry(1).table_id == t.id
-        assert env.conns[1].last("queue_state")["code"] == code
+        assert seen(env.conns[1])["code"] == code
         # the old link still joins that table
         env.player(4)
         await env.send(4, "queue_join", code=code)
@@ -4589,12 +4590,12 @@ def test_the_one_left_at_a_table_keeps_the_tables_code_as_its_own():
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         await env.join(2)
         own = env.mm._entry(2).code
         await env.send(1, "queue_leave")
         assert env.mm.tables == {}
-        state = env.conns[2].last("queue_state")
+        state = seen(env.conns[2])
         assert state["table"] is None and state["code"] == code and state["opener"] is True
         assert env.mm.entry_codes == {code: env.mm._entry(2).id}
         assert env.mm.peek(own) is None
@@ -4612,7 +4613,7 @@ def test_an_away_opener_dropped_at_the_start_leaves_the_room_the_tables_code():
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         await env.join(2)
         await env.join(3)
         env.mm.disconnect(env.conns[1])
@@ -4638,7 +4639,7 @@ def test_peek_a_lone_entrys_code_shows_its_seat_and_three_open():
     async def go():
         env = Env()
         await env.join(1, mode="casual")
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         peek = env.mm.peek(code)
         assert set(peek) == PEEK_KEYS and all(set(s) == PEEK_SEAT_KEYS for s in peek["seats"])
         assert peek["type"] == "room_seats" and peek["room"] == code and peek["table"] is True
@@ -4656,7 +4657,7 @@ def test_peek_a_duo_table_shows_its_held_seat_until_the_friend_takes_it():
     async def go():
         env = Env()
         await env.join(1, duo=True)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         peek = env.mm.peek(code)
         assert _states(peek) == [("taken", "P1"), ("open", None), ("held", None), ("open", None)]
         assert peek["full"] is False and peek["mode"] == "ranked"
@@ -4672,7 +4673,7 @@ def test_peek_a_waiting_table_shows_its_seats_starts_and_a_full_table():
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         for uid in (2, 3):
             env.player(uid)
             await env.send(uid, "queue_join", code=code)
@@ -4700,7 +4701,7 @@ def test_peek_says_allow_joiners_off_and_shows_the_seats_anyway():
     async def go():
         env = Env()
         await env.join(1, allow_joiners=False)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         peek = env.mm.peek(code)
         assert peek["allow_joiners"] is False and peek["full"] is False
         assert _states(peek)[0] == ("taken", "P1")
@@ -4711,7 +4712,7 @@ def test_peek_a_claiming_table_is_closed_and_a_started_one_is_gone():
     async def go():
         env = Env()
         await env.join(1)
-        code = env.conns[1].last("queue_state")["code"]
+        code = seen(env.conns[1])["code"]
         env.mm._entry(1).claiming = True          # a Join of its own is in flight
         assert env.mm.peek(code)["closed"] is True
         env.mm._entry(1).claiming = False
@@ -4725,7 +4726,7 @@ def test_peek_shows_names_only_never_ids_ratings_or_sitting_tokens():
         env = Env()
         env.player(917, rating=1777.5, name="Ann")
         await env.join(917, rating=1777.5)
-        code = env.conns[917].last("queue_state")["code"]
+        code = seen(env.conns[917])["code"]
         env.player(4242, rating=1234.25, name="Bo")
         await env.send(4242, "queue_join", code=code)
         (t,) = env.mm.tables.values()
@@ -4743,7 +4744,7 @@ def test_ws_peek_a_table_code_by_either_name_and_its_room_once_it_starts(wsenv):
     with client.websocket_connect("/ws", headers=headers) as h, \
             client.websocket_connect("/ws") as g:
         h.send_json({"type": "queue_join", "mode": "casual"})
-        code = _drain(h, "queue_state")["code"]
+        code = _drain_seen(h)["code"]
         g.send_json({"type": "table_peek", "code": code.lower()})
         old = _drain(g, "room_seats")
         g.send_json({"type": "table_peek", "code": f" {code.lower()} "})
@@ -4773,7 +4774,7 @@ def test_ws_table_code_peeks_are_limited(wsenv):
         host.send_json({"type": "create_room", "name": "host"})
         room = _drain(host, "room")["room"]
         q.send_json({"type": "queue_join", "mode": "casual"})
-        table = _drain(q, "queue_state")["code"]
+        table = _drain_seen(q)["code"]
         limit, window = mm.LOOKUP_LIMIT
         for _ in range(limit):
             g.send_json({"type": "table_peek", "code": table})

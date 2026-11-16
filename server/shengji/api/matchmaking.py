@@ -438,10 +438,6 @@ class Table:
         holds a seat opens its own table and never sits at another's."""
         return sorted(s for e in self.entries if (s := self.held_for(e)) is not None)
 
-    def held_seat(self) -> int | None:
-        held = self.held_seats()
-        return held[0] if held else None
-
     def free(self, s: int) -> bool:
         return self.seats[s] is None and s not in self.held_seats()
 
@@ -701,8 +697,8 @@ class Matchmaker:
         return {"type": "queue_state", "queued": True, "elsewhere": True,
                 "since": e.since, "count": self.count(), "front": e.front,
                 "party_id": e.party_id, "leader": e.leader == uid,
-                "bots_at": None, "wait_players": False, "bots_paused": False,
-                "table": None, "offer": None, "open_tables": 0}
+                "wait_players": False, "bots_paused": False,
+                "offer": None, "open_tables": 0}
 
     def state_for(self, conn: Conn) -> dict:
         """The authoritative ``queue_state`` for one socket (``queue_status``)."""
@@ -788,45 +784,11 @@ class Matchmaker:
         """The waiting table ``e`` sits at; None while its table is its own."""
         return e.table if e is not None and e.table_id is not None else None
 
-    def table_payload(self, t: Table, uid: int) -> dict:
-        """The waiting table as ``uid`` sees it: the four seats in seat order
-        (``null`` for an empty one), whose Start is in, the timer's owner,
-        and who is still to tap Start."""
-        mine = self._entry(uid)
-        by_user = {u: e for e in t.entries for u in e.members}
-        seats: list[dict | None] = []
-        for u in t.seats:
-            if u is None:
-                seats.append(None)
-                continue
-            e = by_user[u]
-            seats.append({"name": self._name(u), "you": u == uid,
-                          "ready": self._tapped(t, e, u), "reconnecting": self._live(u) is None,
-                          "since": t.seated_at.get(u), "sit": t.sit_ids.get(u), "pair": e.size == 2,
-                          "leader": e.leader == u})
-        timer = t.timer()
-        opener = t.entries[0]
-        return {
-            "id": t.id, "seats": seats, "code": t.code,
-            "opener": t.seats.index(opener.leader), "held_seat": t.held_seat(),
-            "held_seats": t.held_seats(), "start_now_at": t.start_now_at(),
-            "you": t.seats.index(uid) if uid in t.seats else None,
-            "timer": (None if timer is None else
-                      {"at": timer[0], "name": self._name(timer[1].leader),
-                       "you": uid in timer[1].members}),
-            "ready": sum(1 for e in t.entries for u in e.members if self._tapped(t, e, u)),
-            "of": t.humans,
-            "you_ready": mine is not None and self._tapped(t, mine, uid),
-            "waiting_for": [self._name(u) for e in t.entries
-                            for u in e.members
-                            if u != uid and not self._tapped(t, e, u)
-                            and (e.size == 2 or uid not in e.members)],
-        }
-
     def table_frame(self, t: Table, uid: int) -> dict:
         """The ``table`` frame of ``t`` as ``uid`` sees it, alone or at a
         waiting table: the same shape a room in play sends
-        (``server.room_table_frame``). Names only, as ``table_payload``."""
+        (``server.room_table_frame``). Names only: no account id, rating or
+        token."""
         by_user = {u: e for e in t.entries for u in e.members}
         held = t.held_seats()
         seats = []
@@ -887,19 +849,12 @@ class Matchmaker:
                                      if e.prompted and t.waiting else None),
                 "count": self.count(), "front": e.front,
                 "party_id": e.party_id, "leader": e.leader == uid,
-                "bots_at": e.bots_at,
                 "wait_players": e.bots_at is None and e.paused is None,
                 "bots_paused": e.paused is not None,
-                "table": self.table_payload(t, uid) if t.waiting else None,
                 "offer": self._offer_payload(e.offer, uid, e) if e.offer is not None else None,
                 "open_tables": len(e.open_codes), "mode": e.mode,
                 "duo": e.hold or e.size == 2,
-                "held_seat": t.held_for(e) if e.hold else t.held_seat(),
-                "duo_ready": len(e.taps) if e.size == 2 else None,
-                "you_ready": self._tapped(t, e, uid),
-                # your table's code and settings, alone or at a waiting table
-                "code": t.code, "allow_joiners": t.allow_joiners,
-                "start_level": t.start_level, "opener": t.entries[0].leader == uid}
+                "duo_ready": len(e.taps) if e.size == 2 else None}
 
     @staticmethod
     def _opener(e: Entry) -> Entry:

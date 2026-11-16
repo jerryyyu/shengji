@@ -22,6 +22,7 @@ from tests.test_accounts import accounts_on, keypair  # noqa: F401
 from tests.test_matchmaking import DEVICE_A, DEVICE_B, _account_match, wsenv  # noqa: F401
 from tests.test_ratings import _user
 from tests.test_server_ws import _drain, _frames_until, _next_where, client  # noqa: F401
+from tests.table_view import _drain_seen
 
 DEVICE_C = "CCCCCCCCCCCCCCCCCCCCCC"
 
@@ -257,7 +258,7 @@ def _run_queue(env, case: dict, msg: dict) -> dict:
         codes = {}
         for name in case.get("queued", ()):
             socks[name].send_json({"type": "queue_join", "mode": "casual", "name": name})
-            codes[name] = _until(socks[name], "queue_state")[-1].get("code")
+            codes[name] = _drain_seen(socks[name]).get("code")
         for name in case.get("ready", ()):
             socks[name].send_json({"type": "table_start"})
         for name, ws in socks.items():           # everything so far is setup
@@ -317,9 +318,9 @@ QUEUE_CASES = {
 
 
 QUEUE_SEES = {
-    "a Start taken back": '"ready": 0',
+    "a Start taken back": '"your_ready": false',
     "a Start taken back with nothing to take back": '"not_seated"',
-    "Play bots alone": '"match_started"', "Play bots at a table": '"ready": 1',
+    "Play bots alone": '"match_started"', "Play bots at a table": '"your_ready": true',
     "Play bots against a changed panel": '"panel_changed"',
     "a Leave alone": '"queued": false', "a Leave at a table": '"queued": false',
     "a Join by a table's code": '"table_chat_history"',
@@ -354,7 +355,7 @@ def test_a_join_of_a_table_that_just_became_a_room_joins_the_room_by_its_name(ws
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as a, \
             client.websocket_connect(f"/ws?device={DEVICE_B}") as c:
         a.send_json({"type": "queue_join", "mode": "casual", "name": "Ann"})
-        code = _until(a, "queue_state")[-1]["code"]
+        code = _drain_seen(a)["code"]
         a.send_json({"type": "table_start_bots"})
         assert _until(a, "match_started")[-1]["room"] == code
         c.send_json({"type": "table_join", "code": code, "name": "Cy"})

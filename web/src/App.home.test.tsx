@@ -345,7 +345,7 @@ describe("one name control", () => {
     expect(window.location.hash).toBe("#/me");
     expect(sheets()).toHaveLength(0);
     expect(host.querySelector(".me-name")?.textContent).toBe("Jerry");
-    expect(host.querySelector(".me-sub")?.textContent).toContain("1532");
+    expect(host.querySelector(".me-sub")?.textContent).toContain("1,532");
     const edit = [...host.querySelectorAll<HTMLButtonElement>(".grp-row")].find((r) => r.textContent?.startsWith("Edit name"))!;
     expect(edit.querySelector(".grp-value")?.textContent).toBe("Jerry");
   });

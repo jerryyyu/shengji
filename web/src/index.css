@@ -5738,6 +5738,18 @@ dialog.leave-sheet-backdrop {
   pointer-events: auto;
 }
 
+/* Your row shares its line with your slot of the cross, so once your cards
+   are on the table the crown steps left of them and of the LEAD / WINS tags
+   under them, whichever is wider. The cards span one card width plus a
+   pitch per further card (the slot's own pitch rule). */
+:where(.phone-landscape) .table-screen:not(.phase-bury) .you-row .you-tagline:has(.banker-crown) {
+  --slot-n: var(--my-slot-n, 0);
+  --slot-cards-w: calc(var(--trick-cw) + max(0, var(--slot-n) - 1)
+    * min(calc(var(--trick-cw) * 0.6), calc(var(--trick-cw) * 1.8 / max(1, var(--slot-n) - 1))));
+  --slot-tags-w: 124px;
+  margin-right: calc(min(1, var(--slot-n)) * max(var(--slot-cards-w), var(--slot-tags-w)) / 2 + 8px);
+}
+
 .opp-name-text.left-tag {
   color: #f0a0aa;
   font-style: italic;

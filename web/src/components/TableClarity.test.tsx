@@ -97,6 +97,22 @@ describe("the HUD says who attacks and marks your team", () => {
     expect(partner.host.querySelectorAll(".opponent .banker-crown")).toHaveLength(1);
     partner.unmount();
   });
+
+  it("keeps your crown out of the trick and clear of your LEAD tag: the row knows your slot's card count", () => {
+    const led = withBanker(makeState({ turn: 1, hand: hand(["S3"]), trick: { leader: 0, plays: [{ seat: 0, cards: ["HQ", "HQ"] }] } }), 0);
+    const view = render(<Table state={led} />);
+    const crown = view.host.querySelector(".you-tagline .banker-crown")!;
+    const lead = view.host.querySelector(".trick-play[data-seat='0'] .lead-tag")!;
+    expect(lead.textContent).toBe("lead");
+    // the crown and the tag never share a box: neither holds the other
+    expect(crown.closest(".trick-area")).toBeNull();
+    expect(lead.closest(".you-row")).toBeNull();
+    const row = view.host.querySelector<HTMLElement>(".you-row")!;
+    expect(row.style.getPropertyValue("--my-slot-n")).toBe("2");
+    view.rerender(<Table state={{ ...led, trick: { leader: 1, plays: [{ seat: 1, cards: ["H3"] }] }, turn: 0 }} />);
+    expect(view.host.querySelector<HTMLElement>(".you-row")!.style.getPropertyValue("--my-slot-n")).toBe("0");
+    view.unmount();
+  });
 });
 
 describe("declaring", () => {

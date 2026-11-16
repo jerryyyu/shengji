@@ -1008,6 +1008,76 @@ def test_bot_does_not_act_before_the_grace_period(client, clock):
         assert room.round.turn == seat, "turn advanced without a play"
 
 
+def test_the_takeover_window_is_the_move_timer():
+    """One clock: a dropped seat waits exactly as long as a present player
+    may think, in every room."""
+    from shengji.api import server as srv
+
+    assert srv.MOVE_TIMER == 60.0
+    assert srv.TAKEOVER_AFTER == srv.MOVE_TIMER
+
+
+def _run_once(coro):
+    import asyncio as aio
+
+    loop = aio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+@pytest.mark.parametrize("timed", [False, True], ids=["casual", "move-timer"])
+def test_a_dropped_seat_is_held_for_sixty_seconds_then_covered(client, clock, timed):
+    """Disconnect at t=0: at 59 s the seat is still reserved, the countdown
+    reads 1 s and no bot has played; past 60 s the bot plays the turn. The
+    same in a casual room and in one with the move timer."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        room.move_timer = timed
+        seat = _turn_owner_drops(client, a, code, room)
+        if room.seats[seat].connected or room.seats[seat].is_bot:
+            pytest.skip("could not place a disconnected human on turn")
+        assert room.seats[seat].left_at == clock["v"]
+        plays_before = _plays_by(room, seat)
+        clock["v"] += 59.0
+        assert srv._reserved(room, seat)
+        assert srv._takeover_in(room, seat) == 1.0
+        assert not _run_once(srv.watchdog_tick(room))
+        if timed:
+            assert not _run_once(srv.move_timer_tick(room))
+        assert _plays_by(room, seat) == plays_before
+        assert room.round.turn == seat
+        clock["v"] += 1.0
+        assert not srv._reserved(room, seat)
+        assert srv._takeover_in(room, seat) == 0.0
+        assert _run_once(srv.watchdog_tick(room)), "bot never covered the dropped seat"
+        assert _plays_by(room, seat) == plays_before + 1
+
+
+def test_a_leave_press_is_covered_at_once_not_after_the_window(clock, monkeypatch):
+    """Leave does not wait for the takeover window; a plain drop does."""
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(srv, "current_actor", lambda room: 0)
+
+    def room_with(left_by_choice):
+        seat = srv.Seat(name="james", connected=False, left_at=clock["v"],
+                        left_by_choice=left_by_choice)
+        return srv.Room(code="ZZZZ", seats=[seat])
+
+    left = room_with(True)
+    dropped = room_with(False)
+    assert srv._turn_eligible(left, 0, "takeover")
+    assert not srv._turn_eligible(dropped, 0, "takeover")
+    clock["v"] += srv.MOVE_TIMER - 1
+    assert not srv._turn_eligible(dropped, 0, "takeover")
+    clock["v"] += 1
+    assert srv._turn_eligible(dropped, 0, "takeover")
+
+
 def test_takeover_plays_exactly_once_then_stops(client, clock):
     """Advance past grace: one bot action, and not a second for the same turn."""
     import asyncio as aio
@@ -2317,7 +2387,7 @@ def test_one_of_two_humans_leaving_leaves_the_game_running(client):
         seat = next(p for p in st["players"] if p["seat"] == want)
         assert seat["left"] is True and seat["takeover_in"] is None
         assert seat["controller"] == "bot_cover" and seat["reserved_for"] == "james"
-        # the owner's 30 s reservation of the seat is unchanged
+        # the owner's reservation of the seat is unchanged
         assert seat["reserved_secs"] is not None and srv._reserved(room, want)
 
 
@@ -2422,7 +2492,7 @@ def test_an_absence_inside_the_takeover_window_is_not_covered_by_the_pump(client
                 sd = room.seats[1]
                 sd.is_bot, sd.name, sd.connected = False, "james", False
                 sd.left_at = srv.now()
-                sd.bot_announced = True     # even so, the 30 s window holds
+                sd.bot_announced = True     # even so, the reservation holds
 
         client.portal.call(drop_seat_1)
         _real_play(client, a, room)
@@ -2533,7 +2603,7 @@ def test_a_created_room_allows_joiners_by_default_and_casual_rooms_take_the_swit
 
 def test_a_deliberate_leave_is_covered_by_the_pump_at_once(client, monkeypatch):
     """A seat whose owner pressed Leave moves at the bot pace inside what
-    would be a disconnect's 30 s window; a reconnect clears the mark."""
+    would be a disconnect's takeover window; a reconnect clears the mark."""
     from shengji.api import server as srv
 
     with client.websocket_connect("/ws") as a:

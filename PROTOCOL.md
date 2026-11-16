@@ -653,6 +653,6 @@ the front of the queue); once seated, the away player gets `left {reason:
 
 Rejoining with `table_join` and the stored `token` (or, for a disconnected seat, the same name, trimmed and case-folded) reclaims the seat, and the current `state` is resent. Bots act automatically after a short delay.
 
-A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **30 seconds**, the server's bot plays that turn (and keeps doing so until they reconnect).
+A room survives with **no humans connected for 5 minutes** before being deleted, so refreshes and network blips can resume the game. If the current turn's human stays disconnected for **60 seconds** (`TAKEOVER_AFTER`, the move timer's length, in casual and timed rooms alike), the server's bot plays that turn (and keeps doing so until they reconnect); until then the seat stays reserved for them. A `table_leave` does not wait: the bot covers the seat at once.
 
 `table_leave` is the explicit exit: the seat is kept reclaimable (bots cover it, same as a disconnect) but the leaver's client should clear its saved room. The server confirms with `{type: "left"}`, after which the same connection may `create_room`/`table_join` again.

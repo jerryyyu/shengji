@@ -22,8 +22,9 @@ class FakeAudioContext {
   /** Tests flip this to model "this gesture is allowed to unlock audio". */
   static allowResume = false;
 
-  state: "suspended" | "running" = "suspended";
+  state: "suspended" | "running" | "interrupted" = "suspended";
   currentTime = 0;
+  onstatechange: (() => void) | null = null;
 
   constructor() {
     FakeAudioContext.last = this;
@@ -162,6 +163,30 @@ describe("audio unlock", () => {
     await Promise.resolve();
     await Promise.resolve();
 
+    expect(FakeAudioContext.last?.state).toBe("running");
+  });
+
+  it("re-arms unlock when iOS interrupts a running context without a visibility change", async () => {
+    await freshModule();
+
+    FakeAudioContext.allowResume = true;
+    dispatch("click");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeAudioContext.last?.state).toBe("running");
+
+    // The keyboard's dictation (or a call) interrupts audio while the page
+    // stays visible; the first resume is refused until the next gesture.
+    FakeAudioContext.allowResume = false;
+    FakeAudioContext.last!.state = "interrupted";
+    FakeAudioContext.last!.onstatechange?.();
+    await Promise.resolve();
+    expect(FakeAudioContext.last?.state).toBe("interrupted");
+
+    FakeAudioContext.allowResume = true;
+    dispatch("touchend");
+    await Promise.resolve();
+    await Promise.resolve();
     expect(FakeAudioContext.last?.state).toBe("running");
   });
 });

@@ -30,11 +30,26 @@ function ensureCtx(): AudioContext {
     window.AudioContext ??
     (window as unknown as { webkitAudioContext: typeof AudioContext })
       .webkitAudioContext;
-  if (!ctx) ctx = new AC();
-  if (ctx.state === "suspended") {
+  if (!ctx || (ctx.state as string) === "closed") ctx = watch(new AC());
+  if ((ctx.state as string) !== "running") {
     void ctx.resume().catch(() => {});
   }
   return ctx;
+}
+
+/** iOS WebKit moves a running context to "interrupted" (the keyboard's
+ *  dictation, a call, Siri, another app's audio) or "suspended" without any
+ *  visibility change. The gesture listeners were detached once audio first
+ *  ran, so each such change re-arms them; otherwise the page stays silent
+ *  until a reload. */
+function watch(c: AudioContext): AudioContext {
+  c.onstatechange = () => {
+    const state = c.state as string;
+    if (state === "running" || state === "closed") return;
+    void c.resume().catch(() => {});
+    armUnlock();
+  };
+  return c;
 }
 
 /** Creates the audio context while the lobby is idle. Creating one is a long
@@ -49,7 +64,7 @@ export function prewarmAudio(): void {
   const make = () => {
     if (ctx) return;
     try {
-      ctx = new AC();
+      ctx = watch(new AC());
     } catch {
       /* no audio here; the unlock path tries again on a tap */
     }

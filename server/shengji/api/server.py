@@ -117,7 +117,6 @@ DEAL_DELAY = 0.2           # seconds between dealt cards (~20s full deal)
 DECLARE_GRACE = 5.0        # window after the deal; extended on new declarations
 DECLARE_EXTEND = 3.0
 ROOM_TTL = 300.0           # grace before deleting a room with no humans connected
-TAKEOVER_AFTER = 30.0      # bot plays for a disconnected human after this long
 EMPTY_ROOM_BOT_DELAY = 10.0  # least seconds per bot move while no human is connected
 EMPTY_ROOM_POLL = 0.25     # how often a long empty-room wait re-checks for a human
 # Move timer (rooms with ``move_timer`` on, which today means ranked rooms):
@@ -127,6 +126,11 @@ EMPTY_ROOM_POLL = 0.25     # how often a long empty-room wait re-checks for a hu
 # timeouts, or AWAY_PER_ROUND in one round, mark the seat away: the bot then
 # plays every decision for it until the player is back.
 MOVE_TIMER = 60.0
+# A disconnected human keeps their seat this long before the bot plays for
+# them, in every room, timed or casual: stepping away (a backgrounded phone,
+# a dropped network) is never worse than sitting idle at the table. A Leave
+# press does not wait for it; the bot covers at once.
+TAKEOVER_AFTER = MOVE_TIMER
 AWAY_IN_A_ROW = 2
 AWAY_PER_ROUND = 3
 MOVE_TIMER_POLL = 1.0      # watchdog period in a room with the move timer
@@ -544,7 +548,8 @@ def trick_json(t, ordering=None) -> dict | None:
 def now() -> float:
     """The single clock for takeover timing.
 
-    One seam, so tests can advance time instead of sleeping 30 seconds, and
+    One seam, so tests can advance time instead of sleeping through the
+    takeover window, and
     so the countdown the UI shows and the deadline the watchdog enforces can
     never disagree (they were on different clocks: loop.time() vs monotonic).
     """
@@ -554,12 +559,11 @@ def now() -> float:
 def _reserved(room: Room, seat: int) -> bool:
     """Is this dropped seat still exclusively its owner's?
 
-    HOUSE RULE (adopted explicitly, 2026-08-04): ONE window, TAKEOVER_AFTER
-    long, serves both purposes — the bot does not act and nobody else may
-    claim the seat until it expires. Codex offered the alternative of a prompt
-    bot plus a separate reservation clock; a single deadline was chosen so the
-    countdown a player sees is the same number the server enforces. Before
-    this, a seat was claimable the instant its player blipped.
+    HOUSE RULE: ONE window, TAKEOVER_AFTER long, serves both purposes: the
+    bot does not act and nobody else may claim the seat until it expires. A
+    single deadline means the countdown a player sees is the same number the
+    server enforces, and a seat is never claimable the instant its player
+    blips.
     """
     sd = room.seats[seat]
     if sd.is_bot or sd.connected or sd.left_at is None:

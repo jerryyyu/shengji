@@ -1,0 +1,119 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the offline Play block and its table, as drawn 1`] = `
+"<div class="play-mode" role="group" aria-label="Mode">
+<button type="button" class="play-mode-opt" aria-pressed="false" disabled="">Ranked</button>
+<button type="button" class="play-mode-opt on" aria-pressed="true">Casual</button>
+</div>
+<div class="play-ranked-row">
+<button type="button" class="btn gold play-main q-find">Play</button>
+<button type="button" class="btn play-duo" disabled="">Duo</button>
+</div>
+<p class="play-presence offline" role="status">
+<span class="play-presence-dot" aria-hidden="true">
+</span>
+<span>Offline</span>
+</p>
+<div class="join-row">
+<input class="room-input" maxlength="4" placeholder="CODE" aria-label="Table code" disabled="" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="go" value="">
+<button class="btn" disabled="">Join</button>
+</div>"
+`;
+
+exports[`the offline Play block and its table, as drawn 2`] = `
+"<section class="tp tp-offline" aria-labelledby="«id0»">
+<p class="tp-tag">Offline</p>
+<h2 class="tp-title" id="«id0»">You and 3 bots</h2>
+<div class="tp-teams">
+<span class="tp-team-label ours" aria-hidden="true">Us</span>
+<span aria-hidden="true">
+</span>
+<span class="tp-team-label theirs" aria-hidden="true">Them</span>
+<div class="tp-col">
+<div class="tp-seat bot team0" role="group" aria-label="Bot 2, your team">
+<span class="tp-av" aria-hidden="true">·</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">Bot 2</span>
+</span>
+</div>
+<div class="tp-seat you team0" role="group" aria-label="You, your team">
+<span class="tp-av" aria-hidden="true">C</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">You</span>
+</span>
+</div>
+</div>
+<span class="tp-vs" aria-hidden="true">VS</span>
+<div class="tp-col">
+<div class="tp-seat bot team1" role="group" aria-label="Bot 1, other team">
+<span class="tp-av" aria-hidden="true">·</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">Bot 1</span>
+</span>
+</div>
+<div class="tp-seat bot team1" role="group" aria-label="Bot 3, other team">
+<span class="tp-av" aria-hidden="true">·</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">Bot 3</span>
+</span>
+</div>
+</div>
+</div>
+<button type="button" class="tp-chat" disabled="" aria-label="Chat needs a connection">
+<span class="tp-chat-label" aria-hidden="true">Chat</span>
+</button>
+<div class="tp-acts">
+<button type="button" class="tp-primary">Start</button>
+<button type="button" class="tp-secondary">Leave</button>
+</div>
+</section>"
+`;
+
+exports[`the offline Play block and its table, as drawn 3`] = `
+"<section class="tp tp-offline" aria-labelledby="«id0»">
+<p class="tp-tag">Offline</p>
+<h2 class="tp-title" id="«id0»">You and 3 bots</h2>
+<div class="tp-teams">
+<span class="tp-team-label ours" aria-hidden="true">Us</span>
+<span aria-hidden="true">
+</span>
+<span class="tp-team-label theirs" aria-hidden="true">Them</span>
+<div class="tp-col">
+<div class="tp-seat bot team0" role="group" aria-label="Bot 2, your team">
+<span class="tp-av" aria-hidden="true">·</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">Bot 2</span>
+</span>
+</div>
+<div class="tp-seat you team0" role="group" aria-label="You, your team">
+<span class="tp-av" aria-hidden="true">C</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">You</span>
+</span>
+</div>
+</div>
+<span class="tp-vs" aria-hidden="true">VS</span>
+<div class="tp-col">
+<div class="tp-seat bot team1" role="group" aria-label="Bot 1, other team">
+<span class="tp-av" aria-hidden="true">·</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">Bot 1</span>
+</span>
+</div>
+<div class="tp-seat bot team1" role="group" aria-label="Bot 3, other team">
+<span class="tp-av" aria-hidden="true">·</span>
+<span class="tp-seat-text" aria-hidden="true">
+<span class="tp-seat-name">Bot 3</span>
+</span>
+</div>
+</div>
+</div>
+<button type="button" class="tp-chat" disabled="" aria-label="Chat needs a connection">
+<span class="tp-chat-label" aria-hidden="true">Chat</span>
+</button>
+<div class="tp-acts">
+<button type="button" class="tp-primary" disabled="" aria-busy="true">Starting…</button>
+<button type="button" class="tp-secondary">Leave</button>
+</div>
+</section>"
+`;

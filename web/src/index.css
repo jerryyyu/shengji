@@ -29,6 +29,35 @@
   --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Chrome text (lobby, buttons, labels, menus, seat labels, toasts) follows
+     the reader's text size, up to 1.3x; card faces and the table's geometry
+     stay in px. --tu is one px at the default size: 1rem is the browser's
+     default (16px), or in WebKit the Dynamic Type body size (17px at the
+     default setting, see the @supports block below). */
+  --tu: calc(1rem / 16);
+  --fs-10: clamp(10px, calc(10 * var(--tu)), 13px);
+  --fs-11: clamp(11px, calc(11 * var(--tu)), 14.3px);
+  --fs-12: clamp(12px, calc(12 * var(--tu)), 15.6px);
+  --fs-13: clamp(13px, calc(13 * var(--tu)), 16.9px);
+  --fs-14: clamp(14px, calc(14 * var(--tu)), 18.2px);
+  --fs-15: clamp(15px, calc(15 * var(--tu)), 19.5px);
+  --fs-16: clamp(16px, calc(16 * var(--tu)), 20.8px);
+  --fs-17: clamp(17px, calc(17 * var(--tu)), 22.1px);
+  --fs-18: clamp(18px, calc(18 * var(--tu)), 23.4px);
+  --fs-20: clamp(20px, calc(20 * var(--tu)), 26px);
+}
+
+/* WebKit reports Dynamic Type through the system body font; the root takes
+   it so 1rem follows the setting. */
+@supports (font: -apple-system-body) {
+  html {
+    font: -apple-system-body;
+  }
+
+  :root {
+    --tu: calc(1rem / 17);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
 }
 
 * {
@@ -43,6 +72,7 @@ body,
 }
 
 body {
+  font-size: var(--fs-16);
   background: var(--chrome);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -107,8 +137,8 @@ textarea:focus-visible {
     max(12px, env(safe-area-inset-right, 0px))
     max(12px, env(safe-area-inset-bottom, 0px))
     max(12px, env(safe-area-inset-left, 0px));
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  /* the redesign's charcoal page; the felt is only for the table itself */
+  background: var(--page);
 }
 
 .panel {
@@ -129,7 +159,7 @@ textarea:focus-visible {
   border-radius: 10px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--fs-14);
   letter-spacing: 0.02em;
   transition: background 150ms ease, transform var(--dur-fast) var(--ease-out), box-shadow 150ms ease;
 }
@@ -141,7 +171,8 @@ textarea:focus-visible {
 }
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -185,77 +216,13 @@ textarea:focus-visible {
 }
 }
 
-.btn:active:not(:disabled):not(:focus-visible),
-.seat-option:active:not(:disabled):not(:focus-visible) {
+.btn:active:not(:disabled):not(:focus-visible) {
   transform: scale(0.97); /* feedback on press; actions still commit on click */
-}
-
-.leave-room-btn {
-  align-self: center;
-}
-
-/* HUD leave control: subtle until armed */
-.leave-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--panel-edge);
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 11px;
-  border-radius: 999px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-.leave-btn:hover {
-  color: var(--text);
-  border-color: #4a5462;
-}
-}
-
-.leave-btn.armed {
-  background: #3a1e24;
-  border-color: var(--danger);
-  color: #ffb3bc;
-}
-
-/* Speaker / mute toggle */
-.mute-btn {
-  appearance: none;
-  background: transparent;
-  border: 1px solid var(--panel-edge);
-  border-radius: 999px;
-  width: 30px;
-  height: 30px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-.mute-btn:hover {
-  background: #262d38;
-  border-color: #4a5462;
-}
-}
-
-.room-panel > .mute-btn {
-  position: absolute;
-  top: 14px;
-  right: 14px;
 }
 
 .btn.big {
   padding: 12px 24px;
-  font-size: 16px;
+  font-size: var(--fs-16);
   border-radius: 12px;
 }
 
@@ -279,8 +246,9 @@ textarea:focus-visible {
 .you-tag,
 .host-tag,
 .off-tag,
+.away-tag,
 .ready-tag {
-  font-size: 10px;
+  font-size: var(--fs-10);
   font-weight: 700;
   letter-spacing: 0.08em;
   padding: 2px 6px;
@@ -315,6 +283,12 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
+/* a present player the move timer marked away: the bot plays for them */
+.away-tag {
+  background: #4a3d1e;
+  color: var(--gold);
+}
+
 .conn-dot {
   display: inline-block;
   width: 9px;
@@ -326,27 +300,58 @@ textarea:focus-visible {
 
 /* ---------- toast / banners ---------- */
 
+/* The app's one toast, in one fixed spot: the top of the page here, under
+   the top seat at the table (.at-table). An error is red; a notice is the
+   gold-outlined panel (.toast-info). */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 220px;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  bottom: auto;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
   background: #3a1e24;
   border: 1px solid var(--danger);
   color: #ffd7dc;
-  padding: 10px 20px;
-  border-radius: 10px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: var(--fs-14);
   font-weight: 600;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in 3.6s forwards;
-  z-index: 60;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  /* the fade ends as the toast unmounts: --toast-ms is the state timer */
+  animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in calc(var(--toast-ms, 4000ms) - 0.4s) forwards;
+  z-index: 80;
   pointer-events: none;
+}
+
+.toast small {
+  display: block;
+  font-size: var(--fs-13);
+  font-weight: 400;
+  color: #9aa3b2;
+}
+
+.toast-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--team0); }
+.toast-dot.team1 { background: var(--team1); }
+
+/* At the table: centred under the top seat, clear of your row and the hand
+   line above it. */
+.toast.at-table {
+  top: 184px;
+  max-width: min(560px, calc(100vw - 32px));
 }
 
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(10px);
+    transform: translateX(-50%) translateY(-10px);
   }
 }
 
@@ -356,19 +361,125 @@ textarea:focus-visible {
   }
 }
 
+/* The one connection pill, in the lobby and at the table: gold while the
+   socket reconnects on its own, with Retry inside once the wait is long.
+   At the table the same pill says a bot holds your seat, with I'm back. */
 .reconnect-banner {
   position: fixed;
   top: 60px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
   background: #4a3a12;
   border: 1px solid var(--gold);
   color: var(--gold);
   padding: 7px 16px;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
+  white-space: nowrap;
   z-index: 70;
+}
+
+/* off the table it sits at the top of the page, over the title, and under
+   the wide top bar, whose tabs stay in reach */
+.reconnect-banner.at-home {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+.app:has(.home-wide) .reconnect-banner.at-home {
+  top: calc(env(safe-area-inset-top, 0px) + 56px + 10px);
+}
+
+/* at the table it sits at the felt's top-left corner under the header,
+   clear of the top seat, the side seats and the hand */
+.app:has(.table-screen) .reconnect-banner {
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  left: max(20px, env(safe-area-inset-left, 0px));
+  transform: none;
+}
+
+.reconnect-banner .conn-dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+}
+
+.reconnect-banner.with-retry {
+  padding: 4px 4px 4px 14px;
+}
+
+.reconnect-retry {
+  appearance: none;
+  margin-left: 10px;
+  min-height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #1b1f27;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The one full-screen state, once the connection has been gone a long
+   while: over everything, with Retry and, off the table, bots on this device. */
+.conn-lost {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: max(32px, env(safe-area-inset-top, 0px)) 32px max(32px, env(safe-area-inset-bottom, 0px));
+  background: var(--chrome);
+  color: var(--text);
+  text-align: center;
+}
+
+dialog.conn-lost:not([open]) { display: none; }
+dialog.conn-lost::backdrop { background: var(--chrome); }
+
+.conn-lost-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  color: var(--gold);
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.conn-lost-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.conn-lost-body {
+  margin: 0;
+  max-width: 34ch;
+  color: #c3cad6;
+  font-size: var(--fs-15);
+  line-height: 1.45;
+}
+
+.conn-lost .btn {
+  width: 100%;
+  max-width: 340px;
+  min-height: 48px;
 }
 
 /* ---------- Lobby ---------- */
@@ -402,20 +513,168 @@ textarea:focus-visible {
 .game-subtitle {
   margin: -8px 0 8px;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 
 .lobby-preview {
   display: block;
+  position: relative;
   width: 100%;
   aspect-ratio: 1200 / 630;
-  object-fit: cover;
+  overflow: hidden;
   border-radius: 10px;
   border: 1px solid var(--panel-edge);
   margin-top: -4px;
+  container-type: inline-size;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background:
+    radial-gradient(ellipse 130% 100% at 50% 30%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+  box-shadow: inset 0 0 48px rgba(0, 0, 0, 0.5);
 }
 
-/* The clip costs ~165px; a slightly tighter panel keeps the signed-out lobby
+/* The live preview: a 1200x630 stage in units of --u, so it scales with the
+   box. Everything is placed at the stage's top-left and moved by transform
+   alone; only transform and opacity ever transition. */
+.lp-stage {
+  --u: calc(100cqw / 1200);
+  --cw: calc(var(--u) * 104);
+  position: absolute;
+  inset: 0;
+}
+
+.lp-fan,
+.lp-x,
+.lp-chip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+/* above every played card (their z-index tops out at 20 for the winner) */
+.lp-chip {
+  z-index: 30;
+}
+
+.lp-fan-card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 50% 160%;
+}
+
+.lp-fan .card {
+  box-shadow: 0 calc(var(--u) * 6) calc(var(--u) * 14) rgba(0, 0, 0, 0.35);
+}
+
+.lp-flip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-style: preserve-3d;
+}
+
+.lp-flip .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 calc(var(--u) * 12) calc(var(--u) * 26) rgba(0, 0, 0, 0.36),
+    0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(0, 0, 0, 0.3);
+}
+
+.lp-flip .lp-back {
+  rotate: y 180deg;
+}
+
+/* The winner's gold ring is drawn once and faded in, never animated as a shadow. */
+.lp-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--cw);
+  aspect-ratio: 5 / 7;
+  translate: -50% -50%;
+  border-radius: calc(var(--cw) * 0.11);
+  box-shadow: 0 0 0 calc(var(--u) * 3) var(--gold), 0 0 calc(var(--u) * 30) rgba(242, 193, 78, 0.7);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--dur-reflow) var(--ease-out);
+}
+
+.lp-flip.win .lp-ring {
+  opacity: 1;
+}
+
+.lp-chip .win-tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  font-size: max(8px, calc(var(--u) * 13));
+  padding: max(2px, calc(var(--u) * 4)) max(6px, calc(var(--u) * 12));
+  white-space: nowrap;
+  box-shadow: 0 calc(var(--u) * 4) calc(var(--u) * 12) rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity var(--dur-fast) ease-in, transform var(--dur-fast) ease-in;
+}
+
+.lp-chip .win-tag.shown {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity var(--dur-reflow) var(--ease-back) 80ms, transform var(--dur-reflow) var(--ease-back) 80ms;
+}
+
+/* A card's flight: x and y ease differently so the path bows, while the
+   card turns face up. The second card of a pair leaves a beat later. */
+.lp-stage[data-phase="play"] .lp-x,
+.lp-stage[data-phase="won"] .lp-x {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="play"] .lp-y,
+.lp-stage[data-phase="won"] .lp-y {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out-expo) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="play"] .lp-flip {
+  transition: transform calc(var(--dur-flight) + var(--dur-fast)) var(--ease-out) calc(var(--pair) * 60ms);
+}
+
+.lp-stage[data-phase="won"] .lp-flip {
+  transition: transform var(--dur-lift) var(--ease-back);
+}
+
+/* The finished trick gathers on the winner, then slides off to their hand. */
+.lp-stage[data-phase="gather"] .lp-x,
+.lp-stage[data-phase="gather"] .lp-y,
+.lp-stage[data-phase="gather"] .lp-flip {
+  transition: transform var(--dur-reflow) var(--ease-in-out) calc(var(--k) * 25ms);
+}
+
+.lp-stage[data-phase="gone"] .lp-x {
+  transition: transform var(--dur-sweep) ease-in, opacity var(--dur-sweep) ease-in;
+}
+
+.lp-stage[data-phase="gone"] .lp-y {
+  transition: transform var(--dur-sweep) ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-stage *,
+  .lp-stage .win-tag.shown {
+    transition: none !important;
+  }
+}
+
+/* The preview costs ~165px; a slightly tighter panel keeps the signed-out lobby
    inside a 1280x800 laptop screen and a 390x844 phone without scrolling. */
 .lobby-panel:has(.lobby-preview) {
   gap: 12px;
@@ -431,7 +690,7 @@ textarea:focus-visible {
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -440,7 +699,6 @@ textarea:focus-visible {
 
 .field input,
 .field select,
-.start-level-row select,
 .room-input {
   background: #10131a;
   border: 1px solid var(--panel-edge);
@@ -450,15 +708,17 @@ textarea:focus-visible {
   transition: border-color 0.15s;
 }
 
+/* a field's focus is its border alone: one ring, not the border plus the
+   outline (a tapped field also matches :focus-visible) */
 .field input:focus,
 .field select:focus,
 .start-level-row select:focus,
 .room-input:focus {
   border-color: var(--team0);
+  outline: none;
 }
 
-.field select,
-.start-level-row select {
+.field select {
   /* Native chrome ignores the dark panel; draw our own caret instead. */
   appearance: none;
   -webkit-appearance: none;
@@ -472,8 +732,7 @@ textarea:focus-visible {
 }
 
 /* Some platforms render the popup with system colors unless told otherwise. */
-.field select option,
-.start-level-row select option {
+.field select option {
   background: #10131a;
   color: var(--text);
 }
@@ -496,7 +755,7 @@ textarea:focus-visible {
   border: 0;
   border-radius: 8px;
   background: none;
-  font-size: 17px;
+  font-size: var(--fs-17);
   line-height: 1;
   opacity: 0.7;
   cursor: pointer;
@@ -509,55 +768,24 @@ textarea:focus-visible {
 .name-reroll:focus-visible { opacity: 1; outline: 2px solid var(--gold); outline-offset: 1px; }
 
 .field-hint {
-  font-size: 12px;
+  font-size: var(--fs-12);
   line-height: 1.45;
   color: var(--text-dim);
 }
 
-/* Compact inline row: the primary buttons stay above it, so the fastest path
-   to a game is unobstructed and the option is still one glance away. */
-.start-level-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.start-level-row select {
-  flex: 0 0 auto;
-  min-width: 96px;
-}
-
-.games-won {
-  margin-left: 6px;
+.games-chip {
   font-weight: 700;
   color: var(--gold, #d9a441);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .signin-upsell {
   margin: 4px 0 -4px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-13);
   color: var(--text-dim);
 }
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  color: var(--text-dim);
-  font-size: 12px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-}
-
-.divider::before,
-.divider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--panel-edge);
-}
-
 .join-row {
   display: flex;
   gap: 10px;
@@ -569,7 +797,7 @@ textarea:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.4em;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--fs-18);
   text-align: center;
 }
 
@@ -593,60 +821,6 @@ textarea:focus-visible {
   color-scheme: light;
 }
 .google-signin-slot iframe { background: transparent; }
-/* The account pill: avatar and name above three evenly spaced actions,
-   My games filled and the other two quiet. */
-.account-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid var(--panel-edge);
-  border-radius: 22px;
-  background: rgba(16, 19, 26, 0.5);
-  text-align: left;
-}
-.account-chip {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 0 4px;
-}
-.account-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  flex: none;
-  object-fit: cover;
-  background: #2a3140;
-}
-.account-chip .account-avatar { width: 32px; height: 32px; }
-.account-avatar-blank {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--gold);
-  font-weight: 700;
-  font-size: 14px;
-}
-.account-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-}
-.account-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
-  gap: 6px;
-}
-.account-actions .btn { padding: 9px 6px; border-radius: 12px; white-space: normal; }
-.account-actions .btn.subtle { border-color: transparent; color: var(--text-dim); }
-.account-card .name-edit { padding: 0 4px 4px; }
-.account-error { font-size: 13px; }
-.account-block { display: flex; flex-direction: column; gap: 8px; }
 /* The display-name editor (NameEditForm): one input, Save / Cancel, a
    message line. The same form sits in the lobby chip and the phone menu. */
 .name-edit {
@@ -667,18 +841,8 @@ textarea:focus-visible {
 }
 .name-edit-input:focus { border-color: var(--team0); outline: none; }
 .name-edit-actions { display: flex; gap: 8px; }
-.name-edit-actions .btn { padding: 6px 12px; font-size: 13px; }
-.name-edit-error { color: #f0a0aa; font-size: 12px; }
-.hud-menu-row.account-edit .account-avatar { width: 20px; height: 20px; }
-.hud-menu-row.hud-menu-edit { display: block; cursor: default; min-width: 220px; }
-.hud-menu-row.hud-menu-edit .name-edit-input { font-size: 14px; }
-.hud-menu-account-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.name-edit-actions .btn { padding: 6px 12px; font-size: var(--fs-13); }
+.name-edit-error { color: #f0a0aa; font-size: var(--fs-12); }
 
 .lobby-error {
   background: #3a1e24;
@@ -686,167 +850,33 @@ textarea:focus-visible {
   color: #ffd7dc;
   border-radius: 10px;
   padding: 9px 12px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
-}
-
-.conn-status {
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-.conn-status.open {
-  color: #6fce93;
-}
-
-.conn-status.connecting {
-  color: var(--gold);
-}
-
-.conn-status.closed {
-  color: var(--danger);
 }
 
 /* ---------- Room ---------- */
 
-.room-panel {
-  position: relative;
-  width: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  text-align: center;
-}
+/* A phone has no room for a card on felt: the thin green margin reads as a
+   border, and held sideways the card runs off the bottom. The lobby and
+   saved-games screens fill the screen with the panel's own colour
+   instead, in either orientation; the felt stays for the table. */
+@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  .lobby-screen,
+  .games-screen {
+    background: linear-gradient(180deg, var(--panel) 0%, #171b22 100%);
+  }
 
-.room-code-label {
-  font-size: 12px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-}
-
-.room-code {
-  position: relative;
-  appearance: none;
-  border: 1px dashed var(--gold-soft);
-  background: #10131a;
-  color: var(--gold);
-  font-size: 44px;
-  font-weight: 800;
-  letter-spacing: 0.45em;
-  padding: 14px 10px 14px 24px;
-  border-radius: 14px;
-  cursor: pointer;
-  transition: border-color 0.15s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-.room-code:hover {
-  border-color: var(--gold);
-}
-}
-
-.copied-tag {
-  position: absolute;
-  top: -12px;
-  right: 10px;
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  background: var(--gold);
-  color: #201703;
-  padding: 3px 10px;
-  border-radius: 999px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.copied-tag.show {
-  opacity: 1;
-}
-
-.seat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.seat-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #10131a;
-  border: 1px solid var(--panel-edge);
-  border-left-width: 3px;
-  border-radius: 10px;
-  padding: 10px 14px;
-  text-align: left;
-}
-
-.seat-row.team0 {
-  border-left-color: var(--team0);
-}
-
-.seat-row.team1 {
-  border-left-color: var(--team1);
-}
-
-.seat-row.empty {
-  opacity: 0.55;
-}
-
-.seat-num {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  color: var(--text-dim);
-  width: 52px;
-}
-
-.seat-name {
-  flex: 1;
-  font-weight: 600;
-}
-
-.seat-name.waiting {
-  color: var(--text-dim);
-  font-weight: 400;
-  font-style: italic;
-}
-
-.conn-pip {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #5a2b33;
-}
-
-.conn-pip.on {
-  background: #52c07d;
-  box-shadow: 0 0 8px rgba(82, 192, 125, 0.7);
-}
-
-.team-legend {
-  display: flex;
-  justify-content: center;
-  gap: 24px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.team-legend .team-dot {
-  margin-right: 5px;
-}
-
-.room-actions {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-}
-
-.room-hint {
-  color: var(--text-dim);
-  font-size: 13px;
-  font-style: italic;
+  .lobby-screen > .panel,
+  .games-screen > .panel {
+    width: 100%;
+    max-width: 520px;          /* a sideways phone keeps a column, not a 850px row */
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 
 /* ---------- HUD ---------- */
@@ -887,22 +917,9 @@ textarea:focus-visible {
   border: 1px solid var(--panel-edge);
   border-radius: 999px;
   padding: 5px 13px;
-  font-size: 13px;
+  font-size: var(--fs-13);
   font-weight: 600;
   white-space: nowrap;
-}
-
-.room-chip {
-  color: var(--gold);
-  letter-spacing: 0.2em;
-  font-weight: 800;
-}
-
-.phase-chip {
-  color: var(--text-dim);
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.12em;
 }
 
 .level-chip.team0 {
@@ -932,23 +949,24 @@ textarea:focus-visible {
 
 .trump-chip {
   border-color: var(--gold-soft);
-  font-size: 15px;
+  font-size: var(--fs-15);
 }
 
+/* a plain statement, light enough to read at 4.5:1 or more on the strip */
 .trump-chip.none {
-  color: var(--text-dim);
-  font-size: 12px;
-  font-style: italic;
+  color: #d3d9e2;
+  font-size: var(--fs-12);
+  font-weight: 600;
 }
 
 .trump-suit.red {
   color: #ff6b7c;
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .trump-suit.black {
   color: #f4f6fa;
-  font-size: 18px;
+  font-size: var(--fs-18);
 }
 
 .trump-suit.nt {
@@ -960,96 +978,184 @@ textarea:focus-visible {
 .trump-rank {
   color: var(--gold);
   font-weight: 800;
-  font-size: 16px;
+  font-size: var(--fs-16);
 }
 
+/* "35/80": the number and its dot in the attacking team's colour; before a
+   banker the number is plain and there is no dot */
 .points-chip {
-  border-color: rgba(255, 157, 77, 0.45);
+  gap: 5px;
 }
 
 .points-big {
-  font-size: 20px;
+  font-size: var(--fs-16);
   font-weight: 800;
-  color: var(--team1);
+  color: var(--text);
 }
 
-.points-bar,
-.hud-more {
-  display: none; /* phone only; desktop keeps the chips */
+.points-chip.team0 .points-big { color: var(--team0); }
+.points-chip.team1 .points-big { color: var(--team1); }
+
+.points-dot {
+  display: none;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
+
+.points-dot.t0 { display: inline-block; background: var(--team0); }
+.points-dot.t1 { display: inline-block; background: var(--team1); }
+
+/* The table's one ⋯ menu, phone and desktop alike: the table's rows, the
+   settings, then a red Leave game. Every row is a 44px target. */
+.hud-more {
+  position: relative;
+  margin-left: auto;
+}
+
+.hud-more-btn {
+  position: relative;
+  box-sizing: border-box;
+  height: 34px;
+  min-width: 40px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-edge);
+  background: #10131a;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--fs-18);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* drawn 34px tall; the hit area reaches 44px */
+.hud-more-btn::after {
+  content: "";
+  position: absolute;
+  inset: -5px -2px;
+}
+
+.hud-more-btn[aria-expanded="true"] {
+  outline: 1px solid var(--gold);
+  outline-offset: -1px;
+}
+
+.hud-more-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.hud-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 12;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-edge);
+  background: #0a0c11;       /* opaque: cards under a translucent menu read as menu rows */
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.hud-menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: 500 var(--fs-13) inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hud-menu-row[aria-disabled="true"] { cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .hud-menu-row:not([aria-disabled="true"]):hover { background: rgba(255, 255, 255, 0.06); }
+}
+.hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.hud-menu-row.leave { color: #f08a96; }
+.hud-menu-chev { color: var(--text-dim); font-size: var(--fs-16); }
+.hud-menu .ios-switch { width: 36px; height: 22px; border-radius: 11px; }
+.hud-menu .ios-switch::after { width: 18px; height: 18px; }
+.hud-menu .ios-switch.on::after { transform: translateX(14px); }
+
+/* the table's code beside its Invite link, as the table panel draws them */
+.hud-menu-code {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 4px 6px;
+}
+.hud-menu-code-text {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid #333b49;
+  background: #11141a;
+  color: var(--gold);
+  font-size: var(--fs-16);
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  padding-left: 0.25em;
+}
+.hud-menu-row.hud-menu-invite {
+  flex: none;
+  justify-content: center;
+  border: 1px solid #3a4250;
+  border-radius: 9px;
+  padding: 0 14px;
+  font-weight: 600;
+}
+.hud-menu-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
 
 .points-target {
-  color: var(--text-dim);
-  font-size: 12px;
+  margin-left: -3px;
+  color: #c4ccd8;
+  font-size: var(--fs-12);
 }
 
-.kitty-icon {
-  width: 12px;
-  height: 17px;
-  border-radius: 3px;
-  background: repeating-linear-gradient(45deg, #3c5f96 0 2px, #2c4874 2px 4px);
-  border: 1px solid #56749f;
+.points-chip {
+  position: relative;
 }
 
-.hud-message {
-  text-align: center;
-  font-size: 13px;
-  color: #ffe9b0;
-  padding: 4px 0 2px;
-  animation: message-in 0.25s ease-out;
-}
-
-/* A notice outlives the one-play `hud-message` and is dismissed by hand, so it
-   is quieter than the red toast and louder than the info line: it has to be
-   readable for a whole trick without becoming furniture. */
-.hud-notice {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 6px auto 0;
-  max-width: 440px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 233, 176, 0.35);
-  border-left: 3px solid #e0a03a;
-  border-radius: 6px;
-  background: rgba(40, 30, 12, 0.92);
-  color: #ffe9b0;
-  font-size: 13px;
-  line-height: 1.35;
-  text-align: left;
-  animation: message-in 0.25s ease-out;
-}
-.hud-notice-body { flex: 1 1 auto; }
-.hud-notice-cards {
+/* "+10" rises into the counter as a trick's points land */
+.points-pop {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  z-index: 12;
+  pointer-events: none;
+  color: var(--team1);
+  font-size: var(--fs-15);
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
   white-space: nowrap;
-  color: #fff6de;
+  animation: points-pop 1100ms var(--ease-out) forwards;
 }
-.hud-notice-cards.forced { text-decoration: underline; text-underline-offset: 2px; }
-.hud-notice-close {
-  flex: 0 0 auto;
-  margin: -2px -2px 0 0;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #ffe9b0;
-  font-size: 16px;
-  line-height: 1.2;
-  cursor: pointer;
-  opacity: 0.7;
-}
-@media (hover: hover) and (pointer: fine) {
-  .hud-notice-close:hover { opacity: 1; background: rgba(255, 233, 176, 0.12); }
-}
-.hud-notice-close:focus-visible { outline: 2px solid #e0a03a; outline-offset: 1px; opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .hud-notice { animation: none; } }
 
-@keyframes message-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
+@keyframes points-pop {
+  0% { opacity: 0; transform: translate(-50%, 18px) scale(0.8); }
+  20% { opacity: 1; transform: translate(-50%, 8px) scale(1.1); }
+  70% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -4px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .points-pop { display: none; }
 }
 
 /* ---------- Felt / table layout ---------- */
@@ -1133,11 +1239,11 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--fs-15);
 }
 
 .banker-crown {
-  font-size: 15px;
+  font-size: var(--fs-15);
   filter: drop-shadow(0 0 6px rgba(242, 193, 78, 0.8));
 }
 
@@ -1162,62 +1268,15 @@ textarea:focus-visible {
   color: var(--text-dim);
 }
 
-/* A pulse, not a background-position shimmer: animating the clipped text
-   gradient restyled and repainted the label on the main thread every frame
-   for as long as a bot thought (~8% of a 4x-throttled phone CPU, measured);
-   opacity animates on the compositor. */
-.thinking {
-  font-size: 12px;
-  font-style: italic;
-  color: #d5dbe5;
-  animation: thinking-pulse 1.4s ease-in-out infinite alternate;
-}
-
 .bot-banter {
   max-width: 160px;
-  font-size: 10px;
+  font-size: var(--fs-10);
   color: var(--text-dim);
   line-height: 1.3;
 }
 
-.bot-banter-label { font-style: italic; }
-
-.bot-progress {
-  width: 112px;
-  max-width: 100%;
-  height: 3px;
-  margin: 5px auto;
-  overflow: hidden;
-  border-radius: 3px;
-  background: #8a93a330;
-}
-
-.bot-progress > span {
-  display: block;
-  width: 36%;
-  height: 100%;
-  border-radius: inherit;
-  background: #a7b4c9;
-  animation: bot-progress-sweep 1.6s ease-in-out infinite;
-}
-
-@keyframes bot-progress-sweep {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(280%); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thinking { animation: none; background: none; color: var(--text-dim); }
-  .bot-progress > span { animation: none; transform: translateX(90%); }
-}
-
-@keyframes thinking-pulse {
-  from { opacity: 0.45; }
-  to { opacity: 1; }
-}
-
 .their-turn {
-  font-size: 12px;
+  font-size: var(--fs-12);
   font-style: italic;
   color: var(--gold);
 }
@@ -1278,17 +1337,9 @@ textarea:focus-visible {
   display: none;
 }
 
-/* The round-end dialog's Leave asks first, with no timer: Stay / Leave. */
-.dialog-leave-confirm {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.dialog-leave-confirm .dialog-leave-q {
-  color: var(--text-dim);
-  font-weight: 600;
+/* Play's "Your turn" wording: only the phone layout shows it */
+.your-turn-text {
+  display: none;
 }
 
 /* a seat's full name on tap: only the phone layout, which shortens long
@@ -1314,6 +1365,12 @@ textarea:focus-visible {
 
 .trick-play.winner .trick-cards .card {
   box-shadow: 0 0 0 2px var(--gold), 0 0 18px rgba(242, 193, 78, 0.65);
+}
+
+/* while the trick is open, the play taking it so far: a quiet ring, less
+   than the finished winner's glow */
+.trick-play.winning .trick-cards .card {
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.8), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .trump-none-short { display: none; }
@@ -1399,7 +1456,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   border-radius: 999px;
   padding: 5px 16px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--fs-14);
 }
 
 .you-tagline.team0 {
@@ -1420,7 +1477,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 .your-turn-tag {
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1435,13 +1492,6 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   min-height: 38px;
   align-items: center;
   max-width: 900px;
-}
-
-.action-hint {
-  color: rgba(233, 236, 242, 0.75);
-  font-size: 13px;
-  font-style: italic;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- Hand ---------- */
@@ -1484,6 +1534,199 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 .hand .card.selected {
   transform: translateY(-18px);
   box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+/* A chosen card keeps the strip its lift uncovers: without this the
+   neighbour beneath it answers a tap on the chosen card's lower edge. */
+.hand .card.selected::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: -18px;
+}
+
+/* the card under a finger that is down rises and grows a little, over its
+   neighbours, until the finger lifts */
+.hand .hand-slot.pressed .card {
+  transform: translateY(-12px) scale(1.08);
+  z-index: 5;
+}
+
+.hand .hand-slot.pressed .card.selected {
+  transform: translateY(-26px) scale(1.08);
+}
+
+/* a disabled Play takes no taps; its wrapper hears them and explains why */
+.play-wrap {
+  display: inline-flex;
+}
+
+.play-wrap > .btn:disabled {
+  pointer-events: none;
+}
+
+/* the hint floats over the table just above your row, out of the flow, so
+   showing it never moves the action bar */
+.hand-line {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  z-index: 4;
+  margin: 0;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(8, 20, 14, 0.88);
+  border: 1px solid var(--gold-soft);
+  color: var(--text);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: hand-line-in 160ms var(--ease-out) both;
+}
+
+@keyframes hand-line-in {
+  from { opacity: 0; }
+}
+
+/* a newcomer's first turns: the coach line in gold, the cards that follow
+   the lead at full strength and the rest dimmed; an idle turn pulses both */
+.hand-line.coach {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.hand-slot.dim .card {
+  filter: brightness(0.55) saturate(0.7);
+}
+
+.hand-line.coach.nudge {
+  animation: hand-line-in 160ms var(--ease-out) both, coach-pulse 1.6s ease-in-out infinite;
+}
+
+.hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
+  animation: coach-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--gold-soft); }
+  50% { box-shadow: 0 0 0 2px var(--gold), 0 0 14px 2px var(--gold-soft); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-line.coach.nudge,
+  .hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--gold);
+  }
+}
+
+/* The one timer ring: it drains from full over the whole window, with the
+   seconds left in its centre, and turns red for the last ten. The band is a
+   masked conic gradient, so the ring reads on felt, buttons and pills alike.
+   A size sets only --size and --band: the font follows from them, so the
+   widest number ("60") always clears the band by 2px with room to spare.
+   The 1.4 is above the widest bold tabular pair's width per em (1.32 in SF)
+   and its line box (1.18 em); timerRingCss.test.ts checks every size. The
+   font is in px, not the text-size scale, because the ring does not grow
+   with it. */
+.timer-ring {
+  --ring: var(--gold);
+  --track: rgba(255, 255, 255, 0.18);
+  --size: 44px;
+  --band: 4px;
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ring);
+  font-size: calc((var(--size) - 4 * var(--band) - 4px) / 1.4);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.timer-ring::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring) 0 var(--ring-deg, 360deg), var(--track) var(--ring-deg, 360deg) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--band) - 0.5px), #000 calc(100% - var(--band)));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--band) - 0.5px), #000 calc(100% - var(--band)));
+}
+
+.timer-ring-secs {
+  position: relative;
+}
+
+.timer-ring.low {
+  --ring: #ff6b5b;
+}
+
+/* someone else's clock: a thin ring on their seat pill */
+.timer-ring.thin {
+  --size: 26px;
+  --band: 1.5px;
+  margin-block: -4px;
+  background: none;
+}
+
+.action-bar.clock-low .btn.primary,
+.btn.primary.clock-low {
+  box-shadow: 0 0 0 3px rgba(255, 107, 91, 0.35);
+}
+
+.btn.big .timer-ring {
+  --size: 32px;
+  --band: 2.5px;
+  margin: -6px 10px -6px -8px;
+  vertical-align: middle;
+}
+
+/* joining after this trick: the bot plays your seat until the handover */
+.away-pill {
+  position: fixed;
+  left: 50%;
+  bottom: max(112px, 32vh);
+  transform: translateX(-50%);
+  z-index: 71;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  box-sizing: border-box;
+  padding: 0 8px 0 18px;
+  border-radius: 28px;
+  border: 1px solid #333b49;
+  background: rgba(20, 23, 30, 0.9);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+.away-pill-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.away-pill-text b {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hand-line { animation: none; }
 }
 
 /* ---------- Cards ---------- */
@@ -1656,126 +1899,253 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-size: 24px;
 }
 
-.modal-title.team0,
-.victory-title.team0 {
+.modal-title.team0 {
   color: var(--team0);
 }
 
-.modal-title.team1,
-.victory-title.team1 {
+.modal-title.team1 {
   color: var(--team1);
 }
 
-.result-grid {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px 24px;
-  text-align: left;
-  background: #10131a;
-  border: 1px solid var(--panel-edge);
-  border-radius: 12px;
-  padding: 16px 20px;
-}
-
-.result-label {
-  color: var(--text-dim);
-  font-size: 13px;
-}
-
-.result-value {
-  font-weight: 700;
-  font-size: 14px;
-  text-align: right;
-}
-
-.result-label.total,
-.result-value.total {
-  color: var(--gold);
-  font-size: 15px;
-  border-top: 1px solid var(--panel-edge);
-  padding-top: 8px;
-}
-
-.result-note {
-  color: var(--text-dim);
-  font-weight: 400;
-  font-size: 12px;
-}
-
-.result-verdict {
-  color: var(--text-dim);
-  font-size: 13px;
-  margin: 10px 0 0;
-}
-
-.kitty-reveal {
+/* round end: the outcome in one glance, how it was scored behind Details */
+.result-headline {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
 }
 
-.kitty-reveal-label {
-  font-size: 11px;
+.result-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+
+.result-details > summary {
+  align-self: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #c4ccd8;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+}
+
+.result-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.result-details > summary::after {
+  content: "›";
+  font-size: 1.2em;
+  transition: transform var(--dur-fast) ease-out;
+}
+
+.result-details[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+/* a round that wins a game: the crown over the title, and the games score
+   as a label under the result line */
+.game-won-crown {
+  align-self: center;
+  font-size: 44px;
+  line-height: 1;
+  filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.8));
+}
+
+.result-games {
+  font-size: var(--fs-14);
   font-weight: 700;
-  letter-spacing: 0.15em;
+  color: var(--gold, #d9a441);
+  font-variant-numeric: tabular-nums;
+}
+
+/* round end: the result in one line, then Next round and Leave in one row */
+.result-headline.result-line,
+.result-games {
+  margin: 0;
+}
+
+.result-line {
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+
+.result-line .result-next-banker {
+  color: #c4ccd8;
+  font-weight: 400;
+}
+
+.round-end-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.round-end-actions > .btn.primary {
+  flex: 1;
+}
+
+.round-end-actions > .dialog-leave-btn {
+  margin: 0;
+  flex: none;
+}
+
+/* Details: the kitty and the last trick side by side, so the opened card
+   still fits a sideways phone */
+/* the toggle keeps its 44px hit area but sits tight between the result
+   line and the buttons */
+.round-end .result-details > summary {
+  margin: -8px auto;
+}
+
+/* the opened card grows to fit the widest last trick (four 5-card throws
+   come to about 700px), never past the screen less a 12px margin a side */
+.modal.round-end.details-open {
+  width: max-content;
+  min-width: min(560px, 100%);
+  max-width: min(100%, calc(100vw - 24px));
+}
+
+.round-end-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #11141a;
+  border: 1px solid var(--panel-edge);
+  text-align: left;
+}
+
+.round-end-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.round-end-kitty {
+  flex: 1;
+}
+
+/* a CJK name in the label moves to the next line whole */
+.round-end-col-label {
+  word-break: keep-all;
+  font-size: 11px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
-.kitty-cards {
+.round-end-kitty-cards,
+.round-end-play-cards {
   display: flex;
-  justify-content: center;
-  --cw: 46px;
+  --cw: 34px;
 }
 
-.kitty-cards .card + .card {
-  margin-left: -14px;
+.round-end-kitty-cards .card + .card {
+  margin-left: -15px;
 }
 
-.victory {
+/* each play overlaps like a hand: an 18px step keeps every rank readable */
+.round-end-play-cards .card + .card {
+  margin-left: -16px;
+}
+
+.kitty-bonus {
+  color: #c4ccd8;
+  font-size: var(--fs-12);
+}
+
+.round-end-plays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 10px;
+}
+
+.round-end-play {
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 3px;
 }
 
-.victory-crown {
-  font-size: 56px;
-  filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.8));
+.round-end-play.winner .round-end-play-cards {
+  border-radius: 6px;
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
 }
 
-.victory-title {
-  margin: 0;
-  font-size: 28px;
-}
-
-.victory-sub {
-  margin: 0;
+/* a name stays on one line under its cards and ends in an ellipsis, so
+   four long names fit a sideways phone */
+.round-end-play-who {
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
   color: var(--text-dim);
+}
+
+.round-end-play.winner .round-end-play-who {
+  color: var(--gold);
 }
 
 /* ============ Mobile landscape (short viewports) ============ */
 /* Phones held horizontally: ~740-930 x 360-430. Everything must fit with no
-   page scrolling. Desktop rules above are untouched. */
+   page scrolling. Desktop rules above are untouched.
+   The block is keyed on the root's `phone-landscape` class, which
+   phoneLayout.ts sets only at the table: for a viewport under 500px tall
+   (the media query `(max-height: 500px)`) and for a portrait phone, whose
+   table is drawn turned a quarter turn (.app.rotated). The lobby has one
+   portrait design, which a sideways phone shows too, so nothing here is
+   the lobby's. A media query cannot see
+   the rotated frame, a class can. :where() adds no specificity, so every
+   rule weighs what it would on its own; the build flattens the nesting. */
 
-@media (max-height: 500px) {
+:where(.phone-landscape) {
   /* Phone table (short landscape).
      Every size derives from the viewport through the tokens on .table-screen,
      so a wider phone gets bigger cards instead of empty felt. The regions:
        - a header row (y 6..38): one strip with levels, trump and points at the
-         left, the top seat's label in the middle, the `…` menu at the right;
-       - the trick cross, centred between the header and your row; each side
-         seat's label sits on top of its own trick slot;
+         left, the top seat's label in the middle, Chat and the `…` menu at
+         the right;
+       - the trick cross between the header and the hand: each slot is its
+         cards plus a tag line under them, a gap apart; each side seat's label
+         stands at its edge of the felt, level with the cross's centre;
+       - in play your slot is also your row: Play (with "Your turn") sits where
+         your cards will land, just above the hand; while declaring and burying
+         the row sits under the cross;
        - the hand, the only thing in the bottom band, running 16px under the
-         home indicator; a turn shows as a gold glow along its top edge;
-       - your row, centred just above the hand: Play, Bury or the declare
-         options (the banker's crown beside them); the cross sits above it;
-       - messages pass in the bottom-left corner above your row.
+         home indicator;
+       - messages pass in the bottom-left corner.
      Desktop and iPad never match this block. */
   .table-screen {
     position: relative;         /* the floating HUD's frame */
-    --safe-l: env(safe-area-inset-left, 0px);
-    --safe-r: env(safe-area-inset-right, 0px);
-    --safe-b: env(safe-area-inset-bottom, 0px);
-    --safe-w: calc(100vw - var(--safe-l) - var(--safe-r));
+    /* The frame the table is laid out in: the viewport, or the rotated
+       frame's size and its safe areas turned with it (--frame-*). */
+    --view-w: var(--frame-w, 100vw);
+    --view-h: var(--frame-h, 100vh);
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
+    --safe-r: var(--frame-safe-r, env(safe-area-inset-right, 0px));
+    --safe-b: var(--frame-safe-b, env(safe-area-inset-bottom, 0px));
+    --safe-w: calc(var(--view-w) - var(--safe-l) - var(--safe-r));
     --header-h: 32px;
+    /* every header pill: the level strip, the top seat, the mode chip, Chat, the menu */
+    --pill-bg: rgba(8, 20, 14, 0.72);
+    /* Chat's slot in the header (40px and its gap); offline has no Chat */
+    --chat-w: calc(40px + var(--space-s));
     /* one spacing scale for the whole table */
     --space-xs: 4px;
     --space-s: 8px;
@@ -1785,28 +2155,44 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --hand-under: max(0px, calc(var(--safe-b) - 16px));
     --lift: 18px;               /* a selected card's rise; the hand's top padding */
     --hand-h: calc(var(--hand-cw) * 1.4 + var(--hand-under));
-    --header-bottom: calc(env(safe-area-inset-top, 0px) + 6px + var(--header-h));
-    /* The felt between the header and your row holds the cross: three equal
-       gaps (header, top slot, your slot, your row) and two card heights. The
-       cards take the width-based size unless that leaves gaps under --space-m. */
-    --cross-avail: calc(100vh - var(--header-bottom) - var(--zone-bottom) - var(--row-h));
-    --trick-cw: min(clamp(48px, 6.7vw, 64px),
-      calc((var(--cross-avail) - 3 * var(--space-m)) / 2.8));
+    --header-bottom: calc(var(--safe-t) + 6px + var(--header-h));
+    /* A slot's footprint is its cards plus a tag line under them (LEAD, WINS,
+       "… declares"), so a tag never covers a card's index. */
+    --tag-s: 20px;
+    /* While declaring and burying a row of controls sits under the cross; in
+       play your slot is the row (see .phase-play). */
+    --row-reserve: var(--row-h);
+    /* The felt between the header and the hand (less the row, if any) holds
+       the cross: two footprints and three equal gaps. The cards
+       are as large as the felt allows: the width-based size unless that
+       leaves gaps under --space-s, or leaves a side seat's label, between
+       the safe edge and a four-card throw, under 100px. */
+    --cross-avail: calc(var(--view-h) - var(--header-bottom) - var(--zone-bottom) - var(--row-reserve));
+    --trick-cw: min(clamp(48px, calc(var(--view-w) * 0.075), 72px),
+      calc((var(--cross-avail) - 3 * var(--space-s) - 2 * var(--tag-s)) / 2.8),
+      calc((var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - 3 * var(--space-s) - 100px) / 4.2));
     --trick-ch: calc(var(--trick-cw) * 1.4);
-    --gap-v: calc((var(--cross-avail) - 2 * var(--trick-ch)) / 3);
+    --foot: calc(var(--trick-ch) + var(--tag-s));
+    --gap-v: calc((var(--cross-avail) - 2 * var(--foot)) / 3);
     /* a side slot's outer edge, from the centre: room for a four-card throw
        growing inward that still clears a four-card throw in the top or your
-       slot (4 cards span 3.16 card widths at the -0.28 overlap) */
-    --side-out: calc(var(--trick-cw) * 4.74 + 6px);
-    /* a side seat's label sits outside its slot and never reaches the safe area */
-    --pill-max: min(96px, calc(50vw - var(--side-out) - var(--gap-v) - var(--space-xs) - max(var(--safe-l), var(--safe-r))));
-    /* top and your slot centres sit a card and a gap apart */
-    --slot-dy: calc((var(--trick-ch) + var(--gap-v)) / 2);
+       slot (4 cards span 2.8 card widths at a 60% pitch) */
+    --side-out: calc(var(--trick-cw) * 4.2 + var(--space-s));
+    /* A side seat's label stands a gap in from the safe edge and stops a
+       gap short of its slot's outer edge, so no play reaches it. */
+    --pill-max: min(200px,
+      calc(var(--view-w) / 2 - max(var(--safe-l), var(--safe-r)) - var(--side-out) - 2 * var(--space-s)));
+    /* card centres from the cross's centre: the top slot's footprint ends a
+       half gap above it, yours starts a half gap below; side cards sit so
+       their footprint is centred */
+    --dy-top: calc(var(--trick-ch) / 2 + var(--tag-s) + var(--gap-v) / 2);
+    --dy-bottom: calc(var(--trick-ch) / 2 + var(--gap-v) / 2);
+    --side-dy: calc(var(--tag-s) / -2);
     --trick-top: calc(var(--header-bottom) + var(--gap-v));
     --trick-bottom: calc(var(--hand-h) + var(--lift));
     --row-h: 50px;              /* one 44px button row and its padding */
     --zone-bottom: calc(var(--trick-bottom) + var(--space-xs));
-    --cross-bottom: calc(var(--zone-bottom) + var(--row-h) + var(--gap-v));
+    --cross-bottom: calc(var(--zone-bottom) + var(--row-reserve) + var(--gap-v));
     --corner-l: calc(var(--safe-l) + 8px);
     /* a long press on a name or label must not select text or raise the
        Copy / Look Up callout over the table */
@@ -1822,11 +2208,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     -webkit-touch-callout: default;
   }
 
-  /* The banker's 33 cards fit one row by shrinking to about 52px tall; the
-     row and the cross move down with the shorter hand. Back to full size
-     once the bury leaves 25. */
+  /* in play your slot is your row, so nothing is reserved under the cross */
+  .table-screen.phase-play {
+    --row-reserve: 0px;
+  }
+
+  /* The banker's 33 cards fit one row by drawing smaller, as large as the
+     width allows (about 51px wide on a 14 Pro, 56 at most); the row and the
+     cross move down with the shorter hand. Back to full size once the bury
+     leaves 25. */
   .table-screen:has(.hand.small-cards) {
-    --hand-cw: 37px;
+    --hand-cw: clamp(37px, calc(var(--safe-w) * 0.07), 56px);
   }
 
   /* --- HUD: no bar; one strip top-left, the menu top-right --- */
@@ -1839,7 +2231,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     background: none;
     border-bottom: 0;
     pointer-events: none;     /* only the chips themselves take taps */
-    padding: calc(6px + env(safe-area-inset-top, 0px)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
+    padding: calc(6px + var(--safe-t)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
   }
 
   .hud-bar {
@@ -1848,14 +2240,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: 0;
   }
 
-  /* room and phase chips are hidden below, so this group is empty; left in, it
-     takes a slot and pushes the levels off the corner */
+  /* this group holds only a test policy's marker; left in, it takes a slot
+     and pushes the levels off the corner */
   .hud-bar > .hud-group:first-child {
     display: none;
   }
 
-  .hud-bar > .hud-group,
-  .hud-notice {
+  .hud-bar > .hud-group {
     pointer-events: auto;
   }
 
@@ -1867,45 +2258,35 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .trump-none-long { display: none; }
   .trump-none-short { display: inline; }
 
-  .room-chip,
-  .phase-chip {
-    display: none; /* non-essential on a phone */
-  }
-
   .chip {
     padding: 2px 9px;
-    font-size: 12px;
+    font-size: var(--fs-12);
     gap: 5px;
   }
 
   .trump-chip {
-    font-size: 13px;
+    font-size: var(--fs-13);
   }
 
   .trump-suit.red,
   .trump-suit.black {
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .trump-rank {
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   .points-big {
-    font-size: 16px;
+    font-size: var(--fs-16);
     font-variant-numeric: tabular-nums;
-  }
-
-  .hud-message {
-    font-size: 12px;
-    padding: 2px 0 1px;
   }
 
   /* --- One header strip: levels · trump · levels | points --- */
   .hud-bar .hud-group:nth-child(2) {
     gap: 0;
     height: var(--header-h);
-    background: rgba(8, 20, 14, 0.72);
+    background: var(--pill-bg);
     border-radius: 999px 0 0 999px;
     padding: 0 2px 0 6px;
   }
@@ -1927,69 +2308,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     height: var(--header-h);
     border: 0;
     border-radius: 0 999px 999px 0;
-    padding: 0 14px 0 10px;
+    padding: 0 14px 0 6px;
     line-height: 1;
-    background: rgba(8, 20, 14, 0.72);
-    box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.1);   /* the divider */
-  }
-
-  .points-chip .points-bar {
-    position: absolute;
-    left: 10px;
-    right: 14px;
-    bottom: 4px;
-    height: 2px;
-  }
-
-  .points-bar {
-    display: block;
-    border-radius: 2px;
-    background: rgba(0, 0, 0, 0.4);
-    overflow: hidden;
-  }
-
-  .points-bar > span {
-    display: block;
-    height: 100%;
-    background: var(--team1);
-    transition: width 0.5s ease;
-  }
-
-  .kitty-icon {
-    width: 9px;
-    height: 13px;
-  }
-
-  /* Kitty, sound, invite and leave move into the `…` overflow (HudMenu); the chips
-     they replace are hidden HERE ONLY -- `.hud-bar .mute-btn`, not `.mute-btn`, so the
-     Room screen keeps its own toggle. The menu's Sound row is the
-     table's mute on a phone. */
-  .kitty-chip,
-  .hud-bar .mute-btn,
-  .hud-bar .leave-btn {
-    display: none;
-  }
-
-  .leave-btn {
-    font-size: 10px;
-    padding: 3px 9px;
-    min-height: 26px;
-  }
-
-  .mute-btn {
-    width: 26px;
-    height: 26px;
-    font-size: 12px;
+    background: var(--pill-bg);
   }
 
   .hud-more {
-    display: block;
-    position: relative;
-    margin-left: auto;
     pointer-events: auto;
   }
 
-  /* drawn 36x32 to match the strip; ::after keeps a 44px hit area. The
+  /* drawn 36x32 to match the strip; ::after gives it a 48px hit area (44px
+     at least, wherever the screen edge does not stop it first). The
      extra class outranks the coarse-pointer 44px minimum later in the file. */
   .hud-bar .hud-more-btn {
     position: relative;
@@ -1998,10 +2327,10 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     min-height: var(--header-h);
     padding: 0 8px;
     border-radius: 999px;
-    border: 1px solid var(--panel-edge);
-    background: rgba(16, 19, 26, 0.82);
+    border: 0;
+    background: var(--pill-bg);
     color: var(--text);
-    font-size: 16px;
+    font-size: var(--fs-16);
     font-weight: 700;
     letter-spacing: 0.08em;
     line-height: 1;
@@ -2011,77 +2340,27 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .hud-bar .hud-more-btn::after {
     content: "";
     position: absolute;
-    inset: -6px -4px;
+    inset: -8px -6px;
   }
 
-  .hud-more-btn[aria-expanded="true"] {
-    border-color: var(--gold);
-  }
-
+  /* a phone's menu: the header's height above it, and the rest of the
+     landscape screen below, which it scrolls within */
   .hud-menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 12;
-    min-width: 176px;
-    display: flex;
-    flex-direction: column;
-    padding: 5px;
-    border-radius: 12px;
-    border: 1px solid var(--panel-edge);
-    background: #0a0c11;       /* opaque: cards under a translucent menu read as menu rows */
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    max-height: calc(100dvh - var(--safe-t) - var(--header-h) - 18px);
+    overflow-y: auto;
   }
-
-  .hud-menu-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 14px;
-    min-height: 44px;           /* touch target */
-    padding: 6px 10px;
-    border: 0;
-    border-radius: 8px;
-    background: none;
-    color: var(--text);
-    font: 500 13px inherit;
-    font-family: inherit;
-    text-align: left;
-    cursor: pointer;
+  /* Leave game stays in view at the menu's foot while the rows above scroll */
+  .hud-menu-row.leave {
+    position: sticky;
+    bottom: -5px;
+    flex: none;
+    margin: 0 -5px -5px;
+    padding: 6px 15px 11px;
+    border-radius: 0 0 12px 12px;
+    border-top: 1px solid var(--panel-edge);
+    background: #0a0c11;
   }
-
-  .hud-menu-row[aria-disabled="true"] { cursor: default; }
-  @media (hover: hover) and (pointer: fine) {
-    .hud-menu-row:not([aria-disabled="true"]):not(.hud-menu-edit):hover { background: rgba(255, 255, 255, 0.06); }
-  }
-  .hud-menu-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
-  .hud-menu-row.leave.armed { color: var(--gold); cursor: default; padding-right: 4px; white-space: nowrap; }
-  .hud-menu-k { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-
-  /* Leave game? Stay | Leave: two real buttons, no timer */
-  .hud-menu-confirm {
-    display: flex;
-    gap: 6px;
-  }
-
-  .hud-menu-choice {
-    min-height: 44px;
-    min-width: 58px;
-    padding: 0 12px;
-    border: 1px solid var(--panel-edge);
-    border-radius: 8px;
-    background: var(--panel);
-    color: var(--text);
-    font: 600 13px inherit;
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  .hud-menu-choice.danger {
-    border-color: transparent;
-    background: var(--danger);
-    color: #fff;
-  }
+  .hud-menu-sep:has(+ .hud-menu-row.leave) { display: none; }
 
   /* --- Seats: one-line labels of one height, radius and type size --- */
   .opponent {
@@ -2090,30 +2369,97 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-s);
     min-width: 0;
     height: var(--header-h);
-    padding: 0 var(--space-m) 0 var(--space-s);
+    padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
     border: 0;
-    border-left: 3px solid var(--panel-edge);   /* the team colour lives here, once */
     border-radius: 999px;
-    background: rgba(8, 20, 14, 0.72);
+    background: var(--pill-bg);
     z-index: 2;
   }
 
-  .opponent.team0 { border-left-color: var(--team0); }
-  .opponent.team1 { border-left-color: var(--team1); }
+  /* The label is the only way to read a long name (a tap shows it whole),
+     so its tap area reaches 44px tall, as the menu button's does. */
+  .opponent::after {
+    content: "";
+    position: absolute;
+    inset: -6px -4px;
+  }
 
-  /* whose turn: the seat's edge turns gold, without a glow */
+  /* the team colour is a dot inside the label, the same for every seat */
+  .opponent .seat-dot {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+
+  .opponent .seat-dot.t0 { background: var(--team0); }
+  .opponent .seat-dot.t1 { background: var(--team1); }
+
+  /* Whose turn: the seat's label fills gold and its name ends in "…". A
+     solid fill, no glow and no motion. */
   .opponent.on-turn {
-    border-left-color: var(--gold);
+    background: var(--gold);
     box-shadow: none;
   }
 
+  .opponent.on-turn .opp-name {
+    color: #1a1a1a;
+  }
+
+  /* the gold turn pill carries the ring in the pill's own dark ink */
+  .opponent.on-turn .timer-ring.thin {
+    --ring: #1a1a1a;
+    --track: rgba(0, 0, 0, 0.2);
+  }
+
+  .opponent.on-turn .timer-ring.thin.low {
+    --ring: #a8231a;
+  }
+
+  /* Nothing in or beside the label moves when the turn comes: the team dot
+     and the "…" both always hold their room, and the turn only shows one and
+     hides the other. */
+  /* the banker's crown already marks its team, and the pill has no room for both */
+  .opponent:has(.banker-crown) .seat-dot {
+    display: none;
+  }
+
+  .opponent.on-turn .seat-dot {
+    visibility: hidden;
+  }
+
+  /* room for the whole bold "…" at the label's size, so it never clips */
+  .opponent .turn-dots {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 1.1em;
+    font-weight: 800;
+    text-align: center;
+    visibility: hidden;
+  }
+
+  .opponent .turn-dots.shown {
+    visibility: visible;
+  }
+
   .opp-name {
-    font-size: 13px;
+    font-size: var(--fs-13);
     white-space: nowrap;
   }
 
+  /* no glow anywhere on the phone table */
   .banker-crown {
-    font-size: 12px;
+    font-size: var(--fs-12);
+    filter: none;
+  }
+
+  .level-chip.level-up {
+    animation: none;
+  }
+
+  .game-won-crown {
+    filter: none;
   }
 
   /* the card count is not shown at the table */
@@ -2123,15 +2469,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .back-stack,
   .bot-tag,          /* every seat but yours is a bot at most tables; the tag is noise */
-  .bot-banter,
-  .bot-progress {
+  .bot-banter {
     display: none;
   }
 
   .you-tag,
   .host-tag,
   .off-tag {
-    font-size: 10px;
+    font-size: var(--fs-11);
     padding: 1px 5px;
     margin-left: var(--space-xs);
   }
@@ -2158,30 +2503,25 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     font-weight: 800;
   }
 
-  .thinking,
-  .their-turn {
-    font-size: 11px;
+  /* a human's turn is the label's fill too; the label stays one line */
+  .opponent .their-turn {
+    display: none;
   }
 
-  /* A bot's turn shows as its seat's gold edge, not a sentence on the felt.
-     The status text stays in the accessibility tree as a visually hidden live
-     region. */
-  .opponent .thinking {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  /* the top seat's label is centred in the header row, over its slot */
+  /* The top seat's label shares the header row. Its stretch runs from a gap
+     past the level strip (the strip's measured width, --hud-strip-w, from
+     the safe edge) to a gap before Chat. It is centred over its slot when
+     the stretch allows; otherwise it takes up to 96px of the stretch off
+     centre, and the name ends in an ellipsis. */
   .opponent.pos-top {
-    top: calc(6px + env(safe-area-inset-top, 0px));
-    left: 50%;
+    --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
+    --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w));
+    --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
+      min(96px, calc(var(--top-to) - var(--top-from)))));
+    top: calc(6px + var(--safe-t));
+    left: clamp(calc(var(--top-from) + var(--top-w) / 2), calc(var(--view-w) / 2), calc(var(--top-to) - var(--top-w) / 2));
     height: var(--header-h);
-    /* between the level strip (about 260px from the safe edge) and the menu */
-    max-width: min(200px, calc(100vw - 2 * max(var(--safe-l), var(--safe-r)) - 528px));
+    max-width: var(--top-w);
     transform: translateX(-50%);
   }
 
@@ -2192,36 +2532,45 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-xs);
   }
 
-  /* A side seat's label stands on the outer side of its trick slot, centred
-     on it, as far from its cards as the top seat's label is from its card.
-     Long names step down a size, then end in an ellipsis; a tap or long press
-     shows the whole name. */
+  /* A side seat's label stands at its edge of the felt, a gap in from the
+     safe edge, level with its slot's cards.
+     A play grows inward from the slot's outer edge, so no play reaches it.
+     Long names step down a size, then end in an ellipsis; a tap or long
+     press shows the whole name. */
   .opponent.pos-left,
   .opponent.pos-right {
-    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2);
-    right: auto;
+    top: calc((var(--trick-top) + 100% - var(--cross-bottom)) / 2 + var(--side-dy));
     max-width: var(--pill-max);
-  }
-
-  .opponent.pos-left {
-    left: calc(50% - var(--side-out) - var(--gap-v));
-    transform: translate(-100%, -50%);
-  }
-
-  .opponent.pos-right {
-    left: calc(50% + var(--side-out) + var(--gap-v));
     transform: translate(0, -50%);
   }
 
+  .opponent.pos-left { left: calc(var(--safe-l) + var(--space-s)); right: auto; }
+  .opponent.pos-right { left: auto; right: calc(var(--safe-r) + var(--space-s)); }
+
+  /* the name keeps a readable floor; the tags beside it give way first,
+     and only then does the name end in an ellipsis */
   .opp-name-text {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* The floor is for names long enough to need it. On a short name it is
+     wider than the text, and a pill sized to the text then pushed the turn's
+     "…" past its edge. */
+  .opponent:is([data-name-len="m"], [data-name-len="l"]) .opp-name-text {
+    min-width: min(3em, 100%);
+  }
 
-  .opponent[data-name-len="m"] .opp-name { font-size: 11px; }
-  .opponent[data-name-len="l"] .opp-name { font-size: 10px; }
+  .opponent .opp-name > :is(.away-tag, .off-tag) {
+    flex-shrink: 100;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* a long name steps down once, to 12px, then ends in an ellipsis */
+  .opponent[data-name-len="m"] .opp-name,
+  .opponent[data-name-len="l"] .opp-name { font-size: var(--fs-12); }
 
   .opp-fullname {
     display: block;
@@ -2230,13 +2579,13 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
     translate: -50% 0;
     z-index: 20;
-    max-width: 60vw;
+    max-width: calc(var(--view-w) * 0.6);
     padding: 5px 10px;
     border: 1px solid var(--panel-edge);
     border-radius: 8px;
     background: #0a0c11;
     color: var(--text);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
@@ -2262,12 +2611,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --cw: var(--trick-cw);
   }
 
-  /* Up to four cards overlap by 28%; a longer play (a tractor of four pairs,
-     a big throw) packs tighter so it never spans more than four would, the
-     room the cross keeps between its slots. */
+  /* Up to four cards sit at a 60% pitch (each index stays clear); a longer
+     play (a tractor of four pairs, a big throw) packs tighter so it never
+     spans more than four would, the room the cross keeps between its slots. */
   .trick-play {
-    --t-pitch: min(calc(var(--trick-cw) * 0.72),
-      calc(var(--trick-cw) * 2.16 / max(1, calc(var(--n, 1) - 1))));
+    --t-pitch: min(calc(var(--trick-cw) * 0.6),
+      calc(var(--trick-cw) * 1.8 / max(1, calc(var(--n, 1) - 1))));
   }
 
   .trick-cards .card + .card {
@@ -2289,37 +2638,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 50%;
   }
 
-  .trick-play.pos-top { translate: -50% calc(-50% - var(--slot-dy)); }
-  .trick-play.pos-bottom { translate: -50% calc(-50% + var(--slot-dy)); }
+  .trick-play.pos-top { translate: -50% calc(-50% - var(--dy-top)); }
+  .trick-play.pos-bottom { translate: -50% calc(-50% + var(--dy-bottom)); }
 
   .trick-play.pos-left {
     top: 50%;
     left: calc(50% - var(--side-out));
     right: auto;
-    translate: 0 -50%;
+    translate: 0 calc(-50% + var(--side-dy));
   }
 
   .trick-play.pos-right {
     top: 50%;
     left: auto;
     right: calc(50% - var(--side-out));
-    translate: 0 -50%;
+    translate: 0 calc(-50% + var(--side-dy));
   }
 
-  /* One rule for every seat: LEAD / WINS sit centred inside the cards'
-     bottom edge, so a tag takes no room of its own and never lands between
-     two slots. */
+  /* One rule for every seat: LEAD / WINS / "… declares" sit centred just
+     under the cards, in the tag line each slot keeps, so no card's index is
+     covered; LEAD and WINS on one card stand side by side. */
   .trick-tag {
     position: absolute;
-    top: auto;
-    bottom: var(--space-xs);
+    top: calc(100% + var(--space-xs));
+    bottom: auto;
     left: 50%;
     translate: -50% 0;
     margin: 0;
     min-height: 0;
     white-space: nowrap;
-    /* LEAD and WINS on one card stack, so they stay within its width */
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     gap: var(--space-xs);
   }
@@ -2334,9 +2682,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* felt text sits on the HUD's dark pill, so it stays readable */
+  /* 12px with a 15px line keeps a tag inside the slot's 20px tag line */
   .lead-tag,
   .win-tag {
-    font-size: 10px;
+    font-size: 12px;
+    line-height: 15px;
     padding: 2px 7px;
   }
 
@@ -2346,8 +2696,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .declare-tag {
-    font-size: 11px;
-    padding: 3px 9px;
+    font-size: 12px;
+    line-height: 15px;
+    padding: 2px 9px;
     background: rgba(8, 20, 14, 0.78);
   }
 
@@ -2458,6 +2809,36 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     pointer-events: auto;
   }
 
+  /* In play the row is the bottom of your slot, just above the hand: Play
+     stands where your cards land, and once you have played the row is empty
+     and your cards show there. While the finished trick lingers the row
+     steps aside. */
+  .phase-play .you-row {
+    bottom: var(--zone-bottom);
+  }
+
+  .phase-play.showing-last .you-row {
+    visibility: hidden;
+  }
+
+  /* Your turn, nothing chosen yet: Play reads "Your turn", fully opaque, in
+     place of a glow. It turns back into Play once a card is chosen. */
+  .phase-play .action-bar .btn.primary.your-turn .play-text {
+    display: none;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn .your-turn-text {
+    display: inline;
+  }
+
+  .phase-play .action-bar .btn.primary.your-turn:disabled {
+    opacity: 1;
+    border-color: var(--gold);
+    background: rgba(8, 20, 14, 0.85);
+    color: var(--gold);
+    font-weight: 700;
+  }
+
   /* no name pill at the table: only the banker's crown, beside an action */
   .you-tagline {
     display: none;
@@ -2480,6 +2861,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     box-shadow: none;
   }
 
+  /* burying, the Bury button is yours alone; a bare crown beside it would
+     read as a second button */
+  .phase-bury .you-row:has(.action-bar .btn) .you-tagline:has(.banker-crown) {
+    display: none;
+  }
+
   .you-tagline .you-name,
   .you-tagline .your-turn-tag,
   .you-tagline .ready-tag {
@@ -2489,7 +2876,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar {
     grid-column: 2;
     min-height: 0;
-    max-width: calc(100vw - var(--safe-l) - var(--safe-r) - 16px);
+    max-width: calc(var(--view-w) - var(--safe-l) - var(--safe-r) - 16px);
     margin: 0;
     padding: 3px 0;
     gap: 8px;
@@ -2526,7 +2913,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .action-bar .btn {
     min-height: 44px; /* touch target */
     padding: 6px 16px;
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
   /* a disabled Clear is not information */
@@ -2550,7 +2937,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-radius: 999px;
     background: rgba(8, 20, 14, 0.78);
     color: var(--gold);
-    font-size: 12px;
+    font-size: var(--fs-12);
     font-weight: 700;
   }
 
@@ -2566,29 +2953,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     animation: declare-in 120ms var(--ease-back) both;
   }
 
-  .action-hint {
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: rgba(8, 20, 14, 0.78);
-    color: var(--text);
-    font-size: 12px;
-    font-style: normal;
-    text-shadow: none;
-  }
-
-  /* a status line reads left of the buttons, so Pass stays at the edge */
-  .action-bar > .action-hint {
-    order: -1;
-  }
-
-  /* the deck says it while dealing, Pass while declaring, the glowing seat
-     in play */
-  .phase-deal .action-hint,
-  .phase-declare .action-hint,
-  .phase-play .action-hint {
-    display: none;
-  }
-
   /* --- Hand: width-scaled pitch, 16px under the home indicator --- */
   .hand {
     --cw: var(--hand-cw);
@@ -2596,9 +2960,17 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
     position: relative;
     justify-content: flex-start;
-    max-width: 100vw;
+    max-width: var(--view-w);
     padding: var(--lift) calc(8px + var(--safe-r)) var(--hand-under) calc(8px + var(--safe-l));
-    overflow-x: auto;           /* a safety net only: the pitch always fits */
+    /* no overflow clip: any non-visible overflow also clips vertically, and a lifted card's gold ring
+       rises past the top padding; the pitch always fits, so nothing scrolls */
+    overflow: visible;
+  }
+
+  /* a finger slides across the hand to choose a run of cards, so the hand
+     never pans (it always fits) */
+  .hand.selectable {
+    touch-action: none;
   }
 
   .hand-slot {
@@ -2626,26 +2998,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     right: 0;
   }
 
-  /* Your turn: a gold glow along the top edge of the hand */
-  .hand::before {
-    content: "";
-    position: absolute;
-    top: var(--lift);
-    left: 50%;
-    width: calc((var(--n, 25) - 1) * var(--pitch) + var(--hand-cw));
-    height: 3px;
-    translate: -50% -2px;
-    border-radius: 3px;
-    background: var(--gold);
-    box-shadow: 0 0 10px 3px var(--gold-soft), 0 -4px 22px 8px rgba(242, 193, 78, 0.22);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 200ms ease;
-  }
-
-  .my-turn .hand::before {
-    opacity: 1;
-    animation: turn-glow 1.6s ease-in-out infinite alternate;
+  .hand .card.selected::after {
+    top: calc(-1 * var(--lift));
+    bottom: calc(-1 * var(--lift));
   }
 
   /* Over 25 cards (the banker with the kitty) the cards are smaller, so all
@@ -2672,31 +3027,32 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     transition: flex-basis 150ms ease-out, width 150ms ease-out;
   }
 
-  /* --- Messages pass in the bottom-left corner, above your row --- */
-  .hud-message {
-    position: fixed;
-    left: var(--corner-l);
-    bottom: calc(var(--cross-bottom) + 6px);
-    max-width: calc(50% - var(--corner-l) - 96px);
+  /* a refused Play's hint stands just above your row, over the hand */
+  .hand-line {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--zone-bottom) + var(--row-h) + var(--space-xs));
+    z-index: 4;
     margin: 0;
-    padding: 5px 12px;
-    border-radius: 12px;
-    background: rgba(8, 20, 14, 0.82);
-    z-index: 11;
-    pointer-events: none;
-    animation: hud-message-pass-corner 3.2s ease forwards;
+    font-size: var(--fs-12);
+    transform: translateX(-50%);
   }
 
-  .hud-notice {
-    position: fixed;
-    left: var(--corner-l);
-    bottom: calc(var(--cross-bottom) + 6px);
-    z-index: 11;
-    width: calc(50% - var(--corner-l) - 96px);
-    max-width: 360px;
-    margin: 0;
-    padding: 6px 8px;
-    font-size: 12px;
+  .phase-play .action-bar .play-wrap {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  /* the move timer's ring stands just left of Play */
+  .phase-play .action-bar .timer-ring {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
+    margin-right: 12px;
+  }
+
+  .result-details > summary {
+    font-size: var(--fs-13);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -2705,179 +3061,74 @@ dialog.modal-backdrop::backdrop { background: transparent; }
       transition: none;
     }
 
-    .my-turn .hand::before,
-    .deal-deck-stack .card,
+    /* :nth-child(n) matches the pulsing card's own selector weight */
+    .deal-deck-stack .card:nth-child(n),
     .phase-deal .action-bar .btn.gold,
     .phase-declare .action-bar .btn.gold {
       animation: none;
     }
   }
 
-  /* --- Lobby / Room fit in 360px-tall viewports --- */
-  .panel {
-    padding: 16px 22px;
-  }
-
-  .lobby-panel,
-  .room-panel {
-    gap: 10px;
-    width: 360px;
-  }
-
-  .game-title {
-    font-size: 28px;
-  }
-
-  .game-title-en {
-    font-size: 11px;
-    letter-spacing: 0.25em;
-    margin-top: 2px;
-  }
-
-  .game-subtitle {
-    margin: -4px 0 0;
-  }
-
-  /* no room for the signed-out clip above the form */
-  .lobby-preview {
-    display: none;
-  }
-
-  .field input,
-  .field select,
-  .room-input {
-    padding: 8px 12px;
-  }
-
-  .field select {
-    padding-right: 30px;
-  }
-
+  /* --- Round end: a compact card; Next round always on screen --- */
   .btn.big {
     padding: 9px 18px;
-    font-size: 14px;
+    font-size: var(--fs-14);
   }
 
-  .room-code {
-    font-size: 26px;
-    padding: 8px 4px 8px 16px;
-  }
-
-  .seat-list {
-    gap: 5px;
-  }
-
-  .seat-row {
-    padding: 5px 12px;
-    font-size: 13px;
-  }
-
-  .team-legend {
-    gap: 16px;
-    font-size: 11px;
-  }
-
-  /* --- Round end: a compact card; Next round always on screen --- */
   .modal {
     width: min(380px, 100%);
-    padding: 12px 16px 0;
+    max-width: 100%;
+    padding: 12px 16px;
     gap: 8px;
     max-height: 100%;
     overflow-y: auto;
   }
 
   .modal-title {
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
-  .modal-title .title-team {
-    display: none;
-  }
-
-  .kitty-reveal {
-    gap: 4px;
-  }
-
-  .kitty-reveal-label {
-    font-size: 9px;
-  }
-
-  /* No column gap: the Total divider runs across the whole row. */
-  .result-grid {
-    padding: 6px 12px;
-    gap: 2px 0;
-  }
-
-  /* `.result-grid` in front outranks the rem text sizes at the end of the file */
-  .result-grid .result-label {
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .result-grid .result-value {
-    font-size: 13px;
-    line-height: 1.35;
-    padding-left: 12px;
-  }
-
-  .result-grid .result-label.total,
-  .result-grid .result-value.total {
-    padding-top: 4px;
-  }
-
-  /* the grid already says it */
-  .result-verdict {
-    display: none;
-  }
-
-  .kitty-cards {
-    --cw: 26px;
-  }
-
-  .kitty-cards .card + .card {
-    margin-left: -6px;
-  }
-
-  .modal > .btn.big {
+  /* the button row stays in view, even on a card taller than the screen */
+  .modal > .round-end-actions {
     position: sticky;
     bottom: 0;
+    z-index: 1;
+    background: #171b22;
+  }
+
+  .round-end-actions > .btn.big {
     min-height: 44px;
     padding: 8px 16px;
-    margin-bottom: 12px;
-    box-shadow: 0 -10px 12px var(--panel);
   }
 
-  .victory-crown {
-    font-size: 38px;
+  .game-won-crown {
+    font-size: 30px;
   }
 
-  .victory-title {
-    font-size: 20px;
-  }
-
-  .victory-sub {
-    font-size: 13px;
-  }
-
-  /* an error passes in the header band, never over Play and Clear */
-  .toast {
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
+  /* At the table the toast passes just under the header, where the top
+     seat's label sits: never over a side seat's label, your row, the hand
+     line or the hand. It stays inside the cross's width. */
+  .table-screen .toast.at-table {
+    top: calc(var(--safe-t) + 6px + var(--header-h) + var(--space-xs));
     bottom: auto;
-    max-width: calc(100vw - 2 * max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)) - 32px);
-    font-size: 13px;
-    padding: 7px 16px;
+    max-width: calc(2 * var(--side-out) - 2 * var(--space-s));
+    font-size: var(--fs-13);
+    line-height: 17px;
+    padding: 6px 14px;
   }
 
   /* chat sits in the header, beside the menu button, clear of the hand
      (the extra class outranks the base rule later in the file) */
   .table-screen .chat-launch {
-    top: calc(env(safe-area-inset-top, 0px) + 6px);
+    top: calc(var(--safe-t) + 6px);
     right: calc(var(--safe-r) + 4px + 36px + var(--space-s));
     bottom: auto;
     width: 40px;
     height: var(--header-h);
+    border: 0;
+    background: var(--pill-bg);
     border-radius: 999px;
-    font-size: 15px;
+    font-size: var(--fs-15);
   }
 
   .table-screen .chat-launch::after {
@@ -2889,15 +3140,26 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .reconnect-banner {
     top: 40px;
   }
-}
 
-/* The phone message's pass, from the bottom-left corner (see the short
-   landscape block); kept out of that block so it stays plain rules. */
-@keyframes hud-message-pass-corner {
-  0% { opacity: 0; transform: translateY(4px); }
-  10% { opacity: 1; transform: none; }
-  80% { opacity: 1; }
-  100% { opacity: 0; visibility: hidden; }
+  /* the felt's top-left corner under the header row, the last trick
+     control's place, which steps down while the pill shows: the header row
+     has no room for "A bot holds your seat" beside the partner and chat */
+  .app:has(.table-screen) .reconnect-banner {
+    --safe-t: var(--frame-safe-t, env(safe-area-inset-top, 0px));
+    --safe-l: var(--frame-safe-l, env(safe-area-inset-left, 0px));
+    top: calc(var(--safe-t) + 6px + var(--header-h, 32px) + 6px);
+    left: calc(var(--safe-l) + 8px);
+    right: auto;
+    padding: 5px 14px;
+  }
+
+  .app:has(.table-screen) .reconnect-banner.with-retry {
+    padding: 3px 3px 3px 12px;
+  }
+
+  .app:has(.table-screen) .reconnect-retry {
+    min-height: 26px;
+  }
 }
 
 /* Phone table motion (see the short landscape block). */
@@ -2909,91 +3171,92 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   from { opacity: 0; transform: scale(0.85); }
 }
 
-@keyframes turn-glow {
-  from { opacity: 0.65; }
-  to { opacity: 1; }
-}
-
-/* ============ Portrait phones: rotate hint ============ */
-
-/* A browser fallback: the iOS app turns the phone to landscape itself. */
-.rotate-hint {
-  display: none;
+/* The game is always played sideways. A phone browser held upright at the
+   table (App sets .rotated; the iOS app turns itself instead) draws the table
+   a quarter turn clockwise in a frame the screen's long side wide, so the
+   phone layout applies to it unchanged. The frame's left edge lies along
+   the screen's top, so its safe areas turn with it. Hit testing follows the
+   transform, so a tap lands on the card under the finger. */
+.app.rotated {
   position: fixed;
-  inset: 0;
-  z-index: 100;
-  background:
-    radial-gradient(ellipse 120% 90% at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-  padding: 24px;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  overflow: hidden;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-.rotate-card {
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 90px;
-  border-radius: 8px;
-  background: linear-gradient(160deg, #fdfdf7 0%, #f1f0e6 100%);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-  color: var(--card-red);
-  font-size: 18px;
-  font-weight: 800;
-  animation: rotate-nudge 1.8s ease-in-out infinite;
+/* The turned table's bottom is the phone's left edge, which has no inset
+   in portrait: the hand keeps 8px off it instead of touching the glass. */
+.app.rotated .table-screen {
+  --hand-under: max(8px, calc(var(--safe-b) - 16px));
 }
 
-.rotate-leave {
-  min-height: 44px;
+/* the chat and the round-end card measure the turned frame, not the
+   viewport */
+.app.rotated .chat-panel {
+  right: calc(12px + var(--frame-safe-r));
+  bottom: calc(68px + var(--frame-safe-b));
+  width: min(320px, calc(var(--frame-w) * 0.82));
+  max-height: min(380px, calc(var(--frame-h) - 80px - var(--frame-safe-t) - var(--frame-safe-b)));
 }
 
-@keyframes rotate-nudge {
-  0%,
-  20% {
-    transform: rotate(0deg);
-  }
-  60%,
-  100% {
-    transform: rotate(90deg);
-  }
+.app.rotated .modal-backdrop {
+  padding: max(12px, var(--frame-safe-t)) max(12px, var(--frame-safe-r))
+    max(12px, var(--frame-safe-b)) max(12px, var(--frame-safe-l));
 }
 
-@media (orientation: portrait) and (max-width: 600px) {
-  .rotate-hint {
-    display: flex;
-  }
-
-  /* the table's no-wrap HUD widened the layout viewport, which put the fixed
-     hint off-screen; out of layout, the hint centres */
-  .table-screen {
-    display: none;
-  }
+/* A dialog opened with showModal() lives in the browser's top layer, which
+   ignores the .app transform, so it takes the same quarter turn itself and
+   reads the same turned frame. */
+.app.rotated dialog.conn-lost:modal,
+.app.rotated dialog.modal-backdrop:modal {
+  inset: auto;
+  top: 0;
+  left: 0;
+  width: 100dvh;
+  height: 100dvw;
+  transform-origin: top left;
+  transform: translateX(100dvw) rotate(90deg);
+  --frame-w: 100dvh;
+  --frame-h: 100dvw;
+  --frame-safe-t: env(safe-area-inset-right, 0px);
+  --frame-safe-l: env(safe-area-inset-top, 0px);
+  --frame-safe-r: env(safe-area-inset-bottom, 0px);
+  --frame-safe-b: env(safe-area-inset-left, 0px);
 }
 
-/* Touch screens: the lobby's dice and How to play link keep their drawn size
-   but take a 44px tap. */
-@media (pointer: coarse) {
-  .name-reroll::after {
-    content: "";
-    position: absolute;
-    inset: -5px;
-  }
+/* the seat label's team dot and turn mark, and the hint under Your turn,
+   belong to the phone table only */
+.seat-dot,
+.turn-dots {
+  display: none;
+}
 
-  .howto-link {
-    position: relative;
-  }
+/* The lobby's dice, How to play link and a saved game's Continue and Replay
+   keep their drawn size but take a 44px tap. */
+.name-reroll::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
 
-  .howto-link::after {
-    content: "";
-    position: absolute;
-    inset: -14px -8px;
-  }
+.howto-link {
+  position: relative;
+}
+
+.howto-link::after {
+  content: "";
+  position: absolute;
+  inset: -14px -8px;
 }
 
 /* ============ Hidden debug xray panel ============ */
@@ -3161,14 +3424,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   color: #201703;
 }
 
-/* Round-end readiness (all humans must confirm before advancing) */
-.ready-status {
-  margin-top: 10px;
-  font-size: 13px;
-  opacity: 0.75;
-  text-align: center;
-}
-
 /* ---- Chat: toggled overlay (the table fills landscape screens) ---- */
 .chat-launch {
   position: fixed; right: 14px; bottom: 14px; z-index: 40;
@@ -3176,7 +3431,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   width: 46px; height: 46px; border-radius: 50%;
   background: rgba(20, 28, 22, 0.92); border: 1px solid rgba(255,255,255,0.18);
-  font-size: 20px; cursor: pointer;
+  font-size: var(--fs-20); cursor: pointer;
 }
 .chat-badge {
   position: absolute; top: -4px; right: -4px;
@@ -3190,22 +3445,27 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   width: min(320px, 82vw);
   max-height: min(380px, calc(100dvh - 80px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
   display: flex; flex-direction: column;
-  background: rgba(16, 22, 18, 0.97); color: #eee;
+  background: #101612; color: #eee;
   border: 1px solid rgba(255,255,255,0.16); border-radius: 12px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.45);
 }
 .chat-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.12);
-  font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: var(--fs-13); letter-spacing: 0.04em; text-transform: uppercase;
   opacity: 0.85;
 }
-.chat-close { background: none; border: none; color: #eee; font-size: 20px; cursor: pointer; }
-.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: 14px; }
+.chat-close { background: none; border: none; color: #eee; font-size: var(--fs-20); cursor: pointer; }
+.chat-log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; font-size: var(--fs-14); }
 .chat-head, .chat-input { flex-shrink: 0; }
-.chat-empty { opacity: 0.5; font-size: 13px; }
 .chat-msg { margin: 4px 0; word-break: break-word; }
-.chat-msg .chat-name { opacity: 0.65; margin-right: 6px; font-weight: 600; }
+/* the sender's name is one line ending in an ellipsis; the line's text wraps
+   between words */
+.chat-msg .chat-name {
+  opacity: 0.65; margin-right: 6px; font-weight: 600;
+  display: inline-block; max-width: 100%; vertical-align: top;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .chat-msg.mine .chat-name { color: #8fd18f; }
 .chat-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.12); }
 .chat-input input {
@@ -3213,116 +3473,39 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #eee;
 }
 
-/* Room chip is a button in-game: tap to copy an invite link. It keeps the GOLD
-   accent of the lobby's gold action so the code reads as the same room code. */
-button.room-chip {
-  cursor: pointer;
-  font: inherit;
-  color: var(--gold);
-  letter-spacing: 0.2em;
-  font-weight: 800;
-  border-color: rgba(242, 193, 78, 0.45);
-  transition: background 0.12s ease, border-color 0.12s ease;
-}
-@media (hover: hover) and (pointer: fine) {
-button.room-chip:hover {
-  background: rgba(242, 193, 78, 0.14);
-  border-color: var(--gold);
-}
-}
-button.room-chip.copied {
-  background: rgba(120, 200, 130, 0.22);
-  border-color: rgba(140, 220, 150, 0.5);
-}
-
 /* System lines in chat (joins / leaves / seat claims) */
 .chat-msg.system {
   opacity: 0.55;
   font-style: italic;
-  font-size: 13px;
+  font-size: var(--fs-13);
   text-align: center;
   margin: 6px 0;
 }
 
-/* Hover tooltip on the in-game room chip */
-button.room-chip { position: relative; }
-button.room-chip::after {
-  content: attr(data-tip);
-  position: absolute; top: calc(100% + 6px); left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  background: rgba(12, 18, 14, 0.96);
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 12px; font-style: normal; letter-spacing: 0;
-  opacity: 0; pointer-events: none; transition: opacity 0.12s ease;
-  z-index: 50;
-}
-@media (hover: hover) and (pointer: fine) {
-  button.room-chip:hover::after { opacity: 1; }
-}
-button.room-chip:focus-visible::after { opacity: 1; }
-
-/* Seat picker for mid-game joins */
-.seat-hint { opacity: 0.7; font-size: 14px; margin: 4px 0 14px; }
-.seat-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;
-}
-.seat-option {
-  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
-  padding: 10px 12px; border-radius: 10px; cursor: pointer;
-  background: rgba(255,255,255,0.06); color: inherit; font: inherit;
-  border: 1px solid rgba(255,255,255,0.16); text-align: left;
-}
-.seat-option.team0 { border-left: 3px solid #6ba7ff; }
-.seat-option.team1 { border-left: 3px solid #ffab5e; }
-.seat-option:disabled, .seat-option.taken { opacity: 0.4; cursor: not-allowed; }
-@media (hover: hover) and (pointer: fine) {
-  .seat-option:not(:disabled):hover { background: rgba(255,255,255,0.12); }
-}
-.seat-num { font-weight: 600; font-size: 13px; }
-.seat-who { font-size: 13px; opacity: 0.8; }
-.seat-option { min-width: 0; }
-.seat-who { overflow-wrap: anywhere; }
-.seat-team { font-size: 11px; opacity: 0.55; letter-spacing: 0.06em; }
-.seat-take { font-size: 11px; opacity: 0.7; margin-top: 2px; }
-
-/* A phone-only message toast; the element remounts per message (key=message),
-   so the animation restarts for each new line and the last one fades out. */
-@keyframes hud-message-pass {
-  0% { opacity: 0; transform: translate(-50%, -4px); }
-  10% { opacity: 1; transform: translate(-50%, 0); }
-  80% { opacity: 1; }
-  100% { opacity: 0; visibility: hidden; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .hud-message { animation: none; }
-  .modal, .modal-backdrop, .hud-notice, .trick-play, .rotate-card { animation: none; }
+  .modal, .modal-backdrop, .trick-play { animation: none; }
   .trick-play.winner .trick-cards, .trick-play.winner .win-tag, .level-chip.level-up { animation: none; }
   .opponent.on-turn::after { animation: none; }
-  .hand .card, .btn, .seat-option { transition: none; }
-  .btn:active:not(:disabled), .seat-option:active:not(:disabled) { transform: none; }
+  .hand .card, .btn { transition: none; }
+  .btn:active:not(:disabled) { transform: none; }
   /* Preserve the toast's dismissal timing, without its slide-in movement. */
-  .toast { animation: toast-out 0.01ms linear 3.6s forwards; }
+  .toast { animation: toast-out 0.01ms linear calc(var(--toast-ms, 4000ms) - 0.01ms) forwards; }
 }
 
 /* A phone's controls need finger-sized targets, not desktop icon bounds. */
 @media (pointer: coarse) {
-  .btn, .leave-btn, .mute-btn, .hud-more-btn, .hud-menu-row,
-  .hud-notice-close, .chat-close, .xr-close, button.room-chip {
+  .btn, .hud-more-btn, .hud-menu-row,
+  .chat-close, .xr-close {
     min-height: 44px;
     min-width: 44px;
   }
-  .field input, .field select, .start-level-row select, .room-input,
-  .chat-input input { font-size: 16px; }
+  .field input, .field select, .room-input,
+  .chat-input input { font-size: var(--fs-16); }
 }
 
-.mute-btn:active, .leave-btn:active, .hud-more-btn:active,
+.hud-more-btn:active,
 .hud-menu-row:not([aria-disabled="true"]):active, .chat-close:active,
-.xr-close:active, .chat-launch:active, .hud-notice-close:active,
-button.room-chip:active { background-color: #394452; }
+.xr-close:active, .chat-launch:active { background-color: #394452; }
 
 @media (prefers-reduced-transparency: reduce) {
   .modal-backdrop { backdrop-filter: none; background: #10131a; }
@@ -3331,14 +3514,12 @@ button.room-chip:active { background-color: #394452; }
 
 /* Text-heavy surfaces scale with the user's default text size. Card geometry
    stays independent so changing text size cannot change a hand's hit mapping. */
-.lobby-panel { width: 24rem; }
-.field, .chat-log, .result-grid, .result-verdict, .ready-status { line-height: 1.5; }
-.field > span, .result-label, .ready-status { font-size: 0.875rem; }
-.field input, .field select, .chat-input input { font-size: max(16px, 1rem); }
-.chat-log, .result-value, .result-verdict { font-size: 0.9375rem; }
-.modal-title, .victory-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
-.result-grid { min-width: 0; }
-.result-grid > * { min-width: 0; overflow-wrap: anywhere; }
+.lobby-panel { width: 384px; }
+.field, .chat-log { line-height: 1.5; }
+.field > span { font-size: var(--fs-14); }
+.field input, .field select, .chat-input input { font-size: var(--fs-16); }
+.chat-log { font-size: var(--fs-15); }
+.modal-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
 
 @media (prefers-contrast: more) {
   :root { --text-dim: #dce2eb; --panel-edge: #aab7c8; }
@@ -3346,7 +3527,7 @@ button.room-chip:active { background-color: #394452; }
   .modal-backdrop { background: #080b0e; backdrop-filter: none; }
   .btn, .field input, .field select, .chat-input input,
   .chat-panel, .hud-menu { border-color: #b8c4d4; }
-  .chat-head, .chat-msg .chat-name, .seat-who, .seat-team, .seat-hint { opacity: 1; }
+  .chat-head, .chat-msg .chat-name { opacity: 1; }
 }
 
 /* X-ray verdict: the at-a-glance block above each decision's raw detail */
@@ -3457,15 +3638,15 @@ button.room-chip:active { background-color: #394452; }
    page is a lobby-sized panel: same width, padding, height and type scale. */
 
 .games-panel {
-  width: 24rem;
+  width: 384px;
   max-width: 100%;
-  min-height: min(100%, 40rem);
+  min-height: min(100%, 640px);
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
 }
-.games-panel.wide { width: 32rem; }
+.games-panel.wide { width: 512px; }
 .games-head {
   display: flex;
   flex-direction: column;
@@ -3491,14 +3672,14 @@ button.room-chip:active { background-color: #394452; }
   padding: 16px 0;
   text-align: center;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: var(--fs-14);
   line-height: 1.5;
 }
 .games-status p { margin: 0; }
-.games-status .games-status-title { color: var(--text); font-size: 16px; font-weight: 600; }
+.games-status .games-status-title { color: var(--text); font-size: var(--fs-16); font-weight: 600; }
 .games-cta { align-self: stretch; margin-top: 16px; }
 .games-section { display: flex; flex-direction: column; gap: 8px; }
-.games-list, .games-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.games-rounds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .games-row {
   appearance: none;
   width: 100%;
@@ -3519,20 +3700,28 @@ button.games-row { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
   button.games-row:hover { border-color: var(--gold-soft); }
 }
-.games-when { font-size: 0.8125rem; color: var(--text-dim); }
 .games-teams { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
-.games-team { border-bottom: 2px solid transparent; }
-.games-team.team0 { border-bottom-color: var(--team0); }
-.games-team.team1 { border-bottom-color: var(--team1); }
+.games-team { display: inline-flex; align-items: baseline; gap: 6px; }
+.games-team::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--team-dot, transparent);
+}
+.games-team.team0 { --team-dot: var(--team0); }
+.games-team.team1 { --team-dot: var(--team1); }
 .games-team.mine { color: var(--gold); }
-.games-vs { color: var(--text-dim); font-weight: 400; font-size: 0.8125rem; }
-.games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 0.8125rem; color: var(--text-dim); }
+.games-vs { color: var(--text-dim); font-weight: 400; font-size: var(--fs-13); }
+.games-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-13); color: var(--text-dim); }
 .games-tag {
   color: var(--gold);
   border: 1px solid var(--gold-soft);
   border-radius: 999px;
   padding: 0 8px;
-  font-size: 0.75rem;
+  font-size: var(--fs-12);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -3545,14 +3734,14 @@ button.games-row { cursor: pointer; }
   border-radius: 10px;
 }
 .games-round-n { font-weight: 700; white-space: nowrap; }
-.games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: 0.875rem; }
-.games-round .btn { padding: 5px 12px; font-size: 13px; }
+.games-round-res { flex: 1; min-width: 0; color: var(--text-dim); font-size: var(--fs-14); }
+.games-round .btn { padding: 5px 12px; font-size: var(--fs-13); }
 .games-more, .games-remove { align-self: stretch; }
 .games-remove { margin-top: auto; }
 
 .replay { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .replay-info { display: flex; flex-wrap: wrap; gap: 6px; }
-.replay-info .chip { padding: 3px 10px; font-size: 12px; }
+.replay-info .chip { padding: 3px 10px; font-size: var(--fs-12); }
 .replay-red { color: var(--card-red); }
 .replay-seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .replay-seat {
@@ -3564,7 +3753,7 @@ button.games-row { cursor: pointer; }
   border-radius: 999px;
   background: rgba(16, 19, 26, 0.6);
   border: 1px solid var(--panel-edge);
-  font-size: 13px;
+  font-size: var(--fs-13);
 }
 .replay-seat.team0 { border-left: 3px solid var(--team0); }
 .replay-seat.team1 { border-left: 3px solid var(--team1); }
@@ -3589,7 +3778,7 @@ button.games-row { cursor: pointer; }
 .replay-felt .trick-cards { --cw: 40px; }
 .replay-felt .trick-cards .card + .card { margin-left: -24px; }
 .replay-felt .table-emblem { top: 50%; font-size: 64px; }
-.replay-caption { margin: 0; min-height: 2.6em; font-size: 0.875rem; line-height: 1.3; overflow-wrap: anywhere; }
+.replay-caption { margin: 0; min-height: 2.6em; font-size: var(--fs-14); line-height: 1.3; overflow-wrap: anywhere; }
 .replay-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr));
@@ -3597,7 +3786,7 @@ button.games-row { cursor: pointer; }
   gap: 6px;
 }
 .replay-controls .btn { padding: 6px 0; }
-.replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; min-width: 4.5em; text-align: center; }
+.replay-step { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: var(--fs-13); min-width: 4.5em; text-align: center; }
 .replay-jump {
   grid-column: 1 / -1;
   width: 100%;
@@ -3606,11 +3795,19 @@ button.games-row { cursor: pointer; }
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
   padding: 8px 12px;
-  font-size: max(16px, 1rem);
+  font-size: var(--fs-16);
 }
-.replay-hand { overflow: hidden; }
-.replay-hand .hand { --cw: 48px; padding: 8px 4px 4px; max-width: 100%; }
-.replay-hand .hand-slot { min-width: 8px; }
+/* A full hand (33 with the kitty) keeps every rank readable: each card
+   shows at least 18px and the strip scrolls sideways past that. */
+.replay-hand { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+.replay-hand .hand {
+  --cw: 48px;
+  padding: 8px 4px 4px;
+  max-width: none;
+  min-width: min-content;
+  justify-content: safe center;
+}
+.replay-hand .hand-slot { min-width: 18px; }
 .replay-result {
   display: flex;
   flex-direction: column;
@@ -3618,13 +3815,13 @@ button.games-row { cursor: pointer; }
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--panel-edge);
-  font-size: 0.875rem;
+  font-size: var(--fs-14);
 }
 .replay-result.won { border-color: var(--gold); }
-.replay-result-head { font-weight: 700; font-size: 1rem; }
+.replay-result-head { font-weight: 700; font-size: var(--fs-16); }
 .replay-mini-cards { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; --cw: 28px; }
-.replay-mini-label { font-size: 12px; color: var(--text-dim); margin-right: 6px; min-width: 4em; }
-.replay-note { margin: 0; color: var(--text-dim); font-size: 14px; }
+.replay-mini-label { font-size: var(--fs-12); color: var(--text-dim); margin-right: 6px; min-width: 4em; }
+.replay-note { margin: 0; color: var(--text-dim); font-size: var(--fs-14); }
 .replay-all { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 
 /* How to play: a lobby-sized panel of short steps, each a headline, a line
@@ -3645,22 +3842,28 @@ button.games-row { cursor: pointer; }
   text-underline-offset: 3px;
 }
 
-.howto-panel { min-height: min(100%, 46rem); }
+.howto-panel { min-height: min(100%, 736px); }
+/* A nav bar: ‹ Back, the title left-aligned after it, the position at the end. */
 .howto-head {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
+  gap: 4px;
+  min-height: 44px;
   margin: -12px -18px 0;
 }
 .howto-head .games-back { margin: 0; justify-self: start; }
 .howto-page {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
 }
-.howto-count { justify-self: end; padding-right: 18px; font-size: 13px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.howto-count { justify-self: end; padding-right: 18px; font-size: var(--fs-13); color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .howto-step { flex: 1; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .howto-step > .howto-visual { flex: 1; justify-content: center; }
 .howto-title { margin: 0; font-size: 22px; line-height: 1.25; color: var(--gold); text-align: center; }
@@ -3673,7 +3876,7 @@ button.games-row { cursor: pointer; }
 }
 /* The text slots keep one height on every step (three body lines, two caption
    lines, empty or not), so the picture, the dots and the buttons never jump. */
-.howto-body { font-size: 14px; line-height: 1.5; min-height: 4.5em; color: var(--text); }
+.howto-body { font-size: var(--fs-14); line-height: 1.5; min-height: 4.5em; color: var(--text); }
 .howto-caption { font-size: 13px; line-height: 1.45; min-height: 2.9em; color: var(--text-dim); }
 
 .howto-visual {
@@ -3830,33 +4033,36 @@ button.games-row { cursor: pointer; }
 .howto-band-pts { font-variant-numeric: tabular-nums; font-weight: 700; }
 
 .howto-nav { display: flex; flex-direction: column; gap: 12px; }
-.howto-dots { display: flex; justify-content: center; gap: 2px; }
-.howto-dot {
-  appearance: none;
-  border: 0;
-  background: none;
-  padding: 6px 4px;
-  cursor: pointer;
-}
+/* The dots are a page indicator, not buttons: Next (44px and up) and the
+   swipe move between steps, so no tap target is narrower than a finger. */
+.howto-dots { display: flex; justify-content: center; align-items: center; gap: 8px; min-height: 16px; pointer-events: none; }
+.howto-dot { display: flex; align-items: center; justify-content: center; }
 .howto-dot::before {
   content: "";
   display: block;
+  flex-shrink: 0;
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: var(--panel-edge);
 }
 .howto-dot.on::before { width: 20px; background: var(--gold); }
-.howto-buttons { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+.howto-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
 
 /* Animated pictures (Picture + useTimeline): quiet play/pause, replay and
    still-image buttons in the picture's corner, then each slide's moving
    parts. Parts that appear later keep their space while hidden. */
 .howto-visual { position: relative; }
 .howto-frame { display: contents; }
-.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
+/* 30px buttons 14px apart: each one's 44px tap (the ::after) meets the next's.
+   They sit in a strip of their own across the picture's top, 44px tall so
+   even the taps end above the picture, which therefore never draws a seat
+   name or a card under them, at any width or text size. */
+.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 14px; }
+.howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
 .howto-anim-btn {
   appearance: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3869,6 +4075,11 @@ button.games-row { cursor: pointer; }
   color: var(--text-dim);
   cursor: pointer;
   transition: color 150ms ease, background 150ms ease;
+}
+.howto-anim-btn::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
 }
 .howto-anim-btn svg { width: 14px; height: 14px; fill: currentColor; }
 .howto-anim-btn svg[fill="none"] { fill: none; }
@@ -3970,26 +4181,27 @@ button.games-row { cursor: pointer; }
    Below 900px the stacked phone layout above is unchanged. The picture
    spans every text row, so it keeps one size on every step and the text
    needs no reserved height. */
-@media (min-width: 900px) {
-  .howto-panel { width: 58rem; gap: 20px; }
+@media (min-width: 900px) and (min-height: 501px) {
+  .howto-panel { width: 928px; gap: 20px; }
   .howto-step {
     display: grid;
-    grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 256px) minmax(0, 1fr);
     grid-template-rows: 1fr auto auto auto 1fr;
     grid-template-areas: ". visual" "title visual" "body visual" "caption visual" ". visual";
     column-gap: 36px;
     row-gap: 12px;
     /* Tall enough for the scoring table; shorter on a 720px-tall laptop so
        the panel still fits without scrolling. */
-    min-height: clamp(28rem, 100dvh - 14rem, 34rem);
+    min-height: clamp(448px, 100dvh - 224px, 544px);
   }
   .howto-step > .howto-visual { grid-area: visual; padding: 24px 20px; gap: 14px; }
+  .howto-step > .howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
   .howto-title { grid-area: title; text-align: left; }
   .howto-body,
   .howto-caption { grid-area: body; margin: 0; max-width: none; min-height: 0; text-align: left; text-wrap: pretty; }
   .howto-caption { grid-area: caption; font-size: 14px; }
   .howto-caption:empty { display: none; }
-  .howto-body { font-size: 16px; line-height: 1.55; }
+  .howto-body { font-size: var(--fs-16); line-height: 1.55; }
 
   .howto-cards { --cw: 72px; }
   .howto-cards.sm { --cw: 52px; }
@@ -4026,9 +4238,9 @@ button.games-row { cursor: pointer; }
   .howto-bands li { font-size: 14px; padding: 5px 12px; grid-template-columns: 76px 1fr; }
   .howto-ticks { font-size: 11px; }
 
-  /* Dots on the left, the two buttons at their phone width on the right. */
+  /* Dots on the left, Next at its phone width on the right. */
   .howto-nav { flex-direction: row; align-items: center; justify-content: space-between; }
-  .howto-buttons { width: 22rem; }
+  .howto-buttons { width: 236px; }
 }
 
 /* Leave from inside a modal result screen; quieter than the primary action */
@@ -4037,8 +4249,1678 @@ button.games-row { cursor: pointer; }
   margin: 12px auto 0;
 }
 
-.dialog-leave-btn.armed {
+/* Support and Privacy: a lobby-style panel of plain reading text, wide
+   enough for comfortable lines on a desktop and the full width on a phone. */
+
+.info-panel {
+  width: 560px;
+  gap: 14px;
+  text-align: left;
+}
+.info-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.info-back { min-height: 44px; }
+.info-text,
+.privacy-section p {
+  margin: 0;
+  font-size: var(--fs-14);
+  line-height: 1.55;
+  color: var(--text);
+}
+.privacy-section p + p { margin-top: 8px; }
+.privacy-section ul {
+  margin: 8px 0;
+  padding-left: 20px;
+  font-size: var(--fs-14);
+  line-height: 1.55;
+  color: var(--text);
+}
+.privacy-section h2 {
+  margin: 0 0 6px;
+  font-size: var(--fs-16);
+  line-height: 1.3;
+  color: var(--gold);
+}
+.info-small {
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-align: center;
+}
+.info-panel a {
+  color: var(--gold);
+  text-decoration: underline;
+  text-decoration-color: var(--gold-soft);
+  text-underline-offset: 3px;
+}
+
+.support-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.support-form .field input,
+.support-form .field select { min-height: 44px; font-size: var(--fs-16); }
+.support-message {
+  min-height: 140px;
+  resize: vertical;
+  font: inherit;
+  font-size: var(--fs-16);
+  line-height: 1.45;
+  background: #10131a;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 11px 14px;
+  transition: border-color 0.15s;
+}
+.support-message:focus { border-color: var(--team0); outline: none; }
+.support-form .field input[aria-invalid="true"] { border-color: var(--danger); }
+.support-count { text-align: right; font-variant-numeric: tabular-nums; }
+.support-form .btn.big { min-height: 48px; }
+/* the honeypot: off screen rather than display:none, which some form
+   scripts skip */
+.support-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.support-error {
+  margin: 0;
   background: #3a1e24;
-  border-color: var(--danger);
-  color: #ffb3bc;
+  border: 1px solid var(--danger);
+  color: #ffd7dc;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+.support-thanks {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+}
+.support-thanks-title { margin: 0; font-size: var(--fs-20); font-weight: 700; color: var(--gold); }
+
+.delta-up { color: #5cc488; }
+.delta-dn { color: #e07a5f; }
+.delta-flat { color: var(--text-dim); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-switch, .ios-switch::after { transition: none; }
+}
+
+/* Home: the Play, Leaderboard and Me tabs. Below 700px a phone's bottom
+   tab bar (49px over the home-indicator inset); at 700px and up a top bar.
+   Leaderboard and Me are iOS-style pages: a large title, 32px segmented
+   controls and inset-grouped lists of 44px rows on charcoal. */
+:root {
+  --page: #1b1f27;
+  --grp: #242a35;
+  --grp-edge: #333b49;
+  --grp-line: rgba(255, 255, 255, 0.12);
+  --seg-on: #3d4556;
+  --muted: #8a929f;
+  --muted-2: #6c7585;
+  --destructive: #f08a7e;
+}
+.home { height: 100%; display: flex; flex-direction: column; background: var(--page); }
+.home-body { flex: 1; min-height: 0; position: relative; }
+.home-body > .screen { height: 100%; }
+/* A phone's swipe between tabs (useTabSwipe.ts) moves the page body by
+   --tab-swipe-x only while data-tab-swipe is set, so at rest it keeps no
+   transform; the frame clips it meanwhile so the page never scrolls sideways. */
+.home:has(> .home-body[data-tab-swipe]) { overflow: clip; }
+.home-body[data-tab-swipe] { transform: translate3d(var(--tab-swipe-x, 0px), 0, 0); will-change: transform; }
+.home-body[data-tab-swipe="settle"] { transition: transform 280ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .home-body[data-tab-swipe] { transform: none; transition: none; }
+}
+.home-wide .home-body > .screen { padding-top: 12px; }
+
+/* A phone's tab bar floats over the page as a glass pill, 16px in from the
+   sides and above the home indicator; the page scrolls on under it, and every
+   tab page ends --tabbar-clear above the screen's bottom so its last item
+   clears the pill. Without backdrop-filter the pill is opaque. */
+.home-narrow {
+  position: relative;
+  --tabbar-h: 64px;
+  --tabbar-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  --tabbar-clear: calc(var(--tabbar-h) + var(--tabbar-bottom) + 16px);
+}
+.home-narrow .home-body > .screen { padding-bottom: var(--tabbar-clear); }
+.home-narrow .home-body > .screen.home-page { padding-bottom: 0; }
+.home-narrow .home-col { padding-bottom: var(--tabbar-clear); }
+/* a pinned row sticks just above the pill, not under it */
+.home-narrow .lb-pin { bottom: calc(var(--tabbar-h) + var(--tabbar-bottom)); }
+.tabbar {
+  position: absolute;
+  z-index: 40;
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: var(--tabbar-bottom);
+  height: var(--tabbar-h);
+  /* a phone held sideways keeps the portrait pill under the portrait column */
+  max-width: 480px;
+  margin-inline: auto;
+  display: flex;
+  align-items: stretch;
+  padding: 6px;
+  box-sizing: border-box;
+  border-radius: 32px;
+  background: rgba(28, 33, 41, 0.55);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar,
+  .topbar-tabs { background: #1c2129; }
+}
+/* The active tab's capsule: one third of the pill, moved to the tab. */
+.tabbar-capsule {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 6px;
+  width: calc((100% - 12px) / 3);
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateX(calc(var(--tab-index, 0) * 100%));
+  transition: transform 250ms var(--ease-out-expo);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-capsule { transition: none; }
+}
+/* The iOS app's keyboard shrinks the WebView, but 100dvh keeps the old height
+   there, so the page follows the shrunken frame instead and its screen can
+   scroll the focused field into view; the tab bar would ride above the keys. */
+body.keyboard-open .app { height: 100%; }
+body.keyboard-open .tabbar { display: none; }
+.tabbar-item {
+  appearance: none;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 10px/1.2 system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tabbar-item svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.tabbar-item.on { color: var(--gold); }
+.tabbar-item.on svg { fill: currentColor; stroke-width: 1.3; }
+.tabbar-item.on svg .nofill { fill: none; }
+.tabbar-item.on svg .pip { fill: #161a22; stroke: none; }
+.tabbar-item .avatar { width: 26px; height: 26px; font-size: 12px; }
+.tabbar-initial::before { content: attr(data-initial); }
+.tabbar-item.on .avatar { box-shadow: 0 0 0 1.5px var(--gold); }
+
+/* The sides share what the tabs leave but never get less than their content
+   needs, with at least 8px between groups: a crowded bar pushes the tabs off
+   centre rather than letting a side run under them. */
+.topbar {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(min-content, 1fr) auto minmax(min-content, 1fr);
+  column-gap: 8px;
+  align-items: center;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) max(28px, env(safe-area-inset-right, 0px)) 0
+    max(28px, env(safe-area-inset-left, 0px));
+  background: #161a22;
+  border-bottom: 0.5px solid var(--grp-line);
+}
+.topbar-mark {
+  justify-self: start;
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.topbar-mark { white-space: nowrap; }
+.topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
+.topbar-mark span { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
+/* The wide tabs: the same glass pill, the active tab in a lighter capsule. */
+.topbar-tabs {
+  grid-column: 2;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 22px;
+  background: rgba(28, 33, 41, 0.55);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.topbar-tab {
+  appearance: none;
+  height: 36px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: #aab2bf;
+  font-size: var(--fs-15);
+  font-weight: 500;
+  cursor: pointer;
+}
+/* drawn 36px tall; ::before makes the tap area 44px */
+.topbar-tab { position: relative; }
+.topbar-tab::before { content: ""; position: absolute; inset: -4px 0; }
+.topbar-tab.on { color: var(--gold); background: rgba(255, 255, 255, 0.1); font-weight: 600; }
+.topbar-end { grid-column: 3; justify-self: end; display: flex; align-items: center; min-width: 0; }
+.topbar-end > .topbar-tab { height: 56px; }
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #3a4150;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+}
+.avatar-lg {
+  width: 64px;
+  height: 64px;
+  font-size: 26px;
+  background: linear-gradient(#3a4150, #2a303c);
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.25);
+}
+.avatar-guest { color: var(--muted); box-shadow: none; }
+
+/* Play on a phone: the lobby keeps the plain screen's top padding (the
+   status-bar inset or 12px) and drops the panel's bottom padding; it scrolls
+   under the floating tab bar and ends clear of it. */
+.home-narrow .lobby-panel:has(.lobby-preview) { padding-bottom: 0; }
+
+/* The Play tab: the title and preview, the guest's or the account's chip,
+   the Ranked and Unranked blocks, the code box and How to play, in one column.
+   It sits straight on the page at every width, with no card around it; from
+   700px it is 420px wide and centred under the top bar. */
+.play-tab > .lobby-panel { gap: 16px; }
+.home .play-tab > .lobby-panel {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.home-wide .play-tab > .lobby-panel {
+  width: 420px;
+  padding: 24px 0;
+}
+.home-wide .play-tab .account-pill { display: none; }
+/* The art and the controls are one column at every width, the phone's
+   Play tab centred under the top bar. On a wide screen the title and the
+   preview stay small, so the controls and the table panel start high on
+   the page; a sideways phone drops the preview and keeps a small title. */
+.play-art, .play-side { display: contents; }
+.home-wide .play-tab .game-title { font-size: 40px; line-height: 1.1; }
+.home-wide .play-tab .game-title-en { font-size: 13px; margin-top: 2px; }
+.home-wide .play-tab .lobby-preview {
+  aspect-ratio: auto;
+  margin-top: 0;
+  height: 150px;
+  flex: none;
+  container-type: size;
+}
+.home-wide .play-tab .lp-stage {
+  --u: min(100cqw / 1200, 100cqh / 630);
+  inset: auto;
+  left: calc(50% - var(--u) * 600);
+  top: calc(50% - var(--u) * 315);
+  width: calc(var(--u) * 1200);
+  height: calc(var(--u) * 630);
+}
+/* at a table the panel needs the room more than the preview does */
+.home-wide .play-tab.play-table-up .lobby-preview { display: none; }
+.topbar-end:has(.guest-pill) { gap: 10px; }
+.play-section { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.play-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.play-label.ranked { color: var(--gold); }
+.trophy {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.play-ranked-row { display: flex; gap: 8px; }
+.play-tab .btn.play-main,
+.play-tab .btn.play-duo {
+  min-height: 58px;
+  padding: 0 16px;
+  border-radius: 16px;
+  border-width: 1.5px;
+  font-size: var(--fs-20);
+  font-weight: 700;
+}
+.play-tab .btn.play-main { flex: 1; min-width: 0; }
+.play-tab .btn.play-duo {
+  flex: none;
+  width: 96px;
+  background: transparent;
+  border-color: var(--gold);
+  color: var(--gold);
+  font-size: var(--fs-17);
+}
+/* A pair's other member between games: who the Duo is with, and Leave. */
+.play-pair-row { align-items: center; min-height: 58px; }
+.play-pair-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-17); font-weight: 600; color: #e9ecf2; }
+.play-tab .btn.play-duo.play-pair-leave { border-color: #3a4250; color: #c3cad6; }
+/* A guest's line under Play: unrated, and the way to sign in. */
+.play-guest-line {
+  margin: 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--fs-14, 14px);
+}
+.play-guest-signin {
+  appearance: none;
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+}
+/* tapped as 44px tall */
+.play-guest-signin::after { content: ""; position: absolute; inset: -14px -6px; }
+.play-guest-signin:disabled { color: inherit; cursor: default; }
+/* Unavailable controls keep their place and shape, greyed rather than faded. */
+.play-tab .btn:disabled {
+  opacity: 1;
+  background: #1f242d;
+  border-color: var(--panel-edge);
+  color: #7a8494;
+}
+.play-tab .room-input:disabled { background: #1a1e26; color: #7a8494; }
+.play-tab .howto-entry { font-size: var(--fs-15); }
+/* How to play and Play offline, two quiet links on one line, each tapped as 44px */
+.play-tab .howto-sep { margin: 0 14px; color: #6b7484; }
+
+/* A phone's Play tab fits its first view at rest: everything from the title
+   to How to play sits between the status bar and the tab bar. The panel is
+   the screen's height, and the preview takes what is left, 120 to 200px,
+   shrinking before anything else does. The whole 1200x630 stage is drawn
+   inside it, scaled to fit and centred, so no card meets the felt's edge. */
+.home-narrow .play-tab > .lobby-panel:has(.lobby-preview) { padding-top: 0; }
+.home-narrow .play-tab .game-title { font-size: 44px; line-height: 1.1; }
+.home-narrow .play-tab .game-title-en { font-size: 15px; margin-top: 2px; }
+.home-narrow .play-tab:not(.play-table-up) > .lobby-panel { align-self: stretch; margin-bottom: 0; }
+.home-narrow .play-tab:not(.play-table-up) .lobby-panel > :not(.lobby-preview),
+.home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview),
+.home-narrow .play-tab:not(.play-table-up) .play-side > * { flex-shrink: 0; }
+.home-narrow .play-tab .lobby-preview {
+  aspect-ratio: auto;
+  margin-top: 0;
+  flex: 1 1 200px;
+  min-height: 120px;
+  max-height: 200px;
+  container-type: size;
+}
+.home-narrow .play-tab .lp-stage {
+  --u: min(100cqw / 1200, 100cqh / 630);
+  inset: auto;
+  left: calc(50% - var(--u) * 600);
+  top: calc(50% - var(--u) * 315);
+  width: calc(var(--u) * 1200);
+  height: calc(var(--u) * 630);
+}
+/* short phones give the title a little less room */
+@media (max-height: 740px) {
+  .home-narrow .play-tab .game-title { font-size: 38px; }
+  .home-narrow .play-tab .game-title-en { font-size: 13px; }
+  .home-narrow .play-tab:not(.play-table-up) > .lobby-panel { gap: 12px; }
+}
+/* A phone at a table: the panel is the page, from the name chip down, and
+   it fits above the tab bar. Its rows are compact (40px to the eye, 44px to
+   the finger), and the button row sticks just above the tab bar whenever the
+   panel is taller than the screen, so Start and Leave are never under it. */
+.home-narrow .play-tab.play-table-up .game-title { display: none; }
+.home-narrow .play-tab.play-table-up > .lobby-panel { gap: 10px; padding-top: 0; }
+.home-narrow .play-table-up .tp { gap: 8px; padding: 12px; }
+.home-narrow .play-table-up .tp-seat { min-height: 48px; padding: 4px 7px; }
+.home-narrow .play-table-up .tp .q-wait,
+.home-narrow .play-table-up .tp-chat,
+.home-narrow .play-table-up .tp-set { position: relative; min-height: 40px; }
+.home-narrow .play-table-up .tp .q-wait::before,
+.home-narrow .play-table-up .tp-chat::before {
+  content: ""; position: absolute; inset: -2px 0;
+}
+.home-narrow .play-table-up .tp .q-switch { width: 44px; height: 26px; border-radius: 13px; }
+.home-narrow .play-table-up .tp .q-switch::after { width: 22px; height: 22px; }
+.home-narrow .play-table-up .tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(18px); }
+.home-narrow .play-table-up .tp-acts,
+.home-narrow .play-table-up .tp-led {
+  position: sticky;
+  /* the screen's bottom padding already clears the tab bar, and a sticky
+     box keeps inside that padding */
+  bottom: 0;
+  z-index: 2;
+  margin: -6px -6px 0;
+  padding: 6px;
+  border-radius: 16px;
+  background: #1b2729;
+}
+
+/* The Play tab starts at the top like the other tabs, at every width. */
+.play-tab > .lobby-panel { margin-top: 0; }
+
+/* The sign-in buttons while the server cannot be reached: in place, greyed
+   rather than faded, with the reason under them. */
+.btn.signin-offline-btn,
+.btn.signin-offline-btn:disabled {
+  width: 100%;
+  max-width: 400px;
+  min-height: 44px;
+  border-radius: 999px;
+  opacity: 1;
+  background: #1f242d;
+  border: 1px solid var(--panel-edge);
+  color: #7a8494;
+}
+.signin-unavailable { gap: 8px; }
+.signin-unavailable .signin-upsell { margin: 0; }
+
+/* The signed-in player's chip (Play on a phone, the top bar's end when wide):
+   avatar, name and rating; a tap opens Me. */
+.account-pill {
+  appearance: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  height: 40px;
+  padding: 0 14px 0 6px;
+  border: 1px solid var(--grp-edge);
+  border-radius: 20px;
+  background: var(--grp);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-15);
+  font-weight: 600;
+  cursor: pointer;
+}
+.account-pill .avatar { width: 28px; height: 28px; font-size: 12px; }
+/* Its name ellipsizes past the cap; the cap follows the room the top bar has. */
+.topbar .account-pill { max-width: 280px; }
+@media (max-width: 799px) { .topbar .account-pill { max-width: 220px; } }
+@media (min-width: 1200px) { .topbar .account-pill { max-width: 320px; } }
+/* drawn 40px tall; ::before makes the tap area 44px */
+.account-pill { position: relative; }
+.account-pill::before { content: ""; position: absolute; inset: -2px 0; }
+.account-pill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-pill-rating { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+/* a guest's line stays on one line; the name gives way first */
+.guest-pill { gap: 7px; padding-right: 12px; font-size: var(--fs-14); }
+.guest-pill .account-pill-rating { flex: none; white-space: nowrap; font-size: var(--fs-12); font-weight: 500; }
+.guest-pill-edit { flex: none; color: var(--text-dim); font-size: var(--fs-13); }
+
+.screen.home-page,
+.home-body > .screen.home-page {
+  display: block;
+  padding-bottom: 0;
+  background: var(--page);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.home-col {
+  width: 100%;
+  max-width: 680px;
+  min-height: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 16px;
+  color: #eef1f6;
+}
+/* Me and the Leaderboard are the phone's column at every width, centred */
+.me-page .home-col, .lb-page .home-col { max-width: 560px; }
+/* Me's two parts flow as one column at every width, the phone's page
+   centred and capped like every other page */
+.me-cols, .me-col { display: contents; }
+.large-title {
+  margin: 4px 0 0;
+  font-size: clamp(34px, calc(34 * var(--tu)), 40px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.4px;
+  color: #fff;
+}
+/* A phone's home pages: a 44 pt bar, sticky at the top of the page's own
+   scroller and over the safe-area inset, empty while the large title shows
+   below it; once that title has scrolled under it, the bar fades in the
+   compact title and its hairline (LargeTitlePage.tsx). The bar spans the
+   scroller's side padding. */
+.home-body > .screen.home-page.has-nav { position: relative; padding-top: 0; }
+.nav-bar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(44px + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) 56px 0;
+  margin: 0 calc(-1 * max(16px, env(safe-area-inset-right, 0px))) 0
+    calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  background: var(--page);
+  border-bottom: 0.5px solid transparent;
+}
+.nav-bar.collapsed {
+  background: rgba(22, 26, 34, 0.94);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+.nav-bar-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 600 17px/1.2 system-ui, -apple-system, sans-serif;
+  color: #fff;
+  opacity: 0;
+}
+.nav-bar.collapsed .nav-bar-title { opacity: 1; }
+.nav-animate .nav-bar { transition: background-color 200ms ease, border-color 200ms ease; }
+.nav-animate .nav-bar-title { transition: opacity 200ms ease; }
+
+/* Pull to refresh (usePullToRefresh.ts): the hook writes the pull, after
+   resistance, to --ptr and its share of the threshold to --ptr-p. The column
+   follows the finger and the spinner shows in the gap under the bar. The
+   column is moved only while a pull is on (ptr-on), so at rest it keeps no
+   transform; it follows the finger at once and eases back once let go. */
+.has-nav .ptr {
+  position: absolute;
+  z-index: 2;
+  top: calc(44px + env(safe-area-inset-top, 0px));
+  left: 0;
+  right: 0;
+  height: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.ptr-spinner {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  margin-top: calc(var(--ptr, 0px) / 2 - 14px);
+  opacity: var(--ptr-p, 0);
+}
+.has-nav:not(.ptr-on) .ptr-spinner { visibility: hidden; }
+.ptr-spinner i {
+  position: absolute;
+  left: 12.5px;
+  top: 2px;
+  width: 3px;
+  height: 7.5px;
+  border-radius: 1.5px;
+  background: #c5ccd8;
+  transform-origin: 1.5px 12px;
+}
+/* the brightest spoke leads clockwise, the dimmer ones trail behind it */
+.ptr-spinner i:nth-child(1) { opacity: 1; }
+.ptr-spinner i:nth-child(2) { opacity: 0.24; }
+.ptr-spinner i:nth-child(3) { opacity: 0.3; }
+.ptr-spinner i:nth-child(4) { opacity: 0.38; }
+.ptr-spinner i:nth-child(5) { opacity: 0.48; }
+.ptr-spinner i:nth-child(6) { opacity: 0.6; }
+.ptr-spinner i:nth-child(7) { opacity: 0.72; }
+.ptr-spinner i:nth-child(8) { opacity: 0.86; }
+.ptr-refreshing .ptr-spinner { opacity: 1; }
+.has-nav.ptr-on .home-col { transform: translateY(var(--ptr, 0px)); }
+.nav-animate.ptr-on:not(.ptr-drag) .home-col { transition: transform 300ms var(--ease-out); }
+.nav-animate.ptr-on:not(.ptr-drag) .ptr-spinner { transition: margin-top 300ms var(--ease-out), opacity 300ms ease; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+.nav-animate.ptr-refreshing .ptr-spinner { animation: ptr-spin 800ms steps(8) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .nav-bar,
+  .nav-bar-title,
+  .ptr-spinner,
+  .has-nav .home-col { transition: none !important; animation: none !important; }
+}
+.segmented { flex: none; display: flex; height: 32px; padding: 2px; border-radius: 9px; background: var(--grp); }
+/* the buttons draw 28px inside the 32px track; ::before stretches each tap
+   area to 44px, 6px past the track, which the 14px column gap leaves clear */
+.segmented-btn {
+  position: relative;
+  appearance: none;
+  flex: 1;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: #aab2bf;
+  font-size: var(--fs-13);
+  font-weight: 500;
+  cursor: pointer;
+}
+.segmented-btn::before { content: ""; position: absolute; inset: -8px 0; }
+.segmented-btn.on { background: var(--seg-on); color: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+
+.grp { flex: none; list-style: none; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--grp); }
+.grp > li + li { border-top: 0.5px solid var(--grp-line); }
+.grp-row {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: #eef1f6;
+  font: inherit;
+  font-size: var(--fs-17);
+  text-align: left;
+  text-decoration: none;
+}
+button.grp-row, a.grp-row { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.grp-row:active, a.grp-row:active { background: rgba(255, 255, 255, 0.06); }
+button.grp-row:disabled { cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  button.grp-row:hover:not(:disabled), a.grp-row:hover { background: rgba(255, 255, 255, 0.04); }
+}
+.grp-label { flex: 1; min-width: 0; }
+.grp-value {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #9aa3b2;
+  font-variant-numeric: tabular-nums;
+}
+.grp-value.chev::after { content: "›"; color: var(--muted-2); font-size: 22px; line-height: 1; }
+/* Edit name keeps its label on one line; a long name ends in an ellipsis
+   before the chevron */
+.me-edit .grp-label { flex: none; white-space: nowrap; }
+/* a guest's one identity row: the name, ellipsized before the chevron */
+.me-identity .grp-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-edit .grp-value {
+  display: block; position: relative; flex: 0 1 auto; padding-right: 16px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.me-edit .grp-value.chev::after { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.grp-row.destructive { color: var(--destructive); }
+.grp-row[aria-busy="true"] { cursor: progress; }
+.me-saving { font-size: var(--fs-15); }
+.grp-error { margin: 0; padding: 0 16px 10px; font-size: var(--fs-13); line-height: 1.35; color: var(--destructive); }
+.grp-head { margin: 4px 16px -6px; font-size: var(--fs-13); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; color: var(--muted); }
+.grp-foot { margin: -4px 16px 0; font-size: var(--fs-13); line-height: 1.35; color: var(--muted); }
+.grp-inset { padding: 4px 16px 12px; }
+.grp-section { display: flex; flex-direction: column; gap: 12px; }
+.lb-note { margin: 0; text-align: center; color: var(--text-dim); font-size: var(--fs-13); }
+
+.lb-list .lb-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; font-size: var(--fs-17); }
+.lb-rank { width: 26px; flex: none; text-align: right; color: #9aa3b2; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lb-rank.top { color: var(--gold); }
+.lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
+.lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-you { flex: none; white-space: pre; }
+.lb-new {
+  flex: none;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--gold-soft);
+  border-radius: 5px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 600;
+}
+.lb-rating { flex: none; min-width: 46px; white-space: nowrap; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+.lb-list .lb-row.me { background: #2d3a2f; box-shadow: inset 3px 0 0 var(--gold); }
+.lb-pin {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  margin-bottom: -16px;
+  padding: 28px 0 16px;
+  background: linear-gradient(rgba(27, 31, 39, 0), var(--page) 28px);
+}
+
+.lb-page .lb-rated { margin-top: 16px; }
+/* The identity sheet's sign-in buttons, between the name and Done, as wide
+   as the field. */
+.identity-signin .google-signin { align-items: stretch; gap: 10px; }
+.identity-signin .google-signin-slot { width: 100%; }
+.identity-terms {
+  margin: 0;
+  font-size: var(--fs-12);
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-align: center;
+}
+.identity-terms a { color: var(--gold); text-decoration: underline; }
+.me-who { display: flex; align-items: center; gap: 14px; }
+.me-who-text { min-width: 0; }
+/* the name stays on one line and ends in an ellipsis, like a seat's */
+.me-name {
+  min-width: 0; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; line-height: 1.15; color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.me-sub { margin-top: 2px; font-size: var(--fs-15); color: #9aa3b2; font-variant-numeric: tabular-nums; }
+.me-sub b { font-weight: 600; }
+.me-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.me-tile { padding: 10px 8px 9px; border-radius: 12px; background: var(--grp); text-align: center; }
+.me-tile b { display: block; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; letter-spacing: -0.3px; color: #fff; font-variant-numeric: tabular-nums; }
+.me-tile span { font-size: var(--fs-12); color: #9aa3b2; }
+.ios-switch {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  background: #3a4350;
+  transition: background 150ms ease;
+}
+.ios-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 150ms var(--ease-out);
+}
+.ios-switch.on { background: #5fc78b; }
+.ios-switch.on::after { transform: translateX(20px); }
+
+.games-days { display: flex; flex-direction: column; gap: 14px; }
+.grp .games-day-row { min-height: 60px; padding: 8px 16px; }
+.games-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.games-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+.games-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 1px; font-size: var(--fs-13); color: #9aa3b2; }
+
+/* Native feel. A long press anywhere outside a field or a chat message
+   selects nothing and raises no Copy / Look Up callout or Save Image sheet
+   (the table's own rule above does the same inside a game). */
+.app {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.app input,
+.app textarea,
+.app [contenteditable],
+.app .chat-text {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+/* A press shows at once and lets go fast, as UIKit controls do; under
+   Reduce Motion the dim still shows, only without a fade. */
+.tabbar-item,
+.topbar-tab,
+.segmented-btn,
+.howto-link {
+  transition: opacity 80ms var(--ease-out);
+}
+.tabbar-item:active,
+.topbar-tab:active,
+.segmented-btn:active,
+.howto-link:active {
+  opacity: 0.55;
+  transition-duration: 0ms;
+}
+.ios-switch {
+  transition: background 150ms ease, opacity 80ms var(--ease-out);
+}
+button[role="switch"]:active .ios-switch {
+  opacity: 0.7;
+}
+
+/* The More menu and the chat panel scale and fade in from their corner and
+   out again over POP_MS (usePresence.ts); under Reduce Motion the hook adds
+   neither class, and this rule is a second guard. */
+@keyframes pop-in { from { opacity: 0; transform: scale(0.94); } }
+@keyframes pop-out { to { opacity: 0; transform: scale(0.94); } }
+.hud-menu { transform-origin: top right; }
+.chat-panel { transform-origin: bottom right; }
+.hud-menu.pop-in,
+.chat-panel.pop-in {
+  animation: pop-in 200ms var(--ease-out);
+}
+.hud-menu.pop-out,
+.chat-panel.pop-out {
+  animation: pop-out 200ms ease-in forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tabbar-item,
+  .topbar-tab,
+  .segmented-btn,
+  .howto-link,
+  .ios-switch,
+  .ios-switch::after { transition: none; }
+  .hud-menu.pop-in,
+  .chat-panel.pop-in,
+  .hud-menu.pop-out,
+  .chat-panel.pop-out { animation: none; }
+}
+
+/* A saved game's detail: its one Continue across the column. */
+.games-actions { display: flex; gap: 10px; }
+/* The viewer's rating change in a game: a figure column at the row's end. */
+.rating-change { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.games-row-rating { flex: none; display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-14); }
+.games-row-rating-after { font-size: var(--fs-12); color: #9aa3b2; font-variant-numeric: tabular-nums; }
+.games-round-delta { flex: none; font-size: var(--fs-13); }
+.games-actions .btn { flex: 1; min-height: 44px; }
+
+/* How to play, Support and Privacy are one layer on the page at every
+   width: no raised card behind the content. How to play keeps its two
+   columns from 900px; its diagrams and the form's fields keep their own
+   surfaces. */
+.howto-screen > .panel,
+.info-screen > .panel {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* My games and the replay on the redesign's charcoal: a top-aligned column
+   with grouped surfaces, no card; the replay's felt stays green. */
+.screen.games-screen { background: var(--page); align-items: flex-start; }
+.games-screen > .panel {
+  margin: 0 auto;
+  width: 560px;
+  max-width: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 16px 4px;
+}
+.games-screen .games-row.static,
+.games-screen .games-round,
+.games-screen .replay-result,
+.games-screen .replay-seat,
+.games-screen .replay-info .chip,
+.games-screen .replay-jump {
+  background: var(--grp);
+  border-color: var(--grp-edge);
+}
+.games-screen .replay-result.won { border-color: var(--gold); }
+.games-screen .replay-seat.team0 { border-left-color: var(--team0); }
+.games-screen .replay-seat.team1 { border-left-color: var(--team1); }
+.games-screen .replay-seat.on-turn { border-color: var(--gold); }
+.games-screen .btn.subtle:not(.games-back) {
+  background: var(--grp);
+  border-color: var(--grp-edge);
+}
+.games-screen .btn.subtle:not(.games-back):disabled { opacity: 0.45; }
+
+/* Matchmaking queue: the Ranked sheet, the queue bar (from 700px Play's
+   Ranked card and a top-bar pill; a strip on a sideways phone),
+   the Solo / With a friend and pair sheets (centred dialogs from 700px), the
+   waiting table, the queue's notices and the table's matched-game note. */
+.q-find { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; line-height: 1.15; }
+.q-find.searching { opacity: 0.55; }
+
+.q-wait {
+  appearance: none; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
+  padding: 2px 0; border: 0; background: none; color: #fff;
+  font: inherit; font-size: var(--fs-13); font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.q-switch {
+  position: relative; flex: none; width: 30px; height: 18px; border-radius: 9px;
+  background: rgba(255, 255, 255, 0.28); transition: background-color 160ms ease;
+}
+.q-switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); transition: transform 160ms ease;
+}
+.q-wait[aria-checked="true"] .q-switch { background: #34c759; }
+.q-wait[aria-checked="true"] .q-switch::after { transform: translateX(12px); }
+@media (prefers-reduced-motion: reduce) { .q-switch, .q-switch::after { transition: none; } }
+.q-wait:disabled { opacity: 0.45; cursor: default; }
+
+/* The table panel: Play's place while you are at a table, on every screen.
+   One green card, three kinds (Join, your own table, a shared table); the
+   primary button keeps its place in all of them. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.play-cool-line { margin: 0; font-size: var(--fs-14); color: var(--text-dim); }
+.tp {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; box-sizing: border-box;
+  border-radius: 16px; border: 1px solid rgba(79, 178, 122, 0.45);
+  background: linear-gradient(rgba(79, 178, 122, 0.16), rgba(79, 178, 122, 0.08)), #171b22;
+  color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.25; text-align: left;
+}
+/* a name in the title moves to the next line whole, a CJK one included;
+   only a name longer than the line breaks inside */
+.tp-title {
+  margin: 0; font-size: var(--fs-20); font-weight: 700; color: #fff;
+  word-break: keep-all; overflow-wrap: anywhere;
+}
+.tp-line { margin: 0; font-size: var(--fs-14); color: #c3cad6; }
+/* the mode tag sits tight above the title */
+.tp-tag {
+  margin: 0 0 -6px; font-size: var(--fs-11); font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #4fb27a;
+}
+.tp-line.warn { color: var(--gold); }
+.tp-teams {
+  display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); column-gap: 6px; row-gap: 6px;
+  align-items: center;
+}
+.tp-team-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.tp-team-label.ours { color: var(--team0); }
+.tp-team-label.theirs { color: var(--team1); text-align: right; }
+.tp-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tp-vs { text-align: center; font-size: 11px; font-weight: 700; color: #6b7484; }
+.tp-seat {
+  appearance: none; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 52px;
+  box-sizing: border-box; padding: 6px 7px; border-radius: 12px; border: 1.5px solid #333b49;
+  background: #1b1f27; color: #e9ecf2; font: inherit; text-align: left;
+}
+.tp-av {
+  width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 10px; font-weight: 700; color: #fff;
+}
+.tp-seat.team0 .tp-av { background: var(--team0); }
+.tp-seat.team1 .tp-av { background: var(--team1); }
+.tp-seat-text { display: flex; flex-direction: column; min-width: 0; }
+/* a seat's words stay on one line and end in an ellipsis when the seat is
+   narrower than them; they never break inside a word */
+.tp-seat-name, .tp-seat-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-seat-name { font-size: var(--fs-14); font-weight: 600; line-height: 1.15; }
+.tp-seat-sub { font-size: 11px; line-height: 1.2; color: #9aa3b2; }
+.tp-tick { color: #4fb27a; }
+.tp-seat.you, .tp-seat.friend { border-color: var(--gold); }
+.tp-seat.you .tp-seat-name, .tp-seat.friend .tp-seat-name { color: var(--gold); }
+.tp-seat.open { border: 1.5px dashed #4fb27a; background: transparent; }
+.tp-seat.open .tp-av { background: transparent; border: 1.5px dashed #4fb27a; color: #4fb27a; font-size: 14px; }
+.tp-seat.open .tp-seat-name { color: #4fb27a; }
+.tp-seat.bot .tp-seat-name { color: #9aa3b2; }
+/* the seat a Duo holds for its friend: dashed gold, never a stranger's to take */
+.tp-seat.held { border: 1.5px dashed rgba(242, 193, 78, 0.7); background: rgba(242, 193, 78, 0.06); }
+.tp-seat.held .tp-av { background: transparent; border: 1.5px dashed rgba(242, 193, 78, 0.7); color: var(--gold); }
+.tp-seat.held .tp-seat-name { color: var(--gold); }
+button.tp-seat { cursor: pointer; }
+/* the narrowest phones give the seat's words the avatar's room */
+@media (max-width: 359px) { .tp .tp-av { display: none; } }
+button.tp-seat:disabled { opacity: 0.6; cursor: default; }
+button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.tp .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); color: #fff; }
+.tp .q-wait-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tp .q-switch { width: 51px; height: 31px; border-radius: 16px; }
+.tp .q-switch::after { width: 27px; height: 27px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
+.tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(20px); }
+.tp-acts { display: flex; gap: 8px; }
+.tp-primary {
+  appearance: none; flex: 1; min-width: 0; min-height: 52px; padding: 0 12px; border-radius: 14px;
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+  font: inherit; font-size: var(--fs-17); font-weight: 700; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* the offer's clock on Join */
+.tp-primary .timer-ring { --size: 32px; --band: 2.5px; margin: -6px 10px -6px 0; vertical-align: middle; }
+/* Join never squeezes its ring over its word: in a narrow column (a sideways
+   phone) Keep looking takes the next line instead; on one line Join keeps
+   most of the room */
+.tp-acts:has(.tp-primary .timer-ring) { flex-wrap: wrap; }
+.tp-acts:has(.tp-primary .timer-ring) .tp-primary { flex: 3 0 auto; }
+.tp-acts:has(.tp-primary .timer-ring) .tp-secondary { flex: 1 0 auto; }
+.tp-primary:disabled { background: #2a2f38; border-color: #3a4250; color: #8a929f; cursor: default; }
+/* a Duo's search, after both Starts: a quiet button with the bots' ring */
+.tp-primary.searching:disabled { background: transparent; border-color: #3a4250; color: #e9ecf2; }
+.tp-secondary {
+  appearance: none; flex: none; min-height: 52px; padding: 0 14px; border-radius: 14px;
+  border: 1px solid #3a4250; background: transparent; color: #c3cad6;
+  font: inherit; font-size: var(--fs-15); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.tp-secondary:disabled { opacity: 0.45; cursor: default; }
+.tp-led { margin: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; color: #bfe9cf; font-size: var(--fs-15); }
+/* the bots' countdown for the Duo member who does not lead */
+.tp-led .timer-ring { --size: 32px; --band: 2.5px; margin-right: 10px; }
+/* The Your table pill on a tab other than Play: in the top bar's end on a
+   wide layout, at the end of the large title's row on a phone. */
+.table-pill {
+  appearance: none; flex: none; display: inline-flex; align-items: center; gap: 8px; height: 40px;
+  margin-right: 12px; padding: 0 16px 0 14px; border-radius: 20px; background: #1f4a33; border: 1px solid #2f7a52;
+  color: #fff; font: inherit; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums;
+  white-space: nowrap; cursor: pointer;
+}
+.table-pill:has(.timer-ring) { padding-right: 4px; }
+.table-pill.warn { background: #3f3415; border-color: #9a6f12; }
+.table-pill-dot {
+  width: 8px; height: 8px; flex: none; border-radius: 50%;
+  background: #4fb27a; box-shadow: 0 0 0 3px rgba(79, 178, 122, 0.25);
+}
+.table-pill.warn .table-pill-dot { background: var(--gold); box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.25); }
+.table-pill .timer-ring { --size: 32px; --band: 2.5px; }
+.large-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.large-title-row .large-title { min-width: 0; }
+.large-title-row .table-pill { margin: 4px 0 0; }
+/* While the pill shows, a narrow top bar makes room for it: the account chip
+   drops its name, then its rating, leaving the avatar. */
+@media (max-width: 1199px) {
+  .topbar:has(.table-pill) .account-pill-name { display: none; }
+}
+@media (max-width: 959px) {
+  .topbar:has(.table-pill) .account-pill-rating { display: none; }
+  .topbar:has(.table-pill) .account-pill { padding: 0 5px; }
+}
+
+.q-layer { position: fixed; inset: 0; z-index: 70; display: flex; flex-direction: column; justify-content: flex-end; }
+.q-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
+/* A short screen (a keyboard up, a landscape phone) caps the sheet below the
+   top inset; the grab handle and header stay put and the body scrolls. */
+.q-sheet {
+  position: relative; display: flex; flex-direction: column; gap: 12px;
+  max-height: calc(100% - max(8px, env(safe-area-inset-top, 0px)));
+  padding: 6px 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 14px 14px 0 0; background: #1b1f27; color: #eef1f6;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5); outline: none;
+  /* a phone held sideways keeps the portrait sheet under the portrait column */
+  align-self: center; width: 100%; max-width: 520px; box-sizing: border-box;
+}
+.q-grab { flex: none; width: 36px; height: 5px; margin: 0 auto 2px; border-radius: 3px; background: #4a5263; }
+.q-sheet-body {
+  flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+/* The sheet slides up over a fading-in scrim (.q-in, SHEET_IN_MS in
+   Sheet.tsx) and a closed sheet's copy mirrors it out (.q-out) on an ease-in
+   cubic: the exact reverse of --ease-out would sit still for half the close. */
+@keyframes q-sheet-in { from { transform: translate3d(0, 100%, 0); } }
+@keyframes q-sheet-out { to { transform: translate3d(0, 100%, 0); } }
+@keyframes q-scrim-in { from { opacity: 0; } }
+@keyframes q-scrim-out { to { opacity: 0; } }
+.q-layer.q-in .q-sheet { animation: q-sheet-in 320ms var(--ease-out); }
+.q-layer.q-in .q-scrim { animation: q-scrim-in 320ms var(--ease-out); }
+.q-layer.q-out { pointer-events: none; }
+.q-layer.q-out .q-sheet { animation: q-sheet-out 320ms cubic-bezier(0.32, 0, 0.67, 0) forwards; }
+.q-layer.q-out .q-scrim { animation: q-scrim-out 320ms cubic-bezier(0.32, 0, 0.67, 0) forwards; }
+.q-layer[data-sheet-drag] .q-sheet,
+.q-layer[data-sheet-drag] .q-scrim { animation: none; }
+/* A phone sheet dragged down: it follows --sheet-drag-y and the scrim fades
+   with --sheet-scrim, both only while data-sheet-drag is set on the layer. */
+.q-layer[data-sheet-drag] .q-sheet { transform: translate3d(0, var(--sheet-drag-y, 0px), 0); will-change: transform; }
+.q-layer[data-sheet-drag] .q-scrim { opacity: var(--sheet-scrim, 1); }
+.q-layer[data-sheet-drag="settle"] .q-sheet,
+.q-layer[data-sheet-drag="out"] .q-sheet { transition: transform 200ms var(--ease-out); }
+.q-layer[data-sheet-drag="settle"] .q-scrim,
+.q-layer[data-sheet-drag="out"] .q-scrim { transition: opacity 200ms var(--ease-out); }
+.q-sheet-head { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 8px; }
+.q-sheet-head h2 { margin: 0; font-size: var(--fs-17); font-weight: 600; color: #fff; }
+.q-link { appearance: none; justify-self: start; min-height: 44px; padding: 0 8px; border: 0; background: none; color: var(--gold); font: inherit; font-size: var(--fs-17); cursor: pointer; }
+.q-hidden { visibility: hidden; }
+.q-sheet-pad { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.q-sheet-pad .btn { min-height: 50px; }
+
+/* The game's mode at the top of the ⋯ menu: a label, not a row to tap. */
+.hud-menu-mode {
+  padding: 8px 10px 4px;
+  color: var(--text-dim);
+  font-size: var(--fs-12);
+  font-weight: 700;
+}
+.hud-menu-mode.ranked { color: var(--gold); }
+
+/* Wide screens: every pill in the top bar is one height. */
+:root:not(.phone-landscape) .hud-bar .chip {
+  box-sizing: border-box;
+  height: 34px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* The one confirm sheet (leave, move, take a seat, delete, remove): a
+   title, at most one line, then cancel and confirm side by side. A centred
+   card at the table; elsewhere it rises from the bottom of a phone. */
+dialog.leave-sheet-backdrop {
+  background: rgba(8, 10, 14, 0.55);
+  backdrop-filter: none;
+  z-index: 90;
+  animation: fade-in 0.2s ease-out;
+}
+.leave-sheet {
+  box-sizing: border-box;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  padding: 18px 16px 16px;
+  border-radius: 18px;
+  border: 1px solid #333b49;
+  background: #1b1f27;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: leave-sheet-in 0.2s var(--ease-out);
+}
+.leave-sheet-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: center;
+}
+.leave-sheet-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #e9ecf2;
+}
+.leave-sheet-line {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #c3cad6;
+}
+.leave-sheet-actions {
+  display: flex;
+  gap: 10px;
+}
+.leave-sheet-actions button {
+  flex: 1 1 0;
+  height: 46px;
+  border-radius: 12px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.leave-sheet-actions button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* opened from a tap: the first, programmatic focus paints no ring (a key press clears the attribute) */
+.leave-sheet-backdrop[data-pointer-open] .leave-sheet-actions button:focus-visible { outline: none; }
+.leave-sheet-actions .leave-sheet-stay {
+  border: 1px solid #3a4250;
+  background: transparent;
+  color: #c3cad6;
+}
+.leave-sheet-actions .leave-sheet-leave {
+  border: 1px solid #a23a48;
+  background: #5a1f27;
+  color: #ffd0d6;
+}
+/* a confirm that is not a way out (move, take a seat) is the panel's gold */
+.leave-sheet-actions .leave-sheet-leave.confirm-sheet-go {
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+}
+.leave-sheet-actions button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
+.leave-sheet-error { margin: 0; font-size: 14px; line-height: 1.4; color: #f0a0aa; text-align: center; }
+@keyframes leave-sheet-in {
+  from { opacity: 0; transform: scale(1.06); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 699px), (max-height: 500px) {
+  dialog.leave-sheet-bottom { align-items: flex-end; padding: 0; }
+  .leave-sheet-bottom .leave-sheet {
+    width: 100%;
+    max-width: 520px;
+    padding: 10px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+    border: 0;
+    border-top: 1px solid #333b49;
+    border-radius: 22px 22px 0 0;
+    background: #232832;
+    animation-name: leave-sheet-up;
+  }
+  /* the grab bar marks it as a sheet; a tap on the scrim closes it */
+  .leave-sheet-bottom .leave-sheet::before {
+    content: "";
+    align-self: center;
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: #4a5262;
+  }
+  .leave-sheet-bottom .leave-sheet-title { font-size: 19px; }
+}
+@keyframes leave-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@media (min-width: 700px) and (min-height: 501px) {
+  .q-layer { justify-content: center; align-items: center; }
+  .q-sheet { width: 380px; padding-bottom: 18px; border-radius: 16px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.14); }
+  .q-grab { display: none; }
+  .q-layer.q-in .q-sheet { animation: pop-in 320ms var(--ease-out); }
+  .q-layer.q-out .q-sheet { animation: pop-out 320ms cubic-bezier(0.32, 0, 0.67, 0) forwards; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .q-layer[data-sheet-drag] .q-sheet { transform: none; transition: none; }
+  .q-layer[data-sheet-drag] .q-scrim { opacity: 1; transition: none; }
+  .q-layer.q-in .q-sheet, .q-layer.q-in .q-scrim,
+  .q-layer.q-out .q-sheet, .q-layer.q-out .q-scrim { animation: none; }
+}
+
+/* Skeleton rows while a list loads: the real rows' classes give the height,
+   these bars stand in for the text. The shimmer stops under Reduce Motion. */
+.skel-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.skel-row { pointer-events: none; }
+.skel {
+  display: inline-block;
+  vertical-align: middle;
+  height: 0.8em;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.07) 70%);
+  background-size: 300% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+.avatar.skel { height: 28px; border-radius: 50%; }
+.skel-title { width: 70%; }
+.skel-sub { width: 45%; }
+.skel-name { width: 55%; }
+.skel-rank { width: 1.2em; }
+.skel-num { width: 2.6em; }
+.skel-ghost { visibility: hidden; }
+@keyframes skel-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+  dialog.leave-sheet-backdrop, .leave-sheet { animation: none; }
+}
+
+/* The whole guide takes a horizontal swipe as a page turn; the browser keeps
+   vertical scrolling and pinch zoom. */
+.howto-screen { touch-action: pan-y pinch-zoom; }
+
+/* the newcomer's own pill */
+.btn.join-leave {
+  min-height: 40px; padding: 0 16px; border-radius: 14px; border: 1px solid #4a5262;
+  background: rgba(255, 255, 255, 0.06); color: #e9ecf2; font-size: var(--fs-15); font-weight: 600;
+}
+.rating-unranked { margin: 0; font-size: var(--fs-14); color: var(--text-dim); }
+/* Live chat beside the seat that said it: one ellipsized line for a few
+   seconds, then it fades. The layer passes taps through; a tap or a sideways
+   swipe on a bubble dismisses it. ChatBubbles.tsx places each one clear of the trick and the hand. */
+.chat-bubbles {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  overflow: hidden;
+}
+.chat-bubble {
+  position: absolute;
+  pointer-events: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid rgba(20, 23, 30, 0.12);
+  border-radius: 12px;
+  background: #f7f4ea;
+  color: #1b1f27;
+  font: inherit;
+  font-size: var(--fs-13);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  /* a vertical drag still scrolls; a sideways one is the dismiss swipe */
+  touch-action: pan-y;
+  animation: chat-bubble-life 5s linear both;
+}
+/* the corner nearest the seat is pinched, pointing the bubble at it */
+.chat-bubble[data-side="right"] { border-top-left-radius: 3px; }
+.chat-bubble[data-side="left"] { border-top-right-radius: 3px; }
+.chat-bubble[data-side="below"] { border-top-left-radius: 3px; }
+.chat-bubble[data-side="above"] { border-bottom-left-radius: 3px; }
+.chat-bubble.mine {
+  background: #dcebd9;
+}
+.chat-bubble-who {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes chat-bubble-life {
+  0% { opacity: 0; translate: 0 3px; }
+  4% { opacity: 1; translate: 0 0; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-bubble { animation: none; }
+}
+
+/* Wide screens: the game's state reads from the left as one quiet bar
+   (levels and trump, then the points, with no divider) and Chat and ⋯
+   stand at the right end, as on a phone. The last group takes the free
+   space so ⋯ reaches the end. */
+:root:not(.phone-landscape) .hud-bar { justify-content: flex-start; }
+:root:not(.phone-landscape) .hud-bar > .hud-group:empty { display: none; }
+:root:not(.phone-landscape) .hud-bar > .hud-group:last-child { flex: 1 1 auto; min-width: max-content; }
+:root:not(.phone-landscape) .hud-bar > .hud-group:nth-child(2) {
+  gap: 2px;
+  height: 34px;
+  padding: 0 0 0 6px;
+  border-radius: 999px 0 0 999px;
+  background: #10131a;
+}
+:root:not(.phone-landscape) .hud-bar > .hud-group:nth-child(2) .chip,
+:root:not(.phone-landscape) .hud-bar .points-chip {
+  border-color: transparent;
+  background: transparent;
+  font-size: var(--fs-13);
+}
+:root:not(.phone-landscape) .hud-bar > .hud-group:nth-child(2) + .hud-group { margin-left: -12px; }
+:root:not(.phone-landscape) .hud-bar .points-chip {
+  border-radius: 0 999px 999px 0;
+  padding-left: 8px;
+  background: #10131a;
+}
+:root:not(.phone-landscape) .hud-bar .trump-chip { font-size: var(--fs-14); }
+:root:not(.phone-landscape) .hud-bar .trump-suit.red,
+:root:not(.phone-landscape) .hud-bar .trump-suit.black { font-size: var(--fs-16); }
+:root:not(.phone-landscape) .hud-bar .trump-rank { font-size: var(--fs-15); }
+
+/* Chat sits in the header, left of ⋯, and its panel opens under it
+   (the extra class outranks the base rules). */
+:root:not(.phone-landscape) .table-screen .chat-launch {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: calc(18px + 40px + 8px + env(safe-area-inset-right, 0px));
+  bottom: auto;
+  z-index: 11;
+  width: 40px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-edge);
+  background: #10131a;
+  font-size: var(--fs-15);
+}
+:root:not(.phone-landscape) .table-screen .chat-launch::after {
+  content: "";
+  position: absolute;
+  inset: -5px -2px;
+}
+/* Chat's slot and a gap stay clear left of ⋯ on a narrow bar too */
+:root:not(.phone-landscape) .table-screen:has(.chat-launch) .hud-more {
+  padding-left: 48px;
+}
+:root:not(.phone-landscape) .table-screen .chat-panel {
+  top: calc(56px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  transform-origin: top right;
+}
+
+/* A toast that informs rather than warns: the panel and the gold outline of
+   "Your turn", announced politely. */
+.toast.toast-info {
+  background: #0a0c11;
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ======== Table clarity: Us / Them, banker words, declare and bury help,
+   kitty marks, the last trick, a seat whose owner left. One block, kept
+   apart from the rules above. ======== */
+
+.level-chip .team-word {
+  font-weight: 700;
+}
+
+/* the phone shows your crown as a pill left of the actions, also while
+   others play */
+:where(.phone-landscape) .table-screen:not(.phase-bury) .you-row .you-tagline:has(.banker-crown) {
+  display: flex;
+  grid-column: 1;
+  justify-self: end;
+  align-items: center;
+  height: 28px;
+  width: auto;
+  margin: 0 8px 0 0;
+  padding: 0 10px;
+  gap: 5px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(8, 20, 14, 0.72);
+  box-shadow: none;
+  pointer-events: auto;
+}
+
+/* Your row shares its line with your slot of the cross, so once your cards
+   are on the table the crown steps left of them and of the LEAD / WINS tags
+   under them, whichever is wider. The cards span one card width plus a
+   pitch per further card (the slot's own pitch rule). */
+:where(.phone-landscape) .table-screen:not(.phase-bury) .you-row .you-tagline:has(.banker-crown) {
+  --slot-n: var(--my-slot-n, 0);
+  --slot-cards-w: calc(var(--trick-cw) + max(0, var(--slot-n) - 1)
+    * min(calc(var(--trick-cw) * 0.6), calc(var(--trick-cw) * 1.8 / max(1, var(--slot-n) - 1))));
+  --slot-tags-w: 124px;
+  margin-right: calc(min(1, var(--slot-n)) * max(var(--slot-cards-w), var(--slot-tags-w)) / 2 + 8px);
+}
+
+.opp-name-text.left-tag {
+  color: #f0a0aa;
+  font-style: italic;
+}
+
+/* declare and bury help: a short line that may wrap, above your row */
+.hand-line.help {
+  white-space: normal;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
+  text-align: center;
+  font-weight: 500;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.bury-points {
+  color: var(--gold);
+  font-size: var(--fs-13);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.hand-slot { position: relative; }
+
+/* the last trick: a small control in the felt's top left and its panel */
+.last-trick-btn {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 6;
+  padding: 4px 12px;
+  min-height: 30px;
+  font-size: var(--fs-12);
+  background: rgba(8, 20, 14, 0.72);
+}
+
+:where(.phone-landscape) .last-trick-btn {
+  top: calc(var(--header-h, 32px) + 12px);
+  left: calc(var(--safe-l, 0px) + 8px);
+  min-height: 28px;
+  padding: 2px 10px;
+}
+
+/* the connection pill holds the felt's top-left corner while it shows:
+   the last trick control steps down below it */
+.app:has(.reconnect-banner) .table-screen .last-trick-btn {
+  top: 56px;
+}
+
+:where(.phone-landscape) .app:has(.reconnect-banner) .table-screen .last-trick-btn {
+  top: calc(var(--header-h, 32px) + 12px + 42px);
+}
+
+.last-trick-panel {
+  position: absolute;
+  top: 48px;
+  left: 12px;
+  z-index: 30;
+  min-width: 240px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  background: rgba(10, 14, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  font-size: var(--fs-13);
+}
+
+:where(.phone-landscape) .last-trick-panel {
+  top: calc(var(--header-h, 32px) + 44px);
+  left: calc(var(--safe-l, 0px) + 8px);
+}
+
+.last-trick-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.last-trick-sum {
+  color: var(--gold);
+  font-weight: 600;
+  flex: 1;
+}
+
+.last-trick-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-18);
+  line-height: 1;
+  min-width: 32px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.last-trick-plays {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  column-gap: 10px;
+  row-gap: 4px;
+  align-items: center;
+}
+
+.last-trick-row { display: contents; }
+
+.last-trick-who {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.last-trick-row.team0 .last-trick-who { border-left: 3px solid var(--team0); padding-left: 6px; }
+.last-trick-row.team1 .last-trick-who { border-left: 3px solid var(--team1); padding-left: 6px; }
+
+.last-trick-cards { display: flex; flex-wrap: wrap; gap: 3px; }
+
+.last-trick-card {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f6f3ea;
+  color: #1a1a1a;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.last-trick-card.red { color: #c0262d; }
+
+.last-trick-tag {
+  margin-left: 6px;
+  font-size: var(--fs-10);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.last-trick-tag.win {
+  margin: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--gold);
+  color: #1a1a1a;
+}
+
+/* burying on a phone, the help line sits where the declaration is drawn;
+   the trump chip in the header already names the declared suit */
+:where(.phone-landscape) .table-screen.phase-bury:has(.hand-line.help) .trick-play.declaration {
+  visibility: hidden;
+}
+
+.result-next-banker {
+  font-size: var(--fs-14);
+  font-weight: 600;
 }

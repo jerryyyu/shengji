@@ -1,0 +1,4 @@
+/* The table panel's states beyond index.css's base panel: a Start that is
+   in (a tap takes it back) and the person the opener picked to move. */
+.tp-primary.waiting:not(:disabled) { background: transparent; border-color: #3a4250; color: #e9ecf2; }
+.tp-seat.picked { border-color: var(--gold); background: rgba(242, 193, 78, 0.14); box-shadow: 0 0 0 2px var(--gold); }

@@ -1,0 +1,52 @@
+[
+  {
+    "suite": "matrix",
+    "match": "\"pair\":\"(handLine\\+(trickCards|trickTag|leadTag|winTag)|declareTag\\+handLine)\"",
+    "why": "QA1-4: the hint line above the hand covers trick cards and their LEAD / WINS / declared tags"
+  },
+  {
+    "suite": "matrix",
+    "match": "phone-land-safari-short_.*\"pair\":\"(?!handLine|toast)",
+    "why": "QA1-3: Mobile Safari sideways (100vh taller than the page): the trick slots are placed for a taller screen, so the partner's pill covers the partner's card and your own slot sinks into the hand"
+  },
+  {
+    "suite": "matrix",
+    "match": "\"pair\":\"toast\\+trickCards\"",
+    "why": "QA1-9: a table toast covers the top trick slot"
+  },
+  {
+    "suite": "matrix",
+    "match": "cut without ellipsis: span.off-tag",
+    "why": "QA1-6: the offline tag in a seat pill is cut mid-word"
+  },
+  {
+    "suite": "matrix",
+    "match": "phone-land-se_.*(trickTag|declareTag)#\\d+\",\"text\":\"[^\"]*declared[^\"]*\",\"cut\":\"left",
+    "why": "QA1-10: a long declarer name runs the declared tag off the left edge"
+  },
+  {
+    "suite": "matrix",
+    "match": "(ipad|desktop)_.*\"pair\":\"(oppName\\+trickCards|oppCards\\+trickCards|oppCards\\+trickTag|declareTag\\+oppCards)\"",
+    "why": "QA1-11: iPad / desktop: a 20-character name's pill and count reach the side trick slot"
+  },
+  {
+    "suite": "client",
+    "match": "chat-phone-land-safari-safari: (panel, field, Send and Close above the keyboard|Send sends)",
+    "why": "QA1-2: Mobile Safari sideways: the chat field has no room between the toolbar and the keyboard"
+  },
+  {
+    "suite": "client",
+    "match": "chat-phone-land-safari-short-safari: Send sends",
+    "why": "QA1-2: in a short visible area the quick phrases come back as Send is tapped and the tap misses"
+  },
+  {
+    "suite": "client",
+    "match": "chat-phone-port-safari: panel, field, Send and Close above the keyboard",
+    "why": "QA1-5: the turned table's chat panel stays behind Mobile Safari's keyboard"
+  },
+  {
+    "suite": "flows",
+    "match": "lobby-phone-land: the code box and the links can be scrolled clear of the tab bar",
+    "why": "QA1-7: a phone held sideways in the web lobby: the code box and the links stay under the tab bar"
+  }
+]

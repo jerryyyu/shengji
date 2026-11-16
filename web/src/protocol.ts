@@ -2,12 +2,15 @@
 // Card codes: suited = suit letter (S H D C) + rank ("S2".."SA", "H10", ...);
 // jokers = "LJ" (little/black) and "BJ" (big/red).
 
+import type { ErrorCode } from "./errorCodes";
+import type { QueueClientMsg, QueueServerMsg } from "./queue/messages";
+
 export interface HandCard {
   id: number;
   code: string;
 }
 
-export type Phase = "deal" | "declare" | "bury" | "play" | "round_end" | "game_over";
+export type Phase = "deal" | "declare" | "bury" | "play" | "round_end";
 
 /** Ranks a game is played at, low to high. A team climbs through these, so the
  *  same list is the set of levels a room can be started at.
@@ -19,29 +22,42 @@ export type Rank = (typeof RANKS)[number];
 // ---------- Client -> Server ----------
 
 export type ClientMsg =
+  | { type: "ping"; nonce: number }
   | {
       type: "create_room";
       name: string;
       /** Rank both teams start at. Omit for the standard game (2). */
       start_level?: Rank;
-      /** Experimental W32 is available only through the guarded lobby UI. */
-      test_policy?: "w32";
-      test_access_key?: string;
+      /** Continue this saved game of the signed-in account: the room is made
+       *  with the account in its saved seat and bots in the other three, and
+       *  starts at that game's last levels with its next banker. */
+      resume_from?: string;
+      /** The game starts at once with a bot in every empty seat, with or
+       *  without this; a refused start sends an `error`, then `left`. */
+      start?: boolean;
     }
-  | { type: "add_bot" }
-  /** Host only, before the game starts: the rank both teams begin at. */
-  | { type: "set_start_level"; start_level: Rank }
-  | { type: "remove_bot" }
-  | { type: "start_game" }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window
   | { type: "bury"; card_ids: number[] }
   | { type: "play"; card_ids: number[] }
   | { type: "next_round" }
-  | { type: "chat"; text: string }
-  | { type: "peek_room"; room: string }
-  | { type: "join_room"; room: string; name: string; seat?: number; token?: string }
-  | { type: "leave_room" }; // anytime after joining; server replies {type:"left"}
+  /** Ranked table: the player is back after the move timer marked them away. */
+  | { type: "im_back" }
+  /** Report another seat's player; the server answers report_received or a coded error. */
+  | { type: "report_player"; seat: number; reason: ReportReason }
+  /* The table family (PROTOCOL.md "Table messages"): the same names at a
+   * queue table and in a room, which the server rewrites into the message
+   * that place handles. A room takes them only once its game is in play;
+   * the queue's own shapes are in QueueClientMsg. */
+  /** Who is sitting where at a room's or a queued table's code, without
+   *  joining (room_seats; a refusal echoes the code as `peek`). */
+  | { type: "table_peek"; code: string }
+  /** Leave the table: a room's seat (the server replies {type:"left"}), a
+   *  pending invite Join, or the queue. */
+  | { type: "table_leave" }
+  | QueueClientMsg;
+
+export type ReportReason = "abuse" | "spam" | "cheating" | "other";
 
 // ---------- Server -> Client ----------
 
@@ -51,6 +67,10 @@ export interface ErrorMsg {
   /** Machine-readable case. Typed so a new server code cannot be handled by
    *  a stale client branch that silently falls through to a generic toast. */
   code?: ErrorCode;
+  /** Set on a refused table_peek only: the code it was asked about. */
+  peek?: string;
+  /** A queue cooldown's end (Unix seconds, server clock), on code "cooldown". */
+  cooldown_until?: number;
 }
 
 export interface RoomPlayer {
@@ -60,6 +80,8 @@ export interface RoomPlayer {
   connected: boolean;
 }
 
+/** The room you sit in, sent once as its game starts (a room has no lobby),
+ *  ahead of the game's first `state`. */
 export interface RoomMsg {
   type: "room";
   room: string;
@@ -68,8 +90,15 @@ export interface RoomMsg {
   players: RoomPlayer[];
   /** Rank both teams start at, fixed when the room was created. */
   start_level: Rank;
-  /** Present only for rooms explicitly created with the W32 test policy. */
-  experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers.
+   *  Absent offline. */
+  matched?: boolean;
+  /** The opener: the same seat as `host`, which holds the table's opener
+   *  controls in play. */
+  opener?: number;
+  /** Whether newcomers may be offered a bot seat once the game is in play
+   *  (on at creation). */
+  allow_joiners?: boolean;
 }
 
 export interface StatePlayer {
@@ -91,6 +120,17 @@ export interface StatePlayer {
    *  the window has passed and anyone may claim it. Same deadline as
    *  takeover_in, so the two can never disagree. */
   reserved_secs: number | null;
+  /** Move timer (ranked tables): seconds this seat has left for the decision
+   *  it owes (a play, a bury or the round-end Next); null when no clock runs
+   *  for it, as at every table without the move timer. Tick it down locally,
+   *  like takeover_in. Absent offline (offline/fixtures/online_only.json). */
+  turn_deadline?: number | null;
+  /** The move timer ran out too often: the bot is playing every decision for
+   *  this present player until they are back. Absent offline. */
+  away?: boolean;
+  /** The owner pressed Leave: a bot plays the seat at once, and the table
+   *  names it "Bot (Alice left)". Absent offline. */
+  left?: boolean;
 }
 
 export interface Trump {
@@ -138,14 +178,51 @@ export interface RoundResult {
   /** True on the round that took a team past A. */
   point_scored: boolean;
   game_over: boolean;
+  /** The receiving seat's own rating after this round; present only for a
+   *  signed-in player, and only once the server has stored the round. */
+  rating?: RoundRating;
+  /** This seat was taken mid-round from an open table: not ranked for it. */
+  unranked?: "joined" | "guest";
+}
+
+/** The table's corner line about an open-table newcomer: "trick", they take
+ *  the seat after this trick; "round", they were seated at this round end and
+ *  play from the next round. */
+export interface JoinNotice {
+  seat: number;
+  name: string;
+  when: "trick" | "round";
+}
+
+export interface RoundRating {
+  rating: number;
+  /** This round's change, rounded to a whole point. */
+  delta: number;
+  /** The change over the whole game, on the round that wins a game. */
+  game_delta?: number;
 }
 
 export interface GameState {
   type: "state";
   room: string;
   you: number;
-  /** Present only for rooms explicitly created with the W32 test policy. */
-  experimental_policy?: "w32";
+  /** Built by the matchmaking queue: a rated game between strangers.
+   *  Absent offline. */
+  matched?: boolean;
+  /** This viewer sits as a guest: their rounds are not ranked. Absent
+   *  offline. */
+  guest?: boolean;
+  /** The seat holding the table's opener controls: only it switches Allow
+   *  joiners. Passes to the next person round the table when it leaves. */
+  opener?: number;
+  /** Tables that take joiners, ranked or casual: whether newcomers may be
+   *  offered a bot seat. */
+  allow_joiners?: boolean;
+  /** Tables that take joiners: newcomers taking a seat (see JoinNotice). */
+  joining?: JoinNotice[];
+  /** Sent only to a newcomer waiting for its handover: `you` is the seat it
+   *  takes, which the bot plays until the trick ends. */
+  joining_you?: boolean;
   phase: Phase;
   ready?: number[];   // seats that confirmed the round end
   players: StatePlayer[];
@@ -161,12 +238,15 @@ export interface GameState {
   declare_options: number[][]; // your valid declarations right now; [] if you can't beat the current one
   current_declaration: Declaration | null;
   passed: number[]; // seats done with the declare window (cleared when someone declares)
+  /** Seconds left in the post-deal declare window; null outside it. Tick it
+   *  down locally, like turn_deadline. */
+  declare_deadline?: number | null;
   // play phase
   trick: Trick | null;
   last_trick: LastTrick | null;
   attacker_points: number;
   kitty_count: number;
-  // round_end / game_over
+  // round_end
   round_result: RoundResult | null;
   message: string | null;
   /** A notice outlives `message`, which the very next play clears. Today the
@@ -197,30 +277,39 @@ export interface EventMsg {
 /** Confirmation of leave_room; the connection may create/join rooms again. */
 export interface LeftMsg {
   type: "left";
+  /** Why the server sent this without a leave_room: the host removed this
+   *  player; the away owner came back before a newcomer's handover
+   *  (reclaimed); the game ended first (table_closed); or this away
+   *  player's seat went to a newcomer (seat_given). */
+  reason?: "removed" | "reclaimed" | "table_closed" | "seat_given" | "partner_left";
+  message?: string;
 }
 
 export type ServerMsg =
+  | { type: "heartbeat_ready" }
+  | { type: "pong"; nonce: number }
   | ErrorMsg
   | RoomMsg
   | GameState
   | EventMsg
   | LeftMsg
   | RoomSeats
+  | TableSeats
   | ChatMsg
   | ChatHistory
-  | ResumeMsg;
+  | ResumeMsg
+  | ReportReceivedMsg
+  | QueueServerMsg;
 
-/** Every coded error the server can send. Keep in sync with server.py —
- *  an unlisted code silently falls through to a generic toast. */
-export type ErrorCode =
-  | "room_not_found"
-  | "room_full"
-  | "choose_seat"
-  | "seat_unavailable"
-  | "seat_reserved"
-  | "test_room_unavailable"
-  | "bad_start_level"
-  | "stale_connection";
+/** The server stored this viewer's report; ``message`` is shown as a toast. */
+export interface ReportReceivedMsg {
+  type: "report_received";
+  seat: number;
+  message: string;
+}
+
+/** Every coded error the server can send: the keys of `ERROR_ROUTES`. */
+export type { ErrorCode } from "./errorCodes";
 
 /** "human" — a connected person; "bot" — a permanent bot seat;
  *  "bot_cover" — a bot covering someone who dropped. Never infer from is_bot. */
@@ -237,7 +326,8 @@ export interface ChatMsg {
   type: "chat";
   id: number;
   room: string;
-  seat: number;      // -1 marks a system line
+  /** -1 marks a system line; null a line from someone no longer at the table. */
+  seat: number | null;
   name: string;
   text: string;
   t: number;
@@ -252,6 +342,7 @@ export interface ResumeMsg {
 export interface RoomSeats {
   type: "room_seats";
   room: string;
+  table?: undefined;
   in_game: boolean;
   seats: {
     seat: number; name: string; is_bot: boolean; connected: boolean;
@@ -261,4 +352,25 @@ export interface RoomSeats {
     controller: Controller;
     reserved_secs: number | null;
   }[];
+  /** A ranked table: `claimable` marks the seats its invite may take (bot
+   *  seats, away seats from a round boundary); signed-in players only. */
+  ranked?: boolean;
+  /** A ranked table with no seat to take. */
+  full?: boolean;
+}
+
+/** The peek's answer for a queued table's code (PROTOCOL.md "room_seats"):
+ *  all four seats, names only, before any game. */
+export interface TableSeats {
+  type: "room_seats";
+  room: string;
+  table: true;
+  mode: "ranked" | "casual";
+  in_game: false;
+  allow_joiners: boolean;
+  /** A code join by one person meets table_full. */
+  full: boolean;
+  /** The host's Join is in flight: a code join meets table_closed. */
+  closed: boolean;
+  seats: { seat: number; team: number; state: "taken" | "open" | "held"; name: string | null; ready: boolean }[];
 }

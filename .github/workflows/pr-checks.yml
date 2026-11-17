@@ -705,6 +705,7 @@ jobs:
             tests/test_lead_root_capture.py \
             tests/test_m5_population_contract.py \
             tests/test_pv_search_serving.py \
+            tests/test_early_lead.py \
             tests/test_pv_doomed_throw_reselect_exact_guard.py \
             tests/test_pv_search_hooks.py \
             tests/test_pv_small_joker_lead.py \

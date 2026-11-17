@@ -286,7 +286,7 @@ def _status(path: str, msg: str) -> None:
 
 
 def _run_identity(args) -> dict:
-    keys = ("data", "init", "init_sha256", "init_ckpt", "store_map", "epochs", "lr", "head_lr", "readout_lr",
+    keys = ("data", "init", "init_sha256", "init_ckpt", "init_readout_ckpt", "scratch_arch", "calib_data", "store_map", "epochs", "lr", "head_lr", "readout_lr",
             "head_warmup_buffers", "weight_decay", "belief_weight", "q_weight", "policy_weight", "value_weight",
             "reply_weight", "seed", "buffer_chunks", "rounds_per_batch", "max_train_rows", "calib_rows",
             "exclude_seed_window")
@@ -318,13 +318,32 @@ def _train(args, out: Path, status: str) -> int:
                                args.max_train_rows, args.seed)
     if not entries:
         raise UnifiedReadoutError("no train chunks")
-    init = bs.load_init(args.init)
-    if args.init_sha256 and init["sha256"] != args.init_sha256:
-        raise UnifiedReadoutError(f"--init sha256 {init['sha256']} != --init-sha256 {args.init_sha256}")
-    bs.check_init_identity(init, args.data)
-    arch = {k: init["config"][k] for k in bs.DEFAULT_ARCH}
-    model = build(arch)
-    bs.apply_init(model.trunk, init)
+    if args.scratch_arch:
+        # a trunk of another size, from random weights: no package can warm it
+        if args.init or args.init_ckpt or args.init_readout_ckpt:
+            raise UnifiedReadoutError("--scratch-arch takes no init")
+        arch = dict(bs.DEFAULT_ARCH)
+        for item in args.scratch_arch.split(","):
+            k, v = item.split("=")
+            if k not in arch:
+                raise UnifiedReadoutError(f"--scratch-arch: unknown key {k}")
+            arch[k] = type(arch[k])(int(v))
+        model = build(arch)
+        init = {"sha256": "scratch:" + json.dumps(arch, sort_keys=True)}
+    elif args.init_readout_ckpt:
+        if args.init or args.init_ckpt:
+            raise UnifiedReadoutError("--init-readout-ckpt is the whole init")
+        model, _ = load_checkpoint(args.init_readout_ckpt)
+        model.train()
+        init = {"sha256": "readout-ckpt:" + us.sha256_file(args.init_readout_ckpt)}
+    else:
+        init = bs.load_init(args.init)
+        if args.init_sha256 and init["sha256"] != args.init_sha256:
+            raise UnifiedReadoutError(f"--init sha256 {init['sha256']} != --init-sha256 {args.init_sha256}")
+        bs.check_init_identity(init, args.data)
+        arch = {k: init["config"][k] for k in bs.DEFAULT_ARCH}
+        model = build(arch)
+        bs.apply_init(model.trunk, init)
     if args.init_ckpt:
         warm, _ = us.load_checkpoint(args.init_ckpt)
         for a, b_ in zip(model.trunk.state_dict().values(), warm.trunk.state_dict().values()):
@@ -335,8 +354,9 @@ def _train(args, out: Path, status: str) -> int:
 
     stream = us.Stream(entries, index=index, suit_aug=False, verified=verified, threads=args.loader_threads,
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch, row_frac=1.0)
-    calib = us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
+    calib = us.load_calib(args.calib_data or args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
                           exclude_seed_windows=args.exclude_seed_window)
+    started = time.time()
     groups = [{"params": list(model.trunk.parameters()), "base_lr": args.lr},
               {"params": list(model.q_head.parameters()) + list(model.p_head.parameters()), "base_lr": args.head_lr},
               {"params": list(model.readout.parameters()), "base_lr": args.readout_lr}]
@@ -354,7 +374,7 @@ def _train(args, out: Path, status: str) -> int:
         scale = lr_scale(step)
         for g in opt.param_groups:
             g["lr"] = g["base_lr"] * scale
-        if step < args.head_warmup_buffers:
+        if step < args.head_warmup_buffers and not args.scratch_arch and not args.init_readout_ckpt:
             opt.param_groups[0]["lr"] = 0.0             # the new readout fits a frozen trunk first
             opt.param_groups[1]["lr"] = 0.0
         for k, v in leaf_batch(b).items():
@@ -409,9 +429,9 @@ def _train(args, out: Path, status: str) -> int:
                     last_save = time.time()
                     _status(status, f"epoch {epoch + 1} buffer {gi}/{n_buffers} {json.dumps({k: round(v, 5) for k, v in means(sums).items()})}"
                                     f" ({time.time() - t0:.0f}s)")
-                if (out / "STOP").exists():
+                if (out / "STOP").exists() or (args.max_seconds and time.time() - started > args.max_seconds):
                     save()
-                    _status(status, "STOPPED (STOP file); checkpoint saved")
+                    _status(status, f"STOPPED at epoch {epoch + 1} buffer {gi}/{n_buffers} (STOP file or --max-seconds); checkpoint saved")
                     return 3
             sums += step_on(b, epoch * n_buffers + gi)
             steps += 1
@@ -747,7 +767,11 @@ def build_parser() -> argparse.ArgumentParser:
     t = sub.add_parser("train")
     t.add_argument("--data", nargs="+", required=True)
     t.add_argument("--out", required=True)
-    t.add_argument("--init", required=True, help="a served-shape belief package whose trunk warms the trunk")
+    t.add_argument("--init", default=None, help="a served-shape belief package whose trunk warms the trunk")
+    t.add_argument("--init-readout-ckpt", default=None, help="a unified_readout checkpoint: warms the whole model")
+    t.add_argument("--scratch-arch", default=None, help="d=..,heads=..,enc_layers=..,xattn_layers=..,x_hidden=..: random init at that size")
+    t.add_argument("--calib-data", nargs="+", default=None, help="the dirs whose calib split is scored (default: --data)")
+    t.add_argument("--max-seconds", type=float, default=None, help="save and exit 3 at the next buffer after this long (resume continues)")
     t.add_argument("--init-sha256", default=None)
     t.add_argument("--init-ckpt", default=None, help="a unified_seq checkpoint with the same trunk: warms the Q and policy heads")
     t.add_argument("--store-map", action="append", default=[])

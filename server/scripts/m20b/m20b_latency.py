@@ -20,7 +20,7 @@ import m20b_train as MT
 from shengji.ai.cwv_numpy import _gelu_exact
 
 # one real decision through the generator's path: bot, proposal, worlds, leaves
-g = {}
+g = {'__file__': str(Path(__file__).resolve().parent / 'm20b_gen.py')}
 exec(compile(open(Path(__file__).resolve().parent / 'm20b_gen.py').read().split('n_dec = 0')[0], 'gen', 'exec'), g)
 bot, ev, plaus, counts = g['bot'], g['ev'], g['plaus'], g['counts']
 from shengji.harvest.rebuild import state_for_record

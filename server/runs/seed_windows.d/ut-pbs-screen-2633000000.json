@@ -1,0 +1,14 @@
+{
+ "name": "ut-pbs-screen-2633000000",
+ "purpose": "screen",
+ "seed0": 2633000000,
+ "clusters": 3920,
+ "span": [
+  2633000000,
+  2633003920
+ ],
+ "created_at": "2026-11-17T01:15:00Z",
+ "host": "ultra",
+ "git_head": "64b27cbf",
+ "note": "Unified model inside release 52's search, arm PB at screen grade (Jerry 2026-11-16 'Yes'): release 52 with its belief package and root prior both from the jointly trained U2 model through one shared trunk forward (unified_slots.install_shared_forward; branch claude/ut-inside1 067132df) vs release 52 as served; 3,920 paired seat-swapped rank-mixed deals on the M5 Ultra, one look. Bars: mean >= -0.02 and one-sided 95% LB > -0.04; latency <= 1.10x served per decision (pbscreen/PREDECLARE.md). Clearance vs G3A e04 / FT1 / B1a lineages, U2's training stores and the S58 live keys: pbscreen/clear. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

@@ -139,6 +139,8 @@ class Connection {
   /** A socket has been opened on this page: a swap after that ends its room. */
   private opened = false;
   private stopHeartbeat: (() => void) | null = null;
+  /** Removes the wake listeners start() added. */
+  private unlisten: (() => void) | null = null;
   /** Ping now with a short deadline (the socket's heartbeat, if it has one). */
   private probe: (() => void) | null = null;
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
@@ -168,15 +170,38 @@ class Connection {
     const wake = () => {
       if (this.transport === "remote" && this.status === "closed") this.reconnect();
     };
-    window.addEventListener("online", wake);
-    window.addEventListener("pageshow", wake);
-    document.addEventListener("visibilitychange", () => {
+    const visible = () => {
       if (document.visibilityState !== "visible") return;
       if (this.status === "open") this.probe?.();
       else wake();
-    });
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("pageshow", wake);
+    document.addEventListener("visibilitychange", visible);
+    this.unlisten = () => {
+      window.removeEventListener("online", wake);
+      window.removeEventListener("pageshow", wake);
+      document.removeEventListener("visibilitychange", visible);
+    };
     if (OFFLINE) void this.useLocalServer().catch(() => {});
     else this.open();
+  }
+
+  /** Undo start(). The page never calls it; a test that started the
+   *  connection ends it here, because the on-device socket runs on the host's
+   *  own timers, which outlive the test's DOM. The socket closes with its
+   *  handlers cut, and no reconnect, heartbeat, leave or transport load still
+   *  pending opens another. */
+  stop(): void {
+    if (!this.started) return;
+    this.started = false;
+    this.transportSeq += 1;
+    this.unlisten?.();
+    this.unlisten = null;
+    this.cutSocket();
+    this.transport = "remote";
+    this.makeSocket = () => new WebSocket(socketUrl());
+    this.setStatus("closed");
   }
 
   /** Play on the on-device server from now on, in place: the game server's
@@ -216,6 +241,20 @@ class Connection {
    *  server has never heard of it), so listeners get {type:"left"} as from
    *  a leave. The next socket opens as a fresh page's would. */
   private retireTransport(): void {
+    this.cutSocket();
+    this.backoff = 500;
+    this.immediate = false;
+    if (this.opened) {
+      clearSavedRoom();
+      this.clearChat();
+      this.emit({ type: "left" });
+    }
+    this.setStatus("connecting");
+  }
+
+  /** Close the socket with its handlers cut first, and drop its heartbeat,
+   *  probe, pending leave and reconnect timer. */
+  private cutSocket(): void {
     this.stopHeartbeat?.();
     this.stopHeartbeat = null;
     this.probe = null;
@@ -231,14 +270,6 @@ class Connection {
       old.onerror = null;
       try { old.close(); } catch { /* already closed */ }
     }
-    this.backoff = 500;
-    this.immediate = false;
-    if (this.opened) {
-      clearSavedRoom();
-      this.clearChat();
-      this.emit({ type: "left" });
-    }
-    this.setStatus("connecting");
   }
 
   /** Sends when the socket is open; returns whether it did, so a caller can

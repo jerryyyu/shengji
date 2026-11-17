@@ -173,8 +173,15 @@ describe("offline panel", () => {
     };
     vi.resetModules();
   });
-  afterEach(() => {
+  afterEach(async () => {
     act(() => root.unmount());
+    // The on-device socket opens on the host's timers, which outlive this
+    // file's DOM: end the connection, then nothing it started may open.
+    const { conn } = await import("../ws");
+    conn.stop();
+    await vi.dynamicImportSettled();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(conn.status).toBe("closed");
     host.remove();
     Object.defineProperty(window, "location", { configurable: true, value: realLocation });
     globalThis.fetch = realFetch;

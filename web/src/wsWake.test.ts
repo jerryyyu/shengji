@@ -112,3 +112,38 @@ it("keeps browser wake events off the offline transport while it loads", async (
     vi.resetModules();
   }
 });
+
+it("stop() leaves nothing behind: a pending offline load opens no socket, and wake events open none", async () => {
+  const network = vi.fn();
+  const local = vi.fn();
+  let resolveModule!: (value: { LocalSocket: new () => object }) => void;
+  const module = new Promise<{ LocalSocket: new () => object }>((resolve) => { resolveModule = resolve; });
+  vi.doMock("./offline/server", () => module);
+  vi.stubGlobal("WebSocket", network);
+  window.history.replaceState(null, "", "/?offline=1");
+  try {
+    vi.resetModules();
+    const { conn } = await import("./ws");
+    conn.start();
+    conn.stop();
+    expect(conn.status).toBe("closed");
+    class LocalSocket {
+      readyState = 0;
+      constructor() { local(); }
+    }
+    resolveModule({ LocalSocket });
+    await vi.dynamicImportSettled();
+    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("pageshow"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(local).not.toHaveBeenCalled();
+    expect(network).not.toHaveBeenCalled();
+    expect(conn.status).toBe("closed");
+  } finally {
+    window.history.replaceState(null, "", "/");
+    vi.doUnmock("./offline/server");
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  }
+});

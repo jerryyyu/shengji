@@ -63,8 +63,16 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value() { (this as HTMLDialogElement).removeAttribute("open"); } });
   vi.resetModules();
 });
-afterEach(() => {
+afterEach(async () => {
   act(() => root.unmount());
+  // The on-device socket and its server's bots run on the host's timers,
+  // which outlive this file's DOM: end the connection, then nothing it
+  // started may open.
+  const { conn } = await import("./ws");
+  conn.stop();
+  await vi.dynamicImportSettled();
+  await new Promise((r) => setTimeout(r, 0));
+  expect(conn.status).toBe("closed");
   host.remove();
   Object.defineProperty(window, "location", { configurable: true, value: realLocation });
   Reflect.deleteProperty(navigator, "onLine");

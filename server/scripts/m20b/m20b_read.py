@@ -11,6 +11,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent)); sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import m20b_train as MT
+import m20b_cal as MC
 
 FABLE_SERVED_END_MIX, FABLE_SERVED_END_TRUE = 0.9366, 0.8605
 
@@ -23,7 +24,7 @@ def cmd_select(root):
     root = Path(root); ev = root / 'eval' / 'select'
     s = np.load(ev / 'served.npz'); st, sm = means(s, 'end')
     rows = []
-    for arm in ('P', 'PS', 'C'):
+    for arm in ('P', 'PS', 'C') + MC.ARMS:
         for ep in range(1, MT.EPOCHS + 1):
             f = ev / f'{arm}-e{ep}.npz'
             if not f.exists():
@@ -36,16 +37,18 @@ def cmd_select(root):
         if el:
             best = min(r['end_mix'] for r in el)
             tied = [r for r in el if r['end_mix'] <= best + 0.0005]
-            return sorted(tied, key=lambda r: (r['ep'], {'PS': 0, 'P': 1, 'C': 2}[r['arm']]))[0], 'eligible'
+            return sorted(tied, key=lambda r: (r['ep'], {'RT': 0, 'RTW': 1, 'PS': 2, 'P': 3, 'C': 4, 'RT0': 5}[r['arm']]))[0], 'eligible'
         return min(cands, key=lambda r: r['d_true']), 'none-eligible: lowest d_true'
-    pick, why = rule([r for r in rows if r['arm'] in ('P', 'PS')])
+    pick, why = rule([r for r in rows if r['arm'] in ('P', 'PS', 'RT', 'RTW')])
     cpick, cwhy = rule([r for r in rows if r['arm'] == 'C']) if any(r['arm'] == 'C' for r in rows) else (None, None)
-    out = dict(served=dict(end_true=st, end_mix=sm, gap=sm - st), candidates=rows, pick=pick, pick_rule=why, c_pick=cpick, c_rule=cwhy)
+    c0pick, c0why = rule([r for r in rows if r['arm'] == 'RT0']) if any(r['arm'] == 'RT0' for r in rows) else (None, None)
+    out = dict(served=dict(end_true=st, end_mix=sm, gap=sm - st), candidates=rows, pick=pick, pick_rule=why, c_pick=cpick, c_rule=cwhy,
+               c0_pick=c0pick, c0_rule=c0why)
     (root / 'select.json').write_text(json.dumps(out, indent=1))
     print(f"SELECT served end true {st:.4f} mix {sm:.4f} gap {sm - st:+.4f}")
     for r in rows:
         print(f"{r['arm']:>2} e{r['ep']}: d_true {r['d_true']:+.4f} d_mix {r['d_mix']:+.4f} (closure {-r['d_mix'] / (sm - st):+.1%}) | k0 d_true {r['k0_d_true']:+.4f} d_mix {r['k0_d_mix']:+.4f}")
-    print('PICK', pick['arm'], pick['ep'], why, '| C', cpick and (cpick['arm'], cpick['ep']), cwhy)
+    print('PICK', pick['arm'], pick['ep'], why, '| C', cpick and (cpick['arm'], cpick['ep']), cwhy, '| RT0', c0pick and (c0pick['arm'], c0pick['ep']), c0why)
 
 
 def boot(cl, cols, fn, n=10000, seed=1):
@@ -90,10 +93,13 @@ def cmd_holdout(root):
     res = dict(repro=dict(end_true=float(rt), end_mix=float(rm), n=int(len(s['end_true'])), ok=bool(repro)))
     if not repro:
         (root / 'holdout_results.json').write_text(json.dumps(res, indent=1)); sys.exit('STOP: reproduction failed')
-    for key, pk in (('pick', sel['pick']), ('c_pick', sel['c_pick'])):
+    for key, pk in (('pick', sel['pick']), ('c_pick', sel['c_pick']), ('c0_pick', sel.get('c0_pick'))):
         if pk is None:
             continue
-        o = MT.evaluate(root, 'holdout', pk['arm'], pk['ep'], data=data); MT.save_eval(root, 'holdout', f"{pk['arm']}-e{pk['ep']}", o)
+        if pk['arm'] in MC.ARMS:
+            o = MC.evaluate(root, 'holdout', pk['arm'], pk['ep'], data)
+        else:
+            o = MT.evaluate(root, 'holdout', pk['arm'], pk['ep'], data=data); MT.save_eval(root, 'holdout', f"{pk['arm']}-e{pk['ep']}", o)
         c = {f'{t}_{k}': v for t, o2 in o.items() for k, v in o2.items()}
         r = dict(cand=f"{pk['arm']}-e{pk['ep']}")
         for tag in ('end', 'k0'):
@@ -106,7 +112,7 @@ def cmd_holdout(root):
     KILL = e['closure'] < 0.10
     res['verdict'] = 'PASS' if PASS else ('KILL' if KILL else 'FAIL')
     (root / 'holdout_results.json').write_text(json.dumps(res, indent=1))
-    for key in ('pick', 'c_pick'):
+    for key in ('pick', 'c_pick', 'c0_pick'):
         if key not in res:
             continue
         for tag in ('end', 'k0'):

@@ -629,6 +629,118 @@ def polish(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------ the mixture objective on sampled worlds
+
+def mixture_nll(value_logits, target):
+    """Per-decision NLL of the outcome under the MIXTURE of its worlds' distributions: ``value_logits`` is
+    ``(n, K, 204)`` (one leaf per sampled world), the result ``-log mean_k softmax(logits_k)[target]``.  The
+    mixture's expected level is the mean of the worlds' expected levels, which is what the search averages."""
+    import torch
+    logp = torch.log_softmax(value_logits, -1)
+    pick = logp.gather(-1, target[:, None, None].expand(-1, logp.shape[1], 1)).squeeze(-1)      # n,K
+    return -(torch.logsumexp(pick, 1) - math.log(logp.shape[1]))
+
+
+def mix_forward(readout, z, pick):
+    """``(n, K, 204)`` leaf outcome logits of the picked decisions of a sampled-world shard, their true-world
+    leaf's ``(n, 204)`` logits, and the targets."""
+    import torch
+    S = torch.from_numpy(z["S"][pick].astype(np.float32))
+    c = torch.from_numpy(z["c"][pick].astype(np.float32))
+    planes = torch.from_numpy(z["planes"][pick].astype(np.float32))                # n,K,9,54
+    scalars = torch.from_numpy(z["scalars"][pick])
+    n, K = planes.shape[:2]
+    v, _ = readout.body(S.repeat_interleave(K, 0), c.repeat_interleave(K, 0), planes.flatten(0, 1), scalars.flatten(0, 1))
+    tv, _ = readout.body(S, c, torch.from_numpy(z["tplanes"][pick].astype(np.float32)), torch.from_numpy(z["tscalars"][pick]))
+    return v.view(n, K, -1), tv, torch.from_numpy(z["target"][pick].astype(np.int64))
+
+
+def mix_eval(readout, shards, batch: int = 64) -> dict[str, float]:
+    """Mean mixture NLL and true-world NLL over every decision of ``shards``."""
+    import torch
+    sums = np.zeros(3)
+    readout.eval()
+    with torch.no_grad():
+        for path in shards:
+            z = np.load(path)
+            z = {k: z[k] for k in z.files}
+            for i in range(0, len(z["target"]), batch):
+                v, tv, t = mix_forward(readout, z, np.arange(i, min(i + batch, len(z["target"]))))
+                sums += [float(mixture_nll(v, t).sum()), float(torch.nn.functional.cross_entropy(tv, t, reduction="sum")), len(t)]
+    readout.train()
+    return {"mixture_nll": sums[0] / max(sums[2], 1), "true_nll": sums[1] / max(sums[2], 1), "decisions": int(sums[2])}
+
+
+def mixpolish(args) -> int:
+    """Train the readout's per-leaf body on the mixture objective: every step takes ``--decisions`` decisions
+    of a sampled-world shard (mixture NLL over their K worlds) and ``--batch`` true-world leaves of the polish
+    cache (outcome CE x ``--true-weight``, reply CE x ``--reply-weight``).  After every pass the calibration
+    shards' mixture NLL is scored; ``OUT/best.pt`` carries the body of the pass with the lowest, or the input
+    checkpoint's when no pass beats it."""
+    import torch
+    torch.set_num_threads(args.threads)
+    torch.manual_seed(args.seed)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    status = str(out / "status.log")
+    model, saved = load_checkpoint(args.ckpt)
+    readout = model.readout
+    body = [p for n, p in readout.named_parameters() if n.startswith(BODY_PREFIXES)]
+    mix = sorted(Path(args.mix).glob("train-*.npz"))
+    calib = sorted(Path(args.mix).glob("calib-*.npz"))
+    cache = sorted(Path(args.cache).glob("train-*.npz"))
+    if not mix or not calib or not cache:
+        raise UnifiedReadoutError("mixpolish needs train and calib sampled-world shards and the polish cache")
+    readout.train()
+    opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
+    total = args.epochs * len(mix)
+    init = mix_eval(readout, calib)
+    best = {"score": init["mixture_nll"], "epoch": 0, "calib": init}
+    _status(status, f"MIXPOLISH START mix_shards={len(mix)} calib_shards={len(calib)} cache_shards={len(cache)} epochs={args.epochs} "
+                    f"ckpt={us.sha256_file(args.ckpt)} init calib {json.dumps(init)}")
+    rng = np.random.default_rng(args.seed)
+    step_i, t0, state = 0, time.time(), None
+    for epoch in range(args.epochs):
+        sums = np.zeros(6)
+        for si in rng.permutation(len(mix)):
+            for g in opt.param_groups:
+                g["lr"] = args.lr * 0.5 * (1 + math.cos(math.pi * step_i / total))
+            step_i += 1
+            z = np.load(mix[si])
+            z = {k: z[k] for k in z.files}
+            cz = np.load(cache[rng.integers(len(cache))])
+            cz = {k: cz[k] for k in cz.files}
+            order = rng.permutation(len(z["target"]))
+            for i in range(0, len(order), args.decisions):
+                v, tv, t = mix_forward(readout, z, np.sort(order[i:i + args.decisions]))
+                m_nll = mixture_nll(v, t)
+                v_ce, r_ce, _, has = polish_losses(readout, _polish_tensors(cz, np.sort(rng.choice(len(cz["leaf_row"]), size=args.batch, replace=False))))
+                loss = m_nll.mean() + args.true_weight * v_ce.mean() + args.reply_weight * r_ce.sum() / has.float().sum().clamp_min(1.0)
+                opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(body, 1.0)
+                opt.step()
+                sums += [float(m_nll.sum().detach()), len(t), float(v_ce.sum().detach()), len(v_ce), float(r_ce.sum().detach()), float(has.sum())]
+            if (out / "STOP").exists():
+                _status(status, "STOPPED (STOP file)")
+                return 3
+        cm = mix_eval(readout, calib)
+        train = {"mixture_nll": sums[0] / max(sums[1], 1), "true_leaf_ce": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
+        _status(status, f"MIXPOLISH EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in train.items()})} "
+                        f"calib {json.dumps({k: round(v, 5) for k, v in cm.items()})} ({time.time() - t0:.0f}s)")
+        if cm["mixture_nll"] < best["score"]:
+            best = {"score": cm["mixture_nll"], "epoch": epoch + 1, "calib": cm}
+            state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    if state is not None:
+        model.load_state_dict(state)
+    torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
+                "calib": dict(saved.get("calib") or {}, mixpolish=best["calib"], mixpolish_epoch=best["epoch"], mixpolish_init=init),
+                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, mixpolish=vars(args))}, out / "best.pt")
+    _status(status, f"MIXPOLISH DONE best_epoch={best['epoch']} init {json.dumps(init)} calib {json.dumps(best['calib'])} "
+                    f"sha256={us.sha256_file(out / 'best.pt')}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="unified_readout")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -685,6 +797,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch", type=int, default=4096)
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--seed", type=int, default=1)
+    m = sub.add_parser("mixpolish")
+    m.add_argument("--ckpt", required=True)
+    m.add_argument("--mix", required=True, help="sampled-world shards: train-*.npz and calib-*.npz")
+    m.add_argument("--cache", required=True, help="the polish cache (true-world leaves, replies)")
+    m.add_argument("--out", required=True)
+    m.add_argument("--epochs", type=int, default=4)
+    m.add_argument("--lr", type=float, default=3e-4)
+    m.add_argument("--weight-decay", type=float, default=0.01)
+    m.add_argument("--true-weight", type=float, default=0.25)
+    m.add_argument("--reply-weight", type=float, default=0.2)
+    m.add_argument("--decisions", type=int, default=256)
+    m.add_argument("--batch", type=int, default=4096)
+    m.add_argument("--threads", type=int, default=16)
+    m.add_argument("--seed", type=int, default=1)
     e = sub.add_parser("export")
     e.add_argument("--ckpt", required=True)
     e.add_argument("--out", required=True)
@@ -695,7 +821,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return {"train": train, "export": export, "cache": cache, "polish": polish}[args.cmd](args)
+    return {"train": train, "export": export, "cache": cache, "polish": polish, "mixpolish": mixpolish}[args.cmd](args)
 
 
 if __name__ == "__main__":

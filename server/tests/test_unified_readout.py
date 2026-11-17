@@ -277,3 +277,28 @@ def test_polish_trains_only_the_per_leaf_body_and_equals_the_joint_forward(tmp_p
                                                                     "card_proj.bias", "ctx.weight", "ctx.bias"}
     ev = ur.polish_eval(m.readout, z)
     assert set(ev) == {"leaf_value", "leaf_value_end", "reply"} and all(np.isfinite(x) for x in ev.values())
+
+
+def test_mixture_nll_is_the_nll_of_the_mean_distribution_and_reaches_the_body(tmp_path):
+    m, _ = _model(tmp_path)
+    rng = np.random.default_rng(3)
+    n, K = 5, 4
+    logits = torch.from_numpy(rng.standard_normal((n, K, 204)).astype(np.float32))
+    target = torch.from_numpy(rng.integers(0, 204, n))
+    want = -torch.log(torch.softmax(logits, -1).mean(1)[torch.arange(n), target])
+    assert torch.allclose(ur.mixture_nll(logits, target), want, atol=1e-5)
+    same = logits[:, :1].expand(-1, K, -1)
+    assert torch.allclose(ur.mixture_nll(same, target), torch.nn.functional.cross_entropy(logits[:, 0], target, reduction="none"), atol=1e-5)
+    dp, dc = READOUT["dp"], READOUT["dc"]
+    z = {"S": rng.standard_normal((n, 54, dp)).astype(np.float16), "c": rng.random((n, dc)).astype(np.float16),
+         "planes": (rng.random((n, K, 9, 54)) < 0.2).astype(np.uint8), "scalars": rng.random((n, K, 12)).astype(np.float32),
+         "tplanes": (rng.random((n, 9, 54)) < 0.2).astype(np.uint8), "tscalars": rng.random((n, 12)).astype(np.float32),
+         "target": rng.integers(0, 204, n).astype(np.int16)}
+    v, tv, t = ur.mix_forward(m.readout, z, np.arange(n))
+    assert v.shape == (n, K, 204) and tv.shape == (n, 204)
+    with torch.no_grad():                         # each world's row is the body on that world's own leaf
+        one, _ = m.readout.body(torch.from_numpy(z["S"][2:3].astype(np.float32)), torch.from_numpy(z["c"][2:3].astype(np.float32)),
+                                torch.from_numpy(z["planes"][2, 3:4].astype(np.float32)), torch.from_numpy(z["scalars"][2, 3:4]))
+    assert torch.allclose(v[2, 3], one[0], atol=1e-5)
+    ur.mixture_nll(v, t).mean().backward()
+    assert float(m.readout.stem.weight.grad.abs().sum()) > 0

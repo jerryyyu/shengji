@@ -38,6 +38,7 @@ import { queueLeaveContext } from "./queue/tableModel";
 import { firstJoinerText } from "./queue/tableText";
 import { offlineGame } from "./components/offlineGame";
 import { codes, useCodes } from "./codeJoin";
+import { setSeatSafe, startReloadGate } from "./reloadGate";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
  *  table opens: the game in play, else the Play table as its panel says it. */
@@ -256,6 +257,7 @@ export default function App() {
   const { rotated } = usePhoneLayout(atTable);
   // the launch splash covers the WebView until the first screen has painted
   useEffect(() => { requestAnimationFrame(() => hideSplash()); }, []);
+  useEffect(() => startReloadGate(), []);
   // keyboard accessory bar off, keyboard-open class, status-bar tap to top
   useEffect(() => { startShell(); }, []);
   // the audio context costs a long task to create: make it before any tap
@@ -270,6 +272,11 @@ export default function App() {
   const q = useQueue();
   const account = useAuth();
   const seatedAnywhere = inRoom || q.queued;
+  // a newer page build loads only off every table and queue: a closed
+  // socket at a round's end leaves the ready quorum, and the next round can
+  // start without this player
+  const seatSafe = !seatedAnywhere;
+  useEffect(() => { setSeatSafe(seatSafe); }, [seatSafe]);
   // a link to another table while you sit at one asks first
   const link = useCodes();
   const linkPrompt = link?.step === "ask" ? link.code : null;

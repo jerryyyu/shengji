@@ -158,6 +158,17 @@ identity, and the token is what lets a player resume their own seat even while
 a stale socket of theirs is still open. Store it and send it back in
 `table_join`. `gen` is the connection generation that now owns the seat.
 
+### `{type: "heartbeat_ready", build?: string}`
+
+Sent first on a socket opened with `?heartbeat=1`: the socket may now send
+`{type: "ping", nonce}`, answered with `{type: "pong", nonce}`. `build` is the
+build id of the page the server serves (the `shengji-build` meta tag of its
+index.html, read at startup; absent when it has none), also shown as
+`web_build` in `/healthz`. A page of another build reloads itself at the next
+moment that drops no seat: off every table and queue (never at a round's end,
+where a closed socket leaves the ready quorum), with no sheet open and no text field focused or holding a
+draft; never offline, and at most once per build per tab (`web/src/reloadGate.ts`).
+
 ### `{type: "state", ...GameState}`
 Full personalized game state:
 

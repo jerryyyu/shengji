@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
@@ -33,9 +34,30 @@ function precompressAssets(): Plugin {
   };
 }
 
+/** Writes the build id into index.html as `<meta name="shengji-build">`: a
+ *  hash of every emitted file's name. Hashed assets carry their contents'
+ *  hashes, so the id changes whenever the app's code or styles do; a change
+ *  only to index.html or an unhashed public file can leave it unchanged. The server
+ *  announces the tag it serves, and an older page reloads (reloadGate.ts). */
+function buildId(): Plugin {
+  return {
+    name: "shengji-build-id",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(_html, ctx) {
+        if (!ctx.bundle) return;
+        const names = Object.keys(ctx.bundle).filter((n) => n !== "index.html").sort();
+        const id = createHash("sha256").update(names.join("\n")).digest("hex").slice(0, 12);
+        return [{ tag: "meta", attrs: { name: "shengji-build", content: id }, injectTo: "head" }];
+      },
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), precompressAssets()],
+  plugins: [react(), precompressAssets(), buildId()],
   server: {
     // Same-origin /api in dev: the session cookie is set and read on one
     // host, so no CORS and nothing differs from the served build. The

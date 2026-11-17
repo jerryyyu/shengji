@@ -3,6 +3,7 @@
 // "open"; whether and where to rejoin is decided by App via intent.ts.
 
 import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
+import { noteServerBuild } from "./reloadGate";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
@@ -403,6 +404,7 @@ class Connection {
       // unknown actions. Heartbeats are transport-only, not game messages.
       if (msg.type === "heartbeat_ready") {
         if (!enabled) { enabled = true; schedulePing(); }
+        noteServerBuild(msg.build);
         return;
       }
       if (msg.type === "pong") {

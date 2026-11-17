@@ -20,7 +20,8 @@ describe("the terms of use page", () => {
                               "Reporting a player", "Ratings and the leaderboard", "No guarantees",
                               "Changes to these terms", "Contact"]);
     const text = host.textContent ?? "";
-    expect(text).toContain("Last updated 2026-11-16");
+    expect(text).toContain("Last updated 2026-11-17");
+    expect(text).toContain("You must be 13 or older to play.");
     expect(text).toContain("zero tolerance for objectionable content");
     expect(text).toContain("within 24 hours");
     expect(text).toContain("choose Report");

@@ -10,8 +10,8 @@ The dependency graph covers every tracked ``.py`` and ``.sh`` file:
   it, so ``import affected_tests`` (a script on ``sys.path``) and
   ``from tests.test_x import y`` both resolve;
 * string constants other than docstrings: a dotted module name (``importlib.import_module("m")``,
-  ``monkeypatch.setattr("m.attr", ...)``, ``["-m", "m"]``) resolves like an
-  import, and a path or file name (``"scripts/x.py"``, ``"golden.json"``)
+  ``monkeypatch.setattr("m.attr", ...)``, ``["-m", "m"]``) and an import
+  written inside a string (``python -c "import m"``) resolve like an import, and a path or file name (``"scripts/x.py"``, ``"golden.json"``)
   depends on every tracked file it names;
 * directory reads: a file that calls ``glob``/``rglob``/``iterdir``/
   ``listdir``/``scandir``/``os.walk`` depends on every file a constant glob
@@ -87,6 +87,8 @@ PATH_TOKEN = re.compile(r"[A-Za-z0-9_.*?/-]+\.[A-Za-z0-9]+")
 SHELL_TOKEN = re.compile(r"[A-Za-z0-9_./-]+")
 FILE_SUFFIXES = {"py", "pyc", "json", "jsonl", "toml", "txt", "md", "yml", "yaml", "sh", "npz", "npy", "pt",
                  "csv", "tsv", "lock", "cfg", "ini", "html", "js", "ts", "tsx", "css", "log", "gz", "pkl"}
+CODE_IMPORT = re.compile(r"(?:^|[\s;])(?:import|from)\s+([A-Za-z_][A-Za-z0-9_.]*)")
+PACKAGE_NAME = re.compile(r"(?<![A-Za-z0-9_.])(?:shengji|scripts|tests)(?:\.[A-Za-z_][A-Za-z0-9_]*)+")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 ANCHOR = "__file__"
 TEST_FILE = re.compile(r"test_[A-Za-z0-9_]*\.py")
@@ -232,6 +234,12 @@ class Graph:
                 deps.update(named)
                 if DOTTED.fullmatch(value) and not named and value.rsplit(".", 1)[-1] not in FILE_SUFFIXES:
                     deps.update(self.resolve_dotted(value))
+                elif not DOTTED.fullmatch(value):
+                    # code in a string (``python -c "import m"``, a heredoc)
+                    for module in CODE_IMPORT.findall(value):
+                        deps.update(self.resolve_dotted(module))
+                    for module in PACKAGE_NAME.findall(value):
+                        deps.update(self.resolve_dotted(module))
             elif isinstance(node, ast.Call):
                 func = node.func
                 name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)

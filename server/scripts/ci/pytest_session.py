@@ -35,16 +35,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import shard_plan  # noqa: E402
 
 REPO = shard_plan.REPO
+REPO_TEXT = os.path.realpath(os.fspath(REPO))
 SELECTED_ENV = "SHENGJI_CI_SELECTED"
 SHARD_ENV = "SHENGJI_CI_SHARD"
 DURATIONS_ENV = "SHENGJI_CI_DURATIONS_OUT"
 
 
-def repo_relative(path: Path) -> str | None:
-    try:
-        return path.resolve().relative_to(REPO).as_posix()
-    except ValueError:
-        return None
+def repo_relative(path) -> str:
+    """The repo-relative path, or the absolute one outside the repository.
+
+    Only ``os.path`` string functions: the hooks run while a test may have
+    patched ``pathlib.Path`` methods (``resolve``, ``exists``, ...)."""
+    resolved = os.path.realpath(os.fspath(path))
+    relative = os.path.relpath(resolved, REPO_TEXT)
+    return resolved if relative.startswith("..") else relative.replace(os.sep, "/")
 
 
 def engine_mode() -> str:
@@ -73,10 +77,12 @@ def selected_from_env(value: str | None) -> set[str] | None:
 class CiSession:
     def __init__(self, config: pytest.Config) -> None:
         self.config = config
-        self.skip: set[Path] = set()
+        self.skip: set[str] = set()
+        self.module_keys: dict[str, str] = {}
         self.kept: list[str] | None = None
         self.environment: dict[str, str | None] = {}
         self.out_dir: str | None = None
+        self.root_text = os.fspath(config.rootpath)
         self.seconds: dict[str, float] = {}
 
     def say(self, line: str) -> None:
@@ -93,7 +99,7 @@ class CiSession:
         if selected is None and not shard:
             return
         universe = command_line_modules(self.config.args, self.config.invocation_params.dir)
-        names = {path: repo_relative(path) or str(path) for path in universe}
+        names = {path: repo_relative(path) for path in universe}
         wanted = [p for p in universe if selected is None or names[p] in selected]
         mine = {names[p] for p in wanted}
         label = "all selected" if selected is None else f"{len(wanted)} of {len(universe)} selected"
@@ -104,7 +110,7 @@ class CiSession:
             mine = set(shard_plan.plan(modules, total, costs)[index - 1])
             predicted = sum(costs[m] for m in mine)
             label += f"; piece {index}/{total} ({engine_mode()}): {len(mine)} modules, predicted {predicted:.0f} s"
-        self.skip = {p for p in universe if names[p] not in mine}
+        self.skip = {os.path.realpath(os.fspath(p)) for p in universe if names[p] not in mine}
         self.kept = sorted(mine)
         self.say(f"ci-session: {label}")
         for module in self.kept:
@@ -115,12 +121,12 @@ class CiSession:
         invocation = self.config.invocation_params.dir
         self.config.args[:] = [
             arg for arg in self.config.args
-            if (invocation / str(arg).split("::", 1)[0]).resolve() not in self.skip
+            if os.path.realpath(os.path.join(os.fspath(invocation), str(arg).split("::", 1)[0])) not in self.skip
         ]
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_ignore_collect(self, collection_path: Path, config):
-        if self.skip and collection_path.resolve() in self.skip:
+        if self.skip and os.path.realpath(os.fspath(collection_path)) in self.skip:
             return True
         return None
 
@@ -129,27 +135,28 @@ class CiSession:
         start = time.perf_counter()
         report = yield
         if self.out_dir and isinstance(collector, pytest.Module) and collector.path.suffix == ".py":
-            module = repo_relative(Path(collector.path))
-            if module:
-                self.seconds[module] = self.seconds.get(module, 0.0) + time.perf_counter() - start
+            module = repo_relative(collector.path)
+            self.seconds[module] = self.seconds.get(module, 0.0) + time.perf_counter() - start
         return report
 
     def pytest_runtest_logreport(self, report) -> None:
         if not self.out_dir:
             return
-        module = repo_relative(self.config.rootpath / report.nodeid.split("::", 1)[0])
-        if module:
-            self.seconds[module] = self.seconds.get(module, 0.0) + float(report.duration)
+        prefix = report.nodeid.split("::", 1)[0]
+        module = self.module_keys.get(prefix)
+        if module is None:
+            module = self.module_keys[prefix] = repo_relative(os.path.join(self.root_text, prefix))
+        self.seconds[module] = self.seconds.get(module, 0.0) + float(report.duration)
 
     @pytest.hookimpl(trylast=True)
     def pytest_sessionfinish(self, session, exitstatus) -> None:
         if self.out_dir and self.seconds:
-            out = Path(self.out_dir)
-            out.mkdir(parents=True, exist_ok=True)
+            os.makedirs(self.out_dir, exist_ok=True)
             record = {"engine": engine_mode(), "shard": self.environment.get(SHARD_ENV),
                       "exitstatus": int(session.exitstatus), "modules": self.seconds}
             name = f"{engine_mode()}-{os.getpid()}-{time.time_ns()}.json"
-            (out / name).write_text(json.dumps(record, indent=1, sort_keys=True))
+            with open(os.path.join(self.out_dir, name), "w") as handle:
+                handle.write(json.dumps(record, indent=1, sort_keys=True))
 
 
 def install(session: pytest.Session) -> None:

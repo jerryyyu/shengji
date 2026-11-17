@@ -169,6 +169,7 @@ jobs:
           tests/test_check_doc_claims.py
           tests/test_check_lane_scripts.py
           tests/test_affected_tests.py
+          tests/test_ci_selection_planner.py
           tests/test_pv_exact_follow.py
           tests/test_test_checkout.py
           tests/test_decision_diagram.py
@@ -347,6 +348,8 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/b1a-028131a0.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/b1a-028131a0.npz" | sha256sum -c -
+      # The package-load modules hold wall-clock serving budgets, so each job runs
+      # its piece as one session with the runner to itself.
       - name: Load the production package on this tree
         if: matrix.kind == 'compiled'
         env:
@@ -359,7 +362,7 @@ jobs:
           SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
         run: >-
-          python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 2 --
+          python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
           uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider
           tests/test_encoder_round_compat.py
           tests/test_pv_finish_lead.py
@@ -757,9 +760,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # The Luna collector prompt profiles (compiled) and the shared observation
-  # and ballot suite (pure), each split across the two jobs by recorded time and
-  # run side by side as parallel steps.
+  # The Luna collector prompt profiles (compiled, one session per job) and the
+  # shared observation and ballot suite (pure, two sessions per job), each split
+  # across the two jobs by recorded time and run side by side as parallel steps.
   luna-profiles:
     needs: changes
     if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['luna-profiles']
@@ -799,7 +802,7 @@ jobs:
             run: python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 -- uv run pytest -q -p no:cacheprovider tests/test_luna_attempt.py tests/test_luna_supervisor.py tests/test_luna_cli.py tests/test_luna_transport.py
           - name: Test observation evidence and process containment
             run: >-
-              python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
+              python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 2 --
               uv run python -B -m pytest -q -p no:cacheprovider --durations=10
               tests/test_luna_attempt.py
               tests/test_luna_supervisor.py

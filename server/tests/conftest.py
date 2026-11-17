@@ -26,6 +26,14 @@ from production_package_gate import (  # noqa: F401
 )
 
 sys.path.insert(0, ".")
+sys.path.insert(0, str(TESTS.parent / "scripts" / "ci"))
+import pytest_session as _ci_session  # noqa: E402
+
+
+def pytest_sessionstart(session):
+    """CI selection, sharding and duration recording (scripts/ci/pytest_session.py)."""
+    _ci_session.install(session)
+
 
 # Every required server CI invocation loads this file.  On pull-request jobs,
 # compare the literal head SHA from the event payload with the literal base SHA;

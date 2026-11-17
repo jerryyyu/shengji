@@ -714,7 +714,7 @@ def mixpolish(args) -> int:
             for i in range(0, len(order), args.decisions):
                 v, tv, t = mix_forward(readout, z, np.sort(order[i:i + args.decisions]))
                 m_nll = mixture_nll(v, t)
-                v_ce, r_ce, _, has = polish_losses(readout, _polish_tensors(cz, np.sort(rng.choice(len(cz["leaf_row"]), size=args.batch, replace=False))))
+                v_ce, r_ce, _, has = polish_losses(readout, _polish_tensors(cz, np.sort(rng.choice(len(cz["leaf_row"]), size=min(args.batch, len(cz["leaf_row"])), replace=False))))
                 loss = m_nll.mean() + args.true_weight * v_ce.mean() + args.reply_weight * r_ce.sum() / has.float().sum().clamp_min(1.0)
                 opt.zero_grad()
                 loss.backward()

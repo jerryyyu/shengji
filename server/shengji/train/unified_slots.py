@@ -121,7 +121,7 @@ def shared_trunk_belief(belief_model, model):
                 enc = u.trunk.encode_history(inp)
             q, g = u.card_states(inp, enc)
             self.shared.clear()
-            self.shared.update(q=q, seat=int(inp["seat"]), plays=len(inp["tok_int"]))
+            self.shared.update(q=q, g=g, seat=int(inp["seat"]), plays=len(inp["tok_int"]))
             out = (g @ w["x_logits.weight"].T + w["x_logits.bias"]).reshape(N_CARDS, 4)
             o = _ln(q, w["out.0.weight"], w["out.0.bias"])
             return out + o @ w["out.1.weight"].T + w["out.1.bias"]
@@ -162,7 +162,8 @@ def _shared_scores(self, rnd, seat, actions, worlds):
         refusals = self._refusals.observe(rnd) if getattr(self, "refusal_constraints", False) else ()
         row = root_prior_preferences(model, rnd, seat, actions, refusals)
         self.unified_shared_misses += 1
-    slot.clear()
+    if getattr(self, "unified_frame", None) is None:
+        slot.clear()
     self.unified_prior_calls += 1
     return np.tile(row, (len(worlds), 1))
 
@@ -189,3 +190,219 @@ def install_shared_forward(bot, model):
     bot.scores = types.MethodType(_shared_scores, bot)
     bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{SHARED_TOKEN}{sha[:8]}"
     return bot
+
+
+# ---- the value slot and the reply prior from the per-world readout (`train.unified_readout`)
+
+VALUE_TOKEN = "uvalue"
+REPLY_TOKEN = "ureply"
+
+
+class LeafFrame:
+    """One play decision as the readout's frame: the actor, the trick it decides in, and (lazily) the
+    decision's projected card states and context."""
+
+    def __init__(self, bot, rnd, seat: int):
+        self.bot, self.rnd, self.seat = bot, rnd, int(seat)
+        self.tricks = len(rnd.history)
+        self.pos = len(rnd.trick.plays) if rnd.trick is not None else 0
+        self._cache = None
+
+    def cache(self, model):
+        """The readout's per-decision cache: from the card states the shared belief forward of this
+        decision kept (same model), else from the model's own trunk forward."""
+        if self._cache is None:
+            bot, rnd, seat = self.bot, self.rnd, self.seat
+            slot = getattr(getattr(bot, "belief_model", None), "shared", None)
+            if slot and slot.get("rnd") is rnd and slot.get("seat") == seat and slot.get("plays") == _plays_so_far(rnd) \
+                    and getattr(bot.belief_model, "unified", None) is model:
+                q, g = slot["q"], slot["g"]
+                bot.unified_trunk_shared += 1
+            else:
+                from ..ai.belief_numpy import decision_inputs
+                refusals = bot._refusals.observe(rnd) if getattr(bot, "refusal_constraints", False) else ()
+                inp = decision_inputs(rnd, seat, refusals)
+                q, g = model.card_states(inp, model.trunk.encode_history(inp))
+                bot.unified_trunk_forwards += 1
+            self._cache = model.decision_cache(q, g)
+        return self._cache
+
+
+def leaf_features(frame: LeafFrame, leaf):
+    """``((9, 54) planes, (12,) scalars)`` of ``leaf`` -- a full-information state after the frame's
+    decision, in the trick the decision was made in (that trick still open, or just completed) -- as
+    `unified_readout.leaf_batch` builds them; ``None`` for any other state."""
+    from ..engine.cards import points
+    from ..rl.encode import CARD_INDEX
+    from .belief_history import _winner_so_far
+    from .unified_readout import N_PLANES, leaf_scalars
+    if leaf.phase != "play":
+        return None
+    tricks = len(leaf.history)
+    if tricks == frame.tricks and leaf.trick is not None:
+        trick = leaf.trick
+    elif tricks == frame.tricks + 1 and (leaf.trick is None or not leaf.trick.plays):
+        trick = leaf.history[-1]
+    else:
+        return None
+    plays = trick.plays
+    n_trick = len(plays)
+    n_delta = n_trick - frame.pos
+    if not 1 <= n_delta <= 4 or n_trick > 4:
+        return None
+    seat = frame.seat
+    planes = np.zeros((N_PLANES, N_CARDS), np.float32)
+    for rel in range(4):
+        row = planes[rel]
+        for card in leaf.hands[(seat + rel) % 4]:
+            row[CARD_INDEX[card]] += 1.0
+    row = planes[4]
+    for card in leaf.buried:
+        row[CARD_INDEX[card]] += 1.0
+    total = 0
+    for i, tp in enumerate(plays):
+        if i >= frame.pos:
+            row = planes[5 + (tp.seat - seat) % 4]
+            for card in tp.cards:
+                row[CARD_INDEX[card]] += 1.0
+        total += sum(points(card) for card in tp.cards)
+    winner = (_winner_so_far(trick, leaf.ordering) - seat) % 4
+    nxt = winner if n_trick == 4 else (plays[-1].seat + 1 - seat) % 4
+    return planes, leaf_scalars([n_delta], [n_trick], [total], [winner], [nxt])[0]
+
+
+def _framed_search(self, rnd, seat, anchor, started, check_budget=None):
+    self.unified_frame = LeafFrame(self, rnd, seat)
+    try:
+        return type(self)._search(self, rnd, seat, anchor, started, check_budget)
+    finally:
+        self.unified_frame = None
+
+
+def _install_frame(bot):
+    if "unified_frame" not in vars(bot):
+        if not callable(getattr(type(bot), "_search", None)):
+            raise UnifiedSlotError("the bot has no play search to frame")
+        bot.unified_frame = None
+        bot.unified_trunk_shared = 0
+        bot.unified_trunk_forwards = 0
+        bot._search = types.MethodType(_framed_search, bot)
+        # the leaves must reach the evaluator as states: the prefix encoder hands it rows instead
+        if getattr(bot, "encode_prefix_cache", False):
+            bot.encode_prefix_cache = False
+
+
+def readout_evaluator(evaluator, bot, model):
+    """``evaluator`` (the served value evaluator) as one that scores a framed decision's same-trick
+    leaves with ``model``'s readout and hands every other position to the served evaluator."""
+    import copy
+    base = type(evaluator)
+
+    class ReadoutEvaluator(base):
+        def score_many(self, positions, seats, **kw):
+            frame = self.unified_bot.unified_frame
+            feats = [None] * len(positions) if frame is None else [leaf_features(frame, r) for r in positions]
+            mine = [i for i, f in enumerate(feats) if f is not None]
+            rest = [i for i, f in enumerate(feats) if f is None]
+            if not mine:
+                self.unified_bot.unified_value_served += len(rest)
+                return base.score_many(self, positions, seats, **kw)
+            values = np.empty(len(positions), dtype=np.float64)
+            if rest:
+                values[rest] = base.score_many(self, [positions[i] for i in rest], [seats[i] for i in rest], **kw)
+            m = self.unified_model
+            probs = m.leaf_value_probs(frame.cache(m), np.stack([feats[i][0] for i in mine]),
+                                       np.stack([feats[i][1] for i in mine]))
+            sign = np.asarray([1.0 if (int(seats[i]) - frame.seat) % 2 == 0 else -1.0 for i in mine])
+            values[mine] = sign * (probs @ self.support)
+            self.positions += len(mine)
+            self.model_rows += len(mine)
+            self.unified_bot.unified_value_rows += len(mine)
+            self.unified_bot.unified_value_served += len(rest)
+            return values
+
+    out = copy.copy(evaluator)
+    out.__class__ = ReadoutEvaluator
+    out.unified_bot = bot
+    out.unified_model = model
+    return out
+
+
+def install_value_readout(bot, model):
+    """Replace ``bot``'s value slot on play decisions with ``model``'s readout (the leaves of the
+    decision's own trick; terminal leaves, bury and declare values stay the served evaluator's);
+    returns ``bot``."""
+    sha = getattr(model, "package_sha256", None)
+    if not sha or not callable(getattr(model, "leaf_value_probs", None)):
+        raise UnifiedSlotError("the model is not a hashed unified readout package")
+    if getattr(bot, "unified_value_model", None) is not None:
+        raise UnifiedSlotError("a unified value readout is already installed")
+    if not callable(getattr(getattr(bot, "evaluator", None), "score_many", None)):
+        raise UnifiedSlotError("the bot has no served value evaluator to replace")
+    _install_frame(bot)
+    bot.unified_value_model = model
+    bot.unified_value_rows = 0
+    bot.unified_value_served = 0
+    bot.evaluator = readout_evaluator(bot.evaluator, bot, model)
+    bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{VALUE_TOKEN}{sha[:8]}"
+    return bot
+
+
+def install_reply_readout(bot, model):
+    """Mark ``bot`` to take its greedy-finish reply prior from ``model``'s readout
+    (`readout_reply_ply` must stand in for ``pv_tree_search.greedy_reply_ply``); returns ``bot``."""
+    sha = getattr(model, "package_sha256", None)
+    if not sha or not callable(getattr(model, "leaf_reply_logits", None)):
+        raise UnifiedSlotError("the model is not a hashed unified readout package")
+    if getattr(bot, "unified_reply_model", None) is not None:
+        raise UnifiedSlotError("a unified reply readout is already installed")
+    _install_frame(bot)
+    bot.unified_reply_model = model
+    bot.unified_reply_rows = 0
+    bot.unified_reply_served = 0
+    bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{REPLY_TOKEN}{sha[:8]}"
+    return bot
+
+
+def readout_reply_ply(served_ply):
+    """``served_ply`` (``pv_tree_search.greedy_reply_ply``) for every bot, except that a bot marked by
+    `install_reply_readout` ranks each clone's follows by the readout's reply log-odds inside a framed
+    decision.  A bot without the mark runs ``served_ply`` with its own arguments."""
+    def ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn=None, *args, **kw):
+        model = getattr(bot, "unified_reply_model", None)
+        frame = getattr(bot, "unified_frame", None)
+        if model is None:
+            return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
+        feats = None if frame is None else [leaf_features(frame, clone) for clone in active]
+        if feats is None or any(f is None for f in feats):
+            bot.unified_reply_served += len(active)
+            return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
+        index_of = {id(clone): i for i, clone in enumerate(active)}
+        pending = []
+
+        def listing(clone, seat, cache_):
+            out = legal_fn(clone, seat, cache_)
+            if len(out[0]) != 1:
+                pending.append(index_of[id(clone)])
+            return out
+
+        def rows(clones, seat):
+            return np.zeros((len(clones), 1), np.float32)
+
+        at = [0]
+
+        def predict(chunk):
+            take = pending[at[0]:at[0] + len(chunk)]
+            at[0] += len(chunk)
+            if len(take) != len(chunk):
+                raise UnifiedSlotError("the reply rows and the listed clones disagree")
+            bot.unified_reply_rows += len(take)
+            return model.leaf_reply_logits(frame.cache(model), np.stack([feats[i][0] for i in take]),
+                                           np.stack([feats[i][1] for i in take]))
+        served_predict = bot.predict
+        bot.predict = predict
+        try:
+            return served_ply(bot, active, gate, cache, stats, keep, version, listing, values_fn, rows, *args, **kw)
+        finally:
+            bot.predict = served_predict
+    return ply

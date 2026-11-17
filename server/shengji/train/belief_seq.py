@@ -59,6 +59,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from .belief_eval import known_counts
 from .belief_eval import (SUBSETS, copy_terms, deal_bootstrap, fit_scalar, masked_softmax,
                           mean_ll, permute_within_strata, reliability, residualize,
                           sampler_probs, strata_of, summarize, uniform_probs)
@@ -159,6 +160,52 @@ def seed_keep(arrays, windows):
     return ~np.isin(deals, deals[excluded])
 
 
+def load_soft_targets(path: str) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """``{chunk path: (rows, T)}`` from a soft-target file: arrays ``chunk``
+    (each row's chunk path, as ``extract_entries`` names it), ``row`` (the row
+    within that chunk) and ``T`` (``(N, 54, 4)`` expected copies per receiver,
+    in the label layout before pins are subtracted)."""
+    with np.load(path) as z:
+        chunks, rows, T = z["chunk"], z["row"].astype(np.int64), z["T"].astype(np.float32)
+    if T.shape[1:] != (N_CARDS, N_RECV) or len(chunks) != len(T) or len(rows) != len(T):
+        raise BeliefSeqError(f"{path}: soft targets are not (N, 54, 4) with a chunk and row each")
+    out: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    for c in np.unique(chunks):
+        sel = np.flatnonzero(chunks == c)
+        if len(np.unique(rows[sel])) != len(sel):
+            raise BeliefSeqError(f"{path}: a row of {c} has two soft targets")
+        out[str(c)] = (rows[sel], T[sel])
+    return out
+
+
+def soft_rows(soft, n: int, X: np.ndarray) -> np.ndarray:
+    """``(n, 54, 4)`` soft targets of one chunk, residualized as ``residualize``
+    residualizes ``Y`` (the public pins subtracted); zero on rows without one."""
+    out = np.zeros((n, N_CARDS, N_RECV), np.float32)
+    if soft is None:
+        return out
+    rows, T = soft
+    if len(rows) and (rows.min() < 0 or rows.max() >= n):
+        raise BeliefSeqError("a soft-target row is outside its chunk")
+    out[rows] = T - known_counts(np.asarray(X[rows])).astype(np.float32)
+    return out
+
+
+def check_soft(part: dict[str, np.ndarray], tol: float = 1e-3) -> None:
+    """A soft target puts no mass on an infeasible receiver, none below zero, and
+    places exactly the row's unknown copies of each code; tiny residues are cleared."""
+    T, M = part["T"], part["M"]
+    has = T.reshape(len(T), -1).any(axis=1)
+    if not has.any():
+        return
+    Th, Yh = T[has], part["Y"][has].astype(np.float32)
+    if Th.min() < -tol or np.abs(np.where(M[has], 0.0, Th)).max() > tol:
+        raise BeliefSeqError("a soft target puts mass outside the residual feasible mask")
+    if np.abs(Th.sum(-1) - Yh.sum(-1)).max() > tol:
+        raise BeliefSeqError("a soft target does not place the row's unknown copies")
+    part["T"] = np.where(M, np.maximum(T, 0.0), 0.0).astype(np.float32)
+
+
 def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified, *,
               sampler_rows_only: bool = False) -> dict[str, np.ndarray]:
     """One chunk's rows (residualized: unknown copies only) joined with its
@@ -166,6 +213,8 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
     with np.load(io.BytesIO(verified.read(entry["path"], entry["sha256"]))) as z:
         part = {k: z[k] for k in keys}
         keep = np.ones(len(part["X"]), dtype=bool)
+        if "soft" in entry:
+            part["T"] = soft_rows(entry["soft"], len(part["X"]), part["X"])
         if entry.get("exclude_seed_windows"):
             selected = seed_keep(z, entry["exclude_seed_windows"])
             if selected.shape != keep.shape:
@@ -188,6 +237,8 @@ def load_part(entry: Mapping[str, Any], keys: Sequence[str], verified: _Verified
         residualize(part)
         if np.any((part["Y"] > 0) & ~part["M"]):
             raise BeliefSeqError("a true holder is outside the feasible mask")
+        if "T" in part:
+            check_soft(part)
         # the actor of a row is the seat of the play it is about to make
         tok_seat = hist["tok_int"][part["row_round"], part["row_ply"], 0]
         if np.any(tok_seat != part["row_seat"]):
@@ -254,6 +305,7 @@ def make_batch(part: Mapping[str, Any], round_ids: np.ndarray, rows: np.ndarray,
         "row_card": row_card_planes(X),
         "M": part["M"][rows],
         "Y": part["Y"][rows].astype(np.float32),
+        **({"T": part["T"][rows]} if "T" in part else {}),
         "rr": np.asarray([local[int(r)] for r in part["row_round"][rows]], np.int64),
         "seat": part["row_seat"][rows].astype(np.int64),
         "ply": (np.zeros(len(rows), np.int64) if no_history
@@ -425,12 +477,16 @@ def to_torch(b: Mapping[str, np.ndarray]):
     return {k: torch.from_numpy(np.ascontiguousarray(v)) for k, v in b.items()}
 
 
-def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0):
+def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0,
+               soft_weight: float = 0.0):
     """Summed per-copy cross-entropy and the copy count.  ``bf16`` runs the
     forward under a CPU bf16 autocast; the logits come back fp32 and the
     mask, log-softmax and sum stay fp32 (as do the parameters and optimizer).
     ``kitty_weight`` scales the copies whose true holder is the kitty, in the
-    loss and in the count, so the mean stays a per-copy average."""
+    loss and in the count, so the mean stays a per-copy average.  ``soft_weight``
+    adds that weight times the cross-entropy against the soft targets ``T``
+    (expected copies per receiver) and their copies to the count; 0 is the hard
+    loss exactly."""
     import torch
     with torch.autocast("cpu", dtype=torch.bfloat16, enabled=bf16):
         logits = model(tb)
@@ -441,7 +497,12 @@ def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0):
         w = torch.ones(N_RECV, dtype=y.dtype)
         w[KITTY] = kitty_weight
         y = y * w
-    return -(y * logp).sum(), y.sum()
+    loss, n = -(y * logp).sum(), y.sum()
+    if soft_weight:
+        t = tb["T"]
+        loss = loss - soft_weight * (t * logp).sum()
+        n = n + soft_weight * t.sum()
+    return loss, n
 
 
 def compile_forward(model):
@@ -863,6 +924,37 @@ def calib_losses(lc: np.ndarray, part: Mapping[str, Any], temperature: float = 1
     return {k: t[k]["logloss"] for k in ("all", "hands", "kitty")}
 
 
+def load_soft_eval(dirs, path: str, verified, *, exclude_seed_windows=()) -> dict[str, Any]:
+    """The calib-split rows that carry a soft target (every other row dropped)."""
+    soft = load_soft_targets(path)
+    entries = [e for e in extract_entries(dirs, "calib", exclude_seed_windows=exclude_seed_windows)
+               if e["path"] in soft]
+    if len(entries) != len(soft):
+        raise BeliefSeqError("a soft-eval chunk is not a calib chunk of --data")
+    parts = []
+    for e in entries:
+        e["soft"] = soft[e["path"]]
+        p = load_part(e, ROW_KEYS, verified)
+        keep = p["T"].reshape(len(p["T"]), -1).any(axis=1)
+        parts.append({**{k: v[keep] for k, v in p.items() if k != "_rounds"}, "_rounds": p["_rounds"]})
+    return concat_parts(parts)
+
+
+def soft_eval_losses(model, part, no_history: bool) -> dict[str, float]:
+    """Per-copy cross-entropy against the soft targets, its KL (minus the targets'
+    entropy) and the true-label log-loss, on the soft-eval rows (T = 1)."""
+    lc = predict_logits(model, part, no_history=no_history)
+    P = masked_softmax(lc, part["M"])
+    T = part["T"].astype(np.float64)
+    logp = np.log(np.maximum(P, EPS))
+    n = T.sum()
+    ce = float(-(T * logp).sum() / n)
+    q = T / np.maximum(part["Y"].astype(np.float64).sum(-1, keepdims=True), EPS)
+    ent = float(-(T * np.log(np.maximum(q, EPS))).sum() / n)
+    return {"rows": int(len(T)), "soft_ce": ce, "soft_kl": ce - ent,
+            "true_ll": mean_ll(P, part["Y"])}
+
+
 def _status(path: str | None, msg: str) -> None:
     line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {msg}"
     print(line, flush=True)
@@ -881,6 +973,19 @@ def train(args) -> int:
     verified = _Verified()
     entries = extract_entries(args.data, "train",
                               exclude_seed_windows=args.exclude_seed_window)
+    if args.train_chunks:
+        wanted = {l.strip() for l in open(args.train_chunks) if l.strip()}
+        entries = [e for e in entries if e["path"] in wanted]
+        if len(entries) != len(wanted):
+            raise BeliefSeqError("--train-chunks names a chunk outside the train split of --data")
+    soft = soft_eval = None
+    if args.soft_targets:
+        soft = load_soft_targets(args.soft_targets)
+        known = {e["path"] for e in entries}
+        if not set(soft) <= known:
+            raise BeliefSeqError("a soft target's chunk is not a training chunk")
+        for e in entries:
+            e["soft"] = soft.get(e["path"])
     if args.max_train_rows:
         rng = np.random.default_rng(args.seed)
         picked, n = [], 0
@@ -895,6 +1000,9 @@ def train(args) -> int:
                     row_frac=args.row_frac, no_history=args.no_history, permute=args.permute)
     calib = load_eval(args.data, "calib", verified, max_rows=args.calib_rows, seed=args.seed,
                       rows=args.eval_rows, exclude_seed_windows=args.exclude_seed_window)
+    if args.soft_eval:
+        soft_eval = load_soft_eval(args.data, args.soft_eval, verified,
+                                   exclude_seed_windows=args.exclude_seed_window)
     if args.permute:
         perm = permute_within_strata(strata_of(calib["trick"], calib["role"]), args.seed + 2)
         calib["Y"], calib["M"] = calib["Y"][perm], calib["M"][perm]
@@ -915,6 +1023,8 @@ def train(args) -> int:
         if init["temperature"] is not None:
             init_record["calib_ll_at_temperature"] = mean_ll(
                 masked_softmax(lc, calib["M"], init["temperature"]), calib["Y"])
+        if soft_eval is not None:
+            init_record["soft_eval"] = soft_eval_losses(model, soft_eval, args.no_history)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
     total_steps = args.epochs * n_buffers
@@ -990,7 +1100,8 @@ def train(args) -> int:
             tb = to_torch(b)
             opt.zero_grad()
             try:
-                loss, n = batch_loss(fwd, tb, bf16=bf16, kitty_weight=args.kitty_weight)
+                loss, n = batch_loss(fwd, tb, bf16=bf16, kitty_weight=args.kitty_weight,
+                                     soft_weight=args.soft_weight)
                 (loss / n.clamp_min(1.0)).backward()
             except Exception as exc:
                 if compiled_ok:
@@ -1009,8 +1120,16 @@ def train(args) -> int:
         state["history"].append({"epoch": epoch + 1, "train_ll": tot / max(cnt, 1), "calib_ll": cll,
                                  "calib_subsets": calib_losses(lc, calib),
                                  "seconds": time.time() - t0})
+        if soft_eval is not None:
+            state["history"][-1]["soft_eval"] = soft_eval_losses(model, soft_eval, args.no_history)
         _status(status, f"EPOCH {epoch + 1} train {tot / max(cnt, 1):.4f} calib {cll:.4f} "
-                        f"({time.time() - t0:.0f}s)")
+                        f"({time.time() - t0:.0f}s)"
+                        + (f" soft_eval {json.dumps(state['history'][-1]['soft_eval'])}"
+                           if soft_eval is not None else ""))
+        if args.keep_epochs:
+            torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
+                        "epoch": epoch + 1, "calib_ll": cll, "init": state.get("init"),
+                        "eval_rows": args.eval_rows}, out / f"epoch-{epoch + 1}.pt")
         if cll < state["best"] - 1e-5:
             state["best"], state["bad"] = cll, 0
             torch.save({"model": model.state_dict(), "config": model.config, "args": vars(args),
@@ -1416,6 +1535,15 @@ def build_parser() -> argparse.ArgumentParser:
                    help="training-loss weight of the copies whose true holder is the kitty "
                         "(calib selection and evaluate stay unweighted)")
     t.add_argument("--save-every", type=float, default=600.0)
+    t.add_argument("--train-chunks", default=None,
+                   help="file of train-chunk paths (as extract_entries names them): train on these only")
+    t.add_argument("--soft-targets", default=None,
+                   help="npz of soft targets (chunk, row, T (N, 54, 4) expected copies) on train rows")
+    t.add_argument("--soft-weight", type=float, default=0.0,
+                   help="weight of the soft-target cross-entropy (0, the default: the hard loss exactly)")
+    t.add_argument("--soft-eval", default=None,
+                   help="npz of soft targets on calib rows: logged per epoch (cross-entropy, KL)")
+    t.add_argument("--keep-epochs", action="store_true", help="also save epoch-N.pt every epoch")
     t.add_argument("--no-history", action="store_true")
     t.add_argument("--permute", action="store_true")
     t.add_argument("--init", default=None,

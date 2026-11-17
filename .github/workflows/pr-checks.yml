@@ -733,6 +733,7 @@ jobs:
             tests/test_pv_exact_lead_full_minimax.py \
             tests/test_world_weighting.py \
             tests/test_belief_seq_init.py \
+            tests/test_belief_seq_soft.py \
             tests/test_unified_seq.py \
             tests/test_s134_v1_read.py \
             tests/test_pv_value_matrix.py \

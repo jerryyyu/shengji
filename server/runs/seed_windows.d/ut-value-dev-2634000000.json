@@ -1,0 +1,14 @@
+{
+ "name": "ut-value-dev-2634000000",
+ "purpose": "screen",
+ "seed0": 2634000000,
+ "clusters": 2000,
+ "span": [
+  2634000000,
+  2634002000
+ ],
+ "created_at": "2026-11-17T01:42:00Z",
+ "host": "ultra",
+ "git_head": "64b27cbf",
+ "note": "Unified model inside release 52's search, value slot (Jerry 2026-11-16 'Let's try value for the unified model too'): tier-i DEV slot duels vs release 52 as served, 1,000 paired seat-swapped rank-mixed deals per arm on the M5 Ultra; branch claude/ut-inside1. Arm V [2634000000, 2634001000): play-search value positions scored by the unified model's per-world readout. Arm ALL [2634001000, 2634002000): belief + root prior + value (+ reply prior) from one package. The value offline gate failed and was overridden by Jerry 2026-11-17 (value1/AMENDMENT_4.md); both arms were dealt on 2026-11-17 (tier i, no seed gate in the runner). Clearance: value1/clear. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

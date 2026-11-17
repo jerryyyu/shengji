@@ -191,14 +191,15 @@ def test_the_copy_scan_flags_a_mismatched_cooldown():
 
 
 ERROR_CODES_TS = "web/src/errorCodes.ts"
-RAISED = (re.compile(r'QueueError\(\s*"([a-z_]+)"'), re.compile(r'ReportRefused\(\s*"([a-z_]+)"'))
+RAISED = (re.compile(r'QueueError\(\s*"([a-z_]+)"'), re.compile(r'ReportRefused\(\s*"([a-z_]+)"'),
+          re.compile(r'BlockRefused\(\s*"([a-z_]+)"'))
 CODE_LITERAL = re.compile(r'"code":\s*"([a-z_]+)"')
 ERROR_FRAME = '"type": "error"'
 
 
 def server_error_codes() -> dict[str, set[str]]:
     """Every code an ``error`` frame can carry, by the file that sends it:
-    ``QueueError``/``ReportRefused`` codes, ``"code"`` literals on a line that
+    ``QueueError``/``ReportRefused``/``BlockRefused`` codes, ``"code"`` literals on a line that
     builds ``"type": "error"`` or within three lines after one, and the keys
     of ``INVITE_REFUSALS``."""
     found: dict[str, set[str]] = {}
@@ -227,6 +228,8 @@ def test_the_error_code_scan_finds_each_way_a_code_is_sent():
     found = server_error_codes()
     assert {"seat_taken", "start_failed", "table_full"} <= found["matchmaking.py"]
     assert {"report_bot", "report_rate_limited"} <= found["reports.py"]
+    assert {"block_bot", "block_rate_limited", "block_bad_seat"} <= found["server.py"]
+    assert "block_full" in found["blocks.py"]
     # a literal on the frame's own line, one on the next line, and INVITE_REFUSALS only
     assert {"retired", "ranked_queue_only", "table_left"} <= found["server.py"]
 

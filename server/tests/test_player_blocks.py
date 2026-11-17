@@ -242,7 +242,7 @@ def test_a_blocked_sender_is_left_out_of_a_waiting_tables_chat(blocks_on):
     run(go())
 
 
-def test_a_waiting_tables_lines_carry_their_senders_into_the_room():
+def test_a_snapshot_leaves_out_only_the_lines_of_senders_the_viewer_blocked():
     from shengji.api import blocks
     from shengji.api import server as srv
 

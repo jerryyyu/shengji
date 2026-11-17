@@ -1,6 +1,6 @@
 // The reload gate: a page of an older build reloads once, silently, when the
-// server names a newer one and a reload drops nothing: off every table, or at
-// a round's end; never mid-round, offline, over a draft or twice per build.
+// server names a newer one and a reload drops nothing: off every table; never
+// at a table (a round's end included), offline, over a draft or twice per build.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -100,14 +100,15 @@ it("never reloads when the server serves this page's build, or names none", asyn
   expect(reload).not.toHaveBeenCalled();
 });
 
-it("waits through a live round and reloads at its end", async () => {
+it("waits through a live round and its unconfirmed end", async () => {
   const ws = await mount();
   act(() => ws.deliver(playing));
   act(() => ws.deliver({ type: "heartbeat_ready", build: "new222" }));
   act(() => { document.dispatchEvent(new Event("visibilitychange")); });
   expect(reload).not.toHaveBeenCalled();
   act(() => ws.deliver(roundEnd));
-  expect(reload).toHaveBeenCalledTimes(1);
+  act(() => { document.dispatchEvent(new Event("visibilitychange")); });
+  expect(reload).not.toHaveBeenCalled();
 });
 
 it("does not reload at a round's end this player already confirmed", async () => {

@@ -272,11 +272,10 @@ export default function App() {
   const q = useQueue();
   const account = useAuth();
   const seatedAnywhere = inRoom || q.queued;
-  // a newer page build loads only where a reload drops no seat: off every
-  // table and queue, or at a round's end this player has not confirmed
-  const roundEndOpen = game !== null && game.phase === "round_end" && !(game.ready ?? []).includes(game.you)
-    && !q.queued;
-  const seatSafe = !seatedAnywhere || roundEndOpen;
+  // a newer page build loads only off every table and queue: a closed
+  // socket at a round's end leaves the ready quorum, and the next round can
+  // start without this player
+  const seatSafe = !seatedAnywhere;
   useEffect(() => { setSeatSafe(seatSafe); }, [seatSafe]);
   // a link to another table while you sit at one asks first
   const link = useCodes();

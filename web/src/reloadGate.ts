@@ -9,8 +9,8 @@ import { OFFLINE } from "./offlineMode";
  * is the same tag in the document it was loaded from. A dev page or server
  * has no tag, and the gate stays shut.
  *
- * A moment is safe when App says the seat is (no table, room or queue, or a
- * round's end this player has not confirmed yet), no sheet or queue layer is
+ * A moment is safe when App says the seat is (no table, room or queue), no
+ * sheet or queue layer is
  * open and no text field is focused or holds a draft. The gate is tried when
  * the server names its build, when that seat state changes, and when the tab
  * comes back into view. Offline, and in the app's bundled copy, it never

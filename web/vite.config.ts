@@ -35,8 +35,9 @@ function precompressAssets(): Plugin {
 }
 
 /** Writes the build id into index.html as `<meta name="shengji-build">`: a
- *  hash of every emitted file's name, and those names carry their contents'
- *  hashes, so the id changes exactly when the built page does. The server
+ *  hash of every emitted file's name. Hashed assets carry their contents'
+ *  hashes, so the id changes whenever the app's code or styles do; a change
+ *  only to index.html or an unhashed public file can leave it unchanged. The server
  *  announces the tag it serves, and an older page reloads (reloadGate.ts). */
 function buildId(): Plugin {
   return {

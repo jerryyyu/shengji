@@ -192,17 +192,24 @@ def build(arch: Mapping[str, Any], readout_arch: Mapping[str, Any] = READOUT_ARC
             self.value = nn.Linear(width, OUTCOME_CLASSES)
             self.reply = nn.Linear(width, N_CARDS)
 
-        def forward(self, q, g, row, planes, scalars):
+        def project(self, q, g):
+            """The per-decision projections: ``(B, 54, dp)`` card states and ``(B, dc)`` context."""
             n = self.card_ln(q.float())
-            S = self.card_proj(n)                                        # B,54,dp
-            c = torch.relu(self.ctx(torch.cat([g.float(), n.mean(1)], -1)))   # B,dc
-            pooled = torch.bmm(planes, S[row]) * POOL_SCALE              # L,9,dp
-            x = torch.cat([planes.flatten(1), scalars, pooled.flatten(1), c[row]], -1)
+            return self.card_proj(n), torch.relu(self.ctx(torch.cat([g.float(), n.mean(1)], -1)))
+
+        def body(self, S, c, planes, scalars):
+            """The per-leaf part: each leaf's own ``(54, dp)`` card states and ``(dc,)`` context."""
+            pooled = torch.bmm(planes, S) * POOL_SCALE                   # L,9,dp
+            x = torch.cat([planes.flatten(1), scalars, pooled.flatten(1), c], -1)
             h = torch.relu(self.stem(x))
             for ln, up, down in zip(self.ln, self.up, self.down):
                 h = h + down(torch.relu(up(ln(h))))
             h = self.out_ln(h)
             return self.value(h), self.reply(h)
+
+        def forward(self, q, g, row, planes, scalars):
+            S, c = self.project(q, g)
+            return self.body(S[row], c[row], planes, scalars)
 
     class UnifiedReadout(nn.Module):
         def __init__(self):
@@ -452,6 +459,176 @@ def export(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------ head-only polish on a frozen trunk
+
+BODY_PREFIXES = ("stem.", "ln.", "up.", "down.", "out_ln.", "value.", "reply.")
+
+
+def cache_arrays(model, part, *, rounds_per_batch: int = 32) -> dict[str, np.ndarray]:
+    """One part's rows as the polish reads them: the frozen per-decision projections (float16) and
+    every leaf (row index, planes, scalars, outcome target, reply)."""
+    import torch
+    n = len(part["X"])
+    dp, dc = model.config["readout"]["dp"], model.config["readout"]["dc"]
+    out = {"S": np.zeros((n, N_CARDS, dp), np.float16), "c": np.zeros((n, dc), np.float16)}
+    leaves = {k: [] for k in ("row", "planes", "scalars", "target", "reply", "reply_hand", "has_reply")}
+    with torch.no_grad():
+        for rids, rows in bs.round_batches(part, rounds_per_batch, None):
+            b = make_batch(part, rids, rows)
+            tb = us.to_device(b, "cpu")
+            _, _, q, g = us.trunk_forward(model.trunk, tb)
+            S, c = model.readout.project(q, g)
+            out["S"][rows] = S.numpy().astype(np.float16)
+            out["c"][rows] = c.numpy().astype(np.float16)
+            leaves["row"].append(np.asarray(rows, np.int64)[b["leaf_row"]].astype(np.int32))
+            leaves["planes"].append(b["leaf_planes"].astype(np.uint8))
+            leaves["scalars"].append(b["leaf_scalars"].astype(np.float32))
+            leaves["target"].append(b["q_target"][b["leaf_row"]].astype(np.int16))
+            leaves["reply"].append(b["leaf_reply"].astype(np.uint8))
+            leaves["reply_hand"].append(b["leaf_reply_hand"])
+            leaves["has_reply"].append(b["leaf_has_reply"])
+    out.update({"leaf_" + k: np.concatenate(v) for k, v in leaves.items()})
+    return out
+
+
+def cache(args) -> int:
+    """Write the polish cache of a checkpoint: ``OUT/calib-0000.npz`` (the trainer's calibration rows) and
+    ``OUT/train-NNNN.npz`` (consecutive groups of ``--group-chunks`` train chunks; ``--worker I --workers N``
+    takes every N-th group).  A shard that exists is kept."""
+    import torch
+    torch.set_num_threads(args.threads)
+    model, _ = load_checkpoint(args.ckpt)
+    verified = bs._Verified()
+    index = us.OutcomeIndex(us.parse_store_map(args.store_map))
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    def write(name, part):
+        tmp = out / (name + ".tmp.npz")
+        np.savez(tmp, **cache_arrays(model, part))
+        os.replace(tmp, out / (name + ".npz"))
+    if args.worker == 0 and not (out / "calib-0000.npz").exists():
+        write("calib-0000", us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
+                                          exclude_seed_windows=args.exclude_seed_window))
+    entries = us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window)
+    groups = [entries[i:i + args.group_chunks] for i in range(0, len(entries), args.group_chunks)]
+    if args.max_groups:
+        groups = groups[:args.max_groups]
+    for gi in range(args.worker, len(groups), args.workers):
+        name = f"train-{gi:04d}"
+        if (out / (name + ".npz")).exists():
+            continue
+        parts = [us.load_unified_part(e, verified, index) for e in groups[gi]]
+        parts = [p for p in parts if len(p["X"])]
+        if parts:
+            write(name, bs.concat_parts(parts))
+        print(f"[cache] {name} of {len(groups)}", flush=True)
+    (out / f"DONE.{args.worker}").write_text(json.dumps({"groups": len(groups), "chunks": len(entries)}))
+    return 0
+
+
+def _polish_tensors(z, pick=None):
+    import torch
+    row = z["leaf_row"] if pick is None else z["leaf_row"][pick]
+    get = lambda k: z[k] if pick is None else z[k][pick]
+    return (torch.from_numpy(z["S"][row].astype(np.float32)), torch.from_numpy(z["c"][row].astype(np.float32)),
+            torch.from_numpy(get("leaf_planes").astype(np.float32)), torch.from_numpy(get("leaf_scalars")),
+            torch.from_numpy(get("leaf_target").astype(np.int64)), torch.from_numpy(get("leaf_reply").astype(np.float32)),
+            torch.from_numpy(get("leaf_reply_hand")), torch.from_numpy(get("leaf_has_reply")))
+
+
+def polish_losses(readout, t):
+    """Per-leaf outcome CE and reply CE (zero where there is no reply) of cached leaves."""
+    import torch
+    S, c, planes, scalars, target, reply, hand, has = t
+    v, r = readout.body(S, c, planes, scalars)
+    v_ce = torch.nn.functional.cross_entropy(v, target, reduction="none")
+    rl = torch.log_softmax(r.masked_fill(~hand, -1e9), -1)
+    r_ce = -((reply / reply.sum(-1, keepdim=True).clamp_min(1.0)) * rl).sum(-1) * has
+    return v_ce, r_ce, scalars[:, 2] > 0, has
+
+
+def polish_eval(readout, z, batch: int = 16384) -> dict[str, float]:
+    import torch
+    sums = np.zeros(6)
+    readout.eval()
+    with torch.no_grad():
+        for i in range(0, len(z["leaf_row"]), batch):
+            v, r, end, has = polish_losses(readout, _polish_tensors(z, np.arange(i, min(i + batch, len(z["leaf_row"])))))
+            sums += [float(v.sum()), len(v), float((v * end).sum()), float(end.sum()), float(r.sum()), float(has.sum())]
+    readout.train()
+    return {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
+
+
+def polish(args) -> int:
+    """Train the readout's per-leaf body on a cache (the trunk, the other heads and the per-decision
+    projections stay the checkpoint's); ``OUT/best.pt`` is the checkpoint with the body of the pass that
+    scored the lowest calibration trick-end NLL, or the input checkpoint when no pass beats it."""
+    import torch
+    torch.set_num_threads(args.threads)
+    torch.manual_seed(args.seed)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    status = str(out / "status.log")
+    model, saved = load_checkpoint(args.ckpt)
+    readout = model.readout
+    body = [p for n, p in readout.named_parameters() if n.startswith(BODY_PREFIXES)]
+    frozen = [n for n, p in readout.named_parameters() if not n.startswith(BODY_PREFIXES)]
+    if sorted(frozen) != ["card_ln.bias", "card_ln.weight", "card_proj.bias", "card_proj.weight", "ctx.bias", "ctx.weight"]:
+        raise UnifiedReadoutError(f"unexpected frozen readout parameters {frozen}")
+    cache_dir = Path(args.cache)
+    shards = sorted(cache_dir.glob("train-*.npz"))
+    done = sorted(cache_dir.glob("DONE.*"))
+    if not shards or not done:
+        raise UnifiedReadoutError("the cache is incomplete")
+    calib = dict(np.load(cache_dir / "calib-0000.npz"))
+    readout.train()
+    opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
+    total = args.epochs * len(shards)
+    init = polish_eval(readout, calib)
+    best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
+    _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
+                    f"ckpt={us.sha256_file(args.ckpt)} init calib {json.dumps(init)}")
+    rng = np.random.default_rng(args.seed)
+    step_i, t0 = 0, time.time()
+    state = None
+    for epoch in range(args.epochs):
+        sums = np.zeros(6)
+        for si in rng.permutation(len(shards)):
+            for g in opt.param_groups:
+                g["lr"] = args.lr * 0.5 * (1 + math.cos(math.pi * step_i / total))
+            step_i += 1
+            z = np.load(shards[si])
+            z = {k: z[k] for k in z.files}
+            order = rng.permutation(len(z["leaf_row"]))
+            for i in range(0, len(order), args.batch):
+                v, r, end, has = polish_losses(readout, _polish_tensors(z, np.sort(order[i:i + args.batch])))
+                loss = v.mean() + args.reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
+                opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(body, 1.0)
+                opt.step()
+                sums += [float(v.sum().detach()), len(v), float((v * end).sum().detach()), float(end.sum()),
+                         float(r.sum().detach()), float(has.sum())]
+            if (out / "STOP").exists():
+                _status(status, "STOPPED (STOP file)")
+                return 3
+        cm = polish_eval(readout, calib)
+        train = {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
+        _status(status, f"POLISH EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in train.items()})} "
+                        f"calib {json.dumps({k: round(v, 5) for k, v in cm.items()})} ({time.time() - t0:.0f}s)")
+        if cm["leaf_value_end"] < best["score"]:
+            best = {"score": cm["leaf_value_end"], "epoch": epoch + 1, "calib": cm}
+            state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+    if state is not None:
+        model.load_state_dict(state)
+    torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
+                "calib": dict(saved.get("calib") or {}, polish=best["calib"], polish_epoch=best["epoch"]),
+                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=vars(args))}, out / "best.pt")
+    _status(status, f"POLISH DONE best_epoch={best['epoch']} calib {json.dumps(best['calib'])} sha256={us.sha256_file(out / 'best.pt')}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="unified_readout")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -484,6 +661,30 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--calib-rows", type=int, default=180000)
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
+    c = sub.add_parser("cache")
+    c.add_argument("--ckpt", required=True)
+    c.add_argument("--data", nargs="+", required=True)
+    c.add_argument("--out", required=True)
+    c.add_argument("--store-map", action="append", default=[])
+    c.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
+    c.add_argument("--calib-rows", type=int, default=180000)
+    c.add_argument("--seed", type=int, default=1)
+    c.add_argument("--group-chunks", type=int, default=24)
+    c.add_argument("--max-groups", type=int, default=None, help="only the first groups (smoke)")
+    c.add_argument("--worker", type=int, default=0)
+    c.add_argument("--workers", type=int, default=1)
+    c.add_argument("--threads", type=int, default=8)
+    p = sub.add_parser("polish")
+    p.add_argument("--ckpt", required=True)
+    p.add_argument("--cache", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--epochs", type=int, default=12)
+    p.add_argument("--lr", type=float, default=1e-3)
+    p.add_argument("--weight-decay", type=float, default=0.01)
+    p.add_argument("--reply-weight", type=float, default=0.2)
+    p.add_argument("--batch", type=int, default=4096)
+    p.add_argument("--threads", type=int, default=16)
+    p.add_argument("--seed", type=int, default=1)
     e = sub.add_parser("export")
     e.add_argument("--ckpt", required=True)
     e.add_argument("--out", required=True)
@@ -494,7 +695,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return {"train": train, "export": export}[args.cmd](args)
+    return {"train": train, "export": export, "cache": cache, "polish": polish}[args.cmd](args)
 
 
 if __name__ == "__main__":

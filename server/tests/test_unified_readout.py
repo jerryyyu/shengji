@@ -244,3 +244,36 @@ def test_value_readout_under_the_prefix_encoder_takes_the_leaves_as_states(packa
     assert bot.encode_prefix_cache and bot.decide_play(copy.deepcopy(rnd), seat) == off.decide_play(copy.deepcopy(rnd), seat)
     assert _record(bot) == {**_record(off), **{k: v for k, v in _record(bot).items() if k not in _record(off) or "prefix" in k}}
     assert bot.unified_value_rows == off.unified_value_rows > 0 and bot.unified_value_other == 0
+
+
+def test_polish_trains_only_the_per_leaf_body_and_equals_the_joint_forward(tmp_path):
+    m, _ = _model(tmp_path)
+    states, final = _game()
+    b = _batch(states[:20], final)
+    T = b["tok_int"].shape[1]
+    b.update(tok_att=np.zeros((1, T, 54), np.float32), banker=np.asarray([final.banker]),
+             card_feat=bn.decision_inputs(states[0], states[0].turn, ())["card_feat"][None],
+             row_card=np.stack([bn.decision_inputs(s, s.turn, ())["row_card"] for s in states[:20]]),
+             M=np.stack([bn.decision_inputs(s, s.turn, ())["M"] for s in states[:20]]))
+    b["tok_int"] = b["tok_int"].astype(np.int64)
+    L = ur.leaf_batch(b)
+    tb = {k: torch.from_numpy(np.ascontiguousarray(v)) for k, v in b.items()}
+    with torch.no_grad():
+        _, _, q, g = ur.us.trunk_forward(m.trunk, tb)
+        S, c = m.readout.project(q, g)
+        row = torch.from_numpy(L["row"])
+        joint = m.readout(q, g, row, torch.from_numpy(L["planes"]), torch.from_numpy(L["scalars"]))
+    z = {"S": S.numpy().astype(np.float16), "c": c.numpy().astype(np.float16), "leaf_row": L["row"].astype(np.int32),
+         "leaf_planes": L["planes"].astype(np.uint8), "leaf_scalars": L["scalars"], "leaf_target": np.full(len(L["row"]), 7, np.int16),
+         "leaf_reply": L["reply"].astype(np.uint8), "leaf_reply_hand": L["reply_hand"], "leaf_has_reply": L["has_reply"]}
+    t = ur._polish_tensors(z)
+    with torch.no_grad():
+        v, r = m.readout.body(*t[:4])
+    assert torch.allclose(v, joint[0], atol=2e-2) and torch.allclose(r, joint[1], atol=2e-2)     # float16 cache
+    v_ce, r_ce, end, has = ur.polish_losses(m.readout, t)
+    assert v_ce.shape == r_ce.shape == end.shape and int(end.sum()) > 0 and bool((r_ce[~has] == 0).all())
+    body = {n for n, _ in m.readout.named_parameters() if n.startswith(ur.BODY_PREFIXES)}
+    assert {n for n, _ in m.readout.named_parameters()} - body == {"card_ln.weight", "card_ln.bias", "card_proj.weight",
+                                                                    "card_proj.bias", "ctx.weight", "ctx.bias"}
+    ev = ur.polish_eval(m.readout, z)
+    assert set(ev) == {"leaf_value", "leaf_value_end", "reply"} and all(np.isfinite(x) for x in ev.values())

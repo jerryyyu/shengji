@@ -174,6 +174,7 @@ def test_value_readout_scores_the_decisions_own_trick_and_leaves_other_bots_alon
     bot.decide_play(copy.deepcopy(rnd), seat)
     assert bot.last_decision_record["schema"] == pv.RECORD_SCHEMA
     assert bot.unified_value_rows > 0 and bot.unified_trunk_forwards == 1 and bot.unified_frame is None
+    assert bot.unified_value_other == 0
     after = _bot(package)
     assert type(after.evaluator) is type(before.evaluator) and "_search" not in vars(after)
     assert after.decide_play(copy.deepcopy(rnd), seat) == played and _record(after) == record

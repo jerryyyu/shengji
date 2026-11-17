@@ -304,6 +304,9 @@ def readout_evaluator(evaluator, bot, model):
             feats = [None] * len(positions) if frame is None else [leaf_features(frame, r) for r in positions]
             mine = [i for i, f in enumerate(feats) if f is not None]
             rest = [i for i, f in enumerate(feats) if f is None]
+            if frame is not None:
+                # a framed decision's non-terminal positions the readout does not cover
+                self.unified_bot.unified_value_other += sum(positions[i].phase != "round_end" for i in rest)
             if not mine:
                 self.unified_bot.unified_value_served += len(rest)
                 return base.score_many(self, positions, seats, **kw)
@@ -343,6 +346,7 @@ def install_value_readout(bot, model):
     bot.unified_value_model = model
     bot.unified_value_rows = 0
     bot.unified_value_served = 0
+    bot.unified_value_other = 0
     bot.evaluator = readout_evaluator(bot.evaluator, bot, model)
     bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{VALUE_TOKEN}{sha[:8]}"
     return bot

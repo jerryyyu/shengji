@@ -1,0 +1,14 @@
+{
+ "name": "ut-all-dev-2636000000",
+ "purpose": "screen",
+ "seed0": 2636000000,
+ "clusters": 4000,
+ "span": [
+  2636000000,
+  2636004000
+ ],
+ "created_at": "2026-11-17T17:35:00Z",
+ "host": "ultra",
+ "git_head": "64b27cbf",
+ "note": "Unified model trained on all self-play data (Y + R50 + x1a X2/X4; Jerry 2026-11-17), tier-i DEV slot duels vs release 52 as served, 1,000 paired seat-swapped rank-mixed deals per arm on the M5 Ultra; branch claude/ut-inside1. Arm PB [2636000000, 2636001000): belief + root prior from the all-data base package. Arm ALL [2636001000, 2636002000): all slots (skipped on a value-gate KILL). [2636002000, 2636004000): reserved for PB / ALL of the best serveable sweep size, not launched by this chain. alldata/PREDECLARE_ALL.md. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

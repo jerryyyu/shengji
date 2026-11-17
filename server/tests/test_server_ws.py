@@ -2144,10 +2144,16 @@ def _settled(client, room):
 def _time_out_once(client, room, clock, seat=0):
     from shengji.api import server as srv
 
-    before = _plays_by(room, seat)
-    clock["v"] += srv.MOVE_TIMER + 1
-    assert _tick(client, room)
-    assert _plays_by(room, seat) == before + 1
+    async def _timeout_and_count():
+        before = _plays_by(room, seat)
+        clock["v"] += srv.MOVE_TIMER + 1
+        acted = await srv.move_timer_tick(room)
+        # Capture the commit before the newly kicked away-seat pump can run.
+        return acted, before, _plays_by(room, seat)
+
+    acted, before, after = client.portal.call(_timeout_and_count)
+    assert acted
+    assert after == before + 1
 
 
 def test_move_timer_bot_plays_one_move_at_zero(client, clock, monkeypatch):

@@ -48,7 +48,7 @@ OUTCOME_CLASSES = 204
 LANE = "UTR"
 CKPT_SCHEMA = "shengji-unified-readout-ckpt-v1"
 #: the readout's architecture (recorded in every checkpoint and package)
-READOUT_ARCH = {"dp": 32, "dc": 96, "width": 224, "hidden": 448, "blocks": 3}
+READOUT_ARCH = {"dp": 48, "dc": 96, "width": 288, "hidden": 576, "blocks": 3}
 N_PLANES = 9                     # 5 locations (actor, rel 1..3, kitty) + 4 played-since-the-decision
 N_SCALARS = 12
 POOL_SCALE = 0.25

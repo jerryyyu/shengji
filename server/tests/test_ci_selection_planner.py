@@ -218,21 +218,27 @@ def test_a_plugin_read_through_a_loader_selects_the_consumer_two_hops_away(tmp_p
     assert chosen(graph, change, membership=membership) == ["server/tests/test_service.py"]
 
 
-def test_a_scoped_directory_read_ignores_other_directories(tmp_path):
+@pytest.mark.parametrize("target", [
+    "(ROOT / 'plugins').parent",
+    "ROOT / 'plugins' / '..'",
+    "(ROOT / 'plugins' / '..').resolve()",
+])
+def test_a_read_whose_path_leaves_a_named_directory_still_selects(tmp_path, target):
+    # a directory named in a read's expression says nothing about where the read
+    # lands: .parent, '..' and resolve() can leave it, so every read counts as
+    # unrestricted
     graph = make_tree(tmp_path, {
         "server/tests/conftest.py": "",
-        "server/tests/data/a.json": "",
-        "server/other/b.json": "",
-        "server/tests/test_scan.py": (
+        "server/pkg/__init__.py": "",
+        "server/pkg/plugin_a.py": "",
+        "server/pkg/loader.py": (
             "from pathlib import Path\n"
-            "HERE = Path(__file__).parent\n"
-            "FILES = sorted((HERE / 'data').glob('*.json'))\n"
-            "OTHER = 'other/b.json'\n"),
-        "server/tests/test_other.py": "X = 'other/b.json'\n",
+            "ROOT = Path(__file__).parent\n"
+            f"FOUND = sorted(({target}).glob('plugin*.py'))\n"),
+        "server/pkg/service.py": "from pkg import loader\n",
+        "server/tests/test_service.py": "from pkg import service\n",
     })
-    assert chosen(graph, "server/other/c.json", membership={"server/other/c.json"}) is None
-    assert chosen(graph, "server/tests/data/c.json", membership={"server/tests/data/c.json"}) == [
-        "server/tests/test_scan.py"]
+    assert chosen(graph, "server/pkg/plugin_a.py") == ["server/tests/test_service.py"]
 
 
 def test_selected_consumers_actually_fail_without_the_deleted_producer(tmp_path):

@@ -146,7 +146,7 @@ class Graph:
         self.directories = {str(parent) for path in self.files for parent in PurePosixPath(path).parents
                             if str(parent) != "."} | {"."}
         # file -> directory reads: (name pattern or None for any, directory names the read is under)
-        self.patterns: dict[str, list[tuple[str | None, tuple[str, ...]]]] = {}
+        self.patterns: dict[str, list[str | None]] = {}
         for path in self.files:
             if path.endswith(".py"):
                 self._python(path)
@@ -278,7 +278,7 @@ class Graph:
             for call in reads:
                 if tainted is not None and not self._mentions(_read_target(call), tainted):
                     continue
-                patterns.append((_read_pattern(call), _read_scope(_read_target(call))))
+                patterns.append(_read_pattern(call))
             if patterns:
                 self.patterns[path] = patterns
         deps.discard(path)
@@ -351,7 +351,7 @@ class Graph:
         for glob_token in re.findall(r"[A-Za-z0-9_./-]*\*[A-Za-z0-9_.*/-]*", text):
             leaf = glob_token.rsplit("/", 1)[-1]
             if leaf.strip("*") and ("." in leaf or "/" in glob_token):
-                self.patterns.setdefault(path, []).append((glob_token, ()))
+                self.patterns.setdefault(path, []).append(glob_token)
         deps.discard(path)
 
     # selection --------------------------------------------------------
@@ -359,11 +359,8 @@ class Graph:
         """Files whose directory reads could return ``changed``."""
         out = set()
         name = PurePosixPath(changed).name
-        parents = set(PurePosixPath(changed).parent.parts)
         for path, patterns in self.patterns.items():
-            for pattern, scope in patterns:
-                if not set(scope) <= parents:
-                    continue
+            for pattern in patterns:
                 if pattern is None:
                     out.add(path)
                     break
@@ -405,34 +402,6 @@ def _read_target(call: ast.Call):
             return call.args[0] if call.args else None
         return value
     return call.args[0] if call.args else None
-
-
-SCOPE_CALLS = {"Path", "PurePath", "PosixPath", "joinpath", "resolve", "absolute", "join", "expanduser"}
-
-
-def _read_scope(node) -> tuple[str, ...]:
-    """Directory names a read's target is certainly under: the constant path
-    components of a target built only from names, ``/``, ``.parent``-style
-    attributes and path constructors.  Anything else (a conditional, another
-    call) gives no restriction."""
-    if node is None:
-        return ()
-    names: list[str] = []
-    for sub in ast.walk(node):
-        if isinstance(sub, ast.Call):
-            func = sub.func
-            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
-            if name not in SCOPE_CALLS:
-                return ()
-        elif isinstance(sub, ast.BinOp) and not isinstance(sub.op, ast.Div):
-            return ()
-        elif isinstance(sub, ast.Constant) and isinstance(sub.value, str):
-            names.extend(part for part in sub.value.split("/") if part and part not in (".", "..")
-                         and not any(c in part for c in "*?[."))
-        elif not isinstance(sub, (ast.Name, ast.Attribute, ast.BinOp, ast.Constant, ast.Load, ast.Div,
-                                  ast.keyword, ast.Starred)):
-            return ()
-    return tuple(names)
 
 
 def _read_pattern(call: ast.Call) -> str | None:

@@ -952,6 +952,7 @@ jobs:
             tests/test_pair_resource_pipeline.py \
             tests/test_pv_tiebreak_points.py \
             tests/test_pv_point_leaks.py \
+            tests/test_pv_banker_void_weight.py \
             tests/test_pv_encode_prefix.py \
             tests/test_belief_labels.py \
             ../tools/y_datagen/test_launch.py \

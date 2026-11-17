@@ -394,6 +394,19 @@ leaf rebuild is added.  On, the recipe digest carries ``last_seat_points``
 ``last_seat_points_*``; off, the payload, the name, the record and every
 decision are unchanged.  Not combined with the tree (refused).
 
+Optional defender world rule, OFF BY DEFAULT:
+``SHENGJI_PV_BANKER_VOID_WEIGHT=<lambda>`` (hundredths, 1.01..4.00; token
+``bvw<100 lambda>`` after ``lsp``).  When a defender decides a play, each world
+draw (`PVSearchBot._worlds`) takes two production draws and keeps one draw's
+worth by weighted sampling without replacement, weight ``lambda ** v`` where
+``v`` is the number of non-trump plain suits the world's banker holds no card of
+(`banker_void_suits`, `banker_void_keep`; the keep's stream is seeded from the
+sampler's).  The banker and the banker's partner draw exactly as before.  On,
+the recipe digest carries ``banker_void_weight`` (lambda, the pool size and
+`BANKER_VOID_WEIGHT_RULE_ID`) and the record ``banker_void_*``; off, the
+payload, the name, the record and every decision are unchanged.  Refused with
+the oracle diagnostics.
+
 Optional value-leaf rule, OFF BY DEFAULT: ``SHENGJI_PV_LEAF_GREEDY_FINISH=1``
 (token ``lgf``, after ``lpft``) -- the leaf the value head scores is the
 afterstate with the current trick finished by the tree's ``trick-greedy``
@@ -837,6 +850,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass
@@ -1039,6 +1053,19 @@ LAST_SEAT_POINTS_TOKEN = "lsp"
 LAST_SEAT_POINTS_RULE_ID = "last-seat-certain-trick-points-within-margin-of-best-mean"
 #: the margin's range in thousandths of a signed level (the value head's units)
 LAST_SEAT_POINTS_MILLI_RANGE = (1, 1000)
+#: ``SHENGJI_PV_BANKER_VOID_WEIGHT=<lambda>`` (``banker_void_weight_centi``, token
+#: ``bvw<100 lambda>`` after ``lsp``): 0 is off.  At a DEFENDER's play decision every
+#: world draw takes two production draws and keeps one draw's worth by weighted
+#: sampling without replacement, weight ``lambda ** v`` with ``v`` the world's
+#: non-trump plain suits in which the banker holds no card (`banker_void_keep`).
+#: The defenders' worlds place the banker void in a side suit less often than the
+#: bury makes it, so a defender's draw is tilted toward those worlds; the banker's
+#: own decisions, and the banker's partner's, draw as before
+BANKER_VOID_WEIGHT_ENV = "BANKER_VOID_WEIGHT"
+BANKER_VOID_WEIGHT_TOKEN = "bvw"
+BANKER_VOID_WEIGHT_RULE_ID = "defender-two-draw-keep-one-weighted-by-lambda-pow-banker-void-side-suits"
+#: lambda's range in hundredths
+BANKER_VOID_WEIGHT_CENTI_RANGE = (101, 400)
 #: its two optional variants (module docstring); each requires ``exact_lead_endgame``
 EXACT_LEAD_VARIANT_RULES = {"EXACT_LEAD_TIE_BASELINE": "exact_lead_tie_baseline",
                             "EXACT_LEAD_POLICY_FIRST": "exact_lead_policy_first"}
@@ -1596,6 +1623,9 @@ class PVSearchConfig:
     # the last-seat certain-points selection margin in milli-levels: 0 is off
     # and ABSENT from the payload
     last_seat_points_milli: int = 0
+    # the defenders' banker-void world weight in hundredths: 0 is off and ABSENT
+    # from the payload
+    banker_void_weight_centi: int = 0
     # its top-m restriction (module docstring): 0 is off and ABSENT from the payload
     leaf_greedy_top: int = 0
     # the held-out lead confirmation (`PVSearchBot` docstring): 0 is off and ABSENT
@@ -1899,6 +1929,36 @@ def _check_last_seat_points(config) -> int:
     return milli
 
 
+def _check_banker_void_weight(config) -> int:
+    """The defenders' banker-void weight in hundredths, 0 when off; refuses a
+    malformed value and the oracle diagnostics (whose worlds bypass the draw)."""
+    centi = config.banker_void_weight_centi
+    lo, hi = BANKER_VOID_WEIGHT_CENTI_RANGE
+    if isinstance(centi, bool) or type(centi) is not int or not (centi == 0 or lo <= centi <= hi):
+        raise PVSearchPolicyError(
+            f"banker_void_weight_centi must be 0 (off) or an int in [{lo}, {hi}]")
+    if centi and (config.oracle_worlds or config.oracle_mix_k or config.oracle_pin_q):
+        raise PVSearchPolicyError("banker_void_weight does not combine with the oracle diagnostics")
+    return centi
+
+
+def banker_void_suits(hands, banker, ordering, trump_suit):
+    """The non-trump plain suits in which ``hands[banker]`` holds no card (level
+    cards and jokers are trump, so they never count toward a plain suit)."""
+    held = {ordering.eff_suit(c) for c in hands[banker]}
+    return sum(1 for suit in ("S", "H", "C", "D") if suit != trump_suit and suit not in held)
+
+
+def banker_void_keep(void_counts, keep, lam, rng):
+    """Positions kept from a pool: ``keep`` of them by weighted sampling without
+    replacement (Efraimidis-Spirakis keys ``u ** (1 / w)``), weight
+    ``lam ** void_counts[i]``; returned in pool order."""
+    if keep > len(void_counts):
+        raise PVSearchPolicyError("banker_void_keep: the pool is smaller than the kept count")
+    keys = [(rng.random() ** (1.0 / (lam ** v)), i) for i, v in enumerate(void_counts)]
+    return sorted(i for _key, i in sorted(keys, reverse=True)[:keep])
+
+
 def last_seat_trick_outcome(rnd, seat, action):
     """``(winner, points)`` of the current trick if ``seat`` completes it with
     ``action`` (the fourth play), by the engine's own resolution
@@ -2073,6 +2133,11 @@ def recipe_payload(config: PVSearchConfig) -> dict:
     if last_seat:
         payload["last_seat_points"] = {"margin_milli": last_seat,
                                        "rule": LAST_SEAT_POINTS_RULE_ID}
+    void_weight = _check_banker_void_weight(config)
+    del payload["banker_void_weight_centi"]
+    if void_weight:
+        payload["banker_void_weight"] = {"lambda_centi": void_weight, "pool_draws": 2,
+                                         "rule": BANKER_VOID_WEIGHT_RULE_ID}
     top = _check_leaf_greedy_top(config)
     del payload["leaf_greedy_top"]
     if top:
@@ -2230,6 +2295,9 @@ def pv_policy_name(ckpt8: str, config: PVSearchConfig, prior8: str | None = None
     last_seat = _check_last_seat_points(config)
     if last_seat:
         rules += f"-{LAST_SEAT_POINTS_TOKEN}{last_seat}"
+    void_weight = _check_banker_void_weight(config)
+    if void_weight:
+        rules += f"-{BANKER_VOID_WEIGHT_TOKEN}{void_weight}"
     subset = _check_exact_world_subset(config)
     if subset:
         rules += f"-{EXACT_WORLD_SUBSET_TOKEN}{subset}"
@@ -2410,6 +2478,10 @@ class PVSearchBot(PolicyValueBot):
     #: state of an ON bot only, as is its per-decision record
     last_seat_points_milli = 0
     _last_seat_points = None
+    #: the defenders' banker-void weight (`banker_void_keep`), 0 = off; instance
+    #: state of an ON bot only, as is its per-decision record
+    banker_void_weight_centi = 0
+    _banker_void = None
     _leaf_greedy_exact_skipped = False
     #: the finish's top-m restriction (module docstring), 0 = off; instance state
     #: of an ON bot only, as is its per-decision record and pruned-leaf set
@@ -2659,6 +2731,9 @@ class PVSearchBot(PolicyValueBot):
         last_seat = _check_last_seat_points(config)
         if last_seat:
             self.last_seat_points_milli = last_seat
+        void_weight = _check_banker_void_weight(config)
+        if void_weight:
+            self.banker_void_weight_centi = void_weight
         top = _check_leaf_greedy_top(config)
         if top:
             self.leaf_greedy_top = top
@@ -3477,6 +3552,31 @@ class PVSearchBot(PolicyValueBot):
         return logits @ multiplicity.T
 
     def _worlds(self, rnd, seat, check_budget=None):
+        """The decision's world draw; with the banker-void weight on and a
+        defender acting, two draws and the weighted keep (`banker_void_keep`)."""
+        if not self.banker_void_weight_centi or not rnd.is_attacker(seat):
+            return self._worlds_draw(rnd, seat, check_budget)
+        first, attempts_a = self._worlds_draw(rnd, seat, check_budget)
+        second, attempts_b = self._worlds_draw(rnd, seat, check_budget)
+        pool = list(first) + list(second)
+        counts = [banker_void_suits(hands, rnd.banker, rnd.ordering, rnd.trump_suit)
+                  for hands, _buried in pool]
+        rng = random.Random(self.sampler.rng.getrandbits(63))
+        kept = banker_void_keep(counts, len(first), self.banker_void_weight_centi / 100.0, rng)
+        state = self._banker_void or {"banker_void_draws": 0, "banker_void_pool_voids": 0,
+                                      "banker_void_kept_voids": 0}
+        state["banker_void_draws"] += 1
+        state["banker_void_pool_voids"] += sum(counts)
+        state["banker_void_kept_voids"] += sum(counts[i] for i in kept)
+        self._banker_void = state
+        return [pool[i] for i in kept], attempts_a + attempts_b
+
+    def _banker_void_record(self):
+        if not self.banker_void_weight_centi:
+            return {}
+        return dict(self._banker_void or {"banker_void_draws": 0})
+
+    def _worlds_draw(self, rnd, seat, check_budget=None):
         mem = Memory(rnd, seat, own_kitty=getattr(self.sampler, "BANKER_KITTY", True))
         self._last_sampling = {}
         refusals = self._refusals.observe(rnd) if self.refusal_constraints else ()
@@ -3900,6 +4000,8 @@ class PVSearchBot(PolicyValueBot):
             self._leaf_greedy = None      # no leaf of an earlier decision is ever reused
         if self.last_seat_points_milli:
             self._last_seat_points = None
+        if self.banker_void_weight_centi:
+            self._banker_void = None
         if self.leaf_greedy_deadline_ms:
             # measured from the decision's start, as the serving budget is
             self._leaf_greedy_deadline_at = started + self.leaf_greedy_deadline_ms / 1000.0
@@ -4097,6 +4199,7 @@ class PVSearchBot(PolicyValueBot):
             **self._leaf_greedy_deadline_record(),
             **self._leaf_greedy_top_record(),
             **self._last_seat_points_record(),
+            **self._banker_void_record(),
             **self._lead_confirm_record(),
             **(two_trick.record(self._two_trick) if self.two_trick_lead else {}),
             **self._adaptive_worlds_record(),
@@ -5021,6 +5124,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                        leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                        leaf_greedy_deadline_ms: int = 0,
                        last_seat_points_milli: int = 0,
+                       banker_void_weight_centi: int = 0,
                        leaf_greedy_top: int = 0,
                        wide_lead_k: int = WIDE_LEAD_K,
                        lead_confirm: int = 0,
@@ -5113,6 +5217,7 @@ def make_pv_search_bot(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS["
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             last_seat_points_milli=last_seat_points_milli,
+                            banker_void_weight_centi=banker_void_weight_centi,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             lead_confirm=lead_confirm,
                             two_trick_lead=two_trick_lead,
@@ -5256,6 +5361,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                         leaf_greedy_finish_exact_skip: bool = LEAF_GREEDY_EXACT_SKIP_DEFAULTS["leaf_greedy_finish_exact_skip"],
                         leaf_greedy_deadline_ms: int = 0,
                         last_seat_points_milli: int = 0,
+                        banker_void_weight_centi: int = 0,
                         leaf_greedy_top: int = 0,
                         wide_lead_k: int = WIDE_LEAD_K,
                         lead_confirm: int = 0,
@@ -5329,6 +5435,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                             leaf_greedy_finish_exact_skip=leaf_greedy_finish_exact_skip,
                             leaf_greedy_deadline_ms=leaf_greedy_deadline_ms,
                             last_seat_points_milli=last_seat_points_milli,
+                            banker_void_weight_centi=banker_void_weight_centi,
                             leaf_greedy_top=leaf_greedy_top, wide_lead_k=wide_lead_k,
                             lead_confirm=lead_confirm,
                             two_trick_lead=two_trick_lead,
@@ -5465,6 +5572,7 @@ def pv_registry_entries(checkpoint: str, *, sha256: str, worlds: int = DEFAULTS[
                                leaf_greedy_finish_exact_skip=config.leaf_greedy_finish_exact_skip,
                                leaf_greedy_deadline_ms=config.leaf_greedy_deadline_ms,
                                last_seat_points_milli=config.last_seat_points_milli,
+                               banker_void_weight_centi=config.banker_void_weight_centi,
                                leaf_greedy_top=config.leaf_greedy_top,
                                wide_lead_k=config.wide_lead_k,
                                lead_confirm=config.lead_confirm,
@@ -5679,6 +5787,21 @@ def pv_env_recipe(environ=None) -> dict:
         _check_last_seat_points(PVSearchConfig(checkpoint_sha256=recipe["sha256"],
                                                last_seat_points_milli=int(milli)))
         recipe["last_seat_points_milli"] = int(milli)
+    # the defenders' banker-void weight lambda: unset, empty or 0 is off
+    raw = env.get(ENV_PREFIX + BANKER_VOID_WEIGHT_ENV)
+    if raw not in (None, "", "0"):
+        try:
+            lam = float(raw)
+        except ValueError:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{BANKER_VOID_WEIGHT_ENV} is not a number: {raw!r}") from None
+        centi = round(lam * 100) if math.isfinite(lam) else None
+        if centi is None or abs(lam * 100 - centi) > 1e-6:
+            raise PVSearchPolicyError(
+                f"{ENV_PREFIX}{BANKER_VOID_WEIGHT_ENV} must be in whole hundredths: {raw!r}")
+        _check_banker_void_weight(PVSearchConfig(checkpoint_sha256=recipe["sha256"],
+                                                 banker_void_weight_centi=int(centi)))
+        recipe["banker_void_weight_centi"] = int(centi)
     # the finish's top-m restriction (unset, empty or 0 is off) and the lead
     # admission width (unset or empty is the default); each needs its rule
     for suffix, key, needs, needs_env in (

@@ -159,6 +159,7 @@ jobs:
           tests/test_support.py
           tests/test_chat_filter.py
           tests/test_player_reports.py
+          tests/test_player_blocks.py
           tests/test_matchmaking_golden.py
           tests/test_web_cache_headers.py
           tests/test_oracle_screen.py

@@ -172,6 +172,7 @@ const SENDABLE = {
   table_move: LOCAL,
   im_back: "the ranked move timer, which offline rooms do not run",
   report_player: "moderation, a service of the game server",
+  block_player: "moderation, a service of the game server",
   client_event: "telemetry, collected by the game server",
   queue_status: QUEUE, queue_join: QUEUE, table_here: QUEUE, queue_wait_players: QUEUE,
   queue_allow_bots: QUEUE, party_leave: QUEUE,

@@ -263,6 +263,12 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   next person takes the opener's controls, not the code), so every invite link keeps working while the table
   exists, and the room starts on it. The last one left alone keeps the table's code as its own.
 
+## Blocking a player (Jerry 2026-11-17: "Yes" to keeping a mute across games)
+- A long press (or a right click) on another person's seat opens its options (`OpponentActions.tsx`): Block player
+  (Unblock player once blocked), Report player, Cancel. Block replaces the per-game Mute chat: the server sends you none
+  of that player's chat, in this game or any later one, and marks their seat blocked in your state; the blocked player
+  is not told. Unblock is the same row when they sit with you again. There is no block list elsewhere, so no new surface.
+
 ## Audit decisions 2026-11-15 (Jerry)
 - **One confirm sheet.** Every "are you sure" is one `ConfirmSheet` (`components/ConfirmSheet.tsx`): a title,
   at most one line, then the cancel (focused first; Escape and the scrim also cancel) and the confirm side by side,

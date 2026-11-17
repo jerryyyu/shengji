@@ -77,7 +77,8 @@ export default function TermsPage() {
         <Section title="Reporting a player">
           <p>
             In a game, press and hold another player’s seat (or right-click it) and choose Report; the
-            report includes the table’s recent chat. You can mute that player’s chat there too. For
+            report includes the table’s recent chat. You can block that player there too, and you will
+            not see their chat again, in that game or any later one. For
             anything else, write to us through the <SupportLink />. We review reports within 24 hours
             and act on the ones that break these terms.
           </p>

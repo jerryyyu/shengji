@@ -145,7 +145,7 @@ from itertools import count
 from typing import Any, Awaitable, Callable
 
 from ..engine.cards import RANKS
-from . import accounts, chat_filter, limits, ratings, telemetry
+from . import accounts, blocks, chat_filter, limits, ratings, telemetry
 
 log = logging.getLogger(__name__)
 # One JSON line per queue event (join, leave and its reason, start): who is a
@@ -393,9 +393,10 @@ class Table:
     sit_ids: dict[int, str] = field(default_factory=dict)
     mode: str = "ranked"
     # ``table_chat`` lines, the last CHAT_KEEP: in memory only, never in a
-    # log, and the room's first scrollback when the table starts. Alone,
-    # each line's sender by line id, to find its seat when the lines merge
-    # into a waiting table; it never leaves the matchmaker.
+    # log, and the room's first scrollback when the table starts. Each
+    # line's sender by line id: it finds the line's seat when an entry's own
+    # lines merge into a waiting table, and leaves a line out of the copy of
+    # anyone who blocked its sender. It never leaves the matchmaker.
     chat: list[dict] = field(default_factory=list)
     chat_seq: int = 0
     senders: dict[int, int] = field(default_factory=dict)
@@ -1718,12 +1719,12 @@ class Matchmaker:
                 "text": text, "t": self.clock()}
         t.chat.append(line)
         del t.chat[:-CHAT_KEEP]
-        if not t.waiting:
-            t.senders[t.chat_seq] = uid
-            t.senders = {i: u for i, u in t.senders.items() if i >= t.chat[0]["id"]}
+        t.senders[t.chat_seq] = uid
+        t.senders = {i: u for i, u in t.senders.items() if i >= t.chat[0]["id"]}
         for o in t.entries:
             for u in o.members:
-                self._send(u, {"type": "table_chat", "table": self._chat_id(t), **line})
+                if not blocks.hides(u, uid):
+                    self._send(u, {"type": "table_chat", "table": self._chat_id(t), **line})
 
     @staticmethod
     def _chat_id(t: Table) -> str | None:
@@ -1739,19 +1740,24 @@ class Matchmaker:
         text with ``seat`` null."""
         def seat(u: int | None) -> int | None:
             return t.seats.index(u) if u in t.seats else None
-        mine = [dict(line, seat=seat(own.senders.get(line["id"]))) for line in own.chat]
-        merged = sorted(t.chat + mine, key=lambda line: line["t"])[-CHAT_KEEP:]
+        mine = [(dict(line, seat=seat(own.senders.get(line["id"]))), own.senders.get(line["id"]))
+                for line in own.chat]
+        here = [(line, t.senders.get(line["id"])) for line in t.chat]
+        merged = sorted(here + mine, key=lambda pair: pair[0]["t"])[-CHAT_KEEP:]
         base = t.chat_seq
-        t.chat = [dict(line, id=base + i) for i, line in enumerate(merged, 1)]
+        t.chat = [dict(line, id=base + i) for i, (line, _) in enumerate(merged, 1)]
+        t.senders = {base + i: u for i, (_, u) in enumerate(merged, 1) if u is not None}
         t.chat_seq = base + len(t.chat)
 
     def _send_chat_history(self, t: Table, members: list[int]) -> None:
-        """The table's chat so far, to members who just sat or came back."""
+        """The table's chat so far, to members who just sat or came back,
+        each without the lines of anyone it blocked."""
         if not t.chat:
             return
         for u in members:
             self._send(u, {"type": "table_chat_history", "table": self._chat_id(t),
-                           "messages": list(t.chat)})
+                           "messages": [line for line in t.chat
+                                        if not blocks.hides(u, t.senders.get(line["id"]))]})
 
     # ----------------------------------------------------------- seating
     def seat_waiting(self) -> None:

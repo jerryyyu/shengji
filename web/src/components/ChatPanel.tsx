@@ -3,7 +3,7 @@ import type { ChatMsg } from "../protocol";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { conn } from "../ws";
 import { usePresence } from "../usePresence";
-import { useMutes } from "../chatMute";
+import { useBlocks } from "../chatBlocks";
 import { KEYBOARD_COVER_PX, SHORT_VISIBLE_PX, TIGHT_VISIBLE_PX, visibleArea, type VisibleArea } from "../visibleArea";
 import "./ChatPanel.css";
 
@@ -33,9 +33,9 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
   const [typing, setTyping] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // a muted seat's lines stay hidden for this viewer; system lines never mute
-  const isMuted = useMutes();
-  const shown = messages.filter((m) => m.seat === -1 || !isMuted(m.room, m.seat));
+  // a blocked seat's lines stay hidden for this viewer; system lines never block
+  const isBlocked = useBlocks();
+  const shown = messages.filter((m) => m.seat === -1 || !isBlocked(m.room, m.seat));
 
   useEffect(() => {
     if (!open) return;

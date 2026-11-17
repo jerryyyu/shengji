@@ -1,6 +1,7 @@
-// Mute and report on another player's seat: a long press opens the options,
-// Mute hides that seat's chat lines for this viewer, Report sends the seat
-// and a reason, and a bot's seat offers neither.
+// Block and report on another player's seat: a long press opens the options,
+// Block sends the seat to the server and hides that seat's chat lines at
+// once, the server's state frames keep the seat blocked in later games,
+// Report sends the seat and a reason, and a bot's seat offers neither.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -21,7 +22,7 @@ vi.mock("../ws", () => ({
 
 const { default: Table } = await import("./Table");
 const { default: ChatPanel } = await import("./ChatPanel");
-const { clearMutes, isMuted } = await import("../chatMute");
+const { clearBlocks, isBlocked } = await import("../chatBlocks");
 
 function player(seat: number, over: Partial<StatePlayer> = {}): StatePlayer {
   return { seat, name: ["You", "Bea", "Bot 2", "Cy"][seat], is_bot: seat === 2, connected: true,
@@ -52,7 +53,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   sent.length = 0;
-  clearMutes();
+  clearBlocks();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -77,11 +78,11 @@ function longPress(el: HTMLElement) {
   vi.useRealTimers();
 }
 
-it("a long press on a person's seat offers Mute chat and Report player", () => {
+it("a long press on a person's seat offers Block player and Report player", () => {
   act(() => root.render(<Table state={state()} />));
   longPress(seatOf("Bea"));
   expect(dialog()?.getAttribute("aria-label")).toBe("Bea: player options");
-  expect(rowButton("Mute chat")).toBeDefined();
+  expect(rowButton("Block player")).toBeDefined();
   expect(rowButton("Report player")).toBeDefined();
   act(() => rowButton("Cancel")!.click());
   expect(dialog()).toBeNull();
@@ -107,7 +108,7 @@ it("Report player asks why, then sends the seat and the reason", () => {
   expect(dialog()).toBeNull();
 });
 
-it("Mute hides that seat's chat lines for this viewer, and Unmute brings them back", () => {
+it("Block sends the seat and hides its chat lines at once; Unblock sends the seat back", () => {
   const messages = [line(1, 1, "hello from Bea"), line(2, 3, "hi from Cy"), line(3, -1, "Bea joined")];
   act(() => root.render(
     <>
@@ -118,15 +119,39 @@ it("Mute hides that seat's chat lines for this viewer, and Unmute brings them ba
   const log = () => document.querySelector(".chat-log")!.textContent ?? "";
   expect(log()).toContain("hello from Bea");
   longPress(seatOf("Bea"));
-  act(() => rowButton("Mute chat")!.click());
-  expect(isMuted("ROOM1", 1)).toBe(true);
+  act(() => rowButton("Block player")!.click());
+  expect(sent).toEqual([{ type: "block_player", seat: 1, on: true }]);
+  expect(isBlocked("ROOM1", 1)).toBe(true);
   expect(log()).not.toContain("hello from Bea");
   expect(log()).toContain("hi from Cy");
   expect(log()).toContain("Bea joined");
-  // the mute belongs to this game's room only
-  expect(isMuted("OTHER", 1)).toBe(false);
-  expect(sent).toEqual([]);
   longPress(seatOf("Bea"));
-  act(() => rowButton("Unmute chat")!.click());
+  act(() => rowButton("Unblock player")!.click());
+  expect(sent).toEqual([{ type: "block_player", seat: 1, on: true }, { type: "block_player", seat: 1, on: false }]);
   expect(log()).toContain("hello from Bea");
+});
+
+it("a later game's state frame keeps the seat blocked, and an unblocked frame clears it", () => {
+  const later = (blocked: boolean): GameState => ({
+    ...state(), room: "ROOM2",
+    players: state().players.map((p) => (p.seat === 3 && blocked ? { ...p, blocked: true } : p)),
+  });
+  const messages = [{ ...line(1, 3, "Cy again"), room: "ROOM2" }];
+  const view = (s: GameState) => (
+    <>
+      <Table state={s} />
+      <ChatPanel messages={messages} you={0} open onClose={() => {}} />
+    </>
+  );
+  act(() => root.render(view(later(true))));
+  const log = () => document.querySelector(".chat-log")!.textContent ?? "";
+  expect(isBlocked("ROOM2", 3)).toBe(true);
+  expect(log()).not.toContain("Cy again");
+  longPress(seatOf("Cy"));
+  expect(rowButton("Unblock player")).toBeDefined();
+  act(() => rowButton("Cancel")!.click());
+  act(() => root.render(view(later(false))));
+  expect(isBlocked("ROOM2", 3)).toBe(false);
+  expect(log()).toContain("Cy again");
+  expect(sent).toEqual([]);
 });

@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import type { ChatMsg, GameState, StatePlayer } from "../protocol";
-import { clearMutes, setMuted } from "../chatMute";
+import { clearBlocks, setBlocked } from "../chatBlocks";
 
 vi.mock("../native", () => ({ haptic: () => {} }));
 const link = vi.hoisted(() => ({
@@ -57,7 +57,7 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.useFakeTimers();
   link.history = [];
-  clearMutes();
+  clearBlocks();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -104,12 +104,12 @@ it("shows several seats at once, your own line included", () => {
   expect(bubbles()[2].classList.contains("mine")).toBe(true);
 });
 
-it("pops nothing for a muted seat, a system line or replayed history", () => {
+it("pops nothing for a blocked seat, a system line or replayed history", () => {
   link.history = [line(1, 1, "buffered before the table")];
   render();
   expect(bubbles()).toHaveLength(0);
-  setMuted("T", 2, true);
-  serverSays(line(2, 2, "muted"));
+  setBlocked("T", 2, true);
+  serverSays(line(2, 2, "blocked"));
   serverSays(line(3, -1, "Cy joined"));
   expect(bubbles()).toHaveLength(0);
   // a reconnect: the snapshot, then a live echo of a line it already holds

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { setMuted, useMutes } from "../chatMute";
+import { setBlocked, useBlocks } from "../chatBlocks";
 import type { ReportReason } from "../protocol";
 import { conn } from "../ws";
 import "./OpponentActions.css";
@@ -12,17 +12,18 @@ const REASONS: { value: ReportReason; label: string }[] = [
   { value: "other", label: "Something else" },
 ];
 
-/** What a long press on another player's seat offers: mute their chat for
- *  this viewer, or report them. Mute stays on this device; a report goes to
- *  the server, which answers with a toast. Drawn over the table in a portal,
- *  and events stop here so a tap inside never reaches the seat underneath. */
+/** What a long press on another player's seat offers: block them, or report
+ *  them. A block goes to the server, which then sends this viewer none of
+ *  their chat in this game or any later one; a report goes to the server,
+ *  which answers with a toast. Drawn over the table in a portal, and events
+ *  stop here so a tap inside never reaches the seat underneath. */
 export default function OpponentActions({ room, seat, name, onClose }: {
   room: string;
   seat: number;
   name: string;
   onClose: () => void;
 }) {
-  const muted = useMutes()(room, seat);
+  const blocked = useBlocks()(room, seat);
   const [reporting, setReporting] = useState(false);
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   const report = (reason: ReportReason) => {
@@ -47,8 +48,12 @@ export default function OpponentActions({ room, seat, name, onClose }: {
         ) : (
           <>
             <button type="button" className="opp-actions-row"
-                    onClick={() => { setMuted(room, seat, !muted); onClose(); }}>
-              {muted ? "Unmute chat" : "Mute chat"}
+                    onClick={() => {
+                      conn.send({ type: "block_player", seat, on: !blocked });
+                      setBlocked(room, seat, !blocked);
+                      onClose();
+                    }}>
+              {blocked ? "Unblock player" : "Block player"}
             </button>
             <button type="button" className="opp-actions-row danger" onClick={() => setReporting(true)}>
               Report player

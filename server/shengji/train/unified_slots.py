@@ -228,14 +228,13 @@ class LeafFrame:
         return self._cache
 
 
-def leaf_features(frame: LeafFrame, leaf):
-    """``((9, 54) planes, (12,) scalars)`` of ``leaf`` -- a full-information state after the frame's
-    decision, in the trick the decision was made in (that trick still open, or just completed) -- as
-    `unified_readout.leaf_batch` builds them; ``None`` for any other state."""
+def _leaf_entries(frame: LeafFrame, leaf):
+    """``(flat plane indices (plane * 54 + card, one per card), (plays since the decision, plays in the
+    trick, its points, its winner, the seat to act))`` of ``leaf``, or ``None`` when it is not a state
+    of the frame's own trick after the decision."""
     from ..engine.cards import points
     from ..rl.encode import CARD_INDEX
     from .belief_history import _winner_so_far
-    from .unified_readout import N_PLANES, leaf_scalars
     if leaf.phase != "play":
         return None
     tricks = len(leaf.history)
@@ -251,24 +250,49 @@ def leaf_features(frame: LeafFrame, leaf):
     if not 1 <= n_delta <= 4 or n_trick > 4:
         return None
     seat = frame.seat
-    planes = np.zeros((N_PLANES, N_CARDS), np.float32)
-    for rel in range(4):
-        row = planes[rel]
-        for card in leaf.hands[(seat + rel) % 4]:
-            row[CARD_INDEX[card]] += 1.0
-    row = planes[4]
-    for card in leaf.buried:
-        row[CARD_INDEX[card]] += 1.0
+    hands = leaf.hands
+    idx = [CARD_INDEX[card] for card in hands[seat]]
+    for rel in (1, 2, 3):
+        base = rel * N_CARDS
+        idx += [base + CARD_INDEX[card] for card in hands[(seat + rel) % 4]]
+    idx += [4 * N_CARDS + CARD_INDEX[card] for card in leaf.buried]
     total = 0
     for i, tp in enumerate(plays):
         if i >= frame.pos:
-            row = planes[5 + (tp.seat - seat) % 4]
-            for card in tp.cards:
-                row[CARD_INDEX[card]] += 1.0
-        total += sum(points(card) for card in tp.cards)
+            base = (5 + (tp.seat - seat) % 4) * N_CARDS
+            idx += [base + CARD_INDEX[card] for card in tp.cards]
+        for card in tp.cards:
+            total += points(card)
     winner = (_winner_so_far(trick, leaf.ordering) - seat) % 4
     nxt = winner if n_trick == 4 else (plays[-1].seat + 1 - seat) % 4
-    return planes, leaf_scalars([n_delta], [n_trick], [total], [winner], [nxt])[0]
+    return idx, (n_delta, n_trick, total, winner, nxt)
+
+
+def leaf_features_batch(frame: LeafFrame, leaves):
+    """``(covered indices into leaves, (n, 9, 54) planes, (n, 12) scalars)`` of the leaves the frame
+    covers, as `unified_readout.leaf_batch` builds them."""
+    from .unified_readout import N_PLANES, leaf_scalars
+    width = N_PLANES * N_CARDS
+    mine, flat, meta = [], [], []
+    for i, leaf in enumerate(leaves):
+        entry = _leaf_entries(frame, leaf)
+        if entry is None:
+            continue
+        base = len(mine) * width
+        flat += [base + k for k in entry[0]]
+        mine.append(i)
+        meta.append(entry[1])
+    if not mine:
+        return mine, np.zeros((0, N_PLANES, N_CARDS), np.float32), np.zeros((0, 12), np.float32)
+    planes = np.bincount(np.asarray(flat, np.int64), minlength=len(mine) * width).astype(np.float32)
+    m = np.asarray(meta, np.int64)
+    return mine, planes.reshape(len(mine), N_PLANES, N_CARDS), leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
+
+
+def leaf_features(frame: LeafFrame, leaf):
+    """``((9, 54) planes, (12,) scalars)`` of one leaf, or ``None`` (`leaf_features_batch`)."""
+    mine, planes, scalars = leaf_features_batch(frame, [leaf])
+    return (planes[0], scalars[0]) if mine else None
 
 
 def _framed_search(self, rnd, seat, anchor, started, check_budget=None):
@@ -301,9 +325,9 @@ def readout_evaluator(evaluator, bot, model):
     class ReadoutEvaluator(base):
         def score_many(self, positions, seats, **kw):
             frame = self.unified_bot.unified_frame
-            feats = [None] * len(positions) if frame is None else [leaf_features(frame, r) for r in positions]
-            mine = [i for i, f in enumerate(feats) if f is not None]
-            rest = [i for i, f in enumerate(feats) if f is None]
+            mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, positions)
+            covered = set(mine)
+            rest = [i for i in range(len(positions)) if i not in covered]
             if frame is not None:
                 # a framed decision's non-terminal positions the readout does not cover
                 self.unified_bot.unified_value_other += sum(positions[i].phase != "round_end" for i in rest)
@@ -314,8 +338,7 @@ def readout_evaluator(evaluator, bot, model):
             if rest:
                 values[rest] = base.score_many(self, [positions[i] for i in rest], [seats[i] for i in rest], **kw)
             m = self.unified_model
-            probs = m.leaf_value_probs(frame.cache(m), np.stack([feats[i][0] for i in mine]),
-                                       np.stack([feats[i][1] for i in mine]))
+            probs = m.leaf_value_probs(frame.cache(m), planes, scalars)
             sign = np.asarray([1.0 if (int(seats[i]) - frame.seat) % 2 == 0 else -1.0 for i in mine])
             values[mine] = sign * (probs @ self.support)
             self.positions += len(mine)
@@ -377,8 +400,8 @@ def readout_reply_ply(served_ply):
         frame = getattr(bot, "unified_frame", None)
         if model is None:
             return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
-        feats = None if frame is None else [leaf_features(frame, clone) for clone in active]
-        if feats is None or any(f is None for f in feats):
+        mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, active)
+        if len(mine) != len(active):
             bot.unified_reply_served += len(active)
             return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
         index_of = {id(clone): i for i, clone in enumerate(active)}
@@ -401,8 +424,7 @@ def readout_reply_ply(served_ply):
             if len(take) != len(chunk):
                 raise UnifiedSlotError("the reply rows and the listed clones disagree")
             bot.unified_reply_rows += len(take)
-            return model.leaf_reply_logits(frame.cache(model), np.stack([feats[i][0] for i in take]),
-                                           np.stack([feats[i][1] for i in take]))
+            return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
         bot.predict = predict
         try:

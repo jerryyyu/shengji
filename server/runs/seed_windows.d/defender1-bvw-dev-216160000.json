@@ -1,0 +1,14 @@
+{
+ "name": "defender1-bvw-dev-216160000",
+ "purpose": "screen",
+ "seed0": 216160000,
+ "clusters": 1000,
+ "span": [
+  216160000,
+  216161000
+ ],
+ "created_at": "2026-11-17T03:07:00Z",
+ "host": "mac",
+ "git_head": "64b27cbf33ab07b7d2d1ce45da58c6d4780a35ba",
+ "note": "C4 (defender study, board #1263): release 52 with the harness-only banker-void reweighting of the defenders' worlds (bvw250: 2W drawn, W kept by weight 2.5 ** banker void side suits, defender decisions only) against release 52 as served. Tier-i DEV, 1,000 paired deals (rank uniform, banker uniform, standard rules); the arm acts only at defender seats, so the banker mirror is identical by construction. Bar: duel-equivalent mean >= +0.02 levels/round and one-sided LB80 > 0. seed_windows.py check 216160000 2000 --purpose screen was rc 0 on 11-17. Deal-key exposure clearance (seed_windows.py clear) was not run because the models are unchanged release 52. This is a seed reservation only; it is not launch authorization."
+}

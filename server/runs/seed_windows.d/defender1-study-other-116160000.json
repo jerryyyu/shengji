@@ -1,0 +1,14 @@
+{
+ "name": "defender1-study-other-116160000",
+ "purpose": "other",
+ "seed0": 116160000,
+ "clusters": 6000,
+ "span": [
+  116160000,
+  116166000
+ ],
+ "created_at": "2026-11-17T01:10:00Z",
+ "host": "mac",
+ "git_head": "64b27cbf33ab07b7d2d1ce45da58c6d4780a35ba",
+ "note": "Defender study (board #1263, Jerry 11-16 'Yes let's do it'): release 52 self-play on this Mac from the S127 code snapshot (main 45168e9f, healthz name re-checked 11-17), standard rules, rank uniform 2..A, banker uniform. Used: [116160000, 116160600) for the served arm plus the partial-truth probe arms (full/kit/pard/bank; bpar stopped early) and the C2 trick-finisher calibration; [116160600, 116161200) for the C3 lead-belief calibration (lambda fitted on it for C4); smoke seeds 116165950-116165991. Not used: [116161200, 116166000). seed_windows.py check 116160000 6000 --purpose other was rc 0 on 11-17. This is a seed reservation only; it is not exposure clearance and not launch authorization."
+}

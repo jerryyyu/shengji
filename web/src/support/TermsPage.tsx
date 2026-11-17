@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const TERMS_UPDATED = "2026-11-16";
+export const TERMS_UPDATED = "2026-11-17";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -42,9 +42,10 @@ export default function TermsPage() {
 
         <Section title="Guests and accounts">
           <p>
-            You can play as a guest under a name you choose, or sign in with Google or Apple to keep your
-            games and get a rating. Keep your sign-in to yourself; you are responsible for what is done
-            with your account. The <PrivacyLink /> says what we keep and why.
+            You must be 13 or older to play. You can play as a guest under a name you choose, or sign in
+            with Google or Apple to keep your games and get a rating. Keep your sign-in to yourself; you
+            are responsible for what is done with your account. The <PrivacyLink /> says what we keep
+            and why.
           </p>
         </Section>
 

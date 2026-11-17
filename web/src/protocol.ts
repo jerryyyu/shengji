@@ -286,7 +286,8 @@ export interface LeftMsg {
 }
 
 export type ServerMsg =
-  | { type: "heartbeat_ready" }
+  /** `build`: the page build the server serves now (reloadGate.ts). */
+  | { type: "heartbeat_ready"; build?: string }
   | { type: "pong"; nonce: number }
   | ErrorMsg
   | RoomMsg

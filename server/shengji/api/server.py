@@ -2805,7 +2805,11 @@ async def ws_endpoint(ws: WebSocket) -> None:
 async def _ws_session(ws: WebSocket, ip: str) -> None:
     await ws.accept()
     if ws.query_params.get("heartbeat") == "1":
-        await send(ws, {"type": "heartbeat_ready"})
+        ready: dict = {"type": "heartbeat_ready"}
+        if WEB_BUILD is not None:
+            # a page of an older build reloads itself at a safe moment
+            ready["build"] = WEB_BUILD
+        await send(ws, ready)
     room: Room | None = None
     me: Seat | None = None  # seat OBJECT — indexes shift when lobby seats leave
     my_gen = 0              # connection generation this socket owns
@@ -3780,7 +3784,9 @@ async def healthz() -> dict:
             "activity": ACTIVITY.health(),
             # Since this process started, how often each old message name
             # arrived: an alias may retire once its count stays at zero.
-            "legacy_messages": dict(ACTIVITY.legacy_messages)}
+            "legacy_messages": dict(ACTIVITY.legacy_messages),
+            # The served page's build id, as heartbeat_ready announces it.
+            "web_build": WEB_BUILD}
 
 
 from .debug import register_debug  # noqa: E402
@@ -3933,6 +3939,20 @@ class WebFiles(StaticFiles):
 
 
 dist = Path(__file__).resolve().parents[3] / "web" / "dist"
+
+
+def web_build(directory: Path) -> str | None:
+    """The served page's build id: the ``shengji-build`` meta tag the web
+    build writes into index.html (vite.config.ts), or None without one."""
+    try:
+        html = (directory / "index.html").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    found = re.search(r'<meta name="shengji-build" content="([A-Za-z0-9]{1,40})"', html)
+    return found.group(1) if found else None
+
+
+WEB_BUILD = web_build(dist)
 support.register_support(app, dist)
 if dist.is_dir():
     app.mount("/", WebFiles(directory=dist, html=True), name="web")

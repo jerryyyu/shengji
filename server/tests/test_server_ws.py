@@ -2008,9 +2008,10 @@ def test_a_finished_game_start_records_the_deal_and_bot_tasks(client):
         assert srv.rooms[code] is room
 
 
-def test_negotiated_heartbeat_before_and_after_room_attach(client):
+def test_negotiated_heartbeat_before_and_after_room_attach(client, monkeypatch):
     from shengji.api import server as srv
 
+    monkeypatch.setattr(srv, "WEB_BUILD", None)
     with client.websocket_connect("/ws?heartbeat=1") as ws:
         assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready"}
         ws.send_json({"type": "ping", "nonce": 1})
@@ -2026,6 +2027,29 @@ def test_negotiated_heartbeat_before_and_after_room_attach(client):
         assert _drain(ws, "pong") == {"type": "pong", "nonce": 3}
         assert tuple(srv.rooms[code].seats) == seats
         assert srv.rooms[code].game.round_no == 1
+
+
+def test_heartbeat_ready_carries_the_served_page_build(client, monkeypatch):
+    from shengji.api import server as srv
+
+    monkeypatch.setattr(srv, "WEB_BUILD", "a1b2c3d4e5f6")
+    with client.websocket_connect("/ws?heartbeat=1") as ws:
+        assert _drain(ws, "heartbeat_ready") == {"type": "heartbeat_ready", "build": "a1b2c3d4e5f6"}
+    assert client.get("/healthz").json()["web_build"] == "a1b2c3d4e5f6"
+
+
+def test_web_build_reads_the_meta_tag_of_the_built_page(tmp_path):
+    from shengji.api import server as srv
+
+    assert srv.web_build(tmp_path) is None
+    (tmp_path / "index.html").write_text("<head><title>x</title></head>", encoding="utf-8")
+    assert srv.web_build(tmp_path) is None
+    (tmp_path / "index.html").write_text(
+        '<head><meta name="shengji-build" content="0f9e8d7c6b5a"></head>', encoding="utf-8")
+    assert srv.web_build(tmp_path) == "0f9e8d7c6b5a"
+    (tmp_path / "index.html").write_text(
+        '<head><meta name="shengji-build" content="bad id!"></head>', encoding="utf-8")
+    assert srv.web_build(tmp_path) is None
 
 
 def test_heartbeat_ignores_invalid_nonce_without_breaking_next_request(client):

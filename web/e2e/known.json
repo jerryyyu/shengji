@@ -1,11 +1,6 @@
 [
   {
     "suite": "matrix",
-    "match": "phone-land-safari-short_.*\"pair\":\"(handLine\\+(trickCards|trickTag|leadTag|winTag|dealCount)|(declareTag|dealCount)\\+handLine)\"",
-    "why": "QA1-3: Mobile Safari sideways (100vh taller than the page): the cross is placed for a taller screen, so its slots reach the line above your row"
-  },
-  {
-    "suite": "matrix",
     "match": "\"pair\":\"toast\\+trickCards\"",
     "why": "QA1-9: a table toast covers the top trick slot"
   },

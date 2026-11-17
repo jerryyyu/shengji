@@ -425,12 +425,67 @@ def to_torch(b: Mapping[str, np.ndarray]):
     return {k: torch.from_numpy(np.ascontiguousarray(v)) for k, v in b.items()}
 
 
-def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0):
+#: ``row_card`` channels of the public pins at receivers rel1..rel3
+_PIN_CH = _OBS_PLANES + _CARD_BLOCKS.index("pinned_rel1")
+#: ``card_feat`` columns of the four plain (non-trump) effective suits
+_PLAIN_COLS = slice(1, 5)
+
+
+def banker_side_void_items(Y, row_card, card_feat, seat, banker):
+    """The void events the void loss scores, per row, hand receiver and plain suit
+    (``(N, 3, 4)`` arrays; works on NumPy arrays and on torch tensors).
+
+    ``plain`` ``(N, 54, 4)`` marks each card's plain effective suit under the
+    row's trump; ``truth`` is the receiver holding no copy of the suit (no
+    unknown copy in ``Y``, no public pin); ``valid`` keeps the receivers that are
+    the banker or the banker's partner (never the actor) and the suits with at
+    least one unknown copy and no copy pinned with that receiver (a pin settles
+    the event publicly)."""
+    lib = np if isinstance(Y, np.ndarray) else __import__("torch")
+    plain = card_feat[..., _PLAIN_COLS] > 0.5                              # N,54,4
+    plainf = plain.astype(np.float32) if lib is np else plain.float()
+    Yf = Y.astype(np.float32) if lib is np else Y.float()
+    held = lib.einsum("ncs,ncr->nrs", plainf, Yf[..., :3])                 # N,3,4
+    pin = row_card[..., _PIN_CH:_PIN_CH + 3] > 0.5                         # N,54,3
+    pinf = pin.astype(np.float32) if lib is np else pin.float()
+    pinned = lib.einsum("ncs,ncr->nrs", plainf, pinf) > 0                  # N,3,4
+    n_unknown = lib.einsum("ncs,nc->ns", plainf, Yf.sum(-1))               # N,4
+    rel = lib.arange(1, 4)
+    seat_r = (seat[:, None] + rel[None]) % 4                               # N,3
+    side = (seat_r == banker[:, None]) | (seat_r == (banker[:, None] + 2) % 4)
+    truth = (held == 0) & ~pinned
+    valid = side[..., None] & (n_unknown[:, None, :] > 0) & ~pinned
+    return plain, truth, valid
+
+
+def void_loss(logp, tb):
+    """Summed binary cross-entropy of the banker side's plain-suit voids and the
+    item count.  The predicted void probability treats the unknown copies as
+    independent draws from the marginals, ``prod_c (1 - p[c, r]) ** n_c``, the
+    product the world sampler's copy-by-copy draw approximates."""
+    import torch
+    Y = tb["Y"]
+    plain, truth, valid = banker_side_void_items(
+        Y, tb["row_card"], tb["card_feat"][tb["rr"]], tb["seat"], tb["banker"][tb["rr"]])
+    p = logp[..., :3].exp().clamp(max=1.0 - 1e-6)
+    log_absent = torch.log1p(-p) * Y.sum(-1, keepdim=True)                 # N,54,3
+    log_void = torch.einsum("ncs,ncr->nrs", plain.float(), log_absent)     # N,3,4
+    log_void = log_void.clamp(max=-1e-6)
+    log_not = torch.log(-torch.expm1(log_void))
+    t = truth.float()
+    bce = -(t * log_void + (1 - t) * log_not)
+    return (bce * valid.float()).sum(), valid.float().sum()
+
+
+def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0,
+               void_weight: float = 0.0):
     """Summed per-copy cross-entropy and the copy count.  ``bf16`` runs the
     forward under a CPU bf16 autocast; the logits come back fp32 and the
     mask, log-softmax and sum stay fp32 (as do the parameters and optimizer).
     ``kitty_weight`` scales the copies whose true holder is the kitty, in the
-    loss and in the count, so the mean stays a per-copy average."""
+    loss and in the count, so the mean stays a per-copy average.
+    ``void_weight`` adds that multiple of `void_loss` to the summed loss (the
+    count stays the copy count); 0 leaves the loss exactly the cross-entropy."""
     import torch
     with torch.autocast("cpu", dtype=torch.bfloat16, enabled=bf16):
         logits = model(tb)
@@ -441,7 +496,10 @@ def batch_loss(model, tb, *, bf16: bool = False, kitty_weight: float = 1.0):
         w = torch.ones(N_RECV, dtype=y.dtype)
         w[KITTY] = kitty_weight
         y = y * w
-    return -(y * logp).sum(), y.sum()
+    loss = -(y * logp).sum()
+    if void_weight:
+        loss = loss + void_weight * void_loss(logp, tb)[0]
+    return loss, y.sum()
 
 
 def compile_forward(model):
@@ -930,6 +988,9 @@ def train(args) -> int:
         run_kw = saved["args"].get("kitty_weight", 1.0)
         if run_kw != args.kitty_weight:
             raise BeliefSeqError(f"resume --kitty-weight {args.kitty_weight} differs from the run's {run_kw}")
+        run_vw = saved["args"].get("void_weight", 0.0)
+        if run_vw != args.void_weight:
+            raise BeliefSeqError(f"resume --void-weight {args.void_weight} differs from the run's {run_vw}")
         run_rows = saved["args"].get("eval_rows", "sampler")
         if run_rows != args.eval_rows:
             raise BeliefSeqError(f"resume --eval-rows {args.eval_rows} differs from the run's {run_rows}")
@@ -990,7 +1051,8 @@ def train(args) -> int:
             tb = to_torch(b)
             opt.zero_grad()
             try:
-                loss, n = batch_loss(fwd, tb, bf16=bf16, kitty_weight=args.kitty_weight)
+                loss, n = batch_loss(fwd, tb, bf16=bf16, kitty_weight=args.kitty_weight,
+                                     void_weight=args.void_weight)
                 (loss / n.clamp_min(1.0)).backward()
             except Exception as exc:
                 if compiled_ok:
@@ -1415,6 +1477,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--kitty-weight", type=float, default=1.0,
                    help="training-loss weight of the copies whose true holder is the kitty "
                         "(calib selection and evaluate stay unweighted)")
+    t.add_argument("--void-weight", type=float, default=0.0,
+                   help="weight of the banker side's plain-suit void loss (`void_loss`) added "
+                        "to the training loss; 0 (default) trains on the cross-entropy alone "
+                        "(calib selection and evaluate stay the cross-entropy)")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--no-history", action="store_true")
     t.add_argument("--permute", action="store_true")

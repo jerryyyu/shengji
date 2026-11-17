@@ -1,0 +1,14 @@
+{
+ "name": "rd1-readable-tiebreak-other-117170000",
+ "purpose": "other",
+ "seed0": 117170000,
+ "clusters": 1000,
+ "span": [
+  117170000,
+  117171000
+ ],
+ "created_at": "2026-11-17T15:30:00Z",
+ "host": "mac",
+ "git_head": "689dac4064dff00ace92acf1ad4fa9d6bdd8c31a",
+ "note": "RD1 step 0 (levers scan row RD1, Jerry 2026-11-17 approved the lever lanes): release 52 self-play on this Mac (served fly.toml recipe from main 689dac4064dff00ace92acf1ad4fa9d6bdd8c31a, every seat on its own scrambled view), round plan r2 by index = seed - 117170000, with an offline B1a readability probe of near-tie candidates. Used: [117170000, 117170300) for the 300-deal probe; smoke seeds 117170990-117170991. Not used: [117170300, 117170990) and [117170992, 117171000). seed_windows.py check 117170000 1000 --purpose other was rc 0 on 11-17. This is a seed reservation only; it is not exposure clearance and not launch authorization."
+}

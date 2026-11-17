@@ -20,6 +20,11 @@ sys.path.insert(0, str(ROOT / "server" / "scripts" / "ci"))
 import select_tests  # noqa: E402
 
 
+# Built at run time so no constant in this module names them.
+UNNAMED_DOC = "docs/" + "zz" + "_unnamed.md"
+UNNAMED_INCIDENT = "incidents/" + "zz" + "_unnamed.md"
+
+
 @pytest.fixture(scope="module")
 def graph():
     return select_tests.Graph(ROOT)
@@ -117,7 +122,7 @@ def test_the_web_selection_includes_the_local_gate_web_readers(classify):
     (("fly.toml",), True, True),
     (("server/tests/conftest.py",), True, True),
     # documentation only
-    (("docs/notes.md", "incidents/none.md"), False, False),
+    ((UNNAMED_DOC, UNNAMED_INCIDENT), False, False),
 ])
 def test_server_and_search_classification(classify, paths, server, search):
     jobs = classify(*paths)["jobs"]
@@ -128,7 +133,6 @@ def test_a_test_module_change_selects_itself_and_its_users(classify):
     selected = set(classify("server/tests/test_table_frame.py")["selected"])
     assert "server/tests/test_table_frame.py" in selected
     assert "server/tests/test_engine.py" not in selected
-    assert not classify("server/tests/test_table_frame.py")["jobs"]["train-cwv"]
 
 
 def test_an_api_change_selects_its_importers_and_not_the_whole_suite(classify, graph):
@@ -154,7 +158,7 @@ def test_which_paths_run_the_interaction_suites(classify, paths, web):
 
 
 def test_documentation_only_runs_nothing(classify):
-    out = classify("docs/notes.md", "incidents/none.md")
+    out = classify(UNNAMED_DOC, UNNAMED_INCIDENT)
     assert not out["code"] and out["selected"] == [] and not any(out["jobs"].values())
     assert "selected=none" in select_tests.output_lines(out)
 

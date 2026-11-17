@@ -162,6 +162,95 @@ def test_directory_reads_select_their_readers(tmp_path):
         "server/tests/test_scan.py"]
 
 
+def test_a_deleted_script_selects_its_subprocess_consumer(tmp_path):
+    graph = make_tree(tmp_path, {
+        "server/tests/conftest.py": "",
+        "server/tests/test_deleted.py": (
+            "import subprocess, sys\n"
+            "def test_command():\n"
+            "    assert subprocess.run([sys.executable, 'server/scripts/removed.py']).returncode == 0\n"),
+        "server/tests/test_other.py": "",
+    })
+    assert chosen(graph, "server/scripts/removed.py") == ["server/tests/test_deleted.py"]
+
+
+def test_a_deleted_module_selects_its_importers(tmp_path):
+    graph = make_tree(tmp_path, {
+        "server/shengji/__init__.py": "",
+        "server/shengji/user.py": "from shengji import gone\n",
+        "server/tests/conftest.py": "",
+        "server/tests/test_user.py": "import shengji.user\n",
+        "server/tests/test_script.py": "import helper_gone\n",
+        "server/tests/test_other.py": "",
+    })
+    assert chosen(graph, "server/shengji/gone.py") == ["server/tests/test_user.py"]
+    assert chosen(graph, "server/scripts/helper_gone.py") == ["server/tests/test_script.py"]
+
+
+def test_a_deleted_file_nothing_names_runs_everything(tmp_path):
+    graph = make_tree(tmp_path, {"server/tests/conftest.py": "", "server/tests/test_a.py": ""})
+    assert chosen(graph, "server/scripts/orphan.py") is None
+    assert chosen(graph, "server/tests/fixtures/orphan.json") is None
+
+
+LOADER_TREE = {
+    "server/pkg/__init__.py": "",
+    "server/pkg/loader.py": (
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).parent\n"
+        "def load():\n"
+        "    return [p.read_text() for p in ROOT.glob('plugin*.py')]\n"),
+    "server/pkg/service.py": "from pkg.loader import load\n",
+    "server/pkg/plugin_a.py": "",
+    "server/tests/conftest.py": "",
+    "server/tests/test_service.py": "from pkg.service import load\n",
+    "server/tests/test_other.py": "",
+}
+
+
+@pytest.mark.parametrize("change, added", [
+    ("server/pkg/plugin_b.py", True),    # a new plugin the loader will list
+    ("server/pkg/plugin_a.py", False),   # a plugin whose content the loader reads
+])
+def test_a_plugin_read_through_a_loader_selects_the_consumer_two_hops_away(tmp_path, change, added):
+    graph = make_tree(tmp_path, dict(LOADER_TREE))
+    membership = {change} if added else set()
+    assert chosen(graph, change, membership=membership) == ["server/tests/test_service.py"]
+
+
+def test_a_scoped_directory_read_ignores_other_directories(tmp_path):
+    graph = make_tree(tmp_path, {
+        "server/tests/conftest.py": "",
+        "server/tests/data/a.json": "",
+        "server/other/b.json": "",
+        "server/tests/test_scan.py": (
+            "from pathlib import Path\n"
+            "HERE = Path(__file__).parent\n"
+            "FILES = sorted((HERE / 'data').glob('*.json'))\n"
+            "OTHER = 'other/b.json'\n"),
+        "server/tests/test_other.py": "X = 'other/b.json'\n",
+    })
+    assert chosen(graph, "server/other/c.json", membership={"server/other/c.json"}) is None
+    assert chosen(graph, "server/tests/data/c.json", membership={"server/tests/data/c.json"}) == [
+        "server/tests/test_scan.py"]
+
+
+def test_selected_consumers_actually_fail_without_the_deleted_producer(tmp_path):
+    graph = make_tree(tmp_path, {
+        "server/tests/conftest.py": "",
+        "server/tests/test_deleted.py": (
+            "import subprocess, sys\n"
+            "def test_command():\n"
+            "    assert subprocess.run([sys.executable, 'server/scripts/removed.py']).returncode == 0\n"),
+    })
+    selected = chosen(graph, "server/scripts/removed.py")
+    run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *selected],
+                         cwd=tmp_path, capture_output=True, text=True,
+                         env={k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_CI_")})
+    # the consumer is selected and its failure is what the PR run reports
+    assert selected == ["server/tests/test_deleted.py"] and run.returncode == 1
+
+
 # real diffs -----------------------------------------------------------------
 
 # Changed Python files of recent merged pull requests (squash merges on main).

@@ -13,10 +13,15 @@ The dependency graph covers every tracked ``.py`` and ``.sh`` file:
   ``monkeypatch.setattr("m.attr", ...)``, ``["-m", "m"]``) and an import
   written inside a string (``python -c "import m"``) resolve like an import, and a path or file name (``"scripts/x.py"``, ``"golden.json"``)
   depends on every tracked file it names;
-* directory reads: a file that calls ``glob``/``rglob``/``iterdir``/
-  ``listdir``/``scandir``/``os.walk`` depends on every file a constant glob
-  pattern it passes could match, and on every file when it passes a pattern
-  that is not a constant or reads a directory without one;
+* directory reads: a file whose ``glob``/``rglob``/``iterdir``/``listdir``/
+  ``scandir``/``os.walk`` target derives from ``__file__`` or a tracked
+  directory name depends on every file the read can return (a constant
+  pattern's matches under the target's constant directory names; every file
+  for a computed pattern or a read without one), for content changes and
+  for added or deleted files alike, and its dependents follow transitively;
+* deleted paths stay in the name index, so a file that still imports, runs
+  or names a deleted file depends on it; a deleted file that nothing names
+  or lists selects everything;
 * dynamic loading the AST cannot resolve (``import_module``/``__import__``/
   ``spec_from_file_location``/``runpy``/``exec`` of a non-constant) makes the
   file depend on every Python file;
@@ -115,15 +120,20 @@ def tracked_files(root: Path) -> list[str]:
 class Graph:
     """Dependency edges among tracked files (``deps[a]`` = files ``a`` uses)."""
 
-    def __init__(self, root: Path, files: list[str] | None = None) -> None:
+    def __init__(self, root: Path, files: list[str] | None = None, removed=()) -> None:
+        """``removed`` are paths the change deletes: they are not read, but
+        names and paths that denote them resolve, so the files that still
+        import, run or name a deleted file depend on it."""
         self.root = root
         self.files = sorted(files if files is not None else tracked_files(root))
-        self.file_set = set(self.files)
+        self.removed = sorted(set(removed) - set(self.files))
+        self.present = set(self.files)
+        self.file_set = self.present | set(self.removed)
         self.by_name: dict[str, list[str]] = {}
-        for path in self.files:
+        for path in sorted(self.file_set):
             self.by_name.setdefault(PurePosixPath(path).name, []).append(path)
         self.modules: dict[str, list[str]] = {}  # dotted suffix -> files
-        for path in self.files:
+        for path in sorted(self.file_set):
             if path.endswith(".py"):
                 parts = list(PurePosixPath(path).with_suffix("").parts)
                 if parts[-1] == "__init__":
@@ -135,7 +145,8 @@ class Graph:
         self.dynamic: dict[str, list[int]] = {}  # file -> lines of computed imports, mapped by constants
         self.directories = {str(parent) for path in self.files for parent in PurePosixPath(path).parents
                             if str(parent) != "."} | {"."}
-        self.patterns: dict[str, list[str | None]] = {}  # file -> directory-read patterns (None = any)
+        # file -> directory reads: (name pattern or None for any, directory names the read is under)
+        self.patterns: dict[str, list[tuple[str | None, tuple[str, ...]]]] = {}
         for path in self.files:
             if path.endswith(".py"):
                 self._python(path)
@@ -267,7 +278,7 @@ class Graph:
             for call in reads:
                 if tainted is not None and not self._mentions(_read_target(call), tainted):
                     continue
-                patterns.append(_read_pattern(call))
+                patterns.append((_read_pattern(call), _read_scope(_read_target(call))))
             if patterns:
                 self.patterns[path] = patterns
         deps.discard(path)
@@ -340,7 +351,7 @@ class Graph:
         for glob_token in re.findall(r"[A-Za-z0-9_./-]*\*[A-Za-z0-9_.*/-]*", text):
             leaf = glob_token.rsplit("/", 1)[-1]
             if leaf.strip("*") and ("." in leaf or "/" in glob_token):
-                self.patterns.setdefault(path, []).append(glob_token)
+                self.patterns.setdefault(path, []).append((glob_token, ()))
         deps.discard(path)
 
     # selection --------------------------------------------------------
@@ -348,8 +359,11 @@ class Graph:
         """Files whose directory reads could return ``changed``."""
         out = set()
         name = PurePosixPath(changed).name
+        parents = set(PurePosixPath(changed).parent.parts)
         for path, patterns in self.patterns.items():
-            for pattern in patterns:
+            for pattern, scope in patterns:
+                if not set(scope) <= parents:
+                    continue
                 if pattern is None:
                     out.add(path)
                     break
@@ -391,6 +405,34 @@ def _read_target(call: ast.Call):
             return call.args[0] if call.args else None
         return value
     return call.args[0] if call.args else None
+
+
+SCOPE_CALLS = {"Path", "PurePath", "PosixPath", "joinpath", "resolve", "absolute", "join", "expanduser"}
+
+
+def _read_scope(node) -> tuple[str, ...]:
+    """Directory names a read's target is certainly under: the constant path
+    components of a target built only from names, ``/``, ``.parent``-style
+    attributes and path constructors.  Anything else (a conditional, another
+    call) gives no restriction."""
+    if node is None:
+        return ()
+    names: list[str] = []
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Call):
+            func = sub.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name not in SCOPE_CALLS:
+                return ()
+        elif isinstance(sub, ast.BinOp) and not isinstance(sub.op, ast.Div):
+            return ()
+        elif isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+            names.extend(part for part in sub.value.split("/") if part and part not in (".", "..")
+                         and not any(c in part for c in "*?[."))
+        elif not isinstance(sub, (ast.Name, ast.Attribute, ast.BinOp, ast.Constant, ast.Load, ast.Div,
+                                  ast.keyword, ast.Starred)):
+            return ()
+    return tuple(names)
 
 
 def _read_pattern(call: ast.Call) -> str | None:
@@ -437,12 +479,14 @@ def select(paths: list[str], root: Path = REPO, graph: Graph | None = None,
         if runs_everything(path):
             return None, [f"{path} runs everything"]
     graph = graph or Graph(root)
+    removed = {p for p in paths if p not in graph.present}
+    if not removed <= set(graph.removed):
+        # Deleted paths join the name index, so what still names them resolves.
+        graph = Graph(root, graph.files, removed=set(graph.removed) | removed)
     if membership is None:
-        membership = {p for p in paths if p not in graph.file_set}
+        membership = set(removed)
     seeds: set[str] = set()
-    listing: set[str] = set()  # files whose directory reads can return a changed path
     for path in paths:
-        exists = path in graph.file_set
         named = graph.referenced(path)
         if is_doc(path) and path != "HANDOFF_REVIEW.md":
             if named:
@@ -456,22 +500,20 @@ def select(paths: list[str], root: Path = REPO, graph: Graph | None = None,
             reasons.append(f"{path}: web readers ({len(readers)})")
             continue
         seeds.add(path)
-        readers = graph.readers_of_directories(path)
-        listing |= readers if path in membership else {r for r in readers if is_test_module(r)}
-        if path.endswith((".py", ".sh")) or named or is_test_module(path):
-            continue
-        if not exists and not named:
-            reasons.append(f"{path}: deleted and named by no tracked code")
+        # A directory read that can return the path (its content, or its
+        # presence when it is added or deleted) makes the reader depend on it.
+        listing = graph.readers_of_directories(path)
+        seeds |= listing
+        if path in removed:
+            if named or listing:
+                reasons.append(f"{path}: deleted; selecting what still names or lists it")
+                continue
+            return None, [f"{path}: deleted and named by no tracked code, runs everything"]
+        if path.endswith((".py", ".sh")) or named or listing or is_test_module(path):
             continue
         return None, [f"{path}: named by no tracked code, runs everything"]
     reached = graph.dependents(seeds)
-    # A directory listing changes what its reader returns: a test module whose
-    # own reads can return a changed path is selected, and for an added or
-    # deleted path so are the test modules that use such a reader directly
-    # (not every module that merely imports something importing the reader).
-    reached |= listing
-    reached |= {p for p in graph.file_set if graph.deps.get(p, set()) & listing}
-    return {p for p in reached if is_test_module(p) and p in graph.file_set}, reasons
+    return {p for p in reached if is_test_module(p) and p in graph.present}, reasons
 
 
 def changed_paths(base: str, head: str, root: Path = REPO) -> tuple[list[str], set[str]]:

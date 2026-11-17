@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,26 +17,23 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Path classification for the heavy jobs. A push to main always runs the full
-  # suite. On a pull request, `code` is false only when every changed path is
-  # documentation; `luna`, `train` and `search` are false only when no changed
-  # path can reach that job; `server_full` is false when every code path is
-  # under web/, and then `server_web_only` runs just the server test modules
-  # that read web/ files (server-web); `web` is true when a path under web/ (or
-  # this workflow) changed. Any error, or an empty diff, runs everything.
+  # Test selection for the heavy jobs. A push to main (or a manual dispatch)
+  # runs every module. On a pull request, server/scripts/ci/select_tests.py
+  # maps the changed paths through the import graph of server/ and tools/ to
+  # the test modules they can reach (`selected`, space-separated; `all` when a
+  # run-everything path changed or the selection failed), and `jobs` says for
+  # each job whether any module it runs is selected. Every pytest session
+  # reads SHENGJI_CI_SELECTED and skips the modules outside it. `code` is
+  # false only when every changed path is documentation; `web` is true when a
+  # path under web/ (or this workflow) changed.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      code: ${{ steps.classify.outputs.code }}
-      web: ${{ steps.classify.outputs.web }}
-      luna: ${{ steps.classify.outputs.luna }}
-      train: ${{ steps.classify.outputs.train }}
-      search: ${{ steps.classify.outputs.search }}
-      server_full: ${{ steps.classify.outputs.server_full }}
-      server_web_only: ${{ steps.classify.outputs.server_web_only }}
-      server_web_pure: ${{ steps.classify.outputs.server_web_pure }}
-      server_web_compiled: ${{ steps.classify.outputs.server_web_compiled }}
+      code: ${{ steps.select.outputs.code }}
+      web: ${{ steps.select.outputs.web }}
+      selected: ${{ steps.select.outputs.selected }}
+      jobs: ${{ steps.select.outputs.jobs }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,244 +41,24 @@ jobs:
           fetch-depth: 0
       # The pytest jobs below may be skipped, so the review-ledger guard that
       # server/tests/conftest.py runs in every pytest session also runs here,
-      # unconditionally and outside the classifier's fallback: the literal PR
+      # unconditionally and outside the selector's fallback: the literal PR
       # head ledger must extend the literal base ledger byte for byte. It reads
       # the event payload exactly as conftest does and returns on non-PR events.
       - name: Review ledger guard
         working-directory: server/tests
         run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
-      - name: Classify changed paths
-        id: classify
+      - name: Select test modules
+        id: select
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          python3 - <<'PY'
-          import glob, os, re, subprocess, sys
-
-          # Documentation that no CI job reads. HANDOFF_REVIEW.md is not here:
-          # the conftest review-ledger guard checks it on every PR test session.
-          DOC_PREFIXES = ("docs/", "docs_archive/", "incidents/")
-          WORKFLOW = ".github/workflows/pr-checks.yml"
-          TEST_MODULE = re.compile(r"server/tests/test_\w+\.py")
-
-          # The test-module scan and the web-reader rule live in the local gate
-          # script, so CI and `affected_tests.py` select the same modules. A failed
-          # import raises inside classify(), and everything runs.
-          SCRIPTS = os.path.abspath("server/scripts")
-
-          def shared():
-              if SCRIPTS not in sys.path:
-                  sys.path.insert(0, SCRIPTS)
-              import affected_tests
-              return affected_tests
-
-          def imported_test_modules(name):
-              return shared().imported_test_modules(name)
-
-          def with_helpers(names):
-              return shared().with_helpers(names)
-
-          def is_doc(path):
-              if path == "HANDOFF_REVIEW.md":
-                  return False
-              return path.endswith(".md") or path.startswith(DOC_PREFIXES)
-
-          def job_block(job):
-              text = open(WORKFLOW).read()
-              block = re.search(rf"\n  {job}:\n(.*?)(?=\n  [A-Za-z_-]+:\n|\Z)", text, re.S)
-              if not block:
-                  raise RuntimeError(f"job {job} not found")
-              return block.group(1)
-
-          def luna_test_modules():
-              # Test modules the luna-profiles job selects, plus the sibling test
-              # modules they import (helpers shared through `from test_x import`).
-              names = set(re.findall(r"tests/(test_\w+)\.py", job_block("luna-profiles")))
-              if not names:
-                  raise RuntimeError("no luna-profiles test modules found")
-              names = with_helpers(names)
-              return {f"server/tests/{name}.py" for name in names}
-
-          TRAIN_JOBS = ("train-cwv", "train-policy", "train-deadline")
-
-          def train_inputs():
-              # Test modules the train-* jobs select (their run lines and the
-              # ci_*_modes.sh scripts they call), the sibling test modules those
-              # import, and every web/ file those modules name: a web change
-              # reaches the training suites only through such a literal path.
-              selection = ""
-              for job in TRAIN_JOBS:
-                  block = job_block(job)
-                  selection += block
-                  for script in re.findall(r"scripts/(ci_\w+\.sh)", block):
-                      selection += open(f"server/scripts/{script}").read()
-              names = set()
-              for pattern in re.findall(r"tests/(test_[\w*?]+)\.py", selection):
-                  for found in glob.glob(f"server/tests/{pattern}.py"):
-                      names.add(os.path.basename(found)[:-3])
-              if not names:
-                  raise RuntimeError("no train-* test modules found")
-              names = with_helpers(names)
-              web = set()
-              for name in names:
-                  source = open(f"server/tests/{name}.py").read()
-                  web.update(re.findall(r"""['"/](web/[\w./-]+)""", source))
-              return {f"server/tests/{name}.py" for name in names}, web
-
-          API_IMPORT = re.compile(r"shengji\.api\b|from shengji import api\b|from \.\.+api\b")
-
-          def search_inputs():
-              # Test modules the search-regression job selects and the sibling test
-              # modules they import; whether any of them reads a web/ path; and
-              # whether the API package reaches them: imported by one of them, or
-              # by a shengji module outside the package.
-              names = set(re.findall(r"tests/(test_\w+)\.py", job_block("search-regression")))
-              if not names:
-                  raise RuntimeError("no search-regression test modules found")
-              names = with_helpers(names)
-              sources = [open(f"server/tests/{name}.py").read() for name in names]
-              reads_web = any(shared().WEB_PATH.search(source) for source in sources)
-              api = any(API_IMPORT.search(source) for source in sources)
-              for path in glob.glob("server/shengji/**/*.py", recursive=True):
-                  if not path.startswith("server/shengji/api/") and API_IMPORT.search(open(path).read()):
-                      api = True
-              return {f"server/tests/{name}.py" for name in names}, reads_web, api
-
-          def server_selection():
-              # Test modules the server job's pure-engine and compiled-engine steps name.
-              pure, compiled = set(), set()
-              for step in job_block("server").split("\n      - name: ")[1:]:
-                  names = set(re.findall(r"tests/(test_\w+)\.py", step))
-                  if "--engine compiled" in step:
-                      compiled |= names
-                  elif "--engine pure" in step:
-                      pure |= names
-              if not pure or not compiled:
-                  raise RuntimeError("server job selection not found")
-              return pure, compiled
-
-          def reaches_train(path, train_tests, train_web):
-              # The training suites import most of server/shengji (the API server
-              # included) and read fixtures and scripts; documentation, web files
-              # they never name and other server test modules are out.
-              if is_doc(path):
-                  return False
-              if path.startswith("web/"):
-                  return path in train_web
-              if TEST_MODULE.fullmatch(path):
-                  return path in train_tests
-              return True
-
-          def reaches_luna(path, luna_tests):
-              # The luna-profiles suites import nearly every shengji package, the
-              # scripts package, conftest helpers, fixtures and fly.toml; only
-              # documentation, the web client and other server test modules are out.
-              if is_doc(path) or path.startswith("web/"):
-                  return False
-              if TEST_MODULE.fullmatch(path):
-                  return path in luna_tests
-              return True
-
-          def reaches_search(path, search_tests, search_web, search_api):
-              # The search regressions import the engine, the bots and (through
-              # the served-bot witnesses) the API server; documentation, the web
-              # client when none of them reads it, the API package when nothing
-              # they load imports it, and other server test modules are out.
-              if is_doc(path):
-                  return False
-              if path.startswith("web/"):
-                  return search_web
-              if path.startswith("server/shengji/api/"):
-                  return search_api
-              if TEST_MODULE.fullmatch(path):
-                  return path in search_tests
-              return True
-
-          def reaches_web(path):
-              # The interaction suites drive the built web client; the workflow runs them.
-              return path == WORKFLOW or (path.startswith("web/") and not is_doc(path))
-
-          def reaches_server(path):
-              # The server job runs in full for any code path outside web/.
-              return not is_doc(path) and not path.startswith("web/")
-
-          def classify_paths(paths):
-              # Outputs for a pull request's changed paths. server_web_only: every
-              # code path is under web/, so the server job is replaced by the
-              # server test modules that read web/ files (`plan_for`), each in the
-              # engine mode(s) the server job runs it in; a module the server job
-              # does not select runs in pure mode.
-              luna_tests = luna_test_modules()
-              train_tests, train_web = train_inputs()
-              search_tests, search_web, search_api = search_inputs()
-              code = any(not is_doc(path) for path in paths)
-              server_full = any(reaches_server(path) for path in paths)
-              out = {
-                  "code": code,
-                  "web": any(reaches_web(path) for path in paths),
-                  "luna": any(reaches_luna(path, luna_tests) for path in paths),
-                  "train": any(reaches_train(path, train_tests, train_web) for path in paths),
-                  "search": any(reaches_search(path, search_tests, search_web, search_api) for path in paths),
-                  "server_full": server_full,
-                  "server_web_only": code and not server_full,
-                  "server_web_pure": [],
-                  "server_web_compiled": [],
-              }
-              if out["server_web_only"]:
-                  plan = shared().plan_for([path for path in paths if not is_doc(path)])
-                  wanted = sorted(set(plan.pure) | set(plan.compiled))
-                  if not wanted:
-                      raise RuntimeError("a web change selected no server test module")
-                  pure, compiled = server_selection()
-                  out["server_web_pure"] = [name for name in wanted if name in pure or name not in compiled]
-                  out["server_web_compiled"] = [name for name in wanted if name in compiled]
-              for path in paths:
-                  print(f"{'doc ' if is_doc(path) else 'code'} "
-                        f"{'luna' if reaches_luna(path, luna_tests) else '    '} "
-                        f"{'train' if reaches_train(path, train_tests, train_web) else '     '} "
-                        f"{'search' if reaches_search(path, search_tests, search_web, search_api) else '      '} "
-                        f"{'server' if reaches_server(path) else '      '} {path}")
-              return out
-
-          EVERYTHING = {"code": True, "web": True, "luna": True, "train": True, "search": True,
-                        "server_full": True, "server_web_only": False,
-                        "server_web_pure": [], "server_web_compiled": []}
-
-          def classify():
-              if os.environ["EVENT_NAME"] != "pull_request":
-                  return dict(EVERYTHING), "not a pull request"
-              base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
-              out = subprocess.run(
-                  ["git", "diff", "--name-only", "--no-renames", f"{base}...{head}"],
-                  check=True, capture_output=True, text=True).stdout
-              paths = [line for line in out.splitlines() if line]
-              if not paths:
-                  return dict(EVERYTHING), "empty diff"
-              return classify_paths(paths), f"{len(paths)} changed paths"
-
-          def output_lines(result):
-              lines = []
-              for key, value in result.items():
-                  if isinstance(value, bool):
-                      lines.append(f"{key}={str(value).lower()}")
-                  else:
-                      lines.append(f"{key}={' '.join(f'tests/{name}.py' for name in value)}")
-              return lines
-
-          try:
-              result, why = classify()
-          except Exception as error:
-              result, why = dict(EVERYTHING), f"classification failed, running everything: {error!r}"
-          lines = output_lines(result)
-          print(" ".join(line for line in lines if "=tests/" not in line) + f" ({why})")
-          for line in lines:
-              if "=tests/" in line:
-                  print(line)
-          with open(os.environ.get("GITHUB_OUTPUT", "/dev/stdout"), "a") as output:
-              output.write("".join(f"{line}\n" for line in lines))
-          PY
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            python3 server/scripts/ci/select_tests.py --base "$BASE_SHA" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+          else
+            python3 server/scripts/ci/select_tests.py --all --github-output "$GITHUB_OUTPUT"
+          fi
 
   test-selection:
     runs-on: ubuntu-latest
@@ -325,22 +103,26 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: python3 server/scripts/check_flow_map.py --base ${{ github.event.pull_request.base.sha }} --body-env PR_BODY
 
+  # The server suites, split by recorded per-module time (shard_plan.py;
+  # server/scripts/ci/test_durations.json). `pure` jobs run the core suite in
+  # pure mode; `compiled` jobs run the compiled-parity list, the production
+  # package load and the release manifests on the pinned packages. Every pytest
+  # command below runs its whole list in every job, as concurrent sessions
+  # (parallel.py), and each session keeps its own piece of the plan, so each
+  # selected module runs once per command, in the engine mode it names.
   server:
     needs: changes
-    if: needs.changes.outputs.server_full == 'true'
+    if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['server']
     runs-on: ubuntu-latest
-    # Five shards side by side, balanced by measured per-file time: `pure-1`
-    # to `pure-3` each run a third of the core suite (pure-3 also the Sol
-    # benchmark contracts); `compiled-1` runs compiled parity and the release
-    # manifests; `compiled-2` loads the production package on this tree. Both
-    # compiled shards fetch every pinned package. Each module of the core
-    # suite is in exactly one part, so the engine modes each module runs in
-    # are unchanged.
     timeout-minutes: 30
+    env:
+      SHENGJI_CI_SELECTED: ${{ needs.changes.outputs.selected }}
+      SHENGJI_CI_DURATIONS_OUT: ${{ github.workspace }}/ci-durations
     strategy:
       fail-fast: false
       matrix:
-        shard: [pure-1, pure-2, pure-3, compiled-1, compiled-2]
+        kind: [pure, compiled]
+        shard: [1, 2]
     defaults:
       run:
         working-directory: server
@@ -355,10 +137,17 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      - name: Test core server behavior in pure mode (part 1 of 3)
-        if: matrix.shard == 'pure-1'
+      # Concurrent pytest sessions each run the review-ledger guard, which
+      # fetches the PR base when it is missing; running it once here first
+      # leaves it present, so the sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
+      - name: Test core server behavior in pure mode
+        if: matrix.kind == 'pure'
         run: >-
-          uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
+          python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 2 --
+          uv run python scripts/test_checkout.py --engine pure -- -q -p no:cacheprovider --durations=10
           tests/test_test_checkout_reexec.py
           tests/test_release_ladder.py
           tests/test_prepared_panel_runner.py
@@ -380,11 +169,8 @@ jobs:
           tests/test_check_doc_claims.py
           tests/test_check_lane_scripts.py
           tests/test_affected_tests.py
+          tests/test_ci_selection_planner.py
           tests/test_pv_exact_follow.py
-      - name: Test core server behavior in pure mode (part 2 of 3)
-        if: matrix.shard == 'pure-2'
-        run: >-
-          uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_test_checkout.py
           tests/test_decision_diagram.py
           tests/test_prepare_llm_panel_roots.py
@@ -413,10 +199,6 @@ jobs:
           tests/test_ops_dashboard.py
           tests/test_seed_windows_dir.py
           tests/test_fast_parity.py
-      - name: Test core server behavior in pure mode (part 3 of 3)
-        if: matrix.shard == 'pure-3'
-        run: >-
-          uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_production_package_gate.py
           tests/test_search_models.py
           tests/test_panel_forfeit_alignment.py
@@ -459,21 +241,17 @@ jobs:
           tests/test_mistake_dashboard.py
           tests/test_paired_window_stats.py
           tests/test_comparator_bank.py
-      # New modules in these families are selected without editing this list.
-      - name: Test Sol benchmark contracts in pure mode
-        if: matrix.shard == 'pure-3'
-        run: >-
-          uv run python scripts/test_checkout.py --engine pure -- -q --durations=10
           tests/test_benchmark_*.py
           tests/test_llm_benchmark_*.py
       # Every test module importing the engine boundary must also run here (or in
-      # another compiled step); check_ci_test_selection.py enforces it (#888, #891).
+      # another compiled step); check_ci_test_selection.py enforces it.
       - name: Test compiled engine and policy parity
-        if: matrix.shard == 'compiled-1'
+        if: matrix.kind == 'compiled'
         env:
           SHENGJI_FAST: "1"
         run: >-
-          uv run python scripts/test_checkout.py --engine compiled -- -q --durations=10
+          python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 2 --
+          uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider --durations=10
           tests/test_benchmark_final*.py
           tests/test_stage1_seal_plan.py
           tests/test_mistake_dashboard.py
@@ -504,13 +282,14 @@ jobs:
           tests/test_harvest_ballot_capture.py
           tests/test_human_pointer_attribution.py
           tests/test_pv_exact_follow.py
-      # #636: the served bot must still CONSTRUCT from the real production package on this
-      # tree. The package is not in the repo (Jerry 2026-09-28: do not commit it); CI fetches
-      # it from the repo's `serving-packages` release by tag and verifies the sha256 pinned
-      # here and in the test. A missing or wrong-hash asset FAILS the job -- a required gate
-      # that skips itself is indistinguishable from one that passes (#633, #634).
+      # The served bot must still CONSTRUCT from the real production package on this
+      # tree. The package is not in the repo; CI fetches it from the repo's
+      # `serving-packages` release by tag and verifies the sha256 pinned here and in
+      # the test. A missing or wrong-hash asset FAILS the job: a required gate that
+      # skips itself is indistinguishable from one that passes. The belief and
+      # release-48/50 packages bind their own pins under the same rule.
       - name: Fetch the pinned production package
-        if: startsWith(matrix.shard, 'compiled')
+        if: matrix.kind == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/smv3out-491ee4bf.npz
           PACKAGE_SHA256: 491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670
@@ -519,10 +298,8 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/smv3out-491ee4bf.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/smv3out-491ee4bf.npz" | sha256sum -c -
-      # The served belief-worlds proposal binds its own hash-pinned package: the same
-      # release, the same fail-closed rule.
       - name: Fetch the pinned belief package
-        if: startsWith(matrix.shard, 'compiled')
+        if: matrix.kind == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/s17long-e2-763b5e05.npz
           PACKAGE_SHA256: 763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343
@@ -531,10 +308,8 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/s17long-e2-763b5e05.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/s17long-e2-763b5e05.npz" | sha256sum -c -
-      # Release 48's belief package (S58); the S17 package above stays for the release-46
-      # rollback, which is built on real bytes too.
       - name: Fetch the pinned release-48 belief package
-        if: startsWith(matrix.shard, 'compiled')
+        if: matrix.kind == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/s58-e6-42444515.npz
           PACKAGE_SHA256: 424445158f3392b57e40bb23e13a923009d734530d5253958d5c541a0d2a259e
@@ -543,10 +318,8 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/s58-e6-42444515.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/s58-e6-42444515.npz" | sha256sum -c -
-      # Release 50's three packages: the G3 Stage A value package, the FT1 card-play prior
-      # and the B1a belief package; the release-49 packages above stay for its rollback.
       - name: Fetch the pinned release-50 package g3a-e04-f4f4127e
-        if: startsWith(matrix.shard, 'compiled')
+        if: matrix.kind == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/g3a-e04-f4f4127e.npz
           PACKAGE_SHA256: f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd
@@ -556,7 +329,7 @@ jobs:
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/g3a-e04-f4f4127e.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/g3a-e04-f4f4127e.npz" | sha256sum -c -
       - name: Fetch the pinned release-50 package p0-ft1-1fa201b2
-        if: startsWith(matrix.shard, 'compiled')
+        if: matrix.kind == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/p0-ft1-1fa201b2.npz
           PACKAGE_SHA256: 1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf
@@ -566,7 +339,7 @@ jobs:
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/p0-ft1-1fa201b2.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/p0-ft1-1fa201b2.npz" | sha256sum -c -
       - name: Fetch the pinned release-50 package b1a-028131a0
-        if: startsWith(matrix.shard, 'compiled')
+        if: matrix.kind == 'compiled'
         env:
           PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/b1a-028131a0.npz
           PACKAGE_SHA256: 028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8
@@ -575,8 +348,10 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/b1a-028131a0.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/b1a-028131a0.npz" | sha256sum -c -
+      # The package-load modules hold wall-clock serving budgets, so each job runs
+      # its piece as one session with the runner to itself.
       - name: Load the production package on this tree
-        if: matrix.shard == 'compiled-2'
+        if: matrix.kind == 'compiled'
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
@@ -586,11 +361,42 @@ jobs:
           SHENGJI_PV50_PACKAGE_PATH: /tmp/shengji-packages/g3a-e04-f4f4127e.npz
           SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q tests/test_encoder_round_compat.py tests/test_pv_finish_lead.py tests/test_pv_exact_lead_variants.py tests/test_pv_exact_follow.py tests/test_debug_xray_pv.py tests/test_pv_belief_log.py tests/test_pv_belief_capacity_release48.py tests/test_pv_leaf_greedy_top_release48.py tests/test_pv_lead_confirm_release48.py tests/test_release46_fly_config.py tests/test_release48_fly_config.py tests/test_release49_fly_config.py tests/test_release50_fly_config.py tests/test_release51_fly_config.py tests/test_release52_fly_config.py tests/test_expert_label_producer.py tests/test_pv_latency_switches_release46.py tests/test_pv_leaf_greedy_stream.py tests/test_pv_native_release48.py tests/test_cwv_bury_belief_worlds.py tests/test_r50_flag_off_parity.py tests/test_rules_profile.py tests/test_rules_profile_r50.py tests/test_pv_exact_lead_full_minimax.py tests/test_world_history_throws.py tests/test_pv_two_trick_lead.py tests/test_lead_capture_collector.py tests/test_pv_point_leaks.py
+        run: >-
+          python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
+          uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider
+          tests/test_encoder_round_compat.py
+          tests/test_pv_finish_lead.py
+          tests/test_pv_exact_lead_variants.py
+          tests/test_pv_exact_follow.py
+          tests/test_debug_xray_pv.py
+          tests/test_pv_belief_log.py
+          tests/test_pv_belief_capacity_release48.py
+          tests/test_pv_leaf_greedy_top_release48.py
+          tests/test_pv_lead_confirm_release48.py
+          tests/test_release46_fly_config.py
+          tests/test_release48_fly_config.py
+          tests/test_release49_fly_config.py
+          tests/test_release50_fly_config.py
+          tests/test_release51_fly_config.py
+          tests/test_release52_fly_config.py
+          tests/test_expert_label_producer.py
+          tests/test_pv_latency_switches_release46.py
+          tests/test_pv_leaf_greedy_stream.py
+          tests/test_pv_native_release48.py
+          tests/test_cwv_bury_belief_worlds.py
+          tests/test_r50_flag_off_parity.py
+          tests/test_rules_profile.py
+          tests/test_rules_profile_r50.py
+          tests/test_pv_exact_lead_full_minimax.py
+          tests/test_world_history_throws.py
+          tests/test_pv_two_trick_lead.py
+          tests/test_lead_capture_collector.py
+          tests/test_pv_point_leaks.py
       # The release manifests' wiring witness on the same pinned packages: the stage tables
-      # of releases 49, 50, 51 and 52 must be what their served bots do (fails, never skips, here).
+      # of releases 49 to 52 must be what their served bots do (fails, never skips, here).
+      # It syncs the RL group, so it runs after the steps above.
       - name: Check release manifests and served capture on pinned packages
-        if: matrix.shard == 'compiled-1'
+        if: matrix.kind == 'compiled'
         env:
           SHENGJI_FAST: "1"
           SHENGJI_REQUIRE_PV_PACKAGE: "1"
@@ -599,50 +405,19 @@ jobs:
           SHENGJI_PV50_PACKAGE_PATH: /tmp/shengji-packages/g3a-e04-f4f4127e.npz
           SHENGJI_PV50_PRIOR_PACKAGE_PATH: /tmp/shengji-packages/p0-ft1-1fa201b2.npz
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
-        run: uv run --frozen --group rl python scripts/test_checkout.py --engine compiled -- -q tests/test_release_manifests.py tests/test_y_trajectory_runner.py
-
-  # A pull request that changes only web/ and documentation runs, instead of the
-  # server job, the server test modules that read web/ files: the changes job
-  # lists them with the rule affected_tests.py applies locally, split by the
-  # engine mode(s) the server job runs each in. Every listed module reads a
-  # literal web/ path (committed offline fixtures the web client replays, the
-  # client/server constants, the web cache headers, the comment and flow-map
-  # rules over web/src), so none is trimmed; the two engine modes run on
-  # separate runners side by side instead of one after the other.
-  server-web:
-    needs: changes
-    if: needs.changes.outputs.server_web_only == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        engine: [pure, compiled]
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - uses: actions/checkout@v4
+        run: >-
+          python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
+          uv run --frozen --group rl python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider
+          tests/test_release_manifests.py
+          tests/test_y_trajectory_runner.py
+      - name: Upload recorded test durations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install locked development and RL environment
-        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
-      - name: Build compiled engine
-        run: uv run python setup.py build_ext --inplace
-      - name: Test web-reading server modules in pure mode
-        if: matrix.engine == 'pure' && needs.changes.outputs.server_web_pure != ''
-        env:
-          TESTS: ${{ needs.changes.outputs.server_web_pure }}
-        run: uv run python scripts/test_checkout.py --engine pure -- -q --durations=10 $TESTS
-      - name: Test web-reading server modules in compiled mode
-        if: matrix.engine == 'compiled' && needs.changes.outputs.server_web_compiled != ''
-        env:
-          SHENGJI_FAST: "1"
-          TESTS: ${{ needs.changes.outputs.server_web_compiled }}
-        run: uv run python scripts/test_checkout.py --engine compiled -- -q --durations=10 $TESTS
+          name: durations-${{ github.job }}-${{ strategy.job-index }}
+          path: ci-durations
+          if-no-files-found: ignore
+          retention-days: 30
 
   import-walk:
     needs: changes
@@ -666,22 +441,26 @@ jobs:
       - name: Import every shengji module
         run: uv run python -P -B -m pytest -q tests/test_import_walk.py
 
-  # The training-pipeline suites, one job each so they run side by side. They
-  # run when a change can reach them (the changes job's `train` output): any
-  # server path except other test modules, plus the web files they read.
+  # The training-pipeline suites. train-cwv runs both engine modes of the
+  # CWV consumers side by side (one session per mode per job), each mode's
+  # modules split across the shards by recorded time. A timeout shows as
+  # "cancelled", not "failed".
   train-cwv:
     needs: changes
-    if: needs.changes.outputs.train == 'true'
+    if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['train-cwv']
     runs-on: ubuntu-latest
-    # Both engine modes of about 1,400 tests, one core each, in two shards
-    # balanced by measured per-file time (a pure session of the whole
-    # selection took about 19 minutes); ci_cwv_modes.sh puts every module in
-    # exactly one shard. A timeout shows as "cancelled", not "failed".
     timeout-minutes: 30
+    env:
+      SHENGJI_CI_SELECTED: ${{ needs.changes.outputs.selected }}
+      SHENGJI_CI_DURATIONS_OUT: ${{ github.workspace }}/ci-durations
+      SHENGJI_REQUIRE_VOIDS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: server
@@ -696,22 +475,43 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      # The two engine modes start at once and each pytest session's ledger
-      # guard fetches the PR base when it is missing; running the guard here
-      # first leaves it present, so the concurrent sessions never race on git.
+      # Concurrent pytest sessions each run the review-ledger guard, which
+      # fetches the PR base when it is missing; running it once here first
+      # leaves it present, so the sessions never race on git.
       - name: Review ledger guard (fetches the PR base once)
         working-directory: server/tests
         run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
-      - name: Test CWV consumers in both engine modes (shard ${{ matrix.shard }} of 2)
-        run: bash scripts/ci_cwv_modes.sh ${{ matrix.shard }}
+      - parallel:
+          - name: Test CWV consumers in pure mode
+            run: env -u SHENGJI_FAST python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 3 -- uv run python -B -m pytest -q -p no:cacheprovider --durations=20 tests/test_*cwv*.py tests/test_encoder_bytes_golden.py
+          - name: Test CWV consumers in compiled mode
+            run: SHENGJI_FAST=1 python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 3 -- uv run python -B -m pytest -q -p no:cacheprovider --durations=20 tests/test_*cwv*.py tests/test_encoder_bytes_golden.py
+      - name: Upload recorded test durations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: durations-${{ github.job }}-${{ strategy.job-index }}
+          path: ci-durations
+          if-no-files-found: ignore
+          retention-days: 30
 
+  # Policy-head training and search: value units, exploration tags and
+  # composer, soft/listwise targets, policy selection metrics, admit-then-select,
+  # exact resume, split binding and the screen deadline-child and shadow-arm
+  # modules (dominated by wall-clock child timeouts). One engine mode per job,
+  # as concurrent sessions over pieces of the selection.
   train-policy:
     needs: changes
-    if: needs.changes.outputs.train == 'true'
+    if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['train-policy']
     runs-on: ubuntu-latest
-    # One engine mode per job, each as two concurrent halves of the selection
-    # (one core each); ci_policy_modes.sh keeps the same selection in both modes.
     timeout-minutes: 30
+    env:
+      SHENGJI_CI_SELECTED: ${{ needs.changes.outputs.selected }}
+      SHENGJI_CI_DURATIONS_OUT: ${{ github.workspace }}/ci-durations
+      SHENGJI_REQUIRE_VOIDS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -730,20 +530,37 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      # The mode's two halves start at once and each pytest session's ledger
-      # guard fetches the PR base when it is missing; running the guard here
-      # first leaves it present, so the concurrent sessions never race on git.
+      # Concurrent pytest sessions each run the review-ledger guard, which
+      # fetches the PR base when it is missing; running it once here first
+      # leaves it present, so the sessions never race on git.
       - name: Review ledger guard (fetches the PR base once)
         working-directory: server/tests
         run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - name: Test policy-head training and search (${{ matrix.engine }} engine)
-        run: bash scripts/ci_policy_modes.sh ${{ matrix.engine }}
+        run: |
+          if [ "${{ matrix.engine }}" = "pure" ]; then
+            unset SHENGJI_FAST
+          else
+            export SHENGJI_FAST=1
+          fi
+          python3 scripts/ci/parallel.py --sessions 2 -- uv run python -B -m pytest -q -p no:cacheprovider --durations=10 tests/test_policy_*.py tests/test_exact_resume.py tests/test_harvest_trajectory_pv.py tests/test_runij_split_binding.py tests/test_screen_policy_arm.py tests/test_search_policy.py tests/test_split_selector.py tests/test_screen_deadline_child.py tests/test_screen_shadow_arm.py
+      - name: Upload recorded test durations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: durations-${{ github.job }}-${{ strategy.job-index }}
+          path: ci-durations
+          if-no-files-found: ignore
+          retention-days: 30
 
   train-deadline:
     needs: changes
-    if: needs.changes.outputs.train == 'true'
+    if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['train-deadline']
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      SHENGJI_CI_SELECTED: ${{ needs.changes.outputs.selected }}
+      SHENGJI_CI_DURATIONS_OUT: ${{ github.workspace }}/ci-durations
     defaults:
       run:
         working-directory: server
@@ -780,21 +597,33 @@ jobs:
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
         run: uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider tests/test_screen_deadline_child.py -k release45
+      - name: Upload recorded test durations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: durations-${{ github.job }}-${{ strategy.job-index }}
+          path: ci-durations
+          if-no-files-found: ignore
+          retention-days: 30
 
+  # The production search regressions, each engine leg split across the
+  # shards by recorded per-module time, two concurrent sessions per job.
   search-regression:
     needs: changes
-    if: needs.changes.outputs.search == 'true'
+    if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['search-regression']
     runs-on: ubuntu-latest
-    # Each engine leg runs in four shards balanced by measured per-file time
-    # (a pure leg of the whole selection takes about 25 minutes of pytest);
-    # every module is in exactly one shard. A timeout shows as "cancelled",
-    # not "failed".
     timeout-minutes: 30
+    env:
+      SHENGJI_CI_SELECTED: ${{ needs.changes.outputs.selected }}
+      SHENGJI_CI_DURATIONS_OUT: ${{ github.workspace }}/ci-durations
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     strategy:
       fail-fast: false
       matrix:
         engine: [pure, compiled]
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: server
@@ -809,6 +638,12 @@ jobs:
         run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
+      # Concurrent pytest sessions each run the review-ledger guard, which
+      # fetches the PR base when it is missing; running it once here first
+      # leaves it present, so the sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       # Missing torch must not silently skip real-package witnesses;
       # a compiled import fallback must not masquerade as native coverage.
       - name: Check torch and the engine mode
@@ -825,19 +660,14 @@ jobs:
           expected = "shengji.engine._fast" if os.environ.get("SHENGJI_FAST") == "1" else "shengji.engine.legal"
           assert legal.validate_follow.__module__ == expected
           PY
-      - name: Test production search regressions (shard 1 of 4)
-        if: matrix.shard == 1
-        env:
-          OMP_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
+      - name: Test production search regressions (shard ${{ matrix.shard }} of 3)
         run: |
           if [ "${{ matrix.engine }}" = "pure" ]; then
             unset SHENGJI_FAST
           else
             export SHENGJI_FAST=1
           fi
-          uv run python -B -m pytest -q --durations=10 \
+          python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 3 -- uv run python -B -m pytest -q -p no:cacheprovider --durations=10 \
             tests/test_pv_lead_confirm.py \
             tests/test_belief_history.py \
             tests/test_world_history_legal.py \
@@ -853,20 +683,7 @@ jobs:
             tests/test_world_history_draw.py \
             tests/test_world_history_throws.py \
             tests/test_pv_adaptive_worlds_leads.py \
-            tests/test_pv_declare_pass_worlds.py
-      - name: Test production search regressions (shard 2 of 4)
-        if: matrix.shard == 2
-        env:
-          OMP_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
-        run: |
-          if [ "${{ matrix.engine }}" = "pure" ]; then
-            unset SHENGJI_FAST
-          else
-            export SHENGJI_FAST=1
-          fi
-          uv run python -B -m pytest -q --durations=10 \
+            tests/test_pv_declare_pass_worlds.py \
             tests/test_optional_stage_contract.py \
             tests/test_pv_wide_lead_admission.py \
             tests/test_belief_seq_eval_rows.py \
@@ -885,20 +702,7 @@ jobs:
             tests/test_pv_refusal_event_complete.py \
             tests/test_pv_doomed_throw_swap.py \
             tests/test_pv_leaf_greedy_finish.py \
-            tests/test_lead_root_capture.py
-      - name: Test production search regressions (shard 3 of 4)
-        if: matrix.shard == 3
-        env:
-          OMP_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
-        run: |
-          if [ "${{ matrix.engine }}" = "pure" ]; then
-            unset SHENGJI_FAST
-          else
-            export SHENGJI_FAST=1
-          fi
-          uv run python -B -m pytest -q --durations=10 \
+            tests/test_lead_root_capture.py \
             tests/test_m5_population_contract.py \
             tests/test_pv_search_serving.py \
             tests/test_pv_doomed_throw_reselect_exact_guard.py \
@@ -916,20 +720,7 @@ jobs:
             tests/test_pv_belief_worlds.py \
             tests/test_pv_exact_lead_variants.py \
             tests/test_pv_search_prior_package.py \
-            tests/test_belief_seq_speed.py
-      - name: Test production search regressions (shard 4 of 4)
-        if: matrix.shard == 4
-        env:
-          OMP_NUM_THREADS: "1"
-          OPENBLAS_NUM_THREADS: "1"
-          MKL_NUM_THREADS: "1"
-        run: |
-          if [ "${{ matrix.engine }}" = "pure" ]; then
-            unset SHENGJI_FAST
-          else
-            export SHENGJI_FAST=1
-          fi
-          uv run python -B -m pytest -q --durations=10 \
+            tests/test_belief_seq_speed.py \
             tests/test_pv_doomed_throw_reselect.py \
             tests/test_pv_adaptive_worlds.py \
             tests/test_r50_flag_off_parity.py \
@@ -960,21 +751,30 @@ jobs:
             tests/test_endgame_level.py \
             tests/test_pv_two_trick_lead.py \
             tests/test_belief_sampler.py
+      - name: Upload recorded test durations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: durations-${{ github.job }}-${{ strategy.job-index }}
+          path: ci-durations
+          if-no-files-found: ignore
+          retention-days: 30
 
+  # The Luna collector prompt profiles (compiled, one session per job) and the
+  # shared observation and ballot suite (pure, two sessions per job), each split
+  # across the two jobs by recorded time and run side by side as parallel steps.
   luna-profiles:
     needs: changes
-    if: needs.changes.outputs.luna == 'true'
+    if: needs.changes.outputs.selected == 'all' || fromJSON(needs.changes.outputs.jobs)['luna-profiles']
     runs-on: ubuntu-latest
-    # Each shard also runs one half of the shared observation/ballot suite,
-    # split by measured per-file time; the CLI shard reached 10 min with no
-    # test failing when it ran the whole suite (#805, #809).
     timeout-minutes: 20
+    env:
+      SHENGJI_CI_SELECTED: ${{ needs.changes.outputs.selected }}
+      SHENGJI_CI_DURATIONS_OUT: ${{ github.workspace }}/ci-durations
     strategy:
       fail-fast: false
       matrix:
-        tests:
-          - "tests/test_luna_attempt.py tests/test_luna_supervisor.py"
-          - "tests/test_luna_cli.py tests/test_luna_transport.py"
+        shard: [1, 2]
     defaults:
       run:
         working-directory: server
@@ -985,33 +785,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install locked development environment
-        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev
+      - name: Install locked development and RL environment
+        run: python -m pip install uv==0.10.4 && uv sync --frozen --group dev --group rl
       - name: Build compiled engine
         run: uv run python setup.py build_ext --inplace
-      # Install every group BEFORE the parallel block: a uv sync while a test step
-      # is importing from the same venv would race it.
-      - name: Install locked observation-test dependencies
-        run: uv sync --frozen --group dev --group rl
-      # conftest's review-ledger guard fetches the PR base/head commits when they are
-      # missing; two pytest sessions starting together would race on the same .git.
-      # Fetch them once here so the guard finds both locally (the check itself is unchanged).
-      - name: Prefetch PR base and head for the review-ledger guard
-        if: github.event_name == 'pull_request'
-        run: git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}
-      # The two suites are independent single-process pytest runs (one CPU each on
-      # the two-core runner), so run them as parallel steps (GitHub Actions
-      # `parallel`). -p no:cacheprovider keeps the two sessions from writing the
-      # same .pytest_cache.
+      # Concurrent pytest sessions each run the review-ledger guard, which
+      # fetches the PR base when it is missing; running it once here first
+      # leaves it present, so the sessions never race on git.
+      - name: Review ledger guard (fetches the PR base once)
+        working-directory: server/tests
+        run: python3 -c 'import sys; from pathlib import Path; sys.path.insert(0, "."); from review_ledger_guard import enforce_pr_head_extends_base; enforce_pr_head_extends_base(Path.cwd().parents[1])'
       - parallel:
           - name: Test Luna collector prompt profiles
             env:
               SHENGJI_FAST: "1"
-            run: uv run pytest -q -p no:cacheprovider ${{ matrix.tests }}
-          - name: Test observation evidence and process containment (part 1 of 2)
-            if: matrix.tests == 'tests/test_luna_attempt.py tests/test_luna_supervisor.py'
+            run: python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 -- uv run pytest -q -p no:cacheprovider tests/test_luna_attempt.py tests/test_luna_supervisor.py tests/test_luna_cli.py tests/test_luna_transport.py
+          - name: Test observation evidence and process containment
             run: >-
+              python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 2 --
               uv run python -B -m pytest -q -p no:cacheprovider --durations=10
+              tests/test_luna_attempt.py
+              tests/test_luna_supervisor.py
               tests/test_s11_report_integration.py
               tests/test_s11_model.py
               tests/test_s11_persistence.py
@@ -1042,10 +836,8 @@ jobs:
               tests/test_observation_runtime.py
               tests/test_observation_admission.py
               tests/test_luna_startup_cleanup.py
-          - name: Test observation evidence and process containment (part 2 of 2)
-            if: matrix.tests == 'tests/test_luna_cli.py tests/test_luna_transport.py'
-            run: >-
-              uv run python -B -m pytest -q -p no:cacheprovider --durations=10
+              tests/test_luna_cli.py
+              tests/test_luna_transport.py
               tests/test_observation_opportunity_integration.py
               tests/test_ballot_selection.py
               tests/test_ballot_matrix.py
@@ -1096,6 +888,14 @@ jobs:
               tests/test_observation_runtime_fence.py
               tests/test_observation_queue.py
               tests/test_observation_worker.py
+      - name: Upload recorded test durations
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: durations-${{ github.job }}-${{ strategy.job-index }}
+          path: ci-durations
+          if-no-files-found: ignore
+          retention-days: 30
 
   frontend:
     runs-on: ubuntu-latest

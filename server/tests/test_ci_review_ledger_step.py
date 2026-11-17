@@ -12,7 +12,6 @@ import re
 import os
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -35,12 +34,10 @@ def _guard_command() -> str:
 
 
 def _classifier() -> dict:
-    match = re.search(r"python3 - <<'PY'\n(.*?)\n {10}PY\n", _workflow(), re.S)
-    assert match, "the changes job has no classifier script"
-    source = textwrap.dedent(match.group(1))
-    namespace: dict = {}
-    exec(source.split("\ntry:\n")[0], namespace)
-    return namespace
+    assert "server/scripts/ci/select_tests.py" in _workflow(), "the changes job has no selector step"
+    sys.path.insert(0, str(TESTS.parent / "scripts" / "ci"))
+    import select_tests
+    return vars(select_tests)
 
 
 def _git(repo: Path, *args: str) -> str:

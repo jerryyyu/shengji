@@ -22,8 +22,9 @@ Detection (stdlib only, no YAML library; an indentation-based extractor):
   parentheses, with shell quoting (``shlex``).  Only a simple command whose
   program is pytest selects tests: ``pytest``, ``python[3] [opts] -m pytest``,
   ``python[3] [opts] scripts/test_checkout.py [opts] -- <pytest args>``,
-  optionally behind ``VAR=value`` prefixes, ``env [-u NAME] [VAR=value]`` and
-  ``uv run [opts]``.  Only that command's own arguments after pytest count, so
+  optionally behind ``VAR=value`` prefixes, ``env [-u NAME] [VAR=value]``,
+  ``uv run [opts]`` and ``python[3] scripts/ci/parallel.py [opts] --`` (which
+  runs the command as concurrent sessions, one planned piece each).  Only that command's own arguments after pytest count, so
   ``echo "pytest tests/x.py"`` or a sibling ``echo tests/x.py`` selects
   nothing.  An argument ``tests/<name>.py`` or ``server/tests/<name>.py``
   (optionally ``::node``) selects that file, one with ``*``, ``?`` or ``[...]``
@@ -91,7 +92,12 @@ Failures:
   (h) a step ``if:`` that compares a matrix key with a value the job's matrix
       does not list (``matrix.k == 'v'`` or ``startsWith(matrix.k, 'v')``,
       outside any ``||``): that step never runs, yet its tests would count as
-      selected, so a shard dropped from the matrix list fails here.
+      selected, so a shard dropped from the matrix list fails here;
+  (i) a command split by ``scripts/ci/parallel.py`` whose ``--shard`` values
+      across the job's matrix are not exactly ``1..--shards`` (literal
+      integers), or whose ``shard_plan`` assignment of its modules into
+      ``--shards`` x ``--sessions`` pieces does not hold every module exactly
+      once: a piece no job runs would drop its modules silently.
 """
 
 from __future__ import annotations
@@ -128,6 +134,7 @@ UV_RUN_VALUE_OPTS = {
 }
 PYTHON_VALUE_OPTS = {"-W", "-X"}
 CHECKOUT_WRAPPER = "scripts/test_checkout.py"
+PARALLEL_WRAPPER = "scripts/ci/parallel.py"
 PYTEST_NON_SELECTING_OPTS = {"--ignore", "--ignore-glob", "--deselect"}
 SCRIPT_TOKEN = re.compile(r"(?<![A-Za-z0-9_./-])((?:server/)?scripts/[A-Za-z0-9_./-]+\.sh)(?![A-Za-z0-9_])")
 PYTEST = re.compile(r"(?<![A-Za-z0-9_])pytest(?![A-Za-z0-9_])")
@@ -406,6 +413,9 @@ def command_engine(words: list[str], state: str) -> str:
         if words[i : i + 2] == ["uv", "run"]:
             i = _skip_options(words, i + 2, UV_RUN_VALUE_OPTS)
             continue
+        if (inner := _after_parallel(words, i)) is not None:
+            i = inner
+            continue
         break
     for k, word in enumerate(words):
         if word.endswith(CHECKOUT_WRAPPER):
@@ -477,6 +487,78 @@ def _skip_options(words: list[str], i: int, value_opts: set[str]) -> int:
     return i
 
 
+def _after_parallel(words: list[str], i: int) -> int | None:
+    """Index of the wrapped command when ``words[i:]`` is ``python[3] [opts]
+    scripts/ci/parallel.py [opts] -- <command>``, else None."""
+    if i >= len(words) or not re.fullmatch(r"python(?:3(?:\.[0-9]+)?)?", words[i].rsplit("/", 1)[-1]):
+        return None
+    j = _skip_options(words, i + 1, PYTHON_VALUE_OPTS)
+    if j < len(words) and words[j].endswith(PARALLEL_WRAPPER) and "--" in words[j + 1 :]:
+        return words.index("--", j + 1) + 1
+    return None
+
+
+def parallel_split(words: list[str]) -> tuple[tuple[str, ...], str, str, str] | None:
+    """``(command without its --shard value, shard, shards, sessions)`` for a
+    command run through parallel.py, else None."""
+    i = 0
+    while i < len(words) and ASSIGNMENT.fullmatch(words[i]):
+        i += 1
+    if i < len(words) and words[i] == "env":
+        i = _skip_options(words, i + 1, ENV_VALUE_OPTS)
+    if (inner := _after_parallel(words, i)) is None:
+        return None
+    options = words[:inner]
+    values = {"--shard": "1", "--shards": "1", "--sessions": "1"}
+    key = []
+    k = 0
+    while k < len(options):
+        word = options[k]
+        name, eq, value = word.partition("=")
+        if name in values:
+            if eq:
+                values[name] = value
+            elif k + 1 < len(options):
+                values[name] = options[k + 1]
+                k += 1
+            if name != "--shard":
+                key.append(f"{name}={values[name]}")
+        else:
+            key.append(word)
+        k += 1
+    return (tuple(key) + tuple(words[inner:]), values["--shard"], values["--shards"], values["--sessions"])
+
+
+def parallel_failures(parallel: dict) -> list[str]:
+    """Split commands whose matrix does not run every shard exactly, or whose
+    plan does not put every module in exactly one piece."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "ci"))
+    import shard_plan
+
+    out: list[str] = []
+    for (label, key), entry in sorted(parallel.items()):
+        where = f"{label}: {' '.join(key)[:120]}"
+        if len(entry["totals"]) != 1 or len(entry["sessions"]) != 1:
+            out.append(f"{where}: --shards/--sessions differ between matrix combinations")
+            continue
+        total, sessions = next(iter(entry["totals"])), next(iter(entry["sessions"]))
+        if not (total.isdigit() and sessions.isdigit() and all(s.isdigit() for s in entry["shards"])):
+            out.append(f"{where}: --shard, --shards and --sessions must be literal integers (or a matrix value)")
+            continue
+        wanted = {str(n) for n in range(1, int(total) + 1)}
+        if entry["shards"] != wanted:
+            out.append(f"{where}: runs shards {sorted(entry['shards'])} of --shards {total}")
+            continue
+        files = sorted(entry["files"])
+        for engine in ("pure", "compiled"):
+            costs = shard_plan.module_costs(files, engine, shard_plan.load_durations())
+            pieces = shard_plan.plan(files, int(total) * int(sessions), costs)
+            flat = [m for piece in pieces for m in piece]
+            if sorted(flat) != files:
+                out.append(f"{where}: the {engine} plan does not cover every module exactly once")
+    return out
+
+
 def pytest_arguments(words: list[str]) -> list[str] | None:
     """Arguments after pytest when ``words`` runs pytest, else None."""
     i = 0
@@ -488,6 +570,9 @@ def pytest_arguments(words: list[str]) -> list[str] | None:
             continue
         if words[i : i + 2] == ["uv", "run"]:
             i = _skip_options(words, i + 2, UV_RUN_VALUE_OPTS)
+            continue
+        if (inner := _after_parallel(words, i)) is not None:
+            i = inner
             continue
         break
     if i >= len(words):
@@ -583,22 +668,23 @@ def _select_files(server: Path, root: Path, label: str, args: list[str], danglin
     return out
 
 
-def scan_selection(root: Path) -> dict:
+def scan_selection(root: Path, texts: dict[Path, str] | None = None) -> dict:
     """Selection plus engine modes.
 
     Keys: ``selected`` (set), ``scanned``/``dangling``/``unparsed`` (lists) and
-    ``modes`` (repo path -> set of ``pure``/``compiled`` credits).
+    ``modes`` (repo path -> set of ``pure``/``compiled`` credits).  ``texts``
+    replaces the scanned workflows with these files and contents.
     """
     server = root / SERVER_DIR
     selected: set[str] = set()
     modes: dict[str, set[str]] = {}
+    parallel: dict[tuple[str, tuple[str, ...]], dict] = {}
     dangling: list[str] = []
     unparsed: list[str] = []
     scanned: list[str] = []
     wf_dir = root / ".github" / "workflows"
-    queue: list[tuple[Path, str | None]] = [
-        (p, None) for p in sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")])
-    ]
+    workflows = sorted(texts) if texts is not None else sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")])
+    queue: list[tuple[Path, str | None]] = [(p, None) for p in workflows]
     seen: set[tuple[Path, str | None]] = set()
     while queue:
         path, inherited = queue.pop(0)
@@ -609,7 +695,7 @@ def scan_selection(root: Path) -> dict:
         label = source.relative_to(root.resolve()).as_posix()
         if label not in scanned:
             scanned.append(label)
-        raw = source.read_text(encoding="utf-8")
+        raw = texts[path] if texts is not None and inherited is None and path in texts else source.read_text(encoding="utf-8")
         blocks = run_blocks(raw) if source.suffix in (".yml", ".yaml") else [(raw, inherited or PURE)]
         for shell_text, base in blocks:
             state = base
@@ -682,6 +768,14 @@ def scan_selection(root: Path) -> dict:
                         continue
                     files = _select_files(server, root, label, args, dangling)
                     selected |= files
+                    if (split := parallel_split(words)) is not None:
+                        key, shard, shards, sessions = split
+                        entry = parallel.setdefault((label, key), {"shards": set(), "totals": set(),
+                                                                  "sessions": set(), "files": set()})
+                        entry["shards"].add(shard)
+                        entry["totals"].add(shards)
+                        entry["sessions"].add(sessions)
+                        entry["files"] |= files
                     if mode in (PURE, COMPILED):
                         for f in files:
                             modes.setdefault(f, set()).add(mode)
@@ -692,7 +786,20 @@ def scan_selection(root: Path) -> dict:
         "dangling": list(dict.fromkeys(dangling)),
         "unparsed": list(dict.fromkeys(unparsed)),
         "modes": modes,
+        "parallel": parallel,
     }
+
+
+def job_selection(root: Path) -> dict[str, set[str]]:
+    """Each workflow job's selected test modules, keyed by job id."""
+    out: dict[str, set[str]] = {}
+    wf_dir = root / ".github" / "workflows"
+    for workflow in sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")]):
+        for job in _job_blocks(workflow.read_text(encoding="utf-8").splitlines()):
+            name = job[0].strip().rstrip(":").strip()
+            text = "jobs:\n" + "\n".join(job) + "\n"
+            out.setdefault(name, set()).update(scan_selection(root, {workflow: text})["selected"])
+    return out
 
 
 def collect_selection(root: Path) -> tuple[set[str], list[str], list[str], list[str]]:
@@ -820,9 +927,14 @@ def run(root: Path, *, print_unselected: bool = False, print_engine_modes: bool 
         for path in sorted([*wf_dir.glob("*.yml"), *wf_dir.glob("*.yaml")])
         for entry in unreachable_matrix_steps(path.read_text(encoding="utf-8"))
     ]
+    split = parallel_failures(scan["parallel"])
     ok = engine_ok and not (
-        missing or stale_selected or stale_gone or duplicates or dangling or unparsed or unreachable
+        missing or stale_selected or stale_gone or duplicates or dangling or unparsed or unreachable or split
     )
+    if split:
+        print(f"FAIL: {len(split)} split pytest command(s) would not run every module exactly once:")
+        for ref in split:
+            print(f"  {ref}")
     if missing:
         print(f"FAIL: {len(missing)} test file(s) selected by no CI job and not excluded:")
         for path in missing:

@@ -303,7 +303,7 @@ def _framed_search(self, rnd, seat, anchor, started, check_budget=None):
         self.unified_frame = None
 
 
-def _install_frame(bot):
+def _install_frame(bot, keep_prefix: bool = False):
     if "unified_frame" not in vars(bot):
         if not callable(getattr(type(bot), "_search", None)):
             raise UnifiedSlotError("the bot has no play search to frame")
@@ -311,9 +311,10 @@ def _install_frame(bot):
         bot.unified_trunk_shared = 0
         bot.unified_trunk_forwards = 0
         bot._search = types.MethodType(_framed_search, bot)
-        # the leaves must reach the evaluator as states: the prefix encoder hands it rows instead
-        if getattr(bot, "encode_prefix_cache", False):
-            bot.encode_prefix_cache = False
+    # the leaves must reach the evaluator as states: the prefix encoder hands it rows instead, unless
+    # `readout_score_leaves` stands in for ``pv_encode_prefix.score_leaves`` (``keep_prefix``)
+    if not keep_prefix and getattr(bot, "encode_prefix_cache", False):
+        bot.encode_prefix_cache = False
 
 
 def readout_evaluator(evaluator, bot, model):
@@ -354,7 +355,17 @@ def readout_evaluator(evaluator, bot, model):
     return out
 
 
-def install_value_readout(bot, model):
+def readout_score_leaves(served_score_leaves):
+    """``served_score_leaves`` (``pv_encode_prefix.score_leaves``) for every evaluator except a
+    `readout_evaluator`, which scores the leaves as states (its own ``score``)."""
+    def score_leaves(evaluator, leaves, seat, *args, **kw):
+        if getattr(evaluator, "unified_model", None) is None:
+            return served_score_leaves(evaluator, leaves, seat, *args, **kw)
+        return evaluator.score(leaves, seat)
+    return score_leaves
+
+
+def install_value_readout(bot, model, keep_prefix: bool = False):
     """Replace ``bot``'s value slot on play decisions with ``model``'s readout (the leaves of the
     decision's own trick; terminal leaves, bury and declare values stay the served evaluator's);
     returns ``bot``."""
@@ -365,7 +376,7 @@ def install_value_readout(bot, model):
         raise UnifiedSlotError("a unified value readout is already installed")
     if not callable(getattr(getattr(bot, "evaluator", None), "score_many", None)):
         raise UnifiedSlotError("the bot has no served value evaluator to replace")
-    _install_frame(bot)
+    _install_frame(bot, keep_prefix)
     bot.unified_value_model = model
     bot.unified_value_rows = 0
     bot.unified_value_served = 0
@@ -375,7 +386,7 @@ def install_value_readout(bot, model):
     return bot
 
 
-def install_reply_readout(bot, model):
+def install_reply_readout(bot, model, keep_prefix: bool = False):
     """Mark ``bot`` to take its greedy-finish reply prior from ``model``'s readout
     (`readout_reply_ply` must stand in for ``pv_tree_search.greedy_reply_ply``); returns ``bot``."""
     sha = getattr(model, "package_sha256", None)
@@ -383,7 +394,7 @@ def install_reply_readout(bot, model):
         raise UnifiedSlotError("the model is not a hashed unified readout package")
     if getattr(bot, "unified_reply_model", None) is not None:
         raise UnifiedSlotError("a unified reply readout is already installed")
-    _install_frame(bot)
+    _install_frame(bot, keep_prefix)
     bot.unified_reply_model = model
     bot.unified_reply_rows = 0
     bot.unified_reply_served = 0

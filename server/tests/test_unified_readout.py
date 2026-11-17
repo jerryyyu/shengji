@@ -222,3 +222,25 @@ def test_reply_readout_ranks_follows_only_for_the_marked_bot(package, tmp_path, 
     bot.decide_play(copy.deepcopy(rnd), seat)
     assert bot.last_decision_record["schema"] == pv.RECORD_SCHEMA
     assert bot.unified_reply_rows > 0 and bot.predict is served_predict
+
+
+def test_value_readout_under_the_prefix_encoder_takes_the_leaves_as_states(package, tmp_path, monkeypatch):
+    from shengji.train import pv_encode_prefix as pep
+    _, model = _model(tmp_path)
+    rnd = _play_state()
+    seat = rnd.turn
+    before = _bot(package)
+    before.encode_prefix_cache = True
+    played = before.decide_play(copy.deepcopy(rnd), seat)
+    record = _record(before)
+    monkeypatch.setattr(pep, "score_leaves", us.readout_score_leaves(pep.score_leaves))
+    same = _bot(package)
+    same.encode_prefix_cache = True
+    assert same.decide_play(copy.deepcopy(rnd), seat) == played and _record(same) == record
+    off = us.install_value_readout(_bot(package), model)
+    bot = _bot(package)
+    bot.encode_prefix_cache = True
+    us.install_value_readout(bot, model, keep_prefix=True)
+    assert bot.encode_prefix_cache and bot.decide_play(copy.deepcopy(rnd), seat) == off.decide_play(copy.deepcopy(rnd), seat)
+    assert _record(bot) == {**_record(off), **{k: v for k, v in _record(bot).items() if k not in _record(off) or "prefix" in k}}
+    assert bot.unified_value_rows == off.unified_value_rows > 0 and bot.unified_value_other == 0

@@ -80,6 +80,7 @@ progress, and keep every material node resumable.
   and removed, visible strings added under controls (expect 0), and the
   flow-map row; the reviewer HOLDs a new surface, timer, message type or
   leave/join path that duplicates an existing one.
+  The ask also walks the polish checklist in `docs/design/FLOWS.md`.
 
 ## Native Codex orchestration
 

@@ -6,8 +6,8 @@
   },
   {
     "suite": "matrix",
-    "match": "phone-land-se_.*(trickTag|declareTag)#\\d+\",\"text\":\"[^\"]*declared[^\"]*\",\"cut\":\"left",
-    "why": "QA1-10: a long declarer name runs the declared tag off the left edge"
+    "match": "(phone-land-se|touch-700x520)_.*(trickTag|declareTag)#\\d+\",\"text\":\"[^\"]*declared[^\"]*\",\"cut\":\"left",
+    "why": "QA1-10: a long declarer name runs the declared tag off the left edge (the phone table at 667 and 700 px wide)"
   },
   {
     "suite": "matrix",

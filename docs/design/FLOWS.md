@@ -264,8 +264,11 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   exists, and the room starts on it. The last one left alone keeps the table's code as its own.
 
 ## The iPad table: Fill (Jerry 2026-11-17: picked option B of the three iPad table mocks)
-- A touch screen too large for the phone table (an iPad, either way up; the root class `tablet-table` from
-  `phoneLayout.ts`) draws the wide table sized to the screen. Seat panels, your name, the controls and the tags grow
+- A touch screen at least 810×740 (an iPad sideways, mini included, and 11" and 13" upright; the root class
+  `tablet-table` from `phoneLayout.ts`) draws the wide table sized to the screen. Below that the cross could not
+  keep a six-card trick's cards at the wide table's 52 px. A sideways touch window under 740 px tall (Split View,
+  Safari with its toolbar on a mini) gets the phone table instead, whose cross fits a short screen; one under 810 px
+  wide and upright (an iPad mini or 10.2" upright) keeps the wide table's fixed sizes, as before. Seat panels, your name, the controls and the tags grow
   with one size token from the screen's shorter side (1 at 880×640, at most 1.5); text never drops below the reader's
   size; buttons stay at least 48 px tall.
 - The hand runs edge to edge: its card comes from the screen's width (126 px on a 13" iPad sideways) and the pitch

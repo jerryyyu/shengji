@@ -2240,6 +2240,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     border-bottom: 0;
     pointer-events: none;     /* only the chips themselves take taps */
     padding: calc(6px + var(--safe-t)) calc(4px + var(--safe-r)) 0 calc(4px + var(--safe-l));
+    /* the ⋯ button's hit area stops at the screen edge rather than widen
+       the page past it */
+    overflow-x: clip;
   }
 
   .hud-bar {
@@ -3237,13 +3240,16 @@ dialog.modal-backdrop::backdrop { background: transparent; }
          and the pitch closes up only when the row would not fit;
        - the trick cross takes its card from the hand's and stands between the
          top seat and your row, the side seats level with its centre.
-     A mouse-driven browser never matches this block. */
+     phoneLayout.ts sets the class only on a touch screen at least 810x740
+     (TABLET_SCREEN): from there the cross keeps a six-card trick's cards at
+     the wide table's 52px or more. A mouse-driven browser and a smaller
+     touch window never match this block. */
   /* on the root, so the toast, drawn outside the table, reads them too */
   & {
     --u: clamp(1px, min(calc(100vw / 880), calc(100dvh / 640)), 1.5px);
     --safe-b: env(safe-area-inset-bottom, 0px);
     --hand-w: calc(100vw - 48px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
-    --hcw: clamp(72px, min(9.2vw, 14dvh), 126px);
+    --hcw: clamp(72px, min(9.2vw, 13dvh), 126px);
     /* the header bar, then the felt */
     --hud-h: calc(60px + env(safe-area-inset-top, 0px));
     /* the top seat's panel ends here, from the felt's top, with its

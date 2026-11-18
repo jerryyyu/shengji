@@ -5,7 +5,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PHONE_CLASS, PORTRAIT_PHONE, SHORT_VIEWPORT, TABLET_CLASS, TOUCH_SCREEN, phoneLayout } from "./phoneLayout";
+import { PHONE_CLASS, PORTRAIT_PHONE, SHORT_VIEWPORT, TABLET_CLASS, TABLET_SCREEN, phoneLayout } from "./phoneLayout";
 
 class FakeWS {
   static all: FakeWS[] = [];
@@ -37,7 +37,7 @@ const playing = {
 /** A viewport answering the layout queries as `portrait` / `short` / `touch`. */
 function viewport({ portrait, short, touch = false }: { portrait: boolean; short: boolean; touch?: boolean }) {
   window.matchMedia = ((q: string) => ({
-    matches: q === PORTRAIT_PHONE ? portrait : q === SHORT_VIEWPORT ? short : q === TOUCH_SCREEN ? touch : false,
+    matches: q === PORTRAIT_PHONE ? portrait : q === SHORT_VIEWPORT ? short : q === TABLET_SCREEN ? touch : false,
     media: q, addEventListener() {}, removeEventListener() {},
   })) as unknown as typeof window.matchMedia;
 }
@@ -155,10 +155,14 @@ it("turns only the table, and only on a portrait phone", () => {
   expect(phoneLayout(false, false, true)).toEqual({ phone: false, rotated: false, tablet: false });
 });
 
-it("sizes the table to the screen only on a touch screen too large for the phone table", () => {
+it("sizes the table to the screen only on a touch screen large enough for the tablet table", () => {
   expect(phoneLayout(false, false, true, true)).toEqual({ phone: false, rotated: false, tablet: true });
-  // a mouse-driven browser keeps the wide table's fixed sizes
+  // a mouse-driven browser, or a touch window under 810x740, keeps the wide table's fixed sizes
   expect(phoneLayout(false, false, true, false).tablet).toBe(false);
+  // below 740px tall or 810px wide the cross cannot keep a six-card trick at 52px cards
+  expect(TABLET_SCREEN).toBe("(pointer: coarse) and (min-width: 810px) and (min-height: 740px)");
+  // a sideways touch window under that height takes the phone table, which fits a short screen
+  expect(SHORT_VIEWPORT).toBe("(max-height: 500px), (pointer: coarse) and (orientation: landscape) and (max-height: 739px)");
   // the phone table and the turned table are touch screens that are not tablets
   expect(phoneLayout(true, false, true, true).tablet).toBe(false);
   expect(phoneLayout(false, true, true, true).tablet).toBe(false);

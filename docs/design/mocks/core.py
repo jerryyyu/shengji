@@ -374,7 +374,7 @@ def f5_game():
 def ipad_fill(w=1376, h=1032):
     """The iPad table, Fill (Jerry 11-17): seats and controls on one size token, the hand edge to edge, the trick cross sized from it."""
     u = min(w / 880, h / 640, 1.5)
-    hcw = min(126, round(min(w * .092, h * .14)))
+    hcw = min(126, round(min(w * .092, h * .13)))
     tcw = round(hcw * .72)
     hud = (f'<div style="position:absolute;left:0;right:0;top:0;height:60px;background:#171a21;border-bottom:1px solid #2b323e;display:flex;align-items:center;'
            f'justify-content:space-between;padding:0 24px;font:700 15px {FONT}"><span><span style="color:{B}">●</span> Us 2 &nbsp; ♣ 2 &nbsp; '

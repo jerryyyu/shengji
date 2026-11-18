@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import type { ChatMsg, GameState, ServerMsg } from "../protocol";
 import { conn } from "../ws";
-import { isMuted, useMutes } from "../chatMute";
+import { isBlocked, useBlocks } from "../chatBlocks";
 import { seatPos } from "./TrickArea";
 
 /** How long a chat line stays at its seat. */
@@ -17,7 +17,7 @@ interface Bubble {
 /** Live chat lines from each seat, newest per seat, each dropped BUBBLE_MS
  *  after it arrived. Only live "chat" events count: anything the
  *  connection had already buffered, or a chat_history snapshot replays, is
- *  scrollback and stays in the panel. System lines, muted seats and
+ *  scrollback and stays in the panel. System lines, blocked seats and
  *  anything said while the panel is open never pop. Dismissing a bubble
  *  only hides it: the line stays in the panel and still counts as unread. */
 function useChatBubbles(open: boolean) {
@@ -66,7 +66,7 @@ function useChatBubbles(open: boolean) {
     seen.current.max = msg.id;
     // a system line, or one from someone no longer seated, has no seat to sit at
     const seat = msg.seat;
-    if (seat === null || seat < 0 || openRef.current || isMuted(msg.room, seat)) return;
+    if (seat === null || seat < 0 || openRef.current || isBlocked(msg.room, seat)) return;
     const bubble: Bubble = { seat, id: msg.id, name: msg.name, text: msg.text };
     setBubbles((list) => [...list.filter((b) => b.seat !== seat), bubble]);
     const old = timers.current.get(seat);
@@ -258,8 +258,8 @@ export default function ChatBubbles({ state, open }: {
     swipe.current = null;
     el.style.transform = "";
   };
-  const muted = useMutes();
-  const shown = bubbles.filter((b) => !muted(state.room, b.seat));
+  const blocked = useBlocks();
+  const shown = bubbles.filter((b) => !blocked(state.room, b.seat));
   const layerRef = useRef<HTMLDivElement>(null);
   const [, relayout] = useReducer((n: number) => n + 1, 0);
   // the seats move with every state and resize, so place on each render

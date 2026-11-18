@@ -449,6 +449,19 @@ def _migrate_v7(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "suspended_at", "INTEGER")
 
 
+# One row per account a signed-in player blocked (``blocks.py``). Either
+# account's deletion removes the row by cascade.
+_BLOCKS_V8 = """
+    CREATE TABLE IF NOT EXISTS blocks (
+        blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (blocker_id, blocked_id)
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS blocks_blocked ON blocks(blocked_id)
+"""
+
+
 def _migrate_v6(conn: sqlite3.Connection) -> None:
     """Rebuild ``users`` with a nullable ``google_sub``, an ``apple_sub`` and
     the at-least-one CHECK, and add ``apple_tokens``.
@@ -527,6 +540,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v6,
     # version 7: operator account suspension.
     _migrate_v7,
+    # version 8: the accounts a signed-in player blocked.
+    _BLOCKS_V8,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -990,8 +1005,8 @@ class Store:
                 (t - GAMES_RETENTION_SECONDS,)).rowcount
 
     def delete_user(self, user_id: int) -> bool:
-        """Remove a user; its sessions and game links go by cascade, and so
-        do the games no other account links. The anonymous room logs are
+        """Remove a user; its sessions, game links and blocks (made by it or
+        of it) go by cascade, and so do the games no other account links. The anonymous room logs are
         untouched: they never held the account."""
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -1005,6 +1020,30 @@ class Store:
                 conn.execute("ROLLBACK")
                 raise
         return gone > 0
+
+    # -- blocks
+    def blocked_ids(self, user_id: int) -> list[int]:
+        """The accounts ``user_id`` blocked."""
+        with closing(self._open()) as conn:
+            rows = conn.execute("SELECT blocked_id FROM blocks WHERE blocker_id = ?",
+                                (user_id,)).fetchall()
+            return [int(row["blocked_id"]) for row in rows]
+
+    def set_block(self, blocker_id: int, blocked_id: int, on: bool,
+                  now: float | None = None) -> None:
+        """Store or remove one block. A block naming an account that no longer
+        exists stores nothing (the foreign key refuses it)."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            if on:
+                try:
+                    conn.execute("INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at) "
+                                 "VALUES (?, ?, ?)", (blocker_id, blocked_id, t))
+                except sqlite3.IntegrityError:
+                    pass
+            else:
+                conn.execute("DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                             (blocker_id, blocked_id))
 
     async def run(self, fn: Callable[..., Any], *args: Any) -> Any:
         loop = asyncio.get_running_loop()

@@ -30,7 +30,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, chat_filter, limits, matchmaking, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, blocks, chat_filter, limits, matchmaking, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -368,6 +368,9 @@ class Room:
     ready: set[int] = field(default_factory=set)  # seats confirming round end
     chat_seq: int = 0            # monotonic per-room chat id
     chat: list[dict] = field(default_factory=list)  # last CHAT_KEEP messages
+    # Each player line's sender (``blocks.Key``) by chat id, so a blocker's
+    # copy leaves it out. Server-only: it enters no frame and no log.
+    chat_senders: dict[int, Any] = field(default_factory=dict)
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # None builds the served policy (SHENGJI_BOT) in `__post_init__` with this
@@ -832,6 +835,7 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
     # the frame's guest flag also marks every person with no account at a
     # queue-matched table, rated or not
     guest_seat = guest or (room.matched and not me.is_bot and me.user_id is None)
+    viewer = block_key(me)
     return {
         "type": "state",
         "room": room.code,
@@ -870,6 +874,8 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             # the owner pressed Leave: "Bot (Alice left)", not a countdown
             "left": (room.seats[s].left_by_choice
                      and _controller(room, s) == "bot_cover"),
+            # this viewer blocked the seat's occupant: their chat is not sent
+            **({"blocked": True} if blocks.hides(viewer, block_key(room.seats[s])) else {}),
         } for s in range(4)],
         "hand": hand,
         "levels": list(game.levels),
@@ -1036,7 +1042,25 @@ async def send(ws: WebSocket, payload: dict) -> None:
         pass
 
 
-def chat_post(room: Room, entry: dict) -> None:
+def block_key(seat: Seat) -> blocks.Key | None:
+    """Who ``seat``'s occupant is to a block list: the account, else the
+    guest's device id, else (no device key) the seat itself; None for a bot."""
+    if seat.is_bot:
+        return None
+    if seat.user_id is not None:
+        return seat.user_id
+    if seat.queue_id is not None:
+        return seat.queue_id
+    if seat.device is not None:
+        return guest_queue_id(seat.device)
+    return f"seat:{seat.token}"
+
+
+def _hidden(room: Room, viewer: Seat, line: dict) -> bool:
+    return blocks.hides(block_key(viewer), room.chat_senders.get(line.get("id")))
+
+
+def chat_post(room: Room, entry: dict, sender: blocks.Key | None = None) -> None:
     """Append with a room-scoped monotonic id and fan out.
 
     Ids let a client deduplicate: on attach it gets ONE chat_history snapshot
@@ -1049,14 +1073,20 @@ def chat_post(room: Room, entry: dict) -> None:
     entry = {**entry, "id": room.chat_seq, "room": room.code}
     room.chat.append(entry)
     del room.chat[:-CHAT_KEEP]
+    if sender is not None:
+        room.chat_senders[room.chat_seq] = sender
+    first = room.chat[0]["id"]
+    room.chat_senders = {i: k for i, k in room.chat_senders.items() if i >= first}
     for sd in room.seats:
-        if sd is not None:
+        if sd is not None and not blocks.hides(block_key(sd), sender):
             enqueue(sd, {"type": "chat", **entry})
 
 
-def chat_snapshot(room: Room) -> dict:
-    return {"type": "chat_history", "room": room.code,
-            "through_id": room.chat_seq, "messages": list(room.chat)}
+def chat_snapshot(room: Room, viewer: Seat) -> dict:
+    """The room's scrollback as ``viewer`` sees it: without the lines of
+    anyone it blocked."""
+    return {"type": "chat_history", "room": room.code, "through_id": room.chat_seq,
+            "messages": [line for line in room.chat if not _hidden(room, viewer, line)]}
 
 
 def chat_system(room: Room, text: str) -> None:
@@ -2228,7 +2258,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
             return
         room.log_event("chat", seat=seat, text=text, bot=False)
         chat_post(room, {"seat": seat, "name": room.seats[seat].name,
-                         "text": text, "t": time.time()})
+                         "text": text, "t": time.time()}, sender=block_key(room.seats[seat]))
         return
     elif t == "allow_joiners":
         # The table's opener switches it either way, ranked or casual; a
@@ -2833,6 +2863,11 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                        if user_id is not None and device is not None else None)
     caller = _Caller(ws, conn, user_id, device, guest_id, signed_in_guest, ip)
     account_id, queue_id = caller.account_id, caller.queue_id
+    if user_id is not None:
+        try:
+            await blocks.ensure_loaded(user_id)
+        except Exception as exc:    # noqa: BLE001 - play goes on; the next socket retries
+            logging.warning("blocks not loaded (%s)", type(exc).__name__)
     if signed_in_guest is not None:
         old_conn = MATCHMAKER.conns.get(signed_in_guest)
         if old_conn is not None and old_conn.joining is not None:
@@ -3026,6 +3061,9 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
             if t == "report_player":
                 await _report_player(room, me, account_id(), msg)
                 continue
+            if t == "block_player":
+                await _block_player(room, me, msg)
+                continue
             async with room.lock:
                 try:
                     seat_idx = room.seats.index(me)
@@ -3073,6 +3111,46 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
 
 
 
+async def _block_player(room: Room, me: Seat, msg: dict) -> None:
+    """Block (``on`` true or absent) or unblock the person in ``msg``'s seat
+    for this seat's occupant. A block between two accounts is stored off the
+    event loop first; then this seat alone gets its scrollback and its state
+    as it now sees them. Nothing about a block reaches any other seat."""
+    stored = None
+    async with room.lock:
+        if me not in room.seats:
+            return
+        target = msg.get("seat")
+        on = msg.get("on") is not False
+        try:
+            if type(target) is not int or not 0 <= target < len(room.seats):
+                raise blocks.BlockRefused("block_bad_seat", "That seat cannot be blocked.")
+            other = room.seats[target]
+            if other.is_bot:
+                raise blocks.BlockRefused("block_bot", "Bots cannot be blocked.")
+            viewer, key = block_key(me), block_key(other)
+            if other is me or viewer is None or key is None:
+                raise blocks.BlockRefused("block_bad_seat", "That seat cannot be blocked.")
+            if not blocks.LIMITER.allow(str(viewer)):
+                raise blocks.BlockRefused("block_rate_limited", "Too many changes. Try again later.")
+            if blocks.set_block(viewer, key, on):
+                stored = (viewer, key)
+        except blocks.BlockRefused as refused:
+            enqueue(me, {"type": "error", "code": refused.code, "message": str(refused)})
+            return
+    if stored is not None:
+        try:
+            await blocks.store(*stored, on)
+        except Exception as exc:    # noqa: BLE001 - the block holds for this process
+            logging.warning("block not stored (%s)", type(exc).__name__)
+    async with room.lock:
+        if me not in room.seats:
+            return
+        enqueue(me, chat_snapshot(room, me))
+        if room.game is not None and room.round is not None:
+            enqueue(me, state_for(room, room.seats.index(me)))
+
+
 async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -> None:
     """Store a report on another seat and confirm it to the reporter only.
     The record is built under the room lock and written off the event loop;
@@ -3097,7 +3175,8 @@ async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -
 
 async def start_matched_room(match_id: str | None, slots: list,
                              conns: dict, *, mode: str = "ranked",
-                             chat: Any = (), code: str | None = None,
+                             chat: Any = (), chat_senders: Any = None,
+                             code: str | None = None,
                              allow_joiners: bool = True,
                              start_level: str = RANKS[0],
                              friend_seat: int | None = None) -> str:
@@ -3106,7 +3185,8 @@ async def start_matched_room(match_id: str | None, slots: list,
     ``mode`` "ranked" builds a rated matched room; "casual" an unrated room
     with no move timer, open to casual joiners. ``chat`` is the waiting
     table's chat, which becomes the room's first scrollback (unlogged, as it
-    was at the table). ``code`` is the table's code, which the queue has just
+    was at the table), and ``chat_senders`` each of its lines' sender by line
+    id there (server-only). ``code`` is the table's code, which the queue has just
     released for the room, so the table's invite link leads here;
     ``allow_joiners`` and a casual table's ``start_level`` carry over, and
     ``friend_seat`` is the seat a Duo table still held for its friend.
@@ -3134,7 +3214,14 @@ async def start_matched_room(match_id: str | None, slots: list,
         room.chat_seq += 1
         room.chat.append({"seat": line["seat"], "name": line["name"], "text": line["text"],
                           "t": line["t"], "id": room.chat_seq, "room": room.code})
+        # the queue's record of who wrote the line, never the seat's
+        # occupant now: a seat changes hands while a table waits
+        sender = (chat_senders or {}).get(line.get("id"))
+        if sender is not None:
+            room.chat_senders[room.chat_seq] = sender
     del room.chat[:-CHAT_KEEP]
+    kept = {line["id"] for line in room.chat}
+    room.chat_senders = {i: k for i, k in room.chat_senders.items() if i in kept}
     rooms[room.code] = room
     attached: list[tuple[Seat, Any, int]] = []
     try:
@@ -3736,7 +3823,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     seat.table_sent = None
     _start_writer(seat, ws)
     enqueue(seat, {"type": "resume", "token": seat.token, "gen": seat.gen})
-    enqueue(seat, chat_snapshot(room))   # one snapshot, before the first state
+    enqueue(seat, chat_snapshot(room, seat))   # one snapshot, before the first state
     return seat.gen
 
 

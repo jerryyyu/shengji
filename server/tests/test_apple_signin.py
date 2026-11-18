@@ -402,7 +402,7 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
         before_links = sorted(db.execute("SELECT * FROM game_players"))
         before_events = sorted(db.execute("SELECT * FROM rating_events"))
     store = accounts.Store(path)
-    assert store.schema_version() == len(accounts.SCHEMA) == 7
+    assert store.schema_version() == len(accounts.SCHEMA) == 8
     with closing(sqlite3.connect(path)) as db:
         after_users = db.execute(
             f"SELECT {accounts._USER_COLUMNS_V5} FROM users ORDER BY id").fetchall()
@@ -446,7 +446,7 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
         db.row_factory = sqlite3.Row
         accounts._migrate_v6(db)
         db.commit()
-    assert accounts.Store(path).schema_version() == 7
+    assert accounts.Store(path).schema_version() == 8
     assert accounts.Store(path).user(1)["display_name"] == "Champ"
 
 

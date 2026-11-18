@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const PRIVACY_UPDATED = "2026-11-16";
+export const PRIVACY_UPDATED = "2026-11-17";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -65,8 +65,7 @@ export default function PrivacyPage() {
             sees it. Chat during a game is written to the game record, as filtered, with the seat it
             came from. Chat at a table before its game starts is held in memory and carried into the
             game’s on-screen scrollback, rather than written to its game record; recent lines may
-            also be saved with a player report. Muting a player
-            hides their chat on your screen only and is not sent to us.
+            also be saved with a player report.
           </p>
         </Section>
 
@@ -154,6 +153,16 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="Blocking a player">
+          <p>
+            You can block another player at the table, signed in or a guest. From then on our server
+            does not send you their chat, in that game or any later one, and the player is not told.
+            If you and the player you block are both signed in, we store the pair of accounts and the
+            time, until you unblock them or either account is deleted. Any other block is held in our
+            server’s memory, linked to this device, until the server restarts.
+          </p>
+        </Section>
+
         <Section title="Support messages">
           <p>
             When you use the <SupportLink />, we store the topic, your message, the email address if
@@ -182,8 +191,8 @@ export default function PrivacyPage() {
         <Section title="Deleting your account">
           <p>
             You can delete your account in the app: open Me and choose Delete account. That removes
-            your account record, your sessions, your saved-game links, your rating and your rating
-            history at once. If you signed in with Apple, we also ask Apple to revoke the app’s access
+            your account record, your sessions, your saved-game links, your rating, your rating
+            history and the blocks you made, or others made of you, at once. If you signed in with Apple, we also ask Apple to revoke the app’s access
             to your Apple ID.
           </p>
           <p>

@@ -13,6 +13,7 @@ import TrickArea, { seatPos } from "./TrickArea";
 import ChatPanel, { type ChatMsg } from "./ChatPanel";
 import ChatBubbles from "./ChatBubbles";
 import OpponentActions from "./OpponentActions";
+import { syncBlocked } from "../chatBlocks";
 import { haptic } from "../native";
 import { nameWidthClass } from "../nameWidth";
 import Toast from "./Toast";
@@ -106,7 +107,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const pos = seatPos(player.seat, state.you);
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
-  // a long press (or a right click) on a person's seat also offers mute and
+  // a long press (or a right click) on a person's seat also offers block and
   // report; offline play seats only bots, so it never offers them there
   const [actions, setActions] = useState(false);
   const canAct = !player.is_bot;
@@ -296,6 +297,8 @@ export default function Table({ state }: { state: GameState }) {
   }), []);
   const chatOpenRef = useRef(false);
   useEffect(() => { chatOpenRef.current = chatOpen; if (chatOpen) setUnread(0); }, [chatOpen]);
+  // the server marks the seats this viewer blocked, in this game and every later one
+  useEffect(() => syncBlocked(state.room, state.players), [state.room, state.players]);
   const [prevState, setPrevState] = useState(state);
   const handRects = useRef<HandRects>(new Map());
 

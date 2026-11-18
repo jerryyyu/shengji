@@ -69,16 +69,18 @@ class Env:
         self.conns: dict[int, FakeConn] = {}
         self.modes: list[str] = []
         self.chats: list[list[dict]] = []
+        self.chat_senders: list[dict[int, int]] = []
 
         async def rating_of(uid):
             return self.ratings.get(uid)
 
         self.rooms: list[dict] = []
 
-        async def start_room(match_id, slots, conns, mode="ranked", chat=(), **room):
+        async def start_room(match_id, slots, conns, mode="ranked", chat=(), chat_senders=None, **room):
             self.started.append((match_id, slots))
             self.modes.append(mode)
             self.chats.append(list(chat))
+            self.chat_senders.append(dict(chat_senders or {}))
             self.rooms.append(room)
             for c in conns.values():
                 self.mm.enter_room(c)

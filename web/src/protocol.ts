@@ -45,6 +45,10 @@ export type ClientMsg =
   | { type: "im_back" }
   /** Report another seat's player; the server answers report_received or a coded error. */
   | { type: "report_player"; seat: number; reason: ReportReason }
+  /** Block (`on` true) or unblock another seat's player: the server sends
+   *  this viewer none of their chat from then on, in any game, and answers
+   *  with a chat_history and a state marking the seat `blocked`. */
+  | { type: "block_player"; seat: number; on: boolean }
   /* The table family (PROTOCOL.md "Table messages"): the same names at a
    * queue table and in a room, which the server rewrites into the message
    * that place handles. A room takes them only once its game is in play;
@@ -131,6 +135,10 @@ export interface StatePlayer {
   /** The owner pressed Leave: a bot plays the seat at once, and the table
    *  names it "Bot (Alice left)". Absent offline. */
   left?: boolean;
+  /** This viewer blocked the seat's player (block_player): the server sends
+   *  none of their chat. Present only when true, so never offline, where
+   *  every other seat is a bot. */
+  blocked?: boolean;
 }
 
 export interface Trump {

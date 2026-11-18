@@ -56,7 +56,7 @@ const QUEUE_ROUTES = {
   too_soon: { says: "toast" },
 } as const satisfies Record<string, ErrorRoute>;
 
-/** Rooms, seats, reports, and the queue's codes a queue action does not
+/** Rooms, seats, reports, blocks, and the queue's codes a queue action does not
  *  answer with (seat_changed answers a seat pick at a table). */
 const OTHER_ROUTES = {
   account_in_game: { says: "queue" },
@@ -82,6 +82,10 @@ const OTHER_ROUTES = {
   report_bot: { says: "toast" },
   report_rate_limited: { says: "toast" },
   report_not_stored: { says: "toast" },
+  block_bad_seat: { says: "toast" },
+  block_bot: { says: "toast" },
+  block_rate_limited: { says: "toast" },
+  block_full: { says: "toast" },
 } as const satisfies Record<string, ErrorRoute>;
 
 export const ERROR_ROUTES = { ...QUEUE_ROUTES, ...OTHER_ROUTES } as const satisfies Record<string, ErrorRoute>;

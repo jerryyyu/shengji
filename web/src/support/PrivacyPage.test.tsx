@@ -17,11 +17,11 @@ describe("the privacy page", () => {
     const headings = [...host.querySelectorAll("h2")].map((h) => h.textContent);
     expect(headings).toEqual(["Playing as a guest", "Game records", "Table chat",
                               "Signing in with Google or Apple", "Saved games", "Ratings and the leaderboard",
-                              "Usage events", "Reporting a player", "Support messages",
+                              "Usage events", "Reporting a player", "Blocking a player", "Support messages",
                               "IP addresses and server logs", "Where it is kept", "Deleting your account",
                               "Children", "Automated play", "Contact"]);
     const text = host.textContent ?? "";
-    expect(text).toContain("Last updated 2026-11-16");
+    expect(text).toContain("Last updated 2026-11-17");
     expect(text).toContain("Fly.io");
     expect(text).toContain("hash");
     expect(text).toContain("Show me on the leaderboard");
@@ -31,6 +31,9 @@ describe("the privacy page", () => {
     expect(text).toContain("last 20 chat lines");
     expect(text).toContain("removes the days older than 90 days as new events arrive");
     expect(text).toContain("report another player at the table, signed in or a guest");
+    expect(text).toContain("we store the pair of accounts and the");
+    expect(text).toContain("the blocks you made, or others made of you");
+    expect(text).not.toContain("Muting a player");
     expect(text).toContain("not directed at children under 13");
     expect(text).not.toContain("no ratings or leaderboards");
     expect(text).not.toContain("don’t use analytics");

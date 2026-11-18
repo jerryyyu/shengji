@@ -238,6 +238,48 @@ def test_unset_the_registry_and_the_served_bot_are_untouched(release50_packages)
     assert done.stdout.strip() == f"UNTOUCHED {RELEASE52}"
 
 
+def test_set_the_unified_bot_serves_without_torch_or_a_trainer_module(release50_packages, tmp_path):
+    """The server image installs no torch: a fresh process with the unified lines set, torch's import
+    refused, registers the name and plays one decision on every slot without asking for torch or
+    importing the unified trainer's modules."""
+    pair = _random_pair(tmp_path)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_PV_")}
+    served = {k: v for k, v in unified_env(release50_packages, pair).items() if not k.startswith("SHENGJI_CWV_")}
+    env.update(served)
+    env.pop("SHENGJI_LOG_DIR", None)
+    if os.environ.get("SHENGJI_FAST") != "1":
+        env.pop("SHENGJI_FAST", None)
+    code = (
+        "import os, sys\n"
+        "asked = []\n"
+        "class NoTorch:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name == 'torch' or name.startswith('torch.'):\n"
+        "            asked.append(name)\n"
+        "            raise ImportError('torch is not installed in the server image')\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, NoTorch())\n"
+        "sys.path.insert(0, 'tests')\n"
+        "if os.environ.get('SHENGJI_FAST') == '1':\n"
+        "    from shengji.engine import fast\n"
+        "    assert fast.activate()\n"
+        "from shengji.ai import registry\n"
+        "import r50_flag_positions as P\n"
+        "bot = P.lift(registry.make_bot(os.environ['SHENGJI_BOT'], seed=P.SEED))\n"
+        "out = P.decision(bot, P.replay(*P.POSITIONS[0]))\n"
+        "u = out['record']['unified']\n"
+        "assert u['shared'] == 1 and u['value_rows'] > 0 and u['reply_rows'] > 0, u\n"
+        "assert not asked, asked\n"
+        "assert 'torch' not in sys.modules\n"
+        "trainer = [m for m in sys.modules if m in ('shengji.train.unified_readout', 'shengji.train.unified_seq')]\n"
+        "assert not trainer, trainer\n"
+        "print('NUMPY_ONLY', bot.policy_name)\n")
+    done = subprocess.run([sys.executable, "-B", "-c", code], env=env, capture_output=True, text=True,
+                          cwd=Path(__file__).resolve().parents[1], timeout=600)
+    assert done.returncode == 0, done.stderr[-3000:]
+    assert done.stdout.strip() == f"NUMPY_ONLY {served['SHENGJI_BOT']}"
+
+
 def test_set_the_registry_gains_one_name_beside_the_served_ones(release50_packages, pair, monkeypatch,
                                                               served_functions):
     from shengji.train import unified_serving as serving

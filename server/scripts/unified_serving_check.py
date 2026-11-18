@@ -12,11 +12,12 @@ registry's unified name plays every seat of each round through the server's own 
 (``_bot_declares``, ``_paced_bot_step``, ``_commit_bot_turn``).  Before each of its play turns, four
 fresh bots with one seed decide a copy of that state:
 
-* parity, clocks lifted so the decision is a function of the code alone: the registry's unified
-  bot against the duel adapter's (the served registry entry, then `unified_slots`' three installs,
-  with the adapter's own two module-level stand-ins in place for that call).  Cards, base worlds,
-  decision record (less the fields that measure the run and the registry bot's own ``unified``
-  entry) and slot counters must be equal;
+* parity, clocks and the belief proposal's preparation budget lifted so the decision is a
+  function of the code alone: the registry's unified bot against the duel adapter's (the served
+  registry entry, then `unified_slots`' three installs, with the adapter's own two module-level
+  stand-ins in place for that call).  Cards, base worlds, decision record (less the fields that
+  measure the run and the registry bot's own ``unified`` entry) and slot counters must be equal,
+  with no belief fallback on either side;
 * latency, clocks as served: the registry's unified bot against the served bot (the served
   functions unwrapped for that call), seconds per ``decide_play``, in alternating order.
 
@@ -115,7 +116,12 @@ def _decide(bot, rnd, lifted):
 
     before = [getattr(bot, name, 0) for name in COUNTERS]
     if lifted:
-        out = P.decision(P.lift(bot), rnd)
+        from shengji.ai import belief_numpy
+        prep, belief_numpy.PREP_SECONDS = belief_numpy.PREP_SECONDS, 60.0
+        try:
+            out = P.decision(P.lift(bot), rnd)
+        finally:
+            belief_numpy.PREP_SECONDS = prep
         out["account"] = out["record"].pop("unified", None)
         seconds = None
     else:
@@ -185,7 +191,7 @@ def run(args) -> dict:
                "compiled_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
                "files": {k: {"path": v, "sha256": hashlib.sha256(Path(v).read_bytes()).hexdigest()}
                          for k, v in unified_env.items() if k.endswith("_CKPT")}})
-        rows, mismatches, driver_records = [], [], []
+        rows, mismatches, driver_records, parity_fallbacks = [], [], [], []
 
         def compare(rnd, deal_seed, index):
             seed = deal_seed * 1000 + index
@@ -202,6 +208,8 @@ def run(args) -> dict:
                     timed[side] = _decide(make(seed=seed), copy.deepcopy(rnd), False)
             account = got.pop("account")
             want.pop("account")
+            if got["record"].get("belief_fallback") or want["record"].get("belief_fallback"):
+                parity_fallbacks.append(index)
             row = {"kind": "decision", "deal_seed": deal_seed, "index": index, "trick": len(rnd.history) + 1,
                    "position": len(rnd.trick.plays) if rnd.trick is not None else 0,
                    "equal": got == want, "cards": got["cards"], "counters": got["counters"], "account": account,
@@ -269,6 +277,8 @@ def run(args) -> dict:
         failures = []
         if mismatches:
             failures.append(f"{len(mismatches)} of {len(rows)} decisions differ from the adapter's")
+        if parity_fallbacks:
+            failures.append(f"{len(parity_fallbacks)} parity decisions fell back to the fallback worlds")
         if any(schema != pv.RECORD_SCHEMA for _, schema, _ in plays):
             failures.append("a driver play decision fell back")
         if any(name != unified_env["SHENGJI_BOT"] for _, _, name in driver_records):
@@ -281,6 +291,7 @@ def run(args) -> dict:
             failures.append("the readout scored no value row or no reply row")
         terminal = {"kind": "terminal", "passed": not failures, "failures": failures, "rounds": args.rounds,
                     "decisions": len(rows), "mismatches": len(mismatches),
+                    "parity_belief_fallbacks": len(parity_fallbacks),
                     "driver": {"plays": len(plays), "buries": len(driver_records) - len(plays),
                                "play_fallbacks": sum(s != pv.RECORD_SCHEMA for _, s, _ in plays)},
                     "counters": counters,

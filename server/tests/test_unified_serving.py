@@ -87,10 +87,14 @@ def pair(request, tmp_path_factory):
 
 @pytest.fixture
 def served_functions(monkeypatch):
-    """The two served functions the unified bots wrap, restored after the test, and the serving
-    module's package cache emptied."""
+    """The two served functions the unified bots wrap, restored after the test, the serving
+    module's package cache emptied, and the belief proposal's preparation budget lifted with the
+    other clocks (`r50_flag_positions.lift`), so every compared decision is a function of the code
+    alone and none falls back to the fallback worlds on a slow host."""
+    from shengji.ai import belief_numpy as bn
     from shengji.train import pv_encode_prefix, pv_tree_search, unified_serving
 
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
     monkeypatch.setattr(pv_tree_search, "greedy_reply_ply", pv_tree_search.greedy_reply_ply)
     monkeypatch.setattr(pv_encode_prefix, "score_leaves", pv_encode_prefix.score_leaves)
     monkeypatch.setattr(unified_serving, "_MODELS", {})
@@ -157,6 +161,7 @@ def decide(bot, rnd):
 
     before = [getattr(bot, name, 0) for name in COUNTERS]
     out = P.decision(P.lift(bot), rnd)
+    assert out["record"]["belief_fallback"] == 0, out["record"].get("belief_fallback_reason")
     out["counters"] = dict(zip(COUNTERS, (getattr(bot, name, 0) - b for name, b in zip(COUNTERS, before))))
     account = out["record"].pop(serving.RECORD_KEY, None)
     if hasattr(bot, "unified_sha256"):
@@ -315,7 +320,9 @@ def test_a_served_bot_decides_the_same_beside_a_unified_bot(release50_packages, 
     def served(position):
         bot = registry_bot(monkeypatch, served_env, P.SEED)
         assert bot.policy_name == RELEASE52 and "scores" not in vars(bot)
-        return P.decision(P.lift(bot), P.replay(*position))
+        out = P.decision(P.lift(bot), P.replay(*position))
+        assert out["record"]["belief_fallback"] == 0, out["record"].get("belief_fallback_reason")
+        return out
     before = {position: served(position) for position in positions}
     assert not serving.active()
     env = unified_env(release50_packages, pair)

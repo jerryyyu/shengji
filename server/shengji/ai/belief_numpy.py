@@ -37,7 +37,7 @@ SCHEMA = "shengji-belief-numpy-v1"
 N_CARDS = 54
 N_RECV = 4
 LAYERNORM_EPS = 1e-5
-PACKAGE_MAX_BYTES = 64 * 1024 * 1024
+PACKAGE_MAX_BYTES = 128 * 1024 * 1024
 CONFIG_KEYS = ("d", "heads", "enc_layers", "xattn_layers", "x_hidden", "card_self_attn")
 
 

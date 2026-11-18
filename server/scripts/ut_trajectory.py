@@ -4,7 +4,8 @@
 The environment is ``y_trajectory.recipe_environment`` (fly.toml's [env], model paths mapped to
 ``--models``) with the belief package replaced by the one carrying the unified trunk and the
 unified readout package named (``SHENGJI_PV_UNIFIED_CKPT`` / ``_SHA256``).  All four seats play
-the registry's unified name, which must equal ``--expect-name``; capture, sampling and
+the one name the registry registers for that environment (``served_config.registry_name``),
+which must equal ``--expect-name``; capture, sampling and
 exploration are fixed: served-budget capture, ``--round-mix sampled``, explore 0, cap 256.
 """
 from __future__ import annotations
@@ -71,9 +72,9 @@ def main(argv=None):
                 "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
         os.environ[key] = "1"
     sys.path.insert(0, str(HERE.parents[1]))
+    from shengji.eval.served_config import registry_name
+    name = registry_name(selected)
     from shengji.ai import registry
-    from shengji.train.unified_serving import unified_name
-    name = unified_name(selected["SHENGJI_BOT"], args.unified_sha256)
     if name != args.expect_name:
         raise SystemExit(f"derived name {name} != expected {args.expect_name}")
     if name not in registry.REGISTRY:
@@ -82,7 +83,7 @@ def main(argv=None):
     if (bot.policy_name != name or bot.serving_budget_seconds != 3 or bot.bury_serving_budget_seconds != 2
             or bot.lead_confirm or getattr(bot, "unified_sha256", None) != args.unified_sha256):
         raise SystemExit(f"unified bot drift: {bot.policy_name}")
-    print(json.dumps({"policy": name, "served_name": selected["SHENGJI_BOT"],
+    print(json.dumps({"policy": name, "fly_served_name": selected["SHENGJI_BOT"],
                       "fly_sha256": _sha(args.fly), "play_seconds": 3, "bury_seconds": 2,
                       "explore_rate": 0, "round_mix": "sampled", "cap": 256,
                       "environment": {k: v for k, v in sorted(os.environ.items()) if k.startswith("SHENGJI_")}},

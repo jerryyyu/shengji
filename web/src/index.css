@@ -277,6 +277,12 @@ textarea:focus-visible {
   color: #f0a0aa;
 }
 
+/* the seat's countdown ticks each second beside an ellipsized name: fixed
+   digit widths keep the name's cut still */
+.off-tag.counting {
+  font-variant-numeric: tabular-nums;
+}
+
 .ready-tag {
   background: #1f4a35;
   color: #7fdda6;
@@ -324,6 +330,7 @@ textarea:focus-visible {
   font-weight: 600;
   line-height: 1.3;
   text-align: center;
+  text-wrap: balance;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   /* the fade ends as the toast unmounts: --toast-ms is the state timer */
   animation: toast-in 0.2s ease-out, toast-out 0.4s ease-in calc(var(--toast-ms, 4000ms) - 0.4s) forwards;
@@ -410,7 +417,9 @@ textarea:focus-visible {
   padding: 4px 4px 4px 14px;
 }
 
+/* The pill keeps its drawn height; the extender gives it a 44px tap. */
 .reconnect-retry {
+  position: relative;
   appearance: none;
   margin-left: 10px;
   min-height: 28px;
@@ -1266,6 +1275,7 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   font-size: 14px;
   font-weight: 800;
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .bot-banter {
@@ -1982,6 +1992,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .result-line {
   font-size: var(--fs-15);
   font-weight: 600;
+  text-wrap: balance;
 }
 
 .result-line .result-next-banker {
@@ -3092,6 +3103,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     width: max-content;
     max-width: calc(var(--view-w) / 2 - 51px - 2 * var(--space-s) - var(--safe-r));
     white-space: normal;
+    text-wrap: pretty;
     text-align: left;
     line-height: 15px;
     padding: 4px 12px;
@@ -3220,6 +3232,12 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .app:has(.table-screen) .reconnect-retry {
     min-height: 26px;
   }
+}
+
+.reconnect-retry::after {
+  content: "";
+  position: absolute;
+  inset: -9px -4px;
 }
 
 /* Phone table motion (see the short landscape block). */
@@ -3731,7 +3749,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .chat-badge {
   position: absolute; top: -4px; right: -4px;
   background: #d9534f; color: #fff; border-radius: 10px;
-  font-size: 11px; padding: 1px 5px; font-weight: 600;
+  font-size: 11px; padding: 1px 5px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .chat-panel {
   position: fixed; right: 12px; bottom: 68px; z-index: 41;
@@ -3814,7 +3832,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .field > span { font-size: var(--fs-14); }
 .field input, .field select, .chat-input input { font-size: var(--fs-16); }
 .chat-log { font-size: var(--fs-15); }
-.modal-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+.modal-title { line-height: 1.2; letter-spacing: -0.02em; overflow-wrap: anywhere; text-wrap: balance; }
 
 @media (prefers-contrast: more) {
   :root { --text-dim: #dce2eb; --panel-edge: #aab7c8; }
@@ -4073,7 +4091,7 @@ button.games-row { cursor: pointer; }
 .replay-felt .trick-cards { --cw: 40px; }
 .replay-felt .trick-cards .card + .card { margin-left: -24px; }
 .replay-felt .table-emblem { top: 50%; font-size: 64px; }
-.replay-caption { margin: 0; min-height: 2.6em; font-size: var(--fs-14); line-height: 1.3; overflow-wrap: anywhere; }
+.replay-caption { margin: 0; min-height: 2.6em; font-size: var(--fs-14); line-height: 1.3; overflow-wrap: anywhere; text-wrap: pretty; }
 .replay-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto repeat(2, minmax(0, 1fr));
@@ -4171,7 +4189,7 @@ button.games-row { cursor: pointer; }
 }
 /* The text slots keep one height on every step (three body lines, two caption
    lines, empty or not), so the picture, the dots and the buttons never jump. */
-.howto-body { font-size: var(--fs-14); line-height: 1.5; min-height: 4.5em; color: var(--text); }
+.howto-body { font-size: var(--fs-14); line-height: 1.5; min-height: 4.5em; color: var(--text); text-wrap: pretty; }
 .howto-caption { font-size: 13px; line-height: 1.45; min-height: 2.9em; color: var(--text-dim); }
 
 .howto-visual {
@@ -5423,6 +5441,58 @@ button.grp-row:disabled { cursor: default; }
   opacity: 0.55;
   transition-duration: 0ms;
 }
+/* The table panel's buttons, the confirm sheet's buttons and the pills
+   answer a press with .btn's scale; its rows and chips dim as the tabs do.
+   Under Reduce Motion the dim still shows and the scale does not. */
+.tp-primary,
+.tp-secondary,
+.tp-invite,
+.table-pill,
+.reconnect-retry,
+.leave-sheet-actions button {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.tp-primary:active:not(:disabled):not(:focus-visible),
+.tp-secondary:active:not(:disabled):not(:focus-visible),
+.tp-invite:active:not(:disabled):not(:focus-visible),
+.table-pill:active:not(:disabled):not(:focus-visible),
+.reconnect-retry:active:not(:disabled):not(:focus-visible),
+.leave-sheet-actions button:active:not([aria-disabled="true"]):not(:focus-visible) {
+  transform: scale(0.97);
+}
+button.tp-seat,
+.tp-chat,
+.play-mode-opt,
+.chat-quick-btn,
+button.q-link,
+.account-pill,
+.last-trick-close {
+  transition: opacity 80ms var(--ease-out);
+}
+button.tp-seat:active:not(:disabled),
+.tp-chat:active:not(:disabled),
+.play-mode-opt:active:not(:disabled),
+.chat-quick-btn:active,
+button.q-link:active,
+.account-pill:active,
+.last-trick-close:active {
+  opacity: 0.55;
+  transition-duration: 0ms;
+}
+
+/* Small home and chat controls keep their drawn size; the extender makes
+   each a 44px tap. The quick phrases' row scrolls sideways, so their
+   extender reaches only up, into the row's top padding. */
+.play-mode-opt,
+.tp-invite,
+.chat-quick-btn { position: relative; }
+.play-mode-opt::after { content: ""; position: absolute; inset: -4px 0; }
+.tp-invite::after { content: ""; position: absolute; inset: -2px 0; }
+.chat-quick-btn::after { content: ""; position: absolute; inset: -8px 0 0; }
+/* the panel's live counts keep fixed digit widths as they change */
+.tp-chat-badge,
+.play-presence { font-variant-numeric: tabular-nums; }
+
 .ios-switch {
   transition: background 150ms ease, opacity 80ms var(--ease-out);
 }
@@ -5454,6 +5524,25 @@ button[role="switch"]:active .ios-switch {
   .howto-link,
   .ios-switch,
   .ios-switch::after { transition: none; }
+  .tp-primary,
+  .tp-secondary,
+  .tp-invite,
+  .table-pill,
+  .reconnect-retry,
+  .leave-sheet-actions button,
+  button.tp-seat,
+  .tp-chat,
+  .play-mode-opt,
+  .chat-quick-btn,
+  button.q-link,
+  .account-pill,
+  .last-trick-close { transition: none; }
+  .tp-primary:active:not(:disabled):not(:focus-visible),
+  .tp-secondary:active:not(:disabled):not(:focus-visible),
+  .tp-invite:active:not(:disabled):not(:focus-visible),
+  .table-pill:active:not(:disabled):not(:focus-visible),
+  .reconnect-retry:active:not(:disabled):not(:focus-visible),
+  .leave-sheet-actions button:active:not([aria-disabled="true"]):not(:focus-visible) { transform: none; }
   .hud-menu.pop-in,
   .chat-panel.pop-in,
   .hud-menu.pop-out,
@@ -5647,6 +5736,8 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
   color: #fff; font: inherit; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums;
   white-space: nowrap; cursor: pointer;
 }
+.table-pill { position: relative; }
+.table-pill::after { content: ""; position: absolute; inset: -2px 0; }
 .table-pill:has(.timer-ring) { padding-right: 4px; }
 .table-pill.warn { background: #3f3415; border-color: #9a6f12; }
 .table-pill-dot {
@@ -5765,12 +5856,14 @@ dialog.leave-sheet-backdrop {
   font-size: 17px;
   font-weight: 700;
   line-height: 1.3;
+  text-wrap: balance;
   color: #e9ecf2;
 }
 .leave-sheet-line {
   margin: 0;
   font-size: 14px;
   line-height: 1.4;
+  text-wrap: balance;
   color: #c3cad6;
 }
 .leave-sheet-actions {
@@ -5893,9 +5986,11 @@ dialog.leave-sheet-backdrop {
 
 /* the newcomer's own pill */
 .btn.join-leave {
+  position: relative;
   min-height: 40px; padding: 0 16px; border-radius: 14px; border: 1px solid #4a5262;
   background: rgba(255, 255, 255, 0.06); color: #e9ecf2; font-size: var(--fs-15); font-weight: 600;
 }
+.btn.join-leave::after { content: ""; position: absolute; inset: -2px 0; }
 .rating-unranked { margin: 0; font-size: var(--fs-14); color: var(--text-dim); }
 /* Live chat beside the seat that said it: one ellipsized line for a few
    seconds, then it fades. The layer passes taps through; a tap or a sideways
@@ -6082,6 +6177,7 @@ dialog.leave-sheet-backdrop {
   color: var(--gold);
   font-size: var(--fs-13);
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -6114,6 +6210,16 @@ dialog.leave-sheet-backdrop {
 
 :where(.phone-landscape) .app:has(.reconnect-banner) .table-screen .last-trick-btn {
   top: calc(var(--header-h, 32px) + 12px + 42px);
+}
+
+/* a finger's 44px around the drawn 28-30px control, which stays small in
+   the felt's corner */
+@media (pointer: coarse) {
+  .last-trick-btn::after {
+    content: "";
+    position: absolute;
+    inset: -8px -4px;
+  }
 }
 
 .last-trick-panel {
@@ -6151,6 +6257,7 @@ dialog.leave-sheet-backdrop {
 }
 
 .last-trick-close {
+  position: relative;
   border: 0;
   background: transparent;
   color: var(--text-dim);
@@ -6160,6 +6267,8 @@ dialog.leave-sheet-backdrop {
   min-height: 32px;
   cursor: pointer;
 }
+
+.last-trick-close::after { content: ""; position: absolute; inset: -6px; }
 
 .last-trick-plays {
   list-style: none;

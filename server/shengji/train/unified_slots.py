@@ -215,6 +215,11 @@ class LeafFrame:
         self.tricks = len(rnd.history)
         self.pos = len(rnd.trick.plays) if rnd.trick is not None else 0
         self._cache = None
+        #: the fast readout (`UNIFIED_FAST`): the fused stem and the rows this decision already scored
+        self.fast = bool(getattr(bot, "unified_fast", False))
+        self._fused = None
+        self.value_memo: dict = {}
+        self.reply_memo: dict = {}
 
     def cache(self, model):
         """The readout's per-decision cache: from the card states the shared belief forward of this
@@ -234,6 +239,12 @@ class LeafFrame:
                 bot.unified_trunk_forwards += 1
             self._cache = model.decision_cache(q, g)
         return self._cache
+
+    def fused(self, model):
+        """``model.fused_stem`` of this decision's cache, computed once."""
+        if self._fused is None:
+            self._fused = model.fused_stem(self.cache(model))
+        return self._fused
 
 
 def _leaf_entries(frame: LeafFrame, leaf):
@@ -303,6 +314,115 @@ def leaf_features(frame: LeafFrame, leaf):
     return (planes[0], scalars[0]) if mine else None
 
 
+_FAST_TABLES = None
+
+
+def _fast_tables():
+    """``(per-plane card -> flat index maps, card -> points, engine.combos, engine.legal)``, built once.
+    The engine modules are held as modules, so their functions are looked up per call as
+    ``belief_history._winner_so_far``'s imports look them up (the compiled ones once routed)."""
+    global _FAST_TABLES
+    if _FAST_TABLES is None:
+        from ..ai.unified_readout_numpy import N_PLANES
+        from ..engine import cards, combos, legal
+        from ..rl.encode import CARD_INDEX
+        planes = tuple({card: plane * N_CARDS + i for card, i in CARD_INDEX.items()} for plane in range(N_PLANES))
+        _FAST_TABLES = (planes, {card: cards.points(card) for card in CARD_INDEX}, combos, legal)
+    return _FAST_TABLES
+
+
+def _winner_fast(trick, ordering, combos, legal):
+    """``belief_history._winner_so_far`` with its modules passed in (the same loop)."""
+    if not trick.plays:
+        return None
+    lead = trick.plays[0].cards
+    inc_suit = legal.uniform_suit(lead, ordering)
+    if inc_suit is None:
+        return trick.plays[0].seat
+    inc_top = combos.decompose(lead, ordering).top_level()
+    winner = trick.plays[0].seat
+    for tp in trick.plays[1:]:
+        won, top = legal.beats(tp.cards, lead, inc_suit, inc_top, ordering)
+        if won:
+            winner, inc_top = tp.seat, top
+            inc_suit = ordering.eff_suit(tp.cards[0])
+    return winner
+
+
+def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
+    """`_leaf_entries` from `_fast_tables` (the same indices in the same order, the same scalars)."""
+    if leaf.phase != "play":
+        return None
+    tricks = len(leaf.history)
+    if tricks == frame.tricks and leaf.trick is not None:
+        trick = leaf.trick
+    elif tricks == frame.tricks + 1 and (leaf.trick is None or not leaf.trick.plays):
+        trick = leaf.history[-1]
+    else:
+        return None
+    plays = trick.plays
+    n_trick = len(plays)
+    n_delta = n_trick - frame.pos
+    if not 1 <= n_delta <= 4 or n_trick > 4:
+        return None
+    planes, pts, combos, legal = tables
+    seat = frame.seat
+    hands = leaf.hands
+    idx = list(map(planes[0].__getitem__, hands[seat]))
+    idx += map(planes[1].__getitem__, hands[(seat + 1) % 4])
+    idx += map(planes[2].__getitem__, hands[(seat + 2) % 4])
+    idx += map(planes[3].__getitem__, hands[(seat + 3) % 4])
+    idx += map(planes[4].__getitem__, leaf.buried)
+    total = 0
+    pos = frame.pos
+    for i, tp in enumerate(plays):
+        if i >= pos:
+            idx += map(planes[5 + (tp.seat - seat) % 4].__getitem__, tp.cards)
+        total += sum(map(pts.__getitem__, tp.cards))
+    winner = (_winner_fast(trick, leaf.ordering, combos, legal) - seat) % 4
+    nxt = winner if n_trick == 4 else (plays[-1].seat + 1 - seat) % 4
+    return idx, (n_delta, n_trick, total, winner, nxt)
+
+
+def leaf_features_fast(frame: LeafFrame, leaves):
+    """``(covered indices, (n, 9 * 54) float32 planes, (n, 12) scalars, n row keys)``: `leaf_features_batch`'s
+    rows with the planes flat, and each row's bytes as its memo key (equal rows, equal keys)."""
+    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS, leaf_scalars
+    tables = _fast_tables()
+    width = N_PLANES * N_CARDS
+    mine, flat, meta = [], [], []
+    for i, leaf in enumerate(leaves):
+        entry = _leaf_entries_fast(frame, leaf, tables)
+        if entry is None:
+            continue
+        base = len(mine) * width
+        flat += [base + k for k in entry[0]]
+        mine.append(i)
+        meta.append(entry[1])
+    if not mine:
+        return mine, np.zeros((0, width), np.float32), np.zeros((0, N_SCALARS), np.float32), []
+    counts = np.bincount(np.asarray(flat, np.int64), minlength=len(mine) * width).reshape(len(mine), width)
+    m = np.asarray(meta, np.int64)
+    scalars = leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
+    raw = np.ascontiguousarray(np.concatenate([counts.astype(np.uint8), scalars.view(np.uint8)], 1))
+    keys = raw.view(np.dtype((np.void, raw.shape[1]))).ravel().tolist()
+    return mine, counts.astype(np.float32), scalars, keys
+
+
+def memo_rows(memo: dict, keys, compute):
+    """The rows of ``keys`` (one per key, in order), computing ``compute(first positions)`` only for the
+    keys ``memo`` lacks (each distinct key once) and storing them; ``memo`` maps key -> row."""
+    todo: dict = {}
+    for i, key in enumerate(keys):
+        if key not in memo and key not in todo:
+            todo[key] = i
+    if todo:
+        rows = compute(np.fromiter(todo.values(), np.int64, len(todo)))
+        for key, row in zip(todo, rows):
+            memo[key] = row
+    return [memo[key] for key in keys], len(keys) - len(todo)
+
+
 def _framed_search(self, rnd, seat, anchor, started, check_budget=None):
     self.unified_frame = LeafFrame(self, rnd, seat)
     try:
@@ -334,6 +454,8 @@ def readout_evaluator(evaluator, bot, model):
     class ReadoutEvaluator(base):
         def score_many(self, positions, seats, **kw):
             frame = self.unified_bot.unified_frame
+            if frame is not None and frame.fast:
+                return self._score_many_fast(frame, positions, seats, **kw)
             mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, positions)
             covered = set(mine)
             rest = [i for i in range(len(positions)) if i not in covered]
@@ -354,6 +476,32 @@ def readout_evaluator(evaluator, bot, model):
             self.model_rows += len(mine)
             self.unified_bot.unified_value_rows += len(mine)
             self.unified_bot.unified_value_served += len(rest)
+            return values
+
+        def _score_many_fast(self, frame, positions, seats, **kw):
+            """`score_many` with `leaf_features_fast`, the fused stem and the decision's value memo."""
+            bot = self.unified_bot
+            mine, planes, scalars, keys = leaf_features_fast(frame, positions)
+            covered = set(mine)
+            rest = [i for i in range(len(positions)) if i not in covered]
+            bot.unified_value_other += sum(positions[i].phase != "round_end" for i in rest)
+            if not mine:
+                bot.unified_value_served += len(rest)
+                return base.score_many(self, positions, seats, **kw)
+            values = np.empty(len(positions), dtype=np.float64)
+            if rest:
+                values[rest] = base.score_many(self, [positions[i] for i in rest], [seats[i] for i in rest], **kw)
+            m = self.unified_model
+            fused = frame.fused(m)
+            expected, hits = memo_rows(frame.value_memo, keys,
+                                       lambda rows: m.leaf_value_probs_fused(fused, planes[rows], scalars[rows]) @ self.support)
+            sign = np.asarray([1.0 if (int(seats[i]) - frame.seat) % 2 == 0 else -1.0 for i in mine])
+            values[mine] = sign * np.asarray(expected, np.float64)
+            self.positions += len(mine)
+            self.model_rows += len(mine)
+            bot.unified_value_rows += len(mine)
+            bot.unified_value_memo += hits
+            bot.unified_value_served += len(rest)
             return values
 
     out = copy.copy(evaluator)
@@ -389,6 +537,7 @@ def install_value_readout(bot, model, keep_prefix: bool = False):
     bot.unified_value_rows = 0
     bot.unified_value_served = 0
     bot.unified_value_other = 0
+    bot.unified_value_memo = 0
     bot.evaluator = readout_evaluator(bot.evaluator, bot, model)
     bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{VALUE_TOKEN}{sha[:8]}"
     return bot
@@ -406,6 +555,7 @@ def install_reply_readout(bot, model, keep_prefix: bool = False):
     bot.unified_reply_model = model
     bot.unified_reply_rows = 0
     bot.unified_reply_served = 0
+    bot.unified_reply_memo = 0
     bot.policy_name = f"{getattr(bot, 'policy_name', None) or type(bot).__name__}-{REPLY_TOKEN}{sha[:8]}"
     return bot
 
@@ -419,7 +569,12 @@ def readout_reply_ply(served_ply):
         frame = getattr(bot, "unified_frame", None)
         if model is None:
             return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
-        mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, active)
+        fast = frame is not None and frame.fast
+        keys = None
+        if fast:
+            mine, planes, scalars, keys = leaf_features_fast(frame, active)
+        else:
+            mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, active)
         if len(mine) != len(active):
             bot.unified_reply_served += len(active)
             return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
@@ -443,6 +598,14 @@ def readout_reply_ply(served_ply):
             if len(take) != len(chunk):
                 raise UnifiedSlotError("the reply rows and the listed clones disagree")
             bot.unified_reply_rows += len(take)
+            if fast:
+                at_rows = np.asarray(take, np.int64)
+                fused = frame.fused(model)
+                rows, hits = memo_rows(frame.reply_memo, [keys[i] for i in take],
+                                       lambda sub: model.leaf_reply_logits_fused(fused, planes[at_rows[sub]],
+                                                                                 scalars[at_rows[sub]]))
+                bot.unified_reply_memo += hits
+                return np.stack(rows) if rows else np.zeros((0, N_CARDS), np.float32)
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
         bot.predict = predict

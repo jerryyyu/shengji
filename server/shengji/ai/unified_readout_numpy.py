@@ -120,6 +120,53 @@ class UnifiedReadoutNumpy(UnifiedNumpy):
         e = np.exp(z)
         return e / e.sum(-1, keepdims=True)
 
+    # ---------------------------------------------------------------- fused stem (the fast readout)
+    def fused_stem(self, cache) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """One decision's stem with its card states and context folded in: ``((9 * 54, width) plane
+        matrix, (12, width) scalar matrix, (width,) constant)``.  Plane ``p``'s rows are its own stem
+        columns plus ``POOL_SCALE * S @`` its pooled columns, so ``planes @ M + scalars @ W + const`` is
+        `leaf_hidden`'s stem input times the stem, summed in another order (float32 rounding only).
+        The fold is computed in float64 and stored in the model's dtype."""
+        S, c = cache
+        W = self.r["stem.weight"].astype(np.float64)
+        width, dp = W.shape[0], S.shape[1]
+        flat = N_PLANES * N_CARDS
+        w_planes = W[:, :flat].reshape(width, N_PLANES, N_CARDS)
+        w_pool = W[:, flat + N_SCALARS:flat + N_SCALARS + N_PLANES * dp].reshape(width, N_PLANES, dp)
+        S64 = np.asarray(S, np.float64)
+        M = np.empty((N_PLANES, N_CARDS, width), np.float64)
+        for p in range(N_PLANES):
+            M[p] = w_planes[:, p, :].T + POOL_SCALE * (S64 @ w_pool[:, p, :].T)
+        const = np.asarray(c, np.float64) @ W[:, flat + N_SCALARS + N_PLANES * dp:].T + self.r["stem.bias"]
+        return (np.ascontiguousarray(M.reshape(flat, width), self.dtype),
+                np.ascontiguousarray(W[:, flat:flat + N_SCALARS].T, self.dtype), const.astype(self.dtype))
+
+    def leaf_hidden_fused(self, fused, planes: np.ndarray, scalars: np.ndarray) -> np.ndarray:
+        """`leaf_hidden` through `fused_stem`'s matrices; ``planes`` is ``(n, 9 * 54)``."""
+        r, t = self.r, self._t
+        M, w_scalars, const = fused
+        h = np.asarray(planes, self.dtype) @ M
+        h += np.asarray(scalars, self.dtype) @ w_scalars
+        h += const
+        h = np.maximum(h, 0.0)
+        for i in range(self.blocks):
+            u = _ln(h, r[f"ln.{i}.weight"], r[f"ln.{i}.bias"])
+            u = np.maximum(u @ t[f"up.{i}.weight"] + r[f"up.{i}.bias"], 0.0)
+            h = h + u @ t[f"down.{i}.weight"] + r[f"down.{i}.bias"]
+        return _ln(h, r["out_ln.weight"], r["out_ln.bias"])
+
+    def leaf_value_probs_fused(self, fused, planes, scalars) -> np.ndarray:
+        """`leaf_value_probs` through `leaf_hidden_fused`."""
+        z = (self.leaf_hidden_fused(fused, planes, scalars) @ self._t["value.weight"]
+             + self.r["value.bias"]).astype(np.float64)
+        z -= z.max(-1, keepdims=True)
+        e = np.exp(z)
+        return e / e.sum(-1, keepdims=True)
+
+    def leaf_reply_logits_fused(self, fused, planes, scalars) -> np.ndarray:
+        """`leaf_reply_logits` through `leaf_hidden_fused`."""
+        return self.leaf_hidden_fused(fused, planes, scalars) @ self._t["reply.weight"] + self.r["reply.bias"]
+
 
 def save_package(path, config, trunk_weights, head_weights, readout_weights, metadata) -> str:
     model = UnifiedReadoutNumpy(config, trunk_weights, head_weights, readout_weights, metadata)

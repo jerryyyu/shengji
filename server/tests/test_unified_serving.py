@@ -165,6 +165,10 @@ def decide(bot, rnd):
     out["counters"] = dict(zip(COUNTERS, (getattr(bot, name, 0) - b for name, b in zip(COUNTERS, before))))
     account = out["record"].pop(serving.RECORD_KEY, None)
     if hasattr(bot, "unified_sha256"):
+        memo = {name: account.pop(name) for name in serving.FAST_RECORD_FIELDS if name in account}
+        assert set(memo) == (set(serving.FAST_RECORD_FIELDS) if bot.unified_fast else set())
+        if memo:
+            out["memo"] = memo
         assert account == {"package": bot.unified_sha256[:8],
                            **{name: out["counters"][attr] for name, attr in serving.RECORD_FIELDS.items()}}
     else:
@@ -423,3 +427,112 @@ def test_discarded_server_snapshot_keeps_other_decision_caches_isolated(
     record = first.bot_copy.last_decision_record
     assert record["unified"]["shared"] == 1
     assert record["unified"]["missed"] == record["unified"]["trunk"] == 0
+
+
+def fast_env(env) -> dict:
+    """``env`` with the fast readout switched on and the name the registry derives for it."""
+    from shengji.eval.served_config import registry_name
+    from shengji.train import unified_serving as serving
+
+    out = {**env, serving.FAST_KEY: "1"}
+    out["SHENGJI_BOT"] = registry_name(out)
+    return out
+
+
+def test_the_fast_readout_switch_is_0_or_1_and_enters_the_name():
+    from shengji.train import unified_serving as serving
+    from shengji.train.pv_search_policy import PVSearchPolicyError
+
+    assert serving.unified_fast({}) is False
+    assert serving.unified_fast({serving.FAST_KEY: ""}) is False
+    assert serving.unified_fast({serving.FAST_KEY: "0"}) is False
+    assert serving.unified_fast({serving.FAST_KEY: "1"}) is True
+    for raw in ("2", "true", " 1"):
+        with pytest.raises(PVSearchPolicyError):
+            serving.unified_fast({serving.FAST_KEY: raw})
+    assert serving.unified_name("s", UNIFIED_SHA) == "s-ushare97c07be8-uvalue97c07be8-ureply97c07be8"
+    assert serving.unified_name("s", UNIFIED_SHA, fast=True) == serving.unified_name("s", UNIFIED_SHA) + "-ufast"
+
+
+def test_the_fused_stem_is_the_readout_stem(tmp_path):
+    """`fused_stem` folds the pooled card states and the context into the stem: the value
+    distribution and the reply log-odds equal `leaf_hidden`'s up to float32 rounding."""
+    from shengji.ai import unified_readout_numpy as rn
+
+    pair = _random_pair(tmp_path)
+    model = rn.load_unified_readout_numpy(*pair["unified"])
+    rng = np.random.default_rng(5)
+    q = rng.standard_normal((54, TRUNK["d"])).astype(np.float32)
+    g = np.abs(rng.standard_normal(TRUNK["x_hidden"])).astype(np.float32)
+    cache = model.decision_cache(q, g)
+    fused = model.fused_stem(cache)
+    n = 37
+    planes = ((rng.random((n, 9, 54)) < 0.2) * rng.integers(1, 3, (n, 9, 54))).astype(np.float32)
+    scalars = rng.random((n, 12)).astype(np.float32)
+    flat = planes.reshape(n, -1)
+    np.testing.assert_allclose(model.leaf_value_probs_fused(fused, flat, scalars),
+                               model.leaf_value_probs(cache, planes, scalars), rtol=0, atol=1e-6)
+    np.testing.assert_allclose(model.leaf_reply_logits_fused(fused, flat, scalars),
+                               model.leaf_reply_logits(cache, planes, scalars), rtol=0, atol=1e-4)
+    assert model.leaf_reply_logits_fused(fused, flat[:0], scalars[:0]).shape == (0, 54)
+
+
+def test_memo_rows_computes_each_new_key_once():
+    from shengji.train import unified_slots as us
+
+    calls = []
+
+    def compute(rows):
+        calls.append(list(rows))
+        return [f"r{i}" for i in rows]
+    memo = {}
+    assert us.memo_rows(memo, [b"a", b"b", b"a"], compute) == (["r0", "r1", "r0"], 1)
+    assert us.memo_rows(memo, [b"b", b"c", b"c"], compute) == (["r1", "r1", "r1"], 2)
+    assert us.memo_rows(memo, [], compute) == ([], 0)
+    assert calls == [[0, 1], [1]]
+
+
+def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monkeypatch, served_functions):
+    """Ten fixed production positions: with the fast readout the registry bot plays the cards the
+    readout plays, on the same worlds and admitted candidates, with candidate values within float32
+    rounding; every leaf's fast features are `leaf_features_batch`'s, and equal rows share a memo key."""
+    from shengji.train import unified_slots as us
+
+    env = unified_env(release50_packages, pair)
+    fast = fast_env(env)
+    assert fast["SHENGJI_BOT"] == env["SHENGJI_BOT"] + "-ufast"
+    checked = [0, 0]
+    features = us.leaf_features_fast
+
+    def checked_features(frame, leaves):
+        mine, planes, scalars, keys = features(frame, leaves)
+        want_mine, want_planes, want_scalars = us.leaf_features_batch(frame, leaves)
+        assert mine == want_mine
+        assert np.array_equal(planes, want_planes.reshape(len(mine), -1)) and planes.dtype == np.float32
+        assert np.array_equal(scalars, want_scalars)
+        rows = {}
+        for key, p, sc in zip(keys, planes, scalars):
+            row = p.tobytes() + sc.tobytes()
+            assert rows.setdefault(key, row) == row
+        checked[0] += len(mine)
+        checked[1] += len(mine) - len(set(keys))
+        return mine, planes, scalars, keys
+    monkeypatch.setattr(us, "leaf_features_fast", checked_features)
+    memo = {"value_memo": 0, "reply_memo": 0}
+    for position in P.POSITIONS:
+        want = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
+        bot = registry_bot(monkeypatch, fast, P.SEED)
+        assert bot.policy_name == fast["SHENGJI_BOT"] and bot.unified_fast
+        got = decide(bot, P.replay(*position))
+        assert got["cards"] == want["cards"], P.label(*position)
+        assert got["worlds"] == want["worlds"], P.label(*position)
+        assert got["counters"] == want["counters"], P.label(*position)
+        g, w = got["record"], want["record"]
+        assert g["policy"] == fast["SHENGJI_BOT"] and w["policy"] == env["SHENGJI_BOT"]
+        assert g["admitted_indices"] == w["admitted_indices"] and g["selected_index"] == w["selected_index"]
+        np.testing.assert_allclose(np.asarray(g["value_means"], float), np.asarray(w["value_means"], float),
+                                   rtol=0, atol=1e-4, err_msg=P.label(*position))
+        for name in memo:
+            memo[name] += got["memo"][name]
+    assert checked[0] > 0
+    assert memo["value_memo"] > 0

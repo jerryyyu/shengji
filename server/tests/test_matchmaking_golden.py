@@ -122,7 +122,11 @@ class Env:
         async def rating_of(uid: int) -> float | None:
             return self.ratings.get(uid)
 
-        async def start_room(table_id, slots, conns, mode="ranked", chat=(), **room):
+        # ``chat_senders`` (each line's writer, for blocks) is left out of the
+        # record so the transcripts keep the queue's frames byte for byte;
+        # tests/test_player_blocks.py holds it.
+        async def start_room(table_id, slots, conns, mode="ranked", chat=(), chat_senders=None,
+                             **room):
             self.log.append(["start_room", {
                 "table_id": table_id,
                 "slots": [{"user_id": s.user_id, "name": s.name, "rating": s.rating,

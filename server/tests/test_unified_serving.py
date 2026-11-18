@@ -87,9 +87,13 @@ def pair(request, tmp_path_factory):
 
 @pytest.fixture
 def served_functions(monkeypatch):
-    """The two served functions the unified bots wrap, restored after the test, and the serving
-    module's package cache emptied."""
+    """The two served functions the unified bots wrap, restored after the test, the serving
+    module's package cache emptied, and the belief proposal's preparation budget lifted with the
+    other clocks (`r50_flag_positions.lift`), so a slow host never turns a decision into a fallback."""
+    from shengji.ai import belief_numpy as bn
     from shengji.train import pv_encode_prefix, pv_tree_search, unified_serving
+
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
 
     monkeypatch.setattr(pv_tree_search, "greedy_reply_ply", pv_tree_search.greedy_reply_ply)
     monkeypatch.setattr(pv_encode_prefix, "score_leaves", pv_encode_prefix.score_leaves)
@@ -263,8 +267,9 @@ def test_set_the_unified_bot_serves_without_torch_or_a_trainer_module(release50_
         "if os.environ.get('SHENGJI_FAST') == '1':\n"
         "    from shengji.engine import fast\n"
         "    assert fast.activate()\n"
-        "from shengji.ai import registry\n"
+        "from shengji.ai import belief_numpy, registry\n"
         "import r50_flag_positions as P\n"
+        "belief_numpy.PREP_SECONDS = 60.0\n"
         "bot = P.lift(registry.make_bot(os.environ['SHENGJI_BOT'], seed=P.SEED))\n"
         "out = P.decision(bot, P.replay(*P.POSITIONS[0]))\n"
         "u = out['record']['unified']\n"

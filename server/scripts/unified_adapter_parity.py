@@ -16,10 +16,12 @@ only, so the adapter can run on the tree it duelled on and the registry on this 
 
 ``states`` plays N full rounds with release 52 as served (fly.toml, one bot per seat) and keeps a
 copy of every play-decision state.  ``decide`` builds, for each state, a fresh bot with seed
-``1000003 * i + 7`` and records ``r50_flag_positions.decision`` (cards, world digest, record less
-the run's measurements) plus the slot counters.  ``adapter`` builds that bot with the DEV adapter's
-own ``variant_factory`` over the screen recipe's ALLS exploiter words (local paths substituted);
-``registry`` builds it with ``registry.make_bot`` on the name the environment registers.
+``1000003 * i + 7``, lifts every clock and the belief preparation budget, and records
+``r50_flag_positions.decision`` (cards, world digest, record less the run's measurements) plus the
+slot counters.  ``adapter`` builds that bot with the duel adapter's own ``variant_factory`` over
+the screen recipe's ALLS exploiter words (local paths substituted); ``registry`` with
+``registry.make_bot`` on the unified name the environment registers; ``served`` on fly.toml's
+``SHENGJI_BOT`` (and records which unified modules the process imported: none, flag unset).
 """
 from __future__ import annotations
 
@@ -176,6 +178,8 @@ def cmd_decide(a):
         build = lambda seed: registry.make_bot(name, seed=seed)
         binding = {}
     import r50_flag_positions as P
+    from shengji.ai import belief_numpy
+    belief_numpy.PREP_SECONDS = 60.0   # with P.lift's clocks: the decision is a function of the code alone
     with open(a.states, "rb") as fh:
         states = pickle.load(fh)["states"]
     if a.limit:

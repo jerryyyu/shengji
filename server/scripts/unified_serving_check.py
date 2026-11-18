@@ -12,9 +12,10 @@ registry's unified name plays every seat of each round through the server's own 
 (``_bot_declares``, ``_paced_bot_step``, ``_commit_bot_turn``).  Before each of its play turns, four
 fresh bots with one seed decide a copy of that state:
 
-* parity, clocks lifted so the decision is a function of the code alone: the registry's unified
-  bot against the duel adapter's (the served registry entry, then `unified_slots`' three installs,
-  with the adapter's own two module-level stand-ins in place for that call).  Cards, base worlds,
+* parity, clocks and the belief proposal's preparation budget lifted so the decision is a
+  function of the code alone: the registry's unified bot against the duel adapter's (the served
+  registry entry, then `unified_slots`' three installs, with the adapter's own two module-level
+  stand-ins in place for that call).  Cards, base worlds,
   decision record (less the fields that measure the run and the registry bot's own ``unified``
   entry) and slot counters must be equal;
 * latency, clocks as served: the registry's unified bot against the served bot (the served
@@ -115,7 +116,12 @@ def _decide(bot, rnd, lifted):
 
     before = [getattr(bot, name, 0) for name in COUNTERS]
     if lifted:
-        out = P.decision(P.lift(bot), rnd)
+        from shengji.ai import belief_numpy
+        prep, belief_numpy.PREP_SECONDS = belief_numpy.PREP_SECONDS, 60.0
+        try:
+            out = P.decision(P.lift(bot), rnd)
+        finally:
+            belief_numpy.PREP_SECONDS = prep
         out["account"] = out["record"].pop("unified", None)
         seconds = None
     else:

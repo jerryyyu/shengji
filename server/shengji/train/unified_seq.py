@@ -212,6 +212,10 @@ def entries_for(dirs: Sequence[str], split: str, *, exclude_seed_windows=()) -> 
 def load_unified_part(entry: Mapping[str, Any], verified, index: OutcomeIndex) -> dict:
     part = bs.load_part(entry, TRAIN_KEYS, verified)
     part["q_target"] = join_targets(part, entry["stores"], index, entry["dir"])
+    w = entry.get("corpus_w")
+    if w is not None:
+        # per-row loss weights of the entry's corpus, one column per head (unified_readout.CORPUS_HEADS)
+        part["row_w"] = np.tile(np.asarray(w, np.float32), (len(part["X"]), 1))
     return part
 
 
@@ -235,6 +239,8 @@ def make_unified_batch(part, round_ids, rows, *, perm=None) -> dict[str, np.ndar
         b = suit_perm.apply(b, perm)
     b["q_target"] = part["q_target"][rows].astype(np.int64)
     b["pol_target"] = policy_target(b)
+    if "row_w" in part:
+        b["row_w"] = part["row_w"][rows]
     return b
 
 

@@ -244,13 +244,80 @@ def losses(model, tb) -> dict:
     rl = torch.log_softmax(out["leaf_reply"].masked_fill(~tb["leaf_reply_hand"], -1e9), -1)
     t = tb["leaf_reply"]
     r_ce = -((t / t.sum(-1, keepdim=True).clamp_min(1.0)) * rl).sum(-1) * has
-    return {"belief_sum": -(y * logp).sum(), "belief_n": y.sum(), "q_sum": q_ce.sum(), "p_sum": p_ce.sum(),
-            "rows": torch.tensor(float(len(q_ce))), "v_sum": v_ce.sum(), "leaves": torch.tensor(float(len(v_ce))),
-            "v0_sum": (v_ce * (tb["leaf_k"] == 0)).sum(), "ve_sum": (v_ce * tb["leaf_scalars"][:, 2]).sum(),
-            "ends": tb["leaf_scalars"][:, 2].sum(), "r_sum": r_ce.sum(), "replies": has.float().sum(), "out": out}
+    res = {"belief_sum": -(y * logp).sum(), "belief_n": y.sum(), "q_sum": q_ce.sum(), "p_sum": p_ce.sum(),
+           "rows": torch.tensor(float(len(q_ce))), "v_sum": v_ce.sum(), "leaves": torch.tensor(float(len(v_ce))),
+           "v0_sum": (v_ce * (tb["leaf_k"] == 0)).sum(), "ve_sum": (v_ce * tb["leaf_scalars"][:, 2]).sum(),
+           "ends": tb["leaf_scalars"][:, 2].sum(), "r_sum": r_ce.sum(), "replies": has.float().sum(), "out": out}
+    if "row_w" in tb:
+        # each row's (and leaf's) loss times its corpus weight; the counts stay unweighted
+        w = tb["row_w"].float()
+        wl = w[tb["leaf_row"]]
+        res.update({"belief_sum_w": -(w[:, 0, None, None] * y * logp).sum(), "q_sum_w": (w[:, 1] * q_ce).sum(),
+                    "p_sum_w": (w[:, 2] * p_ce).sum(), "v_sum_w": (wl[:, 3] * v_ce).sum(),
+                    "r_sum_w": (wl[:, 4] * r_ce).sum()})
+    return res
 
 
 SUM_KEYS = ("belief_sum", "belief_n", "q_sum", "p_sum", "rows", "v_sum", "leaves", "v0_sum", "ve_sum", "ends", "r_sum", "replies")
+
+
+def objective(L, args):
+    """The training loss: the five head means (corpus-weighted sums over unweighted counts when the
+    batch carries ``row_w``), times the head weights."""
+    m = means([L[k + "_w"] if k + "_w" in L else L[k] for k in SUM_KEYS])
+    return (args.belief_weight * m["belief"] + args.q_weight * m["q"] + args.policy_weight * m["policy"]
+            + args.value_weight * m["leaf_value"] + args.reply_weight * m["reply"])
+
+
+#: the heads a corpus weight names, in the column order of ``row_w``
+CORPUS_HEADS = ("belief", "q", "policy", "value", "reply")
+
+
+def parse_corpus_weights(items: Sequence[str]) -> list[tuple[str, list[float]]]:
+    """``PREFIX=head:w[,head:w...]`` items: rows of every data dir whose path starts with PREFIX weigh
+    their loss on each named head by ``w`` (unnamed heads 1)."""
+    spec = []
+    for item in items:
+        prefix, sep, rest = item.partition("=")
+        if not sep or not prefix or not rest:
+            raise UnifiedReadoutError(f"--corpus-weight {item!r}: expected PREFIX=head:w[,head:w...]")
+        w = dict.fromkeys(CORPUS_HEADS, 1.0)
+        for kv in rest.split(","):
+            k, sep, v = kv.partition(":")
+            if k not in w or not sep:
+                raise UnifiedReadoutError(f"--corpus-weight {item!r}: unknown head {k!r} (heads {CORPUS_HEADS})")
+            x = float(v)
+            if not (math.isfinite(x) and x >= 0):
+                raise UnifiedReadoutError(f"--corpus-weight {item!r}: weight {v!r} is not a finite number >= 0")
+            w[k] = x
+        spec.append((prefix.rstrip("/"), [w[h] for h in CORPUS_HEADS]))
+    return spec
+
+
+def weight_entries(entries, spec):
+    """Tag every entry with its corpus weights (all ones where no prefix matches); refuses a dir that
+    two prefixes match and a prefix that matches no dir.  No spec leaves the entries untouched."""
+    if not spec:
+        return entries
+    unused = {p for p, _ in spec}
+    for e in entries:
+        hits = [(p, w) for p, w in spec if str(e["dir"]).rstrip("/").startswith(p)]
+        if len(hits) > 1:
+            raise UnifiedReadoutError(f"{e['dir']}: matched by more than one --corpus-weight prefix")
+        e["corpus_w"] = list(hits[0][1]) if hits else [1.0] * len(CORPUS_HEADS)
+        unused -= {p for p, _ in hits}
+    if unused:
+        raise UnifiedReadoutError(f"--corpus-weight prefixes match no data dir: {sorted(unused)}")
+    return entries
+
+
+def weight_summary(entries) -> dict[str, int]:
+    """Rows per distinct weight vector (for the status line)."""
+    out: dict[str, int] = {}
+    for e in entries:
+        k = ",".join(f"{h}:{w:g}" for h, w in zip(CORPUS_HEADS, e.get("corpus_w", [1.0] * len(CORPUS_HEADS))))
+        out[k] = out.get(k, 0) + int(e["rows"])
+    return out
 
 
 def means(s) -> dict[str, float]:
@@ -290,6 +357,8 @@ def _run_identity(args) -> dict:
             "head_warmup_buffers", "weight_decay", "belief_weight", "q_weight", "policy_weight", "value_weight",
             "reply_weight", "seed", "buffer_chunks", "rounds_per_batch", "max_train_rows", "calib_rows",
             "exclude_seed_window")
+    if getattr(args, "corpus_weight", None):
+        keys += ("corpus_weight",)
     return json.loads(json.dumps({k: getattr(args, k) for k in keys}, default=str))
 
 
@@ -318,6 +387,7 @@ def _train(args, out: Path, status: str) -> int:
                                args.max_train_rows, args.seed)
     if not entries:
         raise UnifiedReadoutError("no train chunks")
+    weight_entries(entries, parse_corpus_weights(args.corpus_weight))
     if args.scratch_arch:
         # a trunk of another size, from random weights: no package can warm it
         if args.init or args.init_ckpt or args.init_readout_ckpt:
@@ -380,10 +450,8 @@ def _train(args, out: Path, status: str) -> int:
         for k, v in leaf_batch(b).items():
             b["leaf_" + k] = v
         L = losses(model, us.to_device(b, "cpu"))
-        m = means([L[k] for k in SUM_KEYS])
         opt.zero_grad()
-        (args.belief_weight * m["belief"] + args.q_weight * m["q"] + args.policy_weight * m["policy"]
-         + args.value_weight * m["leaf_value"] + args.reply_weight * m["reply"]).backward()
+        objective(L, args).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
         return np.asarray([float(L[k].detach()) for k in SUM_KEYS])
@@ -402,7 +470,8 @@ def _train(args, out: Path, status: str) -> int:
         state["init_calib"] = evaluate(model, calib)
         _status(status, f"{LANE} START params={sum(p.numel() for p in model.parameters())} "
                         f"readout_params={sum(p.numel() for p in model.readout.parameters())} rows={stream.rows} "
-                        f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']}")
+                        f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']}"
+                        + (f" corpus_weights={json.dumps(weight_summary(entries))}" if args.corpus_weight else ""))
         (out / "run.json").write_text(json.dumps(_run_identity(args), indent=1))
         _status(status, f"INIT calib {json.dumps(state['init_calib'])}")
         if args.expect_init_belief_ll is not None and abs(state["init_calib"]["belief_ll"] - args.expect_init_belief_ll) > 5e-4:
@@ -492,6 +561,8 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32) -> dict[str, np.nda
     dp, dc = model.config["readout"]["dp"], model.config["readout"]["dc"]
     out = {"S": np.zeros((n, N_CARDS, dp), np.float16), "c": np.zeros((n, dc), np.float16)}
     leaves = {k: [] for k in ("row", "planes", "scalars", "target", "reply", "reply_hand", "has_reply")}
+    if "row_w" in part:
+        leaves["w"] = []                                 # (L, 2): the value and reply corpus weights
     with torch.no_grad():
         for rids, rows in bs.round_batches(part, rounds_per_batch, None):
             b = make_batch(part, rids, rows)
@@ -507,6 +578,9 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32) -> dict[str, np.nda
             leaves["reply"].append(b["leaf_reply"].astype(np.uint8))
             leaves["reply_hand"].append(b["leaf_reply_hand"])
             leaves["has_reply"].append(b["leaf_has_reply"])
+            if "w" in leaves:
+                leaves["w"].append(b["row_w"][b["leaf_row"]][:, [CORPUS_HEADS.index("value"), CORPUS_HEADS.index("reply")]]
+                                   .astype(np.float32))
     out.update({"leaf_" + k: np.concatenate(v) for k, v in leaves.items()})
     return out
 
@@ -530,7 +604,8 @@ def cache(args) -> int:
     if args.worker == 0 and not (out / "calib-0000.npz").exists():
         write("calib-0000", us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
                                           exclude_seed_windows=args.exclude_seed_window))
-    entries = us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window)
+    entries = weight_entries(us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window),
+                             parse_corpus_weights(args.corpus_weight))
     groups = [entries[i:i + args.group_chunks] for i in range(0, len(entries), args.group_chunks)]
     if args.max_groups:
         groups = groups[:args.max_groups]
@@ -543,7 +618,10 @@ def cache(args) -> int:
         if parts:
             write(name, bs.concat_parts(parts))
         print(f"[cache] {name} of {len(groups)}", flush=True)
-    (out / f"DONE.{args.worker}").write_text(json.dumps({"groups": len(groups), "chunks": len(entries)}))
+    done = {"groups": len(groups), "chunks": len(entries)}
+    if args.corpus_weight:
+        done["corpus_weight"] = list(args.corpus_weight)
+    (out / f"DONE.{args.worker}").write_text(json.dumps(done))
     return 0
 
 
@@ -566,6 +644,16 @@ def polish_losses(readout, t):
     rl = torch.log_softmax(r.masked_fill(~hand, -1e9), -1)
     r_ce = -((reply / reply.sum(-1, keepdim=True).clamp_min(1.0)) * rl).sum(-1) * has
     return v_ce, r_ce, scalars[:, 2] > 0, has
+
+
+def polish_objective(v, r, has, reply_weight, leaf_w=None):
+    """Mean outcome CE + reply_weight x reply CE per leaf with a reply; ``leaf_w`` (L, 2) weighs each
+    leaf's two losses by its corpus (the counts stay unweighted)."""
+    import torch
+    if leaf_w is not None:
+        lw = torch.from_numpy(np.asarray(leaf_w, np.float32))
+        v, r = v * lw[:, 0], r * lw[:, 1]
+    return v.mean() + reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
 
 
 def polish_eval(readout, z, batch: int = 16384) -> dict[str, float]:
@@ -601,6 +689,10 @@ def polish(args) -> int:
     done = sorted(cache_dir.glob("DONE.*"))
     if not shards or not done:
         raise UnifiedReadoutError("the cache is incomplete")
+    weighted = {"leaf_w" in np.load(f).files for f in shards}
+    if len(weighted) != 1:
+        raise UnifiedReadoutError("the cache mixes shards with and without corpus weights")
+    weighted = weighted.pop()
     calib = dict(np.load(cache_dir / "calib-0000.npz"))
     readout.train()
     opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
@@ -608,7 +700,7 @@ def polish(args) -> int:
     init = polish_eval(readout, calib)
     best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
     _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
-                    f"ckpt={us.sha256_file(args.ckpt)} init calib {json.dumps(init)}")
+                    f"ckpt={us.sha256_file(args.ckpt)} corpus_weighted={weighted} init calib {json.dumps(init)}")
     rng = np.random.default_rng(args.seed)
     step_i, t0 = 0, time.time()
     state = None
@@ -622,8 +714,9 @@ def polish(args) -> int:
             z = {k: z[k] for k in z.files}
             order = rng.permutation(len(z["leaf_row"]))
             for i in range(0, len(order), args.batch):
-                v, r, end, has = polish_losses(readout, _polish_tensors(z, np.sort(order[i:i + args.batch])))
-                loss = v.mean() + args.reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
+                pick = np.sort(order[i:i + args.batch])
+                v, r, end, has = polish_losses(readout, _polish_tensors(z, pick))
+                loss = polish_objective(v, r, has, args.reply_weight, z["leaf_w"][pick] if weighted else None)
                 opt.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(body, 1.0)
@@ -797,6 +890,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--calib-rows", type=int, default=180000)
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
+    t.add_argument("--corpus-weight", action="append", default=[],
+                   help="PREFIX=head:w[,head:w...]: loss weights of the rows of data dirs under PREFIX "
+                        f"(heads {','.join(CORPUS_HEADS)}; default 1)")
     c = sub.add_parser("cache")
     c.add_argument("--ckpt", required=True)
     c.add_argument("--data", nargs="+", required=True)
@@ -810,6 +906,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--worker", type=int, default=0)
     c.add_argument("--workers", type=int, default=1)
     c.add_argument("--threads", type=int, default=8)
+    c.add_argument("--corpus-weight", action="append", default=[],
+                   help="as train's: stores each leaf's value and reply weights in the cache (the polish uses them)")
     p = sub.add_parser("polish")
     p.add_argument("--ckpt", required=True)
     p.add_argument("--cache", required=True)

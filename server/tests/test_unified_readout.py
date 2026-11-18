@@ -5,6 +5,7 @@ they are installed on."""
 from __future__ import annotations
 
 import copy
+import json
 
 import numpy as np
 import pytest
@@ -22,6 +23,7 @@ from shengji.train import unified_slots as us  # noqa: E402
 from shengji.train.belief_eval import known_counts  # noqa: E402
 from tests.test_pv_search_serving import SMALL as PV_SMALL  # noqa: E402
 from tests.test_pv_search_serving import _play_state, package  # noqa: E402,F401
+from tests.test_unified_seq import world  # noqa: E402,F401
 
 ARCH = dict(d=32, heads=4, enc_layers=1, xattn_layers=1, x_hidden=32, card_self_attn=True)
 READOUT = {"dp": 8, "dc": 12, "width": 24, "hidden": 40, "blocks": 2}
@@ -302,3 +304,114 @@ def test_mixture_nll_is_the_nll_of_the_mean_distribution_and_reaches_the_body(tm
     assert torch.allclose(v[2, 3], one[0], atol=1e-5)
     ur.mixture_nll(v, t).mean().backward()
     assert float(m.readout.stem.weight.grad.abs().sum()) > 0
+
+
+# ---- per-corpus loss weights
+
+def test_corpus_weights_parse_tag_every_entry_and_refuse_ambiguity():
+    spec = ur.parse_corpus_weights(["/x/utg=policy:2,reply:2", "/x/pvs/=policy:0.5,reply:0.5,value:0.5"])
+    assert spec == [("/x/utg", [1.0, 1.0, 2.0, 1.0, 2.0]), ("/x/pvs", [1.0, 1.0, 0.5, 0.5, 0.5])]
+    for bad in ("/x/utg", "/x/utg=", "=policy:2", "/x/utg=polcy:2", "/x/utg=policy", "/x/utg=policy:-1", "/x/utg=policy:nan"):
+        with pytest.raises(ur.UnifiedReadoutError):
+            ur.parse_corpus_weights([bad])
+    entries = [{"dir": d, "rows": 10} for d in ("/x/utg-L01-train", "/x/pvs1-train", "/x/y/part-00")]
+    assert ur.weight_entries([dict(e) for e in entries], []) == entries          # no spec: untouched
+    tagged = ur.weight_entries([dict(e) for e in entries], ur.parse_corpus_weights(["/x/utg=policy:2", "/x/pvs=value:0.5"]))
+    assert [e["corpus_w"] for e in tagged] == [[1, 1, 2, 1, 1], [1, 1, 1, 0.5, 1], [1, 1, 1, 1, 1]]
+    assert ur.weight_summary(tagged)["belief:1,q:1,policy:2,value:1,reply:1"] == 10
+    with pytest.raises(ur.UnifiedReadoutError, match="more than one"):
+        ur.weight_entries([dict(e) for e in entries], ur.parse_corpus_weights(["/x/utg=policy:2", "/x/u=policy:3"]))
+    with pytest.raises(ur.UnifiedReadoutError, match="match no data dir"):
+        ur.weight_entries([dict(e) for e in entries], ur.parse_corpus_weights(["/x/pvz=policy:2"]))
+
+
+def _readout_ckpt(tmp_path, seed=0):
+    torch.manual_seed(seed)
+    m = ur.build(ARCH, READOUT)
+    path = tmp_path / f"init{seed}.pt"
+    torch.save({"schema": ur.CKPT_SCHEMA, "model": m.state_dict(), "config": m.config}, path)
+    return path
+
+
+def _train_run(data, init, out, *extra):
+    args = ["train", "--data", *[str(d) for d in data], "--init-readout-ckpt", str(init), "--out", str(out), "--threads", "1",
+            "--loader-threads", "1", "--rounds-per-batch", "2", "--buffer-chunks", "1", "--calib-rows", "100000", *extra]
+    assert ur.main(args) == 0, (out / "status.log").read_text()
+    return torch.load(out / "best.pt", weights_only=False)["model"]
+
+
+def test_corpus_weights_are_per_row_loss_multipliers_and_ones_change_nothing(world, tmp_path):
+    from tests.test_unified_seq import extract_dir
+    data = extract_dir(world["store"], tmp_path / "xw", calib=0.5, task_clusters=1)
+    init = _readout_ckpt(tmp_path)
+    plain = _train_run([data], init, tmp_path / "plain")
+    assert "corpus_weight" not in json.loads((tmp_path / "plain" / "run.json").read_text())
+    ones = _train_run([data], init, tmp_path / "ones", "--corpus-weight", f"{data}=belief:1,q:1,policy:1,value:1,reply:1")
+    assert all(torch.equal(plain[k], ones[k]) for k in plain)
+    assert "corpus_weights=" in (tmp_path / "ones" / "status.log").read_text()
+    # a weight w on every row of a head is that head's loss weight times w
+    zeroed = _train_run([data], init, tmp_path / "zw", "--corpus-weight", f"{data}=policy:0,reply:0")
+    headless = _train_run([data], init, tmp_path / "zh", "--policy-weight", "0", "--reply-weight", "0")
+    assert all(torch.equal(zeroed[k], headless[k]) for k in zeroed)
+    doubled = _train_run([data], init, tmp_path / "dw", "--corpus-weight", f"{data}=value:2")
+    scaled = _train_run([data], init, tmp_path / "dh", "--value-weight", "2")
+    assert all(torch.allclose(doubled[k], scaled[k], atol=1e-6) for k in doubled)
+    assert not all(torch.equal(plain[k], doubled[k]) for k in plain)
+
+
+def test_objective_weighs_only_the_rows_of_the_weighted_corpus(world):
+    from tests.test_unified_seq import _loaded
+    part, _ = _loaded(world)
+    n = len(part["X"])
+    w = np.ones((n, 5), np.float32)
+    w[: n // 2, 2] = 3.0                              # policy x3 on the first half of the rows
+    w[: n // 2, 3] = 0.0                              # value off on their leaves
+    torch.manual_seed(0)
+    m = ur.build(ARCH, READOUT)
+    b = ur.make_batch(dict(part, row_w=w), np.unique(part["row_round"]), np.arange(n))
+    assert np.array_equal(b["row_w"], w)
+    tb = ur.us.to_device(b, "cpu")
+    L = ur.losses(m, tb)
+    out = L["out"]
+    p_ce = ur.us.policy_loss_terms(out["policy"], tb)
+    v_ce = torch.nn.functional.cross_entropy(out["leaf_value"], tb["q_target"][tb["leaf_row"]], reduction="none")
+    first = tb["leaf_row"] < n // 2
+    assert torch.allclose(L["p_sum_w"], 3 * p_ce[: n // 2].sum() + p_ce[n // 2:].sum())
+    assert torch.allclose(L["v_sum_w"], v_ce[~first].sum())
+    assert torch.equal(L["belief_sum_w"], L["belief_sum"]) and torch.equal(L["q_sum_w"], L["q_sum"])
+
+    class A:
+        belief_weight, q_weight, policy_weight, value_weight, reply_weight = 1.0, 1.0, 0.2, 1.0, 0.2
+    m_w = ur.means([L[k + "_w"] if k + "_w" in L else L[k] for k in ur.SUM_KEYS])
+    assert torch.allclose(ur.objective(L, A), m_w["belief"] + m_w["q"] + 0.2 * m_w["policy"] + m_w["leaf_value"] + 0.2 * m_w["reply"])
+    plain = {k: v for k, v in L.items() if not k.endswith("_w")}
+    m_p = ur.means([plain[k] for k in ur.SUM_KEYS])
+    assert torch.allclose(ur.objective(plain, A), m_p["belief"] + m_p["q"] + 0.2 * m_p["policy"] + m_p["leaf_value"] + 0.2 * m_p["reply"])
+
+
+def test_the_cache_carries_leaf_weights_and_the_polish_uses_them(world, tmp_path):
+    from tests.test_unified_seq import extract_dir
+    data = extract_dir(world["store"], tmp_path / "xc", calib=0.5, task_clusters=1)
+    init = _readout_ckpt(tmp_path)
+    common = ["cache", "--ckpt", str(init), "--data", str(data), "--threads", "1", "--group-chunks", "1"]
+    assert ur.main(common + ["--out", str(tmp_path / "c0")]) == 0
+    assert ur.main(common + ["--out", str(tmp_path / "c1"), "--corpus-weight", f"{data}=value:0.5,reply:2,policy:7"]) == 0
+    z0 = np.load(sorted((tmp_path / "c0").glob("train-*.npz"))[0])
+    z1 = np.load(sorted((tmp_path / "c1").glob("train-*.npz"))[0])
+    assert "leaf_w" not in z0.files and set(z1.files) - set(z0.files) == {"leaf_w"}
+    assert z1["leaf_w"].shape == (len(z1["leaf_row"]), 2) and np.all(z1["leaf_w"] == [0.5, 2.0])
+    assert all(np.array_equal(z0[k], z1[k]) for k in z0.files)
+    assert "leaf_w" not in np.load(tmp_path / "c1" / "calib-0000.npz").files       # selection stays unweighted
+    v, r, has = torch.tensor([1.0, 2.0, 3.0]), torch.tensor([0.5, 0.0, 1.5]), torch.tensor([True, False, True])
+    assert torch.isclose(ur.polish_objective(v, r, has, 0.2), torch.tensor(2.0 + 0.2 * 2.0 / 2))
+    assert torch.isclose(ur.polish_objective(v, r, has, 0.2, np.ones((3, 2))), ur.polish_objective(v, r, has, 0.2))
+    assert torch.isclose(ur.polish_objective(v, r, has, 0.2, [[0.5, 2], [0.5, 2], [0.5, 2]]), torch.tensor(1.0 + 0.2 * 4.0 / 2))
+    pol = ["polish", "--ckpt", str(init), "--epochs", "1", "--threads", "1", "--batch", "64"]
+    assert ur.main(pol + ["--cache", str(tmp_path / "c1"), "--out", str(tmp_path / "p1")]) == 0
+    assert "corpus_weighted=True" in (tmp_path / "p1" / "status.log").read_text()
+    assert ur.main(pol + ["--cache", str(tmp_path / "c0"), "--out", str(tmp_path / "p0")]) == 0
+    assert "corpus_weighted=False" in (tmp_path / "p0" / "status.log").read_text()
+    for f in (tmp_path / "c0").glob("train-*.npz"):
+        f.rename(tmp_path / "c1" / f"train-9{f.name[6:]}")     # mixed shards refuse
+    with pytest.raises(ur.UnifiedReadoutError, match="mixes"):
+        ur.main(pol + ["--cache", str(tmp_path / "c1"), "--out", str(tmp_path / "p2")])

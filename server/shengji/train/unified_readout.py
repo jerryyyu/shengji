@@ -38,6 +38,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
+from ..ai.unified_readout_numpy import leaf_scalars  # noqa: F401
 from . import belief_seq as bs
 from . import unified_seq as us
 from .belief_eval import _block_slice, known_counts, masked_softmax, mean_ll
@@ -66,21 +67,6 @@ def card_points() -> np.ndarray:
     out = np.zeros(N_CARDS, np.float32)
     for code, i in CARD_INDEX.items():
         out[i] = points(code)
-    return out
-
-
-def leaf_scalars(n_delta, n_trick, points, winner, nxt) -> np.ndarray:
-    """``(L, 12)``: plays since the decision / 4, plays in the current trick / 4, the trick is
-    complete, its points / 50, its winner so far (one-hot, actor's frame), the seat to act next
-    (one-hot; the winner when the trick is complete).  A complete trick is the one just finished."""
-    n = len(n_delta)
-    out = np.zeros((n, N_SCALARS), np.float32)
-    out[:, 0] = np.asarray(n_delta, np.float32) / 4.0
-    out[:, 1] = np.asarray(n_trick, np.float32) / 4.0
-    out[:, 2] = np.asarray(n_trick) == 4
-    out[:, 3] = np.asarray(points, np.float32) / 50.0
-    out[np.arange(n), 4 + np.asarray(winner, np.int64)] = 1.0
-    out[np.arange(n), 8 + np.asarray(nxt, np.int64)] = 1.0
     return out
 
 

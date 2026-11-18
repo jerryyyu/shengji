@@ -685,6 +685,10 @@ def _register_pv_search_from_env() -> None:
     if raw == "1":
         from ..train.pv_search_policy import singleton_registry_entries
         REGISTRY.update(singleton_registry_entries(checkpoint=checkpoint, **recipe))
+    # the unified model's slots: imported and registered only when the environment names the package
+    if os.environ.get("SHENGJI_PV_UNIFIED_CKPT") or os.environ.get("SHENGJI_PV_UNIFIED_SHA256"):
+        from ..train.unified_serving import unified_registry_entries
+        REGISTRY.update(unified_registry_entries(checkpoint=checkpoint, **recipe))
 
 
 def register_exploit_policies(checkpoint: str, *, sha256: str, **recipe) -> list[str]:

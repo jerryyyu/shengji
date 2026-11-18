@@ -32,6 +32,21 @@ N_SCALARS = 12
 POOL_SCALE = 0.25
 
 
+def leaf_scalars(n_delta, n_trick, points, winner, nxt) -> np.ndarray:
+    """The twelve trick scalars of ``L`` leaves, ``(L, 12)``: plays since the decision / 4, plays in
+    the current trick / 4, the trick is complete, its points / 50, its winner so far (one-hot, actor's frame), the seat to act next
+    (one-hot; the winner when the trick is complete).  A complete trick is the one just finished."""
+    n = len(n_delta)
+    out = np.zeros((n, N_SCALARS), np.float32)
+    out[:, 0] = np.asarray(n_delta, np.float32) / 4.0
+    out[:, 1] = np.asarray(n_trick, np.float32) / 4.0
+    out[:, 2] = np.asarray(n_trick) == 4
+    out[:, 3] = np.asarray(points, np.float32) / 50.0
+    out[np.arange(n), 4 + np.asarray(winner, np.int64)] = 1.0
+    out[np.arange(n), 8 + np.asarray(nxt, np.int64)] = 1.0
+    return out
+
+
 def readout_shapes(config: Mapping[str, Any]) -> dict[str, tuple[int, ...]]:
     d, xh = int(config["trunk"]["d"]), int(config["trunk"]["x_hidden"])
     r = config["readout"]

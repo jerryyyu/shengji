@@ -1,0 +1,120 @@
+# Moderation list for the chat filter (chat_filter.py): words masked with
+# asterisks in every free-text chat line and in guest names, and refused as an
+# account's display name. Kept modest and conservative on purpose: a word that
+# is also an ordinary word in a card game's chat stays off the list.
+#
+# Latin-script lines are whole words, matched case-insensitively after the
+# leetspeak folds (0 o, 1 i, 3 e, @ a, $ s) and with any letter
+# allowed to repeat ("fuuuck"). A word is never matched inside a longer word,
+# so "class", "assassin" and "Scunthorpe" are untouched. Because letters may
+# repeat, an entry must not be an ordinary word once its letters are doubled
+# ("asses" would catch "assess", so it is not listed).
+#   word     the word alone
+#   word*    the word or the word with one common ending (s, er, ing, ed, y,
+#            head, face, ...); only for words whose endings make no ordinary word
+#
+# Chinese lines are phrases, matched anywhere in the text (Chinese has no
+# spaces between words), so only phrases with no ordinary reading are listed.
+#   =字      only when it stands alone, not next to another Chinese character
+#            (操 alone, but not 体操, 操作 or 曹操)
+#   字!xyz   not when followed by any of the characters x, y, z
+
+# English profanity
+fuck*
+fck*
+fuk*
+fucc*
+phuck*
+motherfuck*
+mothafucka*
+shit*
+bullshit*
+bitch*
+cunt*
+ass
+asshole*
+asshat*
+arsehole*
+dumbass*
+jackass*
+dick
+dicks
+dickhead*
+cocksucker*
+pussy
+pussies
+twat*
+wanker*
+bastard*
+whore*
+slut*
+stfu
+kys
+# the Latin shorthand Chinese speakers type for 傻逼
+sb
+
+# Slurs
+nigger*
+nigga*
+niggas
+faggot*
+fag
+fags
+retard*
+tranny
+trannies
+dyke
+dykes
+chink
+chinks
+gook
+gooks
+spic
+spics
+kike
+kikes
+wetback*
+rape
+raped
+rapist*
+
+# Chinese profanity (simplified and traditional)
+傻逼
+傻屄
+傻比
+傻B
+煞笔
+他妈的
+他媽的
+你妈的
+你媽的
+去你妈
+去你媽
+操你妈
+操你媽
+操你娘
+操你
+肏
+屌
+=操
+我操!作控心练練场場办辦持纵縱劳勞守行盘盤
+草泥马
+草泥馬
+妈逼
+媽逼
+妈了个逼
+媽了個逼
+日你妈
+日你媽
+日你娘
+干你娘
+幹你娘
+鸡巴
+雞巴
+婊子
+贱人
+賤人
+王八蛋
+狗日的
+滚你妈
+滾你媽

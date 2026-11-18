@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useAuth } from "../auth";
 import { navigate } from "../replay/route";
-import GoogleSignIn from "./GoogleSignIn";
+import { guestName } from "../guestName";
 
 /** The header every My games page shares: a back control above a centred
  *  title and subtitle, on the lobby's type scale. */
@@ -27,12 +27,15 @@ export function GamesNotice({ title, children }: { title?: string; children?: Re
   );
 }
 
-/** A 401 from the history API: the session is gone (or never was). */
+/** A 401 from the history API: the session is gone (or never was). Sign in
+ *  opens the identity sheet. */
 export function SignInPrompt() {
   const account = useAuth();
   return (
     <GamesNotice title="Sign in to see your saved games.">
-      {account.status === "out" && account.clientId ? <GoogleSignIn clientId={account.clientId} /> : null}
+      {account.status === "out" && account.clientId ? (
+        <button type="button" className="btn gold big games-cta" onClick={() => guestName.open()}>Sign in</button>
+      ) : null}
     </GamesNotice>
   );
 }
@@ -41,7 +44,6 @@ export function SignInPrompt() {
 export function GamesUnavailable() {
   return (
     <GamesNotice title="This game isn't available.">
-      <p>It may have been removed from your history.</p>
       <button className="btn big games-cta" onClick={() => navigate({ page: "list" })}>My games</button>
     </GamesNotice>
   );

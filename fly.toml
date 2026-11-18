@@ -274,15 +274,15 @@ primary_region = 'ewr'
   # Python if the .so is missing, so this is safe to set unconditionally.
   SHENGJI_FAST = '1'
   SHENGJI_LOG_DIR = '/data/logs'
+  # UI telemetry (api/telemetry.py): anonymous client events, a separate sink that
+  # refuses to sit inside the game logs. Unset = telemetry off.
+  SHENGJI_TELEMETRY_DIR = '/data/telemetry'
   # Accounts database (optional Google sign-in, docs/accounts.md) lives on the volume.
   SHENGJI_DATA_DIR = '/data'
   # Optional Google sign-in: the public OAuth client id (type Web) from the Google
   # Cloud console. Unset = the feature is off (no button, /api/auth/google is 404).
   # No client secret is used anywhere.
   GOOGLE_CLIENT_ID = '804081879262-h9te26ulofdij1nqrr7urbjec6vsbfes.apps.googleusercontent.com'
-  # Optional creator-authenticated W32 engineering rooms with separate excluded logs; off.
-  # Ordinary rooms serve SHENGJI_BOT above and need no access code.
-  SHENGJI_W32_TEST_ROOMS = '0'
 
 [mounts]
   source = 'shengji_data'

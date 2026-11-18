@@ -197,14 +197,18 @@ def build(arch: Mapping[str, Any], readout_arch: Mapping[str, Any] = READOUT_ARC
             n = self.card_ln(q.float())
             return self.card_proj(n), torch.relu(self.ctx(torch.cat([g.float(), n.mean(1)], -1)))
 
-        def body(self, S, c, planes, scalars):
-            """The per-leaf part: each leaf's own ``(54, dp)`` card states and ``(dc,)`` context."""
+        def features(self, S, c, planes, scalars):
+            """The per-leaf ``(L, width)`` features both outputs (and any auxiliary head) read."""
             pooled = torch.bmm(planes, S) * POOL_SCALE                   # L,9,dp
             x = torch.cat([planes.flatten(1), scalars, pooled.flatten(1), c], -1)
             h = torch.relu(self.stem(x))
             for ln, up, down in zip(self.ln, self.up, self.down):
                 h = h + down(torch.relu(up(ln(h))))
-            h = self.out_ln(h)
+            return self.out_ln(h)
+
+        def body(self, S, c, planes, scalars):
+            """The per-leaf part: each leaf's own ``(54, dp)`` card states and ``(dc,)`` context."""
+            h = self.features(S, c, planes, scalars)
             return self.value(h), self.reply(h)
 
         def forward(self, q, g, row, planes, scalars):
@@ -637,13 +641,64 @@ def _polish_tensors(z, pick=None):
 
 def polish_losses(readout, t):
     """Per-leaf outcome CE and reply CE (zero where there is no reply) of cached leaves."""
+    out = aux_polish_losses(readout, None, t, None)
+    return out["v_ce"], out["r_ce"], out["end"], out["has"]
+
+
+# Auxiliary heads on the readout's per-leaf features (polish only; default off).
+#: ``smv``: a second 204-class outcome head trained on the search's own expected signed level for the
+#: PLAYED action (two-point target on the half-integer support) at each row's k = 0 leaf (the played
+#: action's afterstate); ``points``: final attacker points / 100 (Huber, delta 1) at every leaf.  Neither
+#: is exported: the package keeps the outcome and reply outputs.
+AUX_KINDS = ("smv", "points")
+AUX_SCHEMA = "shengji-unified-readout-aux-v1"
+
+
+def build_aux_heads(width: int, kinds: Sequence[str], seed: int = 1):
+    import torch
+    from torch import nn
+    g = torch.random.fork_rng()
+    with g:
+        torch.manual_seed(seed)
+        heads = nn.ModuleDict({k: nn.Linear(int(width), OUTCOME_CLASSES if k == "smv" else 1) for k in kinds})
+    return heads
+
+
+def smv_soft_targets(level, realised):
+    """``(probs (L, 204), used (L,))``: the two-point target of each finite ``level`` (the acting side's
+    expected signed level) inside the support; ``used`` is False where the level is NaN or off-support."""
+    import torch
+    from .search_mean_target import soft_targets
+    mean = torch.full_like(level, float("nan"))
+    return soft_targets(mean, torch.zeros_like(level, dtype=torch.bool), realised, level)
+
+
+def aux_polish_losses(readout, heads, t, a) -> dict:
+    """Per-leaf losses of cached leaves: outcome CE ``v_ce``, reply CE ``r_ce``, and for each auxiliary head
+    in ``heads``: ``smv_ce`` (zero off ``smv_mask``: k = 0 leaves with a search value) and ``points_err``
+    (Huber) / ``points_abs``.  ``a`` holds the leaves' ``smv`` and ``points`` targets."""
     import torch
     S, c, planes, scalars, target, reply, hand, has = t
-    v, r = readout.body(S, c, planes, scalars)
+    h = readout.features(S, c, planes, scalars)
+    v, r = readout.value(h), readout.reply(h)
     v_ce = torch.nn.functional.cross_entropy(v, target, reduction="none")
     rl = torch.log_softmax(r.masked_fill(~hand, -1e9), -1)
     r_ce = -((reply / reply.sum(-1, keepdim=True).clamp_min(1.0)) * rl).sum(-1) * has
-    return v_ce, r_ce, scalars[:, 2] > 0, has
+    out = {"v_ce": v_ce, "r_ce": r_ce, "end": scalars[:, 2] > 0, "has": has}
+    if heads is None:
+        return out
+    if "smv" in heads:
+        k0 = (scalars[:, 0] - 0.25).abs() < 1e-6                      # one play since the decision: the row's own
+        probs, used = smv_soft_targets(a["smv"], target)
+        mask = k0 & used
+        ce = -(probs * torch.log_softmax(heads["smv"](h), -1)).sum(-1)
+        out["smv_ce"] = torch.where(mask, ce, torch.zeros_like(ce))
+        out["smv_mask"] = mask
+    if "points" in heads:
+        pred = heads["points"](h).squeeze(-1)
+        out["points_err"] = torch.nn.functional.huber_loss(pred, a["points"], delta=1.0, reduction="none")
+        out["points_abs"] = (pred - a["points"]).abs()
+    return out
 
 
 def polish_objective(v, r, has, reply_weight, leaf_w=None):
@@ -656,22 +711,57 @@ def polish_objective(v, r, has, reply_weight, leaf_w=None):
     return v.mean() + reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
 
 
-def polish_eval(readout, z, batch: int = 16384) -> dict[str, float]:
+def _aux_tensors(aux, z, pick):
     import torch
-    sums = np.zeros(6)
+    if aux is None:
+        return None
+    row = z["leaf_row"][pick]
+    return {k: torch.from_numpy(np.asarray(aux[k][row], np.float32)) for k in AUX_KINDS}
+
+
+def _aux_for(aux_dir, shard: Path, rows: int):
+    """The aux targets of one cache shard (``aux-<name>.npz``), refusing a row-count mismatch."""
+    if aux_dir is None:
+        return None
+    path = Path(aux_dir) / f"aux-{shard.stem}.npz"
+    with np.load(path) as z:
+        got = {k: z[k] for k in AUX_KINDS}
+    if any(len(v) != rows for v in got.values()):
+        raise UnifiedReadoutError(f"{path}: aux rows differ from the cache shard's {rows}")
+    return got
+
+
+def polish_eval(readout, z, batch: int = 16384, heads=None, aux=None) -> dict[str, float]:
+    import torch
+    sums = np.zeros(11)
     readout.eval()
     with torch.no_grad():
         for i in range(0, len(z["leaf_row"]), batch):
-            v, r, end, has = polish_losses(readout, _polish_tensors(z, np.arange(i, min(i + batch, len(z["leaf_row"])))))
-            sums += [float(v.sum()), len(v), float((v * end).sum()), float(end.sum()), float(r.sum()), float(has.sum())]
+            pick = np.arange(i, min(i + batch, len(z["leaf_row"])))
+            o = aux_polish_losses(readout, heads, _polish_tensors(z, pick), _aux_tensors(aux, z, pick))
+            v, r, end, has = o["v_ce"], o["r_ce"], o["end"], o["has"]
+            sums[:6] += [float(v.sum()), len(v), float((v * end).sum()), float(end.sum()), float(r.sum()), float(has.sum())]
+            if "smv_ce" in o:
+                m = o["smv_mask"]
+                sums[6:9] += [float(o["smv_ce"].sum()), float(m.sum()), float((v * m).sum())]
+            if "points_abs" in o:
+                sums[9:11] += [float(o["points_abs"].sum()), len(v)]
     readout.train()
-    return {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
+    out = {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
+    if heads is not None and "smv" in heads:
+        # the smv head's CE on its own soft target, and the outcome head's CE on the same leaves
+        out.update(smv_ce=sums[6] / max(sums[7], 1), smv_leaves=int(sums[7]), leaf_value_on_smv_leaves=sums[8] / max(sums[7], 1))
+    if heads is not None and "points" in heads:
+        out["points_mae"] = sums[9] / max(sums[10], 1)
+    return out
 
 
 def polish(args) -> int:
     """Train the readout's per-leaf body on a cache (the trunk, the other heads and the per-decision
     projections stay the checkpoint's); ``OUT/best.pt`` is the checkpoint with the body of the pass that
-    scored the lowest calibration trick-end NLL, or the input checkpoint when no pass beats it."""
+    scored the lowest calibration trick-end NLL, or the input checkpoint when no pass beats it.
+    ``--smv-weight`` / ``--points-weight`` (default 0) add auxiliary heads on the body's features, trained
+    on the targets of ``--aux`` (``aux`` subcommand); selection stays the outcome head's trick-end NLL."""
     import torch
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
@@ -684,6 +774,12 @@ def polish(args) -> int:
     frozen = [n for n, p in readout.named_parameters() if not n.startswith(BODY_PREFIXES)]
     if sorted(frozen) != ["card_ln.bias", "card_ln.weight", "card_proj.bias", "card_proj.weight", "ctx.bias", "ctx.weight"]:
         raise UnifiedReadoutError(f"unexpected frozen readout parameters {frozen}")
+    weights = {"smv": getattr(args, "smv_weight", 0.0) or 0.0, "points": getattr(args, "points_weight", 0.0) or 0.0}
+    kinds = [k for k in AUX_KINDS if weights[k] > 0]
+    aux_dir = getattr(args, "aux", None)
+    if kinds and not aux_dir:
+        raise UnifiedReadoutError("an auxiliary head needs --aux")
+    heads = build_aux_heads(model.config["readout"]["width"], kinds, args.seed) if kinds else None
     cache_dir = Path(args.cache)
     shards = sorted(cache_dir.glob("train-*.npz"))
     done = sorted(cache_dir.glob("DONE.*"))
@@ -693,52 +789,237 @@ def polish(args) -> int:
     if len(weighted) != 1:
         raise UnifiedReadoutError("the cache mixes shards with and without corpus weights")
     weighted = weighted.pop()
+    if kinds and (len(list(Path(aux_dir).glob("aux-train-*.npz"))) != len(shards) or not (Path(aux_dir) / "aux-calib-0000.npz").exists()):
+        raise UnifiedReadoutError("--aux does not cover every cache shard")
     calib = dict(np.load(cache_dir / "calib-0000.npz"))
+    calib_aux = _aux_for(aux_dir, cache_dir / "calib-0000.npz", len(calib["c"])) if kinds else None
     readout.train()
-    opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
+    params = body + (list(heads.parameters()) if heads is not None else [])
+    opt = torch.optim.AdamW(params, lr=args.lr, weight_decay=args.weight_decay)
     total = args.epochs * len(shards)
-    init = polish_eval(readout, calib)
+    init = polish_eval(readout, calib, heads=heads, aux=calib_aux)
     best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
     _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
+                    f"aux={json.dumps({k: weights[k] for k in kinds})} "
                     f"ckpt={us.sha256_file(args.ckpt)} corpus_weighted={weighted} init calib {json.dumps(init)}")
     rng = np.random.default_rng(args.seed)
     step_i, t0 = 0, time.time()
     state = None
     for epoch in range(args.epochs):
-        sums = np.zeros(6)
+        sums = np.zeros(10)
         for si in rng.permutation(len(shards)):
             for g in opt.param_groups:
                 g["lr"] = args.lr * 0.5 * (1 + math.cos(math.pi * step_i / total))
             step_i += 1
             z = np.load(shards[si])
             z = {k: z[k] for k in z.files}
+            za = _aux_for(aux_dir, shards[si], len(z["c"])) if kinds else None
             order = rng.permutation(len(z["leaf_row"]))
             for i in range(0, len(order), args.batch):
                 pick = np.sort(order[i:i + args.batch])
-                v, r, end, has = polish_losses(readout, _polish_tensors(z, pick))
+                o = aux_polish_losses(readout, heads, _polish_tensors(z, pick), _aux_tensors(za, z, pick))
+                v, r, end, has = o["v_ce"], o["r_ce"], o["end"], o["has"]
                 loss = polish_objective(v, r, has, args.reply_weight, z["leaf_w"][pick] if weighted else None)
+                if "smv_ce" in o:
+                    loss = loss + weights["smv"] * o["smv_ce"].sum() / o["smv_mask"].float().sum().clamp_min(1.0)
+                if "points_err" in o:
+                    loss = loss + weights["points"] * o["points_err"].mean()
                 opt.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(body, 1.0)
+                torch.nn.utils.clip_grad_norm_(params, 1.0)
                 opt.step()
-                sums += [float(v.sum().detach()), len(v), float((v * end).sum().detach()), float(end.sum()),
-                         float(r.sum().detach()), float(has.sum())]
+                sums[:6] += [float(v.sum().detach()), len(v), float((v * end).sum().detach()), float(end.sum()),
+                             float(r.sum().detach()), float(has.sum())]
+                if "smv_ce" in o:
+                    sums[6:8] += [float(o["smv_ce"].sum().detach()), float(o["smv_mask"].sum())]
+                if "points_err" in o:
+                    sums[8:10] += [float(o["points_abs"].sum().detach()), len(v)]
             if (out / "STOP").exists():
                 _status(status, "STOPPED (STOP file)")
                 return 3
-        cm = polish_eval(readout, calib)
+        cm = polish_eval(readout, calib, heads=heads, aux=calib_aux)
         train = {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
+        if "smv" in kinds:
+            train["smv_ce"] = sums[6] / max(sums[7], 1)
+        if "points" in kinds:
+            train["points_mae"] = sums[8] / max(sums[9], 1)
         _status(status, f"POLISH EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in train.items()})} "
                         f"calib {json.dumps({k: round(v, 5) for k, v in cm.items()})} ({time.time() - t0:.0f}s)")
         if cm["leaf_value_end"] < best["score"]:
             best = {"score": cm["leaf_value_end"], "epoch": epoch + 1, "calib": cm}
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            if heads is not None:
+                best["aux_heads"] = {k: v.detach().clone() for k, v in heads.state_dict().items()}
     if state is not None:
         model.load_state_dict(state)
+    extra = {}
+    if heads is not None:
+        extra = {"aux_heads": best.get("aux_heads"), "aux": {"schema": AUX_SCHEMA, "kinds": kinds, "weights": {k: weights[k] for k in kinds}}}
     torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
                 "calib": dict(saved.get("calib") or {}, polish=best["calib"], polish_epoch=best["epoch"]),
-                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=vars(args))}, out / "best.pt")
+                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=vars(args)), **extra}, out / "best.pt")
     _status(status, f"POLISH DONE best_epoch={best['epoch']} calib {json.dumps(best['calib'])} sha256={us.sha256_file(out / 'best.pt')}")
+    return 0
+
+
+# Auxiliary targets for a polish cache: the search's value of the played action, final points.
+
+def cluster_search_values(path: Path, sha256: str | None = None) -> dict[str, np.ndarray]:
+    """One store cluster's play decisions in the extractor's order (``belief_labels.game_order``, the
+    ``decision`` index of an extract row): ``seat``, ``round_index``, ``seed`` and ``smv`` (the search's
+    refined mean of the played action, ``preference.means[played_index]``, NaN where absent).  Refuses a
+    file whose sha256 is not ``sha256``, or a decision whose value units are not signed level."""
+    import hashlib
+    from .belief_labels import game_order
+    raw = Path(path).read_bytes()
+    if sha256 is not None and hashlib.sha256(raw).hexdigest() != sha256:
+        raise UnifiedReadoutError(f"{path}: sha256 differs from the store manifest")
+    plays = [r for r in (json.loads(line) for line in raw.decode().splitlines() if line.strip())
+             if r.get("decision_kind") == "play"]
+    seat, rnd, seed, smv = [], [], [], []
+    ri = -1
+    for r in game_order(plays):
+        if not (r.get("plays_prefix") or []):
+            ri += 1
+        units = (r.get("action_values") or {}).get("units") if isinstance(r.get("action_values"), dict) else None
+        pref = r.get("preference") or {}
+        means, pi = pref.get("means"), pref.get("played_index")
+        value = float("nan")
+        if isinstance(means, list) and pi is not None and 0 <= int(pi) < len(means) and means[int(pi)] is not None:
+            if units != "expected-signed-level-half-integer":
+                raise UnifiedReadoutError(f"{path}: a search value in units {units!r}, not signed level")
+            value = float(means[int(pi)])
+        seat.append(int(r["seat"]))
+        rnd.append(ri)
+        seed.append(int(r.get("round_seed")))
+        smv.append(value)
+    return {"seat": np.asarray(seat, np.int64), "round_index": np.asarray(rnd, np.int64),
+            "seed": np.asarray(seed, np.int64), "smv": np.asarray(smv, np.float64)}
+
+
+class SearchValueIndex:
+    """``cluster_search_values`` of store clusters, kept as ``MEANS/<store key>-<cluster>.npz`` files."""
+
+    def __init__(self, index, means_dir: str | os.PathLike):
+        self.index = index
+        self.dir = Path(means_dir)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self._mem: dict = {}
+
+    def get(self, recorded: str, cluster: int, data_dir: str) -> dict[str, np.ndarray]:
+        import hashlib
+        local = self.index.resolve(recorded, data_dir)
+        key = (local, int(cluster))
+        if key in self._mem:
+            return self._mem[key]
+        st = self.index._store(local)
+        name = st["names"][int(cluster)]
+        path = self.dir / f"{hashlib.sha256(local.encode()).hexdigest()[:16]}-{int(cluster):06d}.npz"
+        if path.exists():
+            with np.load(path) as z:
+                got = {k: z[k] for k in z.files}
+            if str(got.pop("shard_sha256")) != st["by_name"][name]["sha256"]:
+                raise UnifiedReadoutError(f"{path}: made from another shard")
+        else:
+            got = cluster_search_values(Path(local) / "shards" / name, st["by_name"][name]["sha256"])
+            tmp = path.with_suffix(".tmp.npz")
+            np.savez(tmp, shard_sha256=np.asarray(st["by_name"][name]["sha256"]), **got)
+            os.replace(tmp, path)
+        self._mem = {key: got}                          # one cluster at a time: parts are cluster-ordered
+        return got
+
+
+def part_aux_targets(part, stores: Sequence[str], index, values: SearchValueIndex, data_dir: str) -> dict[str, np.ndarray]:
+    """``smv`` (the search's value of the row's own play, acting side, NaN where absent) and ``points``
+    (final attacker points / 100) of a loaded part's rows; refuses a row whose seat, round or seed is not
+    its store decision's, or whose outcome target is not its round's points."""
+    n = len(part["X"])
+    smv = np.full(n, np.nan, np.float32)
+    points = np.full(n, np.nan, np.float32)
+    key = np.stack([part["store"].astype(np.int64), part["cluster"].astype(np.int64)], 1)
+    for s, c in (np.unique(key, axis=0) if n else ()):
+        sel = np.flatnonzero((key[:, 0] == s) & (key[:, 1] == c))
+        sv = values.get(stores[int(s)], int(c), data_dir)
+        d = part["decision"][sel].astype(np.int64)
+        if np.any(d < 0) or np.any(d >= len(sv["seat"])):
+            raise UnifiedReadoutError(f"store {s} cluster {c}: a decision index outside the store's")
+        if (np.any(sv["seat"][d] != part["row_seat"][sel]) or np.any(sv["round_index"][d] != part["round_index"][sel])
+                or np.any(sv["seed"][d] != part["seed"][sel].astype(np.int64))):
+            raise UnifiedReadoutError(f"store {s} cluster {c}: a row's seat, round or seed differs from its store decision")
+        smv[sel] = sv["smv"][d]
+        rounds = index.rounds(stores[int(s)], int(c), data_dir)
+        for r in np.unique(part["round_index"][sel]):
+            rows = sel[part["round_index"][sel] == r]
+            ap = int(rounds[int(r)]["attacker_points"])
+            points[rows] = ap / 100.0
+            banker = int(rounds[int(r)]["banker"])
+            for att in (True, False):
+                m = (part["row_seat"][rows].astype(np.int64) % 2 != banker % 2) == att
+                if np.any(part["q_target"][rows[m]] != us.outcome_category(ap, att)):
+                    raise UnifiedReadoutError(f"store {s} cluster {c} round {r}: outcome target differs from its points")
+    if np.any(~np.isfinite(points)):
+        raise UnifiedReadoutError("rows without points")
+    return {"smv": smv, "points": points}
+
+
+def aux(args) -> int:
+    """Write ``OUT/aux-<shard>.npz`` (per-row ``smv`` and ``points``) for every shard of the polish cache
+    ``--cache`` that ``cache`` wrote with the same ``--data`` / ``--store-map`` / ``--exclude-seed-window`` /
+    ``--calib-rows`` / ``--seed`` / ``--group-chunks``; refuses a shard whose rows or outcome targets differ."""
+    verified = bs._Verified()
+    index = us.OutcomeIndex(us.parse_store_map(args.store_map))
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    values = SearchValueIndex(index, out / "means")
+    cache_dir = Path(args.cache)
+
+    def write(name, parts):
+        got = [part_aux_targets(p, p["_stores"], index, values, p["_data_dir"]) for p in parts]
+        a = {k: np.concatenate([g[k] for g in got]) for k in AUX_KINDS}
+        with np.load(cache_dir / f"{name}.npz") as z:
+            lr, lt, nrow = z["leaf_row"], z["leaf_target"], len(z["c"])
+        qt = np.concatenate([p["q_target"] for p in parts])
+        if nrow != len(qt) or np.any(qt[lr] != lt):
+            raise UnifiedReadoutError(f"{name}: the parts do not reproduce the cache shard's rows")
+        meta = {"schema": AUX_SCHEMA, "rows": int(nrow), "smv_rows": int(np.isfinite(a["smv"]).sum())}
+        tmp = out / f"aux-{name}.tmp.npz"
+        np.savez(tmp, meta=np.asarray(json.dumps(meta)), **a)
+        os.replace(tmp, out / f"aux-{name}.npz")
+
+    def loaded(entries):
+        parts = []
+        for e in entries:
+            p = us.load_unified_part(e, verified, index)
+            if len(p["X"]):
+                p["_stores"], p["_data_dir"] = e["stores"], e["dir"]
+                parts.append(p)
+        return parts
+    if args.worker == 0 and not (out / "aux-calib-0000.npz").exists():
+        # load_calib's chunk choice, part by part (its rows are those parts in that order)
+        entries = us.entries_for(args.data, "calib", exclude_seed_windows=args.exclude_seed_window)
+        if args.calib_rows is not None:
+            rng = np.random.default_rng(args.seed)
+            picked, n = [], 0
+            for i in rng.permutation(len(entries)):
+                if n >= args.calib_rows:
+                    break
+                picked.append(entries[i])
+                n += entries[i]["rows"]
+            entries = picked
+        write("calib-0000", loaded(entries))
+    entries = us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window)
+    groups = [entries[i:i + args.group_chunks] for i in range(0, len(entries), args.group_chunks)]
+    if args.max_groups:
+        groups = groups[:args.max_groups]
+    for gi in range(args.worker, len(groups), args.workers):
+        name = f"train-{gi:04d}"
+        if (out / f"aux-{name}.npz").exists():
+            continue
+        parts = loaded(groups[gi])
+        if parts:
+            write(name, parts)
+        print(f"[aux] {name} of {len(groups)}", flush=True)
+    (out / f"DONE.{args.worker}").write_text(json.dumps({"groups": len(groups), "chunks": len(entries)}))
     return 0
 
 
@@ -919,6 +1200,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch", type=int, default=4096)
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--aux", default=None, help="the aux targets dir (aux subcommand) the auxiliary heads train on")
+    p.add_argument("--smv-weight", type=float, default=0.0, help="the search-value head's weight (0: no head)")
+    p.add_argument("--points-weight", type=float, default=0.0, help="the attacker-points head's weight (0: no head)")
+    x = sub.add_parser("aux")
+    x.add_argument("--cache", required=True)
+    x.add_argument("--data", nargs="+", required=True)
+    x.add_argument("--out", required=True)
+    x.add_argument("--store-map", action="append", default=[])
+    x.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
+    x.add_argument("--calib-rows", type=int, default=180000)
+    x.add_argument("--seed", type=int, default=1)
+    x.add_argument("--group-chunks", type=int, default=24)
+    x.add_argument("--max-groups", type=int, default=None)
+    x.add_argument("--worker", type=int, default=0)
+    x.add_argument("--workers", type=int, default=1)
     m = sub.add_parser("mixpolish")
     m.add_argument("--ckpt", required=True)
     m.add_argument("--mix", required=True, help="sampled-world shards: train-*.npz and calib-*.npz")
@@ -943,7 +1239,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return {"train": train, "export": export, "cache": cache, "polish": polish, "mixpolish": mixpolish}[args.cmd](args)
+    return {"train": train, "export": export, "cache": cache, "polish": polish, "mixpolish": mixpolish, "aux": aux}[args.cmd](args)
 
 
 if __name__ == "__main__":

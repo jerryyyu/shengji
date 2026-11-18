@@ -1,0 +1,393 @@
+"""The unified model's slots as a served registry entry (`train.unified_serving`), off by default.
+
+Three claims, each on release 52's bot built from the repo's ``fly.toml`` on the hash-pinned
+release-50 packages (they fail, never skip, under ``SHENGJI_REQUIRE_PV_PACKAGE=1``):
+
+* unset, nothing changes: the registry holds the names it held, the serving module is not imported,
+  and a served bot decides the same beside a unified bot in the same process;
+* set, the registry bot is the bot the duel adapter built: the served registry entry with the
+  shared forward, the value readout and the reply readout installed, decision for decision on the
+  ten fixed production positions of `r50_flag_positions`;
+* set, the bot acts through the server's own snapshot and commit path, with every slot filled from
+  one trunk forward.
+
+The unified package here is a small random one (the claims are about wiring, not strength).  With
+``SHENGJI_PV_UNIFIED_PACKAGE_PATH`` and ``SHENGJI_PV_UNIFIED_BELIEF_PACKAGE_PATH`` naming the
+screened pair, the same tests also run on it; they skip where it is not provisioned.
+"""
+import asyncio
+import copy
+import hashlib
+import os
+import random
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+import r50_flag_positions as P
+from test_release46_fly_config import fly_env as production_env
+from test_release48_fly_config import apply_to_process
+from test_release50_fly_config import (BELIEF_VOLUME_PATH, PRIOR_SHA, PRIOR_VOLUME_PATH, VALUE_SHA,
+                                       VALUE_VOLUME_PATH, local_env, release50_packages)  # noqa: F401
+from test_release52_fly_config import RELEASE52
+
+#: the screened pair (arm ALL): the unified readout package and the belief package carrying its trunk
+UNIFIED_SHA = "97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af"
+UNIFIED_BELIEF_SHA = "1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4"
+UNIFIED_VOLUME_PATH = "/data/models/ut-all-97c07be8.npz"
+UNIFIED_BELIEF_VOLUME_PATH = "/data/models/ut-all-belief-1b1fd2de.npz"
+#: the exploiter's name in the screen's recipe (the duel adapter's), byte for byte
+SCREENED = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-"
+            "dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-"
+            "hybrid-bwv-bbw-1b1a47f5dd8b-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8")
+PAIR_VARS = ("SHENGJI_PV_UNIFIED_PACKAGE_PATH", "SHENGJI_PV_UNIFIED_BELIEF_PACKAGE_PATH")
+COUNTERS = ("unified_prior_calls", "unified_shared_hits", "unified_shared_misses", "unified_value_rows",
+            "unified_value_other", "unified_reply_rows", "unified_reply_served", "unified_trunk_forwards",
+            "unified_trunk_shared")
+TRUNK = {"d": 16, "heads": 4, "enc_layers": 1, "xattn_layers": 1, "x_hidden": 16, "card_self_attn": True}
+CONFIG = {"trunk": TRUNK, "heads": {"q_hidden": 8, "policy_hidden": 8},
+          "readout": {"dp": 8, "dc": 8, "width": 16, "hidden": 32, "blocks": 1}}
+
+
+def _random_pair(root):
+    from shengji.ai import belief_numpy as bn
+    from shengji.ai import unified_numpy as un
+    from shengji.ai import unified_readout_numpy as rn
+
+    rng = np.random.default_rng(11)
+
+    def weights(shapes):
+        return {k: (0.3 * rng.standard_normal(s)).astype(np.float32) for k, s in shapes.items()}
+    path = root / "u.npz"
+    sha = rn.save_package(path, CONFIG, weights(bn.expected_shapes(TRUNK, **bn.DIMS)),
+                          weights(un.head_shapes(CONFIG)), weights(rn.readout_shapes(CONFIG)),
+                          {"temperature": 1.1})
+    belief = root / "u-belief.npz"
+    belief_sha = rn.belief_package(rn.load_unified_readout_numpy(path, sha), belief)
+    return {"unified": (str(path), sha), "belief": (str(belief), belief_sha)}
+
+
+@pytest.fixture(scope="module", params=["random", "screened"])
+def pair(request, tmp_path_factory):
+    """``{"unified": (path, sha256), "belief": (path, sha256)}``: a small random pair, or the
+    screened one where its two paths are provisioned."""
+    if request.param == "random":
+        return _random_pair(tmp_path_factory.mktemp("unified"))
+    paths = [os.environ.get(var) for var in PAIR_VARS]
+    if not all(paths):
+        pytest.skip(f"set {' and '.join(PAIR_VARS)} to run on the screened pair")
+    for path, sha in zip(paths, (UNIFIED_SHA, UNIFIED_BELIEF_SHA)):
+        actual = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        assert actual == sha, f"{path} is {actual[:12]}, not the screened {sha[:12]}"
+    return {"unified": (paths[0], UNIFIED_SHA), "belief": (paths[1], UNIFIED_BELIEF_SHA)}
+
+
+@pytest.fixture
+def served_functions(monkeypatch):
+    """The two served functions the unified bots wrap, restored after the test, the serving
+    module's package cache emptied, and the belief proposal's preparation budget lifted with the
+    other clocks (`r50_flag_positions.lift`), so every compared decision is a function of the code
+    alone and none falls back to the fallback worlds on a slow host."""
+    from shengji.ai import belief_numpy as bn
+    from shengji.train import pv_encode_prefix, pv_tree_search, unified_serving
+
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
+    monkeypatch.setattr(pv_tree_search, "greedy_reply_ply", pv_tree_search.greedy_reply_ply)
+    monkeypatch.setattr(pv_encode_prefix, "score_leaves", pv_encode_prefix.score_leaves)
+    monkeypatch.setattr(unified_serving, "_MODELS", {})
+    return pv_tree_search.greedy_reply_ply, pv_encode_prefix.score_leaves
+
+
+def unified_env(packages, pair) -> dict:
+    """Release 52's env on the local packages with the four lines a unified release changes: the
+    belief pair, the unified pair, and the name the registry derives from them."""
+    from shengji.eval.served_config import registry_name
+
+    env = {**local_env(packages, production_env()),
+           "SHENGJI_PV_BELIEF_CKPT": pair["belief"][0], "SHENGJI_PV_BELIEF_SHA256": pair["belief"][1],
+           "SHENGJI_PV_UNIFIED_CKPT": pair["unified"][0], "SHENGJI_PV_UNIFIED_SHA256": pair["unified"][1]}
+    env["SHENGJI_BOT"] = registry_name(env)
+    return env
+
+
+def register(monkeypatch, env):
+    """The registry as the server's import leaves it for ``env`` (a scratch copy)."""
+    from shengji.ai import registry
+
+    for key in list(os.environ):
+        if key.startswith("SHENGJI_PV_"):
+            monkeypatch.delenv(key)
+    apply_to_process(monkeypatch, env)
+    monkeypatch.setattr(registry, "REGISTRY", {k: v for k, v in registry.REGISTRY.items()
+                                               if not k.startswith("pv-search-")})
+    registry._register_pv_search_from_env()
+    return registry
+
+
+def registry_bot(monkeypatch, env, seed):
+    return register(monkeypatch, env).make_bot(env["SHENGJI_BOT"], seed=seed)
+
+
+def adapter_bot(monkeypatch, env, pair, seed):
+    """The duel adapter's exploiter, step for step: the served registry entry for ``env`` without
+    the unified lines, then the three installs on that bot, with the adapter's two module-level
+    stand-ins in place for the duration of the caller's patch context."""
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.train import pv_encode_prefix, pv_search_policy as pv, pv_tree_search, unified_slots as us
+
+    words = {k: v for k, v in env.items() if "UNIFIED" not in k}
+    register(monkeypatch, words)
+    recipe = pv.pv_env_recipe(words)
+    (name, factory), = pv.singleton_registry_entries(checkpoint=recipe.pop("checkpoint"), **recipe).items()
+    monkeypatch.setattr(pv_tree_search, "greedy_reply_ply", us.readout_reply_ply(pv_tree_search.greedy_reply_ply))
+    monkeypatch.setattr(pv_encode_prefix, "score_leaves", us.readout_score_leaves(pv_encode_prefix.score_leaves))
+    model = load_unified_readout_numpy(*pair["unified"])
+    bot = factory(seed=seed)
+    assert bot.policy_name == name
+    us.install_shared_forward(bot, model)
+    us.install_value_readout(bot, model, keep_prefix=True)
+    us.install_reply_readout(bot, model, keep_prefix=True)
+    return bot
+
+
+def decide(bot, rnd):
+    """`P.decision` plus the slot counters the decision moved; the registry bot's own account of
+    them (the record's ``unified`` entry, which the adapter's bot does not write) is checked against
+    the counters and taken out, so the two bots' results compare whole."""
+    from shengji.train import unified_serving as serving
+
+    before = [getattr(bot, name, 0) for name in COUNTERS]
+    out = P.decision(P.lift(bot), rnd)
+    assert out["record"]["belief_fallback"] == 0, out["record"].get("belief_fallback_reason")
+    out["counters"] = dict(zip(COUNTERS, (getattr(bot, name, 0) - b for name, b in zip(COUNTERS, before))))
+    account = out["record"].pop(serving.RECORD_KEY, None)
+    if hasattr(bot, "unified_sha256"):
+        assert account == {"package": bot.unified_sha256[:8],
+                           **{name: out["counters"][attr] for name, attr in serving.RECORD_FIELDS.items()}}
+    else:
+        assert account is None
+    return out
+
+
+def test_the_two_keys_go_together_and_pin_a_full_hash():
+    from shengji.train import unified_serving as serving
+    from shengji.train.pv_search_policy import PVSearchPolicyError
+
+    assert serving.unified_env({}) is None
+    assert serving.unified_env({serving.CKPT_KEY: "", serving.SHA256_KEY: ""}) is None
+    assert serving.unified_env({serving.CKPT_KEY: "/m/u.npz", serving.SHA256_KEY: UNIFIED_SHA}) == \
+        ("/m/u.npz", UNIFIED_SHA)
+    for env in ({serving.CKPT_KEY: "/m/u.npz"}, {serving.SHA256_KEY: UNIFIED_SHA},
+                {serving.CKPT_KEY: "/m/u.npz", serving.SHA256_KEY: UNIFIED_SHA[:8]},
+                {serving.CKPT_KEY: "/m/u.npz", serving.SHA256_KEY: UNIFIED_SHA.upper()},
+                {serving.CKPT_KEY: "/m/u.pt", serving.SHA256_KEY: UNIFIED_SHA}):
+        with pytest.raises(PVSearchPolicyError):
+            serving.unified_env(env)
+    assert serving.unified_registry_entries(environ={}, checkpoint="unused", sha256="0" * 64) == {}
+
+
+def test_the_volume_paths_derive_the_screened_name(monkeypatch):
+    """fly.toml with the four unified lines, as written for the volume (hashes stood in for the
+    files): the served part of the name is the screen's exploiter's, and the suffix its three
+    tokens."""
+    from shengji.ai import cwv_policy
+    from shengji.train import pv_search_policy as pv
+    from shengji.train import unified_serving as serving
+
+    by_path = {VALUE_VOLUME_PATH: VALUE_SHA, PRIOR_VOLUME_PATH: PRIOR_SHA,
+               UNIFIED_BELIEF_VOLUME_PATH: UNIFIED_BELIEF_SHA}
+    monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: by_path[str(path)][:8])
+    monkeypatch.setattr(pv, "file_sha256", lambda path: by_path[str(path)])
+    env = {**production_env(), "SHENGJI_PV_BELIEF_CKPT": UNIFIED_BELIEF_VOLUME_PATH,
+           "SHENGJI_PV_BELIEF_SHA256": UNIFIED_BELIEF_SHA}
+    assert env["SHENGJI_BOT"] == RELEASE52 and BELIEF_VOLUME_PATH in production_env().values()
+    served, = pv.singleton_registry_entries(**pv.pv_env_recipe(env))
+    assert serving.unified_name(served, UNIFIED_SHA) == SCREENED
+    moved = [t for t in served.split("-") if t not in RELEASE52.split("-")]
+    assert moved == ["r09a10415", "1b1a47f5dd8b"]
+
+
+def test_unset_the_registry_and_the_served_bot_are_untouched(release50_packages):
+    """A fresh process with fly.toml's env: no unified name, the serving modules never imported,
+    the served functions unwrapped, and no instance override on the served bot."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_PV_")}
+    # the release-28 rollback keys name a package this test does not provision
+    env.update({k: v for k, v in local_env(release50_packages, production_env()).items()
+                if not k.startswith("SHENGJI_CWV_")})
+    env.pop("SHENGJI_LOG_DIR", None)
+    if os.environ.get("SHENGJI_FAST") != "1":
+        env.pop("SHENGJI_FAST", None)
+    code = (
+        "import os, sys\n"
+        "if os.environ.get('SHENGJI_FAST') == '1':\n"
+        "    from shengji.engine import fast\n"
+        "    assert fast.activate()\n"
+        "from shengji.ai import registry\n"
+        "from shengji.train import pv_encode_prefix, pv_tree_search\n"
+        "names = [n for n in registry.REGISTRY if n.startswith('pv-search-')]\n"
+        "assert os.environ['SHENGJI_BOT'] in names and not [n for n in names if 'ushare' in n], names\n"
+        "bot = registry.make_bot(os.environ['SHENGJI_BOT'], seed=1)\n"
+        "loaded = [m for m in sys.modules if m.startswith('shengji.') and 'unified' in m]\n"
+        "assert not loaded, loaded\n"
+        "assert pv_tree_search.greedy_reply_ply.__module__ == 'shengji.train.pv_tree_search'\n"
+        "assert pv_encode_prefix.score_leaves.__module__ == 'shengji.train.pv_encode_prefix'\n"
+        "assert not {'scores', '_search', '_belief_worlds'} & set(vars(bot)), sorted(vars(bot))\n"
+        "assert type(bot.belief_model).__name__ == 'BeliefNumpy'\n"
+        "print('UNTOUCHED', bot.policy_name)\n")
+    done = subprocess.run([sys.executable, "-B", "-c", code], env=env, capture_output=True, text=True,
+                          cwd=Path(__file__).resolve().parents[1], timeout=300)
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.strip() == f"UNTOUCHED {RELEASE52}"
+
+
+def test_set_the_registry_gains_one_name_beside_the_served_ones(release50_packages, pair, monkeypatch,
+                                                              served_functions):
+    from shengji.train import unified_serving as serving
+
+    env = unified_env(release50_packages, pair)
+    without = {k: v for k, v in env.items() if "UNIFIED" not in k}
+    before = {n for n in register(monkeypatch, without).REGISTRY if n.startswith("pv-search-")}
+    after = {n for n in register(monkeypatch, env).REGISTRY if n.startswith("pv-search-")}
+    sha8 = pair["unified"][1][:8]
+    served, = [n for n in before if n.endswith("-sc8")]
+    assert after - before == {env["SHENGJI_BOT"]} == {f"{served}-ushare{sha8}-uvalue{sha8}-ureply{sha8}"}
+    assert before <= after and not serving.active()
+    if pair["unified"][1] == UNIFIED_SHA:
+        assert env["SHENGJI_BOT"] == SCREENED
+    bot = registry_bot(monkeypatch, env, seed=3)
+    assert bot.policy_name == env["SHENGJI_BOT"] and serving.active()
+    assert bot.unified_sha256 == pair["unified"][1]
+    assert bot.model_ids("play")["belief"] == pair["belief"][1][:8]
+    assert bot.encode_prefix_cache is True and bot.leaf_greedy_finish is True
+
+
+def test_a_belief_package_with_another_trunk_refuses_at_registration(release50_packages, pair, monkeypatch,
+                                                                    served_functions):
+    from shengji.train.pv_search_policy import PVSearchPolicyError
+
+    env = {**local_env(release50_packages, production_env()),
+           "SHENGJI_PV_UNIFIED_CKPT": pair["unified"][0], "SHENGJI_PV_UNIFIED_SHA256": pair["unified"][1]}
+    with pytest.raises(PVSearchPolicyError, match="trunk"):
+        register(monkeypatch, env)
+    wrong = {**unified_env(release50_packages, pair), "SHENGJI_PV_UNIFIED_SHA256": "0" * 64}
+    with pytest.raises(PVSearchPolicyError, match="sha256"):
+        register(monkeypatch, wrong)
+    off = {**unified_env(release50_packages, pair), "SHENGJI_PV_LEAF_GREEDY_FINISH": "0",
+           "SHENGJI_PV_LEAF_GREEDY_FINISH_EXACT_SKIP": "0", "SHENGJI_PV_LEAF_GREEDY_DEADLINE": ""}
+    off.pop("SHENGJI_PV_LEAF_GREEDY_DEADLINE")
+    with pytest.raises(PVSearchPolicyError, match="LEAF_GREEDY_FINISH"):
+        register(monkeypatch, off)
+
+
+def test_the_registry_bot_decides_as_the_duel_adapters_bot(release50_packages, pair, monkeypatch,
+                                                          served_functions):
+    """Ten fixed production positions: the played cards, the base worlds, the decision record and
+    the slot counters of the registry's unified bot equal the adapter-built bot's exactly."""
+    env = unified_env(release50_packages, pair)
+    want = {}
+    with monkeypatch.context() as patch:
+        for position in P.POSITIONS:
+            bot = adapter_bot(patch, env, pair, P.SEED)
+            assert bot.policy_name == env["SHENGJI_BOT"]
+            want[position] = decide(bot, P.replay(*position))
+    totals = dict.fromkeys(COUNTERS, 0)
+    for position in P.POSITIONS:
+        got = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
+        assert got == want[position], P.label(*position)
+        assert got["record"]["policy"] == env["SHENGJI_BOT"]
+        assert got["counters"]["unified_shared_hits"] == 1 == got["counters"]["unified_prior_calls"]
+        for name in COUNTERS:
+            totals[name] += got["counters"][name]
+    assert totals["unified_value_rows"] > 0 and totals["unified_reply_rows"] > 0
+    assert totals["unified_trunk_shared"] > 0
+    for name in ("unified_shared_misses", "unified_value_other", "unified_reply_served",
+                 "unified_trunk_forwards"):
+        assert totals[name] == 0, name
+
+
+def test_a_served_bot_decides_the_same_beside_a_unified_bot(release50_packages, pair, monkeypatch,
+                                                           served_functions):
+    """The wrappers a unified bot puts in front of the two served functions pass a served bot
+    through: its decisions before and after they are in place are equal."""
+    from shengji.train import unified_serving as serving
+
+    positions = (("ADKY3", 9, 0), ("SDUS2", 8, 0), ("SDUS2", 14, 1))
+    served_env = local_env(release50_packages, production_env())
+
+    def served(position):
+        bot = registry_bot(monkeypatch, served_env, P.SEED)
+        assert bot.policy_name == RELEASE52 and "scores" not in vars(bot)
+        out = P.decision(P.lift(bot), P.replay(*position))
+        assert out["record"]["belief_fallback"] == 0, out["record"].get("belief_fallback_reason")
+        return out
+    before = {position: served(position) for position in positions}
+    assert not serving.active()
+    env = unified_env(release50_packages, pair)
+    unified = registry_bot(monkeypatch, env, P.SEED)
+    assert serving.active()
+    assert decide(unified, P.replay(*positions[0]))["counters"]["unified_value_rows"] > 0
+    for position in positions:
+        assert served(position) == before[position], P.label(*position)
+
+
+def test_the_unified_bot_acts_through_the_server_path(release50_packages, pair, tmp_path, monkeypatch,
+                                                     served_functions):
+    """Two consecutive bot turns through ``_paced_bot_step`` / ``_commit_bot_turn`` (each searches a
+    deep copy of the room's bot, which then becomes the room's bot): both complete on the unified
+    slots from one trunk forward, and play what a bot outside the server plays."""
+    from shengji.ai import belief_numpy as bn
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from shengji.train import pv_search_policy as pv
+    from test_pv_search_serving import _play_state
+
+    monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
+    env = unified_env(release50_packages, pair)
+    name = env["SHENGJI_BOT"]
+    rnd = _play_state()
+    assert not rnd.trick.plays
+    outside = P.lift(registry_bot(monkeypatch, env, seed=7))
+    expected = []
+    twin = copy.deepcopy(rnd)
+    for _ in range(2):
+        cards = outside.decide_play(twin, twin.turn)
+        expected.append(sorted(cards))
+        twin.play(twin.turn, list(cards))
+    bot = P.lift(registry_bot(monkeypatch, env, seed=7))
+
+    async def scenario():
+        game = Game(random.Random(0))
+        game.round = rnd
+        room = srv.Room(code="UNIF", game=game, bot=bot,
+                        seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        room.log_event = lambda kind, **data: None
+        turns = []
+        for _ in range(2):
+            seat = rnd.turn
+            prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
+            assert prepared is not None
+            searched = prepared.decision.snapshot.bot_copy
+            assert searched is not bot and searched.policy_name == name
+            before = {c: getattr(room.bot, c) for c in COUNTERS}
+            turns.append((copy.deepcopy(searched.last_decision_record), sorted(prepared.decision.cards),
+                          {c: getattr(searched, c) - before[c] for c in COUNTERS}))
+            assert srv._commit_bot_turn(room, prepared)
+            assert room.bot is searched
+        return turns
+
+    for (record, cards, counters), want in zip(asyncio.run(scenario()), expected):
+        assert record["schema"] == pv.RECORD_SCHEMA and record["work_complete"]
+        assert record["policy"] == name and record["belief_fallback"] == 0
+        assert record["unified"] == {"package": pair["unified"][1][:8], "shared": 1, "missed": 0, "trunk": 0,
+                                     "value_rows": counters["unified_value_rows"], "value_left": 0,
+                                     "reply_rows": counters["unified_reply_rows"], "reply_left": 0}
+        assert cards == want
+        assert counters["unified_shared_hits"] == 1 and counters["unified_shared_misses"] == 0
+        assert counters["unified_trunk_shared"] == 1 and counters["unified_trunk_forwards"] == 0
+        assert counters["unified_value_rows"] > 0 and counters["unified_value_other"] == 0
+        assert counters["unified_reply_rows"] > 0 and counters["unified_reply_served"] == 0

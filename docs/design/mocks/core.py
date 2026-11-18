@@ -363,7 +363,52 @@ def f5_game():
             shot(rend_big, 844, 390, "Details when the last trick was a 5-card throw", "Each player's cards overlap like a hand (every rank still readable), so 4 × 5 cards fit in one row; the winner's group is outlined."),
             shot(deal, 844, 390, "Tap Next round", "The next deal."),
         ]),
+        ("In the game (iPad: Fill, Jerry 11-17)", [
+            shot(ipad_fill(), 1376, 1032, "13\" iPad, sideways", "Seats and controls grow with the screen; the hand runs edge to edge (126 px cards); the trick cross takes its card from the hand's (91 px), between the top seat and your row."),
+            shot(ipad_fill(1133, 744), 1133, 744, "iPad mini, sideways", "The same rules on a shorter screen: the cross shrinks first, so nothing overlaps."),
+            shot(ipad_fill(1032, 1376), 1032, 1376, "13\" iPad, upright", "Upright, the hand's card comes from the width; the felt above takes the rest."),
+        ]),
     ]
+
+
+def ipad_fill(w=1376, h=1032):
+    """The iPad table, Fill (Jerry 11-17): seats and controls on one size token, the hand edge to edge, the trick cross sized from it."""
+    u = min(w / 880, h / 640, 1.5)
+    hcw = min(126, round(min(w * .092, h * .13)))
+    tcw = round(hcw * .72)
+    hud = (f'<div style="position:absolute;left:0;right:0;top:0;height:60px;background:#171a21;border-bottom:1px solid #2b323e;display:flex;align-items:center;'
+           f'justify-content:space-between;padding:0 24px;font:700 15px {FONT}"><span><span style="color:{B}">●</span> Us 2 &nbsp; ♣ 2 &nbsp; '
+           f'<span style="color:{O}">●</span> Them 2 &nbsp; <span style="color:{O}">35</span>/80</span><span>💬 &nbsp; ⋯</span></div>')
+
+    def seat_panel(name, team, x=None, right=None, y=0):
+        pos = f"left:{x}px" if x is not None else f"right:{right}px"
+        pw = round(150 * u)
+        return (f'<div style="position:absolute;{pos};top:{y}px;width:{pw}px;padding:{round(12 * u)}px 0;border-radius:{round(14 * u)}px;background:rgba(16,19,26,.82);'
+                f'border-top:3px solid {team};text-align:center;font:700 {round(15 * u)}px {FONT}">{name}'
+                f'<div style="margin-top:{round(8 * u)}px;font-size:{round(14 * u)}px;color:#9aa3b2">▮▮▮ 25</div></div>')
+
+    def tcard(r, s_, win=False):
+        return card(r, s_, w=tcw, h=round(tcw * 1.4)).replace(f"margin-right:-{tcw // 2 - 2}px", "margin-right:0") \
+            .replace("font:800 16px", f"font:800 {round(tcw * .3)}px") + ("" if not win else "")
+
+    cross_top = 60 + round(152 * u) + 10
+    you_h = round(hcw * 1.4 + 74 * u + 60)
+    mid = (cross_top + h - you_h) // 2
+    pitch = (w - 48 - hcw) / 24
+    cards = [HAND_CARDS[i % len(HAND_CARDS)] for i in range(25)]
+    hand_row = "".join(f'<div style="position:absolute;left:{24 + round(i * pitch)}px;top:0">'
+                       + card(r, s_, w=hcw, h=round(hcw * 1.4)).replace("font:800 16px", f"font:800 {round(hcw * .3)}px") + '</div>'
+                       for i, (r, s_) in enumerate(cards))
+    return (f'<div style="width:{w}px;height:{h}px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#35845a,#1d5638 62%,#123a26);'
+            f'font-family:{FONT};color:#e9ecf2">{hud}'
+            + seat_panel("Alice", B, x=(w - round(150 * u)) // 2, y=60 + round(18 * u))
+            + seat_panel("Bot Wei", O, x=18, y=mid - 60) + seat_panel("Bot Li", O, right=18, y=mid - 60)
+            + f'<div style="position:absolute;left:50%;top:{cross_top}px;transform:translateX(-50%)">{tcard("K", "♠")}</div>'
+            + f'<div style="position:absolute;left:{w // 2 - round(4.3 * tcw)}px;top:{mid - round(tcw * .7)}px;display:flex">{tcard("A", "♠")}</div>'
+            + f'<div style="position:absolute;left:{w // 2 + round(2.6 * tcw)}px;top:{mid - round(tcw * .7)}px;display:flex">{tcard("5", "♠")}</div>'
+            + f'<div style="position:absolute;left:0;right:0;bottom:{round(hcw * 1.4 + 40 * u)}px;display:flex;justify-content:center;align-items:center;gap:12px">'
+            + ring(52, .87, round(34 * u)) + btn("Play", grow=False, h=round(48 * u), extra=f"padding:0 {round(28 * u)}px") + '</div>'
+            + f'<div style="position:absolute;left:0;right:0;bottom:{round(6 * u) + 2}px;height:{round(hcw * 1.4)}px">{hand_row}</div></div>')
 
 
 def f6_leave():

@@ -5,7 +5,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PHONE_CLASS, PORTRAIT_PHONE, SHORT_VIEWPORT, phoneLayout } from "./phoneLayout";
+import { PHONE_CLASS, PORTRAIT_PHONE, SHORT_VIEWPORT, TABLET_CLASS, TABLET_SCREEN, phoneLayout } from "./phoneLayout";
 
 class FakeWS {
   static all: FakeWS[] = [];
@@ -34,10 +34,10 @@ const playing = {
   last_trick: null, attacker_points: 0, kitty_count: 8, message: null, notice: null, round_result: null,
 };
 
-/** A viewport answering the two layout queries as `portrait` / `short`. */
-function viewport({ portrait, short }: { portrait: boolean; short: boolean }) {
+/** A viewport answering the layout queries as `portrait` / `short` / `touch`. */
+function viewport({ portrait, short, touch = false }: { portrait: boolean; short: boolean; touch?: boolean }) {
   window.matchMedia = ((q: string) => ({
-    matches: q === PORTRAIT_PHONE ? portrait : q === SHORT_VIEWPORT ? short : false,
+    matches: q === PORTRAIT_PHONE ? portrait : q === SHORT_VIEWPORT ? short : q === TABLET_SCREEN ? touch : false,
     media: q, addEventListener() {}, removeEventListener() {},
   })) as unknown as typeof window.matchMedia;
 }
@@ -59,7 +59,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   window.matchMedia = realMatchMedia;
-  document.documentElement.classList.remove(PHONE_CLASS);
+  document.documentElement.classList.remove(PHONE_CLASS, TABLET_CLASS);
 });
 
 async function mountApp() {
@@ -120,14 +120,52 @@ describe("a phone held sideways, a desktop", () => {
     act(() => ws.deliver(playing));
     expect(host.querySelector(".app")!.classList.contains("rotated")).toBe(false);
     expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(false);
+    expect(document.documentElement.classList.contains(TABLET_CLASS)).toBe(false);
+  });
+});
+
+describe("a tablet", () => {
+  it("draws the table with the tablet class, and the lobby without it", async () => {
+    viewport({ portrait: false, short: false, touch: true });
+    const ws = await mountApp();
+    expect(document.documentElement.classList.contains(TABLET_CLASS)).toBe(false);
+    act(() => ws.deliver(playing));
+    expect(document.documentElement.classList.contains(TABLET_CLASS)).toBe(true);
+    expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(false);
+    expect(host.querySelector(".app")!.classList.contains("rotated")).toBe(false);
+    act(() => ws.deliver({ type: "left" }));
+    expect(document.documentElement.classList.contains(TABLET_CLASS)).toBe(false);
+  });
+
+  it("leaves a phone, which is a touch screen too, on the phone table", async () => {
+    viewport({ portrait: false, short: true, touch: true });
+    const ws = await mountApp();
+    act(() => ws.deliver(playing));
+    expect(document.documentElement.classList.contains(PHONE_CLASS)).toBe(true);
+    expect(document.documentElement.classList.contains(TABLET_CLASS)).toBe(false);
   });
 });
 
 it("turns only the table, and only on a portrait phone", () => {
-  expect(phoneLayout(false, true, true)).toEqual({ phone: true, rotated: true });
-  expect(phoneLayout(false, true, false)).toEqual({ phone: false, rotated: false });
-  expect(phoneLayout(true, false, true)).toEqual({ phone: true, rotated: false });
+  expect(phoneLayout(false, true, true)).toEqual({ phone: true, rotated: true, tablet: false });
+  expect(phoneLayout(false, true, false)).toEqual({ phone: false, rotated: false, tablet: false });
+  expect(phoneLayout(true, false, true)).toEqual({ phone: true, rotated: false, tablet: false });
   // a sideways phone in the lobby keeps the portrait column: no phone class
-  expect(phoneLayout(true, false, false)).toEqual({ phone: false, rotated: false });
-  expect(phoneLayout(false, false, true)).toEqual({ phone: false, rotated: false });
+  expect(phoneLayout(true, false, false)).toEqual({ phone: false, rotated: false, tablet: false });
+  expect(phoneLayout(false, false, true)).toEqual({ phone: false, rotated: false, tablet: false });
+});
+
+it("sizes the table to the screen only on a touch screen large enough for the tablet table", () => {
+  expect(phoneLayout(false, false, true, true)).toEqual({ phone: false, rotated: false, tablet: true });
+  // a mouse-driven browser, or a touch window under 810x740, keeps the wide table's fixed sizes
+  expect(phoneLayout(false, false, true, false).tablet).toBe(false);
+  // below 740px tall or 810px wide the cross cannot keep a six-card trick at 52px cards
+  expect(TABLET_SCREEN).toBe("(pointer: coarse) and (min-width: 810px) and (min-height: 740px)");
+  // a sideways touch window under that height takes the phone table, which fits a short screen
+  expect(SHORT_VIEWPORT).toBe("(max-height: 500px), (pointer: coarse) and (orientation: landscape) and (max-height: 739px)");
+  // the phone table and the turned table are touch screens that are not tablets
+  expect(phoneLayout(true, false, true, true).tablet).toBe(false);
+  expect(phoneLayout(false, true, true, true).tablet).toBe(false);
+  // the lobby has one design
+  expect(phoneLayout(false, false, false, true).tablet).toBe(false);
 });

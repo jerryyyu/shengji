@@ -27,6 +27,18 @@ export const DEVICES = {
   "phone-port": { w: 390, h: 844, touch: true, kb: 336 },     // iPhone 14 Pro, lobby
   "phone-port-se": { w: 375, h: 667, touch: true, kb: 260 },
   ipad: { w: 1024, h: 768, touch: true, kb: 400 },
+  // the iPads the App Store shows: 13" either way up, 11" and mini sideways
+  "ipad13-land": { w: 1376, h: 1032, touch: true, kb: 400 },
+  "ipad13-port": { w: 1032, h: 1376, touch: true, kb: 400 },
+  "ipad11-land": { w: 1180, h: 820, touch: true, kb: 400 },
+  "ipad-mini-land": { w: 1133, h: 744, touch: true, kb: 400 },
+  // touch windows around the tablet table's 810x740 threshold (phoneLayout.ts TABLET_SCREEN):
+  // just above the phone table's 500px, short and narrow ones, and either side of the threshold
+  "touch-1024x501": { w: 1024, h: 501, touch: true, kb: 300 },
+  "touch-700x520": { w: 700, h: 520, touch: true, kb: 300 },
+  "touch-1024x600": { w: 1024, h: 600, touch: true, kb: 300 },
+  "touch-1024x739": { w: 1024, h: 739, touch: true, kb: 400 },
+  "touch-810x740": { w: 810, h: 740, touch: true, kb: 400 },
   desktop: { w: 1280, h: 800, touch: false, kb: 0 },
 };
 

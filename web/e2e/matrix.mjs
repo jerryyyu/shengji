@@ -84,7 +84,7 @@ async function runDevice(device) {
       for (const f of frames) { await push(page, f); await sleep(frames.length > 1 ? 120 : 0); }
       await sleep(110);
       const name = `${device}_${coach === "on" ? "coach_" : ""}${id}`;
-      await rep.check(name, [...await lint(page), ...await tagsInPills(page)], page);
+      await rep.check(name, [...await lint(page), ...await tagsInPills(page), ...await trickCardsReadable(page)], page);
       if (SHOTS && SHOTS.test(name)) await shot(page, name);
       if (page.qa.errors.length) { await rep.check(`${name}_pageerror`, page.qa.errors.splice(0)); }
     }
@@ -113,7 +113,7 @@ async function runDevice(device) {
     await page.context().close();
   }
 }
-const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-land-safari-short", "phone-land-se", "phone-port", "ipad", "desktop"]
+const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-land-safari-short", "phone-land-se", "phone-port", "ipad", "ipad13-land", "ipad13-port", "ipad11-land", "ipad-mini-land", "touch-1024x501", "touch-700x520", "touch-1024x600", "touch-1024x739", "touch-810x740", "desktop"]
   .filter((d) => !onlyDev || onlyDev.test(d));
 // a few devices at a time: each is its own page, and the checks are independent
 const lanes = Number(process.env.LANES ?? 3);
@@ -125,6 +125,18 @@ function tagsInPills(page) {
     if (!a.width || (a.left >= p.left - 1 && a.right <= p.right + 1)) return [];
     return [`tag outside its seat pill: ${t.className} "${t.textContent.trim().slice(0, 30)}" by ${Math.round(Math.max(p.left - a.left, a.right - p.right))}px`];
   }));
+}
+/** Off a phone, a trick card is never smaller than the wide table's 52px: the tablet table
+ *  draws it larger, and a touch window too small for the tablet table takes the phone table,
+ *  which still draws it at least that wide (phoneLayout.ts TABLET_SCREEN, SHORT_VIEWPORT). */
+function trickCardsReadable(page) {
+  return page.evaluate((onPhone) => {
+    if (onPhone) return [];
+    const c = document.querySelector(".trick-area .trick-cards .card");
+    if (!c) return [];
+    const r = c.getBoundingClientRect();
+    return r.width >= 51.5 ? [] : [`trick card ${r.width.toFixed(1)}x${r.height.toFixed(1)}px, under the wide table's 52px`];
+  }, /^phone-/.test(page.qa.device));
 }
 function f_has_toast(frames) { const f = frames[frames.length - 1]; return !!f.notice || (f.joining ?? []).length > 0; }
 function id_round_details(list) { return list.some(([id]) => id === "round_end"); }

@@ -536,3 +536,37 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
             memo[name] += got["memo"][name]
     assert checked[0] > 0
     assert memo["value_memo"] > 0
+
+
+def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
+        release50_packages, pair, monkeypatch, served_functions):
+    """Capture wraps the registry bot without changing its search or losing training labels."""
+    import json
+    from collections import Counter
+    from shengji.harvest import trajectory as tr
+
+    env = unified_env(release50_packages, pair)
+    registry = register(monkeypatch, env)
+    config = tr.build_config(policy=env["SHENGJI_BOT"], seed0=0,
+                             explore_rate=0, explore_k=0, round_mix="sampled",
+                             capture_served_budget=True)
+    assert config["served_budgets"]["play_seconds"] == 3
+    assert config["served_budgets"]["bury_seconds"] == 2
+    assert config["served_runtime"]["SHENGJI_PV_UNIFIED_SHA256"] == pair["unified"][1]
+    assert config["served_runtime"]["SHENGJI_PV_BELIEF_SHA256"] == pair["belief"][1]
+    for position in P.POSITIONS:
+        expected = decide(registry.make_bot(env["SHENGJI_BOT"], seed=P.SEED), P.replay(*position))
+        captured = tr.make_trajectory_bot(config, seed=P.SEED, explore_rng=random.Random(17))
+        rnd = P.replay(*position)
+        actual = decide(captured, rnd)
+        assert actual == expected, P.label(*position)
+        fields = tr._play_fields({}, config["run_id"], 0, 0, rnd, rnd.turn, [],
+                                 captured.last_decision_record["played"], captured, 256, Counter())
+        saved = json.loads(json.dumps(fields))
+        record = captured.last_decision_record
+        assert saved["allocation"]["serving_decision"] == record
+        assert saved["action_values"]["means"] == record["value_means"]
+        assert saved["action_values"]["policy_log_odds"] == record["policy_log_odds_admitted"]
+        assert saved["ballot"][saved["allocation"]["played_index"]] == saved["action"]
+        assert saved["allocation"]["serving_decision"]["unified"]["shared"] == 1
+        assert saved["allocation"]["serving_decision"]["unified"]["missed"] == 0

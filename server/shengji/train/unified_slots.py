@@ -1,4 +1,5 @@
-"""DEV: the unified sequence model in a slot of the served search.  Nothing here is registered or served.
+"""The unified sequence model in a slot of the served search.  Nothing here registers a policy:
+`unified_serving` does, and only when the environment names a unified package.
 
 The served search has three learned parts: the belief model its sampler draws worlds from, the
 policy prior that ranks the root's legal plays for admission (and shortlists replies inside the
@@ -271,7 +272,7 @@ def _leaf_entries(frame: LeafFrame, leaf):
 def leaf_features_batch(frame: LeafFrame, leaves):
     """``(covered indices into leaves, (n, 9, 54) planes, (n, 12) scalars)`` of the leaves the frame
     covers, as `unified_readout.leaf_batch` builds them."""
-    from .unified_readout import N_PLANES, leaf_scalars
+    from ..ai.unified_readout_numpy import N_PLANES, leaf_scalars
     width = N_PLANES * N_CARDS
     mine, flat, meta = [], [], []
     for i, leaf in enumerate(leaves):

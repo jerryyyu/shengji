@@ -379,6 +379,7 @@ jobs:
           tests/test_release50_fly_config.py
           tests/test_release51_fly_config.py
           tests/test_release52_fly_config.py
+          tests/test_unified_serving.py
           tests/test_expert_label_producer.py
           tests/test_pv_latency_switches_release46.py
           tests/test_pv_leaf_greedy_stream.py
@@ -734,6 +735,9 @@ jobs:
             tests/test_world_weighting.py \
             tests/test_belief_seq_init.py \
             tests/test_unified_seq.py \
+            tests/test_unified_slots.py \
+            tests/test_unified_readout.py \
+            tests/test_unified_serving.py \
             tests/test_s134_v1_read.py \
             tests/test_pv_value_matrix.py \
             tests/test_pv_native_release48.py \

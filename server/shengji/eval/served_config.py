@@ -134,6 +134,9 @@ def registry_name(env: Mapping[str, str]) -> str:
         recipe = pv_env_recipe(dict(env))
         entries = singleton_registry_entries if _singleton_enabled(env) else pv_registry_entries
         names = list(entries(**recipe))
+        if env.get("SHENGJI_PV_UNIFIED_CKPT") or env.get("SHENGJI_PV_UNIFIED_SHA256"):
+            from ..train.unified_serving import unified_registry_entries
+            names = list(unified_registry_entries(environ=env, **recipe))
         if len(names) != 1:
             raise ServedConfigError(f"the env registers {len(names)} pv-search names, not one: {names}")
         return names[0]

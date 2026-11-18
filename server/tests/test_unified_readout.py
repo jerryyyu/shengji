@@ -302,3 +302,106 @@ def test_mixture_nll_is_the_nll_of_the_mean_distribution_and_reaches_the_body(tm
     assert torch.allclose(v[2, 3], one[0], atol=1e-5)
     ur.mixture_nll(v, t).mean().backward()
     assert float(m.readout.stem.weight.grad.abs().sum()) > 0
+
+
+def _cache_dir(tmp_path, m, n_rows=40, seed=5):
+    """A synthetic polish cache (one train shard + calib) and its aux targets."""
+    rng = np.random.default_rng(seed)
+    dp, dc = READOUT["dp"], READOUT["dc"]
+    cache, auxd = tmp_path / "cache", tmp_path / "aux"
+    cache.mkdir()
+    auxd.mkdir()
+    for name in ("train-0000", "calib-0000"):
+        L = 3 * n_rows
+        k = rng.integers(0, 4, L)
+        scal = rng.random((L, 12)).astype(np.float32)
+        scal[:, 0] = (k + 1) / 4.0
+        z = {"S": rng.standard_normal((n_rows, 54, dp)).astype(np.float16), "c": rng.random((n_rows, dc)).astype(np.float16),
+             "leaf_row": rng.integers(0, n_rows, L).astype(np.int32), "leaf_planes": (rng.random((L, 9, 54)) < 0.2).astype(np.uint8),
+             "leaf_scalars": scal, "leaf_target": rng.integers(90, 114, L).astype(np.int16),
+             "leaf_reply": (rng.random((L, 54)) < 0.03).astype(np.uint8), "leaf_reply_hand": rng.random((L, 54)) < 0.5,
+             "leaf_has_reply": rng.random(L) < 0.7}
+        np.savez(cache / f"{name}.npz", **z)
+        smv = rng.normal(0, 1.2, n_rows).astype(np.float32)
+        smv[::7] = np.nan
+        np.savez(auxd / f"aux-{name}.npz", smv=smv, points=rng.integers(0, 200, n_rows).astype(np.float32) / 100.0)
+    (cache / "DONE.0").write_text("{}")
+    ck = tmp_path / "ckpt.pt"
+    torch.save({"schema": ur.CKPT_SCHEMA, "model": m.state_dict(), "config": m.config}, ck)
+    return cache, auxd, ck
+
+
+def test_smv_target_is_two_point_on_the_half_integer_support_with_the_level_as_its_mean():
+    from shengji.rl.value_afterstate import signed_level_category
+    level = torch.tensor([0.7, -1.2, float("nan"), 3.5])
+    realised = torch.tensor([5, 6, 7, 8])
+    probs, used = ur.smv_soft_targets(level, realised)
+    assert used.tolist() == [True, True, False, True]
+    assert torch.allclose(probs.sum(-1), torch.ones(4))
+    # 0.7 = 0.8 x (+0.5) + 0.2 x (+1.5): the two classes of the outcome head's own support
+    lo, hi = signed_level_category(80, True), signed_level_category(120, True)          # +0.5, +1.5 for the attacker
+    assert abs(float(probs[0, lo]) - 0.8) < 1e-5 and abs(float(probs[0, hi]) - 0.2) < 1e-5
+    assert float(probs[2, 7]) == 1.0                                                       # no value: the realised one-hot
+
+
+def test_aux_heads_train_on_their_own_leaves_and_leave_the_outcome_losses_unchanged(tmp_path):
+    m, _ = _model(tmp_path)
+    cache, auxd, _ = _cache_dir(tmp_path, m)
+    z = dict(np.load(cache / "train-0000.npz"))
+    za = ur._aux_for(auxd, cache / "train-0000.npz", len(z["c"]))
+    pick = np.arange(len(z["leaf_row"]))
+    t = ur._polish_tensors(z, pick)
+    heads = ur.build_aux_heads(READOUT["width"], ur.AUX_KINDS)
+    o = ur.aux_polish_losses(m.readout, heads, t, ur._aux_tensors(za, z, pick))
+    v, r, _, _ = ur.polish_losses(m.readout, t)
+    assert torch.allclose(o["v_ce"], v) and torch.allclose(o["r_ce"], r)
+    k0 = np.isclose(z["leaf_scalars"][:, 0], 0.25)
+    finite = np.isfinite(za["smv"][z["leaf_row"]])
+    assert np.array_equal(o["smv_mask"].numpy(), k0 & finite) and bool((o["smv_ce"][~o["smv_mask"]] == 0).all())
+    (o["smv_ce"].sum() + o["points_err"].sum()).backward()
+    assert heads["smv"].weight.grad.abs().sum() > 0 and heads["points"].weight.grad.abs().sum() > 0
+    assert m.readout.stem.weight.grad.abs().sum() > 0                                   # the aux losses reach the body
+    with pytest.raises(ur.UnifiedReadoutError):
+        ur._aux_for(auxd, cache / "train-0000.npz", len(z["c"]) + 1)
+
+
+def test_polish_with_aux_heads_selects_on_the_outcome_and_keeps_the_package_shape(tmp_path):
+    m, _ = _model(tmp_path)
+    cache, auxd, ck = _cache_dir(tmp_path, m)
+    base = dict(ckpt=str(ck), cache=str(cache), epochs=2, lr=1e-3, weight_decay=0.01, reply_weight=0.2, batch=32, threads=1, seed=1)
+    ap = ur.build_parser()
+    args = ap.parse_args(["polish", "--ckpt", str(ck), "--cache", str(cache), "--out", str(tmp_path / "c")])
+    assert args.smv_weight == 0.0 and args.points_weight == 0.0 and args.aux is None             # default off
+    import argparse
+    assert ur.polish(argparse.Namespace(**base, out=str(tmp_path / "c"), aux=None, smv_weight=0.0, points_weight=0.0)) == 0
+    assert ur.polish(argparse.Namespace(**base, out=str(tmp_path / "a"), aux=str(auxd), smv_weight=0.5, points_weight=0.25)) == 0
+    with pytest.raises(ur.UnifiedReadoutError):
+        ur.polish(argparse.Namespace(**base, out=str(tmp_path / "x"), aux=None, smv_weight=0.5, points_weight=0.0))
+    c = torch.load(tmp_path / "c" / "best.pt", weights_only=False)
+    a = torch.load(tmp_path / "a" / "best.pt", weights_only=False)
+    assert "aux_heads" not in c and a["aux"]["kinds"] == ["smv", "points"]
+    assert set(a["model"]) == set(c["model"])                                               # the exported shape is unchanged
+    model, _ = ur.load_checkpoint(str(tmp_path / "a" / "best.pt"))
+    assert {"smv_ce", "points_mae"} <= set(a["calib"]["polish"]) and model.readout.value.out_features == 204
+    log = (tmp_path / "a" / "status.log").read_text()
+    assert "POLISH DONE" in log and '"smv": 0.5' in log
+
+
+def test_cluster_search_values_follow_the_extractors_decision_order(tmp_path):
+    def rec(mirror, seat, ply, value, units="expected-signed-level-half-integer", kind="play"):
+        return {"decision_kind": kind, "seat": seat, "round_seed": 100 + mirror, "plays_prefix": [{"seat": 0, "cards": []}] * ply,
+                "source_ref": f"run:0:{mirror}:{seat}:{ply}", "action_values": {"units": units},
+                "preference": {"means": [value, -9.0] if value is not None else None, "played_index": 0}}
+    import json
+    rows = [rec(1, 1, 1, 0.25), rec(0, 0, 0, 1.5), rec(1, 0, 0, None), rec(0, 1, 1, -0.5), rec(0, 2, 0, 9.0, kind="bury")]
+    p = tmp_path / "cluster-000000.jsonl"
+    p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    got = ur.cluster_search_values(p)
+    assert got["seat"].tolist() == [0, 1, 0, 1] and got["round_index"].tolist() == [0, 0, 1, 1]
+    assert got["seed"].tolist() == [100, 100, 101, 101]
+    assert got["smv"][[0, 1, 3]].tolist() == [1.5, -0.5, 0.25] and np.isnan(got["smv"][2])
+    with pytest.raises(ur.UnifiedReadoutError):
+        ur.cluster_search_values(p, "0" * 64)
+    p.write_text(json.dumps(rec(0, 0, 0, 1.0, units="expected-attacker-points")) + "\n")
+    with pytest.raises(ur.UnifiedReadoutError):
+        ur.cluster_search_values(p)

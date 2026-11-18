@@ -1944,6 +1944,7 @@ class Matchmaker:
         # The first arrival still here is the opener (``entries`` keeps
         # arrival order); only it can hold a seat.
         await self._start_room_for(t.id, slots, entries, mode=t.mode, chat=list(t.chat),
+                                   chat_senders=dict(t.senders),
                                    **self._room_settings(t, entries[0]))
 
     async def _launch_alone(self, e: Entry) -> None:
@@ -1953,7 +1954,8 @@ class Matchmaker:
         self._remove(e, "bots_timer")
         self._qlog("start", table=False, humans=e.size, max_wait=round(self.clock() - e.since, 1))
         await self._start_room_for(None, self._slots(t, [e], alone=True), [e], mode=e.mode,
-                                   chat=list(t.chat), **self._room_settings(t, e))
+                                   chat=list(t.chat), chat_senders=dict(t.senders),
+                                   **self._room_settings(t, e))
 
     @staticmethod
     def _room_settings(t: Table, opener: Entry) -> dict:
@@ -1984,12 +1986,14 @@ class Matchmaker:
 
     async def _start_room_for(self, table_id: str | None, slots: list[Slot],
                               entries: list[Entry], *, mode: str = "ranked",
-                              chat: list[dict] | None = None, **room: Any) -> bool:
+                              chat: list[dict] | None = None,
+                              chat_senders: dict[int, int] | None = None, **room: Any) -> bool:
         """Start the room; on failure every entry goes back in the queue at
         the front, unseated, and is told. Never strands a player."""
         conns = {s.user_id: self.conns[s.user_id] for s in slots if s.user_id is not None}
         try:
-            await self._start(table_id, slots, conns, mode=mode, chat=chat or [], **room)
+            await self._start(table_id, slots, conns, mode=mode, chat=chat or [],
+                              chat_senders=chat_senders, **room)
             return True
         except Exception:          # noqa: BLE001 - players go back, never stranded
             log.exception("queued room failed to start")
@@ -2005,10 +2009,15 @@ class Matchmaker:
 
     async def _start(self, table_id: str | None, slots: list[Slot],
                      conns: dict[int, Conn], *, mode: str = "ranked",
-                     chat: list[dict] | None = None, **room: Any) -> Any:
+                     chat: list[dict] | None = None,
+                     chat_senders: dict[int, int] | None = None, **room: Any) -> Any:
+        """``chat`` is the table's lines and ``chat_senders`` each line's
+        sender by line id, which the room keeps so a blocker's copy leaves a
+        blocked sender out whoever holds that seat now."""
         if self.start_room is None:
             raise RuntimeError("no room factory")
-        return await self.start_room(table_id, slots, conns, mode=mode, chat=chat or [], **room)
+        return await self.start_room(table_id, slots, conns, mode=mode, chat=chat or [],
+                                     chat_senders=dict(chat_senders or {}), **room)
 
     async def _start_bots(self, uid: int) -> None:
         e = self._entry(uid)
@@ -2033,7 +2042,7 @@ class Matchmaker:
         conns = {u: self.conns[u] for u in e.members}
         try:
             await self._start(None, slots, conns, mode=e.mode, chat=list(t.chat),
-                              **self._room_settings(t, e))
+                              chat_senders=dict(t.senders), **self._room_settings(t, e))
         except Exception:          # noqa: BLE001
             log.exception("bot game failed to start")
             err = QueueError("start_failed", "Could not start the game.")

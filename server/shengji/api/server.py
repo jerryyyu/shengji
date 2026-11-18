@@ -3175,7 +3175,8 @@ async def _report_player(room: Room, me: Seat, account: int | None, msg: dict) -
 
 async def start_matched_room(match_id: str | None, slots: list,
                              conns: dict, *, mode: str = "ranked",
-                             chat: Any = (), code: str | None = None,
+                             chat: Any = (), chat_senders: Any = None,
+                             code: str | None = None,
                              allow_joiners: bool = True,
                              start_level: str = RANKS[0],
                              friend_seat: int | None = None) -> str:
@@ -3184,7 +3185,8 @@ async def start_matched_room(match_id: str | None, slots: list,
     ``mode`` "ranked" builds a rated matched room; "casual" an unrated room
     with no move timer, open to casual joiners. ``chat`` is the waiting
     table's chat, which becomes the room's first scrollback (unlogged, as it
-    was at the table). ``code`` is the table's code, which the queue has just
+    was at the table), and ``chat_senders`` each of its lines' sender by line
+    id there (server-only). ``code`` is the table's code, which the queue has just
     released for the room, so the table's invite link leads here;
     ``allow_joiners`` and a casual table's ``start_level`` carry over, and
     ``friend_seat`` is the seat a Duo table still held for its friend.
@@ -3212,11 +3214,14 @@ async def start_matched_room(match_id: str | None, slots: list,
         room.chat_seq += 1
         room.chat.append({"seat": line["seat"], "name": line["name"], "text": line["text"],
                           "t": line["t"], "id": room.chat_seq, "room": room.code})
-        # the table's seat is the room's: its slot's queue id is the sender
-        at = line["seat"]
-        if type(at) is int and 0 <= at < len(slots) and slots[at].user_id is not None:
-            room.chat_senders[room.chat_seq] = slots[at].user_id
+        # the queue's record of who wrote the line, never the seat's
+        # occupant now: a seat changes hands while a table waits
+        sender = (chat_senders or {}).get(line.get("id"))
+        if sender is not None:
+            room.chat_senders[room.chat_seq] = sender
     del room.chat[:-CHAT_KEEP]
+    kept = {line["id"] for line in room.chat}
+    room.chat_senders = {i: k for i, k in room.chat_senders.items() if i in kept}
     rooms[room.code] = room
     attached: list[tuple[Seat, Any, int]] = []
     try:

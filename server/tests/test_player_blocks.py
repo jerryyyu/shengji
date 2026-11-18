@@ -5,7 +5,8 @@ process: the server relays none of the blocked player's chat to the blocker
 in a later game, and the blocker's frames mark the seat ``blocked``. A guest's
 blocks are held in memory. Deleting either account removes its stored
 blocks. No frame names an account, and no block reaches a log. The waiting
-table's chat leaves out a blocked sender's lines too.
+table's chat leaves out a blocked sender's lines too, and its lines keep
+their writer into the room, whoever holds that seat when the game starts.
 """
 from __future__ import annotations
 
@@ -266,3 +267,80 @@ def test_a_snapshot_leaves_out_only_the_lines_of_senders_the_viewer_blocked():
         assert srv.block_key(srv.Seat(name="G")).startswith("seat:")
     finally:
         blocks.reset()
+
+
+def _real_room_start(monkeypatch, env):
+    """``env``'s matchmaker starts its rooms through the real
+    ``start_matched_room``; only sockets, broadcasts and the game are stubbed."""
+    from shengji.api import server as srv
+
+    real_room = srv.Room
+    monkeypatch.setattr(srv, "Room", lambda **kw: real_room(bot=object(), **kw))
+    monkeypatch.setattr(srv, "rooms", {})
+    monkeypatch.setattr(srv, "MATCHMAKER", env.mm)
+    monkeypatch.setattr(srv, "_attach", lambda room, seat, ws: 0)
+
+    async def noop(*args):
+        pass
+
+    monkeypatch.setattr(srv, "broadcast", noop)
+    monkeypatch.setattr(srv, "handle_action", noop)
+    monkeypatch.setattr(srv, "kick_bots", lambda room: None)
+    env.mm.start_room = srv.start_matched_room
+    return srv
+
+
+def _snapshot_texts(srv, uid):
+    (room,) = srv.rooms.values()
+    viewer = next(s for s in room.seats if s is not None and s.queue_id == uid)
+    return [m["text"] for m in srv.chat_snapshot(room, viewer)["messages"]]
+
+
+@pytest.mark.parametrize("blocked", [2, 4])
+def test_a_line_keeps_its_writer_across_a_seat_change_into_the_room(monkeypatch, blocks_on, blocked):
+    """2 speaks and leaves, 4 takes 2's seat, the table starts: 1's room
+    scrollback hides the line only if 1 blocked its writer, not whoever holds
+    that seat now."""
+    from tests.test_matchmaking import Env, run
+
+    async def go():
+        env = Env()
+        for uid in (1, 2, 3):
+            await env.join(uid)
+        blocks_on.set_block(1, blocked, True)
+        await env.send(2, "table_chat", text="said by two")
+        await env.send(2, "queue_leave")
+        await env.join(4)
+        t = env.mm._entry(1).table
+        assert t.seats[2] == 4
+        await env.send(4, "table_chat", text="said by four")
+        srv = _real_room_start(monkeypatch, env)
+        for uid in (1, 3, 4):
+            await env.send(uid, "table_start")
+        mine = _snapshot_texts(srv, 1)
+        hidden = "said by two" if blocked == 2 else "said by four"
+        shown = "said by four" if blocked == 2 else "said by two"
+        assert hidden not in mine and shown in mine
+        assert {"said by two", "said by four"} <= set(_snapshot_texts(srv, 3))
+        (room,) = srv.rooms.values()
+        for line in room.chat:                  # the writer stays server-side
+            assert set(line) == {"seat", "name", "text", "t", "id", "room"}
+    run(go())
+
+
+def test_a_duo_starting_alone_with_bots_keeps_each_lines_writer(monkeypatch, blocks_on):
+    """The direct start (queue_start_bots) carries the writers too."""
+    from tests.test_matchmaking import Env, run
+
+    async def go():
+        env = Env()
+        await env.pair(3, 4)
+        await env.send(3, "queue_join", allow_joiners=False)
+        await env.send(4, "table_chat", text="partner line")
+        await env.send(3, "table_chat", text="leader line")
+        blocks_on.set_block(3, 4, True)
+        srv = _real_room_start(monkeypatch, env)
+        await env.send(3, "queue_start_bots")
+        assert _snapshot_texts(srv, 3) == ["leader line"]
+        assert _snapshot_texts(srv, 4) == ["partner line", "leader line"]
+    run(go())

@@ -32,10 +32,10 @@ Each play decision's record gains a ``unified`` entry (`RECORD_FIELDS`): the pac
 root priors, value rows and reply rows of that decision the package filled and how many it left to
 the served parts, so a room log shows the slots ran.
 
-One room decides one state at a time.  The card states a belief proposal keeps for its decision's
-root prior live on the bot's belief object, which the server's turn snapshot shares with its
-copies; they are matched to the decision by round object, seat and play count, and a decision that
-finds none runs the trunk itself with the same result.
+The card states a belief proposal keeps for its decision's root prior live on its bot's belief
+wrapper. Each server turn snapshot starts with a separate empty cache while sharing immutable
+model weights. States are matched to the decision by round object, seat and play count; a
+decision that finds none runs the trunk itself with the same result.
 """
 from __future__ import annotations
 

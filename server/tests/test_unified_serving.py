@@ -391,3 +391,35 @@ def test_the_unified_bot_acts_through_the_server_path(release50_packages, pair, 
         assert counters["unified_trunk_shared"] == 1 and counters["unified_trunk_forwards"] == 0
         assert counters["unified_value_rows"] > 0 and counters["unified_value_other"] == 0
         assert counters["unified_reply_rows"] > 0 and counters["unified_reply_served"] == 0
+
+
+def test_discarded_server_snapshot_keeps_other_decision_caches_isolated(
+        release50_packages, pair, tmp_path, monkeypatch, served_functions):
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+    from test_pv_search_serving import _play_state
+
+    bot = P.lift(registry_bot(monkeypatch, unified_env(release50_packages, pair), seed=7))
+    game = Game(random.Random(0))
+    game.round = _play_state()
+    room = srv.Room(code="COPY", game=game, bot=bot,
+                    seats=[srv.Seat(str(s), is_bot=True) for s in range(4)], log_dir=tmp_path)
+    first = srv._snapshot_bot_turn(room, game.round.turn, "bot")
+    second = srv._snapshot_bot_turn(room, game.round.turn, "bot")
+    assert first is not None and second is not None
+    result = srv._compute_bot_turn(first)
+    assert result.cards
+    # A speculative decision is discarded without committing its bot to the room.
+    assert first.bot_copy.belief_model.shared
+    assert copy.deepcopy(first.bot_copy).belief_model.shared == {}
+    assert room.bot.belief_model.shared == {}
+    assert second.bot_copy.belief_model.shared == {}
+    for snapshot in (first, second):
+        copied = snapshot.bot_copy
+        assert copied.belief_model is not room.bot.belief_model
+        assert copied.belief_model.w is room.bot.belief_model.w
+        assert copied.belief_model.unified is copied.unified_prior_model is bot.unified_prior_model
+        assert copied.evaluator.unified_bot is copied
+    record = first.bot_copy.last_decision_record
+    assert record["unified"]["shared"] == 1
+    assert record["unified"]["missed"] == record["unified"]["trunk"] == 0

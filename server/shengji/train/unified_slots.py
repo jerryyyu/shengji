@@ -115,6 +115,13 @@ def shared_trunk_belief(belief_model, model):
     from ..ai.unified_numpy import _ln
 
     class SharedTrunkBelief(BeliefNumpy):
+        def __deepcopy__(self, memo):
+            # Weights are immutable; decision caches belong to one speculative bot.
+            out = copy.copy(self)
+            memo[id(self)] = out
+            out.shared = {}
+            return out
+
         def logits(self, inp, enc=None):
             u = self.unified
             w = self.w

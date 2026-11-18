@@ -263,6 +263,21 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   next person takes the opener's controls, not the code), so every invite link keeps working while the table
   exists, and the room starts on it. The last one left alone keeps the table's code as its own.
 
+## The iPad table: Fill (Jerry 2026-11-17: picked option B of the three iPad table mocks)
+- A touch screen too large for the phone table (an iPad, either way up; the root class `tablet-table` from
+  `phoneLayout.ts`) draws the wide table sized to the screen. Seat panels, your name, the controls and the tags grow
+  with one size token from the screen's shorter side (1 at 880×640, at most 1.5); text never drops below the reader's
+  size; buttons stay at least 48 px tall.
+- The hand runs edge to edge: its card comes from the screen's width (126 px on a 13" iPad sideways) and the pitch
+  closes up only when the row would not fit. The banker's 33 keep one row; the card narrows until a "10" index
+  clears the card over it.
+- The trick cross takes its card from the hand's (91 px on a 13" iPad sideways), fitted between the top seat (with
+  its "their turn" line) and your row; the side seats stand level with its centre. A play longer than four cards
+  packs tighter so it never spans more than four would. Seat panels keep their card counts; a side seat ends before
+  its trick slot, and a long name there ends in an ellipsis, shown whole on a long press as on the phone.
+- The round's result dialog grows with the screen, whole (×1.15 from 1100×700, ×1.35 on a 13" iPad).
+- A laptop or desktop browser (a mouse, not a finger) keeps the wide table at its fixed sizes.
+
 ## Blocking a player (Jerry 2026-11-17: "Yes" to keeping a mute across games)
 - A long press (or a right click) on another person's seat opens its options (`OpponentActions.tsx`): Block player
   (Unblock player once blocked), Report player, Cancel. Block replaces the per-game Mute chat: the server sends you none

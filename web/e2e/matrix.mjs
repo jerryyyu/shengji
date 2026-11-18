@@ -113,7 +113,7 @@ async function runDevice(device) {
     await page.context().close();
   }
 }
-const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-land-safari-short", "phone-land-se", "phone-port", "ipad", "desktop"]
+const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-land-safari-short", "phone-land-se", "phone-port", "ipad", "ipad13-land", "ipad13-port", "ipad11-land", "ipad-mini-land", "desktop"]
   .filter((d) => !onlyDev || onlyDev.test(d));
 // a few devices at a time: each is its own page, and the checks are independent
 const lanes = Number(process.env.LANES ?? 3);

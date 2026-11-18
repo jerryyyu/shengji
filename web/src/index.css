@@ -3228,6 +3228,238 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   from { opacity: 0; transform: scale(0.85); }
 }
 
+.tablet-table {
+  /* Tablet table (a touch screen too large for the phone table, an iPad).
+     The wide table's regions, each sized from the screen so the felt is used:
+       - seat panels, your name and your controls grow with the screen's
+         shorter side (--u is 1px on an 880x640 screen);
+       - the hand runs edge to edge: the card comes from the screen's width,
+         and the pitch closes up only when the row would not fit;
+       - the trick cross takes its card from the hand's and stands between the
+         top seat and your row, the side seats level with its centre.
+     A mouse-driven browser never matches this block. */
+  /* on the root, so the toast, drawn outside the table, reads them too */
+  & {
+    --u: clamp(1px, min(calc(100vw / 880), calc(100dvh / 640)), 1.5px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --hand-w: calc(100vw - 48px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    --hcw: clamp(72px, min(9.2vw, 14dvh), 126px);
+    /* the header bar, then the felt */
+    --hud-h: calc(60px + env(safe-area-inset-top, 0px));
+    /* the top seat's panel ends here, from the felt's top, with its
+       "their turn" line showing */
+    --seat-b: calc(146 * var(--u));
+    /* your area: the hand, the controls, your name and the gaps between */
+    --row-h: max(calc(38 * var(--u)), 48px);
+    --you-h: calc(var(--hcw) * 1.4 + 74 * var(--u) + var(--row-h) + 12px + var(--safe-b));
+    --cross-avail: calc(100dvh - var(--hud-h) - var(--seat-b) - var(--you-h) - 24px);
+    --cross-mid: calc((var(--seat-b) + 100% - var(--you-h)) / 2);
+    /* A trick card is as large as the hand's allows, unless the top and
+       bottom plays, each with its tag line, and a winner's lift would not fit
+       between the top seat and your row, or a four-card throw in a side slot
+       would reach that side's seat panel. */
+    --tcw: min(calc(var(--hcw) * 0.72),
+      calc((var(--cross-avail) - 41 * var(--u) - 12px) / 2.8),
+      calc((50vw - 30px - 150 * var(--u)) / 4.3));
+  }
+
+  .hand {
+    --cw: var(--hcw);
+    --pitch: min(calc(var(--hcw) * 0.5),
+      calc((var(--hand-w) - var(--hcw)) / max(1, calc(var(--n, 25) - 1))));
+    padding: calc(22 * var(--u)) calc(24px + env(safe-area-inset-right, 0px)) calc(6 * var(--u)) calc(24px + env(safe-area-inset-left, 0px));
+  }
+
+  /* The banker's 33 keep one row: the card narrows until a "10" index
+     clears the card over it. */
+  .hand.small-cards {
+    --cw: min(var(--hcw), calc(var(--hand-w) / 13.2));
+    --pitch: calc((var(--hand-w) - min(var(--hcw), calc(var(--hand-w) / 13.2))) / max(1, calc(var(--n, 33) - 1)));
+  }
+
+  .hand-slot {
+    flex: 0 0 var(--pitch);
+    width: var(--pitch);
+    min-width: 0;
+  }
+
+  .hand-slot:last-child {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .hand .card.selected {
+    transform: translateY(calc(-18 * var(--u)));
+  }
+
+  .hand .card.selected::after {
+    bottom: calc(-18 * var(--u));
+  }
+
+  .trick-area {
+    top: var(--cross-mid);
+    width: calc(var(--tcw) * 8.6);
+    height: min(var(--cross-avail), calc(var(--tcw) * 4.4));
+  }
+
+  .trick-cards {
+    --cw: var(--tcw);
+  }
+
+  /* a toast stands between the top seat and the trick cross */
+  .toast.at-table {
+    top: calc(var(--hud-h) + var(--seat-b) - 8px);
+  }
+
+  /* Up to four cards sit at a 60% pitch; a longer play packs tighter so it
+     never spans more than four would, which keeps a side slot clear of the
+     top and bottom slots. */
+  .trick-play {
+    --t-pitch: min(calc(var(--tcw) * 0.6),
+      calc(var(--tcw) * 1.8 / max(1, calc(var(--n, 1) - 1))));
+  }
+
+  .trick-cards .card + .card {
+    margin-left: calc(var(--t-pitch) - var(--tcw));
+  }
+
+  .lead-tag,
+  .win-tag,
+  .declare-tag {
+    font-size: calc(11 * var(--u));
+    padding: calc(2 * var(--u)) calc(8 * var(--u));
+  }
+
+  .opponent {
+    gap: calc(8 * var(--u));
+    min-width: calc(150 * var(--u));
+    padding: calc(12 * var(--u)) calc(18 * var(--u));
+    border-radius: calc(14 * var(--u));
+  }
+
+  .opponent.pos-top {
+    top: calc(18 * var(--u));
+  }
+
+  .opponent.pos-left,
+  .opponent.pos-right {
+    top: var(--cross-mid);
+    /* a side seat ends before its trick slot begins */
+    max-width: calc(50vw - var(--tcw) * 4.3 - 18 * var(--u) - 8px);
+    min-width: min(calc(150 * var(--u)), calc(50vw - var(--tcw) * 4.3 - 18 * var(--u) - 8px));
+  }
+
+  /* a long name ends in an ellipsis; a long press shows it whole */
+  .opp-name {
+    max-width: 100%;
+  }
+
+  .opp-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .opp-fullname {
+    display: block;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    translate: -50% 0;
+    z-index: 20;
+    max-width: 60vw;
+    padding: 5px 10px;
+    border: 1px solid var(--panel-edge);
+    border-radius: 8px;
+    background: #0a0c11;
+    color: var(--text);
+    font-size: max(var(--fs-13), calc(13 * var(--u)));
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+
+  .opponent.pos-left .opp-fullname { left: 0; translate: 0 0; }
+  .opponent.pos-right .opp-fullname { left: auto; right: 0; translate: 0 0; }
+
+  /* text keeps the reader's size where that is the larger */
+  .opp-name,
+  .banker-crown {
+    font-size: max(var(--fs-15), calc(15 * var(--u)));
+  }
+
+  .opponent .bot-tag {
+    font-size: max(var(--fs-10), calc(10 * var(--u)));
+  }
+
+  .opp-cards {
+    gap: calc(10 * var(--u));
+  }
+
+  .back-stack {
+    --cw: calc(34 * var(--u));
+  }
+
+  .back-stack .card.stacked + .card.stacked {
+    margin-left: calc(-26 * var(--u));
+  }
+
+  .card-count {
+    font-size: calc(14 * var(--u));
+  }
+
+  .table-emblem {
+    top: var(--cross-mid);
+    font-size: calc(90 * var(--u));
+  }
+
+  .you-area {
+    gap: calc(8 * var(--u));
+  }
+
+  .you-tagline {
+    padding: calc(5 * var(--u)) calc(16 * var(--u));
+    font-size: max(var(--fs-14), calc(14 * var(--u)));
+  }
+
+  .your-turn-tag {
+    font-size: max(var(--fs-11), calc(11 * var(--u)));
+  }
+
+  .action-bar {
+    gap: calc(8 * var(--u));
+    min-height: var(--row-h);
+  }
+
+  .action-bar .btn {
+    min-height: 48px;
+    padding: calc(9 * var(--u)) calc(18 * var(--u));
+    border-radius: calc(10 * var(--u));
+    font-size: max(var(--fs-14), calc(14 * var(--u)));
+  }
+
+  .hand-line {
+    font-size: max(var(--fs-13), calc(13 * var(--u)));
+  }
+
+  .last-trick-btn {
+    min-height: 44px;
+  }
+
+  /* The round's result is read at the table's distance: the dialog grows
+     with the screen, whole, so its cards and its text keep their proportions. */
+  @media (min-width: 1100px) and (min-height: 700px) {
+    .modal.round-end { zoom: 1.15; }
+  }
+
+  @media (min-width: 1300px) and (min-height: 1000px), (min-width: 1000px) and (min-height: 1300px) {
+    .modal.round-end { zoom: 1.35; }
+  }
+}
+
 /* The game is always played sideways. A phone browser held upright at the
    table (App sets .rotated; the iOS app turns itself instead) draws the table
    a quarter turn clockwise in a frame the screen's long side wide, so the

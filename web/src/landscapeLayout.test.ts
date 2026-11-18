@@ -14,10 +14,16 @@ import { readFileSync } from "node:fs";
 const css = readFileSync(new URL("./index.css", import.meta.url), "utf8");
 
 const PHONE_BLOCK = ":where(.phone-landscape) {";
+const TABLET_BLOCK = "\n.tablet-table {";
 
 /** Body of the phone block, braces balanced. */
 function phoneBlock(): string {
-  const start = css.indexOf(PHONE_BLOCK);
+  return blockAt(PHONE_BLOCK);
+}
+
+/** Body of the block opened by `head`, braces balanced. */
+function blockAt(head: string): string {
+  const start = css.indexOf(head);
   expect(start).toBeGreaterThan(-1);
   const open = css.indexOf("{", start);
   let depth = 0;
@@ -474,7 +480,8 @@ describe("phone controls", () => {
     expect(rule(block, ".opponent .their-turn").display).toBe("none");
     // the whole name is a tap away, drawn only by the phone layout
     expect(rule(block, ".opp-fullname").display).toBe("block");
-    expect(rule(css.replace(block, ""), ".opp-fullname").display).toBe("none");
+    // the tablet table shows it too, on a long press; nothing else does
+    expect(rule(css.replace(block, "").replace(blockAt(TABLET_BLOCK), ""), ".opp-fullname").display).toBe("none");
   });
 
   it("keeps table text at 11px or more", () => {
@@ -610,10 +617,11 @@ describe("phone controls", () => {
   });
 });
 
-describe("desktop and iPad are untouched", () => {
-  // Desktop and iPad never match the phone block (an iPad is at least 744px
-  // tall), so everything phone-only must live inside it.
-  const outside = css.replace(block, "");
+describe("a desktop is untouched", () => {
+  // A desktop matches neither the phone block nor the tablet block (an iPad
+  // is at least 744px tall, and a mouse is not a finger), so everything they
+  // style for the small and the touch screen must live inside them.
+  const outside = css.replace(block, "").replace(blockAt(TABLET_BLOCK), "");
 
   it("styles the phone-only classes only inside the phone block", () => {
     for (const cls of ["small-cards", "my-turn", "hud-menu-choice", "hud-menu-confirm", "deal-deck-"]) {

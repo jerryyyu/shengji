@@ -27,6 +27,11 @@ export const DEVICES = {
   "phone-port": { w: 390, h: 844, touch: true, kb: 336 },     // iPhone 14 Pro, lobby
   "phone-port-se": { w: 375, h: 667, touch: true, kb: 260 },
   ipad: { w: 1024, h: 768, touch: true, kb: 400 },
+  // the iPads the App Store shows: 13" either way up, 11" and mini sideways
+  "ipad13-land": { w: 1376, h: 1032, touch: true, kb: 400 },
+  "ipad13-port": { w: 1032, h: 1376, touch: true, kb: 400 },
+  "ipad11-land": { w: 1180, h: 820, touch: true, kb: 400 },
+  "ipad-mini-land": { w: 1133, h: 744, touch: true, kb: 400 },
   desktop: { w: 1280, h: 800, touch: false, kb: 0 },
 };
 

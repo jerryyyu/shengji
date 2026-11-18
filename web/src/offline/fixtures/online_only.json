@@ -1,0 +1,17 @@
+{
+  "frames": {
+    "table": "the table frame: the offline client draws its table from state alone"
+  },
+  "room": {
+    "matched": "a table built by the matchmaking queue"
+  },
+  "state": {
+    "guest": "a person with no account at a rated or queue-matched table",
+    "matched": "a table built by the matchmaking queue"
+  },
+  "state.players": {
+    "away": "the move timer marked this present player away",
+    "left": "the owner pressed Leave and a bot plays the seat",
+    "turn_deadline": "seconds left on the move timer"
+  }
+}

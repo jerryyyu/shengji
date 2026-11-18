@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# interaction suite outputs (npm run e2e)
+e2e/out
+e2e/.build

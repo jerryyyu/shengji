@@ -10,14 +10,18 @@
     "preview": "vite preview",
     "test": "vitest run",
     "capture:lobby": "node scripts/capture_lobby.mjs",
+    "e2e": "node e2e/run.mjs ci",
+    "e2e:full": "node e2e/run.mjs full",
     "ios:sync": "npm run build && cap sync ios"
   },
   "dependencies": {
     "@capacitor/core": "^8.6.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/ios": "^8.6.0",
+    "@capacitor/keyboard": "8.0.6",
     "@capacitor/screen-orientation": "8.0.2",
     "@capacitor/splash-screen": "8.0.2",
+    "@capgo/capacitor-social-login": "8.7.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

@@ -46,6 +46,10 @@ from .pv_search_policy import ENV_PREFIX, PVSearchPolicyError
 
 CKPT_KEY = ENV_PREFIX + "UNIFIED_CKPT"
 SHA256_KEY = ENV_PREFIX + "UNIFIED_SHA256"
+#: ``1`` serves the readout through its fast path (`unified_slots.leaf_features_fast`, the fused stem,
+#: the per-decision row memo): the same model and search, float32 rounding apart, so it enters the name
+FAST_KEY = ENV_PREFIX + "UNIFIED_FAST"
+FAST_TOKEN = "ufast"
 SINGLETON_KEY = ENV_PREFIX + "SINGLETON_CHALLENGER"
 _WRAPPED = "unified_serving_wraps"
 #: the decision record's account of the slots, per play decision: root priors read from the
@@ -57,6 +61,8 @@ RECORD_FIELDS = {"shared": "unified_shared_hits", "missed": "unified_shared_miss
                  "trunk": "unified_trunk_forwards", "value_rows": "unified_value_rows",
                  "value_left": "unified_value_other", "reply_rows": "unified_reply_rows",
                  "reply_left": "unified_reply_served"}
+#: with `FAST_KEY`: value and reply rows read from the decision's memo instead of a forward
+FAST_RECORD_FIELDS = {"value_memo": "unified_value_memo", "reply_memo": "unified_reply_memo"}
 _MODELS: dict = {}
 
 
@@ -89,10 +95,19 @@ def load_unified(path: str, sha256: str):
     return _MODELS[key]
 
 
-def unified_name(served_name: str, sha256: str) -> str:
+def unified_fast(environ=None) -> bool:
+    """`FAST_KEY` as a bool; anything but ``0``/``1``/unset refuses."""
+    env = os.environ if environ is None else environ
+    raw = env.get(FAST_KEY)
+    if raw not in (None, "", "0", "1"):
+        raise PVSearchPolicyError(f"{FAST_KEY} must be 0 or 1, not {raw!r}")
+    return raw == "1"
+
+
+def unified_name(served_name: str, sha256: str, fast: bool = False) -> str:
     sha8 = sha256[:8]
     return (f"{served_name}-{slots.SHARED_TOKEN}{sha8}-{slots.VALUE_TOKEN}{sha8}"
-            f"-{slots.REPLY_TOKEN}{sha8}")
+            f"-{slots.REPLY_TOKEN}{sha8}" + (f"-{FAST_TOKEN}" if fast else ""))
 
 
 def activate() -> None:
@@ -115,18 +130,20 @@ def active() -> bool:
 
 def _decide_play(self, rnd, seat):
     """The bot's own ``decide_play``; its decision record gains `RECORD_KEY` (`RECORD_FIELDS`)."""
-    before = [getattr(self, attr) for attr in RECORD_FIELDS.values()]
+    fields = {**RECORD_FIELDS, **FAST_RECORD_FIELDS} if self.unified_fast else RECORD_FIELDS
+    before = [getattr(self, attr) for attr in fields.values()]
     cards = type(self).decide_play(self, rnd, seat)
     record = getattr(self, "last_decision_record", None)
     if isinstance(record, dict):
         record[RECORD_KEY] = {"package": self.unified_sha256[:8],
                               **{name: getattr(self, attr) - was
-                                 for (name, attr), was in zip(RECORD_FIELDS.items(), before)}}
+                                 for (name, attr), was in zip(fields.items(), before)}}
     return cards
 
 
-def install(bot, model):
-    """Fill ``bot``'s belief, root-prior, value and reply slots from ``model``; returns ``bot``."""
+def install(bot, model, fast: bool = False):
+    """Fill ``bot``'s belief, root-prior, value and reply slots from ``model`` (``fast``: through the
+    readout's fast path, `FAST_KEY`); returns ``bot``."""
     import types
     activate()
     try:
@@ -136,6 +153,9 @@ def install(bot, model):
     except slots.UnifiedSlotError as exc:
         raise PVSearchPolicyError(f"unified slots: {exc}") from exc
     bot.unified_sha256 = model.package_sha256
+    bot.unified_fast = bool(fast)
+    if fast:
+        bot.policy_name = f"{bot.policy_name}-{FAST_TOKEN}"
     bot.decide_play = types.MethodType(_decide_play, bot)
     return bot
 
@@ -157,6 +177,7 @@ def unified_registry_entries(*, environ=None, **recipe) -> dict:
     if not recipe.get("leaf_greedy_finish"):
         raise PVSearchPolicyError(f"{CKPT_KEY} needs the greedy-finished leaf "
                                   f"({ENV_PREFIX}LEAF_GREEDY_FINISH=1): the reply slot is its shortlist")
+    fast = unified_fast(env)
     raw = env.get(SINGLETON_KEY, "0")
     if raw not in ("", "0", "1"):
         raise PVSearchPolicyError(f"{SINGLETON_KEY} must be 0 or 1")
@@ -173,10 +194,10 @@ def unified_registry_entries(*, environ=None, **recipe) -> dict:
             if getattr(bot, "policy_name", None) != served:
                 raise PVSearchPolicyError(f"the registry built {getattr(bot, 'policy_name', None)!r}, "
                                           f"expected {served!r}")
-            install(bot, model)
+            install(bot, model, fast)
             if bot.policy_name != name:
                 raise PVSearchPolicyError(f"built {bot.policy_name!r}, expected {name!r}")
             return bot
         return build
-    return {unified_name(served, sha256): named(make, served, unified_name(served, sha256))
+    return {unified_name(served, sha256, fast): named(make, served, unified_name(served, sha256, fast))
             for served, make in base.items()}

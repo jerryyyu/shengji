@@ -1,0 +1,169 @@
+// The nearby link, as the host room and the joiner's socket see it. It names
+// no radio: the native plugin (native.ts here, NearbyPlugin.swift) is one
+// implementation and FakeTransport, in memory, is the other, so the room and
+// the client protocol are tested with no device.
+import type { Clock } from "../clock";
+import { LIMITS, utf8Bytes } from "./protocol";
+
+/** What the link reports about itself, beyond its peers. */
+export type LinkState = "ready" | "waiting" | "denied" | "wifiOff" | "notFound" | "failed";
+
+export interface HostHandlers {
+  peer(peer: string, connected: boolean): void;
+  message(peer: string, text: string): void;
+  state(state: LinkState, detail?: string): void;
+}
+
+export interface HostLink {
+  send(peer: string, text: string): void;
+  close(peer: string): void;
+  stop(): void;
+}
+
+export interface JoinHandlers {
+  message(text: string): void;
+  /** The link to the host is gone (out of range, host stopped, closed). */
+  closed(): void;
+  state(state: LinkState, detail?: string): void;
+}
+
+export interface JoinLink {
+  send(text: string): void;
+  close(): void;
+}
+
+export interface NearbyTransport {
+  /** Advertise a table for `code`; resolves once it is listening. */
+  host(code: string, handlers: HostHandlers): Promise<HostLink>;
+  /** Find the table for `code` and connect; rejects (after a `state`) when
+   *  there is none or the link cannot be made. */
+  join(code: string, handlers: JoinHandlers): Promise<JoinLink>;
+}
+
+export class NearbyError extends Error {
+  readonly state: LinkState;
+  constructor(state: LinkState, message: string = state) {
+    super(message);
+    this.state = state;
+  }
+}
+
+interface FakeHost {
+  code: string;
+  handlers: HostHandlers;
+  peers: Map<string, JoinHandlers>;
+  stopped: boolean;
+}
+
+/** An in-memory radio for tests: any number of hosts and joiners on one
+ *  clock, with a per-frame delay, an oversize refusal like the native one,
+ *  and switches for a dropped link, a vanished host and a denied permission. */
+export class FakeTransport implements NearbyTransport {
+  private hosts = new Map<string, FakeHost>();
+  /** Joiner ends whose close has been delivered. */
+  private gone = new WeakSet<JoinHandlers>();
+  private seq = 0;
+  private clock: Clock;
+  /** Seconds each frame takes to arrive. */
+  delay: number;
+  /** The next host() or join() fails as a denied permission. */
+  deny = false;
+  /** Every frame that crossed, in order, for the tests' leak checks. */
+  readonly wire: { from: string; to: string; text: string }[] = [];
+
+  constructor(clock: Clock, delay = 0) {
+    this.clock = clock;
+    this.delay = delay;
+  }
+
+  private later(fn: () => void): void {
+    this.clock.setTimeout(fn, this.delay);
+  }
+
+  private checkSize(text: string): void {
+    if (utf8Bytes(text) > LIMITS.frameBytes) throw new NearbyError("failed", "frame too large");
+  }
+
+  async host(code: string, handlers: HostHandlers): Promise<HostLink> {
+    if (this.deny) {
+      handlers.state("denied");
+      throw new NearbyError("denied");
+    }
+    const h: FakeHost = { code, handlers, peers: new Map(), stopped: false };
+    this.hosts.set(code, h);
+    handlers.state("ready");
+    return {
+      send: (peer, text) => {
+        this.checkSize(text);
+        const p = h.peers.get(peer);
+        if (!p || h.stopped) return;
+        this.wire.push({ from: "host", to: peer, text });
+        // frames sent before a close still arrive, ahead of the close
+        this.later(() => { if (!this.gone.has(p)) p.message(text); });
+      },
+      close: (peer) => this.cut(h, peer),
+      stop: () => this.stopHost(code),
+    };
+  }
+
+  async join(code: string, handlers: JoinHandlers): Promise<JoinLink> {
+    if (this.deny) {
+      handlers.state("denied");
+      throw new NearbyError("denied");
+    }
+    const h = this.hosts.get(code);
+    if (!h || h.stopped) {
+      handlers.state("notFound");
+      throw new NearbyError("notFound");
+    }
+    const peer = `p${++this.seq}`;
+    h.peers.set(peer, handlers);
+    this.later(() => { if (h.peers.get(peer) === handlers) h.handlers.peer(peer, true); });
+    return {
+      send: (text) => {
+        this.checkSize(text);
+        if (h.peers.get(peer) !== handlers) return;
+        this.wire.push({ from: peer, to: "host", text });
+        this.later(() => { if (h.peers.get(peer) === handlers) h.handlers.message(peer, text); });
+      },
+      close: () => this.cut(h, peer),
+    };
+  }
+
+  /** Raw text from a peer, as a modified joiner would send it, unchecked. */
+  inject(code: string, peer: string, text: string): void {
+    const h = this.hosts.get(code);
+    if (h?.peers.has(peer)) h.handlers.message(peer, text);
+  }
+
+  /** The peer ids currently linked to `code`'s host. */
+  peersOf(code: string): string[] {
+    return [...(this.hosts.get(code)?.peers.keys() ?? [])];
+  }
+
+  /** The link to `peer` drops, as when a phone walks out of range. */
+  drop(code: string, peer: string): void {
+    const h = this.hosts.get(code);
+    if (h) this.cut(h, peer);
+  }
+
+  private cut(h: FakeHost, peer: string): void {
+    const p = h.peers.get(peer);
+    if (!p) return;
+    h.peers.delete(peer);
+    this.later(() => {
+      this.gone.add(p);
+      p.closed();
+      if (!h.stopped) h.handlers.peer(peer, false);
+    });
+  }
+
+  /** The host phone goes away: every joiner's link closes. */
+  stopHost(code: string): void {
+    const h = this.hosts.get(code);
+    if (!h) return;
+    for (const peer of [...h.peers.keys()]) this.cut(h, peer);
+    h.stopped = true;
+    this.hosts.delete(code);
+  }
+}

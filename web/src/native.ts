@@ -276,6 +276,12 @@ export function nativeBot(): NativeBot | null {
   };
 }
 
+/** The nearby link plugin (ShengjiNearby), untyped; null outside the app and
+ *  in a binary that does not register it. offline/server/nearby/native.ts wraps it. */
+export function nearbyPluginProxy(): unknown {
+  return plugin("ShengjiNearby");
+}
+
 /** Test hook: forget cached plugin lookups and state. */
 export function resetNativeForTests(): void {
   plugins.clear();

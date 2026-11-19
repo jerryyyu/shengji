@@ -22,7 +22,12 @@ round.
 One rated round, for each rated account on team ``t``:
 
 * team strength ``R_t`` is the mean of the two seats' ratings (a bot or guest
-  seat is ``BOT_RATING``), plus ``BANKER_ADVANTAGE`` for the banker's team;
+  seat is ``BOT_RATING``), plus a banker advantage for the banker's team:
+  ``BANKER_ADVANTAGE_DECLARED`` when the round started with no banker and the
+  deal went to a declarer (a new game's first round), otherwise
+  ``BANKER_ADVANTAGE_PRESET`` (the banker carried from the previous round's
+  result, or from a resumed game's saved state). Which one applies is read
+  when the round starts;
 * expected score ``E = 1 / (1 + 10 ** ((R_opp - R_t) / 400))``;
 * actual score ``S`` from the round's level change (``round_score``): the
   winner of ``n`` levels scores ``0.5 + min(n, 3) / 6`` (1 level 0.667,
@@ -81,9 +86,12 @@ BOT_RATING = 1000.0
 # A guest has no rating; in a ranked room their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
 # Holding the deal (the kitty, the first lead and the defence threshold of
-# 80) is worth this much team strength; the value is a starting estimate to
-# be calibrated from the round logs' banker win rate.
-BANKER_ADVANTAGE = 40.0
+# 80) is worth this much team strength: each value is the banker team's mean
+# round score between equal teams in self-play, as an Elo offset. A banker who
+# won the deal by declaring usually also holds the trumps, so that edge is
+# about twice a preset banker's.
+BANKER_ADVANTAGE_DECLARED = 80.0
+BANKER_ADVANTAGE_PRESET = 40.0
 PROVISIONAL_ROUNDS = 20   # the leaderboard's "new" label only; K is the same for everyone
 K = 40.0
 # Attackers who reach 80 to 115 points take the deal but gain no level.
@@ -134,11 +142,16 @@ def k_factor(rated_rounds: int = 0, provisional_opponent: bool = False) -> float
     return K
 
 
-def team_strengths(seat_ratings: list[float], banker_team: int) -> tuple[float, float]:
+def banker_advantage(banker_declared: bool) -> float:
+    return BANKER_ADVANTAGE_DECLARED if banker_declared else BANKER_ADVANTAGE_PRESET
+
+
+def team_strengths(seat_ratings: list[float], banker_team: int,
+                   banker_declared: bool = False) -> tuple[float, float]:
     """Mean seat rating per team (seats 0 and 2 are team 0), with the
-    banker's team raised by ``BANKER_ADVANTAGE``."""
+    banker's team raised by ``banker_advantage``."""
     strengths = [(seat_ratings[t] + seat_ratings[t + 2]) / 2.0 for t in (0, 1)]
-    strengths[banker_team] += BANKER_ADVANTAGE
+    strengths[banker_team] += banker_advantage(banker_declared)
     return strengths[0], strengths[1]
 
 
@@ -171,6 +184,8 @@ class RoundRecord:
     # (``read_standing``); a missing or failed read falls back to the
     # accounts' stored numbers at write time
     standing: Future | Mapping[int, tuple[float, int]] | None = None
+    # the round started with no banker, so a declarer took the deal
+    banker_declared: bool = False
 
 
 def read_standing(store: accounts.Store, user_ids: list[int]) -> dict[int, tuple[float, int]]:
@@ -224,7 +239,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                         for uid, row in users.items()}
             seat_ratings = [at_start[u][0] if u in at_start else GUEST_RATING
                             for u in (rec.start_accounts.get(s) for s in range(4))]
-            strengths = team_strengths(seat_ratings, rec.banker_team)
+            strengths = team_strengths(seat_ratings, rec.banker_team, rec.banker_declared)
             provisional = {uid for uid, (_, n) in at_start.items() if is_provisional(n)}
             out: dict[int, dict] = {}
             for p in rec.participants:
@@ -431,6 +446,9 @@ class RoomRatings:
     present: dict[int, int] = field(default_factory=dict)
     # seat -> ACCOUNT, BOT, GUEST or ABSENT when the round started
     kinds: list[str] = field(default_factory=list)
+    # the round started with no banker (``round_start`` banker null), so the
+    # deal goes to whoever declares; a carried or resumed banker is preset
+    banker_declared: bool = False
     # the present accounts' (rating, rated_rounds) as the round started,
     # read on the ratings worker behind the previous round's write
     standing: Future | None = None
@@ -488,6 +506,7 @@ def round_started(room: Any) -> None:
     tracker.present = {}
     tracker.kinds = []
     tracker.standing = None
+    tracker.banker_declared = room.round is not None and room.round.banker is None
     for s, seat in enumerate(room.seats):
         uid = _signed_in(seat)
         if uid is not None and seat.connected:
@@ -600,7 +619,8 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
         start_accounts={s: uid for s, uid in tracker.present.items() if uid in rated},
         seat_names=[seat.name for seat in room.seats],
         seat_bots=[bool(seat.is_bot) for seat in room.seats],
-        participants=parts, standing=tracker.standing)
+        participants=parts, standing=tracker.standing,
+        banker_declared=tracker.banker_declared)
 
 
 def _record_outcome(room: Any, tracker: RoomRatings, rec: RoundRecord,

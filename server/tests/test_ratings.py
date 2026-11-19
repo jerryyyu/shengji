@@ -191,6 +191,111 @@ def test_banker_adjustment_goes_to_the_banker_side(env, monkeypatch):
     assert event["levels"] == -2
 
 
+def test_a_declared_banker_is_worth_80_and_a_preset_one_40():
+    from shengji.api import ratings as r
+
+    assert r.BANKER_ADVANTAGE_DECLARED == 80.0 and r.BANKER_ADVANTAGE_PRESET == 40.0
+    assert r.team_strengths([1100, 1000, 1000, 1000], 0, banker_declared=True) == (1130.0, 1000.0)
+    assert r.team_strengths([1100, 1000, 1000, 1000], 1, banker_declared=True) == (1050.0, 1080.0)
+    assert r.expected_score(1080, 1000) == pytest.approx(0.613137, abs=1e-6)
+
+
+def test_a_new_games_first_round_rates_the_banker_as_declared(env, monkeypatch):
+    """A new game's first round starts with no banker: the deal goes to the
+    declarer (seat 0 when nobody declares), and the banker side gets 80."""
+    srv, store, _ = env
+    uid, _ = _user(store, "declarer")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round()
+    assert table.room.ratings.banker_declared is True
+    assert table.room.round.banker == 0
+    table.finish()
+    [event] = _events(store)
+    assert event["banker_team"] == 1
+    assert event["expected"] == pytest.approx(0.613137, abs=1e-6)
+    assert event["delta"] == pytest.approx(40 * (5 / 6 - 0.613137), abs=1e-4)   # +8.81
+
+
+def test_the_round_after_a_declared_one_is_preset(env, monkeypatch):
+    srv, store, _ = env
+    uid, _ = _user(store, "carried")
+    _force_outcome(monkeypatch, 30)            # bankers hold: seat 2 banks next
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.play_round()
+    table.start_round()
+    assert table.room.round.banker == 2
+    assert table.room.ratings.banker_declared is False
+    table.finish()
+    first, second = _events(store)
+    assert first["expected"] == pytest.approx(0.613137, abs=1e-6)
+    team = (first["rating_after"] + 1000) / 2 + 40
+    assert second["round_no"] == 2
+    assert second["expected"] == pytest.approx(1 / (1 + 10 ** ((1000 - team) / 400)))
+
+
+def test_a_resumed_games_first_round_has_a_preset_banker(env, monkeypatch):
+    """The saved state's banker is set on the game before its first round
+    starts, so that round is rated with the preset advantage."""
+    import types
+
+    from shengji.engine.game import Game
+
+    srv, store, _ = env
+    uid, _ = _user(store, "resumer")
+    room = srv.Room(code="RSUM", matched=True)
+    room.seats = [srv.Seat(name="P0", user_id=uid, connected=True)]
+    room.resume = {"levels": ["5", "7"], "banker": 2}
+    room.watchdog_task = types.SimpleNamespace(done=lambda: False)
+    monkeypatch.setattr(srv, "_spawn_room_task", lambda room, attr, coro: coro.close())
+    srv._start_game(room)
+    assert isinstance(room.game, Game) and room.game.round_no == 1
+    assert room.round.banker == 2 and room.round.first_round is False
+    assert room.ratings.banker_declared is False
+
+    fresh = srv.Room(code="FRSH", matched=True)
+    fresh.seats = [srv.Seat(name="P0", user_id=uid, connected=True)]
+    fresh.watchdog_task = types.SimpleNamespace(done=lambda: False)
+    srv._start_game(fresh)
+    assert fresh.round.banker is None and fresh.ratings.banker_declared is True
+
+
+def test_a_new_game_at_the_same_table_keeps_the_carried_banker(env, monkeypatch):
+    """Holding A scores the game and restarts the levels, but the engine
+    passes the deal on as after any round, so the next game's first round is
+    preset."""
+    from shengji.engine.game import A_INDEX
+
+    srv, store, _ = env
+    uid, _ = _user(store, "ace")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.room.game.level_idx = [A_INDEX, A_INDEX]
+    result = table.play_round(banker=0)
+    assert result.point_scored and table.room.game.level_idx == [table.room.game.start_idx] * 2
+    table.start_round()
+    assert table.room.round.banker == 2
+    assert table.room.ratings.banker_declared is False
+    table.finish()
+    first, second = _events(store)
+    assert first["expected"] == pytest.approx(0.557312, abs=1e-6)
+    team = (first["rating_after"] + 1000) / 2 + 40
+    assert second["expected"] == pytest.approx(1 / (1 + 10 ** ((1000 - team) / 400)))
+
+
+@pytest.mark.parametrize("others", [["bot", "bot", "bot"], [None, None, None],
+                                    [None, "bot", None]])
+def test_guest_and_bot_seats_do_not_change_the_banker_flag(env, others):
+    srv, store, _ = env
+    uid, _ = _user(store, "seats")
+    declared = Table(srv, [uid, *others])
+    declared.start_round()
+    preset = Table(srv, [uid, *others], code="RAT2")
+    preset.start_round(banker=1)
+    assert declared.room.ratings.banker_declared is True
+    assert preset.room.ratings.banker_declared is False
+
+
 def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monkeypatch):
     srv, store, _ = env
     a, _ = _user(store, "alice")

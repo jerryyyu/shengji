@@ -14,9 +14,8 @@
   three ``serving-packages`` assets (``test_release50_fly_config``'s pinned paths, or
   ``SHENGJI_RELEASE_PACKAGE_DIR``) and fails, never skips, under the same flag; release
   53's adds the unified pair (``test_release53_fly_config``'s pinned paths).  Release 53's
-  play stages run no served value or prior forward (the unified slots fill every row), while
-  its decision records' ``model_ids`` still name the bound G3 A and FT1 packages: the witness
-  pins exactly that difference (``R53_MODEL_ID_GAP``).
+  play stages name the unified package, witnessed through its actual value, root-prior
+  and reply forwards, with the same model IDs in their records.
 """
 import copy
 import os
@@ -160,7 +159,7 @@ def test_release53_is_release52_with_the_unified_model():
     for stage in ("bury", "lead", "follow", "endgame"):
         assert b["stages"][stage]["worlds"] == "belief:ut-all-belief-1b1fd2de"
     for stage in ("lead", "follow", "endgame"):
-        assert b["stages"][stage]["value"] is None and b["stages"][stage]["prior"] is None
+        assert b["stages"][stage]["value"] == b["stages"][stage]["prior"] == "ut-all-97c07be8"
 
 
 def _refused(manifest, match):
@@ -281,12 +280,6 @@ def test_release50_package_wiring_matches_its_manifest(release50_packages, relea
     _check_wiring(manifest, paths)
 
 
-#: release 53's play records still name the bound G3 A and FT1 packages in ``model_ids``
-#: although the witness sees no forward of either there (the unified slots fill every value,
-#: root-prior and reply row): exactly these lines, and no other mismatch, are expected
-R53_MODEL_ID_GAP = {"value": "f4f4127e", "prior": "1fa201b2", "belief": "1b1fd2de"}
-
-
 def test_release53_wiring_matches_its_manifest(release50_packages, release53_pair, served_functions):
     manifest = releases.load(53)
     paths = {"g3a-e04-f4f4127e": release50_packages["value"],
@@ -297,13 +290,14 @@ def test_release53_wiring_matches_its_manifest(release50_packages, release53_pai
         paths.update(releases.package_paths(manifest, PACKAGE_DIR))
     report = releases.wiring(manifest, paths)
     assert report["bot_name"] == manifest["bot_name"]
-    ids = releases.expected_model_ids(manifest)
-    gap = [f"{stage} record model_ids {R53_MODEL_ID_GAP}, manifest {ids[stage]}"
-           for stage in ("lead", "follow", "endgame")
-           for _ in report["stages"][stage]["model_ids"]]
-    assert releases.wiring_mismatches(manifest, report) == gap, report
+    assert releases.wiring_mismatches(manifest, report) == [], report
     for stage in ("lead", "follow", "endgame"):
-        assert report["stages"][stage]["value"] == report["stages"][stage]["prior"] == []
+        assert report["stages"][stage]["value"] == ["ut-all-97c07be8"]
+        assert report["stages"][stage]["prior"] == ["ut-all-97c07be8"]
+        counts = report["stages"][stage]["counts"]
+        assert counts["unified_value ut-all-97c07be8"] > 0
+        assert counts["unified_root ut-all-97c07be8"] > 0
+    assert report["stages"]["lead"]["counts"]["unified_reply ut-all-97c07be8"] > 0
     exact = report["stages"]["endgame"]["exact"]
     assert any(row["exact_lead_status"] is not None for row in exact)
     assert any(row["exact_follow_attempted"] for row in exact)
@@ -391,3 +385,37 @@ def test_a_report_with_fewer_stamps_than_decisions_is_a_mismatch():
     assert len(problems) == 2, problems
     assert problems[0].startswith("bury record model_ids {'value': 'x'}")
     assert problems[1] == "lead: 1 decisions witnessed, 0 model_ids stamps"
+
+
+@pytest.mark.parametrize("fault", [None, "wrong_ids", "missing_ids", "unobserved_value"])
+def test_release53_wiring_cli_requires_unified_provenance(
+        release50_packages, release53_pair, served_functions, tmp_path, monkeypatch, capsys, fault):
+    from shengji.train import pv_search_policy as pv
+
+    manifest = releases.load(53)
+    paths = {"g3a-e04-f4f4127e": release50_packages["value"],
+             "p0-ft1-1fa201b2": release50_packages["prior"],
+             "ut-all-97c07be8": release53_pair["unified"],
+             "ut-all-belief-1b1fd2de": release53_pair["belief"]}
+    for name, path in paths.items():
+        (tmp_path / manifest["packages"][name]["basename"]).symlink_to(path)
+    ids = pv.PVSearchBot.model_ids
+    if fault in ("wrong_ids", "missing_ids"):
+        def changed_ids(self, stage):
+            out = ids(self, stage)
+            if stage == "play":
+                return None if fault == "missing_ids" else {**out, "value": "f4f4127e"}
+            return out
+        monkeypatch.setattr(pv.PVSearchBot, "model_ids", changed_ids)
+    elif fault == "unobserved_value":
+        tag = releases._Witness._tag
+
+        def omit_value(self, role, sha, n=1):
+            if role != "value" or sha != manifest["packages"]["ut-all-97c07be8"]["sha256"]:
+                tag(self, role, sha, n)
+        monkeypatch.setattr(releases._Witness, "_tag", omit_value)
+    rc = releases._main(["wiring", str(Path(__file__).parents[1] / "releases" / "r53.json"),
+                         "--package-dir", str(tmp_path)])
+    captured = capsys.readouterr()
+    assert rc == (0 if fault is None else 1), captured.err
+    assert ("MISMATCH" in captured.err) == (fault is not None)

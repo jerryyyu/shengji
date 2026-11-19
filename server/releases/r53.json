@@ -112,7 +112,7 @@
       "env_sha256": [
         "SHENGJI_PV_UNIFIED_SHA256"
       ],
-      "why": "The unified readout package, consulted at lead, follow and endgame through the unified slots (train.unified_slots): one trunk forward per decision gives the belief proposal's card states and the root prior (ushare), and the per-world readout on those states scores the decision's own-trick value leaves (uvalue) and ranks the greedy finish's replies (ureply), through the fast path (ufast). The stage table's value and prior fields name the packages the wiring witness instruments (the served value and prior nets); each play decision's record counts the unified slots' use in its unified entry, and the package's trunk is the belief package's (registration refuses a pair whose trunks differ)."
+      "why": "The unified readout package, consulted at lead, follow and endgame through the unified slots (train.unified_slots): one trunk forward per decision gives the belief proposal's card states and the root prior (ushare), and the per-world readout on those states scores the decision's own-trick value leaves (uvalue) and ranks the greedy finish's replies (ureply), through the fast path (ufast). The stage table's value and prior fields name this package for play; each play decision's record counts the unified slots' use in its unified entry, and the package's trunk is the belief package's (registration refuses a pair whose trunks differ)."
     },
     "js-m1-0d17fd03": {
       "sha256": "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747",
@@ -141,20 +141,20 @@
       "why": "The wide value chooser (bwv, k 64) scores heuristic, structured-ballot and swap candidates on 32 worlds drawn by the belief package on the bury state's trick-1 twin (bbw); a failed draw falls back, for that decision, to the mc-s0-report-lcb helper's MCBot split sampler. The leaf's first trick is the heuristic. No policy head: the lpft rule is off."
     },
     "lead": {
-      "value": null,
-      "prior": null,
+      "value": "ut-all-97c07be8",
+      "prior": "ut-all-97c07be8",
       "worlds": "belief:ut-all-belief-1b1fd2de",
       "why": "The served value and prior nets run no forward here: every value row of the decision's search is the unified package's readout (uvalue: its own-trick leaves, none left to G3 A), the root prior is the unified trunk's (ushare) and every greedy-finish reply is ranked by its reply readout (ureply, none left to FT1), all through the fast path (ufast); the record's unified entry counts them. G3 A and FT1 stay bound (the bot builds on release 52's) and their hashes head the name."
     },
     "follow": {
-      "value": null,
-      "prior": null,
+      "value": "ut-all-97c07be8",
+      "prior": "ut-all-97c07be8",
       "worlds": "belief:ut-all-belief-1b1fd2de",
       "why": "The served value and prior nets run no forward here: every value row of the decision's search is the unified package's readout (uvalue: its own-trick leaves, none left to G3 A), the root prior is the unified trunk's (ushare) and every greedy-finish reply is ranked by its reply readout (ureply, none left to FT1), all through the fast path (ufast); the record's unified entry counts them. G3 A and FT1 stay bound (the bot builds on release 52's) and their hashes head the name."
     },
     "endgame": {
-      "value": null,
-      "prior": null,
+      "value": "ut-all-97c07be8",
+      "prior": "ut-all-97c07be8",
       "worlds": "belief:ut-all-belief-1b1fd2de",
       "why": "The served value and prior nets run no forward here: every value row of the decision's search is the unified package's readout (uvalue: its own-trick leaves, none left to G3 A), the root prior is the unified trunk's (ushare) and every greedy-finish reply is ranked by its reply readout (ureply, none left to FT1), all through the fast path (ufast); the record's unified entry counts them. G3 A and FT1 stay bound (the bot builds on release 52's) and their hashes head the name. At 7 cards or fewer the admitted ballot is still value-scored first (by the unified readout, as in play); the exact lead and exact follow solves on the same belief worlds use no net. Release 52's exact lead (elt, elm, els1600) solves its first trick by full minimax, keeps the baseline lead unless the exact pass strictly improves on it, and stops at 1.6 s."
     }

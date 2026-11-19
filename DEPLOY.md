@@ -104,10 +104,10 @@ differ, so a wrong or missing file stops the server at import rather than at a r
 
 `server/releases/r53.json` is this env with its stage table: declare as release 52 (G3 A on uniform deals), bury
 on G3 A over worlds from the unified belief package, and lead, follow and endgame on the unified belief package's
-worlds with no served value or prior forward. `test_release_manifests.py` checks that `fly.toml` equals that env
-and that release 53 differs from release 52 only in these lines; its wiring witness, on the real packages, finds
-that table, with one recorded difference: the play records' `model_ids` still name G3 A and FT1, which the bot
-keeps bound but whose forwards no play decision runs (an open record item, not a decision difference).
+worlds with the unified value and prior slots. `test_release_manifests.py` checks that `fly.toml` equals that env
+and that release 53 differs from release 52 only in these lines; its wiring witness observes the actual unified
+forwards and requires every stage's model IDs to agree with the table. G3 A and FT1 remain bound for the other
+stages and fallback paths; the record's degradation fields distinguish a fallback from a completed search.
 `server/tests/test_release53_fly_config.py` builds the served bot from this env on the pinned packages as the
 server does, checks the name and the fast path, plays one lead through `_paced_bot_step` / `_commit_bot_turn` with
 every slot filled from the shared trunk and none left to the served nets, and builds the release-52 rollback.
@@ -190,9 +190,9 @@ M4 timings, not Fly's.
 
 ### Watch list
 
-Release 52's rows of the first-room rollback triggers (Release checklist, step 9). New for release 53: every play
-record carries a `unified` entry with `shared` 1, `missed` 0 and `value_left` / `reply_left` 0 (anything else means
-a slot fell back to the served nets; examine); belief fallbacks and `belief_ms` with the unified belief package;
+Release 52's rows of the first-room rollback triggers (Release checklist, step 9). New for release 53: a completed unified-search play
+record carries a `unified` entry with `shared` 1, `missed` 0 and `value_left` / `reply_left` 0. Interpret forced, exact
+and degraded decisions using their status fields before treating other counts as a slot fallback; examine belief fallbacks and `belief_ms` with the unified belief package;
 bury-belief fallbacks; the failed-throw share of the bot's leads (red team: 5.3% against 4.1% in the duels); budget
 fallbacks and decision p95 with 2 or more concurrent games, which are unmeasured.
 

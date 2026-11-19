@@ -26,7 +26,7 @@ import random
 
 import r50_flag_positions as P
 from shengji import releases
-from test_release46_fly_config import RELEASE52_ADDED_KEYS, fly_env as production_env
+from test_release46_fly_config import RELEASE52_ADDED_KEYS, RELEASE52_NAME, fly_env as served_env, release52_env
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA, PRIOR_VOLUME_PATH,
                                        VALUE_SHA, VALUE_VOLUME_PATH, release50_packages,  # noqa: F401
                                        served_bot)
@@ -50,8 +50,14 @@ R52_CONFIG = {"exact_lead_tie_baseline": (False, True), "exact_lead_full_minimax
               "refusal_event_complete": (False, True)}
 
 
+def release52_fly_env() -> dict:
+    """Release 52's ``fly.toml`` ``[env]``: the repo's with release 53's rollback applied."""
+    return release52_env(served_env())
+
+
+
 def test_fly_toml_is_release51_plus_the_combo51_lines():
-    env = production_env()
+    env = release52_fly_env()
     assert env["SHENGJI_BOT"] == RELEASE52
     assert {k: env[k] for k in R52_CHANGES} == R52_CHANGES
     assert set(R52_CHANGES) == set(RELEASE52_ADDED_KEYS)
@@ -74,7 +80,7 @@ def test_the_volume_paths_derive_the_served_name(monkeypatch):
     by_path = {VALUE_VOLUME_PATH: VALUE_SHA, PRIOR_VOLUME_PATH: PRIOR_SHA, BELIEF_VOLUME_PATH: BELIEF_SHA}
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: by_path[str(path)][:8])
     monkeypatch.setattr(pv, "file_sha256", lambda path: by_path[str(path)])
-    env = production_env()
+    env = release52_fly_env()
     assert list(pv.singleton_registry_entries(**pv.pv_env_recipe(env))) == [env["SHENGJI_BOT"]] == [RELEASE52]
     assert list(pv.singleton_registry_entries(**pv.pv_env_recipe(release51_env(env)))) == [RELEASE51]
     gone = [t for t in RELEASE51.split("-") if t not in RELEASE52.split("-")]
@@ -87,7 +93,7 @@ def test_served_bot_is_release52(release50_packages, monkeypatch):
     from shengji.eval.served_config import registry_name
     from shengji.eval.singleton_challenger import SingletonChallengerBuryBot
 
-    env = production_env()
+    env = release52_fly_env()
     name, bot = served_bot(release50_packages, monkeypatch, env=env)
     assert name == bot.policy_name == RELEASE52
     assert registry_name({**env, "SHENGJI_PV_CKPT": str(release50_packages["value"]),
@@ -146,7 +152,7 @@ def test_served_lead_runs_through_the_server_path(release50_packages, tmp_path, 
     from shengji.train import pv_search_policy as pv
 
     monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
-    name, bot = served_bot(release50_packages, monkeypatch, env=production_env(), seed=7)
+    name, bot = served_bot(release50_packages, monkeypatch, env=release52_fly_env(), seed=7)
     assert name == RELEASE52
     bot.leaf_greedy_deadline_ms = 0
     bot.serving_budget_seconds = None
@@ -168,7 +174,7 @@ def test_served_exact_lead_solves_its_first_trick_by_minimax_through_the_server_
     from shengji.ai import belief_numpy as bn
 
     monkeypatch.setattr(bn, "PREP_SECONDS", 60.0)
-    name, bot = served_bot(release50_packages, monkeypatch, env=production_env(), seed=P.SEED)
+    name, bot = served_bot(release50_packages, monkeypatch, env=release52_fly_env(), seed=P.SEED)
     assert name == RELEASE52 and bot.exact_lead_max_seconds == 1.6
     P.lift(bot)
     rnd = P.replay("SDUS2", 14, 0)
@@ -181,7 +187,7 @@ def test_served_exact_lead_solves_its_first_trick_by_minimax_through_the_server_
 
 
 def test_rollback_to_release51_drops_the_five_lines(release50_packages, monkeypatch):
-    name, bot = served_bot(release50_packages, monkeypatch, env=release51_env(production_env()))
+    name, bot = served_bot(release50_packages, monkeypatch, env=release51_env(release52_fly_env()))
     assert name == bot.policy_name == RELEASE51
     assert not bot.exact_lead_tie_baseline and not bot.exact_lead_full_minimax
     assert bot.exact_lead_max_seconds == 2.25

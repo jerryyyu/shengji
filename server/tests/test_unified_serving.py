@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 
 import r50_flag_positions as P
-from test_release46_fly_config import fly_env as production_env
+from test_release46_fly_config import fly_env as served_env, release52_env
 from test_release48_fly_config import apply_to_process
 from test_release50_fly_config import (BELIEF_VOLUME_PATH, PRIOR_SHA, PRIOR_VOLUME_PATH, VALUE_SHA,
                                        VALUE_VOLUME_PATH, local_env, release50_packages)  # noqa: F401
@@ -50,6 +50,12 @@ COUNTERS = ("unified_prior_calls", "unified_shared_hits", "unified_shared_misses
 TRUNK = {"d": 16, "heads": 4, "enc_layers": 1, "xattn_layers": 1, "x_hidden": 16, "card_self_attn": True}
 CONFIG = {"trunk": TRUNK, "heads": {"q_hidden": 8, "policy_hidden": 8},
           "readout": {"dp": 8, "dc": 8, "width": 16, "hidden": 32, "blocks": 1}}
+
+
+def release52_fly_env() -> dict:
+    """Release 52's ``fly.toml`` ``[env]``: the repo's with release 53's rollback applied."""
+    return release52_env(served_env())
+
 
 
 def _random_pair(root):
@@ -106,7 +112,7 @@ def unified_env(packages, pair) -> dict:
     belief pair, the unified pair, and the name the registry derives from them."""
     from shengji.eval.served_config import registry_name
 
-    env = {**local_env(packages, production_env()),
+    env = {**local_env(packages, release52_fly_env()),
            "SHENGJI_PV_BELIEF_CKPT": pair["belief"][0], "SHENGJI_PV_BELIEF_SHA256": pair["belief"][1],
            "SHENGJI_PV_UNIFIED_CKPT": pair["unified"][0], "SHENGJI_PV_UNIFIED_SHA256": pair["unified"][1]}
     env["SHENGJI_BOT"] = registry_name(env)
@@ -205,9 +211,9 @@ def test_the_volume_paths_derive_the_screened_name(monkeypatch):
                UNIFIED_BELIEF_VOLUME_PATH: UNIFIED_BELIEF_SHA}
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: by_path[str(path)][:8])
     monkeypatch.setattr(pv, "file_sha256", lambda path: by_path[str(path)])
-    env = {**production_env(), "SHENGJI_PV_BELIEF_CKPT": UNIFIED_BELIEF_VOLUME_PATH,
+    env = {**release52_fly_env(), "SHENGJI_PV_BELIEF_CKPT": UNIFIED_BELIEF_VOLUME_PATH,
            "SHENGJI_PV_BELIEF_SHA256": UNIFIED_BELIEF_SHA}
-    assert env["SHENGJI_BOT"] == RELEASE52 and BELIEF_VOLUME_PATH in production_env().values()
+    assert env["SHENGJI_BOT"] == RELEASE52 and BELIEF_VOLUME_PATH in release52_fly_env().values()
     served, = pv.singleton_registry_entries(**pv.pv_env_recipe(env))
     assert serving.unified_name(served, UNIFIED_SHA) == SCREENED
     moved = [t for t in served.split("-") if t not in RELEASE52.split("-")]
@@ -219,7 +225,7 @@ def test_unset_the_registry_and_the_served_bot_are_untouched(release50_packages)
     the served functions unwrapped, and no instance override on the served bot."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_PV_")}
     # the release-28 rollback keys name a package this test does not provision
-    env.update({k: v for k, v in local_env(release50_packages, production_env()).items()
+    env.update({k: v for k, v in local_env(release50_packages, release52_fly_env()).items()
                 if not k.startswith("SHENGJI_CWV_")})
     env.pop("SHENGJI_LOG_DIR", None)
     if os.environ.get("SHENGJI_FAST") != "1":
@@ -272,7 +278,7 @@ def test_a_belief_package_with_another_trunk_refuses_at_registration(release50_p
                                                                     served_functions):
     from shengji.train.pv_search_policy import PVSearchPolicyError
 
-    env = {**local_env(release50_packages, production_env()),
+    env = {**local_env(release50_packages, release52_fly_env()),
            "SHENGJI_PV_UNIFIED_CKPT": pair["unified"][0], "SHENGJI_PV_UNIFIED_SHA256": pair["unified"][1]}
     with pytest.raises(PVSearchPolicyError, match="trunk"):
         register(monkeypatch, env)
@@ -319,7 +325,7 @@ def test_a_served_bot_decides_the_same_beside_a_unified_bot(release50_packages, 
     from shengji.train import unified_serving as serving
 
     positions = (("ADKY3", 9, 0), ("SDUS2", 8, 0), ("SDUS2", 14, 1))
-    served_env = local_env(release50_packages, production_env())
+    served_env = local_env(release50_packages, release52_fly_env())
 
     def served(position):
         bot = registry_bot(monkeypatch, served_env, P.SEED)

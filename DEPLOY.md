@@ -11,8 +11,9 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 | served name | the `SHENGJI_BOT` value; the registry derives it from the `fly.toml` env, and `/healthz` reports it as `bot` |
 | play package | the NumPy value net (the evaluator at every stage): G3 Stage A's `g3a-e04-f4f4127e.npz` in release 50; `smv3out-491ee4bf.npz` in releases 36–49, where it was also the card-play policy head |
 | card-play prior | the policy net that admits the card-play candidates, under `SHENGJI_PV_PRIOR_*`: FT1's `p0-ft1-1fa201b2.npz` in release 50 (releases 36–49 used the play package's own head) |
+| unified package | the all-data unified model's readout, under `SHENGJI_PV_UNIFIED_*` (release 53: `ut-all-97c07be8.npz`): the root prior, the own-trick leaf values and the greedy-finish reply ranking, from the trunk forward the belief package's proposal runs |
 | prior (`/healthz` `prior`) | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys for the release-28 rollback; the served `pv-search` bot does not consult it |
-| belief package | the hidden-hand model: B1a's `b1a-028131a0.npz` in release 50; S58's `s58-e6-42444515.npz` in releases 48 and 49; S17's `s17long-e2-763b5e05.npz` in release 46 |
+| belief package | the hidden-hand model: the unified model's `ut-all-belief-1b1fd2de.npz` in release 53; B1a's `b1a-028131a0.npz` in releases 50–52; S58's `s58-e6-42444515.npz` in releases 48 and 49; S17's `s17long-e2-763b5e05.npz` in release 46 |
 | volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs`, support-form messages appended to `/data/support_messages.jsonl` (one JSON line each; nothing is emailed) |
 | image | `registry.fly.io/shengji:<image>`; Fly numbers each deploy `vNN` |
 | smoke | a run of the served bot through the server path (`_paced_bot_step` / `_commit_bot_turn`) |
@@ -26,13 +27,251 @@ Sign in with Apple (`POST /api/auth/apple`, iOS app only) needs no configuration
 
 ## Current production
 
+**Release 53**: release 52 with the all-data unified model. One package (`ut-all-97c07be8`) gives each play
+decision its belief proposal and root prior from one shared trunk forward (`ushare`), the values of the decision's
+own-trick leaves (`uvalue`) and the greedy finish's reply ranking (`ureply`), read through the fast path
+(`ufast`, `SHENGJI_PV_UNIFIED_FAST = '1'`); the belief package becomes the unified model's (`ut-all-belief-1b1fd2de`,
+in place of B1a), whose trunk is the unified package's. The search, its rules and budgets, the bury, the
+declaration and the stage table's declare and bury rows are release 52's (`server/releases/r53.json`). Release 52's
+record is under "Rollback".
+
+| field | value |
+|---|---|
+| deployed | DEPLOY-DATE-PENDING at 0 rooms. Jerry's word: in session 2026-11-18, "awesome lets ship it" |
+| Fly version | FLY-VERSION-PENDING (rollback: v115 for release 52 as served) |
+| image | IMAGE-PENDING |
+| source | the release PR's merge commit on main (MERGE-SHA-PENDING), deployed with `flyctl deploy --app shengji --ha=false` from a clean worktree at that commit |
+| evidence | UT-alldata screen and confirmation against release 52 as served, UT-launch checks, UT-fly-fast Fly timing (Evidence and Latency, below) |
+| deploy record | DEPLOY-RECORD-PENDING: `/healthz` `bot` equal to the release-53 `SHENGJI_BOT` in `fly.toml`, `fast: true`, value `f4f4127e…`, prior `0d17fd03…`; in-machine `True compiled 1b1fd2de` (Release checklist, step 8); first-room reader pending the first live room |
+| comparator | release 52 as served until the deploy[^cmp]; the move to release 53 is Jerry's word, as for earlier releases |
+
+**Source.** Release 53 deploys from main. The unified serving code (`train/unified_serving.py`,
+`train/unified_slots.py`, the readout's fast path from #1592 and the snapshot cache isolation from #1589) exists only
+on main, so unlike release 52 the release tree is not release 52's served tree (`99338c7e` + main's web, api and
+`fly.toml`, Fly v115) with lines added: it also carries main's bot-path commits after release 51's `1490b72b`. Both
+sides of the UT-alldata duels were built on the main-lineage screen tree `1a7a4413`, the release-52 side from
+release 52's `fly.toml` words, so that comparison is unified against release 52 as built on main. UT-launch check 1
+showed main `d72c501c`'s registry bot deciding as the duel adapter's bot on every state of 20 full rounds; the Fly
+timing ran main `ae121726`, whose bot code is this PR's base.
+
+Served name:
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-1b1a47f5dd8b-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast
+```
+
+The registry derives it from the `fly.toml` env: the belief pair moves the play digest (`r12e81e0c` → `r09a10415`)
+and the bury suffix (`7a9a430fe690` → `1b1a47f5dd8b`); the unified pair adds `-ushare97c07be8-uvalue97c07be8-ureply97c07be8`
+after `-sc8`, and the fast path adds `-ufast`. Without `-ufast` it is byte for byte the exploiter name UT-alldata-screen
+and UT-alldata-confirm duelled against release 52; with it, the name UT-fly-fast derived on the production machine
+with main's `served_config.registry_name` and timed (`test_release53_fly_config.py` derives it from the
+`/data/models/` paths). The fast path changes no model or search: it reads the same readout through a fused stem
+and a per-decision row memo, equal to the flag-off readout up to float32 rounding (`test_unified_serving.py`); the
+duels ran without it.
+
+### Packages
+
+Two new packages, each to be an asset of the `serving-packages` GitHub release under the same file name and a file
+on the volume at the path below. Both go up before the `fly.toml` switch (Release checklist, step 2); the release
+PR's package-gate CI fetches them from the release, so the release upload comes before that CI can pass. Keep
+every release-52 package on the volume for the rollback, B1a included.
+
+| package | path on the volume | sha256 | `/healthz` field |
+|---|---|---|---|
+| unified readout (all-data unified model, `base.npz`) | `/data/models/ut-all-97c07be8.npz` | `97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af` | not reported (the name carries `97c07be8`) |
+| belief (the unified model's trunk and belief head, `base-belief.npz`) | `/data/models/ut-all-belief-1b1fd2de.npz` | `1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4` | not reported[^belief] |
+| value (G3 Stage A, unchanged) | `/data/models/g3a-e04-f4f4127e.npz` | `f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd` | `pv_search.sha256` |
+| card-play prior (FT1, unchanged) | `/data/models/p0-ft1-1fa201b2.npz` | `1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf` | not reported[^pvprior] |
+| JS-M1 (release-28 rollback keys, unchanged) | `/data/models/js-m1-0d17fd03.npz` | `0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747` | `prior` |
+| belief (B1a, releases 50–52, kept for the rollback) | `/data/models/b1a-028131a0.npz` | `028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8` | — |
+
+Local copies: `~/model-vault/unified-winner/base.npz` and `base-belief.npz` (the hashes above); the release-52
+packages are in `~/model-vault/prod-r52/`.
+
+### `fly.toml` keys
+
+What release 53 changes in release 52's environment (with `SHENGJI_BOT`; every other line byte-identical):
+
+| change | `fly.toml` | name token |
+|---|---|---|
+| belief package (changed) | `SHENGJI_PV_BELIEF_CKPT = '/data/models/ut-all-belief-1b1fd2de.npz'`, `SHENGJI_PV_BELIEF_SHA256 = '1b1fd2de…'` | the play digest and bury suffix move |
+| unified readout package (added) | `SHENGJI_PV_UNIFIED_CKPT = '/data/models/ut-all-97c07be8.npz'`, `SHENGJI_PV_UNIFIED_SHA256 = '97c07be8…'` | `-ushare97c07be8-uvalue97c07be8-ureply97c07be8` |
+| fast readout (added) | `SHENGJI_PV_UNIFIED_FAST = '1'` | `-ufast` |
+
+These are exactly the key names UT-fly-fast's environment diff listed between release 52 and the timed bot (its
+harness's `UTFLY_TREE` aside). Registration loads both packages, sha-checked, and refuses a pair whose trunk arrays
+differ, so a wrong or missing file stops the server at import rather than at a room's first decision.
+
+`server/releases/r53.json` is this env with its stage table: declare as release 52 (G3 A on uniform deals), bury
+on G3 A over worlds from the unified belief package, and lead, follow and endgame on the unified belief package's
+worlds with no served value or prior forward. `test_release_manifests.py` checks that `fly.toml` equals that env
+and that release 53 differs from release 52 only in these lines; its wiring witness, on the real packages, finds
+that table, with one recorded difference: the play records' `model_ids` still name G3 A and FT1, which the bot
+keeps bound but whose forwards no play decision runs (an open record item, not a decision difference).
+`server/tests/test_release53_fly_config.py` builds the served bot from this env on the pinned packages as the
+server does, checks the name and the fast path, plays one lead through `_paced_bot_step` / `_commit_bot_turn` with
+every slot filled from the shared trunk and none left to the served nets, and builds the release-52 rollback.
+
+### What changes at serving time
+
+- **Play worlds.** The unified model's belief head proposes the hidden hands (in place of B1a), at the package's
+  stored temperature; the runtime and the history-legal fallback are release 52's.
+- **Root prior.** The card-play admission's root prior comes from the same trunk forward the belief proposal ran
+  (`ushare`), not from FT1.
+- **Leaf values.** The values of the decision's own-trick leaves come from the unified readout on that forward's
+  card states (`uvalue`); none is left to G3 A in play.
+- **Greedy-finish replies.** The reply shortlist inside the greedy-finished leaf is ranked by the reply readout
+  (`ureply`); none is left to FT1.
+- **Records.** Each play record gains a `unified` entry: the package, shared-forward hits and misses, trunk
+  forwards, value and reply rows it filled and left, and with `ufast` the rows read from the memo.
+- **Bury.** The wide value-only bury still scores on G3 A; its 32 model worlds are now drawn by the unified belief
+  package (`bbw`).
+- **Declaration, search rules, budgets, sc8, lcc off, latency switches.** Release 52's.
+
+### Evidence
+
+Paired, seat-swapped head-to-head duels on the M5 Ultra, the unified bot (arm ALL, without `-ufast`) against
+release 52 as served (its `fly.toml` words), at the 3 s play and 2 s bury budgets, rank-mixed round plan, 300 s play
+cap, under the two-stage duel bar. Each read is judged alone, never pooled. Archives under
+`~/shengji-archive/2026-09-13/readouts/`.
+
+| read | deals | result (release 53 − release 52) | verdict | pointer |
+|---|---|---|---|---|
+| UT-alldata-screen | 3,920 fresh deals, seeds [2636004000, 2636007920) | +0.0573 [+0.0422, +0.0728]; one-sided 80% lower bound +0.0508 | GAIN (screen bar met) | `UT-alldata-screen/` (`ALLS.read.json`, reader `759eb118`) |
+| UT-alldata-confirm | 7,840 fresh deals, seeds [2636008000, 2636015840) | **+0.0521 [+0.0410, +0.0633]**; one-sided 95% lower bound +0.0429 | GAIN (confirmation bar met) | `UT-alldata-confirm/` (`ALLC.read.json`, reader `759eb118`) |
+
+Validity on both sides in both reads: 0 play fallbacks (256,910 and 513,982 decisions per side), 0 bury fallbacks,
+0 declare abandons.
+
+**Launch checks (UT-launch, one look each, descriptive).** Check 1: full-round registry parity on the screened
+packages, 20 rounds on this Mac, PASS (identical decisions, 0 belief and play fallbacks, every root prior from the
+shared forward). VR (release 52 with only the value and reply readouts, B1a and FT1 kept): +0.0475 [+0.018,
++0.0775] on 1,000 deals. MIX (one unified bot and one release-52 partner against two release-52 bots): +0.030
+[−0.0005, +0.059] on 1,000 deals, not flagged. OOD (each pair against SmartBot on the same deals): margin
+difference unified − release 52 +0.0325 [−0.0005, +0.066], not flagged. `UT-launch/` (`LAUNCH.status`, `reads/`).
+
+**Red team (UT-redteam).** Recomputed the three reads from the raw rows; asked for the Fly timing, the package
+upload, full-round parity and the opponent-fit and mixed-partner checks, which UT-fly-fast and UT-launch answer.
+Its open risks stay on the watch list: failed throws up (5.3% of the unified side's leads against 4.1%), belief
+calibration (0.9985 against B1a's 0.9878), the banker conceding more kitty bonus, and rank-2 rounds gaining about
+half as much (+0.034 against +0.068). `UT-redteam/SUMMARY.md`.
+
+These are duel-host reads against release 52 built from its `fly.toml` words on the screen tree; **the strength of
+release 53 on Fly and against human partners is not measured.**
+
+### Latency
+
+| read | what | result | pointer |
+|---|---|---|---|
+| UT-fly-fast (production machine, performance-1x 2 GB, 0 rooms, one game, k=1) | play decisions, unified with `-ufast` (B) vs release 52 as served (A) on the identical states | 356 plays: mean ratio B/A **0.992× [0.981, 1.004]**; B p95 0.829 / p99 0.947 / max 1.528 s vs A 0.849 / 1.003 / 1.726 s; 0 play-budget and 0 belief fallbacks either side; 6 buries 0.83–0.94 s, no bury fallback; worker memory high-water mark 139 vs 143 MB; `unified.shared` 1 on every play | `UT-fly-fast/RESULTS.md` (predeclare `bcedf8fd`) |
+| UT-fly-timing, first run (same machine and method) | the same bot without `-ufast` | mean ratio 1.126× [1.110, 1.142]: the reason the fast path ships | the first run's `RESULTS.md` (job-local) |
+
+One four-minute window, first rounds only, k=1: **latency with 2 or more concurrent games on Fly is not measured**.
+
+### Pre-deploy smoke (release tree, this host)
+
+`smoke_release45_bury.py --rounds 10 --full-round` on the release branch (commit `578d6d61`: this PR's `fly.toml`
+and `served_config` change on main `ae121726`; the later commits change tests, CI and docs only) with sha-verified
+local packages (the two unified packages, G3 A, FT1, JS-M1), Mac mini M4, compiled engine, 2026-11-19 02:47–02:49Z (smoke53b beside a release-manifest wiring run on the same host).
+Archived in `~/shengji-archive/2026-11-18-r53-smoke/` with `SHA256SUMS` (`32aee421…`; receipts `smoke53.jsonl`
+`13b4c682…`, `smoke53b.jsonl` `93ace303…`). Every receipt's bot is the release-53 name above, class
+`SingletonChallengerBuryBot`, `bot.files` unified `97c07be8`, belief `1b1fd2de`, value `f4f4127e`, prior
+`1fa201b2`, JS-M1 `0d17fd03`, compiled engine.
+
+| run | validator | buries (belief worlds, bury-belief fallbacks) | plays, belief fallbacks | exact-eligible leads + follows, abandons, fallbacks | exact-lead stage s p50/p95/max | decision s p95/max | unified slots |
+|---|---|---|---|---|---|---|---|
+| smoke53 | PASS | 10 (10, **1**: the first bury's cold belief preparation, 286 ms over the 0.25 s limit) | 660, 0 | 54 + 103, 0, 0 | 0.013/0.722/1.413 | 0.183/1.434 | 660 of 660 records, shared 660, missed 0, value and reply rows left to the served nets 0 |
+| smoke53b (repeat) | PASS | 10 (10, 0) | 660, 0 | 54 + 103, 0, 0 | 0.012/0.540/1.467 | 0.184/1.487 | as smoke53 |
+
+Both runs: no `lcc` status; `sc8` applied on 32 leads; every exact lead that reached the stage used the minimax
+first trick (46 of 46); 33 value declarations; 0 decisions at 3 s. The first-bury fallback in smoke53 did not repeat
+in smoke53b: it is the documented cold-boot case (Release checklist, step 9), as in release 52's smoke. These are
+M4 timings, not Fly's.
+
+### Watch list
+
+Release 52's rows of the first-room rollback triggers (Release checklist, step 9). New for release 53: every play
+record carries a `unified` entry with `shared` 1, `missed` 0 and `value_left` / `reply_left` 0 (anything else means
+a slot fell back to the served nets; examine); belief fallbacks and `belief_ms` with the unified belief package;
+bury-belief fallbacks; the failed-throw share of the bot's leads (red team: 5.3% against 4.1% in the duels); budget
+fallbacks and decision p95 with 2 or more concurrent games, which are unmeasured.
+
+### Release note: what a player will notice
+
+- **A stronger bot.** The bot reads hidden hands, ranks its candidate plays and judges the trick in front of it
+  with one new model trained on all our self-play data.
+- **Same thinking time.** On the production machine it decides as fast as before.
+- **Bolder throws, sometimes.** In testing it tried throws that fail a little more often than before.
+
+## Rollback
+
+### To release 52 (the rollback target)
+
+Release 52 as served before release 53: Fly v115, image `registry.fly.io/shengji:deployment-01M7QEB5RXY4D7MYN0CEGN4BHX`,
+built from the deploy tree `claude/deploy-ui35` at `dcd5791b575d5dab1962bfabd11ac5e8e11e751f` (release 52's
+`99338c7e` bot code with main's web, api files and `fly.toml` from `505cdc61`, on the performance-1x 2 GB machine).
+Its packages are on the volume (keep B1a). Release 52's served name:
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8
+```
+
+**Option 1, restore v115's image and configuration** (no build). An image-only deploy still applies the caller's
+`fly.toml`, so main's release-53 `fly.toml` would ask v115's code for the unified package it does not have. Prepare
+this rollback pair before deploying release 53, from a clean worktree of main with its Python environment installed:
+
+```bash
+rollback_dir=$(mktemp -d "$HOME/shengji-archive/r52-rollback.XXXXXX")
+rollback_config="$rollback_dir/fly.toml"
+rollback_image='registry.fly.io/shengji:deployment-01M7QEB5RXY4D7MYN0CEGN4BHX'
+git show dcd5791b575d5dab1962bfabd11ac5e8e11e751f:fly.toml > "$rollback_config"
+PYTHONPATH=server server/.venv/bin/python - "$rollback_config" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+from shengji import releases
+
+config = Path(sys.argv[1])
+assert hashlib.sha256(config.read_bytes()).hexdigest() == (
+    "46d0d1832336ffd66a9b837f96593501970acbd645e0c08fca650ad60dd7be9f"
+)
+env = releases.fly_env(config)
+r52 = releases.load(52)
+assert env == r52["env"]
+assert env["SHENGJI_BOT"] == r52["bot_name"]
+assert not any(key.startswith("SHENGJI_PV_UNIFIED_") for key in env)
+assert env["SHENGJI_PV_BELIEF_SHA256"].startswith("028131a0")
+print("Verified release-52 rollback configuration:", config.resolve())
+PY
+```
+
+Stop if extraction or verification fails. Confirm the recorded v115 image against `fly releases -a shengji --image`
+and keep the absolute config path and image in the deploy record. If that image is unavailable, stop and prepare a
+separately reviewed replacement; do not substitute main's config.
+
+Only on Jerry's rollback decision, at 0 rooms (or his explicit instruction to drop idle rooms), execute the paired
+rollback; this command is not part of preparation:
+
+```bash
+flyctl deploy --app shengji --ha=false --config "$rollback_config" --image "$rollback_image"
+```
+
+Afterward `/healthz` must be healthy, compiled and show the exact release-52 name above, with value `f4f4127e…`; the
+in-machine check (Release checklist, step 8) on `/data/models/b1a-028131a0.npz` must print `True compiled 028131a0`.
+Record the new Fly version and both the image and config used; no automatic rollback or retry is implied.
+
+**Option 2, rebuild release 52 from main's tree with release 52's `fly.toml`:** not prepared. Main carries bot-path
+commits that release 52's served tree does not; use Option 1.
+
+#### Release 52 record
+
 **Release 52**: release 51 with the combo51 search rules. The exact lead keeps the baseline lead unless the exact
 pass is strictly better (`elt`), solves its own first trick by full minimax (`elm`) and stops at 1.6 s
 (`els1600`); the play worlds keep every earlier accepted throw legal (`wht`); refusals are recorded from every
 committed play (`rcec`). Same packages, same stage table (`server/releases/r52.json`), and sc8, lcc off, every other
-rule, every budget and the latency switches are release 51's. Live since 2026-11-09 17:25 EST (22:25Z, Fly v64);
-the first-room qualification (Release checklist, steps 9–10) is pending the first live room. Release 51's record is
-under "Rollback".
+rule, every budget and the latency switches are release 51's. Production from 2026-11-09 17:25 EST (22:25Z, Fly
+v64) until release 53's deploy; later deploys through Fly v115 rebuilt it with main's web client, api files and
+`fly.toml` on release 52's `99338c7e` bot code, with the same served name.
 
 | field | value |
 |---|---|
@@ -62,11 +301,11 @@ the play token, and the play digest (`r30ff6f0f` → `r12e81e0c`) and the bury s
 move with the play identity. It is byte for byte the exploiter name combo51 and combo51C duelled against release 51
 (`test_release52_fly_config.py` derives it from the `/data/models/` paths and builds it on the pinned packages).
 
-### Packages
+##### Packages
 
 Release 50's, unchanged; nothing to upload.
 
-### `fly.toml` keys
+##### `fly.toml` keys
 
 | change | `fly.toml` | name token |
 |---|---|---|
@@ -83,7 +322,7 @@ one at SDUS round 2 trick 14 inside it, where the exact stage completes with the
 builds the release-51 rollback. `test_release_manifests.py` checks that `fly.toml` equals `r52.json`'s env and that
 release 52 differs from release 51 only in these lines and the name.
 
-### What changes at serving time
+##### What changes at serving time
 
 - **Exact leads (7 cards or fewer).** The exact stage plays each candidate's own first trick by minimax instead of
   finishing it with the heuristic; it replaces the searched lead only when the exact mean is strictly higher; and it
@@ -94,7 +333,7 @@ release 52 differs from release 51 only in these lines and the name.
   (`api.server._observe_committed_play`), not only on its own turns, so the refusal constraint (`rc`) misses none.
 - **Follows, declaration, bury.** Unchanged.
 
-### Evidence
+##### Evidence
 
 Paired, seat-swapped head-to-head duels on the M5 Ultra, release 51 + the five lines against release 51 (the Fly v61
 bot, lcc off on both sides), at the 3 s play and 2 s bury budgets, under the two-stage duel bar. Each read is judged
@@ -111,7 +350,7 @@ range), +0.0249 of the +0.0438 together. These are
 duel-host reads; **the strength of release 52 on Fly is not measured**, and its Fly latency is measured for one
 game at a time only (Latency, below).
 
-### Latency
+##### Latency
 
 | read | what | result | pointer |
 |---|---|---|---|
@@ -124,7 +363,7 @@ expected to be higher on Fly. In the single-game Fly run none of the 16 started 
 0.75 s); 16 stages do not settle the cap rate, and with concurrent games or under the CPU-credit throttle it is not
 measured. Jerry chose to ship on the single-game read.
 
-### Pre-deploy smoke (release tree, this host)
+##### Pre-deploy smoke (release tree, this host)
 
 `smoke_release45_bury.py --rounds 10 --full-round` on the release branch (commit `fa190d03`, clean; `fly.toml`,
 `server/` and `Dockerfile` as in the PR head) with sha-verified local packages (the three release-50
@@ -147,7 +386,7 @@ abandon per run is the same lead, at the designed 1.6 s cap, and plays the searc
 first-bury fallback in smoke52 did not repeat in smoke52b (first bury 19.7 ms) or the control: it is the documented
 cold-boot case (Release checklist, step 9), on a contended host.
 
-### Watch list
+##### Watch list
 
 Release 51's rows of the first-room rollback triggers (Release checklist, step 9). New for release 52: the
 exact-lead tail. Record the share of started exact-lead stages that abandon (`exact_lead_status == "abandoned"`,
@@ -155,16 +394,14 @@ reason `soft_budget` at the cap) and the exact-lead decision p95/max; any other 
 latency with 2 or more concurrent games is unmeasured: read decision p95/max and fallbacks from the first rooms that
 overlap.
 
-### Release note: what a player will notice
+##### Release note: what a player will notice
 
 - **Stronger endgame leads.** With 7 or fewer cards the bot leads after solving the whole trick, not a heuristic
   guess of it, and keeps its searched lead unless the solve finds a strictly better one.
 - **Slower endgame leads, sometimes.** Those leads can take up to about 1.6 s of thinking.
 - **Fewer impossible card reads.** The bot no longer imagines hands that contradict a throw that stood.
 
-## Rollback
-
-### To release 51 (the rollback target)
+### To release 51
 
 Release 51 as served before release 52: Fly v63 (web-only redeploy of release 51 with main's client, tree
 `claude/deploy-r51-web-ios` at `ae1ef0abfb41ad63cf6c987d8ffd30f55722696c`), whose bot is the one Fly v61 first
@@ -975,6 +1212,31 @@ package: step 2's upload is skipped, its smoke receipt is `smoke52.jsonl`, step 
 `test_release52_fly_config.py`, and in step 3 an exact-lead abandon with reason `soft_budget` at the 1.6 s cap is
 the designed stop (it plays the searched lead), not a failure; any other abandon reason fails the smoke.
 
+Release 53 adds two packages and five `fly.toml` lines; its commands, in step order:
+
+- Step 1 adds `test_release53_fly_config.py`, the release-53 wiring witness in `test_release_manifests.py` and
+  the screened-pair cases of `test_unified_serving.py`, all on the two new `serving-packages` assets (the
+  package-gate fetch steps). Upload the assets before that CI run:
+  `gh release upload serving-packages -R jerryyyu/shengji <dir>/ut-all-97c07be8.npz <dir>/ut-all-belief-1b1fd2de.npz`,
+  where `<dir>` holds `~/model-vault/unified-winner/base.npz` and `base-belief.npz` copied under those names and
+  `shasum -a 256` matches Current production, Packages; then
+  `gh release view serving-packages -R jerryyyu/shengji --json assets -q '.assets[] | "\(.name) \(.digest)"'`
+  must list both with those sha256s.
+- Step 2 puts both files on the volume:
+  `put <dir>/ut-all-97c07be8.npz /data/models/ut-all-97c07be8.npz` and
+  `put <dir>/ut-all-belief-1b1fd2de.npz /data/models/ut-all-belief-1b1fd2de.npz` in `fly ssh sftp shell -a shengji`,
+  then `fly ssh console -a shengji -C "sha256sum /data/models/ut-all-97c07be8.npz /data/models/ut-all-belief-1b1fd2de.npz /data/models/b1a-028131a0.npz"`
+  must print the three hashes (B1a stays for the rollback).
+- Step 3 maps the two new volume paths with `--map` beside G3 A, FT1 and JS-M1 (no B1a map) and writes
+  `smoke53.jsonl`; besides step 3's bar, every play record's `unified` entry must show `shared` 1, `missed` 0,
+  `value_left` 0 and `reply_left` 0.
+- Step 6 deploys from main's merge commit of the release PR, from a clean worktree at that commit (the unified
+  serving code is on main only). Prepare the release-52 rollback pair first (Rollback, To release 52).
+- Step 7: `bot` is the release-53 name; value `f4f4127e…` and prior `0d17fd03…` as before.
+- Step 8 reads the new belief package: replace the path and sha with `/data/models/ut-all-belief-1b1fd2de.npz`
+  and `1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4`; it must print `True compiled 1b1fd2de`.
+- Step 9 adds the unified slots' line (Watch list).
+
 **Before the deploy**
 
 1. **Review and CI.** A non-author PASS on the release PR at its exact head, and all CI checks green. The
@@ -1022,9 +1284,9 @@ the designed stop (it plays the searched lead), not a failure; any other abandon
 **Deploy**
 
 6. From a clean worktree at the merge commit, when the room count is 0 (or on Jerry's word to drop idle rooms):
-   `fly deploy --ha=false`. Release 52 deploys from the release PR's reviewed head instead: its base is release
-   51's `1490b72b`, so main's merge commit would also carry main's later, unscreened bot-path commits (Current
-   production, Source).
+   `fly deploy --ha=false`. Release 52 deployed from the release PR's reviewed head instead: its base was release
+   51's `1490b72b`, so main's merge commit would also have carried main's later, unscreened bot-path commits.
+   Release 53 deploys from main's merge commit (Current production, Source).
 
 Web-only deploys: `server/scripts/deploy_web_only.sh`.
 
@@ -1075,6 +1337,10 @@ Web-only deploys: `server/scripts/deploy_web_only.sh`.
    # release 50: the bury's belief worlds (bbw), from the bury bot_timing events
    bt = [r for r in rows if r.get("e") == "bot_timing" and r.get("phase") == "bury"]
    print(f"buries {len(bt)} bbw {sum('bury_belief_fallbacks' in r for r in bt)} bury-belief fallbacks {sum(r.get('bury_belief_fallbacks') or 0 for r in bt)} bury fallbacks {sum(r.get('bury_search_status') == 'fallback' for r in bt)}")
+   # release 53: the unified slots, one entry per play record
+   u = [x.get("unified") for x in d]
+   off = [x for x in u if not x or x.get("shared") != 1 or x.get("missed") or x.get("value_left") or x.get("reply_left")]
+   print(f"unified records {sum(1 for x in u if x)}/{len(d)} off-slot {len(off)} packages {sorted({x['package'] for x in u if x})}")
    EOF
    ```
    Belief fallbacks count decisions with any failed draw, including lead-confirmation and adaptive draws,
@@ -1094,6 +1360,7 @@ Web-only deploys: `server/scripts/deploy_web_only.sh`.
    | `lcc` abandons with a reason other than `leaf_deadline` (releases 49–50) | any (examine each) |
 | any `lead_confirm_status` record (release 51) | any (the stage is off; examine) |
    | bury-belief fallbacks (release 50) | any (examine each; the bury then used the split sampler's worlds) |
+   | unified slots off (release 53): a play record without the `unified` entry, or with `shared` ≠ 1, `missed`, `value_left` or `reply_left` > 0 | any (examine each) |
    | decisions at the 3 s budget | two or more in the first room (examine any one) |
    | bury budget fallbacks | `cwv-bury-fallback-v1` above a few percent |
 
@@ -1130,6 +1397,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
+| 53 | DEPLOY-DATE-PENDING | the all-data unified model on release 52: one trunk forward for the belief proposal and root prior (`ushare`), the readout for own-trick leaf values (`uvalue`) and greedy-finish replies (`ureply`), fast path on (`ufast`); duels vs release 52 on the M5 Ultra: UT-alldata-screen +0.0573 [+0.0422, +0.0728], UT-alldata-confirm +0.0521 [+0.0410, +0.0633] (7,840 fresh deals); Fly: UT-fly-fast 0.992× release 52, one game | new unified `97c07be8…`, belief `1b1fd2de…` | PR-PENDING | FLY-VERSION-PENDING, IMAGE-PENDING, main MERGE-SHA-PENDING |
 | 52 | 2026-11-09 17:25 EST | combo51 on release 51: exact lead keeps the baseline on ties (`elt`), minimax first trick (`elm`), 1.6 s cap (`els1600`), history-legal throws in the play worlds (`wht`), event-complete refusals (`rcec`); duels vs release 51 on the M5 Ultra: combo51 +0.0418 [+0.0332, +0.0506] SCREEN_PASS, combo51C +0.0438 [+0.0381, +0.0497] CONFIRMED (7,840 fresh deals); Fly: single-game timing only, strength not measured | flags | #1347 | v64, `deployment-01M716JX8M23QWSN0RTM7T20HR`, head `99338c7e` |
 | 51 | 2026-11-06 (Fly v61) | release 50 with the held-out lead confirmation off (`SHENGJI_PV_LEAD_CONFIRM = '0'`); lccC (off − on) −0.0133 [−0.0232, −0.0033] on cloud, loo +0.0079 [−0.0069, +0.0221]; S91: CPU per play ×0.55 on Fly | flag | #1312 | `deployment-01M6QW43KBFT3ZDDZWM298WPM3` (v61) |
 | 50 | 2026-11-04 15:24 EST | the cbaC stack: G3 Stage A value + FT1 card-play prior + B1a belief + belief bury worlds (`bbw`) on release 49; evidence [cbaC](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629156672) (audit [6629239690](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6629239690)), [cbaf](https://github.com/jerryyyu/shengji/pull/1171#issuecomment-6637319197), rtF; latency: the R50 speed profile, Fly timing pending | new value `f4f4127e…`, prior `1fa201b2…`, belief `028131a0…` | #1260 | v57, `deployment-01M6M3PX2A43CPZ65RBQPRY8AB` |

@@ -20,7 +20,7 @@ import pytest
 from shengji.rl.replay_log import rebuild_round
 from shengji.train import pv_search_policy as pv
 from shengji.train.pv_tree_config import PVTreeConfig
-from test_release46_fly_config import fly_env as production_env
+from test_release46_fly_config import fly_env as served_env, release52_env
 from test_release50_fly_config import (BELIEF_SHA, BELIEF_VOLUME_PATH, PRIOR_SHA,  # noqa: F401
                                        PRIOR_VOLUME_PATH, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages, served_bot)
@@ -32,6 +32,12 @@ LSP150 = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-t
           "dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-lsp150-r5a44eca8-bury-"
           "hybrid-bwv-bbw-c5d1c7ffa049-sc8")
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "point_leak_counters.py"
+
+
+def release52_fly_env() -> dict:
+    """Release 52's ``fly.toml`` ``[env]``: the repo's with release 53's rollback applied."""
+    return release52_env(served_env())
+
 
 
 def counters():
@@ -48,7 +54,7 @@ def names(monkeypatch, extra):
                BELIEF_VOLUME_PATH: BELIEF_SHA}
     monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: by_path[str(path)][:8])
     monkeypatch.setattr(pv, "file_sha256", lambda path: by_path[str(path)])
-    return list(pv.singleton_registry_entries(**pv.pv_env_recipe({**production_env(), **extra})))
+    return list(pv.singleton_registry_entries(**pv.pv_env_recipe({**release52_fly_env(), **extra})))
 
 
 def position(label, drop_last=0):
@@ -91,13 +97,13 @@ def test_on_adds_its_token_and_digests_its_margin(monkeypatch):
     assert payload["last_seat_points"] == {"margin_milli": 150, "rule": pv.LAST_SEAT_POINTS_RULE_ID}
     other = pv.recipe_digest(pv.PVSearchConfig(checkpoint_sha256=sha, last_seat_points_milli=100))
     assert other != pv.recipe_digest(pv.PVSearchConfig(checkpoint_sha256=sha, last_seat_points_milli=150))
-    assert pv.pv_env_recipe({**production_env(), FLAG: "0.15"})["last_seat_points_milli"] == 150
+    assert pv.pv_env_recipe({**release52_fly_env(), FLAG: "0.15"})["last_seat_points_milli"] == 150
 
 
 @pytest.mark.parametrize("raw", ["abc", "0.0005", "1.5", "-0.1", "inf", "nan"])
 def test_env_refuses_a_bad_margin(raw):
     with pytest.raises(pv.PVSearchPolicyError):
-        pv.pv_env_recipe({**production_env(), FLAG: raw})
+        pv.pv_env_recipe({**release52_fly_env(), FLAG: raw})
 
 
 @pytest.mark.parametrize("milli", [True, 1001, -5, 1.5, "150"])
@@ -171,7 +177,7 @@ def test_served_bot_exact_follow_reranks_from_the_rule(release50_packages, monke
     exact follow stage runs): the rule's choice is the exact stage's baseline and
     the played card is the exact stage's winner."""
     rnd, case = position("C")
-    env = {**production_env(), FLAG: "0.15", "SHENGJI_BOT": LSP150}
+    env = {**release52_fly_env(), FLAG: "0.15", "SHENGJI_BOT": LSP150}
     name, bot = served_bot(release50_packages, monkeypatch, env=env)
     assert name == bot.policy_name == LSP150
     bot.serving_budget_seconds = 600.0

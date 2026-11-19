@@ -3256,8 +3256,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
          shorter side (--u is 1px on an 880x640 screen);
        - the hand runs edge to edge: the card comes from the screen's width,
          and the pitch closes up only when the row would not fit;
-       - the trick cross takes its card from the hand's and stands between the
-         top seat and your row, the side seats level with its centre.
+       - the trick cross's card is as large as the height between the top
+         seat and your row allows, the side seats level with its centre; the
+         hand gives up to a fifth of its card where that lets it grow.
      phoneLayout.ts sets the class only on a touch screen at least 810x740
      (TABLET_SCREEN): from there the cross keeps a six-card trick's cards at
      the wide table's 52px or more. A mouse-driven browser and a smaller
@@ -3267,24 +3268,41 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     --u: clamp(1px, min(calc(100vw / 880), calc(100dvh / 640)), 1.5px);
     --safe-b: env(safe-area-inset-bottom, 0px);
     --hand-w: calc(100vw - 48px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
-    --hcw: clamp(72px, min(9.2vw, 13dvh), 126px);
     /* the header bar, then the felt */
     --hud-h: calc(60px + env(safe-area-inset-top, 0px));
     /* the top seat's panel ends here, from the felt's top, with its
        "their turn" line showing */
     --seat-b: calc(146 * var(--u));
-    /* your area: the hand, the controls, your name and the gaps between */
+    /* your area less the hand: the controls, your name and the gaps between */
     --row-h: max(calc(38 * var(--u)), 48px);
-    --you-h: calc(var(--hcw) * 1.4 + 74 * var(--u) + var(--row-h) + 12px + var(--safe-b));
-    --cross-avail: calc(100dvh - var(--hud-h) - var(--seat-b) - var(--you-h) - 24px);
+    --you-rest: calc(74 * var(--u) + var(--row-h) + 12px + var(--safe-b));
+    /* the trick cross's height with no hand at all, and what its two stacked
+       plays need besides their cards: the tag line between them and a
+       winner's lift */
+    --cross-room: calc(100dvh - var(--hud-h) - var(--seat-b) - var(--you-rest) - 24px);
+    --tag-room: calc(38 * var(--u));
+    /* the widest a trick card may be before a four-card throw in a side slot
+       leaves that side's seat panel too narrow for a crowned name and its
+       BOT tag; a smaller screen keeps the card it had, seat panels at their
+       narrowest */
+    --tcw-side: max(calc((50vw - 30px - 170 * var(--u)) / 4.3),
+      min(calc((50vw - 30px - 150 * var(--u)) / 4.3), calc(var(--hcw-full) * 0.72)));
+    /* The hand's card comes from the screen's width, and gives up to a fifth
+       of it where the height that frees lets the trick cards grow: never
+       below the size at which they would reach the side seats. */
+    --hcw-full: clamp(72px, min(9.2vw, 13dvh), 126px);
+    --hcw: clamp(calc(var(--hcw-full) * 0.8),
+      calc((var(--cross-room) - var(--tag-room) - 2.8 * var(--tcw-side)) / 1.4),
+      var(--hcw-full));
+    --you-h: calc(var(--hcw) * 1.4 + var(--you-rest));
+    --cross-avail: calc(var(--cross-room) - var(--hcw) * 1.4);
     --cross-mid: calc((var(--seat-b) + 100% - var(--you-h)) / 2);
-    /* A trick card is as large as the hand's allows, unless the top and
-       bottom plays, each with its tag line, and a winner's lift would not fit
-       between the top seat and your row, or a four-card throw in a side slot
-       would reach that side's seat panel. */
-    --tcw: min(calc(var(--hcw) * 0.72),
-      calc((var(--cross-avail) - 41 * var(--u) - 12px) / 2.8),
-      calc((50vw - 30px - 150 * var(--u)) / 4.3));
+    /* A trick card is as large as the top and bottom plays, their tag line
+       and a winner's lift fit between the top seat and your row, up to the
+       side seats' limit and the hand's own card. */
+    --tcw: min(var(--hcw),
+      calc((var(--cross-avail) - var(--tag-room)) / 2.8),
+      var(--tcw-side));
   }
 
   .hand {

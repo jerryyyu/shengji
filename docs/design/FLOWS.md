@@ -30,7 +30,7 @@ this spec wins.
 - Everyone taps Start ("N of M ready"). The opener gets Start now after 30 s.
 - Starting level is the opener's only. When the opener leaves, their controls pass to the next person and
   the table stays open.
-- A created room has no Ranked switch: ranked play is the queue's.
+- A created room has no Ranked switch: ranked play is the queue's, and Continue on a saved ranked game's.
 - The created room's lobby controls are retired (Jerry 2026-11-14): Add bot, Remove bot, Remove player, the
   host's seat swap, the room's Start taps and Start now, and the room's Starting level after creation. An
   out-of-date page that sends one is refused as out of date. A refused start returns the creator to Play.
@@ -301,6 +301,15 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
   levels and today's rating change, then ›. The game's page holds the one gold Continue and a Replay for each
   round; the game-level Replay is gone (it opened round 1, as round 1's Replay does). Replaying a round is
   Me → Games → game → round.
+- **Continue keeps one game, ranked if it was ranked** (Jerry 2026-11-19: "If it's a ranked game, I think it
+  should continue as ranked. It also made a separate game."). Continue opens a new table, you in your seat
+  and bots in the others, that carries on the same saved game: its rounds number on from the game's latest
+  finished round, and the game's row and page cover every round, the levels and the rating change at every
+  table it was played at (was a new, separate game row, always unranked). A ranked game continues as a
+  ranked table under the queue's rules: rated rounds and the round-end rating line, the move timer, the
+  leaver rules and the bot anchor, joins through the queue, the same Ranked chip; it is refused while the
+  account plays another ranked game or waits out a queue cooldown. A casual game continues casual. A game
+  still being played at a table, its own or a continuation, cannot be continued. No new surface or string.
 - **A guest's Me: one row for who you are.** The row is the name with a chevron and opens the identity sheet
   (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
   where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged.

@@ -401,8 +401,8 @@ class Room:
     # The running game's rating state (``ratings.RoomRatings``), or None.
     # Server-only: a state frame carries only the receiving seat's own line.
     ratings: Any = field(default=None, init=False, repr=False)
-    # Built by the matchmaking queue rather than by a player's create_room:
-    # the only rated room (``ratings.ranked``).
+    # Built by the matchmaking queue, or by Continue on a saved game that was
+    # ranked: the only rated room (``ratings.ranked``).
     matched: bool = False
     # The waiting table this matched room was formed from (its id; None for
     # a game one entry started alone with bots) and how many people sat at
@@ -445,7 +445,8 @@ class Room:
     closing_bot: Any = field(default=None, init=False, repr=False)
     # A table continuing a saved game: the ``saved_games.resume_point`` its
     # creator's account was given, applied once at ``start_game`` (both
-    # teams' levels and the first banker). Server-only.
+    # teams' levels, games won and the first banker); its game id keeps the
+    # table on the same saved game. Server-only.
     resume: dict | None = field(default=None, repr=False)
     # Built by the matchmaking queue, ranked (``matched``) or casual: a game
     # one entry started alone tells its people of its first newcomer.
@@ -2223,6 +2224,7 @@ def _start_game(room: Room) -> None:
         # table exactly where the saved game left off.
         room.game.level_idx = [RANKS.index(level) for level in room.resume["levels"]]
         room.game.banker = room.resume["banker"]
+        room.game.games_won = list(room.resume.get("games_won") or (0, 0))
     ACTIVITY.games_started += 1
     room.game.start_round()
     room.index_round()
@@ -2360,11 +2362,40 @@ async def _start_created_room(room: Room, me: Seat) -> None:
 
 async def _resume_point(user_id: int | None, game_id: Any) -> dict | None:
     """The ``create_room`` ``resume_from`` option: a saved game of the
-    signed-in caller's own account, in an ordinary room. None refuses it
-    (a guest, another account's game, an unknown id, no level data)."""
+    signed-in caller's own account. None refuses it (a guest, another
+    account's game, an unknown id, no level data)."""
     if user_id is None or not isinstance(game_id, str):
         return None
     return await accounts.STORE.run(saved_games.resume_point, user_id, game_id)
+
+
+def _resume_refusal(resume: dict, user_id: int) -> dict | None:
+    """Why the saved game ``resume`` names may not continue now (an
+    ``error`` frame), or None. Any table still playing that game refuses it,
+    so one game never runs at two tables. A ranked game keeps the queue's
+    rules: not while the account plays another ranked game, nor during its
+    queue cooldown. Read with no await before the room is registered, so two
+    Continues of one game cannot both pass."""
+    game_id = resume["game_id"]
+    for room in rooms.values():
+        link = room.saved_game
+        if ((link is not None and link.id == game_id)
+                or (room.resume is not None and room.resume.get("game_id") == game_id)):
+            return {"type": "error", "code": "resume_unavailable",
+                    "message": RESUME_UNAVAILABLE_MESSAGE}
+    if not resume.get("ranked"):
+        return None
+    if _account_playing(user_id) is not None:
+        return {"type": "error", "code": "resume_unavailable",
+                "message": ACCOUNT_PLAYING_MESSAGE}
+    until = MATCHMAKER.cooldowns.get(user_id, 0.0)
+    if until > MATCHMAKER.clock():
+        return {"type": "error", "code": "cooldown", "message": INVITE_REFUSALS["cooldown"],
+                "cooldown_until": until}
+    return None
+
+
+RESUME_UNAVAILABLE_MESSAGE = "That game can't be continued."
 
 
 # A guest's device key, ``?device=`` on the socket URL: a random 128-bit
@@ -2462,20 +2493,29 @@ async def _create_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | N
         resume = await _resume_point(account_id(), msg.get("resume_from"))
         if resume is None:
             await send(ws, {"type": "error", "code": "resume_unavailable",
-                            "message": "That game can't be continued."})
+                            "message": RESUME_UNAVAILABLE_MESSAGE})
             return None
+    uid = account_id()
     refused = _room_refusal(caller.ip)
+    if refused is None and resume is not None:
+        refused = (_resume_refusal(resume, uid) if uid is not None
+                   else {"type": "error", "code": "resume_unavailable",
+                         "message": RESUME_UNAVAILABLE_MESSAGE})
     if refused is not None:
         await send(ws, refused)
         return None
+    # A ranked saved game continues as a ranked table, as the queue builds
+    # one: rated rounds, the move timer, the leaver rules and queue-only
+    # joins.
+    ranked = bool(resume is not None and resume.get("ranked"))
     room = Room(code=new_code(), start_level=start_level, resume=resume,
-                origin_ip=caller.ip)
+                origin_ip=caller.ip, matched=ranked, move_timer=ranked, queued=ranked)
     rooms[room.code] = room
     # Through _attach, as every seat: it bumps the generation and issues
     # the resume token, so the creator has an identity and an overlapping
     # refresh takes this seat back rather than adding a second one.
-    me = Seat(name=player_name(msg.get("name")), user_id=account_id(),
-              device=device)
+    me = Seat(name=player_name(msg.get("name")), user_id=uid,
+              device=device, queue_id=uid if ranked else None)
     if resume is None:
         room.seats.append(me)
     else:

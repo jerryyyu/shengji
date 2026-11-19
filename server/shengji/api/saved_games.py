@@ -2,7 +2,16 @@
 
 The room log stays the source of truth and never carries an account id; the
 accounts database holds only which account sat at which seat for which
-rounds, plus a small summary (``accounts.SCHEMA`` version 3).
+rounds, plus a small summary (``accounts.SCHEMA`` version 3) and, for a game
+continued at a new table, where each continuation's log starts (version 9).
+
+Continuations. Continue on a saved game opens a new table that carries on
+the same saved game (``resume_point``): its link keeps the game's id and
+numbers its rounds on from the game's latest finished round, so the game
+list shows one game whose rounds, levels and rating change cover every
+table it was played at. The new table's own log still counts its rounds from
+1 (``GameLink.round_offset`` maps them); the read side finds each game round
+in the log of the table that played it.
 
 Link side. ``start`` runs when a table starts, ``seat_changed`` when a
 seat's account changes mid-game, ``round_started``/``round_ended`` at the
@@ -84,11 +93,19 @@ class GameLink:
     open: dict[int, int] = field(default_factory=dict)
     # the latest round_end summary, replayed into a row created after it
     last_result: tuple[int, list, list] | None = None
+    # A continuation: the game rounds already played before this table, so
+    # this table's round n is game round n + round_offset.
+    round_offset: int = 0
 
     def header(self) -> dict:
         return {"id": self.id, "room_code": self.room_code, "log_file": self.log_file,
                 "log_offset": self.log_offset, "started_at": self.started_at,
-                "last_round": self.last_round, "incomplete": self.incomplete}
+                "last_round": self.last_round, "incomplete": self.incomplete,
+                "first_round": self.round_offset + 1}
+
+    def game_round(self, room: Any) -> int:
+        """The room's current round as a round of the saved game."""
+        return (room.game.round_no if room.game is not None else 1) + self.round_offset
 
 
 def new_game_id() -> str:
@@ -173,10 +190,9 @@ def _open(room: Any, link: GameLink, seat: int, user_id: int, from_round: int) -
         _maybe_purge()
 
 
-def _boundary(room: Any) -> tuple[int, int]:
+def _boundary(room: Any, link: GameLink) -> tuple[int, int]:
     """(round a closing link ends at, round an opening link starts at)."""
-    game = room.game
-    current = game.round_no if game is not None else 1
+    current = link.game_round(room)
     finished = room.round is not None and room.round.phase == "round_end"
     return current, current + 1 if finished else current
 
@@ -184,14 +200,19 @@ def _boundary(room: Any) -> tuple[int, int]:
 @_guarded
 def start(room: Any, round_start_offset: int | None, training_root: Path) -> None:
     """At ``start_game``, after round 1's ``round_start`` was logged at
-    ``round_start_offset`` (None when that write failed)."""
+    ``round_start_offset`` (None when that write failed). A table continuing
+    a saved game (``room.resume``) links to that game from the round after
+    its latest finished one."""
     room.saved_game = None
     if not eligible(room, training_root):
         return
-    link = GameLink(id=new_game_id(), room_code=room.code, log_file=f"{room.code}.jsonl",
+    resume = getattr(room, "resume", None) or {}
+    offset = int(resume["first_round"]) - 1 if "game_id" in resume else 0
+    link = GameLink(id=resume["game_id"] if offset else new_game_id(), room_code=room.code,
+                    log_file=f"{room.code}.jsonl",
                     log_offset=round_start_offset, started_at=int(time.time()),
-                    last_round=room.game.round_no if room.game is not None else 1,
-                    incomplete=round_start_offset is None)
+                    incomplete=round_start_offset is None, round_offset=offset)
+    link.last_round = link.game_round(room)
     room.saved_game = link
     for seat, occupant in enumerate(room.seats):
         if occupant.user_id is not None and not occupant.is_bot:
@@ -210,7 +231,7 @@ def seat_changed(room: Any, seat: int) -> None:
     old = link.open.get(seat)
     if old == new:
         return
-    closing_round, opening_round = _boundary(room)
+    closing_round, opening_round = _boundary(room, link)
     if old is not None:
         del link.open[seat]
         _submit("close_link", link.id, old, seat, closing_round)
@@ -223,7 +244,7 @@ def round_started(room: Any) -> None:
     link: GameLink | None = getattr(room, "saved_game", None)
     if link is None or room.game is None:
         return
-    link.last_round = max(link.last_round, room.game.round_no)
+    link.last_round = max(link.last_round, link.game_round(room))
     if link.stored:
         _submit("record_round_start", link.id, link.last_round)
 
@@ -233,19 +254,23 @@ def round_ended(room: Any, result: Any) -> None:
     link: GameLink | None = getattr(room, "saved_game", None)
     if link is None or room.game is None:
         return
-    link.last_result = (room.game.round_no, list(result.new_levels), list(result.games_won))
+    link.last_result = (link.game_round(room), list(result.new_levels), list(result.games_won))
     if link.stored:
         _submit("record_round_end", link.id, *link.last_result)
 
 
 @_guarded
 def abort(room: Any) -> None:
-    """A start rolled back before the game began: no account keeps it. The
-    delete queues behind this game's link writes on the same worker."""
+    """A start rolled back before the game began: no account keeps it (a
+    continuation drops only its own segment and links). The delete queues
+    behind this game's link writes on the same worker."""
     link: GameLink | None = getattr(room, "saved_game", None)
     room.saved_game = None
     if link is not None and link.stored:
-        _submit("forget_game", link.id)
+        if link.round_offset:
+            _submit("forget_segment", link.id, link.round_offset + 1)
+        else:
+            _submit("forget_game", link.id)
 
 
 @_guarded
@@ -370,22 +395,61 @@ def _segment(game: dict) -> Segment:
     return seg
 
 
-def _round_records(game: dict, seg: Segment, n: int) -> list[dict]:
-    span = seg.rounds.get(n)
-    if span is None:
+@dataclass
+class GameRound:
+    """Where one round of a saved game is logged: the log (``part``: the
+    ``games`` row or one of its continuation segments), its scan, and the
+    round's number in that log."""
+    part: dict
+    seg: Segment
+    local: int
+
+
+def _parts(game: dict) -> list[dict]:
+    """The game's logs in round order: its own from round 1, then each
+    continuation's from its ``first_round``."""
+    first = {"first_round": 1, "log_file": game["log_file"], "log_offset": game["log_offset"]}
+    return [first, *sorted(game.get("segments") or (), key=lambda p: int(p["first_round"]))]
+
+
+def _game_rounds(game: dict) -> tuple[dict[int, GameRound], bool]:
+    """(game round -> where it is logged, whether a scan stopped at the byte
+    cap). A round a later continuation also numbers is the continuation's:
+    a table continues after the latest finished round, so a round its
+    predecessor left unfinished is replaced."""
+    parts = _parts(game)
+    out: dict[int, GameRound] = {}
+    truncated = False
+    for i, part in enumerate(parts):
+        until = int(parts[i + 1]["first_round"]) if i + 1 < len(parts) else None
+        seg = _segment(part)
+        truncated = truncated or seg.truncated
+        for local in seg.rounds:
+            n = int(part["first_round"]) + local - 1
+            if until is None or n < until:
+                out[n] = GameRound(part, seg, local)
+    return out, truncated
+
+
+def _round_records(where: GameRound | None, n: int) -> list[dict]:
+    """Game round ``n``'s records, numbered as game rounds."""
+    span = where.seg.rounds.get(where.local) if where is not None else None
+    if where is None or span is None:
         return []
-    with open(_log_path(game), "rb") as f:
+    with open(_log_path(where.part), "rb") as f:
         f.seek(span[0])
         blob = f.read(min(span[1] - span[0], READ_BYTE_CAP))
     out = []
     for line in blob.splitlines():
         head = _head(line)
-        if head is None or head[0] != n or head[1] not in PUBLIC_KEYS:
+        if head is None or head[0] != where.local or head[1] not in PUBLIC_KEYS:
             continue
         try:
-            out.append(json.loads(line))
+            rec = json.loads(line)
         except ValueError:
             continue
+        rec["round"] = n
+        out.append(rec)
     return out
 
 
@@ -543,17 +607,17 @@ def _detail(user_id: int, game_id: str) -> dict | None:
     if found is None:
         return None
     game, rounds = found
-    seg = _segment(game)
+    logged, truncated = _game_rounds(game)
     out = _summary(game, rounds,
                    accounts.STORE.current_seat_names([game["id"]], 1).get(game["id"]))
     _add_rating(out, accounts.STORE.game_ratings(user_id, [game["id"]]).get(game["id"]))
     deltas = accounts.STORE.game_round_ratings(user_id, game["id"])
     results = []
     for n, seat in rounds.items():
-        if n not in seg.rounds:
+        if n not in logged:
             out["incomplete"] = True
             continue
-        records = _round_records(game, seg, n)
+        records = _round_records(logged[n], n)
         end = next((r for r in records if r["e"] == "round_end"), None)
         if end is not None:
             row = {"round": n, "seat": seat, "result": _result(end)}
@@ -561,7 +625,7 @@ def _detail(user_id: int, game_id: str) -> dict | None:
             if n in deltas:
                 row["rating_delta"] = int(round(deltas[n]))
             results.append(row)
-    if seg.truncated:
+    if truncated:
         out["incomplete"] = True
     out["round_results"] = results
     return out
@@ -569,8 +633,13 @@ def _detail(user_id: int, game_id: str) -> dict | None:
 
 def resume_point(user_id: int, game_id: str) -> dict | None:
     """Where a new table continuing one of this account's saved games
-    starts: the account's seat (as the game list shows it), and both teams'
-    levels and the next banker from the game's latest logged ``round_end``.
+    starts: the account's seat (as the game list shows it), both teams'
+    levels, games won and the next banker from the game's latest logged
+    ``round_end``, and the game round the new table plays first (the one
+    after it). ``ranked`` says the game was rated (a rated round exists for
+    it), so it continues ranked; then ``game_no`` is the rated segment it
+    continues (games to a held Ace completed so far) and ``game_delta`` the
+    account's rating change in that segment so far.
     None when the game is not this account's to read, when the summary has
     no levels (a game no round of which finished), when the log no longer
     holds a finished round, or when the latest state cannot be verified: a
@@ -584,18 +653,29 @@ def resume_point(user_id: int, game_id: str) -> dict | None:
     stored = teams_levels(game["final_levels"])
     if stored is None or game.get("incomplete"):
         return None
-    seg = _segment(game)
-    for n in sorted(seg.rounds, reverse=True):
-        end = next((r for r in _round_records(game, seg, n) if r["e"] == "round_end"), None)
+    logged, _truncated = _game_rounds(game)
+    for n in sorted(logged, reverse=True):
+        end = next((r for r in _round_records(logged[n], n) if r["e"] == "round_end"), None)
         if end is None:
             continue
         levels = teams_levels(end.get("new_levels"))
         banker = end.get("next_banker")
+        won = end.get("games_won")
         if levels is None or not isinstance(banker, int) or not 0 <= banker < 4:
             return None
-        if levels != stored or end.get("games_won") != game.get("games_won"):
+        if levels != stored or won != game.get("games_won"):
             return None
-        return {"seat": rounds[max(rounds)], "levels": levels, "banker": banker}
+        if not (isinstance(won, list) and len(won) == 2
+                and all(isinstance(w, int) and w >= 0 for w in won)):
+            return None
+        point = {"game_id": game["id"], "first_round": n + 1, "seat": rounds[max(rounds)],
+                 "levels": levels, "banker": banker, "games_won": list(won),
+                 "ranked": accounts.STORE.game_ranked(game["id"])}
+        if point["ranked"]:
+            point["game_no"] = sum(won)
+            point["game_delta"] = accounts.STORE.segment_delta(
+                user_id, f"{game['id']}/{point['game_no']}")
+        return point
     return None
 
 
@@ -614,7 +694,7 @@ def _round(user_id: int, game_id: str, n: int) -> dict | None:
     game, rounds = found
     if n not in rounds:
         return None
-    records = _round_records(game, _segment(game), n)
+    records = _round_records(_game_rounds(game)[0].get(n), n)
     if not records:
         return None
     seat = rounds[n]

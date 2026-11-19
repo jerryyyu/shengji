@@ -503,6 +503,22 @@ def _migrate_v6(conn: sqlite3.Connection) -> None:
         raise sqlite3.IntegrityError(f"foreign key check failed after v6: {len(problems)} rows")
 
 
+# A saved game continued at a new table (``saved_games`` continuations): each
+# continuation's room log, read from game round ``first_round`` on (its own
+# round 1). The ``games`` row's own log holds the rounds before the first
+# continuation, so a game never continued has no row here.
+_SEGMENTS_V9 = """
+    CREATE TABLE IF NOT EXISTS game_segments (
+        game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        first_round INTEGER NOT NULL,
+        room_code TEXT NOT NULL,
+        log_file TEXT NOT NULL,
+        log_offset INTEGER NULL,
+        PRIMARY KEY (game_id, first_round)
+    ) WITHOUT ROWID
+"""
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -542,6 +558,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _migrate_v7,
     # version 8: the accounts a signed-in player blocked.
     _BLOCKS_V8,
+    # version 9: the logs of a saved game's continuations.
+    _SEGMENTS_V9,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -775,21 +793,26 @@ class Store:
         ``incomplete``); the ``games`` row is created by the first link, so
         a game nobody signed in to never reaches the database. An account
         deleted while its seat is still live links nothing. Returns whether
-        a link row is open afterwards."""
+        a link row is open afterwards.
+
+        A header with ``first_round`` above 1 is a continuation of the
+        existing game ``id`` at a new table, whose log holds the game's rounds
+        from ``first_round`` on: its first link binds that log to the game
+        from that round (``_continue_game``). A continuation whose game is
+        gone, or whose boundary was already rated, links nothing."""
+        first_round = int(game.get("first_round") or 1)
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 if conn.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)).fetchone() is None:
                     conn.execute("COMMIT")
                     return False
-                conn.execute(
-                    """INSERT INTO games(id, room_code, log_file, log_offset, started_at,
-                                         last_round, incomplete)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(id) DO NOTHING""",
-                    (game["id"], game["room_code"], game["log_file"], game["log_offset"],
-                     int(game["started_at"]), int(game.get("last_round") or 1),
-                     1 if game.get("incomplete") else 0))
+                if first_round > 1:
+                    if not self._continue_game(conn, game, first_round):
+                        conn.execute("COMMIT")
+                        return False
+                else:
+                    self._insert_game(conn, game)
                 conn.execute(
                     """INSERT INTO game_players(game_id, user_id, seat, from_round, to_round)
                        VALUES (?, ?, ?, ?, NULL)
@@ -800,6 +823,66 @@ class Store:
             except Exception:
                 conn.execute("ROLLBACK")
                 raise
+        return True
+
+    @staticmethod
+    def _insert_game(conn: sqlite3.Connection, game: Mapping[str, Any]) -> None:
+        conn.execute(
+                    """INSERT INTO games(id, room_code, log_file, log_offset, started_at,
+                                         last_round, incomplete)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(id) DO NOTHING""",
+                    (game["id"], game["room_code"], game["log_file"], game["log_offset"],
+                     int(game["started_at"]), int(game.get("last_round") or 1),
+                     1 if game.get("incomplete") else 0))
+
+    @staticmethod
+    def _continue_game(conn: sqlite3.Connection, game: Mapping[str, Any],
+                       first_round: int) -> bool:
+        """Bind a continuation's log to the game from ``first_round`` on
+        (caller holds the transaction). False when the game row no longer
+        exists, or when a round from ``first_round`` on was already rated, so
+        that boundary is not the game's any more.
+
+        Another seat of the same table finds its own segment and changes
+        nothing. A different table at the boundary (the first continuation
+        there, or one replacing a table that never finished a round there:
+        Continue resumes only after the latest finished round, so a table
+        bound at or after it finished none) takes the boundary. Every later
+        segment and every link opened from the boundary on are dropped, and
+        each earlier link is closed before it, so no seat at another table
+        reads this table's rounds."""
+        gid = game["id"]
+        if conn.execute("SELECT 1 FROM games WHERE id = ?", (gid,)).fetchone() is None:
+            return False
+        bound = conn.execute(
+            """SELECT room_code, log_file, log_offset FROM game_segments
+               WHERE game_id = ? AND first_round = ?""", (gid, first_round)).fetchone()
+        if bound is not None and (bound["room_code"], bound["log_file"], bound["log_offset"]) == (
+                game["room_code"], game["log_file"], game["log_offset"]):
+            return True
+        if conn.execute(
+                """SELECT 1 FROM rating_events
+                   WHERE (game_id = ? OR substr(game_id, 1, ?) = ?) AND round_no >= ? LIMIT 1""",
+                (gid, len(gid) + 1, gid + "/", first_round)).fetchone() is not None:
+            return False
+        conn.execute("DELETE FROM game_segments WHERE game_id = ? AND first_round >= ?",
+                     (gid, first_round))
+        conn.execute(
+            """INSERT INTO game_segments(game_id, first_round, room_code, log_file, log_offset)
+               VALUES (?, ?, ?, ?, ?)""",
+            (gid, first_round, game["room_code"], game["log_file"], game["log_offset"]))
+        conn.execute("DELETE FROM game_players WHERE game_id = ? AND from_round >= ?",
+                     (gid, first_round))
+        conn.execute(
+            """UPDATE game_players SET to_round = ?
+               WHERE game_id = ? AND (to_round IS NULL OR to_round >= ?)""",
+            (first_round - 1, gid, first_round))
+        conn.execute(
+            """UPDATE games SET last_round = MAX(last_round, ?),
+                   incomplete = MAX(incomplete, ?) WHERE id = ?""",
+            (int(game.get("last_round") or first_round),
+             1 if game.get("incomplete") else 0, gid))
         return True
 
     def close_link(self, game_id: str, user_id: int, seat: int, to_round: int) -> int:
@@ -911,7 +994,28 @@ class Store:
                 return None
             game = self._game_dict(row)
             game["links"] = links
+            game["segments"] = [dict(r) for r in conn.execute(
+                """SELECT first_round, room_code, log_file, log_offset FROM game_segments
+                   WHERE game_id = ? ORDER BY first_round""", (game_id,))]
             return game
+
+    def game_ranked(self, game_id: str) -> bool:
+        """Whether any round of the game was rated: only a ranked table
+        writes a rating event, under the game's id plus ``/<segment>``."""
+        with closing(self._open()) as conn:
+            return conn.execute(
+                """SELECT 1 FROM rating_events
+                   WHERE game_id = ? OR substr(game_id, 1, ?) = ? LIMIT 1""",
+                (game_id, len(game_id) + 1, game_id + "/")).fetchone() is not None
+
+    def segment_delta(self, user_id: int, segment_id: str) -> float:
+        """``user_id``'s summed rating change in one rated segment
+        (``<game id>/<n>``, the game to a held Ace)."""
+        with closing(self._open()) as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(delta), 0) AS d FROM rating_events "
+                "WHERE game_id = ? AND user_id = ?", (segment_id, user_id)).fetchone()
+        return float(row["d"])
 
     def game_ratings(self, user_id: int, game_ids: list[str]) -> dict[str, dict]:
         """``user_id``'s own rating change in each of ``game_ids``, in one
@@ -993,6 +1097,23 @@ class Store:
         rolled back never became a game anyone played."""
         with closing(self._open()) as conn:
             return conn.execute("DELETE FROM games WHERE id = ?", (game_id,)).rowcount
+
+    def forget_segment(self, game_id: str, first_round: int) -> int:
+        """Delete a continuation that was rolled back before it began: its
+        segment and the links it opened. The game's earlier rounds and links
+        stay as they are."""
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                n = conn.execute("DELETE FROM game_segments WHERE game_id = ? AND first_round = ?",
+                                 (game_id, first_round)).rowcount
+                conn.execute("DELETE FROM game_players WHERE game_id = ? AND from_round >= ?",
+                             (game_id, first_round))
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            return n
 
     def purge_games(self, now: float | None = None) -> int:
         """Delete games past retention (their links go by cascade) and games

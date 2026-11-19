@@ -1,0 +1,94 @@
+// The joiner's socket: a WebSocket look-alike over the nearby link, handed to
+// ws.ts's Connection in place of the game server's socket, so the client
+// protocol and the table UI run unchanged. It opens no URL, so the device key
+// in socketUrl() never crosses; it sends only the hello and the joiner
+// allow-list (protocol.ts), so presence, the queue, heartbeats, telemetry and
+// chat stay on the phone.
+import { LIMITS, NEARBY_V, cleanJoinerMessage, parseObject, utf8Bytes, type NearbyHello } from "./protocol";
+import type { JoinLink, LinkState, NearbyTransport } from "./transport";
+
+type Handler<E> = ((ev: E) => void) | null;
+
+export class NearbySocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  readyState = NearbySocket.CONNECTING;
+  onopen: Handler<Event> = null;
+  onmessage: Handler<MessageEvent> = null;
+  onclose: Handler<CloseEvent> = null;
+  onerror: Handler<Event> = null;
+  private link: JoinLink | null = null;
+  private onState: ((state: LinkState, detail?: string) => void) | null;
+
+  constructor(transport: NearbyTransport, code: string, onState: ((state: LinkState, detail?: string) => void) | null = null) {
+    this.onState = onState;
+    transport
+      .join(code, {
+        message: (text) => {
+          if (this.readyState === NearbySocket.OPEN) this.onmessage?.({ data: text } as MessageEvent);
+        },
+        closed: () => this.finish(),
+        state: (state, detail) => this.onState?.(state, detail),
+      })
+      .then(
+        (link) => {
+          if (this.readyState !== NearbySocket.CONNECTING) {
+            link.close();
+            return;
+          }
+          this.link = link;
+          this.readyState = NearbySocket.OPEN;
+          this.onopen?.({} as Event);
+        },
+        () => this.finish(),
+      );
+  }
+
+  /** The text that would cross the link for `data`, or null when nothing may. */
+  static outbound(data: string): string | null {
+    const msg = parseObject(data);
+    if (msg === null) return null;
+    let out: Record<string, unknown> | null;
+    if (msg.type === "table_join") {
+      const hello: NearbyHello = {
+        type: "nearby_hello",
+        nearby_v: NEARBY_V,
+        name: typeof msg.name === "string" ? msg.name.slice(0, LIMITS.name) : "",
+        token: typeof msg.token === "string" && msg.token ? msg.token.slice(0, LIMITS.token) : null,
+      };
+      out = { ...hello };
+    } else {
+      out = cleanJoinerMessage(msg);
+    }
+    if (out === null) return null;
+    const text = JSON.stringify(out);
+    return utf8Bytes(text) <= LIMITS.frameBytes ? text : null;
+  }
+
+  send(data: string): void {
+    if (this.readyState !== NearbySocket.OPEN || !this.link) return;
+    const text = NearbySocket.outbound(data);
+    if (text === null) return;
+    try {
+      this.link.send(text);
+    } catch {
+      this.close();
+    }
+  }
+
+  close(): void {
+    if (this.readyState >= NearbySocket.CLOSING) return;
+    this.link?.close();
+    this.finish();
+  }
+
+  private finish(): void {
+    if (this.readyState === NearbySocket.CLOSED) return;
+    this.readyState = NearbySocket.CLOSED;
+    this.link = null;
+    this.onclose?.({} as CloseEvent);
+  }
+}

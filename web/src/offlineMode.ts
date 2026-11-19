@@ -38,3 +38,14 @@ export function subscribeOffline(listener: () => void): () => void {
 export function useOffline(): boolean {
   return useSyncExternalStore(subscribeOffline, () => OFFLINE, () => OFFLINE);
 }
+
+/** A nearby game is in progress on this page, as host or joiner. Telemetry
+ *  treats it as offline whatever the connection, so nothing about a nearby
+ *  game is collected. Nothing sets it yet: the nearby UI is gated off. */
+export let NEARBY_SESSION = false;
+
+export function setNearbySession(on: boolean): void {
+  if (NEARBY_SESSION === on) return;
+  NEARBY_SESSION = on;
+  for (const l of [...listeners]) l();
+}

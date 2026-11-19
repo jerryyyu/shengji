@@ -2,11 +2,11 @@
 // the app, batched to the server as `client_event`. Nothing here carries a
 // name, chat, room code or card: only enum ids and bounded counts, and the
 // server drops anything else. Practice games (no server) send nothing: while
-// the page is offline nothing is collected, and what was buffered on either
+// the page is offline or in a nearby game nothing is collected, and what was buffered on either
 // side of a switch is dropped there. No call here ever throws into the UI.
 import { useEffect } from "react";
 import { conn } from "./ws";
-import { OFFLINE, subscribeOffline } from "./offlineMode";
+import { NEARBY_SESSION, OFFLINE, subscribeOffline } from "./offlineMode";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
@@ -197,12 +197,12 @@ function liveSend(msg: unknown): boolean {
   return conn.send(msg as Parameters<typeof conn.send>[0]);
 }
 
-export const telemetry = new Telemetry(liveSend, () => !OFFLINE);
+export const telemetry = new Telemetry(liveSend, () => !OFFLINE && !NEARBY_SESSION);
 
 // At a switch between the game server and the on-device one, what the online
 // page buffered goes on its socket first, then nothing of either side is kept.
 subscribeOffline(() => {
-  if (OFFLINE) telemetry.flush(true);
+  if (OFFLINE || NEARBY_SESSION) telemetry.flush(true);
   telemetry.reset();
 });
 

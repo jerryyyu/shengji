@@ -1,0 +1,50 @@
+// @vitest-environment node
+/// <reference types="node" />
+// The page and the native plugin agree on the nearby constants, and the
+// app's Info.plist, once it carries the nearby keys, names the same Bonjour
+// type (without it iOS refuses to browse or advertise, with no prompt). The
+// plist keys are not in the app yet; the check binds as soon as they land.
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { NEARBY_ALPHABET, NEARBY_CODE_LEN } from "./codes";
+import { NEARBY_SERVICE_TYPE, NEARBY_V, LIMITS } from "./protocol";
+
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+const swift = read("../../../../ios/App/App/NearbyPlugin.swift");
+const plist = read("../../../../ios/App/App/Info.plist");
+const shell = read("../../../../ios/App/App/ShellViewController.swift");
+
+/** The array of strings under `key` in the plist, or null when absent. */
+function plistArray(key: string): string[] | null {
+  const m = plist.match(new RegExp(`<key>${key}</key>\\s*<array>([\\s\\S]*?)</array>`));
+  return m ? [...m[1].matchAll(/<string>([^<]*)<\/string>/g)].map((x) => x[1]) : null;
+}
+
+describe("nearby constants across the page, the plugin and Info.plist", () => {
+  it("the plugin uses the page's service type, version, code and frame limit", () => {
+    expect(swift).toContain(`static let serviceType = "${NEARBY_SERVICE_TYPE}"`);
+    expect(swift).toContain(`static let nearbyV = ${NEARBY_V}`);
+    expect(swift).toContain(`static let alphabet = Array("${NEARBY_ALPHABET}")`);
+    expect(swift).toContain(`static let codeLength = ${NEARBY_CODE_LEN}`);
+    expect(LIMITS.frameBytes).toBe(16 * 1024);
+    expect(swift).toContain("static let maxMessage = 16 * 1024");
+  });
+
+  it("the plugin cannot run unreviewed and is not registered in a shipped build", () => {
+    expect(swift).toMatch(/static let reviewed = false/);
+    expect(swift).toMatch(/static let debugSpike = false/);
+    expect(shell).toMatch(/#if SHENGJI_NEARBY\s+(?:\/\/[^\n]*\s+)?bridge\?\.registerPluginInstance\(ShengjiNearbyPlugin\(\)\)\s+#endif/);
+  });
+
+  it("Info.plist, when it has NSBonjourServices, lists the nearby type", () => {
+    const services = plistArray("NSBonjourServices");
+    if (services === null) {
+      // not yet: the keys wait for the nearby release's review
+      expect(plist).not.toContain("NSLocalNetworkUsageDescription");
+      return;
+    }
+    expect(services).toContain(NEARBY_SERVICE_TYPE);
+    expect(plist).toContain("<key>NSLocalNetworkUsageDescription</key>");
+  });
+});

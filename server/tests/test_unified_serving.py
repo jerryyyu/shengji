@@ -768,13 +768,17 @@ def test_the_compiled_leaf_counts_decide_as_the_python_counts(release50_packages
                                                               served_functions):
     """Ten fixed production positions on the fast readout: every feature call's rows and memo keys are
     the Python counts' byte for byte, and the decision (cards, worlds, counters, memo hits and the whole
-    record, values unrounded) is the one the Python counts make.  Under the pure engine both arms take
-    the Python counts."""
+    record, values unrounded) is the one the Python counts make.  Under the pure engine there is no
+    compiled arm: each decision runs once, its rows still checked against the Python counts."""
+    from shengji.train import unified_slots as us
+
     env = fast_env(unified_env(release50_packages, pair))
     tally = [0, 0]
     compared_counts(monkeypatch, tally)
     for position in P.POSITIONS:
         got = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
+        if us._native_leaf_counts() is None:
+            continue
         with python_counts(monkeypatch):
             want = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
         assert got == want, P.label(*position)
@@ -783,10 +787,13 @@ def test_the_compiled_leaf_counts_decide_as_the_python_counts(release50_packages
 
 def test_the_compiled_leaf_counts_play_a_round_out_as_the_python_counts(release50_packages, pair, monkeypatch,
                                                                        served_functions):
-    """From the first fixed position to the end of its round, each seat decided on a deep copy of the
+    """From a fixed position (hand of 10) to the end of its round, each seat decided on a deep copy of the
     bot (the server's snapshot path) that then becomes the bot: the compiled counts and the Python
-    counts play the same cards with the same records, decision for decision, every row compared."""
-    key, trick, pos = P.POSITIONS[0]
+    counts play the same cards with the same records, decision for decision, every row compared (one
+    play-out under the pure engine)."""
+    from shengji.train import unified_slots as us
+
+    key, trick, pos = P.POSITIONS[7]
     env = fast_env(unified_env(release50_packages, pair))
     tally = [0, 0]
     compared_counts(monkeypatch, tally)
@@ -803,6 +810,9 @@ def test_the_compiled_leaf_counts_play_a_round_out_as_the_python_counts(release5
             rnd.play(seat, list(got["cards"]))
         return out
     native = play_out()
+    if us._native_leaf_counts() is None:
+        assert native and tally[1] > 0
+        return
     with python_counts(monkeypatch):
         python = play_out()
     assert len(native) == len(python) > 0

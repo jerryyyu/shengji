@@ -41,7 +41,7 @@ record is under "Rollback".
 | Fly version | FLY-VERSION-PENDING (rollback: v115 for release 52 as served) |
 | image | IMAGE-PENDING |
 | source | the release PR's merge commit on main (MERGE-SHA-PENDING), deployed with `flyctl deploy --app shengji --ha=false` from a clean worktree at that commit |
-| evidence | UT-alldata screen and confirmation against release 52 as served, UT-launch checks, UT-fly-fast Fly timing (Evidence and Latency, below) |
+| evidence | UT-alldata screen and confirmation against release 52 as then served, UT-launch checks, UT-fly-fast Fly timing (Evidence and Latency, below) |
 | deploy record | DEPLOY-RECORD-PENDING: `/healthz` `bot` equal to the release-53 `SHENGJI_BOT` in `fly.toml`, `fast: true`, value `f4f4127e…`, prior `0d17fd03…`; in-machine `True compiled 1b1fd2de` (Release checklist, step 8); first-room reader pending the first live room |
 | comparator | release 52 as served until the deploy[^cmp]; the move to release 53 is Jerry's word, as for earlier releases |
 
@@ -63,7 +63,7 @@ pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-e
 The registry derives it from the `fly.toml` env: the belief pair moves the play digest (`r12e81e0c` → `r09a10415`)
 and the bury suffix (`7a9a430fe690` → `1b1a47f5dd8b`); the unified pair adds `-ushare97c07be8-uvalue97c07be8-ureply97c07be8`
 after `-sc8`, and the fast path adds `-ufast`. Without `-ufast` it is byte for byte the exploiter name UT-alldata-screen
-and UT-alldata-confirm duelled against release 52; with it, the name UT-fly-fast derived on the production machine
+and UT-alldata-confirm duelled against release 52, then production; with it, the name UT-fly-fast derived on the production machine
 with main's `served_config.registry_name` and timed (`test_release53_fly_config.py` derives it from the
 `/data/models/` paths). The fast path changes no model or search: it reads the same readout through a fused stem
 and a per-decision row memo, equal to the flag-off readout up to float32 rounding (`test_unified_serving.py`); the
@@ -163,7 +163,7 @@ release 53 on Fly and against human partners is not measured.**
 
 | read | what | result | pointer |
 |---|---|---|---|
-| UT-fly-fast (production machine, performance-1x 2 GB, 0 rooms, one game, k=1) | play decisions, unified with `-ufast` (B) vs release 52 as served (A) on the identical states | 356 plays: mean ratio B/A **0.992× [0.981, 1.004]**; B p95 0.829 / p99 0.947 / max 1.528 s vs A 0.849 / 1.003 / 1.726 s; 0 play-budget and 0 belief fallbacks either side; 6 buries 0.83–0.94 s, no bury fallback; worker memory high-water mark 139 vs 143 MB; `unified.shared` 1 on every play | `UT-fly-fast/RESULTS.md` (predeclare `bcedf8fd`) |
+| UT-fly-fast (production machine, performance-1x 2 GB, 0 rooms, one game, k=1) | play decisions, unified with `-ufast` (B) vs release 52 as then served (A) on the identical states | 356 plays: mean ratio B/A **0.992× [0.981, 1.004]**; B p95 0.829 / p99 0.947 / max 1.528 s vs A 0.849 / 1.003 / 1.726 s; 0 play-budget and 0 belief fallbacks either side; 6 buries 0.83–0.94 s, no bury fallback; worker memory high-water mark 139 vs 143 MB; `unified.shared` 1 on every play | `UT-fly-fast/RESULTS.md` (predeclare `bcedf8fd`) |
 | UT-fly-timing, first run (same machine and method) | the same bot without `-ufast` | mean ratio 1.126× [1.110, 1.142]: the reason the fast path ships | the first run's `RESULTS.md` (job-local) |
 
 One four-minute window, first rounds only, k=1: **latency with 2 or more concurrent games on Fly is not measured**.

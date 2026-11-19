@@ -8,6 +8,9 @@ check and falls back to the reference whenever a kernel declines.
   in lexicographic order) as card-index rows, capped, optionally filtered by a
   validator (the in-suit follow case) or merged with a fixed base (the short
   and void cases), as `pv_tree_search.CompactReplies` stores a listing.
+* `leaf_counts`: the unified readout's leaf feature counts
+  (`unified_slots.leaf_features_fast`), written straight into a uint8 row
+  per covered leaf.
 """
 from libc.stdlib cimport malloc, free, realloc
 from libc.string cimport memcpy
@@ -623,3 +626,76 @@ def belief_draw(const double[:, ::1] P, const unsigned char[:, ::1] M,
             ov[w, c, pv[w]] += 1
             cap[w, pv[w]] -= 1
     return out
+
+
+def leaf_counts(int seat, int tricks, int pos, object leaves, int width, tuple planes, dict pts,
+                object winner_fn, object combos, object legal):
+    """`unified_slots._leaf_entries_fast` over ``leaves`` with the counts written in place:
+    ``(covered indices, (n, width) uint8 counts, (n, 5) int64 meta)``, where row ``m`` holds the
+    count of each flat index the m-th covered leaf's entry lists (`leaf_features_fast`'s bincount)
+    and meta row ``m`` is that entry's ``(n_delta, n_trick, total, winner, next)``.  The leaves are
+    taken in order, the frame test and the five integers are the reference's, and the trick winner
+    is ``winner_fn(trick, ordering, combos, legal)`` called as the reference calls it."""
+    cdef list seq = leaves if type(leaves) is list else list(leaves)
+    cdef Py_ssize_t n = len(seq), i, m = 0
+    cdef int rel, n_trick, n_delta, j, idx
+    cdef long total
+    cdef dict d
+    cdef object leaf, trick, plays, hands, tp, card, history
+    out = np.zeros((n, width), dtype=np.uint8)
+    meta_out = np.zeros((n, 5), dtype=np.int64)
+    cdef unsigned char[:, ::1] counts = out
+    cdef long long[:, ::1] meta = meta_out
+    cdef list mine = []
+    for i in range(n):
+        leaf = seq[i]
+        if leaf.phase != "play":
+            continue
+        history = leaf.history
+        trick = leaf.trick
+        if len(history) == tricks and trick is not None:
+            pass
+        elif len(history) == tricks + 1 and (trick is None or not trick.plays):
+            trick = history[len(history) - 1]
+        else:
+            continue
+        plays = trick.plays
+        n_trick = len(plays)
+        n_delta = n_trick - pos
+        if n_delta < 1 or n_delta > 4 or n_trick > 4:
+            continue
+        hands = leaf.hands
+        for rel in range(4):
+            d = <dict> planes[rel]
+            for card in hands[(seat + rel) % 4]:
+                idx = d[card]
+                if idx < 0 or idx >= width:
+                    raise ValueError("leaf feature index out of range")
+                counts[m, idx] += 1
+        d = <dict> planes[4]
+        for card in leaf.buried:
+            idx = d[card]
+            if idx < 0 or idx >= width:
+                raise ValueError("leaf feature index out of range")
+            counts[m, idx] += 1
+        total = 0
+        j = 0
+        for tp in plays:
+            if j >= pos:
+                d = <dict> planes[5 + _mod4(<long> tp.seat - seat)]
+                for card in tp.cards:
+                    idx = d[card]
+                    if idx < 0 or idx >= width:
+                        raise ValueError("leaf feature index out of range")
+                    counts[m, idx] += 1
+            for card in tp.cards:
+                total += <long> pts[card]
+            j += 1
+        meta[m, 0] = n_delta
+        meta[m, 1] = n_trick
+        meta[m, 2] = total
+        meta[m, 3] = _mod4(<long> winner_fn(trick, leaf.ordering, combos, legal) - seat)
+        meta[m, 4] = meta[m, 3] if n_trick == 4 else _mod4(<long> plays[n_trick - 1].seat + 1 - seat)
+        mine.append(i)
+        m += 1
+    return mine, out[:m], meta_out[:m]

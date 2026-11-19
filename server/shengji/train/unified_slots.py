@@ -390,12 +390,18 @@ def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
     return idx, (n_delta, n_trick, total, winner, nxt)
 
 
-def leaf_features_fast(frame: LeafFrame, leaves):
-    """``(covered indices, (n, 9 * 54) float32 planes, (n, 12) scalars, n row keys)``: `leaf_features_batch`'s
-    rows with the planes flat, and each row's bytes as its memo key (equal rows, equal keys)."""
-    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS, leaf_scalars
-    tables = _fast_tables()
-    width = N_PLANES * N_CARDS
+def _native_leaf_counts():
+    """The compiled `_pv_fast.leaf_counts`, or None: it runs only while the compiled engine is active
+    and the extension is built, so the pure engine always takes the Python counts."""
+    from ..engine import fast
+    from . import pv_native
+    if not fast.is_active() or pv_native._pv_fast is None:
+        return None
+    return getattr(pv_native._pv_fast, "leaf_counts", None)
+
+
+def _leaf_counts_python(frame: LeafFrame, leaves, tables, width):
+    """``(covered indices, (n, width) counts, (n, 5) int64 meta)`` from `_leaf_entries_fast`."""
     mine, flat, meta = [], [], []
     for i, leaf in enumerate(leaves):
         entry = _leaf_entries_fast(frame, leaf, tables)
@@ -406,9 +412,28 @@ def leaf_features_fast(frame: LeafFrame, leaves):
         mine.append(i)
         meta.append(entry[1])
     if not mine:
-        return mine, np.zeros((0, width), np.float32), np.zeros((0, N_SCALARS), np.float32), []
+        return mine, None, None
     counts = np.bincount(np.asarray(flat, np.int64), minlength=len(mine) * width).reshape(len(mine), width)
-    m = np.asarray(meta, np.int64)
+    return mine, counts, np.asarray(meta, np.int64)
+
+
+def leaf_features_fast(frame: LeafFrame, leaves, native=True):
+    """``(covered indices, (n, 9 * 54) float32 planes, (n, 12) scalars, n row keys)``: `leaf_features_batch`'s
+    rows with the planes flat, and each row's bytes as its memo key (equal rows, equal keys).  The counts
+    come from the compiled `_pv_fast.leaf_counts` where `_native_leaf_counts` offers it (and ``native``),
+    else from `_leaf_entries_fast`; both give the same rows, keys and order."""
+    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS, leaf_scalars
+    tables = _fast_tables()
+    width = N_PLANES * N_CARDS
+    kernel = _native_leaf_counts() if native else None
+    if kernel is not None:
+        planes, pts, combos, legal = tables
+        mine, counts, m = kernel(frame.seat, frame.tricks, frame.pos, leaves, width, planes, pts,
+                                 _winner_fast, combos, legal)
+    else:
+        mine, counts, m = _leaf_counts_python(frame, leaves, tables, width)
+    if not mine:
+        return mine, np.zeros((0, width), np.float32), np.zeros((0, N_SCALARS), np.float32), []
     scalars = leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
     raw = np.ascontiguousarray(np.concatenate([counts.astype(np.uint8), scalars.view(np.uint8)], 1))
     keys = raw.view(np.dtype((np.void, raw.shape[1]))).ravel().tolist()

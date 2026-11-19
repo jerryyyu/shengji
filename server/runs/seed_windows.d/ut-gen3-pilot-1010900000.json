@@ -1,0 +1,14 @@
+{
+  "name": "ut-gen3-pilot-1010900000",
+  "purpose": "trajectory",
+  "seed0": 1010900000,
+  "clusters": 400,
+  "span": [
+    1010900000,
+    1010900400
+  ],
+  "created_at": "2026-11-19T23:30:00Z",
+  "host": "ultra",
+  "git_head": "7c0fc4da",
+  "note": "Tree-swap identity re-deals (100 clusters per swap, both trees, action-identical on every decision), the co-run probe and chain rehearsals; never pooled into training. UT-GEN2 extension to 500,000 rounds (Jerry 2026-11-19: 500k target, 1M only by PLAN_1M's continue rule at RT4; the generator need not be fixed): unified-bot self-play on the M5 Ultra, all four seats, server/scripts/y_trajectory.py on the lane's pinned tree with the lane's own pinned fly.toml; generator = release 53 as served (-ufast, 2 s bury, fly.toml sha cad28bfd) until RT2 (unified 47175c99, belief bed32f87) passes its screen stage 1, then RT2 from the next leg boundary, later a stronger confirmed bot (RT3); decision-identical speed-ups may be swapped in between legs after a 100-cluster identity re-deal on the pilot block. Each leg's generator name is recorded in the lane's leg manifest; the curve is iterated self-play, not one generator. Store /Users/jeryyu/fleet/claude-ut-gen2/store. RESERVED BEFORE DEALING (seed_windows.py check --purpose trajectory rc 0 at origin/main 7c0fc4da). The host's runtime registry must not contain this entry."
+}

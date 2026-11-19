@@ -538,10 +538,73 @@ def test_memo_rows_computes_each_new_key_once():
     assert calls == [[0, 1], [1]]
 
 
+def _assert_readout_action_parity(got, want, context):
+    g, w = got["record"], want["record"]
+    if got["cards"] == want["cards"]:
+        assert g["selected_index"] == w["selected_index"], context
+        return
+    # A numerical tie exception applies only to the actual scored actions.
+    assert g["admitted"] == w["admitted"], context
+    assert g["admitted_indices"] == w["admitted_indices"], context
+    state_keys = {key for record in (g, w) for key in record
+                  if key.endswith(("_status", "_attempted"))
+                  or "fallback" in key or "abandon" in key}
+    assert {k: g.get(k) for k in state_keys} == {k: w.get(k) for k in state_keys}, context
+    for out in (got, want):
+        record = out["record"]
+        assert record.get("work_complete") is True, context
+        assert not record.get("doomed_throw_reselect_applied", False), context
+        assert not record.get("last_seat_points_applied", False), context
+        assert sorted(out["cards"]) == sorted(record["played"]), context
+        indices, admitted = record["admitted_indices"], record["admitted"]
+        assert len(indices) == len(admitted) == len(record["value_means"]), context
+        assert len(set(indices)) == len(indices), context
+        at = indices.index(record["selected_index"])
+        assert sorted(out["cards"]) == sorted(admitted[at]), context
+        for scores in (g["value_means"], w["value_means"]):
+            assert np.isfinite(scores).all(), context
+            assert max(scores) - scores[at] <= 1e-4, context
+
+
+@pytest.mark.parametrize("fault", [None, "unmapped", "lower", "stale_index", "stale_played",
+                                    "status", "fallback", "incomplete", "swap"])
+def test_readout_tie_exception_checks_the_final_action(fault):
+    record = {"admitted": [["S4"], ["D4"], ["C6"]], "admitted_indices": [3, 1, 0],
+              "value_means": [0.5, 0.5 - 1e-6, 0.1], "selected_index": 3,
+              "played": ["S4"], "work_complete": True, "exact_lead_status": "complete",
+              "belief_fallback": 0, "doomed_throw_reselect_applied": False}
+    want = {"cards": ["S4"], "record": record}
+    got = copy.deepcopy(want)
+    got["cards"] = got["record"]["played"] = ["D4"]
+    got["record"]["selected_index"] = 1
+    if fault == "unmapped":
+        got["cards"] = got["record"]["played"] = ["SJ"]
+    elif fault == "lower":
+        got["cards"] = got["record"]["played"] = ["C6"]
+        got["record"]["selected_index"] = 0
+    elif fault == "stale_index":
+        got["record"]["selected_index"] = 3
+    elif fault == "stale_played":
+        got["record"]["played"] = ["S4"]
+    elif fault == "status":
+        got["record"]["exact_lead_status"] = "abandoned"
+    elif fault == "fallback":
+        got["record"]["belief_fallback"] = 1
+    elif fault == "incomplete":
+        got["record"]["work_complete"] = False
+    elif fault == "swap":
+        got["record"]["doomed_throw_reselect_applied"] = True
+    if fault is None:
+        _assert_readout_action_parity(got, want, fault)
+    else:
+        with pytest.raises(AssertionError):
+            _assert_readout_action_parity(got, want, fault)
+
+
 def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monkeypatch, served_functions):
-    """Ten fixed production positions: with the fast readout the registry bot plays the cards the
-    readout plays, on the same worlds and admitted candidates, with candidate values within float32
-    rounding; every leaf's fast features are `leaf_features_batch`'s, and equal rows share a memo key."""
+    """Ten production positions: same worlds, candidates and values within float32 rounding.
+    Different final cards require a validated near-tied scored action with matching execution status;
+    every fast feature equals the reference builder's, and equal rows share a memo key."""
     from shengji.train import unified_slots as us
 
     env = unified_env(release50_packages, pair)
@@ -584,16 +647,7 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
         assert g["admitted_indices"] == w["admitted_indices"]
         np.testing.assert_allclose(np.asarray(g["value_means"], float), np.asarray(w["value_means"], float),
                                    rtol=0, atol=1e-4, err_msg=P.label(*position))
-        if got["cards"] != want["cards"]:
-            # Equal leaf rows are bit-equal through the memo, but the plain readout scores each row at
-            # its batch position, and a BLAS kernel that rounds by position splits an exact tie between
-            # candidates whose leaves coincide; the two plays must then be equal-valued.
-            means = dict(zip(w["admitted_indices"], w["value_means"]))
-            best = max(means.values())
-            for chosen in (g["selected_index"], w["selected_index"]):
-                assert best - means[chosen] <= 1e-4, (P.label(*position), got["cards"], want["cards"])
-        else:
-            assert g["selected_index"] == w["selected_index"], P.label(*position)
+        _assert_readout_action_parity(got, want, P.label(*position))
         for name in memo:
             memo[name] += got["memo"][name]
     assert checked[0] > 0

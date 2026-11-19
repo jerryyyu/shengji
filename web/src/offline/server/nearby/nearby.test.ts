@@ -1,0 +1,333 @@
+// @vitest-environment node
+// A nearby table end to end on the fake transport: the lobby, seating by
+// join, Start, full rounds with two to four people, resume by token, bot
+// cover and its reclaim, Leave from each role, and the host boundary's
+// refusals (version, chat, size, rate, hello, malformed frames).
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { TAKEOVER_AFTER, WATCHDOG_POLL } from "../server";
+import { NEARBY_ALPHABET, NEARBY_CODE_LEN, isNearbyCode, newNearbyCode } from "./codes";
+import { NEARBY_COPY } from "./copy";
+import { setNearbyForTests, nearbyEnabled } from "./flag";
+import { nearbyName, validNearbyName } from "./names";
+import { LIMITS, NEARBY_V } from "./protocol";
+import { NearbySocket } from "./socket";
+import { NearbyTable, type Frame, type Player } from "./testkit";
+
+beforeEach(() => setNearbyForTests(true));
+afterEach(() => setNearbyForTests(null));
+
+const rooms = (p: Player) => p.frames.filter((f) => f.type === "room");
+const lastRoom = (p: Player) => rooms(p)[rooms(p).length - 1];
+const errors = (p: Player) => p.frames.filter((f) => f.type === "error");
+type PlayerJson = { seat: number; name: string; is_bot: boolean; connected: boolean; controller?: string; takeover_in?: number | null; left?: boolean };
+
+async function lobby(humans: number, drive = false): Promise<NearbyTable> {
+  const t = new NearbyTable(11, 1);
+  await t.open(drive);
+  for (let i = 1; i < humans; i++) await t.join(`P${i}`, { drive });
+  return t;
+}
+
+async function started(humans: number, drive = false): Promise<NearbyTable> {
+  const t = await lobby(humans, drive);
+  t.send(t.host, { type: "table_start_bots" });
+  await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+  return t;
+}
+
+describe("nearby codes, names and the flag", () => {
+  it("draws six characters from the online alphabet with getRandomValues", () => {
+    for (let i = 0; i < 200; i++) {
+      const c = newNearbyCode();
+      expect(c).toHaveLength(NEARBY_CODE_LEN);
+      expect([...c].every((ch) => NEARBY_ALPHABET.includes(ch))).toBe(true);
+      expect(isNearbyCode(c)).toBe(true);
+    }
+    expect(NEARBY_ALPHABET).not.toMatch(/[IO01]/);
+    expect(isNearbyCode("ABCD")).toBe(false);
+    expect(isNearbyCode("ABCDE0")).toBe(false);
+    expect(isNearbyCode(" k7q2mx ")).toBe(true);
+  });
+
+  it("maps each random byte onto the alphabet", () => {
+    expect(newNearbyCode((buf) => buf.fill(33))).toBe(NEARBY_ALPHABET[1].repeat(NEARBY_CODE_LEN));
+  });
+
+  it("holds names to the online rules", () => {
+    expect(validNearbyName("  Ann   Lee ")).toBe("Ann Lee");
+    expect(validNearbyName("ｊｅｒｒｙ")).toBe("jerry");
+    expect(validNearbyName("a\nb")).toBeNull();
+    expect(validNearbyName("x".repeat(21))).toBeNull();
+    expect(validNearbyName("Bot 3")).toBeNull();
+    expect(validNearbyName("SYSTEM")).toBeNull();
+    expect(validNearbyName(42)).toBeNull();
+    expect(validNearbyName("ok", (n) => n === "ok")).toBeNull();
+    expect(nearbyName("\u0000", 2)).toBe("Player 3");
+  });
+
+  it("is off unless the build and the reviewed binary both say so", () => {
+    setNearbyForTests(null);
+    expect(nearbyEnabled(true)).toBe(false);
+    expect(nearbyEnabled(false)).toBe(false);
+  });
+});
+
+describe("the nearby lobby", () => {
+  it("waits for joiners, seats each in the next free seat, and refuses a fifth", async () => {
+    const t = await lobby(4);
+    expect(t.code).toMatch(new RegExp(`^[${NEARBY_ALPHABET}]{6}$`));
+    expect(t.room!.game).toBeNull();
+    const players = lastRoom(t.host).players as PlayerJson[];
+    expect(players.map((p) => [p.seat, p.name, p.is_bot])).toEqual([[0, "Host", false], [1, "P1", false], [2, "P2", false], [3, "P3", false]]);
+    expect(t.joiners.map((j) => lastRoom(j).you)).toEqual([1, 2, 3]);
+    const fifth = await t.join("P4");
+    expect(errors(fifth)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
+    await t.settle(() => fifth.sock.readyState === NearbySocket.CLOSED, 1000);
+    expect(fifth.sock.readyState).toBe(NearbySocket.CLOSED);
+  });
+
+  it("only the host starts; bots take the empty seats, keeping seat numbers", async () => {
+    const t = await lobby(2);
+    t.send(t.joiners[0], { type: "table_move", seat: 3 });
+    await t.settle(() => (lastRoom(t.host).players as PlayerJson[]).some((p) => p.seat === 3));
+    // Start is not on the joiner allow-list: it never reaches the room
+    t.send(t.joiners[0], { type: "table_start_bots" });
+    await t.advance(0.5);
+    expect(t.room!.game).toBeNull();
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    expect(t.room!.seats.map((s) => [s.name, s.isBot])).toEqual([["Host", false], ["Bot 1", true], ["Bot 2", true], ["P1", false]]);
+    expect(t.lastState(t.joiners[0])!.you).toBe(3);
+  });
+
+  it("a joiner leaving the lobby frees the seat", async () => {
+    const t = await lobby(3);
+    t.send(t.joiners[0], { type: "table_leave" });
+    await t.settle(() => t.joiners[0].left);
+    await t.settle(() => (lastRoom(t.host).players as PlayerJson[]).length === 2);
+    expect((lastRoom(t.host).players as PlayerJson[]).map((p) => p.seat)).toEqual([0, 2]);
+    const again = await t.join("P9");
+    expect(lastRoom(again).you).toBe(1);
+  });
+
+  it("the host leaving ends the table for everyone", async () => {
+    const t = await lobby(3);
+    t.send(t.host, { type: "table_leave" });
+    await t.settle(() => t.joiners.every((j) => j.left));
+    for (const j of t.joiners) {
+      expect(j.frames.find((f) => f.type === "left")).toEqual({ type: "left", reason: "host_left", message: NEARBY_COPY.hostLeft });
+    }
+    expect(t.server.rooms.size).toBe(0);
+    await t.settle(() => t.joiners.every((j) => j.sock.readyState === NearbySocket.CLOSED), 1000);
+  });
+});
+
+describe("full nearby games", () => {
+  it.each([2, 3, 4])("%i people play two rounds to the end", async (humans) => {
+    const t = new NearbyTable(100 + humans, 2);
+    await t.open(true);
+    for (let i = 1; i < humans; i++) await t.join(`P${i}`, { drive: true });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().some((p) => p.left), 2_000_000);
+    for (const p of t.players()) {
+      const phases = p.frames.filter((f) => f.type === "state").map((f) => f.phase);
+      const ends = phases.filter((ph, i) => ph === "round_end" && phases[i - 1] !== "round_end").length;
+      expect(ends).toBe(2);
+      // an action that lost a race (a pass after the window closed) is
+      // refused like any illegal move; nothing else is refused
+      expect(errors(p).filter((f) => "code" in f)).toEqual([]);
+    }
+  }, 60_000);
+});
+
+describe("drops, resume and bot cover", () => {
+  it("a dropped joiner resumes the same seat by token", async () => {
+    const t = await started(3);
+    const j = t.joiners[0];
+    const token = j.token;
+    const seat = j.seat;
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.settle(() => (t.lastState(t.host)!.players as PlayerJson[])[seat!].controller === "bot_cover", 1000);
+    const host = (t.lastState(t.host)!.players as PlayerJson[])[seat!];
+    expect(host.connected).toBe(false);
+    expect(host.takeover_in).toBeGreaterThan(0);
+    await t.join("P1", { token, player: j });
+    expect(errors(j)).toEqual([]);
+    expect(t.lastState(j)!.you).toBe(seat);
+    expect((t.lastState(t.host)!.players as PlayerJson[])[seat!].controller).toBe("human");
+  });
+
+  it("a token for nobody, after the start, gets no seat", async () => {
+    const t = await started(2);
+    const stranger = await t.join("X", { token: "nope" });
+    expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
+  });
+
+  it("a stale connection is refused once its seat resumes elsewhere", async () => {
+    const t = await started(2);
+    const j = t.joiners[0];
+    const old = j.sock;
+    const twin = await t.join("P1", { token: j.token });
+    expect(t.lastState(twin)!.you).toBe(j.seat);
+    old.send(JSON.stringify({ type: "next_round" }));
+    await t.settle(() => j.frames.some((f) => f.type === "error" && f.code === "stale_connection"), 1000);
+    expect(j.frames.some((f) => f.code === "stale_connection")).toBe(true);
+  });
+
+  it("the bot covers a dropped seat after the takeover window, then the owner reclaims it", async () => {
+    const t = await lobby(2, true);
+    t.rounds = 50;
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    const j = t.joiners[0];
+    const seat = j.seat!;
+    const token = j.token;
+    j.driver = null;
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    const covered = () => t.room!.seats[seat].botAnnounced;
+    await t.settle(covered, 2_000_000);
+    expect(covered()).toBe(true);
+    await t.advance(0.1);
+    expect(t.clock.now()).toBeGreaterThanOrEqual(TAKEOVER_AFTER);
+    const chat = t.host.frames.filter((f) => f.type === "chat").map((f) => f.text);
+    expect(chat).toContain(`bot is playing for P1 (disconnected)`);
+    // the game moves on without them
+    const history = t.room!.round!.history.length;
+    await t.settle(() => (t.room!.round?.history.length ?? 0) > history + 1, 2_000_000);
+    await t.join("P1", { token, player: j, drive: true });
+    expect(t.room!.seats[seat].botAnnounced).toBe(false);
+    expect((t.lastState(t.host)!.players as PlayerJson[])[seat].controller).toBe("human");
+    expect(WATCHDOG_POLL).toBe(5);
+  }, 60_000);
+
+  it("a joiner's Leave mid-game hands the seat to the bot at once", async () => {
+    const t = await started(3, true);
+    const j = t.joiners[1];
+    j.driver = null;
+    t.send(j, { type: "table_leave" });
+    await t.settle(() => j.left);
+    const seat = j.seat!;
+    await t.settle(() => (t.lastState(t.host)!.players as PlayerJson[])[seat].left === true, 1000);
+    const p = (t.lastState(t.host)!.players as PlayerJson[])[seat];
+    expect([p.controller, p.takeover_in, p.left]).toEqual(["bot_cover", null, true]);
+    // the room keeps going and finishes the round
+    await t.settle(() => t.room!.round?.phase === "round_end", 2_000_000);
+    expect(t.room!.round!.phase).toBe("round_end");
+  }, 60_000);
+
+  it("the host phone vanishing closes every joiner's link", async () => {
+    const t = await started(3);
+    t.fake.stopHost(t.code);
+    await t.settle(() => t.joiners.every((j) => j.sock.readyState === NearbySocket.CLOSED), 1000);
+    expect(t.joiners.every((j) => j.sock.readyState === NearbySocket.CLOSED)).toBe(true);
+  });
+});
+
+describe("the host boundary", () => {
+  async function rawPeer(t: NearbyTable): Promise<string> {
+    const before = new Set(t.fake.peersOf(t.code));
+    const p = await t.join("Raw");
+    void p;
+    return t.fake.peersOf(t.code).find((id) => !before.has(id))!;
+  }
+
+  it("refuses another version with its own error", async () => {
+    const t = await lobby(1);
+    const frames: Frame[] = [];
+    const link = await t.fake.join(t.code, { message: (x) => frames.push(JSON.parse(x) as Frame), closed: () => {}, state: () => {} });
+    await t.advance(0.1);
+    link.send(JSON.stringify({ type: "nearby_hello", nearby_v: NEARBY_V + 1, name: "Old", token: null }));
+    await t.settle(() => frames.length > 0, 1000);
+    expect(frames).toEqual([{ type: "error", code: "nearby_version", message: NEARBY_COPY.versionMismatch }]);
+    expect(t.nearbyHost!.refused.version).toBe(1);
+  });
+
+  it("relays no chat from a joiner, even sent raw past the joiner's socket", async () => {
+    const t = await started(3);
+    const peer = t.fake.peersOf(t.code)[0];
+    t.send(t.joiners[0], { type: "table_chat", text: "hello there" });
+    t.fake.inject(t.code, peer, JSON.stringify({ type: "table_chat", text: "raw hello" }));
+    t.fake.inject(t.code, peer, JSON.stringify({ type: "chat", text: "raw hello" }));
+    await t.advance(1);
+    for (const p of t.players()) {
+      expect(p.frames.some((f) => JSON.stringify(f).includes("hello"))).toBe(false);
+    }
+    expect(t.fake.wire.some((w) => w.from !== "host" && w.text.includes("hello there"))).toBe(false);
+  });
+
+  it("closes a link that sends an oversized frame, bad JSON, or too fast", async () => {
+    const t = await lobby(1);
+    const a = await rawPeer(t);
+    t.fake.inject(t.code, a, "x".repeat(LIMITS.frameBytes + 1));
+    const b = await rawPeer(t);
+    t.fake.inject(t.code, b, "{not json");
+    const c = await rawPeer(t);
+    for (let i = 0; i <= LIMITS.perSecond; i++) t.fake.inject(t.code, c, JSON.stringify({ type: "pass_declare" }));
+    await t.advance(0.1);
+    expect(t.nearbyHost!.refused).toMatchObject({ size: 1, json: 1, rate: 1 });
+    for (const id of [a, b, c]) expect(t.fake.peersOf(t.code)).not.toContain(id);
+  });
+
+  it("drops a link that never says hello", async () => {
+    const t = await lobby(1);
+    await t.fake.join(t.code, { message: () => {}, closed: () => {}, state: () => {} });
+    await t.advance(1);
+    expect(t.fake.peersOf(t.code)).toHaveLength(1);
+    await t.advance(LIMITS.helloSeconds);
+    expect(t.nearbyHost!.refused.hello_timeout).toBe(1);
+  });
+
+  it("survives random frames from a seated joiner without changing anyone's cards", async () => {
+    const t = await started(3);
+    const peer = t.fake.peersOf(t.code)[0];
+    const rnd = t.room!.round!;
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+    const values = [null, true, -1, 0, 3, 1e300, "x", "", [], {}, [1, 2], [1, 1], Array(40).fill(1), "AS", { type: "play" }];
+    const types = ["play", "bury", "declare", "pass_declare", "next_round", "table_move", "table_start", "create_room",
+      "table_join", "nearby_hello", "__proto__", "constructor", "table_allow_joiners", "table_start_level", "x"];
+    for (let i = 0; i < 400; i++) {
+      const msg: Record<string, unknown> = { type: types[Math.floor(rand() * types.length)] };
+      for (const k of ["card_ids", "seat", "from", "on", "name", "token", "code", "text", "nearby_v"]) {
+        if (rand() < 0.4) msg[k] = values[Math.floor(rand() * values.length)];
+      }
+      t.fake.inject(t.code, peer, rand() < 0.1 ? JSON.stringify(msg).slice(0, 7) : JSON.stringify(msg));
+      if (i % 15 === 0) await t.advance(0.8);
+    }
+    await t.advance(1);
+    // the host is alive and the other seats' cards are the dealt ones
+    expect(t.server.rooms.has(t.code)).toBe(true);
+    expect(t.room!.round).toBe(rnd);
+    for (let s = 0; s < 4; s++) if (s !== t.joiners[0].seat) expect(rnd.hands[s].length).toBeGreaterThan(0);
+  });
+});
+
+describe("what a joiner's socket sends", () => {
+  it("turns the join into the fixed hello and drops everything else", () => {
+    const hello = NearbySocket.outbound(JSON.stringify({
+      type: "table_join", code: "K7Q2MX", name: "Ann", token: "tok", expect: "room",
+      device: "dddddddddddddddddddddd", email: "a@b.c", picture: "https://x", user_id: 9,
+    }));
+    expect(JSON.parse(hello!)).toEqual({ type: "nearby_hello", nearby_v: NEARBY_V, name: "Ann", token: "tok" });
+    for (const t of ["ping", "presence", "queue_join", "queue_status", "client_event", "table_chat", "create_room", "table_start", "table_peek"]) {
+      expect(NearbySocket.outbound(JSON.stringify({ type: t, text: "hi" }))).toBeNull();
+    }
+    expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "play", card_ids: [101, 102], panel_seq: 4 }))!))
+      .toEqual({ type: "play", card_ids: [101, 102] });
+  });
+
+  it("puts no device key, account field or code on the wire in a whole game", async () => {
+    const t = new NearbyTable(5, 1);
+    await t.open(true);
+    await t.join("Ann", { drive: true });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().some((p) => p.left), 2_000_000);
+    const up = t.fake.wire.filter((w) => w.from !== "host").map((w) => w.text);
+    expect(up.length).toBeGreaterThan(5);
+    for (const text of up) {
+      expect(text).not.toMatch(/device|email|picture|user_id|cookie|session|chat/);
+      expect(text).not.toContain(t.code);
+    }
+  }, 60_000);
+});

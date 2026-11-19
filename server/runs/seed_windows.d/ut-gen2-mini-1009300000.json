@@ -1,0 +1,14 @@
+{
+  "name": "ut-gen2-mini-1009300000",
+  "purpose": "trajectory",
+  "seed0": 1009300000,
+  "clusters": 20000,
+  "span": [
+    1009300000,
+    1009320000
+  ],
+  "created_at": "2026-11-19T17:30:00Z",
+  "host": "mini",
+  "git_head": "31163ba8",
+  "note": "Optional Mini filler block (<= 4 workers, nice 19), started only after a Mini pilot shows short=0 and >= 1,000 rounds/h; same generators as the Ultra tranches. Training corpus for RT3; a screen must not reuse these deals. UT-GEN2 (standing data-gen authorization; board #1263 data direction): unified-bot self-play on the M5 Ultra, all four seats, built by server/scripts/y_trajectory.py on a tree pinned at main 31163ba8 with that fly.toml; exact served budgets (3 s play / 2 s bury), --round-mix sampled, explore 0, cap 256, served-budget capture; store /Users/jeryyu/fleet/claude-ut-gen2/store. RESERVED BEFORE DEALING (seed_windows.py check --purpose trajectory rc 0 at origin/main 31163ba8; no 1009xxxxxx entry in an open PR or an Ultra runtime registry). The host's runtime registry must not contain this entry (the producer registers its own run_id window)."
+}

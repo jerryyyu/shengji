@@ -1,0 +1,14 @@
+{
+  "name": "ut-gen2-ultra-1009000000",
+  "purpose": "trajectory",
+  "seed0": 1009000000,
+  "clusters": 200000,
+  "span": [
+    1009000000,
+    1009200000
+  ],
+  "created_at": "2026-11-19T17:30:00Z",
+  "host": "ultra",
+  "git_head": "31163ba8",
+  "note": "Train-leg block. Tranche A = [1009000000, 1009050000) (100,000 rounds, legs A01..A10 of 5,000 clusters) by release 53 as served (Fly v117, main 31163ba8 fly.toml: the all-data unified package 97c07be8 + belief 1b1fd2de inside release 52's search, SHENGJI_PV_UNIFIED_FAST=1; registry name ending -ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast); tranche B = [1009050000, 1009150000) by RT2 (unified 47175c99, belief bed32f87) if its screen passes stage 1, else the same generator as A; [1009150000, 1009200000) headroom for a later tranche. Training corpus for RT3; a screen must not reuse these deals. UT-GEN2 (standing data-gen authorization; board #1263 data direction): unified-bot self-play on the M5 Ultra, all four seats, built by server/scripts/y_trajectory.py on a tree pinned at main 31163ba8 with that fly.toml; exact served budgets (3 s play / 2 s bury), --round-mix sampled, explore 0, cap 256, served-budget capture; store /Users/jeryyu/fleet/claude-ut-gen2/store. RESERVED BEFORE DEALING (seed_windows.py check --purpose trajectory rc 0 at origin/main 31163ba8; no 1009xxxxxx entry in an open PR or an Ultra runtime registry). The host's runtime registry must not contain this entry (the producer registers its own run_id window)."
+}

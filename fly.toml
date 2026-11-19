@@ -180,9 +180,9 @@ primary_region = 'ewr'
   # the value of the decision's own-trick leaves (uvalue) and the greedy finish's reply prior
   # (ureply); the belief package ut-all-belief-1b1fd2de carries the same trunk and replaces B1a.
   # SHENGJI_PV_UNIFIED_FAST = '1' reads the readout through its fused stem and per-decision row
-  # memo (ufast). The search, its rules and budgets, bury, declaration, the G3 A value package
-  # (terminal leaves, bury, declaration) and the FT1 prior (the replies the readout leaves) are
-  # release 52's. Evidence (paired, seat-swapped duels against release 52 as served, M5 Ultra):
+  # memo (ufast). The search, its rules and budgets, bury, declaration and the G3 A value and FT1
+  # prior bindings are release 52's; in play the unified slots fill every value, root-prior and
+  # reply row, and G3 A still scores the bury and the declaration. Evidence (paired, seat-swapped duels against release 52 as served, M5 Ultra):
   # UT-alldata-screen +0.0573 [+0.0422, +0.0728] on 3,920 deals; UT-alldata-confirm +0.0521
   # [+0.0410, +0.0633] on 7,840 fresh deals (DEPLOY.md, Release 53). Rollback: delete the three
   # "Release 53" lines below, restore the two release-52 belief lines and the release-52 name:

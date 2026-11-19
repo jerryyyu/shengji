@@ -171,7 +171,7 @@ One four-minute window, first rounds only, k=1: **latency with 2 or more concurr
 ### Pre-deploy smoke (release tree, this host)
 
 `smoke_release45_bury.py --rounds 10 --full-round` on the release branch (commit `578d6d61`: this PR's `fly.toml`
-and `served_config` change on main `ae121726`; the later commits change tests, CI and docs only) with sha-verified
+and `served_config` change on main `ae121726`; the later commits change tests, CI, docs and `fly.toml` comments only) with sha-verified
 local packages (the two unified packages, G3 A, FT1, JS-M1), Mac mini M4, compiled engine, 2026-11-19 02:47–02:49Z (smoke53b beside a release-manifest wiring run on the same host).
 Archived in `~/shengji-archive/2026-11-18-r53-smoke/` with `SHA256SUMS` (`32aee421…`; receipts `smoke53.jsonl`
 `13b4c682…`, `smoke53b.jsonl` `93ace303…`). Every receipt's bot is the release-53 name above, class

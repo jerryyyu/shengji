@@ -515,6 +515,9 @@ W x K finished rounds stay on the bot, and the server deep-copies the bot
 (`pv_tree_search.afterstate_fast`, `child_position_fast`) with a shallow copy
 that is ``copy.copy``'s own result for an exact `Round` under the default copy
 protocol (``copy.copy`` otherwise): the same objects, attribute for attribute.
+Where ``train/_reply_fast`` is built, each clone's reply children are built
+and heuristic-finished in one compiled call
+(`pv_tree_search.reply_children_fast`): the same children.
 ``SHENGJI_PV_LEAF_TRICK_CACHE=1`` gives ``lgf``'s clones of a FOLLOW root the
 trusted trick caches (incumbent, running points; `pv_tree_search.seed_trick_caches`)
 a lead root's clones get from their own lead, folded over the trick's plays by

@@ -530,10 +530,17 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
         bot = registry_bot(monkeypatch, fast, P.SEED)
         assert bot.policy_name == fast["SHENGJI_BOT"] and bot.unified_fast
         got = decide(bot, P.replay(*position))
-        assert got["cards"] == want["cards"], P.label(*position)
-        assert got["worlds"] == want["worlds"], P.label(*position)
-        assert got["counters"] == want["counters"], P.label(*position)
         g, w = got["record"], want["record"]
+        fields = ("admitted", "admitted_indices", "value_means", "selected_index",
+                  "exact_lead_status", "exact_lead_base_selected_index",
+                  "exact_lead_base_value_means", "exact_lead_base_played",
+                  "exact_lead_change_kind", "exact_follow_attempted", "work_complete")
+        context = {"position": P.label(*position),
+                   "reference": {key: w.get(key) for key in fields},
+                   "fast": {key: g.get(key) for key in fields}}
+        assert got["worlds"] == want["worlds"], context
+        assert got["counters"] == want["counters"], context
+        assert got["cards"] == want["cards"], context
         assert g["policy"] == fast["SHENGJI_BOT"] and w["policy"] == env["SHENGJI_BOT"]
         assert g["admitted_indices"] == w["admitted_indices"] and g["selected_index"] == w["selected_index"]
         np.testing.assert_allclose(np.asarray(g["value_means"], float), np.asarray(w["value_means"], float),

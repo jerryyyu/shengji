@@ -594,7 +594,8 @@ def test_the_fast_readout_scores_reply_leaves_ahead_as_it_scores_chunks(
         release50_packages, pair, monkeypatch, served_functions):
     """Ten production positions: value rows scored `READOUT_BATCH` leaves per forward ahead of the
     search decide as one forward per search chunk does (same worlds, admitted and selected actions,
-    slot and memo counts; values within float64 rounding), and every slice scored ahead is consumed."""
+    slot and memo counts; values within the float32 rounding a BLAS's batch shape decides), and every
+    slice scored ahead is consumed."""
     from shengji.train import unified_slots as us
 
     fast = fast_env(unified_env(release50_packages, pair))
@@ -619,7 +620,7 @@ def test_the_fast_readout_scores_reply_leaves_ahead_as_it_scores_chunks(
         g, w = got["record"], want["record"]
         assert g["admitted_indices"] == w["admitted_indices"] and g["selected_index"] == w["selected_index"]
         np.testing.assert_allclose(np.asarray(g["value_means"], float), np.asarray(w["value_means"], float),
-                                   rtol=0, atol=1e-12, err_msg=P.label(*position))
+                                   rtol=0, atol=1e-6, err_msg=P.label(*position))
     assert consumed[0] > 0
 
 

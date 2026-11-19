@@ -189,7 +189,11 @@ primary_region = 'ewr'
   #   SHENGJI_PV_BELIEF_CKPT = '/data/models/b1a-028131a0.npz'
   #   SHENGJI_PV_BELIEF_SHA256 = '028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8'
   # RELEASE 52 name: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8
-  SHENGJI_BOT = 'pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-1b1a47f5dd8b-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast'
+  # BURY 3 S (Jerry 2026-11-19: "Bury can be 3s"): release 53 with the bury budget at 3 s
+  # instead of 2 s. The budget is in the bury identity, so only the bury digest of the name
+  # moves (1b1a47f5dd8b -> 3a676f3c01ea). Rollback: SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = '2' and
+  # RELEASE 53 name: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-1b1a47f5dd8b-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast
+  SHENGJI_BOT = 'pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-3a676f3c01ea-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
@@ -269,9 +273,9 @@ primary_region = 'ewr'
   SHENGJI_PV_SERVING_BUDGET_SECONDS = '3'
   # Value-guided hybrid bury (release 27/28's arm, on this package's value head; Jerry: "we
   # should use value guided hybrid"): 32 candidates, 32 model worlds, 32 selection worlds,
-  # 4 alternatives, 2 s cooperative budget with heuristic fallback.
+  # 4 alternatives, 3 s cooperative budget with heuristic fallback (2 s through release 53).
   SHENGJI_PV_BURY_ARM = 'hybrid'
-  SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = '2'
+  SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = '3'
   # Release 45: the wide value-only bury (#974) at K=64 (see the RELEASE 45 note above).
   SHENGJI_PV_BURY_WIDE_VALUE = '1'
   SHENGJI_PV_BURY_WIDE_K = '64'

@@ -26,8 +26,8 @@ import pytest
 
 from shengji import releases
 from test_encoder_round_compat import REQUIRE_PACKAGE
-from test_release46_fly_config import (RELEASE52_BELIEF, RELEASE52_NAME, RELEASE53_ADDED_KEYS,
-                                       fly_env as production_env, release52_env)
+from test_release46_fly_config import (BURY3, RELEASE52_BELIEF, RELEASE52_NAME, RELEASE53_ADDED_KEYS,
+                                       fly_env as served_env, release52_env, undo_bury3)
 from test_release48_fly_config import apply_to_process
 from test_release50_fly_config import (PRIOR_SHA, PRIOR_VOLUME_PATH, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages)  # noqa: F401
@@ -46,6 +46,20 @@ R53_CHANGES = {"SHENGJI_PV_BELIEF_CKPT": UNIFIED_BELIEF_VOLUME_PATH,
                "SHENGJI_PV_UNIFIED_CKPT": UNIFIED_VOLUME_PATH,
                "SHENGJI_PV_UNIFIED_SHA256": UNIFIED_SHA,
                "SHENGJI_PV_UNIFIED_FAST": "1"}
+
+#: production's name: release 53's with the bury digest of the 3 s budget
+BURY3_NAME = RELEASE53.replace("-1b1a47f5dd8b-", "-3a676f3c01ea-")
+
+
+def release53_env(env: dict) -> dict:
+    """Production's env with the bury-3 rollback applied and the release-53 name restored:
+    release 53's ``fly.toml`` ``[env]``."""
+    return {**undo_bury3(env), "SHENGJI_BOT": RELEASE53}
+
+
+def production_env() -> dict:
+    """Release 53's ``fly.toml`` ``[env]``: the repo's with the bury-3 rollback applied."""
+    return release53_env(served_env())
 
 
 def bot_env(env):
@@ -212,3 +226,27 @@ def test_rollback_to_release52_restores_b1a_and_drops_the_unified_lines(
     assert name == bot.policy_name == RELEASE52
     assert not hasattr(bot, "unified_sha256")
     assert bot.model_ids("play")["belief"] == RELEASE52_BELIEF["SHENGJI_PV_BELIEF_SHA256"][:8]
+
+
+def test_fly_toml_is_release53_with_the_3s_bury():
+    """Production is release 53 with one line changed, the bury budget at 3 s; the budget enters
+    the bury identity, so only the name's bury digest moves."""
+    env = served_env()
+    assert env["SHENGJI_BOT"] == BURY3_NAME
+    assert {k: env[k] for k in BURY3} == BURY3
+    r53 = release53_env(env)
+    changed = {k for k in set(env) | set(r53) if env.get(k) != r53.get(k)}
+    assert changed == {"SHENGJI_BOT", *BURY3}
+    assert bot_env(env) == releases.load(54)["env"]
+    assert bot_env(r53) == releases.load(53)["env"]
+    # the release-28 rollback keys keep release 28's 2 s budget
+    assert env["SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS"] == "2"
+
+
+def test_served_bot_buries_on_the_3s_budget(release50_packages, release53_pair, monkeypatch,
+                                            served_functions):
+    name, bot = served_bot(release50_packages, release53_pair, monkeypatch, env=served_env())
+    assert name == bot.policy_name == BURY3_NAME
+    assert bot.serving_budget_seconds == 3.0 and bot.bury_serving_budget_seconds == 3.0
+    assert bot.bury_recipe_identity["serving_budget_seconds"] == 3.0
+    assert bot.unified_fast is True and bot.unified_sha256 == UNIFIED_SHA

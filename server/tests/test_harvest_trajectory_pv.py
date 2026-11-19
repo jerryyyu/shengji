@@ -349,7 +349,7 @@ def test_budgeted_serving_recipes_and_knobs_are_refused(package, tmp_path, monke
 def test_budgeted_serving_capture_is_explicit_and_exact(package):
     path, sha = package
     names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
-                                        bury_serving_budget_seconds=2, bury_arm="hybrid",
+                                        bury_serving_budget_seconds=trajectory.SERVED_BURY_BUDGET_SECONDS, bury_arm="hybrid",
                                         bury_config=BURY, **SMALL)
     try:
         with pytest.raises(trajectory.TrajectoryError, match="scientific data teachers"):
@@ -363,6 +363,21 @@ def test_budgeted_serving_capture_is_explicit_and_exact(package):
         with pytest.raises(trajectory.TrajectoryError, match="forbids exploration"):
             trajectory.build_config(policy=names[0], seed0=SEED0,
                                     capture_served_budget=True, explore_rate=0.1)
+    finally:
+        for n in names:
+            REGISTRY.pop(n, None)
+
+
+@pytest.mark.parametrize("bury_budget", [2, 60])
+def test_served_capture_refuses_a_bury_budget_other_than_the_served_one(package, bury_budget):
+    path, sha = package
+    names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
+                                        bury_serving_budget_seconds=bury_budget, bury_arm="hybrid",
+                                        bury_config=BURY, **SMALL)
+    try:
+        with pytest.raises(trajectory.TrajectoryError, match="exact 3s bury budget"):
+            trajectory.build_config(policy=names[0], seed0=SEED0, capture_served_budget=True,
+                                    explore_rate=0.0, explore_k=0)
     finally:
         for n in names:
             REGISTRY.pop(n, None)
@@ -449,7 +464,7 @@ def test_served_timeouts_reach_shards_and_outcome_consumer(package, tmp_path, mo
     monkeypatch.setattr(bury.CWVBuryMixin, "_decide_bury", bury_timeout)
     path, sha = package
     names = register_pv_search_policies(path, sha256=sha, serving_budget_seconds=3,
-                                       bury_serving_budget_seconds=2, bury_arm="hybrid",
+                                       bury_serving_budget_seconds=trajectory.SERVED_BURY_BUDGET_SECONDS, bury_arm="hybrid",
                                        bury_config=BURY, **SMALL)
     try:
         run = _gen(tmp_path / "timeouts", names[0], explore_rate=0, explore_k=0,

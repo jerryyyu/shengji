@@ -7,8 +7,8 @@ first-round chance (``-vdef``).  Release 48 changes the belief pair and adds
 the lines in ``RELEASE48_ADDED_KEYS``, release 49 adds ``RELEASE49_ADDED_KEYS``, and
 release 50 adds ``RELEASE50_ADDED_KEYS`` and changes the value and belief pairs, and
 release 51 turns the lead confirmation off, release 52 adds ``RELEASE52_ADDED_KEYS``, and
-release 53 adds ``RELEASE53_ADDED_KEYS`` and changes the belief pair (``undo_release50``
-undoes all four), so release
+release 53 adds ``RELEASE53_ADDED_KEYS`` and changes the belief pair, and production raises
+the bury budget to 3 s (``BURY3``; ``undo_release50`` undoes all five), so release
 46's env is the repo's ``fly.toml`` environment with the six changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
 (``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
@@ -111,10 +111,26 @@ RELEASE52_NAME = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-
                   "hybrid-bwv-bbw-7a9a430fe690-sc8")
 
 
+#: the bury budget production serves above release 53, and the value of the same line in
+#: release 53 and every earlier release
+BURY_BUDGET_KEY = "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"
+BURY3 = {BURY_BUDGET_KEY: "3"}
+RELEASE53_BURY = {BURY_BUDGET_KEY: "2"}
+
+
+def undo_bury3(env: dict) -> dict:
+    """``env`` with the bury-3 rollback applied (the bury budget back at 2 s); the name is
+    left to the caller.  An env of release 53 or earlier is returned as is."""
+    if env.get(BURY_BUDGET_KEY) != BURY3[BURY_BUDGET_KEY]:
+        return dict(env)
+    return {**env, **RELEASE53_BURY}
+
+
 def undo_release53(env: dict) -> dict:
-    """``env`` with release 53's rollback applied (its three lines removed, the B1a belief
-    pair restored); the name is left to the caller.  An env of release 52 or earlier is
-    returned as is."""
+    """``env`` with the rollbacks of bury 3 and release 53 applied (release 53's three lines
+    removed, the B1a belief pair restored); the name is left to the caller.  An env of
+    release 52 or earlier is returned as is."""
+    env = undo_bury3(env)
     if not set(RELEASE53_ADDED_KEYS) & set(env):
         return dict(env)
     return {**{k: v for k, v in env.items() if k not in RELEASE53_ADDED_KEYS}, **RELEASE52_BELIEF}
@@ -176,7 +192,8 @@ BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
-    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 53)."""
+    """The repo's ``fly.toml`` ``[env]`` as written (production's: release 53 with the 3 s
+    bury budget)."""
     return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
 
 

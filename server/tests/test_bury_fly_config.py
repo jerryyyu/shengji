@@ -16,7 +16,7 @@ from test_release50_fly_config import (BELIEF_SHA as R50_BELIEF_SHA, BELIEF_VOLU
                                        VALUE_VOLUME_PATH as R50_VALUE_PATH, release50_env)
 from test_release51_fly_config import R51_CHANGES, RELEASE51, release51_env
 from test_release52_fly_config import R52_CHANGES, RELEASE52
-from test_release53_fly_config import R53_CHANGES, RELEASE53
+from test_release53_fly_config import BURY3_NAME, R53_CHANGES, RELEASE53
 
 # The shipping package (#425/#435, Jerry's go 2026-09-15 23:4x ET): the from-scratch joint
 # net JS-M1 a5248cc5 as ONE NumPy package (0d17fd03…) that is both the value net and, via
@@ -37,10 +37,11 @@ WIDE_BURY = ("SHENGJI_PV_BURY_WIDE_VALUE", "SHENGJI_PV_BURY_WIDE_K")
 
 def test_fly_bury_name_matches_recipe_and_preserves_play(monkeypatch):
     config = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())
-    # production is release 53: release 52 with the unified pair, whose name adds the unified
-    # tokens after release 52's bury suffix; the chain below starts from release 52's env
+    # production is release 53 with the 3 s bury: release 52 with the unified pair, whose name
+    # adds the unified tokens after release 52's bury suffix; the chain below starts from
+    # release 52's env
     served = config["env"]
-    assert served["SHENGJI_BOT"] == RELEASE53 and {k: served[k] for k in R53_CHANGES} == R53_CHANGES
+    assert served["SHENGJI_BOT"] == BURY3_NAME and {k: served[k] for k in R53_CHANGES} == R53_CHANGES
     env = release52_env(served)
     assert RELEASE53.startswith(env["SHENGJI_BOT"].rsplit("-r12e81e0c-", 1)[0])
     parsed = bury_env_recipe(env)

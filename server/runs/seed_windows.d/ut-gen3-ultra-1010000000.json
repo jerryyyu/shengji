@@ -1,0 +1,14 @@
+{
+  "name": "ut-gen3-ultra-1010000000",
+  "purpose": "trajectory",
+  "seed0": 1010000000,
+  "clusters": 300000,
+  "span": [
+    1010000000,
+    1010300000
+  ],
+  "created_at": "2026-11-19T23:30:00Z",
+  "host": "ultra",
+  "git_head": "7c0fc4da",
+  "note": "Train-leg block, 300,000 clusters = 600,000 rounds. [1010000000, 1010050000) finishes the 500k target (legs B16..B20 of 10,000 clusters, after ut-gen2-ultra's B01..B15); [1010050000, 1010300000) is held for the 500k -> 1M continuation (phase 2). Training corpus for RT3/RT4/RT5; a screen must not reuse these deals. UT-GEN2 extension to 500,000 rounds (Jerry 2026-11-19: 500k target, 1M only by PLAN_1M's continue rule at RT4; the generator need not be fixed): unified-bot self-play on the M5 Ultra, all four seats, server/scripts/y_trajectory.py on the lane's pinned tree with the lane's own pinned fly.toml; generator = release 53 as served (-ufast, 2 s bury, fly.toml sha cad28bfd) until RT2 (unified 47175c99, belief bed32f87) passes its screen stage 1, then RT2 from the next leg boundary, later a stronger confirmed bot (RT3); decision-identical speed-ups may be swapped in between legs after a 100-cluster identity re-deal on the pilot block. Each leg's generator name is recorded in the lane's leg manifest; the curve is iterated self-play, not one generator. Store /Users/jeryyu/fleet/claude-ut-gen2/store. RESERVED BEFORE DEALING (seed_windows.py check --purpose trajectory rc 0 at origin/main 7c0fc4da; no 1010xxxxxx entry in an open PR or an Ultra runtime registry). The host's runtime registry must not contain this entry (the producer registers its own run_id window)."
+}

@@ -39,6 +39,10 @@ class ShellViewController: CAPBridgeViewController {
         webView?.allowsBackForwardNavigationGestures = true
         bridge?.registerPluginInstance(ShengjiShellPlugin())
         bridge?.registerPluginInstance(ShengjiBotPlugin())
+        #if SHENGJI_NEARBY
+        // Nearby play is registered only in builds that define SHENGJI_NEARBY.
+        bridge?.registerPluginInstance(ShengjiNearbyPlugin())
+        #endif
         // Launched from Xcode with -offline-autoplay, the offline game plays the
         // human's seat too, so a whole round of the bots can be watched and timed.
         if ProcessInfo.processInfo.arguments.contains("-offline-autoplay") {

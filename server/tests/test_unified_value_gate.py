@@ -135,7 +135,7 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     with pytest.raises(ValueError, match='already exists'):
         reader.main([str(result_path), 'missing', 'missing'])
     valid = rows(full)[:-1]
-    boundary = [dict(copy.deepcopy(valid[0]), ref=f'boundary-{i}') for i in range(100)]
+    boundary = [dict(copy.deepcopy(valid[2]), ref=f'boundary-{i}') for i in range(100)]
     boundary[0]['belief_fallback'] = 1
     assert reader.validate_rows(boundary, {0})['verdict'] == 'VALID'
     boundary[1]['belief_fallback'] = 1
@@ -152,8 +152,11 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
             lambda r: r.update(target=r['target']+1),
             lambda r: r['end'].update(ro_mix=float('nan')),
             lambda r: r.update(adapter='different'),
+            lambda r: r['end'].update(ro_lvl=True),
             lambda r: r['reply'][0].update(top4_overlap=99),
         ]
+        empty_reply = [dict(r, reply=[]) for r in valid]
+        assert reader.analyze(empty_reply, {0})['validity']['verdict'] == 'DEV_INVALID'
         for mutate in mutations:
             invalid = copy.deepcopy(valid)
             mutate(invalid[2])

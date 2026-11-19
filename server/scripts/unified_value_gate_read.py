@@ -63,7 +63,8 @@ def validate_rows(rows, want):
                         p = value[f'{model}_{world}']
                         if type(p) not in (int, float) or not math.isfinite(p) or not 0 <= p <= 1:
                             raise ValueError('invalid probability')
-                    if not math.isfinite(value[f'{model}_lvl']):
+                    level = value[f'{model}_lvl']
+                    if type(level) not in (int, float) or not math.isfinite(level):
                         raise ValueError('invalid expected level')
             for reply in row['reply']:
                 n = reply['n_legal']
@@ -82,6 +83,8 @@ def validate_rows(rows, want):
     for tag in ('end', 'k0'):
         if not any(isinstance(r.get(tag), dict) for r in rows):
             reasons.append(f'no nonterminal {tag} rows')
+    if not any(isinstance(r.get('reply'), list) and r['reply'] for r in rows):
+        reasons.append('no reply rows (empty recall denominator)')
     checks = [
         dict(check='gate_schema', verdict='DEV_INVALID' if reasons else va.VALID, reasons=reasons),
         va.arm_fault_ceilings({a: dict(search=len(rows), belief_fallback=faults) for a in ARMS},

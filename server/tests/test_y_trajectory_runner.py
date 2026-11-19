@@ -18,7 +18,7 @@ def test_recipe_keeps_served_budgets_and_latency_switches(tmp_path):
     fly = _PATH.parents[2] / "fly.toml"
     env = runner.recipe_environment(fly, tmp_path)
     assert env["SHENGJI_PV_SERVING_BUDGET_SECONDS"] == "3"
-    assert env["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"] == "2"
+    assert env["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"] == "3"
     assert env["SHENGJI_PV_LEAF_GREEDY_DEADLINE"] == "2"
     assert env["SHENGJI_PV_ENCODE_NATIVE"] == "1"
     assert env["SHENGJI_PV_BELIEF_CKPT"] == str(tmp_path / "ut-all-belief-1b1fd2de.npz")
@@ -27,8 +27,21 @@ def test_recipe_keeps_served_budgets_and_latency_switches(tmp_path):
     assert not any(key.startswith("SHENGJI_CWV_") for key in env)
 
 
+def test_capture_budgets_are_fly_tomls():
+    """The runner, the trajectory capture guard and fly.toml name the same served budgets, so
+    captured data is timed as production serves."""
+    from shengji.harvest import trajectory
+
+    env = runner.recipe_environment(_PATH.parents[2] / "fly.toml", Path("/unused"))
+    assert (runner.PLAY_SECONDS, runner.BURY_SECONDS) == (
+        trajectory.SERVED_PLAY_BUDGET_SECONDS, trajectory.SERVED_BURY_BUDGET_SECONDS)
+    assert env["SHENGJI_PV_SERVING_BUDGET_SECONDS"] == str(trajectory.SERVED_PLAY_BUDGET_SECONDS)
+    assert env["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"] == str(trajectory.SERVED_BURY_BUDGET_SECONDS)
+
+
 @pytest.mark.parametrize("old,new", [
     ("SHENGJI_PV_SERVING_BUDGET_SECONDS = '3'", "SHENGJI_PV_SERVING_BUDGET_SECONDS = '0'"),
+    ("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = '3'", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS = '2'"),
     ("SHENGJI_PV_CANDIDATES = '8'", "SHENGJI_PV_CANDIDATES = '24'"),
     ("SHENGJI_PV_SINGLETON_CHALLENGER = '1'", "SHENGJI_PV_SINGLETON_CHALLENGER = '0'"),
     ("SHENGJI_PV_LEAD_CONFIRM = '0'", "SHENGJI_PV_LEAD_CONFIRM = '32'"),
@@ -78,7 +91,7 @@ def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, 
     assert report["candidate"] == report["baseline"] == env["SHENGJI_BOT"]
     assert report["environment"]["SHENGJI_PV_BURY_BELIEF_WORLDS"] == "1"
     assert report["environment"]["SHENGJI_PV_PRIOR_SHA256"] == env["SHENGJI_PV_PRIOR_SHA256"]
-    assert report["play_seconds"] == 3 and report["bury_seconds"] == 2
+    assert report["play_seconds"] == 3 and report["bury_seconds"] == 3
 
     if capture:
         from shengji.train.belief_labels import extract_cluster

@@ -107,12 +107,13 @@ def served_functions(monkeypatch):
     return pv_tree_search.greedy_reply_ply, pv_encode_prefix.score_leaves
 
 
-def unified_env(packages, pair) -> dict:
-    """Release 52's env on the local packages with the four lines a unified release changes: the
-    belief pair, the unified pair, and the name the registry derives from them."""
+def unified_env(packages, pair, base=None) -> dict:
+    """``base`` (release 52's env by default) on the local packages with the four lines a unified
+    release changes: the belief pair, the unified pair, and the name the registry derives from
+    them."""
     from shengji.eval.served_config import registry_name
 
-    env = {**local_env(packages, release52_fly_env()),
+    env = {**local_env(packages, release52_fly_env() if base is None else base),
            "SHENGJI_PV_BELIEF_CKPT": pair["belief"][0], "SHENGJI_PV_BELIEF_SHA256": pair["belief"][1],
            "SHENGJI_PV_UNIFIED_CKPT": pair["unified"][0], "SHENGJI_PV_UNIFIED_SHA256": pair["unified"][1]}
     env["SHENGJI_BOT"] = registry_name(env)
@@ -558,13 +559,14 @@ def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
     from collections import Counter
     from shengji.harvest import trajectory as tr
 
-    env = unified_env(release50_packages, pair)
+    # the capture refuses any bury budget but the served one: production's env, not release 52's
+    env = unified_env(release50_packages, pair, base=served_env())
     registry = register(monkeypatch, env)
     config = tr.build_config(policy=env["SHENGJI_BOT"], seed0=0,
                              explore_rate=0, explore_k=0, round_mix="sampled",
                              capture_served_budget=True)
     assert config["served_budgets"]["play_seconds"] == 3
-    assert config["served_budgets"]["bury_seconds"] == 2
+    assert config["served_budgets"]["bury_seconds"] == 3
     assert config["served_runtime"]["SHENGJI_PV_UNIFIED_SHA256"] == pair["unified"][1]
     assert config["served_runtime"]["SHENGJI_PV_BELIEF_SHA256"] == pair["belief"][1]
     for position in P.POSITIONS:

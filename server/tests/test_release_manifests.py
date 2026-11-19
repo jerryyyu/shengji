@@ -1,6 +1,6 @@
 """Per-release model manifests (`shengji.releases`, ``server/releases/r<N>.json``).
 
-* ``fly.toml``'s served env is release 53's manifest env, key for key: editing one
+* ``fly.toml``'s served env is release 54's manifest env, key for key: editing one
   without the other fails here.
 * The schema refuses a manifest whose null value, null prior or non-belief worlds
   carry no ``why``, that names an unknown package, or whose hashes disagree with
@@ -15,7 +15,8 @@
   ``SHENGJI_RELEASE_PACKAGE_DIR``) and fails, never skips, under the same flag; release
   53's adds the unified pair (``test_release53_fly_config``'s pinned paths).  Release 53's
   play stages name the unified package, witnessed through its actual value, root-prior
-  and reply forwards, with the same model IDs in their records.
+  and reply forwards, with the same model IDs in their records; release 54 is release 53
+  with the 3 s bury budget, witnessed the same way.
 """
 import copy
 import os
@@ -40,8 +41,8 @@ def r49():
     return releases.load(49)
 
 
-def test_fly_toml_env_is_release53_manifest_env():
-    manifest = releases.load(53)
+def test_fly_toml_env_is_release54_manifest_env():
+    manifest = releases.load(54)
     assert releases.fly_env(FLY_TOML) == manifest["env"]
     assert manifest["bot_name"] == manifest["env"]["SHENGJI_BOT"]
 
@@ -59,15 +60,15 @@ def test_telemetry_sink_stays_in_server_config_but_out_of_bot_manifest(tmp_path,
     fly = _edited_fly(tmp_path, "SHENGJI_TELEMETRY_DIR = '/data/telemetry'",
                       f"SHENGJI_TELEMETRY_DIR = '{directory}'")
     assert served_config.fly_env(fly)["SHENGJI_TELEMETRY_DIR"] == directory
-    assert releases.fly_env(fly) == releases.load(53)["env"]
-    edited = copy.deepcopy(releases.load(53))
+    assert releases.fly_env(fly) == releases.load(54)["env"]
+    edited = copy.deepcopy(releases.load(54))
     edited["env"]["SHENGJI_TELEMETRY_DIR"] = directory
     with pytest.raises(releases.ManifestError, match="enters no bot"):
         releases.validate(edited)
 
 
 def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
-    manifest = releases.load(53)
+    manifest = releases.load(54)
     # fly.toml edited, manifest not
     fly = _edited_fly(tmp_path, "SHENGJI_PV_WORLDS = '64'", "SHENGJI_PV_WORLDS = '48'")
     assert releases.fly_env(fly) != manifest["env"]
@@ -83,7 +84,7 @@ def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
         releases.NON_BOT_KEYS)
 
 
-@pytest.mark.parametrize("release", [49, 50, 51, 52, 53])
+@pytest.mark.parametrize("release", [49, 50, 51, 52, 53, 54])
 def test_manifests_validate_and_name_their_packages(release):
     manifest = releases.load(release)
     assert manifest["release"] == release
@@ -160,6 +161,22 @@ def test_release53_is_release52_with_the_unified_model():
         assert b["stages"][stage]["worlds"] == "belief:ut-all-belief-1b1fd2de"
     for stage in ("lead", "follow", "endgame"):
         assert b["stages"][stage]["value"] == b["stages"][stage]["prior"] == "ut-all-97c07be8"
+
+
+def test_release54_is_release53_with_the_bury_budget_at_3s():
+    a, b = releases.load(53), releases.load(54)
+    changed = {k for k in set(a["env"]) | set(b["env"]) if a["env"].get(k) != b["env"].get(k)}
+    assert changed == {"SHENGJI_BOT", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"}
+    assert (a["env"]["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"],
+            b["env"]["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"]) == ("2", "3")
+    # the budget enters the bury identity: only the bury digest of the name moves
+    assert a["bot_name"].replace("-1b1a47f5dd8b-", "-3a676f3c01ea-") == b["bot_name"]
+    # the release-28 rollback keys keep release 28's 2 s budget
+    assert b["env"]["SHENGJI_CWV_BURY_SERVING_BUDGET_SECONDS"] == "2"
+    assert a["packages"] == b["packages"]
+    for stage in releases.STAGES:
+        drop = lambda row: {k: v for k, v in row.items() if k != "why"}
+        assert drop(a["stages"][stage]) == drop(b["stages"][stage])
 
 
 def _refused(manifest, match):
@@ -280,8 +297,10 @@ def test_release50_package_wiring_matches_its_manifest(release50_packages, relea
     _check_wiring(manifest, paths)
 
 
-def test_release53_wiring_matches_its_manifest(release50_packages, release53_pair, served_functions):
-    manifest = releases.load(53)
+@pytest.mark.parametrize("release", [53, 54])
+def test_release53_wiring_matches_its_manifest(release50_packages, release53_pair, served_functions,
+                                               release):
+    manifest = releases.load(release)
     paths = {"g3a-e04-f4f4127e": release50_packages["value"],
              "p0-ft1-1fa201b2": release50_packages["prior"],
              "ut-all-97c07be8": release53_pair["unified"],

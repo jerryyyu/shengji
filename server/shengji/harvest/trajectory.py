@@ -259,9 +259,9 @@ score sidecars. Existing policies and absent-option data bytes are unchanged.
 
 Served-budget capture
 ---------------------
-The explicit capture_served_budget mode keeps the 3-second play and 2-second
-bury budgets. Timed search hooks are unchanged; capture occurs after deciding.
-Timeout actions are retained for outcome training without fabricated search
+The explicit capture_served_budget mode keeps the served play and bury budgets
+(``SERVED_PLAY_BUDGET_SECONDS``, ``SERVED_BURY_BUDGET_SECONDS``: 3 s each). Timed
+search hooks are unchanged; capture occurs after deciding. Timeout actions are retained for outcome training without fabricated search
 means. Runtime recipe and capture-source pins enter the run identity. Completed
 shards are reused on resume, but newly played shards depend on wall-clock load
 and are not promised byte-identical across hosts, worker counts or reruns.
@@ -380,6 +380,11 @@ from .rebuild import (actor_role, deck_from_seed, outcome_for,
 from .schema import SCHEMA, canonical_json, finalize_record
 
 SOURCE = "trajectory"
+#: The served play and bury budgets (fly.toml's SHENGJI_PV_SERVING_BUDGET_SECONDS and
+#: SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS). A served-budget capture refuses any other
+#: budget, so its data is timed as production is; a test holds these to fly.toml.
+SERVED_PLAY_BUDGET_SECONDS = 3
+SERVED_BURY_BUDGET_SECONDS = 3
 DEFAULT_POLICY = "mc-s0-report-lcb"
 DEFAULT_EXPLORE_RATE = 0.1
 DEFAULT_EXPLORE_K = 2
@@ -1168,11 +1173,13 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
             },
         }
         if capture_served_budget:
-            if serving_budget != 3:
-                raise TrajectoryError("capture_served_budget requires the exact 3s play budget")
+            if serving_budget != SERVED_PLAY_BUDGET_SECONDS:
+                raise TrajectoryError("capture_served_budget requires the exact "
+                                      f"{SERVED_PLAY_BUDGET_SECONDS}s play budget")
             bury_budget = getattr(probe, "bury_serving_budget_seconds", None)
-            if bury_budget != 2:
-                raise TrajectoryError("capture_served_budget requires the exact 2s bury budget")
+            if bury_budget != SERVED_BURY_BUDGET_SECONDS:
+                raise TrajectoryError("capture_served_budget requires the exact "
+                                      f"{SERVED_BURY_BUDGET_SECONDS}s bury budget")
             if float(explore_rate) != 0.0 or int(explore_k) != 0:
                 raise TrajectoryError("capture_served_budget forbids exploration")
             config["policy_flags"]["served_budget_capture"] = True

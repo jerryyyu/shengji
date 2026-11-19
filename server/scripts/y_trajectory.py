@@ -10,6 +10,11 @@ from pathlib import Path
 import sys
 import tomllib
 
+#: the served budgets this runner captures under (fly.toml's; trajectory.py's
+#: SERVED_PLAY_BUDGET_SECONDS / SERVED_BURY_BUDGET_SECONDS, held equal by a test)
+PLAY_SECONDS = 3
+BURY_SECONDS = 3
+
 
 def recipe_environment(fly: Path, models: Path) -> dict[str, str]:
     env = tomllib.loads(fly.read_text())["env"]
@@ -21,10 +26,10 @@ def recipe_environment(fly: Path, models: Path) -> dict[str, str]:
             if not value.startswith("/data/models/") or Path(value).name != value.removeprefix("/data/models/"):
                 raise ValueError(f"unexpected model path for {key}")
             selected[key] = str(models.resolve() / Path(value).name)
-    if selected.get("SHENGJI_PV_SERVING_BUDGET_SECONDS") != "3":
-        raise ValueError("play budget must be 3 seconds")
-    if selected.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS") != "2":
-        raise ValueError("bury budget must be 2 seconds")
+    if selected.get("SHENGJI_PV_SERVING_BUDGET_SECONDS") != str(PLAY_SECONDS):
+        raise ValueError(f"play budget must be {PLAY_SECONDS} seconds")
+    if selected.get("SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS") != str(BURY_SECONDS):
+        raise ValueError(f"bury budget must be {BURY_SECONDS} seconds")
     if selected.get("SHENGJI_PV_WORLDS") != "64" or selected.get("SHENGJI_PV_CANDIDATES") != "8":
         raise ValueError("served capture requires W64/K8")
     if (selected.get("SHENGJI_PV_SINGLETON_CHALLENGER") != "1"
@@ -67,11 +72,12 @@ def main(argv=None):
         raise ValueError(f"fly served name drift: {expected}")
     name = expected
     bot = registry.make_bot(name, seed=0)
-    if bot.serving_budget_seconds != 3 or bot.bury_serving_budget_seconds != 2 or bot.lead_confirm:
+    if (bot.serving_budget_seconds != PLAY_SECONDS or bot.bury_serving_budget_seconds != BURY_SECONDS
+            or bot.lead_confirm):
         raise ValueError("served bot lost serving budgets or runs the lead confirmation")
     print(json.dumps({"baseline": expected, "candidate": name,
                       "fly_sha256": hashlib.sha256(args.fly.read_bytes()).hexdigest(),
-                      "play_seconds": 3, "bury_seconds": 2,
+                      "play_seconds": PLAY_SECONDS, "bury_seconds": BURY_SECONDS,
                       "environment": {k: v for k, v in os.environ.items() if k.startswith("SHENGJI_")}}, sort_keys=True), flush=True)
     if args.inspect:
         return 0

@@ -165,6 +165,14 @@ def main(argv=None):
         if not records or records[-1].get('kind') != 'worker_done' or any(r.get('kind') == 'worker_done' for r in records[:-1]):
             raise ValueError('missing or misplaced terminal marker')
         terminal = records[-1]
+        worker, workers = terminal.get('worker'), terminal.get('workers')
+        if type(worker) is not int or type(workers) is not int or workers != len(args.rows) or not 0 <= worker < workers:
+            raise ValueError('incomplete or duplicated worker partitions')
+        expected = set(sorted(want)[worker::workers])
+        if (type(terminal.get('clusters')) is not int or terminal['clusters'] != len(expected)
+                or any(type(r.get('cluster')) is not int for r in records[:-1])
+                or {r['cluster'] for r in records[:-1]} != expected):
+            raise ValueError('worker cluster coverage differs from chosen partition')
         if any(any(r.get(k) != terminal.get(k) for k in IDENTITY + ('worker',)) for r in records[:-1]):
             raise ValueError('terminal and row identity differ')
         rows.extend(records[:-1]); terminals.append(terminal)

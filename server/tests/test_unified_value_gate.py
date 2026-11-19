@@ -169,6 +169,17 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
         reader.main([str(tmp_path/'bad.json'), str(chosen), str(incomplete)])
     with pytest.raises(ValueError, match='worker partitions'):
         reader.main([str(tmp_path/'bad.json'), str(chosen), str(full), str(full)])
+    chosen.write_text(json.dumps({'clusters': [0, 1]}))
+    swapped = []
+    for worker in range(2):
+        path = tmp_path / f'swapped-{worker}.jsonl'
+        records_ = [dict(copy.deepcopy(r), cluster=1-worker, worker=worker, workers=2,
+                         ref=f'{worker}-{r["ref"]}') for r in valid]
+        records_.append(dict(rows(full)[-1], worker=worker, workers=2, clusters=1))
+        path.write_text(''.join(json.dumps(r)+'\n' for r in records_))
+        swapped.append(str(path))
+    with pytest.raises(ValueError, match='worker cluster coverage'):
+        reader.main([str(tmp_path/'bad.json'), str(chosen), *swapped])
     assert not (tmp_path/'bad.json').exists()
 
     completed_bytes = partial.read_bytes()

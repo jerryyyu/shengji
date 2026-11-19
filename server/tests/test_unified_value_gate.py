@@ -53,7 +53,8 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     records = game_order(synthetic_cluster(1000, throw_rate=1))[:8]
     for rec in records:
         rec['ply'] = len(rec['plays_prefix'])
-        rec['outcome'] = {'attacker_points': 80}
+        rec['outcome'] = {'attacker_points': 80, 'kitty_bonus': 0,
+                          'winner_team': 1 - int(rec['setup']['banker']) % 2, 'level_change': 0}
     expected = {}
     for d in iter_decisions(records):
         expected[len(d.record['plays_prefix'])] = (d.refusals, decision_inputs(d.rnd, d.seat, d.refusals))
@@ -121,6 +122,52 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
         return [{k:v for k,v in json.loads(line).items() if k!='secs'}
                 for line in path.read_text().splitlines()]
     assert rows(full)==rows(partial)
+    monkeypatch.syspath_prepend(str(PATH.parent))
+    import unified_value_gate_read as reader
+    chosen = tmp_path / 'chosen.json'
+    chosen.write_text(json.dumps({'clusters': [0]}))
+    result_path = tmp_path / 'read.json'
+    reader.main([str(result_path), str(chosen), str(full)])
+    result = json.loads(result_path.read_text())
+    assert result['validity']['verdict'] == 'VALID'
+    assert result['value']['gate']['verdict'] == 'PASS'
+    assert result['reply']['gate']['verdict'] == 'PASS'
+    with pytest.raises(ValueError, match='already exists'):
+        reader.main([str(result_path), 'missing', 'missing'])
+    valid = rows(full)[:-1]
+    boundary = [dict(copy.deepcopy(valid[0]), ref=f'boundary-{i}') for i in range(100)]
+    boundary[0]['belief_fallback'] = 1
+    assert reader.validate_rows(boundary, {0})['verdict'] == 'VALID'
+    boundary[1]['belief_fallback'] = 1
+    assert reader.validate_rows(boundary, {0})['verdict'] == 'DEV_INVALID'
+    def no_statistics(*args):
+        raise AssertionError('invalid rows reached outcome statistics')
+    with monkeypatch.context() as m:
+        m.setattr(reader, 'boot', no_statistics)
+        mutations = [
+            lambda r: r.update(worlds=63),
+            lambda r: r.update(belief_fallback=1),
+            lambda r: r.pop('belief_fallback'),
+            lambda r: r['outcome'].update(level_change=3),
+            lambda r: r.update(target=r['target']+1),
+            lambda r: r['end'].update(ro_mix=float('nan')),
+            lambda r: r.update(adapter='different'),
+            lambda r: r['reply'][0].update(top4_overlap=99),
+        ]
+        for mutate in mutations:
+            invalid = copy.deepcopy(valid)
+            mutate(invalid[2])
+            result = reader.analyze(invalid, {0})
+            assert result['validity']['verdict'] == 'DEV_INVALID'
+            assert 'value' not in result and 'reply' not in result
+    incomplete = tmp_path / 'incomplete.jsonl'
+    incomplete.write_text(''.join(json.dumps(r)+'\n' for r in valid))
+    with pytest.raises(ValueError, match='terminal'):
+        reader.main([str(tmp_path/'bad.json'), str(chosen), str(incomplete)])
+    with pytest.raises(ValueError, match='worker partitions'):
+        reader.main([str(tmp_path/'bad.json'), str(chosen), str(full), str(full)])
+    assert not (tmp_path/'bad.json').exists()
+
     completed_bytes = partial.read_bytes()
     run(partial, 0)
     assert partial.read_bytes() == completed_bytes

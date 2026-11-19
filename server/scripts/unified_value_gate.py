@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 
-REPLAY = "attempted-actions-v1"
+REPLAY = "attempted-actions-v2"
 
 
 def iter_gate_roots(records, bot):
@@ -132,7 +132,7 @@ def main(argv=None):
             target = signed_level_category(int(o['attacker_points']), role_att)
             action = list(rec['action'])
             true_world = ([list(h) for h in root.hands], list(root.buried))
-            row = dict(**identity, ref=ref, cluster=cl, seat=seat, ply=int(rec['ply']), pos=len(root.trick.plays), cards_left=len(root.hands[seat]),
+            row = dict(**identity, outcome=dict(o), banker=int(rec['setup']['banker']), ref=ref, cluster=cl, seat=seat, ply=int(rec['ply']), pos=len(root.trick.plays), cards_left=len(root.hands[seat]),
                        lead=not root.trick.plays, target=int(target), belief_fallback=samp.get('belief_fallback'), worlds=len(worlds))
             for tag, finish in (('end', True), ('k0', False)):
                 leaves = [afterstate(root, seat, h, b, action, finish_trick=finish) for h, b in [true_world] + list(worlds)]

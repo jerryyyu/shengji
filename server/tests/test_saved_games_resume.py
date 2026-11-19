@@ -606,3 +606,71 @@ def test_a_ranked_continuation_keeps_the_queue_rules(env):
                 ws.__exit__(None, None, None)
     finally:
         srv.MATCHMAKER.reset()
+
+
+def test_a_continuation_replaces_one_interrupted_at_the_same_boundary(env):
+    """A continuation that started its first round and never finished it
+    (its server restarted) is replaced by the next Continue at the same
+    boundary: the replacement's log is the one bound, so its finished round
+    replays and the next Continue resumes after it."""
+    from shengji.api import saved_games
+
+    srv, store, _client, _cookie, uid, _pem = env
+    original, _ = _saved(srv, uid, seat=0, rounds=2, code="ORIG")
+    point = saved_games.resume_point(uid, original.game_id)
+    interrupted = Ranked(srv, "STOP", (uid, None, None, None), resume=point, ranked=False)
+    interrupted.start_round(first=True)
+    _flush()
+    replacement = _continued(srv, uid, original, code="NEXT", rounds=1)
+    game = store.user_game(uid, original.game_id)
+    assert [s["log_file"] for s in game["segments"]] == ["NEXT.jsonl"]
+    detail = saved_games._detail(uid, original.game_id)
+    assert [r["round"] for r in detail["round_results"]] == [1, 2, 3]
+    assert {e["room"] for e in saved_games._round(uid, original.game_id, 3)["events"]} == {"NEXT"}
+    again = saved_games.resume_point(uid, original.game_id)
+    assert again["first_round"] == 4
+    assert again["levels"] == list(replacement.room.game.result.new_levels)
+
+
+def test_a_replaced_continuation_gives_no_other_table_its_rounds(env):
+    """Ranked, with other accounts: a partner who left the first table during
+    its unfinished third round and an account seated only at the interrupted
+    continuation read none of the replacement's rounds; every finished round
+    and its rating events stay as they were."""
+    from shengji.api import saved_games
+
+    srv, store, _client, _cookie, uid, _pem = env
+    partner = store.upsert_user(_claims(sub="partner", email="p@example.com"))["id"]
+    other = store.upsert_user(_claims(sub="other", email="o@example.com"))["id"]
+    original = Ranked(srv, "ORIG", (uid, None, partner, None)).play(2)
+    gid = original.game_id
+    original.start_round()                     # round 3 starts, and the table goes
+    _flush()
+    store.close_link(gid, partner, 2, 3)       # the partner left during round 3
+    before = [(e["game_id"], e["round_no"], e["user_id"], e["delta"]) for e in _events(store, gid)]
+    point = saved_games.resume_point(uid, gid)
+    assert point["first_round"] == 3 and point["ranked"] is True
+    interrupted = Ranked(srv, "STOP", (uid, None, other, None), resume=point)
+    interrupted.start_round(first=True)
+    _flush()
+    assert saved_games._round(other, gid, 3) is not None   # its own round, while bound
+    replacement = _continued(srv, uid, original, code="NEXT", rounds=1)
+    assert replacement.room.ratings.banker_declared is False   # a resumed banker is preset
+    assert [s["log_file"] for s in store.user_game(uid, gid)["segments"]] == ["NEXT.jsonl"]
+    assert [r["round"] for r in saved_games._detail(uid, gid)["round_results"]] == [1, 2, 3]
+    assert saved_games._round(partner, gid, 3) is None
+    assert [g["rounds"] for g in saved_games._list(partner, None, 50)["games"]] == [[1, 2]]
+    assert saved_games._round(other, gid, 3) is None
+    assert store.user_game(other, gid) is None
+    after = [(e["game_id"], e["round_no"], e["user_id"], e["delta"]) for e in _events(store, gid)]
+    assert after[:len(before)] == before
+    assert [(e["round_no"], e["user_id"]) for e in _events(store, gid)[len(before):]] == [(3, uid)]
+    # a rated boundary is the game's: another table cannot take it over
+    header = {**replacement.room.saved_game.header(), "room_code": "LATE",
+              "log_file": "LATE.jsonl", "log_offset": 0}
+    assert store.link_seat(header, uid, 0, 3) is False
+    assert [s["log_file"] for s in store.user_game(uid, gid)["segments"]] == ["NEXT.jsonl"]
+    # another seat of the same table links without disturbing anyone
+    assert store.link_seat(replacement.room.saved_game.header(), other, 2, 3) is True
+    assert saved_games._round(uid, gid, 3) is not None
+    assert [s["log_file"] for s in store.user_game(uid, gid)["segments"]] == ["NEXT.jsonl"]

@@ -797,10 +797,9 @@ class Store:
 
         A header with ``first_round`` above 1 is a continuation of the
         existing game ``id`` at a new table, whose log holds the game's rounds
-        from ``first_round`` on: its first link records that log as a
-        segment and closes every link still open in the game before that
-        round, since nobody holds a seat of the old table any more. A
-        continuation whose game is gone links nothing."""
+        from ``first_round`` on: its first link binds that log to the game
+        from that round (``_continue_game``). A continuation whose game is
+        gone, or whose boundary was already rated, links nothing."""
         first_round = int(game.get("first_round") or 1)
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -840,25 +839,50 @@ class Store:
     @staticmethod
     def _continue_game(conn: sqlite3.Connection, game: Mapping[str, Any],
                        first_round: int) -> bool:
-        """Record a continuation's segment once (caller holds the
-        transaction); False when the game row no longer exists."""
-        if conn.execute("SELECT 1 FROM games WHERE id = ?", (game["id"],)).fetchone() is None:
+        """Bind a continuation's log to the game from ``first_round`` on
+        (caller holds the transaction). False when the game row no longer
+        exists, or when a round from ``first_round`` on was already rated, so
+        that boundary is not the game's any more.
+
+        Another seat of the same table finds its own segment and changes
+        nothing. A different table at the boundary (the first continuation
+        there, or one replacing a table that never finished a round there:
+        Continue resumes only after the latest finished round, so a table
+        bound at or after it finished none) takes the boundary. Every later
+        segment and every link opened from the boundary on are dropped, and
+        each earlier link is closed before it, so no seat at another table
+        reads this table's rounds."""
+        gid = game["id"]
+        if conn.execute("SELECT 1 FROM games WHERE id = ?", (gid,)).fetchone() is None:
             return False
-        added = conn.execute(
+        bound = conn.execute(
+            """SELECT room_code, log_file, log_offset FROM game_segments
+               WHERE game_id = ? AND first_round = ?""", (gid, first_round)).fetchone()
+        if bound is not None and (bound["room_code"], bound["log_file"], bound["log_offset"]) == (
+                game["room_code"], game["log_file"], game["log_offset"]):
+            return True
+        if conn.execute(
+                """SELECT 1 FROM rating_events
+                   WHERE (game_id = ? OR substr(game_id, 1, ?) = ?) AND round_no >= ? LIMIT 1""",
+                (gid, len(gid) + 1, gid + "/", first_round)).fetchone() is not None:
+            return False
+        conn.execute("DELETE FROM game_segments WHERE game_id = ? AND first_round >= ?",
+                     (gid, first_round))
+        conn.execute(
             """INSERT INTO game_segments(game_id, first_round, room_code, log_file, log_offset)
-               VALUES (?, ?, ?, ?, ?) ON CONFLICT(game_id, first_round) DO NOTHING""",
-            (game["id"], first_round, game["room_code"], game["log_file"],
-             game["log_offset"])).rowcount
-        if added:
-            conn.execute(
-                """UPDATE game_players SET to_round = ?
-                   WHERE game_id = ? AND to_round IS NULL""",
-                (first_round - 1, game["id"]))
-            conn.execute(
-                """UPDATE games SET last_round = MAX(last_round, ?),
-                       incomplete = MAX(incomplete, ?) WHERE id = ?""",
-                (int(game.get("last_round") or first_round),
-                 1 if game.get("incomplete") else 0, game["id"]))
+               VALUES (?, ?, ?, ?, ?)""",
+            (gid, first_round, game["room_code"], game["log_file"], game["log_offset"]))
+        conn.execute("DELETE FROM game_players WHERE game_id = ? AND from_round >= ?",
+                     (gid, first_round))
+        conn.execute(
+            """UPDATE game_players SET to_round = ?
+               WHERE game_id = ? AND (to_round IS NULL OR to_round >= ?)""",
+            (first_round - 1, gid, first_round))
+        conn.execute(
+            """UPDATE games SET last_round = MAX(last_round, ?),
+                   incomplete = MAX(incomplete, ?) WHERE id = ?""",
+            (int(game.get("last_round") or first_round),
+             1 if game.get("incomplete") else 0, gid))
         return True
 
     def close_link(self, game_id: str, user_id: int, seat: int, to_round: int) -> int:

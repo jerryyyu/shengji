@@ -2,8 +2,9 @@
 /// <reference types="node" />
 // Guards interface-feel rules that jsdom cannot render, as literal lists: no
 // transition on every property, live numbers in fixed-width digits, a press
-// state on every listed control, and a 44px tap on every listed control
-// (drawn, or drawn plus an invisible extender). A new control joins its list.
+// state on every listed control, and a 44px tap on every listed control in
+// every state the CSS draws it (drawn, or drawn plus an invisible extender),
+// but for the named exceptions. A new control joins its list.
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
@@ -85,20 +86,63 @@ describe("tap targets", () => {
     expect(Math.min(...h)).toBeGreaterThanOrEqual(44);
   });
 
-  // smaller controls: their smallest drawn height, and the extender that makes up the rest
-  const EXTENDED: [string, number][] = [
-    [".last-trick-btn", 28], [".reconnect-retry", 26], [".play-mode-opt", 36], [".tp-invite", 40],
-    [".btn.join-leave", 40], [".table-pill", 40], [".last-trick-close", 32], [".chat-quick-btn", 36],
-    [".account-pill", 40], [".segmented-btn", 28],
+  // Smaller controls: each state's drawn height is read from every rule whose
+  // selector ends at the control (".x", ".state .x"), so a state override
+  // that shrinks the control is measured, not assumed.
+  const EXTENDED = [
+    ".last-trick-btn", ".reconnect-retry", ".play-mode-opt", ".tp-invite", ".btn.join-leave",
+    ".table-pill", ".last-trick-close", ".chat-quick-btn", ".account-pill", ".segmented-btn",
   ];
-  it.each(EXTENDED)("%s reaches 44px with an invisible extender", (sel, drawn) => {
-    expect(css).toMatch(new RegExp(`(?:^|[ ;{])(?:min-)?height: ${drawn}px`));
+  // States drawn under 44px on purpose, each with its reason.
+  const EXCEPTIONS: Record<string, string> = {
+    // the keyboard-up compact chat has no height to spare: its 30px chips sit
+    // under a 4px row padding and the scrolling row clips the extender there
+    ".chat-panel.chat-short .chat-quick-btn": "compact chat, about 35px",
+  };
+  // An extender inside a scrolling row is clipped at the row's padding box,
+  // so it reaches no further than that padding.
+  const CLIPPED: Record<string, string> = { ".chat-quick-btn": ".chat-quick" };
+  // A control stretched to its track draws the track's height less its padding.
+  const TRACK: Record<string, string> = { ".segmented-btn": ".segmented" };
+
+  const heights = (sel: string) =>
+    rules.flatMap((r) => r.sels.filter((s) => s === sel || s.endsWith(` ${sel}`)).flatMap((s) =>
+      [...r.body.matchAll(/(?:^|[ ;])(?:min-)?height: (\d+)px/g)].map((m) => ({ state: s, px: Number(m[1]) }))));
+  const box = (v: string) => {
+    const n = v.trim().split(" ").map(px);
+    return { top: n[0], bottom: n.length >= 3 ? n[2] : n[0] };
+  };
+
+  it.each(EXTENDED)("%s reaches 44px with an invisible extender in every state", (sel) => {
     const ext = [`${sel}::after`, `${sel}::before`].flatMap(bodies).find((b) => /position: absolute/.test(b) && /inset:/.test(b));
     expect(ext, `${sel} has no extender`).toBeDefined();
     expect(ext).toContain('content: ""');
-    const v = /inset: ([^;]+);/.exec(ext!)![1].trim().split(" ").map(px);
-    const [top, bottom] = [v[0], v.length >= 3 ? v[2] : v[0]];
-    expect(drawn - top - bottom).toBeGreaterThanOrEqual(44);
     expect(bodies(sel).some((b) => /position: (relative|absolute)/.test(b))).toBe(true);
+    const { top, bottom } = box(/inset: ([^;]+);/.exec(ext!)![1]);
+    const row = CLIPPED[sel];
+    if (row) {
+      const pad = bodies(row).map((b) => /(?:^|[ ;])padding: ([^;]+);/.exec(b)?.[1]).find(Boolean);
+      expect(pad, `${row} has no padding`).toBeDefined();
+      const p = box(pad!);
+      expect(-top).toBeLessThanOrEqual(p.top);
+      expect(-bottom).toBeLessThanOrEqual(p.bottom);
+    }
+    const track = TRACK[sel];
+    const states = track
+      ? heights(track).map((h) => {
+          const pad = bodies(h.state).map((x) => /(?:^|[ ;])padding: ([^;]+);/.exec(x)?.[1]).find(Boolean);
+          const p = pad ? box(pad) : { top: 0, bottom: 0 };
+          return { state: `${h.state} ${sel}`, px: h.px - p.top - p.bottom };
+        })
+      : heights(sel);
+    expect(states.length, `${sel} has no drawn height`).toBeGreaterThan(0);
+    for (const { state, px: drawn } of states) {
+      if (state in EXCEPTIONS) continue;
+      expect(drawn - top - bottom, `${state} at ${drawn}px`).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it.each(Object.keys(EXCEPTIONS))("%s is a drawn state of a listed control", (state) => {
+    expect(EXTENDED.some((sel) => heights(sel).some((h) => h.state === state))).toBe(true);
   });
 });

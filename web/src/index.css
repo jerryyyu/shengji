@@ -5482,7 +5482,8 @@ button.q-link:active,
 
 /* Small home and chat controls keep their drawn size; the extender makes
    each a 44px tap. The quick phrases' row scrolls sideways, so their
-   extender reaches only up, into the row's top padding. */
+   extender reaches only up, into the row's top padding; the keyboard-up
+   compact chat keeps 4px there, so its chips stay about 35px. */
 .play-mode-opt,
 .tp-invite,
 .chat-quick-btn { position: relative; }

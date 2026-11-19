@@ -355,8 +355,8 @@ def _winner_fast(trick, ordering, combos, legal):
     return winner
 
 
-def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
-    """`_leaf_entries` from `_fast_tables` (the same indices in the same order, the same scalars)."""
+def _leaf_trick(frame: LeafFrame, leaf):
+    """The trick covered by this frame, without materializing card features."""
     if leaf.phase != "play":
         return None
     tricks = len(leaf.history)
@@ -371,6 +371,17 @@ def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
     n_delta = n_trick - frame.pos
     if not 1 <= n_delta <= 4 or n_trick > 4:
         return None
+    return trick
+
+
+def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
+    """`_leaf_entries` from `_fast_tables` (the same indices in the same order, the same scalars)."""
+    trick = _leaf_trick(frame, leaf)
+    if trick is None:
+        return None
+    plays = trick.plays
+    n_trick = len(plays)
+    n_delta = n_trick - frame.pos
     planes, pts, combos, legal = tables
     seat = frame.seat
     hands = leaf.hands
@@ -635,7 +646,8 @@ def readout_reply_ply(served_ply):
         fast = frame is not None and frame.fast
         keys = None
         if fast:
-            mine, planes, scalars, keys = leaf_features_fast(frame, active)
+            mine = [i for i, leaf in enumerate(active) if _leaf_trick(frame, leaf) is not None]
+            planes = scalars = None
         else:
             mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, active)
         if len(mine) != len(active):
@@ -651,6 +663,11 @@ def readout_reply_ply(served_ply):
             return out
 
         def rows(clones, seat):
+            nonlocal planes, scalars, keys
+            if fast:
+                covered, planes, scalars, keys = leaf_features_fast(frame, clones)
+                if covered != list(range(len(clones))):
+                    raise UnifiedSlotError("the pending reply leaves left their frame")
             return np.zeros((len(clones), 1), np.float32)
 
         at = [0]
@@ -662,9 +679,9 @@ def readout_reply_ply(served_ply):
                 raise UnifiedSlotError("the reply rows and the listed clones disagree")
             bot.unified_reply_rows += len(take)
             if fast:
-                at_rows = np.asarray(take, np.int64)
+                at_rows = np.arange(at[0] - len(chunk), at[0], dtype=np.int64)
                 fused = frame.fused(model)
-                rows, hits = memo_rows(frame.reply_memo, [keys[i] for i in take],
+                rows, hits = memo_rows(frame.reply_memo, [keys[i] for i in at_rows],
                                        lambda sub: model.leaf_reply_logits_fused(fused, planes[at_rows[sub]],
                                                                                  scalars[at_rows[sub]]))
                 bot.unified_reply_memo += hits

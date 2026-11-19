@@ -2,8 +2,10 @@
 leaderboard and the My stats page.
 
 Only rounds in a ranked room are rated (``ranked``), and only the ranked
-queue makes one (``matched``). Every other room, Play bots and the casual
-queue's included, is unranked and writes no rating at all.
+queue makes one (``matched``), or Continue on a saved game that was ranked,
+which carries on its saved game's rating segment and round numbers. Every
+other room, Play bots and the casual queue's included, is unranked and
+writes no rating at all.
 
 Only signed-in human seats are rated. Bots never move: every bot seat counts
 as ``BOT_RATING``, the anchor of the served release, and a guest seat (a
@@ -458,6 +460,9 @@ class RoomRatings:
     last: dict[int, dict] = field(default_factory=dict)
     # account -> rating change since the current game (to a held Ace) began
     game_delta: dict[int, float] = field(default_factory=dict)
+    # A table continuing a saved game: the game rounds played before it, so
+    # this table's round n is rated as game round n + round_offset.
+    round_offset: int = 0
 
 
 def _guarded(fn):
@@ -480,7 +485,8 @@ def _signed_in(seat: Any) -> int | None:
 
 
 def ranked(room: Any) -> bool:
-    """Whether the room's rounds are rated: a queue-matched room."""
+    """Whether the room's rounds are rated: a matched room (the ranked
+    queue's, or a ranked saved game continued)."""
     return bool(getattr(room, "matched", False))
 
 
@@ -493,6 +499,15 @@ def start(room: Any) -> None:
         return
     link = getattr(room, "saved_game", None)
     room.ratings = RoomRatings(game_id=link.id if link is not None else secrets.token_hex(16))
+    resume = getattr(room, "resume", None) or {}
+    if link is not None and link.round_offset and link.id == resume.get("game_id"):
+        # a continued game: its rated segment, round numbers and the
+        # creator's change in the segment so far carry on
+        room.ratings.round_offset = link.round_offset
+        room.ratings.game_no = int(resume.get("game_no") or 0)
+        uid = _signed_in(room.seats[resume["seat"]])
+        if uid is not None:
+            room.ratings.game_delta[uid] = float(resume.get("game_delta") or 0.0)
     round_started(room)
 
 
@@ -613,7 +628,8 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
             p.capped = not p.abandoned
     rated = {p.user_id for p in parts}
     return RoundRecord(
-        game_id=f"{tracker.game_id}/{tracker.game_no}", round_no=room.game.round_no,
+        game_id=f"{tracker.game_id}/{tracker.game_no}",
+        round_no=room.game.round_no + tracker.round_offset,
         banker_team=rnd.banker % 2, winner_team=int(result.winner_team),
         level_change=int(result.level_change), point_scored=bool(result.point_scored),
         start_accounts={s: uid for s, uid in tracker.present.items() if uid in rated},
@@ -627,8 +643,9 @@ def _record_outcome(room: Any, tracker: RoomRatings, rec: RoundRecord,
                     out: dict[int, dict], game_over: bool) -> None:
     for uid, res in out.items():
         total = tracker.game_delta.get(uid, 0.0) + res["delta"]
-        tracker.last[uid] = {"round": rec.round_no, "rating": res["rating"],
-                             "delta": res["delta"], "game_delta": total}
+        tracker.last[uid] = {"round": rec.round_no - tracker.round_offset,
+                             "rating": res["rating"], "delta": res["delta"],
+                             "game_delta": total}
         tracker.game_delta[uid] = total
     if rec.point_scored or game_over:
         tracker.game_delta = {}
@@ -669,7 +686,7 @@ def round_ended(room: Any, result: Any) -> None:
                         "cancelled" if fut.cancelled() else type(fut.exception()).__name__)
             return
         _record_outcome(room, tracker, rec, fut.result(), game_over)
-        task = loop.create_task(_rebroadcast(room, rec.round_no))
+        task = loop.create_task(_rebroadcast(room, rec.round_no - tracker.round_offset))
         _TASKS.add(task)
         task.add_done_callback(_TASKS.discard)
 

@@ -687,7 +687,7 @@ def test_fast_reply_materializes_only_nonforced_rows(monkeypatch, forced):
 
     original_predict = object()
     bot = NS(unified_reply_model=NS(leaf_reply_logits_fused=logits), unified_frame=frame,
-             unified_reply_rows=0, unified_reply_memo=0, unified_reply_served=0, predict=original_predict)
+             evaluator=NS(), unified_reply_rows=0, unified_reply_memo=0, unified_reply_served=0, predict=original_predict)
 
     def consumer(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn):
         pending = [c for c in active if len(legal_fn(c, 0, cache)[0]) != 1]

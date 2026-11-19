@@ -1,0 +1,34 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it } from "vitest";
+import TermsPage from "./TermsPage";
+
+let host: HTMLDivElement;
+let root: ReturnType<typeof createRoot>;
+
+afterEach(() => { act(() => root.unmount()); host.remove(); });
+
+describe("the terms of use page", () => {
+  it("covers the rules a store review asks for and names its date", () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => root.render(<TermsPage />));
+    expect(host.querySelector("h1")?.textContent).toBe("Terms of use");
+    const headings = [...host.querySelectorAll("h2")].map((h) => h.textContent);
+    expect(headings).toEqual(["The game", "Guests and accounts", "How to behave", "What we do about it",
+                              "Reporting a player", "Ratings and the leaderboard", "No guarantees",
+                              "Changes to these terms", "Contact"]);
+    const text = host.textContent ?? "";
+    expect(text).toContain("Last updated 2026-11-17");
+    expect(text).toContain("You must be 13 or older to play.");
+    expect(text).toContain("zero tolerance for objectionable content");
+    expect(text).toContain("within 24 hours");
+    expect(text).toContain("choose Report");
+    expect(text).toContain("no prizes");
+    expect(text).toContain("as it is, without any warranty");
+    expect(text).not.toMatch(/\S+@\S+\.\S+/);
+    const links = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(new Set(links)).toEqual(new Set(["/privacy", "/support"]));
+  });
+});

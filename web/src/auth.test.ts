@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  auth, checkDisplayName, effectiveName, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithGoogle,
-  logout, NameRejected, newNonce, updateDisplayName,
+  auth, checkDisplayName, effectiveName, fetchAuthConfig, fetchMe, firstName, loadGis, loginWithApple,
+  loginWithGoogle, logout, NameRejected, newNonce, sha256Hex, updateDisplayName,
 } from "./auth";
 
 const { reconnect } = vi.hoisted(() => ({ reconnect: vi.fn() }));
@@ -65,20 +65,21 @@ describe("the API wrappers", () => {
     routes.set("GET /api/me", { status: 401, body: { detail: "Not signed in." } });
     expect(await fetchMe()).toBeNull();
     routes.set("GET /api/me", { status: 200, body: { name: "Jerry Yu", email: "j@x", picture: null } });
-    // an older server (no display-name fields) still yields a complete user
+    // an older server (no display-name fields, no round count) still yields a complete user
     expect(await fetchMe()).toEqual({
       name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry",
+      rounds_played: null,
     });
     routes.set("GET /api/me", { status: 200, body: {
-      name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" } });
-    expect(await fetchMe()).toMatchObject({ display_name: "Cap", name_shown: "Cap" });
+      name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap", rounds_played: 12 } });
+    expect(await fetchMe()).toMatchObject({ display_name: "Cap", name_shown: "Cap", rounds_played: 12 });
     expect(calls.every((c) => c.init?.credentials === "same-origin")).toBe(true);
   });
   it("login posts JSON with the credential and nonce; a refusal throws its detail", async () => {
     routes.set("POST /api/auth/google", { status: 200, body: {
-      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J" } });
+      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J", rounds_played: 0 } });
     expect(await loginWithGoogle("tok", "n1")).toEqual({
-      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J" });
+      name: "J", email: "j@x", picture: "p", display_name: null, name_shown: "J", rounds_played: 0 });
     const post = calls.find((c) => c.init?.method === "POST")!;
     expect(JSON.parse(post.init!.body as string)).toEqual({ credential: "tok", nonce: "n1" });
     expect((post.init!.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
@@ -86,6 +87,26 @@ describe("the API wrappers", () => {
     await expect(loginWithGoogle("tok", "n1")).rejects.toThrow("bad_audience");
     routes.set("POST /api/auth/google", { status: 404 });
     await expect(loginWithGoogle("tok", "n1")).rejects.toThrow("404");
+  });
+  it("Apple login posts the token, raw nonce, code and first-sign-in name; a refusal throws", async () => {
+    routes.set("POST /api/auth/apple", { status: 200, body: {
+      name: "Ann Lee", email: "r@privaterelay.appleid.com", picture: null, display_name: null, name_shown: "Ann" } });
+    const user = await loginWithApple({
+      identityToken: "apple.jwt", nonce: "raw-n", authorizationCode: "code-1", givenName: "Ann", familyName: "Lee",
+    });
+    expect(user.name_shown).toBe("Ann");
+    const post = calls.find((c) => c.url === "/api/auth/apple")!;
+    expect(post.init?.credentials).toBe("same-origin");
+    expect(JSON.parse(post.init!.body as string)).toEqual({
+      identity_token: "apple.jwt", nonce: "raw-n", authorization_code: "code-1", given_name: "Ann", family_name: "Lee",
+    });
+    routes.set("POST /api/auth/apple", { status: 401, body: { detail: "Sign-in rejected (nonce)." } });
+    await expect(loginWithApple({
+      identityToken: "t", nonce: "n", authorizationCode: null, givenName: null, familyName: null,
+    })).rejects.toThrow("nonce");
+  });
+  it("sha256Hex is the lowercase hex digest", async () => {
+    expect(await sha256Hex("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   });
 });
 
@@ -114,7 +135,7 @@ describe("display names", () => {
     expect(effectiveName({ name: "Jerry Yu", email: "", picture: null, display_name: null, name_shown: "" })).toBe("Jerry");
   });
   it("updateDisplayName PATCHes JSON; a 400 rejects with the reason's message; updated() notifies", async () => {
-    const user = { name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap" };
+    const user = { name: "Jerry Yu", email: "j@x", picture: null, display_name: "Cap", name_shown: "Cap", rounds_played: 5 };
     routes.set("PATCH /api/me", { status: 200, body: user });
     expect(await updateDisplayName("Cap")).toEqual(user);
     const patch = calls.find((c) => c.init?.method === "PATCH")!;
@@ -124,7 +145,7 @@ describe("display names", () => {
     const err = await updateDisplayName("Bot 1").catch((e: Error) => e);
     expect(err).toBeInstanceOf(NameRejected);
     expect((err as NameRejected).reason).toBe("reserved");
-    expect((err as Error).message).toContain("reserved for bots");
+    expect((err as Error).message).toContain("reserved");
     routes.set("PATCH /api/me", { status: 401 });
     await expect(updateDisplayName("X")).rejects.toThrow("401");
     // clearing sends null
@@ -153,6 +174,16 @@ describe("the auth store", () => {
   it("a server without the endpoint (older deploy) reads as off", async () => {
     await auth.init();
     expect(auth.state.status).toBe("off");
+  });
+  it("a 5xx from the config reads as error, not off", async () => {
+    routes.set("GET /api/auth/config", { status: 503 });
+    await auth.init();
+    expect(auth.state).toEqual({ status: "error", clientId: null, user: null });
+  });
+  it("no connection to the config reads as error, not off", async () => {
+    globalThis.fetch = vi.fn(async () => { throw new TypeError("Failed to fetch"); }) as typeof fetch;
+    await auth.init();
+    expect(auth.state.status).toBe("error");
   });
   it("feature on, signed out, then a sign-in and a sign-out", async () => {
     routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid" } });

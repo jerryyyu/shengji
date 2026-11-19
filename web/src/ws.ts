@@ -3,6 +3,7 @@
 // "open"; whether and where to rejoin is decided by App via intent.ts.
 
 import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
+import { noteServerBuild } from "./reloadGate";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
@@ -21,7 +22,46 @@ function wsUrl(): string {
   return `${scheme}://${location.host}/ws`;
 }
 
-const WS_URL = wsUrl();
+const DEVICE_KEY = "shengji.device";
+/** Used when storage refuses: one key for this page's life. */
+let memoryDevice: string | null = null;
+
+/** 128 random bits as url-safe base64 without padding: 22 characters. */
+function newDeviceKey(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** This device's opaque key, made on first use and kept in storage. The
+ *  server uses it to tell two tabs on one device apart from two people. It
+ *  identifies a browser, not a person: clearing site data makes a new one. */
+export function deviceKey(): string {
+  try {
+    const saved = localStorage.getItem(DEVICE_KEY);
+    if (saved && /^[A-Za-z0-9_-]{22}$/.test(saved)) return saved;
+    const made = newDeviceKey();
+    localStorage.setItem(DEVICE_KEY, made);
+    return made;
+  } catch {
+    memoryDevice ??= newDeviceKey();
+    return memoryDevice;
+  }
+}
+
+/** The socket URL, with the device key read at each connect. */
+export function socketUrl(): string {
+  return `${wsUrl()}?heartbeat=1&device=${deviceKey()}`;
+}
+const HEARTBEAT_MS = 15_000;
+/** Back in view, an open socket must answer a ping this fast: a phone can
+ *  suspend a socket without closing it, and its traffic then goes nowhere. */
+export const PROBE_MS = 5000;
+
+// Offline mode is decided in its own module, so components can read it
+// where a test stands in for this one.
+import { OFFLINE } from "./offlineMode";
+export { OFFLINE };
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
@@ -86,6 +126,23 @@ class Connection {
   private backoff = 500;
   private reconnectTimer: number | null = null;
   private started = false;
+  /** Opens the transport: the game server's WebSocket, or offline the
+   *  in-page server's look-alike (set once its module has loaded). */
+  private makeSocket: () => WebSocket = () => new WebSocket(socketUrl());
+  /** Which server the socket talks to. "local" is set as soon as offline play
+   *  is asked for, while the on-device server's module may still be loading;
+   *  browser wake events never open the network socket then. */
+  private transport: "remote" | "local" = "remote";
+  /** Bumped on every transport request, so a module load that finishes after
+   *  a later request changes nothing. */
+  private transportSeq = 0;
+  /** A socket has been opened on this page: a swap after that ends its room. */
+  private opened = false;
+  private stopHeartbeat: (() => void) | null = null;
+  /** Removes the wake listeners start() added. */
+  private unlisten: (() => void) | null = null;
+  /** Ping now with a short deadline (the socket's heartbeat, if it has one). */
+  private probe: (() => void) | null = null;
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
    *  once instead of after the failure backoff. */
   private immediate = false;
@@ -107,7 +164,112 @@ class Connection {
   start(): void {
     if (this.started) return;
     this.started = true;
-    this.open();
+    // A browser wake can end an outage before the retry timer expires.
+    // Preserve healthy sockets and handshakes that are already in progress.
+    // The on-device server has no outages to end.
+    const wake = () => {
+      if (this.transport === "remote" && this.status === "closed") this.reconnect();
+    };
+    const visible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (this.status === "open") this.probe?.();
+      else wake();
+    };
+    window.addEventListener("online", wake);
+    window.addEventListener("pageshow", wake);
+    document.addEventListener("visibilitychange", visible);
+    this.unlisten = () => {
+      window.removeEventListener("online", wake);
+      window.removeEventListener("pageshow", wake);
+      document.removeEventListener("visibilitychange", visible);
+    };
+    if (OFFLINE) void this.useLocalServer().catch(() => {});
+    else this.open();
+  }
+
+  /** Undo start(). The page never calls it; a test that started the
+   *  connection ends it here, because the on-device socket runs on the host's
+   *  own timers, which outlive the test's DOM. The socket closes with its
+   *  handlers cut, and no reconnect, heartbeat, leave or transport load still
+   *  pending opens another. */
+  stop(): void {
+    if (!this.started) return;
+    this.started = false;
+    this.transportSeq += 1;
+    this.unlisten?.();
+    this.unlisten = null;
+    this.cutSocket();
+    this.transport = "remote";
+    this.makeSocket = () => new WebSocket(socketUrl());
+    this.setStatus("closed");
+  }
+
+  /** Play on the on-device server from now on, in place: the game server's
+   *  socket is cut at once, the in-page server's module loads (it is not in
+   *  the online bundle), and its socket opens. If the module cannot load, the
+   *  game server's socket opens again and the promise rejects. */
+  async useLocalServer(): Promise<void> {
+    const seq = ++this.transportSeq;
+    if (this.transport === "local") return;
+    this.transport = "local";
+    this.retireTransport();
+    let m: typeof import("./offline/server");
+    try {
+      m = await import("./offline/server");
+    } catch (e) {
+      if (seq === this.transportSeq) this.useGameServer();
+      throw e;
+    }
+    if (seq !== this.transportSeq) return;
+    this.makeSocket = () => new m.LocalSocket() as unknown as WebSocket;
+    if (this.started) this.open();
+  }
+
+  /** Back to the game server, in place. */
+  useGameServer(): void {
+    this.transportSeq += 1;
+    if (this.transport === "remote") return;
+    this.transport = "remote";
+    this.retireTransport();
+    this.makeSocket = () => new WebSocket(socketUrl());
+    if (this.started) this.open();
+  }
+
+  /** End the current transport so nothing crosses to the next one: the
+   *  socket's handlers are cut before it closes, a pending leave, probe or
+   *  reconnect is dropped, and the room it held is forgotten (the other
+   *  server has never heard of it), so listeners get {type:"left"} as from
+   *  a leave. The next socket opens as a fresh page's would. */
+  private retireTransport(): void {
+    this.cutSocket();
+    this.backoff = 500;
+    this.immediate = false;
+    if (this.opened) {
+      clearSavedRoom();
+      this.clearChat();
+      this.emit({ type: "left" });
+    }
+    this.setStatus("connecting");
+  }
+
+  /** Close the socket with its handlers cut first, and drop its heartbeat,
+   *  probe, pending leave and reconnect timer. */
+  private cutSocket(): void {
+    this.stopHeartbeat?.();
+    this.stopHeartbeat = null;
+    this.probe = null;
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.endLeave();
+    const old = this.ws;
+    this.ws = null;
+    if (old) {
+      old.onopen = null;
+      old.onmessage = null;
+      old.onclose = null;
+      old.onerror = null;
+      try { old.close(); } catch { /* already closed */ }
+    }
   }
 
   /** Sends when the socket is open; returns whether it did, so a caller can
@@ -121,7 +283,7 @@ class Connection {
   }
 
   /** Leave the current room and go straight back to the lobby, keeping this
-   *  socket. The saved room is forgotten, the server is told (leave_room
+   *  socket. The saved room is forgotten, the server is told (table_leave
    *  frees the seat exactly like a disconnect), and listeners get the same {type:"left"}
    *  the server will send, so the UI resets now instead of a round trip later.
    *  If the socket is not open there is nothing to tell the server: the seat
@@ -131,7 +293,7 @@ class Connection {
     clearSavedRoom();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       const ws = this.ws;
-      ws.send(JSON.stringify({ type: "leave_room" } satisfies ClientMsg));
+      ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
       this.leavingWs = ws;
       // Fail-safe: no confirmation means no barrier can be lifted safely, so
       // give up on this socket rather than swallow the next room's replies.
@@ -154,6 +316,7 @@ class Connection {
   reconnect(): void {
     if (!this.started) return;
     this.immediate = true;
+    this.stopHeartbeat?.();
     const ws = this.ws;
     if (ws) {
       ws.close();     // onclose -> scheduleReconnect (immediately, see above)
@@ -204,11 +367,53 @@ class Connection {
   }
 
   private open(): void {
+    this.opened = true;
     this.setStatus("connecting");
-    const ws = new WebSocket(WS_URL);
+    const ws = this.makeSocket();
     this.ws = ws;
+    let timer: number | null = null;
+    let nonce = 0;
+    let awaiting: number | null = null;
+    let enabled = false;
+    const stop = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+    };
+    this.stopHeartbeat = stop;
+    const schedulePing = () => {
+      stop();
+      timer = window.setTimeout(() => {
+        if (this.ws !== ws || ws.readyState !== WebSocket.OPEN) return;
+        awaiting = ++nonce;
+        try {
+          ws.send(JSON.stringify({ type: "ping", nonce: awaiting } satisfies ClientMsg));
+        } catch {
+          this.reconnect();
+          return;
+        }
+        timer = window.setTimeout(() => {
+          if (this.ws === ws && awaiting !== null) this.reconnect();
+        }, HEARTBEAT_MS);
+      }, HEARTBEAT_MS);
+    };
+
+    this.probe = () => {
+      if (!enabled || this.ws !== ws || ws.readyState !== WebSocket.OPEN) return;
+      stop();
+      awaiting = ++nonce;
+      try {
+        ws.send(JSON.stringify({ type: "ping", nonce: awaiting } satisfies ClientMsg));
+      } catch {
+        this.reconnect();
+        return;
+      }
+      timer = window.setTimeout(() => {
+        if (this.ws === ws && awaiting !== null) this.reconnect();
+      }, PROBE_MS);
+    };
 
     ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.backoff = 500;
       this.generation += 1;
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
@@ -226,10 +431,24 @@ class Connection {
       } catch {
         return;
       }
+      // Negotiate before sending probes so an older server never receives
+      // unknown actions. Heartbeats are transport-only, not game messages.
+      if (msg.type === "heartbeat_ready") {
+        if (!enabled) { enabled = true; schedulePing(); }
+        noteServerBuild(msg.build);
+        return;
+      }
+      if (msg.type === "pong") {
+        if (awaiting !== null && msg.nonce === awaiting) {
+          awaiting = null;
+          schedulePing();
+        }
+        return;
+      }
       if (this.leavingWs === ws) {
         // Already reset locally by leaveToLobby(): drop whatever the room
-        // sent before the server processed our leave_room. Only "left" is
-        // causally tied to it (server.py answers leave_room with "left" once
+        // sent before the server processed our table_leave. Only "left" is
+        // causally tied to it (server.py answers a room's leave with "left" once
         // the seat is detached), so only "left" reopens the socket. Errors
         // carry no request id: one may be a late reply to an old action, with
         // more old-room state behind it, or the server refusing the leave
@@ -275,6 +494,7 @@ class Connection {
     };
 
     ws.onclose = () => {
+      stop();
       if (this.leavingWs === ws) this.endLeave();
       if (this.ws !== ws) return;
       this.ws = null;

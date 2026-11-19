@@ -58,7 +58,7 @@ def release52_fly_env() -> dict:
 
 
 
-def _random_pair(root):
+def _random_pair(root, config=CONFIG):
     from shengji.ai import belief_numpy as bn
     from shengji.ai import unified_numpy as un
     from shengji.ai import unified_readout_numpy as rn
@@ -68,8 +68,8 @@ def _random_pair(root):
     def weights(shapes):
         return {k: (0.3 * rng.standard_normal(s)).astype(np.float32) for k, s in shapes.items()}
     path = root / "u.npz"
-    sha = rn.save_package(path, CONFIG, weights(bn.expected_shapes(TRUNK, **bn.DIMS)),
-                          weights(un.head_shapes(CONFIG)), weights(rn.readout_shapes(CONFIG)),
+    sha = rn.save_package(path, config, weights(bn.expected_shapes(TRUNK, **bn.DIMS)),
+                          weights(un.head_shapes(config)), weights(rn.readout_shapes(config)),
                           {"temperature": 1.1})
     belief = root / "u-belief.npz"
     belief_sha = rn.belief_package(rn.load_unified_readout_numpy(path, sha), belief)
@@ -483,6 +483,45 @@ def test_the_fused_stem_is_the_readout_stem(tmp_path):
     assert model.leaf_reply_logits_fused(fused, flat[:0], scalars[:0]).shape == (0, 54)
 
 
+def test_the_fused_forward_writes_in_place_with_the_same_bits(tmp_path):
+    """`leaf_hidden_fused` writes its elementwise steps into three buffers: the value distribution
+    and the reply log-odds are bit for bit the out-of-place forward's (`_ln`, and each block's
+    operations in `leaf_hidden`'s order), at every batch size."""
+    from shengji.ai import unified_readout_numpy as rn
+    from shengji.ai.belief_numpy import _ln
+
+    config = {**CONFIG, "readout": {**CONFIG["readout"], "blocks": 3}}
+    model = rn.load_unified_readout_numpy(*_random_pair(tmp_path, config)["unified"])
+    r, t = model.r, model._t
+
+    def hidden(fused, planes, scalars):
+        M, w_scalars, const = fused
+        h = planes @ M
+        h += scalars @ w_scalars
+        h += const
+        h = np.maximum(h, 0.0)
+        for i in range(model.blocks):
+            u = _ln(h, r[f"ln.{i}.weight"], r[f"ln.{i}.bias"])
+            u = np.maximum(u @ t[f"up.{i}.weight"] + r[f"up.{i}.bias"], 0.0)
+            h = h + u @ t[f"down.{i}.weight"] + r[f"down.{i}.bias"]
+        return _ln(h, r["out_ln.weight"], r["out_ln.bias"])
+
+    def probs(fused, planes, scalars):
+        z = (hidden(fused, planes, scalars) @ t["value.weight"] + r["value.bias"]).astype(np.float64)
+        z -= z.max(-1, keepdims=True)
+        e = np.exp(z)
+        return e / e.sum(-1, keepdims=True)
+    rng = np.random.default_rng(7)
+    fused = model.fused_stem(model.decision_cache(rng.standard_normal((54, TRUNK["d"])).astype(np.float32),
+                                                  rng.standard_normal(TRUNK["x_hidden"]).astype(np.float32)))
+    for n in (1, 2, 37, 300):
+        planes = ((rng.random((n, 9 * 54)) < 0.15) * rng.integers(1, 3, (n, 9 * 54))).astype(np.float32)
+        scalars = rng.random((n, 12)).astype(np.float32)
+        assert np.array_equal(model.leaf_value_probs_fused(fused, planes, scalars), probs(fused, planes, scalars))
+        assert np.array_equal(model.leaf_reply_logits_fused(fused, planes, scalars),
+                              hidden(fused, planes, scalars) @ t["reply.weight"] + r["reply.bias"])
+
+
 def test_memo_rows_computes_each_new_key_once():
     from shengji.train import unified_slots as us
 
@@ -549,6 +588,39 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
             memo[name] += got["memo"][name]
     assert checked[0] > 0
     assert memo["value_memo"] > 0
+
+
+def test_the_fast_readout_scores_reply_leaves_ahead_as_it_scores_chunks(
+        release50_packages, pair, monkeypatch, served_functions):
+    """Ten production positions: value rows scored `READOUT_BATCH` leaves per forward ahead of the
+    search decide as one forward per search chunk does (same worlds, admitted and selected actions,
+    slot and memo counts; values within float64 rounding), and every slice scored ahead is consumed."""
+    from shengji.train import unified_slots as us
+
+    fast = fast_env(unified_env(release50_packages, pair))
+    ahead_values = us._values_ahead
+    consumed = [0]
+
+    def checked(bot, frame, values_fn):
+        def values(leaves, seat, gate=None):
+            out = values_fn(leaves, seat, gate)
+            assert frame.ahead == []
+            consumed[0] += len(leaves)
+            return out
+        return ahead_values(bot, frame, values)
+    for position in P.POSITIONS:
+        monkeypatch.setattr(us, "_values_ahead", lambda bot, frame, values_fn: values_fn)
+        want = decide(registry_bot(monkeypatch, fast, P.SEED), P.replay(*position))
+        monkeypatch.setattr(us, "_values_ahead", checked)
+        got = decide(registry_bot(monkeypatch, fast, P.SEED), P.replay(*position))
+        assert got["cards"] == want["cards"], P.label(*position)
+        assert got["worlds"] == want["worlds"], P.label(*position)
+        assert got["counters"] == want["counters"] and got["memo"] == want["memo"], P.label(*position)
+        g, w = got["record"], want["record"]
+        assert g["admitted_indices"] == w["admitted_indices"] and g["selected_index"] == w["selected_index"]
+        np.testing.assert_allclose(np.asarray(g["value_means"], float), np.asarray(w["value_means"], float),
+                                   rtol=0, atol=1e-12, err_msg=P.label(*position))
+    assert consumed[0] > 0
 
 
 def test_served_trajectory_capture_preserves_unified_decisions_and_labels(

@@ -47,6 +47,21 @@ def leaf_scalars(n_delta, n_trick, points, winner, nxt) -> np.ndarray:
     return out
 
 
+def _ln_into(x: np.ndarray, w: np.ndarray, b: np.ndarray, out: np.ndarray, square: np.ndarray) -> np.ndarray:
+    """`_ln(x, w, b)` written into ``out`` (``square`` is scratch of the same shape): the same
+    operations in the same order, so the same bits."""
+    mu = x.mean(-1, keepdims=True)
+    np.subtract(x, mu, out=out)
+    np.multiply(out, out, out=square)
+    var = square.mean(-1, keepdims=True)
+    var += bn.LAYERNORM_EPS
+    np.sqrt(var, out=var)
+    out /= var
+    out *= w
+    out += b
+    return out
+
+
 def readout_shapes(config: Mapping[str, Any]) -> dict[str, tuple[int, ...]]:
     d, xh = int(config["trunk"]["d"]), int(config["trunk"]["x_hidden"])
     r = config["readout"]
@@ -142,30 +157,44 @@ class UnifiedReadoutNumpy(UnifiedNumpy):
                 np.ascontiguousarray(W[:, flat:flat + N_SCALARS].T, self.dtype), const.astype(self.dtype))
 
     def leaf_hidden_fused(self, fused, planes: np.ndarray, scalars: np.ndarray) -> np.ndarray:
-        """`leaf_hidden` through `fused_stem`'s matrices; ``planes`` is ``(n, 9 * 54)``."""
+        """`leaf_hidden` through `fused_stem`'s matrices; ``planes`` is ``(n, 9 * 54)``.  Every
+        elementwise step writes into one of three buffers, in the same order of operations as
+        `leaf_hidden`'s blocks and `_ln`, so the rounding is the fused stem's alone."""
         r, t = self.r, self._t
         M, w_scalars, const = fused
         h = np.asarray(planes, self.dtype) @ M
         h += np.asarray(scalars, self.dtype) @ w_scalars
         h += const
-        h = np.maximum(h, 0.0)
+        np.maximum(h, 0.0, out=h)
+        n = len(h)
+        u = np.empty_like(h)
+        square = np.empty_like(h)
+        wide = np.empty((n, t["up.0.weight"].shape[1]), self.dtype) if self.blocks else None
         for i in range(self.blocks):
-            u = _ln(h, r[f"ln.{i}.weight"], r[f"ln.{i}.bias"])
-            u = np.maximum(u @ t[f"up.{i}.weight"] + r[f"up.{i}.bias"], 0.0)
-            h = h + u @ t[f"down.{i}.weight"] + r[f"down.{i}.bias"]
-        return _ln(h, r["out_ln.weight"], r["out_ln.bias"])
+            _ln_into(h, r[f"ln.{i}.weight"], r[f"ln.{i}.bias"], u, square)
+            np.matmul(u, t[f"up.{i}.weight"], out=wide)
+            wide += r[f"up.{i}.bias"]
+            np.maximum(wide, 0.0, out=wide)
+            np.matmul(wide, t[f"down.{i}.weight"], out=u)
+            h += u
+            h += r[f"down.{i}.bias"]
+        return _ln_into(h, r["out_ln.weight"], r["out_ln.bias"], u, square)
 
     def leaf_value_probs_fused(self, fused, planes, scalars) -> np.ndarray:
         """`leaf_value_probs` through `leaf_hidden_fused`."""
-        z = (self.leaf_hidden_fused(fused, planes, scalars) @ self._t["value.weight"]
-             + self.r["value.bias"]).astype(np.float64)
-        z -= z.max(-1, keepdims=True)
-        e = np.exp(z)
-        return e / e.sum(-1, keepdims=True)
+        z = self.leaf_hidden_fused(fused, planes, scalars) @ self._t["value.weight"]
+        z += self.r["value.bias"]
+        e = z.astype(np.float64)
+        e -= e.max(-1, keepdims=True)
+        np.exp(e, out=e)
+        e /= e.sum(-1, keepdims=True)
+        return e
 
     def leaf_reply_logits_fused(self, fused, planes, scalars) -> np.ndarray:
         """`leaf_reply_logits` through `leaf_hidden_fused`."""
-        return self.leaf_hidden_fused(fused, planes, scalars) @ self._t["reply.weight"] + self.r["reply.bias"]
+        z = self.leaf_hidden_fused(fused, planes, scalars) @ self._t["reply.weight"]
+        z += self.r["reply.bias"]
+        return z
 
 
 def save_package(path, config, trunk_weights, head_weights, readout_weights, metadata) -> str:

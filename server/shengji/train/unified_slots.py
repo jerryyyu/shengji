@@ -204,6 +204,10 @@ def install_shared_forward(bot, model):
 
 VALUE_TOKEN = "uvalue"
 REPLY_TOKEN = "ureply"
+#: under ``UNIFIED_FAST`` the most value rows one readout forward scores: a reply ply's leaves are
+#: featurised ahead in the search's own ``batch_size`` chunks (its budget gate before each) and their
+#: new rows scored this many leaves at a time (`ReadoutEvaluator.readout_ahead`)
+READOUT_BATCH = 512
 
 
 class LeafFrame:
@@ -220,6 +224,8 @@ class LeafFrame:
         self._fused = None
         self.value_memo: dict = {}
         self.reply_memo: dict = {}
+        #: the reply ply's value chunks scored ahead, in the order `team_values` asks for them
+        self.ahead: list | None = None
 
     def cache(self, model):
         """The readout's per-decision cache: from the card states the shared belief forward of this
@@ -478,10 +484,47 @@ def readout_evaluator(evaluator, bot, model):
             self.unified_bot.unified_value_served += len(rest)
             return values
 
+        def readout_ahead(self, frame, leaves, chunk, gate=None):
+            """`leaf_features_fast` of ``leaves`` in ``chunk``-leaf slices (``gate`` before each, as
+            `team_values` calls it), with every `READOUT_BATCH` leaves' rows the value memo lacks
+            scored in one forward into it.  Per slice ``[leaves, mine, planes, scalars, keys, new]``:
+            ``new`` counts the keys first scored for that slice, as `memo_rows` would have."""
+            m = self.unified_model
+            memo = frame.value_memo
+            window = max(chunk, READOUT_BATCH // chunk * chunk)
+            out = []
+            for first in range(0, len(leaves), window):
+                parts, todo = [], {}
+                for start in range(first, min(first + window, len(leaves)), chunk):
+                    if gate is not None:
+                        gate()
+                    part = leaves[start:start + chunk]
+                    mine, planes, scalars, keys = leaf_features_fast(frame, part)
+                    new = 0
+                    for i, key in enumerate(keys):
+                        if key not in memo and key not in todo:
+                            todo[key] = (len(parts), i)
+                            new += 1
+                    parts.append([part, mine, planes, scalars, keys, new])
+                if todo:
+                    planes = np.stack([parts[p][2][i] for p, i in todo.values()])
+                    scalars = np.stack([parts[p][3][i] for p, i in todo.values()])
+                    rows = m.leaf_value_probs_fused(frame.fused(m), planes, scalars) @ self.support
+                    for key, row in zip(todo, rows):
+                        memo[key] = row
+                out.extend(parts)
+            return out
+
         def _score_many_fast(self, frame, positions, seats, **kw):
-            """`score_many` with `leaf_features_fast`, the fused stem and the decision's value memo."""
+            """`score_many` with `leaf_features_fast`, the fused stem and the decision's value memo
+            (the slice `readout_ahead` scored for these positions, when it did)."""
             bot = self.unified_bot
-            mine, planes, scalars, keys = leaf_features_fast(frame, positions)
+            ahead = frame.ahead
+            if ahead and len(ahead[0][0]) == len(positions) and all(a is b for a, b in zip(ahead[0][0], positions)):
+                _, mine, planes, scalars, keys, new = ahead.pop(0)
+            else:
+                mine, planes, scalars, keys = leaf_features_fast(frame, positions)
+                new = None
             covered = set(mine)
             rest = [i for i in range(len(positions)) if i not in covered]
             bot.unified_value_other += sum(positions[i].phase != "round_end" for i in rest)
@@ -492,9 +535,12 @@ def readout_evaluator(evaluator, bot, model):
             if rest:
                 values[rest] = base.score_many(self, [positions[i] for i in rest], [seats[i] for i in rest], **kw)
             m = self.unified_model
-            fused = frame.fused(m)
-            expected, hits = memo_rows(frame.value_memo, keys,
-                                       lambda rows: m.leaf_value_probs_fused(fused, planes[rows], scalars[rows]) @ self.support)
+            if new is None:
+                fused = frame.fused(m)
+                expected, hits = memo_rows(frame.value_memo, keys,
+                                           lambda rows: m.leaf_value_probs_fused(fused, planes[rows], scalars[rows]) @ self.support)
+            else:
+                expected, hits = [frame.value_memo[key] for key in keys], len(keys) - new
             sign = np.asarray([1.0 if (int(seats[i]) - frame.seat) % 2 == 0 else -1.0 for i in mine])
             values[mine] = sign * np.asarray(expected, np.float64)
             self.positions += len(mine)
@@ -560,6 +606,23 @@ def install_reply_readout(bot, model, keep_prefix: bool = False):
     return bot
 
 
+def _values_ahead(bot, frame, values_fn):
+    """``values_fn`` (`team_values`) with the fast readout's value rows of its leaves scored ahead
+    in `READOUT_BATCH`-row forwards (`ReadoutEvaluator.readout_ahead`): the same rows and memo
+    counts, each value up to the float rounding a forward's batch shape decides."""
+    ahead = getattr(bot.evaluator, "readout_ahead", None)
+    if ahead is None:
+        return values_fn
+
+    def values(leaves, seat, gate=None):
+        frame.ahead = ahead(frame, leaves, bot.batch_size, gate)
+        try:
+            return values_fn(leaves, seat, gate)
+        finally:
+            frame.ahead = None
+    return values
+
+
 def readout_reply_ply(served_ply):
     """``served_ply`` (``pv_tree_search.greedy_reply_ply``) for every bot, except that a bot marked by
     `install_reply_readout` ranks each clone's follows by the readout's reply log-odds inside a framed
@@ -609,6 +672,8 @@ def readout_reply_ply(served_ply):
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
         bot.predict = predict
+        if fast:
+            values_fn = _values_ahead(bot, frame, values_fn)
         try:
             return served_ply(bot, active, gate, cache, stats, keep, version, listing, values_fn, rows, *args, **kw)
         finally:

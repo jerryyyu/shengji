@@ -777,6 +777,7 @@ jobs:
             tests/test_pv_point_leaks.py \
             tests/test_pv_encode_prefix.py \
             tests/test_belief_labels.py \
+            tests/test_unified_value_gate.py \
             ../tools/y_datagen/test_launch.py \
             tests/test_pv_exact_world_subset.py \
             tests/test_declare_pass_evidence.py \

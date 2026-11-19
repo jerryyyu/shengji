@@ -822,3 +822,77 @@ describe("the lobby on a phone, upright or sideways", () => {
     expect(block).toMatch(/\.lobby-screen > \.panel,[\s\S]*border: 0;[\s\S]*box-shadow: none;/);
   });
 });
+
+describe("the tablet table's trick cross", () => {
+  // The tablet block's own size tokens, evaluated at iPad sizes: the iOS app
+  // (the status bar and the home indicator take the top and bottom insets)
+  // and the same screens with no insets.
+  const tablet = blockAt(TABLET_BLOCK);
+  const root = rule(tablet, "&");
+  const hand = rule(tablet, ".hand");
+  const small = rule(tablet, ".hand.small-cards");
+  const IPADS: Record<string, Viewport> = {
+    "touch 810x740": { w: 810, h: 740, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad mini 1133x744": { w: 1133, h: 744, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 1024x768": { w: 1024, h: 768, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 11\" 1180x820": { w: 1180, h: 820, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 13\" 1366x1024": { w: 1366, h: 1024, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 13\" 1376x1032": { w: 1376, h: 1032, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 11\" upright 820x1180": { w: 820, h: 1180, left: 0, right: 0, bottom: 20, top: 24 },
+    "iPad 13\" upright 1024x1366": { w: 1024, h: 1366, left: 0, right: 0, bottom: 20, top: 24 },
+  };
+  const SIZES: [string, Viewport][] = Object.entries(IPADS).flatMap(([name, vp]) => [
+    [`${name} (app)`, vp] as [string, Viewport],
+    [`${name} (browser)`, { ...vp, top: 0, bottom: 0 }] as [string, Viewport],
+  ]);
+  const at = (vp: Viewport) => {
+    const L = (name: string) => evalLength(`var(${name})`, vp, root);
+    const pitch = (r: Record<string, string>, n: number, vars = root) => evalLength(r["--pitch"], vp, { ...vars, "--cw": r["--cw"] ?? "var(--hcw)" }, { n });
+    return {
+      pitch33Full: pitch(small, 33, { ...root, "--hcw": root["--hcw-full"] }),
+      hcw: L("--hcw"), full: L("--hcw-full"), tcw: L("--tcw"), side: L("--tcw-side"),
+      avail: L("--cross-avail"), tags: L("--tag-room"), pitch25: pitch(hand, 25), pitch33: pitch(small, 33),
+    };
+  };
+
+  it("sizes the hand and the trick from the tablet block alone", () => {
+    const outside = css.replace(tablet, "");
+    for (const token of ["--hcw", "--hcw-full", "--tcw", "--tcw-side", "--tag-room", "--cross-room", "--you-rest"]) {
+      expect(outside.includes(`${token}:`), token).toBe(false);
+    }
+    expect(outside).not.toMatch(/var\(--(hcw|tcw)\b/);
+  });
+
+  for (const [name, vp] of SIZES) {
+    it(`fits the stacked plays between the top seat and your row, and keeps the hand tappable: ${name}`, () => {
+      const g = at(vp);
+      // the hand gives up at most a fifth of its card
+      expect(g.hcw).toBeGreaterThanOrEqual(g.full * 0.8 - 0.01);
+      expect(g.hcw).toBeLessThanOrEqual(g.full + 0.01);
+      // the top and bottom plays, a tag line and a winner's lift fit the cross
+      expect(2.8 * g.tcw + g.tags).toBeLessThanOrEqual(g.avail + 0.01);
+      // a four-card throw in a side slot stops short of that side's seat
+      expect(g.tcw).toBeLessThanOrEqual(g.side + 0.01);
+      // never under the wide table's 52px card
+      expect(g.tcw).toBeGreaterThanOrEqual(51.5);
+      // the hand shrinks only while that lets the trick card grow
+      if (g.hcw < g.full - 0.01) expect(g.tcw).toBeLessThanOrEqual(g.side + 0.01);
+      // a finger's strip of every card in a 25-card hand; the banker's 33
+      // take the screen's width whatever the card, as on the full hand
+      expect(g.pitch25).toBeGreaterThanOrEqual(28);
+      expect(g.pitch33).toBeGreaterThanOrEqual(g.pitch33Full - 0.01);
+    });
+  }
+
+  it("draws the iPad 11\" app's trick cards at about three quarters of its hand's", () => {
+    const g = at(IPADS["iPad 11\" 1180x820"]);
+    expect(g.hcw).toBeCloseTo(g.full * 0.8, 1);
+    expect(g.tcw / g.hcw).toBeGreaterThan(0.72);
+  });
+
+  it("keeps the smallest tablet table's hand and trick cards, whose side seats leave no room to grow", () => {
+    const g = at(IPADS["touch 810x740"]);
+    expect(g.hcw).toBeCloseTo(g.full, 6);
+    expect(g.tcw).toBeCloseTo(g.side, 6);
+  });
+});

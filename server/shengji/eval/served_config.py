@@ -197,6 +197,13 @@ def build_served_bot(env: Mapping[str, str], *, seed: int = 13, expected_name: s
                 entries = singleton_registry_entries(checkpoint=checkpoint, **recipe)
                 registry.REGISTRY.update(entries)
                 registered.update(entries)
+            # the unified model's name, registered beside the served ones exactly when the
+            # server's import-time registration (`registry._register_pv_search_from_env`) does
+            if env.get("SHENGJI_PV_UNIFIED_CKPT") or env.get("SHENGJI_PV_UNIFIED_SHA256"):
+                from ..train.unified_serving import unified_registry_entries
+                entries = unified_registry_entries(checkpoint=checkpoint, **recipe)
+                registry.REGISTRY.update(entries)
+                registered.update(entries)
         if name not in registered:
             raise ServedConfigError(f"SHENGJI_BOT {name!r} is not registered by this env: "
                                     "the server would not boot with it")

@@ -227,6 +227,7 @@ def test_valid_fill_production_prefixes(release50_packages, monkeypatch):
     from pathlib import Path
     from shengji.rl.replay_log import rebuild_round
     from shengji.ai.refusal import Refusal, refusal_consistent
+    from test_release46_fly_config import release52_env
     from test_release50_fly_config import local_env, production_env
 
     fixtures = json.loads((Path(__file__).parent / "fixtures/history_valid_fill.json").read_text())
@@ -238,7 +239,7 @@ def test_valid_fill_production_prefixes(release50_packages, monkeypatch):
         seat = fixture["seat"]
         refs = [Refusal(s, tuple(a), tuple(f), t) for s, a, f, t in fixture["refusals"]]
         for enabled in (False, True):
-            env = local_env(release50_packages, production_env())
+            env = local_env(release50_packages, release52_env(production_env()))
             env["SHENGJI_PV_HISTORY_VALID_FILL"] = str(int(enabled))
             bot = next(iter(pv.singleton_registry_entries(**pv.pv_env_recipe(env)).values()))(seed=17)
             monkeypatch.setattr(bot.sampler.rng, "getrandbits", lambda n: fixture["belief_seed"])

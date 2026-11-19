@@ -94,3 +94,16 @@ def test_value_declare_records_carry_the_ids():
     for record in seen:
         assert record["schema"] == pv.VALUE_DECLARE_RECORD_SCHEMA
         assert record["model_ids"] == b.model_ids("declare")
+
+
+def test_unified_ids_replace_only_the_installed_play_slots():
+    bot = served(worlds=8)
+    bot.evaluator = Hashed(checkpoint_sha256="a" * 64)
+    bot.predict = Hashed(sha256="b" * 64)
+    before = {stage: bot.model_ids(stage) for stage in ("declare", "bury", "play")}
+    bot.unified_value_model = Hashed(package_sha256="d" * 64)
+    assert bot.model_ids("play") == {**before["play"], "value": "d" * 8}
+    bot.unified_prior_model = Hashed(package_sha256="e" * 64)
+    assert bot.model_ids("play") == {**before["play"], "value": "d" * 8, "prior": "e" * 8}
+    assert bot.model_ids("declare") == before["declare"]
+    assert bot.model_ids("bury") == before["bury"]

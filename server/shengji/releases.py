@@ -289,8 +289,8 @@ class _Witness:
 
     @contextlib.contextmanager
     def active(self):
-        from .ai import belief_numpy, cwv_numpy, cwv_prior_numpy, mcbot
-        from .train import value_declare
+        from .ai import belief_numpy, cwv_numpy, cwv_prior_numpy, mcbot, unified_readout_numpy
+        from .train import unified_slots, value_declare
         witness = self
         saved = []
 
@@ -311,6 +311,24 @@ class _Witness:
                 return original(self, X, *args, **kwargs)
             return forward
 
+        def unified_readout(role, slot):
+            def make(original):
+                def forward(model, cache, planes, *args, **kwargs):
+                    sha = getattr(model, "package_sha256", None)
+                    witness._tag(role, sha, len(planes))
+                    witness._tag(slot, sha, len(planes))
+                    return original(model, cache, planes, *args, **kwargs)
+                return forward
+            return make
+
+        def unified_root(original):
+            def forward(model, *args, **kwargs):
+                sha = getattr(model, "package_sha256", None)
+                witness._tag("prior", sha)
+                witness._tag("unified_root", sha)
+                return original(model, *args, **kwargs)
+            return forward
+
         def belief_proposal(original):
             def __init__(self, model, *args, **kwargs):
                 sha = getattr(model, "package_sha256", None)
@@ -329,6 +347,12 @@ class _Witness:
         patch(cwv_numpy.CWVNumpyMLP, "probabilities", value_forward)
         patch(cwv_numpy.CWVNumpyMLP, "policy_log_odds", prior_forward)
         patch(cwv_prior_numpy.CWVNumpyPrior, "log_odds", prior_forward)
+        for method in ("leaf_value_probs", "leaf_value_probs_fused"):
+            patch(unified_readout_numpy.UnifiedReadoutNumpy, method, unified_readout("value", "unified_value"))
+        for method in ("leaf_reply_logits", "leaf_reply_logits_fused"):
+            patch(unified_readout_numpy.UnifiedReadoutNumpy, method, unified_readout("prior", "unified_reply"))
+        patch(unified_slots, "policy_from_states", unified_root)
+        patch(unified_slots, "root_prior_preferences", unified_root)
         patch(belief_numpy.BeliefProposal, "__init__", belief_proposal)
         patch(mcbot.MCBot, "_sample_hands", sampler("mcbot-split"))
         patch(value_declare, "sample_declare_world", sampler("uniform-declare"))
@@ -342,7 +366,7 @@ class _Witness:
         rows = self.counts.get(stage, Counter())
         out = {role: sorted({key for r, key in rows if r == role})
                for role in ("value", "prior", "worlds")}
-        # value and prior: rows forwarded; worlds: sampler calls
+        # value and prior: rows forwarded (unified root: calls); worlds: sampler calls
         out["counts"] = {f"{role} {key}": n for (role, key), n in sorted(rows.items())}
         return out
 

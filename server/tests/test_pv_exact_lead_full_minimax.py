@@ -241,11 +241,11 @@ def test_combo_lead_keeps_serving_budgets_through_server_commit(
     import time
     from shengji.api import server as srv
     from shengji.engine.game import Game
-    from test_release46_fly_config import fly_env as production_env
+    from test_release46_fly_config import fly_env, release52_env
     from test_release50_fly_config import local_env
     from shengji.eval.served_config import registry_name
 
-    control = {k: v for k, v in production_env().items() if k not in COMBO51}
+    control = {k: v for k, v in release52_env(fly_env()).items() if k not in COMBO51}
     env = {**control, **COMBO51} if candidate else control
     assert candidate or not set(COMBO51) & set(env)
     env["SHENGJI_BOT"] = registry_name(local_env(release50_packages, env))

@@ -175,7 +175,21 @@ primary_region = 'ewr'
   # fresh deals (DEPLOY.md, Release 52). Rollback: delete the five "Release 52" lines below
   # and restore the release-51 name:
   # RELEASE 51 name: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-whl-whd-bw-tb-ele-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-xf7-xfcompactlevel-r30ff6f0f-bury-hybrid-bwv-bbw-73a716a9bf72-sc8
-  SHENGJI_BOT = 'pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8'
+  # RELEASE 53: release 52 with the all-data unified model. One package (ut-all-97c07be8) serves
+  # the belief proposal and the root prior from one shared trunk forward per decision (ushare),
+  # the value of the decision's own-trick leaves (uvalue) and the greedy finish's reply prior
+  # (ureply); the belief package ut-all-belief-1b1fd2de carries the same trunk and replaces B1a.
+  # SHENGJI_PV_UNIFIED_FAST = '1' reads the readout through its fused stem and per-decision row
+  # memo (ufast). The search, its rules and budgets, bury, declaration and the G3 A value and FT1
+  # prior bindings are release 52's; in play the unified slots fill every value, root-prior and
+  # reply row, and G3 A still scores the bury and the declaration. Evidence (paired, seat-swapped duels against release 52 as served, M5 Ultra):
+  # UT-alldata-screen +0.0573 [+0.0422, +0.0728] on 3,920 deals; UT-alldata-confirm +0.0521
+  # [+0.0410, +0.0633] on 7,840 fresh deals (DEPLOY.md, Release 53). Rollback: delete the three
+  # "Release 53" lines below, restore the two release-52 belief lines and the release-52 name:
+  #   SHENGJI_PV_BELIEF_CKPT = '/data/models/b1a-028131a0.npz'
+  #   SHENGJI_PV_BELIEF_SHA256 = '028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8'
+  # RELEASE 52 name: pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8
+  SHENGJI_BOT = 'pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-1b1a47f5dd8b-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast'
   SHENGJI_PV_ADMISSION_DIVERSITY = '1'
   SHENGJI_PV_REFUSAL_CONSTRAINTS = '1'
   SHENGJI_PV_TIEBREAK_POINTS = '1'
@@ -209,12 +223,13 @@ primary_region = 'ewr'
   SHENGJI_PV_WORLD_FAST = '1'
   # Release 46: the combo (see the RELEASE 46 note above). History-legal, belief-proposed
   # play worlds; the belief package must be on the volume at this path with this sha256
-  # (release 50: the B1a package; releases 48 and 49: S58).
+  # (release 53: the unified model's; releases 50-52: B1a; releases 48 and 49: S58).
   SHENGJI_PV_WORLD_HISTORY_LEGAL = '1'
   SHENGJI_PV_WORLD_HISTORY_DRAW = '1'
   SHENGJI_PV_BELIEF_WORLDS = '1'
-  SHENGJI_PV_BELIEF_CKPT = '/data/models/b1a-028131a0.npz'
-  SHENGJI_PV_BELIEF_SHA256 = '028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8'
+  # Release 53: the unified model's belief package (its trunk is the unified package's).
+  SHENGJI_PV_BELIEF_CKPT = '/data/models/ut-all-belief-1b1fd2de.npz'
+  SHENGJI_PV_BELIEF_SHA256 = '1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4'
   # The exact endgame search at 7 cards. The compact-level solver is the compiled
   # _endgame_fast extension when SHENGJI_FAST=1 activated the engine (its pure-Python twin
   # otherwise, identical results, slower).
@@ -239,6 +254,11 @@ primary_region = 'ewr'
   SHENGJI_PV_SHA256 = 'f4f4127ec0c8821b4aa07f7d651a4258c696f97a874707da2c78ad26c0c9b9fd'
   SHENGJI_PV_PRIOR_CKPT = '/data/models/p0-ft1-1fa201b2.npz'
   SHENGJI_PV_PRIOR_SHA256 = '1fa201b288e78b3072979f55030aae44711ee214b50a14e155d0bbe11b6bb1bf'
+  # Release 53: the unified readout package (ushare, uvalue, ureply) and its fast path (ufast);
+  # the package must be on the volume at this path with this sha256.
+  SHENGJI_PV_UNIFIED_CKPT = '/data/models/ut-all-97c07be8.npz'
+  SHENGJI_PV_UNIFIED_SHA256 = '97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af'
+  SHENGJI_PV_UNIFIED_FAST = '1'
   SHENGJI_PV_WORLDS = '64'
   SHENGJI_PV_CANDIDATES = '8'
   SHENGJI_PV_CAP = '4000'

@@ -1,6 +1,6 @@
 """Per-release model manifests (`shengji.releases`, ``server/releases/r<N>.json``).
 
-* ``fly.toml``'s served env is release 52's manifest env, key for key: editing one
+* ``fly.toml``'s served env is release 53's manifest env, key for key: editing one
   without the other fails here.
 * The schema refuses a manifest whose null value, null prior or non-belief worlds
   carry no ``why``, that names an unknown package, or whose hashes disagree with
@@ -12,7 +12,10 @@
   runs on the hash-pinned CI packages and fails, never skips, under
   ``SHENGJI_REQUIRE_PV_PACKAGE=1``.  The witnesses of releases 50, 51 and 52 run on their
   three ``serving-packages`` assets (``test_release50_fly_config``'s pinned paths, or
-  ``SHENGJI_RELEASE_PACKAGE_DIR``) and fails, never skips, under the same flag.
+  ``SHENGJI_RELEASE_PACKAGE_DIR``) and fails, never skips, under the same flag; release
+  53's adds the unified pair (``test_release53_fly_config``'s pinned paths).  Release 53's
+  play stages name the unified package, witnessed through its actual value, root-prior
+  and reply forwards, with the same model IDs in their records.
 """
 import copy
 import os
@@ -25,6 +28,8 @@ from shengji.eval import served_config
 from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_release48_fly_config import pinned_release48_belief_package  # noqa: F401
 from test_release50_fly_config import release50_packages  # noqa: F401
+from test_release53_fly_config import release53_pair  # noqa: F401
+from test_unified_serving import served_functions  # noqa: F401
 
 FLY_TOML = Path(__file__).parents[2] / "fly.toml"
 #: a directory holding packages by basename (the release-50 candidate's among them)
@@ -35,8 +40,8 @@ def r49():
     return releases.load(49)
 
 
-def test_fly_toml_env_is_release52_manifest_env():
-    manifest = releases.load(52)
+def test_fly_toml_env_is_release53_manifest_env():
+    manifest = releases.load(53)
     assert releases.fly_env(FLY_TOML) == manifest["env"]
     assert manifest["bot_name"] == manifest["env"]["SHENGJI_BOT"]
 
@@ -54,15 +59,15 @@ def test_telemetry_sink_stays_in_server_config_but_out_of_bot_manifest(tmp_path,
     fly = _edited_fly(tmp_path, "SHENGJI_TELEMETRY_DIR = '/data/telemetry'",
                       f"SHENGJI_TELEMETRY_DIR = '{directory}'")
     assert served_config.fly_env(fly)["SHENGJI_TELEMETRY_DIR"] == directory
-    assert releases.fly_env(fly) == releases.load(52)["env"]
-    edited = copy.deepcopy(releases.load(52))
+    assert releases.fly_env(fly) == releases.load(53)["env"]
+    edited = copy.deepcopy(releases.load(53))
     edited["env"]["SHENGJI_TELEMETRY_DIR"] = directory
     with pytest.raises(releases.ManifestError, match="enters no bot"):
         releases.validate(edited)
 
 
 def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
-    manifest = releases.load(52)
+    manifest = releases.load(53)
     # fly.toml edited, manifest not
     fly = _edited_fly(tmp_path, "SHENGJI_PV_WORLDS = '64'", "SHENGJI_PV_WORLDS = '48'")
     assert releases.fly_env(fly) != manifest["env"]
@@ -78,7 +83,7 @@ def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
         releases.NON_BOT_KEYS)
 
 
-@pytest.mark.parametrize("release", [49, 50, 51, 52])
+@pytest.mark.parametrize("release", [49, 50, 51, 52, 53])
 def test_manifests_validate_and_name_their_packages(release):
     manifest = releases.load(release)
     assert manifest["release"] == release
@@ -134,6 +139,27 @@ def test_release52_is_release51_with_the_combo51_lines():
     for stage in releases.STAGES:
         drop = lambda row: {k: v for k, v in row.items() if k != "why"}
         assert drop(a["stages"][stage]) == drop(b["stages"][stage])
+
+
+def test_release53_is_release52_with_the_unified_model():
+    a, b = releases.load(52), releases.load(53)
+    changed = {k for k in set(a["env"]) | set(b["env"]) if a["env"].get(k) != b["env"].get(k)}
+    assert changed == {"SHENGJI_BOT", "SHENGJI_PV_BELIEF_CKPT", "SHENGJI_PV_BELIEF_SHA256",
+                       "SHENGJI_PV_UNIFIED_CKPT", "SHENGJI_PV_UNIFIED_SHA256", "SHENGJI_PV_UNIFIED_FAST"}
+    assert set(a["env"]) <= set(b["env"])
+    assert b["bot_name"].endswith("-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast")
+    # B1a leaves; the unified pair joins; G3 A, FT1 and JS-M1 stay
+    assert set(a["packages"]) - set(b["packages"]) == {"b1a-028131a0"}
+    assert set(b["packages"]) - set(a["packages"]) == {"ut-all-97c07be8", "ut-all-belief-1b1fd2de"}
+    for name in ("g3a-e04-f4f4127e", "js-m1-0d17fd03"):
+        assert a["packages"][name] == b["packages"][name]
+    # declare unchanged; bury and play draw on the unified belief package; play runs no served net
+    assert a["stages"]["declare"] == b["stages"]["declare"]
+    assert b["stages"]["bury"]["value"] == "g3a-e04-f4f4127e"
+    for stage in ("bury", "lead", "follow", "endgame"):
+        assert b["stages"][stage]["worlds"] == "belief:ut-all-belief-1b1fd2de"
+    for stage in ("lead", "follow", "endgame"):
+        assert b["stages"][stage]["value"] == b["stages"][stage]["prior"] == "ut-all-97c07be8"
 
 
 def _refused(manifest, match):
@@ -254,6 +280,29 @@ def test_release50_package_wiring_matches_its_manifest(release50_packages, relea
     _check_wiring(manifest, paths)
 
 
+def test_release53_wiring_matches_its_manifest(release50_packages, release53_pair, served_functions):
+    manifest = releases.load(53)
+    paths = {"g3a-e04-f4f4127e": release50_packages["value"],
+             "p0-ft1-1fa201b2": release50_packages["prior"],
+             "ut-all-97c07be8": release53_pair["unified"],
+             "ut-all-belief-1b1fd2de": release53_pair["belief"]}
+    if PACKAGE_DIR:
+        paths.update(releases.package_paths(manifest, PACKAGE_DIR))
+    report = releases.wiring(manifest, paths)
+    assert report["bot_name"] == manifest["bot_name"]
+    assert releases.wiring_mismatches(manifest, report) == [], report
+    for stage in ("lead", "follow", "endgame"):
+        assert report["stages"][stage]["value"] == ["ut-all-97c07be8"]
+        assert report["stages"][stage]["prior"] == ["ut-all-97c07be8"]
+        counts = report["stages"][stage]["counts"]
+        assert counts["unified_value ut-all-97c07be8"] > 0
+        assert counts["unified_root ut-all-97c07be8"] > 0
+    assert report["stages"]["lead"]["counts"]["unified_reply ut-all-97c07be8"] > 0
+    exact = report["stages"]["endgame"]["exact"]
+    assert any(row["exact_lead_status"] is not None for row in exact)
+    assert any(row["exact_follow_attempted"] for row in exact)
+
+
 class _StampBot:
     """A stand-in served bot for the report producer: the heuristic's decisions, and per
     stage the record ``stamp(stage)`` returns (``model_ids`` from the manifest's table)."""
@@ -336,3 +385,37 @@ def test_a_report_with_fewer_stamps_than_decisions_is_a_mismatch():
     assert len(problems) == 2, problems
     assert problems[0].startswith("bury record model_ids {'value': 'x'}")
     assert problems[1] == "lead: 1 decisions witnessed, 0 model_ids stamps"
+
+
+@pytest.mark.parametrize("fault", [None, "wrong_ids", "missing_ids", "unobserved_value"])
+def test_release53_wiring_cli_requires_unified_provenance(
+        release50_packages, release53_pair, served_functions, tmp_path, monkeypatch, capsys, fault):
+    from shengji.train import pv_search_policy as pv
+
+    manifest = releases.load(53)
+    paths = {"g3a-e04-f4f4127e": release50_packages["value"],
+             "p0-ft1-1fa201b2": release50_packages["prior"],
+             "ut-all-97c07be8": release53_pair["unified"],
+             "ut-all-belief-1b1fd2de": release53_pair["belief"]}
+    for name, path in paths.items():
+        (tmp_path / manifest["packages"][name]["basename"]).symlink_to(path)
+    ids = pv.PVSearchBot.model_ids
+    if fault in ("wrong_ids", "missing_ids"):
+        def changed_ids(self, stage):
+            out = ids(self, stage)
+            if stage == "play":
+                return None if fault == "missing_ids" else {**out, "value": "f4f4127e"}
+            return out
+        monkeypatch.setattr(pv.PVSearchBot, "model_ids", changed_ids)
+    elif fault == "unobserved_value":
+        tag = releases._Witness._tag
+
+        def omit_value(self, role, sha, n=1):
+            if role != "value" or sha != manifest["packages"]["ut-all-97c07be8"]["sha256"]:
+                tag(self, role, sha, n)
+        monkeypatch.setattr(releases._Witness, "_tag", omit_value)
+    rc = releases._main(["wiring", str(Path(__file__).parents[1] / "releases" / "r53.json"),
+                         "--package-dir", str(tmp_path)])
+    captured = capsys.readouterr()
+    assert rc == (0 if fault is None else 1), captured.err
+    assert ("MISMATCH" in captured.err) == (fault is not None)

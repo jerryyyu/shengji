@@ -4710,9 +4710,11 @@ class PVSearchBot(PolicyValueBot):
     def model_ids(self, stage):
         """The packages a ``stage`` decision (``declare``, ``bury`` or ``play``)
         of this bot consults, as `MODEL_ID_CHARS`-hex sha256 prefixes:
-        ``value`` (the evaluator's package), ``prior`` (the policy head's; None
+        ``value`` (the stage's evaluator or unified readout), ``prior`` (the policy head's; None
         where the stage calls none) and ``belief`` (None where the stage's worlds
-        are not the belief proposal's).  Read from the bound objects, so a
+        are not the belief proposal's). Unified play slots take precedence over the
+        legacy evaluator and root prior; declare and bury keep their own bindings.
+        Read from the bound objects, so a
         stand-in evaluator or predictor without a package hash reads as None;
         the record's own fallback fields say whether a degraded decision
         consulted them."""
@@ -4723,9 +4725,18 @@ class PVSearchBot(PolicyValueBot):
         policy = stage == "play" or bool(self.leaf_policy_first_trick)
         belief = ((stage == "play" and self.belief_worlds)
                   or (stage == "bury" and getattr(self, "bury_belief_worlds", False)))
+        value_sha = getattr(self.evaluator, "checkpoint_sha256", None)
+        prior_sha = getattr(self.predict, "sha256", None)
+        if stage == "play":
+            value_model = getattr(self, "unified_value_model", None)
+            prior_model = getattr(self, "unified_prior_model", None)
+            if value_model is not None:
+                value_sha = getattr(value_model, "package_sha256", None)
+            if prior_model is not None:
+                prior_sha = getattr(prior_model, "package_sha256", None)
         return {
-            "value": short(getattr(self.evaluator, "checkpoint_sha256", None)),
-            "prior": short(getattr(self.predict, "sha256", None)) if policy else None,
+            "value": short(value_sha),
+            "prior": short(prior_sha) if policy else None,
             "belief": (short(getattr(self.belief_model, "package_sha256", None))
                        if belief else None),
         }

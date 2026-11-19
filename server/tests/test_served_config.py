@@ -45,6 +45,12 @@ def pinned_hashes(monkeypatch):
             FLY["SHENGJI_PV_BELIEF_CKPT"]: FLY["SHENGJI_PV_BELIEF_SHA256"]}
     monkeypatch.setattr(cwv, "checkpoint_id", lambda path: pins[str(path)][:8])
     monkeypatch.setattr(pv, "file_sha256", lambda path: pins[str(path)])
+    # the unified pair registers by loading both packages and matching their trunks; with the
+    # files absent, the loads are stood in and only the names derive
+    from shengji.train import unified_serving, unified_slots
+    monkeypatch.setattr(unified_serving, "load_unified", lambda path, sha256: object())
+    monkeypatch.setattr(pv, "_load_belief", lambda path, sha256: object())
+    monkeypatch.setattr(unified_slots, "shared_trunk_belief", lambda belief, model: None)
 
 
 def test_served_env_is_fly_toml_with_mapped_paths():
@@ -246,10 +252,13 @@ def test_singleton_stack_is_named_and_explicitly_registered(monkeypatch, pinned_
     monkeypatch.setattr(cwv_shortlist, 'shortlist_env_recipe', lambda env: None)
     monkeypatch.setattr(registry, 'REGISTRY', {})
     monkeypatch.setattr(registry, 'make_bot', lambda name, seed: registry.REGISTRY[name])
-    base = {**sc.served_env(mappings=MAP), 'SHENGJI_PV_SINGLETON_CHALLENGER': '0'}
+    assert sc.served_env(mappings=MAP, overrides=['sc8']) == sc.served_env(mappings=MAP)
+    # the served name's unified tokens follow -sc8; the stack is checked on the env without them
+    assert '-sc8-ushare' in sc.served_env(mappings=MAP)['SHENGJI_BOT']
+    candidate = {k: v for k, v in sc.served_env(mappings=MAP).items() if '_UNIFIED_' not in k}
+    candidate['SHENGJI_BOT'] = sc.registry_name(candidate)
+    base = {**candidate, 'SHENGJI_PV_SINGLETON_CHALLENGER': '0'}
     base['SHENGJI_BOT'] = sc.registry_name(base)
-    candidate = sc.served_env(mappings=MAP, overrides=['sc8'])
-    assert candidate == sc.served_env(mappings=MAP)
     assert candidate['SHENGJI_BOT'] == base['SHENGJI_BOT'] + '-sc8'
     name, factory = sc.build_served_bot(candidate)
     assert name == candidate['SHENGJI_BOT'] and callable(factory)

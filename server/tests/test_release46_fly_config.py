@@ -1,4 +1,4 @@
-"""Release 46, the fifth rollback of release 52: the combo screened as v92combo45.
+"""Release 46, the sixth rollback of release 53: the combo screened as v92combo45.
 
 The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 -whd -bw``, the S17 belief package), the exact endgame search at 7 cards (``-ele
@@ -6,9 +6,10 @@ The combo is release 45 plus history-legal, belief-proposed play worlds (``-whl
 first-round chance (``-vdef``).  Release 48 changes the belief pair and adds
 the lines in ``RELEASE48_ADDED_KEYS``, release 49 adds ``RELEASE49_ADDED_KEYS``, and
 release 50 adds ``RELEASE50_ADDED_KEYS`` and changes the value and belief pairs, and
-release 51 turns the lead confirmation off, and release 52 adds ``RELEASE52_ADDED_KEYS``
-(``undo_release50`` undoes all three), so release
-46's env is the repo's ``fly.toml`` environment with the five changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
+release 51 turns the lead confirmation off, release 52 adds ``RELEASE52_ADDED_KEYS``, and
+release 53 adds ``RELEASE53_ADDED_KEYS`` and changes the belief pair (``undo_release50``
+undoes all four), so release
+46's env is the repo's ``fly.toml`` environment with the six changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
 (``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
 packages, so the registry name, every combo knob, the bound belief model and the
@@ -97,14 +98,43 @@ RELEASE52_ADDED_KEYS = ("SHENGJI_PV_EXACT_LEAD_TIE_BASELINE", "SHENGJI_PV_EXACT_
                         "SHENGJI_PV_REFUSAL_EVENT_COMPLETE")
 
 
+#: the lines release 53 adds to release 52's env (besides the name and the belief pair): the
+#: unified readout package (ushare, uvalue, ureply) and its fast path (ufast)
+RELEASE53_ADDED_KEYS = ("SHENGJI_PV_UNIFIED_CKPT", "SHENGJI_PV_UNIFIED_SHA256", "SHENGJI_PV_UNIFIED_FAST")
+#: the belief pair release 53 replaces with the unified model's: B1a, releases 50 to 52
+RELEASE52_BELIEF = {"SHENGJI_PV_BELIEF_CKPT": "/data/models/b1a-028131a0.npz",
+                    "SHENGJI_PV_BELIEF_SHA256":
+                        "028131a03de0c69b5164cdd0f65369950340f58fe226f75d6d877aeda2ca8fc8"}
+#: release 52's served name, restored by its rollback
+RELEASE52_NAME = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-"
+                  "dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-"
+                  "hybrid-bwv-bbw-7a9a430fe690-sc8")
+
+
+def undo_release53(env: dict) -> dict:
+    """``env`` with release 53's rollback applied (its three lines removed, the B1a belief
+    pair restored); the name is left to the caller.  An env of release 52 or earlier is
+    returned as is."""
+    if not set(RELEASE53_ADDED_KEYS) & set(env):
+        return dict(env)
+    return {**{k: v for k, v in env.items() if k not in RELEASE53_ADDED_KEYS}, **RELEASE52_BELIEF}
+
+
+def release52_env(env: dict) -> dict:
+    """Production's env with release 53's rollback applied and the release-52 name restored:
+    release 52's ``fly.toml`` ``[env]``."""
+    return {**undo_release53(env), "SHENGJI_BOT": RELEASE52_NAME}
+
+
 def undo_release52(env: dict) -> dict:
-    """``env`` with release 52's rollback applied (its five lines removed); the name is
-    left to the caller.  An env of release 51 or earlier is returned as is."""
-    return {k: v for k, v in env.items() if k not in RELEASE52_ADDED_KEYS}
+    """``env`` with the rollbacks of releases 53 and 52 applied (release 52's five lines
+    removed); the name is left to the caller.  An env of release 51 or earlier is returned
+    as is."""
+    return {k: v for k, v in undo_release53(env).items() if k not in RELEASE52_ADDED_KEYS}
 
 
 def undo_release51(env: dict) -> dict:
-    """``env`` with the rollbacks of releases 52 and 51 applied (the lead confirmation
+    """``env`` with the rollbacks of releases 53, 52 and 51 applied (the lead confirmation
     back at 32); the name is left to the caller.  An env of release 50 or earlier is
     returned as is."""
     env = undo_release52(env)
@@ -146,7 +176,7 @@ BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
-    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 52)."""
+    """The repo's ``fly.toml`` ``[env]`` as written (production's, release 53)."""
     return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
 
 

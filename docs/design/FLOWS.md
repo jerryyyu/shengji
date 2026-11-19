@@ -304,3 +304,23 @@ pill shows the bots' countdown, not elapsed time (the queue strip until 2026-11-
 - **A guest's Me: one row for who you are.** The row is the name with a chevron and opens the identity sheet
   (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
   where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged.
+
+## Polish checklist (UI review)
+A UI review ask walks this list after the copy rule and the flow-map row. This file, `COPY_CUTS.md` and the felt (the hand and the table, where reading a card beats a uniform press) win over any item here. Adapted from `jakubkrehel/make-interfaces-feel-better` at `6d9f2f1df10e8ce2ae1708598a73b0506fb98794` (MIT, copyright Jakub Krehel); its framework snippets, image outlines, RTL rules and shadow-for-border swap do not apply here.
+
+Tests hold the mechanical rules, so review does not restate them: `web/src/polishCss.test.ts` (no `transition: all`; every live number in its list has tabular digits; every control in its list has a press state; every listed control reaches 44px, drawn or with an inset extender, in every state its CSS draws, read from the style rules, except the named compact-chat quick phrases at about 35px), with `motionTokens.test.ts`, `chromeCss.test.ts` and `nativeFeelCss.test.ts`. A new live number or control joins that test's list. These are literal style guards; a rendered hit-test is a separate check, run in a browser when a tap area's reach is in doubt.
+
+The reviewer judges:
+- **Motion restraint.** An action repeated every trick or every few seconds gets little or no motion; motion marks a change the player would otherwise miss.
+- **A static cue beside motion.** What motion shows is also visible at rest (the counter after the pop, the ring after the pulse), so a missed frame or Reduce Motion loses nothing.
+- **Reduced motion.** Every animation has a `prefers-reduced-motion` rule that removes it or cuts it to a fade.
+- **No motion on first render.** Opening the app or reconnecting into a live table draws the settled state; enter motion plays only on a change.
+- **Enter and exit.** An exit is shorter and quieter than its enter (a fade or a small fixed shift, not the full travel); an open/close the player can reverse uses transitions that retarget mid-flight, not keyframes that restart.
+- **Cheap loops.** A looping animation moves only `transform` or `opacity`; `will-change` lives only on an active gesture.
+- **Concentric radii.** In a tight nesting, the outer radius is the inner radius plus the padding.
+- **Optical alignment.** An icon beside text, a play triangle or a chevron sits where it looks centred, not where the box says.
+- **Icons.** One stroke weight per control strip, matched to the adjacent text; one `currentColor` SVG recoloured per state; SVG, not emoji, on controls.
+- **Text wrap.** `text-wrap: balance` on short centred titles, sheet lines and toasts; `pretty` on short body text; neither on long text.
+- **One value per effect.** Press feedback reuses `.btn`'s scale or the existing dim list; durations come from the motion tokens.
+
+Findings use Severity / Location / Before / After / Why; the review also lists candidates it rejected, with the reason, and what it did not check on a device.

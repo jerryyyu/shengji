@@ -104,6 +104,18 @@ expect(!path.update(false), "still down")
 expect(path.update(true), "back after down is a regain")
 expect(!path.update(true), "and only once")
 
+// Peer-to-peer Wi-Fi is told apart by its interface name; a resume while
+// Wi-Fi is up leaves it out on every other look, starting with the first.
+expect(LinkPath.isPeerToPeer("awdl0"), "awdl0 is peer-to-peer")
+expect(LinkPath.isPeerToPeer("llw0"), "llw0 is peer-to-peer")
+expect(!LinkPath.isPeerToPeer("en0"), "en0 is the access point's Wi-Fi")
+expect(!LinkPath.isPeerToPeer(nil), "an unknown interface is not")
+expect(LinkPath.avoidPeerToPeer(resuming: true, wifiUp: true, look: 0), "the first resume look is Wi-Fi only")
+expect(!LinkPath.avoidPeerToPeer(resuming: true, wifiUp: true, look: 1), "the next allows peer-to-peer")
+expect(LinkPath.avoidPeerToPeer(resuming: true, wifiUp: true, look: 2), "and the one after leaves it out again")
+expect(!LinkPath.avoidPeerToPeer(resuming: true, wifiUp: false, look: 0), "with Wi-Fi down peer-to-peer is the way")
+expect(!LinkPath.avoidPeerToPeer(resuming: false, wifiUp: true, look: 0), "a first join is unchanged")
+
 let t0 = Date()
 _ = NearbyKey.derive(code: "K7Q2M", salt: salt)
 print(String(format: "one derivation at %d iterations: %.0f ms on this machine",

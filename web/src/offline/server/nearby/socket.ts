@@ -36,6 +36,9 @@ export class NearbySocket {
   private resuming = false;
   /** The host's frames that came while resuming, handed on after the open. */
   private early: string[] = [];
+  /** Ping round trips and move-to-answer times, in ms, since the last summary. */
+  private rtts: number[] = [];
+  private moves: number[] = [];
 
   /** `greet`: a seated joiner's resume, called once the link is up. When it
    *  gives a table_join, this socket sends it as the hello and reports open
@@ -76,13 +79,19 @@ export class NearbySocket {
           const now = this.clock.now();
           this.heard = now;
           if (text === PONG_TEXT) {
-            if (this.pingSent !== null) nearbyLog("socket", `pong in ${Math.round((now - this.pingSent) * 1000)} ms`);
+            if (this.pingSent !== null) {
+              const ms = Math.round((now - this.pingSent) * 1000);
+              this.rtts.push(ms);
+              nearbyLog("socket", `pong in ${ms} ms`);
+            }
             this.pingSent = null;
             return;
           }
           const type = frameType(text);
           if (this.movedAt !== null && (type === "state" || type === "error" || type === "room")) {
-            nearbyLog("socket", `in ${type}, ${Math.round((now - this.movedAt) * 1000)} ms after the move`);
+            const ms = Math.round((now - this.movedAt) * 1000);
+            this.moves.push(ms);
+            nearbyLog("socket", `in ${type}, ${ms} ms after the move`);
             this.movedAt = null;
           } else nearbyLog("socket", `in ${type}`);
           this.onmessage?.({ data: text } as MessageEvent);
@@ -105,6 +114,7 @@ export class NearbySocket {
             this.readyState = NearbySocket.OPEN;
             nearbyLog("socket", "open");
             this.ping(link);
+            this.summarize(link);
             this.onopen?.({} as Event);
             return;
           }
@@ -135,6 +145,7 @@ export class NearbySocket {
     this.readyState = NearbySocket.OPEN;
     nearbyLog("socket", `resume: accepted (${type}); open`);
     this.ping(link);
+    this.summarize(link);
     this.onopen?.({} as Event);
     const early = this.early;
     this.early = [];
@@ -161,6 +172,18 @@ export class NearbySocket {
     }, LIMITS.pingSeconds);
   }
 
+  /** Every LIMITS.summarySeconds while the link is open: the spread of its
+   *  ping round trips and move answers, so a device log shows the spikes. */
+  private summarize(link: JoinLink): void {
+    this.clock.setTimeout(() => {
+      if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
+      nearbyLog("socket", `last ${LIMITS.summarySeconds} s: ping ${spread(this.rtts)}; move ${spread(this.moves)}`);
+      this.rtts = [];
+      this.moves = [];
+      this.summarize(link);
+    }, LIMITS.summarySeconds);
+  }
+
   private sendPing(link: JoinLink): boolean {
     try {
       link.send(PING_TEXT);
@@ -176,7 +199,10 @@ export class NearbySocket {
    *  LIMITS.pongSeconds, so a move that is not getting through turns into
    *  a new link within seconds instead of waiting on the move clock. */
   private probe(link: JoinLink): void {
-    if (this.pingSent === null && !this.sendPing(link)) return;
+    if (this.pingSent === null) {
+      if (!this.sendPing(link)) return;
+      nearbyLog("socket", "probe sent");
+    }
     const sent = this.pingSent;
     this.clock.setTimeout(() => {
       if (this.link === link && this.readyState === NearbySocket.OPEN && this.pingSent === sent && sent !== null) {
@@ -245,4 +271,12 @@ export class NearbySocket {
     this.link = null;
     this.onclose?.({} as CloseEvent);
   }
+}
+
+/** "n=12 p50 40 p95 380 max 512 ms", or "none". */
+export function spread(ms: readonly number[]): string {
+  if (!ms.length) return "none";
+  const sorted = [...ms].sort((a, b) => a - b);
+  const at = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  return `n=${sorted.length} p50 ${at(0.5)} p95 ${at(0.95)} max ${sorted[sorted.length - 1]} ms`;
 }

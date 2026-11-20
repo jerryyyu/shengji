@@ -11,7 +11,7 @@ import { nearbyChoices } from "../../../joinSeats";
 import type { RoomSeats } from "../../../protocol";
 import { NEARBY_COPY } from "./copy";
 import { LIMITS } from "./protocol";
-import { NearbySocket } from "./socket";
+import { NearbySocket, spread } from "./socket";
 import { NearbyTable, type Frame, type Player } from "./testkit";
 
 type PlayerJson = { seat: number; is_bot: boolean; controller: string; name: string };
@@ -295,5 +295,58 @@ describe("a seat's resume after a drop", () => {
     expect(sock.readyState).toBe(NearbySocket.OPEN);
     expect(t.clock.now() - at).toBeLessThanOrEqual(2);
     expect(t.lastState(j)!.you).toBe(seat);
+  });
+  it("after a drop and resume, five moves in a row each apply on the same link, as fast as before, with no stuck probe", async () => {
+    const t = new NearbyTable(5, 1, 0.05);
+    await t.open(true);
+    const j = await t.join("P1");
+    t.send(t.host, { type: "table_start_bots" });
+    const seat = j.seat!;
+    const myTurn = () => t.room?.round?.phase === "play" && t.room.round.turn === seat;
+    const latencies = async (n: number): Promise<number[]> => {
+      const out: number[] = [];
+      for (let i = 0; i < n; i++) {
+        await t.settle(() => myTurn() || t.room!.round!.phase === "round_end", 2_000_000);
+        if (!myTurn()) break;
+        const before = playsBy(t, seat);
+        const sent = t.clock.now();
+        const frames = j.frames.length;
+        t.send(j, { type: "play", card_ids: aPlay(t, seat) });
+        await t.settle(() => j.frames.slice(frames).some((f) => f.type === "state" && playsBy(t, seat) > before), 50_000);
+        out.push(Math.round((t.clock.now() - sent) * 1000));
+        // a probe's pong window passes before the next move
+        await t.advance(LIMITS.pongSeconds + 0.5);
+        expect(j.sock.readyState).toBe(NearbySocket.OPEN);
+      }
+      return out;
+    };
+    await t.settle(() => myTurn(), 2_000_000);
+    const first = await latencies(2);
+    const sockBefore = j.sock;
+    const oldPeer = t.fake.peersOf(t.code)[0];
+    t.fake.drop(t.code, oldPeer);
+    await t.settle(() => sockBefore.readyState === NearbySocket.CLOSED, 1000);
+    await t.advance(1);
+    const sock = await t.resume(j);
+    expect(sock.readyState).toBe(NearbySocket.OPEN);
+    const mark = t.fake.wire.length;
+    const after = await latencies(5);
+    expect(after.length).toBe(5);
+    expect(sock.readyState).toBe(NearbySocket.OPEN);
+    expect(j.sock).toBe(sock);
+    // one link the whole time: no second hello, and nothing more from the old socket
+    expect(hellos(t, mark)).toBe(0);
+    expect(t.fake.wire.slice(mark).some((w) => w.from === oldPeer)).toBe(false);
+    // one probe at most per move, as on the first link: no extra pings
+    const pings = t.fake.wire.slice(mark).filter((w) => w.to === "host" && w.text.includes('"nearby_ping"')).length;
+    expect(pings).toBeLessThanOrEqual(after.length * 2);
+    expect(Math.max(...after)).toBeLessThanOrEqual(Math.max(...first) + 10);
+  });
+});
+
+describe("the link's latency summary in the device log", () => {
+  it("gives the count, median, 95th percentile and worst", () => {
+    expect(spread([])).toBe("none");
+    expect(spread([40, 10, 500, 20, 30])).toBe("n=5 p50 30 p95 500 max 500 ms");
   });
 });

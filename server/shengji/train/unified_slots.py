@@ -418,10 +418,11 @@ def _leaf_counts_python(frame: LeafFrame, leaves, tables, width):
 
 
 def leaf_features_fast(frame: LeafFrame, leaves, native=True):
-    """``(covered indices, (n, 9 * 54) float32 planes, (n, 12) scalars, n row keys)``: `leaf_features_batch`'s
+    """``(covered indices, (n, 9 * 54) uint8 planes, (n, 12) scalars, n row keys)``: `leaf_features_batch`'s
     rows with the planes flat, and each row's bytes as its memo key (equal rows, equal keys).  The counts
     come from the compiled `_pv_fast.leaf_counts` where `_native_leaf_counts` offers it (and ``native``),
-    else from `_leaf_entries_fast`; both give the same rows, keys and order."""
+    else from `_leaf_entries_fast`; both give the same rows, keys and order. Count planes stay compact
+    through memo lookup; the fused forward converts only rows it actually scores to the model dtype."""
     from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS, leaf_scalars
     tables = _fast_tables()
     width = N_PLANES * N_CARDS
@@ -433,11 +434,12 @@ def leaf_features_fast(frame: LeafFrame, leaves, native=True):
     else:
         mine, counts, m = _leaf_counts_python(frame, leaves, tables, width)
     if not mine:
-        return mine, np.zeros((0, width), np.float32), np.zeros((0, N_SCALARS), np.float32), []
+        return mine, np.zeros((0, width), np.uint8), np.zeros((0, N_SCALARS), np.float32), []
     scalars = leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
-    raw = np.ascontiguousarray(np.concatenate([counts.astype(np.uint8), scalars.view(np.uint8)], 1))
+    counts = np.asarray(counts, dtype=np.uint8)
+    raw = np.ascontiguousarray(np.concatenate([counts, scalars.view(np.uint8)], 1))
     keys = raw.view(np.dtype((np.void, raw.shape[1]))).ravel().tolist()
-    return mine, counts.astype(np.float32), scalars, keys
+    return mine, counts, scalars, keys
 
 
 def memo_rows(memo: dict, keys, compute):

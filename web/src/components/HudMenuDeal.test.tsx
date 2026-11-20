@@ -75,6 +75,7 @@ beforeEach(() => {
   root = createRoot(host);
 });
 afterEach(() => {
+  Reflect.deleteProperty(document, "elementFromPoint");
   act(() => root.unmount());
   host.remove();
   vi.restoreAllMocks();
@@ -150,6 +151,45 @@ describe("Leave game while the cards are dealt", () => {
       el.dispatchEvent(end);
     });
     expect(more().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it.each(["outside", "excursion"])("does not confirm Leave after a cancelled %s gesture", (kind) => {
+    dealt = 1;
+    act(() => root.render(<Table state={deal(dealt)} />));
+    touchOnly(more());
+    touchOnly(host.querySelector(".hud-menu-row.leave")!);
+    const el = sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-leave")!;
+    const backdrop = sheet()!;
+    vi.spyOn(el, "getBoundingClientRect").mockReturnValue({ left: 10, right: 110, top: 10, bottom: 50,
+      width: 100, height: 40, x: 10, y: 10, toJSON() {} });
+    // the Leave button covers x 10..110, y 10..50; elsewhere is the backdrop
+    Object.defineProperty(document, "elementFromPoint", { configurable: true,
+      value: (x: number, y: number) => x >= 10 && x <= 110 && y >= 10 && y <= 50 ? el : backdrop });
+    function fire(type: string, x: number) {
+      const t = { identifier: 1, clientX: x, clientY: 20, target: el };
+      const e = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, "touches", { value: type === "touchend" ? [] : [t] });
+      Object.defineProperty(e, "changedTouches", { value: [t] });
+      act(() => el.dispatchEvent(e));
+    }
+    fire("touchstart", 12);
+    if (kind === "excursion") {
+      fire("touchmove", 60);
+      fire("touchmove", 12);
+    }
+    fire("touchend", kind === "outside" ? 6 : 12);
+    expect(sent).toEqual([]);
+  });
+
+  it("confirms Leave on a touch that lifts over the button", () => {
+    dealt = 1;
+    act(() => root.render(<Table state={deal(dealt)} />));
+    touchOnly(more());
+    touchOnly(host.querySelector(".hud-menu-row.leave")!);
+    const el = sheet()!.querySelector<HTMLButtonElement>(".leave-sheet-leave")!;
+    Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => el.firstChild ?? el });
+    touchOnly(el);
+    expect(sent).toEqual([{ type: "table_leave" }]);
   });
 
   it("a mouse or keyboard click still opens the menu once", () => {

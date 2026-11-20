@@ -1,6 +1,6 @@
 """Atlas v2 invariants: the registry is the only source, the page rebuilds from it, and the checks refuse
 the mixes the old page suffered (Codex HOLD on #603)."""
-import copy, importlib.util, json, subprocess, sys
+import os, copy, importlib.util, json, subprocess, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -18,6 +18,10 @@ def test_c12_wide_lead_row_names_the_frozen_candidate_intervention():
     assert "SHENGJI_PV_WORLD_LEAD_ANCHOR" not in row["candidate"]
 
 
+# The renderer's invariants are tested on every row; the era page itself has its own test below.
+os.environ["ATLAS_ERA"] = "off"
+
+
 def _load():
     spec = importlib.util.spec_from_file_location("build_v2", HERE / "build_v2.py")
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
@@ -26,7 +30,8 @@ def _load():
 
 def test_check_builds_from_the_registry_and_reports_consistent():
     """The page is built, not tracked (#688): --check must pass with no atlas_v2.html on disk."""
-    r = subprocess.run([sys.executable, str(HERE / "build_v2.py"), "--check"], capture_output=True, text=True)
+    env = dict(os.environ); env.pop("ATLAS_ERA", None)              # --check compares the page as published
+    r = subprocess.run([sys.executable, str(HERE / "build_v2.py"), "--check"], capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stdout.startswith("CONSISTENT:") and "atlas_v2.html == registry.json" in r.stdout
 
@@ -209,19 +214,21 @@ def test_a_promotion_keeps_every_named_comparator_in_its_own_section():
 
 
 def test_rows_lead_with_a_short_title_and_takeaway_and_production_is_one_card():
-    """Jerry 2026-10-03: the long candidate/note text was hard to digest, and one production section is
-    enough.  Every screen leads with a short title and a one-sentence takeaway (the full record sits in a
-    closed toggle); the current release is one card and every earlier release is one line."""
+    """Every screen is a short title and a one-sentence takeaway; the full record (candidate, note,
+    instrument, seeds) stays in registry.json, off the page. The current release is one card and every
+    earlier release is one line."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
     for s in reg["screens"] + reg["context_screens"]:
         assert mod.esc(s["title"]) in page and mod.esc(s["takeaway"]) in page, s["id"]
-        assert mod.esc(s["note"]) in page                           # the record is kept, behind the toggle
-    assert page.count("<summary>full record</summary>") == len(reg["screens"]) + len(reg["context_screens"])
+        assert mod.esc(s["note"]) not in page or len(s["note"]) < 40   # the record stays in the registry
+    assert "<summary>full record</summary>" not in page
     assert page.count('<article class="card') == 1                  # one production card
     for b in reg["baseline"]:
         assert mod.esc(b["oneline"]) in page
         if b["status"] != "production":
             assert mod.esc(b["recipe"]) not in page                 # earlier releases are one line each
+        else:
+            assert mod.esc(b["bot"]) not in page and mod.esc(b["recipe"]) not in page   # the card is its line and evidence
     for key, lst in (("title", "screens"), ("takeaway", "screens"), ("oneline", "baseline")):
         bad = copy.deepcopy(reg); del bad[lst][0][key]
         assert any(key in e for e in mod.check_registry(bad)), key
@@ -421,7 +428,7 @@ def test_prod_release_column_maps_dates_to_the_live_release():
     assert b.prod_release_on(reg, "2026-11-07") == 51
     assert b.prod_release_on(reg, "2026-11-01") is None
     assert b.prod_release_label(reg, "2026-11-05") == "r50"
-    html = (HERE / "atlas_v2.html").read_text()
+    html = b.page
     assert "<th title=" in html and "prod release</th>" in html
 
 
@@ -431,8 +438,54 @@ def test_named_comparator_rows_are_not_counted_or_labelled_as_production():
     reg = json.loads((HERE / "registry.json").read_text())
     named = [s for s in reg["screens"] if s.get("named_comparator")]
     assert [s["id"] for s in named] == ["s117"]
-    html = (HERE / "atlas_v2.html").read_text()
+    html = _load().page
     assert ">production parity</text>" not in html and ">comparator parity</text>" in html
     assert "Screens against the current production release" not in html
     assert f"{len(named)} vs a named non-release comparator" in html
     assert "s117" in html and "NOT release 51" in html
+
+
+def test_the_page_shows_only_the_registry_era():
+    """With the registry's `era`, the page shows the screens and models from its start, the releases
+    from its first release, no pre-era context rows, and links the frozen release-29-52 page."""
+    env = dict(os.environ); env.pop("ATLAS_ERA", None)
+    code = ("import importlib.util,sys;s=importlib.util.spec_from_file_location('b',sys.argv[1]);"
+            "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);"
+            "import json;print(json.dumps({'page':m.page,'ids':[x['id'] for x in m.R['screens']]}))")
+    r = subprocess.run([sys.executable, "-c", code, str(HERE / "build_v2.py")], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout); page = out["page"]
+    reg = json.loads((HERE / "registry.json").read_text()); era = reg["era"]
+    for s in reg["screens"]:
+        shown = s["date"] >= era["start"]
+        assert (s["id"] in out["ids"]) == shown, s["id"]
+        if shown:
+            assert page.count(s["id"]) >= 2, s["id"]
+    assert reg["history"]["v2_archive"] in page
+    for b in reg["baseline"]:
+        assert (f"release {b['release']}</b>" in page or f"release {b['release']} ·" in page) == (b["release"] >= era["first_release"]), b["release"]
+
+
+def test_check_validates_pre_era_rows_against_their_archives(tmp_path):
+    """--check validates every row's cited hashes, including rows the era page does not show."""
+    import shutil
+    for name in ("build_v2.py", "registry.json"):
+        shutil.copy(HERE / name, tmp_path / name)
+    reg = json.loads((tmp_path / "registry.json").read_text())
+    old = copy.deepcopy(next(s for s in reg["screens"] if s["date"] < reg["era"]["start"] and "results" not in s))
+    old.update(id="zz-pre-era", note="Archive readouts/ZZLANE/ (SHA256SUMS sha256 " + "b" * 64 + ").")
+    reg["screens"].append(old)
+    (tmp_path / "registry.json").write_text(json.dumps(reg))
+    archive = tmp_path / "archive"; (archive / "ZZLANE").mkdir(parents=True)
+    (archive / "ZZLANE" / "SHA256SUMS").write_text("c" * 64 + "  out.json\n")
+    env = dict(os.environ); env.pop("ATLAS_ERA", None); env["ATLAS_ARCHIVE"] = str(archive)
+    r = subprocess.run([sys.executable, str(tmp_path / "build_v2.py"), "--check"], capture_output=True, text=True, env=env)
+    assert r.returncode == 1 and "ARCHIVE SHA ERRORS" in r.stdout and "zz-pre-era" in r.stdout, r.stdout + r.stderr
+
+
+def test_each_rt2_dev_arm_sits_in_its_own_comparator_band():
+    """RT2's DEV arms have different comparators, so each is its own row in its own band."""
+    mod = _load(); page = mod.page
+    secs = {s["id"]: c for c in mod.comparator_sections(mod.R) for s in c["items"]}
+    assert secs["rt2h"]["release"] == 53 and secs["rt2r"]["release"] == 52
+    assert "rt2d" not in secs

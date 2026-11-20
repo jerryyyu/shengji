@@ -432,7 +432,7 @@ def _stable(p):
     return _re.sub(r"Built [^<]* from registry.json", "Built <t> from registry.json", p)
 
 
-ARCHIVE = Path.home() / "shengji-archive" / "2026-09-13" / "readouts"
+ARCHIVE = Path(os.environ.get("ATLAS_ARCHIVE") or Path.home() / "shengji-archive" / "2026-09-13" / "readouts")   # ATLAS_ARCHIVE: a test archive
 _SHA = re.compile(r"\b[0-9a-f]{64}\b")
 _ARCHIVE_DIR = re.compile(r"readouts/([A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*)/")
 #: the ONLY archive files the check opens: provenance metadata, never outputs or raw data
@@ -525,7 +525,7 @@ if __name__ == "__main__":
                 print("BUILD FAILED: temp page size mismatch"); sys.exit(1)
         if out.exists() and _stable(out.read_text()) != _stable(page):
             print("OUT OF DATE: atlas_v2.html differs from registry.json; run build_v2.py"); sys.exit(1)
-        sha_errs, sha_checked, sha_skipped = check_archive_shas(R)
+        sha_errs, sha_checked, sha_skipped = check_archive_shas(R_FULL)
         if sha_errs:
             print("ARCHIVE SHA ERRORS:\n  " + "\n  ".join(sha_errs)); sys.exit(1)
         print(f"CONSISTENT: {len(SCREENS_NOW)} screens vs release {CMP}, {len(SCREENS_NAMED)} vs a named non-release comparator, {len(SCREENS_EARLIER)} vs earlier releases, {len(R['context_screens'])} context reads, {len(R['models'])} models; atlas_v2.html == registry.json")

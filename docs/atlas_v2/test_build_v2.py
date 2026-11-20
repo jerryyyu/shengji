@@ -428,7 +428,7 @@ def test_prod_release_column_maps_dates_to_the_live_release():
     assert b.prod_release_on(reg, "2026-11-07") == 51
     assert b.prod_release_on(reg, "2026-11-01") is None
     assert b.prod_release_label(reg, "2026-11-05") == "r50"
-    html = (HERE / "atlas_v2.html").read_text()
+    html = b.page
     assert "<th title=" in html and "prod release</th>" in html
 
 
@@ -464,3 +464,28 @@ def test_the_page_shows_only_the_registry_era():
     assert reg["history"]["v2_archive"] in page
     for b in reg["baseline"]:
         assert (f"release {b['release']}</b>" in page or f"release {b['release']} ·" in page) == (b["release"] >= era["first_release"]), b["release"]
+
+
+def test_check_validates_pre_era_rows_against_their_archives(tmp_path):
+    """--check validates every row's cited hashes, including rows the era page does not show."""
+    import shutil
+    for name in ("build_v2.py", "registry.json"):
+        shutil.copy(HERE / name, tmp_path / name)
+    reg = json.loads((tmp_path / "registry.json").read_text())
+    old = copy.deepcopy(next(s for s in reg["screens"] if s["date"] < reg["era"]["start"] and "results" not in s))
+    old.update(id="zz-pre-era", note="Archive readouts/ZZLANE/ (SHA256SUMS sha256 " + "b" * 64 + ").")
+    reg["screens"].append(old)
+    (tmp_path / "registry.json").write_text(json.dumps(reg))
+    archive = tmp_path / "archive"; (archive / "ZZLANE").mkdir(parents=True)
+    (archive / "ZZLANE" / "SHA256SUMS").write_text("c" * 64 + "  out.json\n")
+    env = dict(os.environ); env.pop("ATLAS_ERA", None); env["ATLAS_ARCHIVE"] = str(archive)
+    r = subprocess.run([sys.executable, str(tmp_path / "build_v2.py"), "--check"], capture_output=True, text=True, env=env)
+    assert r.returncode == 1 and "ARCHIVE SHA ERRORS" in r.stdout and "zz-pre-era" in r.stdout, r.stdout + r.stderr
+
+
+def test_each_rt2_dev_arm_sits_in_its_own_comparator_band():
+    """RT2's DEV arms have different comparators, so each is its own row in its own band."""
+    mod = _load(); page = mod.page
+    secs = {s["id"]: c for c in mod.comparator_sections(mod.R) for s in c["items"]}
+    assert secs["rt2h"]["release"] == 53 and secs["rt2r"]["release"] == 52
+    assert "rt2d" not in secs

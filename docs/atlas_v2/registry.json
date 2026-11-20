@@ -4815,39 +4815,42 @@
    "box": "ultra",
    "form": "card play",
    "instrument_kind": "matched-deals",
-   "confidence": null,
-   "id": "rt2d",
+   "confidence": 0.95,
+   "id": "rt2h",
    "date": "2026-11-19",
-   "title": "RT2 retrain vs the winner and vs release 52 (DEV)",
+   "title": "RT2 retrain vs the winner (DEV)",
    "candidate": "RT2: the winner warm-started and retrained on the bigger quality-weighted mix (package 47175c99c2d7d5f3, belief bed32f87dc4dd631), the search unchanged; M5 Ultra",
-   "comparator": "the winner (release 53's all-data unified model 97c07be8614ed5c4 + belief 1b1fd2deb43b109b in release 52's search, plain readout), head to head; and release 52 as served",
+   "comparator": "the winner (release 53's all-data unified model 97c07be8614ed5c4 + belief 1b1fd2deb43b109b in release 52's search, plain readout), head to head",
    "vs": 53,
-   "vs_group": "release 53's unified model (the winner, plain readout), head to head: 1,000-deal seat-swapped DEV duels, not a common-control screen",
-   "instrument": "1,000 seat-swapped deal pairs per arm: R2H [2637000000, +1000) vs the winner, R2R [2637001000, +1000) vs release 52; served budgets; one look per arm; host M5 Ultra",
-   "seeds": "2637000000 2637001000 (ultra)",
-   "family": "two arms on disjoint seeds, each judged alone",
-   "results": [
-    {
-     "arm": "R2H",
-     "label": "vs the winner",
-     "role": "primary",
-     "confidence": 0.95,
-     "point": 0.0285,
-     "lo": -0.0005,
-     "hi": 0.0575
-    },
-    {
-     "arm": "R2R",
-     "label": "vs release 52",
-     "role": "primary",
-     "confidence": 0.95,
-     "point": 0.0735,
-     "lo": 0.0435,
-     "hi": 0.1035
-    }
-   ],
-   "takeaway": "RT2 +0.0285 vs the winner (LB80 +0.016) and +0.0735 vs R52: cleared DEV promotion to the screen.",
-   "note": "Read once each 11-19, VALID. R2H n 1000 mean 0.0285 CI95 [-0.0005, 0.0575] LB80 0.016; R2R n 1000 mean 0.0735 [0.0435, 0.1035] LB80 0.0605. Archive readouts/UT-retrain2-dev/ (SHA256SUMS sha256 1ee14fdbf63990fb700e45d79a6c4922895fa1d6c3f74d8b138f1d13a5c1db9e)."
+   "vs_group": "release 53's unified model (the winner, plain readout), head to head: a 1,000-deal seat-swapped DEV duel, not a common-control screen",
+   "instrument": "1,000 seat-swapped deal pairs [2637000000, +1000), RT2 vs the winner head to head; served budgets; one look; host M5 Ultra",
+   "seeds": "2637000000 (ultra)",
+   "takeaway": "RT2 +0.0285 vs the winner, LB80 +0.016: cleared DEV promotion to the screen.",
+   "note": "Read once 11-19, VALID. R2H n 1000 mean 0.0285 CI95 [-0.0005, 0.0575] LB80 0.016. Archive readouts/UT-retrain2-dev/ (SHA256SUMS sha256 1ee14fdbf63990fb700e45d79a6c4922895fa1d6c3f74d8b138f1d13a5c1db9e).",
+   "point": 0.0285,
+   "lo": -0.0005,
+   "hi": 0.0575
+  },
+  {
+   "status": "sealed",
+   "box": "ultra",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "id": "rt2r",
+   "date": "2026-11-19",
+   "title": "RT2 retrain vs release 52 (DEV)",
+   "candidate": "RT2: the winner warm-started and retrained on the bigger quality-weighted mix (package 47175c99c2d7d5f3, belief bed32f87dc4dd631), the search unchanged; M5 Ultra",
+   "comparator": "release 52 as served (pv-search-f4f4127e-prior-1fa201b2 ... -bbw-7a9a430fe690-sc8), head to head",
+   "vs": 52,
+   "vs_group": "release 52 as served, head to head: a 1,000-deal seat-swapped DEV duel, not a common-control screen",
+   "instrument": "1,000 seat-swapped deal pairs [2637001000, +1000), RT2 vs release 52 head to head; served budgets; one look; host M5 Ultra",
+   "seeds": "2637001000 (ultra)",
+   "takeaway": "RT2 +0.0735 vs release 52 (LB80 +0.0605).",
+   "note": "Read once 11-19, VALID. R2R n 1000 mean 0.0735 CI95 [0.0435, 0.1035] LB80 0.0605. Archive readouts/UT-retrain2-dev/ (SHA256SUMS sha256 1ee14fdbf63990fb700e45d79a6c4922895fa1d6c3f74d8b138f1d13a5c1db9e).",
+   "point": 0.0735,
+   "lo": 0.0435,
+   "hi": 0.1035
   },
   {
    "status": "sealed",
@@ -4936,8 +4939,8 @@
      "hi": 0.0
     }
    ],
-   "takeaway": "Both halves help alone (belief +0.027, heads +0.0355); sub-additive vs the whole; control exactly 0.",
-   "note": "Read once each 11-20 with ut_mix_read.py, VALID on all checks. B +0.027 [0.001, 0.053]; U +0.0355 [0.0075, 0.0635]; W 0.000 (identical decisions). Label 'both'; interaction vs R2H -0.034 (descriptive). Archive readouts/RT2-attrib/ (SHA256SUMS sha256 a2fc161495bebc0d5aa8620eaf931bc51221fbc218af8bcc6dceec1badfa8512)."
+   "takeaway": "Belief and heads + trunk each help alone; interaction unresolved; split control outcome 0.",
+   "note": "Read once each 11-20 with ut_mix_read.py, VALID on all checks. B +0.027 [0.001, 0.053]; U (RT2 heads and their trunk) +0.0355 [0.0075, 0.0635]; W outcome 0.000. Interaction vs R2H, descriptive only: -0.034, approximate independent-normal 95% interval [-0.082, +0.014], crosses zero. B and U are independent noisy contrasts, not additive shares. Archive readouts/RT2-attrib/ (SHA256SUMS sha256 a2fc161495bebc0d5aa8620eaf931bc51221fbc218af8bcc6dceec1badfa8512)."
   }
  ],
  "context_screens": [

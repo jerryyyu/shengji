@@ -88,3 +88,17 @@ export function tableJoinSeat(peek: Pick<TableSeats, "seats">): number | null {
 export function tableHostName(peek: Pick<TableSeats, "seats">): string | null {
   return [...peek.seats].sort((a, b) => a.seat - b.seat).find((sd) => sd.state === "taken")?.name ?? null;
 }
+
+/** The seats a nearby joiner may pick: every open one. */
+export function nearbyChoices(peek: Pick<RoomSeats, "seats">): number[] {
+  const taken = new Set(peek.seats.map((s) => s.seat));
+  return [0, 1, 2, 3].filter((at) => !taken.has(at));
+}
+
+/** The seat the picker starts on: the host's partner seat when open (the
+ *  online join's choice), else the first open seat. */
+export function nearbyDefaultSeat(peek: Pick<RoomSeats, "seats">): number | null {
+  const open = nearbyChoices(peek);
+  const host = [...peek.seats].sort((a, b) => a.seat - b.seat)[0]?.seat ?? 0;
+  return open.includes((host + 2) % 4) ? (host + 2) % 4 : open[0] ?? null;
+}

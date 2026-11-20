@@ -26,6 +26,8 @@ type Handler<E> = ((ev: E) => void) | null;
  *  service, so none of them comes back as an error toast. */
 export const LOCAL_MESSAGES: ReadonlySet<string> = new Set([
   "create_room", "declare", "pass_declare", "bury", "play", "next_round",
+  // a nearby table's move timer marks a seat away; im_back ends it
+  "im_back",
   // the canonical table names (tables.ts): a room refuses the ones that set a
   // table up before its game, and rewrites the rest to its own
   "table_move", "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",

@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
+import { NEARBY_SESSION, useOffline } from "../offlineMode";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
@@ -108,9 +109,11 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
   // a long press (or a right click) on a person's seat also offers block and
-  // report; offline play seats only bots, so it never offers them there
+  // report, which are the game server's; a table on a device (offline, or a
+  // nearby phone's) never offers them
   const [actions, setActions] = useState(false);
-  const canAct = !player.is_bot;
+  const offline = useOffline();
+  const canAct = !player.is_bot && !offline;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   useEffect(() => {
@@ -322,7 +325,14 @@ export default function Table({ state }: { state: GameState }) {
   // - an error comes back: pending clears and the selection stays.
   // The socket opening alone settles nothing, and neither does a same-hand
   // broadcast on the connection the play was sent on.
-  const [pending, setPending] = useState<{ kind: "play" | "bury"; handKey: string; turn: number | null; generation: number } | null>(null);
+  // At a nearby table a send that never committed goes out once more on the
+  // new link by itself: the host's state after the resume is the seat's
+  // truth (a frame of the old link is either in it or refused as stale), so
+  // the same move cannot apply twice, and a move the table has moved past
+  // comes back as an error.
+  type Pending = { kind: "play" | "bury"; handKey: string; turn: number | null; generation: number;
+                   msg: { type: "play" | "bury"; card_ids: number[] }; resent: boolean };
+  const [pending, setPending] = useState<Pending | null>(null);
   const handKey = state.hand.map((c) => c.id).join(",");
   // your own plays so far in this browser; the first few get the coach
   const [plays, setPlays] = useState(playsMade);
@@ -336,7 +346,9 @@ export default function Table({ state }: { state: GameState }) {
       setPending(null);
       setSelected(new Set());
     } else if (conn.generation !== pending.generation) {
-      setPending(null);
+      if (NEARBY_SESSION && !pending.resent && conn.send(pending.msg)) {
+        setPending({ ...pending, generation: conn.generation, resent: true });
+      } else setPending(null);
     }
     // settles on each new state, so a re-render of the same state is no answer
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -362,7 +374,7 @@ export default function Table({ state }: { state: GameState }) {
   const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
-    setPending({ kind: msg.type, handKey, turn: state.turn, generation: conn.generation });
+    setPending({ kind: msg.type, handKey, turn: state.turn, generation: conn.generation, msg, resent: false });
   };
 
   // When the trick resets and last_trick changed, linger on the finished trick

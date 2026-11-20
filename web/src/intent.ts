@@ -14,6 +14,7 @@
  * a pending action because following a link is the most recent explicit intent.
  */
 
+import { CODE_LEN } from "./codes";
 import type { ClientMsg } from "./protocol";
 
 export type Intent =
@@ -40,7 +41,9 @@ export function decideIntent(i: IntentInputs): Intent {
   if (i.pending?.room && i.pending.name) {
     return { kind: "pending", ...i.pending, room: i.pending.room.toUpperCase() };
   }
-  if (i.savedRoom && i.savedName) {
+  // only a game-server code is resumed: a longer one (a nearby table's,
+  // which is never saved) is not sent to the game server
+  if (i.savedRoom && i.savedRoom.length === CODE_LEN && i.savedName) {
     return {
       kind: "resume",
       room: i.savedRoom.toUpperCase(),

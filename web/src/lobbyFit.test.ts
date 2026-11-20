@@ -152,7 +152,32 @@ describe("the Play tab on a wide screen", () => {
     expect(css).not.toMatch(/\.home-wide \.play-tab \.play-(art|side) \{/);
     expect(css).not.toMatch(/\.home-wide \.play-tab > \.lobby-panel:has\(\.play-side\)/);
     expect(rule(".home-wide .play-tab > .lobby-panel").width).toBe("420px");
-    expect(rule(".home-wide .play-tab .lobby-preview").height).toBe("150px");
     expect(rule(".home-wide .play-tab.play-table-up .lobby-preview").display).toBe("none");
+  });
+
+  // The preview's stage is 1200x630 stage units scaled into the felt. A felt
+  // of another shape letterboxes the stage: on a 420x150 felt the stage was
+  // 286px wide, its side hands floated 67px inside the rim and its cards were
+  // a quarter of the phone's. The felt's box is resolved here from the rules
+  // a wide screen applies, base first.
+  it("keeps the felt at the stage's shape, so the stage fills it and the cards scale with it", () => {
+    const base = rule(".lobby-preview");
+    const wide = { ...base, ...rule(".home-wide .play-tab .lobby-preview") };
+    const stage = { ...rule(".lp-stage"), ...rule(".home-wide .play-tab .lp-stage") };
+    const column = parseFloat(rule(".home-wide .play-tab > .lobby-panel").width);
+    expect(wide.width ?? "100%").toBe("100%");
+    expect(wide.height).toBeUndefined();
+    const [aw, ah] = wide["aspect-ratio"].split("/").map((n) => parseFloat(n));
+    const felt = { w: column, h: column * ah / aw };
+    const u = stage["--u"] === "calc(100cqw / 1200)" ? felt.w / 1200
+      : stage["--u"] === "min(100cqw / 1200, 100cqh / 630)" ? Math.min(felt.w / 1200, felt.h / 630) : NaN;
+    // the stage reaches both side edges and both top and bottom edges
+    expect(Math.abs(u * 1200 - felt.w)).toBeLessThan(1);
+    expect(Math.abs(u * 630 - felt.h)).toBeLessThan(1);
+    // a played card (104 stage units) is at least the phone's 33px
+    const card = 104 * u;
+    expect(card).toBeGreaterThanOrEqual(34);
+    expect(felt.w / felt.h).toBeGreaterThan(1.8);
+    expect(felt.w / felt.h).toBeLessThan(2);
   });
 });

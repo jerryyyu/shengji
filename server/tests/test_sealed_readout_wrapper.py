@@ -182,3 +182,17 @@ def test_actual_nine_row_reader_in_fresh_wrapper(bundle, full_packet, native):
     blocked = subprocess.run([sys.executable, '-m', 'scripts.production_llm_panel_readout', '--help'],
                              cwd=source, env=env, capture_output=True, text=True)
     assert blocked.returncode != 0 and 'forbids the directory CLI' in blocked.stderr
+
+
+@pytest.mark.parametrize('package', ['scripts', 'shengji'])
+def test_missing_package_marker_refuses_before_claim(bundle, package):
+    base, source, manifest, spec = bundle
+    relative = package + '/__init__.py'
+    (source / relative).unlink()
+    del manifest['source_files'][relative]
+    spec['manifest'] = write(base / 'manifest.json', manifest)
+    outcome = invoke(bundle)
+    assert outcome.returncode != 0
+    assert 'missing pinned package marker: ' + package in outcome.stderr
+    assert not (base / 'output').exists()
+    assert not (base / 'opened').exists()

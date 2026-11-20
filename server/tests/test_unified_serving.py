@@ -16,6 +16,7 @@ The unified package here is a small random one (the claims are about wiring, not
 screened pair, the same tests also run on it; they skip where it is not provisioned.
 """
 import asyncio
+import contextlib
 import copy
 import hashlib
 import os
@@ -622,6 +623,138 @@ def test_the_fast_readout_scores_reply_leaves_ahead_as_it_scores_chunks(
         np.testing.assert_allclose(np.asarray(g["value_means"], float), np.asarray(w["value_means"], float),
                                    rtol=0, atol=1e-6, err_msg=P.label(*position))
     assert consumed[0] > 0
+
+
+def compared_counts(monkeypatch, tally):
+    """Every `leaf_features_fast` call checked against the Python counts of the same leaves: covered
+    indices, planes, scalars and memo keys byte for byte (dtype and shape included)."""
+    from shengji.train import unified_slots as us
+
+    features = us.leaf_features_fast
+
+    def compared(frame, leaves):
+        got = features(frame, leaves)
+        want = features(frame, leaves, native=False)
+        assert got[0] == want[0]
+        for a, b in zip(got[1:3], want[1:3]):
+            assert a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
+        assert got[3] == want[3]
+        tally[0] += 1
+        tally[1] += len(got[0])
+        return got
+    monkeypatch.setattr(us, "leaf_features_fast", compared)
+
+
+@contextlib.contextmanager
+def python_counts(monkeypatch):
+    """A context in which `leaf_features_fast` takes the Python counts."""
+    from shengji.train import unified_slots as us
+
+    with monkeypatch.context() as patch:
+        patch.setattr(us, "_native_leaf_counts", lambda: None)
+        yield
+
+
+def test_the_compiled_leaf_counts_are_used_with_the_compiled_engine_only():
+    from shengji.engine import fast as engine_fast
+    from shengji.train import pv_native, unified_slots as us
+
+    native = us._native_leaf_counts()
+    assert (native is not None) == (engine_fast.is_active() and pv_native.HAVE_NATIVE)
+    if os.environ.get("SHENGJI_FAST") == "1":
+        assert native is not None, "the compiled engine runs without the compiled leaf counts"
+
+
+def test_the_compiled_leaf_counts_kernel_counts_every_leaf_as_python(monkeypatch):
+    """`_pv_fast.leaf_counts` on a real round's positions, each frame against every position (in and
+    out of the frame, mid trick, a just-completed trick, a non-play leaf), as a list and as an
+    iterator: the covered indices, counts and five integers of `_leaf_counts_python`, exactly."""
+    from types import SimpleNamespace as NS
+
+    from shengji.ai.unified_readout_numpy import N_PLANES
+    from shengji.train import pv_native, unified_slots as us
+
+    if not pv_native.HAVE_NATIVE:
+        pytest.skip("train/_pv_fast is not built")
+    key = P.POSITIONS[4][0]
+    seen = [P.replay(key, trick, pos) for trick in (8, 9, 10) for pos in range(4)]
+    leaves = seen + [NS(phase="round_end")]
+    tables = us._fast_tables()
+    width = N_PLANES * us.N_CARDS
+    planes, pts, combos, legal = tables
+    covered = 0
+    for view in seen:
+        for seat in range(4):
+            frame = NS(seat=seat, tricks=len(view.history), pos=len(view.trick.plays) if view.trick else 0)
+            want = us._leaf_counts_python(frame, leaves, tables, width)
+            for given in (leaves, iter(leaves)):
+                got = pv_native._pv_fast.leaf_counts(frame.seat, frame.tricks, frame.pos, given, width,
+                                                     planes, pts, us._winner_fast, combos, legal)
+                assert got[0] == want[0]
+                if want[0]:
+                    assert got[1].dtype == np.uint8 and np.array_equal(got[1], want[1])
+                    assert got[2].dtype == np.int64 and np.array_equal(got[2], want[2])
+                else:
+                    assert got[1].shape == (0, width) and got[2].shape == (0, 5)
+            covered += len(want[0])
+    assert covered > len(seen)
+
+
+def test_the_compiled_leaf_counts_decide_as_the_python_counts(release50_packages, pair, monkeypatch,
+                                                              served_functions):
+    """Ten fixed production positions on the fast readout: every feature call's rows and memo keys are
+    the Python counts' byte for byte, and the decision (cards, worlds, counters, memo hits and the whole
+    record, values unrounded) is the one the Python counts make.  Under the pure engine there is no
+    compiled arm: each decision runs once, its rows still checked against the Python counts."""
+    from shengji.train import unified_slots as us
+
+    env = fast_env(unified_env(release50_packages, pair))
+    tally = [0, 0]
+    compared_counts(monkeypatch, tally)
+    for position in P.POSITIONS:
+        got = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
+        if us._native_leaf_counts() is None:
+            continue
+        with python_counts(monkeypatch):
+            want = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
+        assert got == want, P.label(*position)
+    assert tally[0] > 0 and tally[1] > 0
+
+
+def test_the_compiled_leaf_counts_play_a_round_out_as_the_python_counts(release50_packages, pair, monkeypatch,
+                                                                       served_functions):
+    """From a fixed position (hand of 10) to the end of its round, each seat decided on a deep copy of the
+    bot (the server's snapshot path) that then becomes the bot: the compiled counts and the Python
+    counts play the same cards with the same records, decision for decision, every row compared (one
+    play-out under the pure engine)."""
+    from shengji.train import unified_slots as us
+
+    key, trick, pos = P.POSITIONS[7]
+    env = fast_env(unified_env(release50_packages, pair))
+    tally = [0, 0]
+    compared_counts(monkeypatch, tally)
+
+    def play_out():
+        rnd = P.replay(key, trick, pos)
+        bot = registry_bot(monkeypatch, env, P.SEED)
+        out = []
+        while rnd.phase == "play":
+            bot = P.lift(copy.deepcopy(bot))
+            seat = rnd.turn
+            got = decide(bot, copy.deepcopy(rnd))
+            out.append(got)
+            rnd.play(seat, list(got["cards"]))
+        return out
+    native = play_out()
+    if us._native_leaf_counts() is None:
+        assert native and tally[1] > 0
+        return
+    with python_counts(monkeypatch):
+        python = play_out()
+    assert len(native) == len(python) > 0
+    for i, (a, b) in enumerate(zip(native, python)):
+        assert a == b, f"decision {i}"
+    assert tally[1] > 0
 
 
 def test_served_trajectory_capture_preserves_unified_decisions_and_labels(

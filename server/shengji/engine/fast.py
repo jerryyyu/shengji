@@ -239,6 +239,11 @@ def activate() -> bool:
     return True
 
 
+def is_active() -> bool:
+    """True while `activate` has routed the kernels (until `deactivate`)."""
+    return bool(_saved)
+
+
 def _subclasses(cls) -> list[type]:
     out = []
     stack = list(cls.__subclasses__())

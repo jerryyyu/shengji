@@ -2,7 +2,7 @@
 with the pinned S136 scorer package (``server.RELAXED_SF_PACKAGE``, sha256 ``server.RELAXED_SF_SHA256``,
 an asset of the ``serving-packages`` release).
 
-A casual room with Relaxed bots builds the served name plus ``RELAXED_BOT``; the served bot still
+A casual room with Standard bots builds the served name plus ``RELAXED_BOT``; the served bot still
 declares and buries; through ``_paced_bot_step`` / ``_commit_bot_turn`` every play is a scorer
 decision (no fallback), the room repeats itself from the same seed, and the served bot's own name and
 decisions are untouched.  Fails, never skips, under ``SHENGJI_REQUIRE_PV_PACKAGE=1``.
@@ -64,9 +64,9 @@ def test_a_relaxed_room_on_release54_plays_the_scorer_through_the_server_path(
     async def scenario(code):
         game = _play_state(served, 5)
         rnd = game.round
-        room = server.Room(code=code, game=game, log_dir=tmp_path, bot_seed=9, relaxed_bots=True,
+        room = server.Room(code=code, game=game, log_dir=tmp_path, bot_seed=9, bot_level="standard",
                            seats=[server.Seat(str(s), is_bot=True) for s in range(4)])
-        assert room.relaxed_bots and room.bot.policy_name == relaxed_name
+        assert room.bot_level == "standard" and room.bot.policy_name == relaxed_name
         assert room.bot.served.policy_name == name
         room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
         room._kitty_given = True

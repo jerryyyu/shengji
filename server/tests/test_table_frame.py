@@ -36,7 +36,7 @@ def _shape(frame: dict) -> None:
         assert s["state"] in ("taken", "open", "held", "bot")
         if s["state"] in ("open", "held"):
             assert s["name"] is None
-    assert set(frame["settings"]) == {"allow_joiners", "start_level", "relaxed_bots"}
+    assert set(frame["settings"]) == {"allow_joiners", "start_level", "bot_level"}
     assert set(frame["timers"]) == {"bots", "start_now_at"}
 
 
@@ -48,7 +48,7 @@ def from_queue_state(qs: dict) -> dict:
     out: dict = {"type": "table", "phase": "open", "code": qs["code"], "mode": qs["mode"],
                  "settings": {"allow_joiners": qs["allow_joiners"],
                               "start_level": qs["start_level"],
-                              "relaxed_bots": qs["relaxed_bots"]},
+                              "bot_level": qs["bot_level"]},
                  "your_ready": qs["you_ready"]}
     t = qs["table"]
     if t is None:
@@ -209,7 +209,7 @@ def _agrees_with_room(frame: dict, room: dict, state: dict | None) -> None:
     assert frame["you"] == room["you"] and frame["opener"] == room["opener"] == room["host"]
     assert frame["settings"] == {"allow_joiners": room.get("allow_joiners"),
                                  "start_level": room["start_level"],
-                                 "relaxed_bots": room["relaxed_bots"]}
+                                 "bot_level": room["bot_level"]}
     assert frame["chat_log"] == room["room"]
     assert frame["timers"] == {"bots": None, "start_now_at": None}
     assert frame["your_ready"] is None and frame["waiting_for"] is None

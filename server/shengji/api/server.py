@@ -128,11 +128,11 @@ def _prior_health() -> dict | None:
 
 
 BOT_DELAY = 0.7
-# What a casual room's bots play with Relaxed bots on: the served bot's
+# What a casual room's bots play at the Standard level: the served bot's
 # declare and bury, and card play by the S136 search-free scorer with
 # near-best softmax noise (``relaxed_play.build_casual``). The room bot's
 # policy name is the served name plus this token. Ranked rooms never play
-# it; with the switch off a room builds SHENGJI_BOT.
+# it; an Advanced room builds SHENGJI_BOT.
 RELAXED_BOT = "relax-sf516617b8-t1-d4"
 RELAXED_SF_PACKAGE = os.environ.get("SHENGJI_RELAXED_SF_CKPT", "/data/models/sf-s136-516617b8.npz")
 RELAXED_SF_SHA256 = "516617b893689a931977068a1a536735afdb1edff0979f6f2360588291a8d184"
@@ -391,7 +391,7 @@ def make_relaxed_bot(served, seed: int):
                                          sha256=RELAXED_SF_SHA256)
     except Exception as exc:                # noqa: BLE001 - a room must open
         logging.getLogger(__name__).warning(
-            "relaxed bots unavailable (%s: %s); the room plays the served bot",
+            "standard bots unavailable (%s: %s); the room plays the served bot",
             type(exc).__name__, exc)
         return served
 
@@ -420,10 +420,10 @@ class Room:
     chat_senders: dict[int, Any] = field(default_factory=dict)
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    # Relaxed bots: the casual opener's switch, set before the game and
-    # fixed for it; ``__post_init__`` builds the relaxed bot for every bot seat.
-    # A matched (ranked) room refuses it.
-    relaxed_bots: bool = False
+    # Bots (``matchmaking.BOT_LEVELS``): the casual opener's choice, set
+    # before the game and fixed for it; at "standard" ``__post_init__`` builds
+    # the relaxed bot for every bot seat. A matched (ranked) room refuses it.
+    bot_level: str = "advanced"
     # None builds the served policy (SHENGJI_BOT), or its relaxed wrap, in
     # `__post_init__` with this room's own seed, so rooms do not share one
     # sampler stream
@@ -505,16 +505,19 @@ class Room:
     queued: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.relaxed_bots and self.matched:
+        if self.bot_level not in matchmaking.BOT_LEVELS:
+            raise ValueError(f"unknown bot level {self.bot_level!r}")
+        if self.bot_level != "advanced" and self.matched:
             raise ValueError("a ranked room plays the served bot")
         if self.bot is None:
             if self.bot_seed is None:
                 self.bot_seed = secrets.randbits(31)
             served = make_bot(os.environ.get("SHENGJI_BOT", "mc"), seed=self.bot_seed)
-            self.bot = make_relaxed_bot(served, self.bot_seed) if self.relaxed_bots else served
+            standard = self.bot_level == "standard"
+            self.bot = make_relaxed_bot(served, self.bot_seed) if standard else served
             # a missing or wrong package plays the served bot, and the room's
-            # rounds are then logged as served, not relaxed
-            self.relaxed_bots = self.bot is not served
+            # rounds are then logged as Advanced
+            self.bot_level = "standard" if self.bot is not served else "advanced"
         if self.log_dir is None:
             self.log_dir = LOG_DIR
         else:
@@ -1016,7 +1019,7 @@ def room_json(room: Room, seat: int) -> dict:
         "start_level": room.start_level,
         "matched": room.matched,
         "allow_joiners": room.allow_joiners,
-        "relaxed_bots": room.relaxed_bots,
+        "bot_level": room.bot_level,
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
                     for i, s in enumerate(room.seats) if s is not None],
@@ -1082,7 +1085,7 @@ def room_table_frame(room: Room, seat: int) -> dict:
         "you": seat, "opener": room.host, "seats": seats,
         "settings": {"allow_joiners": room.allow_joiners,
                      "start_level": room.start_level,
-                     "relaxed_bots": room.relaxed_bots},
+                     "bot_level": room.bot_level},
         "timers": {"bots": None, "start_now_at": None},
         "your_ready": None, "waiting_for": None, "chat_log": room.code,
     }
@@ -1487,12 +1490,12 @@ def _log_round_start(room: Room) -> int | None:
     # Room logs never carry account ids (test_no_log_record_carries_the_account);
     # seats map to accounts through the game_players links instead.
     # ``bot_policy`` names what plays the bot seats, so a relaxed room's
-    # rounds (``relaxed_bots``) stay out of the served bot's tallies.
+    # rounds (``bot_level`` "standard") stay out of the served bot's tallies.
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
                    bot_policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
-                   relaxed_bots=room.relaxed_bots,
+                   bot_level=room.bot_level,
                    ranked=ratings.ranked(room))
 
 
@@ -3311,7 +3314,7 @@ async def start_matched_room(match_id: str | None, slots: list,
                              code: str | None = None,
                              allow_joiners: bool = True,
                              start_level: str = RANKS[0],
-                             relaxed_bots: bool = False,
+                             bot_level: str = "advanced",
                              friend_seat: int | None = None) -> str:
     """Build, seat and start the room for a waiting table (``match_id`` is
     the table's id) or an entry that starts alone with bots (``None``).
@@ -3322,7 +3325,7 @@ async def start_matched_room(match_id: str | None, slots: list,
     id there (server-only). ``code`` is the table's code, which the queue has just
     released for the room, so the table's invite link leads here;
     ``allow_joiners`` and a casual table's ``start_level`` and
-    ``relaxed_bots`` carry over (a ranked one refuses ``relaxed_bots``), and
+    ``bot_level`` carry over (a ranked one refuses Standard), and
     ``friend_seat`` is the seat a Duo table still held for its friend.
     Slots arrive in seat order; every
     human's socket is bound to its seat here, before anything awaits, so the
@@ -3337,14 +3340,14 @@ async def start_matched_room(match_id: str | None, slots: list,
         # of the queue; this keeps the cap whoever calls.
         raise limits.ServerBusy(BUSY_MESSAGE)
     ranked = mode != "casual"
-    if ranked and relaxed_bots:
+    if ranked and bot_level != "advanced":
         raise ValueError("a ranked table plays the served bot")
     if not code or code in rooms or MATCHMAKER.has_code(code):
         code = new_code()
     room = Room(code=code, matched=ranked, move_timer=ranked, queued=True,
                 allow_joiners=allow_joiners,
                 start_level=start_level if not ranked and start_level in RANKS else RANKS[0],
-                relaxed_bots=relaxed_bots is True,
+                bot_level=bot_level,
                 waiting_table=match_id, friend_seat=friend_seat,
                 table_humans=sum(1 for slot in slots if slot.user_id is not None))
     for line in chat:
@@ -3433,12 +3436,12 @@ class PendingJoin:
 def _joinable(room: Room, invite: bool = False) -> bool:
     """A game in play, ranked (queue-matched, or a created ranked room) or
     casual (a created room, or one the casual queue built), that takes
-    joiners and still has a person connected at it. Relaxed bots keeps a
+    joiners and still has a person connected at it. Standard bots keep a
     room out of offers whatever Allow joiners says. An invite link is the
     table's own consent, so it needs neither."""
     game = room.game
     return (not room.aborted and rooms.get(room.code) is room
-            and ((room.allow_joiners and not room.relaxed_bots) or invite)
+            and ((room.allow_joiners and room.bot_level != "standard") or invite)
             and game is not None and room.round is not None and not game.game_over
             and any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats))
 

@@ -3,7 +3,7 @@
 // jokers = "LJ" (little/black) and "BJ" (big/red).
 
 import type { ErrorCode } from "./errorCodes";
-import type { QueueClientMsg, QueueServerMsg } from "./queue/messages";
+import type { BotLevel, QueueClientMsg, QueueServerMsg } from "./queue/messages";
 
 export interface HandCard {
   id: number;
@@ -103,8 +103,9 @@ export interface RoomMsg {
   /** Whether newcomers may be offered a bot seat once the game is in play
    *  (on at creation). */
   allow_joiners?: boolean;
-  /** The casual table's Relaxed bots, fixed for the game. Absent offline. */
-  relaxed_bots?: boolean;
+  /** The table's Bots, fixed for the game (a ranked room is always
+   *  "advanced"). Absent offline. */
+  bot_level?: BotLevel;
 }
 
 export interface StatePlayer {

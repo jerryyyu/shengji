@@ -4,7 +4,7 @@
   },
   "room": {
     "matched": "a table built by the matchmaking queue",
-    "relaxed_bots": "a casual queue table's Relaxed bots"
+    "bot_level": "a queue table's Bots"
   },
   "state": {
     "guest": "a person with no account at a rated or queue-matched table",

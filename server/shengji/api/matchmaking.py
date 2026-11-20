@@ -75,7 +75,7 @@ past the rating window and Allow joiners; every other queue rule
 (cooldown, same device, a full table) applies. Allow joiners off
 (``table_allow_joiners``, the opener's switch only) keeps the table out of
 strangers' seating both ways and out of open-table offers, and so does
-Relaxed bots on, whatever Allow joiners says (``Table.public``).
+the Standard bot level, whatever Allow joiners says (``Table.public``).
 
 A Duo is a table (``queue_join {duo}``): the opener queues alone with the
 seat opposite it held (``Entry.hold``), and the table's code is the Duo's
@@ -89,9 +89,9 @@ its seat still held tells the room that seat (``friend_seat``), whose
 code's next seatless join takes it. A Leave before the game splits it (``_split``): the other member
 keeps the table and its code; a partner's leave holds its seat again, an
 opener's makes the partner the opener. A ranked table starts at ``RANKS[0]``;
-a casual table's opener sets its level (``table_start_level``) and whether
-its bots play relaxed (``table_relaxed_bots``, ``server.RELAXED_BOT``; off by default,
-refused at a ranked table).
+a casual table's opener sets its level (``table_start_level``) and its
+bots' level (``table_bot_level``: Standard, ``server.RELAXED_BOT``, by
+default, or Advanced, the served bot; a ranked table is always Advanced).
 
 Every table has chat from the moment you sit (``table_chat``): validated
 as room chat is, rate-limited, held in memory only. A lone entry's lines
@@ -232,11 +232,16 @@ QUEUE_MESSAGES = frozenset({
     "queue_status", "queue_join", "queue_leave", "table_start",
     "queue_start_bots", "queue_wait_players", "queue_allow_bots", "party_leave", "open_table_join", "open_table_wait", "open_table_show",
     "table_move", "table_here", "table_chat", "table_allow_joiners", "table_start_level",
-    "table_relaxed_bots", "table_start_now", "table_unready",
+    "table_bot_level", "table_start_now", "table_unready",
 })
 SAME_DEVICE = "Someone on this device is already at that table."
 RANKED_LEVEL = "A ranked table starts at level 2."
 RANKED_BOTS = "A ranked table plays the full-strength bots."
+# A table's Bots: Standard plays ``server.RELAXED_BOT``, Advanced the served
+# bot. A ranked table is always Advanced; a new casual table starts at
+# CASUAL_BOT_LEVEL.
+BOT_LEVELS = ("standard", "advanced")
+CASUAL_BOT_LEVEL = "standard"
 # The only queue messages a seated socket may send: leaving a pair, and
 # asking what the queue holds for it.
 IN_ROOM_MESSAGES = frozenset({"party_leave", "queue_status"})
@@ -416,16 +421,21 @@ class Table:
     # switches, and they outlast the opener.
     allow_joiners: bool = True
     start_level: str = RANKS[0]
-    # Relaxed bots (casual only, off by default): the opener's switch; the
-    # room's bots play ``server.RELAXED_BOT`` in place of the served bot.
-    relaxed_bots: bool = False
+    # Bots (one of BOT_LEVELS; casual only, the opener's choice): Standard
+    # plays ``server.RELAXED_BOT`` in place of the served bot. Empty takes
+    # the mode's default: CASUAL_BOT_LEVEL, or Advanced at a ranked table.
+    bot_level: str = ""
     waiting: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.bot_level:
+            self.bot_level = CASUAL_BOT_LEVEL if self.mode == "casual" else "advanced"
 
     @property
     def public(self) -> bool:
         """Whether strangers are seated here or offered it: Allow joiners on
-        and Relaxed bots off. Its code works either way."""
-        return self.allow_joiners and not self.relaxed_bots
+        and Advanced bots. Its code works either way."""
+        return self.allow_joiners and self.bot_level != "standard"
 
     @property
     def humans(self) -> int:
@@ -862,7 +872,7 @@ class Matchmaker:
             "you": t.seats.index(uid) if uid in t.seats else None,
             "opener": t.seats.index(t.entries[0].leader), "seats": seats,
             "settings": {"allow_joiners": t.allow_joiners, "start_level": t.start_level,
-                         "relaxed_bots": t.relaxed_bots},
+                         "bot_level": t.bot_level},
             "timers": {"bots": (None if timer is None else
                                 {"at": timer[0], "name": self._name(timer[1].leader),
                                  "you": uid in timer[1].members}),
@@ -914,7 +924,7 @@ class Matchmaker:
                 "you_ready": self._tapped(t, e, uid),
                 # your table's code and settings, alone or at a waiting table
                 "code": t.code, "allow_joiners": t.allow_joiners,
-                "start_level": t.start_level, "relaxed_bots": t.relaxed_bots,
+                "start_level": t.start_level, "bot_level": t.bot_level,
                 "opener": t.entries[0].leader == uid}
 
     @staticmethod
@@ -1026,7 +1036,7 @@ class Matchmaker:
         t = Table(id=secrets.token_hex(6), seq=0, mode=e.mode, code=e.code)
         if like is not None:
             t.allow_joiners, t.start_level = like.allow_joiners, like.start_level
-            t.relaxed_bots = like.relaxed_bots
+            t.bot_level = like.bot_level
         e.table = t
         self._seat_alone(t, e)
         return t
@@ -1266,12 +1276,12 @@ class Matchmaker:
                     if not self.chat_limiter.allow(str(queue_id), now):
                         raise QueueError("rate_limited", "Too many messages; wait a minute.")
                     self._table_chat(queue_id, msg)
-                elif t in ("table_allow_joiners", "table_start_level", "table_relaxed_bots"):
+                elif t in ("table_allow_joiners", "table_start_level", "table_bot_level"):
                     if not self.move_limiter.allow(str(queue_id), now):
                         raise QueueError("rate_limited", "Too many requests; wait a minute.")
                     await self._table_setting(queue_id, {"table_allow_joiners": "allow",
                                                          "table_start_level": "level",
-                                                         "table_relaxed_bots": "relaxed"}[t], msg)
+                                                         "table_bot_level": "bots"}[t], msg)
                 elif t in ("queue_wait_players", "queue_allow_bots"):
                     self._set_bot_fill(queue_id, t == "queue_allow_bots")
                 elif t == "open_table_join":
@@ -1303,7 +1313,7 @@ class Matchmaker:
         mode = host.mode if host is not None else msg.get("mode", "ranked")
         if mode not in MODES:
             raise QueueError("bad_mode", "Pick Ranked or Casual.")
-        allow, level, relaxed = True, RANKS[0], False
+        allow, level, bots = True, RANKS[0], ""
         if host is None:
             allow = msg.get("allow_joiners", True)
             if not isinstance(allow, bool):
@@ -1313,10 +1323,10 @@ class Matchmaker:
                 raise QueueError("bad_start_level", "Unknown starting level.")
             if mode == "ranked" and level != RANKS[0]:
                 raise QueueError("ranked_level_fixed", RANKED_LEVEL)
-            relaxed = msg.get("relaxed_bots", False)
-            if not isinstance(relaxed, bool):
-                raise QueueError("bad_setting", "Relaxed bots is on or off.")
-            if mode == "ranked" and relaxed:
+            bots = msg.get("bot_level", CASUAL_BOT_LEVEL if mode == "casual" else "advanced")
+            if bots not in BOT_LEVELS:
+                raise QueueError("bad_setting", "Bots is Standard or Advanced.")
+            if mode == "ranked" and bots != "advanced":
                 raise QueueError("ranked_bots_fixed", RANKED_BOTS)
         # ``duo``: open your own table with the partner seat held. A code
         # join sits at the code's table, so it ignores ``duo``.
@@ -1375,7 +1385,7 @@ class Matchmaker:
                   leader=uid, member_ratings=member_ratings, since=since,
                   party_id=pid, bots_at=since + BOT_FILL_SECS, mode=mode, hold=hold)
         e.table = Table(id=secrets.token_hex(6), seq=0, mode=mode,
-                        allow_joiners=allow, start_level=level, relaxed_bots=relaxed)
+                        allow_joiners=allow, start_level=level, bot_level=bots)
         self._enlist(e)
         self._qlog("join", e, mode=mode, by_code=host is not None,
                    **({"duo": True} if hold else {}))
@@ -1512,7 +1522,7 @@ class Matchmaker:
 
     async def _table_setting(self, uid: int, kind: str, msg: dict) -> None:
         """Change your table's Allow joiners, or its starting level or
-        Relaxed bots (casual only): the opener's switches, and only its
+        Bots (casual only): the opener's switches, and only its
         leader's. Every entry at the table takes the change."""
         e = self._entry(uid)
         if e is None:
@@ -1527,19 +1537,19 @@ class Matchmaker:
             if not isinstance(on, bool):
                 raise QueueError("bad_setting", "Allow joiners is on or off.")
             t.allow_joiners = on
-        elif kind == "relaxed":
+        elif kind == "bots":
             if self._opener(e) is not e:
-                raise QueueError("not_opener", "Only the table's opener sets Relaxed bots.")
+                raise QueueError("not_opener", "Only the table's opener sets Bots.")
             if e.mode == "ranked":
                 raise QueueError("ranked_bots_fixed", RANKED_BOTS)
-            on = msg.get("on")
-            if not isinstance(on, bool):
-                raise QueueError("bad_setting", "Relaxed bots is on or off.")
-            if on != t.relaxed_bots and t.waiting:
+            bots = msg.get("level")
+            if bots not in BOT_LEVELS:
+                raise QueueError("bad_setting", "Bots is Standard or Advanced.")
+            if bots != t.bot_level and t.waiting:
                 t.ready.clear()         # a Start agreed to the other bots
                 for o in t.entries:
                     o.taps.clear()
-            t.relaxed_bots = on
+            t.bot_level = bots
         else:
             o = self._opener(e)
             if o is not e:
@@ -1555,7 +1565,7 @@ class Matchmaker:
                     o.taps.clear()
             t.start_level = level
         self._send_table(t)
-        if kind in ("allow", "relaxed"):
+        if kind in ("allow", "bots"):
             self.seat_waiting()
             self._offer_open_tables(self.clock())
             await self._start_due()
@@ -1810,7 +1820,7 @@ class Matchmaker:
             return abs(rating - e.rating) if windowed else 0.0
 
         while True:
-            # Allow joiners off or Relaxed bots on keeps an entry out of
+            # Allow joiners off or Standard bots keeps an entry out of
             # strangers' seating both ways: it waits for its code.
             pool = sorted((e for e in self.entries.values()
                            if e.table is not None and not e.table.waiting and not e.claiming
@@ -1995,11 +2005,11 @@ class Matchmaker:
     @staticmethod
     def _room_settings(t: Table, opener: Entry) -> dict:
         """What the room keeps from the table: its code (so an invite link
-        stays good), Allow joiners, the starting level, Relaxed bots, and the
+        stays good), Allow joiners, the starting level, Bots, and the
         seat still held for a Duo opener's friend (a bot plays it until the
         friend joins by the code)."""
         out = {"code": t.code, "allow_joiners": t.allow_joiners, "start_level": t.start_level,
-               "relaxed_bots": t.relaxed_bots}
+               "bot_level": t.bot_level}
         friend = t.held_for(opener)
         if friend is not None:
             out["friend_seat"] = friend
@@ -2149,7 +2159,7 @@ class Matchmaker:
             if e.table_id is not None or e.claiming:
                 continue
             uid = e.leader
-            # A table with Allow joiners off or Relaxed bots on waits for its
+            # A table with Allow joiners off or Standard bots waits for its
             # code, not for strangers.
             usable = [t for t in tables if self._fits(t, e)] if e.table.public else []
             before = (self._offer_payload(e.offer) if e.offer else None,

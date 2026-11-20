@@ -216,8 +216,8 @@ def f2_join():
 
 def table_rows(mode="Ranked", opener=True, code="4N5Z"):
     """What every table opened by Play shows (Jerry 11-14, 'Every table has a code'): the code with Invite link and
-    Allow joiners (on). Casual adds Starting level, opener-only, and the opener's Relaxed bots (off); ranked omits
-    both (ranked always starts at 2 and plays the served bots).
+    Allow joiners (on). Casual adds Starting level and Bots (Standard by default), each the opener's select and
+    read-only for others; ranked omits both (ranked always starts at 2 and plays Advanced bots).
     The mode is not a switch here: the Play tab's Ranked / Casual set it when the table opened. Labels only."""
     rows = ['<div style="display:flex;gap:8px;align-items:center">'
             '<span style="flex:1;height:38px;border-radius:10px;background:#11141a;border:1px solid #333b49;display:flex;align-items:center;'
@@ -229,8 +229,10 @@ def table_rows(mode="Ranked", opener=True, code="4N5Z"):
         rows.append('<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600">Starting level' + val + '</div>')
     if opener:
         rows.append(toggle("Allow joiners", True))
-    if opener and mode == "Casual":
-        rows.append(toggle("Relaxed bots", False))
+    if mode == "Casual":
+        val = ('<span style="padding:5px 12px;border-radius:8px;background:#11141a;border:1px solid #333b49">Standard ▾</span>'
+               if opener else '<span style="color:#c3cad6">Standard</span>')
+        rows.append('<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600">Bots' + val + '</div>')
     return '<div style="display:flex;flex-direction:column;gap:8px">' + "".join(rows) + '</div>'
 
 

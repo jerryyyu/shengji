@@ -18,6 +18,8 @@ import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
 import { fromCode, fromQueue, offlineModel, queueSend } from "./tableModel";
 import type { MoverSeat, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
+import { BOT_LEVELS } from "./messages";
+import type { BotLevel } from "./messages";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
 import "./tablePanel.css";
 
@@ -334,36 +336,47 @@ function SwitchRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
   );
 }
 
+const BOT_LEVEL_NAMES: Record<BotLevel, string> = { standard: "Standard", advanced: "Advanced" };
+
+/** A setting row: the opener's select, or the value read-only for everyone else. */
+function SetRow<V extends string>({ label, value, values, names, opener, onPick }: {
+  label: string; value: V; values: readonly V[]; names: (v: V) => string; opener: boolean; onPick: (v: V) => void;
+}) {
+  return opener ? (
+    <label className="tp-set">
+      <span>{label}</span>
+      <select aria-label={label} value={value} onChange={(e) => onPick(e.target.value as V)}>
+        {values.map((v) => <option key={v} value={v}>{names(v)}</option>)}
+      </select>
+    </label>
+  ) : (
+    <div className="tp-set" role="group" aria-label={`${label} ${names(value)}`}>
+      <span aria-hidden="true">{label}</span>
+      <span className="tp-set-val" aria-hidden="true">{names(value)}</span>
+    </div>
+  );
+}
+
 /** Every table's settings rows, labels only: the code with its Invite link,
- *  Starting level on a casual table (the opener picks it, others read it; a
- *  ranked table starts at 2 and has no row), the opener's Allow joiners
- *  switch when ``joiners`` is set, and a casual opener's Relaxed bots switch
- *  when ``relaxed`` is set. */
-function TableRows({ rows: { code, ranked, opener, level, joiners, relaxed }, act }: {
+ *  Starting level and Bots on a casual table (the opener picks them, others
+ *  read them; a ranked table starts at 2 with Advanced bots and has neither
+ *  row), and the opener's Allow joiners switch when ``joiners`` is set. */
+function TableRows({ rows: { code, ranked, opener, level, joiners, bots }, act }: {
   rows: Rows; act: (a: PanelAction) => void;
 }) {
   return (
     <>
       {code ? <CodeRow code={code} /> : null}
-      {ranked ? null : opener ? (
-        <label className="tp-set">
-          <span>Starting level</span>
-          <select aria-label="Starting level" value={level}
-                  onChange={(e) => act({ type: "start_level", level: e.target.value as Rank })}>
-            {RANKS.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </label>
-      ) : (
-        <div className="tp-set" role="group" aria-label={`Starting level ${level}`}>
-          <span aria-hidden="true">Starting level</span>
-          <span className="tp-set-val" aria-hidden="true">{level}</span>
-        </div>
+      {ranked ? null : (
+        <SetRow label="Starting level" value={level as Rank} values={RANKS} names={(r) => r} opener={opener}
+                onPick={(r) => act({ type: "start_level", level: r })} />
       )}
       {joiners !== undefined ? (
         <SwitchRow label="Allow joiners" on={joiners} onToggle={() => act({ type: "allow_joiners", on: !joiners })} />
       ) : null}
-      {relaxed !== undefined ? (
-        <SwitchRow label="Relaxed bots" on={relaxed} onToggle={() => act({ type: "relaxed_bots", on: !relaxed })} />
+      {bots !== undefined ? (
+        <SetRow label="Bots" value={bots} values={BOT_LEVELS} names={(b) => BOT_LEVEL_NAMES[b]} opener={opener}
+                onPick={(b) => act({ type: "bot_level", level: b })} />
       ) : null}
     </>
   );

@@ -256,7 +256,7 @@ def level_spec(level: str) -> Mapping[str, Any]:
 
 # ------------------------------------------------------------------ the casual level
 
-#: the level a casual room's "Relaxed bots" switch serves: the S136 search-free scorer's card
+#: the level a casual room's Bots "Standard" serves: the S136 search-free scorer's card
 #: play with a near-best softmax (tau 1.0, delta 4.0 logits), the served declare and bury
 CASUAL_PACKAGE = "sf-s136-516617b8.npz"
 CASUAL_SHA256 = "516617b893689a931977068a1a536735afdb1edff0979f6f2360588291a8d184"

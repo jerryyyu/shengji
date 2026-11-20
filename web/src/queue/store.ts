@@ -12,7 +12,7 @@ import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ChatMsg, ServerMsg } from "../protocol";
 import type {
-  OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, QueueStateMsg, TableFrameMsg,
+  BotLevel, OfferSeatMsg, OpenTableOfferMsg, PartyMsg, PresenceMsg, QueueClientMsg, QueueMode, QueueStateMsg, TableFrameMsg,
   TableMovedMsg,
 } from "./messages";
 import { ERROR_ROUTES, QUEUE_ANSWERS } from "../errorCodes";
@@ -672,10 +672,10 @@ export class QueueStore {
     this.send({ type: "table_start_level", start_level: level });
   }
 
-  /** Your casual table's Relaxed bots (the opener only). */
-  setRelaxedBots(on: boolean): void {
+  /** Your casual table's Bots (the opener only). */
+  setBotLevel(level: BotLevel): void {
     if (!this.view.queued || !isOpener(this.view)) return;
-    this.send({ type: "table_relaxed_bots", on });
+    this.send({ type: "table_bot_level", level });
   }
 
   /** A line to everyone at your waiting table; the server echoes it back. */

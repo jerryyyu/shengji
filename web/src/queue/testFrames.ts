@@ -3,7 +3,7 @@
 // (a port of server/tests/test_table_frame.py `from_queue_state`, plus the
 // seats the server sends while you are alone). `fixtures/table_frames.json`
 // holds the server's own pairs, which `testFrames.test.ts` holds this to.
-import type { PartyMsg, TableFrameMsg, TableFrameSeatMsg, WaitingTableMsg } from "./messages";
+import type { BotLevel, PartyMsg, TableFrameMsg, TableFrameSeatMsg, WaitingTableMsg } from "./messages";
 
 type QueueStateLike = Record<string, unknown>;
 
@@ -31,7 +31,7 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
   const t = (qs.table ?? null) as WaitingTableMsg | null;
   const youReady = t ? t.you_ready : qs.you_ready === true;
   const settings = { allow_joiners: qs.allow_joiners !== false, start_level: (qs.start_level as string) ?? "2",
-                     relaxed_bots: qs.relaxed_bots === true };
+                     bot_level: (qs.bot_level as BotLevel | undefined) ?? (qs.mode === "casual" ? "standard" : "advanced") };
   const base = { type: "table" as const, phase: "open" as const, code: (qs.code as string | undefined) ?? t?.code ?? "",
                  mode: (qs.mode as "ranked" | "casual" | undefined) ?? "ranked", settings, your_ready: youReady };
   if (t) {

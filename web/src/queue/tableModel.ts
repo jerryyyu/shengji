@@ -8,6 +8,7 @@ import { hostName, roomChoices, tableHostName, takeoverSeats } from "../joinSeat
 import type { ChatMsg, Rank, RoomSeats, TableSeats } from "../protocol";
 import { BOT_FILL_MS, isOpener, namesAt, partnerName, queue, tableDuo, yourReady } from "./store";
 import type { OfferView, QueueView, TableFrame } from "./store";
+import type { BotLevel } from "./messages";
 import {
   JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, moveTargets, ownBotsAt, ownTitle, panelKind,
   sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
@@ -45,7 +46,7 @@ export type TableAction =
   | { type: "chat"; text: string }
   | { type: "start_level"; level: Rank }
   | { type: "allow_joiners"; on: boolean }
-  | { type: "relaxed_bots"; on: boolean }
+  | { type: "bot_level"; level: BotLevel }
   | { type: "wait_players"; on: boolean }
   | { type: "here" }
   | { type: "reclaim" }
@@ -91,17 +92,16 @@ export interface TableButton {
   busy?: boolean;
 }
 
-/** The settings rows: the code with its Invite link, Starting level on a
- *  casual table (the opener picks it, others read it), Allow joiners
- *  when `joiners` is set, and Relaxed bots when `relaxed` is set (a casual
- *  table's opener only). */
+/** The settings rows: the code with its Invite link, Starting level and
+ *  Bots (when `bots` is set) on a casual table (the opener picks them,
+ *  others read them), and Allow joiners when `joiners` is set. */
 export interface TableRows {
   code: string | null;
   ranked: boolean;
   opener: boolean;
   level: string;
   joiners: boolean | undefined;
-  relaxed: boolean | undefined;
+  bots: BotLevel | undefined;
 }
 
 /** The seats the opener's move reads: a name per seat (blank for one that
@@ -253,7 +253,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   const opener = isOpener(q);
   const rows: TableRows = { code: f?.code ?? null, ranked, opener, level: f?.settings.start_level ?? "2",
                             joiners: opener ? f?.settings.allow_joiners !== false : undefined,
-                            relaxed: opener && !ranked ? f?.settings.relaxed_bots : undefined };
+                            bots: ranked ? undefined : f?.settings.bot_level };
   const leave = queueLeaveContext(q);
   const base = { tag, leave, rows: null, waitSwitch: null, chat: null };
   if (kind === "join" && q.offer) {
@@ -455,7 +455,7 @@ export function queueSend(a: TableAction): void {
     case "chat": queue.tableChat(a.text); return;
     case "start_level": return queue.setStartLevel(a.level);
     case "allow_joiners": return queue.setAllowJoiners(a.on);
-    case "relaxed_bots": return queue.setRelaxedBots(a.on);
+    case "bot_level": return queue.setBotLevel(a.level);
     case "wait_players": return a.on ? queue.waitForPlayers() : queue.allowBots();
     case "here": return queue.here();
     case "reclaim": return queue.join();

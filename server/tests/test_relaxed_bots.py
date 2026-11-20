@@ -1,13 +1,13 @@
-"""Relaxed bots: a casual room's switch that seats the relaxed level (``server.RELAXED_BOT``: the
-served bot's declare and bury, card play by the S136 search-free scorer with near-best softmax noise).
+"""Bots: a casual room's level, Standard (``server.RELAXED_BOT``: the served bot's declare and bury,
+card play by the S136 search-free scorer with near-best softmax noise) or Advanced (the served bot).
 
-Witnesses: a relaxed room wraps the served bot with its own seed and a default room builds the served
-bot alone; a missing scorer package plays the served bot and logs the room as served; a matched
-(ranked) room refuses the switch, in the room and at ``start_matched_room``; every ``round_start``
-names the policy that plays the bot seats and whether it is relaxed; the relaxed bot plays through
+Witnesses: a Standard room wraps the served bot with its own seed and an Advanced room builds the
+served bot alone; a missing scorer package plays the served bot and logs the room as Advanced; a
+matched (ranked) room refuses Standard, in the room and at ``start_matched_room``; every
+``round_start`` names the policy that plays the bot seats and its bot level; the relaxed bot plays through
 the server's snapshot path (``_paced_bot_step`` / ``_commit_bot_turn``), a seeded relaxed bot repeats
 its decisions, and every play is one of the scorer's proposals within ``CASUAL_DELTA`` logits of its
-best; the production mistake dashboard leaves relaxed rounds out of the bot-versus-human tallies.
+best; the production mistake dashboard leaves Standard rounds out of the bot-versus-human tallies.
 The pinned scorer package on the release-54 served bot: ``test_relaxed_serving.py``.
 """
 import asyncio
@@ -67,7 +67,7 @@ def test_the_relaxed_level_is_pinned_and_its_name_differs_from_the_served_one():
     assert server.RELAXED_BOT not in REGISTRY
 
 
-def test_a_relaxed_room_wraps_the_served_bot_and_a_default_room_builds_it_alone(monkeypatch, tmp_path):
+def test_a_standard_room_wraps_the_served_bot_and_an_advanced_room_builds_it_alone(monkeypatch, tmp_path):
     calls = []
 
     def fake_make_bot(name, **kw):
@@ -80,30 +80,34 @@ def test_a_relaxed_room_wraps_the_served_bot_and_a_default_room_builds_it_alone(
     monkeypatch.setattr(server, "make_bot", fake_make_bot)
     monkeypatch.setattr(server, "make_relaxed_bot", fake_relaxed)
     monkeypatch.setenv("SHENGJI_BOT", "heuristic")
-    server.Room(code="AAAA", log_dir=tmp_path, bot_seed=5)
-    room = server.Room(code="BBBB", log_dir=tmp_path, bot_seed=6, relaxed_bots=True)
+    advanced = server.Room(code="AAAA", log_dir=tmp_path, bot_seed=5)
+    room = server.Room(code="BBBB", log_dir=tmp_path, bot_seed=6, bot_level="standard")
     server.Room(code="CCCC", log_dir=tmp_path, bot_seed=7, matched=True)
     assert calls == [("heuristic", {"seed": 5}), ("heuristic", {"seed": 6}), ("relaxed", 6),
                      ("heuristic", {"seed": 7})]
-    assert room.relaxed_bots
+    assert room.bot_level == "standard" and advanced.bot_level == "advanced"
 
 
-def test_a_missing_scorer_package_plays_the_served_bot_and_logs_the_room_served(monkeypatch, tmp_path, package):
+def test_a_missing_scorer_package_plays_the_served_bot_and_logs_the_room_advanced(monkeypatch, tmp_path, package):
     monkeypatch.setenv("SHENGJI_BOT", "smart")
     monkeypatch.setattr(server, "RELAXED_SF_PACKAGE", str(tmp_path / "absent.npz"))
-    room = server.Room(code="MISS", log_dir=tmp_path, bot_seed=3, relaxed_bots=True)
-    assert room.bot.policy_name == "smart" and room.relaxed_bots is False
+    room = server.Room(code="MISS", log_dir=tmp_path, bot_seed=3, bot_level="standard")
+    assert room.bot.policy_name == "smart" and room.bot_level == "advanced"
     monkeypatch.setattr(server, "RELAXED_SF_PACKAGE", package[0])
     monkeypatch.setattr(server, "RELAXED_SF_SHA256", "0" * 64)          # wrong hash: refused
-    room = server.Room(code="BADH", log_dir=tmp_path, bot_seed=3, relaxed_bots=True)
-    assert room.bot.policy_name == "smart" and room.relaxed_bots is False
+    room = server.Room(code="BADH", log_dir=tmp_path, bot_seed=3, bot_level="standard")
+    assert room.bot.policy_name == "smart" and room.bot_level == "advanced"
 
 
-def test_a_ranked_room_refuses_relaxed_bots(tmp_path):
+def test_a_ranked_room_refuses_standard_bots_and_a_room_refuses_an_unknown_level(tmp_path):
     with pytest.raises(ValueError):
-        server.Room(code="DDDD", log_dir=tmp_path, matched=True, relaxed_bots=True)
+        server.Room(code="DDDD", log_dir=tmp_path, matched=True, bot_level="standard")
     with pytest.raises(ValueError):
-        asyncio.run(server.start_matched_room(None, [], {}, mode="ranked", relaxed_bots=True))
+        asyncio.run(server.start_matched_room(None, [], {}, mode="ranked", bot_level="standard"))
+    with pytest.raises(ValueError):
+        server.Room(code="DDDE", log_dir=tmp_path, bot=server.HeuristicBot(), bot_level="relaxed")
+    assert server.Room(code="DDDF", log_dir=tmp_path, matched=True,
+                       bot=server.HeuristicBot()).bot_level == "advanced"
 
 
 def _round_start(room, tmp_path):
@@ -116,19 +120,21 @@ def _round_start(room, tmp_path):
     return start
 
 
-def test_round_start_names_the_bot_policy_and_the_relaxed_switch(relaxed_env, tmp_path):
+def test_round_start_names_the_bot_policy_and_the_bot_level(relaxed_env, tmp_path):
     served = _round_start(server.Room(code="EEEE", log_dir=tmp_path, bot_seed=1), tmp_path)
     relaxed = _round_start(server.Room(code="FFFF", log_dir=tmp_path, bot_seed=1,
-                                       relaxed_bots=True), tmp_path)
-    assert served["bot_policy"] == "smart" and served["relaxed_bots"] is False
-    assert relaxed["bot_policy"] == relaxed_env != "smart" and relaxed["relaxed_bots"] is True
+                                       bot_level="standard"), tmp_path)
+    assert served["bot_policy"] == "smart" and served["bot_level"] == "advanced"
+    assert relaxed["bot_policy"] == relaxed_env != "smart" and relaxed["bot_level"] == "standard"
+    assert "relaxed_bots" not in served and "relaxed_bots" not in relaxed
     assert relaxed["ranked"] is False
 
 
 def test_the_room_table_frame_carries_the_setting(tmp_path):
-    room = server.Room(code="GGGG", log_dir=tmp_path, bot=server.HeuristicBot(), relaxed_bots=True)
+    room = server.Room(code="GGGG", log_dir=tmp_path, bot=server.HeuristicBot(), bot_level="standard")
     room.seats = [server.Seat(str(s), is_bot=True) for s in range(4)]
-    assert server.room_table_frame(room, 0)["settings"]["relaxed_bots"] is True
+    assert server.room_table_frame(room, 0)["settings"]["bot_level"] == "standard"
+    assert server.room_json(room, 0)["bot_level"] == "standard"
 
 
 def _play_state(seed):
@@ -143,9 +149,9 @@ def test_the_relaxed_bot_plays_through_the_server_path_and_repeats_its_decisions
     async def scenario(code):
         game = _play_state(11)
         rnd = game.round
-        room = server.Room(code=code, game=game, log_dir=tmp_path, bot_seed=21, relaxed_bots=True,
+        room = server.Room(code=code, game=game, log_dir=tmp_path, bot_seed=21, bot_level="standard",
                            seats=[server.Seat(str(s), is_bot=True) for s in range(4)])
-        assert room.relaxed_bots and room.bot.policy_name == relaxed_env
+        assert room.bot_level == "standard" and room.bot.policy_name == relaxed_env
         room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
         room._kitty_given = True
         played = []
@@ -212,33 +218,35 @@ def test_every_relaxed_play_is_a_proposal_within_delta_of_the_scorers_best(packa
     assert checked >= 20 and redrawn >= 1                          # the noise is live
 
 
-def test_the_mistake_dashboard_excludes_relaxed_rounds(tmp_path):
+def test_the_mistake_dashboard_excludes_standard_rounds(tmp_path):
     from scripts import mistake_dashboard as md
     src = md.__file__.replace("scripts/mistake_dashboard.py", "tests/fixtures/mistake_dashboard/prod_rounds.jsonl")
     lines = [json.loads(line) for line in open(src)]
     base, _ = md.load_prod([src])
     assert base
-    for rec in lines:
-        if rec.get("e") == "round_start":
-            rec["relaxed_bots"] = True
-    relaxed = tmp_path / "relaxed.jsonl"
-    relaxed.write_text("".join(json.dumps(r) + "\n" for r in lines))
-    rounds, notes = md.load_prod([str(relaxed)])
-    assert rounds == [] and notes["rounds excluded: relaxed bots"] >= len(base)
+    for value, kept in (("standard", False), ("advanced", True)):
+        marked = [dict(rec, bot_level=value) if rec.get("e") == "round_start" else rec for rec in lines]
+        path = tmp_path / f"{value}.jsonl"
+        path.write_text("".join(json.dumps(r) + "\n" for r in marked))
+        rounds, notes = md.load_prod([str(path)])
+        if kept:
+            assert len(rounds) == len(base) and notes["rounds excluded: standard bots"] == 0
+        else:
+            assert rounds == [] and notes["rounds excluded: standard bots"] >= len(base)
 
 
-def test_a_relaxed_room_is_never_an_open_table_but_its_code_still_seats(tmp_path):
-    def room(code, relaxed):
+def test_a_standard_room_is_never_an_open_table_but_its_code_still_seats(tmp_path):
+    def room(code, level):
         game = Game(random.Random(5))
         game.start_round()
         r = server.Room(code=code, game=game, log_dir=tmp_path, bot=server.HeuristicBot(),
-                        relaxed_bots=relaxed, allow_joiners=True,
+                        bot_level=level, allow_joiners=True,
                         seats=[server.Seat("Ann")] + [server.Seat(f"Bot {i}", is_bot=True) for i in (1, 2, 3)])
         r.seats[0].connected = True
         server.rooms[code] = r
         return r
     try:
-        plain, relaxed = room("PLNA", False), room("RLXA", True)
+        plain, relaxed = room("PLNA", "advanced"), room("RLXA", "standard")
         assert server._open_seats(plain) == [1, 2, 3]
         assert server._open_seats(relaxed) == []                       # never offered
         assert server._open_seats(relaxed, invite=True) == [1, 2, 3]   # the code joins

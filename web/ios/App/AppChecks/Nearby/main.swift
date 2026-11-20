@@ -64,6 +64,25 @@ expect(awake.any, "the game still holds after the nearby session ends")
 awake.game = false
 expect(!awake.any, "the idle timer returns once both have ended")
 
+// A listener left waiting or failing is made again: the waits double from
+// 1 s to 8 s, a fresh one starts the waits over, a first listener that keeps
+// failing rejects after three retries (never while the permission is the
+// cause), and one that was up is advertised again on the app's return.
+var retry = ListenerRetry()
+expect([retry.nextDelay(), retry.nextDelay(), retry.nextDelay(), retry.nextDelay(), retry.nextDelay()] == [1, 2, 4, 8, 8],
+       "listener retries back off 1, 2, 4, 8, 8 s")
+retry.ready()
+expect(retry.nextDelay() == 1, "a listener that came up starts the waits over")
+retry = ListenerRetry()
+expect(retry.failed(wasUp: false, policyDenied: false) == .retry, "a first failure retries")
+expect(retry.failed(wasUp: false, policyDenied: false) == .retry, "a second failure retries")
+expect(retry.failed(wasUp: false, policyDenied: false) == .retry, "a third failure retries")
+expect(retry.failed(wasUp: false, policyDenied: false) == .reject, "a fourth failure rejects the host call")
+expect(retry.failed(wasUp: false, policyDenied: true) == .retry, "a denied permission keeps retrying until it is granted")
+expect(retry.failed(wasUp: true, policyDenied: false) == .lost, "a listener that was up is advertised again on return")
+retry.ready()
+expect(retry.failed(wasUp: false, policyDenied: false) == .retry, "ready clears the failures")
+
 let t0 = Date()
 _ = NearbyKey.derive(code: "K7Q2M", salt: salt)
 print(String(format: "one derivation at %d iterations: %.0f ms on this machine",

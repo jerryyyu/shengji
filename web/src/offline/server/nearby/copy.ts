@@ -7,6 +7,8 @@ export const NEARBY_COPY = {
   switchLabel: "Nearby",
   tryAgain: "Try again",
   browsing: "Looking for the table…",
+  /** The link is up and the table's seats are on their way. */
+  connecting: "Connecting to the table…",
   notFound: "No table nearby with that code",
   full: "That table is full",
   /** The joiner's line under the code box, before the system prompt. */

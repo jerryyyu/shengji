@@ -339,6 +339,9 @@ export interface NearbyJoin {
   code: string;
   step: NearbyStep;
   peek: RoomSeats | null;
+  /** While looking: the link to the table is up and its seats are on their
+   *  way, so the panel's line says it is connecting rather than looking. */
+  linked?: boolean;
   seat: number | null;
 }
 
@@ -607,8 +610,10 @@ export class NearbyJoinStore {
       } else if (!this.seated && (this.view?.step === "panel" || this.view?.step === "joining")) {
         // the seats on the panel are from the dropped link: look again once
         // the socket is back
-        this.set({ ...this.view, step: "looking", peek: null });
+        this.set({ ...this.view, step: "looking", peek: null, linked: false });
         this.armLook(this.attempt);
+      } else if (!this.seated && this.view?.step === "looking" && this.view.linked) {
+        this.set({ ...this.view, linked: false });
       }
       return;
     }
@@ -616,6 +621,7 @@ export class NearbyJoinStore {
       this.deps.conn.send({ type: "table_join", code: this.view?.code ?? this.seatedCode, name: this.name,
                             ...(this.token ? { token: this.token } : {}) });
     } else if (this.view?.step === "looking") {
+      this.set({ ...this.view, linked: true });
       this.deps.conn.send({ type: "table_peek", code: this.view.code });
     }
   }

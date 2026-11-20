@@ -51,3 +51,27 @@ it("a host link passes the plugin's device id to the room", async () => {
   plugin.emit("peer", { peer: "p1", state: "disconnected" });
   expect(peers).toEqual([["p1", true, "DEV1"], ["p1", false, undefined]]);
 });
+
+it("a join the page gave up on while it connected cannot end the join that replaced it", async () => {
+  const first = nativeTransport()!;
+  const second = nativeTransport()!;
+  let firstClosed = 0;
+  const old = first.join("K7Q2M", { message: () => {}, closed: () => { firstClosed += 1; }, state: () => {} });
+  await tick();
+  // the page closed that socket while it was still connecting and made a
+  // new one, through another transport object
+  const got: string[] = [];
+  const fresh = second.join("K7Q2M", { message: (t) => got.push(t), closed: () => {}, state: () => {} });
+  await tick();
+  const before = plugin.stops;
+  plugin.emit("peer", { peer: "host", state: "connected" });
+  const link = await fresh;
+  // the replaced join hears nothing of the new session, so it never closes
+  // or stops it
+  await expect(Promise.race([old.then(() => "linked", () => "failed"), tick().then(() => "pending")])).resolves.toBe("pending");
+  expect(plugin.stops).toBe(before);
+  plugin.emit("message", { peer: "host", text: "x" });
+  expect(got).toEqual(["x"]);
+  expect(firstClosed).toBe(0);
+  link.close();
+});

@@ -538,7 +538,7 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
     }
     return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}` };
   }) : null;
-  const status = j.step === "looking" ? { text: NEARBY_COPY.browsing }
+  const status = j.step === "looking" ? { text: j.linked ? NEARBY_COPY.connecting : NEARBY_COPY.browsing }
     : j.step === "notFound" ? { text: NEARBY_COPY.notFound, warn: true }
     : j.step === "full" ? { text: NEARBY_COPY.full, warn: true }
     : j.step === "version" ? { text: NEARBY_COPY.versionMismatch, warn: true }

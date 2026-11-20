@@ -7,6 +7,7 @@
 import type { Clock } from "../clock";
 import { nearbyPeekJson, type LocalConnection, type LocalRoom, type LocalServer } from "../server";
 import { NEARBY_COPY } from "./copy";
+import { frameType, nearbyLog } from "../../../nearbyLog";
 import { LIMITS, NEARBY_V, PING, PONG_TEXT, cleanHello, cleanJoinerMessage, parseObject, utf8Bytes } from "./protocol";
 import { NearbyError, type HostLink, type LinkState, type NearbyTransport } from "./transport";
 
@@ -110,11 +111,13 @@ export class NearbyHost {
     this.clock.setTimeout(() => this.stop(), STOP_FALLBACK_SECONDS);
   }
 
-  private refuse(reason: string): void {
+  private refuse(reason: string, id = "", text = ""): void {
     this.refused[reason] = (this.refused[reason] ?? 0) + 1;
+    nearbyLog("host", `REFUSED ${reason}${id ? ` from ${id}` : ""}${text ? ` (${frameType(text)})` : ""}`);
   }
 
   private onPeer(id: string, device: string | null): void {
+    nearbyLog("host", `link ${id} up${device ? ` from ${device}` : ""}`);
     if (this.peers.size >= LIMITS.peers || this.room.closed || this.stopped) {
       this.refuse("peers");
       this.link?.close(id);
@@ -141,7 +144,7 @@ export class NearbyHost {
     const mine = ++peer.deadline;
     this.clock.setTimeout(() => {
       if (this.peers.get(id) === peer && peer.conn === null && peer.deadline === mine) {
-        this.refuse("hello_timeout");
+        this.refuse("hello_timeout", id);
         this.end(id);
       }
     }, seconds);
@@ -155,7 +158,7 @@ export class NearbyHost {
     this.clock.setTimeout(() => {
       if (this.peers.get(id) !== peer || peer.closed) return;
       if (this.clock.now() - peer.heard >= LIMITS.silentSeconds) {
-        this.refuse("silent");
+        this.refuse("silent", id);
         this.end(id);
       } else this.listen(id, peer);
     }, wait);
@@ -164,6 +167,7 @@ export class NearbyHost {
   private onGone(id: string): void {
     const peer = this.peers.get(id);
     if (!peer) return;
+    nearbyLog("host", `link ${id} gone${peer.conn ? " (seated)" : ""}`);
     this.peers.delete(id);
     peer.closed = true;
     peer.conn?.close();
@@ -184,19 +188,23 @@ export class NearbyHost {
 
   private onMessage(id: string, text: string): void {
     const peer = this.peers.get(id);
-    if (!peer || peer.closed || peer.ending) return;
+    if (!peer || peer.closed || peer.ending) {
+      nearbyLog("host", `IGNORED ${typeof text === "string" ? frameType(text) : "?"} from ${id}: ${!peer ? "no such link" : peer.closed ? "closed" : "ending"}`);
+      return;
+    }
     try {
       this.receive(id, peer, text);
-    } catch {
+    } catch (e) {
       // a defect in a handler must not take the host down with it
-      this.refuse("exception");
+      this.refuse("exception", id, text);
+      nearbyLog("host", `exception: ${String(e)}`);
       this.end(id);
     }
   }
 
   private receive(id: string, peer: Peer, text: string): void {
     if (typeof text !== "string" || utf8Bytes(text) > LIMITS.frameBytes) {
-      this.refuse("size");
+      this.refuse("size", id);
       this.end(id);
       return;
     }
@@ -205,13 +213,13 @@ export class NearbyHost {
     peer.recent = peer.recent.filter((t) => now - t < 1);
     peer.recent.push(now);
     if (peer.recent.length > LIMITS.perSecond) {
-      this.refuse("rate");
+      this.refuse("rate", id, text);
       this.end(id);
       return;
     }
     const msg = parseObject(text);
     if (msg === null) {
-      this.refuse("json");
+      this.refuse("json", id);
       this.end(id);
       return;
     }
@@ -220,6 +228,7 @@ export class NearbyHost {
       this.link?.send(id, PONG_TEXT);
       return;
     }
+    nearbyLog("host", `in ${frameType(text)} from ${id}${peer.conn === null ? " (unseated)" : ""}`);
     if (peer.conn === null) {
       this.hello(id, peer, msg);
       return;
@@ -228,7 +237,7 @@ export class NearbyHost {
     if (clean === null) {
       // an unknown or malformed message is ignored, as the device ignores
       // the game server's own messages
-      this.refuse("message");
+      this.refuse("message", id, text);
       return;
     }
     peer.conn.receive(JSON.stringify(clean));
@@ -237,7 +246,7 @@ export class NearbyHost {
   private hello(id: string, peer: Peer, msg: Record<string, unknown>): void {
     const hello = cleanHello(msg);
     if (hello === null) {
-      this.refuse("hello");
+      this.refuse("hello", id, JSON.stringify(msg));
       this.end(id);
       return;
     }
@@ -282,6 +291,7 @@ export class NearbyHost {
     if (peer.closed || this.peers.get(id) !== peer) return;
     try {
       this.link?.send(id, frame);
+      nearbyLog("host", `out ${frameType(frame)} to ${id}`);
     } catch {
       this.refuse("send");
       this.end(id);

@@ -514,6 +514,45 @@ describe("Play and Bury say they are sending", () => {
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(sent).toHaveLength(1);
   });
+
+  // telemetry rides the same stand-in connection
+  const moves = () => sent.filter((m) => (m as { type: string }).type === "bury" || (m as { type: string }).type === "play");
+
+  it("at a nearby table a bury that never committed goes out once more on the new link, and only once", async () => {
+    const mode = await import("../offlineMode");
+    mode.setNearbySession(true);
+    onTestFinished(() => mode.setNearbySession(false));
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    expect(moves()).toHaveLength(1);
+    // the link was stuck: a new one, whose first state shows the same hand
+    setStatus("closed");
+    expect(label()).toBe("Reconnecting…");
+    setStatus("open");
+    render(burying());
+    expect(moves()).toHaveLength(2);
+    expect(moves()[1]).toEqual(moves()[0]);
+    expect(label()).toBe("Sending…");
+    // stuck again: no third send; the selection stays for the player
+    setStatus("closed");
+    setStatus("open");
+    render(burying());
+    expect(moves()).toHaveLength(2);
+    expect(label()).toBe("Bury (8/8)");
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("online, a reconnect never sends a move again by itself", () => {
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    setStatus("closed");
+    setStatus("open");
+    render(burying());
+    expect(moves()).toHaveLength(1);
+    expect(label()).toBe("Bury (8/8)");
+  });
 });
 
 describe("following", () => {

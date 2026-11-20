@@ -197,12 +197,12 @@ export class NearbySocket {
   private ping(link: JoinLink): void {
     this.clock.setTimeout(() => {
       if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
-      if (this.clock.now() - this.heard >= LIMITS.silentSeconds) return this.stuck("the host is silent", link);
-      if (this.pingSent !== null && this.clock.now() - this.pingSent >= this.pongWindow(link)) {
-        return this.stuck("no pong", link);
-      }
-      if (this.pingSent === null && !this.sendPing(link)) return;
-      this.ping(link);
+      // a stuck link that is given more time, and answers, stays watched:
+      // the loop goes on until the link is replaced
+      if (this.clock.now() - this.heard >= LIMITS.silentSeconds) this.stuck("the host is silent", link);
+      else if (this.pingSent !== null && this.clock.now() - this.pingSent >= this.pongWindow(link)) this.stuck("no pong", link);
+      else if (this.pingSent === null && !this.sendPing(link)) return;
+      if (this.link === link && this.readyState === NearbySocket.OPEN) this.ping(link);
     }, LIMITS.pingSeconds);
   }
 

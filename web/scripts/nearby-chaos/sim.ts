@@ -767,7 +767,8 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       if (held > 1) fail("one seat per phone", `${d.id} holds ${held} connected seats`);
       // every move sent is applied, refused, or its link ends
       for (const s of d.sent) {
-        if (s.state === "pending" && now - s.at > 30 && pg.status === "open" && pg.sockNo === s.sock) {
+        // (the page's JS runs to find a dead link: not while it is suspended)
+        if (s.state === "pending" && now - Math.max(s.at, d.clearedAt) > 30 && d.activeFaults === 0 && pg.status === "open" && pg.sockNo === s.sock) {
           fail("every move answered", `${d.id}'s ${s.text.slice(0, 40)} (for ${s.key}) unanswered ${Math.round(now - s.at)} s on a link still open${s.arrived ? " (it reached the host)" : " (never reached the host)"}`);
         }
       }

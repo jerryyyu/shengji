@@ -500,6 +500,33 @@ describe("a slow link is not torn down in a loop", () => {
     }
   });
 
+  it("a link that was slow and then answered is still watched: a later silent break is found", async () => {
+    const { t, j, peer } = await seatedJoiner(false);
+    // a first stuck link, so the next one waits out the spacing
+    let sock = j.sock as NearbySocket;
+    t.fake.lose(peer());
+    t.send(j, { type: "im_back" });
+    await t.settle(() => sock.readyState === NearbySocket.CLOSED, 100_000);
+    await t.advance(0.5);
+    sock = await t.resume(j);
+    expect(sock.readyState).toBe(NearbySocket.OPEN);
+    // slow inside the spacing: a move's probe and the next ping go
+    // unanswered, the socket gives the link more time, and it answers
+    t.fake.hold(peer());
+    t.send(j, { type: "im_back" });
+    await t.advance(LIMITS.pingSeconds + 1.5);
+    t.fake.release(peer());
+    await t.advance(1);
+    expect(sock.readyState).toBe(NearbySocket.OPEN);
+    // later the joiner's frames stop getting through: its own pings find it
+    // (well before the host's silence check would end the link)
+    await t.advance(LIMITS.stuckSpacingSeconds);
+    t.fake.lose(peer());
+    await t.advance(2 * LIMITS.pingSeconds + LIMITS.pongSeconds);
+    expect(LIMITS.silentSeconds).toBeGreaterThan(2 * LIMITS.pingSeconds + LIMITS.pongSeconds);
+    expect(sock.readyState).toBe(NearbySocket.CLOSED);
+  });
+
   it("links that keep sticking are replaced at most once every 10 s", async () => {
     const { t, j, peer } = await seatedJoiner(false);
     const closes: number[] = [];

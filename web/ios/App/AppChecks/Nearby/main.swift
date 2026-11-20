@@ -1,4 +1,5 @@
-// The code-to-key derivation of App/NearbyPlugin.swift, checked without Xcode:
+// The code-to-key derivation and the wake-lock reasons of App/NearbyPlugin.swift,
+// checked without Xcode:
 //   swiftc -D NEARBY_KEY_ONLY -o /tmp/nearby_key_check web/ios/App/App/NearbyPlugin.swift \
 //     web/ios/App/AppChecks/Nearby/main.swift && /tmp/nearby_key_check
 import Foundation
@@ -22,9 +23,10 @@ let otherSalt = Data((0..<16).map { UInt8(255 - $0) })
 let short = NearbyKey.derive(code: "passwd", salt: Data("salt".utf8), iterations: 1)
 expect(hex(short) == "7ca4b063fa2da5d7103e47f7ed819f41d98bef22f4b3297d1b8bf41cfcf05df8",
        "known answer at 1 iteration, got \(hex(short))")
-let full = NearbyKey.derive(code: "K7Q2MX", salt: salt, iterations: 200_000)
-expect(hex(full) == "a9f7e5655d67cf662eded9f7475ab2eac064b14f61e2d5a617b30909d5869e4e",
-       "known answer at 200,000 iterations, got \(hex(full))")
+let full = NearbyKey.derive(code: "K7Q2MX", salt: salt, iterations: 150_000)
+expect(hex(full) == "69c8a922cf18ce7dc646d94c8a1cb32503d95940458d2e7d4bed967cf5997a38",
+       "known answer at 150,000 iterations, got \(hex(full))")
+expect(NearbyKey.iterations == 150_000, "the key uses 150,000 iterations")
 
 let key = NearbyKey.derive(code: "K7Q2MX", salt: salt)
 expect(key?.count == 32, "a 32-byte key")
@@ -45,6 +47,22 @@ expect(names.allSatisfy { $0.count == 8 && $0.allSatisfy(NearbyKey.alphabet.cont
        "service names are 8 characters of the code alphabet")
 expect(Set(names).count == names.count, "service names do not repeat")
 expect(NearbyKey.randomBytes(NearbyKey.saltBytes).count == 16, "a 16-byte salt")
+
+// The screen stays awake while a game or a nearby session is live, and the
+// idle timer returns only when both have ended.
+var awake = AwakeReasons()
+expect(!awake.any, "no reason, no wake lock")
+awake.game = true
+expect(awake.any, "a game keeps the screen awake")
+awake.nearby = true
+awake.game = false
+expect(awake.any, "a nearby session alone keeps the screen awake")
+awake.game = true
+expect(awake.any, "both reasons keep the screen awake")
+awake.nearby = false
+expect(awake.any, "the game still holds after the nearby session ends")
+awake.game = false
+expect(!awake.any, "the idle timer returns once both have ended")
 
 let t0 = Date()
 _ = NearbyKey.derive(code: "K7Q2MX", salt: salt)

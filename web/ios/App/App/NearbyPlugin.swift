@@ -8,8 +8,9 @@ import CommonCrypto
 /// recorded handshake, so the derivation is deliberately slow, and the
 /// per-table salt makes every table's key different.
 enum NearbyKey {
-    // TODO-review(M1): tune to ~250 ms on the oldest supported phone
-    static let iterations: UInt32 = 200_000
+    // About 44 ms on an iPhone 14 Pro, an estimated 250 ms on the oldest
+    // supported phone: slow for an offline search, quick enough for a join.
+    static let iterations: UInt32 = 150_000
     static let identity = "shengji-nearby-v1"
     static let saltBytes = 16
     /// The online code alphabet: no I, O, 0 or 1.
@@ -47,28 +48,50 @@ enum NearbyKey {
     }
 }
 
+/// Why the screen must stay awake: a game at the table or a live nearby
+/// session. The idle timer is the system's again only when neither holds.
+struct AwakeReasons {
+    var game = false
+    var nearby = false
+    var any: Bool { game || nearby }
+}
+
 #if !NEARBY_KEY_ONLY
 import UIKit
 import Capacitor
+
+/// One idle-timer switch for every reason to keep the screen awake, so one
+/// reason ending does not let the phone lock while another still holds.
+/// Reasons are kept and applied on the main thread.
+enum ScreenAwake {
+    private static var reasons = AwakeReasons()
+
+    static func set(game on: Bool) { update { $0.game = on } }
+    static func set(nearby on: Bool) { update { $0.nearby = on } }
+
+    private static func update(_ change: @escaping (inout AwakeReasons) -> Void) {
+        let apply = {
+            change(&reasons)
+            UIApplication.shared.isIdleTimerDisabled = reasons.any
+        }
+        if Thread.isMainThread { apply() } else { DispatchQueue.main.async(execute: apply) }
+    }
+}
 
 /// Which binaries may run the nearby transport. It is untested on devices,
 /// so every method but `capabilities` refuses unless one of these is true.
 enum NearbyBuild {
     // TODO-review: true only in the binary App Review sees with nearby play.
     static let reviewed = false
-    #if DEBUG
-    // TODO-review: DEBUG-only switch for the transport spike; false on main.
-    // SHENGJI_NEARBY_SPIKE is defined only on the M1 spike's xcodebuild
-    // command line, never by a configuration in the project.
-    #if SHENGJI_NEARBY_SPIKE
-    static let debugSpike = true
+    // A Debug-only switch: SHENGJI_NEARBY_SPIKE and SHENGJI_NEARBY_DEV are
+    // defined only on an xcodebuild command line, never by a configuration in
+    // the project, and a Release build is always false here.
+    #if DEBUG && (SHENGJI_NEARBY_SPIKE || SHENGJI_NEARBY_DEV)
+    static let debugBuild = true
     #else
-    static let debugSpike = false
+    static let debugBuild = false
     #endif
-    static var enabled: Bool { reviewed || debugSpike }
-    #else
-    static var enabled: Bool { reviewed }
-    #endif
+    static var enabled: Bool { reviewed || debugBuild }
     static let nearbyV = 1
     /// Must equal the NSBonjourServices entry in Info.plist.
     static let serviceType = "_shengji-nearby._tcp"
@@ -94,15 +117,23 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "join", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "send", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
     ] + ShengjiNearbyPlugin.spikeMethods
 
     static let maxMessage = 16 * 1024
     static let handshakeTimeout: TimeInterval = 10
-    static let findTimeout: TimeInterval = 10
+    static let findTimeout: TimeInterval = 12
+    /// Once every table found has refused the code, a wrong code is reported
+    /// after this pause unless another table appears.
+    static let allFailedGrace: TimeInterval = 1
+    /// A host away from the app longer than this ends its table.
+    static let hostWindow: TimeInterval = 60
     static let maxJoinTries = 8
     static let maxHandshakes = 4
-    static let maxConnected = 3
+    /// Three seats plus one joiner whose new link lands before the host
+    /// closes its old one.
+    static let maxConnected = 4
     static let maxPending = 3
     static let failedHandshakeSpacing: TimeInterval = 1
 
@@ -123,6 +154,15 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var session = 0
     private var hostCall: CAPPluginCall?
     private var lastFailedHandshake = Date.distantPast
+    // host side: the table's key and salt, kept so the same table can be
+    // advertised again after the system stops the listener
+    private var hostCode = ""
+    private var hostSalt: Data?
+    private var hostPsk: Data?
+    private var needsReadvertise = false
+    private var backgroundedAt: Date?
+    /// Main thread only.
+    private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     // join side
     private var joinCode = ""
     private var candidates: [NWBrowser.Result] = []
@@ -130,10 +170,13 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var tries = 0
     private var attempt: Link?
     private var findDeadline = Date.distantFuture
+    private var candidateArrivals = 0
     // permission mapping
     private var appActive = true
     private var lastBecameActive = Date.distantPast
     private var policyDenied = false
+    /// Once a session reports "denied", it reports no "notFound".
+    private var deniedReported = false
     private var observers: [NSObjectProtocol] = []
     private var live = false
 
@@ -143,14 +186,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             $0.appActive = true
             $0.lastBecameActive = Date()
             $0.reportDenied()
+            $0.hostReturned()
         }
-        observe(UIApplication.didEnterBackgroundNotification) {
-            // A table is advertised only while the app is in the foreground.
-            guard let listener = $0.listener else { return }
-            listener.cancel()
-            $0.listener = nil
-            $0.emitState("failed", detail: "background")
-        }
+        observe(UIApplication.willEnterForegroundNotification) { $0.hostReturned() }
+        observe(UIApplication.didEnterBackgroundNotification) { $0.hostLeft() }
     }
 
     private func observe(_ name: Notification.Name, _ handle: @escaping (ShengjiNearbyPlugin) -> Void) {
@@ -167,8 +206,18 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: JS methods
 
     @objc func capabilities(_ call: CAPPluginCall) {
-        call.resolve(["reviewed": NearbyBuild.reviewed, "nearbyV": NearbyBuild.nearbyV,
-                      "serviceType": NearbyBuild.serviceType])
+        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild,
+                      "nearbyV": NearbyBuild.nearbyV, "serviceType": NearbyBuild.serviceType])
+    }
+
+    @objc func openSettings(_ call: CAPPluginCall) {
+        guard allowed(call) else { return }
+        DispatchQueue.main.async {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+            call.resolve()
+        }
     }
 
     private func allowed(_ call: CAPPluginCall) -> Bool {
@@ -191,29 +240,18 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("key derivation failed", "failed")
                 return
             }
-            let listener: NWListener
-            do {
-                listener = try NWListener(using: Self.parameters(psk: psk))
-            } catch {
-                call.reject("\(error)", "failed")
-                return
-            }
-            let txt = NWTXTRecord(["v": "\(NearbyBuild.nearbyV)", "salt": salt.base64EncodedString()])
-            listener.service = NWListener.Service(name: NearbyKey.randomName(8), type: NearbyBuild.serviceType,
-                                                  domain: nil, txtRecord: txt)
-            let session = self.session
-            listener.stateUpdateHandler = { [weak self] state in
-                guard let self = self, self.session == session else { return }
-                self.listenerState(state)
-            }
-            listener.newConnectionHandler = { [weak self] connection in
-                guard let self = self, self.session == session else { return connection.cancel() }
-                self.accept(connection)
-            }
-            self.listener = listener
+            self.hostCode = code
+            self.hostSalt = salt
+            self.hostPsk = psk
             self.hostCall = call
             self.setLive(true)
-            listener.start(queue: self.queue)
+            do {
+                try self.startListener(psk: psk, salt: salt)
+            } catch {
+                self.hostCall = nil
+                self.reset()
+                call.reject("\(error)", "failed")
+            }
         }
     }
 
@@ -248,6 +286,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 for result in results where !self.tried.contains(result.endpoint)
                     && !self.candidates.contains(where: { $0.endpoint == result.endpoint }) {
                     self.candidates.append(result)
+                    self.candidateArrivals += 1
                 }
                 self.tryNext()
             }
@@ -306,6 +345,30 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: host
 
+    private var hosting: Bool { hostPsk != nil }
+
+    /// Advertises the table under a new random instance name, with the salt
+    /// in its TXT record; the session is unchanged, so existing links stay.
+    private func startListener(psk: Data, salt: Data) throws {
+        let listener = try NWListener(using: Self.parameters(psk: psk))
+        let txt = NWTXTRecord(["v": "\(NearbyBuild.nearbyV)", "salt": salt.base64EncodedString()])
+        listener.service = NWListener.Service(name: NearbyKey.randomName(8), type: NearbyBuild.serviceType,
+                                              domain: nil, txtRecord: txt)
+        let session = self.session
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self = self, self.session == session, let listener = listener,
+                  self.listener === listener else { return }
+            self.listenerState(state)
+        }
+        listener.newConnectionHandler = { [weak self] connection in
+            guard let self = self, self.session == session else { return connection.cancel() }
+            self.accept(connection)
+        }
+        needsReadvertise = false
+        self.listener = listener
+        listener.start(queue: queue)
+    }
+
     private func listenerState(_ state: NWListener.State) {
         spikeLog("listener \(state)")
         switch state {
@@ -317,12 +380,71 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         case .waiting(let error):
             report(error, failed: false)
         case .failed(let error):
+            if hosting && hostCall == nil { return listenerLost() }
             report(error, failed: true)
             hostCall?.reject("\(error)", "failed")
             hostCall = nil
+        case .cancelled:
+            if hosting && hostCall == nil { listenerLost() }
         default:
             break
         }
+    }
+
+    /// The system stopped advertising a table that was up (it does so when
+    /// the app leaves the foreground); the table is advertised again when the
+    /// app returns.
+    private func listenerLost() {
+        listener?.stateUpdateHandler = nil
+        listener?.cancel()
+        listener = nil
+        needsReadvertise = true
+        emitState("waiting", detail: "background")
+    }
+
+    /// A host leaving the app keeps its listener and links while iOS allows,
+    /// under a background task.
+    private func hostLeft() {
+        guard hosting else { return }
+        backgroundedAt = Date()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, self.backgroundTask == .invalid else { return }
+            self.backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "nearby-host") {
+                [weak self] in self?.endBackgroundTaskOnMain()
+            }
+        }
+    }
+
+    /// Back in the app: a host away longer than `hostWindow` ends its table;
+    /// otherwise a table the system stopped is advertised again with the same
+    /// key and salt, so the same code still joins it.
+    private func hostReturned() {
+        DispatchQueue.main.async { [weak self] in self?.endBackgroundTaskOnMain() }
+        guard hosting else { return }
+        let awayAt = backgroundedAt
+        backgroundedAt = nil
+        if let awayAt = awayAt, Date().timeIntervalSince(awayAt) > Self.hostWindow {
+            reset()
+            return emitState("ended")
+        }
+        guard listener == nil || needsReadvertise, let psk = hostPsk, let salt = hostSalt else { return }
+        if let old = listener {
+            old.stateUpdateHandler = nil
+            old.cancel()
+            listener = nil
+        }
+        do {
+            try startListener(psk: psk, salt: salt)
+        } catch {
+            needsReadvertise = true
+            emitState("failed", detail: "\(error)")
+        }
+    }
+
+    private func endBackgroundTaskOnMain() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
     }
 
     /// Inbound limits: each failed handshake tests one guess at the code, so
@@ -404,12 +526,31 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func checkNotFound() {
-        guard links["host"] == nil, attempt == nil, browser != nil else { return }
+        guard !deniedReported, links["host"] == nil, attempt == nil, browser != nil else { return }
         if tries >= Self.maxJoinTries || (Date() >= findDeadline && candidates.isEmpty) {
-            browser?.cancel()
-            browser = nil
-            emitState("notFound")
+            return emitNotFound()
         }
+        if allTriedFailed {
+            // Every table found refused the code: a wrong or stale code is
+            // reported now unless another table appears within the grace.
+            let session = self.session, arrivals = candidateArrivals, tries = self.tries
+            queue.asyncAfter(deadline: .now() + Self.allFailedGrace) { [weak self] in
+                guard let self = self, self.session == session, self.candidateArrivals == arrivals,
+                      self.tries == tries, self.allTriedFailed, !self.deniedReported else { return }
+                self.emitNotFound()
+            }
+        }
+    }
+
+    private var allTriedFailed: Bool {
+        tries > 0 && candidates.isEmpty && attempt == nil && links["host"] == nil && browser != nil
+    }
+
+    private func emitNotFound() {
+        guard !deniedReported else { return }
+        browser?.cancel()
+        browser = nil
+        emitState("notFound")
     }
 
     // MARK: links
@@ -473,7 +614,15 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         tries = 0
         joinCode = ""
         findDeadline = .distantFuture
+        candidateArrivals = 0
         policyDenied = false
+        deniedReported = false
+        hostCode = ""
+        hostSalt = nil
+        hostPsk = nil
+        needsReadvertise = false
+        backgroundedAt = nil
+        DispatchQueue.main.async { [weak self] in self?.endBackgroundTaskOnMain() }
         setLive(false)
     }
 
@@ -539,6 +688,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         policyDenied = false
+        deniedReported = true
         emitState("denied")
     }
 
@@ -563,7 +713,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private func setLive(_ on: Bool) {
         guard on != live else { return }
         live = on
-        DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = on }
+        ScreenAwake.set(nearby: on)
     }
 }
 

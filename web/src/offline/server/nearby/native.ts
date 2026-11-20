@@ -10,7 +10,8 @@ interface Listener {
 }
 
 interface NearbyPlugin {
-  capabilities(): Promise<{ reviewed?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
+  capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
+  openSettings(): Promise<unknown>;
   host(opts: { code: string }): Promise<unknown>;
   join(opts: { code: string }): Promise<unknown>;
   send(opts: { peer: string; text: string }): Promise<unknown>;
@@ -21,7 +22,7 @@ interface NearbyPlugin {
   addListener(event: "state", fn: (ev: { state: string; detail?: string }) => void): Promise<Listener>;
 }
 
-const STATES: ReadonlySet<string> = new Set(["ready", "waiting", "denied", "wifiOff", "notFound", "failed"]);
+const STATES: ReadonlySet<string> = new Set(["ready", "waiting", "denied", "wifiOff", "notFound", "failed", "ended"]);
 const asState = (s: string): LinkState => (STATES.has(s) ? (s as LinkState) : "failed");
 
 function nearbyPlugin(): NearbyPlugin | null {
@@ -29,15 +30,23 @@ function nearbyPlugin(): NearbyPlugin | null {
   return p && typeof p.host === "function" && typeof p.addListener === "function" ? (p as NearbyPlugin) : null;
 }
 
-/** Whether this app binary was reviewed with nearby play (flag.ts). */
+/** Whether this app binary may run nearby play (flag.ts): it was reviewed
+ *  with it, or it is a Debug build compiled for the device test. A shipped
+ *  binary reports neither. */
 export async function binaryReviewed(): Promise<boolean> {
   const p = nearbyPlugin();
   if (!p) return false;
   try {
-    return (await p.capabilities()).reviewed === true;
+    const c = await p.capabilities();
+    return c.reviewed === true || c.debug === true;
   } catch {
     return false;
   }
+}
+
+/** Opens the app's page in Settings, where Local Network is switched on. */
+export function openNearbySettings(): void {
+  void nearbyPlugin()?.openSettings().catch(() => {});
 }
 
 /** The native transport, or null when the app has no plugin. */
@@ -57,12 +66,22 @@ export function nativeTransport(): NearbyTransport | null {
   return {
     async host(code, handlers): Promise<HostLink> {
       unlisten();
+      // the plugin's host() settles once the listener is ready; a denied
+      // permission leaves it waiting, so a denial ends the wait instead
+      let refuse: ((e: NearbyError) => void) | null = null;
+      const refused = new Promise<never>((_, no) => { refuse = no; });
       listeners = await Promise.all([
         p.addListener("peer", (ev) => handlers.peer(ev.peer, ev.state === "connected")),
         p.addListener("message", (ev) => handlers.message(ev.peer, ev.text)),
-        p.addListener("state", (ev) => handlers.state(asState(ev.state), ev.detail)),
+        p.addListener("state", (ev) => {
+          const state = asState(ev.state);
+          handlers.state(state, ev.detail);
+          if (state === "denied" || state === "wifiOff") refuse?.(new NearbyError(state, ev.detail));
+        }),
       ]);
-      await p.host({ code }).catch(fail);
+      refused.catch(() => {});
+      await Promise.race([p.host({ code }), refused]).catch(fail);
+      refuse = null;
       return {
         send: (peer, text) => void p.send({ peer, text }).catch(() => {}),
         close: (peer) => void p.close({ peer }).catch(() => {}),

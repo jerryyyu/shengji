@@ -3,7 +3,7 @@
 // found, the retry on coming back from Settings, the rejoin by token after a
 // drop, and the end screen once the host's window has passed.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HOST_WINDOW_MS, NearbyJoinStore, type NearbyJoinDeps } from "./codeJoin";
+import { HOST_WINDOW_MS, JOIN_TIMEOUT_MS, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, type NearbyJoinDeps } from "./codeJoin";
 import type { LinkState } from "./offline/server/nearby/transport";
 import type { ConnStatus } from "./ws";
 
@@ -13,9 +13,9 @@ function harness() {
   const sent: Msg[] = [];
   let onMsg: (m: Msg) => void = () => {};
   let onStatus: (s: ConnStatus) => void = () => {};
-  let onState: (s: LinkState) => void = () => {};
+  let onState: (s: LinkState, detail?: string) => void = () => {};
   let visible: () => void = () => {};
-  const calls = { useNearby: 0, leaveNearby: 0, leaveToLobby: 0, offline: [] as boolean[], session: [] as boolean[] };
+  const calls = { useNearby: 0, leaveNearby: 0, leaveToLobby: 0, refused: 0, offline: [] as boolean[], session: [] as boolean[] };
   const deps: NearbyJoinDeps = {
     conn: {
       send: ((m: Msg) => { sent.push(m); return true; }) as never,
@@ -23,14 +23,15 @@ function harness() {
       subscribeStatus: ((fn: (s: ConnStatus) => void) => { onStatus = fn; return () => {}; }) as never,
       useNearby: () => { calls.useNearby += 1; },
       leaveNearby: () => { calls.leaveNearby += 1; },
-      leaveToLobby: () => { calls.leaveToLobby += 1; },
+      // as ws.ts: the page's own `left` at once, before the host answers
+      leaveToLobby: () => { calls.leaveToLobby += 1; onMsg({ type: "left" }); },
     },
     socketFor: async (_code, fn) => { onState = fn; return () => ({}) as WebSocket; },
     offline: () => true,
     setOffline: (on) => { calls.offline.push(on); },
     setSession: (on) => { calls.session.push(on); },
     allowed: () => {},
-    token: () => "tok-1",
+    refused: () => { calls.refused += 1; },
     onVisible: (fn) => { visible = fn; },
   };
   const store = new NearbyJoinStore(deps);
@@ -38,7 +39,7 @@ function harness() {
     store, sent, calls,
     msg: (m: Msg) => onMsg(m),
     status: (s: ConnStatus) => onStatus(s),
-    state: (s: LinkState) => onState(s),
+    state: (s: LinkState, detail?: string) => onState(s, detail),
     visible: () => visible(),
   };
 }
@@ -113,6 +114,7 @@ describe("the nearby join", () => {
     h.status("open");
     h.msg(seats);
     h.store.join();
+    h.msg({ type: "resume", token: "tok-1", gen: 1 });
     h.msg({ type: "room", room: "K7Q2MX" });
     h.status("closed");
     await vi.advanceTimersByTimeAsync(20_000);
@@ -143,5 +145,116 @@ describe("the nearby join", () => {
     expect(h.store.seated).toBe(false);
     expect(h.calls.leaveNearby).toBe(1);
     expect(h.calls.session).toEqual([true, false]);
+  });
+
+  async function seated() {
+    const h = harness();
+    h.store.open("K7Q2MX", "Mei");
+    await flush();
+    h.status("open");
+    h.msg(seats);
+    h.store.join();
+    h.msg({ type: "resume", token: "tok-9", gen: 1 });
+    h.msg({ type: "room", room: "K7Q2MX" });
+    expect(h.store.seated).toBe(true);
+    return h;
+  }
+
+  it("a Leave keeps the link until the host answers by ending it, so the leave is not lost", async () => {
+    const h = await seated();
+    h.store.leave();
+    expect(h.calls.leaveToLobby).toBe(1);
+    // the page is back at once; the link waits for the host
+    expect(h.store.view).toBeNull();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(h.calls.leaveNearby).toBe(0);
+    h.status("closed");
+    await flush();
+    expect(h.calls.leaveNearby).toBe(1);
+    expect(h.store.seated).toBe(false);
+    // and the reconnect a close would start never rejoins
+    h.status("open");
+    expect(h.sent.filter((m) => m.type === "table_join")).toHaveLength(1);
+  });
+
+  it("a Leave the host never answers closes the link after a short wait; the game menu's Leave is the same", async () => {
+    const h = await seated();
+    h.store.leave();
+    await vi.advanceTimersByTimeAsync(LEAVE_LINK_MS - 100);
+    expect(h.calls.leaveNearby).toBe(0);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(h.calls.leaveNearby).toBe(1);
+    const g = await seated();
+    // the menu's Leave is leaveToLobby, whose own `left` the store sees
+    g.msg({ type: "left" });
+    expect(g.calls.leaveNearby).toBe(0);
+    await vi.advanceTimersByTimeAsync(LEAVE_LINK_MS + 100);
+    expect(g.calls.leaveNearby).toBe(1);
+  });
+
+  it("keeps the seat token in memory only: the rejoin uses the table's, and storage holds nothing of the table", async () => {
+    localStorage.clear();
+    const h = await seated();
+    h.status("closed");
+    await vi.advanceTimersByTimeAsync(1000);
+    h.status("open");
+    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2MX", name: "Mei", token: "tok-9" });
+    h.msg({ type: "left", reason: "host_left" });
+    const kept = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join(";");
+    expect(kept).not.toMatch(/K7Q2MX|tok-9/);
+  });
+
+  it("a slow answer to the Local Network prompt is not read as no table nearby", async () => {
+    const h = harness();
+    h.store.open("K7Q2MX", "Mei");
+    await flush();
+    h.state("waiting", "prompt");
+    await vi.advanceTimersByTimeAsync(LOOK_LIMIT_MS * 3);
+    expect(h.store.view?.step).toBe("looking");
+    h.state("waiting", "active");
+    await vi.advanceTimersByTimeAsync(LOOK_LIMIT_MS - 1000);
+    expect(h.store.view?.step).toBe("looking");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.store.view?.step).toBe("notFound");
+  });
+
+  it("a Join with no answer looks at the table again instead of spinning", async () => {
+    const h = harness();
+    h.store.open("K7Q2MX", "Mei");
+    await flush();
+    h.status("open");
+    h.msg(seats);
+    h.store.join();
+    expect(h.store.view?.step).toBe("joining");
+    await vi.advanceTimersByTimeAsync(JOIN_TIMEOUT_MS + 100);
+    expect(h.store.view?.step).toBe("looking");
+    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_peek", code: "K7Q2MX" });
+    h.msg(seats);
+    expect(h.store.view?.step).toBe("panel");
+  });
+
+  it("the panel's link dropping looks again once the link is back", async () => {
+    const h = harness();
+    h.store.open("K7Q2MX", "Mei");
+    await flush();
+    h.status("open");
+    h.msg(seats);
+    h.status("closed");
+    expect(h.store.view).toMatchObject({ step: "looking", peek: null });
+    h.status("open");
+    expect(h.sent.filter((m) => m.type === "table_peek")).toHaveLength(2);
+  });
+
+  it("only tables of another version: the code box asks for an update; a denial forgets the earlier grant", async () => {
+    const h = harness();
+    h.store.open("K7Q2MX", "Mei");
+    await flush();
+    h.state("version");
+    expect(h.store.view?.step).toBe("version");
+    const d = harness();
+    d.store.open("K7Q2MX", "Mei");
+    await flush();
+    d.state("denied");
+    expect(d.calls.refused).toBe(1);
   });
 });

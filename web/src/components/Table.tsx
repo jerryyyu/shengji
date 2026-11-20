@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
+import { useOffline } from "../offlineMode";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
@@ -108,9 +109,11 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
   // a long press (or a right click) on a person's seat also offers block and
-  // report; offline play seats only bots, so it never offers them there
+  // report, which are the game server's; a table on a device (offline, or a
+  // nearby phone's) never offers them
   const [actions, setActions] = useState(false);
-  const canAct = !player.is_bot;
+  const offline = useOffline();
+  const canAct = !player.is_bot && !offline;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   useEffect(() => {

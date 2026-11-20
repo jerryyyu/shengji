@@ -7,20 +7,37 @@
 import type { Clock } from "../clock";
 import { nearbyPeekJson, type LocalConnection, type LocalRoom, type LocalServer } from "../server";
 import { NEARBY_COPY } from "./copy";
-import { LIMITS, NEARBY_V, cleanHello, cleanJoinerMessage, parseObject, utf8Bytes } from "./protocol";
-import type { HostLink, LinkState, NearbyTransport } from "./transport";
+import { LIMITS, NEARBY_V, PING, PONG_TEXT, cleanHello, cleanJoinerMessage, parseObject, utf8Bytes } from "./protocol";
+import { NearbyError, type HostLink, type LinkState, type NearbyTransport } from "./transport";
 
-/** A link that has looked at the seats has this long to take one. */
+/** A link that has looked at the seats has this long, from its first look,
+ *  to take one; looking again does not extend it. */
 export const PEEK_SECONDS = 120;
+/** A link the host ends after a last frame (a `left`, a refusal, a peek
+ *  after the start) stays open this long first, so the frame goes out
+ *  ahead of the close. */
+export const DRAIN_SECONDS = 1;
+/** After the host's Leave, its links stop once the room has told every
+ *  joiner, or after this long at the most. */
+export const STOP_FALLBACK_SECONDS = 3;
 
 interface Peer {
   conn: LocalConnection | null;
+  /** The phone this link comes from, as the transport names it (an opaque
+   *  id per remote address), or null when the transport cannot tell. */
+  device: string | null;
   /** The seat token the room gave this link, from its resume frame. */
   token: string | null;
   /** Bumped at each hello deadline, so only the latest one fires. */
   deadline: number;
+  /** The link has had its one look at the seats. */
+  peeked: boolean;
   /** Clock times of this second's messages, for the rate limit. */
   recent: number[];
+  /** Clock time of the link's latest frame, for the liveness check. */
+  heard: number;
+  /** The host is ending the link after its last frame: nothing more is read. */
+  ending: boolean;
   closed: boolean;
 }
 
@@ -31,10 +48,14 @@ export interface NearbyHostEvents {
 export class NearbyHost {
   private peers = new Map<string, Peer>();
   private link: HostLink | null = null;
+  private stopped = false;
   private server: LocalServer;
   private room: LocalRoom;
   private clock: Clock;
   private events: NearbyHostEvents;
+  /** Each phone's seat token, so a phone back in the lobby without one (its
+   *  app was closed) gets its own seat again rather than a second one. */
+  private deviceTokens = new Map<string, string>();
   /** Counts of what the boundary refused, by reason, for tests and the M1 page. */
   readonly refused: Record<string, number> = {};
 
@@ -47,8 +68,8 @@ export class NearbyHost {
 
   /** Advertise the room's table on `transport`. */
   async start(transport: NearbyTransport): Promise<void> {
-    this.link = await transport.host(this.room.code, {
-      peer: (peer, connected) => (connected ? this.onPeer(peer) : this.onGone(peer)),
+    const link = await transport.host(this.room.code, {
+      peer: (peer, connected, device) => (connected ? this.onPeer(peer, device ?? null) : this.onGone(peer)),
       message: (peer, text) => this.onMessage(peer, text),
       state: (state, detail) => {
         // the host was away past the joiners' window: the table is over
@@ -56,27 +77,63 @@ export class NearbyHost {
         this.events.state?.(state, detail);
       },
     });
+    if (this.stopped) {
+      // stopped while the listener was on its way: it must not stay up
+      link.stop();
+      throw new NearbyError("failed", "stopped");
+    }
+    this.link = link;
   }
 
   stop(): void {
+    this.stopped = true;
     for (const id of [...this.peers.keys()]) this.end(id);
     this.link?.stop();
     this.link = null;
+  }
+
+  /** The host's Leave: the room tells every joiner the table is over, and
+   *  the links stop once it has (or after STOP_FALLBACK_SECONDS). */
+  stopWhenClosed(): void {
+    if (this.stopped) return;
+    // still starting: no joiner can be linked yet
+    if (this.link === null) {
+      this.stop();
+      return;
+    }
+    const stopSoon = () => this.clock.setTimeout(() => this.stop(), DRAIN_SECONDS);
+    if (this.room.closed) {
+      stopSoon();
+      return;
+    }
+    this.room.onClosed = stopSoon;
+    this.clock.setTimeout(() => this.stop(), STOP_FALLBACK_SECONDS);
   }
 
   private refuse(reason: string): void {
     this.refused[reason] = (this.refused[reason] ?? 0) + 1;
   }
 
-  private onPeer(id: string): void {
-    if (this.peers.size >= LIMITS.peers || this.room.closed) {
+  private onPeer(id: string, device: string | null): void {
+    if (this.peers.size >= LIMITS.peers || this.room.closed || this.stopped) {
       this.refuse("peers");
       this.link?.close(id);
       return;
     }
-    const peer: Peer = { conn: null, token: null, deadline: 0, recent: [], closed: false };
+    if (device !== null) {
+      // one unseated link per phone: its newer link replaces an older one
+      for (const [other, p] of this.peers) if (p.device === device && p.conn === null) this.end(other);
+    }
+    if ([...this.peers.values()].filter((p) => p.conn === null).length >= LIMITS.unseated) {
+      this.refuse("unseated");
+      this.link?.close(id);
+      return;
+    }
+    const peer: Peer = { conn: null, device, token: null, deadline: 0, peeked: false, recent: [],
+                         heard: this.clock.now(), ending: false, closed: false };
     this.peers.set(id, peer);
     this.helloBy(id, peer, LIMITS.helloSeconds);
+    this.listen(id, peer);
   }
 
   /** The link must be seated within `seconds`, or it ends. */
@@ -88,6 +145,20 @@ export class NearbyHost {
         this.end(id);
       }
     }, seconds);
+  }
+
+  /** A link that sends nothing for LIMITS.silentSeconds is gone (the phone
+   *  walked away): its seat waits for a resume, as after any drop. The
+   *  joiner's socket pings well inside it. */
+  private listen(id: string, peer: Peer): void {
+    const wait = Math.max(0, peer.heard + LIMITS.silentSeconds - this.clock.now());
+    this.clock.setTimeout(() => {
+      if (this.peers.get(id) !== peer || peer.closed) return;
+      if (this.clock.now() - peer.heard >= LIMITS.silentSeconds) {
+        this.refuse("silent");
+        this.end(id);
+      } else this.listen(id, peer);
+    }, wait);
   }
 
   private onGone(id: string): void {
@@ -104,9 +175,16 @@ export class NearbyHost {
     this.link?.close(id);
   }
 
+  /** End one link after its last frame has had time to go out. */
+  private endSoon(id: string, peer: Peer): void {
+    if (peer.ending) return;
+    peer.ending = true;
+    this.clock.setTimeout(() => { if (this.peers.get(id) === peer) this.end(id); }, DRAIN_SECONDS);
+  }
+
   private onMessage(id: string, text: string): void {
     const peer = this.peers.get(id);
-    if (!peer || peer.closed) return;
+    if (!peer || peer.closed || peer.ending) return;
     try {
       this.receive(id, peer, text);
     } catch {
@@ -123,6 +201,7 @@ export class NearbyHost {
       return;
     }
     const now = this.clock.now();
+    peer.heard = now;
     peer.recent = peer.recent.filter((t) => now - t < 1);
     peer.recent.push(now);
     if (peer.recent.length > LIMITS.perSecond) {
@@ -134,6 +213,11 @@ export class NearbyHost {
     if (msg === null) {
       this.refuse("json");
       this.end(id);
+      return;
+    }
+    if (msg.type === PING) {
+      // the joiner's liveness ping: answered here, never seen by the room
+      this.link?.send(id, PONG_TEXT);
       return;
     }
     if (peer.conn === null) {
@@ -160,22 +244,35 @@ export class NearbyHost {
     if (hello.nearby_v !== NEARBY_V) {
       this.refuse("version");
       this.link?.send(id, JSON.stringify({ type: "error", code: "nearby_version", message: NEARBY_COPY.versionMismatch }));
-      this.end(id);
+      this.endSoon(id, peer);
       return;
     }
     if (hello.peek) {
-      // the seat picker: the seats, and the link stays unseated until its pick
+      // the seat picker: the seats, and the link stays unseated until its
+      // pick, for one PEEK_SECONDS from its first look
       this.link?.send(id, JSON.stringify(nearbyPeekJson(this.room)));
-      this.helloBy(id, peer, PEEK_SECONDS);
+      if (this.room.lobby === null) {
+        // the game has begun: nobody new sits down
+        this.endSoon(id, peer);
+        return;
+      }
+      if (!peer.peeked) {
+        peer.peeked = true;
+        this.helloBy(id, peer, PEEK_SECONDS);
+      }
       return;
     }
-    if (hello.token) {
+    // a phone back in the lobby without its token (its app was closed)
+    // takes its own seat again, so one phone never holds two
+    const token = hello.token
+      ?? (this.room.lobby !== null && peer.device !== null ? this.deviceTokens.get(peer.device) ?? null : null);
+    if (token) {
       // a joiner back with its token: any older link of its seat is closed,
       // so frames never reach that phone twice
-      for (const [other, p] of this.peers) if (other !== id && p.token === hello.token) this.end(other);
+      for (const [other, p] of this.peers) if (other !== id && p.token === token) this.end(other);
     }
     peer.conn = this.server.connect((frame) => this.deliver(id, peer, frame));
-    peer.conn.receive(JSON.stringify({ type: "table_join", code: this.room.code, name: hello.name, token: hello.token,
+    peer.conn.receive(JSON.stringify({ type: "table_join", code: this.room.code, name: hello.name, token,
                                        seat: hello.seat ?? null }));
   }
 
@@ -190,11 +287,14 @@ export class NearbyHost {
       this.end(id);
       return;
     }
-    if (frame.startsWith('{"type":"resume"')) peer.token = (parseObject(frame)?.token as string | undefined) ?? null;
-    if (frame.startsWith('{"type":"left"')) this.end(id);
+    if (frame.startsWith('{"type":"resume"')) {
+      peer.token = (parseObject(frame)?.token as string | undefined) ?? null;
+      if (peer.device !== null && peer.token) this.deviceTokens.set(peer.device, peer.token);
+    }
+    if (frame.startsWith('{"type":"left"')) this.endSoon(id, peer);
     else if (frame.startsWith('{"type":"error"')) {
       const code = parseObject(frame)?.code;
-      if (code === "room_full" || code === "room_not_found" || code === "stale_connection") this.end(id);
+      if (code === "room_full" || code === "room_not_found" || code === "stale_connection") this.endSoon(id, peer);
     }
   }
 }

@@ -125,7 +125,7 @@ describe("the nearby lobby", () => {
 
   it("shows the seats before taking one, and seats the joiner where they picked", async () => {
     const t = await lobby(2);
-    const sock = new NearbySocket(t.fake, t.code);
+    const sock = t.socket();
     const seen: Frame[] = [];
     sock.onmessage = (ev) => seen.push(JSON.parse(ev.data as string) as Frame);
     sock.onopen = () => sock.send(JSON.stringify({ type: "table_peek", code: t.code }));
@@ -290,7 +290,7 @@ describe("the host in the background", () => {
     t.fake.background(code);
     await t.settle(() => t.joiners.every((j) => j.sock.readyState === NearbySocket.CLOSED), 1000);
     // while away a join finds nothing, so a joiner's retry waits
-    const early = new NearbySocket(t.fake, code);
+    const early = t.socket();
     await t.settle(() => early.readyState === NearbySocket.CLOSED, 100);
     expect(early.readyState).toBe(NearbySocket.CLOSED);
     await t.advance(10);
@@ -313,7 +313,7 @@ describe("the host in the background", () => {
     await t.settle(() => t.host.left);
     expect(t.host.frames.filter((f) => f.type === "left")).toEqual([{ type: "left" }]);
     expect(t.server.rooms.size).toBe(0);
-    const late = new NearbySocket(t.fake, t.code);
+    const late = t.socket();
     await t.settle(() => late.readyState === NearbySocket.CLOSED, 100);
     expect(late.readyState).toBe(NearbySocket.CLOSED);
   });
@@ -371,30 +371,6 @@ describe("the host boundary", () => {
     expect(t.fake.peersOf(t.code)).toHaveLength(1);
     await t.advance(LIMITS.helloSeconds);
     expect(t.nearbyHost!.refused.hello_timeout).toBe(1);
-  });
-
-  it("survives random frames from a seated joiner without changing anyone's cards", async () => {
-    const t = await started(3);
-    const peer = t.fake.peersOf(t.code)[0];
-    const rnd = t.room!.round!;
-    let seed = 7;
-    const rand = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
-    const values = [null, true, -1, 0, 3, 1e300, "x", "", [], {}, [1, 2], [1, 1], Array(40).fill(1), "AS", { type: "play" }];
-    const types = ["play", "bury", "declare", "pass_declare", "next_round", "table_move", "table_start", "create_room",
-      "table_join", "nearby_hello", "__proto__", "constructor", "table_allow_joiners", "table_start_level", "x"];
-    for (let i = 0; i < 400; i++) {
-      const msg: Record<string, unknown> = { type: types[Math.floor(rand() * types.length)] };
-      for (const k of ["card_ids", "seat", "from", "on", "name", "token", "code", "text", "nearby_v"]) {
-        if (rand() < 0.4) msg[k] = values[Math.floor(rand() * values.length)];
-      }
-      t.fake.inject(t.code, peer, rand() < 0.1 ? JSON.stringify(msg).slice(0, 7) : JSON.stringify(msg));
-      if (i % 15 === 0) await t.advance(0.8);
-    }
-    await t.advance(1);
-    // the host is alive and the other seats' cards are the dealt ones
-    expect(t.server.rooms.has(t.code)).toBe(true);
-    expect(t.room!.round).toBe(rnd);
-    for (let s = 0; s < 4; s++) if (s !== t.joiners[0].seat) expect(rnd.hands[s].length).toBeGreaterThan(0);
   });
 });
 

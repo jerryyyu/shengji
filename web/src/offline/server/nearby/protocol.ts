@@ -5,7 +5,7 @@
 // fields only; whatever else it carried is dropped, never forwarded.
 
 /** Bumped on any change a host and a joiner must agree on. */
-export const NEARBY_V = 1;
+export const NEARBY_V = 2;
 /** The Bonjour type; the native plugin and Info.plist carry the same one. */
 export const NEARBY_SERVICE_TYPE = "_shengji-nearby._tcp";
 
@@ -18,6 +18,13 @@ export const LIMITS = {
   helloSeconds: 5,
   /** Seated joiners plus links still in their hello. */
   peers: 6,
+  /** Links not yet seated (in their hello or looking at the seats), one of
+   *  them per phone. */
+  unseated: 3,
+  /** The joiner's socket pings this often while its link is open... */
+  pingSeconds: 5,
+  /** ...and either end treats a link silent this long as gone. */
+  silentSeconds: 20,
   /** A hand never holds more cards than this. */
   cardIds: 33,
   token: 64,
@@ -25,6 +32,13 @@ export const LIMITS = {
 } as const;
 
 type Json = Record<string, unknown>;
+
+/** The liveness ping and its answer. They cross the link only: the host
+ *  answers the ping itself and the joiner's socket keeps the pong. */
+export const PING = "nearby_ping";
+export const PONG = "nearby_pong";
+export const PING_TEXT = JSON.stringify({ type: PING });
+export const PONG_TEXT = JSON.stringify({ type: PONG });
 
 /** The joiner's first message: version, display name and resume token, and
  *  nothing else. The code never crosses the link: holding it is what let the
@@ -64,6 +78,7 @@ export function cleanJoinerMessage(msg: Json): Json | null {
     }
     case "pass_declare":
     case "next_round":
+    case "im_back":
     case "table_leave":
       return { type: msg.type };
     case "table_start":

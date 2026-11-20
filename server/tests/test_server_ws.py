@@ -3593,3 +3593,62 @@ def test_the_matched_room_factory_keeps_the_room_cap_whoever_calls_it(client, mo
             assert _drain(newcomer, "error")["code"] == "start_failed"
             assert len(srv.rooms) == 1
             assert conn.adopted is None and not conn.in_room
+
+
+def _queue_stale_frame_behind_a_resume(client, frame):
+    """A replacement's resume and then the old socket's ``frame`` both wait on the room lock while the old
+    socket still owns the seat; releasing the lock lets the replacement attach first."""
+    import asyncio
+    from contextlib import ExitStack
+    from shengji.api import server as srv
+    stack = ExitStack()
+    host = stack.enter_context(client.websocket_connect("/ws"))
+    code = _room_with_bots(host, "host")
+    old = stack.enter_context(client.websocket_connect("/ws"))
+    old.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bob", "seat": 2})
+    token = _drain(old, "resume")["token"]
+    _drain(old, "state")
+    room = srv.rooms[code]
+    new = stack.enter_context(client.websocket_connect("/ws"))
+    client.portal.call(room.lock.acquire)
+    try:
+        new.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bob", "token": token})
+        _wait_for(lambda: room.lock._waiters and len(room.lock._waiters) == 1)
+        old.send_json(frame)
+        _wait_for(lambda: len(room.lock._waiters) == 2)
+    finally:
+        client.portal.call(room.lock.release)
+    _drain(new, "state")
+    _wait_for(lambda: not room.lock._waiters)
+    client.portal.call(asyncio.sleep, 0.01)
+    return stack, room, old, new
+
+
+def test_a_play_queued_before_a_resume_is_refused_once_the_resume_attaches(client, monkeypatch):
+    """The ownership check runs again under the room lock, so a play the replaced socket sent while the
+    resume was queued never reaches the action handler."""
+    from shengji.api import server as srv
+    reached = []
+    original = srv.handle_action
+
+    async def observed(room_arg, seat, msg):
+        if msg.get("marker"):
+            reached.append(room_arg.seats[seat].gen)
+        return await original(room_arg, seat, msg)
+
+    monkeypatch.setattr(srv, "handle_action", observed)
+    stack, room, old, new = _queue_stale_frame_behind_a_resume(client, {"type": "play", "card_ids": [], "marker": True})
+    with stack:
+        assert not reached
+        assert _drain(old, "error")["code"] == "stale_connection"
+
+
+def test_a_leave_queued_before_a_resume_does_not_leave_the_resumed_seat(client):
+    """A Leave the replaced socket sent while the resume was queued is refused under the lock: the seat
+    stays with the new socket, connected and not left by choice."""
+    stack, room, old, new = _queue_stale_frame_behind_a_resume(client, {"type": "table_leave"})
+    with stack:
+        assert _drain(old, "error")["code"] == "stale_connection"
+        seat = room.seats[2]
+        assert seat.connected and not getattr(seat, "left_by_choice", False)
+        assert not any("bob left" in (m.get("text") or "") for m in getattr(room, "chat", []) if isinstance(m, dict))

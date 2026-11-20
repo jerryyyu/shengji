@@ -3084,6 +3084,12 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
 
             if t == "leave_room":
                 async with room.lock:
+                    # Ownership can change while this frame waits for the lock.
+                    if my_gen != me.gen:
+                        await send(ws, {"type": "error", "code": "stale_connection",
+                                        "message": "This connection was replaced by a "
+                                                   "newer one."})
+                        break
                     chat_system(room, f"{me.name} left")
                     _log_seat(room, "seat_left", me, "leave")
                     if me in room.seats:
@@ -3141,6 +3147,12 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                 await _block_player(room, me, msg)
                 continue
             async with room.lock:
+                # Ownership can change while this frame waits for the lock.
+                if my_gen != me.gen:
+                    await send(ws, {"type": "error", "code": "stale_connection",
+                                    "message": "This connection was replaced by a "
+                                               "newer one."})
+                    break
                 try:
                     seat_idx = room.seats.index(me)
                 except ValueError:  # seat vanished — shouldn't happen mid-game

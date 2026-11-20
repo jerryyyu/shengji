@@ -10,8 +10,10 @@ same on GitHub's light and dark pages, with system font stacks.
 
 The heatmap cells, deal tiles, faint bars and tree shape are illustrative,
 drawn from a fixed seed; the example numbers (deal counts, policy log-odds of
-the admitted plays, value means, exact means, timing) come from one live
-decision.
+the admitted plays, value means, exact means, timing, readout rows) come from
+one recorded decision of the release-53 server-path smoke
+(~/shengji-archive/2026-11-18-r53-smoke/, smoke53 room S4500, line 234), whose
+play path release 54 serves unchanged.
 """
 
 from __future__ import annotations
@@ -26,63 +28,66 @@ OUT = Path(__file__).resolve().parent / "decision-steps.svg"
 SEED = 52
 
 TITLE = "One decision, four steps"
-SUBTITLE = ("Example: one live lead with 7 cards left. Numbers are real; "
+SUBTITLE = ("Example: one lead with 7 cards left, from the release 53 smoke. Numbers are real; "
             "cell shades, tiles and tree shape are illustrative.")
 
 # Each step: (colour token, kicker, question, calls lines, returns lines, example lines).
 STEPS = [
     ("belief", "1 · BELIEF", "Who holds what?",
-     ["1 call", "public history in"],
+     ["1 trunk forward of the", "unified model"],
      ["odds for 54 cards", "× 4 hands"],
-     ["66 deals drawn,", "64 kept (2 illegal)"]),
+     ["64 deals drawn,", "all 64 kept"]),
     ("prior", "2 · PRIOR", "Which plays?",
-     ["1 call", "64 positions in"],
+     ["no new forward: the", "same trunk's prior head"],
      ["a score per card;", "top 8 plays kept"],
-     ["8 of 64 legal", "plays shortlisted"]),
+     ["8 of 24 legal", "plays shortlisted"]),
     ("value", "3 · VALUE", "How good is each?",
-     ["4 calls × 128", "= 8 plays × 64 deals"],
+     ["readout on that forward,", "512 rows (192 memo)"],
      ["one score per", "play per deal"],
-     ["best average:", "A♣ 1.799"]),
+     ["best average:", "3♦ 1.350"]),
     ("exact", "4 · ENDGAME", "Solve it exactly",
      ["no model call;", "≤ 7 cards left"],
      ["exact result", "per deal"],
-     ["switches to J♦:", "1.797 vs A♣ 1.719"]),
+     ["switches to A♥A♥:", "1.469 vs 3♦ 1.422"]),
 ]
 FLOWS = [("64", "deals"), ("8", "plays"), ("512", "scores")]
 
 # Belief: hidden cards shown in the holder heatmap; columns are the other hands.
 HIDDEN_CARDS = ["Q♣", "K♣", "10♠", "9♥", "6♦", "3♠"]
-DEALS_DRAWN, DEALS_REJECTED = 66, (17, 48)
-# Prior: the 8 admitted plays and their policy log-odds; 64 legal plays in all.
-ADMITTED = [("J♦", -0.06), ("A♣", -0.22), ("7♣", -0.39), ("7♣A♣", -0.61),
-            ("7♣A♣Q♣", -1.40), ("8♣Q♣", -1.71), ("5♣8♣A♣", -2.30), ("7♣8♣A♣Q♣", -2.32)]
-LEGAL_PLAYS = 64
+DEALS_DRAWN, DEALS_REJECTED = 64, ()
+# Prior: the 8 admitted plays and their policy log-odds; 24 legal plays in all.
+ADMITTED = [("A♥", -0.43), ("A♥A♥", -0.43), ("3♦", -0.73), ("3♥A♥A♥", -0.93),
+            ("BJ3♥A♥A♥", -1.22), ("BJ3♥6♥A♥A♥", -1.44), ("BJ6♥A♥", -1.61), ("3♥", -1.91)]
+LEGAL_PLAYS = 24
 # Value: the mean value of each admitted play over the 64 deals.
-VALUE_MEANS = [("A♣", 1.799), ("J♦", 1.731), ("7♣", 1.673), ("7♣A♣", 1.673),
-               ("7♣A♣Q♣", 1.673), ("8♣Q♣", 1.670), ("5♣8♣A♣", 1.614), ("7♣8♣A♣Q♣", 1.673)]
+VALUE_MEANS = [("A♥", 1.209), ("A♥A♥", 1.293), ("3♦", 1.350), ("3♥A♥A♥", 1.251),
+               ("BJ3♥A♥A♥", 1.251), ("BJ3♥6♥A♥A♥", 1.251), ("BJ6♥A♥", 1.258), ("3♥", 1.251)]
 DEALS = 64
 # Endgame: exact means over the same deals for the two leading plays.
-EXACT_MEANS = [("J♦", 1.797), ("A♣", 1.719)]
+EXACT_MEANS = [("A♥A♥", 1.469), ("3♦", 1.422)]
 
-FINAL = "Plays J♦ in 0.49 s"
-FOOTER = ("All models run in NumPy on the server CPU · budget 3 s per decision · "
-          "trump call and bury reuse the value model")
+FINAL = "Plays A♥A♥ in 0.17 s"
+FOOTER = ("One unified transformer gives belief, prior, values and replies · NumPy on the server CPU · "
+          "3 s per play · trump call and bury use the G3 value model")
 
 ARIA = (
-    "How each decision calls the models, with one real decision as the example. "
-    "Belief: one call on the public history returns each card's odds of being in each hand, "
-    "drawn as a heatmap; 66 deals are sampled from it, drawn as tiles, and 2 that break earlier "
-    "play are crossed out, leaving 64 sampled deals. "
-    "Prior: one call on 64 positions scores every card; the 64 legal plays are drawn as bars and "
-    "the top 8 are admitted, J♦ at log-odds −0.06 and A♣ at −0.22 first. "
-    "Value: 4 calls of 128 positions score each of the 8 plays in all 64 deals, drawn as an 8 by 64 "
-    "heatmap with a row-mean column; the best average was the ace of clubs at 1.799. "
+    "How each decision calls the models, with one recorded decision from the release 53 smoke as the "
+    "example. Belief: one forward of the unified transformer on the public history returns each card's "
+    "odds of being in each hand, drawn as a heatmap; 64 deals are sampled from it, drawn as tiles, and "
+    "all 64 are consistent with earlier play. "
+    "Prior: no new forward; the same trunk's policy head scores every card; the 24 legal plays are drawn "
+    "as bars and the top 8 are admitted, the ace of hearts and the pair of aces of hearts first at "
+    "log-odds −0.43. "
+    "Value: the unified model's readout scores each of the 8 plays in all 64 deals, 512 rows, 192 of them "
+    "from the decision's memo, drawn as an 8 by 64 heatmap with a row-mean column; the best average was "
+    "the three of diamonds at 1.350. "
     "Endgame: with 7 cards or fewer, no model call; each deal is solved exactly by a game tree "
     "with all hands face up and pruned branches, and the per-deal results are averaged; "
-    "it switched to the jack of diamonds, 1.797 against 1.719 for the ace of clubs. "
-    "It played the jack of diamonds in 0.49 seconds. "
-    "All models run in NumPy on the server CPU with a 3 second budget per decision; "
-    "the trump call and the bury reuse the value model."
+    "it switched to the pair of aces of hearts, 1.469 against 1.422 for the three of diamonds. "
+    "It played the pair of aces of hearts in 0.17 seconds. "
+    "One unified transformer gives the belief, the prior, the leaf values and the reply ranking; all "
+    "models run in NumPy on the server CPU with a 3 second budget per play; the trump call and the bury "
+    "use the G3 value model."
 )
 
 # One fixed dark palette, the release ladder's (docs/visuals/release-ladder.svg); every
@@ -100,6 +105,7 @@ COL_X0, COL_W, COL_GAP, COL_Y, COL_H = 16, 250, 56, 76, 544
 PAD = 14
 VIS_Y = COL_Y + 70          # top of each column's model-work visual
 TXT_Y = COL_Y + 342         # top of the CALLS / RETURNS / EXAMPLE block
+LABEL_W = 96                # play labels end here (right-aligned), room for a five-card throw
 
 
 def _rules(c: dict[str, str]) -> str:
@@ -188,17 +194,20 @@ def belief_visual(tx: float, rng: random.Random) -> list[str]:
             out.extend(_cross(x + tw / 2, y + th / 2, 6))
     cy = ty + (DEALS_DRAWN + cols - 1) // cols * 14 + 16
     out.append(_text(tx, cy, "lab", f"{DEALS_DRAWN - len(DEALS_REJECTED)} sampled deals"))
-    out.append(_text(tx, cy + 18, "cap c-bad", f"✕ {len(DEALS_REJECTED)} rejected: break earlier play"))
+    if DEALS_REJECTED:
+        out.append(_text(tx, cy + 18, "cap c-bad", f"✕ {len(DEALS_REJECTED)} rejected: break earlier play"))
+    else:
+        out.append(_text(tx, cy + 18, "cap", "all consistent with earlier play"))
     return out
 
 
 def prior_visual(tx: float, rng: random.Random) -> list[str]:
-    out = [_text(tx + 76, VIS_Y + 12, "cap", "play", "end"), _text(tx + 82, VIS_Y + 12, "cap", "policy score"),
+    out = [_text(tx + LABEL_W - 6, VIS_Y + 12, "cap", "play", "end"), _text(tx + LABEL_W, VIS_Y + 12, "cap", "score"),
            _text(tx + 222, VIS_Y + 12, "cap", "log-odds", "end")]
-    bx, scale, floor = tx + 82, 92, -6.0
+    bx, scale, floor = tx + LABEL_W, 78, -6.0
     y = VIS_Y + 22
     for play, score in ADMITTED:
-        out.append(_text(tx + 76, y + 11, "lab", play, "end"))
+        out.append(_text(tx + LABEL_W - 6, y + 11, "lab", play, "end"))
         out.append(_rect(bx, y + 2, scale * (score - floor) / -floor, 10, "c-prior", rx=2))
         out.append(_text(tx + 222, y + 11, "num", f"{score:+.2f}".replace("-", "−"), "end"))
         y += 16
@@ -208,15 +217,15 @@ def prior_visual(tx: float, rng: random.Random) -> list[str]:
     for i, score in enumerate(rest):
         out.append(_rect(bx, fy + i * 1.1, scale * (score - floor) / -floor, 0.7, "c-prior", 0.4))
     mid = fy + len(rest) * 0.55
-    out.append(_text(tx + 76, mid - 3, "cap", f"{len(rest)} more", "end"))
-    out.append(_text(tx + 76, mid + 13, "cap", "legal", "end"))
+    out.append(_text(tx + LABEL_W - 6, mid - 3, "cap", f"{len(rest)} more", "end"))
+    out.append(_text(tx + LABEL_W - 6, mid + 13, "cap", "legal", "end"))
     cy = fy + len(rest) * 1.1 + 22
     out.append(_text(tx, cy, "lab", f"top {len(ADMITTED)} of {LEGAL_PLAYS} admitted"))
     return out
 
 
 def value_visual(tx: float, rng: random.Random) -> list[str]:
-    gx, cw, rh = tx + 82, 1.5, 17
+    gx, cw, rh = tx + LABEL_W, 1.25, 17
     out = [_text(gx, VIS_Y + 12, "cap", f"{DEALS} deals →"), _text(tx + 222, VIS_Y + 12, "cap", "mean", "end")]
     best = max(range(len(VALUE_MEANS)), key=lambda i: VALUE_MEANS[i][1])
     y0 = VIS_Y + 22
@@ -241,7 +250,7 @@ def exact_visual(tx: float, rng: random.Random) -> list[str]:
     for i in range(4):
         out.append(_line(tx + 6, ry - 14 + i * 9.5, tx + 24, ry - 14 + i * 9.5, "thin"))
     out.append(_text(tx + 15, ry + 40, "cap", "face up", "middle"))
-    l1 = [("J♦", ry - 34), ("A♣", ry), ("…", ry + 34)]
+    l1 = [(EXACT_MEANS[0][0], ry - 34), (EXACT_MEANS[1][0], ry), ("…", ry + 34)]
     for li, (label, y1) in enumerate(l1):
         out.append(_line(tx + 30, ry, tx + 72, y1, "thin"))
         out.append(f'<circle cx="{_f(tx + 76)}" cy="{_f(y1)}" r="4" class="c-exact"/>')
@@ -258,7 +267,7 @@ def exact_visual(tx: float, rng: random.Random) -> list[str]:
         out.append(_text(tx + 130, ry - 22 + i * 18, "cap", line))
     sy = ry + 74
     out.append(_text(tx, sy, "cap", f"exact result per deal, {DEALS} deals"))
-    gx, cw = tx + 28, 1.75
+    gx, cw = tx + 50, 1.4
     for r, (play, mean) in enumerate(EXACT_MEANS):
         y = sy + 10 + r * 20
         out.append(_text(gx - 6, y + 12, "lab", play, "end"))
@@ -266,7 +275,7 @@ def exact_visual(tx: float, rng: random.Random) -> list[str]:
             out.append(_rect(gx + c * cw, y + 1, cw, 15, "c-exact", _shade(mean + n, 0.6, 2.6)))
         out.append(_text(tx + 222, y + 13, "numb" if r == 0 else "num", f"{mean:.3f}", "end"))
     out.append(_rect(gx - 3, sy + 9, tx + 228 - gx, 19, "ring", rx=3))
-    out.append(_text(tx, sy + 66, "lab", "average → J♦ beats A♣"))
+    out.append(_text(tx, sy + 66, "lab", f"average → {EXACT_MEANS[0][0]} beats {EXACT_MEANS[1][0]}"))
     return out
 
 

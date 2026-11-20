@@ -1,7 +1,7 @@
 # Learning and search research plan
 
-As of 2026-11-09. Production is release 52; new duels and screens compare against release 52 as served (deployed 2026-11-09),
-read against the two-stage duel bar (2026-11-03).
+As of 2026-11-19. Production is release 54 (the all-data unified model, bury at 3 s); new duels and screens compare
+against release 54 as served (deployed 2026-11-19), read against the two-stage duel bar (2026-11-03).
 
 This file owns the research architecture, the estimands, the process rules for compute and measurement, and the
 lessons that shape planned work. Everything else lives on its canonical surface:
@@ -25,7 +25,7 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | **window** | one 520-cluster mirrored screen block of fresh deal seeds |
 | **MDE80** | minimum detectable effect at 80% power for that readout |
 | **as served** | the full production bot path, including declare, bury and budgets |
-| **comparator** | the champion a new strength claim must beat; now release 52 as served |
+| **comparator** | the champion a new strength claim must beat; now release 54 as served |
 | **MC-LCB** | the confirmed Monte Carlo search; the common control inside each ten-window screen (through 2026-10-25), not the comparator |
 | **duel** | the default screen since 2026-10-25: the candidate plays the served release head to head on the same deals, seats swapped |
 | **SCREEN_PASS / CONFIRMED** | the two duel-bar verdicts (3,920-deal screen; 7,840-deal fresh-seed confirmation); "Duel bar" below |
@@ -33,7 +33,8 @@ lessons that shape planned work. Everything else lives on its canonical surface:
 | **head-driven search** | policy head admits K candidates, value head prices them over W worlds, no playouts |
 | **rule tokens** | served search flags (`div`, `rc`, `tb`, `la`, `dtr`, `vd`, `bwv`, `vdef`, …); defined in `AI_POLICIES.md` |
 | **D7 + X7** | exact endgame stages at ≤ 7 cards: lead (D7) and follow (X7) |
-| **belief worlds** | play worlds whose hidden hands the belief model proposes: S58 (`s58-e6-42444515`) since release 48, S17 in release 46; the release-50 candidate uses B1a (`028131a0`) |
+| **belief worlds** | play worlds whose hidden hands the belief model proposes: the unified model's belief head (`ut-all-belief-1b1fd2de`) since release 53; B1a (`028131a0`) in releases 50–52, S58 in 48–49, S17 in 46 |
+| **unified model** | one transformer whose trunk forward per decision feeds the belief, the root prior and a per-leaf readout (value and reply ranking); served in four slots of the play search since release 53 (`ushare`, `uvalue`, `ureply`; fast path `ufast`) |
 | **first-round / later-round** | deals where the declaration decides the banker / where the banker is fixed |
 | **val_ce** | offline validation cross-entropy, a checkpoint-selection signal |
 
@@ -44,17 +45,20 @@ beat the served bot on fresh mirrored whole games with one learned model that ke
 data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
 (Jerry 2026-10-15; board #1075).
 
-- **Production:** release 52, deployed 2026-11-09 17:25 EST (Fly v64; Jerry, in session 2026-11-09, "I'm good to
-  release it"): release 51 plus the combo51 search rules (`elt`, `elm`, `els1600`, `wht`, `rcec`), same packages and
-  budgets; vs release 51 screen combo51 +0.0418 [+0.0332, +0.0506] (SCREEN_PASS) and confirmation combo51C +0.0438
-  [+0.0381, +0.0497] (CONFIRMED, 7,840 fresh paired deals), both on the M5 Ultra (`AI_POLICIES.md` row 21). Its
-  strength on Fly is not measured; its Fly latency is measured for one game at a time only. Release 51 (release 50
-  with `lcc32` off; row 20) is the rollback. Exact contract: `AI_POLICIES.md` "Production contract".
-- **Comparator:** new duels and screens compare against release 52 as served (Jerry approved release 52 in session
-  2026-11-09; deployed Fly v64). Confirmations keep their parent's comparator; historical reads keep their original
-  labels. The previous comparators were release 51 (2026-11-06, with the lcc-off release; lcc off on both sides),
-  release 50 (Jerry, in session 2026-11-04, "Yes move comparator"), release 49 (Jerry, in session 2026-11-01), release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod policy of
-  r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
+- **Production:** release 54, deployed 2026-11-19 18:14 EST (Fly v118): release 53 with the bury budget at 3 s, a
+  configuration change with no strength measurement (`AI_POLICIES.md` row 23). Release 53, deployed 2026-11-19
+  11:52 EST (Fly v117; Jerry, in session 2026-11-18, "awesome lets ship it"), is release 52 with the all-data unified
+  model in four slots of the play search; vs release 52 as served, screen UT-alldata-screen +0.0573 [+0.0422, +0.0728]
+  (SCREEN_PASS) and confirmation UT-alldata-confirm +0.0521 [+0.0410, +0.0633] (CONFIRMED, 7,840 fresh paired deals),
+  both on the M5 Ultra (row 22); Fly timing with the fast path 0.992× release 52 [0.981, 1.004], one game at a time.
+  Its strength on Fly and with human partners is not measured. Release 53 is the rollback. Exact contract:
+  `AI_POLICIES.md` "Production contract".
+- **Comparator:** new duels and screens compare against release 54 as served (from its deploy, 2026-11-19); release
+  53 differs from it only in the bury budget. Confirmations keep their parent's comparator; historical reads keep their
+  original labels. The previous comparators were release 52 (2026-11-09), release 51 (2026-11-06, with the lcc-off
+  release; lcc off on both sides), release 50 (Jerry, in session 2026-11-04, "Yes move comparator"), release 49
+  (Jerry, in session 2026-11-01), release 48 (Jerry 2026-10-24, in session: "Yes screens should compare vs our prod
+  policy of r48"), release 46 (Jerry 2026-10-16, recorded on #1075) and release 45 (Jerry 2026-10-13, #988
   issuecomment-6142666693).
 
 | evidence label | supports |
@@ -124,29 +128,36 @@ The two-stage rule applies only to runs not yet started when it was adopted (202
 
 ## Planned work
 
-**What changes production next:** a change that passes the duel bar against release 52 as served (a screen, then a
-fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 52 shipped on a screen
-(combo51) and a fresh-seed confirmation (combo51C) against release 51 plus a single-game Fly timing run. Release 50 shipped on a fresh-seed
-confirmation against release 49 (cbaC) plus a duel screen (cbaf) and the R50 speed profile; release 49 shipped on a duel
-plus a fresh-seed confirmation (combo3y, combo3yc) and latency reads (v107sc8lat, s71fly). Correctness fixes may ship
-with no strength claim when the served screen is not demonstrated negative (releases 42, 43).
+**What changes production next:** a change that passes the duel bar against release 54 as served (a screen, then a
+fresh-seed confirmation), then the `DEPLOY.md` release checklist and Jerry's word. Release 53 shipped on a screen
+(UT-alldata-screen) and a fresh-seed confirmation (UT-alldata-confirm) against release 52, launch checks (UT-launch) and
+a single-game Fly timing of the fast path (UT-fly-fast); release 52 on a screen (combo51) and a confirmation (combo51C)
+against release 51 plus a single-game Fly timing run; release 50 on a confirmation against release 49 (cbaC) plus a
+duel screen (cbaf) and the R50 speed profile. Configuration changes may ship with no strength claim (release 54's
+bury budget), as may correctness fixes when the served screen is not demonstrated negative (releases 42, 43).
 
 **Direction (Jerry 2026-10-11, 2026-10-13):** "Where we use heuristics, it may be better to use the model";
 after release 45, "we should keep trying in this direction." Heuristics still in the served bot: the play
 anchor, the heuristic first trick inside each value leaf, and the continuations before the exact endgame.
 
-The board #1263 is authoritative for open rows: state, next test, bar, owner and host. This table lists only the
-open row ids by area (board of 2026-11-04); parked rows and their failed bars are on the board.
+**The unified model is the trunk of the plan.** Since release 53 one transformer serves the play search's belief,
+root prior, leaf values and replies, so the next gains are expected from more and better data for that one model
+and from targeted heads on it, each measured against release 54 or against the confirmed all-data model where the row
+says so. Rows as of 2026-11-19 (board #1263 is authoritative for state, next test, bar, owner and host; parked rows
+and their failed bars are on the board):
 
-| area | open rows (board id: question) |
-|---|---|
-| release | R50 release-50 candidate (held); G2 cbaf three-arm screen of its parts |
-| search | S82 lcc32 inside the R50 candidate; S59 Exact8 at the served budget; M31 deeper policy→value lookahead; S60 compute ceiling |
-| model | M33 expert-label scaling for the prior (FT2) |
-| diagnosis / serving | S75 first-round gap; S79 served bot under Fly load; D19 degradation telemetry |
-| infra / measure | D16 packet generator; D17 Ultra migration; D18 GPU data gen; D9 two-look screens; D11 lane overhead; D4 human-play metric |
+| row | what | measured so far | next test and bar |
+|---|---|---|---|
+| S139 | RT2: warm-start retrain of the all-data model on a bigger quality-weighted mix (+2.6M unified self-play rows at ×2 policy and reply weight, X3R 1.5M, PVS R46 12.2M at ×0.5) | DEV vs the all-data model +0.0285 [−0.0005, +0.0575], LB80 +0.016 (bar ≥ +0.02, LB80 > 0, PASS); vs release 52 +0.0735 [+0.0435, +0.1035]; offline gates PASS. The 3,920-deal screen vs the all-data model was read on 2026-11-20 as SCREEN_PASS +0.0191 [+0.0043, +0.0336], LB80 +0.0128 ([#1263 issuecomment-7027806400](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7027806400)); its archive and Atlas row are pending | the 7,840-deal fresh-seed confirmation (mean ≥ +0.005, one-sided 95% lower bound > 0); then a release candidate against release 54 |
+| S150 | UT-GEN2: unified self-play to 500,000 rounds on the M5 Ultra (Jerry 2026-11-19); iterated self-play: tranche A (100k rounds) by release 53 as served, then the generator switches to RT2 from the next fresh leg once RT2's screen ends PASS; each leg records its generator | running: tranche A past 50k rounds, 0 short searches per leg (2026-11-19) | retrains on the growing corpus, same recipe and size, all warm from the all-data model: RT3 at 200k rounds and RT4 at 500k, the RT4 read deciding whether to continue to 1M; offline points on fixed holdouts plus a duel per point |
+| S146 | banker-void belief gap: the banker is void in an unrevealed side suit 29.0% of the time where the belief implies 19.9%; when truly void, no sampled world has it 12.9% of the time | ceiling with oracle banker voids +0.0335 [+0.0075, +0.0600] vs the all-data model, 1,000 deals, LB80 +0.0225 (bar mean ≥ +0.02, LB80 > 0, PASS) | build a banker-void head (one output per side suit) with void-first world sampling; offline bar void ECE ≤ 0.02, no-world ≤ 3%, belief log-likelihood within +0.002; then a 1,000-deal duel (mean ≥ +0.015, LB80 > 0) |
+| S147 | leads lose most to missing information: sampled-world best equals true-world best on 46.5% of leads (62.4% overall); true-world regret 0.079 levels per lead vs 0.014 per follow | audit only | blend the information-set Q head with the world mean on 2,362 cached leads; bar agreement ≥ 49.5% and regret ≤ 0.070, then a leads-only 1,000-deal duel |
+| S148 | idle history attention: 12 of 36 heads ablate for under 0.005 nats; all token-to-token attention is worth 0.015 nats of belief | audit only | a one-encoder-layer arm warm from the all-data model; bar belief log-likelihood within +0.003, leaf NLL within +0.005, trunk ≥ 30% faster (a latency lever, not strength) |
+| S149 | the reply ranking is weak on multi-card tricks: recall@4 single 0.949, pair 0.833, tractor 0.756, throw 0.698 | audit only | a whole-action reply scorer on frozen card states; bar +5 points recall@4 on pair, tractor and throw replies with singles ≥ 0.945, then a duel |
+| S152 | the offline gate replays positions without refused-throw notices (35% of L25 rows carry one; the policy's top card flips on 4.5%) | audit only; the repaired gate consumer is in review (#1610) | re-run RT2's gate with the extract's own replay; if the deltas move < 0.005, note and close, else fix the gate |
+| S151 | serving speed: the transformer is about 3% of decision time; the gains are in the Python around it | #1607 merged and served in release 54 (Mac all-play CPU ratios 0.998 and 0.997, decision-identical); #1609 (compiled feature-row builder), #1597 (forced-reply elision) and the compiled reply-child builder (#1608) passed source review and wait on rebase or CI | all decision-identical; the bar is one combined Fly timing after merge. Component percentages are not added into a claimed combined gain |
 
-A packet built against an older release is rebuilt against release 49 before it is queued.
+A packet built against an older release is rebuilt against release 54 before it is queued.
 
 ## What we learned
 
@@ -186,10 +197,12 @@ the policy head. From release 50 the value package and a separate card-play prio
 | gen-5 arms A–F | 9f4c9658 … e2645ec2 | 8ecd4fea retrained with corpus, warm-start and target changes (256k–496k deals) | A worse (−0.061); C, D, F cross zero | no |
 | SMV3 | 3e89e86f | arm F + search-mean head trained on sidecar v3 (496k deals, 55M policy rows) | head vs release 30 v36a2 +0.039, confirmed | releases 36–49, as `smv3out-491ee4bf` |
 | SMV3 variants, C11–C16 | b0bdf33d, 218bcf5c, 3a4e3d70, 801772f3 … | head weight, batch fraction, rollout labels, encoder v7 / 880k deals | inconclusive or failed; the PV fine-tune line parked (M13) | no |
-| FT1 prior | 1fa201b2 | policy net fine-tuned toward ~37.8k expert-search labels (M30 P0) | m30yc +0.016 [+0.002, +0.031] vs release 49, confirmed | releases 50–51, as the separate prior |
-| G3 Stage A value | f4f4127e | SMV3's served trunk retrained on all Y self-play (200k rounds), EMA epoch 4 | with FT1: g3dsc +0.035 [+0.020, +0.049] vs release 49, confirmed | releases 50–51 |
+| FT1 prior | 1fa201b2 | policy net fine-tuned toward ~37.8k expert-search labels (M30 P0) | m30yc +0.016 [+0.002, +0.031] vs release 49, confirmed | releases 50–52, as the separate prior; bound for unread replies and fallbacks since 53 |
+| G3 Stage A value | f4f4127e | SMV3's served trunk retrained on all Y self-play (200k rounds), EMA epoch 4 | with FT1: g3dsc +0.035 [+0.020, +0.049] vs release 49, confirmed | releases 50–52 in play; declaration, bury and terminal leaves since 53 |
 | G4 value | bd616b38 | G3 A + the 80k-round release-50 corpus | offline A1 failed; g4s +0.005 [−0.009, +0.019] vs release 51 | no |
 | X2 prior arms PA, PF, PS | 54c3f2f4, 9a3d3395, 574f2409 | warm from G3 A, rebuilt FT1, SMV3; Y + R50 + 30k x1a self-play rows (x1a ×3), soft targets | X2H top-1 vs x1a +0.044–0.047 over FT1; DEV vs release 51: PA −0.042 [−0.072, −0.010], PF −0.006 [−0.038, +0.026], PS −0.040 [−0.070, −0.010] | no |
+| all-data unified model | 97c07be8 (belief 1b1fd2de) | one 4.9M-parameter transformer (trunk width 192, 4 + 4 layers, a 3-block per-leaf readout) for belief, root prior, reply ranking and leaf value: one joint pass over 22.1M rows (Y 10.3M, x1a teacher X4 5.6M, R50 4.5M, x1a teacher X2 1.7M), warm from round 1, then a true-world head polish (epoch 8) | in release 52's search: UT-alldata-screen +0.057 [+0.042, +0.073], UT-alldata-confirm +0.052 [+0.041, +0.063] vs release 52, confirmed; belief calibration log-loss 0.9985 vs B1a 0.9878 | releases 53–54, in four play slots |
+| RT2 | 47175c99 (belief bed32f87) | the all-data model warm-started on a bigger quality-weighted mix (S139) | DEV vs the all-data model +0.029 [−0.001, +0.058], pass; screen read 2026-11-20 +0.019 [+0.004, +0.034] SCREEN_PASS (archive pending) | not yet; confirmation next |
 | X2 value V | ff4199f7 | G3 A + G4 mix + x1a outcomes (×3) | DEV vs release 51 −0.017 [−0.045, +0.012]; with PA −0.026 [−0.057, +0.006] | no |
 
 **Belief (hidden-hand model).** Served beside the PV packages since release 46; it draws the search's worlds (`bw`)
@@ -200,13 +213,17 @@ and, from release 50, the bury search's worlds (`bbw`).
 | S17 | — | first history-input belief net | soft-oracle probe v83sorc45 +0.309 (diagnostic); its e8 package v95s17e8 +0.006, inconclusive | its worlds (v86bw45 +0.117 [+0.091, +0.142] vs release 45) shipped in release 46 |
 | S43, S46 r3 | — | rank-mixed corpora; S46 wider (d192) | screens positive: s43t +0.022 (T 1.35), s46screen +0.024; the S46 confirmation s46c +0.021 inconclusive | release-47 candidate, held; release 48 used S58 |
 | S58 | 42444515 | S46 r3 continued 6 epochs, rank-mixed | calib log-loss −0.0135 nats vs S46 r3; with dtrx v103s58 +0.033 [+0.015, +0.052] | releases 48–49 |
-| B1a | 028131a0 | S58 fine-tuned on the four Y stores (10.3M rows), 2 epochs, T 1.019 | test log-loss 2.24 pp lower than S58 (relative to the uniform baseline); cbaf B1a over S58 +0.023 [+0.001, +0.045] | releases 50–51 |
+| B1a | 028131a0 | S58 fine-tuned on the four Y stores (10.3M rows), 2 epochs, T 1.019 | test log-loss 2.24 pp lower than S58 (relative to the uniform baseline); cbaf B1a over S58 +0.023 [+0.001, +0.045] | releases 50–52 |
 | X2B | 621dc9e2 | B1a fine-tuned on 30k x1a self-play rounds (1.7M rows), 2 epochs | X2H log-loss vs B1a 1.0021 → 0.9895⁴; DEV vs release 51 +0.024 [−0.006, +0.053], LB80 +0.011, DEV pass | not yet; two-stage screen next |
 | X2BY | 85ec5fc3 | B1a on 50% X2 + 50% Y rows | X2H 0.9918; Y holdout 0.989 vs B1a 0.986⁴ | not duelled |
 
 Lineage lessons, as read so far:
 - The confirmed PV gains came from new data and new label sources (Y self-play for value, expert-search labels for the
-  prior), not from architecture or capacity changes.
+  prior), not from architecture or capacity changes alone.
+- The all-data unified model (release 53) changed the architecture and the data together: one transformer trained on
+  all 22.1M rows confirmed +0.052 [+0.041, +0.063] vs release 52. Its size sweep (S140, 1,000 deals each vs release
+  52, from scratch) read the medium size +0.038 [+0.0095, +0.0675], small and large near zero, and that medium model
+  read −0.037 [−0.066, −0.010] against the warm-started, smaller winner: at 22M rows the warm start beat size.
 - Distilling a stronger teacher's choices into the prior raised agreement with that teacher but did not raise served
   play; the x1a-distilled priors were even (warm from the served prior) or worse (warm from G3 A or SMV3) vs release 51.
 - Earlier served belief updates (S58, B1a) improved play in confirmed screens; some belief variants (S17 e8, S46 at T 1.30)

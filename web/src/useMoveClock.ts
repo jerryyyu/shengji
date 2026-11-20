@@ -21,9 +21,16 @@ export function useMoveClock(seconds: number | null | undefined, stamp: unknown,
       return;
     }
     const end = Date.now() + seconds * 1000;
-    const tick = () => setLeft(Math.max(0, (end - Date.now()) / 1000));
-    tick();
-    const id = window.setInterval(tick, 250);
+    let id: number | undefined;
+    const tick = () => {
+      const remaining = Math.max(0, (end - Date.now()) / 1000);
+      setLeft(remaining);
+      if (remaining === 0 && id !== undefined) window.clearInterval(id);
+      return remaining;
+    };
+    // An expired deadline stays at zero until the server supplies a new one.
+    if (tick() === 0) return;
+    id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
   }, [seconds, stamp]);
   // one buzz per decision, the first time the clock is at BUZZ_SECS or less

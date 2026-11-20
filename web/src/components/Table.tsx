@@ -1,5 +1,5 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import { Suspense, createContext, useContext, lazy, useCallback, useEffect, useRef, useState } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
@@ -20,7 +20,7 @@ import Toast from "./Toast";
 import HandLine from "./HandLine";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
-import { TimerRing } from "./MoveClock";
+import { CountdownRing, TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
@@ -276,7 +276,33 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
   );
 }
 
+const PlayerClock = createContext<number | null>(null);
+
+/** One clock survives phase changes; only its visual consumers subscribe to ticks. */
+function PlayerClockScope({ state, children }: { state: GameState; children: ReactNode }) {
+  const me = state.players.find((p) => p.seat === state.you);
+  const clock = useMoveClock(me?.turn_deadline, state);
+  return <PlayerClock.Provider value={clock}>{children}</PlayerClock.Provider>;
+}
+
+function PlayerTimerRing() {
+  return <TimerRing left={useContext(PlayerClock)} total={MOVE_SECS} />;
+}
+
+function ClockedActionBar({ children }: { children: ReactNode }) {
+  const clock = useContext(PlayerClock);
+  return <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{children}</div>;
+}
+
+function ClockedRoundEnd(props: Omit<ComponentProps<typeof RoundEndModal>, "clock">) {
+  return <RoundEndModal {...props} clock={useContext(PlayerClock)} />;
+}
+
 export default function Table({ state }: { state: GameState }) {
+  return <PlayerClockScope state={state}><TableContent state={state} /></PlayerClockScope>;
+}
+
+function TableContent({ state }: { state: GameState }) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -420,11 +446,6 @@ export default function Table({ state }: { state: GameState }) {
   const lead = state.phase === "play" ? leadToFollow(state.trick, state.you) : null;
 
   useTableHaptics(state);
-  // your move timer (ranked tables): the ring for the whole decision, red in
-  // its last seconds, and a haptic at five
-  const clock = useMoveClock(me?.turn_deadline, state);
-  // the post-deal declare window: a ring on its buttons, no haptic
-  const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
   const away = me?.away ?? false;
   // a bot holds your seat: one pill, and any tap or key counts as back; while
   // the socket is down the connection pill says Reconnecting in its place
@@ -567,7 +588,7 @@ export default function Table({ state }: { state: GameState }) {
     if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
-        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
+        {state.phase === "declare" && !iPassed ? <CountdownRing seconds={state.declare_deadline} stamp={state} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}
@@ -592,7 +613,7 @@ export default function Table({ state }: { state: GameState }) {
     if (coachOn) phaseHelp = BURY_HELP;
     actionBar = (
       <>
-      <TimerRing left={clock} total={MOVE_SECS} />
+      <PlayerTimerRing />
       <button
         className="btn primary"
         disabled={selectedIds.length !== 8 || pending !== null || !online}
@@ -629,7 +650,7 @@ export default function Table({ state }: { state: GameState }) {
     if (offSuit && lead) blocked = followHint(lead, state.trump);
     actionBar = (
       <>
-        <TimerRing left={clock} total={MOVE_SECS} />
+        <PlayerTimerRing />
         <span className="play-wrap" onClick={whyNot}>
           <button
             className={`btn primary${choosing ? " your-turn" : ""}`}
@@ -693,7 +714,7 @@ export default function Table({ state }: { state: GameState }) {
               <span className="ready-tag">ready</span>
             ) : null}
           </div>
-          <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{actionBar}</div>
+          <ClockedActionBar>{actionBar}</ClockedActionBar>
           </div>
           {/* the one line between the trick and your hand */}
           <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
@@ -704,7 +725,7 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} />
+        <ClockedRoundEnd state={state} result={state.round_result} />
       ) : null}
 
       {xrayOpen ? (

@@ -1,4 +1,4 @@
-import { LOW_SECS } from "../useMoveClock";
+import { LOW_SECS, useMoveClock } from "../useMoveClock";
 
 /** The one timer: a ring that drains from full over the whole window, with
  *  the seconds left in its centre. It turns red for the last LOW_SECS.
@@ -16,4 +16,12 @@ export function TimerRing({ left, total, thin = false }: { left: number | null; 
       <span className="timer-ring-secs">{secs}</span>
     </span>
   );
+}
+
+/** Keep countdown updates local to the ring, without ticking the table tree. */
+export function CountdownRing({ seconds, stamp, total }: {
+  seconds: number | null | undefined; stamp: unknown; total: number;
+}) {
+  const left = useMoveClock(seconds, stamp, false);
+  return <TimerRing left={left} total={total} />;
 }

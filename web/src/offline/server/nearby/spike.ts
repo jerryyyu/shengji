@@ -49,7 +49,7 @@ document.body.innerHTML = `
 <h2>Host</h2>
 <div class="row"><button class="go" id="host">Host</button><button id="stop">Stop</button></div>
 <h2>Join</h2>
-<div class="row"><input class="code" id="code" maxlength="6" placeholder="CODE" autocapitalize="characters" autocomplete="off">
+<div class="row"><input class="code" id="code" maxlength="5" placeholder="CODE" autocapitalize="characters" autocomplete="off">
   <button class="go" id="join">Join</button><button id="trials">Find ×10</button></div>
 <div class="row"><label><input type="checkbox" id="rejoin" style="width:auto"> auto-rejoin</label>
   <button id="back">I'm back in range</button></div>

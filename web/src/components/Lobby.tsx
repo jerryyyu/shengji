@@ -82,7 +82,7 @@ export function NearbyCodeLine({ code, join }: { code: string; join: NearbyJoin 
 /** Play's code box: a table's four-letter code, and Join, which opens its
  *  panel. `looking`: the code's seats are on their way. Disabled, it holds
  *  its place with no connection to look a code up on. `nearby`: it also
- *  takes a nearby table's six characters (and only those when `disabled`,
+ *  takes a nearby table's five characters (and only those when `disabled`,
  *  with no connection), followed by the one nearby line. */
 export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, nearby = false, nearbyJoinView = null }: {
   disabled: boolean; code?: string; looking?: boolean; onCode?: (code: string) => void; onJoin?: () => void;
@@ -183,7 +183,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
     return picked;
   };
 
-  // The box takes a room or table code: its peek opens the panel. Six
+  // The box takes a room or table code: its peek opens the panel. Five
   // characters name a nearby table, looked for on the local network.
   const nearbyOn = useNearbyOffered();
   const nearbyView = useNearbyJoin();

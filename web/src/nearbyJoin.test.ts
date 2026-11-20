@@ -45,7 +45,7 @@ function harness() {
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
-const seats = { type: "room_seats", room: "K7Q2MX", in_game: false, full: false,
+const seats = { type: "room_seats", room: "K7Q2M", in_game: false, full: false,
   seats: [{ seat: 0, name: "Jerry", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null }] };
 
 beforeEach(() => vi.useFakeTimers());
@@ -54,11 +54,11 @@ afterEach(() => vi.useRealTimers());
 describe("the nearby join", () => {
   it("a denial stays on the code box: neither a late not-found nor the look's limit replaces it", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     expect(h.store.view?.step).toBe("looking");
     h.state("denied");
-    expect(h.store.view).toMatchObject({ code: "K7Q2MX", step: "denied" });
+    expect(h.store.view).toMatchObject({ code: "K7Q2M", step: "denied" });
     h.state("notFound");
     await vi.advanceTimersByTimeAsync(40_000);
     expect(h.store.view?.step).toBe("denied");
@@ -67,18 +67,18 @@ describe("the nearby join", () => {
 
   it("back from Settings, the join looks again on its own with the kept code", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.state("denied");
     h.visible();
     await flush();
-    expect(h.store.view).toMatchObject({ code: "K7Q2MX", step: "looking" });
+    expect(h.store.view).toMatchObject({ code: "K7Q2M", step: "looking" });
     expect(h.calls.useNearby).toBe(2);
   });
 
   it("one miss is looked at again before not found; Try again looks once more", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.state("notFound");
     expect(h.store.view?.step).toBe("looking");
@@ -91,36 +91,36 @@ describe("the nearby join", () => {
 
   it("shows the seats, starts on the host's partner seat, and joins the one picked", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.status("open");
-    expect(h.sent).toEqual([{ type: "table_peek", code: "K7Q2MX" }]);
+    expect(h.sent).toEqual([{ type: "table_peek", code: "K7Q2M" }]);
     h.msg(seats);
     expect(h.store.view).toMatchObject({ step: "panel", seat: 2 });
     h.store.pick(0);
     expect(h.store.view?.seat).toBe(2);
     h.store.pick(3);
     h.store.join();
-    expect(h.sent[1]).toEqual({ type: "table_join", code: "K7Q2MX", name: "Mei", seat: 3 });
-    h.msg({ type: "room", room: "K7Q2MX" });
+    expect(h.sent[1]).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 3 });
+    h.msg({ type: "room", room: "K7Q2M" });
     expect(h.store.view).toBeNull();
     expect(h.store.seated).toBe(true);
   });
 
   it("a dropped seat rejoins by token, and after the host's window the end screen is up", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.status("open");
     h.msg(seats);
     h.store.join();
     h.msg({ type: "resume", token: "tok-1", gen: 1 });
-    h.msg({ type: "room", room: "K7Q2MX" });
+    h.msg({ type: "room", room: "K7Q2M" });
     h.status("closed");
     await vi.advanceTimersByTimeAsync(20_000);
     h.status("open");
-    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2MX", name: "Mei", token: "tok-1" });
-    h.msg({ type: "state", room: "K7Q2MX" });
+    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", token: "tok-1" });
+    h.msg({ type: "state", room: "K7Q2M" });
     // back in time: the window starts over at the next drop
     h.status("closed");
     await vi.advanceTimersByTimeAsync(HOST_WINDOW_MS - 1000);
@@ -135,12 +135,12 @@ describe("the nearby join", () => {
 
   it("the host's own end of the table ends the join", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.status("open");
     h.msg(seats);
     h.store.join();
-    h.msg({ type: "room", room: "K7Q2MX" });
+    h.msg({ type: "room", room: "K7Q2M" });
     h.msg({ type: "left", reason: "host_left" });
     expect(h.store.seated).toBe(false);
     expect(h.calls.leaveNearby).toBe(1);
@@ -149,13 +149,13 @@ describe("the nearby join", () => {
 
   async function seated() {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.status("open");
     h.msg(seats);
     h.store.join();
     h.msg({ type: "resume", token: "tok-9", gen: 1 });
-    h.msg({ type: "room", room: "K7Q2MX" });
+    h.msg({ type: "room", room: "K7Q2M" });
     expect(h.store.seated).toBe(true);
     return h;
   }
@@ -198,15 +198,15 @@ describe("the nearby join", () => {
     h.status("closed");
     await vi.advanceTimersByTimeAsync(1000);
     h.status("open");
-    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2MX", name: "Mei", token: "tok-9" });
+    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", token: "tok-9" });
     h.msg({ type: "left", reason: "host_left" });
     const kept = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join(";");
-    expect(kept).not.toMatch(/K7Q2MX|tok-9/);
+    expect(kept).not.toMatch(/K7Q2M|tok-9/);
   });
 
   it("a slow answer to the Local Network prompt is not read as no table nearby", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.state("waiting", "prompt");
     await vi.advanceTimersByTimeAsync(LOOK_LIMIT_MS * 3);
@@ -220,7 +220,7 @@ describe("the nearby join", () => {
 
   it("a Join with no answer looks at the table again instead of spinning", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.status("open");
     h.msg(seats);
@@ -228,14 +228,14 @@ describe("the nearby join", () => {
     expect(h.store.view?.step).toBe("joining");
     await vi.advanceTimersByTimeAsync(JOIN_TIMEOUT_MS + 100);
     expect(h.store.view?.step).toBe("looking");
-    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_peek", code: "K7Q2MX" });
+    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_peek", code: "K7Q2M" });
     h.msg(seats);
     expect(h.store.view?.step).toBe("panel");
   });
 
   it("the panel's link dropping looks again once the link is back", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.status("open");
     h.msg(seats);
@@ -247,12 +247,12 @@ describe("the nearby join", () => {
 
   it("only tables of another version: the code box asks for an update; a denial forgets the earlier grant", async () => {
     const h = harness();
-    h.store.open("K7Q2MX", "Mei");
+    h.store.open("K7Q2M", "Mei");
     await flush();
     h.state("version");
     expect(h.store.view?.step).toBe("version");
     const d = harness();
-    d.store.open("K7Q2MX", "Mei");
+    d.store.open("K7Q2M", "Mei");
     await flush();
     d.state("denied");
     expect(d.calls.refused).toBe(1);

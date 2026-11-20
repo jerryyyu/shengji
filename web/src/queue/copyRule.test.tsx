@@ -233,7 +233,7 @@ describe("nearby panels and the code box's one exception", () => {
   });
 
   const room = (over: Record<string, unknown> = {}) => ({
-    type: "room" as const, room: "K7Q2MX", you: 0, host: 0, start_level: "2" as const,
+    type: "room" as const, room: "K7Q2M", you: 0, host: 0, start_level: "2" as const,
     players: [{ seat: 0, name: "Jerry", is_bot: false, connected: true }, { seat: 2, name: "Mei", is_bot: false, connected: true }],
     nearby: { ready: [0], bots_in: 42, locked: true }, ...over,
   });
@@ -267,15 +267,15 @@ describe("nearby panels and the code box's one exception", () => {
     const lines = () => [...host.querySelectorAll(".join-line")].map((p) => p.textContent);
     act(() => root.render(<CodeRow disabled={false} code="K7Q2" nearby />));
     expect(lines(), "an online code: no line").toEqual([]);
-    act(() => root.render(<CodeRow disabled={false} code="K7Q2MX" nearby />));
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2M" nearby />));
     expect(lines()).toEqual([UNDER_CONTROL_EXCEPTION.lines[0]]);
-    act(() => root.render(<CodeRow disabled={false} code="K7Q2MX" nearby
-                                   nearbyJoinView={{ code: "K7Q2MX", step: "denied", peek: null, seat: null }} />));
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2M" nearby
+                                   nearbyJoinView={{ code: "K7Q2M", step: "denied", peek: null, seat: null }} />));
     expect(lines()).toEqual([UNDER_CONTROL_EXCEPTION.lines[1]]);
     localStorage.setItem("shengji.nearbyAllowed", "1");
-    act(() => root.render(<CodeRow disabled={false} code="K7Q2MY" nearby />));
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2Y" nearby />));
     expect(lines(), "once iOS has asked, no line").toEqual([]);
-    act(() => root.render(<CodeRow disabled={false} code="K7Q2MX" />));
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2M" />));
     expect(lines(), "no nearby play: no line, and the box stops at four").toEqual([]);
     expect(host.querySelector("input")!.maxLength).toBe(4);
   });

@@ -54,7 +54,7 @@ describe("connection intent precedence", () => {
   });
 
   it("never resumes a code that is not the game server's: a nearby table's never reaches it", () => {
-    const i = decideIntent({ savedRoom: "K7Q2MX", savedName: "jerry", savedToken: "near-tok" });
+    const i = decideIntent({ savedRoom: "K7Q2M", savedName: "jerry", savedToken: "near-tok" });
     expect(i.kind).toBe("none");
     expect(intentToJoin(i)).toBeNull();
   });

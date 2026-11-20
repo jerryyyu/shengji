@@ -5,8 +5,9 @@
 // crypto.getRandomValues, never Math.random.
 
 export const NEARBY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-/** 30 bits: the security audit's floor for a code that keys the link. */
-export const NEARBY_CODE_LEN = 6;
+/** 25 bits, below the security audit's 30-bit floor: an accepted risk for
+ *  casual unrated play (docs/design/FLOWS.md, Play nearby). */
+export const NEARBY_CODE_LEN = 5;
 
 const CODE_RE = new RegExp(`^[${NEARBY_ALPHABET}]{${NEARBY_CODE_LEN}}$`);
 

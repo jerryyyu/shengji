@@ -33,7 +33,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 it("a join link the host closed stops the plugin's session", async () => {
   const t = nativeTransport()!;
   let closed = 0;
-  const linking = t.join("K7Q2MX", { message: () => {}, closed: () => { closed += 1; }, state: () => {} });
+  const linking = t.join("K7Q2M", { message: () => {}, closed: () => { closed += 1; }, state: () => {} });
   await tick();
   plugin.emit("peer", { peer: "host", state: "connected" });
   await linking;
@@ -46,7 +46,7 @@ it("a join link the host closed stops the plugin's session", async () => {
 it("a host link passes the plugin's device id to the room", async () => {
   const t = nativeTransport()!;
   const peers: unknown[][] = [];
-  await t.host("K7Q2MX", { peer: (...a) => peers.push(a), message: () => {}, state: () => {} });
+  await t.host("K7Q2M", { peer: (...a) => peers.push(a), message: () => {}, state: () => {} });
   plugin.emit("peer", { peer: "p1", state: "connected", device: "DEV1" } as Parameters<Fn>[0]);
   plugin.emit("peer", { peer: "p1", state: "disconnected" });
   expect(peers).toEqual([["p1", true, "DEV1"], ["p1", false, undefined]]);

@@ -168,6 +168,85 @@ describe("joining a nearby game in progress", () => {
   });
 });
 
+describe("a seat left by choice", () => {
+  async function leftSeat(allowJoiners = true): Promise<{ t: NearbyTable; j: Player; seat: number }> {
+    const t = new NearbyTable(31, 1);
+    await t.open(true);
+    const j = await t.join("P1", { device: "phone-a" });
+    await t.join("P2", { device: "phone-b" });
+    await t.join("P3", { device: "phone-c" });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    if (!allowJoiners) t.send(t.host, { type: "table_allow_joiners", on: false });
+    const seat = j.seat!;
+    t.send(j, { type: "table_leave" });
+    await t.settle(() => j.left, 10_000);
+    await t.advance(2);
+    expect(t.room!.seats[seat].leftByChoice).toBe(true);
+    return { t, j, seat };
+  }
+
+  /** A look from `device`, as the joiner's panel sends it. */
+  async function peekFrom(t: NearbyTable, device: string): Promise<RoomSeats> {
+    const frames: Frame[] = [];
+    const link = await t.fake.join(t.code, { message: (x) => frames.push(JSON.parse(x) as Frame), closed: () => {}, state: () => {} }, device);
+    await t.advance(0.01);
+    link.send(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: t.code }))!);
+    await t.advance(2);
+    link.close();
+    await t.advance(0.1);
+    return frames.find((f) => f.type === "room_seats") as unknown as RoomSeats;
+  }
+
+  /** The seat's player makes its next play over its own link. */
+  async function playsIt(t: NearbyTable, p: Player, seat: number): Promise<void> {
+    const peer = t.fake.peersOf(t.code).at(-1)!;
+    await t.settle(() => t.fake.wire.some((w) => w.from === peer && w.text.startsWith('{"type":"play"'))
+      || t.room!.round!.phase === "round_end", 2_000_000);
+    expect(t.room!.seats[seat].connected).toBe(true);
+    expect(t.lastState(p)!.you).toBe(seat);
+  }
+
+  it("is offered at once (no hold) to anyone, and another phone takes it and plays it; the old token is spent", async () => {
+    const { t, j, seat } = await leftSeat();
+    const look = await peekFrom(t, "phone-z");
+    expect(look.full).toBe(false);
+    expect(nearbyChoices(look)).toEqual([seat]);
+    const zed = await t.join("Zed", { drive: true, device: "phone-z" });
+    expect(errors(zed)).toEqual([]);
+    expect(t.lastState(zed)!.you).toBe(seat);
+    expect(zed.token).not.toBe(j.token);
+    const old = await t.join("Old", { token: j.token });
+    expect(errors(old).map((f) => f.code)).toEqual(["room_full"]);
+    await playsIt(t, zed, seat);
+  });
+
+  it("the leaver's own phone, back by the code, is offered it and takes its own seat back", async () => {
+    const { t, seat } = await leftSeat();
+    expect(nearbyChoices(await peekFrom(t, "phone-a"))).toEqual([seat]);
+    const back = await t.join("P1", { drive: true, device: "phone-a" });
+    expect(errors(back)).toEqual([]);
+    expect(t.lastState(back)!.you).toBe(seat);
+    expect(t.room!.seats[seat].leftByChoice).toBe(false);
+    await playsIt(t, back, seat);
+  });
+
+  it("with Allow joiners off, the leaver's own phone still gets its seat back, and nobody else gets in", async () => {
+    const { t, seat } = await leftSeat(false);
+    const other = await peekFrom(t, "phone-z");
+    expect(other.full).toBe(true);
+    const zed = await t.join("Zed", { device: "phone-z" });
+    expect(errors(zed).map((f) => f.code)).toEqual(["room_full"]);
+    const own = await peekFrom(t, "phone-a");
+    expect(own.full).toBe(false);
+    expect(nearbyChoices(own)).toEqual([seat]);
+    const back = await t.join("P1", { drive: true, device: "phone-a" });
+    expect(errors(back)).toEqual([]);
+    expect(t.lastState(back)!.you).toBe(seat);
+    await playsIt(t, back, seat);
+  });
+});
+
 describe("a seat's resume after a drop", () => {
   /** Two people, the joiner undriven, the play phase on the joiner's turn. */
   async function onJoinersTurn(): Promise<{ t: NearbyTable; j: Player }> {

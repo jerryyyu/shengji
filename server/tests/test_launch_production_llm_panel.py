@@ -265,6 +265,196 @@ def _real_validation_fixture(tmp_path):
     return config_path, expected, source
 
 
+def _real_actor_validation_fixture(tmp_path):
+    path, _, source = _real_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    config.update(
+        schema=launcher.ACTOR_PANEL_SCHEMA,
+        rows=list(launcher.ACTOR_PANEL_ROWS),
+        row_wall_seconds=launcher.ACTOR_PANEL_WALL_SECONDS,
+        row_soft_tokens=launcher.ACTOR_PANEL_SOFT_TOKENS,
+        provider_call_seconds=launcher.ACTOR_PANEL_CALL_SECONDS,
+        provider_capacity_retry_delays=[],
+        recovery_controls=dict(launcher.ACTOR_PANEL_CONTROLS),
+        failure_protocol="preserve-model-illegal-v1",
+        illegal_failure_limit=8,
+    )
+    path.write_text(json.dumps(config, sort_keys=True))
+    return path, hashlib.sha256(path.read_bytes()).hexdigest(), source
+
+
+def _actor_report(seeds, *, feedback=True):
+    mirrors = []
+    for seed in seeds:
+        for flip in (0, 1):
+            mirrors.append({
+                "schema": "w32-llm-benchmark-mirror-v1",
+                "key": f"sol-actor-only-seed{seed}-flip{flip}",
+                "arm": "sol-actor-only", "model": "sol",
+                "information": "actor-only", "seed": seed, "flip": flip,
+                "events": [], "calls": [], "complete": True, "signed_levels": 1,
+            })
+    from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+    return {
+        "schema": "w32-llm-benchmark-v1", "mode": "run",
+        "config": {
+            "failure_protocol": "preserve-model-illegal-v1", "illegal_failure_limit": 8,
+            "models": ["sol"], "information": ["actor-only"], "seeds": list(seeds),
+            "invalid_action_feedback": feedback,
+        },
+        "mirrors": mirrors,
+        "scheduled_summary": summarize_scheduled(mirrors, failure_limit=8),
+    }
+
+
+def test_actor_panel_validation_accepts_exact_recipe_and_unarmed_shape(tmp_path):
+    path, digest, _ = _real_actor_validation_fixture(tmp_path)
+    config, _stamps = launcher.validate(path, digest)
+    assert config["schema"] == launcher.ACTOR_PANEL_SCHEMA
+    assert launcher.run(path, digest) == {"status": "unarmed", "rows": 2, "rounds": 40}
+
+
+@pytest.mark.parametrize("field,value", [
+    ("rows", list(launcher.ROWS)),
+    ("row_wall_seconds", 43200),
+    ("row_soft_tokens", 45000000),
+    ("provider_call_seconds", 301),
+    ("recovery_controls", {**launcher.ACTOR_PANEL_CONTROLS, "capacity_retries": True}),
+    ("retention", {"smv3-pv": {}}),
+    ("memory_wait", {"timeout_seconds": 1, "poll_seconds": 1}),
+    ("continue_from", "/sealed/continuation"),
+    ("resume_from", "/sealed/resume"),
+])
+def test_actor_panel_validation_refuses_recipe_and_continuation_drift(tmp_path, field, value):
+    path, _digest, _ = _real_actor_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    config[field] = value
+    path.write_text(json.dumps(config, sort_keys=True))
+    with pytest.raises(ValueError, match="campaign recipe drift|actor panel|recovery retry"):
+        launcher.validate(path, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+def test_actor_panel_dispatches_exact_caps_to_adapter_and_validates_actor_terminal(
+    tmp_path, monkeypatch,
+):
+    path, digest, _ = _real_actor_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    monkeypatch.setattr(launcher, "LOCK", tmp_path / "lock")
+    monkeypatch.setattr(launcher.os, "nice", lambda _: 10)
+    monkeypatch.setattr(launcher, "_require_recovery_memory", lambda stage: None)
+    (tmp_path / "RELEASE").write_text(digest)
+    seen = []
+    adapter_caps = []
+    from scripts import production_llm_panel as adapter
+
+    def fake_adapter_run_row(**kwargs):
+        adapter_caps.append({key: kwargs[key] for key in (
+            "actor_only", "wall_seconds", "token_limit", "timeout_seconds",
+            "capacity_retries", "accept_recovered_reconnects",
+            "invalid_action_feedback", "classify_final_action_failures")})
+        return {"status": "synthetic"}
+
+    monkeypatch.setattr(adapter, "run_row", fake_adapter_run_row)
+
+    def fake_supervise(command, *, row, output, wall, planned_mirrors, **kwargs):
+        seen.append((row, wall, planned_mirrors, command))
+        argv = command[command.index("scripts.production_llm_panel") + 1:]
+        adapter.main(argv)
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "result.json").write_text(json.dumps(_actor_report(config["seeds"])))
+        return {"row": row, "pid": 1, "returncode": 0,
+                "status": "exited", "elapsed_seconds": 0.1}
+
+    monkeypatch.setattr(launcher, "supervise", fake_supervise)
+    result = launcher.run(path, digest, arm=True)
+    assert result["status"] == "scheduled-terminal"
+    assert [(row, wall, planned) for row, wall, planned, _ in seen] == [
+        ("smv3-pv", 21630, 20), ("release46-pv", 21630, 20)]
+    assert all("--actor-only" in command for _, _, _, command in seen)
+    assert adapter_caps == [{
+        "actor_only": True, "wall_seconds": 21600.0, "token_limit": 20000000,
+        "timeout_seconds": 300, "capacity_retries": False,
+        "accept_recovered_reconnects": False, "invalid_action_feedback": True,
+        "classify_final_action_failures": True,
+    }] * 2
+    summary = json.loads((Path(config["output"]) / "actor-panel-summary.json").read_text())
+    assert summary["schema"] == "sol-actor-panel-summary-v1"
+    assert not (Path(config["output"]) / "panel-readout.json").exists()
+
+
+def test_actor_panel_failure_aborts_before_second_row(tmp_path, monkeypatch):
+    path, digest, _ = _real_actor_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    monkeypatch.setattr(launcher, "LOCK", tmp_path / "lock")
+    monkeypatch.setattr(launcher.os, "nice", lambda _: 10)
+    monkeypatch.setattr(launcher, "_require_recovery_memory", lambda stage: None)
+    (tmp_path / "RELEASE").write_text(digest)
+    calls = []
+
+    def fail_first(command, *, row, output, wall, planned_mirrors, **kwargs):
+        calls.append(row)
+        output.mkdir(parents=True, exist_ok=True)
+        return {"row": row, "pid": 1, "returncode": 7,
+                "status": "exited", "elapsed_seconds": 0.1}
+
+    monkeypatch.setattr(launcher, "supervise", fail_first)
+    with pytest.raises(ValueError, match="row terminated"):
+        launcher.run(path, digest, arm=True)
+    assert calls == ["smv3-pv"]
+    assert not (Path(config["output"]) / "release46-pv").exists()
+
+
+@pytest.mark.parametrize("failures", [1, 8])
+def test_actor_panel_failed_accounting_preserves_evidence_and_stops(tmp_path, monkeypatch, failures):
+    from shengji.luna.benchmark_failure_protocol import summarize_scheduled
+
+    path, digest, _ = _real_actor_validation_fixture(tmp_path)
+    config = json.loads(path.read_text())
+    monkeypatch.setattr(launcher, "LOCK", tmp_path / "lock")
+    monkeypatch.setattr(launcher.os, "nice", lambda _: 10)
+    monkeypatch.setattr(launcher, "_require_recovery_memory", lambda stage: None)
+    (tmp_path / "RELEASE").write_text(digest)
+    report = _actor_report(config["seeds"])
+    for index, mirror in enumerate(report["mirrors"]):
+        if index < failures:
+            seat = mirror["flip"]
+            mirror.update(complete=False, error="illegal action",
+                          events=[{"seat": seat, "attempted_cards": []}],
+                          failure={"schema": "benchmark-action-failure-v1",
+                                   "category": "model_illegal_action", "stage": "engine_play",
+                                   "seat": seat, "attempted_cards": [], "event_index": 0})
+        elif failures == 8:
+            mirror.update(complete=False, status="not_run")
+        if not mirror["complete"]:
+            mirror.pop("signed_levels")
+    report["scheduled_summary"] = summarize_scheduled(report["mirrors"], failure_limit=8)
+    raw = json.dumps(report)
+    calls = []
+
+    def failed_row(command, *, row, output, **kwargs):
+        calls.append(row)
+        output.mkdir(parents=True, exist_ok=True)
+        (output / "result.json").write_text(raw)
+        return {"row": row, "pid": 1, "returncode": 0,
+                "status": "exited", "elapsed_seconds": 0.1}
+
+    monkeypatch.setattr(launcher, "supervise", failed_row)
+    with pytest.raises(ValueError, match="row not clean"):
+        launcher.run(path, digest, arm=True)
+    output = Path(config["output"])
+    assert calls == ["smv3-pv"]
+    assert not (output / "release46-pv").exists()
+    assert (output / "smv3-pv" / "result.json").read_text() == raw
+    accounting = json.loads((output / "smv3-pv.accounting.json").read_text())
+    assert accounting["failed"] == failures
+    assert accounting["status"] == ("failure-limit" if failures == 8 else "scheduled-terminal")
+    terminal = json.loads((output / "terminal.json").read_text())
+    assert terminal["error"] == "row not clean; preserve partials, no further spend"
+    summary = json.loads((output / "actor-panel-summary.json").read_text())
+    assert summary["rows"]["smv3-pv"] == accounting
+    assert summary["rows"]["release46-pv"]["status"] == "not-terminally-validated"
+
+
 @pytest.mark.parametrize("pin", ["0" * 64, "ABC", None, True, 123])
 def test_declared_codex_digest_is_verified(tmp_path, pin):
     path, _, _ = _real_validation_fixture(tmp_path)

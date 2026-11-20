@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 from scripts.w32_llm_benchmark import parse_seeds, run_benchmark
@@ -18,13 +19,25 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
             output, seeds, run=False, codex_binary="codex", capacity_retries=False,
             accept_recovered_reconnects=False, invalid_action_feedback=False,
             classify_final_action_failures=False, failure_protocol=FAIL_STOP,
-            retention_plan=None, retention_plan_sha256=None):
+            retention_plan=None, retention_plan_sha256=None, actor_only=False,
+            wall_seconds=None, token_limit=None, timeout_seconds=None):
     controls = dict(capacity_retries=capacity_retries,
                     accept_recovered_reconnects=accept_recovered_reconnects,
                     invalid_action_feedback=invalid_action_feedback,
                     classify_final_action_failures=classify_final_action_failures)
-    if type(run) is not bool or any(type(v) is not bool for v in controls.values()):
+    if (type(run) is not bool or type(actor_only) is not bool
+            or any(type(v) is not bool for v in controls.values())):
         raise ValueError("run and recovery controls must be bool")
+    if actor_only and run and any(v is None for v in
+                                 (wall_seconds, token_limit, timeout_seconds)):
+        raise ValueError("actor-only execution requires explicit wall, token and call limits")
+    wall_seconds = 43200.0 if wall_seconds is None else wall_seconds
+    token_limit = 45000000 if token_limit is None else token_limit
+    timeout_seconds = 300 if timeout_seconds is None else timeout_seconds
+    if (type(wall_seconds) not in (int, float) or not math.isfinite(wall_seconds)
+            or wall_seconds <= 0 or type(token_limit) is not int or token_limit <= 0
+            or type(timeout_seconds) is not int or timeout_seconds <= 0):
+        raise ValueError("limits must be finite positive wall seconds and positive integer token/call limits")
     if failure_protocol not in (FAIL_STOP, PRESERVE_ILLEGAL):
         raise ValueError("unknown failure protocol")
     if failure_protocol == PRESERVE_ILLEGAL and not classify_final_action_failures:
@@ -45,8 +58,8 @@ def run_row(*, row, model_paths, prepared_roots_from, prepared_roots_sha256,
         checkpoint=recipe.identity.get("checkpoint"), policy=recipe.policy,
         prepared_recipe=recipe, prepared_roots_from=prepared_roots_from,
         prepared_roots_sha256=prepared_roots_sha256, output=output, seeds=seeds,
-        models=("sol",), information=("actor-only", "perfect"),
-        wall_seconds=43200.0, token_limit=45000000, timeout_seconds=300,
+        models=("sol",), information=("actor-only",) if actor_only else ("actor-only", "perfect"),
+        wall_seconds=wall_seconds, token_limit=token_limit, timeout_seconds=timeout_seconds,
         run=run, codex_binary=codex_binary, **options)
 
 
@@ -60,6 +73,11 @@ def main(argv=None):
     parser.add_argument("--seeds", nargs="+", required=True)
     parser.add_argument("--codex-binary", default="codex")
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--wall-seconds", type=float)
+    parser.add_argument("--soft-token-limit", dest="token_limit", type=int)
+    parser.add_argument("--timeout-seconds", type=int)
+    parser.add_argument("--actor-only", action="store_true",
+                        help="Schedule only actor-private Sol, without perfect-information mirrors")
     parser.add_argument("--retry-provider-capacity", dest="capacity_retries", action="store_true")
     parser.add_argument("--accept-recovered-reconnects", action="store_true")
     parser.add_argument("--invalid-action-feedback", action="store_true")

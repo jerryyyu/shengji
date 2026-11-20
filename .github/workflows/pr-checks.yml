@@ -206,6 +206,7 @@ jobs:
           tests/test_panel_memory_reader.py
           tests/test_production_llm_panel_readout.py
           tests/test_production_llm_panel.py
+          tests/test_sol_actor_panel_readout.py
           tests/test_launch_production_llm_panel.py
           tests/test_sol_linux_memory_guard.py
           tests/test_stage1_seal_plan.py
@@ -261,6 +262,7 @@ jobs:
           tests/test_llm_benchmark_rollouts.py
           tests/test_production_llm_panel_readout.py
           tests/test_llm_benchmark_games.py
+          tests/test_sol_actor_panel_readout.py
           tests/test_benchmark_terminal.py
           tests/test_engine_parity.py
           tests/test_fast_parity.py

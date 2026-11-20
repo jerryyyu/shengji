@@ -238,8 +238,7 @@ class _BudgetedPlanner:
             return self.provider(packet)
         finally:
             calls = getattr(self.provider, "calls", ())
-            if len(calls) > before:
-                receipt = calls[-1]
+            for receipt in calls[before:]:
                 self.budget.charge(receipt.get("usage") if isinstance(receipt, Mapping)
                                     else None)
 

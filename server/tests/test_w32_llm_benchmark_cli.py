@@ -114,7 +114,8 @@ def test_failed_mirror_is_persisted_and_not_counted_as_a_loss(tmp_path):
                for row in failed)
 
 
-def test_soft_token_budget_stops_new_mirrors_after_one_provider_call(tmp_path):
+@pytest.mark.parametrize("attempt_costs", [(5,), (6, 1)])
+def test_soft_token_budget_stops_new_mirrors_after_one_provider_call(tmp_path, attempt_costs):
     output, config = wiring(tmp_path, seeds=[7, 11], token_limit=5, run=True)
     calls = []
 
@@ -123,7 +124,8 @@ def test_soft_token_budget_stops_new_mirrors_after_one_provider_call(tmp_path):
             self.calls = []
 
         def __call__(self, _packet):
-            self.calls.append({"usage": {"input_tokens": 4, "output_tokens": 1}})
+            self.calls.extend({"usage": {"input_tokens": cost - 1, "output_tokens": 1}}
+                              for cost in attempt_costs)
             calls.append(1)
             return {"cards": ["C2"], "memory": ""}
 
@@ -135,11 +137,31 @@ def test_soft_token_budget_stops_new_mirrors_after_one_provider_call(tmp_path):
                                      transport_factory=FakeTransport)
 
     assert len(calls) == 1
-    assert result["budget"]["tokens"] == 5
-    assert sum(row["raw_cost_tokens"] for row in result["summaries"].values()) == 5
+    assert result["budget"]["tokens"] == sum(attempt_costs)
+    assert sum(row["raw_cost_tokens"] for row in result["summaries"].values()) == sum(attempt_costs)
     assert any(row.get("complete") is False for row in result["mirrors"])
     assert all((output / f"mirror-{row['model']}-{row['information']}-{row['seed']}-{row['flip']}.json").is_file()
                for row in result["mirrors"])
+
+
+def test_budget_charges_only_new_attempt_receipts():
+    class Provider:
+        def __init__(self):
+            self.calls = [{"usage": {"input_tokens": 100, "output_tokens": 0}}]
+
+        def __call__(self, _packet):
+            self.calls.extend([
+                {"usage": {"input_tokens": 4, "output_tokens": 1}},
+                {"usage": {"input_tokens": 2, "output_tokens": 1}},
+            ])
+            return {"cards": ["C2"], "memory": ""}
+
+    budget = benchmark._Budget(30, 100)
+    planner = benchmark._BudgetedPlanner(Provider(), budget)
+    planner({})
+    assert budget.tokens == 8
+    planner({})
+    assert budget.tokens == 16
 
 
 def test_launcher_runs_real_prepared_engine_mirrors_and_retains_provider_cost(tmp_path):

@@ -7,7 +7,7 @@ retain their own initialization side effects.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import hashlib
 from pathlib import Path
 import stat
@@ -16,6 +16,7 @@ from typing import Callable, Mapping
 
 _SHAS = {
     "smv3": "491ee4bf81abe783d14f1e004d31ceda1ff2679bd2e14b60a5a9fa96b57c2670",
+    "belief": "763b5e0536549404b9b5c3449e2379f7af48a4b59c163928296ee904d4da4343",
     "soft": "ccade130f34ae61def540441ef997e8d41cef9df96f9683406bbba59ae4ccc75",
     "js_m1": "0d17fd03aee759cc8de50083c062e8b11a85bdd8cf2bdda95213b73f431fd747",
     "m1": "12ce4415a65c479b03d52a08574e14a5909b09435c1d8dddeab1726fbc1d4d4f",
@@ -28,7 +29,42 @@ _SHORTLIST = {"alternatives": 4, "selection_worlds": 30,
               "report_worlds": 300, "batch_size": 128,
               "encoding": "mlp-static", "reuse_successors": True}
 _IDS = {"smv3-pv", "soft-pv", "js-m1-shortlist", "m1-prior",
-        "w32-original", "mc-lcb", "mc-strong", "mc", "smart"}
+        "w32-original", "mc-lcb", "mc-strong", "mc", "smart", "release46-pv"}
+
+# Frozen serving inputs keep recipe selection independent of process env; package
+# paths are supplied only after _asset verifies their pinned bytes.
+_RELEASE46_ENV = {
+    "SHENGJI_PV_CKPT": "",
+    "SHENGJI_PV_SHA256": _SHAS["smv3"],
+    "SHENGJI_PV_WORLDS": "64",
+    "SHENGJI_PV_CANDIDATES": "8",
+    "SHENGJI_PV_CAP": "4000",
+    "SHENGJI_PV_BATCH_SIZE": "128",
+    "SHENGJI_PV_SERVING_BUDGET_SECONDS": "3",
+    "SHENGJI_PV_ADMISSION_DIVERSITY": "1",
+    "SHENGJI_PV_REFUSAL_CONSTRAINTS": "1",
+    "SHENGJI_PV_TIEBREAK_POINTS": "1",
+    "SHENGJI_PV_LEAD_ANCHOR": "1",
+    "SHENGJI_PV_DOOMED_THROW_RESELECT": "1",
+    "SHENGJI_PV_VALUE_DECLARE": "1",
+    "SHENGJI_PV_VALUE_DECLARE_EVERY_FIRST": "1",
+    "SHENGJI_PV_WORLD_HISTORY_LEGAL": "1",
+    "SHENGJI_PV_WORLD_HISTORY_DRAW": "1",
+    "SHENGJI_PV_BELIEF_WORLDS": "1",
+    "SHENGJI_PV_BELIEF_CKPT": "",
+    "SHENGJI_PV_BELIEF_SHA256": _SHAS["belief"],
+    "SHENGJI_PV_BELIEF_LOG": "1",
+    "SHENGJI_PV_EXACT_LEAD_ENDGAME": "1",
+    "SHENGJI_PV_EXACT_DEEP_CARDS": "7",
+    "SHENGJI_PV_EXACT_FOLLOW": "1",
+    "SHENGJI_PV_EXACT_FOLLOW_SOLVER": "compact-level",
+    "SHENGJI_PV_EXACT_FOLLOW_MAX_CARDS": "7",
+    "SHENGJI_PV_EXACT_FOLLOW_MAX_NODES": "50000000",
+    "SHENGJI_PV_BURY_ARM": "hybrid",
+    "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2",
+    "SHENGJI_PV_BURY_WIDE_VALUE": "1",
+    "SHENGJI_PV_BURY_WIDE_K": "64",
+}
 
 
 @dataclass(frozen=True)
@@ -110,6 +146,26 @@ def prepare_recipe(policy: str, model_paths: Mapping[str, str | Path], *,
     if policy in {"mc-lcb", "mc-strong", "mc", "smart"}:
         return _static({"mc-lcb": "mc-s0-report-lcb", "mc-strong": "mc-strong",
                         "mc": "mc", "smart": "smart"}[policy])
+
+    if policy == "release46-pv":
+        path, sha = _asset(model_paths, "smv3")
+        belief, belief_sha = _asset(model_paths, "belief")
+        from ..train.pv_search_policy import pv_env_recipe, pv_registry_entries
+
+        frozen_env = dict(_RELEASE46_ENV)
+        frozen_env.update(SHENGJI_PV_CKPT=path,
+                          SHENGJI_PV_SHA256=sha,
+                          SHENGJI_PV_BELIEF_CKPT=belief,
+                          SHENGJI_PV_BELIEF_SHA256=belief_sha)
+        recipe = pv_env_recipe(frozen_env)
+        entries = pv_registry_entries(**recipe)
+        name, factory = _one_entry(entries)
+        identity = {"schema": "sol-panel-recipe-v1", "benchmark_id": policy,
+                    "policy": policy, "kind": "pv", "play_only": True,
+                    "engine": "current", **recipe}
+        if "bury_config" in identity:
+            identity["bury_config"] = asdict(identity["bury_config"])
+        return PreparedRecipe(name, factory, identity)
 
     if policy in {"smv3-pv", "soft-pv"}:
         key = "smv3" if policy == "smv3-pv" else "soft"

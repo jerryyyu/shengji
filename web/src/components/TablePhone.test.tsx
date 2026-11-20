@@ -895,3 +895,25 @@ describe("declaration countdown rendering", () => {
     expect(tableRenders.hud).toBe(afterPass);
   });
 });
+
+describe("player countdown rendering", () => {
+  it("keeps play and bury ticks out of the table while preserving low-time cues", () => {
+    vi.useFakeTimers();
+    onTestFinished(() => { vi.useRealTimers(); });
+    const players = [player(0, { is_banker: true, turn_deadline: 11 }), player(1), player(2), player(3)];
+    const s = state({ turn: 0, players });
+    render(s);
+    const before = tableRenders.hud;
+    for (let i = 0; i < 4; i++) act(() => vi.advanceTimersByTime(250));
+    expect(host.querySelector(".action-bar .timer-ring")?.getAttribute("aria-label")).toBe("10 seconds left");
+    expect(host.querySelector(".action-bar")?.classList.contains("clock-low")).toBe(true);
+    expect(tableRenders.hud - before).toBe(0);
+    render({ ...s, phase: "bury", players: [player(0, { is_banker: true, turn_deadline: 6 }), ...players.slice(1)] });
+    haptics.length = 0;
+    const buryBefore = tableRenders.hud;
+    for (let i = 0; i < 8; i++) act(() => vi.advanceTimersByTime(250));
+    expect(host.querySelector(".action-bar .timer-ring")?.getAttribute("aria-label")).toBe("4 seconds left");
+    expect(tableRenders.hud - buryBefore).toBe(0);
+    expect(haptics).toEqual(["clock"]);
+  });
+});

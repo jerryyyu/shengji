@@ -221,6 +221,51 @@ describe("a seat left by choice", () => {
     await playsIt(t, zed, seat);
   });
 
+  it("a phone whose Leave was lost, back by the code while its old link still holds the seat, gets that seat and no second one", async () => {
+    const t = new NearbyTable(31, 1);
+    await t.open(true);
+    const j = await t.join("P1", { device: "phone-a" });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    const seat = j.seat!;
+    const oldPeer = t.fake.peersOf(t.code).at(-1)!;
+    // the Leave never reaches the host; the page is back after its wait
+    t.fake.lose(oldPeer);
+    t.send(j, { type: "table_leave" });
+    await t.advance(3);
+    expect(t.room!.seats[seat].connected).toBe(true);
+    const back = await t.join("P1", { drive: true, device: "phone-a" });
+    expect(errors(back)).toEqual([]);
+    expect(t.lastState(back)!.you).toBe(seat);
+    // the stale link is gone and the phone holds exactly one seat
+    expect(t.fake.peersOf(t.code)).not.toContain(oldPeer);
+    const held = t.room!.seats.filter((sd) => !sd.isBot && sd.name === "P1");
+    expect(held).toHaveLength(1);
+  });
+
+  it("a phone whose Leave was lost, back by the code asking for another seat, keeps only that one", async () => {
+    const t = new NearbyTable(31, 1);
+    await t.open(true);
+    const j = await t.join("P1", { device: "phone-a" });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    const seat = j.seat!;
+    const oldPeer = t.fake.peersOf(t.code).at(-1)!;
+    t.fake.lose(oldPeer);
+    t.send(j, { type: "table_leave" });
+    await t.advance(3);
+    const other = [1, 2, 3].find((s) => s !== seat && t.room!.seats[s].isBot)!;
+    const sock = t.socket("phone-a");
+    const back: Player = { name: "P1", sock, frames: [], token: null, driver: null, seat: null, left: false };
+    sock.onmessage = (ev) => back.frames.push(JSON.parse(ev.data as string) as Frame);
+    sock.onopen = () => sock.send(JSON.stringify({ type: "table_join", code: t.code, name: "P1", seat: other }));
+    await t.settle(() => back.frames.some((f) => f.type === "state"));
+    expect(back.frames.find((f) => f.type === "state")!.you).toBe(other);
+    await t.advance(1);
+    expect(t.fake.peersOf(t.code)).not.toContain(oldPeer);
+    expect(t.room!.seats[seat].connected).toBe(false);
+  });
+
   it("the leaver's own phone, back by the code, is offered it and takes its own seat back", async () => {
     const { t, seat } = await leftSeat();
     expect(nearbyChoices(await peekFrom(t, "phone-a"))).toEqual([seat]);

@@ -83,6 +83,36 @@ export function useNearbyKeepalive(ask: boolean): { on: boolean; toggle: () => v
   return { on: mod.nearbyKeepalive(), toggle: () => mod.setNearbyKeepalive(!mod.nearbyKeepalive()) };
 }
 
+/** The device-test soak's switches (nearbySoak.ts: Autoplay, Chaos, the
+ *  soak summary), once its module is in; null before, and never loaded
+ *  outside a device-test Debug build. */
+export function useNearbySoak(ask: boolean): {
+  autoplay: boolean; chaos: boolean; toggleAutoplay: () => void; toggleChaos: () => void; copy: () => Promise<boolean>;
+} | null {
+  const [mod, setMod] = useState<typeof import("./nearbySoak") | null>(null);
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (!ask) return;
+    let live = true;
+    let off = () => {};
+    void import("./nearbySoak").then((m) => {
+      if (!live) return;
+      setMod(m);
+      off = m.subscribeSoak(() => bump((n) => n + 1));
+    }, () => {});
+    return () => { live = false; off(); };
+  }, [ask]);
+  if (!ask || mod === null) return null;
+  const s = mod.soakState();
+  return {
+    autoplay: s.autoplay,
+    chaos: s.chaos,
+    toggleAutoplay: () => mod.setAutoplay(!s.autoplay),
+    toggleChaos: () => mod.setChaos(!s.chaos),
+    copy: () => navigator.clipboard?.writeText(mod.soakSummaryText()).then(() => true, () => false) ?? Promise.resolve(false),
+  };
+}
+
 /** Puts the log on the clipboard; resolves whether it did. */
 export function copyNearbyLog(): Promise<boolean> {
   return navigator.clipboard?.writeText(nearbyLogText()).then(() => true, () => false) ?? Promise.resolve(false);

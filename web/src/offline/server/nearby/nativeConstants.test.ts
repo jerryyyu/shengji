@@ -5,7 +5,8 @@
 // type (without it iOS refuses to browse or advertise, with no prompt). The
 // plist keys are not in the app yet; the check binds as soon as they land.
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NEARBY_ALPHABET, NEARBY_CODE_LEN } from "./codes";
 import { NEARBY_SERVICE_TYPE, NEARBY_V, LIMITS } from "./protocol";
@@ -55,6 +56,28 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\n[\s\S]*func spikeBench[\s\S]*#else\n/);
     expect(shell).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\s+(?:\/\/\/[^\n]*\s+)?override open func instanceDescriptor/);
     expect(shell).toMatch(/#elseif DEBUG && SHENGJI_NEARBY_DEV\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);
+  });
+
+  it("the soak's chaos and autoplay are only in a device-test Debug build", () => {
+    // the plugin's fault injection is compiled only with SHENGJI_NEARBY_DEV
+    // in Debug; every other build has no debugChaos and never holds a frame
+    expect(swift.match(/func debugChaos/g)).toHaveLength(1);
+    expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_DEV\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static func chaosHold\(_ work: @escaping \(\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
+    // the page loads the soak module only from the debug rows, by a dynamic
+    // import, and shows its switches only when the plugin says `debug`
+    const src = fileURLToPath(new URL("../../../", import.meta.url));
+    const files = readdirSync(src, { recursive: true }).map(String)
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.endsWith("nearbySoak.ts"));
+    const users = files.filter((f) => readFileSync(join(src, f), "utf8").includes("nearbySoak"));
+    expect(users.sort()).toEqual(["nearbyDebug.tsx"]);
+    const debugPane = readFileSync(join(src, "nearbyDebug.tsx"), "utf8");
+    expect(debugPane).not.toMatch(/^import[^\n]*nearbySoak/m);
+    expect(debugPane).toContain('import("./nearbySoak")');
+    expect(debugPane).toMatch(/c\.debug === true \? \(p as DebugPlugin\) : null/);
+    const menu = readFileSync(join(src, "components/HudMenu.tsx"), "utf8");
+    expect(menu).toMatch(/const soak = useNearbySoak\(debug\);/);
+    expect(menu).toMatch(/\{debug && soak \? \(/);
+    for (const label of ["Autoplay", "Chaos", "Copy soak summary"]) expect(menu.split(`<span>${label}</span>`)).toHaveLength(2);
   });
 
   it("Info.plist, when it has NSBonjourServices, lists the nearby type", () => {

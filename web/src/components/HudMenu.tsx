@@ -6,8 +6,8 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
+import { copyNearbyLog, useNearbyDebug, useNearbyKeepalive, useNearbySoak } from "../nearbyDebug";
 import { tapHandlers } from "../tap";
-import { copyNearbyLog, useNearbyDebug, useNearbyKeepalive } from "../nearbyDebug";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
@@ -102,6 +102,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   // a device-test Debug build: the link log, from the menu as well as its tab
   const debug = useNearbyDebug(nearby);
   const keepalive = useNearbyKeepalive(debug);
+  const soak = useNearbySoak(debug);
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -158,6 +159,21 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
                     onClick={keepalive.toggle}>
               <span>AWDL keepalive</span><span className={`ios-switch${keepalive.on ? " on" : ""}`} aria-hidden="true" />
             </button>
+          ) : null}
+          {debug && soak ? (
+            <>
+              <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={soak.autoplay}
+                      onClick={soak.toggleAutoplay}>
+                <span>Autoplay</span><span className={`ios-switch${soak.autoplay ? " on" : ""}`} aria-hidden="true" />
+              </button>
+              <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={soak.chaos}
+                      onClick={soak.toggleChaos}>
+                <span>Chaos</span><span className={`ios-switch${soak.chaos ? " on" : ""}`} aria-hidden="true" />
+              </button>
+              <button className="hud-menu-row" role="menuitem" onClick={() => { void soak.copy(); close(); }}>
+                <span>Copy soak summary</span>
+              </button>
+            </>
           ) : null}
           {showCode ? <div className="hud-menu-sep" role="separator" /> : null}
           <SettingsMenuRows onOpenPage={close} />

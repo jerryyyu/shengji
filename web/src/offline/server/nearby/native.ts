@@ -10,7 +10,7 @@ interface Listener {
   remove(): Promise<void> | void;
 }
 
-interface NearbyPlugin {
+export interface NearbyPlugin {
   capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
   openSettings(): Promise<unknown>;
   host(opts: { code: string }): Promise<unknown>;
@@ -53,19 +53,31 @@ export function openNearbySettings(): void {
 }
 
 /** The plugin runs one session at a time, so each host() or join() takes
- *  this over, across every transport object: a session it replaced hears
- *  no more events and can no longer stop the plugin, which would end the
- *  newer session's link without either end being told. */
-let owner = 0;
+ *  over its PluginSession, across every transport object: a session it
+ *  replaced hears no more events and can no longer stop the plugin, which
+ *  would end the newer session's link without either end being told. */
 
 /** The native transport, or null when the app has no plugin. */
 export function nativeTransport(): NearbyTransport | null {
   const p = nearbyPlugin();
   if (!p) return null;
   listenNativeLog(p);
+  return pluginTransport(p, phoneSession);
+}
+
+/** Which transport object owns a plugin: one per phone. */
+export interface PluginSession {
+  owner: number;
+}
+
+const phoneSession: PluginSession = { owner: 0 };
+
+/** The transport on `p`; every transport made on one plugin shares its
+ *  `session`. The chaos simulator gives each simulated phone its own. */
+export function pluginTransport(p: NearbyPlugin, session: PluginSession): NearbyTransport {
   let listeners: Listener[] = [];
   let mine = 0;
-  const current = () => mine === owner;
+  const current = () => mine === session.owner;
   const unlisten = () => {
     for (const l of listeners) void l.remove();
     listeners = [];
@@ -94,8 +106,8 @@ export function nativeTransport(): NearbyTransport | null {
     },
     async host(code, handlers): Promise<HostLink> {
       unlisten();
-      const me = mine = ++owner;
-      const live = () => me === owner;
+      const me = mine = ++session.owner;
+      const live = () => me === session.owner;
       // the plugin's host() settles once the listener is ready; a denied
       // permission leaves it waiting, so a denial ends the wait instead
       let refuse: ((e: NearbyError) => void) | null = null;
@@ -128,8 +140,8 @@ export function nativeTransport(): NearbyTransport | null {
     },
     async join(code, handlers): Promise<JoinLink> {
       unlisten();
-      const me = mine = ++owner;
-      const live = () => me === owner;
+      const me = mine = ++session.owner;
+      const live = () => me === session.owner;
       // the plugin's join() returns at once; the link is up when the host
       // peer connects, and a terminal state ends the attempt
       let open = false;

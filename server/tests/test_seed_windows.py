@@ -384,3 +384,85 @@ def test_red_without_the_lock_both_are_admitted_and_one_is_lost(registry, tmp_pa
     assert all(v["admitted"] for v in verdicts.values()), verdicts       # RED: both admitted
     entries = [w for w in real_load(registry)["windows"] if w["span"] == [77, 78]]
     assert len(entries) == 1, "RED: one contender's entry was overwritten"
+
+
+def _s90_boundary_inputs(tmp_path, change=None):
+    import hashlib
+    rows = [{"seed": 10, "round": r, "game": f"10:{g}",
+             "secret_outcome": "must never reach projection"}
+            for r, g in enumerate([0, 0, 1, 1, 2])]
+    journal = [{"kind": "start", "seed": 10}]
+    for r in range(5):
+        journal.extend([{"kind": "prepared", "round": r},
+                        {"kind": "round_complete", "round": r}])
+    journal.append({"kind": "terminal", "reason": "max_rounds", "rounds": 5, "positions": 5})
+    if change:
+        change(rows, journal)
+    args = []
+    for name, value in (("rows", rows), ("journal", journal)):
+        path = tmp_path / (name + ".jsonl")
+        data = "".join(json.dumps(r) + "\n" for r in value).encode()
+        path.write_bytes(data)
+        args.extend([path, hashlib.sha256(data).hexdigest()])
+    return args
+
+
+def test_s90_boundary_projection_preserves_continuous_rng_limit(tmp_path):
+    tool = _load_script("s90_seed_boundaries")
+    result = tool.project(*_s90_boundary_inputs(tmp_path), 10, 5)
+    assert result["game_starts"] == [
+        {"round": 0, "game_index": 0, "rng_seed": 10},
+        {"round": 2, "game_index": 1, "rng_seed": 10002},
+        {"round": 4, "game_index": 2, "rng_seed": 10004}]
+    assert result["continuous_game_rounds"] == [1, 3]
+    assert result["deal_exposure_complete"] is False
+    assert "secret_outcome" not in json.dumps(result)
+    assert "must never reach" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("change", [
+    lambda rows, journal: journal.pop(),
+    lambda rows, journal: journal[-1].update(reason="deadline"),
+    lambda rows, journal: rows.pop(),
+    lambda rows, journal: rows[2].update(game="10:3"),
+    lambda rows, journal: rows[0].update(seed=11),
+    lambda rows, journal: rows.reverse(),
+    lambda rows, journal: journal[1].update(round=True),
+])
+def test_s90_boundary_projection_refuses_incomplete_or_mixed_input(tmp_path, change):
+    tool = _load_script("s90_seed_boundaries")
+    with pytest.raises(ValueError):
+        tool.project(*_s90_boundary_inputs(tmp_path, change), 10, 5)
+
+
+def test_s90_boundary_projection_checks_pin_before_json(tmp_path):
+    tool = _load_script("s90_seed_boundaries")
+    args = _s90_boundary_inputs(tmp_path)
+    args[0].write_text("not JSON")
+    with pytest.raises(ValueError, match="SHA256 mismatch"):
+        tool.project(*args, 10, 5)
+
+
+def test_s90_boundary_cli_only_emits_projection_on_success(tmp_path):
+    import subprocess
+    import sys
+    args = _s90_boundary_inputs(tmp_path)
+    cmd = [sys.executable, str(SERVER / "scripts" / "s90_seed_boundaries.py"),
+           "--rows", str(args[0]), "--rows-sha256", args[1],
+           "--journal", str(args[2]), "--journal-sha256", args[3],
+           "--seed", "10", "--rounds", "5"]
+    success = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+    assert success.returncode == 0
+    assert [b["rng_seed"] for b in json.loads(success.stdout)["game_starts"]] == [10, 10002, 10004]
+    args[0].write_text("private corrupt bytes")
+    failure = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+    assert failure.returncode == 2 and failure.stdout == ""
+    assert "private" not in failure.stderr
+
+
+def test_s90_boundary_reader_refuses_oversize_input(tmp_path, monkeypatch):
+    tool = _load_script("s90_seed_boundaries")
+    args = _s90_boundary_inputs(tmp_path)
+    monkeypatch.setattr(tool, "MAX_BYTES", 1)
+    with pytest.raises(ValueError, match="byte limit"):
+        tool.project(*args, 10, 5)

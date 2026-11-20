@@ -209,6 +209,12 @@ class BeliefNumpy:
 
     def logits(self, inp: Mapping[str, np.ndarray], enc: np.ndarray | None = None) -> np.ndarray:
         """``(54, 4)`` raw logits for one decision (``decision_inputs``)."""
+        q, g = self.card_states(inp, enc)
+        return self.head_logits(q, g)
+
+    def card_states(self, inp: Mapping[str, np.ndarray],
+                    enc: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+        """``(q (54, d), g (x_hidden,))``: the final card states (before the output layer norm) and the row context."""
         w = self.w
         d, h = self.d, self.heads
         if enc is None:
@@ -217,7 +223,6 @@ class BeliefNumpy:
         X = np.asarray(inp["X"], self.dtype)
         g = np.maximum(X @ w["x_mlp.0.weight"].T + w["x_mlp.0.bias"], 0.0)
         g = np.maximum(g @ w["x_mlp.2.weight"].T + w["x_mlp.2.bias"], 0.0)
-        out = (g @ w["x_logits.weight"].T + w["x_logits.bias"]).reshape(N_CARDS, N_RECV)
         M = np.asarray(inp["M"], bool)
         rc = np.concatenate([np.asarray(inp["row_card"], self.dtype), M.astype(self.dtype)], -1)
         q = ce + rc @ w["row_card.weight"].T + w["row_card.bias"] + (
@@ -238,14 +243,28 @@ class BeliefNumpy:
             f = _ln(q, w["self_ff.0.weight"], w["self_ff.0.bias"])
             f = _gelu(f @ w["self_ff.1.weight"].T + w["self_ff.1.bias"])
             q = q + f @ w["self_ff.3.weight"].T + w["self_ff.3.bias"]
-        o = _ln(q, w["out.0.weight"], w["out.0.bias"])
+        return q, g
+
+    def output_states(self, q: np.ndarray) -> np.ndarray:
+        """``(54, d)``: the card states after the output layer norm (what the receiver logits read)."""
+        return _ln(q, self.w["out.0.weight"], self.w["out.0.bias"])
+
+    def head_logits(self, q: np.ndarray, g: np.ndarray) -> np.ndarray:
+        """``(54, 4)``: the receiver logits from `card_states`."""
+        w = self.w
+        out = (g @ w["x_logits.weight"].T + w["x_logits.bias"]).reshape(N_CARDS, N_RECV)
+        o = self.output_states(q)
         return out + o @ w["out.1.weight"].T + w["out.1.bias"]
 
     def marginals(self, inp: Mapping[str, np.ndarray]) -> np.ndarray:
         """``(54, 4)``: per hidden copy, a distribution over its feasible
         receivers (temperature applied); a card with no unknown copy is all zero."""
-        M = np.asarray(inp["M"], bool)
-        z = np.where(M, self.logits(inp).astype(np.float64) / self.temperature, -np.inf)
+        return self.marginals_of(self.logits(inp), inp["M"])
+
+    def marginals_of(self, logits: np.ndarray, M: np.ndarray) -> np.ndarray:
+        """`marginals` from already computed logits."""
+        M = np.asarray(M, bool)
+        z = np.where(M, logits.astype(np.float64) / self.temperature, -np.inf)
         top = z.max(-1, keepdims=True)
         top = np.where(np.isfinite(top), top, 0.0)
         e = np.where(M, np.exp(z - top), 0.0)
@@ -436,7 +455,8 @@ class BeliefProposal:
 
     def __init__(self, model: BeliefNumpy, rnd, seat: int, refusals: Sequence[Any] = (), *,
                  seed: int, batch: int, forbidden: Mapping | None = None,
-                 check_budget=None, capacity: bool = False, native: bool = False):
+                 check_budget=None, capacity: bool = False, native: bool = False,
+                 void_head=None):
         from ..train.belief_seq import project_sizes
         import time
         t0 = time.perf_counter()
@@ -446,7 +466,11 @@ class BeliefProposal:
         self.inp = decision_inputs(rnd, seat, refusals)
         if check_budget is not None:
             check_budget()
-        P = model.marginals(self.inp)
+        if void_head is None:
+            P = model.marginals(self.inp)
+        else:
+            q, g = model.card_states(self.inp)
+            P = model.marginals_of(model.head_logits(q, g), self.inp["M"])
         # the model's own prediction, before the draw's masking and projection
         # (read by the belief log, never by the draw)
         self.P = P
@@ -458,6 +482,13 @@ class BeliefProposal:
         self.M = draw_mask(self.inp, rnd, seat, forbidden)
         P = np.where(self.M, P, 0.0)
         self.Q = project_sizes(P, self.inp["n_c"], self.inp["sizes"], self.M)
+        #: the void-first plan (`ai.void_head`): None draws every world from ``Q``
+        self.void = None
+        self.void_forced = 0
+        if void_head is not None:
+            from .void_head import decision_plan
+            self.void = decision_plan(void_head, model.output_states(q), g, self.P, self.inp,
+                                      self.M, self.Q)
         if check_budget is not None:
             check_budget()
         self.kitty_hidden = bool(self.inp["M"][:, 3].any()) or int(self.inp["sizes"][3]) > 0
@@ -473,18 +504,30 @@ class BeliefProposal:
         if self.prep_seconds > PREP_SECONDS:
             raise BeliefNumpyError(f"belief preparation took {self.prep_seconds:.3f}s")
 
-    def _refill(self) -> None:
+    def _draw(self, Q: np.ndarray, M: np.ndarray, n: int) -> np.ndarray:
         from ..train.belief_seq import sample_worlds, sample_worlds_capacity
-        inp, rnd, seat = self.inp, self.rnd, self.seat
+        inp = self.inp
         draw = sample_worlds_capacity if self.capacity else sample_worlds
-        W = None
         if self.native and not self.capacity:
             from ..train.pv_native import belief_sample_worlds, is_reference_belief_draw
             if is_reference_belief_draw(draw):
-                W = belief_sample_worlds(self.Q, inp["n_c"], self.M, inp["sizes"],
-                                         self.batch, self.rng)
-        if W is None:
-            W = draw(self.Q, inp["n_c"], self.M, inp["sizes"], self.batch, self.rng)
+                return belief_sample_worlds(Q, inp["n_c"], M, inp["sizes"], n, self.rng)
+        return draw(Q, inp["n_c"], M, inp["sizes"], n, self.rng)
+
+    def _refill(self) -> None:
+        inp, rnd, seat = self.inp, self.rnd, self.seat
+        if self.void is None:
+            W = self._draw(self.Q, self.M, self.batch)
+        else:
+            # void-first: each world's forced banker voids first, then its copies under that mask
+            patterns = self.void.draw_patterns(self.batch, self.rng)
+            W = np.zeros((self.batch, N_CARDS, N_RECV), np.int16)
+            for pattern in sorted(set(patterns)):
+                at = [i for i, p in enumerate(patterns) if p == pattern]
+                kept, M, Q = self.void.plan(pattern)
+                W[at] = self._draw(Q, M, len(at))
+                if kept:
+                    self.void_forced += len(at)
         codes = _codes()
         idx = np.arange(N_CARDS)
         K = inp["K"]

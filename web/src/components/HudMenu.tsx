@@ -6,6 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
+import { tapHandlers } from "../tap";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
@@ -102,11 +103,11 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
         aria-expanded={open}
         aria-label="More"
         title="Table, settings, leave"
-        onClick={() => {
+        {...tapHandlers(() => {
           if (open) { close(); return; }
           focusNext.current = "first";
           setOpen(true);
-        }}
+        })}
         onKeyDown={(e) => {
           // ArrowDown / ArrowUp on the closed button open the menu at its first / last row
           if (open || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
@@ -125,21 +126,21 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           {offline ? null : (
             <div className="hud-menu-code" role="none">
               <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}>{room}</span>
-              <button className="hud-menu-row hud-menu-invite" role="menuitem" onClick={invite}>
+              <button className="hud-menu-row hud-menu-invite" role="menuitem" {...tapHandlers(invite)}>
                 {copied ? "Link copied" : "Invite link"}
               </button>
             </div>
           )}
           {joiners === undefined ? null : (
             <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={joiners}
-                    onClick={() => conn.send({ type: "table_allow_joiners", on: !joiners })}>
+                    {...tapHandlers(() => conn.send({ type: "table_allow_joiners", on: !joiners }))}>
               <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
           {offline ? null : <div className="hud-menu-sep" role="separator" />}
           <SettingsMenuRows onOpenPage={close} />
           <div className="hud-menu-sep" role="separator" />
-          <button className="hud-menu-row leave" role="menuitem" onClick={askLeave}>
+          <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(askLeave)}>
             <span>Leave game</span>
           </button>
         </div>

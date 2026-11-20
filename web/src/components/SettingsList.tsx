@@ -3,6 +3,7 @@ import { useCoach } from "../firstTurns";
 import { useMuted } from "../useMuted";
 import { hapticsEnabled, isNative, setHapticsEnabled, subscribeHaptics } from "../native";
 import { openHowto } from "../howto/route";
+import { tapHandlers } from "../tap";
 
 function useHaptics(): boolean {
   return useSyncExternalStore(subscribeHaptics, hapticsEnabled);
@@ -69,12 +70,12 @@ export function SettingsMenuRows({ onOpenPage }: { onOpenPage: () => void }) {
     <>
       {rows.map((r) => r.on === undefined ? (
         <button key={r.key} className={`hud-menu-row ${r.key}-row`} role="menuitem"
-                onClick={() => { onOpenPage(); r.act(); }}>
+                {...tapHandlers(() => { onOpenPage(); r.act(); })}>
           <span>{r.label}</span><span className="hud-menu-chev" aria-hidden="true">›</span>
         </button>
       ) : (
         <button key={r.key} className={`hud-menu-row ${r.key}-row`} role="menuitemcheckbox" aria-checked={r.on}
-                onClick={r.act}>
+                {...tapHandlers(r.act)}>
           <span>{r.label}</span><span className={`ios-switch${r.on ? " on" : ""}`} aria-hidden="true" />
         </button>
       ))}

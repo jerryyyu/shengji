@@ -575,10 +575,13 @@ table, and the room starts with Allow joiners off; its code still works.
 Starting level: a ranked table starts at `"2"`, fixed; a casual table's
 opener picks it (`queue_join start_level`, `table_start_level`). Relaxed
 bots (default off; casual only, a ranked table refuses it with
-`ranked_bots_fixed`): on, every bot seat of the room plays `RELAXED_BOT`
-(`server.py`, the MC-LCB search `mc-s0-report-lcb` with its own declare and
-bury) in place of the served bot, for the whole game; each `round_start`
-record names that policy (`bot_policy`) and carries `relaxed_bots: true`.
+`ranked_bots_fixed`): on, every bot seat of the room plays the relaxed
+level (`server.py` `RELAXED_BOT`: the served bot's declare and bury, card
+play by the S136 search-free scorer with near-best softmax noise, policy
+`<served name>-relax-sf516617b8-t1-d4`) in place of the served bot, for the
+whole game; each `round_start` record names that policy (`bot_policy`) and
+carries `relaxed_bots: true`. Without its scorer package the room plays the
+served bot and logs `relaxed_bots: false`.
 The opener sets it (`queue_join relaxed_bots`, `table_relaxed_bots`); a real
 change clears every Start at the table. A relaxed table, and its room, is
 never seated with strangers or offered as an open table, whatever Allow

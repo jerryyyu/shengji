@@ -4155,8 +4155,13 @@ def test_ws_a_casual_tables_starting_level_reaches_its_room(wsenv):
         assert room.start_level == "5" and room.game.levels == ("5", "5")
 
 
-def test_ws_a_casual_tables_relaxed_bots_reach_its_room(wsenv):
+def test_ws_a_casual_tables_relaxed_bots_reach_its_room(wsenv, monkeypatch, tmp_path):
+    from shengji.train import relaxed_play
+    from test_relaxed_bots import synthetic_package
     srv, store, client, clock = wsenv
+    path, sha = synthetic_package(tmp_path)
+    monkeypatch.setattr(srv, "RELAXED_SF_PACKAGE", path)
+    monkeypatch.setattr(srv, "RELAXED_SF_SHA256", sha)
     with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
         g.send_json({"type": "queue_join", "mode": "casual", "name": "Guest"})
         _drain(g, "queue_state")
@@ -4166,7 +4171,7 @@ def test_ws_a_casual_tables_relaxed_bots_reach_its_room(wsenv):
         code = _drain(g, "match_started")["room"]
         room = srv.rooms[code]
         assert room.relaxed_bots and not room.matched
-        assert room.bot.policy_name == srv.RELAXED_BOT
+        assert room.bot.policy_name.endswith("-" + relaxed_play.casual_suffix(sha))
         # fixed once the game starts: the room refuses the lobby control
         g.send_json({"type": "table_relaxed_bots", "on": False})
         assert _drain(g, "error")["message"] == "Game already started."

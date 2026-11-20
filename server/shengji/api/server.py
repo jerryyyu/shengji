@@ -128,10 +128,14 @@ def _prior_health() -> dict | None:
 
 
 BOT_DELAY = 0.7
-# What a casual room's bots play with Relaxed bots on: the MC-LCB search,
-# whole (its own declare and bury), a weaker opponent than the served bot.
-# Ranked rooms never play it; with the switch off a room builds SHENGJI_BOT.
-RELAXED_BOT = "mc-s0-report-lcb"
+# What a casual room's bots play with Relaxed bots on: the served bot's
+# declare and bury, and card play by the S136 search-free scorer with
+# near-best softmax noise (``relaxed_play.build_casual``). The room bot's
+# policy name is the served name plus this token. Ranked rooms never play
+# it; with the switch off a room builds SHENGJI_BOT.
+RELAXED_BOT = "relax-sf516617b8-t1-d4"
+RELAXED_SF_PACKAGE = os.environ.get("SHENGJI_RELAXED_SF_CKPT", "/data/models/sf-s136-516617b8.npz")
+RELAXED_SF_SHA256 = "516617b893689a931977068a1a536735afdb1edff0979f6f2360588291a8d184"
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
 CHAT_MAX_LEN = 300    # per-message cap
 DEAL_DELAY = 0.2           # seconds between dealt cards (~20s full deal)
@@ -378,6 +382,20 @@ class Seat:
     table_sent: dict | None = field(default=None, repr=False, compare=False)
 
 
+def make_relaxed_bot(served, seed: int):
+    """``served`` wrapped as the relaxed level (RELAXED_BOT), or ``served``
+    itself when the scorer package is missing or fails its sha256."""
+    from ..train import relaxed_play
+    try:
+        return relaxed_play.build_casual(served, RELAXED_SF_PACKAGE, seed=seed,
+                                         sha256=RELAXED_SF_SHA256)
+    except Exception as exc:                # noqa: BLE001 - a room must open
+        logging.getLogger(__name__).warning(
+            "relaxed bots unavailable (%s: %s); the room plays the served bot",
+            type(exc).__name__, exc)
+        return served
+
+
 @dataclass
 class Room:
     code: str
@@ -403,10 +421,10 @@ class Room:
     ids: list[dict[int, str]] = field(default_factory=lambda: [{} for _ in range(4)])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Relaxed bots: the casual opener's switch, set before the game and
-    # fixed for it; ``__post_init__`` builds RELAXED_BOT for every bot seat.
+    # fixed for it; ``__post_init__`` builds the relaxed bot for every bot seat.
     # A matched (ranked) room refuses it.
     relaxed_bots: bool = False
-    # None builds the served policy (SHENGJI_BOT), or RELAXED_BOT, in
+    # None builds the served policy (SHENGJI_BOT), or its relaxed wrap, in
     # `__post_init__` with this room's own seed, so rooms do not share one
     # sampler stream
     bot: HeuristicBot | None = None
@@ -492,8 +510,11 @@ class Room:
         if self.bot is None:
             if self.bot_seed is None:
                 self.bot_seed = secrets.randbits(31)
-            name = RELAXED_BOT if self.relaxed_bots else os.environ.get("SHENGJI_BOT", "mc")
-            self.bot = make_bot(name, seed=self.bot_seed)
+            served = make_bot(os.environ.get("SHENGJI_BOT", "mc"), seed=self.bot_seed)
+            self.bot = make_relaxed_bot(served, self.bot_seed) if self.relaxed_bots else served
+            # a missing or wrong package plays the served bot, and the room's
+            # rounds are then logged as served, not relaxed
+            self.relaxed_bots = self.bot is not served
         if self.log_dir is None:
             self.log_dir = LOG_DIR
         else:

@@ -372,6 +372,16 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz" | sha256sum -c -
+      - name: Fetch the pinned relaxed-bots scorer package sf-s136-516617b8
+        if: matrix.kind == 'compiled'
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/sf-s136-516617b8.npz
+          PACKAGE_SHA256: 516617b893689a931977068a1a536735afdb1edff0979f6f2360588291a8d184
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/sf-s136-516617b8.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/sf-s136-516617b8.npz" | sha256sum -c -
       # The package-load modules hold wall-clock serving budgets, so each job runs
       # its piece as one session with the runner to itself.
       - name: Load the production package on this tree
@@ -387,10 +397,12 @@ jobs:
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
           SHENGJI_PV_UNIFIED_PACKAGE_PATH: /tmp/shengji-packages/ut-all-97c07be8.npz
           SHENGJI_PV_UNIFIED_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz
+          SHENGJI_RELAXED_SF_PACKAGE_PATH: /tmp/shengji-packages/sf-s136-516617b8.npz
         run: >-
           python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
           uv run python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider
           tests/test_encoder_round_compat.py
+          tests/test_relaxed_serving.py
           tests/test_pv_finish_lead.py
           tests/test_pv_exact_lead_variants.py
           tests/test_pv_exact_follow.py

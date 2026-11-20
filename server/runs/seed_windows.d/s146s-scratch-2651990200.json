@@ -1,0 +1,14 @@
+{
+ "name": "s146s-scratch-2651990200",
+ "purpose": "screen",
+ "seed0": 2651990200,
+ "clusters": 100,
+ "span": [
+  2651990200,
+  2651990300
+ ],
+ "created_at": "2026-11-20T14:30:00Z",
+ "host": "ultra",
+ "git_head": "10df45f1",
+ "note": "S146S void-head screen (Jerry 2026-11-20 \"Can we screen the void guard\", the S146 head; PREDECLARE_S146S.md in claude-s146s on the M5 Ultra): exploiter = RT2 (unified 47175c99 + belief bed32f87) + the S146 banker-void head (void-head.npz 216c0a41, void-first world sampling), defender = plain RT2; paired seat-swapped rank-mixed deals (round plan r2), tree claude/s146s-tree 622b79a4. Scratch block, outcomes never read: the screen pilot [2651990200, +20), the rehearsal arm SREH pilot [2651990220, +20) and duel [2651990240, +20), timing seeds 2651990260 and 2651990266; the rest is spare. Cleared with the screen block."
+}

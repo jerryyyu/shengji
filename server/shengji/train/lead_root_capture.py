@@ -141,6 +141,64 @@ def restore_with_ledger(packet):
     return rnd, ledger
 
 
+def _stage_worlds(rnd, worlds, seat):
+    """Validate and copy the sampled exact-stage inputs at a captured root."""
+    if type(seat) is not int or not 0 <= seat < 4 or rnd.turn != seat:
+        raise ValueError('exact stage acting seat drift')
+    if not isinstance(worlds, (list, tuple)) or not worlds:
+        raise ValueError('exact stage requires sampled worlds')
+    expected = Counter(card for hand in rnd.hands for card in hand)
+    expected += Counter(rnd.buried)
+    shape = [len(hand) for hand in rnd.hands]
+    copied = []
+    for world in worlds:
+        if not isinstance(world, (list, tuple)) or len(world) != 2:
+            raise ValueError('malformed sampled world')
+        hands, buried = world
+        if (not isinstance(hands, (list, tuple)) or len(hands) != 4
+                or not isinstance(buried, (list, tuple))):
+            raise ValueError('malformed sampled world')
+        if [len(hand) for hand in hands] != shape:
+            raise ValueError('sampled world changes public hand sizes')
+        if Counter(card for hand in hands for card in hand) + Counter(buried) != expected:
+            raise ValueError('sampled world changes card multiset')
+        if Counter(hands[seat]) != Counter(rnd.hands[seat]):
+            raise ValueError('sampled world changes the acting hand')
+        copied.append([copy.deepcopy([list(hand) for hand in hands]), list(buried)])
+    return copied
+
+
+def restore_exact_stage(packet):
+    """Restore a DEV exact-stage packet without model or RNG reconstruction.
+
+    The returned stage inputs are copies.  ``worlds`` are sampled hidden-world
+    inputs, not a claim about the true deal; the replay is the only engine root.
+    """
+    if packet.get('schema') != 'exact-stage-capture-dev-v1':
+        raise ValueError('unknown exact-stage schema')
+    replay = packet.get('replay')
+    if not isinstance(replay, dict):
+        raise ValueError('exact stage replay is missing')
+    rnd, ledger = restore_with_ledger(replay)
+    if rnd.phase != 'play' or rnd.trick is None:
+        raise ValueError('exact stage requires a play root')
+    seat = packet.get('seat')
+    if type(seat) is not int or rnd.turn != seat:
+        raise ValueError('exact stage acting seat drift')
+    admitted = packet.get('admitted')
+    if (not isinstance(admitted, list) or not admitted
+            or any(not isinstance(action, list) or not action for action in admitted)):
+        raise ValueError('malformed admitted actions')
+    baseline = packet.get('baseline_index')
+    if type(baseline) is not int or not 0 <= baseline < len(admitted):
+        raise ValueError('baseline index is outside the ballot')
+    actual = packet.get('actual_action')
+    if actual is not None and (not isinstance(actual, list) or actual not in admitted):
+        raise ValueError('actual action is outside the ballot')
+    worlds = _stage_worlds(rnd, packet.get('worlds'), seat)
+    return rnd, ledger, copy.deepcopy(admitted), worlds, baseline, copy.deepcopy(actual)
+
+
 class LeadCapture:
     def __init__(self, rnd):
         if rnd.phase != 'play' or rnd.history or rnd.trick.plays:
@@ -178,4 +236,42 @@ class LeadCapture:
                             'Exact engine state and observed ledger only; no bot RNG restoration.',
                             'No claim of historical provenance or playing strength.']
         restore_with_ledger(packet)
+        return packet
+
+    def capture_exact_stage(self, rnd, *, ledger, admitted, worlds,
+                            baseline_index=0, actual_action=None):
+        """Capture a play root and its immutable exact-stage inputs.
+
+        This is opt-in collector plumbing.  The caller commits every observed
+        play as usual, then passes the exact ballot/worlds sent to
+        the exact stage; no model, RNG, or serving path is reconstructed.
+        """
+        if rnd.phase != 'play' or rnd.trick is None:
+            raise ValueError('exact stage requires a play root')
+        replay = copy.deepcopy(self.packet)
+        replay['root'] = fingerprint(rnd)
+        replay['ledger'] = normalized(vars(ledger))
+        replay['limits'] = [
+            'Full hidden deal: DEV-only, not policy input.',
+            'Exact engine state and observed ledger only; no bot RNG restoration.',
+            'No claim of historical provenance or playing strength.',
+        ]
+        replay['schema'] = 'lead-root-capture-dev-v1'
+        restore_with_ledger(replay)
+        admitted_copy = normalized(admitted)
+        if (not isinstance(admitted_copy, list) or not admitted_copy
+                or any(not isinstance(action, list) or not action
+                       for action in admitted_copy)):
+            raise ValueError('malformed admitted actions')
+        if type(baseline_index) is not int or not 0 <= baseline_index < len(admitted_copy):
+            raise ValueError('baseline index is outside the ballot')
+        if actual_action is not None and actual_action not in admitted_copy:
+            raise ValueError('actual action is outside the ballot')
+        packet = dict(schema='exact-stage-capture-dev-v1', replay=replay,
+                      seat=rnd.turn, admitted=admitted_copy,
+                      worlds=normalized(worlds), baseline_index=baseline_index,
+                      actual_action=normalized(actual_action),
+                      limits=['Sampled worlds are exact-stage inputs, not true-deal labels.',
+                              'No model or RNG reconstruction; no serving changes.'])
+        restore_exact_stage(packet)
         return packet

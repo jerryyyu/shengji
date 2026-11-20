@@ -6,7 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
-import { copyNearbyLog, useNearbyDebug } from "../nearbyDebug";
+import { copyNearbyLog, useNearbyDebug, useNearbyKeepalive } from "../nearbyDebug";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
@@ -100,6 +100,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   const showCode = !offline || nearby;
   // a device-test Debug build: the link log, from the menu as well as its tab
   const debug = useNearbyDebug(nearby);
+  const keepalive = useNearbyKeepalive(debug);
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -149,6 +150,12 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           {debug ? (
             <button className="hud-menu-row" role="menuitem" onClick={() => { void copyNearbyLog(); close(); }}>
               <span>Copy log</span>
+            </button>
+          ) : null}
+          {debug && keepalive ? (
+            <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={keepalive.on}
+                    onClick={keepalive.toggle}>
+              <span>AWDL keepalive</span><span className={`ios-switch${keepalive.on ? " on" : ""}`} aria-hidden="true" />
             </button>
           ) : null}
           {showCode ? <div className="hud-menu-sep" role="separator" /> : null}

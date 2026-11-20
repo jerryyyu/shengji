@@ -122,6 +122,13 @@ expect(LinkPath.includePeerToPeer(wifiUp: true, fellBack: true), "nothing over W
 expect(LinkPath.includePeerToPeer(wifiUp: false, fellBack: false), "no network joined: peer-to-peer from the start")
 expect(LinkPath.wifiFirstSeconds == 2, "the Wi-Fi-only look lasts 2 s before the fallback")
 
+// A peer-to-peer link with no Wi-Fi network keeps the browse (the AWDL path
+// idles without it); every other link stops it.
+expect(LinkPath.keepBrowsing(peerToPeer: true, wifiUp: false), "AWDL, no network: the browse stays")
+expect(!LinkPath.keepBrowsing(peerToPeer: true, wifiUp: true), "AWDL with Wi-Fi joined: the browse stops (it is moving to Wi-Fi)")
+expect(!LinkPath.keepBrowsing(peerToPeer: false, wifiUp: true), "Wi-Fi: the browse stops")
+expect(!LinkPath.keepBrowsing(peerToPeer: false, wifiUp: false), "a non-peer-to-peer link: the browse stops")
+
 // A link on peer-to-peer moves once the host is seen over Wi-Fi, once; it
 // may move again only after a link came up over Wi-Fi.
 var move = Migration()

@@ -137,6 +137,15 @@ enum LinkPath {
         satisfied && gateways > 0 && wifiInterfaces.contains { !isPeerToPeer($0) }
     }
 
+    /// Whether the joiner keeps browsing once linked: on a peer-to-peer link
+    /// with no Wi-Fi network, where the AWDL data path stays up only while
+    /// the phone still has Bonjour interest in the host (an idle link with
+    /// no browse goes silent within seconds). On Wi-Fi the browse stops, as
+    /// it makes the radio hop to the peer-to-peer channel.
+    static func keepBrowsing(peerToPeer: Bool, wifiUp: Bool) -> Bool {
+        peerToPeer && !wifiUp
+    }
+
     /// Whether a look's browse and connections may use peer-to-peer.
     static func includePeerToPeer(wifiUp: Bool, fellBack: Bool) -> Bool {
         !wifiUp || fellBack
@@ -241,6 +250,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     ] + ShengjiNearbyPlugin.spikeMethods
 
     static let maxMessage = 16 * 1024
+    /// Frames this small (pings, pongs, keepalives) get no native log line.
+    static let quietFrameBytes = 32
     /// An inbound link must finish its handshake this soon.
     static let handshakeTimeout: TimeInterval = 5
     /// Each table the joiner tries gets this long; several are tried at once.
@@ -608,7 +619,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             link.connection.send(content: data, contentContext: context, isComplete: true,
                                  completion: .contentProcessed { error in
                 let ms = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
-                self.spikeLog("send \(peer) \(data.count) B \(error.map { "error \($0)" } ?? "ok") \(String(format: "%.0f", ms)) ms")
+                // pings and keepalives are logged by the page, not per frame here
+                if data.count > Self.quietFrameBytes || error != nil {
+                    self.spikeLog("send \(peer) \(data.count) B \(error.map { "error \($0)" } ?? "ok") \(String(format: "%.0f", ms)) ms")
+                }
                 if let error = error { call.reject("\(error)", "failed") } else { call.resolve() }
             })
         }
@@ -909,8 +923,12 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.hostOverP2P = LinkPath.isPeerToPeer(via?.name)
                 self.migration.linkUp(peerToPeer: self.hostOverP2P)
                 self.spikeLog("host link up via \(via?.name ?? "?") (\(via.map { "\($0.type)" } ?? "?"))\(self.hostOverP2P ? " peer-to-peer" : "")")
-                self.browser?.cancel()
-                self.browser = nil
+                if LinkPath.keepBrowsing(peerToPeer: self.hostOverP2P, wifiUp: self.wifiUp) {
+                    self.spikeLog("browse kept: peer-to-peer link with no Wi-Fi network")
+                } else {
+                    self.browser?.cancel()
+                    self.browser = nil
+                }
                 self.emitPeer("host", "connected", via: self.hostOverP2P ? "p2p" : "wifi")
                 self.receive(link)
                 self.watchForWifiHost()
@@ -1012,7 +1030,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 guard let content = content, let text = String(data: content, encoding: .utf8) else {
                     return self.drop(link.peer)
                 }
-                self.spikeLog("recv \(link.peer) \(content.count) B")
+                if content.count > Self.quietFrameBytes { self.spikeLog("recv \(link.peer) \(content.count) B") }
                 self.notifyListeners("message", data: ["peer": link.peer, "text": text])
             case .ping?, .pong?:
                 break
@@ -1102,6 +1120,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         tcp.noDelay = true
         let params = NWParameters(tls: tls, tcp: tcp)
         params.includePeerToPeer = true
+        // a move is a short exchange someone waits on
+        params.serviceClass = .responsiveData
         let ws = NWProtocolWebSocket.Options()
         ws.autoReplyPing = true
         ws.maximumMessageSize = maxMessage

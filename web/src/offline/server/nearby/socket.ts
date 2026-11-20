@@ -6,10 +6,31 @@
 // chat stay on the phone.
 import { type Clock, realClock } from "../clock";
 import { frameType, nearbyLog } from "../../../nearbyLog";
-import { LIMITS, NEARBY_V, PING_TEXT, PONG_TEXT, cleanJoinerMessage, parseObject, utf8Bytes, type NearbyHello } from "./protocol";
+import { KEEPALIVE_TEXT, LIMITS, NEARBY_V, PING_TEXT, PONG_TEXT, cleanJoinerMessage, parseObject, utf8Bytes, type NearbyHello } from "./protocol";
 import type { JoinLink, LinkState, NearbyTransport } from "./transport";
 
 type Handler<E> = ((ev: E) => void) | null;
+
+/** The peer-to-peer keepalive, on unless a device-test build turns it off
+ *  to compare. */
+let keepaliveOn = true;
+const keepaliveListeners = new Set<() => void>();
+
+export function nearbyKeepalive(): boolean {
+  return keepaliveOn;
+}
+
+export function setNearbyKeepalive(on: boolean): void {
+  if (keepaliveOn === on) return;
+  keepaliveOn = on;
+  nearbyLog("socket", `keepalive ${on ? "on" : "off"}`);
+  for (const fn of [...keepaliveListeners]) fn();
+}
+
+export function subscribeNearbyKeepalive(fn: () => void): () => void {
+  keepaliveListeners.add(fn);
+  return () => { keepaliveListeners.delete(fn); };
+}
 
 /** When each clock's sockets last gave up on a stuck link, so a run of
  *  them never makes new links faster than LIMITS.stuckSpacingSeconds. */
@@ -43,6 +64,11 @@ export class NearbySocket {
   /** Ping round trips and move-to-answer times, in ms, since the last summary. */
   private rtts: number[] = [];
   private moves: number[] = [];
+  /** A game is on at this link (the latest table frame was a state). */
+  private inGame = false;
+  /** The keepalive loop is running. */
+  private keeping = false;
+  private offKeepalive: () => void = () => {};
 
   /** `greet`: a seated joiner's resume, called once the link is up. When it
    *  gives a table_join, this socket sends it as the hello and reports open
@@ -53,6 +79,7 @@ export class NearbySocket {
               clock: Clock = realClock, greet: (() => Record<string, unknown> | null) | null = null) {
     this.onState = onState;
     this.clock = clock;
+    this.offKeepalive = subscribeNearbyKeepalive(() => this.resumeKeepalive());
     const started = clock.now();
     // a seated joiner's new link: its hello will be the resume
     const resume = greet !== null && greet() !== null;
@@ -72,7 +99,7 @@ export class NearbySocket {
         message: (text) => {
           if (this.resuming) {
             this.heard = this.clock.now();
-            if (text === PONG_TEXT) return;
+            if (text === PONG_TEXT || text === KEEPALIVE_TEXT) return;
             this.early.push(text);
             const type = frameType(text);
             nearbyLog("socket", `resume: in ${type}`);
@@ -82,6 +109,7 @@ export class NearbySocket {
           if (this.readyState !== NearbySocket.OPEN) return;
           const now = this.clock.now();
           this.heard = now;
+          if (text === KEEPALIVE_TEXT) return;
           if (text === PONG_TEXT) {
             if (this.pingSent !== null) {
               const ms = Math.round((now - this.pingSent) * 1000);
@@ -98,6 +126,7 @@ export class NearbySocket {
             nearbyLog("socket", `in ${type}, ${ms} ms after the move`);
             this.movedAt = null;
           } else nearbyLog("socket", `in ${type}`);
+          this.noteTable(type);
           this.onmessage?.({ data: text } as MessageEvent);
         },
         closed: () => this.finish(),
@@ -155,6 +184,7 @@ export class NearbySocket {
     this.early = [];
     for (const text of early) {
       if (this.readyState !== NearbySocket.OPEN) return;
+      this.noteTable(frameType(text));
       this.onmessage?.({ data: text } as MessageEvent);
     }
   }
@@ -174,6 +204,48 @@ export class NearbySocket {
       if (this.pingSent === null && !this.sendPing(link)) return;
       this.ping(link);
     }, LIMITS.pingSeconds);
+  }
+
+  /** A state frame means a game is on, a room frame the lobby: the
+   *  keepalive runs only during a game on a peer-to-peer link. */
+  private noteTable(type: string): void {
+    if (type === "state") this.inGame = true;
+    else if (type === "room") this.inGame = false;
+    else return;
+    if (this.link) this.keepAwake(this.link);
+  }
+
+  /** While a game is on over peer-to-peer Wi-Fi (and the page is in view):
+   *  a tiny frame every LIMITS.keepaliveSeconds, which the host answers, so
+   *  the AWDL radio does not doze between moves and hold the next one. */
+  private keepAwake(link: JoinLink): void {
+    if (this.keeping || !link.peerToPeer || !this.inGame || !keepaliveOn) return;
+    this.keeping = true;
+    nearbyLog("socket", "keepalive running (peer-to-peer, in a game)");
+    const tick = () => {
+      const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+      if (this.link !== link || this.readyState !== NearbySocket.OPEN || !this.inGame || !keepaliveOn) {
+        this.keeping = false;
+        nearbyLog("socket", "keepalive stopped");
+        return;
+      }
+      if (!hidden) {
+        try {
+          link.send(KEEPALIVE_TEXT);
+        } catch {
+          this.keeping = false;
+          this.close();
+          return;
+        }
+      }
+      this.clock.setTimeout(tick, LIMITS.keepaliveSeconds);
+    };
+    this.clock.setTimeout(tick, LIMITS.keepaliveSeconds);
+  }
+
+  /** Turned back on: the open link's keepalive starts again. */
+  private resumeKeepalive(): void {
+    if (this.link) this.keepAwake(this.link);
   }
 
   /** Every LIMITS.summarySeconds while the link is open: the spread of its
@@ -294,6 +366,7 @@ export class NearbySocket {
   private finish(): void {
     if (this.readyState === NearbySocket.CLOSED) return;
     this.readyState = NearbySocket.CLOSED;
+    this.offKeepalive();
     this.resuming = false;
     this.early = [];
     this.link = null;

@@ -7,7 +7,8 @@ matched (ranked) room refuses Standard, in the room and at ``start_matched_room`
 ``round_start`` names the policy that plays the bot seats and its bot level; the relaxed bot plays through
 the server's snapshot path (``_paced_bot_step`` / ``_commit_bot_turn``), a seeded relaxed bot repeats
 its decisions, and every play is one of the scorer's proposals within ``CASUAL_DELTA`` logits of its
-best; the production mistake dashboard leaves Standard rounds out of the bot-versus-human tallies.
+best; the production mistake dashboard leaves Standard rounds out of the bot-versus-human tallies;
+both levels are open tables, by Allow joiners.
 The pinned scorer package on the release-54 served bot: ``test_relaxed_serving.py``.
 """
 import asyncio
@@ -235,23 +236,23 @@ def test_the_mistake_dashboard_excludes_standard_rounds(tmp_path):
             assert rounds == [] and notes["rounds excluded: standard bots"] >= len(base)
 
 
-def test_a_standard_room_is_never_an_open_table_but_its_code_still_seats(tmp_path):
-    def room(code, level):
+def test_both_bot_levels_are_open_tables_by_allow_joiners(tmp_path):
+    def room(code, level, allow=True):
         game = Game(random.Random(5))
         game.start_round()
         r = server.Room(code=code, game=game, log_dir=tmp_path, bot=server.HeuristicBot(),
-                        bot_level=level, allow_joiners=True,
+                        bot_level=level, allow_joiners=allow,
                         seats=[server.Seat("Ann")] + [server.Seat(f"Bot {i}", is_bot=True) for i in (1, 2, 3)])
         r.seats[0].connected = True
         server.rooms[code] = r
         return r
+    codes = ("ADVA", "STDA", "STDC")
     try:
-        plain, relaxed = room("PLNA", "advanced"), room("RLXA", "standard")
-        assert server._open_seats(plain) == [1, 2, 3]
-        assert server._open_seats(relaxed) == []                       # never offered
-        assert server._open_seats(relaxed, invite=True) == [1, 2, 3]   # the code joins
-        assert "RLXA" not in {t["code"] for t in server.open_tables()}
-        assert "PLNA" in {t["code"] for t in server.open_tables()}
+        advanced, standard, closed = room("ADVA", "advanced"), room("STDA", "standard"), room("STDC", "standard", False)
+        assert server._open_seats(advanced) == server._open_seats(standard) == [1, 2, 3]
+        assert server._open_seats(closed) == [] and server._open_seats(closed, invite=True) == [1, 2, 3]
+        listed = {t["code"] for t in server.open_tables()}
+        assert {"ADVA", "STDA"} <= listed and "STDC" not in listed
     finally:
-        server.rooms.pop("PLNA", None)
-        server.rooms.pop("RLXA", None)
+        for code in codes:
+            server.rooms.pop(code, None)

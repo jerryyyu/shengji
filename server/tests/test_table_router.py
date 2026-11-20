@@ -256,7 +256,7 @@ def _run_queue(env, case: dict, msg: dict) -> dict:
                  for name, device in GUESTS.items()}
         codes = {}
         for name in case.get("queued", ()):
-            socks[name].send_json({"type": "queue_join", "mode": "casual", "bot_level": "advanced", "name": name})
+            socks[name].send_json({"type": "queue_join", "mode": "casual", "name": name})
             codes[name] = _until(socks[name], "queue_state")[-1].get("code")
         for name in case.get("ready", ()):
             socks[name].send_json({"type": "table_start"})

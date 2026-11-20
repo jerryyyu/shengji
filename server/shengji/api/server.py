@@ -3436,12 +3436,11 @@ class PendingJoin:
 def _joinable(room: Room, invite: bool = False) -> bool:
     """A game in play, ranked (queue-matched, or a created ranked room) or
     casual (a created room, or one the casual queue built), that takes
-    joiners and still has a person connected at it. Standard bots keep a
-    room out of offers whatever Allow joiners says. An invite link is the
-    table's own consent, so it needs neither."""
+    joiners and still has a person connected at it. An invite link is the
+    table's own consent, so it does not need Allow joiners."""
     game = room.game
     return (not room.aborted and rooms.get(room.code) is room
-            and ((room.allow_joiners and room.bot_level != "standard") or invite)
+            and (room.allow_joiners or invite)
             and game is not None and room.round is not None and not game.game_over
             and any(sd is not None and not sd.is_bot and sd.connected for sd in room.seats))
 

@@ -352,17 +352,17 @@ async def the_rating_window_seats_by_rating(env: Env) -> None:
 @scenario
 async def a_lone_chat_over_the_cap_merges_in_time_order(env: Env) -> None:
     env.mm.chat_limiter = mm.accounts.RateLimiter(10 * mm.CHAT_KEEP, 60.0)
-    await env.join(1, mode="casual", allow_joiners=False, bot_level="advanced")
+    await env.join(1, mode="casual", allow_joiners=False)
     for i in range(mm.CHAT_KEEP + 3):
         await env.advance(0.25, pump=False)
         await env.send(1, "table_chat", text=f"a{i}")
-    await env.join(2, mode="casual", allow_joiners=False, bot_level="advanced")
+    await env.join(2, mode="casual", allow_joiners=False)
     for i in range(4):
         await env.advance(0.1, pump=False)
         await env.send(2, "table_chat", text=f"b{i}")
     await env.send(2, "table_allow_joiners", on=True)
     await env.send(1, "table_allow_joiners", on=True)
-    await env.join(3, mode="casual", allow_joiners=False, bot_level="advanced")
+    await env.join(3, mode="casual", allow_joiners=False)
     await env.send(3, "table_chat", text="third alone")
     await env.send(3, "table_allow_joiners", on=True)
     await env.send(3, "table_chat", text="third at the table")
@@ -487,8 +487,8 @@ async def code_joins_follow_a_table_for_its_whole_life(env: Env) -> None:
 @scenario
 async def settings_carry_and_are_the_openers(env: Env) -> None:
     await env.send(1, "queue_join", conn=env.player(1), mode="ranked", start_level="5")
-    await env.send(1, "queue_join", mode="casual", start_level="5", allow_joiners=False, bot_level="advanced")
-    await env.join(2, mode="casual", start_level="9", bot_level="advanced")
+    await env.send(1, "queue_join", mode="casual", start_level="5", allow_joiners=False)
+    await env.join(2, mode="casual", start_level="9")
     c1 = env.code(1)
     await env.send(2, "queue_leave")
     await env.join(2, code=c1, start_level="9", allow_joiners=False)
@@ -499,7 +499,7 @@ async def settings_carry_and_are_the_openers(env: Env) -> None:
     await env.send(1, "table_start_level", start_level="nope")
     await env.send(1, "table_allow_joiners", on="yes")
     await env.send(1, "table_allow_joiners", on=True)
-    await env.join(3, mode="casual", bot_level="advanced")
+    await env.join(3, mode="casual")
     await env.send(3, "table_start")
     await env.send(1, "table_allow_joiners", on=False)
     await env.send(1, "queue_leave")
@@ -607,14 +607,14 @@ async def away_reconnect_rename_and_a_timer_start_without_the_gone(env: Env) -> 
 
 @scenario
 async def a_failed_start_puts_everyone_back_at_the_front(env: Env) -> None:
-    await env.join(1, mode="casual", start_level="8", allow_joiners=False, bot_level="advanced")
+    await env.join(1, mode="casual", start_level="8", allow_joiners=False)
     await env.send(1, "table_chat", text="kept alone")
     env.fail_starts = 1
     await env.advance(mm.BOT_FILL_SECS + 1)
     await env.send(1, "queue_wait_players")
     await env.send(1, "queue_status")
     env.peek(env.code(1))
-    await env.join(2, mode="casual", bot_level="advanced")
+    await env.join(2, mode="casual")
     await env.send(1, "table_allow_joiners", on=True)
     await env.send(2, "table_chat", text="at the table")
     env.fail_starts = 1

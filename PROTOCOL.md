@@ -584,9 +584,9 @@ whole game; `"advanced"` plays the served bot. Each `round_start` record
 names the policy (`bot_policy`) and carries `bot_level`. Without its scorer
 package a Standard room plays the served bot and logs `bot_level: "advanced"`.
 The opener sets it (`queue_join bot_level`, `table_bot_level`); a real
-change clears every Start at the table. A Standard table, and its room, is
-never seated with strangers or offered as an open table, whatever Allow
-joiners says; its code still joins. Allow joiners is the opener's switch too. The settings belong to the whole table,
+change clears every Start at the table. Both levels are seated with
+strangers and offered as open tables as Allow joiners says; a stranger seated
+at a table plays at its level, the opener's, as for Starting level. Allow joiners is the opener's switch too. The settings belong to the whole table,
 so they stay when its opener leaves.
 
 ### Duo tables

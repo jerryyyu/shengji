@@ -167,8 +167,6 @@ class RelaxedBot:
         self.last_decision_record = rec
         return list(played)
 
-    # -- modes ---------------------------------------------------------------
-
     def _search_play(self, rnd, seat):
         played = list(self.player.decide_play(rnd, seat))
         inner = self.player.last_decision_record
@@ -259,3 +257,37 @@ def level_spec(level: str) -> Mapping[str, Any]:
         return LEVELS[level]
     except KeyError:
         raise RelaxedPlayError(f"unknown relaxed level {level!r}; known: {sorted(LEVELS)}") from None
+
+
+# ------------------------------------------------------------------ the casual level
+
+#: the level a casual room's "Relaxed bots" switch serves: the S136 search-free scorer's card
+#: play with a near-best softmax (tau 1.0, delta 4.0 logits), the served declare and bury
+CASUAL_PACKAGE = "sf-s136-516617b8.npz"
+CASUAL_SHA256 = "516617b893689a931977068a1a536735afdb1edff0979f6f2360588291a8d184"
+CASUAL_TAU = 1.0
+CASUAL_DELTA = 4.0
+_CASUAL_MODELS: dict = {}
+
+
+def casual_suffix(sha256: str = CASUAL_SHA256, tau: float = CASUAL_TAU, delta: float = CASUAL_DELTA) -> str:
+    """The token a casual relaxed bot appends to the served name, so its policy never equals it."""
+    return f"relax-sf{sha256[:8]}-t{tau:g}-d{delta:g}"
+
+
+def casual_model(path, sha256: str = CASUAL_SHA256):
+    """The search-free model at ``path``, sha256-checked, loaded once per process (read-only)."""
+    key = (str(path), sha256)
+    if key not in _CASUAL_MODELS:
+        from . import search_free_play as SF
+        _CASUAL_MODELS[key] = SF.load_package(path, sha256=sha256)
+    return _CASUAL_MODELS[key]
+
+
+def build_casual(served, path, *, seed: int, sha256: str = CASUAL_SHA256,
+                 tau: float = CASUAL_TAU, delta: float = CASUAL_DELTA) -> RelaxedBot:
+    """``served`` declares and buries; the search-free scorer plays with near-best noise."""
+    from . import search_free_play as SF
+    player = SF.SearchFreeBot(served, casual_model(path, sha256))
+    name = f"{getattr(served, 'policy_name', type(served).__name__)}-{casual_suffix(sha256, tau, delta)}"
+    return RelaxedBot(served, player, mode="search_free", tau=tau, delta=delta, seed=seed, policy_name=name)

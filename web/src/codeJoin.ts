@@ -556,7 +556,7 @@ export class NearbyJoinStore {
         this.seatedCode = v!.code;
         this.set(null);
       }
-    } else if (m.type === "error" && m.code === "nearby_version") {
+    } else if (m.type === "error" && (m.code as string | undefined) === "nearby_version") {
       this.stop("version");
     } else if (m.type === "error" && m.code === "room_full" && v?.step === "joining") {
       this.stop("full");

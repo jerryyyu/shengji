@@ -122,6 +122,18 @@ def shared_trunk_belief(belief_model, model):
             out.shared = {}
             return out
 
+        def card_states(self, inp, enc=None):
+            u = self.unified
+            if enc is None:
+                enc = u.trunk.encode_history(inp)
+            q, g = u.card_states(inp, enc)
+            self.shared.clear()
+            self.shared.update(q=q, g=g, seat=int(inp["seat"]), plays=len(inp["tok_int"]))
+            return q, g
+
+        def output_states(self, q):
+            return _ln(q, self.w["out.0.weight"], self.w["out.0.bias"])
+
         def logits(self, inp, enc=None):
             u = self.unified
             w = self.w

@@ -3559,7 +3559,9 @@ class PVSearchBot(PolicyValueBot):
                                      seed=seed, batch=self.worlds,
                                      forbidden=constraints, check_budget=check_budget,
                                      capacity=getattr(self, "belief_capacity", False),
-                                     **({"native": True} if fast else {}))
+                                     **({"native": True} if fast else {}),
+                                     **({"void_head": self.void_head}
+                                        if getattr(self, "void_head", None) is not None else {}))
             complete = None
             if fast:
                 from .pv_native import world_completion
@@ -3569,6 +3571,9 @@ class PVSearchBot(PolicyValueBot):
                 check_budget=check_budget, propose=propose, constrain=True,
                 **({"complete": complete} if complete is not None else {}),
                 **self._history_throws_kw())
+            if propose.void is not None:
+                stats.update(void_first_suits=len(propose.void.suits),
+                             void_first_forced=int(propose.void_forced))
             stats.update(history_draw_constraints=len(constraints),
                          history_draw_forbidden=sum(sum(c.values()) for c in constraints.values()),
                          belief_fallback=0, belief_proposed=int(propose.drawn),

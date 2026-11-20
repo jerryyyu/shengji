@@ -34,6 +34,11 @@ export function noteNearbyAllowed(): void {
   try { localStorage.setItem(ALLOWED_KEY, "1"); } catch { /* storage refused: the line shows again */ }
 }
 
+/** Local Network access was refused: the explaining line shows again. */
+export function forgetNearbyAllowed(): void {
+  try { localStorage.removeItem(ALLOWED_KEY); } catch { /* storage refused: nothing was kept */ }
+}
+
 let offered = false;
 let checked = false;
 const offerListeners = new Set<() => void>();
@@ -113,14 +118,15 @@ export class NearbyHostSession {
     if (!conn.send({ type: "create_room", nearby: true, name })) this.fallBack(null);
   }
 
-  /** The switch off, or the host's Leave: the room ends for everyone. */
+  /** The switch off, or the host's Leave: the room ends for everyone. The
+   *  leave goes first, so the room tells every joiner before the links stop. */
   turnOff(): void {
     if (this.view.phase === "off") return;
-    this.server?.stopNearbyHost();
     this.room = null;
     setNearbySession(false);
     this.set({ phase: "off" });
     conn.leaveToLobby();
+    this.server?.endNearbyHost();
   }
 
   /** The switch falls back off with one line: no room is left behind. */
@@ -139,8 +145,9 @@ export class NearbyHostSession {
       this.room = m.room;
       void this.advertise(m.room);
     } else if (m.type === "left" && this.room !== null) {
-      // the table ended (Leave from the game's menu, or the host's own end)
-      this.server?.stopNearbyHost();
+      // the table ended (Leave from the game's menu, or the host's own end):
+      // the links stop once the room has told every joiner
+      this.server?.endNearbyHost();
       this.room = null;
       setNearbySession(false);
       this.set({ phase: "off", line: null });
@@ -151,19 +158,25 @@ export class NearbyHostSession {
     try {
       this.server ??= await this.load();
       await this.server.hostNearby(code, { state: (s) => this.onLink(s) });
+      // switched off while the listener was on its way: NearbyHost.start
+      // stops a listener that resolves after its stop
       if (this.room !== code) return;
       noteNearbyAllowed();
       this.set({ phase: "on" });
     } catch (e) {
       if (this.room !== code) return;
       const state = (e as { state?: LinkState }).state;
+      if (state === "denied") forgetNearbyAllowed();
       this.fallBack(state === "denied" ? "denied" : state === "wifiOff" ? "wifiOff" : null);
     }
   }
 
   private onLink(state: LinkState): void {
     if (this.room === null) return;
-    if (state === "denied") this.fallBack("denied");
+    if (state === "denied") {
+      forgetNearbyAllowed();
+      this.fallBack("denied");
+    }
     else if (state === "ready" && this.view.phase === "starting") {
       noteNearbyAllowed();
       this.set({ phase: "on" });

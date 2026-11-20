@@ -146,6 +146,36 @@ describe("resume identity", () => {
   });
 });
 
+describe("a table on a device or a nearby phone is never written down", () => {
+  it("a nearby link's resume token is not saved, nor the table's code, while a nearby session or offline play is on", async () => {
+    const { conn, saveRoom, saveResumeToken, getSavedRoom, getResumeToken } = await load();
+    const mode = await import("./offlineMode");
+    conn.start();
+    FakeWS.last!.onopen?.();
+    // the nearby link, even before the session flags are up
+    conn.useNearby(() => new FakeWS("nearby") as unknown as WebSocket);
+    FakeWS.last!.onopen?.();
+    FakeWS.last!.deliver({ type: "resume", token: "near-tok", gen: 1 });
+    expect(getResumeToken()).toBeNull();
+    mode.setOffline(true);
+    mode.setNearbySession(true);
+    FakeWS.last!.deliver({ type: "resume", token: "near-tok-2", gen: 2 });
+    // App's room frame handler and its first-state save
+    saveRoom("K7Q2MX");
+    saveResumeToken("near-tok-3");
+    mode.setNearbySession(false);
+    // offline play on this device: its room is not the game server's either
+    saveRoom("QWER");
+    expect(getSavedRoom()).toBeNull();
+    expect(getResumeToken()).toBeNull();
+    const kept = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join(";");
+    expect(kept).not.toMatch(/K7Q2MX|QWER|near-tok/);
+    mode.setOffline(false);
+    saveRoom("ZZZZ");
+    expect(getSavedRoom()).toBe("ZZZZ");
+  });
+});
+
 describe("connection intent", () => {
   it("does not rejoin on its own — App decides", async () => {
     const { conn, saveRoom, saveName } = await load();

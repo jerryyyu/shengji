@@ -8,10 +8,13 @@ import { LIMITS, utf8Bytes } from "./protocol";
 /** What the link reports about itself, beyond its peers. */
 /** `ended`: the host phone was away longer than the joiners' window, so
  *  its table is over (the plugin stops advertising it). */
-export type LinkState = "ready" | "waiting" | "denied" | "wifiOff" | "notFound" | "failed" | "ended";
+/** `version`: the only tables found run another nearby version. */
+export type LinkState = "ready" | "waiting" | "denied" | "wifiOff" | "notFound" | "failed" | "ended" | "version";
 
 export interface HostHandlers {
-  peer(peer: string, connected: boolean): void;
+  /** `device`: an opaque id for the phone at the other end (one per remote
+   *  address, never the address), when the transport can tell. */
+  peer(peer: string, connected: boolean, device?: string): void;
   message(peer: string, text: string): void;
   state(state: LinkState, detail?: string): void;
 }
@@ -110,7 +113,9 @@ export class FakeTransport implements NearbyTransport {
     };
   }
 
-  async join(code: string, handlers: JoinHandlers): Promise<JoinLink> {
+  /** `device`: which phone joins, as the host sees it; each join is its
+   *  own phone unless a test names one. */
+  async join(code: string, handlers: JoinHandlers, device?: string): Promise<JoinLink> {
     if (this.deny) {
       handlers.state("denied");
       throw new NearbyError("denied");
@@ -121,14 +126,17 @@ export class FakeTransport implements NearbyTransport {
       throw new NearbyError("notFound");
     }
     const peer = `p${++this.seq}`;
+    const phone = device ?? `d${this.seq}`;
     h.peers.set(peer, handlers);
-    this.later(() => { if (h.peers.get(peer) === handlers) h.handlers.peer(peer, true); });
+    this.later(() => { if (h.peers.get(peer) === handlers) h.handlers.peer(peer, true, phone); });
     return {
       send: (text) => {
         this.checkSize(text);
         if (h.peers.get(peer) !== handlers) return;
         this.wire.push({ from: peer, to: "host", text });
-        this.later(() => { if (h.peers.get(peer) === handlers) h.handlers.message(peer, text); });
+        // frames sent before a close still arrive, ahead of the close, as
+        // the host's do
+        this.later(() => { if (!h.stopped) h.handlers.message(peer, text); });
       },
       close: () => this.cut(h, peer),
     };

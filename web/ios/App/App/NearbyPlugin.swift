@@ -92,7 +92,7 @@ enum NearbyBuild {
     static let debugBuild = false
     #endif
     static var enabled: Bool { reviewed || debugBuild }
-    static let nearbyV = 1
+    static let nearbyV = 2
     /// Must equal the NSBonjourServices entry in Info.plist.
     static let serviceType = "_shengji-nearby._tcp"
 }
@@ -102,7 +102,8 @@ enum NearbyBuild {
 ///
 /// The page is the live site, so this interface is a trust boundary: it takes
 /// a table code and text only, never a host, port or service type, and its
-/// events carry opaque random peer ids, never device names or addresses.
+/// events carry opaque random peer and device ids, never device names or
+/// addresses.
 ///
 /// Every link is TCP + TLS 1.2 with a pre-shared key derived from the code
 /// (NearbyKey) + WebSocket text frames of at most 16 KB. A device without the
@@ -122,7 +123,11 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     ] + ShengjiNearbyPlugin.spikeMethods
 
     static let maxMessage = 16 * 1024
-    static let handshakeTimeout: TimeInterval = 10
+    /// An inbound link must finish its handshake this soon.
+    static let handshakeTimeout: TimeInterval = 5
+    /// Each table the joiner tries gets this long; several are tried at once.
+    static let joinHandshakeTimeout: TimeInterval = 3
+    static let maxParallelTries = 4
     static let findTimeout: TimeInterval = 12
     /// Once every table found has refused the code, a wrong code is reported
     /// after this pause unless another table appears.
@@ -130,20 +135,27 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     /// A host away from the app longer than this ends its table.
     static let hostWindow: TimeInterval = 60
     static let maxJoinTries = 8
-    static let maxHandshakes = 4
-    /// Three seats plus one joiner whose new link lands before the host
-    /// closes its old one.
-    static let maxConnected = 4
-    static let maxPending = 3
+    /// Three seats, one joiner whose new link lands before the host closes
+    /// its old one, and one more that is only looking at the seats.
+    static let maxConnected = 5
+    static let maxPending = 4
+    /// Handshakes in flight from one remote address.
+    static let maxPendingPerAddress = 2
+    /// After a failed handshake, that address waits this long before its next
+    /// one, so each address tests at most one guess at the code per second.
+    /// Other addresses are not held up by it.
     static let failedHandshakeSpacing: TimeInterval = 1
 
     private final class Link {
         let peer: String
         let connection: NWConnection
+        /// The remote address (host side only), never sent to JS.
+        let remote: String
         var ready = false
-        init(peer: String, connection: NWConnection) {
+        init(peer: String, connection: NWConnection, remote: String = "") {
             self.peer = peer
             self.connection = connection
+            self.remote = remote
         }
     }
 
@@ -153,7 +165,11 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var links: [String: Link] = [:]
     private var session = 0
     private var hostCall: CAPPluginCall?
-    private var lastFailedHandshake = Date.distantPast
+    /// When each remote address last failed a handshake (host side).
+    private var failedAt: [String: Date] = [:]
+    /// An opaque id per remote address for this table, so the page can tell
+    /// two links from one phone apart from two phones.
+    private var deviceIds: [String: String] = [:]
     // host side: the table's key and salt, kept so the same table can be
     // advertised again after the system stops the listener
     private var hostCode = ""
@@ -168,9 +184,11 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var candidates: [NWBrowser.Result] = []
     private var tried: Set<NWEndpoint> = []
     private var tries = 0
-    private var attempt: Link?
+    private var attempts: [Link] = []
     private var findDeadline = Date.distantFuture
     private var candidateArrivals = 0
+    /// A table answered with another nearby version (and none with this one).
+    private var sawOtherVersion = false
     // permission mapping
     private var appActive = true
     private var lastBecameActive = Date.distantPast
@@ -181,12 +199,16 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var live = false
 
     override public func load() {
-        observe(UIApplication.willResignActiveNotification) { $0.appActive = false }
+        observe(UIApplication.willResignActiveNotification) {
+            $0.appActive = false
+            $0.joinPaused()
+        }
         observe(UIApplication.didBecomeActiveNotification) {
             $0.appActive = true
             $0.lastBecameActive = Date()
             $0.reportDenied()
             $0.hostReturned()
+            $0.joinResumed()
         }
         observe(UIApplication.willEnterForegroundNotification) { $0.hostReturned() }
         observe(UIApplication.didEnterBackgroundNotification) { $0.hostLeft() }
@@ -457,18 +479,30 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         backgroundTask = .invalid
     }
 
+    /// The remote address of an inbound connection, as a key; never sent to JS.
+    static func remoteAddress(_ endpoint: NWEndpoint) -> String {
+        if case .hostPort(let host, _) = endpoint { return "\(host)" }
+        return "\(endpoint)"
+    }
+
     /// Inbound limits: each failed handshake tests one guess at the code, so
-    /// failures are spaced and concurrent handshakes are capped.
+    /// an address that failed waits before its next one, and handshakes in
+    /// flight are capped overall and per address. Nothing one address does
+    /// holds up another's join.
     private func accept(_ connection: NWConnection) {
-        let pending = links.values.filter { !$0.ready }.count
-        let connected = links.count - pending
-        guard pending < min(Self.maxHandshakes, Self.maxPending), connected < Self.maxConnected,
-              Date().timeIntervalSince(lastFailedHandshake) >= Self.failedHandshakeSpacing else {
+        let remote = Self.remoteAddress(connection.endpoint)
+        let pending = links.values.filter { !$0.ready }
+        let connected = links.count - pending.count
+        let now = Date()
+        failedAt = failedAt.filter { now.timeIntervalSince($0.value) < Self.failedHandshakeSpacing }
+        guard pending.count < Self.maxPending, connected < Self.maxConnected,
+              pending.filter({ $0.remote == remote }).count < Self.maxPendingPerAddress,
+              failedAt[remote] == nil else {
             return connection.cancel()
         }
         var peer = NearbyKey.randomName(12)
         while links[peer] != nil || peer == "host" { peer = NearbyKey.randomName(12) }
-        let link = Link(peer: peer, connection: connection)
+        let link = Link(peer: peer, connection: connection, remote: remote)
         links[peer] = link
         connection.stateUpdateHandler = { [weak self, weak link] state in
             guard let self = self, let link = link, self.links[link.peer] === link else { return }
@@ -478,41 +512,70 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 let others = self.links.values.filter { $0.ready }.count
                 guard others < Self.maxConnected else { return self.drop(link.peer) }
                 link.ready = true
-                self.emitPeer(link.peer, "connected")
+                self.emitPeer(link.peer, "connected", device: self.deviceId(link.remote))
                 self.receive(link)
             case .failed, .cancelled:
-                if !link.ready { self.lastFailedHandshake = Date() }
+                if !link.ready { self.failedAt[link.remote] = Date() }
                 self.drop(link.peer)
             default:
                 break
             }
         }
-        startWithTimeout(link)
+        startWithTimeout(link, Self.handshakeTimeout)
+    }
+
+    private func deviceId(_ remote: String) -> String {
+        if let id = deviceIds[remote] { return id }
+        var id = NearbyKey.randomName(12)
+        while deviceIds.values.contains(id) { id = NearbyKey.randomName(12) }
+        deviceIds[remote] = id
+        return id
     }
 
     // MARK: join
 
-    /// Tries advertised tables newest first; only the one whose key matches
-    /// the code completes the handshake.
+    /// Tries advertised tables newest first, up to `maxParallelTries` at
+    /// once, each for `joinHandshakeTimeout`; only the one whose key matches
+    /// the code completes the handshake, and the rest are then cancelled. A
+    /// table that stalls its handshake holds up only its own try.
+    // TODO-review(M3): parallel tries and the 3 s timeout are unconfirmed on device
     private func tryNext() {
-        guard attempt == nil, links["host"] == nil, tries < Self.maxJoinTries else { return checkNotFound() }
-        guard let result = candidates.popLast() else { return checkNotFound() }
-        tried.insert(result.endpoint)
-        guard case .bonjour(let txt) = result.metadata, txt["v"] == "\(NearbyBuild.nearbyV)",
-              let saltText = txt["salt"], let salt = Data(base64Encoded: saltText),
-              salt.count == NearbyKey.saltBytes,
-              let psk = NearbyKey.derive(code: joinCode, salt: salt) else { return tryNext() }
-        tries += 1
-        let connection = NWConnection(to: result.endpoint, using: Self.parameters(psk: psk))
+        guard links["host"] == nil else { return }
+        while attempts.count < Self.maxParallelTries, tries < Self.maxJoinTries, let result = candidates.popLast() {
+            tried.insert(result.endpoint)
+            guard case .bonjour(let txt) = result.metadata else { continue }
+            guard txt["v"] == "\(NearbyBuild.nearbyV)" else {
+                sawOtherVersion = true
+                continue
+            }
+            guard let saltText = txt["salt"], let salt = Data(base64Encoded: saltText),
+                  salt.count == NearbyKey.saltBytes,
+                  let psk = NearbyKey.derive(code: joinCode, salt: salt) else { continue }
+            tries += 1
+            tryTable(result.endpoint, psk: psk)
+        }
+        if attempts.isEmpty { checkNotFound() }
+    }
+
+    private func tryTable(_ endpoint: NWEndpoint, psk: Data) {
+        let connection = NWConnection(to: endpoint, using: Self.parameters(psk: psk))
         let link = Link(peer: "host", connection: connection)
-        attempt = link
+        attempts.append(link)
         connection.stateUpdateHandler = { [weak self, weak link] state in
             guard let self = self, let link = link else { return }
             self.spikeLog("outbound try \(self.tries) \(state)")
             switch state {
             case .ready:
-                guard self.attempt === link else { return connection.cancel() }
-                self.attempt = nil
+                guard self.attempts.contains(where: { $0 === link }), self.links["host"] == nil else {
+                    return connection.cancel()
+                }
+                self.attempts.removeAll { $0 === link }
+                // the other tries are tables that are not this one
+                for other in self.attempts {
+                    other.connection.stateUpdateHandler = nil
+                    other.connection.cancel()
+                }
+                self.attempts = []
                 link.ready = true
                 self.links["host"] = link
                 self.browser?.cancel()
@@ -522,8 +585,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             case .waiting(let error):
                 if Self.isPolicyDenied(error) { self.report(error, failed: false) }
             case .failed, .cancelled:
-                if self.attempt === link {
-                    self.attempt = nil
+                if self.attempts.contains(where: { $0 === link }) {
+                    self.attempts.removeAll { $0 === link }
                     self.tryNext()
                 } else if self.links["host"] === link {
                     self.drop("host")
@@ -532,11 +595,38 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 break
             }
         }
-        startWithTimeout(link)
+        startWithTimeout(link, Self.joinHandshakeTimeout)
     }
 
+    /// The app left the foreground during a join, most often for the
+    /// system's Local Network prompt: the page holds its look meanwhile.
+    private func joinPaused() {
+        guard joining else { return }
+        emitState("waiting", detail: "prompt")
+    }
+
+    /// Back in the app during a join: the look's time starts over, so a slow
+    /// answer to the prompt never reads as no table nearby.
+    // TODO-review(M3): confirm the prompt's resign/become-active order on device
+    private func joinResumed() {
+        guard joining else { return }
+        findDeadline = Date().addingTimeInterval(Self.findTimeout)
+        emitState("waiting", detail: "active")
+        let session = self.session
+        queue.asyncAfter(deadline: .now() + Self.findTimeout) { [weak self] in
+            guard let self = self, self.session == session else { return }
+            self.checkNotFound()
+        }
+        tryNext()
+    }
+
+    private var joining: Bool { !joinCode.isEmpty && browser != nil && links["host"] == nil }
+
     private func checkNotFound() {
-        guard !deniedReported, links["host"] == nil, attempt == nil, browser != nil else { return }
+        guard !deniedReported, links["host"] == nil, attempts.isEmpty, browser != nil else { return }
+        // while the prompt is up, or a denial is still settling, nothing is
+        // reported; joinResumed starts the look's time over
+        guard appActive, !policyDenied else { return }
         if tries >= Self.maxJoinTries || (Date() >= findDeadline && candidates.isEmpty) {
             return emitNotFound()
         }
@@ -553,21 +643,24 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private var allTriedFailed: Bool {
-        tries > 0 && candidates.isEmpty && attempt == nil && links["host"] == nil && browser != nil
+        (tries > 0 || sawOtherVersion) && candidates.isEmpty && attempts.isEmpty && links["host"] == nil
+            && browser != nil
     }
 
+    /// Not found; or, when the only tables found run another nearby version,
+    /// "version", which asks for the app to be updated.
     private func emitNotFound() {
         guard !deniedReported else { return }
         browser?.cancel()
         browser = nil
-        emitState("notFound")
+        emitState(sawOtherVersion && tries == 0 ? "version" : "notFound")
     }
 
     // MARK: links
 
-    private func startWithTimeout(_ link: Link) {
+    private func startWithTimeout(_ link: Link, _ timeout: TimeInterval) {
         link.connection.start(queue: queue)
-        queue.asyncAfter(deadline: .now() + Self.handshakeTimeout) { [weak link] in
+        queue.asyncAfter(deadline: .now() + timeout) { [weak link] in
             guard let link = link, !link.ready else { return }
             link.connection.cancel()
         }
@@ -609,9 +702,11 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         listener = nil
         browser?.cancel()
         browser = nil
-        attempt?.connection.stateUpdateHandler = nil
-        attempt?.connection.cancel()
-        attempt = nil
+        for link in attempts {
+            link.connection.stateUpdateHandler = nil
+            link.connection.cancel()
+        }
+        attempts = []
         for link in links.values {
             link.connection.stateUpdateHandler = nil
             link.connection.cancel()
@@ -622,6 +717,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         candidates = []
         tried = []
         tries = 0
+        sawOtherVersion = false
+        failedAt = [:]
+        deviceIds = [:]
         joinCode = ""
         findDeadline = .distantFuture
         candidateArrivals = 0
@@ -715,8 +813,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         notifyListeners("state", data: data)
     }
 
-    private func emitPeer(_ peer: String, _ state: String) {
-        notifyListeners("peer", data: ["peer": peer, "state": state])
+    private func emitPeer(_ peer: String, _ state: String, device: String? = nil) {
+        var data: [String: Any] = ["peer": peer, "state": state]
+        if let device = device { data["device"] = device }
+        notifyListeners("peer", data: data)
     }
 
     /// A phone waiting for its turn must not auto-lock and drop its link.

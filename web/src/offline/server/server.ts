@@ -43,9 +43,20 @@ const DECLARE_POLL = 0.25;
 const CHAT_KEEP = 50;
 const CHAT_MAX_LEN = 300;
 const KITTY_FIRST_ID = 100;
+/** server.py MOVE_TIMER: while two or more people sit at a nearby table, a
+ *  connected person has this long for each bury, play and round-end Next;
+ *  then the bot makes that one decision. */
+export const MOVE_TIMER = 60.0;
+/** server.py AWAY_IN_A_ROW and AWAY_PER_ROUND: this many timeouts mark the
+ *  seat away, and the bot plays every decision for it until its player is back. */
+export const AWAY_IN_A_ROW = 2;
+export const AWAY_PER_ROUND = 3;
 /** server.py TAKEOVER_AFTER: a dropped human keeps their seat this long
  *  before the bot plays for them (nearby rooms). */
-export const TAKEOVER_AFTER = 60.0;
+export const TAKEOVER_AFTER = MOVE_TIMER;
+/** A nearby lobby seat whose link dropped is kept this long for its owner
+ *  to come back by token, then freed. */
+export const LOBBY_SEAT_HOLD = 12.0;
 /** server.py's casual-room watchdog period. */
 export const WATCHDOG_POLL = 5.0;
 /** matchmaking.py BOT_FILL_SECS: once a nearby table has a second person,
@@ -109,6 +120,13 @@ export class Seat {
   leftByChoice = false;
   /** The watchdog's first cover of this absence has been announced. */
   botAnnounced = false;
+  /** Clock time this seat's move clock started for the decision it owes;
+   *  null when it owes none or no clock runs (server.py turn_started). */
+  turnStarted: number | null = null;
+  /** The move timer marked this present player away: the bot plays for them. */
+  away = false;
+  timeoutsInRow = 0;
+  timeoutsInRound = 0;
 
   constructor(name: string, isBot: boolean, token: string) {
     this.name = name;
@@ -158,6 +176,12 @@ export class LocalRoom {
   /** Someone has joined: the host's Nearby switch can no longer turn the
    *  table back into a solo one; Leave ends it. */
   joinedOnce = false;
+  /** The decision the seats' move clocks belong to (server.py timer_key). */
+  timerKey: string | null = null;
+  /** The decision whose clock ran out, which the bot makes for its seat. */
+  timeoutKey: string | null = null;
+  /** Called once when the room closes (the nearby host stops its link then). */
+  onClosed: (() => void) | null = null;
 
   constructor(code: string, startLevel: string, decks: DeckRng, nearby = false) {
     this.code = code;
@@ -310,6 +334,46 @@ export function takeoverIn(seat: Seat, now: number): number | null {
   return Math.round(Math.max(0, TAKEOVER_AFTER - (now - seat.leftAt)) * 10) / 10;
 }
 
+/** server.py _decision_key: the decision the table waits on; a new key
+ *  restarts every owing seat's move clock. */
+export function decisionKey(room: LocalRoom): string | null {
+  const game = room.game;
+  const rnd = room.round;
+  if (game === null || rnd === null || game.gameOver) return null;
+  if (rnd.phase === "round_end") return `${game.roundNo}:end`;
+  if (rnd.phase === "bury") return `${game.roundNo}:bury:${rnd.turn}`;
+  if (rnd.phase === "play") return `${game.roundNo}:play:${rnd.turn}:${rnd.history.length}:${rnd.trick ? rnd.trick.plays.length : 0}`;
+  return null;
+}
+
+/** server.py _owing_seats: the human seats that owe the current decision. */
+export function owingSeats(room: LocalRoom): number[] {
+  const key = decisionKey(room);
+  if (key === null) return [];
+  if (key.endsWith(":end")) return room.seats.flatMap((sd, i) => (!sd.isBot && !room.ready.has(i) ? [i] : []));
+  const seat = room.round!.turn;
+  return seat === null || room.seats[seat].isBot ? [] : [seat];
+}
+
+/** server.py _timer_live: a nearby room's move clock runs while two or more
+ *  of its seats are people's. Nobody waits on a lone player. */
+export function moveTimerLive(room: LocalRoom): boolean {
+  return room.nearby && room.game !== null && room.seats.filter((s) => !s.isBot).length >= 2;
+}
+
+/** server.py _timed: whether `sd`'s move clock is running. */
+function timed(room: LocalRoom, sd: Seat): boolean {
+  return moveTimerLive(room) && !sd.isBot && sd.connected && sd.turnStarted !== null;
+}
+
+/** server.py _turn_deadline: seconds this seat has left for its decision,
+ *  or null when no clock runs for it. */
+export function turnDeadline(room: LocalRoom, seat: number, now: number): number | null {
+  const sd = room.seats[seat];
+  if (!timed(room, sd) || sd.away) return null;
+  return Math.round(Math.max(0, MOVE_TIMER - (now - sd.turnStarted!)) * 10) / 10;
+}
+
 /** server.py _reserved: the dropped seat is still its owner's alone. */
 export function reserved(seat: Seat, now: number): boolean {
   if (seat.isBot || seat.connected || seat.leftAt === null) return false;
@@ -371,7 +435,7 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
       cards_left: rnd.hands[s].length,
       is_banker: rnd.banker === s,
       ...(room.nearby
-        ? coverFields(sd, now)
+        ? { ...coverFields(sd, now), turn_deadline: turnDeadline(room, s, now), away: sd.away }
         : {
             takeover_in: null,
             controller: controller(sd),
@@ -519,7 +583,113 @@ export class LocalServer {
   drives(room: LocalRoom, seat: number): boolean {
     const sd = room.seats[seat];
     if (this.autoplay || sd.isBot) return true;
-    return room.nearby && !sd.connected && (sd.botAnnounced || sd.leftByChoice);
+    if (!room.nearby) return false;
+    // a present player: away, or this one decision ran out of time
+    if (sd.connected) return sd.away || this.timedOutTurn(room, seat);
+    return sd.botAnnounced || sd.leftByChoice;
+  }
+
+  /** The bot makes `seat`'s current decision because its clock ran out. */
+  private timedOutTurn(room: LocalRoom, seat: number): boolean {
+    return room.timeoutKey !== null && this.currentActor(room) === seat && room.timeoutKey === decisionKey(room);
+  }
+
+  // ----------------------------------------------------------- move timer
+  /** server.py _sync_move_timer: start the clock of every seat that newly
+   *  owes a decision, and look again when the earliest one runs out. */
+  syncMoveTimer(room: LocalRoom): void {
+    if (!room.nearby || room.game === null) return;
+    if (!moveTimerLive(room)) {
+      room.timerKey = null;
+      for (const sd of room.seats) sd.turnStarted = null;
+      return;
+    }
+    const key = decisionKey(room);
+    const owing = new Set(owingSeats(room));
+    const fresh = key !== room.timerKey;
+    room.timerKey = key;
+    let started = false;
+    room.seats.forEach((sd, i) => {
+      if (!owing.has(i)) sd.turnStarted = null;
+      else if (fresh || sd.turnStarted === null) {
+        sd.turnStarted = this.clock.now();
+        started = true;
+      }
+    });
+    if (started) this.moveCheckIn(room, MOVE_TIMER);
+    // an away player owes no wait at the round end
+    if (fresh && room.round?.phase === "round_end" && room.seats.some((sd, i) => owing.has(i) && sd.connected && sd.away)) {
+      this.moveCheckIn(room, 0);
+    }
+  }
+
+  private moveCheckIn(room: LocalRoom, seconds: number): void {
+    this.clock.setTimeout(() => this.moveTimerTick(room), Math.max(0, seconds));
+  }
+
+  /** server.py move_timer_tick: a present player whose clock ran out has the
+   *  bot make that decision (a bury or a play), or is counted ready at the
+   *  round end. */
+  moveTimerTick(room: LocalRoom): void {
+    if (room.closed || !room.game) return;
+    this.syncMoveTimer(room);
+    const game = room.game;
+    const rnd = room.round;
+    if (rnd === null || game.gameOver || !moveTimerLive(room)) return;
+    const now = this.clock.now();
+    let soonest = Infinity;
+    const ranOut = (seat: number): boolean => {
+      const sd = room.seats[seat];
+      if (!timed(room, sd)) return false;
+      const left = MOVE_TIMER - (now - sd.turnStarted!);
+      if (left > 1e-9) {
+        soonest = Math.min(soonest, left);
+        return false;
+      }
+      return true;
+    };
+    if (rnd.phase === "round_end") {
+      let readied = false;
+      for (const s of owingSeats(room)) {
+        const sd = room.seats[s];
+        if (!sd.connected) continue;
+        if (sd.away) {
+          room.ready.add(s);
+          readied = true;
+        } else if (ranOut(s)) {
+          room.ready.add(s);
+          this.countTimeout(room, s);
+          readied = true;
+        }
+      }
+      if (readied) {
+        this.advanceIfAllReady(room);
+        this.broadcast(room);
+      }
+    } else {
+      const seat = this.currentActor(room);
+      if (seat !== null && !room.seats[seat].isBot && !room.seats[seat].away && ranOut(seat)) {
+        room.timeoutKey = room.timerKey;
+        this.kickBots(room);
+      }
+    }
+    if (soonest < Infinity) this.moveCheckIn(room, soonest);
+  }
+
+  /** server.py _count_timeout: the bot made a decision a present player let run out. */
+  private countTimeout(room: LocalRoom, seat: number): void {
+    const sd = room.seats[seat];
+    if (sd.away) return;
+    sd.timeoutsInRow += 1;
+    sd.timeoutsInRound += 1;
+    if (sd.timeoutsInRow >= AWAY_IN_A_ROW || sd.timeoutsInRound >= AWAY_PER_ROUND) sd.away = true;
+  }
+
+  /** server.py _player_moved: a real decision (or im_back) from the seat's player. */
+  private playerMoved(room: LocalRoom, seat: number): void {
+    const sd = room.seats[seat];
+    sd.away = false;
+    sd.timeoutsInRow = 0;
   }
 
   /** A new client connection; `deliver` receives each frame as JSON text. */
@@ -542,6 +712,7 @@ export class LocalServer {
   }
 
   broadcast(room: LocalRoom): void {
+    this.syncMoveTimer(room);
     room.slots().forEach((seat, i) => {
       if (seat && seat.connected && !seat.isBot) {
         this.enqueue(seat, room.game && room.round ? stateFor(room, i, this.clock.now()) : roomJson(room, i, this.clock.now()));
@@ -624,14 +795,19 @@ export class LocalServer {
     if (seat !== null && this.drives(room, seat) && !room.pumping) {
       room.pumping = true;
       this.clock.setTimeout(() => {
-        void this.pumpBots(room).finally(() => {
+        let stale = false;
+        void this.pumpBots(room, () => { stale = true; }).finally(() => {
           room.pumping = false;
+          // the turn moved on while a decision was being made (its owner
+          // came back and played, say): whoever holds it now may be a bot,
+          // and the kick that move made found the pump busy
+          if (stale) this.kickBots(room);
         });
       }, 0);
     }
   }
 
-  private async pumpBots(room: LocalRoom): Promise<void> {
+  private async pumpBots(room: LocalRoom, overtaken: () => void): Promise<void> {
     for (;;) {
       const started = this.clock.now();
       const seat = this.currentActor(room);
@@ -642,6 +818,9 @@ export class LocalServer {
       const phase = rnd.phase;
       const cursor = phase === "play" ? `${rnd.history.length}:${rnd.trick!.plays.length}` : null;
       if (phase !== "bury" && phase !== "play") return;
+      // a present player's clock ran out: counted once the decision is made
+      const timeout = !room.seats[seat].isBot && room.seats[seat].connected && !room.seats[seat].away
+        && this.timedOutTurn(room, seat);
       let cards: Card[];
       // the release bot's answer, until it is committed or dropped
       let token: string | null = null;
@@ -661,6 +840,7 @@ export class LocalServer {
         !this.drives(room, seat)
       ) {
         if (token) this.remote!.drop(token, "stale");
+        overtaken();
         return;
       }
       try {
@@ -675,6 +855,10 @@ export class LocalServer {
           room.removeCodes(seat, played);
         }
         if (token) this.remote!.commit(token);
+        if (timeout) {
+          room.timeoutKey = null;
+          this.countTimeout(room, seat);
+        }
         // the play just made may have ended the round
         if ((rnd.phase as string) === "round_end" && game.result === null) finishRound(game);
       } catch (e) {
@@ -881,6 +1065,7 @@ export class LocalServer {
     const pending = room.seats.some((sd, i) => !sd.isBot && sd.connected && !room.ready.has(i));
     if (pending || room.ready.size === 0) return false;
     room.ready.clear();
+    for (const sd of room.seats) sd.timeoutsInRound = 0;
     startRound(game, room.decks.deck());
     room.indexRound();
     this.spawnDeal(room);
@@ -926,14 +1111,26 @@ export class LocalServer {
     } else if (t === "allow_joiners") {
       if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets Allow joiners.");
       room.allowJoiners = msg.on === true;
+    } else if (t === "im_back") {
+      // the player is back: the bot stops playing for the seat, and a
+      // decision it owes now gets a fresh clock
+      const sd = room.seats[seat];
+      const wasAway = sd.away;
+      this.playerMoved(room, seat);
+      if (wasAway && sd.turnStarted !== null) {
+        sd.turnStarted = this.clock.now();
+        this.moveCheckIn(room, MOVE_TIMER);
+      }
     } else if (t === "declare") {
       const codes = room.codesFor(seat, cardIds(msg));
       declare(rnd, seat, codes);
       room.logAction(["declare", seat, [...codes]]);
+      this.playerMoved(room, seat);
     } else if (t === "pass_declare") {
       const wasPassed = rnd.passed.includes(seat);
       passDeclare(rnd, seat);
       if (!wasPassed) room.logAction(["pass", seat]);
+      this.playerMoved(room, seat);
     } else if (t === "bury") {
       room.syncKitty();
       const ids = cardIds(msg);
@@ -941,6 +1138,7 @@ export class LocalServer {
       bury(rnd, seat, codes);
       room.logAction(["bury", seat, [...codes]]);
       room.removeIds(seat, ids);
+      this.playerMoved(room, seat);
     } else if (t === "play") {
       const ids = cardIds(msg);
       const codes = room.codesFor(seat, ids);
@@ -950,10 +1148,12 @@ export class LocalServer {
       const same = [...played].sort().join(",") === [...codes].sort().join(",");
       if (same) room.removeIds(seat, ids);
       else room.removeCodes(seat, played);
+      this.playerMoved(room, seat);
     } else if (t === "next_round") {
       if (rnd.phase !== "round_end") throw new IllegalPlay("Round not finished.");
       if (game.gameOver) throw new IllegalPlay("Game is over.");
       room.ready.add(seat);
+      this.playerMoved(room, seat);
       if (!this.advanceIfAllReady(room)) this.broadcast(room);
     } else {
       throw new IllegalPlay(`Unknown action: ${t === undefined ? "None" : String(t)}`);
@@ -1018,6 +1218,28 @@ export class LocalServer {
     if (room.seats.some((s) => !s.isBot && !s.connected)) this.watch(room);
   }
 
+  /** A lobby seat's link dropped: the others may all be ready now, and the
+   *  seat is its owner's for LOBBY_SEAT_HOLD, to come back by token; then it
+   *  is free again, so a phone that is gone never holds a place at the table. */
+  lobbyDropped(room: LocalRoom, seat: Seat): void {
+    const gen = seat.gen;
+    this.clock.setTimeout(() => {
+      if (room.closed || !room.lobby || seat.connected || seat.gen !== gen) return;
+      const i = room.lobby.indexOf(seat);
+      if (i < 0 || i === room.host) return;
+      room.lobby[i] = null;
+      room.lobbyReady.delete(i);
+      this.chatSystem(room, `${seat.name} left`);
+      this.syncBotsTimer(room);
+      this.startIfReady(room);
+      this.broadcast(room);
+      this.kickBots(room);
+    }, LOBBY_SEAT_HOLD);
+    this.startIfReady(room);
+    this.broadcast(room);
+    this.kickBots(room);
+  }
+
   /** The lobby's bot timer follows who sits there: it runs from the moment
    *  a second person sits, and stops when the host is alone again. */
   syncBotsTimer(room: LocalRoom): void {
@@ -1041,7 +1263,12 @@ export class LocalServer {
   }
 
   closeRoom(room: LocalRoom): void {
-    room.closed = true;
+    if (!room.closed) {
+      room.closed = true;
+      const done = room.onClosed;
+      room.onClosed = null;
+      done?.();
+    }
     this.rooms.delete(room.code);
   }
 
@@ -1294,7 +1521,8 @@ export class LocalConnection {
       const server = this.server;
       server.chatSystem(room, `${me.name} disconnected`);
       server.detach(me, room, this.myGen);
-      if (room.humans().some((s) => s.connected) && !server.advanceAfterLeave(room)) server.broadcast(room);
+      if (room.lobby) server.lobbyDropped(room, me);
+      else if (room.humans().some((s) => s.connected) && !server.advanceAfterLeave(room)) server.broadcast(room);
     } else if (room && me) this.server.detach(me, room, this.myGen);
     this.closed = true;
     this.room = null;

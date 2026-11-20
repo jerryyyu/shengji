@@ -17,12 +17,12 @@ interface NearbyPlugin {
   send(opts: { peer: string; text: string }): Promise<unknown>;
   close(opts: { peer: string }): Promise<unknown>;
   stop(): Promise<unknown>;
-  addListener(event: "peer", fn: (ev: { peer: string; state: string }) => void): Promise<Listener>;
+  addListener(event: "peer", fn: (ev: { peer: string; state: string; device?: string }) => void): Promise<Listener>;
   addListener(event: "message", fn: (ev: { peer: string; text: string }) => void): Promise<Listener>;
   addListener(event: "state", fn: (ev: { state: string; detail?: string }) => void): Promise<Listener>;
 }
 
-const STATES: ReadonlySet<string> = new Set(["ready", "waiting", "denied", "wifiOff", "notFound", "failed", "ended"]);
+const STATES: ReadonlySet<string> = new Set(["ready", "waiting", "denied", "wifiOff", "notFound", "failed", "ended", "version"]);
 const asState = (s: string): LinkState => (STATES.has(s) ? (s as LinkState) : "failed");
 
 function nearbyPlugin(): NearbyPlugin | null {
@@ -71,7 +71,8 @@ export function nativeTransport(): NearbyTransport | null {
       let refuse: ((e: NearbyError) => void) | null = null;
       const refused = new Promise<never>((_, no) => { refuse = no; });
       listeners = await Promise.all([
-        p.addListener("peer", (ev) => handlers.peer(ev.peer, ev.state === "connected")),
+        p.addListener("peer", (ev) => handlers.peer(ev.peer, ev.state === "connected",
+                                                    typeof ev.device === "string" ? ev.device : undefined)),
         p.addListener("message", (ev) => handlers.message(ev.peer, ev.text)),
         p.addListener("state", (ev) => {
           const state = asState(ev.state);
@@ -103,6 +104,9 @@ export function nativeTransport(): NearbyTransport | null {
         if (done) return;
         done = true;
         unlisten();
+        // the plugin's join session ends with its link, whichever end closed
+        // it, so its screen wake lock does not outlive the table
+        void p.stop().catch(() => {});
         if (open) handlers.closed();
         else settle!.fail(new NearbyError("failed", "closed"));
       };
@@ -128,10 +132,7 @@ export function nativeTransport(): NearbyTransport | null {
       await linked.catch(fail);
       return {
         send: (text) => void p.send({ peer: "host", text }).catch(() => closed()),
-        close: () => {
-          void p.stop().catch(() => {});
-          closed();
-        },
+        close: () => closed(),
       };
     },
   };

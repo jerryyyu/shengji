@@ -47,6 +47,9 @@ import { NearbyError, type LinkState, type NearbyTransport } from "./nearby/tran
 
 let nearbyTransport: NearbyTransport | null = null;
 let activeHost: NearbyHost | null = null;
+/** A host whose Leave is telling its joiners; it stops on its own, or at
+ *  once when the next table starts (the plugin runs one session). */
+let endingHost: NearbyHost | null = null;
 
 /** Tests: the transport nearby play uses in place of the native plugin. */
 export function setNearbyTransportForTests(t: NearbyTransport | null): void {
@@ -62,6 +65,8 @@ function transport(): NearbyTransport {
 /** Advertise this page's nearby room `code` on the local network. */
 export async function hostNearby(code: string, events: NearbyHostEvents): Promise<void> {
   stopNearbyHost();
+  endingHost?.stop();
+  endingHost = null;
   const server = localServer();
   const room = server.rooms.get(code);
   if (!room || !room.nearby) throw new NearbyError("failed", "no such nearby room");
@@ -81,7 +86,19 @@ export function stopNearbyHost(): void {
   activeHost = null;
 }
 
+/** The host's Leave: its room tells every joiner the table is over before
+ *  the links stop (NearbyHost.stopWhenClosed). */
+export function endNearbyHost(): void {
+  const host = activeHost;
+  activeHost = null;
+  if (!host) return;
+  endingHost = host;
+  host.stopWhenClosed();
+}
+
 /** The joiner's socket to the nearby table `code`, for ws.ts's Connection. */
 export function nearbyJoinSocket(code: string, onState: (state: LinkState, detail?: string) => void): NearbySocket {
+  endingHost?.stop();
+  endingHost = null;
   return new NearbySocket(transport(), code, onState);
 }

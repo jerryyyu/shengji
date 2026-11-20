@@ -91,8 +91,16 @@ const ANSWERED: ReadonlySet<ClientMsg["type"]> = new Set<ClientMsg["type"]>([
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
-import { OFFLINE } from "./offlineMode";
+import { NEARBY_SESSION, OFFLINE } from "./offlineMode";
 export { OFFLINE };
+
+/** Whether this page may remember its seat in storage: only for the game
+ *  server. A table on this device or a nearby phone's is never written down,
+ *  so a later launch with a network never sends its code or token to the
+ *  game server. */
+function remembersSeats(): boolean {
+  return !OFFLINE && !NEARBY_SESSION;
+}
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
@@ -110,7 +118,7 @@ export function getSavedRoom(): string | null {
   return localStorage.getItem(ROOM_KEY);
 }
 export function saveRoom(room: string): void {
-  localStorage.setItem(ROOM_KEY, room);
+  if (remembersSeats()) localStorage.setItem(ROOM_KEY, room);
 }
 export function clearSavedRoom(): void {
   localStorage.removeItem(ROOM_KEY);
@@ -125,7 +133,7 @@ export function getResumeToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 export function saveResumeToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  if (remembersSeats()) localStorage.setItem(TOKEN_KEY, token);
 }
 
 type MsgListener = (msg: ServerMsg) => void;
@@ -630,7 +638,7 @@ class Connection {
       }
       switch (msg.type) {
         case "resume":
-          if (msg.token) saveResumeToken(msg.token);
+          if (msg.token && this.transport === "remote") saveResumeToken(msg.token);
           break;
         case "chat_history":
           this.chatLog = msg.messages.slice(-100);   // REPLACE, never merge

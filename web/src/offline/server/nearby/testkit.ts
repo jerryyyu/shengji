@@ -83,8 +83,8 @@ export class NearbyTable {
   }
 
   /** A joiner types the code and joins (or resumes with `token`). */
-  async join(name: string, opts: { drive?: boolean; token?: string | null; player?: Player } = {}): Promise<Player> {
-    const sock = new NearbySocket(this.fake, this.code);
+  async join(name: string, opts: { drive?: boolean; token?: string | null; player?: Player; device?: string } = {}): Promise<Player> {
+    const sock = this.socket(opts.device);
     const p: Player = opts.player ?? { name, sock, frames: [], token: null, driver: null, seat: null, left: false };
     p.sock = sock;
     p.left = false;
@@ -95,6 +95,16 @@ export class NearbyTable {
     if (!opts.player) this.joiners.push(p);
     await this.clock.run(() => p.frames.slice(before).some((f) => f.type === "room" || f.type === "state" || f.type === "error"), 50_000);
     return p;
+  }
+
+  /** A joiner's socket on this table's clock, from `device` when named
+   *  (else a phone of its own). */
+  socket(device?: string): NearbySocket {
+    const transport = device === undefined ? this.fake : {
+      host: this.fake.host.bind(this.fake),
+      join: (code: string, handlers: Parameters<FakeTransport["join"]>[1]) => this.fake.join(code, handlers, device),
+    };
+    return new NearbySocket(transport, this.code, null, this.clock);
   }
 
   send(p: Player, msg: Record<string, unknown>): void {

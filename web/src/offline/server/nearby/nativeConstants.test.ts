@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { NEARBY_ALPHABET, NEARBY_CODE_LEN } from "./codes";
 import { NEARBY_SERVICE_TYPE, NEARBY_V, LIMITS } from "./protocol";
+import { HOST_WINDOW_MS } from "../../../codeJoin";
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 const swift = read("../../../../ios/App/App/NearbyPlugin.swift");
@@ -29,6 +30,14 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift).toContain(`static let codeLength = ${NEARBY_CODE_LEN}`);
     expect(LIMITS.frameBytes).toBe(16 * 1024);
     expect(swift).toContain("static let maxMessage = 16 * 1024");
+  });
+
+  it("the joiner waits a few seconds longer for its host than the host has to come back", () => {
+    const m = swift.match(/static let hostWindow: TimeInterval = (\d+)/);
+    expect(m).not.toBeNull();
+    const hostMs = Number(m![1]) * 1000;
+    expect(HOST_WINDOW_MS).toBeGreaterThanOrEqual(hostMs + 3000);
+    expect(HOST_WINDOW_MS).toBeLessThanOrEqual(hostMs + 10_000);
   });
 
   it("the plugin cannot run unreviewed and is not registered in a shipped build", () => {

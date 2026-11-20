@@ -1,12 +1,29 @@
-"""Shengji Atlas v2 -- the release-29/30 era.  ONE source of truth: registry.json; this script renders
+"""Shengji Atlas v2 -- the unified-model era (registry `era`; releases 29-52 are a frozen page).  ONE source of truth: registry.json; this script renders
 atlas_v2.html next to it.  The page is BUILT, not tracked (#688): publish from the built file.
 `--check` refuses when the registry breaks an invariant or the page cannot be built, and -- when a
 built atlas_v2.html is on disk -- when that stale page differs from a fresh build.  Never hand-edit
 the HTML (Jerry 2026-09-22; #604)."""
-import json, html, datetime, hashlib, re, stat, sys, tempfile
+import json, html, datetime, hashlib, os, re, stat, sys, tempfile
 from pathlib import Path
 HERE = Path(__file__).resolve().parent
-R = json.loads((HERE / "registry.json").read_text())
+R_FULL = json.loads((HERE / "registry.json").read_text())
+
+
+def era_view(reg):
+    """The registry as the page shows it: screens and models from the era's start, releases from its
+    first release, no pre-era context rows.  Validation always runs on the full registry."""
+    era = reg.get("era")
+    if not era or os.environ.get("ATLAS_ERA") == "off":      # off: render every row (the renderer's tests)
+        return reg
+    view = dict(reg)
+    view["screens"] = [s for s in reg["screens"] if s.get("date", "") >= era["start"]]
+    view["context_screens"] = []
+    view["models"] = [m for m in reg["models"] if (m.get("date") or "") >= era["models_from"]]
+    view["baseline"] = [x for x in reg["baseline"] if x["release"] >= era["first_release"]]
+    return view
+
+
+R = era_view(R_FULL)
 
 
 INSTRUMENT_KINDS = {"windows", "matched-deals", "ladder"}
@@ -387,7 +404,7 @@ a{{color:var(--accent)}}
 </style>
 <main>
 <h1>Shengji Atlas v2</h1>
-<p class="lede">Every screen since release 29, read against <b>release {CMP} as served</b>.{COMPARATOR_NOTE} Older rows: <a href="{esc(R["history"]["atlas"])}">old atlas</a>.</p>
+<p class="lede">The unified-model generation, read against <b>release {CMP} as served</b>.{COMPARATOR_NOTE} Earlier: <a href="{esc(R["history"]["v2_archive"])}">releases 29–52</a> · <a href="{esc(R["history"]["atlas"])}">v1</a>.</p>
 
 <h2>Production</h2>
 {baseline_cards()}
@@ -495,7 +512,7 @@ def check_archive_shas(reg, archive=ARCHIVE):
 
 
 if __name__ == "__main__":
-    errs = check_registry(R)
+    errs = check_registry(R_FULL)
     if errs:
         print("REGISTRY ERRORS:\n  " + "\n  ".join(errs)); sys.exit(1)
     out = HERE / "atlas_v2.html"

@@ -1,6 +1,6 @@
 """Atlas v2 invariants: the registry is the only source, the page rebuilds from it, and the checks refuse
 the mixes the old page suffered (Codex HOLD on #603)."""
-import copy, importlib.util, json, subprocess, sys
+import os, copy, importlib.util, json, subprocess, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -18,6 +18,10 @@ def test_c12_wide_lead_row_names_the_frozen_candidate_intervention():
     assert "SHENGJI_PV_WORLD_LEAD_ANCHOR" not in row["candidate"]
 
 
+# The renderer's invariants are tested on every row; the era page itself has its own test below.
+os.environ["ATLAS_ERA"] = "off"
+
+
 def _load():
     spec = importlib.util.spec_from_file_location("build_v2", HERE / "build_v2.py")
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
@@ -26,7 +30,8 @@ def _load():
 
 def test_check_builds_from_the_registry_and_reports_consistent():
     """The page is built, not tracked (#688): --check must pass with no atlas_v2.html on disk."""
-    r = subprocess.run([sys.executable, str(HERE / "build_v2.py"), "--check"], capture_output=True, text=True)
+    env = dict(os.environ); env.pop("ATLAS_ERA", None)              # --check compares the page as published
+    r = subprocess.run([sys.executable, str(HERE / "build_v2.py"), "--check"], capture_output=True, text=True, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     assert r.stdout.startswith("CONSISTENT:") and "atlas_v2.html == registry.json" in r.stdout
 
@@ -433,8 +438,29 @@ def test_named_comparator_rows_are_not_counted_or_labelled_as_production():
     reg = json.loads((HERE / "registry.json").read_text())
     named = [s for s in reg["screens"] if s.get("named_comparator")]
     assert [s["id"] for s in named] == ["s117"]
-    html = (HERE / "atlas_v2.html").read_text()
+    html = _load().page
     assert ">production parity</text>" not in html and ">comparator parity</text>" in html
     assert "Screens against the current production release" not in html
     assert f"{len(named)} vs a named non-release comparator" in html
     assert "s117" in html and "NOT release 51" in html
+
+
+def test_the_page_shows_only_the_registry_era():
+    """With the registry's `era`, the page shows the screens and models from its start, the releases
+    from its first release, no pre-era context rows, and links the frozen release-29-52 page."""
+    env = dict(os.environ); env.pop("ATLAS_ERA", None)
+    code = ("import importlib.util,sys;s=importlib.util.spec_from_file_location('b',sys.argv[1]);"
+            "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);"
+            "import json;print(json.dumps({'page':m.page,'ids':[x['id'] for x in m.R['screens']]}))")
+    r = subprocess.run([sys.executable, "-c", code, str(HERE / "build_v2.py")], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(r.stdout); page = out["page"]
+    reg = json.loads((HERE / "registry.json").read_text()); era = reg["era"]
+    for s in reg["screens"]:
+        shown = s["date"] >= era["start"]
+        assert (s["id"] in out["ids"]) == shown, s["id"]
+        if shown:
+            assert page.count(s["id"]) >= 2, s["id"]
+    assert reg["history"]["v2_archive"] in page
+    for b in reg["baseline"]:
+        assert (f"release {b['release']}</b>" in page or f"release {b['release']} ·" in page) == (b["release"] >= era["first_release"]), b["release"]

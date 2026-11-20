@@ -46,7 +46,7 @@ def test_roots_preserve_all_refusals_and_freeze_earlier_frames():
         assert {k:v for k,v in vars(root).items() if k != 'ordering'} == before
 
 
-def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, monkeypatch):
+def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, monkeypatch, capsys):
     from shengji.ai import belief_numpy, cwv_policy, unified_readout_numpy
     from shengji.harvest import legal
     from shengji.train import unified_slots
@@ -127,11 +127,25 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     chosen = tmp_path / 'chosen.json'
     chosen.write_text(json.dumps({'clusters': [0]}))
     result_path = tmp_path / 'read.json'
+    capsys.readouterr()
     reader.main([str(result_path), str(chosen), str(full)])
+    summary = json.loads(capsys.readouterr().out)
+    (tmp_path / 'read.out').write_text(json.dumps(summary) + '\n')
     result = json.loads(result_path.read_text())
     assert result['validity']['verdict'] == 'VALID'
     assert result['value']['gate']['verdict'] == 'PASS'
     assert result['reply']['gate']['verdict'] == 'PASS'
+    assert summary['value_gate'] == result['value']['gate']
+    assert summary['reply_gate'] == result['reply']['gate']
+    assert summary['replay'] == reader.REPLAY
+    invalid_file = tmp_path / 'invalid-worlds.jsonl'
+    invalid_rows = rows(full)
+    invalid_rows[0]['worlds'] = 63
+    invalid_file.write_text(''.join(json.dumps(row) + '\n' for row in invalid_rows))
+    reader.main([str(tmp_path / 'invalid-read.json'), str(chosen), str(invalid_file)])
+    invalid_summary = json.loads(capsys.readouterr().out)
+    assert invalid_summary['validity'] == 'DEV_INVALID'
+    assert 'value_gate' not in invalid_summary and 'reply_gate' not in invalid_summary
     with pytest.raises(ValueError, match='already exists'):
         reader.main([str(result_path), 'missing', 'missing'])
     valid = rows(full)[:-1]

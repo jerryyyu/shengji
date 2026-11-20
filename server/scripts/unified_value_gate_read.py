@@ -183,7 +183,13 @@ def main(argv=None):
     serialized = json.dumps(result, indent=1, allow_nan=False)
     with open(args.out, 'x') as stream:
         stream.write(serialized)
-    print(json.dumps({'validity': result['validity']['verdict'], 'decisions':len(rows)}))
+    summary = {'validity': result['validity']['verdict'], 'decisions': len(rows),
+               'replay': REPLAY}
+    # Downstream model comparisons consume these gates from the stdout summary.
+    # Invalid evidence must expose no numeric gate for those comparisons.
+    if result['validity']['verdict'] == va.VALID:
+        summary.update(value_gate=result['value']['gate'], reply_gate=result['reply']['gate'])
+    print(json.dumps(summary, allow_nan=False))
 
 
 if __name__ == '__main__':

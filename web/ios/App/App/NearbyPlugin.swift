@@ -56,6 +56,41 @@ struct AwakeReasons {
     var any: Bool { game || nearby }
 }
 
+/// When a host's listener is made again. One that is waiting (made while
+/// the Local Network alert was up, or before the network was there) has
+/// nothing that wakes it, so it is made again after a backoff that doubles
+/// from `first` to `max`; one that fails before it was ever up is retried
+/// `failRetries` times (any number while the permission is the cause)
+/// before the host's call rejects; one that fails after it was up was
+/// stopped by the system, and is advertised again on the app's return.
+struct ListenerRetry {
+    static let first: TimeInterval = 1
+    static let max: TimeInterval = 8
+    static let failRetries = 3
+    enum OnFailed: Equatable { case lost, retry, reject }
+
+    private(set) var delay = first
+    private(set) var failures = 0
+
+    /// The wait before the next listener, doubling each time.
+    mutating func nextDelay() -> TimeInterval {
+        let d = delay
+        delay = min(delay * 2, Self.max)
+        return d
+    }
+
+    mutating func ready() {
+        delay = Self.first
+        failures = 0
+    }
+
+    mutating func failed(wasUp: Bool, policyDenied: Bool) -> OnFailed {
+        if wasUp { return .lost }
+        failures += 1
+        return policyDenied || failures <= Self.failRetries ? .retry : .reject
+    }
+}
+
 #if !NEARBY_KEY_ONLY
 import UIKit
 import Capacitor
@@ -176,6 +211,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var hostSalt: Data?
     private var hostPsk: Data?
     private var needsReadvertise = false
+    /// The current listener has reported ready (host side).
+    private var listenerReady = false
+    private var listenerRetry = ListenerRetry()
+    private var listenerRetryArmed = false
     private var backgroundedAt: Date?
     /// Main thread only.
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
@@ -208,6 +247,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             $0.lastBecameActive = Date()
             $0.reportDenied()
             $0.hostReturned()
+            $0.listenerCheck()
             $0.joinResumed()
         }
         observe(UIApplication.willEnterForegroundNotification) { $0.hostReturned() }
@@ -336,13 +376,17 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         queue.async {
             guard let link = self.links[peer], link.ready else {
+                self.spikeLog("send \(peer) refused: no ready link")
                 call.reject("no such peer", "noPeer")
                 return
             }
             let meta = NWProtocolWebSocket.Metadata(opcode: .text)
             let context = NWConnection.ContentContext(identifier: "text", metadata: [meta])
+            let started = DispatchTime.now().uptimeNanoseconds
             link.connection.send(content: data, contentContext: context, isComplete: true,
                                  completion: .contentProcessed { error in
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
+                self.spikeLog("send \(peer) \(data.count) B \(error.map { "error \($0)" } ?? "ok") \(String(format: "%.0f", ms)) ms")
                 if let error = error { call.reject("\(error)", "failed") } else { call.resolve() }
             })
         }
@@ -387,7 +431,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             self.accept(connection)
         }
         needsReadvertise = false
+        listenerReady = false
         self.listener = listener
+        spikeLog("listener start")
         listener.start(queue: queue)
     }
 
@@ -396,13 +442,25 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         switch state {
         case .ready:
             policyDenied = false
+            listenerReady = true
+            listenerRetry.ready()
             hostCall?.resolve()
             hostCall = nil
             emitState("ready")
         case .waiting(let error):
+            // a listener made while the Local Network alert was up, or before
+            // the network was there, can stay waiting with nothing to wake
+            // it: it is made again until it is ready
             report(error, failed: false)
+            retryListenerSoon()
         case .failed(let error):
-            if hosting && hostCall == nil { return listenerLost() }
+            switch listenerRetry.failed(wasUp: hosting && hostCall == nil, policyDenied: Self.isPolicyDenied(error)) {
+            case .lost: return listenerLost()
+            case .retry:
+                report(error, failed: false)
+                return retryListenerSoon()
+            case .reject: break
+            }
             report(error, failed: true)
             hostCall?.reject("\(error)", "failed")
             hostCall = nil
@@ -413,10 +471,50 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// Makes the listener again after the current backoff, unless it is
+    /// ready by then; the same key and salt, so the code still joins it.
+    private func retryListenerSoon() {
+        guard hosting, !listenerRetryArmed else { return }
+        listenerRetryArmed = true
+        let delay = listenerRetry.nextDelay()
+        spikeLog("listener retry in \(delay) s")
+        let session = self.session
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self, self.session == session else { return }
+            self.listenerRetryArmed = false
+            self.remakeListener()
+        }
+    }
+
+    /// Back in the app (the Local Network alert has closed, say): a listener
+    /// that is not ready is made again now.
+    private func listenerCheck() {
+        guard hosting, backgroundedAt == nil, !listenerReady, listener != nil else { return }
+        spikeLog("listener not ready on becoming active")
+        remakeListener()
+    }
+
+    private func remakeListener() {
+        guard hosting, !listenerReady, appActive, let psk = hostPsk, let salt = hostSalt else { return }
+        if let old = listener {
+            old.stateUpdateHandler = nil
+            old.newConnectionHandler = nil
+            old.cancel()
+            listener = nil
+        }
+        do {
+            try startListener(psk: psk, salt: salt)
+        } catch {
+            spikeLog("listener remake failed: \(error)")
+            retryListenerSoon()
+        }
+    }
+
     /// The system stopped advertising a table that was up (it does so when
     /// the app leaves the foreground); the table is advertised again when the
     /// app returns.
     private func listenerLost() {
+        listenerReady = false
         listener?.stateUpdateHandler = nil
         listener?.cancel()
         listener = nil
@@ -498,6 +596,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         guard pending.count < Self.maxPending, connected < Self.maxConnected,
               pending.filter({ $0.remote == remote }).count < Self.maxPendingPerAddress,
               failedAt[remote] == nil else {
+            spikeLog("inbound refused: pending \(pending.count) connected \(connected) spaced \(failedAt[remote] != nil)")
             return connection.cancel()
         }
         var peer = NearbyKey.randomName(12)
@@ -669,7 +768,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private func receive(_ link: Link) {
         link.connection.receiveMessage { [weak self, weak link] content, context, _, error in
             guard let self = self, let link = link, self.links[link.peer] === link else { return }
-            if error != nil { return self.drop(link.peer) }
+            if let error = error {
+                self.spikeLog("recv \(link.peer) error \(error)")
+                return self.drop(link.peer)
+            }
             let meta = context?.protocolMetadata(definition: NWProtocolWebSocket.definition)
                 as? NWProtocolWebSocket.Metadata
             switch meta?.opcode {
@@ -677,6 +779,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 guard let content = content, let text = String(data: content, encoding: .utf8) else {
                     return self.drop(link.peer)
                 }
+                self.spikeLog("recv \(link.peer) \(content.count) B")
                 self.notifyListeners("message", data: ["peer": link.peer, "text": text])
             case .ping?, .pong?:
                 break
@@ -690,6 +793,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func drop(_ peer: String) {
         guard let link = links.removeValue(forKey: peer) else { return }
+        spikeLog("drop \(peer)\(link.ready ? "" : " (not ready)")")
         link.connection.stateUpdateHandler = nil
         link.connection.cancel()
         if link.ready { emitPeer(peer, "disconnected") }
@@ -729,6 +833,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         hostSalt = nil
         hostPsk = nil
         needsReadvertise = false
+        listenerReady = false
+        listenerRetry = ListenerRetry()
+        listenerRetryArmed = false
         backgroundedAt = nil
         DispatchQueue.main.async { [weak self] in self?.endBackgroundTaskOnMain() }
         setLive(false)
@@ -754,6 +861,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let tcp = NWProtocolTCP.Options()
         tcp.enableKeepalive = true
+        // game frames are small and each one is a move someone waits on
+        tcp.noDelay = true
         let params = NWParameters(tls: tls, tcp: tcp)
         params.includePeerToPeer = true
         let ws = NWProtocolWebSocket.Options()
@@ -845,7 +954,9 @@ extension ShengjiNearbyPlugin {
     }
 
     func spikeLog(_ text: String) {
+        NSLog("nearby: %@", text)
         notifyListeners("spikeLog", data: ["text": text])
+        notifyListeners("debugLog", data: ["text": text])
     }
 
     /// Milliseconds for one key derivation at `iterations` (median of `runs`).
@@ -879,7 +990,15 @@ extension ShengjiNearbyPlugin {
     static let spikeMethods: [CAPPluginMethod] = []
     static let spikeTLS13 = false
     func spikeOptions(_ call: CAPPluginCall) {}
-    func spikeLog(_ text: @autoclosure () -> String) {}
+    /// The device-test log: in a Debug build made for the device test
+    /// (SHENGJI_NEARBY_DEV), each line goes to the console and to the page's
+    /// debug pane; in any other build it is never even formatted.
+    func spikeLog(_ text: @autoclosure () -> String) {
+        guard NearbyBuild.debugBuild else { return }
+        let line = text()
+        NSLog("nearby: %@", line)
+        notifyListeners("debugLog", data: ["text": line])
+    }
 }
 #endif
 

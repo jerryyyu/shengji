@@ -25,6 +25,11 @@ export const LIMITS = {
   pingSeconds: 5,
   /** ...and either end treats a link silent this long as gone. */
   silentSeconds: 20,
+  /** The host answers a ping at once: a joiner whose ping goes unanswered
+   *  this long (after a move, or at its regular ping) treats the link as
+   *  stuck, even while the host's own frames still arrive, and makes a new
+   *  one. */
+  pongSeconds: 4,
   /** A hand never holds more cards than this. */
   cardIds: 33,
   token: 64,

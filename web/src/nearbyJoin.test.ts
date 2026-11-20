@@ -89,6 +89,24 @@ describe("the nearby join", () => {
     expect(h.store.view?.step).toBe("looking");
   });
 
+  it("the panel's one line: looking, then connecting once the link is up, then the seats", async () => {
+    const { fromNearbyJoin } = await import("./queue/tableModel");
+    const { NEARBY_COPY } = await import("./offline/server/nearby/copy");
+    const h = harness();
+    h.store.open("K7Q2M", "Mei");
+    await flush();
+    expect(fromNearbyJoin(h.store.view!).status?.text).toBe(NEARBY_COPY.browsing);
+    h.status("open");
+    expect(fromNearbyJoin(h.store.view!).status?.text).toBe(NEARBY_COPY.connecting);
+    // the link dropped before the seats came: looking again
+    h.status("closed");
+    expect(fromNearbyJoin(h.store.view!).status?.text).toBe(NEARBY_COPY.browsing);
+    h.status("open");
+    h.msg({ ...seats });
+    expect(h.store.view?.step).toBe("panel");
+    expect(fromNearbyJoin(h.store.view!).status).toBeUndefined();
+  });
+
   it("shows the seats, starts on the host's partner seat, and joins the one picked", async () => {
     const h = harness();
     h.store.open("K7Q2M", "Mei");

@@ -77,6 +77,10 @@ export class FakeTransport implements NearbyTransport {
   deny = false;
   /** Every frame that crossed, in order, for the tests' leak checks. */
   readonly wire: { from: string; to: string; text: string }[] = [];
+  /** A joiner's frames to the host, by peer: lost on the way (the link
+   *  stays up and the host's frames still arrive), or held back until
+   *  `release`. */
+  private inbound = new Map<string, "lose" | { held: (() => void)[] }>();
 
   constructor(clock: Clock, delay = 0) {
     this.clock = clock;
@@ -136,7 +140,11 @@ export class FakeTransport implements NearbyTransport {
         this.wire.push({ from: peer, to: "host", text });
         // frames sent before a close still arrive, ahead of the close, as
         // the host's do
-        this.later(() => { if (!h.stopped) h.handlers.message(peer, text); });
+        const arrive = () => { if (!h.stopped) h.handlers.message(peer, text); };
+        const mode = this.inbound.get(peer);
+        if (mode === "lose") return;
+        if (mode) mode.held.push(arrive);
+        else this.later(arrive);
       },
       close: () => this.cut(h, peer),
     };
@@ -146,6 +154,23 @@ export class FakeTransport implements NearbyTransport {
   inject(code: string, peer: string, text: string): void {
     const h = this.hosts.get(code);
     if (h?.peers.has(peer)) h.handlers.message(peer, text);
+  }
+
+  /** From now on `peer`'s frames to the host are lost, one way only. */
+  lose(peer: string): void {
+    this.inbound.set(peer, "lose");
+  }
+
+  /** From now on `peer`'s frames to the host wait until `release`. */
+  hold(peer: string): void {
+    this.inbound.set(peer, { held: [] });
+  }
+
+  /** `peer`'s held frames arrive now, in order, and later ones as usual. */
+  release(peer: string): void {
+    const mode = this.inbound.get(peer);
+    this.inbound.delete(peer);
+    if (mode && mode !== "lose") for (const arrive of mode.held) this.later(arrive);
   }
 
   /** The peer ids currently linked to `code`'s host. */

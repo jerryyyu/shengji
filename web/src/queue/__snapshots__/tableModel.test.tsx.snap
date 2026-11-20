@@ -4904,6 +4904,11 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     "</span>",
     "</button>",
     "<button type="button" role="switch" aria-checked="false" class="q-wait tp-switch">",
+    "<span class="q-wait-label">Relaxed bots</span>",
+    "<span class="q-switch" aria-hidden="true">",
+    "</span>",
+    "</button>",
+    "<button type="button" role="switch" aria-checked="false" class="q-wait tp-switch">",
     "<span class="q-wait-label">Wait for people</span>",
     "<span class="q-switch" aria-hidden="true">",
     "</span>",
@@ -4957,9 +4962,19 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
       ],
     },
     {
+      "change": null,
+      "control": "button "Relaxed bots"",
+      "sent": [
+        {
+          "on": true,
+          "type": "table_relaxed_bots",
+        },
+      ],
+    },
+    {
       "change": {
         "at": 0,
-        "cut": 86,
+        "cut": 91,
         "put": [
           "<div class="sr-only" role="status" aria-live="polite">Your table. Waiting for players. No timer.</div>",
           "<div class="play-section play-table">",
@@ -5032,6 +5047,11 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
           "<span class="q-switch" aria-hidden="true">",
           "</span>",
           "</button>",
+          "<button type="button" role="switch" aria-checked="false" class="q-wait tp-switch">",
+          "<span class="q-wait-label">Relaxed bots</span>",
+          "<span class="q-switch" aria-hidden="true">",
+          "</span>",
+          "</button>",
           "<button type="button" role="switch" aria-checked="true" class="q-wait tp-switch">",
           "<span class="q-wait-label">Wait for people</span>",
           "<span class="q-switch" aria-hidden="true">",
@@ -5056,7 +5076,7 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     {
       "change": {
         "at": 2,
-        "cut": 80,
+        "cut": 85,
         "put": [
           "<div class="play-mode" role="group" aria-label="Mode" inert="">",
           "<button type="button" class="play-mode-opt" aria-pressed="false" disabled="">Ranked</button>",
@@ -5128,6 +5148,11 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
           "</span>",
           "</button>",
           "<button type="button" role="switch" aria-checked="false" class="q-wait tp-switch" inert="">",
+          "<span class="q-wait-label">Relaxed bots</span>",
+          "<span class="q-switch" aria-hidden="true">",
+          "</span>",
+          "</button>",
+          "<button type="button" role="switch" aria-checked="false" class="q-wait tp-switch" inert="">",
           "<span class="q-wait-label">Wait for people</span>",
           "<span class="q-switch" aria-hidden="true">",
           "</span>",
@@ -5177,7 +5202,7 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     },
     {
       "change": {
-        "at": 71,
+        "at": 76,
         "cut": 15,
         "put": [
           "<button type="button" role="switch" aria-checked="false" class="q-wait tp-switch" disabled="">",
@@ -5203,7 +5228,7 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
     },
     {
       "change": {
-        "at": 88,
+        "at": 93,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" open="">",

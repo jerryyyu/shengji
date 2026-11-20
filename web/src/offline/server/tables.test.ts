@@ -167,7 +167,7 @@ const SENDABLE = {
   create_room: LOCAL, declare: LOCAL, pass_declare: LOCAL, bury: LOCAL,
   play: LOCAL, next_round: LOCAL,
   table_start: LOCAL, table_start_now: LOCAL, table_start_bots: LOCAL, table_allow_joiners: LOCAL,
-  table_start_level: LOCAL, table_chat: LOCAL, table_leave: LOCAL, table_join: LOCAL, table_peek: LOCAL,
+  table_start_level: LOCAL, table_relaxed_bots: LOCAL, table_chat: LOCAL, table_leave: LOCAL, table_join: LOCAL, table_peek: LOCAL,
   ping: "the heartbeat of a network socket; the device's socket never drops",
   table_move: LOCAL,
   im_back: "the ranked move timer, which offline rooms do not run",

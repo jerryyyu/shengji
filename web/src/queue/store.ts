@@ -672,6 +672,12 @@ export class QueueStore {
     this.send({ type: "table_start_level", start_level: level });
   }
 
+  /** Your casual table's Relaxed bots (the opener only). */
+  setRelaxedBots(on: boolean): void {
+    if (!this.view.queued || !isOpener(this.view)) return;
+    this.send({ type: "table_relaxed_bots", on });
+  }
+
   /** A line to everyone at your waiting table; the server echoes it back. */
   tableChat(text: string): boolean {
     const line = text.trim();

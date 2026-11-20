@@ -3885,7 +3885,8 @@ def test_a_friend_joins_by_code_before_the_game_and_the_code_is_the_room_code():
         (match_id, slots), = env.started
         assert match_id == t.id and humans_of(slots) == [1, 2]
         assert env.modes == ["casual"]
-        assert env.rooms[0] == {"code": code, "allow_joiners": False, "start_level": "2"}
+        assert env.rooms[0] == {"code": code, "allow_joiners": False, "start_level": "2",
+                                "relaxed_bots": False}
         assert not env.mm.has_code(code) and not env.mm.has_code(mine)
     run(go())
 
@@ -3896,7 +3897,8 @@ def test_a_game_started_alone_keeps_the_entry_code():
         await env.join(1)
         code = env.conns[1].last("queue_state")["code"]
         await env.send(1, "queue_start_bots")
-        assert env.rooms == [{"code": code, "allow_joiners": True, "start_level": "2"}]
+        assert env.rooms == [{"code": code, "allow_joiners": True, "start_level": "2",
+                              "relaxed_bots": False}]
     run(go())
 
 
@@ -3972,6 +3974,51 @@ def test_a_ranked_table_refuses_a_starting_level_and_a_casual_one_takes_it():
         await env.send(1, "table_start")
         await env.send(2, "table_start")
         assert env.rooms[-1]["start_level"] == "9"
+    run(go())
+
+
+def test_relaxed_bots_is_the_casual_openers_switch_and_a_ranked_table_refuses_it():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_join", relaxed_bots=True)
+        assert env.conns[1].last("error")["code"] == "ranked_bots_fixed"
+        await env.send(1, "queue_join")
+        await env.send(1, "table_relaxed_bots", on=True)
+        assert env.conns[1].last("error")["code"] == "ranked_bots_fixed"
+        assert env.conns[1].last("queue_state")["relaxed_bots"] is False
+        await env.send(1, "queue_leave")
+
+        await env.send(1, "queue_join", mode="casual", relaxed_bots="yes")
+        assert env.conns[1].last("error")["code"] == "bad_setting"
+        await env.send(1, "queue_join", mode="casual")
+        assert env.conns[1].last("queue_state")["relaxed_bots"] is False   # off by default
+        code = env.conns[1].last("queue_state")["code"]
+        env.player(2)
+        await env.send(2, "queue_join", code=code)
+        await env.send(2, "table_start")
+        await env.send(2, "table_relaxed_bots", on=True)
+        assert env.conns[2].last("error")["code"] == "not_opener"
+        await env.send(1, "table_relaxed_bots", on=True)
+        state = env.conns[2].last("queue_state")
+        assert state["relaxed_bots"] is True and state["table"]["ready"] == 0   # Start agreed to the other bots
+        assert env.mm.table_frame(env.mm._entry(1).table, 1)["settings"]["relaxed_bots"] is True
+        await env.send(1, "table_relaxed_bots", on="on")
+        assert env.conns[1].last("error")["code"] == "bad_setting"
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        assert env.rooms[-1]["relaxed_bots"] is True
+    run(go())
+
+
+def test_a_casual_table_left_alone_keeps_relaxed_bots():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_join", mode="casual", relaxed_bots=True)
+        assert env.conns[1].last("queue_state")["relaxed_bots"] is True
+        await env.send(1, "queue_start_bots")
+        assert env.rooms[-1]["relaxed_bots"] is True
     run(go())
 
 
@@ -4066,6 +4113,24 @@ def test_ws_a_casual_tables_starting_level_reaches_its_room(wsenv):
         assert code == state["code"]
         room = srv.rooms[code]
         assert room.start_level == "5" and room.game.levels == ("5", "5")
+
+
+def test_ws_a_casual_tables_relaxed_bots_reach_its_room(wsenv):
+    srv, store, client, clock = wsenv
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        g.send_json({"type": "queue_join", "mode": "casual", "name": "Guest"})
+        _drain(g, "queue_state")
+        g.send_json({"type": "table_relaxed_bots", "on": True})
+        assert _drain(g, "queue_state")["relaxed_bots"] is True
+        g.send_json({"type": "table_start_bots"})
+        code = _drain(g, "match_started")["room"]
+        room = srv.rooms[code]
+        assert room.relaxed_bots and not room.matched
+        assert room.bot.policy_name == srv.RELAXED_BOT
+        # fixed once the game starts: the room refuses the lobby control
+        g.send_json({"type": "table_relaxed_bots", "on": False})
+        assert _drain(g, "error")["message"] == "Game already started."
+        assert room.relaxed_bots
 
 
 # ------------------------------------------------------------ Duo tables

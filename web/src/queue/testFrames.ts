@@ -30,7 +30,8 @@ export function tableFrameFor(qs: QueueStateLike, party: PartyMsg | null = null,
                               extra: Partial<TableFrameMsg> = {}): TableFrameMsg {
   const t = (qs.table ?? null) as WaitingTableMsg | null;
   const youReady = t ? t.you_ready : qs.you_ready === true;
-  const settings = { allow_joiners: qs.allow_joiners !== false, start_level: (qs.start_level as string) ?? "2" };
+  const settings = { allow_joiners: qs.allow_joiners !== false, start_level: (qs.start_level as string) ?? "2",
+                     relaxed_bots: qs.relaxed_bots === true };
   const base = { type: "table" as const, phase: "open" as const, code: (qs.code as string | undefined) ?? t?.code ?? "",
                  mode: (qs.mode as "ranked" | "casual" | undefined) ?? "ranked", settings, your_ready: youReady };
   if (t) {

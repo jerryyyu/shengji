@@ -103,6 +103,8 @@ export interface RoomMsg {
   /** Whether newcomers may be offered a bot seat once the game is in play
    *  (on at creation). */
   allow_joiners?: boolean;
+  /** The casual table's Relaxed bots, fixed for the game. Absent offline. */
+  relaxed_bots?: boolean;
 }
 
 export interface StatePlayer {

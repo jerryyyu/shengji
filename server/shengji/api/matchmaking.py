@@ -74,7 +74,8 @@ the joiner at that table in its mode, opening it when its host is alone,
 past the rating window and Allow joiners; every other queue rule
 (cooldown, same device, a full table) applies. Allow joiners off
 (``table_allow_joiners``, the opener's switch only) keeps the table out of
-strangers' seating both ways and out of open-table offers.
+strangers' seating both ways and out of open-table offers, and so does
+Relaxed bots on, whatever Allow joiners says (``Table.public``).
 
 A Duo is a table (``queue_join {duo}``): the opener queues alone with the
 seat opposite it held (``Entry.hold``), and the table's code is the Duo's
@@ -419,6 +420,12 @@ class Table:
     # room's bots play ``server.RELAXED_BOT`` in place of the served bot.
     relaxed_bots: bool = False
     waiting: bool = False
+
+    @property
+    def public(self) -> bool:
+        """Whether strangers are seated here or offered it: Allow joiners on
+        and Relaxed bots off. Its code works either way."""
+        return self.allow_joiners and not self.relaxed_bots
 
     @property
     def humans(self) -> int:
@@ -1548,7 +1555,7 @@ class Matchmaker:
                     o.taps.clear()
             t.start_level = level
         self._send_table(t)
-        if kind == "allow":
+        if kind in ("allow", "relaxed"):
             self.seat_waiting()
             self._offer_open_tables(self.clock())
             await self._start_due()
@@ -1803,18 +1810,18 @@ class Matchmaker:
             return abs(rating - e.rating) if windowed else 0.0
 
         while True:
-            # Allow joiners off keeps an entry out of strangers' seating both
-            # ways: it waits for its code.
+            # Allow joiners off or Relaxed bots on keeps an entry out of
+            # strangers' seating both ways: it waits for its code.
             pool = sorted((e for e in self.entries.values()
                            if e.table is not None and not e.table.waiting and not e.claiming
-                           and e.table.allow_joiners and self._entry_available(e)),
+                           and e.table.public and self._entry_available(e)),
                           key=lambda e: (not e.front, e.since, e.seq))
             seated = False
             for e in pool:
                 if e.hold:             # a Duo opener's table is its own
                     continue
                 fits = [t for t in self.tables.values()
-                        if t.mode == e.mode and t.allow_joiners
+                        if t.mode == e.mode and t.public
                         and t.places_for(e) is not None and near(e, t.rating)
                         and not self._devices(e) & self._table_devices(t)]
                 if fits:
@@ -2142,8 +2149,9 @@ class Matchmaker:
             if e.table_id is not None or e.claiming:
                 continue
             uid = e.leader
-            # A table with Allow joiners off waits for its code, not for strangers.
-            usable = [t for t in tables if self._fits(t, e)] if e.table.allow_joiners else []
+            # A table with Allow joiners off or Relaxed bots on waits for its
+            # code, not for strangers.
+            usable = [t for t in tables if self._fits(t, e)] if e.table.public else []
             before = (self._offer_payload(e.offer) if e.offer else None,
                       list(e.open_codes), e.paused is not None)
             if e.offer is not None:

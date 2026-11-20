@@ -573,7 +573,9 @@ bots (default off; casual only, a ranked table refuses it with
 bury) in place of the served bot, for the whole game; each `round_start`
 record names that policy (`bot_policy`) and carries `relaxed_bots: true`.
 The opener sets it (`queue_join relaxed_bots`, `table_relaxed_bots`); a real
-change clears every Start at the table. Allow joiners is the opener's switch too. The settings belong to the whole table,
+change clears every Start at the table. A relaxed table, and its room, is
+never seated with strangers or offered as an open table, whatever Allow
+joiners says; its code still joins. Allow joiners is the opener's switch too. The settings belong to the whole table,
 so they stay when its opener leaves.
 
 ### Duo tables

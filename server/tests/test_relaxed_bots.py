@@ -131,3 +131,25 @@ def test_the_mistake_dashboard_excludes_relaxed_rounds(tmp_path):
     relaxed.write_text("".join(json.dumps(r) + "\n" for r in lines))
     rounds, notes = md.load_prod([str(relaxed)])
     assert rounds == [] and notes["rounds excluded: relaxed bots"] >= len(base)
+
+
+def test_a_relaxed_room_is_never_an_open_table_but_its_code_still_seats(tmp_path):
+    def room(code, relaxed):
+        game = Game(random.Random(5))
+        game.start_round()
+        r = server.Room(code=code, game=game, log_dir=tmp_path, bot=server.HeuristicBot(),
+                        relaxed_bots=relaxed, allow_joiners=True,
+                        seats=[server.Seat("Ann")] + [server.Seat(f"Bot {i}", is_bot=True) for i in (1, 2, 3)])
+        r.seats[0].connected = True
+        server.rooms[code] = r
+        return r
+    try:
+        plain, relaxed = room("PLNA", False), room("RLXA", True)
+        assert server._open_seats(plain) == [1, 2, 3]
+        assert server._open_seats(relaxed) == []                       # never offered
+        assert server._open_seats(relaxed, invite=True) == [1, 2, 3]   # the code joins
+        assert "RLXA" not in {t["code"] for t in server.open_tables()}
+        assert "PLNA" in {t["code"] for t in server.open_tables()}
+    finally:
+        server.rooms.pop("PLNA", None)
+        server.rooms.pop("RLXA", None)

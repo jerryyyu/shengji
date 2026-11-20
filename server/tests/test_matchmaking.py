@@ -4047,6 +4047,46 @@ def test_allow_joiners_off_hides_the_table_from_play_but_not_from_its_code():
     run(go())
 
 
+def test_relaxed_bots_withdraws_the_table_from_strangers_but_not_from_its_code():
+    async def go():
+        env = Env()
+        await env.join(1, mode="casual")
+        code = env.conns[1].last("queue_state")["code"]
+        await env.send(1, "table_relaxed_bots", on=True)
+        state = env.conns[1].last("queue_state")
+        assert state["relaxed_bots"] is True and state["allow_joiners"] is True
+        await env.join(2, mode="casual")            # a stranger on Play
+        assert env.mm.tables == {} and env.conns[2].last("queue_state")["table"] is None
+        env.player(3)
+        await env.send(3, "queue_join", code=code)  # the link still works
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, None, 3, None] and t.relaxed_bots and not t.public
+        await env.mm.tick()
+        assert env.mm._entry(2).table_id is None    # still not seated with strangers
+        # off again (before the start): Allow joiners rules as before
+        await env.send(1, "table_relaxed_bots", on=False)
+        assert t.seats == [1, 2, 3, None]
+    run(go())
+
+
+def test_relaxed_bots_offers_no_open_table_either_way():
+    async def go():
+        env = Env()
+        tables = [{"code": "OPEN", "mode": "casual", "round_end": False, "seats": [
+            {"name": "Ann", "bot": False, "open": False, "queue_id": 50, "device": None},
+            {"name": "Bot 1", "bot": True, "open": True},
+            {"name": "Bot 2", "bot": True, "open": True},
+            {"name": "Bot 3", "bot": True, "open": True}]}]
+        env.mm.open_tables = lambda: tables
+        await env.join(1, mode="casual", relaxed_bots=True)
+        assert env.conns[1].last("queue_state")["offer"] is None
+        await env.send(1, "table_relaxed_bots", on=False)
+        assert env.conns[1].last("queue_state")["offer"]["room"] == "OPEN"
+        await env.send(1, "table_relaxed_bots", on=True)
+        assert env.conns[1].last("queue_state")["offer"] is None
+    run(go())
+
+
 def test_allow_joiners_off_offers_no_open_table():
     async def go():
         env = Env()

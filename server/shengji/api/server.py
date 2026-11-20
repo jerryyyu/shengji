@@ -66,6 +66,26 @@ def _fast_active() -> bool:
         return False
 
 
+_FILE_SHA256: dict[tuple, str] = {}
+
+
+def _served_file_sha256(path: str) -> str:
+    """The SHA256 of a served model file, hashed once per file version.
+
+    /healthz runs every few seconds on the event loop, and hashing a model
+    package there costs tens of milliseconds each time. A stat is cheap, so
+    the cache is keyed on the file's identity and version: a file replaced
+    at the same path is hashed again.
+    """
+    st = os.stat(path)
+    key = (os.path.realpath(path), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+    digest = _FILE_SHA256.get(key)
+    if digest is None:
+        from ..ai.cwv_policy import file_sha256
+        digest = _FILE_SHA256[key] = file_sha256(path)
+    return digest
+
+
 def _pv_search_health() -> dict | None:
     """The served policy/value-search package (#585), by the SHA256 of the file on disk;
     ``None`` unless the pv-search mode is configured."""
@@ -73,9 +93,8 @@ def _pv_search_health() -> dict | None:
     if not path:
         return None
     try:
-        from ..ai.cwv_policy import file_sha256
         from ..train.pv_search_policy import DEFAULTS, latency_switches
-        return {"sha256": file_sha256(path),
+        return {"sha256": _served_file_sha256(path),
                 "worlds": int(os.environ.get("SHENGJI_PV_WORLDS", DEFAULTS["worlds"])),
                 "candidates": int(os.environ.get("SHENGJI_PV_CANDIDATES", DEFAULTS["candidates"])),
                 "budget_seconds": os.environ.get("SHENGJI_PV_SERVING_BUDGET_SECONDS"),
@@ -98,10 +117,9 @@ def _prior_health() -> dict | None:
     if not path:
         return None
     try:
-        from ..ai.cwv_policy import file_sha256
         from ..train.cwv_shortlist import (SHORTLIST_PRIOR_THRESHOLD,
                                            SHORTLIST_PRIOR_TOP)
-        return {"sha256": file_sha256(path),
+        return {"sha256": _served_file_sha256(path),
                 "threshold": int(os.environ.get("SHENGJI_CWV_PRIOR_THRESHOLD",
                                                 SHORTLIST_PRIOR_THRESHOLD)),
                 "top": int(os.environ.get("SHENGJI_CWV_PRIOR_TOP", SHORTLIST_PRIOR_TOP))}
@@ -130,6 +148,13 @@ MOVE_TIMER = 60.0
 # a dropped network) is never worse than sitting idle at the table. A Leave
 # press does not wait for it; the bot covers at once.
 TAKEOVER_AFTER = MOVE_TIMER
+# A seat that confirmed the round end keeps its confirmation through an
+# absence up to this long, so a brief network drop does not undo it.
+READY_KEEP_SECONDS = 15.0
+# The server pings every socket this often and closes one whose pong does not
+# arrive within the timeout, so a dead connection is found in about 20 s.
+WS_PING_INTERVAL = 10.0
+WS_PING_TIMEOUT = 10.0
 AWAY_IN_A_ROW = 2
 AWAY_PER_ROUND = 3
 MOVE_TIMER_POLL = 1.0      # watchdog period in a room with the move timer
@@ -1395,7 +1420,11 @@ async def advance_if_all_ready(room: Room) -> bool:
     rnd, game = room.round, room.game
     if game is None or rnd is None or rnd.phase != "round_end" or game.game_over:
         return False
-    if pending_ready(room) or not room.ready:
+    # A disconnected seat's kept confirmation alone never starts a round:
+    # someone at the table must be there to see it.
+    if pending_ready(room) or not any(
+            i in room.ready for i, sd in enumerate(room.seats)
+            if sd is not None and not sd.is_bot and sd.connected):
         return False
     room.ready.clear()
     game.start_round()
@@ -1428,11 +1457,12 @@ def _log_round_start(room: Room) -> int | None:
                    ranked=ratings.ranked(room))
 
 
-def _log_seat(room: Room, kind: str, seat: Seat, reason: str) -> None:
+def _log_seat(room: Room, kind: str, seat: Seat, reason: str, **fields: Any) -> None:
     """A seat's presence change (``seat_disconnected``, ``seat_reconnected``,
-    ``seat_left``) in a started game; a lobby keeps no log of its own."""
+    ``seat_left``) in a started game; a lobby keeps no log of its own.
+    ``fields`` are extra record fields (never an address, device or name)."""
     if room.game is not None and seat in room.seats:
-        room.log_event(kind, seat=room.seats.index(seat), reason=reason)
+        room.log_event(kind, seat=room.seats.index(seat), reason=reason, **fields)
 
 
 def _log_play_refused(room: Room, seat: int, msg: dict, error: IllegalPlay) -> None:
@@ -2874,6 +2904,8 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
 async def _ws_session(ws: WebSocket, ip: str) -> None:
     await ws.accept()
+    opened_at = last_frame_at = now()
+    close_code: int | None = None   # the peer's close code, when it sent one
     if ws.query_params.get("heartbeat") == "1":
         ready: dict = {"type": "heartbeat_ready"}
         if WEB_BUILD is not None:
@@ -2919,6 +2951,7 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
         while True:
             try:
                 msg = await ws.receive_json()
+                last_frame_at = now()
             except RuntimeError:
                 # starlette raises RuntimeError, not WebSocketDisconnect, when
                 # the peer is already gone (#639). Scoped to the RECEIVE so a
@@ -3065,6 +3098,9 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                                     and room.round is not None
                                     and room.round.phase != "round_end")
                     leaver = (me.user_id, me.queue_id)
+                    if me in room.seats:
+                        # a player who leaves is not counted as confirming
+                        room.ready.discard(room.seats.index(me))
                     _detach(me, room, my_gen)
                     if (room.game is not None and not joined_leave
                             and me in room.seats and not me.is_bot
@@ -3121,8 +3157,8 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                     if t == "play" and isinstance(e, IllegalPlay) and not isinstance(e, SameDevice):
                         _log_play_refused(room, seat_idx, msg, e)
                     enqueue(me, _refusal(e))
-    except WebSocketDisconnect:
-        pass
+    except WebSocketDisconnect as exc:
+        close_code = exc.code
     finally:
         if conn.adopted is not None:
             room, me, my_gen = conn.adopted
@@ -3137,10 +3173,15 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
             pass                       # the account already left this seat
         elif room is not None and me is not None:
             async with room.lock:
-                if not me.is_bot and me.connected:
+                # a socket its own replacement displaced closing is no
+                # disconnect: the seat is still held, by the newer socket
+                if not me.is_bot and me.connected and my_gen == me.gen:
                     chat_system(room, f"{me.name} disconnected")
-                    if my_gen == me.gen:
-                        _log_seat(room, "seat_disconnected", me, "socket_closed")
+                    closed_at = now()
+                    _log_seat(room, "seat_disconnected", me, "socket_closed",
+                              close_code=close_code,
+                              socket_age_s=round(closed_at - opened_at, 1),
+                              since_last_frame_s=round(closed_at - last_frame_at, 1))
                 _detach(me, room, my_gen)
                 if not any(x.connected for x in room.seats
                            if x is not None and not x.is_bot):
@@ -3847,6 +3888,12 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     occupied (Jerry, 2026-08-03) and why Codex asked for a single owner of the
     transition.
     """
+    # The round-end confirmation stays through a short absence or a socket
+    # replacing a live one; a longer absence or a seat newly taken drops it.
+    kept = seat.connected or (seat.left_at is not None
+                              and now() - seat.left_at <= READY_KEEP_SECONDS)
+    if not kept and seat in room.seats:
+        room.ready.discard(room.seats.index(seat))
     if room.cleanup_task is not None:
         room.cleanup_task.cancel()
         room.cleanup_task = None
@@ -3871,14 +3918,13 @@ def _detach(seat: Seat, room: Room | None = None,
             gen: int | None = None) -> None:
     """Unbind a websocket from a seat (caller holds the room lock).
 
-    Also drops the seat from the round-end quorum: a player who leaves must
-    stop being waited on, or everyone else sits on a browser that is never
-    coming back.
+    A detached seat stops being waited on at the round end (``pending_ready``
+    counts connected humans only). Its own confirmation is kept: ``_attach``
+    drops it if the absence outlasts READY_KEEP_SECONDS, and a Leave drops
+    it at once.
     """
     if gen is not None and gen != seat.gen:
         return                       # a newer socket owns this seat now
-    if room is not None and seat in room.seats:
-        room.ready.discard(room.seats.index(seat))
     seat.ws, seat.connected = None, False
     seat.left_at = now()
     if seat.writer is not None:
@@ -4088,4 +4134,5 @@ if dist.is_dir():
 def main() -> None:
     import uvicorn
     uvicorn.run("shengji.api.server:app", host="0.0.0.0", port=8000,
-                ws_max_size=limits.WS_MAX_BYTES)
+                ws_max_size=limits.WS_MAX_BYTES,
+                ws_ping_interval=WS_PING_INTERVAL, ws_ping_timeout=WS_PING_TIMEOUT)

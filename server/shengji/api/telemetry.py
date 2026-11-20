@@ -74,6 +74,10 @@ NOTICE_CODES = frozenset({
     "reconnected", "error_other",
 })
 WHERE = SCREENS | {"toast", "other"}
+# What ended an open socket, as the page saw it (web/src/link.ts): the
+# transport closed it, a ping went unanswered, or the page replaced it on
+# purpose (a sign-in or sign-out, or Retry).
+DISCONNECT_CAUSES = frozenset({"closed", "no_pong", "replaced"})
 FORMS = frozenset({"phone", "phone-land", "wide"})
 QUEUE_EVENTS = frozenset({"join", "leave", "start", "start_failed"})
 
@@ -102,7 +106,10 @@ SCHEMA: dict[str, dict[str, Any]] = {
                   "refused": _int(0, 100), "coach": _bool, "nth_turn": _int(1, 30),
                   "by": _enum(frozenset({"you", "timer", "bot"}))},
     "tap": {"id": _enum(TAPS)},
-    "notice": {"code": _enum(NOTICE_CODES), "where": _enum(WHERE)},
+    "notice": {"code": _enum(NOTICE_CODES), "where": _enum(WHERE),
+               # the connection notices: why the page dropped its socket, and
+               # for how long it had none
+               "cause": _enum(DISCONNECT_CAUSES), "ms": _int(0, MAX_MS)},
 }
 # The field without which an event says nothing; missing or invalid drops it.
 REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code"}

@@ -257,13 +257,13 @@ def test_ready_ignores_disconnected_humans(client):
             assert len(humans) == 2
             room.ready.add(humans[0])
             assert srv.pending_ready(room) == {humans[1]}
-            # Exercise _detach's explicit quorum cleanup, not merely the fact
-            # that pending_ready ignores disconnected seats.
             room.ready.add(humans[1])
-        # b's socket is closed here; the drop must clear it from the tally.
+        # b's socket is closed here: it is no longer waited on, and its own
+        # confirmation is kept for a return within READY_KEEP_SECONDS.
         room = srv.rooms[code]
+        _wait_for(lambda: not room.seats[humans[1]].connected)
         assert srv.pending_ready(room) == set()
-        assert humans[1] not in room.ready
+        assert humans[1] in room.ready
 
 
 def test_state_carries_ready_tally(client):
@@ -971,6 +971,119 @@ def test_state_exposes_controller_not_inference(client):
         assert by[botseat]["reserved_for"] is None
 
 
+def _two_humans_at_round_end(client, a, monkeypatch):
+    """Seat 0 (``a``) and a second human on seat 1 at a round end, neither
+    confirmed; returns (code, room, round_no, b's ExitStack, b, b's token)."""
+    from shengji.api import server as srv
+
+    code, room = _timer_game(client, a, monkeypatch, on=True)
+    round_no = room.game.round_no
+    room.seats[0].away = True              # the bot plays seat 0 to the round end
+    client.portal.call(srv.kick_bots, room)
+    _wait_for(lambda: room.round.phase == "round_end")
+    a.send_json({"type": "im_back"})
+    _wait_for(lambda: not room.seats[0].away)
+    stack = ExitStack()
+    b = stack.enter_context(client.websocket_connect("/ws"))
+    b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "seat": 1})
+    token = _drain(b, "resume")["token"]
+    _drain(b, "state")
+    _settled(client, room)
+    assert room.ready == set() and srv.pending_ready(room) == {0, 1}
+    return code, room, round_no, stack, b, token
+
+
+def _ready_and_drop(client, room, stack, b):
+    b.send_json({"type": "next_round"})
+    _wait_for(lambda: 1 in room.ready)
+    stack.close()
+    _wait_for(lambda: not room.seats[1].connected)
+    _settled(client, room)
+
+
+def _resume(client, sockets, code, room, token):
+    b = sockets.enter_context(client.websocket_connect("/ws"))
+    b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "token": token})
+    _drain(b, "state")
+    _settled(client, room)
+    assert room.seats[1].connected
+    return b
+
+
+def test_a_short_blip_keeps_the_round_end_ready(client, clock, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room, round_no, stack, b, token = _two_humans_at_round_end(client, a, monkeypatch)
+        _ready_and_drop(client, room, stack, b)
+        assert room.game.round_no == round_no and 1 in room.ready
+        clock["v"] += srv.READY_KEEP_SECONDS - 1
+        with ExitStack() as sockets:
+            _resume(client, sockets, code, room, token)
+            assert 1 in room.ready, "a short drop undid the confirmation"
+            a.send_json({"type": "next_round"})
+            _wait_for(lambda: room.game.round_no == round_no + 1)
+
+
+def test_a_long_absence_drops_the_round_end_ready_on_return(client, clock, monkeypatch):
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room, round_no, stack, b, token = _two_humans_at_round_end(client, a, monkeypatch)
+        _ready_and_drop(client, room, stack, b)
+        clock["v"] += srv.READY_KEEP_SECONDS + 1
+        with ExitStack() as sockets:
+            _resume(client, sockets, code, room, token)
+            assert 1 not in room.ready
+            a.send_json({"type": "next_round"})
+            _wait_for(lambda: 0 in room.ready)
+            _settled(client, room)
+            assert room.game.round_no == round_no
+            assert srv.pending_ready(room) == {1}
+
+
+def test_a_kept_ready_of_a_dropped_seat_alone_starts_no_round(client, clock, monkeypatch):
+    """A lone player who confirmed and then dropped: nobody connected is at
+    the table, so the next round does not start."""
+    from shengji.api import server as srv
+
+    a = client.websocket_connect("/ws").__enter__()
+    try:
+        _, room = _timer_game(client, a, monkeypatch, on=True)
+        round_no = room.game.round_no
+        room.seats[0].away = True
+        client.portal.call(srv.kick_bots, room)
+        _wait_for(lambda: room.round.phase == "round_end")
+        room.ready.add(0)
+        a.__exit__(None, None, None)
+        a = None
+        _wait_for(lambda: not room.seats[0].connected)
+        assert 0 in room.ready and srv.pending_ready(room) == set()
+
+        async def _advance():
+            async with room.lock:
+                return await srv.advance_if_all_ready(room)
+
+        assert client.portal.call(_advance) is False
+        assert room.game.round_no == round_no
+    finally:
+        if a is not None:
+            a.__exit__(None, None, None)
+
+
+def test_a_leave_at_round_end_drops_the_leavers_ready(client, clock, monkeypatch):
+    with client.websocket_connect("/ws") as a:
+        code, room, round_no, stack, b, token = _two_humans_at_round_end(client, a, monkeypatch)
+        with stack:
+            b.send_json({"type": "next_round"})
+            _wait_for(lambda: 1 in room.ready)
+            b.send_json({"type": "table_leave"})
+            _drain(b, "left")
+        _settled(client, room)
+        assert 1 not in room.ready
+        assert room.game.round_no == round_no
+
+
 def test_explicit_leave_at_round_end_advances_the_round(client):
     """P0-4: leaving must release the quorum exactly like dropping does."""
     from shengji.api import server as srv
@@ -1247,6 +1360,38 @@ def test_displaced_socket_cannot_act(client):
                 "stale leave gave up the live seat"
             assert room.seats[2].connected, \
                 "stale leave detached the live socket"
+
+
+def test_a_displaced_socket_closing_posts_no_disconnect_chat(client):
+    """The seat is still held, by the socket that replaced this one."""
+    import time
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as h:
+        code = _room_with_bots(h, "host")
+        room = srv.rooms[code]
+        with ExitStack() as sockets:
+            old_stack = ExitStack()
+            sockets.callback(old_stack.close)
+            old = old_stack.enter_context(client.websocket_connect("/ws"))
+            old.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bob", "seat": 2})
+            tok = _drain(old, "resume")["token"]
+            _drain(old, "state")
+            new = sockets.enter_context(client.websocket_connect("/ws"))
+            new.send_json({"type": "table_join", "expect": "room", "code": code,
+                           "name": "bob", "token": tok})
+            _drain(new, "state")
+            old_stack.close()
+            time.sleep(0.3)                 # the server handles the close
+            _settled(client, room)
+            assert room.seats[2].connected
+            assert not any(m["text"] == "bob disconnected" for m in room.chat)
+            h.send_json({"type": "table_chat", "text": "marker"})
+            seen = _frames_until(new, lambda m: m.get("type") == "chat"
+                                 and m.get("text") == "marker", "the marker line")
+            assert not any(m.get("type") == "chat" and "disconnected" in m.get("text", "")
+                           for m in seen)
 
 
 def test_claiming_a_seat_rotates_its_token(client, clock):
@@ -2684,6 +2829,32 @@ def test_seat_presence_and_ranked_are_in_the_room_log(client, clock):
                                ("seat_reconnected", want, "name"),
                                ("seat_left", want, "leave")]
         assert all(r["round"] == 1 for r in records if r["e"].startswith("seat_"))
+
+
+def test_seat_disconnected_records_the_close_code_and_socket_timing(client, clock):
+    import json
+
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a)
+        want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
+            _drain(b, "state")
+            clock["v"] += 3.04
+            b.send_json({"type": "no_such_action"})
+            _drain(b, "error")
+            clock["v"] += 2.0
+        _wait_for(lambda: not room.seats[want].connected)
+        records = [json.loads(line) for line in
+                   (srv.LOG_DIR / f"{code}.jsonl").read_text().splitlines()]
+        [rec] = [r for r in records if r["e"] == "seat_disconnected"]
+        assert set(rec) == {"t", "room", "round", "e", "seat", "reason",
+                            "close_code", "socket_age_s", "since_last_frame_s"}
+        assert (rec["seat"], rec["reason"]) == (want, "socket_closed")
+        assert rec["close_code"] == 1000
+        assert (rec["socket_age_s"], rec["since_last_frame_s"]) == (5.0, 2.0)
 
 
 def test_a_displaced_socket_closing_logs_no_disconnect(client):

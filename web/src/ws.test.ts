@@ -432,6 +432,316 @@ describe("negotiated connection heartbeat", () => {
   });
 });
 
+describe("a dead socket is found fast at a table", () => {
+  const table = { type: "state", room: "ABCD", you: 0, phase: "play" };
+  const pings = (ws: FakeWS) => ws.sent.filter((m) => m.type === "ping");
+  // A half-open socket: close() starts a closing handshake that never ends,
+  // so onclose never calls back, and nothing it sends gets an answer.
+  const halfOpen = (ws: FakeWS) => { ws.close = () => { ws.readyState = 2; }; };
+  const seated = async () => {
+    vi.useFakeTimers();
+    const { conn, ANSWER_MS, ACTION_PONG_MS, TABLE_PING_MS, TABLE_PONG_MS, HEARTBEAT_MS } = await load();
+    conn.start();
+    const ws = FakeWS.last!;
+    ws.onopen?.();
+    ws.deliver({ type: "heartbeat_ready" });
+    ws.deliver(table);
+    return { conn, ws, ANSWER_MS, ACTION_PONG_MS, TABLE_PING_MS, TABLE_PONG_MS, HEARTBEAT_MS };
+  };
+
+  it("after an action, silence then a lost pong reconnects within 6 s", async () => {
+    try {
+      const { conn, ws, ANSWER_MS, ACTION_PONG_MS } = await seated();
+      expect(ANSWER_MS + ACTION_PONG_MS).toBeLessThanOrEqual(6000);
+      const statuses: string[] = [];
+      conn.subscribeStatus((s: string) => statuses.push(s));
+      halfOpen(ws);
+      expect(conn.send({ type: "play", card_ids: [7] })).toBe(true);
+      vi.advanceTimersByTime(ANSWER_MS - 1);
+      expect(pings(ws)).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(pings(ws)).toEqual([{ type: "ping", nonce: 1 }]);
+      vi.advanceTimersByTime(ACTION_PONG_MS - 1);
+      expect(conn.status).toBe("open");
+      vi.advanceTimersByTime(1);
+      // the connection pill and the Play button read this status at once
+      expect(conn.status).toBe("closed");
+      expect(statuses.at(-1)).toBe("closed");
+      vi.advanceTimersByTime(1);   // the reconnect opens at once
+      const fresh = FakeWS.last!;
+      expect(fresh).not.toBe(ws);
+      fresh.onopen?.();
+      expect(conn.status).toBe("open");
+      fresh.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("an idle table on a dead socket reconnects within 14 s of the last pong", async () => {
+    try {
+      const { conn, ws, TABLE_PING_MS, TABLE_PONG_MS } = await seated();
+      expect(TABLE_PING_MS + TABLE_PONG_MS).toBeLessThanOrEqual(14_000);
+      vi.advanceTimersByTime(TABLE_PING_MS);
+      expect(pings(ws)).toEqual([{ type: "ping", nonce: 1 }]);
+      ws.deliver({ type: "pong", nonce: 1 });
+      halfOpen(ws);                                  // dies right after a pong: the worst case
+      vi.advanceTimersByTime(TABLE_PING_MS);
+      expect(pings(ws)).toHaveLength(2);
+      vi.advanceTimersByTime(TABLE_PONG_MS - 1);
+      expect(conn.status).toBe("open");
+      vi.advanceTimersByTime(1);
+      expect(conn.status).toBe("closed");
+      vi.advanceTimersByTime(1);   // the reconnect opens at once
+      expect(FakeWS.last).not.toBe(ws);
+      FakeWS.last!.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a slow but live server (every pong 2 s late) never reconnects", async () => {
+    try {
+      const { conn, ws } = await seated();
+      const count = FakeWS.count;
+      let answered = 0;
+      for (let t = 0; t < 120_000; t += 100) {
+        // an action every 3 s that the server never answers with a state
+        if (t % 3000 === 0) conn.send({ type: "play", card_ids: [t] });
+        vi.advanceTimersByTime(100);
+        for (const m of pings(ws).slice(answered)) {
+          window.setTimeout(() => ws.deliver({ type: "pong", nonce: m.nonce }), 2000);
+          answered += 1;
+        }
+      }
+      expect(answered).toBeGreaterThan(10);
+      expect(conn.status).toBe("open");
+      expect(FakeWS.count).toBe(count);
+      // one ping in flight at a time, however many actions wait on it
+      const nonces = pings(ws).map((m) => m.nonce);
+      expect(nonces).toEqual(nonces.map((_, i) => i + 1));
+      ws.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("an answer to the action, or any message, sends no probe", async () => {
+    try {
+      const { conn, ws, ANSWER_MS, TABLE_PING_MS } = await seated();
+      conn.send({ type: "pass_declare" });
+      vi.advanceTimersByTime(ANSWER_MS - 100);
+      ws.deliver(table);
+      vi.advanceTimersByTime(TABLE_PING_MS - ANSWER_MS);
+      expect(pings(ws)).toEqual([]);
+      // telemetry and other unanswered messages wait on nothing
+      conn.send({ type: "client_event", events: [] } as any);
+      vi.advanceTimersByTime(TABLE_PING_MS - 1);
+      expect(pings(ws)).toHaveLength(1);         // the table heartbeat, not a probe
+      ws.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("an action on a dead socket is not replayed: the resumed state decides", async () => {
+    try {
+      const { conn, ws, ANSWER_MS, ACTION_PONG_MS } = await seated();
+      halfOpen(ws);
+      conn.send({ type: "play", card_ids: [7] });
+      vi.advanceTimersByTime(ANSWER_MS + ACTION_PONG_MS);
+      expect(conn.status).toBe("closed");
+      // nothing goes out while no socket is open
+      expect(conn.send({ type: "play", card_ids: [7] })).toBe(false);
+      vi.advanceTimersByTime(1);   // the reconnect opens at once
+      const fresh = FakeWS.last!;
+      fresh.onopen?.();
+      fresh.deliver({ type: "heartbeat_ready" });
+      vi.advanceTimersByTime(60_000);
+      expect(fresh.sent.filter((m) => m.type !== "ping")).toEqual([]);
+      expect(ws.sent.filter((m) => m.type === "play")).toHaveLength(1);
+      fresh.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("the lobby keeps 15 s pings with a 15 s deadline, and leaving a table returns to it", async () => {
+    try {
+      const { conn, ws, HEARTBEAT_MS, TABLE_PING_MS } = await seated();
+      expect(HEARTBEAT_MS).toBe(15_000);
+      vi.advanceTimersByTime(TABLE_PING_MS);
+      ws.deliver({ type: "pong", nonce: 1 });
+      conn.leaveToLobby();
+      ws.deliver({ type: "left" });
+      // queue messages are answered by the queue's own panels, not a probe
+      conn.send({ type: "queue_status" } as any);
+      vi.advanceTimersByTime(HEARTBEAT_MS - 1);
+      expect(pings(ws)).toHaveLength(1);
+      vi.advanceTimersByTime(1);
+      expect(pings(ws)).toHaveLength(2);
+      halfOpen(ws);
+      vi.advanceTimersByTime(HEARTBEAT_MS - 1);
+      expect(conn.status).toBe("open");
+      vi.advanceTimersByTime(1);
+      expect(conn.status).toBe("closed");
+    } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("reconnecting fast once a drop is known", () => {
+  const table = { type: "state", room: "ABCD", you: 0, phase: "play" };
+  const boot = async () => {
+    vi.useFakeTimers();
+    const mod = await load();
+    const link = await import("./link");
+    mod.conn.start();
+    return { ...mod, link };
+  };
+  it("abandons a connect that has not opened in 5 s, and a late open changes nothing", async () => {
+    try {
+      const { conn, CONNECT_MS } = await boot();
+      const first = FakeWS.last!;
+      first.readyState = 0;
+      vi.advanceTimersByTime(CONNECT_MS - 1);
+      expect(conn.status).toBe("connecting");
+      vi.advanceTimersByTime(1);
+      expect(conn.status).toBe("closed");
+      expect(first.readyState).toBe(3);
+      expect(first.onopen).toBeNull();
+      vi.advanceTimersByTime(500);
+      const second = FakeWS.last!;
+      expect(second).not.toBe(first);
+      second.onopen?.();
+      expect(conn.status).toBe("open");
+      vi.advanceTimersByTime(60_000);            // its connect timer was cleared by the open
+      expect(conn.status).toBe("open");
+      second.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("retries at once after losing a socket that had worked for over 10 s, and after 500 ms otherwise", async () => {
+    try {
+      const { LONG_LIVED_MS } = await boot();
+      const a = FakeWS.last!;
+      a.onopen?.();
+      vi.advanceTimersByTime(LONG_LIVED_MS + 1);
+      a.close();
+      vi.advanceTimersByTime(1);
+      const b = FakeWS.last!;
+      expect(b).not.toBe(a);
+      b.onopen?.();
+      vi.advanceTimersByTime(1000);              // a short-lived socket
+      b.close();
+      vi.advanceTimersByTime(499);
+      expect(FakeWS.last).toBe(b);
+      vi.advanceTimersByTime(1);
+      expect(FakeWS.last).not.toBe(b);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("at a table the retry delay stops growing at 3 s; in the lobby it grows to 8 s", async () => {
+    try {
+      const { conn, TABLE_RETRY_MAX_MS } = await boot();
+      const delays = (n: number) => {
+        const out: number[] = [];
+        for (let i = 0; i < n; i++) {
+          const ws = FakeWS.last!;
+          const t0 = Date.now();
+          ws.close();                            // a handshake that failed
+          while (FakeWS.last === ws) vi.advanceTimersByTime(100);
+          out.push(Date.now() - t0);
+        }
+        return out;
+      };
+      expect(delays(6)).toEqual([500, 1000, 2000, 4000, 8000, 8000]);
+      FakeWS.last!.onopen?.();
+      FakeWS.last!.deliver(table);
+      expect(conn.status).toBe("open");
+      expect(delays(6)).toEqual([500, 1000, 2000, TABLE_RETRY_MAX_MS, 3000, 3000]);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("back online while the socket reads open: it must answer a ping within 2 s", async () => {
+    try {
+      const { conn, PROBE_MS } = await boot();
+      expect(PROBE_MS).toBe(2000);
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      ws.deliver({ type: "heartbeat_ready" });
+      ws.close = () => { ws.readyState = 2; };
+      window.dispatchEvent(new Event("online"));
+      expect(ws.sent).toEqual([{ type: "ping", nonce: 1 }]);
+      vi.advanceTimersByTime(PROBE_MS - 1);
+      expect(conn.status).toBe("open");
+      vi.advanceTimersByTime(1);
+      expect(conn.status).toBe("closed");
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("a wake restarts a connect older than 2 s, and leaves a younger one alone", async () => {
+    try {
+      const { conn, STALE_CONNECT_MS } = await boot();
+      const first = FakeWS.last!;
+      first.readyState = 0;
+      vi.advanceTimersByTime(STALE_CONNECT_MS);
+      window.dispatchEvent(new Event("online"));
+      expect(FakeWS.last).toBe(first);
+      vi.advanceTimersByTime(1);
+      window.dispatchEvent(new Event("pageshow"));
+      vi.advanceTimersByTime(1);
+      const second = FakeWS.last!;
+      expect(second).not.toBe(first);
+      expect(conn.status).toBe("connecting");
+      second.onopen?.();
+      expect(conn.status).toBe("open");
+      second.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("an unanswered action shows as stalled at 1.5 s, and any message clears it", async () => {
+    try {
+      const { conn, link, ANSWER_MS } = await boot();
+      expect(ANSWER_MS).toBe(1500);
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      ws.deliver({ type: "heartbeat_ready" });
+      ws.deliver(table);
+      const seen: boolean[] = [];
+      link.subscribeStalled((on) => seen.push(on));
+      conn.send({ type: "play", card_ids: [1] });
+      vi.advanceTimersByTime(ANSWER_MS - 1);
+      expect(link.isStalled()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(link.isStalled()).toBe(true);
+      ws.deliver({ type: "pong", nonce: 1 });
+      expect(link.isStalled()).toBe(false);
+      expect(seen).toEqual([true, false]);
+      ws.close();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("reports each lost open socket with its cause, and the time down once a new one opens", async () => {
+    try {
+      const { conn, link, ANSWER_MS, ACTION_PONG_MS } = await boot();
+      const events: unknown[] = [];
+      link.subscribeLink((ev) => events.push(ev));
+      const a = FakeWS.last!;
+      a.readyState = 0;
+      a.close();                                 // a failed first connect is no drop
+      vi.advanceTimersByTime(500);
+      const b = FakeWS.last!;
+      b.onopen?.();
+      b.deliver({ type: "heartbeat_ready" });
+      b.deliver(table);
+      b.close = () => { b.readyState = 2; };
+      conn.send({ type: "play", card_ids: [1] });
+      vi.advanceTimersByTime(ANSWER_MS + ACTION_PONG_MS);
+      expect(events).toEqual([{ kind: "down", cause: "no_pong" }]);
+      vi.advanceTimersByTime(1);
+      vi.advanceTimersByTime(700);
+      FakeWS.last!.onopen?.();
+      expect(events).toEqual([{ kind: "down", cause: "no_pong" }, { kind: "up", ms: 701 }]);
+      FakeWS.last!.close();
+      expect(events.at(-1)).toEqual({ kind: "down", cause: "closed" });
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      conn.reconnect();
+      expect(events.at(-1)).toEqual({ kind: "down", cause: "replaced" });
+    } finally { vi.useRealTimers(); }
+  });
+});
+
 describe("the device key", () => {
   it("is made once, 22 url-safe characters, kept in storage and sent on every socket", async () => {
     vi.useFakeTimers();

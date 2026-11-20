@@ -74,6 +74,9 @@ afterEach(async () => {
   // this test's store stops its timers: a periodic status check from it
   // would otherwise send, and save its guest name, during a later test
   (await import("./store")).queue.reset();
+  // and its connection: a connect still pending would be abandoned and
+  // retried on a real timer, during a later test
+  (await import("../ws")).conn.stop();
   act(() => root.unmount());
   host.remove();
   window.matchMedia = realMatchMedia;
@@ -2077,7 +2080,7 @@ describe("the unified table on the client", () => {
     tick(31_000);
     expect(presence()?.textContent).toBe("2 people are waiting for a game");
     act(() => ws().close());
-    act(() => { vi.advanceTimersByTime(5000); });
+    act(() => { vi.advanceTimersByTime(1000); });
     act(() => ws().onopen?.());
     expect(presence()?.textContent).toBe("Nobody is playing right now");
   });

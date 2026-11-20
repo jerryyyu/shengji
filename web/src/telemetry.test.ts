@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./ws", () => ({ conn: { send: () => true } }));
 
-import { FLUSH_AT, FLUSH_MS, MAX_BYTES, Telemetry, TurnClock, leadKind } from "./telemetry";
+import { FLUSH_AT, FLUSH_MS, MAX_BYTES, Telemetry, TurnClock, leadKind, telemetry } from "./telemetry";
+import { noteLink } from "./link";
 
 type Msg = { type: string; v: number; form: string; first_visit: boolean; events: Record<string, unknown>[] };
 
@@ -11,6 +12,19 @@ const sender = (ok = true) => (m: unknown) => { if (ok) sent.push(m as Msg); ret
 
 beforeEach(() => { sent = []; vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
+
+describe("connection notices", () => {
+  it("each lost socket and recovery the socket manager reports becomes a notice", () => {
+    telemetry.reset();
+    noteLink({ kind: "down", cause: "no_pong" });
+    noteLink({ kind: "up", ms: 4400.4 });
+    expect(telemetry.pending()).toEqual([
+      expect.objectContaining({ e: "notice", code: "disconnected", cause: "no_pong" }),
+      expect.objectContaining({ e: "notice", code: "reconnected", ms: 4400 }),
+    ]);
+    telemetry.reset();
+  });
+});
 
 describe("telemetry transport", () => {
   it("sends a batch at 20 events", () => {

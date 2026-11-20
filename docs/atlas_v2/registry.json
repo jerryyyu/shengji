@@ -658,8 +658,8 @@
   },
   {
    "release": 52,
-   "status": "production",
-   "since": "2026-11-09 17:25 ET",
+   "status": "superseded",
+   "since": "2026-11-09 17:25 ET \u2192 2026-11-19 11:52 ET",
    "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r12e81e0c-bury-hybrid-bwv-bbw-7a9a430fe690-sc8",
    "head": "FT1 1fa201b2 (card-play prior); the value is G3 Stage A f4f4127e (unchanged from release 51)",
    "package": "unchanged from release 51: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, belief b1a-028131a0.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
@@ -698,9 +698,87 @@
    "caveats": [
     "deployed 2026-11-09 22:25Z (17:25 ET) as Fly v64 at 0 rooms from #1347 head 99338c7e (#1263 issuecomment-6753130529)",
     "strength measured on the M5 Ultra duel host, not on Fly; Fly timing completed for one game at a time only (Jerry chose to ship on it); no completed 2- or 4-game comparison on Fly",
-    "comparator for NEW duels and screens: release 52 as served (Jerry 2026-11-09, with the deploy)",
+    "comparator for duels and screens 2026-11-09 to 2026-11-19: release 52 as served (Jerry 2026-11-09, with the deploy); UT-alldata-screen, UT-alldata-confirm and the other reads against it keep release 52",
     "rollback: the v63 image deployment-01M7059VAETQFCMM6Z3ADYKRPM with release 51's verified fly.toml (DEPLOY.md, Rollback to release 51)",
     "bot unchanged through the later web-only deploys ui24-ui35 (archives ~/shengji-archive/2026-11-12-server-deploy-ui24 ... -ui35); the Fly machine is performance-1x / 2048 MB as of 2026-11-18 (fly scale show, #1263 issuecomment-6967501844), not the 512 MiB machine of the release-52 timing"
+   ]
+  },
+  {
+   "release": 53,
+   "status": "superseded",
+   "since": "2026-11-19 11:52 ET \u2192 2026-11-19 18:14 ET",
+   "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-1b1a47f5dd8b-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast",
+   "head": "the all-data unified model 97c07be8 (belief, root prior, leaf value, reply ranking from one trunk); G3 Stage A f4f4127e for declare, bury and terminal leaves; FT1 1fa201b2 bound for fallbacks",
+   "package": "new: unified readout ut-all-97c07be8.npz (sha256 97c07be8\u2026), belief ut-all-belief-1b1fd2de.npz (sha256 1b1fd2de\u2026) in place of B1a; unchanged: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, JS-M1 js-m1-0d17fd03.npz",
+   "oneline": "Release 52 + the all-data unified model in four play slots (belief, prior, leaf values, replies). Vs release 52 head to head: UT-alldata-confirm +0.0521.",
+   "recipe": "release 52 exactly (search, rules, budgets: 3 s play, 2 s bury; declaration and bury on G3 A) with five fly.toml lines: the belief pair moves to the unified model's ut-all-belief-1b1fd2de (play digest r12e81e0c -> r09a10415, bury suffix 7a9a430fe690 -> 1b1a47f5dd8b), SHENGJI_PV_UNIFIED_CKPT/SHA256 = ut-all-97c07be8 (-ushare97c07be8-uvalue97c07be8-ureply97c07be8) and SHENGJI_PV_UNIFIED_FAST=1 (-ufast) (server/releases/r53.json). Deployed from main 31163ba8 (#1596 + #1598). Jerry, in session 2026-11-18: 'awesome lets ship it'.",
+   "evidence": [
+    {
+     "what": "UT-alldata-screen: the unified bot (no fast path) vs release 52 as served, 3,920 seat-swapped deal pairs (M5 Ultra), SCREEN_PASS, LB80 +0.0508",
+     "point": 0.0573,
+     "lo": 0.0422,
+     "hi": 0.0728,
+     "ref": "utads"
+    },
+    {
+     "what": "UT-alldata-confirm: the same vs release 52 as served, 7,840 fresh seat-swapped deal pairs (M5 Ultra), CONFIRMED, LB95 +0.0429; 0 play and bury fallbacks, 0 declare abandons",
+     "point": 0.0521,
+     "lo": 0.041,
+     "hi": 0.0633,
+     "ref": "utadc"
+    },
+    {
+     "what": "UT-launch (descriptive, one look each): full-round registry parity PASS (20 rounds); VR (value and reply readouts only) +0.0475 [+0.018, +0.0775]; MIX (one unified bot, release-52 partner) +0.030 [-0.0005, +0.059]; OOD margin difference vs SmartBot +0.0325 [-0.0005, +0.066]; 1,000 deals each",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-09-13/readouts/UT-launch/"
+    },
+    {
+     "what": "UT-fly-fast on the production machine (performance-1x 2 GB, 0 rooms, one game): with the fast path, mean decision-time ratio vs release 52 0.992x [0.981, 1.004], p95 0.829 vs 0.849 s, 0 fallbacks; without it 1.126x",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-09-13/readouts/UT-fly-fast/RESULTS.md"
+    },
+    {
+     "what": "server-path smoke on the release tree (Mac mini, compiled): smoke53 and smoke53b validator PASS, 660 plays each, every play record with unified shared 1, missed 0, nothing left to the served nets",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-11-18-r53-smoke/"
+    }
+   ],
+   "caveats": [
+    "deployed 2026-11-19 16:52Z (11:52 ET) as Fly v117, image deployment-01M7TBGQMBT3DMWE58QDXEMRS7, from main 31163ba8; served until release 54 at 23:14Z the same day",
+    "strength measured on the M5 Ultra duel host against release 52 built on the main-lineage screen tree, not on Fly or with human partners; Fly latency measured for one game at a time only",
+    "red team UT-redteam open risks: failed throws 5.3% vs 4.1% of leads, belief calibration log-loss 0.9985 vs B1a 0.9878, the banker conceding more kitty bonus, rank-2 rounds gaining about half as much (+0.034 vs +0.068)",
+    "rollback: the prepared v115 pair (image deployment-01M7QEB5RXY4D7MYN0CEGN4BHX with dcd5791b's verified fly.toml; DEPLOY.md, Rollback, To release 52)"
+   ]
+  },
+  {
+   "release": 54,
+   "status": "production",
+   "since": "2026-11-19 18:14 ET",
+   "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-3a676f3c01ea-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast",
+   "head": "unchanged from release 53: the all-data unified model 97c07be8; G3 Stage A f4f4127e for declare, bury and terminal leaves",
+   "package": "unchanged from release 53: unified ut-all-97c07be8.npz, belief ut-all-belief-1b1fd2de.npz, value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
+   "oneline": "Release 53 with the bury budget at 3 s instead of 2 s; a configuration change with no strength measurement.",
+   "recipe": "release 53 exactly with one fly.toml value changed: SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS '2' -> '3' (Jerry, in session 2026-11-19: 'Bury can be 3s'); the budget is in the bury identity, so the bury suffix moves 1b1a47f5dd8b -> 3a676f3c01ea (server/releases/r54.json). Deployed from main 7c0fc4da: #1605 with #1599 (ranked continue, accounts schema v9) and #1607 (leaner fast readout, decision-identical on 2,148 Mac positions).",
+   "evidence": [
+    {
+     "what": "#1605 bury timing on a Mac mini, release 52's bury: 240 positions unbudgeted, at 2 s and at 3 s; 0 of 240 reached the 2 s deadline (max 1.27 s with 16 extra CPU spinners) and 0 of 240 decisions changed between 2 s and 3 s; timing and identity only, no strength claim",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "#1605"
+    }
+   ],
+   "caveats": [
+    "deployed 2026-11-19 23:14Z (18:14 ET) as Fly v118, image deployment-01M7V1C3XTFQR123SFKPJX02XM, from main 7c0fc4da",
+    "no strength measurement; release 53's bury (unified belief worlds) was not re-timed and bury time on Fly is not measured",
+    "comparator for NEW duels and screens: release 54 as served, from its deploy",
+    "rollback: Fly v117's image with main 31163ba8's fly.toml (sha256 cad28bfd...), or the config-only rollback in fly.toml's comment (bury budget '2' and the release-53 name)"
    ]
   }
  ],
@@ -5103,13 +5181,13 @@
    "status": "Predeclared offline bar PASS on 60 TUNE clusters (6,182 decisions): agreement with the played move 0.6663 [0.6554, 0.6776] (bar >= 0.62), search-value regret 0.0119 [0.0097, 0.0143] levels/decision (bar <= 0.028); leads weaker (0.6175, regret 0.0365). Offline agreement, not strength. In play (s136d) -0.1365 vs release 52 as served, +0.759 vs its budget-fallback heuristic. As a play-likelihood for belief reweighting (PL1, #1263 issuecomment-6956770728): q_eff 0.2657 [0.2567, 0.2749] vs B1a 0.2256, between the park line 0.26 and the pass line 0.27, FAIL (not killed); parked. #1263 issuecomment-6916889863; archive readouts/S136/, readouts/PL1/. Not served."
   },
   {
-   "name": "Unified all-data base (release 53 candidate, not served)",
+   "name": "Unified all-data base (served in releases 53 and 54)",
    "ck": "97c07be8 + belief 1b1fd2de",
    "date": "2026-11-17",
    "recipe": "One transformer (4.9M parameters; B1a-size trunk d 192, 4 + 4 layers) serving belief, root prior, reply prior and per-world value: one joint pass over 22.1M rows (Y 10.3M, x1a teacher X4 5.6M, R50 4.5M, x1a teacher X2 1.7M), warm from round 1, then R1's true-world head polish (best epoch 8). Base package 97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af, belief package 1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4; branch claude/ut-inside1 1a7a4413.",
    "val_ce": null,
    "regret": null,
-   "status": "Offline gates PASS (value mixture NLL vs the served MLP -0.0285 [-0.0392, -0.0177]; reply recall@4 vs FT1 +0.0130); belief calib LL 0.99855 vs B1a 0.98782. In release 52's search, all four slots: DEV +0.0385 (utadb), screen +0.0573 (utads), confirmation +0.0521 [+0.0410, +0.0633] (utadc, CONFIRMED). Ultra latency 1.057x; Fly 1.126x on the production machine (bar 1.10x, FAIL); the opt-in speed path (#1592, off by default) is not yet re-timed on Fly. Rounds 1-2 on Y data only (packages 6c6c8bd3, 2785ef9e) failed in play (utv1, utv2). #1263 issuecomment-6966630821; archives readouts/UT-alldata-base/, UT-alldata-confirm/. Not served; a release is Jerry's call."
+   "status": "Offline gates PASS (value mixture NLL vs the served MLP -0.0285 [-0.0392, -0.0177]; reply recall@4 vs FT1 +0.0130); belief calib LL 0.99855 vs B1a 0.98782. In release 52's search, all four slots: DEV +0.0385 (utadb), screen +0.0573 (utads), confirmation +0.0521 [+0.0410, +0.0633] (utadc, CONFIRMED). Ultra latency 1.057x; Fly 1.126x on the production machine (bar 1.10x, FAIL); with the fast path (#1592) re-timed on Fly 0.992x [0.981, 1.004] (UT-fly-fast) and served that way. Rounds 1-2 on Y data only (packages 6c6c8bd3, 2785ef9e) failed in play (utv1, utv2). #1263 issuecomment-6966630821; archives readouts/UT-alldata-base/, UT-alldata-confirm/. Served from release 53 (2026-11-19, Fly v117) with the fast path; release 54 keeps it."
   },
   {
    "name": "Unified scaling sweep S-6M / F-S / F-M / F-L (not served)",
@@ -5377,8 +5455,8 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 52,
+  "release": 54,
   "status": "confirmed",
-  "note": "New screens compare against release 52 as served (Jerry, in session 2026-11-09, with release 52's deploy, #1347). Before that release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 54 as served (from its deploy, 2026-11-19 23:14Z; it differs from release 53, served from 16:52Z that day, only in the bury budget). Before that release 52 (Jerry, in session 2026-11-09, with release 52's deploy, #1347), release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  }
 }

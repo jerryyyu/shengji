@@ -4,7 +4,8 @@
 Edit the data blocks below, then run this script; `--check` exits 1 when either
 committed SVG differs from what the data blocks generate. Stdlib only.
 
-Every number comes from the README's search and model text (release 52). The
+Every number comes from the README's search and model text (release 54) and the
+unified package's stored config (`ut-all-97c07be8.npz`). The
 heatmap shades, world tiles, bar heights and tree shape are illustrative,
 drawn from a fixed seed. Palette, fonts and helpers follow
 build_decision_diagram.py: one dark palette on a rounded dark panel, the same
@@ -27,7 +28,7 @@ SEED = 52
 # Search figure data.
 
 SEARCH_TITLE = "How the search works"
-SEARCH_SUBTITLE = ("One card-play decision in release 52, left to right. Shades, tiles, bars and the tree "
+SEARCH_SUBTITLE = ("One card-play decision in release 54, left to right. Shades, tiles, bars and the tree "
                    "are illustrative; every number is the served setting.")
 
 # Each panel: (colour token, kicker, headline, body lines, rule chips).
@@ -42,8 +43,8 @@ PANELS = [
      ["bw"]),
     ("prior", "2 · CANDIDATES", "Admit 8 plays",
      ["Legal plays ≤ 4,000.",
-      "Prior = summed card log-odds,",
-      "averaged over 64 root worlds.",
+      "Prior = mean card log-odds from",
+      "the belief forward's prior head.",
       "div: ≤ 2 per shape, no near-",
       "duplicate throws. la: weak",
       "single lead → strongest pair",
@@ -52,9 +53,10 @@ PANELS = [
       "probed on 8 worlds."],
      ["div", "la", "sc8"]),
     ("value", "3 · VALUE PASS", "Score 8 × 64",
-     ["512 positions, batches of 128;",
-      "value = expected signed levels",
-      "for the bot's team.",
+     ["512 leaves in signed levels: the",
+      "unified readout on the covered",
+      "same-trick nonterminal ones,",
+      "the served evaluator the rest.",
       "tb: within 0.02 of the best →",
       "trick points decide.",
       "dtr: a lead throw refused in",
@@ -112,18 +114,21 @@ BURY = ("BURY", ["bwv", "bbw"],
          "single-card swaps) scored on 32",
          "belief-drawn worlds; the best mean",
          "is kept (bwv, bbw).",
-         "Budget 2 s per bury."])
+         "Budget 3 s per bury."])
 
 SEARCH_ARIA = (
-    "How the search works, as a five-stage pipeline. 1, belief sampling: the belief model reads the public "
+    "How the search works in release 54, as a five-stage pipeline. 1, belief sampling: the unified model's "
+    "belief head reads the public "
     "history and gives each hidden card's holder probabilities, masked to the holders the public facts allow; "
     "64 worlds are kept, drawn worlds are rejected by the history tests whl, whd, wht, rc and rcec, which apply "
     "to the first 512 draws, the plain sampler fills any shortfall after 2,560, and belief preparation over "
-    "0.25 s falls back to the Monte Carlo sampler. 2, candidates: up to 4,000 legal plays; the prior's summed "
-    "card log-odds averaged over 64 root worlds rank them; 8 are admitted, the heuristic's play first, at most "
+    "0.25 s falls back to the Monte Carlo sampler. 2, candidates: up to 4,000 legal plays; the mean card "
+    "log-odds of the prior head, read from the same trunk forward as the belief, rank them; 8 are admitted, the heuristic's play first, at most "
     "2 per shape (div), la on a weak single lead, and sc8 probing singles on 8 worlds when a hand has more "
-    "than 7 cards. 3, value pass: each trick is finished by greedy replies (lgf, lgfx, lgfd2000) and 512 "
-    "positions are scored in batches of 128 as expected signed levels; ties within 0.02 go to trick points "
+    "than 7 cards. 3, value pass: each trick is finished by greedy replies, each the best of the "
+    "unified readout's top 4 follows and the heuristic's (lgf, lgfx, lgfd2000); of the 512 leaves, the "
+    "unified readout scores the covered same-trick nonterminal ones and the served evaluator the other "
+    "positions, as expected signed levels; ties within 0.02 go to trick points "
     "(tb); dtr and dtrx drop refused lead throws. 4, exact endgame at 7 cards or fewer a hand: partnership "
     "minimax with alpha-beta and a transposition table per world, averaged (ele, ed7, xf7, elm, elt, "
     "els1600), switching only on a strictly higher mean. 5, choose: the best mean wins; past the budget or "
@@ -131,29 +136,30 @@ SEARCH_ARIA = (
     "belief preparation up to 0.25 s, the exact lead stage starts only in the first half and its solve stops "
     "by 1.6 s, lgf stops at 2 s, both exact stages stop by 2.4 s, the budget ends at 3 s. Side lanes: "
     "declaration scores each option and passing on 64 deals (vd, vdef); the bury scores up to 64 candidate "
-    "kitties on 32 belief-drawn worlds within 2 s (bwv, bbw)."
+    "kitties on 32 belief-drawn worlds within 3 s (bwv, bbw)."
 )
 
 # Models figure data.
 
 MODELS_TITLE = "The models"
-MODELS_SUBTITLE = "Release 52's three networks: what each reads, its shape, how it was trained and where the search calls it."
+MODELS_SUBTITLE = ("Release 54's networks: one unified transformer plays the cards; G3 Stage A and FT1 stay for "
+                   "the declaration, the bury and fallbacks.")
 
 # Each block: (label, kind, side lines, side input); kind is "in", "op", "join" or "stack".
 MODELS = [
-    ("belief", "BELIEF", "B1a · 028131a0", "transformer · 3.2M parameters", [
+    ("belief", "UNIFIED", "all-data unified · 97c07be8", "transformer · 4.9M parameters", [
         ("history tokens", "in", ["the round's earlier plays"], None),
         ("causal encoder × 4", "op", ["width 192, 4 heads"], None),
-        ("cross-attend × 4", "op", [], "54 card queries"),
-        ("card self-attention × 1", "op", [], None),
-        ("+", "join", [], "1,115 public features → MLP 2 × 256"),
-        ("54 × 4 holder logits", "op", ["next · partner ·", "previous · kitty"], None),
-        ("mask → softmax, T 1.019", "op", ["allowed holders only"], None),
+        ("cross-attend × 4, self × 1", "op", [], "54 card queries"),
+        ("+", "join", [], "1,111 public features → MLP 256"),
+        ("54 card states", "op", ["one trunk forward", "per decision"], None),
+        ("readout × 3 blocks", "stack", ["per leaf: 9 count planes", "+ 12 trick scalars"], None),
+        ("four outputs", "op", ["belief 54 × 4 · prior 54;", "leaf value 204 · reply 54"], None),
      ],
-     ["S58 fine-tune on 10.3M decisions from",
-      "Y self-play; target: each hidden",
-      "card's true holder."],
-     ["belief sampling (bw);", "bury worlds (bbw)"]),
+     ["One joint pass over 22.1M rows of Y,",
+      "x1a-teacher and R50 self-play, warm",
+      "from round 1, then a true-world polish."],
+     ["worlds (bw, bbw); candidates;", "leaf values; lgf replies"]),
     ("value", "VALUE", "G3 Stage A · f4f4127e", "residual MLP · 620k parameters", [
         ("833 inputs", "in", ["561 public + 5 × 54 deal", "counts + 2 perspective"], None),
         ("linear stem → 165", "op", [], None),
@@ -165,7 +171,7 @@ MODELS = [
      ["Cross-entropy on round outcomes",
       "from 200k Y self-play rounds, warm",
       "from SMV3's trunk."],
-     ["value pass; declare (vd, vdef);", "bury (bwv, bbw)"]),
+     ["declare (vd, vdef); bury (bwv);", "terminal leaves; fallbacks"]),
     ("prior", "PRIOR", "FT1 · 1fa201b2", "the same residual MLP, 54-card policy head", [
         ("one root position", "in", ["one per sampled world"], None),
         ("same trunk as value", "stack", ["833 in, stem 165,", "4 residual blocks"], None),
@@ -177,28 +183,31 @@ MODELS = [
      ["The policy net fine-tuned toward",
       "about 37.8k expert-search labels;",
       "its value head is not used."],
-     ["candidates (8 admitted);", "lgf follows (top 4)"]),
+     ["bound for any reply the readout", "leaves; the play prior to release 52"]),
 ]
 MODELS_FOOT_1 = "Trained in PyTorch, exported to .npz, run in NumPy on the server CPU"
-MODELS_FOOT_2 = ("Value positions go in batches of 128 · on Fly a release 52 decision takes p95 0.855 s "
-                 "with one game running (DEPLOY.md, Latency)")
+MODELS_FOOT_2 = ("Fast path (ufast): a fused stem and a per-decision row memo · on Fly a release 53 play took "
+                 "p95 0.829 s with one game running (DEPLOY.md, Latency)")
 
 MODELS_ARIA = (
-    "The models, three cards. Belief, B1a 028131a0, a transformer with 3.2M parameters: history tokens go "
-    "through a causal 4-layer encoder of width 192 with 4 heads; 54 card queries cross-attend to it through "
-    "4 layers, then one card self-attention layer; a 2-layer MLP of width 256 over 1,115 public features is "
-    "added; the output is 54 by 4 holder logits for next player, partner, previous player and kitty, masked "
-    "and turned into probabilities by a softmax at temperature 1.019. Trained by the S58 fine-tune on 10.3M "
-    "decisions from Y self-play; used in belief sampling and the bury worlds. Value, G3 Stage A f4f4127e, a "
-    "residual MLP with 620k parameters: 833 inputs, 561 public features plus 5 by 54 deal counts plus 2 for "
-    "perspective, a stem to width 165, 4 residual blocks of LayerNorm, a 330-wide ReLU layer and back to 165, "
-    "a final LayerNorm and ReLU, and 204 outcome classes whose softmax gives the expected signed level. "
-    "Trained with cross-entropy on 200k Y self-play rounds, warm from SMV3; used in the value pass, declare "
-    "and bury. Prior, FT1 1fa201b2, the same residual MLP with a 54-card policy head: one root position per "
-    "world gives 54 card log-odds, used raw with no softmax and summed per play; fine-tuned toward about "
-    "37.8k expert-search labels; used for candidates and lgf follows. All are trained in PyTorch, exported to "
-    ".npz and run in NumPy on the server CPU; value positions go in batches of 128; on Fly a release 52 "
-    "decision takes p95 0.855 seconds."
+    "The models, three cards. Unified, the all-data unified model 97c07be8, a transformer with 4.9M "
+    "parameters: history tokens go through a causal 4-layer encoder of width 192 with 4 heads; 54 card "
+    "queries cross-attend to it through 4 layers, then one card self-attention layer; a public-feature MLP "
+    "of width 256 over 1,111 features is added, giving 54 card states from one trunk forward per decision; "
+    "a 3-block readout reads those states with each leaf's 9 count planes and 12 trick scalars; four "
+    "outputs: belief, 54 by 4 holder odds; the root prior, 54 card log-odds; the leaf value, 204 outcome "
+    "classes; and the reply ranking, 54 log-odds. Trained in one joint pass over 22.1M rows of Y, "
+    "x1a-teacher and release-50 self-play, warm from round 1, then a true-world polish; used for the play "
+    "and bury worlds, the candidates, the leaf values and the greedy-finish replies. Value, G3 Stage A "
+    "f4f4127e, a residual MLP with 620k parameters: 833 inputs, 561 public features plus 5 by 54 deal "
+    "counts plus 2 for perspective, a stem to width 165, 4 residual blocks of LayerNorm, a 330-wide ReLU "
+    "layer and back to 165, a final LayerNorm and ReLU, and 204 outcome classes whose softmax gives the "
+    "expected signed level. Trained with cross-entropy on 200k Y self-play rounds, warm from SMV3; used "
+    "for the declaration, the bury, terminal leaves and fallbacks. Prior, FT1 1fa201b2, the same residual "
+    "MLP with a 54-card policy head, fine-tuned toward about 37.8k expert-search labels; the play prior "
+    "through release 52, now bound for any reply the readout leaves. All are trained in PyTorch, exported "
+    "to .npz and run in NumPy on the server CPU; the fast path uses a fused stem and a per-decision row "
+    "memo; on Fly a release 53 play took p95 0.829 seconds with one game running."
 )
 
 # Palette and type, shared with build_decision_diagram.py.
@@ -381,7 +390,7 @@ def _value_visual(tx: float, rng: random.Random) -> list[str]:
         out.append(_text(x + 22, cy + 17, "cap", lab, "middle"))
         if i < 3:
             out.append(_arrow(f"M{_f(x + 45)} {_f(cy + 13)} H{_f(x + 54)}"))
-    out.append(_text(tx, cy + 44, "cap", "each reply: best of the prior's top 4"))
+    out.append(_text(tx, cy + 44, "cap", "each reply: best of the readout's top 4"))
     out.append(_text(tx, cy + 60, "cap", "follows + the heuristic's, for its team"))
     by, bh = cy + 74, 64
     means = [0.55 + 0.4 * rng.random() for _ in range(8)]

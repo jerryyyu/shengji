@@ -6,7 +6,9 @@ import type { Clock } from "../clock";
 import { LIMITS, utf8Bytes } from "./protocol";
 
 /** What the link reports about itself, beyond its peers. */
-export type LinkState = "ready" | "waiting" | "denied" | "wifiOff" | "notFound" | "failed";
+/** `ended`: the host phone was away longer than the joiners' window, so
+ *  its table is over (the plugin stops advertising it). */
+export type LinkState = "ready" | "waiting" | "denied" | "wifiOff" | "notFound" | "failed" | "ended";
 
 export interface HostHandlers {
   peer(peer: string, connected: boolean): void;
@@ -53,6 +55,8 @@ interface FakeHost {
   handlers: HostHandlers;
   peers: Map<string, JoinHandlers>;
   stopped: boolean;
+  /** In the background: not advertised, so a join finds nothing. */
+  away: boolean;
 }
 
 /** An in-memory radio for tests: any number of hosts and joiners on one
@@ -89,7 +93,7 @@ export class FakeTransport implements NearbyTransport {
       handlers.state("denied");
       throw new NearbyError("denied");
     }
-    const h: FakeHost = { code, handlers, peers: new Map(), stopped: false };
+    const h: FakeHost = { code, handlers, peers: new Map(), stopped: false, away: false };
     this.hosts.set(code, h);
     handlers.state("ready");
     return {
@@ -112,7 +116,7 @@ export class FakeTransport implements NearbyTransport {
       throw new NearbyError("denied");
     }
     const h = this.hosts.get(code);
-    if (!h || h.stopped) {
+    if (!h || h.stopped || h.away) {
       handlers.state("notFound");
       throw new NearbyError("notFound");
     }
@@ -156,6 +160,30 @@ export class FakeTransport implements NearbyTransport {
       p.closed();
       if (!h.stopped) h.handlers.peer(peer, false);
     });
+  }
+
+  /** The host app goes to the background and the system ends its links:
+   *  every joiner's link closes and the table is not found until `foreground`. */
+  background(code: string): void {
+    const h = this.hosts.get(code);
+    if (!h) return;
+    h.away = true;
+    for (const peer of [...h.peers.keys()]) this.cut(h, peer);
+    h.handlers.state("waiting", "background");
+  }
+
+  /** Back in the foreground within the window: advertised again with the
+   *  same code, as the plugin re-advertises; after it, the table is over. */
+  foreground(code: string, ended = false): void {
+    const h = this.hosts.get(code);
+    if (!h) return;
+    if (ended) {
+      h.handlers.state("ended");
+      this.stopHost(code);
+      return;
+    }
+    h.away = false;
+    h.handlers.state("ready");
   }
 
   /** The host phone goes away: every joiner's link closes. */

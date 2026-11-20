@@ -42,14 +42,18 @@ interface Props {
   /** Whether the pill shows while the socket is down. Play with no table
    *  says it on its presence line instead; the full screen shows anyway. */
   pill?: boolean;
+  /** A nearby table is over for this joiner: the full screen says so, with
+   *  Leave in place of Retry. */
+  ended?: { title: string; onLeave: () => void } | null;
 }
 
 /** The one connection surface, in the lobby and at the table alike: a pill
  *  while the socket is down, with Retry after RETRY_AFTER_MS, and one full
  *  screen after LOST_AFTER_MS. While the socket is open the table may show
  *  SeatHeldPill in the same place; this shows nothing. */
-export default function ConnectionPill({ status, inRoom, inGame, pill = true }: Props) {
+export default function ConnectionPill({ status, inRoom, inGame, pill = true, ended = null }: Props) {
   const [phase, retry] = useConnPhase(status);
+  if (ended) return <ConnectionLost inGame={false} onRetry={ended.onLeave} ended={ended.title} />;
   if (phase === "open") return null;
   if (phase === "lost") return <ConnectionLost inGame={inGame} onRetry={retry} />;
   if (!pill) return null;
@@ -116,7 +120,7 @@ function restoreFocus(previous: Element | null): void {
  *  alerts included. Retry has focus, Tab stays inside, the page behind is
  *  inert, and Escape does not dismiss it, since only a connection or Retry
  *  ends it. On closing, focus goes back to where it was. */
-function ConnectionLost({ inGame, onRetry }: { inGame: boolean; onRetry: () => void }) {
+function ConnectionLost({ inGame, onRetry, ended = null }: { inGame: boolean; onRetry: () => void; ended?: string | null }) {
   const ref = useRef<HTMLDialogElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -147,10 +151,10 @@ function ConnectionLost({ inGame, onRetry }: { inGame: boolean; onRetry: () => v
               trapTab(e.nativeEvent, ref.current!);
             }}>
       <div className="conn-lost-mark" aria-hidden="true">!</div>
-      <h1 className="conn-lost-title" id={titleId}>No connection</h1>
+      <h1 className="conn-lost-title" id={titleId}>{ended ?? "No connection"}</h1>
       {inGame ? <p className="conn-lost-body" id={bodyId}>A bot holds your seat.</p> : null}
-      <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>Retry</button>
-      {offlineOffered() ? (
+      <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>{ended ? "Leave" : "Retry"}</button>
+      {offlineOffered() && !ended ? (
         <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
           Play offline with the bots
         </button>

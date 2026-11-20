@@ -34,6 +34,12 @@ export interface NearbyHello {
   nearby_v: number;
   name: string;
   token: string | null;
+  /** Only look: the host answers with the table's seats and seats nobody,
+   *  so the joiner can pick a seat before taking one. */
+  peek?: boolean;
+  /** The seat a newcomer asks for; the host gives the first free one when
+   *  it is taken. */
+  seat?: number | null;
 }
 
 const isInt = (v: unknown, lo: number, hi: number): v is number =>
@@ -46,7 +52,8 @@ function cardIds(v: unknown): number[] | null {
 
 /** A joiner's game or lobby message, rebuilt from its allowed fields; null
  *  when its type is not allowed or a field is malformed. Chat, the opener's
- *  settings, Start, create_room and every service message are absent. */
+ *  settings, Start now, create_room and every service message are absent;
+ *  a joiner's own Start (and taking it back) is the shared table's ready. */
 export function cleanJoinerMessage(msg: Json): Json | null {
   switch (msg.type) {
     case "declare":
@@ -59,6 +66,8 @@ export function cleanJoinerMessage(msg: Json): Json | null {
     case "next_round":
     case "table_leave":
       return { type: msg.type };
+    case "table_start":
+      return msg.on === false ? { type: "table_start", on: false } : { type: "table_start" };
     case "table_move":
       // a joiner moves only themself
       return isInt(msg.seat, 0, 3) ? { type: "table_move", seat: msg.seat } : null;
@@ -74,7 +83,9 @@ export function cleanHello(msg: Json): NearbyHello | null {
   const name = typeof msg.name === "string" && msg.name.length <= LIMITS.name ? msg.name : "";
   const tok = msg.token;
   if (tok !== null && tok !== undefined && (typeof tok !== "string" || tok.length > LIMITS.token)) return null;
-  return { type: "nearby_hello", nearby_v: msg.nearby_v, name, token: typeof tok === "string" && tok ? tok : null };
+  const seat = isInt(msg.seat, 0, 3) ? msg.seat : null;
+  return { type: "nearby_hello", nearby_v: msg.nearby_v, name, token: typeof tok === "string" && tok ? tok : null,
+           peek: msg.peek === true, seat };
 }
 
 export function utf8Bytes(text: string): number {

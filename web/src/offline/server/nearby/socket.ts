@@ -52,12 +52,16 @@ export class NearbySocket {
     const msg = parseObject(data);
     if (msg === null) return null;
     let out: Record<string, unknown> | null;
-    if (msg.type === "table_join") {
+    if (msg.type === "table_join" || msg.type === "table_peek") {
+      const peek = msg.type === "table_peek";
+      const seat = msg.seat;
       const hello: NearbyHello = {
         type: "nearby_hello",
         nearby_v: NEARBY_V,
-        name: typeof msg.name === "string" ? msg.name.slice(0, LIMITS.name) : "",
-        token: typeof msg.token === "string" && msg.token ? msg.token.slice(0, LIMITS.token) : null,
+        name: !peek && typeof msg.name === "string" ? msg.name.slice(0, LIMITS.name) : "",
+        token: !peek && typeof msg.token === "string" && msg.token ? msg.token.slice(0, LIMITS.token) : null,
+        peek,
+        seat: !peek && typeof seat === "number" && Number.isInteger(seat) && seat >= 0 && seat < 4 ? seat : null,
       };
       out = { ...hello };
     } else {

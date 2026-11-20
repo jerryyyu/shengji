@@ -132,7 +132,9 @@ class Connection {
   /** Which server the socket talks to. "local" is set as soon as offline play
    *  is asked for, while the on-device server's module may still be loading;
    *  browser wake events never open the network socket then. */
-  private transport: "remote" | "local" = "remote";
+  private transport: "remote" | "local" | "nearby" = "remote";
+  /** The transport a nearby join replaced, which its end goes back to. */
+  private beforeNearby: "remote" | "local" = "remote";
   /** Bumped on every transport request, so a module load that finishes after
    *  a later request changes nothing. */
   private transportSeq = 0;
@@ -223,6 +225,30 @@ class Connection {
     if (seq !== this.transportSeq) return;
     this.makeSocket = () => new m.LocalSocket() as unknown as WebSocket;
     if (this.started) this.open();
+  }
+
+  /** Play at a nearby phone's table from now on, in place: `make` opens the
+   *  link to it (a NearbySocket). Reconnects open a new link the same way,
+   *  until `leaveNearby` goes back to the transport this replaced. */
+  useNearby(make: () => WebSocket): void {
+    this.transportSeq += 1;
+    if (this.transport !== "nearby") this.beforeNearby = this.transport;
+    this.transport = "nearby";
+    this.retireTransport();
+    this.makeSocket = make;
+    if (this.started) this.open();
+  }
+
+  /** The nearby table is over for this page: back to the transport it replaced. */
+  leaveNearby(): void {
+    if (this.transport !== "nearby") return;
+    if (this.beforeNearby === "local") {
+      this.transport = "remote";
+      void this.useLocalServer().catch(() => {});
+    } else {
+      this.transport = "local";
+      this.useGameServer();
+    }
   }
 
   /** Back to the game server, in place. */

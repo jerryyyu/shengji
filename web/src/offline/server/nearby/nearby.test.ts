@@ -86,11 +86,64 @@ describe("the nearby lobby", () => {
     expect(fifth.sock.readyState).toBe(NearbySocket.CLOSED);
   });
 
-  it("only the host starts; bots take the empty seats, keeping seat numbers", async () => {
+  it("waits for everyone's Start, as a shared online table; a Start can be taken back", async () => {
+    const t = await lobby(3);
+    const nb = (p: Player) => lastRoom(p).nearby as { ready: number[]; bots_in: number | null; locked: boolean };
+    expect(nb(t.host)).toMatchObject({ ready: [], locked: true });
+    expect(nb(t.host).bots_in).toBeGreaterThan(55);
+    t.send(t.host, { type: "table_start" });
+    await t.settle(() => nb(t.joiners[0]).ready.length === 1);
+    t.send(t.joiners[0], { type: "table_start" });
+    await t.settle(() => nb(t.host).ready.length === 2);
+    t.send(t.joiners[0], { type: "table_start", on: false });
+    await t.settle(() => nb(t.host).ready.length === 1);
+    expect(t.room!.game).toBeNull();
+    t.send(t.joiners[0], { type: "table_start" });
+    t.send(t.joiners[1], { type: "table_start" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    expect(t.room!.seats.filter((s) => s.isBot)).toHaveLength(1);
+  });
+
+  it("the host alone starts at once; a second person starts the bots' ring", async () => {
+    const t = new NearbyTable(5, 1);
+    await t.open();
+    expect((lastRoom(t.host).nearby as { bots_in: number | null }).bots_in).toBeNull();
+    expect((lastRoom(t.host).nearby as { locked: boolean }).locked).toBe(false);
+    t.send(t.host, { type: "table_start" });
+    await t.settle(() => t.lastState(t.host) !== undefined);
+    expect(t.room!.seats.filter((s) => s.isBot)).toHaveLength(3);
+  });
+
+  it("when the ring runs out bots take the open seats, ready or not", async () => {
+    const t = await lobby(2);
+    await t.advance(59);
+    expect(t.room!.game).toBeNull();
+    await t.advance(2);
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    expect(t.room!.seats.map((s) => s.isBot)).toEqual([false, false, true, true]);
+  });
+
+  it("shows the seats before taking one, and seats the joiner where they picked", async () => {
+    const t = await lobby(2);
+    const sock = new NearbySocket(t.fake, t.code);
+    const seen: Frame[] = [];
+    sock.onmessage = (ev) => seen.push(JSON.parse(ev.data as string) as Frame);
+    sock.onopen = () => sock.send(JSON.stringify({ type: "table_peek", code: t.code }));
+    await t.settle(() => seen.some((f) => f.type === "room_seats"));
+    const peek = seen.find((f) => f.type === "room_seats")!;
+    expect(peek).toMatchObject({ room: t.code, in_game: false, full: false });
+    expect((peek.seats as PlayerJson[]).map((p) => [p.seat, p.name])).toEqual([[0, "Host"], [1, "P1"]]);
+    expect(t.room!.lobby!.filter(Boolean)).toHaveLength(2);
+    sock.send(JSON.stringify({ type: "table_join", code: t.code, name: "Mei", seat: 3, token: null }));
+    await t.settle(() => seen.some((f) => f.type === "room"));
+    expect(seen.find((f) => f.type === "room")!.you).toBe(3);
+  });
+
+  it("only the host starts at once; bots take the empty seats, keeping seat numbers", async () => {
     const t = await lobby(2);
     t.send(t.joiners[0], { type: "table_move", seat: 3 });
     await t.settle(() => (lastRoom(t.host).players as PlayerJson[]).some((p) => p.seat === 3));
-    // Start is not on the joiner allow-list: it never reaches the room
+    // Start now is not on the joiner allow-list: it never reaches the room
     t.send(t.joiners[0], { type: "table_start_bots" });
     await t.advance(0.5);
     expect(t.room!.game).toBeNull();
@@ -164,15 +217,20 @@ describe("drops, resume and bot cover", () => {
     expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
   });
 
-  it("a stale connection is refused once its seat resumes elsewhere", async () => {
+  it("a joiner back with its token supersedes its old link: the host closes it, so nothing arrives twice", async () => {
     const t = await started(2);
     const j = t.joiners[0];
     const old = j.sock;
+    const peersBefore = t.fake.peersOf(t.code).length;
     const twin = await t.join("P1", { token: j.token });
     expect(t.lastState(twin)!.you).toBe(j.seat);
-    old.send(JSON.stringify({ type: "next_round" }));
-    await t.settle(() => j.frames.some((f) => f.type === "error" && f.code === "stale_connection"), 1000);
-    expect(j.frames.some((f) => f.code === "stale_connection")).toBe(true);
+    await t.settle(() => old.readyState === NearbySocket.CLOSED, 1000);
+    expect(old.readyState).toBe(NearbySocket.CLOSED);
+    expect(t.fake.peersOf(t.code)).toHaveLength(peersBefore);
+    const count = j.frames.length;
+    t.send(t.host, { type: "pass_declare" });
+    await t.advance(2);
+    expect(j.frames.length).toBe(count);
   });
 
   it("the bot covers a dropped seat after the takeover window, then the owner reclaims it", async () => {
@@ -309,10 +367,15 @@ describe("what a joiner's socket sends", () => {
       type: "table_join", code: "K7Q2MX", name: "Ann", token: "tok", expect: "room",
       device: "dddddddddddddddddddddd", email: "a@b.c", picture: "https://x", user_id: 9,
     }));
-    expect(JSON.parse(hello!)).toEqual({ type: "nearby_hello", nearby_v: NEARBY_V, name: "Ann", token: "tok" });
-    for (const t of ["ping", "presence", "queue_join", "queue_status", "client_event", "table_chat", "create_room", "table_start", "table_peek"]) {
+    expect(JSON.parse(hello!)).toEqual({ type: "nearby_hello", peek: false, seat: null, nearby_v: NEARBY_V, name: "Ann", token: "tok" });
+    for (const t of ["ping", "presence", "queue_join", "queue_status", "client_event", "table_chat", "create_room", "table_start_now", "table_start_bots"]) {
       expect(NearbySocket.outbound(JSON.stringify({ type: t, text: "hi" }))).toBeNull();
     }
+    // a peek carries no name or token; a Start carries only its on/off
+    expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: "K7Q2MX", name: "Ann", token: "tok" }))!))
+      .toEqual({ type: "nearby_hello", nearby_v: NEARBY_V, name: "", token: null, peek: true, seat: null });
+    expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_start", on: false, seq: 3 }))!))
+      .toEqual({ type: "table_start", on: false });
     expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "play", card_ids: [101, 102], panel_seq: 4 }))!))
       .toEqual({ type: "play", card_ids: [101, 102] });
   });

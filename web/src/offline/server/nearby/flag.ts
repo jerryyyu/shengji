@@ -1,11 +1,13 @@
 // The nearby feature flag. Off everywhere: nothing in the page reaches nearby
-// play unless the flag is on AND the app binary says it was reviewed with the
-// feature (the plugin's `capabilities().reviewed`), so the live site alone can
-// never switch it on in a binary whose review did not cover it.
+// play unless the flag is built on AND the app binary allows it (the plugin's
+// `capabilities()`: reviewed with the feature, or a Debug build for the device
+// test), so the live site alone can never switch it on in a binary whose
+// review did not cover it. No shipped config builds the flag on.
 
 let forced: boolean | null = null;
 
-/** Build-time switch; no build sets it yet. */
+/** Build-time switch: VITE_SHENGJI_NEARBY=1, set only by the device test's
+ *  Debug build script. */
 const BUILT_ON = import.meta.env.VITE_SHENGJI_NEARBY === "1";
 
 /** Whether nearby play may be offered, given what the app binary reports. */

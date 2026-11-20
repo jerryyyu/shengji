@@ -38,3 +38,50 @@ function installProbe(): void {
 }
 
 if (typeof window !== "undefined") installProbe();
+
+// Nearby play: the host page's NearbyHost on its room, and the joiner's link.
+import { NearbyHost, type NearbyHostEvents } from "./nearby/host";
+import { nativeTransport } from "./nearby/native";
+import { NearbySocket } from "./nearby/socket";
+import { NearbyError, type LinkState, type NearbyTransport } from "./nearby/transport";
+
+let nearbyTransport: NearbyTransport | null = null;
+let activeHost: NearbyHost | null = null;
+
+/** Tests: the transport nearby play uses in place of the native plugin. */
+export function setNearbyTransportForTests(t: NearbyTransport | null): void {
+  nearbyTransport = t;
+}
+
+function transport(): NearbyTransport {
+  const t = nearbyTransport ?? nativeTransport();
+  if (!t) throw new NearbyError("failed", "no nearby transport in this app");
+  return t;
+}
+
+/** Advertise this page's nearby room `code` on the local network. */
+export async function hostNearby(code: string, events: NearbyHostEvents): Promise<void> {
+  stopNearbyHost();
+  const server = localServer();
+  const room = server.rooms.get(code);
+  if (!room || !room.nearby) throw new NearbyError("failed", "no such nearby room");
+  const host = new NearbyHost(server, room, events);
+  activeHost = host;
+  try {
+    await host.start(transport());
+  } catch (e) {
+    if (activeHost === host) activeHost = null;
+    host.stop();
+    throw e;
+  }
+}
+
+export function stopNearbyHost(): void {
+  activeHost?.stop();
+  activeHost = null;
+}
+
+/** The joiner's socket to the nearby table `code`, for ws.ts's Connection. */
+export function nearbyJoinSocket(code: string, onState: (state: LinkState, detail?: string) => void): NearbySocket {
+  return new NearbySocket(transport(), code, onState);
+}

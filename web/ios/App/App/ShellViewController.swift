@@ -80,6 +80,14 @@ class ShellViewController: CAPBridgeViewController {
         descriptor.appStartPath = "nearby-spike.html"
         return descriptor
     }
+    #elseif DEBUG && SHENGJI_NEARBY_DEV
+    /// A Debug-only switch: the bundled page, which carries the nearby UI in
+    /// a dev build, instead of the live site.
+    override open func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        descriptor.serverURL = nil
+        return descriptor
+    }
     #endif
 
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
@@ -168,7 +176,7 @@ public class ShengjiShellPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         DispatchQueue.main.async {
             // A hand can sit idle for a while between turns.
-            UIApplication.shared.isIdleTimerDisabled = on
+            ScreenAwake.set(game: on)
             (self.bridge?.viewController as? ShellViewController)?.inGame = on
             call.resolve()
         }

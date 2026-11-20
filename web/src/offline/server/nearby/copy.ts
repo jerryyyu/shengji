@@ -1,9 +1,11 @@
 // Every player-visible nearby string, in one place, so the copy rule and
-// the flows map can list them as one exception. Nothing renders these yet:
-// the nearby UI is gated off (flag.ts).
+// the flows map can list them as one exception. The UI shows them only while
+// the nearby flag is on (flag.ts).
 
 export const NEARBY_COPY = {
-  modeTag: "Nearby",
+  /** The host's switch row on the offline table, label only. */
+  switchLabel: "Nearby",
+  tryAgain: "Try again",
   browsing: "Looking for the table…",
   notFound: "No table nearby with that code",
   full: "That table is full",

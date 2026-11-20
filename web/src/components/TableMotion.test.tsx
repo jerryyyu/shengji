@@ -147,6 +147,38 @@ describe("play flight", () => {
   });
 });
 
+it("snapshots each hand transform once before reflow writes and preserves a running offset", () => {
+  const fullHand = Array.from({ length: 25 }, (_, id) => ({ id, code: "S5" }));
+  const view = renderTable(makeState({ hand: fullHand }));
+  const events: string[] = [];
+  let arrivalOriginReads = 0;
+  const realStyle = window.getComputedStyle.bind(window);
+  vi.spyOn(window, "getComputedStyle").mockImplementation((el) => {
+    if (!el.classList.contains("hand-slot")) return realStyle(el);
+    events.push(`read:${(el as HTMLElement).dataset.id}`);
+    return { transform: "matrix(1, 0, 0, 1, 7, 0)" } as CSSStyleDeclaration;
+  });
+  vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+    if (this.classList.contains("trick-area")) arrivalOriginReads++;
+    const r = fakeRect.call(this);
+    return this.classList.contains("hand-slot") ? box(r.left + 7, r.top, r.width, r.height) : r;
+  });
+  const animate = HTMLElement.prototype.animate;
+  vi.spyOn(HTMLElement.prototype, "animate").mockImplementation(function (this: HTMLElement, frames, opts) {
+    if (this.classList.contains("hand-slot")) events.push(`write:${this.dataset.id}`);
+    return animate.call(this, frames, opts);
+  });
+  view.rerender(makeState({ hand: fullHand.slice(1) }));
+  expect(events).toEqual([
+    ...fullHand.slice(1).map((c) => `read:${c.id}`),
+    ...fullHand.slice(1).map((c) => `write:${c.id}`),
+  ]);
+  expect(reflows()).toHaveLength(24);
+  expect(reflows().every((c) => c.frames[0].transform === "translateX(37px)")).toBe(true);
+  expect(arrivalOriginReads).toBe(0);
+  view.unmount();
+});
+
 describe("deal arrival", () => {
   const arrivals = () => reflows().filter((c) => c.opts.fill === "backwards");
 

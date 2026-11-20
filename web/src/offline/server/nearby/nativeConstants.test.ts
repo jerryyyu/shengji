@@ -37,6 +37,16 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(shell).toMatch(/#if SHENGJI_NEARBY\s+(?:\/\/[^\n]*\s+)?bridge\?\.registerPluginInstance\(ShengjiNearbyPlugin\(\)\)\s+#endif/);
   });
 
+  it("the M1 spike switches on only from the xcodebuild command line, in Debug", () => {
+    const project = read("../../../../ios/App/App.xcodeproj/project.pbxproj");
+    const xcconfig = read("../../../../ios/debug.xcconfig");
+    for (const text of [project, xcconfig]) expect(text).not.toMatch(/SHENGJI_NEARBY/);
+    expect(swift.match(/static let debugSpike = true/g)).toHaveLength(1);
+    expect(swift).toMatch(/#if DEBUG\s+(?:\/\/[^\n]*\s+)*#if SHENGJI_NEARBY_SPIKE\s+static let debugSpike = true\s+#else\s+static let debugSpike = false\s+#endif/);
+    expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\n[\s\S]*func spikeBench[\s\S]*#else\n/);
+    expect(shell).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\s+(?:\/\/\/[^\n]*\s+)?override open func instanceDescriptor/);
+  });
+
   it("Info.plist, when it has NSBonjourServices, lists the nearby type", () => {
     const services = plistArray("NSBonjourServices");
     if (services === null) {

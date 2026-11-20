@@ -147,8 +147,8 @@ def _played(tricks):
 
 
 def load_prod(paths, since=None, until=None):
-    """Complete rounds from production room logs; duplicates across files are dropped."""
-    rounds, seen = [], set()
+    """Complete round candidates; duplicates are dropped after engine validation."""
+    rounds = []
     notes = collections.Counter({f"rounds excluded: {why}": 0 for why in (
         "seat map is not seats 0-3", "an event has no controller flag", "a seat changed controller mid-round")})
     for path in paths:
@@ -184,11 +184,6 @@ def load_prod(paths, since=None, until=None):
             t = float(st["t"])
             if (since is not None and t < since) or (until is not None and t >= until):
                 continue
-            key = (st.get("room"), st.get("t"))
-            if key in seen:
-                notes["duplicate rounds"] += 1
-                continue
-            seen.add(key)
             if "end" not in rec or "trump" not in rec or "bury" not in rec:
                 notes["incomplete rounds"] += 1
                 continue
@@ -251,13 +246,14 @@ def _controllers(rec):
     disconnected human's seat and a human can reclaim a bot's seat mid-game.
     Returns (None, reason) when a flag is missing or a seat changes hands."""
     flags = {s: set() for s in range(4)}
-    for kind in ("plays", "decl"):
-        for o in rec[kind]:
-            flags.setdefault(o.get("seat"), set()).add(o.get("bot"))
-    flags.setdefault(rec["bury"].get("seat"), set()).add(rec["bury"].get("bot"))
-    if set(flags) != {0, 1, 2, 3}:
-        return None, "seat map is not seats 0-3"
-    if any(not f or not f <= {True, False} for f in flags.values()):
+    for o in (*rec["plays"], *rec["decl"], rec["bury"]):
+        seat, bot = o.get("seat"), o.get("bot")
+        if not _seat_ok(seat):
+            return None, "seat map is not seats 0-3"
+        if type(bot) is not bool:
+            return None, "an event has no controller flag"
+        flags[seat].add(bot)
+    if any(not f for f in flags.values()):
         return None, "an event has no controller flag"
     if any(len(f) > 1 for f in flags.values()):
         return None, "a seat changed controller mid-round"
@@ -548,11 +544,18 @@ def summarise(rounds, source, exact=None):
     checks = collections.Counter({"rounds excluded: engine replay disagrees with the log": 0})
     level_rows = []
     kept = []
+    seen = set()
     for r in rounds:
+        key = (r["game"], r["t"]) if source == "prod" else None
+        if source == "prod" and key in seen:
+            checks["duplicate rounds"] += 1
+            continue
         bad = replay_check(r, eng)
         if bad:
             checks["rounds excluded: engine replay disagrees with the log"] += 1
             continue
+        if source == "prod":
+            seen.add(key)
         kept.append(r)
         ev = analyse_round(r, eng)
         checks["failed throws not matched to a lead"] += ev["unmatched_fails"]

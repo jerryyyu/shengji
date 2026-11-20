@@ -22,8 +22,8 @@ from .matchmaking import normalize_code
 
 CANONICAL = frozenset({
     "table_move", "table_start", "table_start_now", "table_start_bots",
-    "table_allow_joiners", "table_start_level", "table_chat", "table_leave",
-    "table_join", "table_peek",
+    "table_allow_joiners", "table_start_level", "table_relaxed_bots", "table_chat",
+    "table_leave", "table_join", "table_peek",
 })
 
 # The names a canonical name replaced, the created room's old lobby
@@ -49,7 +49,7 @@ LEGACY = RETIRED | {"create_room"}
 # What sets up a table before its game: a room's game has always started, so
 # in a room each is refused.
 LOBBY = frozenset({"table_move", "table_start", "table_start_now", "table_start_bots",
-                   "table_start_level"})
+                   "table_start_level", "table_relaxed_bots"})
 
 
 def legacy_name(msg: dict) -> str | None:

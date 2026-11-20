@@ -28,7 +28,9 @@ bots; production compares bot-controlled seats with human-controlled seats, by
 each seat's own play, declare and bury events (a round where a seat changes
 hands or an event has no controller flag is excluded and counted), and the
 level line uses rounds where exactly one team is bot-controlled throughout and
-the other has a human-controlled seat.  Output names seats and teams only,
+the other has a human-controlled seat.  A round whose bots played relaxed
+(``round_start.relaxed_bots``, a casual table's Relaxed bots) is not the served
+bot's play and is excluded and counted.  Output names seats and teams only,
 never players.
 
 The engine is imported inside the run so the module imports with the standard
@@ -150,7 +152,8 @@ def load_prod(paths, since=None, until=None):
     """Complete rounds from production room logs; duplicates across files are dropped."""
     rounds, seen = [], set()
     notes = collections.Counter({f"rounds excluded: {why}": 0 for why in (
-        "seat map is not seats 0-3", "an event has no controller flag", "a seat changed controller mid-round")})
+        "seat map is not seats 0-3", "an event has no controller flag", "a seat changed controller mid-round",
+        "relaxed bots")})
     for path in paths:
         cur = None
         recs = []
@@ -189,6 +192,9 @@ def load_prod(paths, since=None, until=None):
                 notes["duplicate rounds"] += 1
                 continue
             seen.add(key)
+            if st.get("relaxed_bots"):
+                notes["rounds excluded: relaxed bots"] += 1
+                continue
             if "end" not in rec or "trump" not in rec or "bury" not in rec:
                 notes["incomplete rounds"] += 1
                 continue

@@ -16,6 +16,9 @@ export type QueueClientMsg = { name?: string } & (
       /** Your own casual table's starting level (default "2"); a ranked
        *  table refuses anything but "2" with `ranked_level_fixed`. */
       start_level?: string;
+      /** Your own casual table's Relaxed bots (default false); a ranked
+       *  table refuses true with `ranked_bots_fixed`. */
+      relaxed_bots?: boolean;
       /** Open your own table as a Duo: the seat opposite you is held for
        *  the first single who joins by the table's code (ignored for a
        *  full party, which queues as the pair). */
@@ -57,6 +60,9 @@ export type QueueClientMsg = { name?: string } & (
   /** Your casual table's starting level (the opener only). Clears every
    *  Start at the table. */
   | { type: "table_start_level"; start_level: string }
+  /** Your casual table's Relaxed bots (the opener only): its bots play a
+   *  weaker policy for the whole game. Clears every Start at the table. */
+  | { type: "table_relaxed_bots"; on: boolean }
   | { type: "queue_wait_players" }
   | { type: "queue_allow_bots" }
   | { type: "party_leave" }
@@ -116,6 +122,7 @@ export interface QueueStateMsg {
   /** Queued: your table's Allow joiners and starting level. */
   allow_joiners?: boolean;
   start_level?: string;
+  relaxed_bots?: boolean;
   /** Queued: you opened this table (alone, always), so you set its level
    *  and Allow joiners. */
   opener?: boolean;
@@ -233,7 +240,7 @@ export interface TableFrameMsg {
    *  moves people. */
   opener: number;
   seats: TableFrameSeatMsg[];
-  settings: { allow_joiners: boolean | null; start_level: string };
+  settings: { allow_joiners: boolean | null; start_level: string; relaxed_bots?: boolean };
   timers: {
     /** The table's bot timer and whose it is; null when none runs. */
     bots: { at: number; name: string; you: boolean } | null;

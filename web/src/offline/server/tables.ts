@@ -11,13 +11,14 @@ type Json = Record<string, unknown>;
 /** The canonical names the offline server takes. */
 export const CANONICAL: ReadonlySet<string> = new Set([
   "table_move", "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",
-  "table_start_level", "table_chat", "table_leave", "table_join", "table_peek",
+  "table_start_level", "table_relaxed_bots", "table_chat", "table_leave", "table_join", "table_peek",
 ]);
 
 /** tables.py LOBBY: what sets a table up before its game. A room's game has
  *  always started, so in a room each is refused. */
 export const LOBBY: ReadonlySet<string> = new Set([
   "table_move", "table_start", "table_start_now", "table_start_bots", "table_start_level",
+  "table_relaxed_bots",
 ]);
 
 /** tables.py RETIRED: the names a canonical name replaced, the created

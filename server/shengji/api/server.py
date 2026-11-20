@@ -970,6 +970,7 @@ def room_json(room: Room, seat: int) -> dict:
         "start_level": room.start_level,
         "matched": room.matched,
         "allow_joiners": room.allow_joiners,
+        "relaxed_bots": room.relaxed_bots,
         "players": [{"seat": i, "name": s.name, "is_bot": s.is_bot,
                      "connected": s.connected or s.is_bot}
                     for i, s in enumerate(room.seats) if s is not None],

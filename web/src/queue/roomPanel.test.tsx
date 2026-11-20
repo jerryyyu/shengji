@@ -347,6 +347,26 @@ describe("every Play table has a code", () => {
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
   });
 
+  it("Relaxed bots is a casual opener's switch, off by default: ranked tables and non-openers have none", async () => {
+    const relaxed = (p: Element) => [...p.querySelectorAll<HTMLButtonElement>("[role='switch']")]
+      .filter((b) => b.textContent === "Relaxed bots");
+    await renderApp();
+    say(own());
+    expect(relaxed(q(".tp-own")!)).toHaveLength(0);
+    say(own({ mode: "casual" }));
+    const p = q(".tp-own")!;
+    expect(relaxed(p)).toHaveLength(1);
+    expect(relaxed(p)[0].getAttribute("aria-checked")).toBe("false");
+    click(relaxed(p)[0]);
+    expect(lastSent()).toEqual({ type: "table_relaxed_bots", on: true });
+    say(own({ mode: "casual", relaxed_bots: true }));
+    expect(relaxed(q(".tp-own")!)[0].getAttribute("aria-checked")).toBe("true");
+    say(shared({ mode: "casual", relaxed_bots: true }));
+    const theirs = q(".tp-shared")!;
+    expect(relaxed(theirs)).toHaveLength(0);
+    expect(theirs.textContent).not.toContain("Relaxed bots");
+  });
+
   it("Allow joiners is the opener's switch: a non-opener sees none", async () => {
     const switches = (p: Element) => [...p.querySelectorAll("[role='switch']")]
       .filter((b) => b.textContent === "Allow joiners");

@@ -336,9 +336,10 @@ function SwitchRow({ label, on, onToggle }: { label: string; on: boolean; onTogg
 
 /** Every table's settings rows, labels only: the code with its Invite link,
  *  Starting level on a casual table (the opener picks it, others read it; a
- *  ranked table starts at 2 and has no row), and the opener's Allow joiners
- *  switch when ``joiners`` is set. */
-function TableRows({ rows: { code, ranked, opener, level, joiners }, act }: {
+ *  ranked table starts at 2 and has no row), the opener's Allow joiners
+ *  switch when ``joiners`` is set, and a casual opener's Relaxed bots switch
+ *  when ``relaxed`` is set. */
+function TableRows({ rows: { code, ranked, opener, level, joiners, relaxed }, act }: {
   rows: Rows; act: (a: PanelAction) => void;
 }) {
   return (
@@ -360,6 +361,9 @@ function TableRows({ rows: { code, ranked, opener, level, joiners }, act }: {
       )}
       {joiners !== undefined ? (
         <SwitchRow label="Allow joiners" on={joiners} onToggle={() => act({ type: "allow_joiners", on: !joiners })} />
+      ) : null}
+      {relaxed !== undefined ? (
+        <SwitchRow label="Relaxed bots" on={relaxed} onToggle={() => act({ type: "relaxed_bots", on: !relaxed })} />
       ) : null}
     </>
   );

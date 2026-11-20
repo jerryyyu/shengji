@@ -67,7 +67,7 @@ The full list of codes, and who says each one to the player, is
 `ERROR_ROUTES` in `web/src/errorCodes.ts`; a server test fails when a code the
 server sends has no row there, or a row names a code no server sends.
 
-### `{type: "room", room: string, you: number, host: number, opener: number, start_level: string, players: RoomPlayer[], allow_joiners?: boolean}`
+### `{type: "room", room: string, you: number, host: number, opener: number, start_level: string, players: RoomPlayer[], allow_joiners?: boolean, relaxed_bots?: boolean}`
 Sent once by `create_room`, before its game starts: the frame the client saves the room from. `RoomPlayer = {seat: number, name: string, is_bot: boolean, connected: boolean}`. Seats 0–3. Teams: seats 0+2 vs 1+3.
 
 ### Created rooms
@@ -77,7 +77,7 @@ nobody sits at a room before its game. `opener` is the same seat as `host`:
 the creator, and when the opener leaves the game, the next person round the
 table. In a room, the messages that set a table up before its game
 (`table_move`, `table_start`, `table_start_now`, `table_start_bots`,
-`table_start_level`) are refused with "Game already started.".
+`table_start_level`, `table_relaxed_bots`) are refused with "Game already started.".
 Allow joiners (`table_allow_joiners`; every ordinary room; on at creation) says
 whether the queue may offer the room's bot seats.
 
@@ -290,6 +290,7 @@ happens.
 | `table_start_bots` | optional `panel_seq` | `queue_start_bots` | refused, as `table_move` |
 | `table_allow_joiners` | `on: boolean` | `table_allow_joiners` | `allow_joiners` |
 | `table_start_level` | `start_level` | `table_start_level` | refused, as `table_move` |
+| `table_relaxed_bots` | `on: boolean` | `table_relaxed_bots` | refused, as `table_move` |
 | `table_chat` | `text` | `table_chat` | `chat` (logged) |
 | `table_leave` | — | `queue_leave`; with an invite Join waiting for its handover, `leave_room` | `leave_room` |
 | `table_join` | `code`, `name`, optional `seat`, `token`, `expect: "room"` | a live room's code: `join_room {room: code}`; else a queued table's code: `queue_join {code}`; a code that names neither: `room_not_found` with `expect: "room"` (a resume, a room's link, a peek that showed a room: the page ends the dead room), else `table_not_found`; no code: `room_not_found` | `join_room`, refused from a seat as ever |
@@ -329,7 +330,7 @@ it; a room's client does not read it yet. Design and field mapping:
   seat fields (`ready` is null in a room; `sit` null alone and in a room);
   `reconnecting` is a person's seat whose socket is gone.
 - `mode`: `"ranked"` or `"casual"`. `opener`: the opener's seat.
-- `settings`: `{allow_joiners, start_level}`; `allow_joiners` is null in a
+- `settings`: `{allow_joiners, start_level, relaxed_bots}`; `allow_joiners` is null in a
   room that never takes joiners (a test room).
 - `timers`: `{bots, start_now_at}`: `bots` is `queue_state.table.timer`'s
   `{at, name, you}` (alone: your entry's own `bots_at`), null when no timer
@@ -363,9 +364,10 @@ Unix seconds from the server clock. Refusals are `error` frames with a `code`.
 
 | type | fields | effect |
 |------|--------|--------|
-| `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`), optional `allow_joiners` (default `true`), optional `start_level` (default `"2"`), optional `duo` (default `false`) | queue alone, or (a Duo's leader only) as the Duo; a Duo's member always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode. `allow_joiners` and `start_level` are your own table's settings (see "Table codes"); a ranked table refuses any level but `"2"` with `ranked_level_fixed`. `table_join {code}` sits at a queued table instead, in its mode and with its settings. `duo: true` opens your own table with your partner seat held for a friend (see "Duo tables"); a non-boolean is `bad_setting`, and a Duo's member queues as the pair, holding nothing |
+| `queue_join` | optional `party_id`, optional `mode` (`"ranked"`, the default, or `"casual"`), optional `allow_joiners` (default `true`), optional `start_level` (default `"2"`), optional `relaxed_bots` (default `false`), optional `duo` (default `false`) | queue alone, or (a Duo's leader only) as the Duo; a Duo's member always queues as the pair. An entry is seated with, offered and starts only tables of its own `mode`: a casual one never meets a ranked one, and its table or bot game is an unrated room. Guests may queue in either mode. Any other `mode` is refused with `bad_mode`; while queued, `queue_join` keeps the entry's mode. `allow_joiners` and `start_level` are your own table's settings (see "Table codes"); a ranked table refuses any level but `"2"` with `ranked_level_fixed` and `relaxed_bots: true` with `ranked_bots_fixed`. `table_join {code}` sits at a queued table instead, in its mode and with its settings. `duo: true` opens your own table with your partner seat held for a friend (see "Duo tables"); a non-boolean is `bad_setting`, and a Duo's member queues as the pair, holding nothing |
 | `table_allow_joiners` | `on: boolean` | your table's Allow joiners, alone or at a waiting table; only the table's opener (its leader, for a pair) may switch it, anyone else is refused with `not_opener`, and the whole table takes it. 20 per account per minute (with `table_move`) |
 | `table_start_level` | `start_level` | your casual table's starting level: the opener only (`not_opener`), never at a ranked table (`ranked_level_fixed`), `bad_start_level` for an unknown level. A real change clears every Start at the table |
+| `table_relaxed_bots` | `on: boolean` | your casual table's Relaxed bots (see "Table codes"): the opener only (`not_opener`), never at a ranked table (`ranked_bots_fixed`), `bad_setting` for a non-boolean. A real change clears every Start at the table |
 | `table_leave` | — | leave the queue; at a waiting table this frees your seat. A Duo member's leave ends the Duo for the leaver only (see "Duo tables") |
 | `table_start` | optional `on: boolean`, `panel_seq` | tap Start at your waiting table (a Duo's member its own tap): your entry is ready until you take it back; the table starts when every entry at it is ready. With `panel_seq` (see `queue_state`) a tap sent against a panel you no longer see is refused with `panel_changed` |
 | `table_start {on: false}` | — | take back your Start before the table starts (the same who as `table_start`: a Duo's member its own tap, alone too); `not_seated` alone outside a Duo; nothing to take back is no change |
@@ -392,14 +394,14 @@ seat of a `table_move` is held), `table_closed`, `pair_seats_fixed`,
 `already_ready`, `seat_changed` (an opener's `table_move` named a sitting that has left that seat; a fresh `queue_state` follows), `panel_changed` (a fresh `queue_state` follows),
 `table_not_found` (no queued table has that `code`), `own_table`,
 `table_full`, `same_device` (a device of yours already sits at that table),
-`not_opener`, `ranked_level_fixed`, `bad_start_level`, `bad_setting`. A signed-in
+`not_opener`, `ranked_level_fixed`, `ranked_bots_fixed`, `bad_start_level`, `bad_setting`. A signed-in
 account with a connected seat in a ranked game in play is refused
 `queue_join`, `table_start_bots` and `open_table_join` from any
 other socket with `account_in_game`.
 
 ### Server → Client
 
-- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
+- `queue_state {queued, count, mode?, since?, front?, party_id?, leader?, bots_at?, wait_players?, bots_paused?, table?, offer?, open_tables?, replaced?, panel_seq?, still_here_until?, code?, allow_joiners?, start_level?, relaxed_bots?, opener?, duo?, held_seat?, duo_ready?, you_ready?}`:
   your entry, after every change to it or to its table, and on reconnect.
   `mode` is the search's mode (`"ranked"` or `"casual"`). The table
   fields (`table`, `code`, `allow_joiners`, `start_level`, `opener`,
@@ -564,8 +566,14 @@ A table's settings are the room's when it starts. Allow joiners (default
 on): off, Play seats no stranger with the table and offers it no open
 table, and the room starts with Allow joiners off; its code still works.
 Starting level: a ranked table starts at `"2"`, fixed; a casual table's
-opener picks it (`queue_join start_level`, `table_start_level`). Allow
-joiners is the opener's switch too. The settings belong to the whole table,
+opener picks it (`queue_join start_level`, `table_start_level`). Relaxed
+bots (default off; casual only, a ranked table refuses it with
+`ranked_bots_fixed`): on, every bot seat of the room plays `RELAXED_BOT`
+(`server.py`, the MC-LCB search `mc-s0-report-lcb` with its own declare and
+bury) in place of the served bot, for the whole game; each `round_start`
+record names that policy (`bot_policy`) and carries `relaxed_bots: true`.
+The opener sets it (`queue_join relaxed_bots`, `table_relaxed_bots`); a real
+change clears every Start at the table. Allow joiners is the opener's switch too. The settings belong to the whole table,
 so they stay when its opener leaves.
 
 ### Duo tables

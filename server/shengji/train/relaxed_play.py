@@ -24,8 +24,9 @@ seeded relaxed bot is repeatable.  The partners of a human keep the served bot; 
 changes a served decision, a served name or a recipe digest, and nothing imports this module
 unless a relaxed level is built.
 
-``LEVELS`` names the measured levels: the env overrides applied when building ``player`` from the
-served environment, the play mode and its ``tau`` / ``delta``.  Legacy levels (``bot``) are whole
+``LEVELS`` names measured levels that keep the served search size: the env overrides applied when
+building ``player`` from the served environment, the play mode and its ``tau`` / ``delta`` (levels
+that change the world or candidate count stay in the duel kit).  Legacy levels (``bot``) are whole
 older bots (their own declare and bury), built by name through the registry.
 """
 from __future__ import annotations
@@ -43,16 +44,10 @@ SEED_SALT = 0x5E1A7ED
 
 #: the measured levels; "env" are SHENGJI_PV_* overrides on the served environment ("" removes a key)
 LEVELS: dict[str, dict[str, Any]] = {
-    "ft1": {"mode": "prior", "tau": 0.0, "delta": 0.0,
-            "env": {"SHENGJI_PV_WORLDS": "16"}},
     "s136": {"mode": "search_free", "tau": 0.0, "delta": 0.0, "env": {}},
     "nobel": {"mode": "search", "tau": 0.0, "delta": 0.0,
               "env": {"SHENGJI_PV_BELIEF_WORLDS": "0", "SHENGJI_PV_BURY_BELIEF_WORLDS": "0",
                         "SHENGJI_PV_BELIEF_CKPT": "", "SHENGJI_PV_BELIEF_SHA256": ""}},
-    "nobel16": {"mode": "search", "tau": 0.0, "delta": 0.0,
-                "env": {"SHENGJI_PV_BELIEF_WORLDS": "0", "SHENGJI_PV_BURY_BELIEF_WORLDS": "0",
-                        "SHENGJI_PV_BELIEF_CKPT": "", "SHENGJI_PV_BELIEF_SHA256": "",
-                        "SHENGJI_PV_WORLDS": "16", "SHENGJI_PV_CANDIDATES": "4"}},
     "smart": {"bot": "smart"},
     "mclcb": {"bot": "mc-s0-report-lcb"},
 }

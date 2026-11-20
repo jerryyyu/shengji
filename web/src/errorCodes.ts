@@ -52,6 +52,7 @@ const QUEUE_ROUTES = {
   table_full: { says: "join" },
   not_opener: { says: "toast" },
   ranked_level_fixed: { says: "toast" },
+  ranked_bots_fixed: { says: "toast" },
   bad_setting: { says: "toast" },
   too_soon: { says: "toast" },
 } as const satisfies Record<string, ErrorRoute>;

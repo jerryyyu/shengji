@@ -151,6 +151,10 @@ from ..engine.combos import find_tractor_runs
 from ..harvest.legal import (MAX_TRACTOR, _follow_case, _lead_groups, count_multiset_subsets,
                              iter_follow_actions)
 from . import pv_native
+try:
+    from . import _reply_fast
+except ImportError:      # not built: the reply children take the Python reference
+    _reply_fast = None
 from .pv_search_policy import PVSearchBot, PVSearchBuryBot, PVSearchPolicyError
 from .pv_tree_config import PVTreeConfig
 
@@ -529,6 +533,55 @@ def child_position_fast(clone, seat, cards):
     return child
 
 
+#: the attributes `child_position_fast` assigns on a child, in its order
+_CHILD_ATTRIBUTES = ("hands", "buried", "trick", "history", "last_trick", "message",
+                     "_trusted_rollout", "_determinized_world")
+#: the references `reply_children_fast` stands for, frozen at import
+_REPLY_REFERENCES = pv_native.ReferenceSnapshot(child_position_fast, shallow_round,
+                                                finish_current_trick)
+
+
+def _round_plain_attributes() -> bool:
+    """True when assigning a child's attributes stores them in its
+    ``__dict__``: `Round` keeps ``object``'s ``__setattr__`` and has no data
+    descriptor under any name `child_position_fast` assigns."""
+    if Round.__setattr__ is not object.__setattr__:
+        return False
+    names = Round.__dict__
+    return not any(name in names and hasattr(type(names[name]), "__set__")
+                   for name in _CHILD_ATTRIBUTES)
+
+
+def reply_children_intact() -> bool:
+    """True when `reply_children_fast` may take the compiled builder: the
+    module is built, the references it stands for (`child_position_fast`,
+    `shallow_round`, ``finish_current_trick``) are the captured objects, the
+    finisher it asks is the one ``finish_current_trick`` asks, and `Round`'s
+    attributes are plain."""
+    return (_reply_fast is not None
+            and _REPLY_REFERENCES.intact(child_position_fast, shallow_round, finish_current_trick)
+            and finish_current_trick.__globals__.get("default_finisher") is default_finisher
+            and _round_plain_attributes())
+
+
+def reply_children_fast(clone, seat, candidates):
+    """The children ``child_position_fast(clone, seat, c)`` of ``candidates``,
+    in order, each finished by ``finish_current_trick``.  The compiled `_reply_fast.reply_children` builds
+    them when the clone copies by the default protocol
+    (`_round_default_copy`), holds an open trick and no instance ``play``;
+    otherwise the reference runs.  Callers check `reply_children_intact`."""
+    if (_reply_fast is None or not _round_default_copy(clone) or clone.trick is None
+            or "play" in clone.__dict__):
+        children = []
+        for candidate in candidates:
+            child = child_position_fast(clone, seat, candidate)
+            finish_current_trick(child)
+            children.append(child)
+        return children
+    return _reply_fast.reply_children(clone, seat, list(candidates), Round, Trick, TrickPlay,
+                                      default_finisher().decide_play)
+
+
 def afterstate_fast(rnd, seat, hands, buried, candidate):
     """`cwv_policy.afterstate` (no lead validation context, no finish) with
     `shallow_round` for its ``copy.copy``: the same clone, attribute for
@@ -605,7 +658,7 @@ def team_values(bot, leaves, seat, gate=None, prefix=None):
 
 
 def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn,
-                     rows_fn=None, guard=None, child_fn=child_position):
+                     rows_fn=None, guard=None, child_fn=child_position, children_fn=None):
     """One reply ply of the greedy finish: every clone in ``active`` has the
     SAME seat to act (turn order inside one trick is fixed); that seat plays
     its highest-valued candidate in each clone (module docstring: the policy's
@@ -617,7 +670,10 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     one call (`pv_encode_prefix.reply_rows`: the same rows).  ``guard``, when
     given, is called before every clone's listing and child expansion (the
     served finish's deadline; it raises to stop the ply).  ``child_fn`` builds
-    each (clone, candidate) child (`child_position` or `child_position_fast`)."""
+    each (clone, candidate) child (`child_position` or `child_position_fast`);
+    ``children_fn(clone, seat, candidates)``, when given, builds and finishes
+    all of one clone's children in one call (`reply_children_fast`: the same
+    children) in its place."""
     from .policy_prior import N_CARDS, flat_input, root_tensors
     seat = active[0].turn
     if any(clone.turn != seat for clone in active):
@@ -666,6 +722,11 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
             gate()
         if guard is not None:
             guard()
+        if children_fn is not None:
+            children = children_fn(active[index], seat, candidates)
+            leaves.extend(children)
+            owners.extend((index, k) for k in range(len(children)))
+            continue
         for k, candidate in enumerate(candidates):
             child = child_fn(active[index], seat, candidate)
             finish_current_trick(child)
@@ -704,7 +765,8 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
     ply of the trick can hit it); the plies, their batches and every value are
     the same.  ``native`` (with ``compact``) builds the follow listings with
     `pv_native.follow_listing`: the same listings.  ``fast_clone`` builds the
-    reply children with `child_position_fast`: the same children.  ``prefix`` encodes the reply valuations (`team_values`) and the
+    reply children with `child_position_fast`, each clone's in one compiled
+    call where `reply_children_intact`: the same children.  ``prefix`` encodes the reply valuations (`team_values`) and the
     reply policy rows (`pv_encode_prefix.reply_rows`) on the decision root's
     history.  ``guard`` (the served finish's deadline) is called before each
     ply, each value batch and every clone of a ply; it raises to stop."""
@@ -735,6 +797,10 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
                 gate()
     child_fn = (child_position_fast if fast_clone and clone_references_intact(child_position)
                 else child_position)
+    # with the fast clones, each clone's children are built in one compiled call
+    # while the references it stands for are intact
+    children_fn = (reply_children_fast if child_fn is child_position_fast and reply_children_intact()
+                   else None)
     active = [c for c in clones if trick_open(c, target)]
     while active:
         if ply_gate is not None:
@@ -744,7 +810,8 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
         greedy_reply_ply(bot, active, ply_gate, cache, stats, keep, version, legal_fn,
                          lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
                                                                       prefix),
-                         rows_fn, guard, child_fn)
+                         rows_fn, guard, child_fn,
+                         **({'children_fn': children_fn} if children_fn is not None else {}))
         active = [c for c in active if trick_open(c, target)]
     return stats
 

@@ -271,9 +271,11 @@ export function OfflinePanel({ ready, starting, onStart, onLeave, nearby = null,
 /** A nearby table's lobby in Play's place (`nearbyRoomModel`), for its host
  *  and each joiner: the shared table's ready count and ring. */
 export function NearbyRoomPanel({ room, onLeave, ...acts }: { room: RoomMsg; onLeave: () => void } & NearbyActs) {
-  const botsIn = room.nearby?.bots_in ?? null;
-  // the ring's end, from when this frame arrived
-  const botsAt = useMemo(() => (botsIn === null ? null : Date.now() + botsIn * 1000), [room, botsIn]);
+  // the ring's end, from when this frame arrived: each frame restamps it
+  const botsAt = useMemo(() => {
+    const botsIn = room.nearby?.bots_in ?? null;
+    return botsIn === null ? null : Date.now() + botsIn * 1000;
+  }, [room]);
   const now = useNow(botsAt !== null, 250);
   return <PanelView m={nearbyRoomModel(room, { now, botsAt })} guarded={false} act={offlineAct({ onLeave, ...acts })} />;
 }

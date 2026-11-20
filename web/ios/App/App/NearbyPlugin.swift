@@ -400,6 +400,16 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         listener = nil
         needsReadvertise = true
         emitState("waiting", detail: "background")
+        // a failure that lands after the app is already back in the
+        // foreground has no return notification still to come: advertise
+        // again from here
+        guard appActive, backgroundedAt == nil else { return }
+        let session = self.session
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self = self, self.session == session, self.hosting, self.appActive,
+                  self.needsReadvertise else { return }
+            self.hostReturned()
+        }
     }
 
     /// A host leaving the app keeps its listener and links while iOS allows,

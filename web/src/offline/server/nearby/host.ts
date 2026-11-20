@@ -50,7 +50,11 @@ export class NearbyHost {
     this.link = await transport.host(this.room.code, {
       peer: (peer, connected) => (connected ? this.onPeer(peer) : this.onGone(peer)),
       message: (peer, text) => this.onMessage(peer, text),
-      state: (state, detail) => this.events.state?.(state, detail),
+      state: (state, detail) => {
+        // the host was away past the joiners' window: the table is over
+        if (state === "ended") this.server.endNearbyRoomForAll(this.room);
+        this.events.state?.(state, detail);
+      },
     });
   }
 

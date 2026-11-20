@@ -282,6 +282,43 @@ describe("drops, resume and bot cover", () => {
   });
 });
 
+describe("the host in the background", () => {
+  it("10 s away: the links drop, the same code finds the table again, and each joiner resumes its seat", async () => {
+    const t = await started(3);
+    const before = t.joiners.map((j) => ({ token: j.token, seat: j.seat }));
+    const code = t.code;
+    t.fake.background(code);
+    await t.settle(() => t.joiners.every((j) => j.sock.readyState === NearbySocket.CLOSED), 1000);
+    // while away a join finds nothing, so a joiner's retry waits
+    const early = new NearbySocket(t.fake, code);
+    await t.settle(() => early.readyState === NearbySocket.CLOSED, 100);
+    expect(early.readyState).toBe(NearbySocket.CLOSED);
+    await t.advance(10);
+    t.fake.foreground(code);
+    for (const [i, j] of t.joiners.entries()) await t.join(j.name, { token: before[i].token, player: j });
+    expect(t.room!.closed).toBe(false);
+    t.joiners.forEach((j, i) => {
+      expect(errors(j)).toEqual([]);
+      expect(t.lastState(j)!.you).toBe(before[i].seat);
+    });
+    const players = t.lastState(t.host)!.players as PlayerJson[];
+    expect(t.joiners.every((j) => players[j.seat!].controller === "human")).toBe(true);
+  });
+
+  it("70 s away: the table is over for every seat, the host's own page included", async () => {
+    const t = await started(3);
+    t.fake.background(t.code);
+    await t.advance(70);
+    t.fake.foreground(t.code, true);
+    await t.settle(() => t.host.left);
+    expect(t.host.frames.filter((f) => f.type === "left")).toEqual([{ type: "left" }]);
+    expect(t.server.rooms.size).toBe(0);
+    const late = new NearbySocket(t.fake, t.code);
+    await t.settle(() => late.readyState === NearbySocket.CLOSED, 100);
+    expect(late.readyState).toBe(NearbySocket.CLOSED);
+  });
+});
+
 describe("the host boundary", () => {
   async function rawPeer(t: NearbyTable): Promise<string> {
     const before = new Set(t.fake.peersOf(t.code));

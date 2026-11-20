@@ -164,7 +164,6 @@ export class NearbyHostSession {
   private onLink(state: LinkState): void {
     if (this.room === null) return;
     if (state === "denied") this.fallBack("denied");
-    else if (state === "ended") this.turnOff();
     else if (state === "ready" && this.view.phase === "starting") {
       noteNearbyAllowed();
       this.set({ phase: "on" });

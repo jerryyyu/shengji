@@ -1054,6 +1054,16 @@ export class LocalServer {
     }
     this.closeRoom(room);
   }
+
+  /** The host phone was away too long: the table ends for every seat,
+   *  the host's own page included. */
+  endNearbyRoomForAll(room: LocalRoom): void {
+    if (room.closed) return;
+    const host = room.slots()[room.host];
+    if (host && host.connected) this.enqueue(host, { type: "left" });
+    if (host) this.endNearbyRoom(room, host);
+    else this.closeRoom(room);
+  }
 }
 
 /** One client socket: the counterpart of a `ws_endpoint` invocation. */

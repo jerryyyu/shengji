@@ -157,16 +157,31 @@ enum LinkPath {
 /// again only after a link has come up over Wi-Fi, so a host reachable
 /// only peer-to-peer is never chased in a loop.
 struct Migration {
+    /// The pause between Wi-Fi looks for a host still reached peer-to-peer.
+    static let lookAgainSeconds: TimeInterval = 10
     private(set) var done = false
 
-    mutating func linkUp(peerToPeer: Bool) {
-        if !peerToPeer { done = false }
+    /// `hostOffWifi`: the look that made this link found no table over
+    /// Wi-Fi at all (the host had left the Wi-Fi network), so a later sight
+    /// of it there is news, not the loop this guards against.
+    mutating func linkUp(peerToPeer: Bool, hostOffWifi: Bool = false) {
+        if !peerToPeer || hostOffWifi { done = false }
     }
 
     mutating func shouldMove(peerToPeer: Bool, wifiUp: Bool, hostSeenOverWifi: Bool) -> Bool {
         guard peerToPeer, wifiUp, hostSeenOverWifi, !done else { return false }
         done = true
         return true
+    }
+
+    /// Whether a browse result is the table the link went to. The host
+    /// advertises under a new instance name each time its listener is made
+    /// again (after the background or a listener failure) but keeps its
+    /// salt, so the salt names the table; the name is the fallback when
+    /// either salt is unknown.
+    static func sameTable(name: String?, salt: String?, linkedName: String?, linkedSalt: String?) -> Bool {
+        if let salt = salt, let linkedSalt = linkedSalt { return salt == linkedSalt }
+        return linkedName == nil || name == linkedName
     }
 }
 
@@ -247,7 +262,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
-    ] + ShengjiNearbyPlugin.spikeMethods
+    ] + ShengjiNearbyPlugin.spikeMethods + ShengjiNearbyPlugin.chaosMethods
 
     static let maxMessage = 16 * 1024
     /// Frames this small (pings, pongs, keepalives) get no native log line.
@@ -333,6 +348,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var resuming = false
     /// The service name of the table the last link went to, across sessions.
     private var lastHostName: String?
+    /// The salt in that table's TXT record, which outlives its name.
+    private var lastHostSalt: String?
     private let pathMonitor = NWPathMonitor()
     private var pathWatch = PathWatch()
     /// The phone has joined a Wi-Fi network (LinkPath.wifiJoined), from the
@@ -340,6 +357,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var wifiUp = false
     /// This look found nothing over Wi-Fi in time and allows peer-to-peer.
     private var fellBack = false
+    /// This look fell back to peer-to-peer having found no table over Wi-Fi.
+    private var fellBackUnseen = false
     /// The host link runs over peer-to-peer Wi-Fi.
     private var hostOverP2P = false
     private var migration = Migration()
@@ -391,9 +410,11 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     /// The host link runs over peer-to-peer while the access point's Wi-Fi
-    /// is up: a Wi-Fi-only browse looks for the same host for up to 20 s.
-    /// Once it is seen there, the link is ended (once, Migration) and the
-    /// page's resume makes it again at once, over Wi-Fi.
+    /// is up: a Wi-Fi-only browse looks for the same host for up to 20 s,
+    /// and again every `Migration.lookAgainSeconds` while the link stays on
+    /// peer-to-peer (the host may join the Wi-Fi network later). Once it is
+    /// seen there, the link is ended (once, Migration) and the page's resume
+    /// makes it again at once, over Wi-Fi.
     private func watchForWifiHost() {
         guard links["host"] != nil, hostOverP2P, wifiUp, wifiBrowser == nil, !migration.done else { return }
         let params = NWParameters.tcp
@@ -401,11 +422,12 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: NearbyBuild.serviceType, domain: nil), using: params)
         let session = self.session
         let name = lastHostName
+        let salt = lastHostSalt
         spikeLog("host link is peer-to-peer while Wi-Fi is up: looking for the host over Wi-Fi")
         browser.browseResultsChangedHandler = { [weak self, weak browser] results, _ in
             guard let self = self, self.session == session, self.wifiBrowser === browser else { return }
             let seen = results.contains { r in
-                (name == nil || Self.serviceName(r.endpoint) == name)
+                Migration.sameTable(name: Self.serviceName(r.endpoint), salt: Self.salt(r), linkedName: name, linkedSalt: salt)
                     && !r.interfaces.contains { LinkPath.isPeerToPeer($0.name) }
             }
             self.spikeLog("Wi-Fi browse: \(results.count) result(s) [\(Self.interfaceNames(results))]\(seen ? ", host seen" : "")")
@@ -418,8 +440,13 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         browser.start(queue: queue)
         queue.asyncAfter(deadline: .now() + 20) { [weak self, weak browser] in
             guard let self = self, self.wifiBrowser === browser else { return }
-            self.spikeLog("host not seen over Wi-Fi in 20 s: staying peer-to-peer")
+            self.spikeLog("host not seen over Wi-Fi in 20 s: staying peer-to-peer for now")
             self.stopWifiBrowse()
+            let link = self.links["host"]
+            self.queue.asyncAfter(deadline: .now() + Migration.lookAgainSeconds) { [weak self] in
+                guard let self = self, self.session == session, let link = link, self.links["host"] === link else { return }
+                self.watchForWifiHost()
+            }
         }
     }
 
@@ -443,6 +470,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                   self.attempts.isEmpty, !self.joinCode.isEmpty else { return }
             self.spikeLog("no table over Wi-Fi in \(LinkPath.wifiFirstSeconds) s: allowing peer-to-peer")
             self.fellBack = true
+            self.fellBackUnseen = self.candidateArrivals == 0
             self.lookAgainOnNewPath()
         }
     }
@@ -546,6 +574,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             self.joinCode = code
             self.resuming = resume
             self.fellBack = false
+            self.fellBackUnseen = false
             self.spikeLog("join (\(resume ? "resume, \(JoinPlan.resumeFindTimeout) s look" : "first look"))")
             self.setLive(true)
             self.startBrowse()
@@ -608,23 +637,28 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         queue.async {
-            guard let link = self.links[peer], link.ready else {
-                self.spikeLog("send \(peer) refused: no ready link")
-                call.reject("no such peer", "noPeer")
-                return
-            }
-            let meta = NWProtocolWebSocket.Metadata(opcode: .text)
-            let context = NWConnection.ContentContext(identifier: "text", metadata: [meta])
-            let started = DispatchTime.now().uptimeNanoseconds
-            link.connection.send(content: data, contentContext: context, isComplete: true,
-                                 completion: .contentProcessed { error in
-                let ms = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
-                // pings and keepalives are logged by the page, not per frame here
-                if data.count > Self.quietFrameBytes || error != nil {
-                    self.spikeLog("send \(peer) \(data.count) B \(error.map { "error \($0)" } ?? "ok") \(String(format: "%.0f", ms)) ms")
+            let go = {
+                guard let link = self.links[peer], link.ready else {
+                    self.spikeLog("send \(peer) refused: no ready link")
+                    call.reject("no such peer", "noPeer")
+                    return
                 }
-                if let error = error { call.reject("\(error)", "failed") } else { call.resolve() }
-            })
+                let meta = NWProtocolWebSocket.Metadata(opcode: .text)
+                let context = NWConnection.ContentContext(identifier: "text", metadata: [meta])
+                let started = DispatchTime.now().uptimeNanoseconds
+                link.connection.send(content: data, contentContext: context, isComplete: true,
+                                     completion: .contentProcessed { error in
+                    let ms = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6
+                    // pings and keepalives are logged by the page, not per frame here
+                    if data.count > Self.quietFrameBytes || error != nil {
+                        self.spikeLog("send \(peer) \(data.count) B \(error.map { "error \($0)" } ?? "ok") \(String(format: "%.0f", ms)) ms")
+                    }
+                    if let error = error { call.reject("\(error)", "failed") } else { call.resolve() }
+                })
+            }
+            // a device-test stall holds the send until it ends (never in a shipped build)
+            if Self.chaosHold(go) { return }
+            go()
         }
     }
 
@@ -890,12 +924,18 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                   salt.count == NearbyKey.saltBytes,
                   let psk = NearbyKey.derive(code: joinCode, salt: salt) else { continue }
             tries += 1
-            tryTable(result.endpoint, psk: psk)
+            tryTable(result.endpoint, psk: psk, salt: saltText)
         }
         if attempts.isEmpty { checkNotFound() }
     }
 
-    private func tryTable(_ endpoint: NWEndpoint, psk: Data) {
+    /// The salt in a result's TXT record, if it has one.
+    static func salt(_ result: NWBrowser.Result) -> String? {
+        if case .bonjour(let txt) = result.metadata { return txt["salt"] }
+        return nil
+    }
+
+    private func tryTable(_ endpoint: NWEndpoint, psk: Data, salt: String) {
         let params = Self.parameters(psk: psk)
         params.includePeerToPeer = lookP2P
         let connection = NWConnection(to: endpoint, using: params)
@@ -919,9 +959,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 link.ready = true
                 self.links["host"] = link
                 self.lastHostName = Self.serviceName(endpoint)
+                self.lastHostSalt = salt
                 let via = connection.currentPath?.availableInterfaces.first
                 self.hostOverP2P = LinkPath.isPeerToPeer(via?.name)
-                self.migration.linkUp(peerToPeer: self.hostOverP2P)
+                self.migration.linkUp(peerToPeer: self.hostOverP2P, hostOffWifi: self.fellBackUnseen)
                 self.spikeLog("host link up via \(via?.name ?? "?") (\(via.map { "\($0.type)" } ?? "?"))\(self.hostOverP2P ? " peer-to-peer" : "")")
                 if LinkPath.keepBrowsing(peerToPeer: self.hostOverP2P, wifiUp: self.wifiUp) {
                     self.spikeLog("browse kept: peer-to-peer link with no Wi-Fi network")
@@ -1031,7 +1072,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                     return self.drop(link.peer)
                 }
                 if content.count > Self.quietFrameBytes { self.spikeLog("recv \(link.peer) \(content.count) B") }
-                self.notifyListeners("message", data: ["peer": link.peer, "text": text])
+                let peer = link.peer
+                let deliver = { self.notifyListeners("message", data: ["peer": peer, "text": text]) }
+                if !Self.chaosHold(deliver) { deliver() }
             case .ping?, .pong?:
                 break
             default:
@@ -1078,6 +1121,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         joinCode = ""
         resuming = false
         fellBack = false
+        fellBackUnseen = false
         hostOverP2P = false
         stopWifiBrowse()
         findDeadline = .distantFuture
@@ -1257,6 +1301,71 @@ extension ShengjiNearbyPlugin {
         NSLog("nearby: %@", line)
         notifyListeners("debugLog", data: ["text": line])
     }
+}
+#endif
+
+#if DEBUG && SHENGJI_NEARBY_DEV
+/// The device test's chaos mode (the page's Chaos switch, in a Debug build
+/// made for the device test only): faults injected on real hardware, each
+/// one logged.
+extension ShengjiNearbyPlugin {
+    static let chaosMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "debugChaos", returnType: CAPPluginReturnPromise)
+    ]
+    private static var heldUntil = Date.distantPast
+    private static var held: [() -> Void] = []
+
+    /// On `queue`: while a stall runs, `work` waits for its end, in order.
+    static func chaosHold(_ work: @escaping () -> Void) -> Bool {
+        guard Date() < heldUntil else { return false }
+        held.append(work)
+        return true
+    }
+
+    @objc func debugChaos(_ call: CAPPluginCall) {
+        let kind = call.getString("kind") ?? ""
+        let seconds = min(max(call.getDouble("seconds") ?? 5, 0), 30)
+        queue.async {
+            switch kind {
+            case "cancel":
+                let peer = self.hosting
+                    ? self.links.values.filter { $0.ready }.randomElement()?.peer
+                    : (self.links["host"] != nil ? "host" : nil)
+                guard let peer = peer else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS cancel the link \(peer)")
+                self.drop(peer)
+            case "stall":
+                guard Date() >= Self.heldUntil else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS stall sends and receives for \(String(format: "%.1f", seconds)) s")
+                Self.heldUntil = Date().addingTimeInterval(seconds)
+                self.queue.asyncAfter(deadline: .now() + seconds) {
+                    let work = Self.held
+                    Self.held = []
+                    Self.heldUntil = .distantPast
+                    self.spikeLog("CHAOS stall over: \(work.count) held")
+                    for w in work { w() }
+                }
+            case "path":
+                guard !self.hosting, self.links["host"] != nil else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS path change: the link drops and the network reads as back")
+                self.drop("host")
+                self.notifyListeners("path", data: ["satisfied": false])
+                self.notifyListeners("path", data: ["satisfied": true])
+            case "listener":
+                guard self.hosting else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS listener restart")
+                self.listenerLost()
+            default:
+                return call.reject("unknown chaos", "invalid")
+            }
+            call.resolve(["done": true])
+        }
+    }
+}
+#else
+extension ShengjiNearbyPlugin {
+    static let chaosMethods: [CAPPluginMethod] = []
+    static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
 }
 #endif
 

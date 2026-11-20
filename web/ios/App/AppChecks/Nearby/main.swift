@@ -142,6 +142,24 @@ expect(!move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true),
 move.linkUp(peerToPeer: false)
 expect(move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "after a Wi-Fi link, a later move is allowed")
 
+// A host that had left Wi-Fi (the look found no table there) and is seen
+// there later may be moved to again, even after an earlier move.
+var moved = Migration()
+expect(moved.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "first move")
+moved.linkUp(peerToPeer: true, hostOffWifi: true)
+expect(moved.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "the host had left Wi-Fi: a later sight of it there moves again")
+moved.linkUp(peerToPeer: true, hostOffWifi: false)
+expect(!moved.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "seen over Wi-Fi but landed on peer-to-peer: no loop")
+
+// The host's table is known by its salt, which it keeps when its listener
+// is made again under a new name; a link on peer-to-peer then still sees
+// its host over Wi-Fi and moves.
+expect(Migration.sameTable(name: "NEW", salt: "S1", linkedName: "OLD", linkedSalt: "S1"), "a re-advertised host (new name, same salt) is the same table")
+expect(!Migration.sameTable(name: "OLD", salt: "S2", linkedName: "OLD", linkedSalt: "S1"), "another salt is another table")
+expect(Migration.sameTable(name: "OLD", salt: nil, linkedName: "OLD", linkedSalt: "S1"), "no salt: the name decides")
+expect(!Migration.sameTable(name: "NEW", salt: nil, linkedName: "OLD", linkedSalt: nil), "no salts, another name: another table")
+expect(Migration.sameTable(name: "ANY", salt: nil, linkedName: nil, linkedSalt: nil), "nothing known: any table")
+
 let t0 = Date()
 _ = NearbyKey.derive(code: "K7Q2M", salt: salt)
 print(String(format: "one derivation at %d iterations: %.0f ms on this machine",

@@ -341,6 +341,19 @@ describe("the liveness ping", () => {
     expect(t.joiners[0].frames.some((f) => f.type === "nearby_pong")).toBe(false);
   });
 
+  it("the host ends a silent link even on a clock whose timers fire a hair early", async () => {
+    const t = await lobby(2);
+    // float time: a timer due at heard + 20 s that lands a nanosecond short
+    // must not re-arm for that nanosecond forever
+    const early = t.clock.setTimeout.bind(t.clock);
+    t.clock.setTimeout = (fn, seconds) => early(fn, Math.max(0, seconds - 1e-9));
+    const r = await raw(t);
+    r.link.send(hello({ name: "Quiet" }));
+    await t.advance(LIMITS.silentSeconds + 1);
+    expect(r.closed).toBe(true);
+    expect(t.nearbyHost!.refused.silent).toBe(1);
+  });
+
   it("a joiner's socket closes when the host goes silent", async () => {
     const t = await lobby(1);
     // a host that takes the link and then answers nothing

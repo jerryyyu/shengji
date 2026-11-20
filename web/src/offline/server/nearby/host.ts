@@ -168,7 +168,9 @@ export class NearbyHost {
     const wait = Math.max(0, peer.heard + LIMITS.silentSeconds - this.clock.now());
     this.clock.setTimeout(() => {
       if (this.peers.get(id) !== peer || peer.closed) return;
-      if (this.clock.now() - peer.heard >= LIMITS.silentSeconds) {
+      // within a microsecond counts as due: a clock's float time can land a
+      // hair short, and a wait that small would never move it forward
+      if (this.clock.now() - peer.heard >= LIMITS.silentSeconds - 1e-6) {
         this.refuse("silent", id);
         this.end(id);
       } else this.listen(id, peer);
@@ -312,6 +314,11 @@ export class NearbyHost {
       // so frames never reach that phone twice
       for (const [other, p] of this.peers) if (other !== id && p.token === token) this.end(other);
     }
+    if (peer.device !== null) {
+      // one phone runs one page: a seated link it still has here is stale
+      // (its Leave or its close was lost), so the phone never holds two seats
+      for (const [other, p] of this.peers) if (other !== id && p.device === peer.device && p.conn !== null) this.end(other);
+    }
     peer.conn = this.server.connect((frame) => this.deliver(id, peer, frame));
     // the join is handled in this call: the seat is bound to this link (its
     // older link ended above) before any later frame of the link is read,
@@ -324,13 +331,19 @@ export class NearbyHost {
 
   /** In a game, the seat this link's phone last held and is not at now
    *  (it left, or dropped), still under the token the room gave it; null
-   *  when there is none or the phone cannot be told apart. */
+   *  when there is none or the phone cannot be told apart. A seat still
+   *  connected only through another link of this same phone counts as not
+   *  at it: one phone runs one page, so that link is stale (its Leave, or
+   *  its close, was lost on the way), and the hello ends it. */
   private ownSeat(peer: Peer): number | null {
     if (this.room.lobby !== null || peer.device === null) return null;
     const token = this.deviceTokens.get(peer.device);
     if (!token) return null;
     const at = this.room.seats.findIndex((sd) => !sd.isBot && sd.token === token);
-    return at >= 0 && !this.room.seats[at].connected ? at : null;
+    if (at < 0) return null;
+    if (!this.room.seats[at].connected) return at;
+    const stale = [...this.peers.values()].some((p) => p !== peer && p.device === peer.device && p.token === token);
+    return stale ? at : null;
   }
 
   /** A frame from the room to one joiner. A `left`, or a refusal that

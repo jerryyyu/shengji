@@ -35,6 +35,9 @@ export interface JoinHandlers {
 }
 
 export interface JoinLink {
+  /** The link runs over peer-to-peer Wi-Fi (AWDL), whose answers can take
+   *  longer while the phone also has a Wi-Fi network. */
+  peerToPeer?: boolean;
   send(text: string): void;
   close(): void;
 }
@@ -80,6 +83,8 @@ export class FakeTransport implements NearbyTransport {
   delay: number;
   /** The next host() or join() fails as a denied permission. */
   deny = false;
+  /** Joins come up over peer-to-peer Wi-Fi. */
+  peerToPeer = false;
   /** Every frame that crossed, in order, for the tests' leak checks. */
   readonly wire: { from: string; to: string; text: string }[] = [];
   /** A joiner's frames to the host, by peer: lost on the way (the link
@@ -167,6 +172,7 @@ export class FakeTransport implements NearbyTransport {
     h.peers.set(peer, handlers);
     this.later(() => { if (h.peers.get(peer) === handlers) h.handlers.peer(peer, true, phone); });
     return {
+      peerToPeer: this.peerToPeer,
       send: (text) => {
         this.checkSize(text);
         if (h.peers.get(peer) !== handlers) return;

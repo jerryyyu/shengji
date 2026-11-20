@@ -104,17 +104,36 @@ expect(!path.update(false), "still down")
 expect(path.update(true), "back after down is a regain")
 expect(!path.update(true), "and only once")
 
-// Peer-to-peer Wi-Fi is told apart by its interface name; a resume while
-// Wi-Fi is up leaves it out on every other look, starting with the first.
+// Peer-to-peer Wi-Fi is told apart by its interface name. With a Wi-Fi
+// network joined (a gateway on a non-peer-to-peer Wi-Fi interface) a look
+// leaves peer-to-peer out of the browse and the connection until its
+// fallback; with none joined (the subway) peer-to-peer is the way at once.
 expect(LinkPath.isPeerToPeer("awdl0"), "awdl0 is peer-to-peer")
 expect(LinkPath.isPeerToPeer("llw0"), "llw0 is peer-to-peer")
 expect(!LinkPath.isPeerToPeer("en0"), "en0 is the access point's Wi-Fi")
 expect(!LinkPath.isPeerToPeer(nil), "an unknown interface is not")
-expect(LinkPath.avoidPeerToPeer(resuming: true, wifiUp: true, look: 0), "the first resume look is Wi-Fi only")
-expect(!LinkPath.avoidPeerToPeer(resuming: true, wifiUp: true, look: 1), "the next allows peer-to-peer")
-expect(LinkPath.avoidPeerToPeer(resuming: true, wifiUp: true, look: 2), "and the one after leaves it out again")
-expect(!LinkPath.avoidPeerToPeer(resuming: true, wifiUp: false, look: 0), "with Wi-Fi down peer-to-peer is the way")
-expect(!LinkPath.avoidPeerToPeer(resuming: false, wifiUp: true, look: 0), "a first join is unchanged")
+expect(LinkPath.wifiJoined(satisfied: true, wifiInterfaces: ["en0", "awdl0"], gateways: 1), "joined: en0 with a gateway")
+expect(!LinkPath.wifiJoined(satisfied: true, wifiInterfaces: ["awdl0", "llw0"], gateways: 0), "AWDL only is not joined")
+expect(!LinkPath.wifiJoined(satisfied: false, wifiInterfaces: ["en0"], gateways: 0), "Wi-Fi on, no network: not joined")
+expect(!LinkPath.wifiJoined(satisfied: true, wifiInterfaces: ["en0"], gateways: 0), "no gateway: not joined")
+expect(!LinkPath.wifiJoined(satisfied: true, wifiInterfaces: [], gateways: 1), "cellular only: not joined")
+expect(!LinkPath.includePeerToPeer(wifiUp: true, fellBack: false), "Wi-Fi joined: browse and connect without peer-to-peer")
+expect(LinkPath.includePeerToPeer(wifiUp: true, fellBack: true), "nothing over Wi-Fi in time: peer-to-peer allowed")
+expect(LinkPath.includePeerToPeer(wifiUp: false, fellBack: false), "no network joined: peer-to-peer from the start")
+expect(LinkPath.wifiFirstSeconds == 2, "the Wi-Fi-only look lasts 2 s before the fallback")
+
+// A link on peer-to-peer moves once the host is seen over Wi-Fi, once; it
+// may move again only after a link came up over Wi-Fi.
+var move = Migration()
+expect(!move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: false), "not before the host is seen over Wi-Fi")
+expect(!move.shouldMove(peerToPeer: false, wifiUp: true, hostSeenOverWifi: true), "a Wi-Fi link stays")
+expect(!move.shouldMove(peerToPeer: true, wifiUp: false, hostSeenOverWifi: true), "no Wi-Fi network: peer-to-peer stays")
+expect(move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "seen over Wi-Fi: move")
+expect(!move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "and only once")
+move.linkUp(peerToPeer: true)
+expect(!move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "landing on peer-to-peer again does not loop")
+move.linkUp(peerToPeer: false)
+expect(move.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "after a Wi-Fi link, a later move is allowed")
 
 let t0 = Date()
 _ = NearbyKey.derive(code: "K7Q2M", salt: salt)

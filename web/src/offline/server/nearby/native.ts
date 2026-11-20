@@ -18,7 +18,7 @@ interface NearbyPlugin {
   send(opts: { peer: string; text: string }): Promise<unknown>;
   close(opts: { peer: string }): Promise<unknown>;
   stop(): Promise<unknown>;
-  addListener(event: "peer", fn: (ev: { peer: string; state: string; device?: string }) => void): Promise<Listener>;
+  addListener(event: "peer", fn: (ev: { peer: string; state: string; device?: string; via?: string }) => void): Promise<Listener>;
   addListener(event: "message", fn: (ev: { peer: string; text: string }) => void): Promise<Listener>;
   addListener(event: "state", fn: (ev: { state: string; detail?: string }) => void): Promise<Listener>;
   addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<Listener>;
@@ -134,6 +134,7 @@ export function nativeTransport(): NearbyTransport | null {
       // peer connects, and a terminal state ends the attempt
       let open = false;
       let done = false;
+      let peerToPeer = false;
       let settle: { ok: () => void; fail: (e: NearbyError) => void } | null = null;
       const linked = new Promise<void>((ok, fail) => { settle = { ok, fail }; });
       const closed = () => {
@@ -152,6 +153,8 @@ export function nativeTransport(): NearbyTransport | null {
           if (!live()) return;
           if (ev.state === "connected" && !open && !done) {
             open = true;
+            peerToPeer = ev.via === "p2p";
+            nearbyLog("join", `link up via ${ev.via ?? "?"}`);
             settle!.ok();
           } else if (ev.state === "disconnected") closed();
         }),
@@ -174,6 +177,7 @@ export function nativeTransport(): NearbyTransport | null {
       await p.join({ code, resume: handlers.resume === true }).catch(fail);
       await linked.catch(fail);
       return {
+        peerToPeer,
         send: (text) => {
           if (!live() || done) return;
           void p.send({ peer: "host", text }).catch((e: unknown) => {

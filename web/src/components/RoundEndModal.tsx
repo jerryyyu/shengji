@@ -1,7 +1,7 @@
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import Card from "./Card";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import ResultDialog from "./ResultDialog";
 import LeaveSheet from "./LeaveSheet";
 import { OFFLINE } from "../offlineMode";
@@ -144,6 +144,10 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   // Everyone reviews the round at their own pace: the server only advances
   // once every connected human has confirmed.
   const iAmReady = (state.ready ?? []).includes(state.you);
+  // one Next per state: a second tap while the first is on its way sends
+  // nothing; the next state (yours ready, or a resumed link's) frees it
+  const [sent, setSent] = useState(false);
+  useEffect(() => { setSent(false); }, [state]);
   return (
     <ResultDialog titleId={titleId}>
       <div className={`panel modal round-end${gameWon ? " game-won" : ""}${open ? " details-open" : ""}`}>
@@ -186,8 +190,12 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
         <div className="round-end-actions">
           <button
             className={`btn primary big${!iAmReady && clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
-            disabled={iAmReady}
-            onClick={() => { telemetry.tap("next_round"); conn.send({ type: "next_round" }); }}
+            disabled={iAmReady || sent}
+            onClick={() => {
+              if (sent) return;
+              telemetry.tap("next_round");
+              if (conn.send({ type: "next_round" })) setSent(true);
+            }}
           >
             {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
             {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}

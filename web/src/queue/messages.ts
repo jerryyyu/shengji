@@ -1,6 +1,11 @@
 // The matchmaking queue's messages (PROTOCOL.md "Matchmaking queue"). Times
 // named `*_at` and `since` are Unix seconds on the server's clock.
 
+/** A table's Bots (matchmaking.py BOT_LEVELS): Standard plays the relaxed
+ *  level, Advanced the served bot. A ranked table is always Advanced. */
+export const BOT_LEVELS = ["standard", "advanced"] as const;
+export type BotLevel = (typeof BOT_LEVELS)[number];
+
 /** A queue message; a guest adds the name it plays under (the server keeps
  *  an account's own name and ignores this one). */
 export type QueueClientMsg = { name?: string } & (
@@ -16,6 +21,9 @@ export type QueueClientMsg = { name?: string } & (
       /** Your own casual table's starting level (default "2"); a ranked
        *  table refuses anything but "2" with `ranked_level_fixed`. */
       start_level?: string;
+      /** Your own table's Bots (casual default "standard"); a ranked
+       *  table refuses anything but "advanced" with `ranked_bots_fixed`. */
+      bot_level?: BotLevel;
       /** Open your own table as a Duo: the seat opposite you is held for
        *  the first single who joins by the table's code (ignored for a
        *  full party, which queues as the pair). */
@@ -57,6 +65,9 @@ export type QueueClientMsg = { name?: string } & (
   /** Your casual table's starting level (the opener only). Clears every
    *  Start at the table. */
   | { type: "table_start_level"; start_level: string }
+  /** Your casual table's Bots (the opener only): Standard plays a weaker
+   *  policy for the whole game. Clears every Start at the table. */
+  | { type: "table_bot_level"; level: BotLevel }
   | { type: "queue_wait_players" }
   | { type: "queue_allow_bots" }
   | { type: "party_leave" }
@@ -116,6 +127,7 @@ export interface QueueStateMsg {
   /** Queued: your table's Allow joiners and starting level. */
   allow_joiners?: boolean;
   start_level?: string;
+  bot_level?: BotLevel;
   /** Queued: you opened this table (alone, always), so you set its level
    *  and Allow joiners. */
   opener?: boolean;
@@ -233,7 +245,7 @@ export interface TableFrameMsg {
    *  moves people. */
   opener: number;
   seats: TableFrameSeatMsg[];
-  settings: { allow_joiners: boolean | null; start_level: string };
+  settings: { allow_joiners: boolean | null; start_level: string; bot_level?: BotLevel };
   timers: {
     /** The table's bot timer and whose it is; null when none runs. */
     bots: { at: number; name: string; you: boolean } | null;

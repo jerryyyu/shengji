@@ -164,7 +164,7 @@ def test_events_keep_the_log_keys_minus_the_forbidden_ones(api):
     assert len(logged) == len(served["events"])
     for rec, ev in zip(logged, served["events"]):
         assert ev["e"] == rec["e"]
-        assert set(ev) == set(rec) - {"decision", "bot_seed", "ranked"}
+        assert set(ev) == set(rec) - {"decision", "bot_seed", "bot_policy", "bot_level", "ranked"}
         if rec["e"] != "round_start":
             assert ev == {k: rec[k] for k in ev}       # a finished round shows everything
     assert served["events"][0]["deck"] == logged[0]["deck"]

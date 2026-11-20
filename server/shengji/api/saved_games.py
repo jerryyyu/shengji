@@ -296,7 +296,7 @@ DEAL_CARDS = 4 * HAND_SIZE
 _COMMON_KEYS = ("t", "room", "round", "e")
 # What each record kind may show. A kind not named here is never served
 # (``model_search``, ``bot_timing``, ``declare_decision``, ``chat``, ...), and
-# a key not named here is dropped (``decision``, ``bot_seed``, ...).
+# a key not named here is dropped (``decision``, ``bot_seed``, ``bot_policy``, ...).
 PUBLIC_KEYS: dict[str, tuple[str, ...]] = {
     "round_start": ("deck", "banker", "trump_rank", "levels", "players"),
     "declare": ("seat", "cards", "bot"),

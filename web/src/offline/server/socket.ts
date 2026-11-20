@@ -29,7 +29,7 @@ export const LOCAL_MESSAGES: ReadonlySet<string> = new Set([
   // the canonical table names (tables.ts): a room refuses the ones that set a
   // table up before its game, and rewrites the rest to its own
   "table_move", "table_start", "table_start_now", "table_start_bots", "table_allow_joiners",
-  "table_start_level", "table_chat", "table_leave", "table_join", "table_peek",
+  "table_start_level", "table_bot_level", "table_chat", "table_leave", "table_join", "table_peek",
 ]);
 
 /** A message the device answers: one of LOCAL_MESSAGES, or a retired name,

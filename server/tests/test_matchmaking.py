@@ -3885,7 +3885,8 @@ def test_a_friend_joins_by_code_before_the_game_and_the_code_is_the_room_code():
         (match_id, slots), = env.started
         assert match_id == t.id and humans_of(slots) == [1, 2]
         assert env.modes == ["casual"]
-        assert env.rooms[0] == {"code": code, "allow_joiners": False, "start_level": "2"}
+        assert env.rooms[0] == {"code": code, "allow_joiners": False, "start_level": "2",
+                                "bot_level": "standard"}
         assert not env.mm.has_code(code) and not env.mm.has_code(mine)
     run(go())
 
@@ -3896,7 +3897,8 @@ def test_a_game_started_alone_keeps_the_entry_code():
         await env.join(1)
         code = env.conns[1].last("queue_state")["code"]
         await env.send(1, "queue_start_bots")
-        assert env.rooms == [{"code": code, "allow_joiners": True, "start_level": "2"}]
+        assert env.rooms == [{"code": code, "allow_joiners": True, "start_level": "2",
+                              "bot_level": "advanced"}]
     run(go())
 
 
@@ -3975,6 +3977,74 @@ def test_a_ranked_table_refuses_a_starting_level_and_a_casual_one_takes_it():
     run(go())
 
 
+def test_a_casual_table_defaults_to_standard_bots_and_a_ranked_one_is_always_advanced():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_join")
+        state = env.conns[1].last("queue_state")
+        assert state["bot_level"] == "advanced"
+        assert env.mm.table_frame(env.mm._entry(1).table, 1)["settings"]["bot_level"] == "advanced"
+        await env.send(1, "queue_leave")
+        await env.send(1, "queue_join", mode="casual")
+        state = env.conns[1].last("queue_state")
+        assert mm.CASUAL_BOT_LEVEL == "standard" and state["bot_level"] == "standard"
+        assert env.mm.table_frame(env.mm._entry(1).table, 1)["settings"]["bot_level"] == "standard"
+    run(go())
+
+
+def test_bots_is_the_casual_openers_choice_and_a_ranked_table_refuses_it():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_join", bot_level="standard")
+        assert env.conns[1].last("error")["code"] == "ranked_bots_fixed"
+        await env.send(1, "queue_join", bot_level="advanced")     # what a ranked table is
+        assert env.conns[1].last("queue_state")["bot_level"] == "advanced"
+        for level in ("standard", "advanced"):
+            await env.send(1, "table_bot_level", level=level)
+            assert env.conns[1].last("error")["code"] == "ranked_bots_fixed"
+        assert env.conns[1].last("queue_state")["bot_level"] == "advanced"
+        await env.send(1, "queue_leave")
+
+        await env.send(1, "queue_join", mode="casual", bot_level="relaxed")
+        assert env.conns[1].last("error")["code"] == "bad_setting"
+        await env.send(1, "queue_join", mode="casual")
+        assert env.conns[1].last("queue_state")["bot_level"] == "standard"
+        code = env.conns[1].last("queue_state")["code"]
+        env.player(2)
+        await env.send(2, "queue_join", code=code)
+        await env.send(2, "table_start")
+        await env.send(2, "table_bot_level", level="advanced")
+        assert env.conns[2].last("error")["code"] == "not_opener"
+        await env.send(1, "table_bot_level", level="advanced")
+        state = env.conns[2].last("queue_state")
+        assert state["bot_level"] == "advanced" and state["table"]["ready"] == 0   # Start agreed to the other bots
+        assert env.mm.table_frame(env.mm._entry(1).table, 1)["settings"]["bot_level"] == "advanced"
+        for bad in ("on", True, None):
+            await env.send(1, "table_bot_level", level=bad)
+            assert env.conns[1].last("error")["code"] == "bad_setting"
+        await env.send(1, "table_start")
+        await env.send(2, "table_start")
+        assert env.rooms[-1]["bot_level"] == "advanced"
+    run(go())
+
+
+def test_a_casual_table_left_alone_keeps_its_bot_level():
+    async def go():
+        env = Env()
+        env.player(1)
+        await env.send(1, "queue_join", mode="casual", bot_level="advanced")
+        assert env.conns[1].last("queue_state")["bot_level"] == "advanced"
+        await env.send(1, "queue_start_bots")
+        assert env.rooms[-1]["bot_level"] == "advanced"
+        env.player(2)
+        await env.send(2, "queue_join", mode="casual")
+        await env.send(2, "queue_start_bots")
+        assert env.rooms[-1]["bot_level"] == "standard"
+    run(go())
+
+
 def test_allow_joiners_off_hides_the_table_from_play_but_not_from_its_code():
     async def go():
         env = Env()
@@ -3997,6 +4067,38 @@ def test_allow_joiners_off_hides_the_table_from_play_but_not_from_its_code():
         # on again: Play seats the stranger there
         await env.send(1, "table_allow_joiners", on=True)
         assert t.seats == [1, 2, 3, None]
+    run(go())
+
+
+def test_both_bot_levels_seat_strangers_and_the_openers_level_wins():
+    async def go():
+        for opener_level, joiner_level in (("standard", "advanced"), ("advanced", "standard")):
+            env = Env()
+            await env.join(1, mode="casual", bot_level=opener_level)
+            await env.join(2, mode="casual", bot_level=joiner_level)   # a stranger on Play
+            (t,) = env.mm.tables.values()
+            assert 1 in t.seats and 2 in t.seats and t.bot_level == opener_level
+            for uid in (1, 2):
+                assert env.conns[uid].last("queue_state")["bot_level"] == opener_level
+            await env.send(1, "table_start")
+            await env.send(2, "table_start")
+            assert env.rooms[-1]["bot_level"] == opener_level
+    run(go())
+
+
+def test_both_bot_levels_are_offered_open_tables():
+    async def go():
+        for level in ("standard", "advanced"):
+            env = Env()
+            tables = [{"code": "OPEN", "mode": "casual", "round_end": False, "seats": [
+                {"name": "Ann", "bot": False, "open": False, "queue_id": 50, "device": None},
+                {"name": "Bot 1", "bot": True, "open": True},
+                {"name": "Bot 2", "bot": True, "open": True},
+                {"name": "Bot 3", "bot": True, "open": True}]}]
+            env.mm.open_tables = lambda: tables
+            await env.join(1, mode="casual", bot_level=level)
+            state = env.conns[1].last("queue_state")
+            assert state["bot_level"] == level and state["offer"]["room"] == "OPEN"
     run(go())
 
 
@@ -4066,6 +4168,47 @@ def test_ws_a_casual_tables_starting_level_reaches_its_room(wsenv):
         assert code == state["code"]
         room = srv.rooms[code]
         assert room.start_level == "5" and room.game.levels == ("5", "5")
+
+
+def _ws_casual_room(srv, g, level):
+    """The room a casual table started alone becomes, with Bots at ``level``."""
+    g.send_json({"type": "queue_join", "mode": "casual", "name": "Guest"})
+    assert _drain(g, "queue_state")["bot_level"] == "standard"
+    if level != "standard":
+        g.send_json({"type": "table_bot_level", "level": level})
+        assert _drain(g, "queue_state")["bot_level"] == level
+    g.send_json({"type": "table_start_bots"})
+    return srv.rooms[_drain(g, "match_started")["room"]]
+
+
+def test_ws_a_casual_tables_bot_level_reaches_its_room(wsenv, monkeypatch, tmp_path):
+    from shengji.train import relaxed_play
+    from test_relaxed_bots import synthetic_package
+    srv, store, client, clock = wsenv
+    path, sha = synthetic_package(tmp_path)
+    monkeypatch.setattr(srv, "RELAXED_SF_PACKAGE", path)
+    monkeypatch.setattr(srv, "RELAXED_SF_SHA256", sha)
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        room = _ws_casual_room(srv, g, "standard")      # the default
+        assert room.bot_level == "standard" and not room.matched
+        assert room.bot.policy_name.endswith("-" + relaxed_play.casual_suffix(sha))
+        # fixed once the game starts: the room refuses the lobby control
+        g.send_json({"type": "table_bot_level", "level": "advanced"})
+        assert _drain(g, "error")["message"] == "Game already started."
+        assert room.bot_level == "standard"
+
+
+def test_ws_the_opener_switching_to_advanced_builds_the_served_bot(wsenv, monkeypatch, tmp_path):
+    from test_relaxed_bots import synthetic_package
+    srv, store, client, clock = wsenv
+    path, sha = synthetic_package(tmp_path)
+    monkeypatch.setattr(srv, "RELAXED_SF_PACKAGE", path)
+    monkeypatch.setattr(srv, "RELAXED_SF_SHA256", sha)
+    with client.websocket_connect(f"/ws?device={DEVICE_A}") as g:
+        room = _ws_casual_room(srv, g, "advanced")
+        assert room.bot_level == "advanced" and not room.matched
+        assert srv.RELAXED_BOT not in room.bot.policy_name
+        assert not hasattr(room.bot, "served")             # the served bot itself, unwrapped
 
 
 # ------------------------------------------------------------ Duo tables

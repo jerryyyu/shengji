@@ -347,6 +347,34 @@ describe("every Play table has a code", () => {
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
   });
 
+  it("Bots is a casual table's select, Standard by default: the opener picks it, others read it, ranked has none", async () => {
+    const bots = (p: Element) => p.querySelector<HTMLSelectElement>("select[aria-label='Bots']");
+    await renderApp();
+    say(own());
+    expect(bots(q(".tp-own")!)).toBeNull();
+    expect(q(".tp-own")!.textContent).not.toContain("Bots");
+    say(own({ mode: "casual", bot_level: "standard" }));
+    const select = bots(q(".tp-own")!)!;
+    expect(select.value).toBe("standard");
+    expect([...select.options].map((o) => [o.value, o.textContent])).toEqual(
+      [["standard", "Standard"], ["advanced", "Advanced"]]);
+    act(() => {
+      select.value = "advanced";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(lastSent()).toEqual({ type: "table_bot_level", level: "advanced" });
+    say(own({ mode: "casual", bot_level: "advanced" }));
+    expect(bots(q(".tp-own")!)!.value).toBe("advanced");
+    say(shared({ mode: "casual", bot_level: "standard" }));
+    const theirs = q(".tp-shared")!;
+    expect(theirs.querySelector("select")).toBeNull();
+    const row = theirs.querySelector("[role='group'][aria-label^='Bots']");
+    expect(row?.getAttribute("aria-label")).toBe("Bots Standard");
+    expect(row?.querySelector(".tp-set-val")?.textContent).toBe("Standard");
+    say(shared({ bot_level: "advanced" }));
+    expect(q(".tp-shared")!.textContent).not.toContain("Bots");
+  });
+
   it("Allow joiners is the opener's switch: a non-opener sees none", async () => {
     const switches = (p: Element) => [...p.querySelectorAll("[role='switch']")]
       .filter((b) => b.textContent === "Allow joiners");

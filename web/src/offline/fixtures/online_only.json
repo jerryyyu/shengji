@@ -3,7 +3,8 @@
     "table": "the table frame: the offline client draws its table from state alone"
   },
   "room": {
-    "matched": "a table built by the matchmaking queue"
+    "matched": "a table built by the matchmaking queue",
+    "bot_level": "a queue table's Bots"
   },
   "state": {
     "guest": "a person with no account at a rated or queue-matched table",

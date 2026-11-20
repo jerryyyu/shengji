@@ -36,6 +36,8 @@ export const LIMITS = {
   linkSeconds: 8,
   /** ...and the host's answer to its hello this soon after. */
   resumeSeconds: 5,
+  /** The joiner logs the spread of its round trips this often. */
+  summarySeconds: 30,
   /** A hand never holds more cards than this. */
   cardIds: 33,
   token: 64,

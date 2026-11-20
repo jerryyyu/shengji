@@ -6,6 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
+import { copyNearbyLog, useNearbyDebug } from "../nearbyDebug";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
@@ -97,6 +98,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
 
   const joiners = opener && (!offline || nearby) ? allowJoiners : undefined;
   const showCode = !offline || nearby;
+  // a device-test Debug build: the link log, from the menu as well as its tab
+  const debug = useNearbyDebug(nearby);
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -143,6 +146,11 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
               <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
+          {debug ? (
+            <button className="hud-menu-row" role="menuitem" onClick={() => { void copyNearbyLog(); close(); }}>
+              <span>Copy log</span>
+            </button>
+          ) : null}
           {showCode ? <div className="hud-menu-sep" role="separator" /> : null}
           <SettingsMenuRows onOpenPage={close} />
           <div className="hud-menu-sep" role="separator" />

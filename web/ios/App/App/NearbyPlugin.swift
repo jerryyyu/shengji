@@ -112,6 +112,26 @@ enum JoinPlan {
     }
 }
 
+/// Which interface a link runs on. Peer-to-peer Wi-Fi (AWDL, "awdl0", and
+/// its low-latency companion "llw0") hops channels and answers far slower
+/// than the access point's Wi-Fi; with Wi-Fi off it is the only way to the
+/// host, so a link made during an outage, or in the moments after Wi-Fi
+/// rejoins, can stay on it. A resume made while the access point's Wi-Fi is
+/// up tries without peer-to-peer first, and every other look allows it, so
+/// two phones with no shared network still find each other.
+enum LinkPath {
+    static func isPeerToPeer(_ interfaceName: String?) -> Bool {
+        guard let name = interfaceName else { return false }
+        return name.hasPrefix("awdl") || name.hasPrefix("llw")
+    }
+
+    /// Whether this resume look leaves peer-to-peer out: Wi-Fi is up, and
+    /// the look is an even one of the resume (the odd ones allow it).
+    static func avoidPeerToPeer(resuming: Bool, wifiUp: Bool, look: Int) -> Bool {
+        resuming && wifiUp && look % 2 == 0
+    }
+}
+
 /// The phone's network path, as NWPathMonitor reports it: `update` says
 /// whether this report is a regain (satisfied after unsatisfied), when the
 /// look must start over on fresh endpoints.
@@ -275,6 +295,17 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var lastHostName: String?
     private let pathMonitor = NWPathMonitor()
     private var pathWatch = PathWatch()
+    /// The access point's Wi-Fi is up (an interface of type Wi-Fi that is
+    /// not peer-to-peer), from the latest path report.
+    private var wifiUp = false
+    /// Resume looks since a link last came up over the access point.
+    private var resumeLooks = 0
+    /// This join's tries leave peer-to-peer out.
+    private var avoidP2P = false
+    /// The host link runs over peer-to-peer Wi-Fi.
+    private var hostOverP2P = false
+    /// The host link was already remade once to leave peer-to-peer.
+    private var upgradeTried = false
 
     private var lookTime: TimeInterval { JoinPlan.findTimeout(resuming: resuming) }
 
@@ -296,13 +327,34 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             // on `queue`, as every other callback
             guard let self = self else { return }
+            // the monitor reports every interface change (peer-to-peer Wi-Fi
+            // comes and goes while a link runs over it): only a change of
+            // whether the network is usable, or of the access point's Wi-Fi,
+            // is logged, sent to the page or acted on
             let satisfied = path.status == .satisfied
+            let wifi = satisfied && path.availableInterfaces.contains {
+                $0.type == .wifi && !LinkPath.isPeerToPeer($0.name)
+            }
+            guard satisfied != self.pathWatch.satisfied || wifi != self.wifiUp else { return }
             let regained = self.pathWatch.update(satisfied)
-            self.spikeLog("path \(path.status)\(regained ? " (regained)" : "")")
+            self.wifiUp = wifi
+            let names = path.availableInterfaces.map { $0.name }.joined(separator: ",")
+            self.spikeLog("path \(path.status) [\(names)] wifi \(wifi)\(regained ? " (regained)" : "")")
             self.notifyListeners("path", data: ["satisfied": satisfied])
             if regained { self.lookAgainOnNewPath() }
+            self.leavePeerToPeer()
         }
         pathMonitor.start(queue: queue)
+    }
+
+    /// The host link runs over peer-to-peer while the access point's Wi-Fi
+    /// is up: it is ended once, and the page's resume makes it again over
+    /// Wi-Fi (its first look leaves peer-to-peer out).
+    private func leavePeerToPeer() {
+        guard links["host"] != nil, hostOverP2P, wifiUp, !upgradeTried else { return }
+        upgradeTried = true
+        spikeLog("host link is peer-to-peer while Wi-Fi is up: making it again over Wi-Fi")
+        drop("host")
     }
 
     /// The network came back during a look: endpoints found or tried on the
@@ -403,7 +455,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             self.reset()
             self.joinCode = code
             self.resuming = resume
-            self.spikeLog("join (\(resume ? "resume, \(JoinPlan.resumeFindTimeout) s look" : "first look"))")
+            if resume { self.resumeLooks += 1 } else { self.resumeLooks = 0; self.upgradeTried = false }
+            self.avoidP2P = LinkPath.avoidPeerToPeer(resuming: resume, wifiUp: self.wifiUp, look: self.resumeLooks - 1)
+            self.spikeLog("join (\(resume ? "resume, \(JoinPlan.resumeFindTimeout) s look" : "first look"))\(self.avoidP2P ? ", Wi-Fi only" : "")")
             self.setLive(true)
             self.startBrowse()
             call.resolve()
@@ -699,6 +753,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 let others = self.links.values.filter { $0.ready }.count
                 guard others < Self.maxConnected else { return self.drop(link.peer) }
                 link.ready = true
+                let via = connection.currentPath?.availableInterfaces.first
+                self.spikeLog("inbound \(link.peer) up via \(via?.name ?? "?")\(LinkPath.isPeerToPeer(via?.name) ? " peer-to-peer" : "")")
                 self.emitPeer(link.peer, "connected", device: self.deviceId(link.remote))
                 self.receive(link)
             case .failed, .cancelled:
@@ -746,7 +802,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func tryTable(_ endpoint: NWEndpoint, psk: Data) {
-        let connection = NWConnection(to: endpoint, using: Self.parameters(psk: psk))
+        let params = Self.parameters(psk: psk)
+        if avoidP2P { params.includePeerToPeer = false }
+        let connection = NWConnection(to: endpoint, using: params)
         let link = Link(peer: "host", connection: connection)
         attempts.append(link)
         connection.stateUpdateHandler = { [weak self, weak link] state in
@@ -767,6 +825,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 link.ready = true
                 self.links["host"] = link
                 self.lastHostName = Self.serviceName(endpoint)
+                let via = connection.currentPath?.availableInterfaces.first
+                self.hostOverP2P = LinkPath.isPeerToPeer(via?.name)
+                if !self.hostOverP2P { self.resumeLooks = 0 }
+                self.spikeLog("host link up via \(via?.name ?? "?") (\(via.map { "\($0.type)" } ?? "?"))\(self.hostOverP2P ? " peer-to-peer" : "")")
                 self.browser?.cancel()
                 self.browser = nil
                 self.emitPeer("host", "connected")
@@ -916,6 +978,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         deviceIds = [:]
         joinCode = ""
         resuming = false
+        avoidP2P = false
+        hostOverP2P = false
         findDeadline = .distantFuture
         candidateArrivals = 0
         policyDenied = false

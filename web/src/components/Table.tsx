@@ -39,6 +39,8 @@ const XrayPanel = lazy(() => import("./XrayPanel"));
 const DECLARE_WINDOW_SECS = 5;
 
 const LAST_TRICK_MS = 1500;
+/** At a nearby table, how late a move's answer is before Play says Sending…. */
+export const SENDING_AFTER_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
 // table never waits on it.
 const SWEEP_AFTER_MS = LAST_TRICK_MS - DUR.sweep - 40;
@@ -371,7 +373,18 @@ export default function Table({ state }: { state: GameState }) {
   // What Play or Bury says while its send is unanswered: the cards stay put
   // until the server's state moves them, and a dropped connection says so
   // instead of waiting silently.
-  const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
+  // At a nearby table a move's answer can take a moment over the radio: Play
+  // says Sending… only once the answer is SENDING_AFTER_MS late, and the
+  // link's own state (the pill, the dot) says when it has really stalled.
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    setLate(false);
+    if (pending === null) return;
+    const timer = window.setTimeout(() => setLate(true), SENDING_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, [pending]);
+  const pendingLabel = pending === null ? null : !online ? "Reconnecting…"
+    : NEARBY_SESSION && !late ? null : "Sending…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
     setPending({ kind: msg.type, handKey, turn: state.turn, generation: conn.generation, msg, resent: false });

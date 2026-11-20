@@ -58,7 +58,13 @@ enum NearbyBuild {
     static let reviewed = false
     #if DEBUG
     // TODO-review: DEBUG-only switch for the transport spike; false on main.
+    // SHENGJI_NEARBY_SPIKE is defined only on the M1 spike's xcodebuild
+    // command line, never by a configuration in the project.
+    #if SHENGJI_NEARBY_SPIKE
+    static let debugSpike = true
+    #else
     static let debugSpike = false
+    #endif
     static var enabled: Bool { reviewed || debugSpike }
     #else
     static var enabled: Bool { reviewed }
@@ -89,7 +95,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "send", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise)
-    ]
+    ] + ShengjiNearbyPlugin.spikeMethods
 
     static let maxMessage = 16 * 1024
     static let handshakeTimeout: TimeInterval = 10
@@ -177,6 +183,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("not a nearby code", "invalid")
             return
         }
+        spikeOptions(call)
         queue.async { [self] in
             self.reset()
             let salt = NearbyKey.randomBytes(NearbyKey.saltBytes)
@@ -216,6 +223,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("not a nearby code", "invalid")
             return
         }
+        spikeOptions(call)
         queue.async { [self] in
             self.reset()
             self.joinCode = code
@@ -227,7 +235,8 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             let session = self.session
             browser.stateUpdateHandler = { [weak self] state in
                 guard let self = self, self.session == session else { return }
-                switch state {
+                self.spikeLog("browser \(state)")
+            switch state {
                 case .ready: self.policyDenied = false
                 case .waiting(let error), .failed(let error): self.report(error, failed: state.isFailed)
                 default: break
@@ -235,6 +244,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             }
             browser.browseResultsChangedHandler = { [weak self] results, _ in
                 guard let self = self, self.session == session else { return }
+                self.spikeLog("browse: \(results.count) result(s)")
                 for result in results where !self.tried.contains(result.endpoint)
                     && !self.candidates.contains(where: { $0.endpoint == result.endpoint }) {
                     self.candidates.append(result)
@@ -297,6 +307,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: host
 
     private func listenerState(_ state: NWListener.State) {
+        spikeLog("listener \(state)")
         switch state {
         case .ready:
             policyDenied = false
@@ -329,6 +340,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         links[peer] = link
         connection.stateUpdateHandler = { [weak self, weak link] state in
             guard let self = self, let link = link, self.links[link.peer] === link else { return }
+            self.spikeLog("inbound \(link.peer) \(state)")
             switch state {
             case .ready:
                 let others = self.links.values.filter { $0.ready }.count
@@ -364,6 +376,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         attempt = link
         connection.stateUpdateHandler = { [weak self, weak link] state in
             guard let self = self, let link = link else { return }
+            self.spikeLog("outbound try \(self.tries) \(state)")
             switch state {
             case .ready:
                 guard self.attempt === link else { return connection.cancel() }
@@ -473,10 +486,15 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         let key = psk.withUnsafeBytes { DispatchData(bytes: $0) }
         let identity = Data(NearbyKey.identity.utf8).withUnsafeBytes { DispatchData(bytes: $0) }
         sec_protocol_options_add_pre_shared_key(sec, key as __DispatchData, identity as __DispatchData)
-        sec_protocol_options_append_tls_ciphersuite(
-            sec, tls_ciphersuite_t(rawValue: UInt16(TLS_PSK_WITH_AES_128_GCM_SHA256))!)
-        sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv12)
-        sec_protocol_options_set_max_tls_protocol_version(sec, .TLSv12)
+        if spikeTLS13 {
+            sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv13)
+            sec_protocol_options_set_max_tls_protocol_version(sec, .TLSv13)
+        } else {
+            sec_protocol_options_append_tls_ciphersuite(
+                sec, tls_ciphersuite_t(rawValue: UInt16(TLS_PSK_WITH_AES_128_GCM_SHA256))!)
+            sec_protocol_options_set_min_tls_protocol_version(sec, .TLSv12)
+            sec_protocol_options_set_max_tls_protocol_version(sec, .TLSv12)
+        }
         let tcp = NWProtocolTCP.Options()
         tcp.enableKeepalive = true
         let params = NWParameters(tls: tls, tcp: tcp)
@@ -496,6 +514,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func report(_ error: NWError, failed: Bool) {
+        spikeLog("error (\(failed ? "failed" : "waiting")): \(error.debugDescription) [\(error)]")
         if Self.isPolicyDenied(error) {
             policyDenied = true
             return reportDenied()
@@ -547,6 +566,62 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = on }
     }
 }
+
+// MARK: M1 spike
+
+#if DEBUG && SHENGJI_NEARBY_SPIKE
+/// The M1 transport spike's extras (nearby-spike.html): a raw state log, a
+/// PBKDF2 timing and a TLS 1.3 PSK switch. Compiled only with
+/// SHENGJI_NEARBY_SPIKE in a Debug build.
+extension ShengjiNearbyPlugin {
+    static let spikeMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "spikeBench", returnType: CAPPluginReturnPromise)
+    ]
+    static var spikeTLS13 = false
+
+    func spikeOptions(_ call: CAPPluginCall) {
+        Self.spikeTLS13 = call.getBool("tls13") ?? false
+        spikeLog("tls \(Self.spikeTLS13 ? "1.3" : "1.2") psk")
+    }
+
+    func spikeLog(_ text: String) {
+        notifyListeners("spikeLog", data: ["text": text])
+    }
+
+    /// Milliseconds for one key derivation at `iterations` (median of `runs`).
+    @objc func spikeBench(_ call: CAPPluginCall) {
+        let iterations = UInt32(call.getInt("iterations") ?? Int(NearbyKey.iterations))
+        let runs = max(1, min(call.getInt("runs") ?? 5, 20))
+        DispatchQueue.global(qos: .userInitiated).async {
+            let salt = NearbyKey.randomBytes(NearbyKey.saltBytes)
+            var times: [Double] = []
+            for _ in 0..<runs {
+                let start = DispatchTime.now().uptimeNanoseconds
+                _ = NearbyKey.derive(code: "ABCDEF", salt: salt, iterations: iterations)
+                times.append(Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6)
+            }
+            times.sort()
+            call.resolve(["iterations": Int(iterations), "ms": times[times.count / 2],
+                          "all": times, "model": Self.modelName()])
+        }
+    }
+
+    static func modelName() -> String {
+        var info = utsname()
+        uname(&info)
+        return withUnsafeBytes(of: &info.machine) { raw in
+            String(decoding: raw.prefix(while: { $0 != 0 }), as: UTF8.self)
+        }
+    }
+}
+#else
+extension ShengjiNearbyPlugin {
+    static let spikeMethods: [CAPPluginMethod] = []
+    static let spikeTLS13 = false
+    func spikeOptions(_ call: CAPPluginCall) {}
+    func spikeLog(_ text: @autoclosure () -> String) {}
+}
+#endif
 
 private extension NWBrowser.State {
     var isFailed: Bool {

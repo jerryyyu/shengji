@@ -72,6 +72,16 @@ class ShellViewController: CAPBridgeViewController {
         }
     }
 
+    #if DEBUG && SHENGJI_NEARBY_SPIKE
+    /// The M1 transport spike opens its bundled test page, not the live site.
+    override open func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        descriptor.serverURL = nil
+        descriptor.appStartPath = "nearby-spike.html"
+        return descriptor
+    }
+    #endif
+
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
         inGame ? .bottom : []
     }

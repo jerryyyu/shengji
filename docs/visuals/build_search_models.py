@@ -53,9 +53,10 @@ PANELS = [
       "probed on 8 worlds."],
      ["div", "la", "sc8"]),
     ("value", "3 · VALUE PASS", "Score 8 × 64",
-     ["512 leaves read by the unified",
-      "readout: expected signed levels",
-      "for the bot's team.",
+     ["512 leaves in signed levels: the",
+      "unified readout on the covered",
+      "same-trick nonterminal ones,",
+      "the served evaluator the rest.",
       "tb: within 0.02 of the best →",
       "trick points decide.",
       "dtr: a lead throw refused in",
@@ -125,8 +126,9 @@ SEARCH_ARIA = (
     "log-odds of the prior head, read from the same trunk forward as the belief, rank them; 8 are admitted, the heuristic's play first, at most "
     "2 per shape (div), la on a weak single lead, and sc8 probing singles on 8 worlds when a hand has more "
     "than 7 cards. 3, value pass: each trick is finished by greedy replies, each the best of the "
-    "unified readout's top 4 follows and the heuristic's (lgf, lgfx, lgfd2000), and the readout scores 512 "
-    "leaves as expected signed levels; ties within 0.02 go to trick points "
+    "unified readout's top 4 follows and the heuristic's (lgf, lgfx, lgfd2000); of the 512 leaves, the "
+    "unified readout scores the covered same-trick nonterminal ones and the served evaluator the other "
+    "positions, as expected signed levels; ties within 0.02 go to trick points "
     "(tb); dtr and dtrx drop refused lead throws. 4, exact endgame at 7 cards or fewer a hand: partnership "
     "minimax with alpha-beta and a transposition table per world, averaged (ele, ed7, xf7, elm, elt, "
     "els1600), switching only on a strictly higher mean. 5, choose: the best mean wins; past the budget or "

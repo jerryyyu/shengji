@@ -1,0 +1,14 @@
+{
+ "name": "rt2-attrib-dev-2643000000",
+ "purpose": "screen",
+ "seed0": 2643000000,
+ "clusters": 4000,
+ "span": [
+  2643000000,
+  2643004000
+ ],
+ "created_at": "2026-11-20T03:00:00Z",
+ "host": "ultra",
+ "git_head": "d794c76a",
+ "note": "RT2 attribution (Jerry 2026-11-20: is RT2's gain over the winner from value, policy or belief?): tier-i DEV head-to-head duels vs the winner (unified 97c07be8 + belief 1b1fd2de, all slots by one shared trunk forward), 1,000 paired seat-swapped rank-mixed deals per arm on the M5 Ultra, read once, never used to select or release. Arms run in split mode (the root prior, value and reply readouts from the side's unified package by its own trunk forward; the belief from the side's belief package). Arm B [2643000000, 2643001000): winner unified + RT2 belief bed32f87. Arm U [2643001000, 2643002000): RT2 unified 47175c99 + winner belief. Arm W [2643002000, 2643003000): winner unified + winner belief in split mode (the split-mode control). Pilots [2643003000, 2643003100), outcomes not read; the rest is spare. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

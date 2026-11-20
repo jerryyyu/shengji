@@ -414,3 +414,196 @@ def test_explicit_rank_2_deals_are_the_canonical_deals(duel):
     with pytest.raises(ValueError):
         duel.parse_budgets("3x,1x")
     assert duel.shards(5, 2) == [[0, 2, 4], [1, 3]]
+
+
+def test_pv_health_reaches_persisted_mixed_rank_mirrors(duel, monkeypatch, tmp_path):
+    class Bot:
+        def __init__(self, candidate):
+            self.candidate = candidate
+            self.calls = 0
+
+        def decide_play(self, rnd, seat):
+            self.calls += 1
+            if not self.candidate:
+                self.last_decision_record = None
+            elif self.calls == 1:
+                self.last_decision_record = {
+                    'schema': 'pv-search-decision-v1', 'work_complete': True,
+                    'lead_alias_refill_applied': True,
+                    'lead_alias_refill_replacements': 2,
+                }
+            elif self.calls == 2:
+                self.last_decision_record = {
+                    'schema': 'pv-search-decision-v1', 'work_complete': True,
+                    'lead_alias_refill_abandoned': True,
+                }
+            else:
+                self.last_decision_record = {
+                    'schema': 'pv-search-fallback-v1', 'work_complete': False,
+                    'reason': 'budget' if self.calls == 3 else 'search-error',
+                }
+            return [seat]
+
+    monkeypatch.setattr(duel, 'make_bot', lambda policy, **kw: Bot(policy == 'candidate'))
+
+    def play(game, policies, rank):
+        for _ in range(4):
+            for seat, bot in enumerate(policies):
+                assert bot.decide_play(None, seat) == [seat]
+        return duel.RoundLog(rank, 0, 0, 0, 1)
+
+    monkeypatch.setattr(duel, 'play_round_at', play)
+    path = str(tmp_path / 'shard.jsonl')
+    rows = duel.play_shard('unit', [('alias', 'candidate')], [0, 1], 10,
+                           '2,A', 'control', sink=duel.ShardSink(path))
+    assert duel.read_shard(path) == rows
+    assert [(r['trump_rank'], r['flip']) for r in rows] == [
+        ('2', 0), ('2', 1), ('A', 0), ('A', 1)]
+    for row in rows:
+        assert row['arm_play_health'] == {
+            'decisions': 8, 'pv_complete': 4, 'pv_fallback': 4,
+            'pv_budget': 2, 'pv_error': 2,
+            'lead_alias_refill_applied': 2, 'lead_alias_refill_replacements': 4,
+            'lead_alias_refill_abandoned': 2,
+        }
+        assert row['opp_play_health'] == {'decisions': 8, 'non_pv_record': 8}
+        assert row['arm_play_decisions'] == row['arm_play_health']['decisions']
+
+
+@pytest.mark.parametrize('rank', [None, 'A'])
+def test_timed_duel_forwards_every_public_play_to_all_seats(duel, rank):
+    observations = [[], [], [], []]
+    timers = []
+    for seat in range(4):
+        bot = _real_make_bot('smart', seed=2718 + seat)
+        bot.observe_public = lambda rnd, seat=seat: observations[seat].append(rnd.phase)
+        timers.append(duel.TimedPolicy(bot))
+    game = duel.Game(random.Random(2718))
+    if rank is None:
+        duel.play_round(game, timers)
+    else:
+        duel.play_round_at(game, timers, rank)
+    plays = sum(len(t.walls) for t in timers)
+    assert plays > 0
+    assert [len(seen) for seen in observations] == [plays] * 4
+    assert all(seen[-1] == 'round_end' for seen in observations)
+
+
+def test_pv_dev_adapter_registers_then_persists_complete_pairs(monkeypatch, tmp_path):
+    from shengji.ai import registry
+    from shengji.train import pv_search_policy as pv
+
+    adapter = _load_script('pv_dev_duel')
+    monkeypatch.setattr(registry, 'REGISTRY', dict(registry.REGISTRY))
+    constructed = []
+
+    def entries(**recipe):
+        def factory(seed):
+            constructed.append((recipe['name'], seed))
+            return _real_make_bot('smart', seed=seed)
+        return {recipe['name']: factory}
+
+    monkeypatch.setattr(pv, 'pv_env_recipe', lambda env: {'name': env['recipe']})
+    monkeypatch.setattr(pv, 'pv_registry_entries', entries)
+    control = {'SHENGJI_BOT': 'unit-control', 'recipe': 'unit-control'}
+    candidate = {'SHENGJI_BOT': 'unit-candidate', 'recipe': 'unit-candidate'}
+    out = tmp_path / 'duel'
+    meta = adapter.run(control, candidate, out=out, seed0=100, pairs=2,
+                       cluster0=1, ranks='2,A')
+    rows = adapter.duel.read_shard(str(out / 'rounds.jsonl'))
+    assert [(r['seed'], r['flip'], r['trump_rank']) for r in rows] == [
+        (101, 0, 'A'), (101, 1, 'A'), (102, 0, '2'), (102, 1, '2')]
+    assert all(r['policy'] == 'unit-candidate' for r in rows)
+    assert all(r['arm_play_health']['decisions'] == r['arm_play_decisions'] for r in rows)
+    assert constructed[:2] == [('unit-control', 0), ('unit-candidate', 0)]
+    assert (out / 'DONE').read_text() == '2 complete pairs\n'
+    health = json.loads((out / 'health.json').read_text())
+    assert health['rounds'] == 4
+    assert health['sides']['arm']['decisions'] == sum(r['arm_play_decisions'] for r in rows)
+    assert health['sides']['arm']['max_decision_seconds'] == max(r['arm_play_max_secs'] for r in rows)
+    assert adapter.read(out, meta)['verdict'] == 'QUALITY_FAIL'
+    prior = (out / 'rounds.jsonl').read_bytes()
+    with pytest.raises(FileExistsError):
+        adapter.run(control, candidate, out=out, seed0=100, pairs=2, ranks='2,A')
+    assert (out / 'rounds.jsonl').read_bytes() == prior
+    with pytest.raises(ValueError, match='derived PV recipe'):
+        adapter.register_pair(control, {**candidate, 'SHENGJI_BOT': 'wrong'})
+    with pytest.raises(ValueError, match='distinct'):
+        adapter.register_pair(control, control)
+
+    def broken(*args, **kw):
+        raise RuntimeError('synthetic worker failure')
+
+    monkeypatch.setattr(adapter.duel, 'play_shard', broken)
+    with pytest.raises(RuntimeError, match='synthetic worker failure'):
+        adapter.run(control, candidate, out=tmp_path / 'failed', seed0=200,
+                    pairs=1, ranks='A')
+    assert not (tmp_path / 'failed' / 'DONE').exists()
+
+
+def test_pv_dev_reader_rejects_inconsistent_pairs_before_scoring(tmp_path):
+    import copy
+    adapter = _load_script('pv_dev_duel')
+    meta = dict(schema='pv-dev-duel-v1', candidate='T', control='C',
+                seed0=100, cluster0=0, pairs=2, ranks=['2', 'A'])
+    (tmp_path / 'run.json').write_text(json.dumps(meta))
+    (tmp_path / 'DONE').write_text('2 complete pairs\n')
+    rows = [dict(seed=100+i, flip=f, trump_rank=rank, policy='T', opponent='C',
+                 label='candidate', winner_team=f, level_change=1, won=1,
+                 level_utility=1, arm_play_decisions=1, opp_play_decisions=1,
+                 arm_play_health=dict(decisions=1, pv_complete=1),
+                 opp_play_health=dict(decisions=1, pv_complete=1))
+            for i, rank in enumerate(meta['ranks']) for f in (0, 1)]
+    path = tmp_path / 'rounds.jsonl'
+
+    def write(records):
+        path.write_text(''.join(json.dumps(r) + '\n' for r in records))
+
+    write(rows)
+    result = adapter.read(tmp_path, meta)
+    assert result['pairs'] == 2 and result['rounds'] == 4
+    assert result['mean_levels_per_round'] == 1
+    assert result['by_rank']['A'] == dict(pairs=1, mean=1)
+    assert result['verdict'] == 'POSITIVE'
+    for change in ({'seed': 999}, {'flip': 1}, {'trump_rank': 'A'},
+                   {'opponent': 'T'}, {'policy': 'C'}, {'level_utility': -1},
+                   {'winner_team': 1}, {'arm_play_decisions': 2}):
+        bad = copy.deepcopy(rows)
+        bad[0].update(change)
+        write(bad)
+        with pytest.raises(ValueError):
+            adapter.read(tmp_path, meta)
+    write(rows[:-1])
+    with pytest.raises(ValueError, match='missing'):
+        adapter.read(tmp_path, meta)
+    write(rows)
+    with pytest.raises(ValueError, match='metadata'):
+        adapter.read(tmp_path, {**meta, 'seed0': 101})
+    bad = copy.deepcopy(rows)
+    bad[0]['arm_play_health'] = dict(decisions=1, pv_fallback=1, pv_budget=1)
+    write(bad)
+    assert adapter.read(tmp_path, meta)['verdict'] == 'QUALITY_FAIL'
+    write(rows)
+    path.write_bytes(path.read_bytes()[:-1])
+    with pytest.raises(ValueError, match='torn'):
+        adapter.read(tmp_path, meta)
+
+
+def test_pv_capacity_projection_never_reads_outcomes():
+    adapter = _load_script('pv_dev_duel')
+
+    class OperationalOnly(dict):
+        def __getitem__(self, key):
+            assert key.endswith(('_play_health', '_play_decisions',
+                                 '_play_wall_secs', '_play_max_secs'))
+            return super().__getitem__(key)
+
+    row = OperationalOnly(level_utility=999, winner_team=0, won=1)
+    for side in ('arm', 'opp'):
+        row.update({f'{side}_play_health': dict(decisions=2, pv_complete=2),
+                    f'{side}_play_decisions': 2, f'{side}_play_wall_secs': 0.4,
+                    f'{side}_play_max_secs': 0.3})
+    summary = adapter.capacity_summary([row], 1.0)
+    assert set(summary) == {'schema', 'rounds', 'play_wall_seconds', 'sides'}
+    assert summary['sides']['arm'] == dict(health=dict(decisions=2, pv_complete=2),
+        decisions=2, decision_seconds=0.4, max_decision_seconds=0.3)

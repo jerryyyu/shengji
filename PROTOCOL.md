@@ -161,7 +161,14 @@ a stale socket of theirs is still open. Store it and send it back in
 ### `{type: "heartbeat_ready", build?: string}`
 
 Sent first on a socket opened with `?heartbeat=1`: the socket may now send
-`{type: "ping", nonce}`, answered with `{type: "pong", nonce}`. `build` is the
+`{type: "ping", nonce}`, answered with `{type: "pong", nonce}`. The page holds
+one ping in flight and replaces the socket when its pong misses the deadline:
+away from a table it pings 15 s after the last pong (15 s deadline), at a
+table 8 s after it (6 s deadline), when a table action has had no message at
+all back for 1.5 s (3 s deadline), and on coming back into view or onto a
+network (2 s deadline). The server answers a ping at once, from the socket's
+own receive loop (`web/src/ws.ts`). The server's own WebSocket keepalive
+pings every 10 s and closes a socket whose pong is 10 s late. `build` is the
 build id of the page the server serves (the `shengji-build` meta tag of its
 index.html, read at startup; absent when it has none), also shown as
 `web_build` in `/healthz`. A page of another build reloads itself at the next

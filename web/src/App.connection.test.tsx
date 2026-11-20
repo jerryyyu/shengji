@@ -81,6 +81,15 @@ const latest = () => FakeWS.all[FakeWS.all.length - 1];
 const banner = () => host.querySelector<HTMLElement>(".reconnect-banner");
 const retryIn = () => host.querySelector<HTMLButtonElement>(".reconnect-banner .reconnect-retry");
 const lost = () => host.querySelector<HTMLElement>(".conn-lost");
+// After a long outage the page is between attempts: a connect that never
+// opened is abandoned, and the next one follows its backoff. The network
+// comes back on the next attempt.
+const recover = () => {
+  for (let i = 0; i < 40 && !(latest().readyState === 0 && latest().onopen); i++) {
+    act(() => { vi.advanceTimersByTime(250); });
+  }
+  act(() => latest().open());
+};
 
 it("at the table a drop shows the pill, Retry at 10 s, the full screen at 60 s, and a reconnect resumes the seat and clears it", async () => {
   const { ws, RETRY_AFTER_MS, LOST_AFTER_MS } = await mount();
@@ -158,7 +167,7 @@ it("on Play with no table the presence line is the status, no pill, and the full
   const offline = host.querySelector<HTMLButtonElement>(".conn-lost-bots")!;
   expect(offline.textContent).toBe("Play offline with the bots");
 
-  act(() => latest().open());
+  recover();
   expect(lost()).toBeNull();
   expect(banner()).toBeNull();
 });
@@ -232,7 +241,7 @@ it("the full screen is modal: Retry has focus, Tab stays inside, the page behind
   act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
   expect(lost()).not.toBeNull();
 
-  act(() => latest().open());
+  recover();
   expect(lost()).toBeNull();
   expect(host.querySelector("[inert]")).toBeNull();
   expect(document.activeElement).toBe(howto);
@@ -283,7 +292,7 @@ it("with a sheet already open, the full screen sits above it and Retry is reacha
   expect(host.querySelector(".q-sheet")).not.toBeNull();
   expect(document.activeElement).toBe(retry);
 
-  act(() => latest().open());
+  recover();
   expect(lost()).toBeNull();
   expect(sheet.closest("[inert]")).toBeNull();
   expect(sheet.contains(document.activeElement)).toBe(true);
@@ -367,6 +376,6 @@ it("in a browser the full screen offers Retry alone, and Play keeps its own cont
   expect(host.querySelector(".play-offline")).toBeNull();
   expect(host.querySelector(".play-presence")?.textContent).toBe("Connecting…");
   expect(host.textContent).not.toMatch(/Play offline/);
-  act(() => latest().open());
+  recover();
   expect(lost()).toBeNull();
 });

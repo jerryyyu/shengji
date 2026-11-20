@@ -217,3 +217,54 @@ def test_healthz_reports_the_latency_switches_from_the_process_environment(
     # a malformed switch is reported, not raised: health must answer
     monkeypatch.setenv("SHENGJI_PV_ENCODE_BATCH_FAST", "yes")
     assert "must be 0 or 1" in client.get("/healthz").json()["pv_search"]["error"]
+
+
+def test_healthz_hashes_each_served_file_once(client, tmp_path, monkeypatch):
+    """``/healthz`` runs on the event loop: a model file is hashed on the first
+    call only, and again only when the file itself changes."""
+    import os
+
+    import shengji.train.pv_search_policy  # noqa: F401
+    from shengji.ai import cwv_policy
+    from shengji.api import server
+
+    real = cwv_policy.file_sha256
+    hashed = []
+
+    def counting(path):
+        hashed.append(str(path))
+        return real(path)
+
+    monkeypatch.setattr(cwv_policy, "file_sha256", counting)
+    monkeypatch.setattr(server, "_FILE_SHA256", {})
+    package, prior = tmp_path / "package.npz", tmp_path / "prior.pt"
+    package.write_bytes(b"value stand-in")
+    prior.write_bytes(b"prior stand-in")
+    monkeypatch.setenv("SHENGJI_PV_CKPT", str(package))
+    monkeypatch.setenv("SHENGJI_CWV_PRIOR_CKPT", str(prior))
+    first = client.get("/healthz").json()
+    assert sorted(hashed) == sorted([str(package), str(prior)])
+    second = client.get("/healthz").json()
+    assert len(hashed) == 2, "a second /healthz hashed the files again"
+    assert second["pv_search"]["sha256"] == first["pv_search"]["sha256"] == real(package)
+    assert second["prior"]["sha256"] == first["prior"]["sha256"] == real(prior)
+    package.write_bytes(b"another value stand-in")
+    os.utime(package, ns=(1, 1))
+    assert client.get("/healthz").json()["pv_search"]["sha256"] == real(package)
+    assert hashed.count(str(package)) == 2
+
+
+def test_main_runs_uvicorn_with_a_ten_second_ping(monkeypatch):
+    import sys
+    from types import ModuleType
+
+    from shengji.api import server
+
+    calls = []
+    fake = ModuleType("uvicorn")
+    fake.run = lambda *args, **kwargs: calls.append((args, kwargs))
+    monkeypatch.setitem(sys.modules, "uvicorn", fake)
+    server.main()
+    [(args, kwargs)] = calls
+    assert args == ("shengji.api.server:app",)
+    assert kwargs["ws_ping_interval"] == 10 and kwargs["ws_ping_timeout"] == 10

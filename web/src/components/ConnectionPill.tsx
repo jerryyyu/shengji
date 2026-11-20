@@ -4,6 +4,7 @@ import { conn } from "../ws";
 import { offlineGame, offlineOffered } from "./offlineGame";
 import { lastInputModality } from "../inputModality";
 import { trapTab } from "../queue/Sheet";
+import { isStalled, subscribeStalled } from "../link";
 
 /** A short blip reconnects on its own; Retry joins the pill only after this. */
 export const RETRY_AFTER_MS = 10_000;
@@ -16,7 +17,11 @@ export type ConnPhase = "open" | "waiting" | "retry" | "lost";
  *  that reconnects at once and starts the wait over. The socket's own
  *  backoff keeps reconnecting underneath; this only decides what is shown. */
 function useConnPhase(status: ConnStatus): [ConnPhase, () => void] {
-  const open = status === "open";
+  // an action the server has not answered reads as a drop at once, while
+  // the socket is still being proven dead
+  const [stalled, setStalledView] = useState(isStalled);
+  useEffect(() => subscribeStalled(setStalledView), []);
+  const open = status === "open" && !stalled;
   const [phase, setPhase] = useState<ConnPhase>(open ? "open" : "waiting");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {

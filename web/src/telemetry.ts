@@ -7,6 +7,7 @@
 import { useEffect } from "react";
 import { conn } from "./ws";
 import { OFFLINE, subscribeOffline } from "./offlineMode";
+import { subscribeLink, type DropCause } from "./link";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
@@ -39,7 +40,7 @@ type Event =
   | { e: "screen"; t: number; name: Screen; prev?: Screen; ms_on_prev?: number }
   | ({ e: "turn_done"; t: number } & TurnDone)
   | { e: "tap"; t: number; id: TapId }
-  | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other" };
+  | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number };
 
 export const FLUSH_MS = 10_000;
 export const FLUSH_AT = 20;
@@ -181,6 +182,17 @@ export class Telemetry {
     this.push({ e: "notice", t: now(), code, where });
   }
 
+  /** The page lost an open socket, and why. */
+  disconnected(cause: DropCause): void {
+    this.push({ e: "notice", t: now(), code: "disconnected", where: this.screen ?? "other", cause });
+  }
+
+  /** A socket opened again, `ms` after the last one was lost. */
+  reconnected(ms: number): void {
+    this.push({ e: "notice", t: now(), code: "reconnected", where: this.screen ?? "other",
+                ms: Math.max(0, Math.round(ms)) });
+  }
+
   turnDone(turn: TurnDone): void {
     this.push({ e: "turn_done", t: now(), ...turn, nth_turn: Math.min(30, Math.max(1, turn.nth_turn)) });
   }
@@ -198,6 +210,13 @@ function liveSend(msg: unknown): boolean {
 }
 
 export const telemetry = new Telemetry(liveSend, () => !OFFLINE);
+
+// The socket manager's drops and recoveries; they wait in the buffer while
+// the socket is down and go with the next flush.
+subscribeLink((ev) => {
+  if (ev.kind === "down") telemetry.disconnected(ev.cause);
+  else telemetry.reconnected(ev.ms);
+});
 
 // At a switch between the game server and the on-device one, what the online
 // page buffered goes on its socket first, then nothing of either side is kept.

@@ -4,6 +4,7 @@
 
 import type { ChatMsg, ClientMsg, ServerMsg } from "./protocol";
 import { noteServerBuild } from "./reloadGate";
+import { noteLink, setStalled, type DropCause } from "./link";
 
 export type ConnStatus = "connecting" | "open" | "closed";
 
@@ -53,10 +54,40 @@ export function deviceKey(): string {
 export function socketUrl(): string {
   return `${wsUrl()}?heartbeat=1&device=${deviceKey()}`;
 }
-const HEARTBEAT_MS = 15_000;
+/** Away from a table, a ping this long after the last pong, answered within
+ *  the same time: a lobby socket stays cheap on a phone's battery. */
+export const HEARTBEAT_MS = 15_000;
+/** At a table, a ping this long after the last pong, and the deadline for its
+ *  pong. A socket gone half-open (a phone changing networks, a Wi-Fi drop)
+ *  carries nothing and never closes, so this bounds how long a quiet table
+ *  can sit on one: TABLE_PING_MS + TABLE_PONG_MS at most. */
+export const TABLE_PING_MS = 8000;
+export const TABLE_PONG_MS = 6000;
 /** Back in view, an open socket must answer a ping this fast: a phone can
  *  suspend a socket without closing it, and its traffic then goes nowhere. */
-export const PROBE_MS = 5000;
+export const PROBE_MS = 2000;
+/** The server answers every table action at once (a state, or an error).
+ *  When nothing at all has come back this long after one, a ping goes out,
+ *  and the socket is replaced if its pong is not back within ACTION_PONG_MS. */
+export const ANSWER_MS = 1500;
+export const ACTION_PONG_MS = 3000;
+/** A socket still connecting this long is abandoned for a fresh one: a
+ *  handshake can hang on a network that has just changed. */
+export const CONNECT_MS = 5000;
+/** A wake event (back online, back in view) restarts a connect this old. */
+export const STALE_CONNECT_MS = 2000;
+/** Losing a socket that had been open this long retries at once: one
+ *  that worked a moment ago is likely to work again now. */
+export const LONG_LIVED_MS = 10_000;
+/** The retry delay doubles up to this at a table, where every second is
+ *  the table waiting; elsewhere up to RETRY_MAX_MS. */
+export const TABLE_RETRY_MAX_MS = 3000;
+const RETRY_MAX_MS = 8000;
+/** The client messages the server answers with a state or an error. */
+const ANSWERED: ReadonlySet<ClientMsg["type"]> = new Set<ClientMsg["type"]>([
+  "play", "bury", "declare", "pass_declare", "next_round", "im_back",
+  "table_chat", "table_allow_joiners",
+]);
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
@@ -143,6 +174,20 @@ class Connection {
   private unlisten: (() => void) | null = null;
   /** Ping now with a short deadline (the socket's heartbeat, if it has one). */
   private probe: (() => void) | null = null;
+  /** Starts the wait for the server's answer to an action just sent. */
+  private awaitAnswer: (() => void) | null = null;
+  /** Re-times the next ping when the cadence changes. */
+  private retime: (() => void) | null = null;
+  /** A game's state has come since the last "left": the table cadence. Kept
+   *  across a reconnect, because the table stays on screen while its seat is
+   *  asked back. */
+  private atTable = false;
+  /** When the current socket opened; null while it connects. */
+  private openedAt: number | null = null;
+  /** When the current socket started connecting. */
+  private connectAt = 0;
+  /** When the last open socket was lost; null once a new one opens. */
+  private lostAt: number | null = null;
   /** The next reconnect is deliberate (a sign-in or sign-out): open it at
    *  once instead of after the failure backoff. */
   private immediate = false;
@@ -167,19 +212,28 @@ class Connection {
     // A browser wake can end an outage before the retry timer expires.
     // Preserve healthy sockets and handshakes that are already in progress.
     // The on-device server has no outages to end.
+    // A connect started before the wake may be stuck on the old network.
     const wake = () => {
-      if (this.transport === "remote" && this.status === "closed") this.reconnect();
+      if (this.transport !== "remote") return;
+      if (this.status === "closed"
+          || (this.status === "connecting" && Date.now() - this.connectAt > STALE_CONNECT_MS)) {
+        this.reconnect();
+      }
     };
-    const visible = () => {
-      if (document.visibilityState !== "visible") return;
+    // Back in view, or onto a new network with no offline moment between
+    // (Wi-Fi to cellular): an open socket must prove it still carries.
+    const check = () => {
       if (this.status === "open") this.probe?.();
       else wake();
     };
-    window.addEventListener("online", wake);
+    const visible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    window.addEventListener("online", check);
     window.addEventListener("pageshow", wake);
     document.addEventListener("visibilitychange", visible);
     this.unlisten = () => {
-      window.removeEventListener("online", wake);
+      window.removeEventListener("online", check);
       window.removeEventListener("pageshow", wake);
       document.removeEventListener("visibilitychange", visible);
     };
@@ -258,6 +312,8 @@ class Connection {
     this.stopHeartbeat?.();
     this.stopHeartbeat = null;
     this.probe = null;
+    this.awaitAnswer = null;
+    this.retime = null;
     if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     this.endLeave();
@@ -277,6 +333,7 @@ class Connection {
   send(msg: ClientMsg): boolean {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+      if (ANSWERED.has(msg.type)) this.awaitAnswer?.();
       return true;
     }
     return false;
@@ -314,11 +371,17 @@ class Connection {
    *  token whether to rejoin, and a seat mid-game is reclaimed by its
    *  token, so the player keeps it. Safe to call in any state. */
   reconnect(): void {
+    this.replace("replaced");
+  }
+
+  /** Give up the current socket (or connect) and open a new one at once. */
+  private replace(cause: DropCause): void {
     if (!this.started) return;
     this.immediate = true;
     this.stopHeartbeat?.();
     const ws = this.ws;
     if (ws) {
+      this.lose(cause);
       ws.close();     // onclose -> scheduleReconnect (immediately, see above)
       if (this.ws === ws) {   // a fake or half-open socket that never fired onclose
         this.ws = null;
@@ -330,6 +393,18 @@ class Connection {
       this.reconnectTimer = null;
       this.scheduleReconnect();
     }
+  }
+
+  /** The current socket is being given up: if it had opened, say so, and
+   *  retry at once when it had been working for a while. */
+  private lose(cause: DropCause): void {
+    setStalled(false);
+    const opened = this.openedAt;
+    this.openedAt = null;
+    if (opened === null) return;
+    if (Date.now() - opened > LONG_LIVED_MS) this.immediate = true;
+    this.lostAt ??= Date.now();
+    noteLink({ kind: "down", cause });
   }
 
   private endLeave(): void {
@@ -348,6 +423,11 @@ class Connection {
   }
 
   private emit(msg: ServerMsg): void {
+    const atTable = msg.type === "state" ? true : msg.type === "left" ? false : this.atTable;
+    if (atTable !== this.atTable) {
+      this.atTable = atTable;
+      this.retime?.();
+    }
     for (const fn of this.msgListeners) fn(msg);
   }
 
@@ -371,51 +451,100 @@ class Connection {
     this.setStatus("connecting");
     const ws = this.makeSocket();
     this.ws = ws;
+    this.openedAt = null;
+    this.connectAt = Date.now();
+    let connectTimer: number | null = window.setTimeout(() => {
+      connectTimer = null;
+      if (this.ws === ws && this.openedAt === null) {
+        // never opened: cut it, so a late open or close changes nothing
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        try { ws.close(); } catch { /* already closed */ }
+        this.ws = null;
+        stop();
+        this.setStatus("closed");
+        this.scheduleReconnect();
+      }
+    }, CONNECT_MS);
+    // One ping in flight at a time. `timer` is the next ping's, or the
+    // deadline of the one in flight; `answer` waits for the server to answer
+    // an action.
     let timer: number | null = null;
+    let deadlineAt = 0;
+    let answer: number | null = null;
     let nonce = 0;
     let awaiting: number | null = null;
     let enabled = false;
     const stop = () => {
       if (timer !== null) window.clearTimeout(timer);
       timer = null;
+      if (answer !== null) window.clearTimeout(answer);
+      answer = null;
+      if (connectTimer !== null) window.clearTimeout(connectTimer);
+      connectTimer = null;
     };
     this.stopHeartbeat = stop;
-    const schedulePing = () => {
-      stop();
+    const expire = (ms: number) => {
+      if (timer !== null) window.clearTimeout(timer);
+      deadlineAt = Date.now() + ms;
       timer = window.setTimeout(() => {
-        if (this.ws !== ws || ws.readyState !== WebSocket.OPEN) return;
-        awaiting = ++nonce;
-        try {
-          ws.send(JSON.stringify({ type: "ping", nonce: awaiting } satisfies ClientMsg));
-        } catch {
-          this.reconnect();
-          return;
-        }
-        timer = window.setTimeout(() => {
-          if (this.ws === ws && awaiting !== null) this.reconnect();
-        }, HEARTBEAT_MS);
-      }, HEARTBEAT_MS);
+        timer = null;
+        if (this.ws === ws && awaiting !== null) this.replace("no_pong");
+      }, ms);
     };
-
-    this.probe = () => {
+    /** Ping, and replace the socket if no pong is back within `deadline`. A
+     *  ping already in flight is not doubled: its deadline only moves closer. */
+    const ping = (deadline: number) => {
       if (!enabled || this.ws !== ws || ws.readyState !== WebSocket.OPEN) return;
-      stop();
+      if (awaiting !== null) {
+        if (deadlineAt - Date.now() > deadline) expire(deadline);
+        return;
+      }
       awaiting = ++nonce;
       try {
         ws.send(JSON.stringify({ type: "ping", nonce: awaiting } satisfies ClientMsg));
       } catch {
-        this.reconnect();
+        this.replace("closed");
         return;
       }
+      expire(deadline);
+    };
+    const schedulePing = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      const [every, deadline] = this.atTable
+        ? [TABLE_PING_MS, TABLE_PONG_MS] : [HEARTBEAT_MS, HEARTBEAT_MS];
       timer = window.setTimeout(() => {
-        if (this.ws === ws && awaiting !== null) this.reconnect();
-      }, PROBE_MS);
+        timer = null;
+        ping(deadline);
+      }, every);
+    };
+
+    this.probe = () => ping(PROBE_MS);
+    this.awaitAnswer = () => {
+      if (!enabled || this.ws !== ws || answer !== null) return;
+      answer = window.setTimeout(() => {
+        answer = null;
+        setStalled(true);
+        ping(ACTION_PONG_MS);
+      }, ANSWER_MS);
+    };
+    this.retime = () => {
+      if (enabled && this.ws === ws && awaiting === null) schedulePing();
     };
 
     ws.onopen = () => {
       if (this.ws !== ws) return;
+      if (connectTimer !== null) window.clearTimeout(connectTimer);
+      connectTimer = null;
       this.backoff = 500;
       this.generation += 1;
+      this.openedAt = Date.now();
+      if (this.lostAt !== null) {
+        noteLink({ kind: "up", ms: Date.now() - this.lostAt });
+        this.lostAt = null;
+      }
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
       // room wins between an invite link, an explicit action, and a saved
       // session, is App's call (intent.ts); reading localStorage here would
@@ -425,6 +554,9 @@ class Connection {
 
     ws.onmessage = (ev: MessageEvent) => {
       if (this.ws !== ws) return;   // a socket we closed or replaced
+      // Anything at all from the server answers the action just sent.
+      if (answer !== null) { window.clearTimeout(answer); answer = null; }
+      setStalled(false);
       let msg: ServerMsg;
       try {
         msg = JSON.parse(ev.data as string) as ServerMsg;
@@ -497,6 +629,7 @@ class Connection {
       stop();
       if (this.leavingWs === ws) this.endLeave();
       if (this.ws !== ws) return;
+      this.lose("closed");
       this.ws = null;
       this.setStatus("closed");
       this.scheduleReconnect();
@@ -511,7 +644,7 @@ class Connection {
     if (this.reconnectTimer !== null) return;
     const delay = this.immediate ? 0 : this.backoff;
     this.immediate = false;
-    this.backoff = Math.min(this.backoff * 2, 8000);
+    this.backoff = Math.min(this.backoff * 2, this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

@@ -254,7 +254,7 @@ describe("sending a play", () => {
 });
 
 
-it("recovers an unanswered play after reconnecting to the unchanged authoritative state", () => {
+it("resends an unanswered play once after reconnecting to the unchanged authoritative state", () => {
   const unchanged = state({ turn: 0, trick: { leader: 0, plays: [] } });
   render(unchanged);
   act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[0].click());
@@ -266,7 +266,10 @@ it("recovers an unanswered play after reconnecting to the unchanged authoritativ
   }
   serverSays({ ...unchanged, type: "state" });
   render({ ...unchanged });
-  expect(play().disabled).toBe(false);
+  expect(sent).toEqual([{ type: "play", card_ids: [1] }, { type: "play", card_ids: [1] }]);
+  expect(play().disabled).toBe(true);           // the resend is in flight
+  render({ ...unchanged, hand: unchanged.hand.slice(1), turn: 1 });
+  expect(sent).toHaveLength(2);
 });
 
 describe("a pending action across a reconnect", () => {
@@ -285,7 +288,7 @@ describe("a pending action across a reconnect", () => {
     phase: "bury", turn: 0, hand: cards(33), banker: 0,
     players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });
 
-  it("play that never committed: Play waits through the reconnect, then the same state frees it with the selection kept", () => {
+  it("play that never committed: it goes again once on the new connection; a second loss frees Play with the selection kept", () => {
     render(playing());
     pick(2); pick(3);
     act(() => primary().click());
@@ -293,9 +296,28 @@ describe("a pending action across a reconnect", () => {
     reconnect();
     // open alone settles nothing: still waiting for the server's state
     expect(primary().disabled).toBe(true);
+    expect(sent).toHaveLength(1);
     render(playing());
+    expect(sent).toEqual([{ type: "play", card_ids: [3, 4] }, { type: "play", card_ids: [3, 4] }]);
+    expect(primary().disabled).toBe(true);
+    render(playing({ attacker_points: 5 }));      // a same-hand broadcast settles nothing
+    expect(sent).toHaveLength(2);
+    reconnect();
+    render(playing());
+    expect(sent).toHaveLength(2);                 // once only
     expect(primary().disabled).toBe(false);
     expect(selected()).toEqual([3, 4]);
+  });
+
+  it("play that never committed is not resent when the turn is no longer yours", () => {
+    render(playing());
+    pick(2);
+    act(() => primary().click());
+    reconnect();
+    // the seat's bot played meanwhile: the hand changed, nothing goes again
+    render(playing({ hand: cards(25).slice(1), turn: 1,
+      trick: { leader: 0, plays: [{ seat: 0, cards: ["S2"] }] } }));
+    expect(sent).toHaveLength(1);
   });
 
   it("play that committed: the first state after the reconnect shows it, and the selection clears", () => {
@@ -311,7 +333,7 @@ describe("a pending action across a reconnect", () => {
     expect(selected()).toEqual([]);
   });
 
-  it("bury that never committed: Bury waits through the reconnect, then the same state frees it with the eight kept", () => {
+  it("bury that never committed: it goes again once; a second loss frees Bury with the eight kept", () => {
     render(burying());
     for (let i = 0; i < 8; i++) pick(i);
     act(() => primary().click());
@@ -319,6 +341,11 @@ describe("a pending action across a reconnect", () => {
     reconnect();
     expect(primary().disabled).toBe(true);
     render(burying());
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual({ type: "bury", card_ids: [1, 2, 3, 4, 5, 6, 7, 8] });
+    reconnect();
+    render(burying());
+    expect(sent).toHaveLength(2);
     expect(primary().disabled).toBe(false);
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });

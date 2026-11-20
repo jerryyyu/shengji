@@ -59,6 +59,18 @@ def test_bounded_ints_refuse_bools_and_out_of_range():
                   "lead": "pair"}
 
 
+def test_connection_notices_keep_their_cause_and_time_down():
+    down = telemetry.clean_event({"e": "notice", "t": 5, "code": "disconnected",
+                                  "where": "table", "cause": "no_pong"})
+    assert down == {"e": "notice", "t": 5, "code": "disconnected", "where": "table",
+                    "cause": "no_pong"}
+    back = telemetry.clean_event({"e": "notice", "code": "reconnected", "ms": 4400})
+    assert back == {"e": "notice", "code": "reconnected", "ms": 4400}
+    odd = telemetry.clean_event({"e": "notice", "code": "disconnected",
+                                 "cause": "Wi-Fi at home", "ms": -1})
+    assert odd == {"e": "notice", "code": "disconnected"}
+
+
 def test_message_stamps_only_known_forms():
     events, stamps = telemetry.clean_message(
         {"type": "client_event", "v": 1, "form": "phone-land", "first_visit": True,

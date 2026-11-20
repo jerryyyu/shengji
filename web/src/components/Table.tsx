@@ -317,12 +317,18 @@ export default function Table({ state }: { state: GameState }) {
   // - your hand changed or the turn moved on: it committed, so the whole
   //   selection clears, including cards a failed throw handed back;
   // - the first state after a reconnect still shows the same hand and turn:
-  //   it never committed (or its answer was lost), so pending clears and the
+  //   it never reached the server, so it goes again once on the new
+  //   connection while its cards are still in hand (the server refuses it
+  //   if it is no longer legal; a socket it replaced can no longer act); a
+  //   second reconnect with it still unanswered clears pending, and the
   //   selection stays for a retry;
   // - an error comes back: pending clears and the selection stays.
   // The socket opening alone settles nothing, and neither does a same-hand
   // broadcast on the connection the play was sent on.
-  const [pending, setPending] = useState<{ kind: "play" | "bury"; handKey: string; turn: number | null; generation: number } | null>(null);
+  const [pending, setPending] = useState<{
+    kind: "play" | "bury"; cardIds: number[]; handKey: string; turn: number | null;
+    generation: number; resent: boolean;
+  } | null>(null);
   const handKey = state.hand.map((c) => c.id).join(",");
   // your own plays so far in this browser; the first few get the coach
   const [plays, setPlays] = useState(playsMade);
@@ -336,7 +342,11 @@ export default function Table({ state }: { state: GameState }) {
       setPending(null);
       setSelected(new Set());
     } else if (conn.generation !== pending.generation) {
-      setPending(null);
+      const inHand = new Set(state.hand.map((c) => c.id));
+      const again = !pending.resent && state.turn === state.you && !state.joining_you
+        && state.phase === pending.kind && pending.cardIds.every((id) => inHand.has(id))
+        && conn.send({ type: pending.kind, card_ids: pending.cardIds });
+      setPending(again ? { ...pending, generation: conn.generation, resent: true } : null);
     }
     // settles on each new state, so a re-render of the same state is no answer
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -362,7 +372,8 @@ export default function Table({ state }: { state: GameState }) {
   const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
-    setPending({ kind: msg.type, handKey, turn: state.turn, generation: conn.generation });
+    setPending({ kind: msg.type, cardIds: msg.card_ids, handKey, turn: state.turn,
+                 generation: conn.generation, resent: false });
   };
 
   // When the trick resets and last_trick changed, linger on the finished trick

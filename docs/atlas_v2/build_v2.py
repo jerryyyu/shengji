@@ -222,8 +222,7 @@ SCREENS_NOW = [s for s in R["screens"] if s.get("vs") == CMP and not s.get("name
 SCREENS_NAMED = [s for s in R["screens"] if s.get("named_comparator")]
 CMP_ROLE = "the current production" if CMP == PROD else f"the screen comparator; production is release {PROD}"
 _SC = R.get("screen_comparator")
-COMPARATOR_NOTE = (f" <b>Production is release {PROD}</b>; {esc(_SC['note'])}" if _SC and CMP != PROD
-                   else (f" {esc(_SC['note'])}" if _SC else ""))
+COMPARATOR_NOTE = f" Production is release {PROD}." if CMP != PROD else ""
 SCREENS_EARLIER = [s for s in R["screens"] if s.get("vs") != CMP and not s.get("named_comparator")]
 EARLIER_RELEASES = sorted({s["vs"] for s in SCREENS_EARLIER})
 def _reads(n): return f"{n} read" + ("" if n == 1 else "s")
@@ -301,8 +300,8 @@ SVG = "\n".join(svg)
 
 # ---------- tables ----------
 def screens_table(items, ctx=False):
-    """One short row per screen (what was tested, the read, what we learned); the full registry text --
-    candidate, comparator, instrument, seeds and note -- sits in a closed toggle under the row."""
+    """One short row per screen: what was tested, the read, what we learned. The full record
+    (candidate, comparator, instrument, seeds, note) stays in registry.json."""
     out = ['<div class="tablewrap"><table class="screens"><thead><tr><th>lane</th><th title="the release serving production on the screen date; on a day production changed, the release that took over that day">prod release</th><th>what was tested</th><th class="num">read</th><th>what we learned</th><th>status</th></tr></thead><tbody>']
     for s in items:
         cells = []
@@ -310,15 +309,9 @@ def screens_table(items, ctx=False):
             v, cls = (NO_ESTIMATE, "chip unavailable") if s.get("status") == "unavailable" else verdict(r["lo"], r["hi"])
             lab = "" if r["arm"] == "-" else f'<span class="sub">{esc(r["arm"])} · {r["confidence"]*100:g}% {esc(r.get("role",""))}</span><br>'
             cells.append(f'{lab}{esc(iv(r["point"], r["lo"], r["hi"]))}<br><span class="{cls}">{v}</span>')
-        fam = f'<dt>family</dt><dd>{esc(s["family"])}</dd>' if s.get("family") else ""
-        ref = f'<dt>ref</dt><dd>{esc(s["ref"])}</dd>' if s.get("ref") else ""
         out.append(f'<tr class="lead"><td class="mono">{esc(s["id"])}<br><span class="sub">{esc(s.get("date", ""))}</span></td><td class="num">{esc(prod_release_label(R, s.get("date", "")))}</td><td>{esc(s["title"])}</td>'
                    f'<td class="num">{"<br>".join(cells)}</td><td>{esc(s["takeaway"])}</td>'
-                   f'<td><span class="chip {esc(s["status"])}">{esc(s["status"])}</span>{("<br><small>" + esc(s.get("eta","")) + "</small>") if s.get("eta") else ""}</td></tr>')
-        out.append(f'<tr class="more"><td></td><td colspan="5"><details><summary>full record</summary><dl>'
-                   f'<dt>candidate</dt><dd>{esc(s["candidate"])}</dd><dt>compared to</dt><dd>{esc(s["comparator"])}</dd>'
-                   f'<dt>instrument</dt><dd>{esc(s["form"])} · {esc(s["instrument"])} <span class="sub">[{esc(s["instrument_kind"])}]</span></dd>'
-                   f'<dt>seeds</dt><dd class="mono">{esc(s.get("seeds","")) or "—"}</dd>{fam}<dt>note</dt><dd>{esc(s["note"])}</dd>{ref}</dl></details></td></tr>')
+                   f'<td><span class="chip {esc(s["status"])}">{esc(s["status"])}</span><br><small class="sub">{esc(s["form"])} · {esc(s["instrument_kind"])}</small>{("<br><small>" + esc(s.get("eta","")) + "</small>") if s.get("eta") else ""}</td></tr>')
     out.append("</tbody></table></div>")
     return "\n".join(out)
 def _head(h):
@@ -336,11 +329,8 @@ def baseline_cards():
     era as one line.  The full evidence for the earlier ones stays in registry.json."""
     b = [x for x in R["baseline"] if x["status"] == "production"][0]
     ev = "".join(f'<li>{esc(e["what"])}: <b class="num">{esc(iv(e["point"], e["lo"], e["hi"])) if e["point"] is not None else "PASS"}</b> <span class="sub">({esc(e["ref"])})</span></li>' for e in b["evidence"])
-    cv = "".join(f"<li>{esc(c)}</li>" for c in b["caveats"])
     card = (f'<article class="card production"><header><span class="chip production">release {b["release"]} · production</span> <span class="sub">since {esc(b["since"])}</span></header>'
-            f'<p>{esc(b["oneline"])}</p><p class="mono small">{esc(b["bot"])}</p>'
-            f'<details><summary>recipe, evidence and caveats</summary><p>{esc(b["recipe"])}</p><p class="sub">head {esc(b["head"])} · package {esc(b["package"])}</p>'
-            f'<h4>Evidence</h4><ul>{ev}</ul><h4>Caveats</h4><ul class="sub">{cv}</ul></details></article>')
+            f'<p>{esc(b["oneline"])}</p><ul>{ev}</ul></article>')
     earlier = [x for x in R["baseline"] if x["status"] != "production"]
     lines = "".join(f'<li><b>release {x["release"]}</b> <span class="sub">{esc(x["since"])}</span> — {esc(x["oneline"])}</li>'
                     for x in sorted(earlier, key=lambda x: x["release"], reverse=True))
@@ -397,13 +387,13 @@ a{{color:var(--accent)}}
 </style>
 <main>
 <h1>Shengji Atlas v2</h1>
-<p class="lede">The release-29 era. Every new model and every search screen is read against <b>release {CMP} as served</b> ({esc(EARLIER_PRODS)}now <b>{CMP}</b>).{COMPARATOR_NOTE} One registry file feeds this page; nothing here is typed twice. Rows 1–55 and the pre-release-29 models stay in the <a href="{esc(R["history"]["atlas"])}">old atlas</a> and the <a href="{esc(R["history"]["page"])}">old scaling page</a>, frozen.</p>
+<p class="lede">Every screen since release 29, read against <b>release {CMP} as served</b>.{COMPARATOR_NOTE} Older rows: <a href="{esc(R["history"]["atlas"])}">old atlas</a>.</p>
 
 <h2>Production</h2>
 {baseline_cards()}
 
 <h2>Screens against release {CMP} ({CMP_ROLE})</h2>
-<p class="sub">Green clears zero, grey crosses it, hollow marks are waiting for their seal, and a row marked {esc(NO_ESTIMATE)} finished without a strength estimate and has no mark. Each row states its own coverage: single reads at 95%, the two primaries of a multi-arm family at 97.5% each (Bonferroni), its diagnostic arm at 95%. A family is read as a whole; no partial results are shown. The chart has one labelled band per comparator: the reads against release {CMP} first, then the reads against the era's earlier releases (a closed comparator, kept as the record of how {CMP} was chosen), then the context rows against release 28 (lighter).</p>
+<p class="sub">Green clears zero · grey crosses it · hollow awaits its seal · bands: release {CMP} first, then earlier releases, then context (vs release 28).</p>
 <div class="figure">{SVG}</div>
 {now_block}
 {earlier_sections()}
@@ -411,9 +401,6 @@ a{{color:var(--accent)}}
 {screens_table(R["context_screens"], ctx=True)}
 
 <h2>Models of the era</h2>
-<p class="sub">val_ce is calibration; the search consumes ranking, so rank regret and the screens above are what decide.</p>
-{models_note}
-{head_note}
 {models_table()}
 
 <h2>Data generation on the search</h2>

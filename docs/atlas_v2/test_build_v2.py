@@ -209,19 +209,21 @@ def test_a_promotion_keeps_every_named_comparator_in_its_own_section():
 
 
 def test_rows_lead_with_a_short_title_and_takeaway_and_production_is_one_card():
-    """Jerry 2026-10-03: the long candidate/note text was hard to digest, and one production section is
-    enough.  Every screen leads with a short title and a one-sentence takeaway (the full record sits in a
-    closed toggle); the current release is one card and every earlier release is one line."""
+    """Every screen is a short title and a one-sentence takeaway; the full record (candidate, note,
+    instrument, seeds) stays in registry.json, off the page. The current release is one card and every
+    earlier release is one line."""
     mod = _load(); reg = json.loads((HERE / "registry.json").read_text()); page = mod.page
     for s in reg["screens"] + reg["context_screens"]:
         assert mod.esc(s["title"]) in page and mod.esc(s["takeaway"]) in page, s["id"]
-        assert mod.esc(s["note"]) in page                           # the record is kept, behind the toggle
-    assert page.count("<summary>full record</summary>") == len(reg["screens"]) + len(reg["context_screens"])
+        assert mod.esc(s["note"]) not in page or len(s["note"]) < 40   # the record stays in the registry
+    assert "<summary>full record</summary>" not in page
     assert page.count('<article class="card') == 1                  # one production card
     for b in reg["baseline"]:
         assert mod.esc(b["oneline"]) in page
         if b["status"] != "production":
             assert mod.esc(b["recipe"]) not in page                 # earlier releases are one line each
+        else:
+            assert mod.esc(b["bot"]) not in page and mod.esc(b["recipe"]) not in page   # the card is its line and evidence
     for key, lst in (("title", "screens"), ("takeaway", "screens"), ("oneline", "baseline")):
         bad = copy.deepcopy(reg); del bad[lst][0][key]
         assert any(key in e for e in mod.check_registry(bad)), key

@@ -63,13 +63,14 @@ export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null 
   return mine === undefined || mine === winner ? null : mine;
 }
 
-/** The note for a ranked seat whose rating change is missing because the
- *  seat was taken mid-round from an open table. A guest's seat and an
- *  account whose rating is still on its way get no note; an unranked room
- *  shows none. */
-export function RatingLine({ result, ranked }: { result: RoundResult; ranked: boolean }) {
-  if (!ranked || result.unranked !== "joined") return null;
-  return <p className="rating-unranked">Unranked · joined mid-round</p>;
+/** The note for a ranked seat with no rating change: a seat taken mid-round
+ *  from an open table, or a guest, who is told how to be ranked. An account
+ *  whose rating is still on its way gets no note; an unranked room shows none. */
+export function RatingLine({ result, ranked, guest }: { result: RoundResult; ranked: boolean; guest: boolean }) {
+  if (!ranked) return null;
+  if (result.unranked === "joined") return <p className="rating-unranked">Unranked · joined mid-round</p>;
+  if (guest || result.unranked === "guest") return <p className="rating-unranked">Sign in to be ranked</p>;
+  return null;
 }
 
 /** "+12", "−4" or "±0": a rating change short enough for the result line. */
@@ -163,7 +164,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
         {gameWon ? (
           <p className="result-games">Games: Us {result.games_won[us]} · Them {result.games_won[them]}</p>
         ) : null}
-        {rating ? null : <RatingLine result={result} ranked={ranked} />}
+        {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
 
         {hasDetails ? (
           <details className="result-details" onToggle={(e) => setOpen(e.currentTarget.open)}>

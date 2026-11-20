@@ -273,15 +273,15 @@ describe("round end rating line", () => {
   });
 
 
-  it("a guest seat shows no note, from the result's unranked: guest or the state's guest", () => {
+  it("a guest seat at a ranked table reads 'Sign in to be ranked', from the result's unranked: guest or the state's guest", () => {
     renderModal(makeResult({ unranked: "guest" }), ranked);
-    expect(host.querySelector(".rating-unranked")).toBeNull();
+    expect(host.querySelector(".rating-unranked")!.textContent).toBe("Sign in to be ranked");
     expect(host.textContent).not.toContain("Guest");
     expect(host.querySelector(".google-signin-slot")).toBeNull();
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult(), { ...ranked, guest: true });
-    expect(host.querySelector(".rating-unranked")).toBeNull();
+    expect(host.querySelector(".rating-unranked")!.textContent).toBe("Sign in to be ranked");
     expect(host.textContent).not.toContain("Guest");
   });
 

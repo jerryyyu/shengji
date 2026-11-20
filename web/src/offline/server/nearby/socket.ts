@@ -31,14 +31,47 @@ export class NearbySocket {
   private pingSent: number | null = null;
   /** Clock time of the latest move sent, until the host's next state. */
   private movedAt: number | null = null;
+  /** A seat's resume: its hello is out and the socket opens once the host
+   *  has answered it (bound the seat and sent its state). */
+  private resuming = false;
+  /** The host's frames that came while resuming, handed on after the open. */
+  private early: string[] = [];
 
+  /** `greet`: a seated joiner's resume, called once the link is up. When it
+   *  gives a table_join, this socket sends it as the hello and reports open
+   *  only once the host's answer (a room, state or error frame) is in, so
+   *  the page shows the table as connected and sends a move only after the
+   *  seat is bound to this link and its fresh state applied. */
   constructor(transport: NearbyTransport, code: string, onState: ((state: LinkState, detail?: string) => void) | null = null,
-              clock: Clock = realClock) {
+              clock: Clock = realClock, greet: (() => Record<string, unknown> | null) | null = null) {
     this.onState = onState;
     this.clock = clock;
+    const started = clock.now();
+    // a seated joiner's new link: its hello will be the resume
+    const resume = greet !== null && greet() !== null;
+    if (resume) {
+      // a resume that has not reached the host by now is stuck (a stale
+      // path after the network came back): this attempt ends, and the page
+      // makes a fresh one
+      clock.setTimeout(() => {
+        if (this.readyState === NearbySocket.CONNECTING && this.link === null) {
+          nearbyLog("socket", `resume: no link after ${LIMITS.linkSeconds} s; a fresh attempt`);
+          this.finish();
+        }
+      }, LIMITS.linkSeconds);
+    }
     transport
       .join(code, {
         message: (text) => {
+          if (this.resuming) {
+            this.heard = this.clock.now();
+            if (text === PONG_TEXT) return;
+            this.early.push(text);
+            const type = frameType(text);
+            nearbyLog("socket", `resume: in ${type}`);
+            if (type === "state" || type === "room" || type === "error") this.resumed(type);
+            return;
+          }
           if (this.readyState !== NearbySocket.OPEN) return;
           const now = this.clock.now();
           this.heard = now;
@@ -56,6 +89,7 @@ export class NearbySocket {
         },
         closed: () => this.finish(),
         state: (state, detail) => this.onState?.(state, detail),
+        resume,
       })
       .then(
         (link) => {
@@ -64,14 +98,50 @@ export class NearbySocket {
             return;
           }
           this.link = link;
-          this.readyState = NearbySocket.OPEN;
           this.heard = this.clock.now();
-          nearbyLog("socket", "open");
-          this.ping(link);
-          this.onopen?.({} as Event);
+          const hello = greet?.() ?? null;
+          const text = hello === null ? null : NearbySocket.outbound(JSON.stringify(hello));
+          if (text === null) {
+            this.readyState = NearbySocket.OPEN;
+            nearbyLog("socket", "open");
+            this.ping(link);
+            this.onopen?.({} as Event);
+            return;
+          }
+          this.resuming = true;
+          nearbyLog("socket", `resume: link up in ${Math.round((this.clock.now() - started) * 1000)} ms; hello sent (${hello!.token ? "with" : "no"} token)`);
+          try {
+            link.send(text);
+          } catch {
+            this.close();
+            return;
+          }
+          this.clock.setTimeout(() => {
+            if (this.link === link && this.resuming) {
+              nearbyLog("socket", `resume: no answer in ${LIMITS.resumeSeconds} s; a fresh attempt`);
+              this.close();
+            }
+          }, LIMITS.resumeSeconds);
         },
         () => this.finish(),
       );
+  }
+
+  /** The host answered the resume: the socket is open, and the frames that
+   *  came with the answer go to the page after its open, in order. */
+  private resumed(type: string): void {
+    const link = this.link!;
+    this.resuming = false;
+    this.readyState = NearbySocket.OPEN;
+    nearbyLog("socket", `resume: accepted (${type}); open`);
+    this.ping(link);
+    this.onopen?.({} as Event);
+    const early = this.early;
+    this.early = [];
+    for (const text of early) {
+      if (this.readyState !== NearbySocket.OPEN) return;
+      this.onmessage?.({ data: text } as MessageEvent);
+    }
   }
 
   /** Ping the host every LIMITS.pingSeconds, so it knows this phone is
@@ -170,6 +240,8 @@ export class NearbySocket {
   private finish(): void {
     if (this.readyState === NearbySocket.CLOSED) return;
     this.readyState = NearbySocket.CLOSED;
+    this.resuming = false;
+    this.early = [];
     this.link = null;
     this.onclose?.({} as CloseEvent);
   }

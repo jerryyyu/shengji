@@ -49,3 +49,8 @@ export function setNearbySession(on: boolean): void {
   NEARBY_SESSION = on;
   for (const l of [...listeners]) l();
 }
+
+/** A nearby game on this page, re-rendering when it changes. */
+export function useNearbySession(): boolean {
+  return useSyncExternalStore(subscribeOffline, () => NEARBY_SESSION, () => NEARBY_SESSION);
+}

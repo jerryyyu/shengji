@@ -88,6 +88,8 @@ const ANSWERED: ReadonlySet<ClientMsg["type"]> = new Set<ClientMsg["type"]>([
   "play", "bury", "declare", "pass_declare", "next_round", "im_back",
   "table_chat", "table_allow_joiners",
 ]);
+/** The longest wait between a nearby link's reconnect attempts. */
+export const NEARBY_BACKOFF_MAX_MS = 2000;
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
@@ -678,7 +680,10 @@ class Connection {
     if (this.reconnectTimer !== null) return;
     const delay = this.immediate ? 0 : this.backoff;
     this.immediate = false;
-    this.backoff = Math.min(this.backoff * 2, this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
+    // a nearby seat has the host's window (about a minute) to get back in:
+    // its attempts stay close together through it
+    this.backoff = Math.min(this.backoff * 2,
+      this.transport === "nearby" ? NEARBY_BACKOFF_MAX_MS : this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

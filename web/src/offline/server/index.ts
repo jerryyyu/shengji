@@ -43,6 +43,7 @@ if (typeof window !== "undefined") installProbe();
 import { NearbyHost, type NearbyHostEvents } from "./nearby/host";
 import { nativeTransport } from "./nearby/native";
 import { NearbySocket } from "./nearby/socket";
+import { realClock } from "./clock";
 import { NearbyError, type LinkState, type NearbyTransport } from "./nearby/transport";
 
 let nearbyTransport: NearbyTransport | null = null;
@@ -96,9 +97,17 @@ export function endNearbyHost(): void {
   host.stopWhenClosed();
 }
 
-/** The joiner's socket to the nearby table `code`, for ws.ts's Connection. */
-export function nearbyJoinSocket(code: string, onState: (state: LinkState, detail?: string) => void): NearbySocket {
+/** The joiner's socket to the nearby table `code`, for ws.ts's Connection;
+ *  `greet` gives a seated joiner's resume (NearbySocket). */
+export function nearbyJoinSocket(code: string, onState: (state: LinkState, detail?: string) => void,
+                                 greet: (() => Record<string, unknown> | null) | null = null): NearbySocket {
   endingHost?.stop();
   endingHost = null;
-  return new NearbySocket(transport(), code, onState);
+  return new NearbySocket(transport(), code, onState, realClock, greet);
+}
+
+/** Calls `fn` with each change of the phone's network path (the plugin's
+ *  path monitor: true once a usable path is back); a no-op outside the app. */
+export function onNearbyPath(fn: (up: boolean) => void): () => void {
+  return (nearbyTransport ?? nativeTransport())?.path?.(fn) ?? (() => {});
 }

@@ -15,7 +15,9 @@ function harness() {
   let onStatus: (s: ConnStatus) => void = () => {};
   let onState: (s: LinkState, detail?: string) => void = () => {};
   let visible: () => void = () => {};
-  const calls = { useNearby: 0, leaveNearby: 0, leaveToLobby: 0, refused: 0, offline: [] as boolean[], session: [] as boolean[] };
+  let greet: () => Record<string, unknown> | null = () => null;
+  const paths = new Set<(up: boolean) => void>();
+  const calls = { useNearby: 0, leaveNearby: 0, leaveToLobby: 0, refused: 0, reconnect: 0, offline: [] as boolean[], session: [] as boolean[] };
   const deps: NearbyJoinDeps = {
     conn: {
       send: ((m: Msg) => { sent.push(m); return true; }) as never,
@@ -25,8 +27,10 @@ function harness() {
       leaveNearby: () => { calls.leaveNearby += 1; },
       // as ws.ts: the page's own `left` at once, before the host answers
       leaveToLobby: () => { calls.leaveToLobby += 1; onMsg({ type: "left" }); },
+      reconnect: () => { calls.reconnect += 1; },
     },
-    socketFor: async (_code, fn) => { onState = fn; return () => ({}) as WebSocket; },
+    socketFor: async (_code, fn, hello) => { onState = fn; greet = hello; return () => ({}) as WebSocket; },
+    watchPath: async (fn) => { paths.add(fn); return () => { paths.delete(fn); }; },
     offline: () => true,
     setOffline: (on) => { calls.offline.push(on); },
     setSession: (on) => { calls.session.push(on); },
@@ -41,6 +45,10 @@ function harness() {
     status: (s: ConnStatus) => onStatus(s),
     state: (s: LinkState, detail?: string) => onState(s, detail),
     visible: () => visible(),
+    /** The hello a new link would resume with now. */
+    greet: () => greet(),
+    path: (up: boolean) => { for (const fn of [...paths]) fn(up); },
+    watching: () => paths.size,
   };
 }
 
@@ -136,8 +144,9 @@ describe("the nearby join", () => {
     h.msg({ type: "room", room: "K7Q2M" });
     h.status("closed");
     await vi.advanceTimersByTimeAsync(20_000);
+    // the new link's hello is the resume; the socket opens once it is answered
+    expect(h.greet()).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", token: "tok-1" });
     h.status("open");
-    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", token: "tok-1" });
     h.msg({ type: "state", room: "K7Q2M" });
     // back in time: the window starts over at the next drop
     h.status("closed");
@@ -191,6 +200,7 @@ describe("the nearby join", () => {
     expect(h.calls.leaveNearby).toBe(1);
     expect(h.store.seated).toBe(false);
     // and the reconnect a close would start never rejoins
+    expect(h.greet()).toBeNull();
     h.status("open");
     expect(h.sent.filter((m) => m.type === "table_join")).toHaveLength(1);
   });
@@ -215,8 +225,8 @@ describe("the nearby join", () => {
     const h = await seated();
     h.status("closed");
     await vi.advanceTimersByTimeAsync(1000);
+    expect(h.greet()).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", token: "tok-9" });
     h.status("open");
-    expect(h.sent[h.sent.length - 1]).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", token: "tok-9" });
     h.msg({ type: "left", reason: "host_left" });
     const kept = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join(";");
     expect(kept).not.toMatch(/K7Q2M|tok-9/);
@@ -274,5 +284,42 @@ describe("the nearby join", () => {
     await flush();
     d.state("denied");
     expect(d.calls.refused).toBe(1);
+  });
+  it("before the seat, a new link has no resume hello: the panel peeks and joins on the open socket", async () => {
+    const h = harness();
+    h.store.open("K7Q2M", "Mei");
+    await flush();
+    expect(h.greet()).toBeNull();
+  });
+
+  it("the network back while the seat is not connected starts a fresh attempt at once", async () => {
+    const h = await seated();
+    expect(h.watching()).toBe(1);
+    h.status("closed");
+    h.path(false);
+    expect(h.calls.reconnect).toBe(0);
+    h.path(true);
+    expect(h.calls.reconnect).toBe(1);
+    // connected again: a path change is nothing to do
+    h.status("open");
+    h.path(true);
+    expect(h.calls.reconnect).toBe(1);
+  });
+
+  it("a network down past the host's window ends on the host-left screen, not a stuck pill", async () => {
+    const h = await seated();
+    h.status("closed");
+    // attempt after attempt fails while the network is down
+    for (let t = 0; t < HOST_WINDOW_MS - 2000; t += 2000) {
+      h.status("connecting");
+      await vi.advanceTimersByTimeAsync(1000);
+      h.status("closed");
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(h.store.hostLeft).toBe(false);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(h.store.hostLeft).toBe(true);
+    expect(h.calls.leaveNearby).toBe(1);
+    expect(h.watching()).toBe(0);
   });
 });

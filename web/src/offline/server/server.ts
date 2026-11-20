@@ -492,19 +492,35 @@ function nearbyJson(room: LocalRoom, now: number): Json {
   };
 }
 
-/** The peek's answer for a nearby table: its people, no takeover seats,
- *  and full once its four seats are taken or its game has begun. */
-export function nearbyPeekJson(room: LocalRoom): Json {
+/** The seats a newcomer may take at a nearby game in progress, as the
+ *  online by-code join's claimable seats (server.py _join_room): every bot
+ *  seat, and a dropped person's seat once its hold has run out (or at once
+ *  after a Leave). None while Allow joiners is off, before the start, or
+ *  once the game is over. A connected person's seat is never one. */
+export function nearbyClaimable(room: LocalRoom, now: number): number[] {
+  const game = room.game;
+  if (room.lobby !== null || !room.allowJoiners || game === null || game.gameOver || room.round === null) return [];
+  return room.seats.flatMap((sd, i) =>
+    sd.isBot || (!sd.connected && (sd.leftByChoice || !reserved(sd, now))) ? [i] : []);
+}
+
+/** The peek's answer for a nearby table: its people, and full once no seat
+ *  is left for a newcomer. Before the start the open seats are the ones it
+ *  does not list; in a game the seats it does not list are the ones a
+ *  newcomer may take over (nearbyClaimable), so the joiner's seat picker
+ *  offers exactly those. */
+export function nearbyPeekJson(room: LocalRoom, now = 0): Json {
   const slots = room.slots();
+  const claimable = room.lobby === null ? new Set(nearbyClaimable(room, now)) : new Set<number>();
   return {
     type: "room_seats",
     room: room.code,
     in_game: room.lobby === null,
-    seats: slots.flatMap((s, i) => s === null || s.isBot ? [] : [{
-      seat: i, name: s.name, is_bot: false, connected: s.connected, team: i % 2,
-      claimable: false, controller: "human", reserved_secs: null,
+    seats: slots.flatMap((s, i) => s === null || claimable.has(i) || (room.lobby !== null && s.isBot) ? [] : [{
+      seat: i, name: s.name, is_bot: s.isBot, connected: room.lobby !== null ? s.connected : s.connected || s.isBot, team: i % 2,
+      claimable: false, controller: room.lobby !== null ? "human" : controller(s), reserved_secs: null,
     }]),
-    full: room.lobby === null || room.lobby.every((s) => s !== null),
+    full: room.lobby === null ? claimable.size === 0 : room.lobby.every((s) => s !== null),
   };
 }
 
@@ -1386,13 +1402,17 @@ export class LocalConnection {
         let seat = room && typeof tok === "string" && tok
           ? room.humans().find((s) => s.token === tok)
           : undefined;
+        if (room && !seat && room.nearby && !room.lobby) {
+          // a game in progress: a newcomer takes over a seat a bot plays, at
+          // once, as the online by-code join does (server.py _join_room)
+          this.takeOver(room, msg);
+          return;
+        }
         if (room && !seat && room.nearby) {
-          // a nearby lobby seats a newcomer in its first free seat; once the
-          // game has started only a seat's own token gets back in
+          // a nearby lobby seats a newcomer in its first free seat
           const want = msg.seat;
-          const free = !room.lobby ? -1
-            : typeof want === "number" && Number.isInteger(want) && want >= 0 && want < 4 && room.lobby[want] === null
-              ? want : room.lobby.indexOf(null);
+          const free = typeof want === "number" && Number.isInteger(want) && want >= 0 && want < 4 && room.lobby![want] === null
+            ? want : room.lobby!.indexOf(null);
           if (free < 0) {
             this.sendDirect({ type: "error", code: "room_full", message: NEARBY_COPY.full });
             return;
@@ -1461,6 +1481,41 @@ export class LocalConnection {
     } catch (e) {
       server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
     }
+  }
+
+  /** A newcomer at a nearby game in progress takes the seat it picked
+   *  when that one may be taken, else the first that may (the hello's
+   *  rule), from this moment on. The seat changes hands in place: its hand,
+   *  its card ids and its place in the trick stay, and the bot stops
+   *  playing it. A new token, so whoever held the seat before cannot take
+   *  it back by theirs. No seat (every seat a connected person's or held,
+   *  or Allow joiners off) is the table-full refusal. */
+  private takeOver(room: LocalRoom, msg: Json): void {
+    const server = this.server;
+    const claimable = nearbyClaimable(room, server.clock.now());
+    const want = msg.seat;
+    const pick = typeof want === "number" && claimable.includes(want) ? want : claimable[0];
+    if (pick === undefined) {
+      this.sendDirect({ type: "error", code: "room_full", message: NEARBY_COPY.full });
+      return;
+    }
+    const seat = room.seats[pick];
+    const took = seat.name;
+    const fromPerson = !seat.isBot;
+    seat.isBot = false;
+    seat.name = nearbyName(msg.name, pick);
+    seat.token = randomToken();
+    seat.away = false;
+    seat.timeoutsInRow = 0;
+    seat.timeoutsInRound = 0;
+    seat.turnStarted = null;
+    room.joinedOnce = true;
+    this.room = room;
+    this.me = seat;
+    this.attach(room, seat);
+    server.chatSystem(room, fromPerson ? `${seat.name} took over for ${took} (offline)` : `${seat.name} took ${took}'s seat`);
+    server.kickBots(room);
+    server.broadcast(room);
   }
 
   /** Every `create_room`, with or without `start: true`: the creator's own
@@ -1532,5 +1587,10 @@ export class LocalConnection {
   /** For tests and the e2e harness: the room this connection is seated in. */
   get currentRoom(): LocalRoom | null {
     return this.room;
+  }
+
+  /** The seat this connection holds, or null. */
+  get seat(): Seat | null {
+    return this.me;
   }
 }

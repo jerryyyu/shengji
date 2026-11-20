@@ -128,6 +128,15 @@ export class NearbyHost {
       for (const [other, p] of this.peers) if (p.device === device && p.conn === null) this.end(other);
     }
     if ([...this.peers.values()].filter((p) => p.conn === null).length >= LIMITS.unseated) {
+      // links only looking at the seats never crowd out a seat's resume: the
+      // oldest of them makes room (it may look again)
+      const looker = [...this.peers].find(([, p]) => p.conn === null && p.peeked);
+      if (looker) {
+        this.refuse("looker_replaced", looker[0]);
+        this.end(looker[0]);
+      }
+    }
+    if ([...this.peers.values()].filter((p) => p.conn === null).length >= LIMITS.unseated) {
       this.refuse("unseated");
       this.link?.close(id);
       return;
@@ -259,9 +268,10 @@ export class NearbyHost {
     if (hello.peek) {
       // the seat picker: the seats, and the link stays unseated until its
       // pick, for one PEEK_SECONDS from its first look
-      this.link?.send(id, JSON.stringify(nearbyPeekJson(this.room)));
-      if (this.room.lobby === null) {
-        // the game has begun: nobody new sits down
+      const seats = nearbyPeekJson(this.room, this.clock.now());
+      this.link?.send(id, JSON.stringify(seats));
+      if (seats.full) {
+        // no seat for a newcomer: the look ends here
         this.endSoon(id, peer);
         return;
       }
@@ -281,8 +291,13 @@ export class NearbyHost {
       for (const [other, p] of this.peers) if (other !== id && p.token === token) this.end(other);
     }
     peer.conn = this.server.connect((frame) => this.deliver(id, peer, frame));
+    // the join is handled in this call: the seat is bound to this link (its
+    // older link ended above) before any later frame of the link is read,
+    // and the resume and state frames go out after that
     peer.conn.receive(JSON.stringify({ type: "table_join", code: this.room.code, name: hello.name, token,
                                        seat: hello.seat ?? null }));
+    const room = peer.conn.currentRoom;
+    nearbyLog("host", `${token ? "resume" : "join"} from ${id}: ${room ? `seat ${room.seatIndex(peer.conn.seat!)} bound` : "refused"}`);
   }
 
   /** A frame from the room to one joiner. A `left`, or a refusal that

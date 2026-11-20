@@ -18,6 +18,7 @@ import { conn, getResumeToken, getSavedRoom } from "./ws";
 import { OFFLINE, setNearbySession, setOffline } from "./offlineMode";
 import { forgetNearbyAllowed, noteNearbyAllowed } from "./nearbySession";
 import type { LinkState } from "./offline/server/nearby/transport";
+import { nearbyLog } from "./nearbyLog";
 
 /** Where a code came from: the Play box or a link. */
 export type CodeFrom = "play" | "link";
@@ -348,8 +349,13 @@ export interface NearbyJoin {
 /** What the nearby join needs of the page: its socket, the on-device
  *  server's module, offline mode and the app's return to the foreground. */
 export interface NearbyJoinDeps {
-  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby">;
-  socketFor(code: string, onState: (state: LinkState, detail?: string) => void): Promise<() => WebSocket>;
+  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby" | "reconnect">;
+  /** `greet` gives the hello a seated joiner's new link resumes with. */
+  socketFor(code: string, onState: (state: LinkState, detail?: string) => void,
+            greet: () => Record<string, unknown> | null): Promise<() => WebSocket>;
+  /** Calls `fn` with each change of the phone's network path; returns the
+   *  unsubscribe. */
+  watchPath(fn: (up: boolean) => void): Promise<() => void>;
   offline(): boolean;
   setOffline(on: boolean): void;
   setSession(on: boolean): void;
@@ -395,6 +401,10 @@ export class NearbyJoinStore {
   /** The seat token, held in memory only: nothing about a nearby table is
    *  written to storage or ever sent to the game server. */
   private token: string | null = null;
+  /** The socket's latest status. */
+  private status: ConnStatus = "closed";
+  /** Ends the network path watch, while the link is live. */
+  private unwatch: (() => void) | null = null;
 
   constructor(deps: NearbyJoinDeps) {
     this.deps = deps;
@@ -437,13 +447,14 @@ export class NearbyJoinStore {
     this.set({ code, step: "looking", peek: null, seat: null });
     const attempt = ++this.attempt;
     this.armLook(attempt);
-    void this.deps.socketFor(code, (s, detail) => this.onLink(attempt, s, detail)).then((make) => {
+    void this.deps.socketFor(code, (s, detail) => this.onLink(attempt, s, detail), () => this.greeting()).then((make) => {
       if (attempt !== this.attempt || this.view?.step !== "looking") return;
       if (!this.live) {
         this.live = true;
         this.wasOffline = this.deps.offline();
         this.deps.setOffline(true);
         this.deps.setSession(true);
+        this.watchPath();
       }
       this.deps.conn.useNearby(make);
     }, () => {
@@ -515,12 +526,38 @@ export class NearbyJoinStore {
     this.clearGone();
     this.clearLeaving();
     this.token = null;
+    this.unwatch?.();
+    this.unwatch = null;
     if (!this.live) return;
     this.live = false;
     this.seated = false;
     this.deps.conn.leaveNearby();
     this.deps.setSession(false);
     this.deps.setOffline(this.wasOffline);
+  }
+
+  /** A new link's hello while seated: the seat's resume by its token. */
+  private greeting(): Record<string, unknown> | null {
+    if (!this.seated) return null;
+    return { type: "table_join", code: this.seatedCode, name: this.name, ...(this.token ? { token: this.token } : {}) };
+  }
+
+  /** While the link is live: when the phone's network comes back and the
+   *  seat is not connected, a fresh attempt starts at once rather than
+   *  after the socket's backoff or on a link that went stale with the old
+   *  path. */
+  private watchPath(): void {
+    const live = this.attempt;
+    void this.deps.watchPath((up) => {
+      nearbyLog("join", `path ${up ? "back" : "down"} (${this.status})`);
+      if (up && this.live && this.seated && this.status !== "open" && this.leaving === null) {
+        nearbyLog("join", "reconnect now: the network is back");
+        this.deps.conn.reconnect();
+      }
+    }).then((unwatch) => {
+      if (this.live && this.unwatch === null && this.attempt >= live) this.unwatch = unwatch;
+      else unwatch();
+    }, () => {});
   }
 
   /** Move the glowing seat to another open seat. */
@@ -590,6 +627,7 @@ export class NearbyJoinStore {
   }
 
   private onStatus(s: ConnStatus): void {
+    this.status = s;
     if (!this.live) return;
     if (this.leaving !== null) {
       // the host answered the Leave by ending the link; the socket's
@@ -618,8 +656,9 @@ export class NearbyJoinStore {
       return;
     }
     if (this.seated) {
-      this.deps.conn.send({ type: "table_join", code: this.view?.code ?? this.seatedCode, name: this.name,
-                            ...(this.token ? { token: this.token } : {}) });
+      // the new link's hello was the resume (greeting), and it is open only
+      // once the host answered it
+      nearbyLog("join", "resume: connected");
     } else if (this.view?.step === "looking") {
       this.set({ ...this.view, linked: true });
       this.deps.conn.send({ type: "table_peek", code: this.view.code });
@@ -667,9 +706,13 @@ export class NearbyJoinStore {
 
 export const nearbyJoin = new NearbyJoinStore({
   conn,
-  async socketFor(code, onState) {
+  async socketFor(code, onState, greet) {
     const m = await import("./offline/server");
-    return () => m.nearbyJoinSocket(code, onState) as unknown as WebSocket;
+    return () => m.nearbyJoinSocket(code, onState, greet) as unknown as WebSocket;
+  },
+  async watchPath(fn) {
+    const m = await import("./offline/server");
+    return m.onNearbyPath(fn);
   },
   offline: () => OFFLINE,
   setOffline,

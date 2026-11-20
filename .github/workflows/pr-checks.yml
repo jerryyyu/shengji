@@ -739,6 +739,7 @@ jobs:
             tests/test_pv_lead_anchor.py \
             tests/test_pv_leaf_greedy_stream.py \
             tests/test_pv_native.py \
+            tests/test_pv_reply_native.py \
             tests/test_pv_finish_lead.py \
             tests/test_tactical_public_observations.py \
             tests/test_pv_declare_wait.py \

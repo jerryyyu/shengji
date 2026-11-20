@@ -409,7 +409,7 @@ def test_a_served_bot_decides_and_counts_exactly_as_off_over_seeded_rounds(versi
 
 def test_the_switch_is_off_by_default_and_enters_no_name(monkeypatch):
     assert pv.PVSearchBot.encode_prefix_cache is False
-    assert pv.latency_switches({}) == {"encode_prefix_cache": False, "single_candidate_fast": False,
+    assert pv.latency_switches({}) == {"encode_prefix_cache": False, "singleton_prefix_cache": False, "single_candidate_fast": False,
                                        "leaf_greedy_stream": False, "encode_batch_fast": False, **NATIVE_OFF}
     assert pv.latency_switches({FLAG: "1"})["encode_prefix_cache"] is True
     assert pv.latency_switches({FLAG: "0"})["encode_prefix_cache"] is False
@@ -421,3 +421,50 @@ def test_the_switch_is_off_by_default_and_enters_no_name(monkeypatch):
         pv.pv_env_recipe({**env, FLAG: "2"})
     off = bot(7, False)
     assert "encode_prefix_cache" not in vars(off)
+
+
+@pytest.mark.parametrize("version", [2, 7])
+@pytest.mark.parametrize("batched", [False, True])
+def test_singleton_probe_prefix_reaches_same_values_ballot_and_commit(monkeypatch, version, batched):
+    from shengji.eval.singleton_challenger import SingletonChallengerBot
+
+    flag = "SHENGJI_PV_SINGLETON_PREFIX_CACHE"
+    assert pv.latency_switches({})["singleton_prefix_cache"] is False
+    with pytest.raises(pv.PVSearchPolicyError, match=flag):
+        pv.latency_switches({flag: "yes"})
+    config = pv.PVSearchConfig(checkpoint_sha256="f" * 64, worlds=8, candidates=8,
+                               cap=4000, batch_size=16, admission_diversity=True,
+                               leaf_greedy_finish=True)
+    bots = [SingletonChallengerBot(stub_predict_for(version), evaluator=stub_evaluator(version),
+                                   version=version, config=config, checkpoint="/dev/null", seed=17)
+            for _ in range(2)]
+    for b, enabled in zip(bots, ("0", "1")):
+        for attr, value in pv.latency_switches({flag: enabled}).items():
+            setattr(b, attr, value)
+        b.encode_batch_fast = batched
+        b.encode_native = batched
+    scored_batches = []
+    original = prefix_module.score_leaves
+
+    def checked(evaluator, leaves, seat, prefix, **kwargs):
+        assert prefix_module.encode_leaves(evaluator, leaves, seat, prefix, **kwargs) is not None
+        expected = stub_evaluator(version).score(leaves, seat)
+        actual = original(evaluator, leaves, seat, prefix, **kwargs)
+        np.testing.assert_array_equal(actual, expected)
+        scored_batches.append(len(leaves))
+        return actual
+
+    monkeypatch.setattr(prefix_module, "score_leaves", checked)
+    for seed in (17, 23):
+        root = _fresh_round(seed)
+        rounds = [copy.deepcopy(root), copy.deepcopy(root)]
+        moves = [b.decide_play(rnd, rnd.turn) for b, rnd in zip(bots, rounds)]
+        assert moves[0] == moves[1]
+        assert _comparable(bots[0].last_decision_record) == _comparable(bots[1].last_decision_record)
+        assert bots[0].sampler.rng.getstate() == bots[1].sampler.rng.getstate()
+        assert counters(bots[0].evaluator) == counters(bots[1].evaluator)
+        for rnd, move in zip(rounds, moves):
+            rnd.play(rnd.turn, move)
+        assert rounds[0].hands == rounds[1].hands
+        assert rounds[0].trick == rounds[1].trick
+    assert sum(scored_batches) > 128

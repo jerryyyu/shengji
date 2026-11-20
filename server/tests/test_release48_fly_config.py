@@ -200,7 +200,7 @@ def test_latency_switches_are_on_through_the_process_environment(
     plain = served_entries(pinned_production_package, pinned_release48_belief_package)[2](seed=17)
     assert not set(LATENCY_KEYS) & set(vars(plain))
     apply_to_process(monkeypatch, env)
-    assert pv.latency_switches() == {"encode_prefix_cache": True, "single_candidate_fast": False,
+    assert pv.latency_switches() == {"encode_prefix_cache": True, "singleton_prefix_cache": False, "single_candidate_fast": False,
                                      "leaf_greedy_stream": True, "encode_batch_fast": True, **{k: True for k in NATIVE_OFF}}
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(dict(os.environ)))
     name, = entries
@@ -271,11 +271,11 @@ def test_healthz_reports_the_latency_switches(pinned_production_package, monkeyp
     monkeypatch.setenv("SHENGJI_PV_CKPT", str(pinned_production_package))
     off = srv._pv_search_health()
     assert off["sha256"] == PACKAGE_SHA
-    assert off["latency_switches"] == {"encode_prefix_cache": False, "single_candidate_fast": False,
+    assert off["latency_switches"] == {"encode_prefix_cache": False, "singleton_prefix_cache": False, "single_candidate_fast": False,
                                        "leaf_greedy_stream": False, "encode_batch_fast": False, **NATIVE_OFF}
     apply_to_process(monkeypatch, {k: fly_env()[k] for k in LATENCY_KEYS.values()})
     assert srv._pv_search_health()["latency_switches"] == {
-        "encode_prefix_cache": True, "single_candidate_fast": False,
+        "encode_prefix_cache": True, "singleton_prefix_cache": False, "single_candidate_fast": False,
         "leaf_greedy_stream": True, "encode_batch_fast": True, **{k: True for k in NATIVE_OFF}}
 
 

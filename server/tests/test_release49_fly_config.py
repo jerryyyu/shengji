@@ -141,7 +141,7 @@ def test_healthz_reports_the_latency_switches_with_y(pinned_production_package, 
     health = srv._pv_search_health()
     assert health["sha256"] == PACKAGE_SHA
     assert health["latency_switches"] == {
-        "encode_prefix_cache": True, "single_candidate_fast": False,
+        "encode_prefix_cache": True, "singleton_prefix_cache": False, "single_candidate_fast": False,
         "leaf_greedy_stream": True, "encode_batch_fast": True, **{k: True for k in NATIVE_OFF}}
 
 

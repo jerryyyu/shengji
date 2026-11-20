@@ -96,7 +96,8 @@ def test_singleton_candidate_loads_package_and_keeps_bury_consumer(package):
     rnd.play(rnd.turn, action)
 
 
-def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_path, monkeypatch):
+@pytest.mark.parametrize("prefix_cache", ["0", "1"])
+def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_path, monkeypatch, prefix_cache):
     import hashlib
     import pathlib
     import tomllib
@@ -113,6 +114,7 @@ def test_singleton_current_recipe_binding_ignores_ambient_switches(package, tmp_
     entries = pv.pv_registry_entries(**pv.pv_env_recipe(env))
     baseline_name, = entries
     env['SHENGJI_BOT'] = baseline_name
+    env['SHENGJI_PV_SINGLETON_PREFIX_CACHE'] = prefix_cache
     expected_switches = pv.latency_switches(env)
     for attr, key in pv.LATENCY_SWITCH_ENV.items():
         monkeypatch.setenv(key, str(int(not expected_switches[attr])))

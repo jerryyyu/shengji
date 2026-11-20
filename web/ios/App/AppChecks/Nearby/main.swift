@@ -23,22 +23,22 @@ let otherSalt = Data((0..<16).map { UInt8(255 - $0) })
 let short = NearbyKey.derive(code: "passwd", salt: Data("salt".utf8), iterations: 1)
 expect(hex(short) == "7ca4b063fa2da5d7103e47f7ed819f41d98bef22f4b3297d1b8bf41cfcf05df8",
        "known answer at 1 iteration, got \(hex(short))")
-let full = NearbyKey.derive(code: "K7Q2MX", salt: salt, iterations: 150_000)
-expect(hex(full) == "69c8a922cf18ce7dc646d94c8a1cb32503d95940458d2e7d4bed967cf5997a38",
+let full = NearbyKey.derive(code: "K7Q2M", salt: salt, iterations: 150_000)
+expect(hex(full) == "451cefc621a3c5f0eeb1d90f8328e4567d1a715f3ba541625a11356839ad39be",
        "known answer at 150,000 iterations, got \(hex(full))")
 expect(NearbyKey.iterations == 150_000, "the key uses 150,000 iterations")
 
-let key = NearbyKey.derive(code: "K7Q2MX", salt: salt)
+let key = NearbyKey.derive(code: "K7Q2M", salt: salt)
 expect(key?.count == 32, "a 32-byte key")
-expect(key == NearbyKey.derive(code: "K7Q2MX", salt: salt), "the same code and salt give the same key")
-expect(key == NearbyKey.derive(code: "k7q2mx", salt: salt), "the code is upper-cased")
-expect(key != NearbyKey.derive(code: "K7Q2MX", salt: otherSalt), "a different salt gives a different key")
+expect(key == NearbyKey.derive(code: "K7Q2M", salt: salt), "the same code and salt give the same key")
+expect(key == NearbyKey.derive(code: "k7q2m", salt: salt), "the code is upper-cased")
+expect(key != NearbyKey.derive(code: "K7Q2M", salt: otherSalt), "a different salt gives a different key")
 expect(key != NearbyKey.derive(code: "K7Q2MY", salt: salt), "a different code gives a different key")
-expect(key != NearbyKey.derive(code: "K7Q2MX", salt: salt, iterations: NearbyKey.iterations - 1),
+expect(key != NearbyKey.derive(code: "K7Q2M", salt: salt, iterations: NearbyKey.iterations - 1),
        "the iteration count is part of the key")
 
-expect(NearbyKey.normalized("k7q2mx") == "K7Q2MX", "codes are upper-cased")
-for bad in ["", "K7Q2M", "K7Q2MXX", "K7Q2M0", "K7Q2MI", "K7Q2M ", "K7Q2M\u{00C9}"] {
+expect(NearbyKey.normalized("k7q2m") == "K7Q2M", "codes are upper-cased")
+for bad in ["", "K7Q2", "K7Q2MX", "K7Q20", "K7Q2I", "K7Q2 ", "K7Q2\u{00C9}"] {
     expect(NearbyKey.normalized(bad) == nil, "\(bad.debugDescription) is not a nearby code")
 }
 
@@ -65,7 +65,7 @@ awake.game = false
 expect(!awake.any, "the idle timer returns once both have ended")
 
 let t0 = Date()
-_ = NearbyKey.derive(code: "K7Q2MX", salt: salt)
+_ = NearbyKey.derive(code: "K7Q2M", salt: salt)
 print(String(format: "one derivation at %d iterations: %.0f ms on this machine",
              NearbyKey.iterations, Date().timeIntervalSince(t0) * 1000))
 

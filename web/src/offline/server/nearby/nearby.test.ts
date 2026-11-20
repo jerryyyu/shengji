@@ -36,7 +36,7 @@ async function started(humans: number, drive = false): Promise<NearbyTable> {
 }
 
 describe("nearby codes, names and the flag", () => {
-  it("draws six characters from the online alphabet with getRandomValues", () => {
+  it("draws five characters from the online alphabet with getRandomValues", () => {
     for (let i = 0; i < 200; i++) {
       const c = newNearbyCode();
       expect(c).toHaveLength(NEARBY_CODE_LEN);
@@ -45,8 +45,9 @@ describe("nearby codes, names and the flag", () => {
     }
     expect(NEARBY_ALPHABET).not.toMatch(/[IO01]/);
     expect(isNearbyCode("ABCD")).toBe(false);
-    expect(isNearbyCode("ABCDE0")).toBe(false);
-    expect(isNearbyCode(" k7q2mx ")).toBe(true);
+    expect(isNearbyCode("ABCD0")).toBe(false);
+    expect(isNearbyCode("ABCDEF"), "six characters are not a nearby code").toBe(false);
+    expect(isNearbyCode(" k7q2m ")).toBe(true);
   });
 
   it("maps each random byte onto the alphabet", () => {
@@ -75,7 +76,7 @@ describe("nearby codes, names and the flag", () => {
 describe("the nearby lobby", () => {
   it("waits for joiners, seats each in the next free seat, and refuses a fifth", async () => {
     const t = await lobby(4);
-    expect(t.code).toMatch(new RegExp(`^[${NEARBY_ALPHABET}]{6}$`));
+    expect(t.code).toMatch(new RegExp(`^[${NEARBY_ALPHABET}]{${NEARBY_CODE_LEN}}$`));
     expect(t.room!.game).toBeNull();
     const players = lastRoom(t.host).players as PlayerJson[];
     expect(players.map((p) => [p.seat, p.name, p.is_bot])).toEqual([[0, "Host", false], [1, "P1", false], [2, "P2", false], [3, "P3", false]]);
@@ -377,7 +378,7 @@ describe("the host boundary", () => {
 describe("what a joiner's socket sends", () => {
   it("turns the join into the fixed hello and drops everything else", () => {
     const hello = NearbySocket.outbound(JSON.stringify({
-      type: "table_join", code: "K7Q2MX", name: "Ann", token: "tok", expect: "room",
+      type: "table_join", code: "K7Q2M", name: "Ann", token: "tok", expect: "room",
       device: "dddddddddddddddddddddd", email: "a@b.c", picture: "https://x", user_id: 9,
     }));
     expect(JSON.parse(hello!)).toEqual({ type: "nearby_hello", peek: false, seat: null, nearby_v: NEARBY_V, name: "Ann", token: "tok" });
@@ -385,7 +386,7 @@ describe("what a joiner's socket sends", () => {
       expect(NearbySocket.outbound(JSON.stringify({ type: t, text: "hi" }))).toBeNull();
     }
     // a peek carries no name or token; a Start carries only its on/off
-    expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: "K7Q2MX", name: "Ann", token: "tok" }))!))
+    expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: "K7Q2M", name: "Ann", token: "tok" }))!))
       .toEqual({ type: "nearby_hello", nearby_v: NEARBY_V, name: "", token: null, peek: true, seat: null });
     expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_start", on: false, seq: 3 }))!))
       .toEqual({ type: "table_start", on: false });

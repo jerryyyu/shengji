@@ -161,7 +161,7 @@ describe("a table on a device or a nearby phone is never written down", () => {
     mode.setNearbySession(true);
     FakeWS.last!.deliver({ type: "resume", token: "near-tok-2", gen: 2 });
     // App's room frame handler and its first-state save
-    saveRoom("K7Q2MX");
+    saveRoom("K7Q2M");
     saveResumeToken("near-tok-3");
     mode.setNearbySession(false);
     // offline play on this device: its room is not the game server's either
@@ -169,7 +169,7 @@ describe("a table on a device or a nearby phone is never written down", () => {
     expect(getSavedRoom()).toBeNull();
     expect(getResumeToken()).toBeNull();
     const kept = Object.keys(localStorage).map((k) => `${k}=${localStorage.getItem(k)}`).join(";");
-    expect(kept).not.toMatch(/K7Q2MX|QWER|near-tok/);
+    expect(kept).not.toMatch(/K7Q2M|QWER|near-tok/);
     mode.setOffline(false);
     saveRoom("ZZZZ");
     expect(getSavedRoom()).toBe("ZZZZ");

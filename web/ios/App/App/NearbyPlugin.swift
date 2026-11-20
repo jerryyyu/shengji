@@ -4,7 +4,7 @@ import Security
 import CommonCrypto
 
 /// The table key: PBKDF2-HMAC-SHA256 over the table code with the table's
-/// salt. A 30-bit code behind a fast KDF falls to an offline search of one
+/// salt. A 25-bit code behind a fast KDF falls to an offline search of one
 /// recorded handshake, so the derivation is deliberately slow, and the
 /// per-table salt makes every table's key different.
 enum NearbyKey {
@@ -15,7 +15,7 @@ enum NearbyKey {
     static let saltBytes = 16
     /// The online code alphabet: no I, O, 0 or 1.
     static let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
-    static let codeLength = 6
+    static let codeLength = 5
 
     /// The code as the key sees it, or nil when it is not a nearby code.
     static func normalized(_ code: String) -> String? {

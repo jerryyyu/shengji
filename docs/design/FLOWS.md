@@ -334,3 +334,5 @@ The reviewer judges:
 - **One value per effect.** Press feedback reuses `.btn`'s scale or the existing dim list; durations come from the motion tokens.
 
 Findings use Severity / Location / Before / After / Why; the review also lists candidates it rejected, with the reason, and what it did not check on a device.
+
+The declaration countdown updates inside its existing ring; it does not rerender the table or hand on each tick. The server state still resets its deadline, and passing removes it. No surface or copy changes.

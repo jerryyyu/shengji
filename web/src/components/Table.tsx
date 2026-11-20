@@ -20,7 +20,7 @@ import Toast from "./Toast";
 import HandLine from "./HandLine";
 import { leadToFollow } from "../follow";
 import { followHint, followsSuit } from "../followRules";
-import { TimerRing } from "./MoveClock";
+import { CountdownRing, TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
@@ -423,8 +423,6 @@ export default function Table({ state }: { state: GameState }) {
   // your move timer (ranked tables): the ring for the whole decision, red in
   // its last seconds, and a haptic at five
   const clock = useMoveClock(me?.turn_deadline, state);
-  // the post-deal declare window: a ring on its buttons, no haptic
-  const declareClock = useMoveClock(state.phase === "declare" ? state.declare_deadline : null, state, false);
   const away = me?.away ?? false;
   // a bot holds your seat: one pill, and any tap or key counts as back; while
   // the socket is down the connection pill says Reconnecting in its place
@@ -567,7 +565,7 @@ export default function Table({ state }: { state: GameState }) {
     if (canDeclare && coachOn) phaseHelp = declareHelp(state);
     actionBar = (
       <>
-        {state.phase === "declare" && !iPassed ? <TimerRing left={declareClock} total={DECLARE_WINDOW_SECS} /> : null}
+        {state.phase === "declare" && !iPassed ? <CountdownRing seconds={state.declare_deadline} stamp={state} total={DECLARE_WINDOW_SECS} /> : null}
         {state.declare_options.map((ids) => (
           <button
             key={ids.join("-")}

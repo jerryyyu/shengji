@@ -30,6 +30,12 @@ export const LIMITS = {
    *  stuck, even while the host's own frames still arrive, and makes a new
    *  one. */
   pongSeconds: 4,
+  /** A seat's resume must have its link up this soon (longer than the
+   *  plugin's 4 s resume look plus its 3 s handshake), or the attempt is
+   *  abandoned for a fresh one... */
+  linkSeconds: 8,
+  /** ...and the host's answer to its hello this soon after. */
+  resumeSeconds: 5,
   /** A hand never holds more cards than this. */
   cardIds: 33,
   token: 64,

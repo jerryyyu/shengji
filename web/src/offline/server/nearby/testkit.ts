@@ -98,13 +98,25 @@ export class NearbyTable {
   }
 
   /** A joiner's socket on this table's clock, from `device` when named
-   *  (else a phone of its own). */
-  socket(device?: string): NearbySocket {
+   *  (else a phone of its own); `greet` as the page's resume hello. */
+  socket(device?: string, greet: (() => Record<string, unknown> | null) | null = null): NearbySocket {
     const transport = device === undefined ? this.fake : {
       host: this.fake.host.bind(this.fake),
       join: (code: string, handlers: Parameters<FakeTransport["join"]>[1]) => this.fake.join(code, handlers, device),
     };
-    return new NearbySocket(transport, this.code, null, this.clock);
+    return new NearbySocket(transport, this.code, null, this.clock, greet);
+  }
+
+  /** A seated joiner's new link, as the page makes one after a drop: its
+   *  hello is the resume by token, and it opens once the host has answered.
+   *  Resolves when the socket has opened or closed. */
+  async resume(p: Player, device?: string): Promise<NearbySocket> {
+    const sock = this.socket(device, () => ({ type: "table_join", code: this.code, name: p.name, token: p.token }));
+    p.sock = sock;
+    p.left = false;
+    this.wire(p, p.driver !== null);
+    await this.clock.run(() => sock.readyState !== NearbySocket.CONNECTING, 50_000);
+    return sock;
   }
 
   send(p: Player, msg: Record<string, unknown>): void {

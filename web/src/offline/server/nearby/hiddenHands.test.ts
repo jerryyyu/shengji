@@ -5,7 +5,7 @@
 // where the room builds it (server.enqueue, against the true round at that
 // moment) and where it crosses the link (every host-to-joiner frame on the
 // fake transport must be one the room built for that joiner's seat, or carry
-// no card at all).
+// no card at all). Some games take a newcomer onto a bot's seat mid-round.
 //
 // NEARBY_PROPERTY_ROUNDS sets the number of rounds (default 150 in CI; the
 // milestone bar of 1,000 is run with NEARBY_PROPERTY_ROUNDS=1000).
@@ -60,7 +60,7 @@ function checkState(rnd: RoundState, seat: number, f: Json, problems: string[]):
   if (JSON.stringify(f).includes('"deck"')) problems.push(`${where}: deck key`);
 }
 
-async function playGame(seed: number, problems: string[], stats: { rounds: number; frames: number; maxBytes: number; drops: number }): Promise<void> {
+async function playGame(seed: number, problems: string[], stats: { rounds: number; frames: number; maxBytes: number; drops: number; midJoins: number }): Promise<void> {
   const humans = 2 + (seed % 3);
   const rounds = 1 + (seed % 3);
   const t = new NearbyTable(seed, rounds);
@@ -101,6 +101,14 @@ async function playGame(seed: number, problems: string[], stats: { rounds: numbe
       if (t.server.rooms.size) await t.join(j.name, { token: j.token, player: j, drive: true });
     }
   }
+  // another third take a newcomer mid-round, onto a bot's seat
+  if (seed % 3 === 1 && humans < 4) {
+    await t.settle(() => (t.room?.round?.history.length ?? 0) >= 2 || t.host.left, 2_000_000);
+    if (t.server.rooms.size && !t.host.left) {
+      const p = await t.join("Newcomer", { drive: true });
+      if (typeof p.seat === "number" && !t.room!.seats[p.seat].isBot) stats.midJoins += 1;
+    }
+  }
   await t.settle(() => t.host.left || t.server.rooms.size === 0, 5_000_000);
   // the link carries only what the room built for that seat
   const seatOfPeer = new Map<string, number>();
@@ -122,7 +130,7 @@ async function playGame(seed: number, problems: string[], stats: { rounds: numbe
 describe("hidden hands over the nearby link", () => {
   it(`no seat sees another's cards, over ${ROUNDS} seeded rounds`, async () => {
     const problems: string[] = [];
-    const stats = { rounds: 0, frames: 0, maxBytes: 0, drops: 0, games: 0 };
+    const stats = { rounds: 0, frames: 0, maxBytes: 0, drops: 0, midJoins: 0, games: 0 };
     for (let seed = 1; stats.rounds < ROUNDS; seed++) {
       await playGame(seed, problems, stats);
       stats.games += 1;
@@ -132,6 +140,7 @@ describe("hidden hands over the nearby link", () => {
     expect(problems.slice(0, 5)).toEqual([]);
     expect(stats.rounds).toBeGreaterThanOrEqual(ROUNDS);
     expect(stats.drops).toBeGreaterThan(0);
+    expect(stats.midJoins).toBeGreaterThan(0);
     expect(stats.maxBytes).toBeLessThanOrEqual(LIMITS.frameBytes);
   }, 1_200_000);
 });

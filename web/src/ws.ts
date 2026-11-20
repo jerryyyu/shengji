@@ -57,6 +57,8 @@ const HEARTBEAT_MS = 15_000;
 /** Back in view, an open socket must answer a ping this fast: a phone can
  *  suspend a socket without closing it, and its traffic then goes nowhere. */
 export const PROBE_MS = 5000;
+/** The longest wait between a nearby link's reconnect attempts. */
+export const NEARBY_BACKOFF_MAX_MS = 2000;
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
@@ -545,7 +547,9 @@ class Connection {
     if (this.reconnectTimer !== null) return;
     const delay = this.immediate ? 0 : this.backoff;
     this.immediate = false;
-    this.backoff = Math.min(this.backoff * 2, 8000);
+    // a nearby seat has the host's window (about a minute) to get back in:
+    // its attempts stay close together through it
+    this.backoff = Math.min(this.backoff * 2, this.transport === "nearby" ? NEARBY_BACKOFF_MAX_MS : 8000);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

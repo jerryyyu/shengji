@@ -91,6 +91,40 @@ struct ListenerRetry {
     }
 }
 
+/// How a joiner looks for its table. A seat's resume (the page has its
+/// token) looks for a short time and the page starts the next look at once,
+/// so a network that comes back is noticed within seconds; a first look
+/// keeps the longer search. The table the last link went to is tried first.
+enum JoinPlan {
+    static let findTimeout: TimeInterval = 12
+    static let resumeFindTimeout: TimeInterval = 4
+
+    static func findTimeout(resuming: Bool) -> TimeInterval {
+        resuming ? resumeFindTimeout : findTimeout
+    }
+
+    /// The candidates in try order for a stack popped from its end: the one
+    /// named `prefer` (the last host's service) last, so it is tried first;
+    /// the rest keep their order.
+    static func ordered<T>(_ items: [T], name: (T) -> String?, prefer: String?) -> [T] {
+        guard let prefer = prefer else { return items }
+        return items.filter { name($0) != prefer } + items.filter { name($0) == prefer }
+    }
+}
+
+/// The phone's network path, as NWPathMonitor reports it: `update` says
+/// whether this report is a regain (satisfied after unsatisfied), when the
+/// look must start over on fresh endpoints.
+struct PathWatch {
+    private(set) var satisfied: Bool?
+
+    mutating func update(_ now: Bool) -> Bool {
+        let regained = now && satisfied == false
+        satisfied = now
+        return regained
+    }
+}
+
 #if !NEARBY_KEY_ONLY
 import UIKit
 import Capacitor
@@ -163,7 +197,6 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     /// Each table the joiner tries gets this long; several are tried at once.
     static let joinHandshakeTimeout: TimeInterval = 3
     static let maxParallelTries = 4
-    static let findTimeout: TimeInterval = 12
     /// Once every table found has refused the code, a wrong code is reported
     /// after this pause unless another table appears.
     static let allFailedGrace: TimeInterval = 1
@@ -236,6 +269,14 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private var deniedReported = false
     private var observers: [NSObjectProtocol] = []
     private var live = false
+    /// This join is a seat's resume: short looks (JoinPlan).
+    private var resuming = false
+    /// The service name of the table the last link went to, across sessions.
+    private var lastHostName: String?
+    private let pathMonitor = NWPathMonitor()
+    private var pathWatch = PathWatch()
+
+    private var lookTime: TimeInterval { JoinPlan.findTimeout(resuming: resuming) }
 
     override public func load() {
         observe(UIApplication.willResignActiveNotification) {
@@ -252,6 +293,39 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         observe(UIApplication.willEnterForegroundNotification) { $0.hostReturned() }
         observe(UIApplication.didEnterBackgroundNotification) { $0.hostLeft() }
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            // on `queue`, as every other callback
+            guard let self = self else { return }
+            let satisfied = path.status == .satisfied
+            let regained = self.pathWatch.update(satisfied)
+            self.spikeLog("path \(path.status)\(regained ? " (regained)" : "")")
+            self.notifyListeners("path", data: ["satisfied": satisfied])
+            if regained { self.lookAgainOnNewPath() }
+        }
+        pathMonitor.start(queue: queue)
+    }
+
+    /// The network came back during a look: endpoints found or tried on the
+    /// old path are stale, so every try is cancelled and the look starts
+    /// over with a new browser, as a new join would.
+    private func lookAgainOnNewPath() {
+        guard !joinCode.isEmpty, links["host"] == nil else { return }
+        spikeLog("look again on the new path")
+        for link in attempts {
+            link.connection.stateUpdateHandler = nil
+            link.connection.cancel()
+        }
+        attempts = []
+        browser?.stateUpdateHandler = nil
+        browser?.browseResultsChangedHandler = nil
+        browser?.cancel()
+        browser = nil
+        candidates = []
+        tried = []
+        tries = 0
+        candidateArrivals = 0
+        sawOtherVersion = false
+        startBrowse()
     }
 
     private func observe(_ name: Notification.Name, _ handle: @escaping (ShengjiNearbyPlugin) -> Void) {
@@ -324,43 +398,57 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         spikeOptions(call)
+        let resume = call.getBool("resume") ?? false
         queue.async { [self] in
             self.reset()
             self.joinCode = code
-            self.findDeadline = Date().addingTimeInterval(Self.findTimeout)
-            let params = NWParameters.tcp
-            params.includePeerToPeer = true
-            let browser = NWBrowser(for: .bonjourWithTXTRecord(type: NearbyBuild.serviceType, domain: nil),
-                                    using: params)
-            let session = self.session
-            browser.stateUpdateHandler = { [weak self] state in
-                guard let self = self, self.session == session else { return }
-                self.spikeLog("browser \(state)")
-            switch state {
-                case .ready: self.policyDenied = false
-                case .waiting(let error), .failed(let error): self.report(error, failed: state.isFailed)
-                default: break
-                }
-            }
-            browser.browseResultsChangedHandler = { [weak self] results, _ in
-                guard let self = self, self.session == session else { return }
-                self.spikeLog("browse: \(results.count) result(s)")
-                for result in results where !self.tried.contains(result.endpoint)
-                    && !self.candidates.contains(where: { $0.endpoint == result.endpoint }) {
-                    self.candidates.append(result)
-                    self.candidateArrivals += 1
-                }
-                self.tryNext()
-            }
-            self.browser = browser
+            self.resuming = resume
+            self.spikeLog("join (\(resume ? "resume, \(JoinPlan.resumeFindTimeout) s look" : "first look"))")
             self.setLive(true)
-            browser.start(queue: self.queue)
-            self.queue.asyncAfter(deadline: .now() + Self.findTimeout) { [weak self] in
-                guard let self = self, self.session == session else { return }
-                self.checkNotFound()
-            }
+            self.startBrowse()
             call.resolve()
         }
+    }
+
+    /// A new browser for the current look, with the look's time from now.
+    private func startBrowse() {
+        findDeadline = Date().addingTimeInterval(lookTime)
+        let params = NWParameters.tcp
+        params.includePeerToPeer = true
+        let browser = NWBrowser(for: .bonjourWithTXTRecord(type: NearbyBuild.serviceType, domain: nil),
+                                using: params)
+        let session = self.session
+        browser.stateUpdateHandler = { [weak self, weak browser] state in
+            guard let self = self, self.session == session, self.browser === browser else { return }
+            self.spikeLog("browser \(state)")
+            switch state {
+            case .ready: self.policyDenied = false
+            case .waiting(let error), .failed(let error): self.report(error, failed: state.isFailed)
+            default: break
+            }
+        }
+        browser.browseResultsChangedHandler = { [weak self, weak browser] results, _ in
+            guard let self = self, self.session == session, self.browser === browser else { return }
+            self.spikeLog("browse: \(results.count) result(s)")
+            for result in results where !self.tried.contains(result.endpoint)
+                && !self.candidates.contains(where: { $0.endpoint == result.endpoint }) {
+                self.candidates.append(result)
+                self.candidateArrivals += 1
+            }
+            self.tryNext()
+        }
+        self.browser = browser
+        browser.start(queue: queue)
+        let deadline = findDeadline
+        queue.asyncAfter(deadline: .now() + lookTime) { [weak self] in
+            guard let self = self, self.session == session, self.findDeadline == deadline else { return }
+            self.checkNotFound()
+        }
+    }
+
+    static func serviceName(_ endpoint: NWEndpoint) -> String? {
+        if case .service(let name, _, _, _) = endpoint { return name }
+        return nil
     }
 
     @objc func send(_ call: CAPPluginCall) {
@@ -640,6 +728,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // TODO-review(M3): parallel tries and the 3 s timeout are unconfirmed on device
     private func tryNext() {
         guard links["host"] == nil else { return }
+        candidates = JoinPlan.ordered(candidates, name: { Self.serviceName($0.endpoint) }, prefer: lastHostName)
         while attempts.count < Self.maxParallelTries, tries < Self.maxJoinTries, let result = candidates.popLast() {
             tried.insert(result.endpoint)
             guard case .bonjour(let txt) = result.metadata else { continue }
@@ -677,6 +766,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.attempts = []
                 link.ready = true
                 self.links["host"] = link
+                self.lastHostName = Self.serviceName(endpoint)
                 self.browser?.cancel()
                 self.browser = nil
                 self.emitPeer("host", "connected")
@@ -709,10 +799,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // TODO-review(M3): confirm the prompt's resign/become-active order on device
     private func joinResumed() {
         guard joining else { return }
-        findDeadline = Date().addingTimeInterval(Self.findTimeout)
+        findDeadline = Date().addingTimeInterval(lookTime)
         emitState("waiting", detail: "active")
         let session = self.session
-        queue.asyncAfter(deadline: .now() + Self.findTimeout) { [weak self] in
+        queue.asyncAfter(deadline: .now() + lookTime) { [weak self] in
             guard let self = self, self.session == session else { return }
             self.checkNotFound()
         }
@@ -825,6 +915,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         failedAt = [:]
         deviceIds = [:]
         joinCode = ""
+        resuming = false
         findDeadline = .distantFuture
         candidateArrivals = 0
         policyDenied = false

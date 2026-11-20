@@ -191,13 +191,26 @@ describe("links that are not seated", () => {
     expect(t.nearbyHost!.refused.hello_timeout).toBe(1);
   });
 
-  it("after the start, a look is answered full and the link ends", async () => {
-    const t = await started(2);
+  it("after the start with every seat a person's, a look is answered full and the link ends", async () => {
+    const t = await started(4);
     const r = await raw(t);
     r.link.send(hello({ peek: true }));
     await t.advance(3);
     expect(r.frames.find((f) => f.type === "room_seats")).toMatchObject({ full: true, in_game: true });
     expect(r.closed).toBe(true);
+  });
+
+  it("after the start with bot seats, a look lists the people and keeps the link for a pick", async () => {
+    const t = await started(2);
+    const r = await raw(t);
+    r.link.send(hello({ peek: true }));
+    await t.advance(3);
+    const seats = r.frames.find((f) => f.type === "room_seats") as Frame & { seats: { seat: number; is_bot: boolean }[] };
+    expect(seats).toMatchObject({ full: false, in_game: true });
+    // the seats a newcomer may take (the bots') are the ones not listed
+    expect(seats.seats.map((s) => s.seat).sort()).toEqual([0, 1]);
+    expect(seats.seats.every((s) => !s.is_bot)).toBe(true);
+    expect(r.closed).toBe(false);
   });
 
   it("one unseated link per phone: its newer link replaces the older", async () => {
@@ -230,8 +243,10 @@ describe("links that are not seated", () => {
 });
 
 describe("resume tokens", () => {
-  async function dropped(): Promise<{ t: NearbyTable; j: Player }> {
-    const t = await started(3);
+  // every seat a person's, so a newcomer has no bot seat to take and the
+  // dropped seat is held for its owner
+  async function dropped(humans = 3): Promise<{ t: NearbyTable; j: Player }> {
+    const t = await started(humans);
     const j = t.joiners[0];
     t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
     await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
@@ -241,7 +256,7 @@ describe("resume tokens", () => {
   }
 
   it("with a seat dropped, a wrong token gets no seat, and the seat stays its owner's", async () => {
-    const { t, j } = await dropped();
+    const { t, j } = await dropped(4);
     const stranger = await t.join("X", { token: "nope" });
     expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
     expect(t.room!.seats[j.seat!].connected).toBe(false);
@@ -250,7 +265,7 @@ describe("resume tokens", () => {
   });
 
   it("a token one character off, at either end, gets no seat", async () => {
-    const { t, j } = await dropped();
+    const { t, j } = await dropped(4);
     const tok = j.token!;
     const flip = (c: string) => (c === "A" ? "B" : "A");
     for (const bad of [tok.slice(0, -1) + flip(tok.slice(-1)), flip(tok[0]) + tok.slice(1)]) {

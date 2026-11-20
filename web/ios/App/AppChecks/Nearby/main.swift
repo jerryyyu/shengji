@@ -83,6 +83,27 @@ expect(retry.failed(wasUp: true, policyDenied: false) == .lost, "a listener that
 retry.ready()
 expect(retry.failed(wasUp: false, policyDenied: false) == .retry, "ready clears the failures")
 
+// A seat's resume looks for 4 s at a time (a first look 12 s), and tries
+// the table its last link went to before any other.
+expect(JoinPlan.findTimeout(resuming: true) == 4, "a resume looks 4 s at a time")
+expect(JoinPlan.findTimeout(resuming: false) == 12, "a first look keeps 12 s")
+let found = ["AAAA", "LAST", "BBBB"]
+let order = JoinPlan.ordered(found, name: { $0 }, prefer: "LAST")
+expect(order.last == "LAST", "the last host is popped (tried) first, got \(order)")
+expect(order.dropLast() == ["AAAA", "BBBB"], "the others keep their order")
+expect(JoinPlan.ordered(found, name: { $0 }, prefer: nil) == found, "no last host, no change")
+expect(JoinPlan.ordered(found, name: { $0 }, prefer: "GONE") == found, "a last host not found, no change")
+
+// The look starts over only when the network comes back: satisfied after
+// unsatisfied, not the first report or a repeat.
+var path = PathWatch()
+expect(!path.update(true), "the first report is no regain")
+expect(!path.update(true), "a repeat is no regain")
+expect(!path.update(false), "losing the path is no regain")
+expect(!path.update(false), "still down")
+expect(path.update(true), "back after down is a regain")
+expect(!path.update(true), "and only once")
+
 let t0 = Date()
 _ = NearbyKey.derive(code: "K7Q2M", salt: salt)
 print(String(format: "one derivation at %d iterations: %.0f ms on this machine",

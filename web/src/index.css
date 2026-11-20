@@ -304,6 +304,35 @@ textarea:focus-visible {
   margin-right: 7px;
 }
 
+/* A nearby table's link, beside the header: green linked, amber pulsing
+   while a link is made again, grey once lost. */
+.nearby-link-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex: none;
+}
+
+.nearby-link-dot.linked {
+  background: var(--felt-1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.nearby-link-dot.reconnecting {
+  background: var(--gold);
+  animation: nearby-link-pulse calc(var(--dur-pulse) * 2) var(--ease-in-out) infinite;
+}
+
+@keyframes nearby-link-pulse {
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nearby-link-dot.reconnecting { animation: none; }
+}
+
 /* ---------- toast / banners ---------- */
 
 /* The app's one toast, in one fixed spot: the top of the page here, under

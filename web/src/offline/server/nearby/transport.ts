@@ -30,6 +30,8 @@ export interface JoinHandlers {
   /** The link to the host is gone (out of range, host stopped, closed). */
   closed(): void;
   state(state: LinkState, detail?: string): void;
+  /** A seat's resume: the plugin looks in short cycles (JoinPlan). */
+  resume?: boolean;
 }
 
 export interface JoinLink {
@@ -43,6 +45,9 @@ export interface NearbyTransport {
   /** Find the table for `code` and connect; rejects (after a `state`) when
    *  there is none or the link cannot be made. */
   join(code: string, handlers: JoinHandlers): Promise<JoinLink>;
+  /** Calls `fn` with each change of the phone's network path (true: a
+   *  usable path is back); returns the unsubscribe. */
+  path?(fn: (up: boolean) => void): () => void;
 }
 
 export class NearbyError extends Error {
@@ -82,9 +87,29 @@ export class FakeTransport implements NearbyTransport {
    *  `release`. */
   private inbound = new Map<string, "lose" | { held: (() => void)[] }>();
 
+  /** The joiner phone's network: while down, a join finds nothing, or
+   *  (`stall`) hangs on an endpoint of the old path and never settles. */
+  private up = true;
+  private downMode: "fail" | "stall" = "fail";
+  private pathListeners = new Set<(up: boolean) => void>();
+
   constructor(clock: Clock, delay = 0) {
     this.clock = clock;
     this.delay = delay;
+  }
+
+  path(fn: (up: boolean) => void): () => void {
+    this.pathListeners.add(fn);
+    return () => { this.pathListeners.delete(fn); };
+  }
+
+  /** The joiner's network goes down (its links drop with it) or comes
+   *  back, as the plugin's path monitor reports it. */
+  network(up: boolean, code?: string, mode: "fail" | "stall" = "fail"): void {
+    this.up = up;
+    this.downMode = mode;
+    if (!up && code !== undefined) for (const peer of this.peersOf(code)) this.drop(code, peer);
+    for (const fn of [...this.pathListeners]) fn(up);
   }
 
   private later(fn: () => void): void {
@@ -123,6 +148,14 @@ export class FakeTransport implements NearbyTransport {
     if (this.deny) {
       handlers.state("denied");
       throw new NearbyError("denied");
+    }
+    if (!this.up && this.downMode === "stall") {
+      handlers.state("waiting");
+      return new Promise<JoinLink>(() => {});
+    }
+    if (!this.up) {
+      handlers.state("wifiOff");
+      throw new NearbyError("wifiOff");
     }
     const h = this.hosts.get(code);
     if (!h || h.stopped || h.away) {

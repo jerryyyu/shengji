@@ -212,8 +212,8 @@ describe("drops, resume and bot cover", () => {
     expect((t.lastState(t.host)!.players as PlayerJson[])[seat!].controller).toBe("human");
   });
 
-  it("a token for nobody, after the start, gets no seat", async () => {
-    const t = await started(2);
+  it("a token for nobody, after the start with every seat a person's, gets no seat", async () => {
+    const t = await started(4);
     const stranger = await t.join("X", { token: "nope" });
     expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
   });

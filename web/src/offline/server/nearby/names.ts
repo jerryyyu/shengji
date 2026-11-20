@@ -2,6 +2,8 @@
 // (server/shengji/api/accounts.py validate_display_name) on the host, since
 // nothing else checks a name that arrives over the local link.
 
+import { containsBlocked } from "./chatFilter";
+
 export const DISPLAY_NAME_MAX = 20;
 const RAW_MAX = 1000;
 const RESERVED = new Set(["bot", "system", "admin", "dealer", "moderator", "server"]);
@@ -10,8 +12,9 @@ const BOT_NAME_RE = /^bot\s*\d*$/u;
 const FORBIDDEN_RE = /[\p{Cc}\p{Cs}\p{Co}\p{Zl}\p{Zp}]/u;
 
 /** The name to seat, or null when the online rules refuse it. `blocked` is
- *  the word filter; none is bundled with the page yet. */
-export function validNearbyName(raw: unknown, blocked: ((name: string) => boolean) | null = null): string | null {
+ *  the word filter: the server's chat filter, bundled with the page, which
+ *  refuses a name as the server refuses an account's display name. */
+export function validNearbyName(raw: unknown, blocked: ((name: string) => boolean) | null = containsBlocked): string | null {
   if (typeof raw !== "string" || raw.length > RAW_MAX) return null;
   if (FORBIDDEN_RE.test(raw)) return null;
   const name = raw.normalize("NFKC").split(/\s+/u).filter(Boolean).join(" ");

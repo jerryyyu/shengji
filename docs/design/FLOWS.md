@@ -809,3 +809,5 @@ The reviewer judges:
 - **Control sizes.** Actions are 52 tall and switches 44, radius 14, from the `--ctl-*` tokens; a new control uses them (`polishCss.test.ts`). A screen's main action is the one gold (`.btn.gold`, or a listed `.primary` main action); a second action is the raised neutral.
 
 Findings use Severity / Location / Before / After / Why; the review also lists candidates it rejected, with the reason, and what it did not check on a device.
+
+The declaration countdown updates inside its existing ring; it does not rerender the table or hand on each tick. The server state still resets its deadline, and passing removes it. No surface or copy changes.

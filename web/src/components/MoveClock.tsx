@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { CSSProperties } from "react";
-import { LOW_SECS } from "../useMoveClock";
+import { LOW_SECS, useMoveClockSample } from "../useMoveClock";
 import { useT } from "../i18n";
 
 /** A new figure from the server that moves the deadline by more than this
@@ -70,3 +70,11 @@ export function TimerRing({ left, total, end = null, thin = false }: {
 }
 
 const round3 = (v: number) => Math.round(v * 1000) / 1000 + 0;
+
+/** Keep countdown updates local to the ring, without ticking the table tree. */
+export function CountdownRing({ seconds, stamp, total }: {
+  seconds: number | null | undefined; stamp: unknown; total: number;
+}) {
+  const sample = useMoveClockSample(seconds, stamp, false);
+  return <TimerRing {...sample} total={total} />;
+}

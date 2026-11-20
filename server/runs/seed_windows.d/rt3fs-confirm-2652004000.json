@@ -1,0 +1,14 @@
+{
+ "name": "rt3fs-confirm-2652004000",
+ "purpose": "screen",
+ "seed0": 2652004000,
+ "clusters": 7840,
+ "span": [
+  2652004000,
+  2652011840
+ ],
+ "created_at": "2026-11-20T21:24:04Z",
+ "host": "ultra",
+ "git_head": "fe08e604",
+ "note": "RT3-FT vs release-54 fresh-seed confirmation, stage 2 of the two-stage duel bar (7,840 deals), dealt only if stage 1 passes: exploiter = RT3-FT (unified 0ab200ee + belief af11dea7: RT2's polished checkpoint fine-tuned on the UT-GEN2 rows of the 200k-round cut, A01-A10 + B01-B05), defender = release 54 as served (unified 97c07be8 + belief 1b1fd2de, ufast, 3 s bury); paired seat-swapped rank-mixed deals, tree origin/main; PREDECLARE in claude-rt3ft-screen on the M5 Ultra. Cleared with the screen block. This is a seed reservation only; it is not launch authorization."
+}

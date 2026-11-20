@@ -1,0 +1,14 @@
+{
+ "name": "rt3fs-scratch-2652990000",
+ "purpose": "screen",
+ "seed0": 2652990000,
+ "clusters": 100,
+ "span": [
+  2652990000,
+  2652990100
+ ],
+ "created_at": "2026-11-20T21:24:04Z",
+ "host": "ultra",
+ "git_head": "fe08e604",
+ "note": "RT3-FT vs release-54 screen scratch block, outcomes never read: screen pilot [2652990000, +20), rehearsal pilot [2652990020, +20), rehearsal duel [2652990040, +20), confirm pilot [2652990060, +20), timing seeds 2652990080..2652990085; the rest is spare. Exploiter = RT3-FT (unified 0ab200ee + belief af11dea7: RT2's polished checkpoint fine-tuned on the UT-GEN2 rows of the 200k-round cut, A01-A10 + B01-B05), defender = release 54 as served (unified 97c07be8 + belief 1b1fd2de, ufast, 3 s bury); paired seat-swapped rank-mixed deals, tree origin/main; PREDECLARE in claude-rt3ft-screen on the M5 Ultra. Cleared with the screen block. This is a seed reservation only; it is not launch authorization."
+}

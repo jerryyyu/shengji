@@ -14,6 +14,9 @@ export const LIMITS = {
   frameBytes: 16 * 1024,
   /** Messages a joiner may send per second before the host closes it. */
   perSecond: 20,
+  /** Pings and keepalives a joiner may send per second (a paused
+   *  peer-to-peer link's held ones arrive together). */
+  upkeepPerSecond: 120,
   /** The hello must arrive this soon after the link opens. */
   helloSeconds: 5,
   /** Seated joiners plus links still in their hello. */
@@ -41,6 +44,8 @@ export const LIMITS = {
   linkSeconds: 8,
   /** ...and the host's answer to its hello this soon after. */
   resumeSeconds: 5,
+  /** A peer-to-peer link's keepalive interval during a game. */
+  keepaliveSeconds: 0.25,
   /** The joiner logs the spread of its round trips this often. */
   summarySeconds: 30,
   /** A hand never holds more cards than this. */
@@ -57,6 +62,11 @@ export const PING = "nearby_ping";
 export const PONG = "nearby_pong";
 export const PING_TEXT = JSON.stringify({ type: PING });
 export const PONG_TEXT = JSON.stringify({ type: PONG });
+/** A peer-to-peer link's keepalive, both ways: sent often enough during a
+ *  game that the AWDL radio stays awake between moves, and answered by the
+ *  host with the same frame. It crosses the link only. */
+export const KEEPALIVE = "nearby_ka";
+export const KEEPALIVE_TEXT = JSON.stringify({ type: KEEPALIVE });
 
 /** The joiner's first message: version, display name and resume token, and
  *  nothing else. The code never crosses the link: holding it is what let the

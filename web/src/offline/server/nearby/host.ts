@@ -8,7 +8,7 @@ import type { Clock } from "../clock";
 import { nearbyPeekJson, type LocalConnection, type LocalRoom, type LocalServer } from "../server";
 import { NEARBY_COPY } from "./copy";
 import { frameType, nearbyLog } from "../../../nearbyLog";
-import { LIMITS, NEARBY_V, PING, PONG_TEXT, cleanHello, cleanJoinerMessage, parseObject, utf8Bytes } from "./protocol";
+import { KEEPALIVE, KEEPALIVE_TEXT, LIMITS, NEARBY_V, PING, PING_TEXT, PONG_TEXT, cleanHello, cleanJoinerMessage, parseObject, utf8Bytes } from "./protocol";
 import { NearbyError, type HostLink, type LinkState, type NearbyTransport } from "./transport";
 
 /** A link that has looked at the seats has this long, from its first look,
@@ -35,6 +35,8 @@ interface Peer {
   peeked: boolean;
   /** Clock times of this second's messages, for the rate limit. */
   recent: number[];
+  /** The same for its pings and keepalives, on their own budget. */
+  upkeep: number[];
   /** Clock time of the link's latest frame, for the liveness check. */
   heard: number;
   /** The host is ending the link after its last frame: nothing more is read. */
@@ -141,7 +143,7 @@ export class NearbyHost {
       this.link?.close(id);
       return;
     }
-    const peer: Peer = { conn: null, device, token: null, deadline: 0, peeked: false, recent: [],
+    const peer: Peer = { conn: null, device, token: null, deadline: 0, peeked: false, recent: [], upkeep: [],
                          heard: this.clock.now(), ending: false, closed: false };
     this.peers.set(id, peer);
     this.helloBy(id, peer, LIMITS.helloSeconds);
@@ -219,6 +221,20 @@ export class NearbyHost {
     }
     const now = this.clock.now();
     peer.heard = now;
+    if (text === KEEPALIVE_TEXT || text === PING_TEXT) {
+      // a link's own upkeep, answered here and never seen by the room. It
+      // has its own, wider budget: a peer-to-peer link that paused hands
+      // over its held keepalives in one burst, which is not a flood of moves
+      peer.upkeep = peer.upkeep.filter((t) => now - t < 1);
+      peer.upkeep.push(now);
+      if (peer.upkeep.length > LIMITS.upkeepPerSecond) {
+        this.refuse("rate", id, text);
+        this.end(id);
+        return;
+      }
+      this.link?.send(id, text === PING_TEXT ? PONG_TEXT : KEEPALIVE_TEXT);
+      return;
+    }
     peer.recent = peer.recent.filter((t) => now - t < 1);
     peer.recent.push(now);
     if (peer.recent.length > LIMITS.perSecond) {
@@ -232,9 +248,9 @@ export class NearbyHost {
       this.end(id);
       return;
     }
-    if (msg.type === PING) {
-      // the joiner's liveness ping: answered here, never seen by the room
-      this.link?.send(id, PONG_TEXT);
+    if (msg.type === KEEPALIVE || msg.type === PING) {
+      // upkeep in another spelling: not a game message, so dropped
+      this.refuse("message", id, text);
       return;
     }
     nearbyLog("host", `in ${frameType(text)} from ${id}${peer.conn === null ? " (unseated)" : ""}`);

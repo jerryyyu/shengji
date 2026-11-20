@@ -10,8 +10,8 @@ import { legalPlays } from "../../engine/round";
 import { nearbyChoices } from "../../../joinSeats";
 import type { RoomSeats } from "../../../protocol";
 import { NEARBY_COPY } from "./copy";
-import { LIMITS } from "./protocol";
-import { NearbySocket, spread } from "./socket";
+import { KEEPALIVE_TEXT, LIMITS } from "./protocol";
+import { NearbySocket, setNearbyKeepalive, spread } from "./socket";
 import { NearbyTable, type Frame, type Player } from "./testkit";
 
 type PlayerJson = { seat: number; is_bot: boolean; controller: string; name: string };
@@ -391,5 +391,62 @@ describe("a slow link is not torn down in a loop", () => {
     }
     expect(closes[1] - closes[0]).toBeGreaterThanOrEqual(LIMITS.stuckSpacingSeconds - 1e-9);
     expect(closes[2] - closes[1]).toBeGreaterThanOrEqual(LIMITS.stuckSpacingSeconds - 1e-9);
+  });
+});
+
+describe("the peer-to-peer keepalive", () => {
+  const kas = (t: NearbyTable, from: number, peer: string) => {
+    const w = t.fake.wire.slice(from);
+    return {
+      up: w.filter((x) => x.from === peer && x.text === KEEPALIVE_TEXT).length,
+      down: w.filter((x) => x.to === peer && x.text === KEEPALIVE_TEXT).length,
+    };
+  };
+
+  it("runs both ways every 250 ms during a game on a peer-to-peer link, never in the lobby, and stops when switched off", async () => {
+    const t = new NearbyTable(9, 1);
+    t.fake.peerToPeer = true;
+    await t.open(true);
+    const j = await t.join("P1");
+    const peer = t.fake.peersOf(t.code).at(-1)!;
+    // the lobby: no keepalive
+    let mark = t.fake.wire.length;
+    await t.advance(3);
+    expect(kas(t, mark, peer)).toEqual({ up: 0, down: 0 });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.lastState(j) !== undefined);
+    mark = t.fake.wire.length;
+    await t.advance(5);
+    const on = kas(t, mark, peer);
+    expect(on.up).toBeGreaterThanOrEqual(5 / LIMITS.keepaliveSeconds - 2);
+    expect(on.up).toBeLessThanOrEqual(5 / LIMITS.keepaliveSeconds + 1);
+    expect(on.down).toBeGreaterThanOrEqual(on.up - 1);
+    // the host's rate limit never trips on it
+    expect(t.nearbyHost!.refused.rate ?? 0).toBe(0);
+    setNearbyKeepalive(false);
+    try {
+      await t.advance(0.5);
+      mark = t.fake.wire.length;
+      await t.advance(3);
+      expect(kas(t, mark, peer).up).toBe(0);
+    } finally {
+      setNearbyKeepalive(true);
+    }
+    // back on: it runs again
+    mark = t.fake.wire.length;
+    await t.advance(2);
+    expect(kas(t, mark, peer).up).toBeGreaterThan(0);
+  });
+
+  it("never runs on a Wi-Fi link", async () => {
+    const t = new NearbyTable(9, 1);
+    await t.open(true);
+    const j = await t.join("P1");
+    const peer = t.fake.peersOf(t.code).at(-1)!;
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.lastState(j) !== undefined);
+    const mark = t.fake.wire.length;
+    await t.advance(5);
+    expect(kas(t, mark, peer)).toEqual({ up: 0, down: 0 });
   });
 });

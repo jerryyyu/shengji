@@ -63,6 +63,26 @@ export function useNearbyDebug(ask: boolean): boolean {
   return ask && on;
 }
 
+/** The device-test switch for the peer-to-peer keepalive, once its module
+ *  (the on-device server's, loaded at a nearby table) is in; null before. */
+export function useNearbyKeepalive(ask: boolean): { on: boolean; toggle: () => void } | null {
+  const [mod, setMod] = useState<typeof import("./offline/server/nearby/socket") | null>(null);
+  const [, bump] = useState(0);
+  useEffect(() => {
+    if (!ask) return;
+    let live = true;
+    let off = () => {};
+    void import("./offline/server/nearby/socket").then((m) => {
+      if (!live) return;
+      setMod(m);
+      off = m.subscribeNearbyKeepalive(() => bump((n) => n + 1));
+    }, () => {});
+    return () => { live = false; off(); };
+  }, [ask]);
+  if (!ask || mod === null) return null;
+  return { on: mod.nearbyKeepalive(), toggle: () => mod.setNearbyKeepalive(!mod.nearbyKeepalive()) };
+}
+
 /** Puts the log on the clipboard; resolves whether it did. */
 export function copyNearbyLog(): Promise<boolean> {
   return navigator.clipboard?.writeText(nearbyLogText()).then(() => true, () => false) ?? Promise.resolve(false);

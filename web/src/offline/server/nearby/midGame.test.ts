@@ -350,3 +350,46 @@ describe("the link's latency summary in the device log", () => {
     expect(spread([40, 10, 500, 20, 30])).toBe("n=5 p50 30 p95 500 max 500 ms");
   });
 });
+
+describe("a slow link is not torn down in a loop", () => {
+  async function seatedJoiner(peerToPeer: boolean): Promise<{ t: NearbyTable; j: Player; peer: () => string }> {
+    const t = new NearbyTable(9, 1);
+    t.fake.peerToPeer = peerToPeer;
+    await t.open(true);
+    const j = await t.join("P1");
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.lastState(j) !== undefined);
+    return { t, j, peer: () => t.fake.peersOf(t.code).at(-1)! };
+  }
+
+  it("over peer-to-peer Wi-Fi a ping may take up to 8 s; over Wi-Fi 4 s", async () => {
+    for (const [p2p, kept] of [[true, true], [false, false]] as const) {
+      const { t, j, peer } = await seatedJoiner(p2p);
+      const sock = j.sock as NearbySocket;
+      // the joiner's frames are held for 6 s, then arrive
+      t.fake.hold(peer());
+      t.send(j, { type: "im_back" });
+      await t.advance(6);
+      t.fake.release(peer());
+      await t.advance(1);
+      expect(sock.readyState === NearbySocket.OPEN).toBe(kept);
+    }
+  });
+
+  it("links that keep sticking are replaced at most once every 10 s", async () => {
+    const { t, j, peer } = await seatedJoiner(false);
+    const closes: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const sock = j.sock as NearbySocket;
+      t.fake.lose(peer());
+      t.send(j, { type: "im_back" });
+      await t.settle(() => sock.readyState === NearbySocket.CLOSED, 100_000);
+      closes.push(t.clock.now());
+      await t.advance(0.5);
+      const next = await t.resume(j);
+      expect(next.readyState).toBe(NearbySocket.OPEN);
+    }
+    expect(closes[1] - closes[0]).toBeGreaterThanOrEqual(LIMITS.stuckSpacingSeconds - 1e-9);
+    expect(closes[2] - closes[1]).toBeGreaterThanOrEqual(LIMITS.stuckSpacingSeconds - 1e-9);
+  });
+});

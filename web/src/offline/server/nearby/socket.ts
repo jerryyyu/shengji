@@ -11,6 +11,10 @@ import type { JoinLink, LinkState, NearbyTransport } from "./transport";
 
 type Handler<E> = ((ev: E) => void) | null;
 
+/** When each clock's sockets last gave up on a stuck link, so a run of
+ *  them never makes new links faster than LIMITS.stuckSpacingSeconds. */
+const lastStuck = new WeakMap<Clock, number>();
+
 export class NearbySocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -163,9 +167,9 @@ export class NearbySocket {
   private ping(link: JoinLink): void {
     this.clock.setTimeout(() => {
       if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
-      if (this.clock.now() - this.heard >= LIMITS.silentSeconds) return this.stuck("the host is silent");
-      if (this.pingSent !== null && this.clock.now() - this.pingSent >= LIMITS.pongSeconds) {
-        return this.stuck("no pong");
+      if (this.clock.now() - this.heard >= LIMITS.silentSeconds) return this.stuck("the host is silent", link);
+      if (this.pingSent !== null && this.clock.now() - this.pingSent >= this.pongWindow(link)) {
+        return this.stuck("no pong", link);
       }
       if (this.pingSent === null && !this.sendPing(link)) return;
       this.ping(link);
@@ -204,14 +208,38 @@ export class NearbySocket {
       nearbyLog("socket", "probe sent");
     }
     const sent = this.pingSent;
+    const window = this.pongWindow(link) - (sent === null ? 0 : this.clock.now() - sent);
     this.clock.setTimeout(() => {
       if (this.link === link && this.readyState === NearbySocket.OPEN && this.pingSent === sent && sent !== null) {
-        this.stuck("no pong after a move");
+        this.stuck("no pong after a move", link);
       }
-    }, LIMITS.pongSeconds);
+    }, Math.max(0, window));
   }
 
-  private stuck(why: string): void {
+  /** How long a ping may go unanswered: longer over peer-to-peer Wi-Fi. */
+  private pongWindow(link: JoinLink): number {
+    return link.peerToPeer ? LIMITS.pongSecondsPeerToPeer : LIMITS.pongSeconds;
+  }
+
+  /** The link is stuck: a new one is made, but never sooner than
+   *  LIMITS.stuckSpacingSeconds after the last; meanwhile an answer that
+   *  arrives (a pong, any frame) keeps this link. */
+  private stuck(why: string, link: JoinLink): void {
+    const now = this.clock.now();
+    const wait = (lastStuck.get(this.clock) ?? -Infinity) + LIMITS.stuckSpacingSeconds - now;
+    if (wait > 0) {
+      nearbyLog("socket", `slow: ${why}; giving it ${wait.toFixed(1)} s more`);
+      const heard = this.heard;
+      const ping = this.pingSent;
+      this.clock.setTimeout(() => {
+        if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
+        // the ping answered (or, with none out, anything heard): alive
+        if (ping !== null ? this.pingSent !== ping : this.heard !== heard) return;
+        this.stuck(why, link);
+      }, wait);
+      return;
+    }
+    lastStuck.set(this.clock, now);
     nearbyLog("socket", `STUCK: ${why}; making a new link`);
     this.close();
   }

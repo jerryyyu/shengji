@@ -30,6 +30,11 @@ export const LIMITS = {
    *  stuck, even while the host's own frames still arrive, and makes a new
    *  one. */
   pongSeconds: 4,
+  /** The same over peer-to-peer Wi-Fi, which can pause for seconds while
+   *  the radio serves a Wi-Fi network too. */
+  pongSecondsPeerToPeer: 8,
+  /** A joiner makes a new link for a stuck one at most this often. */
+  stuckSpacingSeconds: 10,
   /** A seat's resume must have its link up this soon (longer than the
    *  plugin's 4 s resume look plus its 3 s handshake), or the attempt is
    *  abandoned for a fresh one... */

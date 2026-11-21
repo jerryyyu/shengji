@@ -375,6 +375,18 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       return this.d.phone.clock;
     }
     look(): void {
+      // a join by code replaces the page's socket, as Connection.useNearby's
+      // cutSocket does: the old one closes with its handlers cut, so its
+      // heartbeat cannot make links of its own
+      this.retry += 1;
+      const old = this.sock;
+      this.sock = null;
+      if (old) {
+        old.onopen = null;
+        old.onmessage = null;
+        old.onclose = null;
+        old.close();
+      }
       this.done = false;
       this.leaving = false;
       this.seated = false;

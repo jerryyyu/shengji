@@ -629,11 +629,13 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
         return mine, planes, scalars, keys
     monkeypatch.setattr(us, "leaf_features_fast", checked_features)
     memo = {"value_memo": 0, "reply_memo": 0}
+    consumed_rows = 0
     for position in P.POSITIONS:
         want = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
         bot = registry_bot(monkeypatch, fast, P.SEED)
         assert bot.policy_name == fast["SHENGJI_BOT"] and bot.unified_fast
         got = decide(bot, P.replay(*position))
+        consumed_rows += got["counters"]["unified_value_rows"] + got["counters"]["unified_reply_rows"]
         g, w = got["record"], want["record"]
         fields = ("admitted", "admitted_indices", "value_means", "selected_index",
                   "exact_lead_status", "exact_lead_base_selected_index",
@@ -651,7 +653,7 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
         _assert_readout_action_parity(got, want, P.label(*position))
         for name in memo:
             memo[name] += got["memo"][name]
-    assert checked[0] > 0
+    assert checked[0] == consumed_rows > 0
     assert memo["value_memo"] > 0
 
 
@@ -854,3 +856,76 @@ def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
         assert saved["ballot"][saved["allocation"]["played_index"]] == saved["action"]
         assert saved["allocation"]["serving_decision"]["unified"]["shared"] == 1
         assert saved["allocation"]["serving_decision"]["unified"]["missed"] == 0
+
+
+@pytest.mark.parametrize("forced", [[True] * 5, [True, False, True, False, False]])
+def test_fast_reply_materializes_only_nonforced_rows(monkeypatch, forced):
+    """Pending rows retain their order across prediction chunks and per-decision memo hits."""
+    from types import SimpleNamespace as NS
+    from shengji.train import unified_slots as us
+
+    frame = NS(fast=True, tricks=0, pos=0, reply_memo={}, fused=lambda model: None)
+    leaves = [NS(phase="play", history=[], trick=NS(plays=[object()]), ident=i, forced=f)
+              for i, f in enumerate(forced)]
+    encoded, predicted = [], []
+
+    def features(frame, clones):
+        encoded.extend(c.ident for c in clones)
+        ids = np.array([c.ident for c in clones], np.float32)
+        return list(range(len(clones))), ids[:, None], np.zeros((len(clones), 12)), ids.tolist()
+
+    def logits(fused, planes, scalars):
+        predicted.extend(planes[:, 0].tolist())
+        return np.repeat(planes, 54, axis=1)
+
+    def legal(clone, seat, cache):
+        return ([0] if clone.forced else [0, 1]), None
+
+    original_predict = object()
+    bot = NS(unified_reply_model=NS(leaf_reply_logits_fused=logits), unified_frame=frame,
+             evaluator=NS(), unified_reply_rows=0, unified_reply_memo=0, unified_reply_served=0, predict=original_predict)
+
+    def consumer(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn):
+        pending = [c for c in active if len(legal_fn(c, 0, cache)[0]) != 1]
+        if pending:
+            rows = rows_fn(pending, 0)
+            for start in range(0, len(rows), 2):
+                got = bot.predict(rows[start:start + 2])
+                want = np.repeat(np.array([[c.ident] for c in pending[start:start + 2]]), 54, axis=1)
+                np.testing.assert_array_equal(got, want)
+        return "finished"
+
+    monkeypatch.setattr(us, "leaf_features_fast", features)
+    ply = us.readout_reply_ply(consumer)
+    want = [i for i, f in enumerate(forced) if not f]
+    for _ in range(2):
+        assert ply(bot, leaves, None, {}, {}, 1, 1, legal, None) == "finished"
+        assert bot.predict is original_predict
+    assert encoded == want * 2
+    assert predicted == want
+    assert bot.unified_reply_rows == len(want) * 2
+    assert bot.unified_reply_memo == len(want)
+    assert bot.unified_reply_served == 0
+
+
+def test_fast_reply_keeps_whole_ply_fallback_for_unsupported_leaf(monkeypatch):
+    """An unsupported leaf still falls back before legal enumeration or partial feature work."""
+    from types import SimpleNamespace as NS
+    from shengji.train import unified_slots as us
+
+    frame = NS(fast=True, tricks=0, pos=0)
+    leaves = [NS(phase="play", history=[], trick=NS(plays=[object()])), NS(phase="round_end")]
+    bot = NS(unified_reply_model=object(), unified_frame=frame, unified_reply_served=0)
+    sentinel = object()
+
+    def forbidden(*args):
+        pytest.fail("unsupported mixed ply must not encode or enumerate")
+
+    def consumer(*args, **kwargs):
+        assert args[1] is leaves
+        assert args[7] is forbidden
+        return sentinel
+
+    monkeypatch.setattr(us, "leaf_features_fast", forbidden)
+    assert us.readout_reply_ply(consumer)(bot, leaves, None, {}, {}, 1, 1, forbidden, None) is sentinel
+    assert bot.unified_reply_served == 2

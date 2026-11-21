@@ -5,7 +5,8 @@
 // last lines of nearbyLog.ts, with Copy, so a tester can paste what the link
 // did; the nearby table's ⋯ menu has Copy log too. In the device-test page
 // build it also starts the log file (nearbyLog.ts), which the ⋯ menu's Clear
-// log file empties.
+// log file empties. With the file on, the file's new bytes also go to the
+// server (nearbyLogUpload.ts), and the ⋯ menu has Upload log now.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { nearbyPluginProxy } from "./native";
 import {
@@ -40,12 +41,26 @@ async function askDebugPlugin(): Promise<DebugPlugin | null> {
     const c = await p.capabilities();
     // the plugin has the file only when built for the device test
     if (c.debug === true && c.logFile === true && typeof (p as Partial<LogFile>).debugLogFile === "function") {
-      await attachNearbyLogFile(p as unknown as LogFile);
+      if (await attachNearbyLogFile(p as unknown as LogFile)) startUpload();
     }
     return c.debug === true ? (p as DebugPlugin) : null;
   } catch {
     return null;
   }
+}
+
+let upload: Promise<typeof import("./nearbyLogUpload") | null> = Promise.resolve(null);
+
+/** The upload module is in the device-test page build only; elsewhere this
+ *  branch is dropped at build time and no upload code is bundled. */
+function startUpload(): void {
+  if (import.meta.env.VITE_SHENGJI_NEARBY !== "1") return;
+  upload = import("./nearbyLogUpload").then((m) => (m.startNearbyLogUpload() || m.nearbyLogUploadOn() ? m : null), () => null);
+}
+
+/** The ⋯ menu's Upload log now; resolves when the tick is done. */
+export function uploadNearbyLogNow(): Promise<void> {
+  return upload.then((m) => m?.uploadNearbyLogNow());
 }
 
 /** Tests: ask the plugin again. */

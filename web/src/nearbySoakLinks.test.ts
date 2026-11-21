@@ -58,11 +58,21 @@ describe("the plugin's faked Wi-Fi change", () => {
     expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_DEV\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    \/\/\/[^\n]*\n    static var chaosWifiReal: Bool\?\n[\s\S]*?func chaosWifiStart[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static var chaosWifiReal: Bool\? \{ nil \}\n    func chaosWifiEnd\(restore: Bool\) \{\}\n\}\n#endif/);
     expect(swift).toContain('case "wifi":');
   });
+  it("never tells the page the network is unsatisfied: the fake changes only the Wi-Fi-joined state", () => {
+    const start = swift.indexOf("func chaosWifiStart");
+    const fake = swift.slice(start, swift.indexOf("\n#else", start));
+    expect(fake).not.toContain("pathFollowOn");
+    expect(fake).not.toContain('notifyListeners("path"');
+    expect(fake.match(/wifiFollowOn\(\)/g)).toHaveLength(2);   // the fake, its end
+    const follow = swift.slice(swift.indexOf("func wifiFollowOn()"), swift.indexOf("func wifiFollowOn()") + 200);
+    expect(follow).not.toContain("notifyListeners");
+  });
   it("a real path change is judged against the real value and ends the fake; resigning active ends it too", () => {
     expect(swift).toContain("wifi != (Self.chaosWifiReal ?? self.wifiUp) else { return }\n            self.chaosWifiEnd(restore: false)");
     expect(swift).toMatch(/willResignActiveNotification\) \{\n            \$0\.chaosWifiEnd\(restore: true\)/);
-    // the fake and its end run the real update's follow-on
-    expect(swift.match(/pathFollowOn\(satisfied:/g)).toHaveLength(4);   // its definition, the real update, the fake, its end
+    // the fake and its end run the Wi-Fi follow-on only; only the real update runs the path follow-on
+    expect(swift.match(/pathFollowOn\(satisfied:/g)).toHaveLength(2);   // its definition, the real update
+    expect(swift).toMatch(/private func pathFollowOn\(satisfied: Bool, regained: Bool\) \{\n        notifyListeners\("path"[^\n]*\n        if regained \{ lookAgainOnNewPath\(\) \}\n        wifiFollowOn\(\)\n    \}/);
     expect(swift).toContain('spikeLog("CHAOS wifi fake \\(real ? "left" : "joined") for');
     expect(swift).toContain('spikeLog("CHAOS wifi fake over');
   });

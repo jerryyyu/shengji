@@ -428,3 +428,25 @@ def test_six_card_follow_candidate_scores_match_reference(monkeypatch):
         assert (got.winner, got.scores, got.worlds) == (want.winner, want.scores, want.worlds)
         checked += len(admitted) * len(worlds)
     assert checked >= 6
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason='native canonicalization cache')
+def test_canonical_cache_handles_slot_growth_and_repeated_roots():
+    from test_endgame_compact import _play_round
+
+    def root(hands):
+        return _play_round('H', '2', 0, hands, ['C5'] * 2, leader=0,
+                           attacker_points=35)
+
+    first = root([['S3', 'S5'], ['S4', 'S6'], ['S7', 'S9'], ['S8', 'S10']])
+    grown = root([['S3', 'SJ'], ['S4', 'SQ'], ['S7', 'SK'], ['S8', 'SA']])
+    session = CompactWorldSession(first, max_hand_cards=4, max_nodes=1000000,
+                                  backend='compiled', level=True)
+    import copy
+    other_leader = copy.deepcopy(first)
+    other_leader.turn = other_leader.trick.leader = 1
+    for rnd in (first, first, other_leader, grown, grown, first):
+        want = _expected_level_points(rnd, _reference_points(rnd))
+        assert session.solve_level(rnd) == want
+    assert session.solver.canon_hits > 0
+    assert session.solver.canon_misses > 0

@@ -488,6 +488,15 @@ def decompose_matching(list cards, ordering, shape):
     return Decomposition(comps)
 
 
+cdef inline tuple _beats_top(int e0, int top, incumbent_suit, long incumbent_top):
+    hit = _EFF_ID.get(incumbent_suit)
+    if hit is not None and e0 == <int>hit:
+        return (top > incumbent_top, top)
+    if e0 == 4:                                  # TRUMP over non-trump
+        return (True, top)
+    return (False, 0)
+
+
 def beats(list challenger, list lead, incumbent_suit, incumbent_top, ordering):
     """legal.beats drop-in. Runs the same matching search as
     decompose_matching but skips building the Decomposition: with the shape's
@@ -503,7 +512,10 @@ def beats(list challenger, list lead, incumbent_suit, incumbent_top, ordering):
     cdef Py_ssize_t n = len(challenger), i
     if n == 0:
         return (False, 0)
-    cdef int e0 = efftab[<int>code2id[challenger[0]]]
+    cdef int first = <int>code2id[challenger[0]]
+    cdef int e0 = efftab[first]
+    if n == 1 and len(lead) == 1 and lead[0] in code2id:
+        return _beats_top(e0, lvl[first], incumbent_suit, incumbent_top)
     for i in range(1, n):
         if efftab[<int>code2id[challenger[i]]] != e0:
             return (False, 0)                    # mixed suits: no contest
@@ -541,13 +553,7 @@ def beats(list challenger, list lead, incumbent_suit, incumbent_top, ordering):
         for j in range(n_order):
             if lvl[order[j]] > top:
                 top = lvl[order[j]]
-    cdef long it = incumbent_top
-    hit = _EFF_ID.get(incumbent_suit)
-    if hit is not None and e0 == <int>hit:
-        return (top > it, top)
-    if e0 == 4:                                  # TRUMP over non-trump
-        return (True, top)
-    return (False, 0)
+    return _beats_top(e0, top, incumbent_suit, incumbent_top)
 
 
 def pair_count(list cards):

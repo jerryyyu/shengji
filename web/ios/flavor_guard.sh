@@ -43,7 +43,8 @@ case "${CONFIGURATION:?}" in
     echo "flavor: Beta (TestFlight internal testing only), nearby on" ;;
   *)
     if [ "$nearby_flag" = yes ]; then
-      echo "error: $CONFIGURATION defines SHENGJI_NEARBY ($FLAGS): an App Store build has no nearby play"
+      named=$(set -f; printf '%s\n' $FLAGS | grep SHENGJI_NEARBY | tr '\n' ' ')
+      echo "error: $CONFIGURATION defines SHENGJI_NEARBY (${named% }): an App Store build has no nearby play"
       exit 1
     fi
     for f in $PLISTS; do

@@ -80,9 +80,9 @@ class ShellViewController: CAPBridgeViewController {
         descriptor.appStartPath = "nearby-spike.html"
         return descriptor
     }
-    #elseif DEBUG && SHENGJI_NEARBY_DEV
-    /// A Debug-only switch: the bundled page, which carries the nearby UI in
-    /// a dev build, instead of the live site.
+    #elseif (DEBUG && SHENGJI_NEARBY_DEV) || SHENGJI_NEARBY_BETA
+    /// The device test's Debug build and the interim Beta build open the
+    /// bundled page, which carries the nearby UI, instead of the live site.
     override open func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
         descriptor.serverURL = nil

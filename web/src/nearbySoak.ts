@@ -1,17 +1,34 @@
-// The nearby device test's overnight soak: Autoplay plays this phone's seat
-// from its own table frames (SmartBot on what the seat can see, at a
-// person's pace, Start and next round included), Chaos asks the plugin for a
-// fault every 20-120 s, and a soak summary goes to the log every 10 minutes
-// and when either stops. Loaded only by the debug ⋯ rows of a Debug build
-// made for the device test (nearbyDebug.tsx); the plugin's debugChaos exists
-// only in that build.
+// The nearby device test's overnight soak, over the whole app. Autoplay is
+// the driver (nearbySoakDriver.ts): this phone walks the table's whole life
+// on its own as one persona (nearbySoakPersonas.ts) through the app's own
+// entry points: a join by code, the lobby, Start, the deal with declares,
+// bury and play (SmartBot on what the seat can see), each round's end, Leave
+// and a rejoin, the ⋯ menu. Chaos runs a fault every 20-120 s and, with
+// p = 0.3, at each phase trigger (nearbySoakChaos.ts): native kinds in the
+// plugin's debugChaos, page kinds (a frozen main thread, frame loss at the
+// bridge, a reload, a Leave) here. A soak summary and its coverage table
+// (nearbySoakCoverage.ts) go to the log every 10 minutes and when either
+// stops. The switches and the table's code are kept in localStorage, so a
+// reload resumes the soak (nearbyDebug.tsx). Loaded only by the debug ⋯
+// rows of a build made for the device test or the Beta; the plugin's
+// debugChaos exists only in those builds.
 import type { Card, TrumpSuit } from "./offline/engine/cards";
 import type { RoundState } from "./offline/engine/round";
 import { SmartBot, type BotView, type PublicTrick } from "./offline/bot";
 import { nearbyPluginProxy } from "./native";
-import { nearbyLog, nearbyLogLines, subscribeNearbyLog, type LogLine } from "./nearbyLog";
+import { nearbyLog, nearbyLogLines, readNearbyLogFile, subscribeNearbyLog, type LogLine } from "./nearbyLog";
 import { nearbyHost } from "./nearbySession";
-import { conn } from "./ws";
+import { forgetSeatToken, nearbyJoin } from "./nearbyJoin";
+import { conn, getSavedName } from "./ws";
+import {
+  BridgeFaults, busyWait, chaosPick, describePick, frameTriggers, lineTriggers, PAGE_KINDS, TRIGGER_P,
+  type Bridge, type ChaosPick, type ChaosRole, type TriggerPhase,
+} from "./nearbySoakChaos";
+import { Coverage } from "./nearbySoakCoverage";
+import { SoakDriver, type JoinPort } from "./nearbySoakDriver";
+import { pickPersonas, type PersonaMix } from "./nearbySoakPersonas";
+
+export { chaosPick, CHAOS_WEIGHTS, type ChaosKind, type ChaosRole } from "./nearbySoakChaos";
 
 type Frame = Record<string, unknown> & { type: string };
 interface HandCard {
@@ -119,40 +136,11 @@ export function autoplayMove(f: Frame, mem: SeatMemory, bot: SmartBot = new Smar
   return null;
 }
 
-/** A person's pace: 0.5-2 s. */
-const pace = () => 500 + Math.random() * 1500;
-
-let autoplayOn = false;
-let chaosOn = false;
-const listeners = new Set<() => void>();
-const changed = () => listeners.forEach((l) => l());
-
-export function subscribeSoak(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => { listeners.delete(fn); };
-}
-
-export function soakState(): { autoplay: boolean; chaos: boolean } {
-  return { autoplay: autoplayOn, chaos: chaosOn };
-}
-
-// the soak's counts, from the frames and the log
-const stats = {
-  started: 0, rounds: 0, games: 0, faults: 0, reconnects: 0, stuck: 0, refused: 0,
-  moves: [] as number[], warnings: [] as string[],
-};
-const summaries: string[] = [];
-let summaryTimer: number | null = null;
-let offLog: (() => void) | null = null;
-let offFrames: (() => void) | null = null;
-
-function resetStats(): void {
-  Object.assign(stats, { started: Date.now(), rounds: 0, games: 0, faults: 0, reconnects: 0, stuck: 0, refused: 0, moves: [], warnings: [] });
-  links = new LinkSplit();
-  metrics = new SoakMetrics();
-}
-
 type LinkKind = "wifi" | "p2p";
+
+/** Under this share of link time on peer-to-peer, the split warns: the soak
+ *  is not testing peer-to-peer enough. */
+export const P2P_FLOOR = 0.3;
 
 /** The soak's split by connection kind, from the plugin's log lines: link-ups
  *  over Wi-Fi and peer-to-peer, the link time on each, and each STUCK put on
@@ -165,6 +153,11 @@ export class LinkSplit {
   movedOff = 0;
   private live = new Map<string, { kind: LinkKind; since: number }>();
   private current: LinkKind | null = null;
+
+  /** The kind of the link last made, or null before any. */
+  currentKind(): LinkKind | null {
+    return this.current;
+  }
 
   static kind(iface: string, says: boolean): LinkKind {
     return says || /^(awdl|llw)/.test(iface) ? "p2p" : "wifi";
@@ -202,13 +195,11 @@ export class LinkSplit {
     for (const l of this.live.values()) ms[l.kind] += Math.max(0, t - l.since);
     const all = ms.wifi + ms.p2p;
     const share = all > 0 ? `${Math.round((100 * ms.p2p) / all)}%` : "-";
-    const low = all > 0 && ms.p2p < 0.2 * all ? " (under 20%)" : "";
+    const low = all > 0 && ms.p2p < P2P_FLOOR * all ? ` (under ${Math.round(P2P_FLOOR * 100)}%)` : "";
     return `links wifi ${this.ups.wifi} / p2p ${this.ups.p2p}, p2p time ${share}${all > 0 ? ` ${Math.round(ms.p2p / 1000)} s${low}` : ""}, ` +
       `STUCK wifi ${this.stuck.wifi} / p2p ${this.stuck.p2p}, moved off p2p ${this.movedOff}`;
   }
 }
-
-let links = new LinkSplit();
 
 type Line = Pick<LogLine, "t" | "from" | "text">;
 const SOCKET_MOVES = /^out (play|bury|declare|pass_declare)$/;
@@ -400,13 +391,73 @@ export class SoakMetrics {
   }
 }
 
-let metrics = new SoakMetrics();
-const pageMs = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
-
 function pct(xs: number[], q: number): number {
   if (!xs.length) return 0;
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.floor(q * s.length))];
+}
+
+
+let links = new LinkSplit();
+let metrics = new SoakMetrics();
+let coverage = new Coverage();
+const pageMs = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+let autoplayOn = false;
+let chaosOn = false;
+const listeners = new Set<() => void>();
+const changed = () => listeners.forEach((l) => l());
+
+export function subscribeSoak(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
+}
+
+export function soakState(): { autoplay: boolean; chaos: boolean } {
+  return { autoplay: autoplayOn, chaos: chaosOn };
+}
+
+// what the soak keeps across a reload: its switches, the table's code, the
+// persona mix, and whether a reload is the soak's own
+const KEEP_KEY = "shengji.nearbySoak.v1";
+interface Kept { autoplay: boolean; chaos: boolean; code: string | null; mix?: PersonaMix; reload?: boolean }
+
+export function keptSoak(): Kept | null {
+  try {
+    const raw = localStorage.getItem(KEEP_KEY);
+    return raw ? (JSON.parse(raw) as Kept) : null;
+  } catch {
+    return null;
+  }
+}
+
+function keep(next: Partial<Kept>): void {
+  try {
+    const was = keptSoak() ?? { autoplay: false, chaos: false, code: null };
+    localStorage.setItem(KEEP_KEY, JSON.stringify({ ...was, ...next }));
+  } catch { /* this page only */ }
+}
+
+// the soak's counts, from the frames and the log
+const stats = {
+  started: 0, rounds: 0, games: 0, faults: 0, reconnects: 0, stuck: 0, refused: 0,
+  moves: [] as number[], warnings: [] as string[],
+};
+const summaries: string[] = [];
+let summaryTimer: number | null = null;
+let healthTimer: number | null = null;
+let lagTimer: number | null = null;
+let offLog: (() => void) | null = null;
+let offFrames: (() => void) | null = null;
+let offStatus: (() => void) | null = null;
+let offJoin: (() => void) | null = null;
+let offHost: (() => void) | null = null;
+
+function resetStats(): void {
+  Object.assign(stats, { started: Date.now(), rounds: 0, games: 0, faults: 0, reconnects: 0, stuck: 0, refused: 0, moves: [], warnings: [] });
+  links = new LinkSplit();
+  metrics = new SoakMetrics();
+  coverage = new Coverage();
 }
 
 /** One line: what the soak has done since it started. */
@@ -418,15 +469,21 @@ export function soakSummary(): string {
     `${links.summary(Math.round(pageMs()))}, ${metrics.summary(Math.round(pageMs()), (Date.now() - stats.started) / 60_000)};${warn}`;
 }
 
+/** The coverage table's lines, as of now. */
+export function soakCoverage(): string[] {
+  return coverage.table();
+}
+
 function writeSummary(): void {
   const line = soakSummary();
-  summaries.push(line);
+  summaries.push([line, ...coverage.table()].join("\n"));
   nearbyLog("soak", line);
+  for (const l of coverage.table()) nearbyLog("soak", l);
 }
 
 /** Every summary so far and the current one, for the clipboard. */
 export function soakSummaryText(): string {
-  return [...summaries, soakSummary()].join("\n");
+  return [...summaries, soakSummary(), ...coverage.table()].join("\n");
 }
 
 /** Each new log line, as it is written (the log calls its listeners once
@@ -434,136 +491,271 @@ export function soakSummaryText(): string {
 function readLog(): void {
   const lines = nearbyLogLines();
   const l = lines[lines.length - 1];
-  if (!l || l.from === "soak") return;
+  if (!l) return;
+  coverage.see(l);
+  for (const t of lineTriggers(l)) trigger(t, t === "after_move" ? Math.random() * 300 : 0);
+  if (l.from === "soak") return;
   links.see(l);
   metrics.see(l);
   if (l.text.includes("STUCK")) stats.stuck += 1;
   if (l.text.startsWith("resume: accepted")) stats.reconnects += 1;
   if (l.text.startsWith("REFUSED")) stats.refused += 1;
-  if (l.text.startsWith("CHAOS ") && !/^CHAOS (stall over|wifi fake over|blackhole over)/.test(l.text)) stats.faults += 1;
+  if (l.text.startsWith("CHAOS ") && !/^CHAOS (stall over|wifi fake over|blackhole over|bgfake over)/.test(l.text)) stats.faults += 1;
   const m = /, (\d+) ms after the move$/.exec(l.text);
   if (m) stats.moves.push(Number(m[1]));
 }
 
-// the seat's own frames: Autoplay's moves and the soak's checks
+// the seat's own frames: the driver's moves and the soak's checks
 const bot = new SmartBot();
 let mem = freshMemory();
 let lastYou: number | null = null;
 let lastPhase = "";
 let lastFrame: Frame | null = null;
-let actTimer: number | null = null;
-let startSent = "";
+let dealCard = 1 + Math.floor(Math.random() * 25);
+let driver: SoakDriver | null = null;
 
 function onFrame(m: Frame): void {
+  const text = JSON.stringify(m);
   metrics.frame(m, Math.round(pageMs()));
+  coverage.frame(m, Math.round(pageMs()), text.length);
+  if (typeof m.room === "string" && (m.type === "room" || m.type === "state")) keep({ code: m.room });
   if (m.type === "left") {
     lastYou = null;
+    lastFrame = null;
+    driver?.frame(m);
     return;
   }
   if (m.type === "error") {
     stats.refused += 1;
     return;
   }
-  if (m.type === "room") {
-    lastFrame = m;
-    schedule();
-    return;
-  }
-  if (m.type !== "state") return;
-  const you = m.you as number;
-  if (lastYou !== null && you !== lastYou) stats.warnings.push(`seat changed ${lastYou}->${you} without a Leave`);
-  lastYou = you;
-  const hand = (m.hand as HandCard[]) ?? [];
-  if (new Set(hand.map((c) => c.id)).size !== hand.length) stats.warnings.push("hand mismatch: a card id twice");
-  if ((m.phase === "play" || m.phase === "bury") && hand.length > mem.handSize && mem.handSize > 0 && m.phase === lastPhase) {
-    stats.warnings.push(`hand mismatch: ${mem.handSize} -> ${hand.length} cards mid-round`);
-  }
-  if (m.phase === "round_end" && lastPhase !== "round_end") {
-    stats.rounds += 1;
-    if ((m.round_result as { game_over?: boolean } | null)?.game_over) stats.games += 1;
-  }
-  lastPhase = m.phase as string;
-  remember(mem, m);
-  lastFrame = m;
-  schedule();
-}
-
-function schedule(): void {
-  if (!autoplayOn) return;
-  if (actTimer !== null) window.clearTimeout(actTimer);
-  actTimer = window.setTimeout(act, pace());
-}
-
-function act(): void {
-  actTimer = null;
-  const f = lastFrame;
-  if (!autoplayOn || !f) return;
-  if (f.type === "room") {
-    // the lobby: this phone's Start, once per lobby frame set
-    const nearby = f.nearby as { ready?: number[] } | undefined;
-    const key = `${String(f.room)}|${String(f.you)}`;
-    if (nearby && !(nearby.ready ?? []).includes(f.you as number) && startSent !== key) {
-      if (conn.send({ type: "table_start" } as never)) startSent = key;
+  if (m.type !== "room" && m.type !== "state") return;
+  for (const t of frameTriggers(lastFrame, m, dealCard)) trigger(t, 0);
+  if (m.type === "state") {
+    const you = m.you as number;
+    if (lastYou !== null && you !== lastYou) stats.warnings.push(`seat changed ${lastYou}->${you} without a Leave`);
+    lastYou = you;
+    const hand = (m.hand as HandCard[]) ?? [];
+    if (new Set(hand.map((c) => c.id)).size !== hand.length) stats.warnings.push("hand mismatch: a card id twice");
+    if ((m.phase === "play" || m.phase === "bury") && hand.length > mem.handSize && mem.handSize > 0 && m.phase === lastPhase) {
+      stats.warnings.push(`hand mismatch: ${mem.handSize} -> ${hand.length} cards mid-round`);
     }
-    return;
+    if (m.phase === "round_end" && lastPhase !== "round_end") {
+      stats.rounds += 1;
+      dealCard = 1 + Math.floor(Math.random() * 25);
+      const r = m.round_result as { game_over?: boolean; point_scored?: boolean } | null;
+      if (r?.game_over || r?.point_scored) stats.games += 1;
+    }
+    lastPhase = m.phase as string;
+    remember(mem, m);
   }
-  const players = f.players as { seat: number; controller: string; is_bot: boolean }[] | undefined;
-  const me = players?.find((p) => p.seat === f.you);
-  if (me && !me.is_bot && me.controller !== "human") conn.send({ type: "im_back" } as never);
-  let move: Record<string, unknown> | null = null;
-  try {
-    move = autoplayMove(f, mem, bot);
-  } catch (e) {
-    stats.warnings.push(`autoplay: ${String(e).slice(0, 60)}`);
-  }
-  if (move) conn.send(move as never);
-}
-
-// Chaos: a fault every 20-120 s
-interface ChaosPlugin {
-  debugChaos(opts: { kind: string; seconds?: number }): Promise<{ done?: boolean }>;
-}
-let chaosTimer: number | null = null;
-export type ChaosKind = "cancel" | "stall" | "blackhole" | "path" | "listener" | "wifi";
-export type ChaosRole = "host" | "joiner";
-/** The kinds each phone can run, each equally likely: a blackhole loses
- *  every frame on the phone's links (4-20 s, past the ping's window), a
- *  path change and a faked Wi-Fi change (20-90 s inside the plugin's path
- *  logic) move a joiner's host link, a listener restart is the host's. */
-export const CHAOS_KINDS: Record<ChaosRole, readonly ChaosKind[]> = {
-  host: ["cancel", "stall", "blackhole", "listener"],
-  joiner: ["cancel", "stall", "blackhole", "path", "wifi"],
-};
-
-/** One fault this phone can run: its kind, and how long a stall (3-12 s), a
- *  blackhole (4-20 s) or a faked Wi-Fi change (20-90 s) lasts. */
-export function chaosPick(role: ChaosRole, rand: () => number = Math.random): { kind: ChaosKind; seconds: number } {
-  const kinds = CHAOS_KINDS[role];
-  const kind = kinds[Math.min(kinds.length - 1, Math.floor(rand() * kinds.length))];
-  return { kind, seconds: kind === "wifi" ? 20 + rand() * 70 : kind === "blackhole" ? 4 + rand() * 16 : 3 + rand() * 9 };
+  lastFrame = m;
+  if (autoplayOn) driver?.frame(m);
 }
 
 /** This phone's part at the table: the host while its nearby switch is on. */
 const chaosRole = (): ChaosRole => (nearbyHost.view.phase === "off" ? "joiner" : "host");
 
+/** The join store, as the driver sees it. */
+const joinPort: JoinPort = {
+  view: () => nearbyJoin.view,
+  seated: () => nearbyJoin.seated,
+  hostLeft: () => nearbyJoin.hostLeft,
+  open: (code, name) => nearbyJoin.open(code, name),
+  pick: (seat) => nearbyJoin.pick(seat),
+  join: () => nearbyJoin.join(),
+  again: () => nearbyJoin.again(),
+  cancel: () => nearbyJoin.cancel(),
+  leave: () => nearbyJoin.leave(),
+  forgetToken: (code) => forgetSeatToken(code),
+};
+
+const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
+
+/** The menu walker's visit: the ⋯ button, then How to play (and back) or a
+ *  setting switched and switched back, or just a look; by the buttons'
+ *  own taps, as a person's. */
+export async function walkMenu(doc: Document = document, rand: () => number = Math.random): Promise<string> {
+  const more = doc.querySelector<HTMLElement>(".hud-more-btn");
+  if (!more) return "no ⋯ button";
+  more.click();
+  await wait(300 + rand() * 1200);
+  const rows = [...doc.querySelectorAll<HTMLElement>(".hud-menu-row")];
+  const howto = rows.find((r) => r.classList.contains("howto-row"));
+  const sound = rows.find((r) => r.classList.contains("sound-row"));
+  const r = rand();
+  if (r < 0.4 && howto) {
+    howto.click();
+    await wait(1000 + rand() * 3000);
+    const { closeHowto } = await import("./howto/route");
+    closeHowto();
+    return "how to play";
+  }
+  if (r < 0.7 && sound) {
+    sound.click();
+    await wait(300 + rand() * 700);
+    sound.click();
+    await wait(200);
+    if (doc.querySelector(".hud-more-btn[aria-expanded=\"true\"]")) more.click();
+    return "setting";
+  }
+  more.click();
+  return "look";
+}
+
+function startDriver(): void {
+  if (driver) return;
+  const p = keptSoak();
+  driver = new SoakDriver(pickPersonas(Math.random, { role: chaosRole(), mix: p?.mix }), {
+    send: (msg) => conn.send(msg as never),
+    open: () => conn.status === "open",
+    role: chaosRole,
+    join: joinPort,
+    code: () => keptSoak()?.code ?? nearbyJoin.view?.code ?? null,
+    name: () => getSavedName().trim() || "Soak",
+    menu: () => walkMenu(),
+    bot,
+    rand: Math.random,
+    now: Date.now,
+    setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimeout: (id) => window.clearTimeout(id),
+    log: (text) => nearbyLog("soak", text),
+  });
+  driver.start();
+  if (lastFrame) driver.frame(lastFrame);
+}
+
+function stopDriver(): void {
+  driver?.stop();
+  driver = null;
+}
+
+// Chaos: a fault every 20-120 s, and on phase triggers
+interface ChaosPlugin {
+  debugChaos(opts: { kind: string; seconds?: number }): Promise<{ done?: boolean }>;
+  debugHealth?(): Promise<{ thermal?: string; lowPower?: boolean; memMb?: number }>;
+}
+let chaosTimer: number | null = null;
+/** Phase-aimed faults keep this far apart, so a game still moves. */
+export const TRIGGER_GAP_MS = 10_000;
+let lastAimed = 0;
+const bridge = new BridgeFaults();
+
+function trigger(t: TriggerPhase, delayMs: number): void {
+  if (!chaosOn || Math.random() >= TRIGGER_P) return;
+  const now = Date.now();
+  if (now - lastAimed < TRIGGER_GAP_MS) return;
+  lastAimed = now;
+  const run = () => runChaos(chaosPick(chaosRole()), t);
+  if (delayMs > 0) window.setTimeout(run, delayMs);
+  else run();
+}
+
+function linkKind(): string {
+  return links.currentKind() ?? "none";
+}
+
+/** Runs one fault and logs it with the phase, role and link kind it met. */
+export function runChaos(pick: ChaosPick, by: TriggerPhase | "bg"): void {
+  const role = chaosRole();
+  const phase = driver?.phase ?? (lastFrame?.type === "state" ? String(lastFrame.phase) : lastFrame?.type === "room" ? "lobby" : "idle");
+  nearbyLog("soak", `chaos: ${describePick(pick)} (phase ${phase}, role ${role}, link ${linkKind()}, by ${by})`);
+  if (PAGE_KINDS.has(pick.kind)) return pageChaos(pick, role);
+  const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
+  if (!p || typeof p.debugChaos !== "function") return;
+  const kind = pick.kind === "outage60" ? "blackhole" : pick.kind;
+  void p.debugChaos({ kind, seconds: pick.seconds }).then((r) => {
+    if (r?.done === false) {
+      metrics.notApplied += 1;
+      nearbyLog("soak", `chaos: ${pick.kind} does not apply here`);
+    }
+  }, (e: unknown) => nearbyLog("soak", `chaos: ${pick.kind} failed: ${String(e)}`));
+}
+
+function pageChaos(pick: ChaosPick, role: ChaosRole): void {
+  switch (pick.kind) {
+    case "jsfreeze": {
+      // after this line is out: the log's listeners run first
+      window.setTimeout(() => {
+        const t0 = pageMs();
+        busyWait(pick.seconds * 1000);
+        nearbyLog("soak", `chaos: jsfreeze over after ${((pageMs() - t0) / 1000).toFixed(1)} s`);
+      }, 50);
+      return;
+    }
+    case "loss":
+    case "oneway": {
+      const w = window as unknown as { Capacitor?: Bridge };
+      if (!bridge.install(w.Capacitor)) {
+        metrics.notApplied += 1;
+        nearbyLog("soak", `chaos: ${pick.kind} does not apply here (no bridge)`);
+        return;
+      }
+      if (pick.kind === "loss") bridge.loss(pick.dir!, pick.frame ?? "", pick.count ?? 1);
+      else {
+        bridge.oneway(pick.dir!, pick.seconds * 1000);
+        const before = { ...bridge.lost };
+        window.setTimeout(() => nearbyLog("soak", `chaos: oneway over: ${bridge.lost[pick.dir!] - before[pick.dir!]} lost`), pick.seconds * 1000);
+      }
+      return;
+    }
+    case "reload": {
+      if (role !== "joiner") return;
+      keep({ autoplay: autoplayOn, chaos: chaosOn, reload: true });
+      writeSummary();
+      window.setTimeout(() => location.reload(), 500);
+      return;
+    }
+    case "leave": {
+      if (role !== "joiner" || !nearbyJoin.seated) return;
+      driver?.forceLeave("chaos");
+      return;
+    }
+    default:
+      return;
+  }
+}
+
 function armChaos(): void {
   if (!chaosOn) return;
   chaosTimer = window.setTimeout(() => {
     chaosTimer = null;
-    const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
-    const { kind, seconds } = chaosPick(chaosRole());
-    if (p && typeof p.debugChaos === "function") {
-      nearbyLog("soak", `chaos: ${kind}${kind === "cancel" || kind === "path" || kind === "listener" ? "" : ` ${seconds.toFixed(1)} s`}`);
-      void p.debugChaos({ kind, seconds }).then((r) => {
-        if (r?.done === false) {
-          metrics.notApplied += 1;
-          nearbyLog("soak", `chaos: ${kind} does not apply here`);
-        }
-      }, (e: unknown) => nearbyLog("soak", `chaos: ${kind} failed: ${String(e)}`));
-    }
+    runChaos(chaosPick(chaosRole()), "bg");
     armChaos();
   }, 20_000 + Math.random() * 100_000);
 }
+
+/** The page's health while the soak runs: its event loop's lag (a 500 ms
+ *  timer's lateness), and each minute the phone's thermal state, Low Power
+ *  and memory (the plugin's debugHealth) and the log upload's backlog. */
+function startHealth(): void {
+  let due = pageMs() + 500;
+  lagTimer = window.setInterval(() => {
+    const now = pageMs();
+    coverage.lag(Math.max(0, now - due));
+    due = now + 500;
+  }, 500);
+  healthTimer = window.setInterval(() => {
+    const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
+    if (p && typeof p.debugHealth === "function") void p.debugHealth().catch(() => {});
+    void backlog();
+  }, 60_000);
+}
+
+async function backlog(): Promise<void> {
+  try {
+    const [file, up] = await Promise.all([readNearbyLogFile("current", 0, 0), import("./nearbyLogUpload")]);
+    if (file) coverage.backlog = Math.max(0, file.size - up.loadUploadState().cur);
+  } catch { /* no log file here */ }
+}
+
+function stopHealth(): void {
+  if (lagTimer !== null) window.clearInterval(lagTimer);
+  if (healthTimer !== null) window.clearInterval(healthTimer);
+  lagTimer = healthTimer = null;
+}
+
+const onVisibility = () => nearbyLog("soak", document.visibilityState === "visible" ? "page visible" : "page hidden");
 
 function running(): void {
   const any = autoplayOn || chaosOn;
@@ -571,16 +763,28 @@ function running(): void {
     resetStats();
     offLog = subscribeNearbyLog(readLog);
     offFrames = conn.subscribe((m) => onFrame(m as unknown as Frame));
+    offStatus = conn.subscribeStatus((s) => driver?.statusChanged(s === "open"));
+    offJoin = nearbyJoin.subscribe(() => driver?.joinChanged());
+    let hostPhase = nearbyHost.view.phase;
+    offHost = nearbyHost.subscribe(() => {
+      const ph = nearbyHost.view.phase;
+      if (ph === "on" && hostPhase !== "on") nearbyLog("soak", "flow: hosting");
+      hostPhase = ph;
+    });
+    document.addEventListener("visibilitychange", onVisibility);
     summaryTimer = window.setInterval(writeSummary, 10 * 60_000);
+    startHealth();
     nearbyLog("soak", `soak started (autoplay ${autoplayOn ? "on" : "off"}, chaos ${chaosOn ? "on" : "off"})`);
   } else if (!any && offLog !== null) {
     writeSummary();
     offLog();
     offLog = null;
-    offFrames?.();
-    offFrames = null;
+    for (const off of [offFrames, offStatus, offJoin, offHost]) off?.();
+    offFrames = offStatus = offJoin = offHost = null;
+    document.removeEventListener("visibilitychange", onVisibility);
     if (summaryTimer !== null) window.clearInterval(summaryTimer);
     summaryTimer = null;
+    stopHealth();
     mem = freshMemory();
     lastYou = null;
   }
@@ -590,18 +794,17 @@ function running(): void {
 export function setAutoplay(on: boolean): void {
   if (autoplayOn === on) return;
   autoplayOn = on;
+  keep({ autoplay: on });
   nearbyLog("soak", `autoplay ${on ? "on" : "off"}`);
-  if (!on && actTimer !== null) {
-    window.clearTimeout(actTimer);
-    actTimer = null;
-  }
   running();
-  if (on) schedule();
+  if (on) startDriver();
+  else stopDriver();
 }
 
 export function setChaos(on: boolean): void {
   if (chaosOn === on) return;
   chaosOn = on;
+  keep({ chaos: on });
   nearbyLog("soak", `chaos ${on ? "on" : "off"}`);
   if (on) armChaos();
   else if (chaosTimer !== null) {
@@ -609,4 +812,16 @@ export function setChaos(on: boolean): void {
     chaosTimer = null;
   }
   running();
+}
+
+/** At the page's start (nearbyDebug.tsx): a soak that was on before a reload
+ *  is on again, and its driver rejoins the kept code. */
+export function resumeSoak(): boolean {
+  const k = keptSoak();
+  if (!k || (!k.autoplay && !k.chaos)) return false;
+  if (k.reload) keep({ reload: false });
+  nearbyLog("soak", k.reload ? "flow: reload resumed" : "soak resumed at the page's start");
+  if (k.chaos) setChaos(true);
+  if (k.autoplay) setAutoplay(true);
+  return true;
 }

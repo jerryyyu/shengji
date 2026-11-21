@@ -437,12 +437,13 @@ def test_named_comparator_rows_are_not_counted_or_labelled_as_production():
     as vs the release, and the shared zero is comparator parity, not production parity."""
     reg = json.loads((HERE / "registry.json").read_text())
     named = [s for s in reg["screens"] if s.get("named_comparator")]
-    assert [s["id"] for s in named] == ["s117"]
+    assert {"s117", "rt3fr"} <= {s["id"] for s in named}
     html = _load().page
     assert ">production parity</text>" not in html and ">comparator parity</text>" in html
     assert "Screens against the current production release" not in html
     assert f"{len(named)} vs a named non-release comparator" in html
     assert "s117" in html and "NOT release 51" in html
+    assert "rt3fr" in html and "NOT release 53" in html
 
 
 def test_the_page_shows_only_the_registry_era():

@@ -17,7 +17,7 @@ import pytest
 
 PYBOT = Path(__file__).resolve().parents[2] / "web" / "ios" / "pybot"
 SCRIPTS = ("inputs.sh", "xcode_install_python.sh", "build_fast_ext.sh", "offline_bot.py")
-PYX = ("engine/_fast", "ai/_cwv_math", "ai/_endgame_fast", "train/_pv_fast")
+PYX = ("engine/_fast", "ai/_cwv_math", "ai/_endgame_fast", "train/_pv_fast", "train/_reply_fast")
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None or shutil.which("rsync") is None,
                                 reason="needs bash and rsync")

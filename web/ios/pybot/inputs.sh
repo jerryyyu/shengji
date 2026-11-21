@@ -21,7 +21,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="${PYBOT_REPO:-$(cd "$HERE/../../.." && pwd)}"
 XC="${PYBOT_XCFRAMEWORK:-$HERE/Python.xcframework}"
-FAST_EXTS="shengji/engine/_fast.pyx shengji/ai/_cwv_math.pyx shengji/ai/_endgame_fast.pyx shengji/train/_pv_fast.pyx"
+FAST_EXTS="shengji/engine/_fast.pyx shengji/ai/_cwv_math.pyx shengji/ai/_endgame_fast.pyx shengji/train/_pv_fast.pyx shengji/train/_reply_fast.pyx"
 
 sha() {  # sha FILE -> hex digest
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1

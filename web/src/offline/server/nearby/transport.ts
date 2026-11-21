@@ -21,6 +21,9 @@ export interface HostHandlers {
    *  answer is asynchronous): the link is no good. A transport whose send
    *  throws at once has no need of it. */
   sendFailed?(peer: string, why: string): void;
+  /** The transport refused an inbound link before it was a peer, by which
+   *  of its own limits (the native plugin's). */
+  refused?(reason: string): void;
 }
 
 export interface HostLink {

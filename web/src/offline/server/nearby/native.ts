@@ -23,6 +23,7 @@ export interface NearbyPlugin {
   addListener(event: "state", fn: (ev: { state: string; detail?: string }) => void): Promise<Listener>;
   addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<Listener>;
   addListener(event: "path", fn: (ev: { satisfied: boolean }) => void): Promise<Listener>;
+  addListener(event: "refused", fn: (ev: { reason?: string }) => void): Promise<Listener>;
 }
 
 const STATES: ReadonlySet<string> = new Set(["ready", "waiting", "denied", "wifiOff", "notFound", "failed", "ended", "version"]);
@@ -103,6 +104,9 @@ export function pluginTransport(p: NearbyPlugin, session: PluginSession): Nearby
           if (live()) handlers.peer(ev.peer, ev.state === "connected", typeof ev.device === "string" ? ev.device : undefined);
         }),
         p.addListener("message", (ev) => { if (live()) handlers.message(ev.peer, ev.text); }),
+        p.addListener("refused", (ev) => {
+          if (live()) handlers.refused?.(typeof ev.reason === "string" ? ev.reason.slice(0, 32) : "?");
+        }),
         p.addListener("state", (ev) => {
           if (!live()) return;
           const state = asState(ev.state);

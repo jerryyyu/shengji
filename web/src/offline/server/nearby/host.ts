@@ -93,6 +93,8 @@ export class NearbyHost {
       peer: (peer, connected, device) => (connected ? this.onPeer(peer, device ?? null) : this.onGone(peer)),
       message: (peer, text) => this.onMessage(peer, text),
       sendFailed: (peer) => this.sendFailed(peer),
+      // a link the native plugin refused before it was one of ours
+      refused: (reason) => this.refuse(`native_${reason}`),
       state: (state, detail) => {
         // the host was away past the joiners' window: the table is over
         if (state === "ended") this.server.endNearbyRoomForAll(this.room);

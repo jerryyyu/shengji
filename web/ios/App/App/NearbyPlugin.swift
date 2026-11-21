@@ -312,9 +312,12 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     /// A host away from the app longer than this ends its table.
     static let hostWindow: TimeInterval = 60
     static let maxJoinTries = 8
-    /// Three seats, one joiner whose new link lands before the host closes
-    /// its old one, and one more that is only looking at the seats.
-    static let maxConnected = 5
+    /// The page's own cap (LIMITS.peers: three seats and three links in
+    /// their hello) and one link more per joiner: a new link that is up
+    /// here before the page has ended that joiner's old or stuck one, as in
+    /// a storm where all three rebuild at once. Above the page's cap, so
+    /// the page refuses (and logs) any link beyond its own.
+    static let maxConnected = 9
     static let maxPending = 4
     /// Handshakes in flight from one remote address.
     static let maxPendingPerAddress = 2
@@ -1020,10 +1023,14 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         let connected = links.count - pending.count
         let now = Date()
         failedAt = failedAt.filter { now.timeIntervalSince($0.value) < Self.failedHandshakeSpacing }
-        guard pending.count < Self.maxPending, connected < Self.maxConnected,
-              pending.filter({ $0.remote == remote }).count < Self.maxPendingPerAddress,
-              failedAt[remote] == nil else {
+        let refusal: String? =
+            pending.count >= Self.maxPending ? "pending"
+            : connected >= Self.maxConnected ? "connected"
+            : pending.filter({ $0.remote == remote }).count >= Self.maxPendingPerAddress ? "address"
+            : failedAt[remote] != nil ? "spacing" : nil
+        if let refusal = refusal {
             spikeLog("inbound refused: pending \(pending.count) connected \(connected) spaced \(failedAt[remote] != nil)")
+            emitRefused(refusal)
             return connection.cancel()
         }
         var peer = NearbyKey.randomName(12)
@@ -1036,7 +1043,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             switch state {
             case .ready:
                 let others = self.links.values.filter { $0.ready }.count
-                guard others < Self.maxConnected else { return self.drop(link.peer) }
+                guard others < Self.maxConnected else {
+                    self.emitRefused("connected")
+                    return self.drop(link.peer)
+                }
                 link.ready = true
                 let via = connection.currentPath?.availableInterfaces.first
                 self.spikeLog("inbound \(link.peer) up via \(via?.name ?? "?")\(LinkPath.isPeerToPeer(via?.name) ? " peer-to-peer" : "")")
@@ -1380,6 +1390,13 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     static func wifiOff(_ error: NWError) -> Bool {
         if case .posix(let code) = error { return code == .ENETDOWN || code == .ENETUNREACH }
         return false
+    }
+
+    /// An inbound link the plugin refused before the page heard of it, by
+    /// which limit (never its address), so the page's log and its refusal
+    /// counts show it in every build.
+    private func emitRefused(_ reason: String) {
+        notifyListeners("refused", data: ["reason": reason])
     }
 
     private func emitState(_ state: String, detail: String? = nil) {

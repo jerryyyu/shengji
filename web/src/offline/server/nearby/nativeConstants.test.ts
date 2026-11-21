@@ -33,6 +33,15 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift).toContain("static let maxMessage = 16 * 1024");
   });
 
+  it("the plugin admits more links than the page, so the page's own refusal is the one that runs", () => {
+    // the page's cap and one more link per joiner (three) that is up
+    // natively before the page has ended that joiner's older one
+    expect(swift).toContain(`static let maxConnected = ${LIMITS.peers + LIMITS.unseated}`);
+    // and a link the plugin refuses itself still reaches the page's log
+    expect(swift.match(/emitRefused\("/g)?.length).toBeGreaterThanOrEqual(1);
+    expect(swift).toContain('notifyListeners("refused", data: ["reason": reason])');
+  });
+
   it("the joiner waits a few seconds longer for its host than the host has to come back", () => {
     const m = swift.match(/static let hostWindow: TimeInterval = (\d+)/);
     expect(m).not.toBeNull();

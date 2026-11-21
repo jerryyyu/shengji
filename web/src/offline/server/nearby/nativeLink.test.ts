@@ -93,3 +93,12 @@ it("a host send the plugin refuses reaches the room's host as a failed send, for
   plugin.send = send;
   expect(failed).toEqual([["p2", "Error: message over 16 KB"]]);
 });
+
+it("an inbound link the plugin refused reaches the room's host by its reason, with no address", async () => {
+  const t = nativeTransport()!;
+  const refused: string[] = [];
+  await t.host("K7Q2M", { peer: () => {}, message: () => {}, state: () => {}, refused: (r) => refused.push(r) });
+  plugin.emit("refused", { reason: "connected" });
+  plugin.emit("refused", {});
+  expect(refused).toEqual(["connected", "?"]);
+});

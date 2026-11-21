@@ -1,5 +1,5 @@
 // The soak summary's split by connection kind, from fixture plugin lines, and
-// the chaos pick's fifth kind, a faked Wi-Fi change of 20-90 s.
+// the chaos pick, drawn from the kinds the phone can run.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -40,14 +40,30 @@ describe("the soak's link split", () => {
 });
 
 describe("the chaos pick", () => {
-  it("has five equally likely kinds; wifi lasts 20-90 s, a stall 3-12 s", () => {
-    expect([0, 0.2, 0.4, 0.6, 0.8].map((r) => chaosPick(() => r).kind)).toEqual(["cancel", "stall", "path", "listener", "wifi"]);
-    const wifi = (r: number) => { let i = 0; return chaosPick(() => (i++ === 0 ? 0.9 : r)); };
+  it("draws only kinds this phone can run, each equally likely; wifi lasts 20-90 s, a stall 3-12 s", () => {
+    expect([0, 0.34, 0.67].map((r) => chaosPick("host", () => r).kind)).toEqual(["cancel", "stall", "listener"]);
+    expect([0, 0.25, 0.5, 0.75].map((r) => chaosPick("joiner", () => r).kind)).toEqual(["cancel", "stall", "path", "wifi"]);
+    const wifi = (r: number) => { let i = 0; return chaosPick("joiner", () => (i++ === 0 ? 0.9 : r)); };
     expect(wifi(0)).toEqual({ kind: "wifi", seconds: 20 });
     expect(wifi(0.999).seconds).toBeCloseTo(89.93, 1);
-    const stall = (r: number) => { let i = 0; return chaosPick(() => (i++ === 0 ? 0.3 : r)); };
+    const stall = (r: number) => { let i = 0; return chaosPick("host", () => (i++ === 0 ? 0.4 : r)); };
     expect(stall(0)).toEqual({ kind: "stall", seconds: 3 });
     expect(stall(0.999).seconds).toBeLessThan(12);
+  });
+
+  it("never picks a path change or a Wi-Fi fake on the host, or a listener restart on a joiner", () => {
+    const seen = { host: new Set<string>(), joiner: new Set<string>() };
+    for (let i = 0; i < 1000; i++) {
+      const r = (i + 0.5) / 1000;
+      seen.host.add(chaosPick("host", () => r).kind);
+      seen.joiner.add(chaosPick("joiner", () => r).kind);
+    }
+    expect([...seen.host].sort()).toEqual(["cancel", "listener", "stall"]);
+    expect([...seen.joiner].sort()).toEqual(["cancel", "path", "stall", "wifi"]);
+    // the plugin refuses exactly these elsewhere (done: false)
+    const swift = readFileSync(join(process.cwd(), "ios/App/App/NearbyPlugin.swift"), "utf8");
+    expect(swift).toMatch(/case "path":\n\s+guard !self\.hosting/);
+    expect(swift).toMatch(/case "listener":\n\s+guard self\.hosting/);
   });
 });
 

@@ -10,6 +10,7 @@ import type { RoundState } from "./offline/engine/round";
 import { SmartBot, type BotView, type PublicTrick } from "./offline/bot";
 import { nearbyPluginProxy } from "./native";
 import { nearbyLog, nearbyLogLines, subscribeNearbyLog, type LogLine } from "./nearbyLog";
+import { nearbyHost } from "./nearbySession";
 import { conn } from "./ws";
 
 type Frame = Record<string, unknown> & { type: string };
@@ -327,23 +328,33 @@ interface ChaosPlugin {
   debugChaos(opts: { kind: string; seconds?: number }): Promise<{ done?: boolean }>;
 }
 let chaosTimer: number | null = null;
-// each kind equally likely; "wifi" fakes the Wi-Fi network leaving or
-// joining for 20-90 s inside the plugin's path logic
-const KINDS = ["cancel", "stall", "path", "listener", "wifi"] as const;
+export type ChaosKind = "cancel" | "stall" | "path" | "listener" | "wifi";
+export type ChaosRole = "host" | "joiner";
+/** The kinds each phone can run, each equally likely: a path change and a
+ *  faked Wi-Fi change (20-90 s inside the plugin's path logic) move a
+ *  joiner's host link, a listener restart is the host's. */
+export const CHAOS_KINDS: Record<ChaosRole, readonly ChaosKind[]> = {
+  host: ["cancel", "stall", "listener"],
+  joiner: ["cancel", "stall", "path", "wifi"],
+};
 
-/** One fault: its kind, and how long a stall (3-12 s) or a faked Wi-Fi
- *  change (20-90 s) lasts. */
-export function chaosPick(rand: () => number = Math.random): { kind: (typeof KINDS)[number]; seconds: number } {
-  const kind = KINDS[Math.min(KINDS.length - 1, Math.floor(rand() * KINDS.length))];
+/** One fault this phone can run: its kind, and how long a stall (3-12 s) or
+ *  a faked Wi-Fi change (20-90 s) lasts. */
+export function chaosPick(role: ChaosRole, rand: () => number = Math.random): { kind: ChaosKind; seconds: number } {
+  const kinds = CHAOS_KINDS[role];
+  const kind = kinds[Math.min(kinds.length - 1, Math.floor(rand() * kinds.length))];
   return { kind, seconds: kind === "wifi" ? 20 + rand() * 70 : 3 + rand() * 9 };
 }
+
+/** This phone's part at the table: the host while its nearby switch is on. */
+const chaosRole = (): ChaosRole => (nearbyHost.view.phase === "off" ? "joiner" : "host");
 
 function armChaos(): void {
   if (!chaosOn) return;
   chaosTimer = window.setTimeout(() => {
     chaosTimer = null;
     const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
-    const { kind, seconds } = chaosPick();
+    const { kind, seconds } = chaosPick(chaosRole());
     if (p && typeof p.debugChaos === "function") {
       nearbyLog("soak", `chaos: ${kind}${kind === "stall" || kind === "wifi" ? ` ${seconds.toFixed(1)} s` : ""}`);
       void p.debugChaos({ kind, seconds }).then((r) => {

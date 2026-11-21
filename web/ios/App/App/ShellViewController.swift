@@ -80,10 +80,11 @@ class ShellViewController: CAPBridgeViewController {
         descriptor.appStartPath = "nearby-spike.html"
         return descriptor
     }
-    #elseif (DEBUG && SHENGJI_NEARBY_DEV) || SHENGJI_NEARBY_BETA
-    /// The device test's Debug build and the Beta build open the bundled
-    /// page, which carries the nearby UI, instead of the live site: they play
-    /// offline and nearby only.
+    #elseif DEBUG && SHENGJI_NEARBY_DEV
+    /// The device test's Debug build opens the bundled page instead of the
+    /// live site. The Beta build loads the live site as the App Store build
+    /// does, with the bundled page as its offline fallback; the page turns
+    /// Play nearby on from the plugin's capabilities.
     override open func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = super.instanceDescriptor()
         descriptor.serverURL = nil

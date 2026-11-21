@@ -442,6 +442,18 @@ class LazyScoring:
         return slot.dense @ row
 
 
+def _top_replies(scoring, row, keep):
+    if (type(scoring) is LazyScoring and scoring.native and not scoring.replies.leads
+            and row.flags.c_contiguous and 1 <= keep <= 4):
+        rank = getattr(pv_native._pv_fast, "top_short_follows", None)
+        if rank is not None:
+            replies = scoring.replies
+            order = rank(replies.cards, replies.offsets, row, keep)
+            if order is not None:
+                return order
+    return np.argsort(-(scoring @ row), kind="stable")[:keep]
+
+
 def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
     """`legal_replies` with the listing held as `CompactReplies` and the
     scoring as `LazyScoring`: the same actions in the same order, the same
@@ -704,7 +716,7 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
             raise ValueError("policy requires finite rows x 54 log-odds")
         for row, (index, legal, scoring) in zip(logits, pending[start:start + bot.batch_size]):
             # the policy's top-R follows; a stable sort keeps enumeration order on ties
-            order = np.argsort(-(scoring @ row), kind="stable")[:keep]
+            order = _top_replies(scoring, row, keep)
             candidates = [list(legal[int(i)]) for i in order]
             follow = sorted(heuristic.decide_play(active[index], seat))
             if follow not in candidates:

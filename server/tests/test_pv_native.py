@@ -1051,3 +1051,19 @@ def test_native_reply_counts_older_extension_keeps_reference(monkeypatch, extens
     row = np.linspace(-1, 1, 54)
     lazy = pts.LazyScoring(replies, pts._DenseSlot(), native=True)
     assert (lazy @ row).tobytes() == (replies.multiplicity() @ row).tobytes()
+
+
+@needs_native
+@pytest.mark.parametrize("width", [1, 2, 3])
+def test_short_follow_ranking_matches_stable_dense_order(width):
+    rng = np.random.default_rng(42)
+    cards = rng.integers(0, 54, size=4000 * width, dtype=np.int8)
+    offsets = np.arange(0, len(cards) + 1, width, dtype=np.int32)
+    replies = pts.CompactReplies.from_arrays(cards, offsets, leads=False)
+    scoring = pts.LazyScoring(replies, pts._DenseSlot(), native=True)
+    counts = replies.multiplicity()
+    for logits in (rng.normal(size=54), rng.integers(-2, 3, size=54).astype(float), np.zeros(54)):
+        order = np.argsort(-(counts @ logits), kind="stable")
+        for keep in (1, 4):
+            assert list(pts._top_replies(scoring, logits, keep)) == list(order[:keep])
+    assert (scoring.slot.dense is None) == (width <= 2)

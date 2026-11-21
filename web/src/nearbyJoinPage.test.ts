@@ -19,6 +19,17 @@ import { LocalSocket } from "./offline/server/socket";
 
 type Msg = Record<string, unknown> & { type: string };
 
+// the game server's socket never opens here (a server listening on this
+// machine must not reach the page): the page plays on its nearby link
+class NoSocket {
+  static OPEN = 1;
+  readyState = 0;
+  onopen = null; onmessage = null; onclose = null; onerror = null;
+  send(): void {}
+  close(): void {}
+}
+(globalThis as unknown as { WebSocket: unknown }).WebSocket = NoSocket;
+
 beforeEach(() => {
   setNearbyForTests(true);
   localStorage.clear();

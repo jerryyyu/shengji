@@ -6,6 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
+import { useNearbyUi } from "../nearbyGate";
 import { tapHandlers } from "../tap";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
@@ -16,13 +17,17 @@ import { tapHandlers } from "../tap";
  *  same list as Me's: Coach, Sound, Haptics in the app, How to play), then
  *  a red Leave game, which closes the menu and opens the one leave sheet.
  *  Offline there is no code and no invite: an offline game plays to its end
- *  on this device. Labels only, no sub-lines.
+ *  on this device. A nearby table is the exception: its code is in the same
+ *  place, without the Invite link (the code is the only way in), and its
+ *  host has Allow joiners. Labels only, no sub-lines.
  *
  *  Keyboard: Enter or Space on `⋯` opens it with focus on the first row,
  *  ArrowUp and ArrowDown move between rows (wrapping), Home and End go to
  *  the ends, and Escape closes it and returns focus to `⋯`. */
-export default function HudMenu({ room, mode, ranked = false, guest = false, offline = OFFLINE, allowJoiners, opener = true }: {
+export default function HudMenu({ room, mode, ranked = false, guest = false, offline = OFFLINE, nearby = false, allowJoiners, opener = true }: {
   room: string; ranked?: boolean; offline?: boolean;
+  /** A nearby table: offline, with its code and Allow joiners. */
+  nearby?: boolean;
   /** The game's mode, a plain label at the top of the menu; the header carries none. */
   mode?: "Ranked" | "Casual";
   /** A guest seat: the leave sheet speaks of no ranking. */
@@ -92,7 +97,10 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
     setAsking(true);
   };
 
-  const joiners = opener && !offline ? allowJoiners : undefined;
+  const joiners = opener && (!offline || nearby) ? allowJoiners : undefined;
+  const showCode = !offline || nearby;
+  // the soak's rows and the code's hidden-switch taps (nearbyUi.tsx), at a nearby table only
+  const nb = useNearbyUi();
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -123,21 +131,25 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
              aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
              ref={menuRef} onKeyDown={onMenuKey}>
           {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode}</div> : null}
-          {offline ? null : (
+          {showCode ? (
             <div className="hud-menu-code" role="none">
-              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}>{room}</span>
-              <button className="hud-menu-row hud-menu-invite" role="menuitem" {...tapHandlers(invite)}>
-                {copied ? "Link copied" : "Invite link"}
-              </button>
+              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}
+                    {...(nearby && nb ? tapHandlers(nb.nearbyMenuTitleTap) : {})}>{room}</span>
+              {offline ? null : (
+                <button className="hud-menu-row hud-menu-invite" role="menuitem" {...tapHandlers(invite)}>
+                  {copied ? "Link copied" : "Invite link"}
+                </button>
+              )}
             </div>
-          )}
+          ) : null}
           {joiners === undefined ? null : (
             <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={joiners}
                     {...tapHandlers(() => conn.send({ type: "table_allow_joiners", on: !joiners }))}>
               <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
-          {offline ? null : <div className="hud-menu-sep" role="separator" />}
+          {nearby && nb ? <nb.NearbyMenuRows close={close} /> : null}
+          {showCode ? <div className="hud-menu-sep" role="separator" /> : null}
           <SettingsMenuRows onOpenPage={close} />
           <div className="hud-menu-sep" role="separator" />
           <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(askLeave)}>

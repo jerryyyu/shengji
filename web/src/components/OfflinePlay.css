@@ -10,6 +10,26 @@
   opacity: 0.45;
 }
 
+/* with nearby play the box takes a nearby table's code, so it is live */
+.play-offline .join-row.nearby {
+  opacity: 1;
+}
+
+/* the code box's one nearby line (FLOWS.md "Play nearby") */
+.join-line {
+  margin: 8px 2px 0;
+  font-size: var(--fs-13);
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.join-line-link,
+.tp-line-link {
+  font-size: inherit;
+  padding: 0;
+  vertical-align: baseline;
+}
+
 /* Offline play: no chat to open. */
 .app.offline .chat-launch {
   display: none;

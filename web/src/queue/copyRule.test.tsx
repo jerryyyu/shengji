@@ -207,3 +207,80 @@ describe("offline panel", () => {
     });
   }
 });
+
+/** The copy rule's one listed exception (FLOWS.md "Play nearby"): under the
+ *  code box, for a nearby code only, one passive line before iOS has asked
+ *  for Local Network access, or after a denial one line with its Settings
+ *  link. No other text sits under a control. */
+const UNDER_CONTROL_EXCEPTION = {
+  where: "the code box (Lobby.tsx NearbyCodeLine)",
+  lines: [
+    "This is a nearby table. Sheng Ji will ask to use your local network to find it.",
+    "Nearby tables need Local Network access. Open Settings",
+  ],
+};
+
+describe("nearby panels and the code box's one exception", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+  });
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  const room = (over: Record<string, unknown> = {}) => ({
+    type: "room" as const, room: "K7Q2M", you: 0, host: 0, start_level: "2" as const,
+    players: [{ seat: 0, name: "Jerry", is_bot: false, connected: true }, { seat: 2, name: "Mei", is_bot: false, connected: true }],
+    nearby: { ready: [0], bots_in: 42, locked: true }, ...over,
+  });
+
+  for (const [kind, r] of [["nearby host", room()], ["nearby joiner", room({ you: 2 })],
+                           ["nearby host alone", room({ players: [room().players[0]], nearby: { ready: [], bots_in: null, locked: false } })]] as const) {
+    it(`${kind}: labels only, one status, the ring is the clock`, async () => {
+      const { NearbyRoomPanel } = await import("../nearbyUi");
+      act(() => root.render(<NearbyRoomPanel room={r} onLeave={() => {}} />));
+      expectCopyRule(host.querySelector(".tp-offline"), kind);
+      expect(host.querySelector(".tp-invite"), "no Invite link offline").toBeNull();
+      expect(host.querySelector(".tp-chat"), "no chat at a nearby table").toBeNull();
+      expect(!!host.querySelector("[role='switch']"), "only the host has the Nearby switch").toBe(r.you === r.host);
+    });
+  }
+
+  it("the offline panel's denied line: one status line, its link inside it", async () => {
+    const { OfflinePanel } = await import("./TablePanel");
+    const { nearbySwitch } = await import("./nearbyModel");
+    act(() => root.render(<OfflinePanel ready starting={false} bots="standard" onBots={() => {}} onStart={() => {}} onLeave={() => {}}
+                                        nearby={nearbySwitch({ on: false, line: "denied" })} />));
+    expectCopyRule(host.querySelector(".tp-offline"), "offline, denied");
+    expect(host.querySelector(".tp-line")!.textContent).toBe(UNDER_CONTROL_EXCEPTION.lines[1]);
+    expect(host.querySelector(".tp-chat"), "the greyed Chat row while Nearby is off").not.toBeNull();
+    expect(host.textContent, "the Bots row while Nearby is off").toContain("Bots");
+    act(() => root.render(<OfflinePanel ready starting={false} bots="standard" onBots={() => {}} onStart={() => {}} onLeave={() => {}}
+                                        nearby={nearbySwitch({ on: true, line: null })} />));
+    expect(host.querySelector(".tp-chat"), "no Chat row while Nearby is on").toBeNull();
+    expect(host.textContent, "no Bots row while Nearby is on").not.toContain("Bots");
+  });
+
+  it("the code box's lines are exactly the listed exception", async () => {
+    const { CodeRow } = await import("../components/Lobby");
+    const nearby = await import("../nearbyUi");
+    const lines = () => [...host.querySelectorAll(".join-line")].map((p) => p.textContent);
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2" nearby={nearby} />));
+    expect(lines(), "an online code: no line").toEqual([]);
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2M" nearby={nearby} />));
+    expect(lines()).toEqual([UNDER_CONTROL_EXCEPTION.lines[0]]);
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2M" nearby={nearby}
+                                   nearbyJoinView={{ code: "K7Q2M", step: "denied", peek: null, seat: null }} />));
+    expect(lines()).toEqual([UNDER_CONTROL_EXCEPTION.lines[1]]);
+    localStorage.setItem("shengji.nearbyAllowed", "1");
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2Y" nearby={nearby} />));
+    expect(lines(), "once iOS has asked, no line").toEqual([]);
+    act(() => root.render(<CodeRow disabled={false} code="K7Q2M" />));
+    expect(lines(), "no nearby play: no line, and the box stops at four").toEqual([]);
+    expect(host.querySelector("input")!.maxLength).toBe(4);
+  });
+});

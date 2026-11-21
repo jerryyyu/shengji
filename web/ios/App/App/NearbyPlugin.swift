@@ -1477,7 +1477,8 @@ extension ShengjiNearbyPlugin {
 /// Store build.
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "debugChaos", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "debugChaos", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "debugHealth", returnType: CAPPluginReturnPromise)
     ]
     static let chaosBuild = true
     /// On `queue`: a stall runs. Only its flush clears it, so nothing sent
@@ -1522,7 +1523,8 @@ extension ShengjiNearbyPlugin {
 
     @objc func debugChaos(_ call: CAPPluginCall) {
         let kind = call.getString("kind") ?? ""
-        let seconds = min(max(call.getDouble("seconds") ?? 5, 0), 30)
+        // up to 90 s: a blackhole as long as the 60 s host window and past it
+        let seconds = min(max(call.getDouble("seconds") ?? 5, 0), 90)
         queue.async {
             switch kind {
             case "cancel":
@@ -1563,6 +1565,28 @@ extension ShengjiNearbyPlugin {
                 guard self.hosting else { return call.resolve(["done": false]) }
                 self.spikeLog("CHAOS listener restart")
                 self.listenerLost()
+            case "storm":
+                guard self.hosting else { return call.resolve(["done": false]) }
+                let peers = self.links.values.filter { $0.ready }.map { $0.peer }
+                guard !peers.isEmpty else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS storm: \(peers.count) links cancelled at once")
+                for peer in peers { self.drop(peer) }
+            case "bgfake":
+                // the host's trip out of the app, with `seconds` as its away
+                // time: the listener goes, and the return reads the away time
+                // against the host window, over a few real seconds
+                guard self.hosting, self.backgroundedAt == nil else { return call.resolve(["done": false]) }
+                let away = min(max(call.getDouble("seconds") ?? 30, 1), 120)
+                self.spikeLog("CHAOS bgfake: away \(Int(away.rounded())) s (synthetic)")
+                self.hostLeft()
+                if away > 5 { self.listenerLost() }
+                let session = self.session
+                self.queue.asyncAfter(deadline: .now() + min(away, 3)) {
+                    guard self.session == session, self.hosting else { return }
+                    self.backgroundedAt = Date().addingTimeInterval(-away)
+                    self.hostReturned()
+                    self.spikeLog("CHAOS bgfake over: \(away > Self.hostWindow ? "past" : "inside") the host window")
+                }
             case "wifi":
                 guard self.chaosWifiStart(seconds: min(max(call.getDouble("seconds") ?? 45, 20), 90)) else {
                     return call.resolve(["done": false])
@@ -1572,6 +1596,31 @@ extension ShengjiNearbyPlugin {
             }
             call.resolve(["done": true])
         }
+    }
+
+    /// The phone's health for the soak's coverage table: thermal state, Low
+    /// Power and the app's memory footprint, as one HEALTH line.
+    @objc func debugHealth(_ call: CAPPluginCall) {
+        let info = ProcessInfo.processInfo
+        let thermal: String
+        switch info.thermalState {
+        case .nominal: thermal = "nominal"
+        case .fair: thermal = "fair"
+        case .serious: thermal = "serious"
+        case .critical: thermal = "critical"
+        @unknown default: thermal = "unknown"
+        }
+        var vm = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &vm) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        let mb = kr == KERN_SUCCESS ? Int(vm.phys_footprint / 1_048_576) : -1
+        let low = info.isLowPowerModeEnabled
+        spikeLog("HEALTH thermal \(thermal) lowPower \(low ? 1 : 0) mem \(mb) MB")
+        call.resolve(["thermal": thermal, "lowPower": low, "memMb": mb])
     }
 }
 #else

@@ -270,7 +270,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
-    ] + ShengjiNearbyPlugin.spikeMethods + ShengjiNearbyPlugin.chaosMethods
+    ] + ShengjiNearbyPlugin.debugMethods
+    /// The Debug-only methods; each list is empty in any other build.
+    static let debugMethods: [CAPPluginMethod] =
+        ShengjiNearbyPlugin.spikeMethods + ShengjiNearbyPlugin.chaosMethods + ShengjiNearbyPlugin.logFileMethods
 
     static let maxMessage = 16 * 1024
     /// Frames this small (pings, pongs, keepalives) get no native log line.
@@ -380,6 +383,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
 
     override public func load() {
         observe(UIApplication.willResignActiveNotification) {
+            $0.chaosWifiEnd(restore: true)
             $0.appActive = false
             $0.joinPaused()
         }
@@ -405,16 +409,27 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 satisfied: satisfied,
                 wifiInterfaces: path.availableInterfaces.filter { $0.type == .wifi }.map { $0.name },
                 gateways: path.gateways.count)
-            guard satisfied != self.pathWatch.satisfied || wifi != self.wifiUp else { return }
+            // while a device-test fake runs, wifiUp is the fake: a change is
+            // judged against the real value, and a real change ends the fake
+            guard satisfied != self.pathWatch.satisfied || wifi != (Self.chaosWifiReal ?? self.wifiUp) else { return }
+            self.chaosWifiEnd(restore: false)
             let regained = self.pathWatch.update(satisfied)
             self.wifiUp = wifi
             let names = path.availableInterfaces.map { $0.name }.joined(separator: ",")
             self.spikeLog("path \(path.status) [\(names)] gateways \(path.gateways.count) Wi-Fi joined \(wifi)\(regained ? " (regained)" : "")")
-            self.notifyListeners("path", data: ["satisfied": satisfied])
-            if regained { self.lookAgainOnNewPath() }
-            self.watchForWifiHost()
+            self.pathFollowOn(satisfied: satisfied, regained: regained)
         }
         pathMonitor.start(queue: queue)
+    }
+
+    /// What a path change sets going: the page hears it, a regain starts the
+    /// look over, and a peer-to-peer host link looks for the host over Wi-Fi.
+    /// A look's includePeerToPeer and a link's keep-browse rule read wifiUp
+    /// when they decide.
+    private func pathFollowOn(satisfied: Bool, regained: Bool) {
+        notifyListeners("path", data: ["satisfied": satisfied])
+        if regained { lookAgainOnNewPath() }
+        watchForWifiHost()
     }
 
     /// The host link runs over peer-to-peer while the access point's Wi-Fi
@@ -520,7 +535,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: JS methods
 
     @objc func capabilities(_ call: CAPPluginCall) {
-        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild, "beta": NearbyBuild.betaBuild,
+        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild, "beta": NearbyBuild.betaBuild, "logFile": Self.logFileBuild,
                       "nearbyV": NearbyBuild.nearbyV, "serviceType": NearbyBuild.serviceType])
     }
 
@@ -1363,6 +1378,10 @@ extension ShengjiNearbyPlugin {
                 guard self.hosting else { return call.resolve(["done": false]) }
                 self.spikeLog("CHAOS listener restart")
                 self.listenerLost()
+            case "wifi":
+                guard self.chaosWifiStart(seconds: min(max(call.getDouble("seconds") ?? 45, 20), 90)) else {
+                    return call.resolve(["done": false])
+                }
             default:
                 return call.reject("unknown chaos", "invalid")
             }
@@ -1374,6 +1393,111 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
     static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
+}
+#endif
+
+#if DEBUG && SHENGJI_NEARBY_DEV
+/// The chaos kind "wifi": the phone's Wi-Fi network seems to leave (or join)
+/// for 20-90 s, inside the plugin's path logic only; the radio is never
+/// touched. It holds in memory, ends when the app resigns active or a real
+/// path change arrives (the real value wins), and is gone on a restart.
+extension ShengjiNearbyPlugin {
+    /// On `queue`: the real Wi-Fi value while a fake runs, else nil.
+    static var chaosWifiReal: Bool?
+    private static var chaosWifiRun = 0
+
+    /// On `queue`: starts a fake, unless one runs or the app is not active.
+    func chaosWifiStart(seconds: Double) -> Bool {
+        guard Self.chaosWifiReal == nil, appActive, pathWatch.satisfied != nil else { return false }
+        let real = wifiUp
+        Self.chaosWifiReal = real
+        Self.chaosWifiRun += 1
+        let run = Self.chaosWifiRun
+        wifiUp = !real
+        spikeLog("CHAOS wifi fake \(real ? "left" : "joined") for \(Int(seconds.rounded())) s")
+        pathFollowOn(satisfied: pathWatch.satisfied ?? false, regained: false)
+        queue.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self = self, Self.chaosWifiRun == run else { return }
+            self.chaosWifiEnd(restore: true)
+        }
+        return true
+    }
+
+    /// On `queue`: ends a running fake. `restore` puts the real value back
+    /// and runs the path follow-on; a real path change passes false and sets
+    /// the value itself.
+    func chaosWifiEnd(restore: Bool) {
+        guard let real = Self.chaosWifiReal else { return }
+        Self.chaosWifiReal = nil
+        Self.chaosWifiRun += 1
+        spikeLog("CHAOS wifi fake over\(restore ? "" : ": a real path change")")
+        guard restore, wifiUp != real else { return }
+        wifiUp = real
+        pathFollowOn(satisfied: pathWatch.satisfied ?? false, regained: false)
+    }
+}
+#else
+extension ShengjiNearbyPlugin {
+    static var chaosWifiReal: Bool? { nil }
+    func chaosWifiEnd(restore: Bool) {}
+}
+#endif
+
+#if DEBUG && SHENGJI_NEARBY_DEV
+/// The device test's log file: Documents/nearby-log.txt in the app's data
+/// container, one older file kept as nearby-log.1.txt, for a Mac to pull with
+/// devicectl after a soak. The page batches lines and decides when to roll;
+/// this appends, rolls and clears them in order, off the link's queue.
+extension ShengjiNearbyPlugin {
+    static let logFileMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "debugLogFile", returnType: CAPPluginReturnPromise)
+    ]
+    static let logFileBuild = true
+    private static let logFileQueue = DispatchQueue(label: "shengji.nearby.logfile", qos: .utility)
+    private static let logFileMaxAppend = 4 * 1024 * 1024
+
+    @objc func debugLogFile(_ call: CAPPluginCall) {
+        let op = call.getString("op") ?? ""
+        let text = call.getString("text") ?? ""
+        Self.logFileQueue.async {
+            let fm = FileManager.default
+            do {
+                let dir = try fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                let file = dir.appendingPathComponent("nearby-log.txt")
+                let old = dir.appendingPathComponent("nearby-log.1.txt")
+                switch op {
+                case "append":
+                    let data = Data(text.utf8)
+                    guard data.count <= Self.logFileMaxAppend else { return call.reject("append too long", "invalid") }
+                    if !fm.fileExists(atPath: file.path) { fm.createFile(atPath: file.path, contents: nil) }
+                    // opened per batch, so a file the Mac replaced is the one appended to
+                    let handle = try FileHandle(forWritingTo: file)
+                    defer { try? handle.close() }
+                    try handle.seekToEnd()
+                    try handle.write(contentsOf: data)
+                case "roll":
+                    if fm.fileExists(atPath: old.path) { try fm.removeItem(at: old) }
+                    if fm.fileExists(atPath: file.path) { try fm.moveItem(at: file, to: old) }
+                case "clear":
+                    if fm.fileExists(atPath: old.path) { try fm.removeItem(at: old) }
+                    guard fm.createFile(atPath: file.path, contents: Data()) else { return call.reject("clear failed", "io") }
+                case "size":
+                    break
+                default:
+                    return call.reject("unknown op", "invalid")
+                }
+                let size = ((try? fm.attributesOfItem(atPath: file.path))?[.size] as? NSNumber)?.intValue ?? 0
+                call.resolve(["size": size])
+            } catch {
+                call.reject("log file: \(error.localizedDescription)", "io")
+            }
+        }
+    }
+}
+#else
+extension ShengjiNearbyPlugin {
+    static let logFileMethods: [CAPPluginMethod] = []
+    static let logFileBuild = false
 }
 #endif
 

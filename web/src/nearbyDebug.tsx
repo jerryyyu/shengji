@@ -3,13 +3,20 @@
 // binary or on the web. A Log tab at the screen's bottom-left corner, clear of
 // the rounded corner and the home indicator and above the table, opens the
 // last lines of nearbyLog.ts, with Copy, so a tester can paste what the link
-// did; the nearby table's ⋯ menu has Copy log too.
+// did; the nearby table's ⋯ menu has Copy log too. In the device-test page
+// build it also starts the log file (nearbyLog.ts), which the ⋯ menu's Clear
+// log file empties.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { nearbyPluginProxy } from "./native";
-import { listenNativeLog, nearbyLogLines, nearbyLogText, subscribeNearbyLog } from "./nearbyLog";
+import {
+  attachNearbyLogFile, clearNearbyLogFile, listenNativeLog, nearbyLogFileOn, nearbyLogLines, nearbyLogText,
+  subscribeNearbyLog, type LogFile,
+} from "./nearbyLog";
+
+export { clearNearbyLogFile, nearbyLogFileOn };
 
 interface DebugPlugin {
-  capabilities(): Promise<{ debug?: unknown }>;
+  capabilities(): Promise<{ debug?: unknown; logFile?: unknown }>;
   addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<unknown>;
 }
 
@@ -31,10 +38,19 @@ async function askDebugPlugin(): Promise<DebugPlugin | null> {
   if (!p || typeof p.capabilities !== "function" || typeof p.addListener !== "function") return null;
   try {
     const c = await p.capabilities();
+    // the plugin has the file only when built for the device test
+    if (c.debug === true && c.logFile === true && typeof (p as Partial<LogFile>).debugLogFile === "function") {
+      await attachNearbyLogFile(p as unknown as LogFile);
+    }
     return c.debug === true ? (p as DebugPlugin) : null;
   } catch {
     return null;
   }
+}
+
+/** Tests: ask the plugin again. */
+export function resetNearbyDebugForTests(): void {
+  checked = null;
 }
 
 const TOP = 2147483647;

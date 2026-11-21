@@ -176,6 +176,13 @@ struct Migration {
         return true
     }
 
+    /// Whether a timer's browser is the Wi-Fi browse still running: one
+    /// already ended (released, so nil) is not, though nil === nil.
+    static func isCurrentBrowse(_ browser: AnyObject?, _ current: AnyObject?) -> Bool {
+        guard let browser = browser else { return false }
+        return current === browser
+    }
+
     /// Whether a browse result is the table the link went to. The host
     /// advertises under a new instance name each time its listener is made
     /// again (after the background or a listener failure) but keeps its
@@ -470,7 +477,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         wifiBrowser = browser
         browser.start(queue: queue)
         queue.asyncAfter(deadline: .now() + 20) { [weak self, weak browser] in
-            guard let self = self, self.wifiBrowser === browser else { return }
+            guard let self = self, Migration.isCurrentBrowse(browser, self.wifiBrowser) else { return }
             self.spikeLog("host not seen over Wi-Fi in 20 s: staying peer-to-peer for now")
             self.stopWifiBrowse()
             let link = self.links["host"]

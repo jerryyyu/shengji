@@ -67,6 +67,9 @@ export interface GameResult {
   stats: Record<string, number>;
   /** Seconds from each fault's clear to the joiner back, for the report. */
   recoveries: number[];
+  /** Seconds from the last frame a joiner heard before an outage to its
+   *  being back: the freeze the person sees, fault time included. */
+  freezes: number[];
 }
 
 /** The joiner phones and when the session's people are on Wi-Fi. */
@@ -158,6 +161,11 @@ class Device {
   lastState: Frame | null = null;
   lastStateAt = 0;
   lastRoom: Frame | null = null;
+  /** The last frame of any kind (a pong included) this phone heard from the
+   *  host, at its plugin. */
+  lastFrameAt = 0;
+  /** That time when the current outage began. */
+  frozenFrom = 0;
   unhealthySince: number | null = null;
   constructor(id: string, phone: Phone, name: string) {
     this.id = id;
@@ -234,6 +242,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const trace: string[] = [];
   const stats: Record<string, number> = { faults: 0, links: 0, reconnects: 0, applied: 0, refused: 0, rounds: 0 };
   const recoveries: number[] = [];
+  const freezes: number[] = [];
   let violation: Violation | null = null;
   let current = "-";
   const log = (who: string, text: string) => {
@@ -652,6 +661,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   const pages = new Map<Device, Page>();
   for (const d of devices) pages.set(d, new Page(d));
+  for (const d of devices) void d.phone.plugin.addListener("message", () => { d.lastFrameAt = vc.now(); });
   const firsts = devices.filter((_, i) => i !== setup.late);
   for (const [k, d] of firsts.entries()) vc.setTimeout(() => d.phone.clock.post(() => pages.get(d)!.look()), 1 + k * 1.5);
 
@@ -847,6 +857,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       if (expect && !healthy) {
         if (d.unhealthySince === null) {
           d.unhealthySince = now;
+          d.frozenFrom = d.lastFrameAt;
           d.openAtStart = pg.status === "open";
         }
         const from = Math.max(since, d.unhealthySince);
@@ -855,7 +866,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           fail("back within the bound", `${d.id} not back ${Math.round(now - from)} s after the last fault cleared (socket ${pg.status}, seat ${seatIdx >= 0 ? `${seatIdx} ${seatOk ? "connected" : "not connected"}` : "none"}, state ${fresh ? "current" : "behind"})`);
         }
       } else if (healthy && d.unhealthySince !== null) {
-        if (d.unhealthySince >= since - 0.01 || since > 0) recoveries.push(now - Math.max(since, d.unhealthySince));
+        if (d.unhealthySince >= since - 0.01 || since > 0) {
+          recoveries.push(now - Math.max(since, d.unhealthySince));
+          freezes.push(now - d.frozenFrom);
+        }
         d.unhealthySince = null;
       } else if (!expect) d.unhealthySince = null;
       // no reconnect loop: at most 3 new links a minute with no fault about
@@ -914,5 +928,5 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   Math.random = savedRandom;
   (globalThis.crypto as unknown as { getRandomValues: typeof savedGetRandom }).getRandomValues = savedGetRandom;
   setNearbyKeepalive(true);
-  return { seed: opts.seed, violation, trace, schedule, stats, recoveries };
+  return { seed: opts.seed, violation, trace, schedule, stats, recoveries, freezes };
 }

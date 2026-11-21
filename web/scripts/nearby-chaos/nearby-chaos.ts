@@ -123,6 +123,7 @@ async function main(): Promise<void> {
   };
   const totals: Record<string, number> = {};
   const recoveries: number[] = [];
+  const freezes: number[] = [];
   const failures: { seed: number; invariant: string; game: number }[] = [];
   const started = Date.now();
   for (let g = 0; g < games; g++) {
@@ -131,6 +132,7 @@ async function main(): Promise<void> {
     let r = await runGame(opts);
     for (const [k, v] of Object.entries(r.stats)) totals[k] = (totals[k] ?? 0) + v;
     recoveries.push(...r.recoveries);
+    freezes.push(...r.freezes);
     if (r.violation) {
       failures.push({ seed, invariant: r.violation.invariant, game: g + 1 });
       if (a["no-shrink"] !== true) r = await shrink(opts, r);
@@ -148,7 +150,9 @@ async function main(): Promise<void> {
   console.log(`\n${ran} game(s) from seed ${seed0}${base.bugs.length ? `, planted [${base.bugs.join(",")}]` : ""}: ${failures.length} failing` +
               `${failures.length ? ` (first in game ${failures[0].game}, seed ${failures[0].seed}: ${failures[0].invariant})` : ""}`);
   console.log(`totals: ${Object.entries(totals).map(([k, v]) => `${k} ${v}`).join(", ")}`);
-  console.log(`recovery after a fault: n=${recoveries.length} p50 ${pct(recoveries, 0.5).toFixed(1)} s p95 ${pct(recoveries, 0.95).toFixed(1)} s max ${pct(recoveries, 1).toFixed(1)} s`);
+  const spread = (xs: number[]) => `n=${xs.length} p50 ${pct(xs, 0.5).toFixed(1)} s p95 ${pct(xs, 0.95).toFixed(1)} s max ${pct(xs, 1).toFixed(1)} s`;
+  console.log(`recovery after a fault: ${spread(recoveries)}`);
+  console.log(`freeze, last frame heard to back: ${spread(freezes)}`);
   console.log(`wall ${((Date.now() - started) / 1000).toFixed(0)} s`);
   if (failures.length) process.exitCode = 1;
 }

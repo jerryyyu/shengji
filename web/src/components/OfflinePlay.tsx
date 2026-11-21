@@ -9,10 +9,9 @@ import { clearSavedRoom, conn, getSavedName } from "../ws";
 import { effectiveName, useAuth } from "../auth";
 import { useOnline } from "../useOnline";
 import { ModeSwitch, PlayRow, PresenceLine } from "../queue/Ranked";
-import { NearbyRoomPanel, OfflinePanel } from "../queue/TablePanel";
+import { OfflinePanel } from "../queue/TablePanel";
 import type { RoomMsg } from "../protocol";
-import { nearbyJoin, useNearbyJoin } from "../codeJoin";
-import { nearbyHost, openNearbySettings, useNearbyHost, useNearbyOffered } from "../nearbySession";
+import { useNearbyHostView, useNearbyJoinView, useNearbyUi } from "../nearbyGate";
 import { useToast } from "../toast";
 import { NEARBY_SESSION } from "../offlineMode";
 import { offlineGame, useOfflineTable } from "./offlineGame";
@@ -39,9 +38,10 @@ interface OfflineControlsProps {
  *  in place of its own, so what surrounds them stays mounted. */
 export function OfflineControls({ local, status, room: roomMsg = null, code = "", onCode, onJoinCode }: OfflineControlsProps) {
   const room = roomMsg?.room ?? null;
-  const nearbyOn = useNearbyOffered() && local;
-  const host = useNearbyHost();
-  const joinView = useNearbyJoin();
+  const nbUi = useNearbyUi();
+  const nb = local ? nbUi : null;
+  const host = useNearbyHostView();
+  const joinView = useNearbyJoinView();
   const showTable = useOfflineTable(local);
   // an error frees Start; the toast says it
   const error = useToast()?.text ?? null;
@@ -80,7 +80,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
   const leave = () => {
     if (host.phase !== "off") {
       // the host's Leave ends the nearby table for everyone
-      nearbyHost.turnOff();
+      nbUi?.nearbyHost.turnOff();
       left.current = true;
       offlineGame.setTable(false);
       return;
@@ -102,20 +102,20 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     conn.send({ type: "create_room", name: myName(), start: true });
   };
   const toggleNearby = () => {
-    if (host.phase === "off") nearbyHost.turnOn(myName());
-    else nearbyHost.turnOff();
+    if (host.phase === "off") nbUi?.nearbyHost.turnOn(myName());
+    else nbUi?.nearbyHost.turnOff();
   };
   const ready = (on: boolean) => {
     conn.send(on ? { type: "table_start" } : { type: "table_start", on: false });
   };
 
   // a nearby table's lobby, for its host and for a joiner
-  if (roomMsg?.nearby && host.phase !== "starting") {
+  if (roomMsg?.nearby && nbUi && host.phase !== "starting") {
     return (
       <>
         <ModeSwitch value="casual" disabled={false} rankedOff />
-        <NearbyRoomPanel room={roomMsg} onReady={ready} onToggle={toggleNearby}
-                         onLeave={host.phase !== "off" ? leave : () => nearbyJoin.leave()} />
+        <nbUi.NearbyRoomPanel room={roomMsg} onReady={ready} onToggle={toggleNearby}
+                              onLeave={host.phase !== "off" ? leave : () => nbUi.nearbyJoin.leave()} />
       </>
     );
   }
@@ -127,13 +127,13 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
       {showTable ? (
         <OfflinePanel ready={status === "open" && host.phase === "off"} starting={sent || room !== null}
                       onStart={start} onLeave={leave}
-                      nearby={nearbyOn ? { on: host.phase !== "off", line: host.line } : null}
-                      onToggle={toggleNearby} onSettings={openNearbySettings} />
+                      nearby={nb ? nb.nearbySwitch({ on: host.phase !== "off", line: host.line }) : null}
+                      onToggle={toggleNearby} onSettings={() => nb?.openNearbySettings()} />
       ) : (
         <>
           <PlayRow label="Play" disabled={false} duoDisabled onPlay={() => offlineGame.startFromPlay()} />
           <PresenceLine q={null} online={false} offline />
-          <CodeRow disabled code={code} onCode={onCode} onJoin={onJoinCode} nearby={nearbyOn}
+          <CodeRow disabled code={code} onCode={onCode} onJoin={onJoinCode} nearby={nb}
                    nearbyJoinView={joinView} />
         </>
       )}

@@ -6,9 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
-import {
-  clearNearbyLogFile, copyNearbyLog, nearbyLogFileOn, uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive, useNearbySoak,
-} from "../nearbyDebug";
+import { useNearbyUi } from "../nearbyGate";
 import { tapHandlers } from "../tap";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
@@ -101,10 +99,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
 
   const joiners = opener && (!offline || nearby) ? allowJoiners : undefined;
   const showCode = !offline || nearby;
-  // a device-test Debug build: the link log, from the menu as well as its tab
-  const debug = useNearbyDebug(nearby);
-  const keepalive = useNearbyKeepalive(debug);
-  const soak = useNearbySoak(debug);
+  // a device-test Debug build's rows (nearbyUi.tsx), at a nearby table only
+  const nb = useNearbyUi();
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -151,42 +147,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
               <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
-          {debug ? (
-            <button className="hud-menu-row" role="menuitem" onClick={() => { void copyNearbyLog(); close(); }}>
-              <span>Copy log</span>
-            </button>
-          ) : null}
-          {import.meta.env.VITE_SHENGJI_NEARBY === "1" && debug && nearbyLogFileOn() ? (
-            <button className="hud-menu-row" role="menuitem" onClick={() => { void clearNearbyLogFile(); close(); }}>
-              <span>Clear log file</span>
-            </button>
-          ) : null}
-          {import.meta.env.VITE_SHENGJI_NEARBY === "1" && debug && nearbyLogFileOn() ? (
-            <button className="hud-menu-row" role="menuitem" onClick={() => { void uploadNearbyLogNow(); close(); }}>
-              <span>Upload log now</span>
-            </button>
-          ) : null}
-          {debug && keepalive ? (
-            <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={keepalive.on}
-                    onClick={keepalive.toggle}>
-              <span>AWDL keepalive</span><span className={`ios-switch${keepalive.on ? " on" : ""}`} aria-hidden="true" />
-            </button>
-          ) : null}
-          {debug && soak ? (
-            <>
-              <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={soak.autoplay}
-                      onClick={soak.toggleAutoplay}>
-                <span>Autoplay</span><span className={`ios-switch${soak.autoplay ? " on" : ""}`} aria-hidden="true" />
-              </button>
-              <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={soak.chaos}
-                      onClick={soak.toggleChaos}>
-                <span>Chaos</span><span className={`ios-switch${soak.chaos ? " on" : ""}`} aria-hidden="true" />
-              </button>
-              <button className="hud-menu-row" role="menuitem" onClick={() => { void soak.copy(); close(); }}>
-                <span>Copy soak summary</span>
-              </button>
-            </>
-          ) : null}
+          {nearby && nb ? <nb.NearbyMenuRows close={close} /> : null}
           {showCode ? <div className="hud-menu-sep" role="separator" /> : null}
           <SettingsMenuRows onOpenPage={close} />
           <div className="hud-menu-sep" role="separator" />

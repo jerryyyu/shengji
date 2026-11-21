@@ -11,7 +11,7 @@ interface Listener {
 }
 
 export interface NearbyPlugin {
-  capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
+  capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; beta?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
   openSettings(): Promise<unknown>;
   host(opts: { code: string }): Promise<unknown>;
   join(opts: { code: string; resume?: boolean }): Promise<unknown>;
@@ -31,20 +31,6 @@ const asState = (s: string): LinkState => (STATES.has(s) ? (s as LinkState) : "f
 function nearbyPlugin(): NearbyPlugin | null {
   const p = nearbyPluginProxy() as Partial<NearbyPlugin> | null;
   return p && typeof p.host === "function" && typeof p.addListener === "function" ? (p as NearbyPlugin) : null;
-}
-
-/** Whether this app binary may run nearby play (flag.ts): it was reviewed
- *  with it, or it is a Debug build compiled for the device test. A shipped
- *  binary reports neither. */
-export async function binaryReviewed(): Promise<boolean> {
-  const p = nearbyPlugin();
-  if (!p) return false;
-  try {
-    const c = await p.capabilities();
-    return c.reviewed === true || c.debug === true;
-  } catch {
-    return false;
-  }
 }
 
 /** Opens the app's page in Settings, where Local Network is switched on. */

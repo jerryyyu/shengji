@@ -37,8 +37,6 @@ afterEach(() => {
 });
 
 describe("the nearby log file, in the device-test build", () => {
-  beforeEach(() => { vi.stubEnv("VITE_SHENGJI_NEARBY", "1"); });
-
   it("starts with what the log holds, then appends each line in one batched write", async () => {
     nearbyLog("host", "link p1 up");
     const { f, files, calls } = fakeFile();
@@ -140,10 +138,11 @@ describe("the nearby log file, in the device-test build", () => {
 });
 
 describe("the nearby log file, in any other build", () => {
-  it("is never attached and never written", async () => {
-    vi.stubEnv("VITE_SHENGJI_NEARBY", "");
-    const { f, calls } = fakeFile();
-    expect(await attachNearbyLogFile(f)).toBe(false);
+  it("is attached only where the plugin reports logFile, and unattached writes nothing", async () => {
+    const debug = readFileSync(fileURLToPath(new URL("./nearbyDebug.tsx", import.meta.url)), "utf8");
+    expect(debug.match(/attachNearbyLogFile\(/g)).toHaveLength(1);
+    expect(debug).toMatch(/c\.debug === true && c\.logFile === true[^\n]*\n      if \(await attachNearbyLogFile\(/);
+    const { calls } = fakeFile();
     nearbyLog("host", "link p1 up");
     await flushNearbyLogFile();
     expect(await clearNearbyLogFile()).toBe(false);

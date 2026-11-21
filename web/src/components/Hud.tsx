@@ -11,20 +11,7 @@ import { OFFLINE, useNearbySession } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
 import { showToast } from "../toast";
-import { conn, type ConnStatus } from "../ws";
-import { nearbyJoin, useNearbyHostLeft } from "../codeJoin";
-import { NEARBY_LINK_LABEL, nearbyLinkState } from "../nearbyLink";
-
-/** A nearby table's link: a dot, green while linked, amber and pulsing
- *  while a link is being made again, grey once the table is lost. No text;
- *  its name is the connection pill's words. */
-export function NearbyLinkDot({ state }: { state: GameState }) {
-  const [status, setStatus] = useState<ConnStatus>(conn.status);
-  useEffect(() => conn.subscribeStatus(setStatus), []);
-  const hostLeft = useNearbyHostLeft();
-  const link = nearbyLinkState({ host: !nearbyJoin.seated, status, hostLeft, players: state.players });
-  return <span className={`nearby-link-dot ${link}`} role="img" aria-label={NEARBY_LINK_LABEL[link]} />;
-}
+import { useNearbyUi } from "../nearbyGate";
 
 function TrumpChip({ state }: { state: GameState }) {
   const trump = state.trump;
@@ -231,7 +218,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
   useStripWidth(barRef);
   useTableToasts(state);
   const mode = gameMode(state, practice);
-  const nearby = useNearbySession() && practice;
+  const nb = useNearbyUi();
+  const nearby = useNearbySession() && practice && nb !== null;
   // a guest is never ranked: the seat's own flag, or no account on this device
   const account = useAuth().status;
   const guest = state.guest === true || account === "out" || account === "off";
@@ -245,7 +233,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
       <div className="hud-bar" ref={barRef}>
         {/* game state only: the table's code, the settings and Leave live in the ⋯ menu */}
         {/* the bar's layout places the groups by position; a nearby table's link dot sits here */}
-        <div className="hud-group">{nearby ? <NearbyLinkDot state={state} /> : null}</div>
+        <div className="hud-group">{nearby && nb ? <nb.NearbyLinkDot state={state} /> : null}</div>
 
         <div className="hud-group">
           {/* your team first */}

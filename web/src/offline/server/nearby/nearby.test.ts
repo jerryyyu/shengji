@@ -66,10 +66,13 @@ describe("nearby codes, names and the flag", () => {
     expect(nearbyName("\u0000", 2)).toBe("Player 3");
   });
 
-  it("is off unless the build and the reviewed binary both say so", () => {
+  it("follows the binary alone: reviewed, Beta or the device test's Debug build", () => {
     setNearbyForTests(null);
-    expect(nearbyEnabled(true)).toBe(false);
-    expect(nearbyEnabled(false)).toBe(false);
+    expect(nearbyEnabled(null)).toBe(false);
+    expect(nearbyEnabled({})).toBe(false);
+    expect(nearbyEnabled({ reviewed: false, beta: false, debug: false, logFile: true })).toBe(false);
+    expect(nearbyEnabled({ beta: "true" })).toBe(false);
+    for (const on of [{ reviewed: true }, { beta: true }, { debug: true }]) expect(nearbyEnabled(on)).toBe(true);
   });
 });
 

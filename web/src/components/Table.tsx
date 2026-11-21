@@ -380,7 +380,7 @@ export default function Table({ state }: { state: GameState }) {
   const [late, setLate] = useState(false);
   useEffect(() => {
     setLate(false);
-    if (pending === null) return;
+    if (pending === null || !NEARBY_SESSION) return;
     const timer = window.setTimeout(() => setLate(true), SENDING_AFTER_MS);
     return () => window.clearTimeout(timer);
   }, [pending]);

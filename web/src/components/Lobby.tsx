@@ -8,16 +8,14 @@ import AccountChip from "./AccountChip";
 import GuestChip from "./GuestChip";
 import LobbyPreview from "./LobbyPreview";
 import { RankedSection, TrophyIcon } from "../queue/Ranked";
-import { JoinCodePanel, NearbyJoinPanel } from "../queue/TablePanel";
+import { JoinCodePanel } from "../queue/TablePanel";
 import { useQueue } from "../queue/store";
 import { guestName, useGuestName } from "../guestName";
 import { OfflineControls } from "./OfflinePlay";
 import { useOffline } from "../offlineMode";
-import { codes, nearbyJoin, panelShown, useCodes, useNearbyJoin } from "../codeJoin";
-import type { NearbyJoin } from "../codeJoin";
-import { isNearbyCode, NEARBY_CODE_LEN } from "../offline/server/nearby/codes";
-import { NEARBY_COPY } from "../offline/server/nearby/copy";
-import { nearbyAllowedBefore, openNearbySettings, useNearbyOffered } from "../nearbySession";
+import { codes, panelShown, useCodes } from "../codeJoin";
+import type { NearbyJoin } from "../nearbyJoin";
+import { useNearbyJoinView, useNearbyUi, type NearbyUi } from "../nearbyGate";
 import { normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
@@ -60,43 +58,25 @@ function RankedUnavailable() {
   );
 }
 
-/** The one line under the code box, for a nearby code only: what Join will
- *  ask (until iOS has been asked once), or why the last Join could not look
- *  (with the link to Settings). The copy rule lists it as its one exception
- *  (FLOWS.md "Play nearby"). */
-export function NearbyCodeLine({ code, join }: { code: string; join: NearbyJoin | null }) {
-  if (join?.step === "denied" && join.code === code) {
-    return (
-      <p className="join-line">
-        {NEARBY_COPY.denied}{" "}
-        <button type="button" className="howto-link join-line-link" onClick={() => openNearbySettings()}>
-          {NEARBY_COPY.openSettings}
-        </button>
-      </p>
-    );
-  }
-  if (isNearbyCode(code) && !nearbyAllowedBefore()) return <p className="join-line">{NEARBY_COPY.explain}</p>;
-  return null;
-}
-
 /** Play's code box: a table's four-letter code, and Join, which opens its
  *  panel. `looking`: the code's seats are on their way. Disabled, it holds
- *  its place with no connection to look a code up on. `nearby`: it also
- *  takes a nearby table's five characters (and only those when `disabled`,
- *  with no connection), followed by the one nearby line. */
-export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, nearby = false, nearbyJoinView = null }: {
+ *  its place with no connection to look a code up on. `nearby`, the nearby
+ *  UI where the app binary offers nearby play: it also takes a nearby
+ *  table's five characters (and only those when `disabled`, with no
+ *  connection), followed by the one nearby line. */
+export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, nearby = null, nearbyJoinView = null }: {
   disabled: boolean; code?: string; looking?: boolean; onCode?: (code: string) => void; onJoin?: () => void;
-  nearby?: boolean; nearbyJoinView?: NearbyJoin | null;
+  nearby?: NearbyUi | null; nearbyJoinView?: NearbyJoin | null;
 }) {
   const trimmed = code.trim();
-  const joinable = nearby && isNearbyCode(trimmed) ? true : !disabled && trimmed.length === 4;
+  const joinable = nearby?.isNearbyCode(trimmed) ? true : !disabled && trimmed.length === 4;
   return (
     <>
     <div className={`join-row${nearby ? " nearby" : ""}`}>
       <input
         className="room-input"
         value={code}
-        maxLength={nearby ? NEARBY_CODE_LEN : 4}
+        maxLength={nearby ? nearby.NEARBY_CODE_LEN : 4}
         placeholder="CODE"
         aria-label="Table code"
         disabled={disabled && !nearby}
@@ -118,7 +98,7 @@ export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, 
         {looking ? "Joining…" : "Join"}
       </button>
     </div>
-    {nearby ? <NearbyCodeLine code={trimmed.toUpperCase()} join={nearbyJoinView} /> : null}
+    {nearby ? <nearby.NearbyCodeLine code={trimmed.toUpperCase()} join={nearbyJoinView} /> : null}
     </>
   );
 }
@@ -185,13 +165,13 @@ export default function Lobby({ status, room = null }: LobbyProps) {
 
   // The box takes a room or table code: its peek opens the panel. Five
   // characters name a nearby table, looked for on the local network.
-  const nearbyOn = useNearbyOffered();
-  const nearbyView = useNearbyJoin();
+  const nb = useNearbyUi();
+  const nearbyView = useNearbyJoinView();
   const join = () => {
-    if (nearbyOn && isNearbyCode(roomCode)) {
+    if (nb?.isNearbyCode(roomCode)) {
       const as = nameOrRandom();
       rememberName(as);
-      nearbyJoin.open(roomCode.trim().toUpperCase(), as);
+      nb.nearbyJoin.open(roomCode.trim().toUpperCase(), as);
       return;
     }
     if (!ready || looking || normalizeCode(roomCode).length !== 4) return;
@@ -199,7 +179,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
   };
   const typeCode = (c: string) => {
     // a changed code drops the last nearby answer about the old one
-    if (nearbyView && nearbyView.step === "denied") nearbyJoin.cancel();
+    if (nearbyView && nearbyView.step === "denied") nb?.nearbyJoin.cancel();
     setRoomCode(c);
   };
   const nearbyPanel = nearbyView !== null && nearbyView.step !== "denied" ? nearbyView : null;
@@ -253,10 +233,10 @@ export default function Lobby({ status, room = null }: LobbyProps) {
         {/* With no connection the app's Play plays on this device, and what
             needs the server waits; the chip, How to play and an open sheet
             stay put. */}
-        {nearbyPanel ? (
-          <NearbyJoinPanel join={nearbyPanel} onJoin={() => nearbyJoin.join()}
-                           onCancel={() => nearbyJoin.cancel()} onPick={(at) => nearbyJoin.pick(at)}
-                           onAgain={() => nearbyJoin.again()} />
+        {nearbyPanel && nb ? (
+          <nb.NearbyJoinPanel join={nearbyPanel} onJoin={() => nb.nearbyJoin.join()}
+                              onCancel={() => nb.nearbyJoin.cancel()} onPick={(at) => nb.nearbyJoin.pick(at)}
+                              onAgain={() => nb.nearbyJoin.again()} />
         ) : offline ? (
           <OfflineControls local status={status} room={room}
                            code={roomCode} onCode={typeCode} onJoinCode={join} />
@@ -272,7 +252,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
             {/* at a table the panel is the page: no code box until you leave it */}
             {seated || joinUp ? null : (
               <CodeRow disabled={!ready} code={roomCode} looking={looking} onCode={typeCode} onJoin={join}
-                       nearby={nearbyOn} nearbyJoinView={nearbyView} />
+                       nearby={nb} nearbyJoinView={nearbyView} />
             )}
           </>
         )}

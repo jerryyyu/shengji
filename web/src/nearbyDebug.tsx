@@ -51,10 +51,9 @@ async function askDebugPlugin(): Promise<DebugPlugin | null> {
 
 let upload: Promise<typeof import("./nearbyLogUpload") | null> = Promise.resolve(null);
 
-/** The upload module is in the device-test page build only; elsewhere this
- *  branch is dropped at build time and no upload code is bundled. */
+/** The upload module loads only once the log file is attached, so only
+ *  where the plugin reports the device test's `logFile`. */
 function startUpload(): void {
-  if (import.meta.env.VITE_SHENGJI_NEARBY !== "1") return;
   upload = import("./nearbyLogUpload").then((m) => (m.startNearbyLogUpload() || m.nearbyLogUploadOn() ? m : null), () => null);
 }
 

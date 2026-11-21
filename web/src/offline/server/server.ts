@@ -60,6 +60,10 @@ export const TAKEOVER_AFTER = MOVE_TIMER;
 export const LOBBY_SEAT_HOLD = 12.0;
 /** server.py's casual-room watchdog period. */
 export const WATCHDOG_POLL = 5.0;
+/** A nearby seat's link that is back within this long was a blip: the
+ *  table's chat says "disconnected" only for a seat gone longer, and
+ *  "reconnected" only after it said "disconnected". */
+export const DISCONNECT_NOTICE = 3.0;
 /** matchmaking.py BOT_FILL_SECS: once a nearby table has a second person,
  *  bots take its open seats this long after, unless everyone is ready first. */
 export const NEARBY_BOT_FILL = 60.0;
@@ -121,6 +125,9 @@ export class Seat {
   leftByChoice = false;
   /** The watchdog's first cover of this absence has been announced. */
   botAnnounced = false;
+  /** The table's chat has said this seat disconnected, and not yet that it
+   *  is back. */
+  goneAnnounced = false;
   /** Clock time this seat's move clock started for the decision it owes;
    *  null when it owes none or no clock runs (server.py turn_started). */
   turnStarted: number | null = null;
@@ -1268,6 +1275,19 @@ export class LocalServer {
     this.kickBots(room);
   }
 
+  /** A nearby seat's link went: the chat says so once the seat has been
+   *  gone DISCONNECT_NOTICE, so a link that is back at once leaves the chat
+   *  as it was. */
+  noticeGone(room: LocalRoom, seat: Seat): void {
+    const gen = seat.gen;
+    this.clock.setTimeout(() => {
+      if (room.closed || seat.connected || seat.gen !== gen || seat.goneAnnounced || seat.leftByChoice) return;
+      if (room.seatIndex(seat) < 0) return;
+      seat.goneAnnounced = true;
+      this.chatSystem(room, `${seat.name} disconnected`);
+    }, DISCONNECT_NOTICE);
+  }
+
   /** The lobby's bot timer follows who sits there: it runs from the moment
    *  a second person sits, and stops when the host is alone again. */
   syncBotsTimer(room: LocalRoom): void {
@@ -1454,7 +1474,8 @@ export class LocalConnection {
         this.room = room;
         this.me = seat;
         this.attach(room, seat);
-        server.chatSystem(room, `${seat.name} reconnected`);
+        if (!room.nearby || seat.goneAnnounced) server.chatSystem(room, `${seat.name} reconnected`);
+        seat.goneAnnounced = false;
         server.kickBots(room);
         server.broadcast(room);
       } else {
@@ -1593,8 +1614,8 @@ export class LocalConnection {
       // server.py's socket-closed path: the others are told, and the
       // round-end quorum no longer waits on this seat
       const server = this.server;
-      server.chatSystem(room, `${me.name} disconnected`);
       server.detach(me, room, this.myGen);
+      server.noticeGone(room, me);
       if (room.lobby) server.lobbyDropped(room, me);
       else if (room.humans().some((s) => s.connected) && !server.advanceAfterLeave(room)) server.broadcast(room);
     } else if (room && me) this.server.detach(me, room, this.myGen);

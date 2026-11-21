@@ -215,6 +215,25 @@ describe("drops, resume and bot cover", () => {
     expect((t.lastState(t.host)!.players as PlayerJson[])[seat!].controller).toBe("human");
   });
 
+  it("a link back within a second leaves the chat as it was; a seat gone 5 s is said gone and back", async () => {
+    const t = await started(2);
+    const j = t.joiners[0];
+    const texts = () => t.room!.chat.map((c) => c.text);
+    const before = texts();
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.advance(0.5);
+    await t.join("P1", { token: j.token, player: j });
+    expect(t.lastState(j)!.you).toBe(j.seat);
+    await t.advance(4);
+    expect(texts()).toEqual(before);
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.advance(5);
+    await t.join("P1", { token: j.token, player: j });
+    expect(texts().slice(before.length)).toEqual(["P1 disconnected", "P1 reconnected"]);
+  });
+
   it("a token for nobody, after the start with every seat a person's, gets no seat", async () => {
     const t = await started(4);
     const stranger = await t.join("X", { token: "nope" });

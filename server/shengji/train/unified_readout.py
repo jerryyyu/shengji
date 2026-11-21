@@ -23,6 +23,12 @@ hand (the reply actually played).
 
 CLI: ``python -m shengji.train.unified_readout {train,export}``.  Status lines (``OUT/status.log``):
 ``UTR START`` / ``RESUME`` / ``buffer`` / ``EPOCH`` / ``UTR DONE ...`` / ``UTR ABORT ...``.
+
+``train``, ``cache`` and ``polish`` take ``--device {cpu,mps}`` (default ``cpu``, the path every earlier run
+took).  Batches are built on the CPU and moved to the device; every checkpoint is written with CPU tensors.
+A non-CPU run records its device in its identity, so a resume on another device refuses.  An op the MPS
+backend lacks raises; PyTorch's CPU fallback runs only when ``PYTORCH_ENABLE_MPS_FALLBACK=1`` is set by the
+caller, and the run's status log says so.
 """
 from __future__ import annotations
 
@@ -327,7 +333,7 @@ def means(s) -> dict[str, float]:
             "leaf_value_k0": s["v0_sum"] / max(s["rows"], 1.0), "leaf_value_end": s["ve_sum"] / max(s["ends"], 1.0), "reply": s["r_sum"] / max(s["replies"], 1.0)}
 
 
-def evaluate(model, part, *, rounds_per_batch: int = 32) -> dict[str, float]:
+def evaluate(model, part, *, rounds_per_batch: int = 32, device="cpu") -> dict[str, float]:
     """Calibration-split means of every loss (identity relabeling) and the belief log-loss."""
     import torch
     sums = np.zeros(len(SUM_KEYS))
@@ -336,13 +342,43 @@ def evaluate(model, part, *, rounds_per_batch: int = 32) -> dict[str, float]:
     model.eval()
     with torch.no_grad():
         for rids, rows in bs.round_batches(part, rounds_per_batch, None):
-            L = losses(model, us.to_device(make_batch(part, rids, rows), "cpu"))
+            L = losses(model, us.to_device(make_batch(part, rids, rows), device))
             sums += np.asarray([float(L[k]) for k in SUM_KEYS])
-            belief[rows] = L["out"]["belief"].float().numpy()
+            belief[rows] = L["out"]["belief"].float().cpu().numpy()
     model.train()
     out = {k: round(float(v), 6) for k, v in means(sums).items()}
     out["belief_ll"] = mean_ll(masked_softmax(belief, part["M"]), part["Y"])
     return out
+
+
+def _device(name: str, status: str | None = None):
+    """The torch device of ``--device``; refuses ``mps`` where the backend is missing."""
+    import torch
+    if name == "cpu":
+        return torch.device("cpu")
+    if name != "mps":
+        raise UnifiedReadoutError(f"--device {name}: not cpu or mps")
+    if not torch.backends.mps.is_available():
+        raise UnifiedReadoutError("--device mps: MPS is not available on this host")
+    if os.environ.get("PYTORCH_ENABLE_MPS_FALLBACK") == "1":
+        msg = "DEVICE mps with PYTORCH_ENABLE_MPS_FALLBACK=1: ops the MPS backend lacks run on the CPU"
+        if status:
+            _status(status, msg)
+        else:
+            print(msg, file=sys.stderr, flush=True)
+    return torch.device("mps")
+
+
+def _on_cpu(obj):
+    """``obj`` (a state dict, optimizer state or nested container) with every tensor moved to the CPU."""
+    import torch
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().cpu()
+    if isinstance(obj, dict):
+        return {k: _on_cpu(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_on_cpu(v) for v in obj)
+    return obj
 
 
 def _status(path: str, msg: str) -> None:
@@ -359,7 +395,10 @@ def _run_identity(args) -> dict:
             "exclude_seed_window")
     if getattr(args, "corpus_weight", None):
         keys += ("corpus_weight",)
-    return json.loads(json.dumps({k: getattr(args, k) for k in keys}, default=str))
+    run = {k: getattr(args, k) for k in keys}
+    if getattr(args, "device", "cpu") != "cpu":
+        run["device"] = args.device          # absent means cpu: a CPU run keeps the identity it always had
+    return json.loads(json.dumps(run, default=str))
 
 
 def train(args) -> int:
@@ -381,6 +420,7 @@ def _train(args, out: Path, status: str) -> int:
     import torch
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
+    device = _device(args.device, status)
     verified = bs._Verified()
     index = us.OutcomeIndex(us.parse_store_map(args.store_map))
     entries = us._pick_entries(us.entries_for(args.data, "train", exclude_seed_windows=args.exclude_seed_window),
@@ -421,6 +461,8 @@ def _train(args, out: Path, status: str) -> int:
                 raise UnifiedReadoutError("--init-ckpt's trunk is not --init's trunk")
         model.q_head.load_state_dict(warm.q_head.state_dict())
         model.p_head.load_state_dict(warm.p_head.state_dict())
+    if device.type != "cpu":
+        model.to(device)
 
     stream = us.Stream(entries, index=index, suit_aug=False, verified=verified, threads=args.loader_threads,
                     buffer_chunks=args.buffer_chunks, rounds_per_batch=args.rounds_per_batch, row_frac=1.0)
@@ -449,7 +491,7 @@ def _train(args, out: Path, status: str) -> int:
             opt.param_groups[1]["lr"] = 0.0
         for k, v in leaf_batch(b).items():
             b["leaf_" + k] = v
-        L = losses(model, us.to_device(b, "cpu"))
+        L = losses(model, us.to_device(b, device))
         opt.zero_grad()
         objective(L, args).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -460,31 +502,39 @@ def _train(args, out: Path, status: str) -> int:
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
     if ck.exists():
         saved = torch.load(ck, weights_only=False, map_location="cpu")
+        was = (saved.get("run") or {}).get("device", "cpu")
+        if was != args.device:
+            raise UnifiedReadoutError(f"resume: the checkpoint was trained with --device {was}, not --device {args.device}")
         if saved.get("run") != _run_identity(args):
             raise UnifiedReadoutError("resume: the run's settings differ from the checkpoint's")
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
         state = saved["state"]
-        _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}")
+        _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}"
+                        + ("" if device.type == "cpu" else f" device={args.device}"))
     else:
-        state["init_calib"] = evaluate(model, calib)
+        state["init_calib"] = evaluate(model, calib, device=device)
         _status(status, f"{LANE} START params={sum(p.numel() for p in model.parameters())} "
                         f"readout_params={sum(p.numel() for p in model.readout.parameters())} rows={stream.rows} "
                         f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']}"
-                        + (f" corpus_weights={json.dumps(weight_summary(entries))}" if args.corpus_weight else ""))
+                        + (f" corpus_weights={json.dumps(weight_summary(entries))}" if args.corpus_weight else "")
+                        + ("" if device.type == "cpu" else f" device={args.device}"))
         (out / "run.json").write_text(json.dumps(_run_identity(args), indent=1))
         _status(status, f"INIT calib {json.dumps(state['init_calib'])}")
         if args.expect_init_belief_ll is not None and abs(state["init_calib"]["belief_ll"] - args.expect_init_belief_ll) > 5e-4:
             raise UnifiedReadoutError(f"init calib belief_ll {state['init_calib']['belief_ll']} != expected")
 
+    def weights():
+        return model.state_dict() if device.type == "cpu" else _on_cpu(model.state_dict())
+
     def save():
         tmp = out / "checkpoint.pt.tmp"
-        torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "state": state, "config": model.config,
-                    "run": _run_identity(args)}, tmp)
+        torch.save({"model": weights(), "opt": opt.state_dict() if device.type == "cpu" else _on_cpu(opt.state_dict()),
+                    "state": state, "config": model.config, "run": _run_identity(args)}, tmp)
         os.replace(tmp, ck)
 
     def save_best(epoch, cm):
-        torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": epoch,
+        torch.save({"schema": CKPT_SCHEMA, "model": weights(), "config": model.config, "epoch": epoch,
                     "calib": cm, "init_calib": state.get("init_calib"), "run": _run_identity(args)}, out / "best.pt")
 
     last_save = time.time()
@@ -506,7 +556,7 @@ def _train(args, out: Path, status: str) -> int:
             steps += 1
             if args.max_steps and steps >= args.max_steps:
                 break
-        cm = evaluate(model, calib)
+        cm = evaluate(model, calib, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
                         f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s)")
@@ -553,7 +603,7 @@ def export(args) -> int:
 BODY_PREFIXES = ("stem.", "ln.", "up.", "down.", "out_ln.", "value.", "reply.")
 
 
-def cache_arrays(model, part, *, rounds_per_batch: int = 32) -> dict[str, np.ndarray]:
+def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> dict[str, np.ndarray]:
     """One part's rows as the polish reads them: the frozen per-decision projections (float16) and
     every leaf (row index, planes, scalars, outcome target, reply)."""
     import torch
@@ -566,11 +616,11 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32) -> dict[str, np.nda
     with torch.no_grad():
         for rids, rows in bs.round_batches(part, rounds_per_batch, None):
             b = make_batch(part, rids, rows)
-            tb = us.to_device(b, "cpu")
+            tb = us.to_device(b, device)
             _, _, q, g = us.trunk_forward(model.trunk, tb)
             S, c = model.readout.project(q, g)
-            out["S"][rows] = S.numpy().astype(np.float16)
-            out["c"][rows] = c.numpy().astype(np.float16)
+            out["S"][rows] = S.cpu().numpy().astype(np.float16)
+            out["c"][rows] = c.cpu().numpy().astype(np.float16)
             leaves["row"].append(np.asarray(rows, np.int64)[b["leaf_row"]].astype(np.int32))
             leaves["planes"].append(b["leaf_planes"].astype(np.uint8))
             leaves["scalars"].append(b["leaf_scalars"].astype(np.float32))
@@ -591,7 +641,10 @@ def cache(args) -> int:
     takes every N-th group).  A shard that exists is kept."""
     import torch
     torch.set_num_threads(args.threads)
+    device = _device(args.device)
     model, _ = load_checkpoint(args.ckpt)
+    if device.type != "cpu":
+        model.to(device)
     verified = bs._Verified()
     index = us.OutcomeIndex(us.parse_store_map(args.store_map))
     out = Path(args.out)
@@ -599,7 +652,7 @@ def cache(args) -> int:
 
     def write(name, part):
         tmp = out / (name + ".tmp.npz")
-        np.savez(tmp, **cache_arrays(model, part))
+        np.savez(tmp, **cache_arrays(model, part, device=device))
         os.replace(tmp, out / (name + ".npz"))
     if args.worker == 0 and not (out / "calib-0000.npz").exists():
         write("calib-0000", us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
@@ -625,14 +678,15 @@ def cache(args) -> int:
     return 0
 
 
-def _polish_tensors(z, pick=None):
+def _polish_tensors(z, pick=None, device="cpu"):
     import torch
     row = z["leaf_row"] if pick is None else z["leaf_row"][pick]
     get = lambda k: z[k] if pick is None else z[k][pick]
-    return (torch.from_numpy(z["S"][row].astype(np.float32)), torch.from_numpy(z["c"][row].astype(np.float32)),
-            torch.from_numpy(get("leaf_planes").astype(np.float32)), torch.from_numpy(get("leaf_scalars")),
-            torch.from_numpy(get("leaf_target").astype(np.int64)), torch.from_numpy(get("leaf_reply").astype(np.float32)),
-            torch.from_numpy(get("leaf_reply_hand")), torch.from_numpy(get("leaf_has_reply")))
+    t = (torch.from_numpy(z["S"][row].astype(np.float32)), torch.from_numpy(z["c"][row].astype(np.float32)),
+         torch.from_numpy(get("leaf_planes").astype(np.float32)), torch.from_numpy(get("leaf_scalars")),
+         torch.from_numpy(get("leaf_target").astype(np.int64)), torch.from_numpy(get("leaf_reply").astype(np.float32)),
+         torch.from_numpy(get("leaf_reply_hand")), torch.from_numpy(get("leaf_has_reply")))
+    return t if torch.device(device).type == "cpu" else tuple(x.to(device) for x in t)
 
 
 def polish_losses(readout, t):
@@ -652,17 +706,19 @@ def polish_objective(v, r, has, reply_weight, leaf_w=None):
     import torch
     if leaf_w is not None:
         lw = torch.from_numpy(np.asarray(leaf_w, np.float32))
+        if v.device.type != "cpu":
+            lw = lw.to(v.device)
         v, r = v * lw[:, 0], r * lw[:, 1]
     return v.mean() + reply_weight * r.sum() / has.float().sum().clamp_min(1.0)
 
 
-def polish_eval(readout, z, batch: int = 16384) -> dict[str, float]:
+def polish_eval(readout, z, batch: int = 16384, device="cpu") -> dict[str, float]:
     import torch
     sums = np.zeros(6)
     readout.eval()
     with torch.no_grad():
         for i in range(0, len(z["leaf_row"]), batch):
-            v, r, end, has = polish_losses(readout, _polish_tensors(z, np.arange(i, min(i + batch, len(z["leaf_row"])))))
+            v, r, end, has = polish_losses(readout, _polish_tensors(z, np.arange(i, min(i + batch, len(z["leaf_row"]))), device))
             sums += [float(v.sum()), len(v), float((v * end).sum()), float(end.sum()), float(r.sum()), float(has.sum())]
     readout.train()
     return {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
@@ -678,7 +734,10 @@ def polish(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     status = str(out / "status.log")
+    device = _device(args.device, status)
     model, saved = load_checkpoint(args.ckpt)
+    if device.type != "cpu":
+        model.to(device)
     readout = model.readout
     body = [p for n, p in readout.named_parameters() if n.startswith(BODY_PREFIXES)]
     frozen = [n for n, p in readout.named_parameters() if not n.startswith(BODY_PREFIXES)]
@@ -697,10 +756,11 @@ def polish(args) -> int:
     readout.train()
     opt = torch.optim.AdamW(body, lr=args.lr, weight_decay=args.weight_decay)
     total = args.epochs * len(shards)
-    init = polish_eval(readout, calib)
+    init = polish_eval(readout, calib, device=device)
     best = {"score": init["leaf_value_end"], "epoch": 0, "calib": init}
     _status(status, f"POLISH START shards={len(shards)} epochs={args.epochs} body_params={sum(p.numel() for p in body)} "
-                    f"ckpt={us.sha256_file(args.ckpt)} corpus_weighted={weighted} init calib {json.dumps(init)}")
+                    f"ckpt={us.sha256_file(args.ckpt)} corpus_weighted={weighted} init calib {json.dumps(init)}"
+                    + ("" if device.type == "cpu" else f" device={args.device}"))
     rng = np.random.default_rng(args.seed)
     step_i, t0 = 0, time.time()
     state = None
@@ -715,7 +775,7 @@ def polish(args) -> int:
             order = rng.permutation(len(z["leaf_row"]))
             for i in range(0, len(order), args.batch):
                 pick = np.sort(order[i:i + args.batch])
-                v, r, end, has = polish_losses(readout, _polish_tensors(z, pick))
+                v, r, end, has = polish_losses(readout, _polish_tensors(z, pick, device))
                 loss = polish_objective(v, r, has, args.reply_weight, z["leaf_w"][pick] if weighted else None)
                 opt.zero_grad()
                 loss.backward()
@@ -726,7 +786,7 @@ def polish(args) -> int:
             if (out / "STOP").exists():
                 _status(status, "STOPPED (STOP file)")
                 return 3
-        cm = polish_eval(readout, calib)
+        cm = polish_eval(readout, calib, device=device)
         train = {"leaf_value": sums[0] / max(sums[1], 1), "leaf_value_end": sums[2] / max(sums[3], 1), "reply": sums[4] / max(sums[5], 1)}
         _status(status, f"POLISH EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in train.items()})} "
                         f"calib {json.dumps({k: round(v, 5) for k, v in cm.items()})} ({time.time() - t0:.0f}s)")
@@ -735,9 +795,11 @@ def polish(args) -> int:
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
     if state is not None:
         model.load_state_dict(state)
-    torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
+    polish_args = {k: v for k, v in vars(args).items() if not (k == "device" and v == "cpu")}
+    torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict() if device.type == "cpu" else _on_cpu(model.state_dict()),
+                "config": model.config, "epoch": saved.get("epoch"),
                 "calib": dict(saved.get("calib") or {}, polish=best["calib"], polish_epoch=best["epoch"]),
-                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=vars(args))}, out / "best.pt")
+                "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=polish_args)}, out / "best.pt")
     _status(status, f"POLISH DONE best_epoch={best['epoch']} calib {json.dumps(best['calib'])} sha256={us.sha256_file(out / 'best.pt')}")
     return 0
 
@@ -893,6 +955,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--corpus-weight", action="append", default=[],
                    help="PREFIX=head:w[,head:w...]: loss weights of the rows of data dirs under PREFIX "
                         f"(heads {','.join(CORPUS_HEADS)}; default 1)")
+    t.add_argument("--device", choices=("cpu", "mps"), default="cpu", help="where the model runs; batches are built on the CPU")
     c = sub.add_parser("cache")
     c.add_argument("--ckpt", required=True)
     c.add_argument("--data", nargs="+", required=True)
@@ -908,6 +971,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--threads", type=int, default=8)
     c.add_argument("--corpus-weight", action="append", default=[],
                    help="as train's: stores each leaf's value and reply weights in the cache (the polish uses them)")
+    c.add_argument("--device", choices=("cpu", "mps"), default="cpu")
     p = sub.add_parser("polish")
     p.add_argument("--ckpt", required=True)
     p.add_argument("--cache", required=True)
@@ -919,6 +983,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch", type=int, default=4096)
     p.add_argument("--threads", type=int, default=16)
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--device", choices=("cpu", "mps"), default="cpu")
     m = sub.add_parser("mixpolish")
     m.add_argument("--ckpt", required=True)
     m.add_argument("--mix", required=True, help="sampled-world shards: train-*.npz and calib-*.npz")

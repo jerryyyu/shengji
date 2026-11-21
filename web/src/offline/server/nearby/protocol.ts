@@ -21,8 +21,7 @@ export const LIMITS = {
   helloSeconds: 5,
   /** Seated joiners plus links still in their hello. */
   peers: 6,
-  /** Links not yet seated (in their hello or looking at the seats), one of
-   *  them per phone. */
+  /** Links not yet seated (in their hello or looking at the seats). */
   unseated: 3,
   /** The joiner's socket pings this often while its link is open... */
   pingSeconds: 5,

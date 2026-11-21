@@ -507,13 +507,11 @@ export function nearbyClaimable(room: LocalRoom, now: number): number[] {
 /** The peek's answer for a nearby table: its people, and full once no seat
  *  is left for a newcomer. Before the start the open seats are the ones it
  *  does not list; in a game the seats it does not list are the ones a
- *  newcomer may take over (nearbyClaimable), plus `own`, the seat the
- *  looking phone left, so the joiner's seat picker offers exactly those. */
-export function nearbyPeekJson(room: LocalRoom, now = 0, own: number | null = null): Json {
+ *  newcomer may take over (nearbyClaimable), so the joiner's seat picker
+ *  offers exactly those. */
+export function nearbyPeekJson(room: LocalRoom, now = 0): Json {
   const slots = room.slots();
   const claimable = room.lobby === null ? new Set(nearbyClaimable(room, now)) : new Set<number>();
-  // the looking phone's own seat (it left or dropped) is its to take back
-  if (own !== null && room.lobby === null) claimable.add(own);
   return {
     type: "room_seats",
     room: room.code,

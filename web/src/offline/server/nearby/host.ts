@@ -24,8 +24,9 @@ export const STOP_FALLBACK_SECONDS = 3;
 
 interface Peer {
   conn: LocalConnection | null;
-  /** The phone this link comes from, as the transport names it (an opaque
-   *  id per remote address), or null when the transport cannot tell. */
+  /** The transport's opaque id for the link's remote address, or null. An
+   *  address is not a phone's identity (addresses are reused), so it only
+   *  labels the link in the log: a seat is resumed by its token alone. */
   device: string | null;
   /** The seat token the room gave this link, from its resume frame. */
   token: string | null;
@@ -56,9 +57,6 @@ export class NearbyHost {
   private room: LocalRoom;
   private clock: Clock;
   private events: NearbyHostEvents;
-  /** Each phone's seat token, so a phone back in the lobby without one (its
-   *  app was closed) gets its own seat again rather than a second one. */
-  private deviceTokens = new Map<string, string>();
   /** Counts of what the boundary refused, by reason, for tests and the M1 page. */
   readonly refused: Record<string, number> = {};
 
@@ -124,10 +122,6 @@ export class NearbyHost {
       this.refuse("peers");
       this.link?.close(id);
       return;
-    }
-    if (device !== null) {
-      // one unseated link per phone: its newer link replaces an older one
-      for (const [other, p] of this.peers) if (p.device === device && p.conn === null) this.end(other);
     }
     if ([...this.peers.values()].filter((p) => p.conn === null).length >= LIMITS.unseated) {
       // links only looking at the seats never crowd out a seat's resume: the
@@ -286,7 +280,7 @@ export class NearbyHost {
     if (hello.peek) {
       // the seat picker: the seats, and the link stays unseated until its
       // pick, for one PEEK_SECONDS from its first look
-      const seats = nearbyPeekJson(this.room, this.clock.now(), this.ownSeat(peer));
+      const seats = nearbyPeekJson(this.room, this.clock.now());
       this.link?.send(id, JSON.stringify(seats));
       if (seats.full) {
         // no seat for a newcomer: the look ends here
@@ -299,25 +293,13 @@ export class NearbyHost {
       }
       return;
     }
-    // a phone back without its token (its app was closed, or it left)
-    // takes its own seat again: in the lobby always, so one phone never
-    // holds two; in a game when it asks for that seat or any (server.py's
-    // left seat, found by the socket's device)
-    const own = this.ownSeat(peer);
-    let token = hello.token;
-    if (!token && this.room.lobby !== null && peer.device !== null) token = this.deviceTokens.get(peer.device) ?? null;
-    if (!token && own !== null && (hello.seat === null || hello.seat === undefined || hello.seat === own)) {
-      token = this.room.seats[own].token;
-    }
+    // a hello without a seat's token is a newcomer, whatever address it
+    // comes from: the room seats it as one, never in a person's held seat
+    const token = hello.token;
     if (token) {
       // a joiner back with its token: any older link of its seat is closed,
       // so frames never reach that phone twice
       for (const [other, p] of this.peers) if (other !== id && p.token === token) this.end(other);
-    }
-    if (peer.device !== null) {
-      // one phone runs one page: a seated link it still has here is stale
-      // (its Leave or its close was lost), so the phone never holds two seats
-      for (const [other, p] of this.peers) if (other !== id && p.device === peer.device && p.conn !== null) this.end(other);
     }
     peer.conn = this.server.connect((frame) => this.deliver(id, peer, frame));
     // the join is handled in this call: the seat is bound to this link (its
@@ -327,23 +309,6 @@ export class NearbyHost {
                                        seat: hello.seat ?? null }));
     const room = peer.conn.currentRoom;
     nearbyLog("host", `${token ? "resume" : "join"} from ${id}: ${room ? `seat ${room.seatIndex(peer.conn.seat!)} bound` : "refused"}`);
-  }
-
-  /** In a game, the seat this link's phone last held and is not at now
-   *  (it left, or dropped), still under the token the room gave it; null
-   *  when there is none or the phone cannot be told apart. A seat still
-   *  connected only through another link of this same phone counts as not
-   *  at it: one phone runs one page, so that link is stale (its Leave, or
-   *  its close, was lost on the way), and the hello ends it. */
-  private ownSeat(peer: Peer): number | null {
-    if (this.room.lobby !== null || peer.device === null) return null;
-    const token = this.deviceTokens.get(peer.device);
-    if (!token) return null;
-    const at = this.room.seats.findIndex((sd) => !sd.isBot && sd.token === token);
-    if (at < 0) return null;
-    if (!this.room.seats[at].connected) return at;
-    const stale = [...this.peers.values()].some((p) => p !== peer && p.device === peer.device && p.token === token);
-    return stale ? at : null;
   }
 
   /** A frame from the room to one joiner. A `left`, or a refusal that
@@ -360,7 +325,6 @@ export class NearbyHost {
     }
     if (frame.startsWith('{"type":"resume"')) {
       peer.token = (parseObject(frame)?.token as string | undefined) ?? null;
-      if (peer.device !== null && peer.token) this.deviceTokens.set(peer.device, peer.token);
     }
     if (frame.startsWith('{"type":"left"')) this.endSoon(id, peer);
     else if (frame.startsWith('{"type":"error"')) {

@@ -156,11 +156,13 @@ describe("lobby seats", () => {
     expect(t.clock.now() - t0).toBeLessThan(2);
   });
 
-  it("one phone holds one lobby seat: its later links take the same seat back", async () => {
+  it("one phone holds one lobby seat: its later links resume the same seat by its token", async () => {
     const t = await lobby(1);
     const got: number[] = [];
-    for (let i = 0; i < 3; i++) {
-      const p = await t.join(`M${i}`, { device: "phone-a" });
+    const first = await t.join("M0", { device: "phone-a" });
+    got.push(lastRoom(first).you as number);
+    for (let i = 1; i < 3; i++) {
+      const p = await t.join(`M${i}`, { device: "phone-a", token: first.token });
       got.push(lastRoom(p).you as number);
       await t.advance(0.3);
     }
@@ -173,6 +175,7 @@ describe("lobby seats", () => {
     const other = await t.join("Other", { device: "phone-b" });
     expect(lastRoom(other).you).toBe(2);
   });
+
 });
 
 describe("links that are not seated", () => {
@@ -213,7 +216,7 @@ describe("links that are not seated", () => {
     expect(r.closed).toBe(false);
   });
 
-  it("one unseated link per phone: its newer link replaces the older", async () => {
+  it("two links from one address only looking at the seats: the newer never ends the older", async () => {
     const t = await lobby(1);
     const a = await raw(t, "phone-x");
     a.link.send(hello({ peek: true }));
@@ -221,9 +224,10 @@ describe("links that are not seated", () => {
     const b = await raw(t, "phone-x");
     b.link.send(hello({ peek: true }));
     await t.advance(0.5);
-    expect(a.closed).toBe(true);
+    expect(a.closed).toBe(false);
     expect(b.closed).toBe(false);
   });
+
 
   it("looking links cannot crowd out a dropped seat's resume", async () => {
     const t = await started(2);

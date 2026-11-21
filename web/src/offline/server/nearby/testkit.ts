@@ -83,7 +83,7 @@ export class NearbyTable {
   }
 
   /** A joiner types the code and joins (or resumes with `token`). */
-  async join(name: string, opts: { drive?: boolean; token?: string | null; player?: Player; device?: string } = {}): Promise<Player> {
+  async join(name: string, opts: { drive?: boolean; token?: string | null; player?: Player; device?: string; seat?: number } = {}): Promise<Player> {
     const sock = this.socket(opts.device);
     const p: Player = opts.player ?? { name, sock, frames: [], token: null, driver: null, seat: null, left: false };
     p.sock = sock;
@@ -91,7 +91,8 @@ export class NearbyTable {
     this.wire(p, opts.drive ?? false);
     const token = opts.token === undefined ? null : opts.token;
     const before = p.frames.length;
-    sock.onopen = () => sock.send(JSON.stringify({ type: "table_join", code: this.code, name, token, expect: "room" }));
+    sock.onopen = () => sock.send(JSON.stringify({ type: "table_join", code: this.code, name, token, expect: "room",
+                                                    ...(opts.seat !== undefined ? { seat: opts.seat } : {}) }));
     if (!opts.player) this.joiners.push(p);
     await this.clock.run(() => p.frames.slice(before).some((f) => f.type === "room" || f.type === "state" || f.type === "error"), 50_000);
     return p;

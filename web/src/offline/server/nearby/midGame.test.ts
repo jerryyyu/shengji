@@ -221,7 +221,7 @@ describe("a seat left by choice", () => {
     await playsIt(t, zed, seat);
   });
 
-  it("a phone whose Leave was lost, back by the code while its old link still holds the seat, gets that seat and no second one", async () => {
+  it("a phone whose Leave was lost, back by the code with no token, is a newcomer: its old link ends by its silence, not its address", async () => {
     const t = new NearbyTable(31, 1);
     await t.open(true);
     const j = await t.join("P1", { device: "phone-a" });
@@ -236,59 +236,162 @@ describe("a seat left by choice", () => {
     expect(t.room!.seats[seat].connected).toBe(true);
     const back = await t.join("P1", { drive: true, device: "phone-a" });
     expect(errors(back)).toEqual([]);
-    expect(t.lastState(back)!.you).toBe(seat);
-    // the stale link is gone and the phone holds exactly one seat
-    expect(t.fake.peersOf(t.code)).not.toContain(oldPeer);
-    const held = t.room!.seats.filter((sd) => !sd.isBot && sd.name === "P1");
-    expect(held).toHaveLength(1);
-  });
-
-  it("a phone whose Leave was lost, back by the code asking for another seat, keeps only that one", async () => {
-    const t = new NearbyTable(31, 1);
-    await t.open(true);
-    const j = await t.join("P1", { device: "phone-a" });
-    t.send(t.host, { type: "table_start_bots" });
-    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
-    const seat = j.seat!;
-    const oldPeer = t.fake.peersOf(t.code).at(-1)!;
-    t.fake.lose(oldPeer);
-    t.send(j, { type: "table_leave" });
-    await t.advance(3);
-    const other = [1, 2, 3].find((s) => s !== seat && t.room!.seats[s].isBot)!;
-    const sock = t.socket("phone-a");
-    const back: Player = { name: "P1", sock, frames: [], token: null, driver: null, seat: null, left: false };
-    sock.onmessage = (ev) => back.frames.push(JSON.parse(ev.data as string) as Frame);
-    sock.onopen = () => sock.send(JSON.stringify({ type: "table_join", code: t.code, name: "P1", seat: other }));
-    await t.settle(() => back.frames.some((f) => f.type === "state"));
-    expect(back.frames.find((f) => f.type === "state")!.you).toBe(other);
-    await t.advance(1);
+    expect(t.lastState(back)!.you).not.toBe(seat);
+    expect(back.token).not.toBe(j.token);
+    // the old link is not ended for sharing the address...
+    expect(t.fake.peersOf(t.code)).toContain(oldPeer);
+    // ...but for going silent, and its seat then waits for its token
+    await t.advance(LIMITS.silentSeconds + 1);
     expect(t.fake.peersOf(t.code)).not.toContain(oldPeer);
     expect(t.room!.seats[seat].connected).toBe(false);
+    expect(t.room!.seats[seat].token).toBe(j.token);
   });
 
-  it("the leaver's own phone, back by the code, is offered it and takes its own seat back", async () => {
-    const { t, seat } = await leftSeat();
+  it("the leaver, back by the code with no token, is offered the seat as anyone is and takes it under a new token", async () => {
+    const { t, j, seat } = await leftSeat();
     expect(nearbyChoices(await peekFrom(t, "phone-a"))).toEqual([seat]);
     const back = await t.join("P1", { drive: true, device: "phone-a" });
     expect(errors(back)).toEqual([]);
     expect(t.lastState(back)!.you).toBe(seat);
+    expect(back.token).not.toBe(j.token);
     expect(t.room!.seats[seat].leftByChoice).toBe(false);
     await playsIt(t, back, seat);
   });
 
-  it("with Allow joiners off, the leaver's own phone still gets its seat back, and nobody else gets in", async () => {
-    const { t, seat } = await leftSeat(false);
-    const other = await peekFrom(t, "phone-z");
-    expect(other.full).toBe(true);
-    const zed = await t.join("Zed", { device: "phone-z" });
-    expect(errors(zed).map((f) => f.code)).toEqual(["room_full"]);
-    const own = await peekFrom(t, "phone-a");
-    expect(own.full).toBe(false);
-    expect(nearbyChoices(own)).toEqual([seat]);
-    const back = await t.join("P1", { drive: true, device: "phone-a" });
+  it("with Allow joiners off, nobody gets in by the code, the leaver's phone included; the seat's token still takes it back", async () => {
+    const { t, j, seat } = await leftSeat(false);
+    for (const device of ["phone-z", "phone-a"]) {
+      expect((await peekFrom(t, device)).full).toBe(true);
+      const p = await t.join("Again", { device });
+      expect(errors(p).map((f) => f.code)).toEqual(["room_full"]);
+    }
+    const back = await t.join("P1", { drive: true, device: "phone-a", token: j.token });
     expect(errors(back)).toEqual([]);
     expect(t.lastState(back)!.you).toBe(seat);
     await playsIt(t, back, seat);
+  });
+});
+
+describe("a seat belongs to its token, never to an address", () => {
+  // The transport's per-address id is an address label, not a phone's
+  // identity: an address is reused (DHCP, a phone that left), so a link
+  // from an address a seated person came from is a newcomer like any other.
+  const ADDR = "reused-ip";
+  const handOf = (f: Frame | undefined) => ((f?.hand ?? []) as { code: string }[]).map((c) => c.code).sort().join(",");
+
+  async function aliceAt(): Promise<{ t: NearbyTable; alice: Player; seat: number; peer: string }> {
+    const t = new NearbyTable(41, 1);
+    await t.open(true);
+    const alice = await t.join("Alice", { device: ADDR });
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    await t.settle(() => t.room!.round!.phase !== "deal", 2_000_000);
+    return { t, alice, seat: alice.seat!, peer: t.fake.peersOf(t.code).at(-1)! };
+  }
+
+  it("a tokenless join from a dropped person's address, inside the seat's hold, gets no seat, token or hand of theirs", async () => {
+    const { t, alice, seat, peer } = await aliceAt();
+    const token = alice.token!;
+    t.fake.drop(t.code, peer);
+    await t.advance(1);
+    expect(t.room!.seats[seat].connected).toBe(false);
+    const hand = [...t.room!.round!.hands[seat]].sort().join(",");
+    // the look from that address does not offer the held seat
+    const frames: Frame[] = [];
+    const look = await t.fake.join(t.code, { message: (x) => frames.push(JSON.parse(x) as Frame), closed: () => {}, state: () => {} }, ADDR);
+    await t.advance(0.01);
+    look.send(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: t.code }))!);
+    await t.advance(1);
+    look.close();
+    expect(nearbyChoices(frames.find((f) => f.type === "room_seats") as unknown as RoomSeats)).not.toContain(seat);
+    const mal = await t.join("Mal", { device: ADDR });
+    expect(mal.frames.some((f) => f.token === token)).toBe(false);
+    expect(mal.token).not.toBe(token);
+    expect(t.lastState(mal)!.you).not.toBe(seat);
+    expect(mal.frames.filter((f) => f.type === "state").every((f) => f.you !== seat && handOf(f) !== hand)).toBe(true);
+    // and asking for that seat by number changes nothing
+    const mal2 = await t.join("Mal2", { device: ADDR, seat });
+    expect(mal2.frames.some((f) => f.token === token)).toBe(false);
+    expect(mal2.frames.filter((f) => f.type === "state").every((f) => f.you !== seat)).toBe(true);
+    // the seat is still held for its owner, under its own token
+    const sd = t.room!.seats[seat];
+    expect(sd.isBot).toBe(false);
+    expect(sd.token).toBe(token);
+    expect(sd.name).toBe("Alice");
+    // and its token takes it back, hand and all
+    const sock = await t.resume(alice, ADDR);
+    expect(sock.readyState).toBe(NearbySocket.OPEN);
+    expect(t.lastState(alice)!.you).toBe(seat);
+    expect(handOf(t.lastState(alice))).toBe([...t.room!.round!.hands[seat]].sort().join(","));
+  });
+
+  it("a second link from a seated person's address, in the game or the lobby, never ends their live link", async () => {
+    const { t, alice, seat, peer } = await aliceAt();
+    const mal = await t.join("Mal", { device: ADDR });
+    expect(t.lastState(mal)!.you).not.toBe(seat);
+    await t.advance(2);
+    expect(t.fake.peersOf(t.code)).toContain(peer);
+    expect(alice.sock.readyState).toBe(NearbySocket.OPEN);
+    expect(t.room!.seats[seat].connected).toBe(true);
+    expect(t.room!.seats[seat].token).toBe(alice.token);
+
+    const l = new NearbyTable(42, 1);
+    await l.open(true);
+    const a = await l.join("Alice", { device: ADDR });
+    const aPeer = l.fake.peersOf(l.code).at(-1)!;
+    const m = await l.join("Mal", { device: ADDR });
+    // two seats: the second link takes a free one, not Alice's
+    expect(m.frames.find((f) => f.type === "room")!.you).not.toBe(a.seat);
+    expect(m.token).not.toBe(a.token);
+    await l.advance(2);
+    expect(l.fake.peersOf(l.code)).toContain(aPeer);
+    expect(a.sock.readyState).toBe(NearbySocket.OPEN);
+    // two links from one address only looking at the seats: neither ends the other
+    const closed = [false, false];
+    for (const i of [0, 1]) {
+      const link = await l.fake.join(l.code, { message: () => {}, closed: () => { closed[i] = true; }, state: () => {} }, ADDR);
+      await l.advance(0.01);
+      link.send(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: l.code }))!);
+    }
+    await l.advance(1);
+    expect(closed).toEqual([false, false]);
+  });
+
+  it("a valid token resumes the same seat and hand, from the same address or a new one (a path change)", async () => {
+    const { t, alice, seat } = await aliceAt();
+    const token = alice.token;
+    for (const from of [ADDR, "other-path"]) {
+      // one joiner here: the table's only link is Alice's
+      expect(t.fake.peersOf(t.code)).toHaveLength(1);
+      t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+      await t.advance(1);
+      expect(t.room!.seats[seat].connected).toBe(false);
+      const sock = await t.resume(alice, from);
+      expect(sock.readyState).toBe(NearbySocket.OPEN);
+      expect(t.lastState(alice)!.you).toBe(seat);
+      expect(alice.token).toBe(token);
+      expect(handOf(t.lastState(alice))).toBe([...t.room!.round!.hands[seat]].sort().join(","));
+      expect(t.room!.seats[seat].connected).toBe(true);
+    }
+  });
+
+  it("a forged token is a newcomer: a bot's seat when there is one, the table-full refusal when not, never a held seat", async () => {
+    const { t, alice, seat, peer } = await aliceAt();
+    t.fake.drop(t.code, peer);
+    await t.advance(1);
+    const forged = await t.join("Mal", { device: ADDR, token: "not-a-seat-token" });
+    expect(errors(forged)).toEqual([]);
+    const took = t.lastState(forged)!.you as number;
+    expect(took).not.toBe(seat);
+    expect(t.room!.seats[took].isBot).toBe(false);
+    expect(forged.token).not.toBe("not-a-seat-token");
+    expect(forged.token).not.toBe(alice.token);
+    // every other seat a person's now: a forged token gets nothing
+    await t.join("M2", { device: ADDR });
+    const none = await t.join("M3", { device: ADDR, token: "forged-too" });
+    expect(errors(none).map((f) => f.code)).toEqual(["room_full"]);
+    expect(t.room!.seats[seat].token).toBe(alice.token);
+    expect(t.room!.seats[seat].name).toBe("Alice");
   });
 });
 

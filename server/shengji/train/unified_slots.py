@@ -30,9 +30,12 @@ import types
 
 import numpy as np
 
+from ..ai.heuristic import HeuristicBot
+
 TOKEN = "uprior"
 SHARED_TOKEN = "ushare"
 N_CARDS = 54
+_STANDARD_DECIDE_PLAY = HeuristicBot.decide_play
 
 
 class UnifiedSlotError(ValueError):
@@ -663,7 +666,7 @@ def _values_ahead(bot, frame, values_fn):
     return values
 
 
-def _fourth_reply_features(frame, items):
+def _direct_reply_features(frame, items):
     """Build the completed-trick rows from the indexed moves and their parent count planes."""
     counts = np.stack([parent for parent, *_ in items]).astype(np.uint8, copy=False)
     meta = np.empty((len(items), 5), np.int64)
@@ -675,12 +678,52 @@ def _fourth_reply_features(frame, items):
     return _feature_rows(list(range(len(items))), counts, meta)
 
 
-def _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw):
-    """The served fast-clone finish can rank a covered, nonterminal fourth reply from its card move."""
+def _projected_reply_features(frame, items):
+    """Join projected rows and materialized leaves in the original candidate order."""
+    projected = [i for i, item in enumerate(items) if type(item) is tuple]
+    if len(projected) == len(items):
+        return _direct_reply_features(frame, items)
+    if not projected:
+        return leaf_features_fast(frame, items)
+    materialized = [i for i, item in enumerate(items) if type(item) is not tuple]
+    _, direct_planes, direct_scalars, direct_keys = _direct_reply_features(
+        frame, [items[i] for i in projected])
+    mine, leaf_planes, leaf_scalars, leaf_keys = leaf_features_fast(frame, [items[i] for i in materialized])
+    covered = projected + [materialized[i] for i in mine]
+    order = np.argsort(covered)
+    keys = direct_keys + leaf_keys
+    return ([covered[i] for i in order], np.concatenate((direct_planes, leaf_planes))[order],
+            np.concatenate((direct_scalars, leaf_scalars))[order], [keys[i] for i in order])
+
+
+def _singleton_finishable(clone, pos, search, fast):
+    trick = clone.trick
+    if (getattr(clone, "_trusted_rollout", False) is not True or type(trick) is not search.Trick
+            or type(trick.plays) is not list or len(trick.plays) != pos
+            or type(clone.ordering) is not fast.Ordering
+            or type(clone.turn) is not int or type(trick.leader) is not int
+            or not 0 <= trick.leader < 4 or clone.turn != (trick.leader + pos) % 4
+            or type(clone.banker) is not int or not 0 <= clone.banker < 4
+            or type(clone.attacker_points) is not int
+            or type(clone.hands) is not list or len(clone.hands) != 4
+            or any(type(hand) is not list for hand in clone.hands)
+            or any(len(clone.hands[(trick.leader + i) % 4]) <= 1 for i in range(pos, 4))):
+        return False
+    inc, points = trick.incumbent, trick.running_points
+    return (type(inc) is tuple and len(inc) == 3 and type(inc[0]) is int and 0 <= inc[0] < 4
+            and inc[1] in ("S", "H", "D", "C", "T") and type(inc[2]) is int and -1 <= inc[2] <= 15
+            and type(points) is int and 0 <= points <= 200 - 10 * (4 - pos)
+            and all(type(play) is search.TrickPlay and play.seat == (trick.leader + i) % 4
+                    and type(play.cards) is list and len(play.cards) == 1
+                    for i, play in enumerate(trick.plays)))
+
+
+def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw):
+    """Rank covered continuations by their card moves when the standard finish permits it."""
     from functools import partial
     from ..engine import fast
     from . import pv_encode_prefix, pv_tree_search as search
-    if (not active or active[0].trick is None or len(active[0].trick.plays) != 3
+    if (not active or active[0].trick is None
             or not isinstance(values_fn, partial) or values_fn.func is not search._STANDARD_TEAM_VALUES
             or values_fn.args != (bot,) or kw.get("children_fn") is not search._STANDARD_REPLY_CHILDREN
             or len(args) != 2 or args[1] is not search.child_position_fast
@@ -696,22 +739,52 @@ def _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, arg
         score = pv_encode_prefix.score_leaves
         if getattr(score, "readout_dispatch", None) is not score:
             return None
+    plane_maps, pts, combos, legal = _fast_tables()
+    pos = len(active[0].trick.plays)
+    if not 1 <= pos <= 3:
+        return None
+    if pos < 3:
+        project = getattr(search._reply_fast, "project_singleton_replies", None)
+        if (project is None or legal.beats is not fast._fast.beats
+                or HeuristicBot._follow is not fast._fast.heuristic_follow
+                or HeuristicBot._forced_follow is not fast._forced_follow_fast
+                or _STANDARD_DECIDE_PLAY.__globals__.get("validate_follow") is not fast._fast.validate_follow):
+            return None
+        finisher = search.default_finisher()
+        if type(finisher) is not HeuristicBot or vars(finisher) or HeuristicBot.decide_play is not _STANDARD_DECIDE_PLAY:
+            return None
+        decide = finisher.decide_play
+    eligible = set()
     for clone in active:
         trick = clone.trick
-        if (trick is None or len(trick.plays) != 3 or len(clone.history) != frame.tricks
-                or len(clone.hands[clone.turn]) <= len(trick.plays[0].cards)
+        if (trick is None or len(trick.plays) != pos or len(clone.history) != frame.tricks
                 or trick.incumbent is None or trick.running_points is None
                 or not search._round_default_copy(clone) or "play" in vars(clone)):
-            return None
-    plane_maps, pts, combos, legal = _fast_tables()
+            continue
+        if pos == 3:
+            if len(clone.hands[clone.turn]) > len(trick.plays[0].cards):
+                eligible.add(id(clone))
+        elif _singleton_finishable(clone, pos, search, fast):
+            eligible.add(id(clone))
+    if not eligible or (pos == 3 and len(eligible) != len(active)):
+        return None
 
     def children(clone, seat, candidates):
+        if id(clone) not in eligible:
+            return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
         trick = clone.trick
-        incumbent, suit, top = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
+        actual = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
         prior_points = sum(pts[c] for play in trick.plays for c in play.cards)
+        parent = planes[index_of[id(clone)]]
+        if pos < 3:
+            result = project(clone, seat, candidates, frame.seat, parent, plane_maps, pts,
+                             actual, prior_points, decide, legal.beats, search.TrickPlay)
+            if result is None:
+                return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
+            return result
+        incumbent, suit, top = actual
         rel = (seat - frame.seat) % 4
         lookup = plane_maps[rel].__getitem__
-        parent = planes[index_of[id(clone)]]
         result = []
         for cards in candidates:
             won = suit is not None and legal.beats(cards, trick.plays[0].cards, suit, top, clone.ordering)[0]
@@ -722,7 +795,15 @@ def _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, arg
 
     def values(items, seat, gate=None):
         evaluator = bot.evaluator
-        ahead = iter(evaluator.readout_ahead(frame, items, bot.batch_size, gate, _fourth_reply_features))
+        features = _direct_reply_features if pos == 3 else _projected_reply_features
+        rows = evaluator.readout_ahead(frame, items, bot.batch_size, gate, features)
+        if any(len(part) != len(mine) for part, mine, *_ in rows):
+            frame.ahead = rows
+            try:
+                return values_fn(items, seat, gate)
+            finally:
+                frame.ahead = None
+        ahead = iter(rows)
 
         def score(part, seat):
             _, _, counts, scalars, keys, new = next(ahead)
@@ -782,7 +863,7 @@ def readout_reply_ply(served_ply):
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
         if fast:
-            callbacks = _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw)
+            callbacks = _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw)
             if callbacks is None:
                 values_fn = _values_ahead(bot, frame, values_fn)
             else:

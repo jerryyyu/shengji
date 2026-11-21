@@ -888,7 +888,8 @@ def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
         assert saved["allocation"]["serving_decision"]["unified"]["missed"] == 0
 
 
-def test_fourth_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch):
+@pytest.mark.parametrize("pos", [1, 2, 3])
+def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch, pos):
     from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
     from shengji.engine import fast
     from shengji.train import pv_tree_search as search, unified_slots as us
@@ -900,20 +901,43 @@ def test_fourth_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_pa
     path, sha = _random_pair(tmp_path)["unified"]
     model = load_unified_readout_numpy(path, sha)
     states = []
-    for clone, _, candidates in _follow_clones((707_001,), True):
-        if len(clone.trick.plays) == 3 and len(candidates) >= 2:
-            states.append(clone)
-            if len(states) == 8:
-                break
+    alternatives = {}
+    mixed = None
+    for clone, seat, candidates in _follow_clones((707_001, 707_002, 707_003), True):
+        if len(clone.trick.plays) != pos or len(candidates) < 2:
+            continue
+        singleton = len(clone.trick.plays[0].cards) == 1
+        if (pos == 3 or singleton) and len(states) < 8:
+            states.append((clone, seat, candidates))
+        if pos == 2:
+            key = (len(clone.history), seat)
+            pair = alternatives.setdefault(key, {})
+            pair[singleton] = clone
+            if len(pair) == 2:
+                mixed = pair
+        if len(states) == 8 and (pos != 2 or mixed is not None):
+            break
     assert len(states) == 8
-    states[0].trick.running_points += 15
-    winner, suit, top = states[0].trick.incumbent
-    states[0].trick.incumbent = ((winner + 1) % 4, suit, top)
-    real_features = us._fourth_reply_features
+    stale, seat, candidates = states[0]
+    clean = search.reply_children_fast(stale, seat, candidates)
+    stale.trick.running_points = 50
+    stale.trick.incumbent = ((seat + 1) % 4, "T", 15)
+    if pos < 3:
+        changed = search.reply_children_fast(stale, seat, candidates)
+        assert any(a.history[-1].plays != b.history[-1].plays for a, b in zip(clean, changed))
+    real_features = us._direct_reply_features
     real_probs = model.leaf_value_probs_fused
+    real_project = search._reply_fast.project_singleton_replies
     monkeypatch.setattr(search, "greedy_reply_ply", us.readout_reply_ply(search.greedy_reply_ply))
     trace = []
     direct = []
+    projected = []
+
+    def project(clone, seat, candidates, *args):
+        result = real_project(clone, seat, candidates, *args)
+        assert len(result) == len(candidates)
+        projected.append(len(clone.trick.plays))
+        return result
 
     def features(frame, items):
         result = real_features(frame, items)
@@ -924,30 +948,39 @@ def test_fourth_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_pa
         trace.append(("forward", planes.shape, planes.tobytes(), scalars.tobytes()))
         return real_probs(fused, planes, scalars)
 
-    monkeypatch.setattr(us, "_fourth_reply_features", features)
+    monkeypatch.setattr(search._reply_fast, "project_singleton_replies", project)
+    monkeypatch.setattr(us, "_direct_reply_features", features)
     monkeypatch.setattr(model, "leaf_value_probs_fused", probs)
     monkeypatch.setattr(us, "READOUT_BATCH", 6)
 
-    def run(clone):
+    def run(clones):
         trace.clear()
         bot = lgf_bot(7, True, 5)
         bot.unified_fast = True
         bot.batch_size = 3
         us.install_value_readout(bot, model)
         us.install_reply_readout(bot, model)
+        clone = clones[0]
         bot.unified_frame = frame = us.LeafFrame(bot, clone, clone.trick.leader)
-        frame.pos = 0
-        copies = [copy.deepcopy(clone) for _ in range(9)]
+        frame.pos = pos - 1
+        copies = [copy.deepcopy(c) for c in clones]
         stats = search.greedy_finish_current_trick(bot, copies, frame.tricks + 1,
                                                    lambda: trace.append("gate"), 3, 7, fast_clone=True,
                                                    guard=lambda: trace.append("guard"))
-        return ([c.history[-1].plays[-1].cards for c in copies], stats, list(trace),
+        return ([c.history[-1] for c in copies], stats, list(trace),
                 frame.value_memo, bot.unified_value_memo, bot.unified_value_rows,
                 bot.evaluator.positions, bot.evaluator.model_rows)
 
-    for clone in states:
-        got = run(clone)
+    groups = [[clone] * 9 for clone, _, _ in states]
+    if pos == 2:
+        assert mixed is not None
+        groups.append([mixed[True], mixed[False]] * 4)
+    for group in groups:
+        projected.clear()
+        got = run(group)
+        if pos < 3:
+            assert pos in projected
         with monkeypatch.context() as patch:
-            patch.setattr(us, "_fourth_reply_callbacks", lambda *a: None)
-            assert run(clone) == got
+            patch.setattr(us, "_projected_reply_callbacks", lambda *a: None)
+            assert run(group) == got
     assert len(direct) > 60

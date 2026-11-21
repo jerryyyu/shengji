@@ -59,7 +59,12 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
   it("the device-test switches turn on only from the xcodebuild command line, in Debug", () => {
     const project = read("../../../../ios/App/App.xcodeproj/project.pbxproj");
     const xcconfig = read("../../../../ios/debug.xcconfig");
-    for (const text of [project, xcconfig]) expect(text).not.toMatch(/SHENGJI_NEARBY/);
+    // the project file names nearby only in the Beta configuration's one line; the device
+    // test's DEV and SPIKE switches come from the command line alone
+    expect(xcconfig).not.toMatch(/SHENGJI_NEARBY/);
+    expect(project).not.toMatch(/SHENGJI_NEARBY_(?:DEV|SPIKE)/);
+    expect(project.match(/SHENGJI_NEARBY/g)).toHaveLength(2);
+    expect(project).toMatch(/SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SHENGJI_NEARBY SHENGJI_NEARBY_BETA";/);
     expect(swift.match(/static let debugBuild = true/g)).toHaveLength(1);
     expect(swift).toMatch(/#if DEBUG && \(SHENGJI_NEARBY_SPIKE \|\| SHENGJI_NEARBY_DEV\)\s+static let debugBuild = true\s+#else\s+static let debugBuild = false\s+#endif/);
     // the Beta binary (TestFlight internal testing only) turns nearby on and says so in its capabilities

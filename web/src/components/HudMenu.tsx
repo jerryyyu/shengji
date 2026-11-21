@@ -6,7 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
-import { copyNearbyLog, useNearbyDebug, useNearbyKeepalive, useNearbySoak } from "../nearbyDebug";
+import { clearNearbyLogFile, copyNearbyLog, nearbyLogFileOn, useNearbyDebug, useNearbyKeepalive, useNearbySoak } from "../nearbyDebug";
 import { tapHandlers } from "../tap";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
@@ -152,6 +152,11 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           {debug ? (
             <button className="hud-menu-row" role="menuitem" onClick={() => { void copyNearbyLog(); close(); }}>
               <span>Copy log</span>
+            </button>
+          ) : null}
+          {import.meta.env.VITE_SHENGJI_NEARBY === "1" && debug && nearbyLogFileOn() ? (
+            <button className="hud-menu-row" role="menuitem" onClick={() => { void clearNearbyLogFile(); close(); }}>
+              <span>Clear log file</span>
             </button>
           ) : null}
           {debug && keepalive ? (

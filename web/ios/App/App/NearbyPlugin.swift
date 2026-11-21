@@ -262,7 +262,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "close", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
-    ] + ShengjiNearbyPlugin.spikeMethods + ShengjiNearbyPlugin.chaosMethods
+    ] + ShengjiNearbyPlugin.debugMethods
+    /// The Debug-only methods; each list is empty in any other build.
+    static let debugMethods: [CAPPluginMethod] =
+        ShengjiNearbyPlugin.spikeMethods + ShengjiNearbyPlugin.chaosMethods + ShengjiNearbyPlugin.logFileMethods
 
     static let maxMessage = 16 * 1024
     /// Frames this small (pings, pongs, keepalives) get no native log line.
@@ -512,7 +515,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: JS methods
 
     @objc func capabilities(_ call: CAPPluginCall) {
-        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild,
+        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild, "logFile": Self.logFileBuild,
                       "nearbyV": NearbyBuild.nearbyV, "serviceType": NearbyBuild.serviceType])
     }
 
@@ -1366,6 +1369,64 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
     static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
+}
+#endif
+
+#if DEBUG && SHENGJI_NEARBY_DEV
+/// The device test's log file: Documents/nearby-log.txt in the app's data
+/// container, one older file kept as nearby-log.1.txt, for a Mac to pull with
+/// devicectl after a soak. The page batches lines and decides when to roll;
+/// this appends, rolls and clears them in order, off the link's queue.
+extension ShengjiNearbyPlugin {
+    static let logFileMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "debugLogFile", returnType: CAPPluginReturnPromise)
+    ]
+    static let logFileBuild = true
+    private static let logFileQueue = DispatchQueue(label: "shengji.nearby.logfile", qos: .utility)
+    private static let logFileMaxAppend = 4 * 1024 * 1024
+
+    @objc func debugLogFile(_ call: CAPPluginCall) {
+        let op = call.getString("op") ?? ""
+        let text = call.getString("text") ?? ""
+        Self.logFileQueue.async {
+            let fm = FileManager.default
+            do {
+                let dir = try fm.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                let file = dir.appendingPathComponent("nearby-log.txt")
+                let old = dir.appendingPathComponent("nearby-log.1.txt")
+                switch op {
+                case "append":
+                    let data = Data(text.utf8)
+                    guard data.count <= Self.logFileMaxAppend else { return call.reject("append too long", "invalid") }
+                    if !fm.fileExists(atPath: file.path) { fm.createFile(atPath: file.path, contents: nil) }
+                    // opened per batch, so a file the Mac replaced is the one appended to
+                    let handle = try FileHandle(forWritingTo: file)
+                    defer { try? handle.close() }
+                    try handle.seekToEnd()
+                    try handle.write(contentsOf: data)
+                case "roll":
+                    if fm.fileExists(atPath: old.path) { try fm.removeItem(at: old) }
+                    if fm.fileExists(atPath: file.path) { try fm.moveItem(at: file, to: old) }
+                case "clear":
+                    if fm.fileExists(atPath: old.path) { try fm.removeItem(at: old) }
+                    guard fm.createFile(atPath: file.path, contents: Data()) else { return call.reject("clear failed", "io") }
+                case "size":
+                    break
+                default:
+                    return call.reject("unknown op", "invalid")
+                }
+                let size = ((try? fm.attributesOfItem(atPath: file.path))?[.size] as? NSNumber)?.intValue ?? 0
+                call.resolve(["size": size])
+            } catch {
+                call.reject("log file: \(error.localizedDescription)", "io")
+            }
+        }
+    }
+}
+#else
+extension ShengjiNearbyPlugin {
+    static let logFileMethods: [CAPPluginMethod] = []
+    static let logFileBuild = false
 }
 #endif
 

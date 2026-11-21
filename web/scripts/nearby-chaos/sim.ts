@@ -6,7 +6,7 @@
 // seat. Faults come from a schedule, so a failing game can be replayed and
 // shrunk. The invariants are checked as the game runs.
 import { VirtualClock } from "../../src/offline/server/clock";
-import { LocalServer, type LocalRoom } from "../../src/offline/server/server";
+import { LocalServer, type LocalRoom, type Seat } from "../../src/offline/server/server";
 import { LocalSocket } from "../../src/offline/server/socket";
 import { NearbyHost } from "../../src/offline/server/nearby/host";
 import { NearbySocket, setNearbyKeepalive } from "../../src/offline/server/nearby/socket";
@@ -16,10 +16,11 @@ import { subscribeNearbyLog, nearbyLogLines, clearNearbyLog } from "../../src/ne
 import { SmartBot, viewFor } from "../../src/offline/bot";
 import type { RoundState } from "../../src/offline/engine/round";
 import { Radio, Rng, type Phone, type SimLink } from "./radio";
+import { BACKOFF_FIRST_S, BACKOFF_MAX_S, CONNECT_S, LONG_LIVED_S, type PageModel } from "./pageModel";
 
 type Frame = Record<string, unknown> & { type: string };
 
-export type FaultKind = "wifi" | "radio" | "drop" | "halfOpen" | "stall" | "bg" | "listener" | "leave" | "allow" | "midjoin" | "dup";
+export type FaultKind = "wifi" | "radio" | "drop" | "halfOpen" | "stall" | "stallPhone" | "bg" | "listener" | "leave" | "allow" | "midjoin" | "dup";
 
 export interface Fault {
   t: number;
@@ -43,6 +44,21 @@ export interface GameOpts {
   /** In-link duplicates (not something TCP does): safety invariants only. */
   hostile: boolean;
   verbose: boolean;
+  /** The device test's faults too (stallPhone: a whole phone's frames held,
+   *  host or joiner, two phones at once sometimes). Off, a seed makes the
+   *  schedule it always made. */
+  newFaults?: boolean;
+  /** The joiner page's reconnect: "sim" (the simulator's own loop) or "ws"
+   *  (ws.ts's connect timer and long-lived retry, pageModel.ts). */
+  page?: PageModel;
+  /** The known gaps the app has yet to close, checked as they happen:
+   *  "report" counts each in the stats (gap ...) and never fails a game,
+   *  "strict" fails it; off (the default) skips them. S3: a reconnect under
+   *  3 s adds no chat line. S4: a move pending at a rebuild is applied or
+   *  sent again within 1 s of the resume. */
+  gaps?: "off" | "report" | "strict";
+  /** With "strict": fail only on the gap whose name contains this. */
+  gapOnly?: string;
 }
 
 export interface Violation {
@@ -59,6 +75,9 @@ export interface GameResult {
   stats: Record<string, number>;
   /** Seconds from each fault's clear to the joiner back, for the report. */
   recoveries: number[];
+  /** Seconds from the last frame a joiner heard before an outage to its
+   *  being back: the freeze the person sees, fault time included. */
+  freezes: number[];
 }
 
 /** The joiner phones and when the session's people are on Wi-Fi. */
@@ -81,11 +100,24 @@ export function makeSetup(rng: Rng): Setup {
   return { joiners, hostJoined, joinerJoined, late };
 }
 
-export function makeSchedule(rng: Rng, setup: Setup, seconds: number): Fault[] {
+export function makeSchedule(rng: Rng, setup: Setup, seconds: number, newFaults = false): Fault[] {
   const out: Fault[] = [];
   const joiners = Array.from({ length: setup.joiners }, (_, i) => `J${i + 1}`);
+  const phones = ["H", ...joiners];
   let t = rng.range(20, 40);
   while (t < seconds - 20) {
+    if (newFaults && rng.chance(0.2)) {
+      // the device test's stall: one phone's frames, on every link, held
+      const who = rng.pick(phones);
+      const dur = rng.range(3, 12);
+      out.push({ t, kind: "stallPhone", who, dur, arg: 0 });
+      if (rng.chance(0.3)) {
+        const other = rng.pick(phones.filter((p) => p !== who));
+        out.push({ t: t + rng.range(0, dur), kind: "stallPhone", who: other, dur: rng.range(3, 12), arg: 0 });
+      }
+      t += rng.range(8, 45);
+      continue;
+    }
     const r = rng.next();
     const j = rng.pick(joiners);
     let f: Fault;
@@ -137,6 +169,11 @@ class Device {
   lastState: Frame | null = null;
   lastStateAt = 0;
   lastRoom: Frame | null = null;
+  /** The last frame of any kind (a pong included) this phone heard from the
+   *  host, at its plugin. */
+  lastFrameAt = 0;
+  /** That time when the current outage began. */
+  frozenFrom = 0;
   unhealthySince: number | null = null;
   constructor(id: string, phone: Phone, name: string) {
     this.id = id;
@@ -213,6 +250,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const trace: string[] = [];
   const stats: Record<string, number> = { faults: 0, links: 0, reconnects: 0, applied: 0, refused: 0, rounds: 0 };
   const recoveries: number[] = [];
+  const freezes: number[] = [];
   let violation: Violation | null = null;
   let current = "-";
   const log = (who: string, text: string) => {
@@ -225,6 +263,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     if (violation) return;
     violation = { invariant, detail, t: vc.now() };
     log("!!", `VIOLATION ${invariant}: ${detail}`);
+  };
+  const gapMode = opts.gaps ?? "off";
+  const gap = (invariant: string, detail: string) => {
+    stats[`gap ${invariant}`] = (stats[`gap ${invariant}`] ?? 0) + 1;
+    log("gap", `${invariant}: ${detail}`);
+    if (gapMode === "strict" && (!opts.gapOnly || invariant.includes(opts.gapOnly))) fail(invariant, detail);
   };
 
   // determinism: the room's tokens and codes come from the seed too
@@ -246,7 +290,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   const radio = new Radio(vc, rng, { silentAfterIdle: [3, 5], bugs }, log);
   const setup = makeSetup(setupRng);
-  const schedule = opts.schedule ?? makeSchedule(setupRng, setup, opts.seconds);
+  const schedule = opts.schedule ?? makeSchedule(setupRng, setup, opts.seconds, opts.newFaults === true);
 
   /** A person's time to act: mostly quick, sometimes a long look. */
   const think = () => (driverRng.chance(0.25) ? driverRng.range(2, 12) : driverRng.range(0.5, 2));
@@ -274,6 +318,38 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   // the host page: its room on its own clock, its seat on a LocalSocket
   const server = new LocalServer({ clock: H.clock, seed: () => opts.seed });
+  if (gapMode !== "off") {
+    // S3: the room's chat lines, and each seat's outage as the room sees it
+    const chatAt: { t: number; text: string }[] = [];
+    const chatSystem = server.chatSystem.bind(server);
+    server.chatSystem = (r, text) => {
+      chatAt.push({ t: vc.now(), text });
+      chatSystem(r, text);
+    };
+    const downAt = new Map<Seat, number>();
+    const seen = new Set<Seat>();
+    const detach = server.detach.bind(server);
+    server.detach = (seat, r, gen) => {
+      if ((gen === null || gen === seat.gen) && !downAt.has(seat)) downAt.set(seat, vc.now());
+      detach(seat, r, gen);
+    };
+    const attach = server.attach.bind(server);
+    server.attach = (r, seat, writer) => {
+      const now = vc.now();
+      const from = downAt.get(seat) ?? now;
+      downAt.delete(seat);
+      const again = seen.has(seat);
+      seen.add(seat);
+      const gen = attach(r, seat, writer);
+      if (again && now - from < 3) {
+        vc.setTimeout(() => {
+          const lines = chatAt.filter((c) => c.t >= from && c.t <= now + 1 && c.text.includes(seat.name));
+          if (lines.length) gap("quick reconnect adds no chat", `${seat.name} back in ${(now - from).toFixed(1)} s; chat: ${lines.map((c) => `"${c.text}"`).join(", ")}`);
+        }, 1);
+      }
+      return gen;
+    };
+  }
   const hostBot = new SmartBot();
   const hostSock = new LocalSocket(server);
   let room: LocalRoom | null = null;
@@ -348,6 +424,8 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   };
 
   // the joiner pages
+  const wsPage = opts.page === "ws";
+  const pendingChecked = new Set<Sent>();
   class Page {
     readonly d: Device;
     readonly transport: NearbyTransport;
@@ -360,8 +438,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     boundSeat: number | null = null;
     leaving = false;
     done = false;
-    backoff = 0.5;
+    backoff = BACKOFF_FIRST_S;
     retry = 0;
+    /** When the current socket opened (ws.ts's openedAt), for LONG_LIVED_S. */
+    openedAt: number | null = null;
     misses = 0;
     decideGen = 0;
     readyOn = -1;
@@ -414,11 +494,31 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       this.boundSeat = null;
       const sock = new NearbySocket(this.transport, code, (s) => this.onLinkState(no, s), this.clock, this.greet);
       this.sock = sock;
+      this.openedAt = null;
+      if (wsPage) {
+        log(this.d.id, `page: attempt ${no}`);
+        // ws.ts's connect timer: an attempt not open by now is cut, with its
+        // handlers, and retried after the backoff
+        this.clock.setTimeout(() => {
+          if (this.sock !== sock || this.status !== "connecting") return;
+          log(this.d.id, `page: attempt ${no} cut at ${CONNECT_S} s (still connecting)`);
+          sock.onopen = null;
+          sock.onmessage = null;
+          sock.onclose = null;
+          sock.close();
+          this.sock = null;
+          this.status = "closed";
+          for (const s of this.d.sent) if (s.sock === no && s.state === "pending") s.state = "closed";
+          this.retryLater(false);
+        }, CONNECT_S);
+      }
       sock.onopen = () => {
         if (this.sock !== sock) return;
         this.status = "open";
-        this.backoff = 0.5;
+        this.openedAt = vc.now();
+        this.backoff = BACKOFF_FIRST_S;
         this.misses = 0;
+        if (gapMode !== "off" && this.seated) this.checkPending(no);
         if (!this.seated) sock.send(JSON.stringify({ ...PEEK, code }));
       };
       sock.onmessage = (ev) => {
@@ -435,11 +535,30 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           return;
         }
         if (this.done) return;
-        const wait = this.backoff;
-        this.backoff = Math.min(this.backoff * 2, 2);
-        const r = ++this.retry;
-        this.clock.setTimeout(() => { if (r === this.retry && this.sock === null && !this.done) this.open(); }, wait);
+        this.retryLater(wsPage && this.openedAt !== null && vc.now() - this.openedAt > LONG_LIVED_S);
       };
+    }
+    /** The next attempt after the backoff (doubling to its cap), or at once. */
+    private retryLater(now: boolean): void {
+      const wait = now ? 0 : this.backoff;
+      this.backoff = Math.min(this.backoff * 2, BACKOFF_MAX_S);
+      const r = ++this.retry;
+      this.clock.setTimeout(() => { if (r === this.retry && this.sock === null && !this.done) this.open(); }, wait);
+    }
+    /** S4: each move whose link went while it was pending, for the decision
+     *  still open at this resume, is applied or sent again within 1 s. */
+    private checkPending(no: number): void {
+      const d = this.d;
+      const point = pointOf(room!);
+      const owed = d.sent.filter((s) => s.state === "closed" && s.key === point && s.sock < no && !pendingChecked.has(s));
+      if (owed.length === 0) return;
+      for (const s of owed) pendingChecked.add(s);
+      vc.setTimeout(() => {
+        for (const s of owed) {
+          const again = d.sent.some((x) => x !== s && x.key === s.key && x.seat === s.seat && x.sock > s.sock);
+          if (s.state !== "applied" && !again) gap("pending move re-sent after a rebuild", `${d.id}'s ${s.text.slice(0, 40)} (for ${s.key}) pending when socket ${s.sock} went: neither applied nor sent again 1 s after socket ${no} opened`);
+        }
+      }, 1);
     }
     reconnectNow(): void {
       this.retry += 1;
@@ -605,6 +724,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   const pages = new Map<Device, Page>();
   for (const d of devices) pages.set(d, new Page(d));
+  for (const d of devices) void d.phone.plugin.addListener("message", () => { d.lastFrameAt = vc.now(); });
   const firsts = devices.filter((_, i) => i !== setup.late);
   for (const [k, d] of firsts.entries()) vc.setTimeout(() => d.phone.clock.post(() => pages.get(d)!.look()), 1 + k * 1.5);
 
@@ -696,6 +816,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           if (!l) return;
           radio.stall(l);
           begin(d, f.dur, () => radio.unstall(l), true);
+          return;
+        }
+        case "stallPhone": {
+          const p = d.phone.plugin;
+          if (!p.stallStart()) return;
+          begin(d, f.dur, () => p.stallEnd(), true);
           return;
         }
         case "bg": {
@@ -794,6 +920,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       if (expect && !healthy) {
         if (d.unhealthySince === null) {
           d.unhealthySince = now;
+          d.frozenFrom = d.lastFrameAt;
           d.openAtStart = pg.status === "open";
         }
         const from = Math.max(since, d.unhealthySince);
@@ -802,7 +929,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           fail("back within the bound", `${d.id} not back ${Math.round(now - from)} s after the last fault cleared (socket ${pg.status}, seat ${seatIdx >= 0 ? `${seatIdx} ${seatOk ? "connected" : "not connected"}` : "none"}, state ${fresh ? "current" : "behind"})`);
         }
       } else if (healthy && d.unhealthySince !== null) {
-        if (d.unhealthySince >= since - 0.01 || since > 0) recoveries.push(now - Math.max(since, d.unhealthySince));
+        if (d.unhealthySince >= since - 0.01 || since > 0) {
+          recoveries.push(now - Math.max(since, d.unhealthySince));
+          freezes.push(now - d.frozenFrom);
+        }
         d.unhealthySince = null;
       } else if (!expect) d.unhealthySince = null;
       // no reconnect loop: at most 3 new links a minute with no fault about
@@ -859,7 +989,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   stats.hostRefused = Object.values(nearbyHost.refused).reduce((a, b) => a + b, 0);
   offLog();
   Math.random = savedRandom;
-  (globalThis.crypto as { getRandomValues: (a: Uint8Array) => Uint8Array }).getRandomValues = savedGetRandom;
+  (globalThis.crypto as unknown as { getRandomValues: typeof savedGetRandom }).getRandomValues = savedGetRandom;
   setNearbyKeepalive(true);
-  return { seed: opts.seed, violation, trace, schedule, stats, recoveries };
+  return { seed: opts.seed, violation, trace, schedule, stats, recoveries, freezes };
 }

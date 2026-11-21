@@ -16,6 +16,15 @@
 //                Wi-Fi network); with --replay, added to the replay's bugs
 // --hostile      also duplicate frames inside a link (TCP never does): the
 //                safety invariants still hold
+// --page MODEL   the joiner page's reconnect: sim (default) or ws (ws.ts's
+//                5 s connect timer and long-lived retry, pageModel.ts)
+// --gaps MODE    the app's known gaps (S3: a reconnect under 3 s adds no
+//                chat line; S4: a move pending at a rebuild is applied or
+//                sent again within 1 s): report (counted as "gap ..." in the
+//                totals, never failing) or strict (failing; --gap-only WORD
+//                fails only on the gap whose name has WORD, e.g. pending)
+// --new-faults   the device test's faults too: stallPhone (every frame of
+//                one phone held, on all its links; two phones may overlap)
 // --replay FILE  run one game from a replay file, deterministically
 // --no-shrink    on a failure, keep the whole fault schedule
 // --out DIR      where replay files go (default: the current directory)
@@ -26,9 +35,13 @@
 //   for f in web/scripts/nearby-chaos/replays/*.json; do npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay $f; done
 //
 // 581 and 1475 must fail again with --bug migrate-stale.
+//
+// replays/gaps/ keeps the app's known gaps (--gaps strict): each fails with
+// its gap until the app closes it, and then moves up to replays/.
 import { writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGame, type Fault, type GameOpts, type GameResult } from "./sim";
+import type { PageModel } from "./pageModel";
 
 interface Replay {
   seed: number;
@@ -38,6 +51,9 @@ interface Replay {
   hostile: boolean;
   schedule: Fault[];
   invariant: string;
+  page?: PageModel;
+  gaps?: "off" | "report" | "strict";
+  gapOnly?: string;
 }
 
 function args(argv: string[]): Record<string, string | boolean> {
@@ -97,7 +113,9 @@ async function main(): Promise<void> {
     const rp = JSON.parse(readFileSync(a.replay, "utf8")) as Replay;
     const planted = typeof a.bug === "string" ? a.bug.split(",") : [];
     const r = await runGame({ seed: rp.seed, bugs: [...rp.bugs, ...planted], seconds: rp.seconds, bound: rp.bound, hostile: rp.hostile,
-                              schedule: rp.schedule, verbose: a.verbose === true });
+                              schedule: rp.schedule, verbose: a.verbose === true, page: rp.page,
+                              gaps: a.gaps === "report" || a.gaps === "strict" ? a.gaps : rp.gaps,
+                              gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : rp.gapOnly });
     if (r.violation) {
       report(r, a.verbose ? 0 : 200);
       process.exitCode = 1;
@@ -112,9 +130,14 @@ async function main(): Promise<void> {
     bound: Number(a.bound ?? 15),
     hostile: a.hostile === true,
     verbose: a.verbose === true,
+    newFaults: a["new-faults"] === true,
+    page: (a.page === "ws" ? "ws" : "sim") as PageModel,
+    gaps: (a.gaps === "report" || a.gaps === "strict" ? a.gaps : "off") as "off" | "report" | "strict",
+    gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : undefined,
   };
   const totals: Record<string, number> = {};
   const recoveries: number[] = [];
+  const freezes: number[] = [];
   const failures: { seed: number; invariant: string; game: number }[] = [];
   const started = Date.now();
   for (let g = 0; g < games; g++) {
@@ -123,12 +146,13 @@ async function main(): Promise<void> {
     let r = await runGame(opts);
     for (const [k, v] of Object.entries(r.stats)) totals[k] = (totals[k] ?? 0) + v;
     recoveries.push(...r.recoveries);
+    freezes.push(...r.freezes);
     if (r.violation) {
       failures.push({ seed, invariant: r.violation.invariant, game: g + 1 });
       if (a["no-shrink"] !== true) r = await shrink(opts, r);
       report(r);
       const rp: Replay = { seed, bugs: base.bugs, seconds: base.seconds, bound: base.bound, hostile: base.hostile,
-                           schedule: r.schedule, invariant: r.violation!.invariant };
+                           schedule: r.schedule, invariant: r.violation!.invariant, page: base.page, gaps: base.gaps, gapOnly: base.gapOnly };
       const file = join(out, `nearby-chaos-${seed}.json`);
       writeFileSync(file, JSON.stringify(rp, null, 2));
       console.log(`replay: npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay ${file}`);
@@ -140,7 +164,9 @@ async function main(): Promise<void> {
   console.log(`\n${ran} game(s) from seed ${seed0}${base.bugs.length ? `, planted [${base.bugs.join(",")}]` : ""}: ${failures.length} failing` +
               `${failures.length ? ` (first in game ${failures[0].game}, seed ${failures[0].seed}: ${failures[0].invariant})` : ""}`);
   console.log(`totals: ${Object.entries(totals).map(([k, v]) => `${k} ${v}`).join(", ")}`);
-  console.log(`recovery after a fault: n=${recoveries.length} p50 ${pct(recoveries, 0.5).toFixed(1)} s p95 ${pct(recoveries, 0.95).toFixed(1)} s max ${pct(recoveries, 1).toFixed(1)} s`);
+  const spread = (xs: number[]) => `n=${xs.length} p50 ${pct(xs, 0.5).toFixed(1)} s p95 ${pct(xs, 0.95).toFixed(1)} s max ${pct(xs, 1).toFixed(1)} s`;
+  console.log(`recovery after a fault: ${spread(recoveries)}`);
+  console.log(`freeze, last frame heard to back: ${spread(freezes)}`);
   console.log(`wall ${((Date.now() - started) / 1000).toFixed(0)} s`);
   if (failures.length) process.exitCode = 1;
 }

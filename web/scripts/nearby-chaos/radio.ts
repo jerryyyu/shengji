@@ -5,9 +5,11 @@
 // listener, the browse, the tried set, parallel tries, the Wi-Fi-first look,
 // the kept browse, the move off peer-to-peer) behind the same JS interface
 // the Capacitor plugin has, so the page's real native.ts runs on top of it.
-// On demand only: nothing in the app or in CI imports this.
+// On demand only: nothing in the app imports this; CI runs it only in the
+// simulator's own tests (src/nearbyChaos*.test.ts).
 import type { VirtualClock } from "../../src/offline/server/clock";
 import type { NearbyPlugin } from "../../src/offline/server/nearby/native";
+import { PhoneHold } from "./hold";
 
 export class Rng {
   private s: number;
@@ -490,6 +492,24 @@ export class SimPlugin implements NearbyPlugin {
   private stopWifiBrowse: (() => void) | null = null;
   /** Called with each message the host's page is handed, around the call. */
   onHostDeliver: ((peer: string, text: string, run: () => void) => void) | null = null;
+  /** The device test's stall (debugChaos "stall"): every frame of this
+   *  phone, on every link and on links made during it, waits for its end. */
+  readonly hold = new PhoneHold<PLink>();
+  private linkOf = (peer: string): PLink | null => this.links.get(peer) ?? null;
+
+  /** Starts the phone's stall; false when one runs. */
+  stallStart(): boolean {
+    if (this.hold.stalling) return false;
+    this.hold.stalling = true;
+    this.log("CHAOS stall sends and receives");
+    return true;
+  }
+
+  stallEnd(): void {
+    if (!this.hold.stalling) return;
+    const r = this.hold.flush();
+    this.log(`CHAOS stall over: ${r.held} held, ${r.dropped} dropped (link gone)`);
+  }
 
   constructor(radio: Radio, phone: Phone) {
     this.radio = radio;
@@ -527,7 +547,10 @@ export class SimPlugin implements NearbyPlugin {
     return undefined;
   }
 
-  addListener(event: string, fn: EvFn): Promise<{ remove(): void }> {
+  // each event's own payload type is the page's (NearbyPlugin); here they
+  // are all one record
+  addListener(event: string, listener: (ev: never) => void): Promise<{ remove(): void }> {
+    const fn = listener as unknown as EvFn;
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(fn);
     return Promise.resolve({ remove: () => { this.listeners.get(event)?.delete(fn); } });
@@ -554,11 +577,17 @@ export class SimPlugin implements NearbyPlugin {
     return undefined;
   }
 
-  async send(opts: { peer: string; text: string }): Promise<unknown> {
-    const l = this.links.get(opts.peer);
-    if (!l || !l.ready || !l.link) throw new Error("no such peer");
-    this.radio.send(l.link, opts.peer === "host", opts.text);
-    return undefined;
+  send(opts: { peer: string; text: string }): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const go = () => {
+        const l = this.links.get(opts.peer);
+        if (!l || !l.ready || !l.link) return reject(new Error("no such peer"));
+        this.radio.send(l.link, opts.peer === "host", opts.text);
+        resolve(undefined);
+      };
+      if (this.hold.hold(opts.peer, this.linkOf, go, () => reject(new Error("no such peer")))) return;
+      go();
+    });
   }
 
   async close(opts: { peer: string }): Promise<unknown> {
@@ -648,11 +677,12 @@ export class SimPlugin implements NearbyPlugin {
       const fns = this.listeners.get("message");
       if (!fns) return;
       const ev = { peer, text };
-      this.radio.at(0.001, () => this.phone.clock.post(() => {
+      const deliver = () => this.radio.at(0.001, () => this.phone.clock.post(() => {
         const run = () => { for (const fn of [...fns]) fn(ev); };
         if (this.onHostDeliver) this.onHostDeliver(peer, text, run);
         else run();
       }));
+      if (!this.hold.hold(peer, this.linkOf, deliver, () => {})) deliver();
     };
     link.onHostClosed = () => {
       if (this.session !== session || this.links.get(peer) !== l) return;
@@ -810,7 +840,8 @@ export class SimPlugin implements NearbyPlugin {
       else this.cancelBrowse();
       link.onJoinerMessage = (text) => {
         if (this.session !== session || this.links.get("host") !== l) return;
-        this.emit("message", { peer: "host", text });
+        const deliver = () => this.emit("message", { peer: "host", text });
+        if (!this.hold.hold("host", this.linkOf, deliver, () => {})) deliver();
       };
       link.onJoinerClosed = () => {
         if (this.session !== session || this.links.get("host") !== l) return;

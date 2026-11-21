@@ -744,6 +744,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         findDeadline = Date().addingTimeInterval(lookTime)
         let params = NWParameters.tcp
         params.includePeerToPeer = lookP2P
+        chaosBar(params)
         spikeLog("browse: peer-to-peer \(lookP2P ? "allowed" : "off (Wi-Fi up)")")
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: NearbyBuild.serviceType, domain: nil),
                                 using: params)
@@ -813,7 +814,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 })
             }
             // a device-test stall holds the send until it ends (never in a shipped build)
-            if Self.chaosHold(go) { return }
+            if self.chaosHold(peer, go, dropped: { stale in stale ? call.reject("no such peer", "noPeer") : call.resolve() }) { return }
             go()
         }
     }
@@ -1094,6 +1095,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private func tryTable(_ endpoint: NWEndpoint, psk: Data, salt: String) {
         let params = Self.parameters(psk: psk)
         params.includePeerToPeer = lookP2P
+        chaosBar(params)
         let connection = NWConnection(to: endpoint, using: params)
         let link = Link(peer: "host", connection: connection)
         attempts.append(link)
@@ -1232,7 +1234,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 if content.count > Self.quietFrameBytes { self.spikeLog("recv \(link.peer) \(content.count) B") }
                 let peer = link.peer
                 let deliver = { self.notifyListeners("message", data: ["peer": peer, "text": text]) }
-                if !Self.chaosHold(deliver) { deliver() }
+                if !self.chaosHold(peer, deliver, dropped: { _ in }) { deliver() }
             case .ping?, .pong?:
                 break
             default:
@@ -1478,13 +1480,43 @@ extension ShengjiNearbyPlugin {
         CAPPluginMethod(name: "debugChaos", returnType: CAPPluginReturnPromise)
     ]
     static let chaosBuild = true
-    private static var heldUntil = Date.distantPast
+    /// On `queue`: a stall runs. Only its flush clears it, so nothing sent
+    /// or received between the stall's nominal end and the flush overtakes
+    /// a frame held before it.
+    /// A stall holds the plugin's frames only: the page's timers run through
+    /// it, so a host may refuse, as a hello timeout, a hello it was itself
+    /// holding. A stall's refusals on the host are read with that in mind.
+    private static var stalling = false
     private static var held: [() -> Void] = []
 
-    /// On `queue`: while a stall runs, `work` waits for its end, in order.
-    static func chaosHold(_ work: @escaping () -> Void) -> Bool {
-        guard Date() < heldUntil else { return false }
-        held.append(work)
+    /// Held work whose link had gone by the stall's end, in the current stall.
+    private static var heldStale = 0
+    /// On `queue`: a blackhole runs; every frame on this phone's links is
+    /// lost (a send reads as sent), the case the page's STUCK check is for.
+    private static var blackholing = false
+    private static var blackholeLost = 0
+
+    /// On `queue`: while a stall runs, `work` for a frame on `peer`'s link
+    /// waits for its end, in order. It runs then only if the same link still
+    /// serves `peer`: a frame held on a link that has since gone never goes
+    /// out on (or arrives as if from) the link made after it; `dropped` runs
+    /// in its place (`stale`). While a blackhole runs, `work` is lost:
+    /// `dropped` runs at once, not stale.
+    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping (_ stale: Bool) -> Void) -> Bool {
+        if Self.blackholing {
+            Self.blackholeLost += 1
+            dropped(false)
+            return true
+        }
+        guard Self.stalling else { return false }
+        let link = links[peer]
+        Self.held.append { [weak self] in
+            guard let self = self, self.links[peer] === link else {
+                Self.heldStale += 1
+                return dropped(true)
+            }
+            work()
+        }
         return true
     }
 
@@ -1501,15 +1533,25 @@ extension ShengjiNearbyPlugin {
                 self.spikeLog("CHAOS cancel the link \(peer)")
                 self.drop(peer)
             case "stall":
-                guard Date() >= Self.heldUntil else { return call.resolve(["done": false]) }
+                guard !Self.stalling, !Self.blackholing else { return call.resolve(["done": false]) }
                 self.spikeLog("CHAOS stall sends and receives for \(String(format: "%.1f", seconds)) s")
-                Self.heldUntil = Date().addingTimeInterval(seconds)
+                Self.stalling = true
                 self.queue.asyncAfter(deadline: .now() + seconds) {
                     let work = Self.held
                     Self.held = []
-                    Self.heldUntil = .distantPast
-                    self.spikeLog("CHAOS stall over: \(work.count) held")
+                    Self.stalling = false
+                    Self.heldStale = 0
                     for w in work { w() }
+                    self.spikeLog("CHAOS stall over: \(work.count) held, \(Self.heldStale) dropped (link gone)")
+                }
+            case "blackhole":
+                guard !Self.stalling, !Self.blackholing, !self.links.isEmpty else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS blackhole: frames on every link lost for \(String(format: "%.1f", seconds)) s")
+                Self.blackholing = true
+                Self.blackholeLost = 0
+                self.queue.asyncAfter(deadline: .now() + seconds) {
+                    Self.blackholing = false
+                    self.spikeLog("CHAOS blackhole over: \(Self.blackholeLost) lost")
                 }
             case "path":
                 guard !self.hosting, self.links["host"] != nil else { return call.resolve(["done": false]) }
@@ -1536,7 +1578,7 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
     static let chaosBuild = false
-    static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
+    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping (_ stale: Bool) -> Void) -> Bool { false }
 }
 #endif
 
@@ -1545,10 +1587,27 @@ extension ShengjiNearbyPlugin {
 /// for 20-90 s, inside the plugin's path logic only; the radio is never
 /// touched. It holds in memory, ends when the app resigns active or a real
 /// path change arrives (the real value wins), and is gone on a restart.
+/// A faked leave also ends a joiner's host link over the access point's
+/// Wi-Fi and bars that interface from its looks while the fake runs, so the
+/// page's resume makes the link again over peer-to-peer, as it would with
+/// the network really gone; the fake's end lifts the bar and the move back
+/// to Wi-Fi follows its own rule (Migration).
 extension ShengjiNearbyPlugin {
     /// On `queue`: the real Wi-Fi value while a fake runs, else nil.
     static var chaosWifiReal: Bool?
     private static var chaosWifiRun = 0
+    /// On `queue`: a faked leave runs, so looks leave out the Wi-Fi
+    /// interface. Only the fake sets it; its end and a real path change
+    /// clear it.
+    private static var chaosBarWifi = false
+
+    /// A look's browse or try under a faked leave: the access point's Wi-Fi
+    /// interface is prohibited, leaving peer-to-peer.
+    func chaosBar(_ params: NWParameters) {
+        guard Self.chaosBarWifi else { return }
+        params.prohibitedInterfaces = pathMonitor.currentPath.availableInterfaces
+            .filter { $0.type == .wifi && !LinkPath.isPeerToPeer($0.name) }
+    }
 
     /// On `queue`: starts a fake, unless one runs or the app is not active.
     func chaosWifiStart(seconds: Double) -> Bool {
@@ -1558,8 +1617,13 @@ extension ShengjiNearbyPlugin {
         Self.chaosWifiRun += 1
         let run = Self.chaosWifiRun
         wifiUp = !real
+        Self.chaosBarWifi = real
         spikeLog("CHAOS wifi fake \(real ? "left" : "joined") for \(Int(seconds.rounded())) s")
         wifiFollowOn()
+        if real, !hosting, links["host"] != nil, !hostOverP2P {
+            spikeLog("wifi fake: the host link over Wi-Fi drops; looks leave Wi-Fi out until the fake ends")
+            drop("host")
+        }
         queue.asyncAfter(deadline: .now() + seconds) { [weak self] in
             guard let self = self, Self.chaosWifiRun == run else { return }
             self.chaosWifiEnd(restore: true)
@@ -1574,6 +1638,7 @@ extension ShengjiNearbyPlugin {
         guard let real = Self.chaosWifiReal else { return }
         Self.chaosWifiReal = nil
         Self.chaosWifiRun += 1
+        Self.chaosBarWifi = false
         spikeLog("CHAOS wifi fake over\(restore ? "" : ": a real path change")")
         guard restore, wifiUp != real else { return }
         wifiUp = real
@@ -1584,6 +1649,7 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static var chaosWifiReal: Bool? { nil }
     func chaosWifiEnd(restore: Bool) {}
+    func chaosBar(_ params: NWParameters) {}
 }
 #endif
 

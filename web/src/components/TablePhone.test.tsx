@@ -561,7 +561,6 @@ describe("Play and Bury say they are sending", () => {
     act(() => { vi.advanceTimersByTime(200); });
     expect(label()).toBe("Sending…");
   });
-
 });
 
 describe("following", () => {

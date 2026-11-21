@@ -161,10 +161,10 @@ export function flushNearbyLogFile(): Promise<void> {
 let hideListening = false;
 
 /** Starts appending every line to the file, beginning with what the log holds
- *  now. Only in the device-test page build; anywhere else it writes nothing
- *  and resolves false. */
+ *  now; once per page. Its only caller (nearbyDebug.tsx) attaches it where the
+ *  plugin reports the device test's `logFile`. */
 export function attachNearbyLogFile(f: LogFile, opts: { cap?: number } = {}): Promise<boolean> {
-  if (import.meta.env.VITE_SHENGJI_NEARBY !== "1" || file) return Promise.resolve(false);
+  if (file) return Promise.resolve(false);
   file = f;
   cap = opts.cap ?? LOG_FILE_CAP;
   failures = 0;

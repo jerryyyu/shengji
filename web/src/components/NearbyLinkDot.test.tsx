@@ -11,6 +11,7 @@ import Hud from "./Hud";
 import HudMenu from "./HudMenu";
 import { NEARBY_LINK_LABEL, nearbyLinkState } from "../nearbyLink";
 import { setNearbySession } from "../offlineMode";
+import { resetNearbyGateForTests, setNearbyGateForTests } from "../nearbyGate";
 
 const person = (seat: number, connected = true): StatePlayer => ({
   seat, name: `P${seat}`, is_bot: false, connected, team: (seat % 2) as 0 | 1, cards_left: 25, is_banker: false,
@@ -30,7 +31,7 @@ beforeAll(() => {
   class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
   (window as unknown as { AudioContext: unknown }).AudioContext = SilentAudioContext;
 });
-afterEach(() => setNearbySession(false));
+afterEach(() => { setNearbySession(false); resetNearbyGateForTests(); });
 
 function mount(el: React.ReactElement) {
   const host = document.createElement("div");
@@ -58,7 +59,8 @@ describe("the nearby link dot", () => {
     expect(NEARBY_LINK_LABEL).toEqual({ linked: "Connected", reconnecting: "Reconnecting…", lost: "The host left. The game is over." });
   });
 
-  it("is in the header at a nearby table only, with no text of its own", () => {
+  it("is in the header at a nearby table only, with no text of its own", async () => {
+    await setNearbyGateForTests({ beta: true });
     const solo = mount(<Hud state={state([person(0), bot(1), bot(2), bot(3)])} practice />);
     expect(solo.host.querySelector(".nearby-link-dot")).toBeNull();
     solo.unmount();

@@ -1,6 +1,6 @@
 // The device-test log file's upload: in the device-test build only (the
-// page's VITE_SHENGJI_NEARBY build and the plugin's logFile capability, the
-// same gating as the file), the bytes of the file not yet sent go to the
+// plugin's debug and logFile capabilities, the same gating as the file), the
+// bytes of the file not yet sent go to the
 // server every TICK_MS, when the app goes to the background, and on the ⋯
 // menu's Upload log now. Whole lines only, at most CHUNK_MAX per request and
 // TICK_MAX per tick; the uploaded offset is kept per file in localStorage, so
@@ -171,10 +171,10 @@ let interval: ReturnType<typeof setInterval> | null = null;
 let offReset: () => void = () => {};
 let onHide: (() => void) | null = null;
 
-/** Starts the ticks, once per page; only in the device-test page build, and
- *  only after the log file is attached (the caller checks the capability). */
+/** Starts the ticks, once per page, only after the log file is attached
+ *  (the caller checks the capability). */
 export function startNearbyLogUpload(): boolean {
-  if (import.meta.env.VITE_SHENGJI_NEARBY !== "1" || started) return false;
+  if (started) return false;
   started = true;
   offReset = onNearbyLogFileReset(onReset);
   interval = setInterval(() => { void uploadNearbyLogNow(); }, TICK_MS);

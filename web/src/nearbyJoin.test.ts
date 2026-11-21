@@ -3,7 +3,8 @@
 // found, the retry on coming back from Settings, the rejoin by token after a
 // drop, and the end screen once the host's window has passed.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HOST_WINDOW_MS, JOIN_TIMEOUT_MS, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, type NearbyJoinDeps } from "./codeJoin";
+import { JOIN_TIMEOUT_MS } from "./codeJoin";
+import { HOST_WINDOW_MS, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, type NearbyJoinDeps } from "./nearbyJoin";
 import type { LinkState } from "./offline/server/nearby/transport";
 import type { ConnStatus } from "./ws";
 
@@ -98,7 +99,7 @@ describe("the nearby join", () => {
   });
 
   it("the panel's one line: looking, then connecting once the link is up, then the seats", async () => {
-    const { fromNearbyJoin } = await import("./queue/tableModel");
+    const { fromNearbyJoin } = await import("./queue/nearbyModel");
     const { NEARBY_COPY } = await import("./offline/server/nearby/copy");
     const h = harness();
     h.store.open("K7Q2M", "Mei");

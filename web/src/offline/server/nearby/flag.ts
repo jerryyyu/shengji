@@ -1,22 +1,26 @@
-// The nearby feature flag. Off everywhere: nothing in the page reaches nearby
-// play unless the flag is built on AND the app binary allows it (the plugin's
-// `capabilities()`: reviewed with the feature, or a Debug build for the device
-// test), so the live site alone can never switch it on in a binary whose
-// review did not cover it. No shipped config builds the flag on.
+// The nearby feature flag, decided at run time by the app binary alone: the
+// plugin's `capabilities()` says the binary was reviewed with nearby play, is
+// the Beta build (TestFlight internal testing only), or is a Debug build for
+// the device test. The live site carries the nearby code, but it never runs
+// in a browser or in an App Store binary, which reports none of the three.
 
 let forced: boolean | null = null;
 
-/** Build-time switch: VITE_SHENGJI_NEARBY=1, set only by the device test's
- *  Debug build script. */
-const BUILT_ON = import.meta.env.VITE_SHENGJI_NEARBY === "1";
-
-/** Whether nearby play may be offered, given what the app binary reports. */
-export function nearbyEnabled(binaryReviewed: boolean): boolean {
-  if (forced !== null) return forced;
-  return BUILT_ON && binaryReviewed;
+/** What the plugin reported, as far as nearby play needs it. */
+export interface NearbyCapabilities {
+  reviewed?: unknown;
+  beta?: unknown;
+  debug?: unknown;
+  logFile?: unknown;
 }
 
-/** Tests turn the flag on (or off) regardless of the build and the binary. */
+/** Whether nearby play may be offered, given what the app binary reports. */
+export function nearbyEnabled(c: NearbyCapabilities | null): boolean {
+  if (forced !== null) return forced;
+  return c !== null && (c.reviewed === true || c.beta === true || c.debug === true);
+}
+
+/** Tests turn the flag on (or off) regardless of the binary. */
 export function setNearbyForTests(on: boolean | null): void {
   forced = on;
 }

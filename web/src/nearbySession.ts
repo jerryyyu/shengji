@@ -1,12 +1,11 @@
-// Nearby play on this page, the host's side: whether this page offers it,
-// and the table its offline panel's Nearby switch opens. Turning the switch
-// on creates a nearby room on the on-device server and advertises it on the
-// local network (the first time, iOS asks for Local Network access); turning
-// it off, or Leave, ends the room. The joiner's side lives with every other
-// code in codeJoin.ts.
+// Nearby play on this page, the host's side: the table its offline panel's
+// Nearby switch opens. Turning the switch on creates a nearby room on the
+// on-device server and advertises it on the local network (the first time,
+// iOS asks for Local Network access); turning it off, or Leave, ends the
+// room. The joiner's side is nearbyJoin.ts. Both load only once
+// nearbyGate.ts has found nearby play offered by the app binary.
 import { useSyncExternalStore } from "react";
-import { nearbyEnabled } from "./offline/server/nearby/flag";
-import { binaryReviewed, openNearbySettings } from "./offline/server/nearby/native";
+import { openNearbySettings } from "./offline/server/nearby/native";
 import type { LinkState } from "./offline/server/nearby/transport";
 import { setNearbySession } from "./offlineMode";
 import type { ServerMsg } from "./protocol";
@@ -37,39 +36,6 @@ export function noteNearbyAllowed(): void {
 /** Local Network access was refused: the explaining line shows again. */
 export function forgetNearbyAllowed(): void {
   try { localStorage.removeItem(ALLOWED_KEY); } catch { /* storage refused: nothing was kept */ }
-}
-
-let offered = false;
-let checked = false;
-const offerListeners = new Set<() => void>();
-
-/** Asks the app binary once whether nearby play may run here. */
-export function checkNearbyOffered(): void {
-  if (checked) return;
-  checked = true;
-  void binaryReviewed().then((ok) => {
-    const on = nearbyEnabled(ok);
-    if (on === offered) return;
-    offered = on;
-    offerListeners.forEach((l) => l());
-  });
-}
-
-/** Whether this page offers nearby play: the flag and the binary both allow it. */
-export function nearbyOffered(): boolean {
-  return nearbyEnabled(offered);
-}
-
-export function useNearbyOffered(): boolean {
-  checkNearbyOffered();
-  return useSyncExternalStore((l) => { offerListeners.add(l); return () => { offerListeners.delete(l); }; },
-                              nearbyOffered, nearbyOffered);
-}
-
-/** Tests: forget the binary's answer. */
-export function resetNearbyOfferedForTests(): void {
-  offered = false;
-  checked = false;
 }
 
 export { openNearbySettings };

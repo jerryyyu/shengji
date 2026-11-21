@@ -72,7 +72,6 @@ beforeEach(() => {
   detachNearbyLogFile();
   clearNearbyLog();
   stopNearbyLogUploadForTests();
-  vi.stubEnv("VITE_SHENGJI_NEARBY", "1");
 });
 afterEach(() => {
   stopNearbyLogUploadForTests();
@@ -230,22 +229,14 @@ describe("the log upload", () => {
 });
 
 describe("the log upload outside the device-test build", () => {
-  it("never starts", async () => {
-    vi.stubEnv("VITE_SHENGJI_NEARBY", "");
-    const { fn } = mockFetch([]);
-    expect(startNearbyLogUpload()).toBe(false);
-    await Promise.resolve();
-    expect(fn).not.toHaveBeenCalled();
-  });
-
   it("is loaded only from the device-test branch, behind the logFile capability, so other builds bundle none of it", () => {
     const src = readFileSync(join(process.cwd(), "src/nearbyDebug.tsx"), "utf8");
     expect(src).not.toMatch(/from "\.\/nearbyLogUpload"/);   // no static import: only the gated dynamic one
     expect(src.match(/= import\("\.\/nearbyLogUpload"\)/g)).toHaveLength(1);
-    expect(src).toMatch(/if \(import\.meta\.env\.VITE_SHENGJI_NEARBY !== "1"\) return;\n  upload = import\("\.\/nearbyLogUpload"\)/);
     expect(src).toMatch(/c\.logFile === true[^\n]*\n      if \(await attachNearbyLogFile\(p as unknown as LogFile\)\) startUpload\(\);/);
     // nothing else imports it
-    const menu = readFileSync(join(process.cwd(), "src/components/HudMenu.tsx"), "utf8");
-    expect(menu).not.toContain("nearbyLogUpload");
+    for (const f of ["src/components/HudMenu.tsx", "src/nearbyUi.tsx"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8")).not.toContain("nearbyLogUpload");
+    }
   });
 });

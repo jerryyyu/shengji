@@ -682,8 +682,8 @@ class Connection {
     this.immediate = false;
     // a nearby seat has the host's window (about a minute) to get back in:
     // its attempts stay close together through it
-    this.backoff = Math.min(this.backoff * 2, this.transport === "nearby" ? NEARBY_BACKOFF_MAX_MS
-      : this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
+    this.backoff = Math.min(this.backoff * 2,
+      this.transport === "nearby" ? NEARBY_BACKOFF_MAX_MS : this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

@@ -1,0 +1,14 @@
+{
+ "name": "ftrt3-dev-2645010000",
+ "purpose": "screen",
+ "seed0": 2645010000,
+ "clusters": 3000,
+ "span": [
+  2645010000,
+  2645013000
+ ],
+ "created_at": "2026-11-21T06:30:00Z",
+ "host": "ultra",
+ "git_head": "64bb3368",
+ "note": "FT-RT3 (Jerry 2026-11-21: a third run, sequenced FT-500k -> FT-RT3 -> RT4): RT3-FT's polished checkpoint (78ea3bba, package 0ab200ee) fine-tuned with RT3-FT's recipe on the UT-GEN2 legs after RT3-FT's cut only (B06-B20, seeds [1009100000, 1009200000) + [1010000000, 1010050000)). Tier-i DEV head-to-head duels on the M5 Ultra, 1,000 paired seat-swapped rank-mixed deals per arm, read once, never used to select or release. Arm FRR [2645010000, 2645011000): FT-RT3 vs RT3-FT (unified 0ab200ee + belief af11dea7). Arm FRH [2645011000, 2645012000): FT-RT3 vs release 53 (97c07be8 + 1b1fd2de). Pilots and the rehearsal pilot [2645012000, 2645012100), outcomes not read; the rest is spare. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

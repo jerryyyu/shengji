@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NEARBY_ALPHABET, NEARBY_CODE_LEN } from "./codes";
 import { NEARBY_SERVICE_TYPE, NEARBY_V, LIMITS } from "./protocol";
-import { HOST_WINDOW_MS } from "../../../codeJoin";
+import { HOST_WINDOW_MS } from "../../../nearbyJoin";
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 const swift = read("../../../../ios/App/App/NearbyPlugin.swift");
@@ -60,7 +60,7 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift).toMatch(/#if DEBUG && \(SHENGJI_NEARBY_SPIKE \|\| SHENGJI_NEARBY_DEV\)\s+static let debugBuild = true\s+#else\s+static let debugBuild = false\s+#endif/);
     expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\n[\s\S]*func spikeBench[\s\S]*#else\n/);
     expect(shell).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\s+(?:\/\/\/[^\n]*\s+)?override open func instanceDescriptor/);
-    expect(shell).toMatch(/#elseif \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);
+    expect(shell).toMatch(/#elseif DEBUG && SHENGJI_NEARBY_DEV\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);
   });
 
   it("the soak's chaos and autoplay are only in a device-test Debug build", () => {
@@ -69,7 +69,7 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift.match(/func debugChaos/g)).toHaveLength(1);
     expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_DEV\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static func chaosHold\(_ work: @escaping \(\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
     // the page loads the soak module only from the debug rows, by a dynamic
-    // import, and shows its switches only when the plugin says `debug`
+    // import, and shows its switches only when the plugin says `logFile`
     const src = fileURLToPath(new URL("../../../", import.meta.url));
     const files = readdirSync(src, { recursive: true }).map(String)
       .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.endsWith("nearbySoak.ts"));
@@ -79,9 +79,10 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(debugPane).not.toMatch(/^import[^\n]*nearbySoak/m);
     expect(debugPane).toContain('import("./nearbySoak")');
     expect(debugPane).toMatch(/c\.debug === true \? \(p as DebugPlugin\) : null/);
-    const menu = readFileSync(join(src, "components/HudMenu.tsx"), "utf8");
-    expect(menu).toMatch(/const soak = useNearbySoak\(debug\);/);
-    expect(menu).toMatch(/\{debug && soak \? \(/);
+    const menu = readFileSync(join(src, "nearbyUi.tsx"), "utf8");
+    expect(menu).toMatch(/const logFile = debug && nearbyGate\(\)\.logFile;/);
+    expect(menu).toMatch(/const soak = useNearbySoak\(logFile\);/);
+    expect(menu).toMatch(/\{logFile && soak \? \(/);
     for (const label of ["Autoplay", "Chaos", "Copy soak summary"]) expect(menu.split(`<span>${label}</span>`)).toHaveLength(2);
   });
 

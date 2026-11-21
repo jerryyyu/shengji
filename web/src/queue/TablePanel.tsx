@@ -8,17 +8,17 @@ import LeaveSheet from "../components/LeaveSheet";
 import ConfirmSheet from "../components/ConfirmSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
 import { COPIED_MS, shareInvite } from "../codes";
-import type { CodeJoin, NearbyJoin } from "../codeJoin";
-import { NEARBY_COPY } from "../offline/server/nearby/copy";
+import type { CodeJoin } from "../codeJoin";
 import { takeoverSeats } from "../joinSeats";
 import type { DroppedSeat } from "../joinSeats";
 import type { ChatMsg, Rank, RoomMsg } from "../protocol";
+import type { NearbyJoin } from "../nearbyJoin";
 import { RANKS } from "../protocol";
 import Sheet from "./Sheet";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
-import { fromCode, fromNearbyJoin, fromQueue, nearbyRoomModel, offlineModel, queueSend } from "./tableModel";
-import type { MoverSeat, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
+import { fromCode, fromQueue, offlineModel, queueSend } from "./tableModel";
+import type { MoverSeat, NearbySwitch, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
 import { BOT_LEVELS } from "./messages";
 import type { BotLevel } from "./messages";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
@@ -152,7 +152,7 @@ function PanelView({ m, guarded, sheet, act }: {
       {m.rows ? <TableRows rows={m.rows} act={act} /> : null}
       {m.waitSwitch ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
       {m.nearbySwitch ? (
-        <SwitchRow label={NEARBY_COPY.switchLabel} on={m.nearbySwitch.on} disabled={m.nearbySwitch.disabled}
+        <SwitchRow label={m.nearbySwitch.label} on={m.nearbySwitch.on} disabled={m.nearbySwitch.disabled}
                    onToggle={() => act({ type: "nearby_toggle" })} />
       ) : null}
       {m.chat && "disabled" in m.chat ? (
@@ -264,28 +264,34 @@ function offlineAct({ onStart, onLeave, onToggle, onSettings, onReady }: NearbyA
  *  nothing: no one else sits at it. `nearby`: the Nearby switch row. */
 export function OfflinePanel({ ready, starting, onStart, onLeave, nearby = null, ...acts }: {
   ready: boolean; starting: boolean; onStart: () => void; onLeave: () => void;
-  nearby?: { on: boolean; line: "denied" | "wifiOff" | null } | null;
+  nearby?: NearbySwitch | null;
 } & NearbyActs) {
   return <PanelView m={offlineModel({ ready, starting, nearby })} guarded={false}
                     act={offlineAct({ onStart, onLeave, ...acts })} />;
 }
 
-/** A nearby table's lobby in Play's place (`nearbyRoomModel`), for its host
- *  and each joiner: the shared table's ready count and ring. */
-export function NearbyRoomPanel({ room, onLeave, ...acts }: { room: RoomMsg; onLeave: () => void } & NearbyActs) {
+/** A nearby table's lobby in Play's place, for its host and each joiner:
+ *  the shared table's ready count and ring. `model` is nearbyModel.ts's
+ *  `nearbyRoomModel`, passed in by the nearby UI (nearbyUi.tsx), so this
+ *  file carries none of nearby play's copy. */
+export function NearbyRoomPanel({ room, model, onLeave, ...acts }: {
+  room: RoomMsg; onLeave: () => void;
+  model: (room: RoomMsg, at: { now: number; botsAt: number | null }) => TableModel;
+} & NearbyActs) {
   // the ring's end, from when this frame arrived: each frame restamps it
   const botsAt = useMemo(() => {
     const botsIn = room.nearby?.bots_in ?? null;
     return botsIn === null ? null : Date.now() + botsIn * 1000;
   }, [room]);
   const now = useNow(botsAt !== null, 250);
-  return <PanelView m={nearbyRoomModel(room, { now, botsAt })} guarded={false} act={offlineAct({ onLeave, ...acts })} />;
+  return <PanelView m={model(room, { now, botsAt })} guarded={false} act={offlineAct({ onLeave, ...acts })} />;
 }
 
-/** A nearby code's Join panel (`fromNearbyJoin`): looking, the seat
- *  picker, Join and Not now, or Try again. */
-export function NearbyJoinPanel({ join, onJoin, onCancel, onPick, onAgain }: {
-  join: NearbyJoin; onJoin: () => void; onCancel: () => void; onPick: (seat: number) => void; onAgain: () => void;
+/** A nearby code's Join panel: looking, the seat picker, Join and Not now,
+ *  or Try again. `model` is nearbyModel.ts's `fromNearbyJoin`. */
+export function NearbyJoinPanel({ join, model, onJoin, onCancel, onPick, onAgain }: {
+  join: NearbyJoin; model: (join: NearbyJoin) => TableModel;
+  onJoin: () => void; onCancel: () => void; onPick: (seat: number) => void; onAgain: () => void;
 }) {
   const act = (a: PanelAction) => {
     if (a.type === "code_pick") onPick(a.seat);
@@ -293,7 +299,7 @@ export function NearbyJoinPanel({ join, onJoin, onCancel, onPick, onAgain }: {
     else if (a.type === "code_join") onJoin();
     else if (a.type === "nearby_again") onAgain();
   };
-  return <PanelView m={fromNearbyJoin(join)} guarded={false} act={act} />;
+  return <PanelView m={model(join)} guarded={false} act={act} />;
 }
 
 /** The confirm before taking a dropped player's seat: one question, then
@@ -427,7 +433,8 @@ function SetRow<V extends string>({ label, value, values, names, opener, onPick 
 /** Every table's settings rows, labels only: the code with its Invite link,
  *  Starting level and Bots on a casual table (the opener picks them, others
  *  read them; a ranked table starts at 2 with Advanced bots and has neither
- *  row), and the opener's Allow joiners switch when ``joiners`` is set. */
+ *  row), and the opener's Allow joiners switch when ``joiners`` is set. A
+ *  nearby table's code row has no Invite link (``invite`` false). */
 function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, act }: {
   rows: Rows; act: (a: PanelAction) => void;
 }) {

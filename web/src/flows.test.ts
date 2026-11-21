@@ -73,6 +73,7 @@ const LEAVE_SITES = [
 const JOIN_SITES = [
   "codeJoin.ts", // every code: the Play box's and a link's peek, then the Join panel's Join
   "intent.ts", // the table_join a saved intent resumes with
+  "nearbyJoin.ts", // a nearby code's peek and Join, from the same code box (FLOWS.md "Play nearby")
   "queue/Ranked.tsx", // Play (and Duo, which opens your own table)
   "queue/store.ts", // queue.join(code): the table_join the queue's join sites call
   "queue/tableModel.ts", // the panel's I’m back (your table, moved here from another device)

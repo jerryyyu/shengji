@@ -33,21 +33,6 @@ function nearbyPlugin(): NearbyPlugin | null {
   return p && typeof p.host === "function" && typeof p.addListener === "function" ? (p as NearbyPlugin) : null;
 }
 
-/** Whether this app binary may run nearby play (flag.ts): it was reviewed
- *  with it, it is a Debug build compiled for the device test, or it is the
- *  Beta build (TestFlight internal testing only). An App Store binary
- *  reports none of them. */
-export async function binaryReviewed(): Promise<boolean> {
-  const p = nearbyPlugin();
-  if (!p) return false;
-  try {
-    const c = await p.capabilities();
-    return c.reviewed === true || c.debug === true || c.beta === true;
-  } catch {
-    return false;
-  }
-}
-
 /** Opens the app's page in Settings, where Local Network is switched on. */
 export function openNearbySettings(): void {
   void nearbyPlugin()?.openSettings().catch(() => {});

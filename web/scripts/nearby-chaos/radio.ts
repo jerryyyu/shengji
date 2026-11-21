@@ -799,8 +799,11 @@ export class SimPlugin implements NearbyPlugin {
       this.lastHostName = r.name;
       this.lastHostSalt = r.salt;
       this.hostOverP2P = link.iface === "awdl";
-      // Migration.linkUp
-      if (!this.hostOverP2P || (this.fellBackUnseen && !this.radio.opts.bugs.has("migrate-once"))) this.migrationDone = false;
+      // Migration.linkUp: the move stays spent only when this look tried
+      // Wi-Fi first and fell back with the table in sight there (the loop it
+      // guards against); a look made with no Wi-Fi network never tried it
+      const noWifiTry = !this.fellBack && !this.radio.opts.bugs.has("migrate-stale");
+      if (!this.hostOverP2P || noWifiTry || (this.fellBackUnseen && !this.radio.opts.bugs.has("migrate-once"))) this.migrationDone = false;
       this.log(`host link ${link.id} up via ${link.iface} (try ${tryNo})`);
       const keep = this.hostOverP2P && !this.wifiUp && !this.radio.opts.bugs.has("keepalive");
       if (keep) this.log("browse kept: peer-to-peer link with no Wi-Fi network");

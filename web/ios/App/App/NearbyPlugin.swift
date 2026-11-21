@@ -154,16 +154,18 @@ enum LinkPath {
 
 /// Moving a host link off peer-to-peer: once a link on AWDL sees the host
 /// over the access point's Wi-Fi, it is remade there, once; it may move
-/// again only after a link has come up over Wi-Fi, so a host reachable
-/// only peer-to-peer is never chased in a loop.
+/// again only after a link has come up over Wi-Fi, or after a link made by
+/// a look that never tried Wi-Fi (there was no Wi-Fi network), so a host
+/// reachable only peer-to-peer is never chased in a loop.
 struct Migration {
     /// The pause between Wi-Fi looks for a host still reached peer-to-peer.
     static let lookAgainSeconds: TimeInterval = 10
     private(set) var done = false
 
     /// `hostOffWifi`: the look that made this link found no table over
-    /// Wi-Fi at all (the host had left the Wi-Fi network), so a later sight
-    /// of it there is news, not the loop this guards against.
+    /// Wi-Fi at all (the host had left the Wi-Fi network), or never tried
+    /// Wi-Fi (there was none), so a later sight of it there is news, not the
+    /// loop this guards against.
     mutating func linkUp(peerToPeer: Bool, hostOffWifi: Bool = false) {
         if !peerToPeer || hostOffWifi { done = false }
     }
@@ -991,7 +993,9 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.lastHostSalt = salt
                 let via = connection.currentPath?.availableInterfaces.first
                 self.hostOverP2P = LinkPath.isPeerToPeer(via?.name)
-                self.migration.linkUp(peerToPeer: self.hostOverP2P, hostOffWifi: self.fellBackUnseen)
+                // a look that did not fall back from Wi-Fi never tried it: the
+                // link it made may move once Wi-Fi is back
+                self.migration.linkUp(peerToPeer: self.hostOverP2P, hostOffWifi: self.fellBackUnseen || !self.fellBack)
                 self.spikeLog("host link up via \(via?.name ?? "?") (\(via.map { "\($0.type)" } ?? "?"))\(self.hostOverP2P ? " peer-to-peer" : "")")
                 if LinkPath.keepBrowsing(peerToPeer: self.hostOverP2P, wifiUp: self.wifiUp) {
                     self.spikeLog("browse kept: peer-to-peer link with no Wi-Fi network")

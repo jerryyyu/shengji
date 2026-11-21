@@ -34,6 +34,7 @@ function harness() {
       // as ws.ts: the page's own `left` at once, before the host answers
       leaveToLobby: () => { calls.leaveToLobby += 1; onMsg({ type: "left" }); },
       reconnect: () => { calls.reconnect += 1; },
+      nearbyLeaveOwed: () => false,
     },
     socketFor: async (_code, fn, hello) => { onState = fn; greet = hello; return () => ({}) as WebSocket; },
     watchPath: async (fn) => { paths.add(fn); return () => { paths.delete(fn); }; },

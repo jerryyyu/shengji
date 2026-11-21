@@ -168,6 +168,11 @@ class Connection {
    *  we just left and must not pull the UI back into it. */
   private leavingWs: WebSocket | null = null;
   private leaveTimer: number | null = null;
+  /** A nearby table's Leave the host has not answered with its `left`: a
+   *  Leave tapped while the link was down, or one whose link went before
+   *  the answer. The next link sends it as soon as it opens, so the seat
+   *  gets the bot at once instead of waiting out a dropped seat's hold. */
+  private nearbyLeave = false;
   private backoff = 500;
   /** Nearby reconnect attempts since the last open, into NEARBY_RETRY_MS. */
   private nearbyTries = 0;
@@ -338,6 +343,7 @@ class Connection {
    *  a leave. The next socket opens as a fresh page's would. */
   private retireTransport(): void {
     this.cutSocket();
+    this.nearbyLeave = false;
     this.backoff = 500;
     this.nearbyTries = 0;
     this.immediate = false;
@@ -391,20 +397,31 @@ class Connection {
    *  resume it. */
   leaveToLobby(): void {
     clearSavedRoom();
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const ws = this.ws;
-      ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
-      this.leavingWs = ws;
-      // Fail-safe: no confirmation means no barrier can be lifted safely, so
-      // give up on this socket rather than swallow the next room's replies.
-      if (this.leaveTimer !== null) window.clearTimeout(this.leaveTimer);
-      this.leaveTimer = window.setTimeout(() => {
-        this.leaveTimer = null;
-        if (this.leavingWs === ws) this.retire(ws);
-      }, LEAVE_ACK_MS);
-    }
+    // at a nearby table the seat is held for its phone, not dropped: the
+    // leave is owed until the host answers it
+    if (this.transport === "nearby") this.nearbyLeave = true;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.sendLeave(this.ws);
     this.clearChat();
     this.emit({ type: "left" });
+  }
+
+  /** Whether a nearby Leave still waits for the host's answer. */
+  nearbyLeaveOwed(): boolean {
+    return this.nearbyLeave;
+  }
+
+  /** Tell the server about the Leave on `ws`, and read nothing more from
+   *  it until the server's `left`. */
+  private sendLeave(ws: WebSocket): void {
+    ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
+    this.leavingWs = ws;
+    // Fail-safe: no confirmation means no barrier can be lifted safely, so
+    // give up on this socket rather than swallow the next room's replies.
+    if (this.leaveTimer !== null) window.clearTimeout(this.leaveTimer);
+    this.leaveTimer = window.setTimeout(() => {
+      this.leaveTimer = null;
+      if (this.leavingWs === ws) this.retire(ws);
+    }, LEAVE_ACK_MS);
   }
 
   /** Replace the socket: the server reads who we are (the session cookie)
@@ -589,6 +606,9 @@ class Connection {
         noteLink({ kind: "up", ms: Date.now() - this.lostAt });
         this.lostAt = null;
       }
+      // a nearby Leave the last link never delivered goes first, so none
+      // of the resumed seat's frames reach the page
+      if (this.nearbyLeave && this.transport === "nearby") this.sendLeave(ws);
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
       // room wins between an invite link, an explicit action, and a saved
       // session, is App's call (intent.ts); reading localStorage here would
@@ -631,8 +651,10 @@ class Connection {
         // (stale_connection / no room). Neither is safe to read as the end of
         // the old room, so an error retires the socket instead; a close, or
         // the timeout above, ends the wait the same way.
-        if (msg.type === "left") this.endLeave();
-        else if (msg.type === "error") this.retire(ws);
+        if (msg.type === "left") {
+          this.endLeave();
+          this.nearbyLeave = false;
+        } else if (msg.type === "error") this.retire(ws);
         return;
       }
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and

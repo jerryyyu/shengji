@@ -36,7 +36,8 @@ export interface NearbyJoin {
 /** What the nearby join needs of the page: its socket, the on-device
  *  server's module, offline mode and the app's return to the foreground. */
 export interface NearbyJoinDeps {
-  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby" | "reconnect">;
+  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby" | "reconnect"
+    | "nearbyLeaveOwed">;
   /** `greet` gives the hello a seated joiner's new link resumes with. */
   socketFor(code: string, onState: (state: LinkState, detail?: string) => void,
             greet: () => Record<string, unknown> | null): Promise<() => WebSocket>;
@@ -65,6 +66,11 @@ export const LOOK_LIMIT_MS = 30_000;
 /** After a Leave, the link waits this long at most for the host's answer
  *  before it closes. */
 export const LEAVE_LINK_MS = 3000;
+/** A Leave the host has not had yet (tapped while the link was down, or
+ *  its link gone before the answer) keeps the link this long at the most
+ *  for a new link to carry it: a resume's link up (8 s) and its answer
+ *  (up to 20 s on a link that carries), with room for one more try. */
+export const LEAVE_OWED_MS = 30_000;
 
 /** A seat token kept on the phone lets a restarted app take its seat back by
  *  the code: it lasts this long from its last write. */
@@ -144,6 +150,8 @@ export class NearbyJoinStore {
   private joinTimer: number | null = null;
   /** A Leave is waiting for the host's answer (the link's close). */
   private leaving: number | null = null;
+  /** That Leave's wait has been given LEAVE_OWED_MS for a new link once. */
+  private leaveRetried = false;
   /** The seat token. It is also kept on the phone by the table's code
    *  (keepSeatToken) until the table is over for this phone, and is never
    *  sent to the game server or written to the log. */
@@ -278,7 +286,7 @@ export class NearbyJoinStore {
 
   private endLink(): void {
     this.clearGone();
-    this.clearLeaving();
+    this.endLeaving();
     this.token = null;
     this.unwatch?.();
     this.unwatch = null;
@@ -326,7 +334,8 @@ export class NearbyJoinStore {
       nearbyLog("join", `path ${up ? "back" : "down"} (${this.status})`);
       if (up && this.live && this.seated && this.status === "connecting" && Date.now() - this.connectingAt <= STALE_CONNECT_MS) {
         nearbyLog("join", "the attempt under way is fresh: kept");
-      } else if (up && this.live && this.seated && this.status !== "open" && this.leaving === null) {
+      } else if (up && this.live && this.seated && this.status !== "open"
+                 && (this.leaving === null || this.deps.conn.nearbyLeaveOwed())) {
         nearbyLog("join", "reconnect now: the network is back");
         this.deps.conn.reconnect();
       }
@@ -391,16 +400,40 @@ export class NearbyJoinStore {
     this.forgetTable();
     this.clearGone();
     this.hostLeft = false;
+    // with the link down the Leave waits for the next link (ws.ts sends it
+    // as that link opens)
+    this.leaveRetried = this.status !== "open";
+    this.leaveBy(this.status === "open" ? LEAVE_LINK_MS : LEAVE_OWED_MS);
+    this.set(null);
+  }
+
+  /** The link closes `ms` from now unless the host's answer ends it first.
+   *  A Leave still unanswered by then on a link that looks open was lost
+   *  with a stuck link: a fresh one carries it, once. */
+  private leaveBy(ms: number): void {
+    this.clearLeaving();
     this.leaving = window.setTimeout(() => {
       this.leaving = null;
+      if (this.deps.conn.nearbyLeaveOwed() && !this.leaveRetried) {
+        this.leaveRetried = true;
+        nearbyLog("join", "leave: no answer from the host; a new link sends it");
+        this.leaveBy(LEAVE_OWED_MS);
+        this.deps.conn.reconnect();
+        return;
+      }
       this.cancel();
-    }, LEAVE_LINK_MS);
-    this.set(null);
+    }, ms);
   }
 
   private clearLeaving(): void {
     if (this.leaving !== null) window.clearTimeout(this.leaving);
     this.leaving = null;
+  }
+
+  /** The Leave's wait is over, whichever way. */
+  private endLeaving(): void {
+    this.clearLeaving();
+    this.leaveRetried = false;
   }
 
   private clearGone(): void {
@@ -413,9 +446,20 @@ export class NearbyJoinStore {
     if (s === "connecting") this.connectingAt = Date.now();
     if (!this.live) return;
     if (this.leaving !== null) {
+      if (s === "open") return;
+      if (this.deps.conn.nearbyLeaveOwed()) {
+        // the link went before the host answered the Leave: the socket's
+        // reconnect resumes the seat only to carry the Leave, once more
+        if (s === "closed" && !this.leaveRetried) {
+          this.leaveRetried = true;
+          nearbyLog("join", "leave: the link went before the host answered; the next link sends it");
+          this.leaveBy(LEAVE_OWED_MS);
+        }
+        return;
+      }
       // the host answered the Leave by ending the link; the socket's
       // reconnect is dropped with the transport, outside this callback
-      if (s !== "open") window.setTimeout(() => { if (this.leaving !== null) this.cancel(); }, 0);
+      window.setTimeout(() => { if (this.leaving !== null) this.cancel(); }, 0);
       return;
     }
     if (s !== "open") {

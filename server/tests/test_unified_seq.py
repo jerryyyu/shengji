@@ -539,3 +539,66 @@ def test_check_init_belief_ll_rules():
     for bad in ({"belief_ll": 0.97}, {"belief_ll": float("inf")}, {"belief_ll": None}, {}, None):
         with pytest.raises(us.UnifiedSeqError):
             us.check_init_belief_ll(bad, 0.98782)
+
+
+def test_awr_weights_off_order_clip_and_mean():
+    adv = torch.tensor([-2.0, -0.5, 0.0, 0.5, 2.5])
+    assert torch.equal(us.awr_weights(adv, None), torch.ones(5))
+    w = us.awr_weights(adv, 1.0, w_max=20.0)
+    assert torch.all(w[1:] > w[:-1])                              # higher advantage, higher weight
+    assert abs(float(w.mean()) - 1.0) < 1e-6
+    raw = torch.exp(adv)
+    assert torch.allclose(w, raw / raw.mean())                    # nothing reaches the cap
+    capped = us.awr_weights(adv, 0.25, w_max=5.0)                 # exp(10) and exp(2) clip to 5
+    assert float(capped[3]) == pytest.approx(float(capped[4]))
+    assert float(capped.max() / capped.min()) == pytest.approx(5.0 / float(np.exp(-8.0)), rel=1e-5)
+    for beta, cap in ((0.0, 20.0), (-1.0, 20.0), (1.0, 0.0)):
+        with pytest.raises(us.UnifiedSeqError):
+            us.awr_weights(adv, beta, cap)
+
+
+def test_q_advantage_is_outcome_minus_expected_levels():
+    levels = us.outcome_levels()
+    logits = torch.zeros(2, us.OUTCOME_CLASSES)
+    logits[0, 10] = 50.0                                          # all mass on category 10
+    target = torch.tensor([150, 3])
+    adv = us.q_advantage(logits, target)
+    assert float(adv[0]) == pytest.approx(levels[150] - levels[10], abs=1e-4)
+    assert float(adv[1]) == pytest.approx(levels[3] - levels.mean(), abs=1e-4)
+
+
+def test_unweighted_loss_is_unchanged_by_awr_off():
+    torch.manual_seed(0)
+    pl = torch.randn(3, 54)
+    tb = {"X": torch.zeros(3, 1111), "pol_target": torch.zeros(3, 54)}
+    tb["X"][:, :20] = 1.0
+    tb["pol_target"][:, 2] = 1.0
+    base = us.policy_loss_terms(pl, tb)
+    assert torch.equal(base * us.awr_weights(torch.randn(3), None), base)
+
+
+def test_gae_lambda_one_is_monte_carlo_and_zero_is_one_step():
+    rng = np.random.default_rng(3)
+    n = 12
+    seq = np.repeat([0, 1, 2], 4)
+    ply = np.tile([7, 1, 5, 3], 3)                                # rows out of order within a sequence
+    v = rng.normal(size=n)
+    outcome = np.repeat([2.5, -1.5, 0.5], 4)
+    assert np.allclose(us.gae_advantages(v, outcome, seq, ply, 1.0), outcome - v)
+    a0 = us.gae_advantages(v, outcome, seq, ply, 0.0)
+    for s in range(3):
+        idx = np.flatnonzero(seq == s)
+        idx = idx[np.argsort(ply[idx])]
+        assert np.allclose(a0[idx[:-1]], v[idx[1:]] - v[idx[:-1]])
+        assert a0[idx[-1]] == pytest.approx(outcome[idx[-1]] - v[idx[-1]])
+    const = np.full(n, 0.25)
+    assert np.allclose(us.gae_advantages(const, outcome, seq, ply, 1.0), outcome - 0.25)
+    c0 = us.gae_advantages(const, outcome, seq, ply, 0.0)
+    last = np.array([ply[seq == s].max() for s in seq]) == ply
+    assert np.allclose(c0[~last], 0.0) and np.allclose(c0[last], outcome[last] - 0.25)
+    half = us.gae_advantages(v, outcome, seq, ply, 0.5)           # the recursion A_k = d_k + lam A_{k+1}
+    idx = np.flatnonzero(seq == 1)
+    idx = idx[np.argsort(ply[idx])]
+    d = np.append(v[idx[1:]] - v[idx[:-1]], outcome[idx[-1]] - v[idx[-1]])
+    want = [sum(0.5 ** j * d[k + j] for j in range(len(d) - k)) for k in range(len(d))]
+    assert np.allclose(half[idx], want)

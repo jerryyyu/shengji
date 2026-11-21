@@ -413,8 +413,60 @@ def policy_loss_terms(pl, tb):
     return -(t * logp).sum(-1)
 
 
-def losses(model, tb, *, kitty_weight: float = 1.0) -> dict:
-    """Summed belief CE and its copy count, per-row Q CE and per-row policy CE (sums, counts)."""
+def outcome_levels() -> np.ndarray:
+    """``(204,)`` signed levels (actor's side) of the outcome categories."""
+    from ..rl.value_afterstate import category_signed_level
+    return np.asarray([category_signed_level(c) for c in range(OUTCOME_CLASSES)], np.float64)
+
+
+def awr_weights(adv, beta: float | None, w_max: float = 20.0):
+    """Advantage-weighted regression weights of a batch: ``clip(exp(A / beta), 0, w_max)``, then
+    scaled to mean 1 so the policy loss keeps its scale.  ``beta=None`` is the unweighted loss."""
+    import torch
+    if beta is None:
+        return torch.ones_like(adv)
+    if not beta > 0 or not w_max > 0:
+        raise UnifiedSeqError("AWR beta and w_max must be positive")
+    w = torch.exp(torch.clamp(adv / beta, max=math.log(w_max)))
+    return w / w.mean().clamp_min(1e-12)
+
+
+def q_advantage(q_logits, q_target):
+    """Round outcome minus the Q head's expected outcome, in levels, from the actor's side; the
+    baseline carries no gradient."""
+    import torch
+    levels = torch.as_tensor(outcome_levels(), dtype=torch.float32, device=q_logits.device)
+    v = torch.softmax(q_logits.detach().float(), -1) @ levels
+    return levels[q_target] - v
+
+
+def gae_advantages(values, outcome, seq, ply, lam: float) -> np.ndarray:
+    """Generalised advantage estimates along each actor's own decisions of a round (gamma = 1: the
+    only reward is the round outcome).  ``seq`` names the (round, actor) sequence of a row and ``ply``
+    orders it; ``values`` and ``outcome`` are both from that actor's side.  For consecutive decisions
+    ``delta_k = V_{k+1} - V_k``; the last decision's is ``outcome - V_last``; ``A_k = sum_j lam^j
+    delta_{k+j}``, so ``lam = 1`` is ``outcome - V_k`` and ``lam = 0`` the one-step change."""
+    values = np.asarray(values, np.float64)
+    outcome = np.asarray(outcome, np.float64)
+    seq = np.asarray(seq)
+    order = np.lexsort((np.asarray(ply), seq))
+    adv = np.empty(len(values), np.float64)
+    nxt_adv, nxt_v, nxt_seq = 0.0, 0.0, None
+    for i in order[::-1]:
+        if seq[i] != nxt_seq:
+            delta, carry = outcome[i] - values[i], 0.0
+        else:
+            delta, carry = nxt_v - values[i], nxt_adv
+        nxt_adv = delta + lam * carry
+        adv[i] = nxt_adv
+        nxt_v, nxt_seq = values[i], seq[i]
+    return adv
+
+
+def losses(model, tb, *, kitty_weight: float = 1.0, awr_beta: float | None = None,
+           awr_max: float = 20.0) -> dict:
+    """Summed belief CE and its copy count, per-row Q CE and per-row policy CE (sums, counts).  With
+    ``awr_beta`` each row's policy CE is weighted by ``awr_weights`` of its ``q_advantage``."""
     import torch
     out = model(tb)
     logits = out["belief"].float().masked_fill(~tb["M"], -1e9)
@@ -426,6 +478,8 @@ def losses(model, tb, *, kitty_weight: float = 1.0) -> dict:
         y = y * w
     q_ce = torch.nn.functional.cross_entropy(out["q"], tb["q_target"], reduction="none")
     p_ce = policy_loss_terms(out["policy"], tb)
+    if awr_beta is not None:
+        p_ce = p_ce * awr_weights(q_advantage(out["q"], tb["q_target"]), awr_beta, awr_max)
     return {"belief_sum": -(y * logp).sum(), "belief_n": y.sum(), "q_sum": q_ce.sum(), "p_sum": p_ce.sum(),
             "rows": torch.tensor(float(len(q_ce)), device=q_ce.device), "out": out}
 
@@ -573,7 +627,8 @@ def _train(args, out: Path, status: str) -> int:
             opt.param_groups[0]["lr"] = 0.0             # the new heads fit a frozen trunk first
         tb = to_device(b, device)
         opt.zero_grad()
-        L = losses(model, tb, kitty_weight=args.kitty_weight)
+        L = losses(model, tb, kitty_weight=args.kitty_weight, awr_beta=args.policy_awr_beta,
+                   awr_max=args.policy_awr_max)
         bl = L["belief_sum"] / L["belief_n"].clamp_min(1.0)
         ql = L["q_sum"] / L["rows"]
         pl = L["p_sum"] / L["rows"]
@@ -711,7 +766,10 @@ def _means(s) -> str:
 
 
 def _run_identity(args, init_sha) -> dict:
-    return {"init_sha256": init_sha, "seed": args.seed, "exclude_seed_window": [list(w) for w in args.exclude_seed_window],
+    # the AWR keys enter only when AWR is on, so an unweighted run resumes its earlier checkpoints
+    awr = ({} if args.policy_awr_beta is None
+           else {"policy_awr_beta": args.policy_awr_beta, "policy_awr_max": args.policy_awr_max})
+    return {**awr, "init_sha256": init_sha, "seed": args.seed, "exclude_seed_window": [list(w) for w in args.exclude_seed_window],
             "q_weight": args.q_weight, "policy_weight": args.policy_weight, "belief_weight": args.belief_weight,
             "policy_detach": args.policy_detach, "no_suit_aug": args.no_suit_aug, "epochs": args.epochs,
             "max_train_rows": args.max_train_rows, "lr": args.lr, "head_lr": args.head_lr,
@@ -814,6 +872,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--q-weight", type=float, default=1.0)
     t.add_argument("--policy-weight", type=float, default=0.2)
     t.add_argument("--policy-detach", action="store_true")
+    t.add_argument("--policy-awr-beta", type=float, default=None,
+                   help="weight each row's policy CE by clip(exp(A/beta)), A = outcome - the Q head's expectation")
+    t.add_argument("--policy-awr-max", type=float, default=20.0, help="the AWR weight cap")
     t.add_argument("--no-suit-aug", action="store_true")
     t.add_argument("--kitty-weight", type=float, default=1.0)
     t.add_argument("--seed", type=int, default=1)

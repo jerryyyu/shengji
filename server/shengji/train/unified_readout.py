@@ -217,14 +217,17 @@ def build(arch: Mapping[str, Any], readout_arch: Mapping[str, Any] = READOUT_ARC
     return UnifiedReadout()
 
 
-def losses(model, tb) -> dict:
-    """Sums and counts of the five losses, and the outputs."""
+def losses(model, tb, *, awr_beta: float | None = None, awr_max: float = 20.0) -> dict:
+    """Sums and counts of the five losses, and the outputs.  ``awr_beta`` weights the root policy CE
+    as ``unified_seq.losses`` does."""
     import torch
     out = model(tb)
     logp = torch.log_softmax(out["belief"].float().masked_fill(~tb["M"], -1e9), -1)
     y = tb["Y"]
     q_ce = torch.nn.functional.cross_entropy(out["q"], tb["q_target"], reduction="none")
     p_ce = us.policy_loss_terms(out["policy"], tb)
+    if awr_beta is not None:
+        p_ce = p_ce * us.awr_weights(us.q_advantage(out["q"], tb["q_target"]), awr_beta, awr_max)
     v_ce = torch.nn.functional.cross_entropy(out["leaf_value"], tb["q_target"][tb["leaf_row"]], reduction="none")
     has = tb["leaf_has_reply"]
     rl = torch.log_softmax(out["leaf_reply"].masked_fill(~tb["leaf_reply_hand"], -1e9), -1)
@@ -276,6 +279,8 @@ def _run_identity(args) -> dict:
             "head_warmup_buffers", "weight_decay", "belief_weight", "q_weight", "policy_weight", "value_weight",
             "reply_weight", "seed", "buffer_chunks", "rounds_per_batch", "max_train_rows", "calib_rows",
             "exclude_seed_window")
+    if args.policy_awr_beta is not None:
+        keys += ("policy_awr_beta", "policy_awr_max")
     return json.loads(json.dumps({k: getattr(args, k) for k in keys}, default=str))
 
 
@@ -365,7 +370,7 @@ def _train(args, out: Path, status: str) -> int:
             opt.param_groups[1]["lr"] = 0.0
         for k, v in leaf_batch(b).items():
             b["leaf_" + k] = v
-        L = losses(model, us.to_device(b, "cpu"))
+        L = losses(model, us.to_device(b, "cpu"), awr_beta=args.policy_awr_beta, awr_max=args.policy_awr_max)
         m = means([L[k] for k in SUM_KEYS])
         opt.zero_grad()
         (args.belief_weight * m["belief"] + args.q_weight * m["q"] + args.policy_weight * m["policy"]
@@ -773,6 +778,9 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--policy-weight", type=float, default=0.2)
     t.add_argument("--value-weight", type=float, default=1.0)
     t.add_argument("--reply-weight", type=float, default=0.2)
+    t.add_argument("--policy-awr-beta", type=float, default=None,
+                   help="weight each row's root policy CE by clip(exp(A/beta)), A = outcome - the Q head's expectation")
+    t.add_argument("--policy-awr-max", type=float, default=20.0, help="the AWR weight cap")
     t.add_argument("--seed", type=int, default=1)
     t.add_argument("--threads", type=int, default=12)
     t.add_argument("--loader-threads", type=int, default=3)

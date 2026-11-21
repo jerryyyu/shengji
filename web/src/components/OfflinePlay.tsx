@@ -14,7 +14,7 @@ import type { RoomMsg } from "../protocol";
 import { useNearbyHostView, useNearbyJoinView, useNearbyUi } from "../nearbyGate";
 import { useToast } from "../toast";
 import { NEARBY_SESSION } from "../offlineMode";
-import { offlineGame, useOfflineTable } from "./offlineGame";
+import { offlineGame, useOfflineBotLevel, useOfflineTable } from "./offlineGame";
 import { CodeRow } from "./Lobby";
 import "./OfflinePlay.css";
 
@@ -43,6 +43,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
   const host = useNearbyHostView();
   const joinView = useNearbyJoinView();
   const showTable = useOfflineTable(local);
+  const bots = useOfflineBotLevel();
   // an error frees Start; the toast says it
   const error = useToast()?.text ?? null;
   const online = useOnline();
@@ -99,7 +100,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     setSent(true);
     offlineGame.played = true;
     clearSavedRoom();
-    conn.send({ type: "create_room", name: myName(), start: true });
+    conn.send({ type: "create_room", name: myName(), start: true, bot_level: bots });
   };
   const toggleNearby = () => {
     if (host.phase === "off") nbUi?.nearbyHost.turnOn(myName());
@@ -126,6 +127,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
 
       {showTable ? (
         <OfflinePanel ready={status === "open" && host.phase === "off"} starting={sent || room !== null}
+                      bots={bots} onBots={(b) => offlineGame.setBotLevel(b)}
                       onStart={start} onLeave={leave}
                       nearby={nb ? nb.nearbySwitch({ on: host.phase !== "off", line: host.line }) : null}
                       onToggle={toggleNearby} onSettings={() => nb?.openNearbySettings()} />

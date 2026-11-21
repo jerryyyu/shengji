@@ -411,3 +411,31 @@ describe("what a joiner's socket sends", () => {
     }
   }, 60_000);
 });
+
+describe("a nearby table's Bots", () => {
+  async function create(extra: Record<string, unknown>) {
+    const { VirtualClock } = await import("../clock");
+    const { LocalServer } = await import("../server");
+    const clock = new VirtualClock();
+    const server = new LocalServer({ clock, seed: () => 11 });
+    const frames: Frame[] = [];
+    const conn = server.connect((text) => frames.push(JSON.parse(text) as Frame));
+    conn.receive(JSON.stringify({ type: "create_room", nearby: true, name: "Host", ...extra }));
+    // a refusal goes out on the clock; a made table's lobby frames do too
+    await clock.run(() => frames.length > 0, 50);
+    return { server, frames };
+  }
+
+  it("reads bot_level as a solo table does: Standard when absent, Advanced when named", async () => {
+    const plain = await create({});
+    expect([...plain.server.rooms.values()].map((r) => [r.nearby, r.botLevel])).toEqual([[true, "standard"]]);
+    const advanced = await create({ bot_level: "advanced" });
+    expect([...advanced.server.rooms.values()].map((r) => [r.nearby, r.botLevel])).toEqual([[true, "advanced"]]);
+  });
+
+  it("refuses an unknown level before making a table", async () => {
+    const { server, frames } = await create({ bot_level: "expert" });
+    expect(frames).toEqual([{ type: "error", code: "bad_setting", message: "Bots is Standard or Advanced." }]);
+    expect(server.rooms.size).toBe(0);
+  });
+});

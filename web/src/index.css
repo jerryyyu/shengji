@@ -9,6 +9,8 @@
   --panel-edge: #2b323e;
   --text: #e9ecf2;
   --text-dim: #9aa3b2;
+  /* secondary text drawn straight on the felt, where --text-dim is too dark */
+  --felt-text-dim: #b8bfca;
   --gold: #f2c14e;
   --gold-soft: rgba(242, 193, 78, 0.35);
   --team0: #5b9dff;
@@ -1453,7 +1455,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 .lead-tag,
 .win-tag,
 .declare-tag {
-  font-size: 10px;
+  font-size: var(--fs-10);
   font-weight: 800;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1476,7 +1478,7 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   color: var(--gold);
   text-transform: none;
   letter-spacing: 0.02em;
-  font-size: 11px;
+  font-size: var(--fs-11);
 }
 
 /* ---------- Your area ---------- */
@@ -2092,7 +2094,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 /* a CJK name in the label moves to the next line whole */
 .round-end-col-label {
   word-break: keep-all;
-  font-size: 11px;
+  font-size: var(--fs-11);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
@@ -2146,7 +2148,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--fs-11);
   color: var(--text-dim);
 }
 
@@ -4253,15 +4255,16 @@ button.games-row { cursor: pointer; }
   gap: 10px;
   padding: 14px 10px;
   border-radius: 12px;
+  /* the table's felt without its bright centre, since text sits on this picture */
   background:
-    radial-gradient(ellipse 130% 100% at 50% 40%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+    radial-gradient(ellipse 130% 100% at 50% 40%, var(--felt-2) 0%, var(--felt-3) 100%);
   box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.45);
   min-width: 0;
 }
 
 .howto-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .howto-row.center { justify-content: center; }
-.howto-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text); opacity: 0.8; }
+.howto-label { font-size: var(--fs-11); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--felt-text-dim); }
 
 .howto-cards { --cw: 46px; display: flex; justify-content: center; }
 .howto-cards.sm { --cw: 34px; }
@@ -4275,14 +4278,14 @@ button.games-row { cursor: pointer; }
 .howto-group { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
 .howto-cap { font-size: 12px; line-height: 1.25; color: var(--text); text-align: center; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
 .howto-cap b { color: var(--gold); margin-right: 2px; }
-.howto-note { font-size: 11px; color: var(--text); opacity: 0.75; text-align: center; }
+.howto-note { font-size: var(--fs-11); color: var(--felt-text-dim); text-align: center; }
 .howto-order { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 12px 14px; }
 /* A "this → that" pair stays on one line; long labels wrap under their cards. */
 .howto-follow { display: flex; justify-content: center; align-items: center; gap: 10px; }
 .howto-follow > .howto-group { flex: 0 1 auto; }
 .howto-arrow { font-size: 12px; color: var(--gold); font-weight: 700; letter-spacing: 0.04em; }
 .howto-arrow.side { font-size: 20px; }
-.howto-arrow-up { align-self: flex-end; font-size: 11px; color: var(--gold); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.howto-arrow-up { align-self: flex-end; font-size: var(--fs-11); color: var(--gold); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 
 /* Goal: four seats round a small table, then the 2..A ladder */
 .howto-seats { position: relative; width: 100%; max-width: 300px; height: 128px; }
@@ -4341,7 +4344,7 @@ button.games-row { cursor: pointer; }
 .howto-felt { width: 100%; height: 210px; box-shadow: none; background: none; }
 .howto-felt .trick-area { width: calc(100% - 60px); height: calc(100% - 44px); top: 50%; }
 .howto-felt .trick-cards { --cw: 44px; }
-.howto-seat-name { position: absolute; font-size: 12px; font-weight: 700; color: var(--text); opacity: 0.8; }
+.howto-seat-name { position: absolute; font-size: var(--fs-12); font-weight: 700; color: var(--felt-text-dim); }
 .howto-seat-name.pos-top { top: 2px; left: 50%; translate: -50% 0; }
 .howto-seat-name.pos-bottom { bottom: 2px; left: 50%; translate: -50% 0; }
 .howto-seat-name.pos-left { left: 4px; top: 50%; translate: 0 -50%; writing-mode: vertical-rl; rotate: 180deg; }
@@ -4360,7 +4363,7 @@ button.games-row { cursor: pointer; }
   font-size: 12px;
   text-align: center;
 }
-.howto-kitty-head { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+.howto-kitty-head { font-size: var(--fs-11); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
 .howto-kitty-mult b { color: var(--gold); }
 
 /* Scoring: a 0..200 bar with the 80 line, then each band's level change */
@@ -4377,11 +4380,11 @@ button.games-row { cursor: pointer; }
   top: -16px;
   left: 50%;
   translate: -50% 0;
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 800;
   color: var(--gold);
 }
-.howto-ticks { position: relative; width: 100%; height: 14px; font-size: 10px; color: var(--text); opacity: 0.75; }
+.howto-ticks { position: relative; width: 100%; height: 1.4em; font-size: var(--fs-10); color: var(--felt-text-dim); }
 .howto-ticks span { position: absolute; translate: -50% 0; }
 .howto-ticks span:first-child { translate: 0 0; }
 .howto-ticks span:last-child { translate: -100% 0; }
@@ -4576,8 +4579,8 @@ button.games-row { cursor: pointer; }
   .howto-cards.sm:has(.lifted) { padding-top: 10px; }
   .howto-cards .card.lifted { transform: translateY(-11px); }
   .howto-cap { font-size: 13px; }
-  .howto-note { font-size: 12px; }
-  .howto-label { font-size: 12px; }
+  .howto-note { font-size: var(--fs-12); }
+  .howto-label { font-size: var(--fs-12); }
   .howto-order { gap: 16px 22px; }
   .howto-follow { gap: 16px; }
   .howto-arrow { font-size: 13px; }
@@ -4596,14 +4599,14 @@ button.games-row { cursor: pointer; }
 
   .howto-felt { height: 360px; }
   .howto-felt .trick-cards { --cw: 68px; }
-  .howto-seat-name { font-size: 13px; }
+  .howto-seat-name { font-size: var(--fs-13); }
 
   .howto-kitty { padding: 10px 14px; font-size: 13px; }
   .howto-kitty-cards.taken { transform: translateY(108px) scale(0.9); }
 
   .howto-score { height: 84px; }
   .howto-bands li { font-size: 14px; padding: 5px 12px; grid-template-columns: 76px 1fr; }
-  .howto-ticks { font-size: 11px; }
+  .howto-ticks { font-size: var(--fs-11); }
 
   /* Dots on the left, Next at its phone width on the right. */
   .howto-nav { flex-direction: row; align-items: center; justify-content: space-between; }
@@ -4880,7 +4883,7 @@ body.keyboard-open .tabbar { display: none; }
 }
 .topbar-mark { white-space: nowrap; }
 .topbar-mark b { font-size: 24px; color: var(--gold); letter-spacing: 0.02em; }
-.topbar-mark span { font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
+.topbar-mark span { font-size: var(--fs-10); letter-spacing: 0.28em; text-transform: uppercase; color: var(--text-dim); }
 /* The wide tabs: the same glass pill, the active tab in a lighter capsule. */
 .topbar-tabs {
   grid-column: 2;
@@ -5386,7 +5389,7 @@ button.grp-row:disabled { cursor: default; }
   border: 1px solid var(--gold-soft);
   border-radius: 5px;
   color: var(--gold);
-  font-size: 11px;
+  font-size: var(--fs-11);
   font-weight: 600;
 }
 .lb-rating { flex: none; min-width: 46px; white-space: nowrap; text-align: right; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
@@ -5706,11 +5709,11 @@ button[role="switch"]:active .ios-switch {
   display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); column-gap: 6px; row-gap: 6px;
   align-items: center;
 }
-.tp-team-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.tp-team-label { font-size: var(--fs-10); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .tp-team-label.ours { color: var(--team0); }
 .tp-team-label.theirs { color: var(--team1); text-align: right; }
 .tp-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.tp-vs { text-align: center; font-size: 11px; font-weight: 700; color: #6b7484; }
+.tp-vs { text-align: center; font-size: var(--fs-11); font-weight: 700; color: var(--text-dim); }
 .tp-seat {
   appearance: none; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 52px;
   box-sizing: border-box; padding: 6px 7px; border-radius: 12px; border: 1.5px solid #333b49;
@@ -5727,7 +5730,7 @@ button[role="switch"]:active .ios-switch {
    narrower than them; they never break inside a word */
 .tp-seat-name, .tp-seat-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tp-seat-name { font-size: var(--fs-14); font-weight: 600; line-height: 1.15; }
-.tp-seat-sub { font-size: 11px; line-height: 1.2; color: #9aa3b2; }
+.tp-seat-sub { font-size: var(--fs-11); line-height: 1.2; color: var(--text-dim); }
 .tp-tick { color: #4fb27a; }
 .tp-seat.you, .tp-seat.friend { border-color: var(--gold); }
 .tp-seat.you .tp-seat-name, .tp-seat.friend .tp-seat-name { color: var(--gold); }

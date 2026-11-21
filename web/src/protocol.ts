@@ -38,6 +38,9 @@ export type ClientMsg =
       /** On the device only: a nearby table, which waits in a lobby for
        *  people on nearby phones until everyone is ready. */
       nearby?: boolean;
+      /** The on-device server's table Bots (Standard when omitted); the game
+       *  server sets Bots on a queue table instead. */
+      bot_level?: BotLevel;
     }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window

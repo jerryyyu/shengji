@@ -30,7 +30,7 @@
 
 .opp-actions-note {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-13);
   opacity: 0.75;
   text-align: center;
 }

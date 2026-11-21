@@ -1,7 +1,10 @@
 // Block and report on another player's seat: a long press opens the options,
 // Block sends the seat to the server and hides that seat's chat lines at
 // once, the server's state frames keep the seat blocked in later games,
-// Report sends the seat and a reason, and a bot's seat offers neither.
+// Report sends the seat and a reason, and a bot's seat offers neither. A
+// screen reader reaches the same options through each person's seat button,
+// and a signed-out viewer's Report row opens sign-in, since the server takes
+// reports from accounts only.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -20,7 +23,15 @@ vi.mock("../ws", () => ({
   },
 }));
 
+// the signed-in state the options read; "loading" until a test sets it
+const authState = vi.hoisted(() => ({ status: "loading" as string }));
+vi.mock("../auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auth")>()),
+  useAuth: () => ({ status: authState.status, clientId: null, user: null }),
+}));
+
 const { default: Table } = await import("./Table");
+const { guestName } = await import("../guestName");
 const { default: ChatPanel } = await import("./ChatPanel");
 const { clearBlocks, isBlocked } = await import("../chatBlocks");
 
@@ -53,6 +64,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   sent.length = 0;
+  authState.status = "loading";
   clearBlocks();
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -156,11 +168,110 @@ it("a later game's state frame keeps the seat blocked, and an unblocked frame cl
   expect(sent).toEqual([]);
 });
 
+const optionsButton = (name: string) =>
+  seatOf(name).querySelector<HTMLButtonElement>("button.opp-options");
+
+it("each person's seat has a named button that opens the same options; a bot's seat has none", () => {
+  act(() => root.render(<Table state={state()} />));
+  const bea = optionsButton("Bea")!;
+  expect(bea.getAttribute("aria-label")).toBe("Bea, player options");
+  expect(bea.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(bea.getAttribute("aria-expanded")).toBe("false");
+  expect(bea.classList.contains("sr-only")).toBe(true);
+  expect(bea.textContent).toBe("");
+  expect(optionsButton("Cy")?.getAttribute("aria-label")).toBe("Cy, player options");
+  expect(optionsButton("Bot 2")).toBeNull();
+  act(() => bea.click());
+  const box = dialog()!;
+  expect(box.getAttribute("role")).toBe("dialog");
+  expect(box.getAttribute("aria-modal")).toBe("true");
+  expect(box.getAttribute("aria-label")).toBe("Bea: player options");
+  expect(bea.getAttribute("aria-expanded")).toBe("true");
+  // the tap that opens the options is not also the seat's full-name tap
+  expect(seatOf("Bea").querySelector(".opp-fullname")).toBeNull();
+  // focus lands inside, on the first row, and every row is a named button
+  expect(document.activeElement).toBe(rowButton("Block player"));
+  for (const b of box.querySelectorAll("button")) {
+    expect(b.getAttribute("type")).toBe("button");
+    expect((b.textContent ?? "").trim().length).toBeGreaterThan(0);
+  }
+  act(() => rowButton("Cancel")!.click());
+  expect(dialog()).toBeNull();
+  expect(document.activeElement).toBe(optionsButton("Bea"));
+  expect(sent).toEqual([]);
+});
+
+it("Escape closes the options a seat button opened", () => {
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(dialog()).toBeNull();
+});
+
+it("while the options are open the table behind is inert and Tab cycles inside them", () => {
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Bea")!.click());
+  const box = dialog()!;
+  expect(host.hasAttribute("inert")).toBe(true);
+  const rows = Array.from(box.querySelectorAll<HTMLButtonElement>("button"));
+  const first = rows[0], last = rows[rows.length - 1];
+  const tab = (shiftKey: boolean) => {
+    const e = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+    act(() => { document.activeElement!.dispatchEvent(e); });
+    return e;
+  };
+  last.focus();
+  expect(tab(false).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(first);
+  expect(tab(true).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(last);
+  act(() => rowButton("Cancel")!.click());
+  expect(host.hasAttribute("inert")).toBe(false);
+  expect(document.activeElement).toBe(optionsButton("Bea"));
+});
+
+it("the reason rows take focus too, so a screen reader moves on into them", () => {
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  act(() => rowButton("Report player")!.click());
+  expect(document.activeElement).toBe(rowButton("Abusive chat"));
+});
+
+it("a signed-out guest's Report row opens sign-in instead of reasons the server would refuse", () => {
+  authState.status = "out";
+  const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  expect(rowButton("Report player")).toBeUndefined();
+  act(() => rowButton("Sign in to report")!.click());
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(dialog()).toBeNull();
+  expect(sent).toEqual([]);
+  open.mockRestore();
+});
+
+it("once signed in, the same seat reports as before", () => {
+  authState.status = "out";
+  const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  act(() => rowButton("Sign in to report")!.click());
+  authState.status = "in";
+  act(() => root.render(<Table state={{ ...state() }} />));
+  act(() => optionsButton("Cy")!.click());
+  expect(rowButton("Sign in to report")).toBeUndefined();
+  act(() => rowButton("Report player")!.click());
+  act(() => rowButton("Cheating")!.click());
+  expect(sent).toEqual([{ type: "report_player", seat: 3, reason: "cheating" }]);
+  open.mockRestore();
+});
+
 it("a table on a device (offline, or a nearby phone's) offers neither: they are the game server's", async () => {
   const { setOffline } = await import("../offlineMode");
   setOffline(true);
   try {
     act(() => root.render(<Table state={state()} />));
+    expect(optionsButton("Bea")).toBeNull();
     longPress(seatOf("Bea"));
     expect(dialog()).toBeNull();
     act(() => { seatOf("Cy").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });

@@ -248,26 +248,29 @@ export interface NearbyActs {
   onReady?: (on: boolean) => void;
 }
 
-function offlineAct({ onStart, onLeave, onToggle, onSettings, onReady }: NearbyActs & {
-  onStart?: () => void; onLeave: () => void;
+function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }: NearbyActs & {
+  onStart?: () => void; onLeave: () => void; onBots?: (level: BotLevel) => void;
 }) {
   return (a: PanelAction) => {
     if (a.type === "offline_start") onStart?.();
     else if (a.type === "offline_leave") onLeave();
+    else if (a.type === "bot_level") onBots?.(a.level);
     else if (a.type === "nearby_toggle") onToggle?.();
     else if (a.type === "nearby_settings") onSettings?.();
     else if (a.type === "nearby_ready") onReady?.(a.on);
   };
 }
 
-/** Your offline table in Play's place (`offlineModel`). Leave asks
- *  nothing: no one else sits at it. `nearby`: the Nearby switch row. */
-export function OfflinePanel({ ready, starting, onStart, onLeave, nearby = null, ...acts }: {
-  ready: boolean; starting: boolean; onStart: () => void; onLeave: () => void;
+/** Your offline table in Play's place (`offlineModel`), with its Bots
+ *  row until Start. Leave asks nothing: no one else sits at it. `nearby`:
+ *  the Nearby switch row. */
+export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave, nearby = null, ...acts }: {
+  ready: boolean; starting: boolean; bots: BotLevel; onBots: (level: BotLevel) => void;
+  onStart: () => void; onLeave: () => void;
   nearby?: NearbySwitch | null;
 } & NearbyActs) {
-  return <PanelView m={offlineModel({ ready, starting, nearby })} guarded={false}
-                    act={offlineAct({ onStart, onLeave, ...acts })} />;
+  return <PanelView m={offlineModel({ ready, starting, bots, nearby })} guarded={false}
+                    act={offlineAct({ onStart, onLeave, onBots, ...acts })} />;
 }
 
 /** A nearby table's lobby in Play's place, for its host and each joiner:
@@ -441,7 +444,7 @@ function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots 
   return (
     <>
       {code ? <CodeRow code={code} invite={invite !== false} /> : null}
-      {ranked ? null : (
+      {ranked || level === null ? null : (
         <SetRow label="Starting level" value={level as Rank} values={RANKS} names={(r) => r} opener={opener}
                 onPick={(r) => act({ type: "start_level", level: r })} />
       )}

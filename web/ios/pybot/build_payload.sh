@@ -4,10 +4,12 @@
 #
 #   web/ios/pybot/build_payload.sh [WEIGHTS_DIR [DL_DIR]]
 #
-# WEIGHTS_DIR holds the four release weight files fly.toml names
-# (g3a-e04-f4f4127e.npz, p0-ft1-1fa201b2.npz, b1a-028131a0.npz,
-# js-m1-0d17fd03.npz); without it (or with "-") the weights of the payload
-# already built are reused, checked again. DL_DIR (default web/ios/pybot/dl)
+# WEIGHTS_DIR holds every weight file fly.toml's [env] names under
+# /data/models/ (the list is read from fly.toml, so it follows the release),
+# and the Standard level's scorer package (relaxed_play.CASUAL_PACKAGE, the
+# file server.py's RELAXED_SF_PACKAGE names under /data/models/);
+# without it (or with "-") the weights of the payload already built are
+# reused, checked again. DL_DIR (default web/ios/pybot/dl)
 # caches the downloads; the xcframework and numpy are unpacked only once.
 # The payload records its inputs (inputs.sh), and the Xcode phase refuses a
 # payload whose server/shengji sources or fly.toml have changed since.
@@ -70,7 +72,13 @@ P="$HERE/payload"
 NEW="$HERE/payload.new"
 rm -rf "$NEW"
 mkdir -p "$NEW/models"
-for f in g3a-e04-f4f4127e.npz p0-ft1-1fa201b2.npz b1a-028131a0.npz js-m1-0d17fd03.npz; do
+# the bundled weights are exactly the files the served config loads
+MODELS=$(grep -v '^[[:space:]]*#' "$REPO/fly.toml" | grep -o "/data/models/[^'\"]*" | sed 's#^/data/models/##' | LC_ALL=C sort -u)
+[ -n "$MODELS" ] || { echo "fly.toml names no /data/models/ weight file" >&2; exit 2; }
+CASUAL=$(sed -n 's/^CASUAL_PACKAGE = "\(.*\)"$/\1/p' "$REPO/server/shengji/train/relaxed_play.py")
+[ -n "$CASUAL" ] || { echo "relaxed_play.py names no CASUAL_PACKAGE" >&2; exit 2; }
+MODELS="$MODELS $CASUAL"
+for f in $MODELS; do
   src="${WEIGHTS:-$P/models}/$f"
   [ -f "$src" ] || { echo "no $f: pass the weights dir (no built payload to reuse)" >&2; exit 2; }
   check "$src" "$f"

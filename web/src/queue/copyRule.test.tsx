@@ -253,14 +253,16 @@ describe("nearby panels and the code box's one exception", () => {
   it("the offline panel's denied line: one status line, its link inside it", async () => {
     const { OfflinePanel } = await import("./TablePanel");
     const { nearbySwitch } = await import("./nearbyModel");
-    act(() => root.render(<OfflinePanel ready starting={false} onStart={() => {}} onLeave={() => {}}
+    act(() => root.render(<OfflinePanel ready starting={false} bots="standard" onBots={() => {}} onStart={() => {}} onLeave={() => {}}
                                         nearby={nearbySwitch({ on: false, line: "denied" })} />));
     expectCopyRule(host.querySelector(".tp-offline"), "offline, denied");
     expect(host.querySelector(".tp-line")!.textContent).toBe(UNDER_CONTROL_EXCEPTION.lines[1]);
     expect(host.querySelector(".tp-chat"), "the greyed Chat row while Nearby is off").not.toBeNull();
-    act(() => root.render(<OfflinePanel ready starting={false} onStart={() => {}} onLeave={() => {}}
+    expect(host.textContent, "the Bots row while Nearby is off").toContain("Bots");
+    act(() => root.render(<OfflinePanel ready starting={false} bots="standard" onBots={() => {}} onStart={() => {}} onLeave={() => {}}
                                         nearby={nearbySwitch({ on: true, line: null })} />));
     expect(host.querySelector(".tp-chat"), "no Chat row while Nearby is on").toBeNull();
+    expect(host.textContent, "no Bots row while Nearby is on").not.toContain("Bots");
   });
 
   it("the code box's lines are exactly the listed exception", async () => {

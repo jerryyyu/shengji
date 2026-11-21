@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cross-compile the four Cython extensions of the shengji package for iOS
+# Cross-compile the five Cython extensions of the shengji package for iOS
 # (device and simulator), into fast/<sdk>/shengji/...
 #   build_fast_ext.sh CYTHON [--force]   (CYTHON: a host `cython` 3.x binary)
 # The output records its inputs (inputs.sh); while they are unchanged the
@@ -17,7 +17,7 @@ if [ "${2:-}" != "--force" ] && [ -d "$HERE/fast" ] && "$HERE/inputs.sh" check f
 fi
 NEW="$HERE/fast.new"
 GEN="$NEW/gen"
-EXTS="shengji/engine/_fast shengji/ai/_cwv_math shengji/ai/_endgame_fast shengji/train/_pv_fast"
+EXTS="shengji/engine/_fast shengji/ai/_cwv_math shengji/ai/_endgame_fast shengji/train/_pv_fast shengji/train/_reply_fast"
 rm -rf "$NEW"; mkdir -p "$GEN"
 for e in $EXTS; do
   mkdir -p "$GEN/$(dirname "$e")"

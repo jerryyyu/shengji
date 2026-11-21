@@ -4,8 +4,9 @@
 came from; the Xcode phase ``xcode_install_python.sh`` refuses, before it
 copies anything into the app, a part whose inputs have changed since, and
 prints the bundle's input digest when they have not.  These tests run the real
-scripts on a small stand-in checkout: a changed ``.py``, ``.pyx`` or
-``fly.toml`` is refused, an unchanged one is reused.
+scripts on a small stand-in checkout: a changed ``.py``, ``.pyx``, ``fly.toml``
+or weight manifest (a new pinned weight file, such as the Standard level's
+scorer package) is refused, an unchanged one is reused.
 """
 
 import os
@@ -16,8 +17,9 @@ from pathlib import Path
 import pytest
 
 PYBOT = Path(__file__).resolve().parents[2] / "web" / "ios" / "pybot"
-SCRIPTS = ("inputs.sh", "xcode_install_python.sh", "build_fast_ext.sh", "offline_bot.py")
-PYX = ("engine/_fast", "ai/_cwv_math", "ai/_endgame_fast", "train/_pv_fast")
+SCRIPTS = ("inputs.sh", "xcode_install_python.sh", "build_fast_ext.sh", "build_payload.sh", "offline_bot.py",
+           "MANIFEST.sha256")
+PYX = ("engine/_fast", "ai/_cwv_math", "ai/_endgame_fast", "train/_pv_fast", "train/_reply_fast")
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None or shutil.which("rsync") is None,
                                 reason="needs bash and rsync")
@@ -99,6 +101,8 @@ def test_unchanged_sources_are_reused_and_the_bundle_identity_printed(tree):
     ("server/shengji/engine/round.py", "payload"),
     ("server/shengji/ai/new_module.py", "payload"),
     ("fly.toml", "payload"),
+    ("web/ios/pybot/MANIFEST.sha256", "payload"),
+    ("web/ios/pybot/build_payload.sh", "payload"),
     ("server/shengji/engine/_fast.pyx", "fast"),
     ("web/ios/pybot/Python.xcframework/ios-arm64/include/python3.14/patchlevel.h", "fast"),
 ])

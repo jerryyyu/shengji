@@ -26,6 +26,7 @@ vi.mock("./components/offlineGame", () => ({
   offlineGame: { startFromPlay: () => {}, goOnline: () => {}, setTable: () => {}, played: false },
   offlineOffered: () => false,
   useOfflineTable: () => false,
+  useOfflineBotLevel: () => "standard",
 }));
 vi.mock("./native", async (orig) => ({
   ...(await orig<typeof import("./native")>()),

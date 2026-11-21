@@ -110,7 +110,8 @@ export interface TableRows {
   invite?: boolean;
   ranked: boolean;
   opener: boolean;
-  level: string;
+  /** The Starting level; null for a table that has no such row (offline). */
+  level: string | null;
   joiners: boolean | undefined;
   bots: BotLevel | undefined;
 }
@@ -449,8 +450,8 @@ export interface NearbySwitch {
 /** Your offline table in Play's place, its mode tag saying Offline: the
  *  chat row greyed (chat needs the server), Start and Leave. `ready` is the
  *  on-device server's socket being open; `starting`, a Start on its way. */
-export function offlineModel({ ready, starting, nearby = null }: {
-  ready: boolean; starting: boolean;
+export function offlineModel({ ready, starting, bots, nearby = null }: {
+  ready: boolean; starting: boolean; bots: BotLevel;
   /** The Nearby switch, where this page offers nearby play (nearbyModel.ts
    *  builds it): `on` while the table is being opened to nearby phones;
    *  `status`, its one line after it fell back off. */
@@ -464,7 +465,10 @@ export function offlineModel({ ready, starting, nearby = null }: {
     status,
     seats: OFFLINE_SEATS,
     you: 0,
-    rows: null, waitSwitch: null,
+    // the Bots row only, which you pick until Start; a table being opened to
+    // nearby phones has none (its bots are Standard)
+    rows: nearby?.on ? null : { code: null, ranked: false, opener: !starting, level: null, joiners: undefined, bots },
+    waitSwitch: null,
     nearbySwitch: nearby ? { label: nearby.label, on: nearby.on, disabled: nearby.on } : null,
     // nearby tables have no chat
     chat: nearby?.on ? null : { disabled: true },

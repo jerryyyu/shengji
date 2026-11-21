@@ -59,6 +59,13 @@ exports[`the offline Play block and its table, as drawn 2`] = `
 </div>
 </div>
 </div>
+<label class="tp-set">
+<span>Bots</span>
+<select aria-label="Bots">
+<option value="standard">Standard</option>
+<option value="advanced">Advanced</option>
+</select>
+</label>
 <button type="button" class="tp-chat" disabled="" aria-label="Chat needs a connection">
 <span class="tp-chat-label" aria-hidden="true">Chat</span>
 </button>
@@ -107,6 +114,10 @@ exports[`the offline Play block and its table, as drawn 3`] = `
 </span>
 </div>
 </div>
+</div>
+<div class="tp-set" role="group" aria-label="Bots Standard">
+<span aria-hidden="true">Bots</span>
+<span class="tp-set-val" aria-hidden="true">Standard</span>
 </div>
 <button type="button" class="tp-chat" disabled="" aria-label="Chat needs a connection">
 <span class="tp-chat-label" aria-hidden="true">Chat</span>

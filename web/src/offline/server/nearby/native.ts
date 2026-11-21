@@ -115,7 +115,11 @@ export function pluginTransport(p: NearbyPlugin, session: PluginSession): Nearby
       refuse = null;
       return {
         send: (peer, text) => {
-          if (live()) void p.send({ peer, text }).catch((e: unknown) => nearbyLog("host", `send to ${peer} failed: ${String(e)}`));
+          if (!live()) return;
+          void p.send({ peer, text }).catch((e: unknown) => {
+            nearbyLog("host", `send to ${peer} failed: ${String(e)}`);
+            if (live()) handlers.sendFailed?.(peer, String(e));
+          });
         },
         close: (peer) => { if (live()) void p.close({ peer }).catch(() => {}); },
         stop: () => {

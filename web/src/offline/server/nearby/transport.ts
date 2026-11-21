@@ -17,6 +17,10 @@ export interface HostHandlers {
   peer(peer: string, connected: boolean, device?: string): void;
   message(peer: string, text: string): void;
   state(state: LinkState, detail?: string): void;
+  /** A send to `peer` failed after `send` returned (the native plugin's
+   *  answer is asynchronous): the link is no good. A transport whose send
+   *  throws at once has no need of it. */
+  sendFailed?(peer: string, why: string): void;
 }
 
 export interface HostLink {

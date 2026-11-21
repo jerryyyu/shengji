@@ -75,6 +75,7 @@ export class NearbyHost {
     const link = await transport.host(this.room.code, {
       peer: (peer, connected, device) => (connected ? this.onPeer(peer, device ?? null) : this.onGone(peer)),
       message: (peer, text) => this.onMessage(peer, text),
+      sendFailed: (peer) => this.sendFailed(peer),
       state: (state, detail) => {
         // the host was away past the joiners' window: the table is over
         if (state === "ended") this.server.endNearbyRoomForAll(this.room);
@@ -112,6 +113,14 @@ export class NearbyHost {
     }
     this.room.onClosed = stopSoon;
     this.clock.setTimeout(() => this.stop(), STOP_FALLBACK_SECONDS);
+  }
+
+  /** A frame to `id` did not go: the link ends, as when a send throws, and
+   *  its seat waits for a resume. */
+  private sendFailed(id: string): void {
+    if (!this.peers.has(id)) return;
+    this.refuse("send", id);
+    this.end(id);
   }
 
   private refuse(reason: string, id = "", text = ""): void {
@@ -328,8 +337,7 @@ export class NearbyHost {
       this.link?.send(id, frame);
       nearbyLog("host", `out ${frameType(frame)} to ${id}`);
     } catch {
-      this.refuse("send");
-      this.end(id);
+      this.sendFailed(id);
       return;
     }
     if (frame.startsWith('{"type":"resume"')) {

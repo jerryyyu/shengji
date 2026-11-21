@@ -35,6 +35,7 @@ import { CANONICAL, LOBBY, RETIRED_MESSAGE, forQueue, forRoom, retired } from ".
 import { newNearbyCode } from "./nearby/codes";
 import { NEARBY_COPY } from "./nearby/copy";
 import { nearbyName } from "./nearby/names";
+import { LIMITS, utf8Bytes } from "./nearby/protocol";
 
 export const BOT_DELAY = 0.7;
 export const DEAL_DELAY = 0.2;
@@ -350,6 +351,15 @@ function trickJson(t: Trick | null, ordering: Ordering | null): Json | null {
 function controller(seat: Seat): string {
   if (seat.isBot) return "bot";
   return seat.connected ? "human" : "bot_cover";
+}
+
+/** The chat_history frame a seat gets on attach. At a nearby table it
+ *  keeps only the newest lines that fit in one link frame
+ *  (LIMITS.frameBytes): a frame over it would never cross the link. */
+export function chatHistory(room: LocalRoom): Json {
+  const frame = { type: "chat_history", room: room.code, through_id: room.chatSeq, messages: [...room.chat] };
+  if (room.nearby) while (frame.messages.length && utf8Bytes(JSON.stringify(frame)) > LIMITS.frameBytes) frame.messages.shift();
+  return frame;
 }
 
 /** server.py _takeover_in: seconds before the bot plays for a dropped human. */
@@ -794,7 +804,7 @@ export class LocalServer {
     seat.leftByChoice = false;
     seat.botAnnounced = false;
     this.enqueue(seat, { type: "resume", token: seat.token, gen: seat.gen });
-    this.enqueue(seat, { type: "chat_history", room: room.code, through_id: room.chatSeq, messages: [...room.chat] });
+    this.enqueue(seat, chatHistory(room));
     return seat.gen;
   }
 

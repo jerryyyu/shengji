@@ -1,6 +1,6 @@
 name = "luna_explorer"
 description = "Performs fast read-only Shengji exploration, inventory, log triage, and evidence gathering."
-model = "gpt-5.6-luna"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
 developer_instructions = """

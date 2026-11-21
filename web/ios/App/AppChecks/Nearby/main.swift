@@ -151,6 +151,15 @@ expect(moved.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true),
 moved.linkUp(peerToPeer: true, hostOffWifi: false)
 expect(!moved.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "seen over Wi-Fi but landed on peer-to-peer: no loop")
 
+// A move that landed on peer-to-peer by a look that never tried Wi-Fi (no
+// Wi-Fi network then) is not the loop: once Wi-Fi is back it moves again.
+var relinked = Migration()
+expect(relinked.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "the first move")
+expect(relinked.done, "the move is spent")
+relinked.linkUp(peerToPeer: true, hostOffWifi: true)
+expect(!relinked.done, "a peer-to-peer link made with no Wi-Fi try clears it")
+expect(relinked.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: true), "Wi-Fi back: it moves again")
+
 // The host's table is known by its salt, which it keeps when its listener
 // is made again under a new name; a link on peer-to-peer then still sees
 // its host over Wi-Fi and moves.

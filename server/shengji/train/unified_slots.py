@@ -798,7 +798,7 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
             if actual[1] is None:
                 return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
             result = project(clone, seat, candidates, frame.seat, parent, plane_maps, pts,
-                             actual, prior_points, decide, legal.beats, search.TrickPlay)
+                             actual, prior_points, decide, legal.beats, search.TrickPlay, memo_heuristic=True)
             if result is None:
                 return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
             return result

@@ -94,7 +94,7 @@ cdef inline tuple _reply_incumbent(list cards, list lead, tuple incumbent,
 
 def project_replies(clone, int seat, list candidates, int frame_seat,
                     parent, tuple plane_maps, dict points, tuple actual,
-                    long prior_points, decide, beats, trickplay_cls):
+                    long prior_points, decide, beats, trickplay_cls, bint memo_heuristic=False):
     cdef _ReplyState state = _ReplyState()
     cdef _ReplyTrick trick = _ReplyTrick()
     cdef object source = clone.trick
@@ -106,7 +106,8 @@ def project_replies(clone, int seat, list candidates, int frame_seat,
     cdef long pts, total
     cdef tuple incumbent, updated
     cdef list out = [], slots, hand, played
-    cdef dict lookup
+    cdef dict lookup, decisions = {} if memo_heuristic and len(candidates) > 1 else None
+    cdef tuple key
     cdef object candidate, cards, card
     if not 1 <= n_prior <= 2 or not 0 <= seat < 4 or not 0 <= frame_seat < 4:
         return None
@@ -165,7 +166,17 @@ def project_replies(clone, int seat, list candidates, int frame_seat,
                     return None
                 trick.plays.append(trickplay_cls(turn, played))
                 turn = (turn + 1) % 4
-                cards = decide(state, turn)
+                if decisions is None:
+                    cards = decide(state, turn)
+                else:
+                    # The stock policy reads the fixed lead and hand, the cache
+                    # fields, and whether this is the last seat. Within this
+                    # parent, the seat also identifies the ply.
+                    key = (turn, trick.incumbent, trick.running_points)
+                    cards = decisions.get(key)
+                    if cards is None:
+                        cards = decide(state, turn)
+                        decisions[key] = cards
             incumbent = updated
         out.append((parent, slots, total, (incumbent[0] - frame_seat) % 4))
     return out

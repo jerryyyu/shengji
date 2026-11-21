@@ -1044,8 +1044,9 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
     projected = []
     materialized = []
 
-    def project(clone, seat, candidates, *args):
-        result = real_project(clone, seat, candidates, *args)
+    def project(clone, seat, candidates, *args, **kw):
+        assert kw == {"memo_heuristic": True}
+        result = real_project(clone, seat, candidates, *args, **kw)
         assert len(result) == len(candidates)
         n_prior, n_cards = len(clone.trick.plays), len(clone.trick.plays[0].cards)
         if width in (2, 4) and n_cards == width and (n_prior, n_cards) not in projected:
@@ -1057,7 +1058,7 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
                 assert item[1] == expected
             hand = clone.hands[seat]
             single = next(card for card in hand if hand.count(card) == 1)
-            assert real_project(clone, seat, [[single] * n_cards], *args) is None
+            assert real_project(clone, seat, [[single] * n_cards], *args, **kw) is None
         projected.append((n_prior, n_cards))
         return result
 
@@ -1113,3 +1114,49 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
             patch.setattr(us, "_projected_reply_callbacks", lambda *a: None)
             assert run(group) == got
     assert len(direct) > (30 if width in (2, 4) else 60)
+
+
+def test_projected_reply_heuristic_memo_keeps_seats_caches_and_candidate_rows_distinct():
+    from shengji.engine import fast
+    from shengji.train import pv_tree_search as search, unified_slots as us
+
+    if not fast.is_active():
+        pytest.skip("projected replies require the compiled reply path")
+    (clone, seat, _), _ = _multi_reply_fixture(1, 2)
+    for other, incoming, outgoing in (((seat + 1) % 4, "S2", "S9"), ((seat + 2) % 4, "S10", "S8")):
+        for _ in range(2):
+            clone.hands[other].remove(incoming)
+            clone.hands[seat].remove(outgoing)
+            clone.hands[other].append(outgoing)
+            clone.hands[seat].append(incoming)
+    candidates = [[card] * 2 for card in ("S2", "SJ", "SQ", "S10")]
+    clone.trick.incumbent = ((seat + 1) % 4, "S", clone.ordering.level("SJ"))
+    clone.trick.running_points = 50
+    plane_maps, points, combos, legal = us._fast_tables()
+    actual = us._winner_fast(clone.trick, clone.ordering, combos, legal, with_level=True)
+    prior_points = sum(points[card] for play in clone.trick.plays for card in play.cards)
+    stock = search.default_finisher().decide_play
+    parent = object()
+    calls = []
+
+    def decide(state, turn):
+        calls.append((turn, state.trick.incumbent, state.trick.running_points))
+        return stock(state, turn)
+
+    args = (clone, seat, candidates, 0, parent, plane_maps, points, actual, prior_points,
+            decide, legal.beats, search.TrickPlay)
+    project = search._reply_fast.project_replies
+    want = project(*args)
+    assert len(calls) == 2 * len(candidates)
+    distinct = list(dict.fromkeys(calls))
+    assert len(distinct) < len(calls)
+    assert {turn for turn, _, _ in distinct} == {(seat + 1) % 4, (seat + 2) % 4}
+    assert len({inc for turn, inc, _ in distinct if turn == (seat + 1) % 4}) == 2
+    assert {pts for turn, _, pts in distinct if turn == (seat + 1) % 4} == {50, 70}
+    assert len({tuple(slots) for _, slots, _, _ in want}) == len(candidates)
+    assert len({winner for _, _, _, winner in want}) > 1
+
+    for _ in range(2):
+        calls.clear()
+        assert project(*args, memo_heuristic=True) == want
+        assert calls == distinct

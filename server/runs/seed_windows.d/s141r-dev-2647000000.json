@@ -1,0 +1,14 @@
+{
+ "name": "s141r-dev-2647000000",
+ "purpose": "screen",
+ "seed0": 2647000000,
+ "clusters": 1100,
+ "span": [
+  2647000000,
+  2647001100
+ ],
+ "created_at": "2026-11-21T05:45:00Z",
+ "host": "ultra",
+ "git_head": "6034c374",
+ "note": "S141R (board #1263 row S141, Jerry 2026-11-21 \"go\"): the S141 search-mean-value (SMV) auxiliary head re-based on RT3-FT. Exploiter = RT3-FT's readout polished with the SMV auxiliary head on RT3-FT's frozen trunk (Mac Mini, PREDECLARE_S141R.md sha256 62a4f005 + AMENDMENT_S141R_1.md sha256 73d40fba), defender = RT3-FT (unified 0ab200ee + belief af11dea7); both full unified sides in release 52's search, tree claude-ut-retrain2/src 063bf470. Tier-i DEV head-to-head duel on the M5 Ultra, dealt only if the offline bar passes: 1,000 paired seat-swapped rank-mixed deals [2647000000, 2647001000), read once, never used to select or release. Pilot [2647001000, +20), rehearsal pilot [2647001020, +20) and timing seeds [2647001050, 2647001062), outcomes not read; the rest is spare. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

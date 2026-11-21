@@ -72,7 +72,7 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift).toContain(`${SOAK}\n/// The soak's chaos mode`);
     expect(swift).toContain(`${SOAK}\n/// The chaos kind "wifi"`);
     expect(swift).toContain(`${SOAK}\n/// The soak's log file`);
-    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[^\n]*\n    \]\n    static let chaosBuild = true\n[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static let chaosBuild = false\n    static func chaosHold\(_ work: @escaping \(\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
+    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[^\n]*\n    \]\n    static let chaosBuild = true\n[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static let chaosBuild = false\n    func chaosHold\(_ peer: String, _ work: @escaping \(\) -> Void, dropped: @escaping \(\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
     // every CHAOS line is inside a soak block
     const outside = swift.split(SOAK).map((part, i) => (i === 0 ? part : part.slice(part.indexOf("\n#else\n"))));
     for (const part of outside) expect(part).not.toContain("CHAOS");

@@ -688,7 +688,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 })
             }
             // a device-test stall holds the send until it ends (never in a shipped build)
-            if Self.chaosHold(go) { return }
+            if self.chaosHold(peer, go, dropped: { call.reject("no such peer", "noPeer") }) { return }
             go()
         }
     }
@@ -1107,7 +1107,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 if content.count > Self.quietFrameBytes { self.spikeLog("recv \(link.peer) \(content.count) B") }
                 let peer = link.peer
                 let deliver = { self.notifyListeners("message", data: ["peer": peer, "text": text]) }
-                if !Self.chaosHold(deliver) { deliver() }
+                if !self.chaosHold(peer, deliver, dropped: {}) { deliver() }
             case .ping?, .pong?:
                 break
             default:
@@ -1351,10 +1351,24 @@ extension ShengjiNearbyPlugin {
     private static var heldUntil = Date.distantPast
     private static var held: [() -> Void] = []
 
-    /// On `queue`: while a stall runs, `work` waits for its end, in order.
-    static func chaosHold(_ work: @escaping () -> Void) -> Bool {
-        guard Date() < heldUntil else { return false }
-        held.append(work)
+    /// Held work whose link had gone by the stall's end, in the current stall.
+    private static var heldStale = 0
+
+    /// On `queue`: while a stall runs, `work` for a frame on `peer`'s link
+    /// waits for its end, in order. It runs then only if the same link still
+    /// serves `peer`: a frame held on a link that has since gone never goes
+    /// out on (or arrives as if from) the link made after it; `dropped` runs
+    /// in its place.
+    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping () -> Void) -> Bool {
+        guard Date() < Self.heldUntil else { return false }
+        let link = links[peer]
+        Self.held.append { [weak self] in
+            guard let self = self, self.links[peer] === link else {
+                Self.heldStale += 1
+                return dropped()
+            }
+            work()
+        }
         return true
     }
 
@@ -1378,8 +1392,9 @@ extension ShengjiNearbyPlugin {
                     let work = Self.held
                     Self.held = []
                     Self.heldUntil = .distantPast
-                    self.spikeLog("CHAOS stall over: \(work.count) held")
+                    Self.heldStale = 0
                     for w in work { w() }
+                    self.spikeLog("CHAOS stall over: \(work.count) held, \(Self.heldStale) dropped (link gone)")
                 }
             case "path":
                 guard !self.hosting, self.links["host"] != nil else { return call.resolve(["done": false]) }
@@ -1406,7 +1421,7 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
     static let chaosBuild = false
-    static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
+    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping () -> Void) -> Bool { false }
 }
 #endif
 

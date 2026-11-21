@@ -188,6 +188,13 @@ export class NearbyJoinStore {
   private connectingAt = 0;
   /** Ends the network path watch, while the link is live. */
   private unwatch: (() => void) | null = null;
+  /** The look's link factory, for the kept token's own link. */
+  private make: (() => WebSocket) | null = null;
+  /** Every seat is taken and a kept token is out on its own link as the
+   *  hello (the host ends a full look's link): a held seat comes back by
+   *  it, any refusal is the full outcome. One per look. */
+  private claiming = false;
+  private claimed = false;
 
   constructor(deps: NearbyJoinDeps) {
     this.deps = deps;
@@ -228,6 +235,7 @@ export class NearbyJoinStore {
     this.over = false;
     this.retried = false;
     this.denied = false;
+    this.claimed = false;
     this.set({ code, step: "looking", peek: null, seat: null });
     const attempt = ++this.attempt;
     this.armLook(attempt);
@@ -240,6 +248,7 @@ export class NearbyJoinStore {
         this.deps.setSession(true);
         this.watchPath();
       }
+      this.make = make;
       this.deps.conn.useNearby(make);
     }, () => {
       if (attempt === this.attempt) this.stop("notFound");
@@ -317,6 +326,7 @@ export class NearbyJoinStore {
     this.clearGone();
     this.endLeaving();
     this.token = null;
+    this.claiming = false;
     this.unwatch?.();
     this.unwatch = null;
     if (!this.live) return;
@@ -346,8 +356,15 @@ export class NearbyJoinStore {
     if (code) forgetSeatToken(code);
   }
 
-  /** A new link's hello while seated: the seat's resume by its token. */
+  /** A new link's hello while seated, or while a full table's kept token
+   *  is tried: the seat's resume by its token. */
   private greeting(): Record<string, unknown> | null {
+    const v = this.view;
+    if (this.claiming && !this.seated && v?.step === "joining") {
+      // the kept seat's resume: the host seats it by the token alone
+      const kept = keptSeatToken(v.code);
+      return kept ? { type: "table_join", code: v.code, name: this.name, token: kept, seat: null } : null;
+    }
     if (!this.seated) return null;
     return { type: "table_join", code: this.seatedCode, name: this.name, ...(this.token ? { token: this.token } : {}) };
   }
@@ -410,6 +427,29 @@ export class NearbyJoinStore {
       this.joinTimer = null;
       if (this.view?.step === "joining" && !this.seated) this.lookAgain();
     }, JOIN_TIMEOUT_MS);
+  }
+
+  /** The table answered full and this phone keeps a fresh token for it:
+   *  one resume by that token, on a new link whose hello it is. */
+  private claim(v: NearbyJoin, peek: RoomSeats): void {
+    this.claiming = true;
+    this.claimed = true;
+    this.set({ ...v, step: "joining", peek, seat: null });
+    nearbyLog("join", "table full: resume sent by the kept token");
+    this.joinTimer = window.setTimeout(() => {
+      this.joinTimer = null;
+      if (this.view?.step === "joining" && !this.seated) this.claimEnd(false);
+    }, JOIN_TIMEOUT_MS);
+    this.deps.conn.useNearby(this.make!);
+  }
+
+  /** The kept token's resume did not seat this phone: the full outcome. A
+   *  refusal means the table does not hold that seat, so its token goes. */
+  private claimEnd(refused: boolean): void {
+    const v = this.view;
+    if (refused && v) forgetSeatToken(v.code);
+    nearbyLog("join", `resume by the kept token ${refused ? "refused" : "unanswered"}`);
+    this.stop("full");
   }
 
   /** Try again after not found: another look, for as long as the first. */
@@ -504,6 +544,11 @@ export class NearbyJoinStore {
       window.setTimeout(() => { if (this.leaving !== null) this.cancel(); }, 0);
       return;
     }
+    if (s !== "open" && this.claiming && !this.seated) {
+      // the kept token's link is being made; it closing unanswered ends it
+      if (s === "closed") this.claimEnd(false);
+      return;
+    }
     if (s !== "open") {
       // a seated joiner's link dropped: the socket keeps looking, by token,
       // for as long as the host may take to come back
@@ -555,6 +600,10 @@ export class NearbyJoinStore {
     if (m.type === "room_seats" && v?.step === "looking" && !m.table) {
       this.deps.allowed();
       if (m.full) {
+        if (!this.claimed && this.make && keptSeatToken(v.code)) {
+          this.claim(v, m);
+          return;
+        }
         this.stop("full");
         this.set({ ...this.view!, peek: m });
         return;
@@ -567,12 +616,15 @@ export class NearbyJoinStore {
         this.forgetTable();
       } else if (Date.now() - this.keptAt > SEAT_REFRESH_MS) this.keepToken();
       if (!this.seated) {
+        this.claiming = false;
         this.seated = true;
         this.seatedCode = v!.code;
         this.set(null);
       }
     } else if (m.type === "error" && (m.code as string | undefined) === "nearby_version") {
       this.stop("version");
+    } else if (m.type === "error" && this.claiming && !this.seated && v?.step === "joining") {
+      this.claimEnd(true);
     } else if (m.type === "error" && m.code === "room_full" && v?.step === "joining") {
       this.stop("full");
     } else if (m.type === "left" && this.seated) {

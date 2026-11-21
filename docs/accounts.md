@@ -88,7 +88,10 @@ Tokens are never logged (refusals carry only a short reason code). The login
 endpoint is rate-limited in memory per client IP (10/min; Fly's
 `Fly-Client-IP` header names the client). CSRF: Lax cookies plus a JSON POST
 (a cross-site form cannot send it; no CORS headers are emitted, so a
-cross-origin fetch is refused by the browser). The nonce is a consistency
+cross-origin fetch is refused by the browser). The one exception is
+`POST /api/nearby-log`, which answers exactly `capacitor://localhost` (the
+device-test build's bundled page) without credentials; it is safe because that
+route reads no cookie or session and only appends validated log lines. The nonce is a consistency
 check, not server-enforced replay binding: the page generates it, hands it
 to Google and posts it with the token, so the server can only confirm the
 two agree (it is optional server-side). Replay is bounded by the token's

@@ -5,7 +5,7 @@
 // same seat and hand back by it through the code box's join; a Leave, or a
 // table it never sat at, joins as a newcomer.
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { NearbyJoinStore, SEATS_KEY, type NearbyJoinDeps } from "./nearbyJoin";
+import { NearbyJoinStore, SEAT_KEEP_MS, SEATS_KEY, type NearbyJoinDeps } from "./nearbyJoin";
 import { nearbyLogLines } from "./nearbyLog";
 import { NearbySocket } from "./offline/server/nearby/socket";
 import { NearbyTable, type Frame } from "./offline/server/nearby/testkit";
@@ -32,8 +32,11 @@ function phone(t: NearbyTable) {
       subscribe: ((fn: (m: Msg) => void) => { subs.add(fn); return () => {}; }) as never,
       subscribeStatus: ((fn: (s: ConnStatus) => void) => { stats.add(fn); return () => {}; }) as never,
       useNearby: (make) => {
+        // the page's socket retires the link it had before the new one
+        const old = sock;
         const s = make() as unknown as NearbySocket;
         sock = s;
+        old?.close();
         s.onopen = () => status("open");
         s.onmessage = (ev) => {
           const m = JSON.parse(ev.data as string) as Msg;
@@ -127,4 +130,81 @@ it("after a Leave, the app's next join is a newcomer's", async () => {
   expect(join.token).toBeUndefined();
   // a newcomer, as the seat picker offered: the seat left by choice is a bot's at once
   expect(after.state()!.you).toBe(join.seat);
+});
+
+/** A started table of four people: the host, P1, P2 and the phone. */
+async function fullTable() {
+  const t = await started();
+  await t.join("P2");
+  const phoneBefore = await seatedPhone(t);
+  expect(t.room!.seats.every((s) => !s.isBot)).toBe(true);
+  return { t, phoneBefore };
+}
+
+/** The joiner hellos that crossed to the host since `from`, by kind. */
+function hellos(t: NearbyTable, from: number) {
+  const out = t.fake.wire.slice(from).filter((w) => w.to === "host").map((w) => JSON.parse(w.text) as Msg)
+    .filter((m) => m.type === "nearby_hello");
+  return { token: out.filter((m) => m.token), join: out.filter((m) => !m.peek) };
+}
+
+async function reopened(t: NearbyTable) {
+  const p = phone(t);
+  p.store.open(t.code, "Mei");
+  await t.settle(() => (p.store.seated && p.state() !== undefined) || p.store.view?.step === "full");
+  await t.advance(2);
+  return p;
+}
+
+it("at a table of four people, a restarted app takes its held seat and hand back by its kept token", async () => {
+  const { t, phoneBefore } = await fullTable();
+  const seat = phoneBefore.state()!.you as number;
+  const hand = handOf(phoneBefore.state());
+  expect(hand.length).toBeGreaterThan(0);
+  phoneBefore.kill();
+  await t.advance(1);
+  const mark = t.fake.wire.length;
+  const after = await reopened(t);
+  expect(after.store.seated).toBe(true);
+  expect(after.state()!.you).toBe(seat);
+  expect(handOf(after.state())).toEqual(hand);
+  expect(t.room!.seats[seat].name).toBe("Mei");
+  expect(hellos(t, mark).token).toHaveLength(1);
+  expect(hellos(t, mark).token[0].seat).toBeNull();
+  const kept = JSON.parse(localStorage.getItem(SEATS_KEY)!) as Record<string, { token: string }>;
+  expect(nearbyLogLines().some((l) => l.text.includes(kept[t.code].token))).toBe(false);
+});
+
+it("at a table of four people, a token the table does not know is the full outcome, tried once and forgotten", async () => {
+  const { t, phoneBefore } = await fullTable();
+  phoneBefore.kill();
+  await t.advance(1);
+  const names = t.room!.seats.map((s) => s.name);
+  const tokens = t.room!.seats.map((s) => s.token);
+  localStorage.setItem(SEATS_KEY, JSON.stringify({ [t.code]: { token: "not-this-tables-token", at: Date.now() } }));
+  const mark = t.fake.wire.length;
+  const after = await reopened(t);
+  expect(after.store.seated).toBe(false);
+  expect(after.store.view?.step).toBe("full");
+  expect(hellos(t, mark).token).toHaveLength(1);
+  expect(localStorage.getItem(SEATS_KEY)).toBeNull();
+  expect(t.room!.seats.map((s) => s.name)).toEqual(names);
+  expect(t.room!.seats.map((s) => s.token)).toEqual(tokens);
+  await t.advance(30);
+  expect(hellos(t, mark).token).toHaveLength(1);
+});
+
+it("at a table of four people, an expired kept token or none is the full outcome with no join sent", async () => {
+  const { t, phoneBefore } = await fullTable();
+  phoneBefore.kill();
+  await t.advance(1);
+  for (const store of [{ [t.code]: { token: "expired", at: Date.now() - SEAT_KEEP_MS - 1 } }, null]) {
+    if (store) localStorage.setItem(SEATS_KEY, JSON.stringify(store));
+    else localStorage.clear();
+    const mark = t.fake.wire.length;
+    const after = await reopened(t);
+    expect(after.store.view?.step).toBe("full");
+    expect(after.sent.filter((m) => m.type === "table_join")).toHaveLength(0);
+    expect(hellos(t, mark).join).toHaveLength(0);
+  }
 });

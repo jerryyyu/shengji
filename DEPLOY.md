@@ -14,7 +14,7 @@ Release records through release 46 in full: [docs_archive/deploy-through-2026-10
 | unified package | the all-data unified model's readout, under `SHENGJI_PV_UNIFIED_*` (releases 53 and 54: `ut-all-97c07be8.npz`): the root prior, the own-trick leaf values and the greedy-finish reply ranking, from the trunk forward the belief package's proposal runs |
 | prior (`/healthz` `prior`) | the JS-M1 package `js-m1-0d17fd03.npz`, kept under the `SHENGJI_CWV_PRIOR_*` keys for the release-28 rollback; the served `pv-search` bot does not consult it |
 | belief package | the hidden-hand model: the unified model's `ut-all-belief-1b1fd2de.npz` in releases 53 and 54; B1a's `b1a-028131a0.npz` in releases 50–52; S58's `s58-e6-42444515.npz` in releases 48 and 49; S17's `s17long-e2-763b5e05.npz` in release 46 |
-| volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs`, support-form messages appended to `/data/support_messages.jsonl` (one JSON line each; nothing is emailed) |
+| volume | the Fly volume mounted at `/data`; packages in `/data/models`, room logs in `/data/logs`, support-form messages appended to `/data/support_messages.jsonl` (one JSON line each; nothing is emailed), Nearby device-test logs appended to `/data/nearby_logs/<device>/<UTC date>.txt` (`SHENGJI_NEARBY_LOG_ROOT`; write-only `POST /api/nearby-log`, read over `flyctl ssh`; day files kept 14 days, 500 MB cap) |
 | image | `registry.fly.io/shengji:<image>`; Fly numbers each deploy `vNN` |
 | smoke | a run of the served bot through the server path (`_paced_bot_step` / `_commit_bot_turn`) |
 | first-room reader | the Python snippet in step 9 of the Release checklist, run once on the first live room's log |

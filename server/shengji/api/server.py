@@ -30,7 +30,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, blocks, chat_filter, limits, matchmaking, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, blocks, chat_filter, limits, matchmaking, nearby_logs, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -4089,6 +4089,7 @@ accounts.USER_RENAMED_HOOKS.append(rename_user)
 accounts.register_accounts(app)
 saved_games.register_saved_games(app)
 ratings.register_ratings(app)
+nearby_logs.register_nearby_logs(app)
 
 # ------------------------------------------------------------------ static
 def _accepted_encodings(scope) -> set[str]:

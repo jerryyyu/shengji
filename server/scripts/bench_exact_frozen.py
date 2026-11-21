@@ -124,7 +124,10 @@ def run(fixture, repeats, cap, opts, backend='compiled'):
         raise ValueError('repeats and node cap must be positive')
     native = None
     if backend == 'compiled':
-        binary = Path(importlib.import_module('shengji.ai._endgame_fast').__file__).resolve()
+        module = importlib.import_module('shengji.ai._endgame_fast')
+        if opts is None:
+            opts = module.LEVEL_DEFAULT
+        binary = Path(module.__file__).resolve()
         if not binary.is_relative_to(SERVER):
             raise ValueError('native extension is outside target server')
         native = dict(path=str(binary), sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
@@ -186,7 +189,7 @@ def main():
     p.add_argument('out', type=Path)
     p.add_argument('--repeats', type=int, default=5)
     p.add_argument('--cap', type=int, default=200000)
-    p.add_argument('--opts', type=int, default=511)
+    p.add_argument('--opts', type=int, default=None)
     p = sub.add_parser('compare')
     p.add_argument('base', type=Path)
     p.add_argument('candidate', type=Path)

@@ -302,3 +302,111 @@ def test_mixture_nll_is_the_nll_of_the_mean_distribution_and_reaches_the_body(tm
     assert torch.allclose(v[2, 3], one[0], atol=1e-5)
     ur.mixture_nll(v, t).mean().backward()
     assert float(m.readout.stem.weight.grad.abs().sum()) > 0
+
+
+def _action_weights(dh=24, de=32, k=8):
+    shapes = {"ln.weight": (dh,), "ln.bias": (dh,), "e_mu": (de,), "e_sd": (de,),
+              "A.weight": (k, dh), "A.bias": (k,), "B.weight": (k, de), "B.bias": (k,),
+              "W1.weight": (k, 3*k), "W1.bias": (k,), "W2.weight": (64, k),
+              "W2.bias": (64,), "w.weight": (1, 64), "w.bias": (1,)}
+    rng = np.random.default_rng(871)
+    weights = {key: rng.normal(0, .2, size=shape).astype(np.float32) for key, shape in shapes.items()}
+    weights["ln.weight"] += 1
+    weights["e_sd"] = np.abs(weights["e_sd"]) + .01
+    return weights
+
+
+def test_action_scorer_matches_torch_residual_and_authenticates_package(tmp_path):
+    import hashlib
+    from shengji.train import unified_reply_action as ra
+    weights = _action_weights()
+    scorer = ra.ReplyActionScorer(weights, "a" * 64, "b" * 64)
+    rng = np.random.default_rng(3)
+    h, e = rng.normal(size=24).astype(np.float32), rng.normal(size=(17, 32)).astype(np.float32)
+    w = {key: torch.from_numpy(value) for key, value in weights.items()}
+    F = torch.nn.functional
+    u = F.relu(F.linear(F.layer_norm(torch.from_numpy(h), (24,), w["ln.weight"], w["ln.bias"]),
+                        w["A.weight"], w["A.bias"]))
+    v = F.relu(F.linear((torch.from_numpy(e) - w["e_mu"]) / w["e_sd"], w["B.weight"], w["B.bias"]))
+    x = F.relu(F.linear(torch.cat([u.expand_as(v), v, u*v], -1), w["W1.weight"], w["W1.bias"]))
+    want = F.linear(F.relu(F.linear(x, w["W2.weight"], w["W2.bias"])), w["w.weight"], w["w.bias"]).numpy().ravel()
+    assert np.allclose(scorer.residual(h, e), want, atol=2e-6, rtol=2e-5)
+    path = tmp_path / "actions.npz"
+    np.savez(path, schema=ra.SCHEMA, base_model_sha256="a" * 64, **weights)
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    loaded = ra.load_reply_action(path, sha256=sha)
+    assert np.array_equal(loaded.residual(h, e), scorer.residual(h, e))
+    with pytest.raises(ValueError, match="hash mismatch"):
+        ra.load_reply_action(path, sha256="c" * 64)
+    weights["e_sd"][0] = 0
+    with pytest.raises(ValueError, match="positive"):
+        ra.ReplyActionScorer(weights, "a" * 64, "b" * 64)
+
+
+@pytest.mark.parametrize("fast", [False, True])
+@pytest.mark.parametrize("multi", [False, True])
+def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_path, monkeypatch, fast, multi):
+    from shengji.train import unified_reply_action as ra
+    from shengji.harvest.legal import enumerate_legal
+    _, model = _model(tmp_path)
+    from tests.test_pv_small_joker_lead import _fresh_round
+    root = _fresh_round(707_001)
+    source = None
+    while source is None and root.phase == "play":
+        if not root.trick.plays:
+            for action in enumerate_legal(root, root.turn, cap=30).actions:
+                if (len(action) > 1) != multi:
+                    continue
+                candidate = pts.child_position(root, root.turn, list(action))
+                if len(enumerate_legal(candidate, candidate.turn, cap=6).actions) >= 2:
+                    source = candidate
+                    break
+        if source is None:
+            root.play(root.turn, HeuristicBot().decide_play(root, root.turn))
+    assert source is not None
+    seat = source.turn
+    bot = us.install_reply_readout(_bot(package), model)
+    bot.unified_fast = fast
+    weights = _action_weights()
+    path = tmp_path / "action-head.npz"
+    sha = ra.save_reply_action(path, weights, base_model_sha256=model.package_sha256)
+    scorer = ra.load_reply_action(path, sha256=sha)
+    ra.install_reply_action(bot, scorer)
+    with pytest.raises(ValueError, match="already installed"):
+        ra.install_reply_action(bot, scorer)
+    with pytest.raises(ValueError, match="disagree"):
+        ra.install_reply_action(us.install_reply_readout(_bot(package), model),
+            ra.ReplyActionScorer(weights, "a" * 64, "b" * 64))
+    active = [copy.deepcopy(source) for _ in range(3)]
+    legal = [list(a) for a in enumerate_legal(source, seat, cap=6).actions]
+    bot.unified_frame = us.LeafFrame(bot, root, root.turn)
+    frame = bot.unified_frame
+    planes, scalars = us.leaf_features(frame, source)
+    cache = frame.cache(model)
+    h = model.leaf_hidden_fused(frame.fused(model), planes.reshape(1, -1), scalars[None])[0] if fast else \
+        model.leaf_hidden(cache, planes[None], scalars[None])[0]
+    z = h @ model._t["reply.weight"] + model.r["reply.bias"]
+    expected_scores = scorer.scores(source, legal, z, h, cache[0], planes) if multi else \
+        np.array([sum(z[CARD_INDEX[c]] for c in action) for action in legal])
+    expected = legal[int(np.argmax(expected_scores))]
+    original_predict = bot.predict
+    calls = []
+    original_scores = scorer.scores
+    def scores(*args):
+        calls.append(args[0])
+        return original_scores(*args)
+    monkeypatch.setattr(scorer, "scores", scores)
+    def listing(clone, seat, cache):
+        actions = legal[:1] if clone is active[0] else legal
+        counts = np.stack([_counts(a) for a in actions])
+        return actions, counts
+    stats = pts.greedy_stats()
+    us.readout_reply_ply(pts.greedy_reply_ply)(bot, active, None, {}, stats, 1, 1, listing,
+        lambda leaves, seat, gate: (np.zeros(len(leaves)), 1))
+    want = copy.deepcopy(source)
+    want.play(seat, expected)
+    assert all(list(clone.trick.plays[-1].cards) == expected for clone in active[1:])
+    assert all(clone.hands == want.hands and clone.turn == want.turn for clone in active[1:])
+    assert len(calls) == (2 if multi else 0)
+    assert bot.predict is original_predict
+    assert stats["tree_forced_plays"] == 1

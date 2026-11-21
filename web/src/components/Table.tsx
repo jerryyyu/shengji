@@ -113,6 +113,8 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const canAct = !player.is_bot;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
+  const optionsButton = useRef<HTMLButtonElement | null>(null);
+  const openedByButton = useRef(false);
   useEffect(() => {
     if (!fullName) return;
     const t = window.setTimeout(() => setFullName(false), FULL_NAME_MS);
@@ -157,8 +159,21 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
          onPointerLeave={endPress}
          onPointerCancel={endPress}>
       {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
+      {/* the long press has no screen-reader or keyboard path, so a person's
+          seat also carries an unseen button that opens the same options */}
+      {canAct ? (
+        <button type="button" className="sr-only opp-options" ref={optionsButton}
+                aria-label={`${player.name}, player options`} aria-haspopup="dialog" aria-expanded={actions}
+                onClick={(event) => { event.stopPropagation(); openedByButton.current = true; setActions(true); }} />
+      ) : null}
       {actions && canAct ? (
-        <OpponentActions room={state.room} seat={player.seat} name={player.name} onClose={() => setActions(false)} />
+        <OpponentActions room={state.room} seat={player.seat} name={player.name}
+                         onClose={() => {
+                           setActions(false);
+                           // focus goes back to the seat's button only when it opened the options
+                           if (openedByButton.current) optionsButton.current?.focus();
+                           openedByButton.current = false;
+                         }} />
       ) : null}
       <div className="opp-name">
         {/* the phone pill carries the team as a dot and the turn as a gold

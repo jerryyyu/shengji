@@ -16,6 +16,7 @@ import { subscribeNearbyLog, nearbyLogLines, clearNearbyLog } from "../../src/ne
 import { SmartBot, viewFor } from "../../src/offline/bot";
 import type { RoundState } from "../../src/offline/engine/round";
 import { Radio, Rng, type Phone, type SimLink } from "./radio";
+import { BACKOFF_FIRST_S, BACKOFF_MAX_S, CONNECT_S, LONG_LIVED_S, type PageModel } from "./pageModel";
 
 type Frame = Record<string, unknown> & { type: string };
 
@@ -47,6 +48,9 @@ export interface GameOpts {
    *  host or joiner, two phones at once sometimes). Off, a seed makes the
    *  schedule it always made. */
   newFaults?: boolean;
+  /** The joiner page's reconnect: "sim" (the simulator's own loop) or "ws"
+   *  (ws.ts's connect timer and long-lived retry, pageModel.ts). */
+  page?: PageModel;
 }
 
 export interface Violation {
@@ -365,6 +369,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   };
 
   // the joiner pages
+  const wsPage = opts.page === "ws";
   class Page {
     readonly d: Device;
     readonly transport: NearbyTransport;
@@ -377,8 +382,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     boundSeat: number | null = null;
     leaving = false;
     done = false;
-    backoff = 0.5;
+    backoff = BACKOFF_FIRST_S;
     retry = 0;
+    /** When the current socket opened (ws.ts's openedAt), for LONG_LIVED_S. */
+    openedAt: number | null = null;
     misses = 0;
     decideGen = 0;
     readyOn = -1;
@@ -431,10 +438,29 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       this.boundSeat = null;
       const sock = new NearbySocket(this.transport, code, (s) => this.onLinkState(no, s), this.clock, this.greet);
       this.sock = sock;
+      this.openedAt = null;
+      if (wsPage) {
+        log(this.d.id, `page: attempt ${no}`);
+        // ws.ts's connect timer: an attempt not open by now is cut, with its
+        // handlers, and retried after the backoff
+        this.clock.setTimeout(() => {
+          if (this.sock !== sock || this.status !== "connecting") return;
+          log(this.d.id, `page: attempt ${no} cut at ${CONNECT_S} s (still connecting)`);
+          sock.onopen = null;
+          sock.onmessage = null;
+          sock.onclose = null;
+          sock.close();
+          this.sock = null;
+          this.status = "closed";
+          for (const s of this.d.sent) if (s.sock === no && s.state === "pending") s.state = "closed";
+          this.retryLater(false);
+        }, CONNECT_S);
+      }
       sock.onopen = () => {
         if (this.sock !== sock) return;
         this.status = "open";
-        this.backoff = 0.5;
+        this.openedAt = vc.now();
+        this.backoff = BACKOFF_FIRST_S;
         this.misses = 0;
         if (!this.seated) sock.send(JSON.stringify({ ...PEEK, code }));
       };
@@ -452,11 +478,15 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           return;
         }
         if (this.done) return;
-        const wait = this.backoff;
-        this.backoff = Math.min(this.backoff * 2, 2);
-        const r = ++this.retry;
-        this.clock.setTimeout(() => { if (r === this.retry && this.sock === null && !this.done) this.open(); }, wait);
+        this.retryLater(wsPage && this.openedAt !== null && vc.now() - this.openedAt > LONG_LIVED_S);
       };
+    }
+    /** The next attempt after the backoff (doubling to its cap), or at once. */
+    private retryLater(now: boolean): void {
+      const wait = now ? 0 : this.backoff;
+      this.backoff = Math.min(this.backoff * 2, BACKOFF_MAX_S);
+      const r = ++this.retry;
+      this.clock.setTimeout(() => { if (r === this.retry && this.sock === null && !this.done) this.open(); }, wait);
     }
     reconnectNow(): void {
       this.retry += 1;
@@ -882,7 +912,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   stats.hostRefused = Object.values(nearbyHost.refused).reduce((a, b) => a + b, 0);
   offLog();
   Math.random = savedRandom;
-  (globalThis.crypto as { getRandomValues: (a: Uint8Array) => Uint8Array }).getRandomValues = savedGetRandom;
+  (globalThis.crypto as unknown as { getRandomValues: typeof savedGetRandom }).getRandomValues = savedGetRandom;
   setNearbyKeepalive(true);
   return { seed: opts.seed, violation, trace, schedule, stats, recoveries };
 }

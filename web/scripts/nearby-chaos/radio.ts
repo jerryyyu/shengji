@@ -5,7 +5,8 @@
 // listener, the browse, the tried set, parallel tries, the Wi-Fi-first look,
 // the kept browse, the move off peer-to-peer) behind the same JS interface
 // the Capacitor plugin has, so the page's real native.ts runs on top of it.
-// On demand only: nothing in the app or in CI imports this.
+// On demand only: nothing in the app imports this; CI runs it only in the
+// simulator's own tests (src/nearbyChaos*.test.ts).
 import type { VirtualClock } from "../../src/offline/server/clock";
 import type { NearbyPlugin } from "../../src/offline/server/nearby/native";
 import { PhoneHold } from "./hold";
@@ -546,7 +547,10 @@ export class SimPlugin implements NearbyPlugin {
     return undefined;
   }
 
-  addListener(event: string, fn: EvFn): Promise<{ remove(): void }> {
+  // each event's own payload type is the page's (NearbyPlugin); here they
+  // are all one record
+  addListener(event: string, listener: (ev: never) => void): Promise<{ remove(): void }> {
+    const fn = listener as unknown as EvFn;
     if (!this.listeners.has(event)) this.listeners.set(event, new Set());
     this.listeners.get(event)!.add(fn);
     return Promise.resolve({ remove: () => { this.listeners.get(event)?.delete(fn); } });

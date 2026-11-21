@@ -16,6 +16,8 @@
 //                Wi-Fi network); with --replay, added to the replay's bugs
 // --hostile      also duplicate frames inside a link (TCP never does): the
 //                safety invariants still hold
+// --page MODEL   the joiner page's reconnect: sim (default) or ws (ws.ts's
+//                5 s connect timer and long-lived retry, pageModel.ts)
 // --new-faults   the device test's faults too: stallPhone (every frame of
 //                one phone held, on all its links; two phones may overlap)
 // --replay FILE  run one game from a replay file, deterministically
@@ -31,6 +33,7 @@
 import { writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGame, type Fault, type GameOpts, type GameResult } from "./sim";
+import type { PageModel } from "./pageModel";
 
 interface Replay {
   seed: number;
@@ -40,6 +43,7 @@ interface Replay {
   hostile: boolean;
   schedule: Fault[];
   invariant: string;
+  page?: PageModel;
 }
 
 function args(argv: string[]): Record<string, string | boolean> {
@@ -99,7 +103,7 @@ async function main(): Promise<void> {
     const rp = JSON.parse(readFileSync(a.replay, "utf8")) as Replay;
     const planted = typeof a.bug === "string" ? a.bug.split(",") : [];
     const r = await runGame({ seed: rp.seed, bugs: [...rp.bugs, ...planted], seconds: rp.seconds, bound: rp.bound, hostile: rp.hostile,
-                              schedule: rp.schedule, verbose: a.verbose === true });
+                              schedule: rp.schedule, verbose: a.verbose === true, page: rp.page });
     if (r.violation) {
       report(r, a.verbose ? 0 : 200);
       process.exitCode = 1;
@@ -115,6 +119,7 @@ async function main(): Promise<void> {
     hostile: a.hostile === true,
     verbose: a.verbose === true,
     newFaults: a["new-faults"] === true,
+    page: (a.page === "ws" ? "ws" : "sim") as PageModel,
   };
   const totals: Record<string, number> = {};
   const recoveries: number[] = [];
@@ -131,7 +136,7 @@ async function main(): Promise<void> {
       if (a["no-shrink"] !== true) r = await shrink(opts, r);
       report(r);
       const rp: Replay = { seed, bugs: base.bugs, seconds: base.seconds, bound: base.bound, hostile: base.hostile,
-                           schedule: r.schedule, invariant: r.violation!.invariant };
+                           schedule: r.schedule, invariant: r.violation!.invariant, page: base.page };
       const file = join(out, `nearby-chaos-${seed}.json`);
       writeFileSync(file, JSON.stringify(rp, null, 2));
       console.log(`replay: npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay ${file}`);

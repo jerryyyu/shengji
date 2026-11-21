@@ -87,8 +87,6 @@ export class NearbySocket {
   private heard = 0;
   /** Clock time of the ping still waiting for its pong, or null. */
   private pingSent: number | null = null;
-  /** The pingSent of the ping that has its own pong deadline timer. */
-  private timedPing: number | null = null;
   /** Clock time of the latest move sent, until the host's next state. */
   private movedAt: number | null = null;
   /** A seat's resume: its hello is out and the socket opens once the host
@@ -329,12 +327,8 @@ export class NearbySocket {
       // a stuck link that is given more time, and answers, stays watched:
       // the loop goes on until the link is replaced
       if (this.clock.now() - this.heard >= LIMITS.silentSeconds) this.stuck("the host is silent", link);
-      else if (this.pingSent !== null && this.pingSent !== this.timedPing
-               && this.clock.now() - this.pingSent >= this.pongWindow(link)) this.stuck("no pong", link);
-      else if (this.pingSent === null) {
-        if (!this.sendPing(link)) return;
-        this.pongBy(link, "no pong");
-      }
+      else if (this.pingSent !== null && this.clock.now() - this.pingSent >= this.pongWindow(link)) this.stuck("no pong", link);
+      else if (this.pingSent === null && !this.sendPing(link)) return;
       if (this.link === link && this.readyState === NearbySocket.OPEN) this.ping(link);
     }, LIMITS.pingSeconds);
   }
@@ -412,19 +406,12 @@ export class NearbySocket {
       if (!this.sendPing(link)) return;
       nearbyLog("socket", "probe sent");
     }
-    this.pongBy(link, "no pong after a move");
-  }
-
-  /** The ping in flight must be answered within the pong window from when
-   *  it went out, timed on its own: the link is called stuck at the
-   *  deadline itself, not at the next regular ping. */
-  private pongBy(link: JoinLink, why: string): void {
     const sent = this.pingSent;
-    if (sent === null) return;
-    this.timedPing = sent;
-    const window = this.pongWindow(link) - (this.clock.now() - sent);
+    const window = this.pongWindow(link) - (sent === null ? 0 : this.clock.now() - sent);
     this.clock.setTimeout(() => {
-      if (this.link === link && this.readyState === NearbySocket.OPEN && this.pingSent === sent) this.stuck(why, link);
+      if (this.link === link && this.readyState === NearbySocket.OPEN && this.pingSent === sent && sent !== null) {
+        this.stuck("no pong after a move", link);
+      }
     }, Math.max(0, window));
   }
 

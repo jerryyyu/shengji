@@ -12,9 +12,9 @@ passed in (the default finisher's ``decide_play``).  The caller owns
 every check that makes the plain dict copy and item assignments the
 reference's attribute operations.
 
-`project_singleton_replies` only builds the card moves and trick metadata
+`project_replies` only builds the card moves and trick metadata
 that a same-trick readout consumes. It needs the standard compiled follow
-policy and a trusted, nonterminal singleton trick.
+policy and a trusted, nonterminal trick with a one-component lead.
 """
 import numpy as np
 
@@ -92,9 +92,9 @@ cdef inline tuple _reply_incumbent(list cards, list lead, tuple incumbent,
     return incumbent
 
 
-def project_singleton_replies(clone, int seat, list candidates, int frame_seat,
-                              parent, tuple plane_maps, dict points, tuple actual,
-                              long prior_points, decide, beats, trickplay_cls):
+def project_replies(clone, int seat, list candidates, int frame_seat,
+                    parent, tuple plane_maps, dict points, tuple actual,
+                    long prior_points, decide, beats, trickplay_cls):
     cdef _ReplyState state = _ReplyState()
     cdef _ReplyTrick trick = _ReplyTrick()
     cdef object source = clone.trick
@@ -102,14 +102,18 @@ def project_singleton_replies(clone, int seat, list candidates, int frame_seat,
     cdef list lead
     cdef tuple cached = source.incumbent
     cdef long cached_points = source.running_points
-    cdef int pos, turn, relative, n_prior = len(prior)
+    cdef int pos, turn, relative, width, n_prior = len(prior)
     cdef long pts, total
     cdef tuple incumbent, updated
-    cdef list out = [], slots
+    cdef list out = [], slots, hand, played
+    cdef dict lookup
     cdef object candidate, cards, card
     if not 1 <= n_prior <= 2 or not 0 <= seat < 4 or not 0 <= frame_seat < 4:
         return None
     lead = prior[0].cards
+    width = len(lead)
+    if not width:
+        return None
     state.trick = trick
     # Each remaining player acts once. The compiled follow and its validator
     # read only that player's hand, so those hands can be shared with the parent.
@@ -125,26 +129,41 @@ def project_singleton_replies(clone, int seat, list candidates, int frame_seat,
         cards = candidate
         turn = seat
         for pos in range(n_prior, 4):
-            if type(cards) is not list or len(cards) != 1:
+            if type(cards) is not list or len(cards) != width:
                 return None
-            card = cards[0]
-            if pos == n_prior and (type(card) is not str or card not in state.hands[turn]):
-                return None
+            played = <list>cards
             relative = (turn - frame_seat + 4) % 4
-            slots.append(plane_maps[relative][card])
-            pts = points[card]
+            lookup = plane_maps[relative]
+            if width == 1:
+                card = played[0]
+                if pos == n_prior and (type(card) is not str or card not in state.hands[turn]):
+                    return None
+                slots.append(lookup[card])
+                pts = points[card]
+            else:
+                if pos == n_prior:
+                    hand = state.hands[turn]
+                    for card in played:
+                        if type(card) is not str or played.count(card) > hand.count(card):
+                            return None
+                pts = 0
+                for card in played:
+                    slots.append(lookup[card])
+                    pts += points[card]
             total += pts
-            updated = _reply_incumbent(cards, lead, incumbent, state.ordering, turn, beats)
+            updated = _reply_incumbent(played, lead, incumbent, state.ordering, turn, beats)
             if pos < 3:
                 # The heuristic observes the transition caches, including if
                 # they differ from the winner and points computed for the readout.
                 if trick.incumbent == incumbent:
                     trick.incumbent = updated
                 else:
-                    trick.incumbent = _reply_incumbent(cards, lead, trick.incumbent,
+                    trick.incumbent = _reply_incumbent(played, lead, trick.incumbent,
                                                        state.ordering, turn, beats)
                 trick.running_points += pts
-                trick.plays.append(trickplay_cls(turn, cards))
+                if trick.running_points > 200:
+                    return None
+                trick.plays.append(trickplay_cls(turn, played))
                 turn = (turn + 1) % 4
                 cards = decide(state, turn)
             incumbent = updated

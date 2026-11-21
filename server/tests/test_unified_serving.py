@@ -957,8 +957,44 @@ def test_fourth_reply_packing_refuses_malformed_rows():
     assert parent[[0, 1, 5 * 54, 5 * 54 + 1]].tolist() == [1, 1, 0, 255]
 
 
-@pytest.mark.parametrize("pos", [1, 2, 3])
-def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch, pos):
+def _multi_reply_fixture(pos, width):
+    from collections import Counter
+    from shengji.engine.cards import Ordering, make_deck
+    from shengji.engine.round import HAND_SIZE, Round, Trick
+    from shengji.harvest.legal import enumerate_legal
+    from shengji.train import pv_tree_search as search
+
+    rnd = Round("7", 0, rng=random.Random(7))
+    rnd.phase, rnd.turn, rnd.trick = "play", 0, Trick(leader=0)
+    rnd.trump_suit, rnd.ordering = "H", Ordering("H", "7")
+    pairs = [("S5", "S6"), ("S8", "S9", "SJ", "SQ"), ("S2", "S3", "SK", "SA"), ("S4", "S10")]
+    rnd.hands = [[card for card in hand for _ in range(2)] for hand in pairs]
+    dealt = Counter(card for hand in rnd.hands for card in hand)
+    residual = list((Counter(make_deck()) - dealt).elements())
+    for hand in rnd.hands:
+        needed = HAND_SIZE - len(hand)
+        hand.extend(residual[:needed])
+        del residual[:needed]
+    rnd.buried = residual
+
+    def after(lead):
+        clone = search.afterstate_fast(rnd, 0, rnd.hands, rnd.buried, lead)
+        if pos == 2:
+            seat = clone.turn
+            clone.play(seat, search.default_finisher().decide_play(clone, seat))
+        return clone
+
+    multi = after(["S5", "S5", "S6", "S6"][:width])
+    singleton = after(["S5"])
+    fallback = copy.deepcopy(multi)
+    fallback.trick.running_points = 201
+    candidates = [list(cards) for cards in enumerate_legal(multi, multi.turn, cap=6).actions]
+    assert len(candidates) >= 2 and all(len(set(cards)) < width for cards in candidates)
+    return (multi, multi.turn, candidates), [copy.deepcopy(multi), singleton, fallback] * 3
+
+
+@pytest.mark.parametrize(("pos", "width"), [(1, 1), (2, 1), (3, None), (1, 2), (2, 2), (1, 4), (2, 4)])
+def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch, pos, width):
     from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
     from shengji.engine import fast
     from shengji.train import pv_tree_search as search, unified_slots as us
@@ -972,41 +1008,62 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
     states = []
     alternatives = {}
     mixed = None
-    for clone, seat, candidates in _follow_clones((707_001, 707_002, 707_003), True):
-        if len(clone.trick.plays) != pos or len(candidates) < 2:
-            continue
-        singleton = len(clone.trick.plays[0].cards) == 1
-        if (pos == 3 or singleton) and len(states) < 8:
-            states.append((clone, seat, candidates))
-        if pos == 2:
-            key = (len(clone.history), seat)
-            pair = alternatives.setdefault(key, {})
-            pair[singleton] = clone
-            if len(pair) == 2:
-                mixed = pair
-        if len(states) == 8 and (pos != 2 or mixed is not None):
-            break
-    assert len(states) == 8
+    if width in (2, 4):
+        state, mixed = _multi_reply_fixture(pos, width)
+        states.append(state)
+    else:
+        for clone, seat, candidates in _follow_clones((707_001, 707_002, 707_003), True):
+            if len(clone.trick.plays) != pos or len(candidates) < 2:
+                continue
+            singleton = len(clone.trick.plays[0].cards) == 1
+            if (pos == 3 or singleton) and len(states) < 8:
+                states.append((clone, seat, candidates))
+            if pos == 2:
+                key = (len(clone.history), seat)
+                pair = alternatives.setdefault(key, {})
+                pair[singleton] = clone
+                if len(pair) == 2:
+                    mixed = [pair[True], pair[False]] * 4
+            if len(states) == 8 and (pos != 2 or mixed is not None):
+                break
+        assert len(states) == 8
     stale, seat, candidates = states[0]
     clean = search.reply_children_fast(stale, seat, candidates)
     stale.trick.running_points = 50
     stale.trick.incumbent = ((seat + 1) % 4, "T", 15)
-    if pos < 3:
+    if pos < 3 and (width == 1 or pos == 1):
         changed = search.reply_children_fast(stale, seat, candidates)
         assert any(a.history[-1].plays != b.history[-1].plays for a, b in zip(clean, changed))
     real_features = us._direct_reply_features
     real_probs = model.leaf_value_probs_fused
-    real_project = search._reply_fast.project_singleton_replies
+    real_project = search._reply_fast.project_replies
+    real_materialize = search._reply_fast.reply_children
     monkeypatch.setattr(search, "greedy_reply_ply", us.readout_reply_ply(search.greedy_reply_ply))
     trace = []
     direct = []
     projected = []
+    materialized = []
 
     def project(clone, seat, candidates, *args):
         result = real_project(clone, seat, candidates, *args)
         assert len(result) == len(candidates)
-        projected.append(len(clone.trick.plays))
+        n_prior, n_cards = len(clone.trick.plays), len(clone.trick.plays[0].cards)
+        if width in (2, 4) and n_cards == width and (n_prior, n_cards) not in projected:
+            frame_seat, _, plane_maps, *_ = args
+            reference = search.reply_children_fast(clone, seat, candidates)
+            for item, child in zip(result, reference):
+                expected = [plane_maps[(play.seat - frame_seat) % 4][card]
+                            for play in child.history[-1].plays[n_prior:] for card in play.cards]
+                assert item[1] == expected
+            hand = clone.hands[seat]
+            single = next(card for card in hand if hand.count(card) == 1)
+            assert real_project(clone, seat, [[single] * n_cards], *args) is None
+        projected.append((n_prior, n_cards))
         return result
+
+    def materialize(clone, *args):
+        materialized.append((len(clone.trick.plays), clone.trick.running_points))
+        return real_materialize(clone, *args)
 
     def features(frame, items):
         result = real_features(frame, items)
@@ -1017,7 +1074,8 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
         trace.append(("forward", planes.shape, planes.tobytes(), scalars.tobytes()))
         return real_probs(fused, planes, scalars)
 
-    monkeypatch.setattr(search._reply_fast, "project_singleton_replies", project)
+    monkeypatch.setattr(search._reply_fast, "project_replies", project)
+    monkeypatch.setattr(search._reply_fast, "reply_children", materialize)
     monkeypatch.setattr(us, "_direct_reply_features", features)
     monkeypatch.setattr(model, "leaf_value_probs_fused", probs)
     monkeypatch.setattr(us, "READOUT_BATCH", 6)
@@ -1041,15 +1099,17 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
                 bot.evaluator.positions, bot.evaluator.model_rows)
 
     groups = [[clone] * 9 for clone, _, _ in states]
-    if pos == 2:
-        assert mixed is not None
-        groups.append([mixed[True], mixed[False]] * 4)
+    if mixed is not None:
+        groups.append(mixed)
     for group in groups:
         projected.clear()
+        materialized.clear()
         got = run(group)
         if pos < 3:
-            assert pos in projected
+            assert (pos, width) in projected
+        if group is mixed and width in (2, 4):
+            assert (pos, 1) in projected and (pos, 201) in materialized
         with monkeypatch.context() as patch:
             patch.setattr(us, "_projected_reply_callbacks", lambda *a: None)
             assert run(group) == got
-    assert len(direct) > 60
+    assert len(direct) > (30 if width in (2, 4) else 60)

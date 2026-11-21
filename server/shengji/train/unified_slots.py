@@ -701,7 +701,7 @@ def _projected_reply_features(frame, items):
             np.concatenate((direct_scalars, leaf_scalars))[order], [keys[i] for i in order])
 
 
-def _singleton_finishable(clone, pos, search, fast):
+def _projectable_reply_clone(clone, pos, search, fast):
     trick = clone.trick
     if (getattr(clone, "_trusted_rollout", False) is not True or type(trick) is not search.Trick
             or type(trick.plays) is not list or len(trick.plays) != pos
@@ -711,15 +711,22 @@ def _singleton_finishable(clone, pos, search, fast):
             or type(clone.banker) is not int or not 0 <= clone.banker < 4
             or type(clone.attacker_points) is not int
             or type(clone.hands) is not list or len(clone.hands) != 4
-            or any(type(hand) is not list for hand in clone.hands)
-            or any(len(clone.hands[(trick.leader + i) % 4]) <= 1 for i in range(pos, 4))):
+            or any(type(hand) is not list or len(hand) > search.engine_round.HAND_SIZE
+                   for hand in clone.hands)):
+        return False
+    first = trick.plays[0]
+    if type(first) is not search.TrickPlay or type(first.cards) is not list:
+        return False
+    width = len(first.cards)
+    if not width or any(len(clone.hands[(trick.leader + i) % 4]) <= width for i in range(pos, 4)):
         return False
     inc, points = trick.incumbent, trick.running_points
     return (type(inc) is tuple and len(inc) == 3 and type(inc[0]) is int and 0 <= inc[0] < 4
-            and inc[1] in ("S", "H", "D", "C", "T") and type(inc[2]) is int and -1 <= inc[2] <= 15
-            and type(points) is int and 0 <= points <= 200 - 10 * (4 - pos)
+            and type(inc[1]) is str and inc[1] in ("S", "H", "D", "C", "T")
+            and type(inc[2]) is int and -1 <= inc[2] <= 15
+            and type(points) is int and 0 <= points <= 200
             and all(type(play) is search.TrickPlay and play.seat == (trick.leader + i) % 4
-                    and type(play.cards) is list and len(play.cards) == 1
+                    and type(play.cards) is list and len(play.cards) == width
                     for i, play in enumerate(trick.plays)))
 
 
@@ -749,8 +756,10 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
     if not 1 <= pos <= 3:
         return None
     if pos < 3:
-        project = getattr(search._reply_fast, "project_singleton_replies", None)
+        project = getattr(search._reply_fast, "project_replies", None)
         if (project is None or legal.beats is not fast._fast.beats
+                or combos.decompose is not fast._fast.decompose
+                or legal.uniform_suit is not fast._fast.uniform_suit
                 or HeuristicBot._follow is not fast._fast.heuristic_follow
                 or HeuristicBot._forced_follow is not fast._forced_follow_fast
                 or _STANDARD_DECIDE_PLAY.__globals__.get("validate_follow") is not fast._fast.validate_follow):
@@ -769,7 +778,7 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
         if pos == 3:
             if len(clone.hands[clone.turn]) > len(trick.plays[0].cards):
                 eligible.add(id(clone))
-        elif _singleton_finishable(clone, pos, search, fast):
+        elif _projectable_reply_clone(clone, pos, search, fast):
             eligible.add(id(clone))
     if not eligible or (pos == 3 and len(eligible) != len(active)):
         return None
@@ -778,10 +787,16 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
         if id(clone) not in eligible:
             return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
         trick = clone.trick
+        lead = trick.plays[0].cards
+        # The compiled follow can call the Python shape picker for throws.
+        if pos < 3 and len(lead) > 1 and len(combos.decompose(lead, clone.ordering).components) != 1:
+            return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
         actual = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
         prior_points = sum(pts[c] for play in trick.plays for c in play.cards)
         parent = planes[index_of[id(clone)]]
         if pos < 3:
+            if actual[1] is None:
+                return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
             result = project(clone, seat, candidates, frame.seat, parent, plane_maps, pts,
                              actual, prior_points, decide, legal.beats, search.TrickPlay)
             if result is None:
@@ -792,7 +807,7 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
         lookup = plane_maps[rel].__getitem__
         result = []
         for cards in candidates:
-            won = suit is not None and legal.beats(cards, trick.plays[0].cards, suit, top, clone.ordering)[0]
+            won = suit is not None and legal.beats(cards, lead, suit, top, clone.ordering)[0]
             winner = rel if won else (incumbent - frame.seat) % 4
             points = prior_points + sum(map(pts.__getitem__, cards))
             result.append((parent, tuple(map(lookup, cards)), points, winner))

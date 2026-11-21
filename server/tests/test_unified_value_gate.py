@@ -2,6 +2,9 @@
 import copy
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -138,6 +141,50 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     assert summary['value_gate'] == result['value']['gate']
     assert summary['reply_gate'] == result['reply']['gate']
     assert summary['replay'] == reader.REPLAY
+    # The lane invokes the reader in isolation, outside the source checkout.
+    foreign = tmp_path / 'foreign'
+    foreign.mkdir()
+    for module in ('shengji', 'expert_labels', 'validity', 'unified_value_gate'):
+        (foreign / (module + '.py')).write_text('raise RuntimeError("wrong checkout imported")\n')
+    for mode in ('-I', '-P'):
+        cli_out = tmp_path / f'cli-{mode}.json'
+        cli = subprocess.run([sys.executable, mode, str(PATH.with_name('unified_value_gate_read.py')),
+                              str(cli_out), str(chosen), str(full)], cwd=foreign,
+                             env={**os.environ, 'PYTHONPATH': str(foreign)},
+                             capture_output=True, text=True)
+        assert cli.returncode == 0, cli.stdout + cli.stderr
+        assert json.loads(cli_out.read_text()) == result
+        assert json.loads(cli.stdout) == summary
+    # Cluster coverage alone cannot detect deleted decisions inside a worker file.
+    damaged = rows(full)
+    del damaged[3]
+    lost = tmp_path / 'lost-row.jsonl'
+    lost.write_text(''.join(json.dumps(row) + '\n' for row in damaged))
+    lost_before = lost.read_bytes()
+    with pytest.raises(ValueError, match='row count'):
+        reader.main([str(tmp_path / 'lost-read.json'), str(chosen), str(lost)])
+    assert not (tmp_path / 'lost-read.json').exists()
+    with pytest.raises(ValueError, match='row count'):
+        run(lost, 0)
+    assert lost.read_bytes() == lost_before
+    assert rows(full)[-1]['rows'] == len(rows(full)[:-1]) == 8
+    for count in (None, True, 8.0, -1, 7, 9):
+        damaged = rows(full)
+        damaged[-1]['rows'] = count
+        lost.write_text(''.join(json.dumps(row) + '\n' for row in damaged))
+        with pytest.raises(ValueError, match='row count'):
+            reader.main([str(tmp_path / 'lost-read.json'), str(chosen), str(lost)])
+        with pytest.raises(ValueError, match='row count'):
+            run(lost, 0)
+    assert not (tmp_path / 'lost-read.json').exists()
+    duplicate = rows(full)
+    duplicate.insert(1, duplicate[0])
+    duplicate[-1]['rows'] += 1
+    lost.write_text(''.join(json.dumps(row) + '\n' for row in duplicate))
+    lost_before = lost.read_bytes()
+    with pytest.raises(ValueError, match='duplicate decision'):
+        run(lost, 0)
+    assert lost.read_bytes() == lost_before
     invalid_file = tmp_path / 'invalid-worlds.jsonl'
     invalid_rows = rows(full)
     invalid_rows[0]['worlds'] = 63
@@ -146,6 +193,33 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     invalid_summary = json.loads(capsys.readouterr().out)
     assert invalid_summary['validity'] == 'DEV_INVALID'
     assert 'value_gate' not in invalid_summary and 'reply_gate' not in invalid_summary
+    invalid_cli_out = tmp_path / 'invalid-cli.json'
+    invalid_cli = subprocess.run([sys.executable, '-I', str(PATH.with_name('unified_value_gate_read.py')),
+                                  str(invalid_cli_out), str(chosen), str(invalid_file)],
+                                 cwd=foreign, capture_output=True, text=True)
+    assert invalid_cli.returncode == 1, invalid_cli.stdout + invalid_cli.stderr
+    assert json.loads(invalid_cli_out.read_text())['validity']['verdict'] == 'DEV_INVALID'
+    assert 'value_gate' not in json.loads(invalid_cli.stdout)
+    assert 'reply_gate' not in json.loads(invalid_cli.stdout)
+
+    occupied = tmp_path / 'occupied-worker.jsonl'
+    occupied.write_text(''.join(json.dumps(dict(row, workers=2)) + '\n' for row in rows(full)))
+    empty = tmp_path / 'empty-worker.jsonl'
+    terminal = dict(rows(full)[-1], worker=1, workers=2, clusters=0, rows=0)
+    empty.write_text(json.dumps(terminal) + '\n')
+    empty_ok = tmp_path / 'empty-ok.json'
+    reader.main([str(empty_ok), str(chosen), str(occupied), str(empty)])
+    assert json.loads(empty_ok.read_text()) == result
+    capsys.readouterr()
+    for key in reader.IDENTITY:
+        if key == 'workers':
+            continue
+        changed = dict(terminal, **{key: 'different'})
+        empty.write_text(json.dumps(changed) + '\n')
+        bad_empty = tmp_path / 'empty-invalid.json'
+        with pytest.raises(ValueError, match='worker identity'):
+            reader.main([str(bad_empty), str(chosen), str(occupied), str(empty)])
+        assert not bad_empty.exists()
     with pytest.raises(ValueError, match='already exists'):
         reader.main([str(result_path), 'missing', 'missing'])
     valid = rows(full)[:-1]

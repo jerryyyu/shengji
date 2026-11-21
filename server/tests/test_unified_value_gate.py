@@ -2,6 +2,9 @@
 import copy
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -138,6 +141,20 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     assert summary['value_gate'] == result['value']['gate']
     assert summary['reply_gate'] == result['reply']['gate']
     assert summary['replay'] == reader.REPLAY
+    # The lane invokes the reader in isolation, outside the source checkout.
+    foreign = tmp_path / 'foreign'
+    foreign.mkdir()
+    for module in ('shengji', 'expert_labels', 'validity', 'unified_value_gate'):
+        (foreign / (module + '.py')).write_text('raise RuntimeError("wrong checkout imported")\n')
+    for mode in ('-I', '-P'):
+        cli_out = tmp_path / f'cli-{mode}.json'
+        cli = subprocess.run([sys.executable, mode, str(PATH.with_name('unified_value_gate_read.py')),
+                              str(cli_out), str(chosen), str(full)], cwd=foreign,
+                             env={**os.environ, 'PYTHONPATH': str(foreign)},
+                             capture_output=True, text=True)
+        assert cli.returncode == 0, cli.stdout + cli.stderr
+        assert json.loads(cli_out.read_text()) == result
+        assert json.loads(cli.stdout) == summary
     # Cluster coverage alone cannot detect deleted decisions inside a worker file.
     damaged = rows(full)
     del damaged[3]

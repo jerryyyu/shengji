@@ -9,11 +9,16 @@ sealed, named-reader handoff; this CLI supplies no such authority.
 import argparse
 import json
 import math
+import sys
 from collections import defaultdict
 from pathlib import Path
 
+# Isolated CLI execution must use the validation and model code beside this reader.
+SCRIPTS = Path(__file__).resolve().parent
+sys.path[:0] = [str(SCRIPTS / "expert_labels"), str(SCRIPTS), str(SCRIPTS.parent)]
+
 import numpy as np
-from expert_labels import validity as va
+import validity as va
 from unified_value_gate import REPLAY
 from shengji.rl.value_afterstate import signed_level_category
 

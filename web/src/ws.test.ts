@@ -902,3 +902,52 @@ it("sends the online page's buffered telemetry before going offline, collects no
   telemetry.flush();
   expect(taps(back)).toEqual(["duo"]);
 });
+
+describe("a nearby link's reconnect attempts", () => {
+  it("retry at 0, 0.25, 0.5 and then every 1 s, from the start again once one opens; the game server's keep their backoff", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await load();
+      conn.start();
+      FakeWS.last!.onopen?.();
+      const made: number[] = [];
+      conn.useNearby(() => {
+        made.push(Date.now());
+        return new FakeWS("nearby") as unknown as WebSocket;
+      });
+      FakeWS.last!.onopen?.();
+      const closed: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        closed.push(Date.now());
+        FakeWS.last!.close();
+        await vi.advanceTimersByTimeAsync(1000);
+      }
+      // each attempt's wait after the close before it
+      expect(closed.map((t, i) => made[i + 1] - t)).toEqual([0, 250, 500, 1000, 1000, 1000]);
+      FakeWS.last!.onopen?.();
+      made.length = 0;
+      made.push(Date.now());
+      FakeWS.last!.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(made).toHaveLength(2);
+      expect(made[1] - made[0]).toBe(0);
+      // back to the game server: its own backoff, unchanged
+      conn.leaveNearby();
+      await vi.advanceTimersByTimeAsync(0);
+      const remote: number[] = [];
+      let at = Date.now();
+      FakeWS.last!.onopen?.();
+      for (let i = 0; i < 3; i++) {
+        const ws = FakeWS.last!;
+        at = Date.now();
+        ws.close();
+        while (FakeWS.last === ws) await vi.advanceTimersByTimeAsync(50);
+        remote.push(Date.now() - at);
+      }
+      expect(remote).toEqual([500, 1000, 2000]);
+      conn.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

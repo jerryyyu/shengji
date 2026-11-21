@@ -62,12 +62,11 @@ it("a resume whose hello is answered at 5.5 s keeps its one link and is back by 
   expect(conn.status).toBe("open");
   // the link drops; the next one is slow: each frame takes 2.75 s, so the
   // host's answer to its hello lands 5.5 s after it was made
-  fake.drop(code, fake.peersOf(code)[0]);
-  await vi.advanceTimersByTimeAsync(100);
-  expect(conn.status).not.toBe("open");
-  fake.delay = 2.75;
   const before = made.length;
-  await vi.advanceTimersByTimeAsync(1000);
+  fake.drop(code, fake.peersOf(code)[0]);
+  fake.delay = 2.75;
+  await vi.advanceTimersByTimeAsync(1100);
+  expect(conn.status).not.toBe("open");
   expect(made.length).toBe(before + 1);
   const at = made[before];
   await vi.advanceTimersByTimeAsync(5700 - (Date.now() - at));

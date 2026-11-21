@@ -90,8 +90,10 @@ const ANSWERED: ReadonlySet<ClientMsg["type"]> = new Set<ClientMsg["type"]>([
   "play", "bury", "declare", "pass_declare", "next_round", "im_back",
   "table_chat", "table_allow_joiners",
 ]);
-/** The longest wait between a nearby link's reconnect attempts. */
-export const NEARBY_BACKOFF_MAX_MS = 2000;
+/** A nearby link's reconnect attempts wait these long, the last one
+ *  repeating: the host's few unseated links bound what they cost, and a
+ *  seat has the host's window (about a minute) to get back in. */
+export const NEARBY_RETRY_MS: readonly number[] = [0, 250, 500, 1000];
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
@@ -167,6 +169,8 @@ class Connection {
   private leavingWs: WebSocket | null = null;
   private leaveTimer: number | null = null;
   private backoff = 500;
+  /** Nearby reconnect attempts since the last open, into NEARBY_RETRY_MS. */
+  private nearbyTries = 0;
   private reconnectTimer: number | null = null;
   private started = false;
   /** Opens the transport: the game server's WebSocket, or offline the
@@ -335,6 +339,7 @@ class Connection {
   private retireTransport(): void {
     this.cutSocket();
     this.backoff = 500;
+    this.nearbyTries = 0;
     this.immediate = false;
     if (this.opened) {
       clearSavedRoom();
@@ -577,6 +582,7 @@ class Connection {
       if (connectTimer !== null) window.clearTimeout(connectTimer);
       connectTimer = null;
       this.backoff = 500;
+      this.nearbyTries = 0;
       this.generation += 1;
       this.openedAt = Date.now();
       if (this.lostAt !== null) {
@@ -680,12 +686,15 @@ class Connection {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer !== null) return;
-    const delay = this.immediate ? 0 : this.backoff;
+    let delay: number;
+    if (this.transport === "nearby") {
+      delay = this.immediate ? 0 : NEARBY_RETRY_MS[Math.min(this.nearbyTries, NEARBY_RETRY_MS.length - 1)];
+      this.nearbyTries += 1;
+    } else {
+      delay = this.immediate ? 0 : this.backoff;
+      this.backoff = Math.min(this.backoff * 2, this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
+    }
     this.immediate = false;
-    // a nearby seat has the host's window (about a minute) to get back in:
-    // its attempts stay close together through it
-    this.backoff = Math.min(this.backoff * 2,
-      this.transport === "nearby" ? NEARBY_BACKOFF_MAX_MS : this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

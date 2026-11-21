@@ -134,14 +134,18 @@ export class PauseWatch {
   }
 
   /** `fn` once `seconds` of the page's awake time have passed: a pause in
-   *  between moves it on by the pause. */
+   *  between is left out, so a deadline that came due inside a pause has
+   *  only the awake time it had left before the pause. */
   after(fn: () => void, seconds: number): void {
+    const start = this.clock.now();
     const mark = this.paused();
-    this.clock.setTimeout(() => {
-      const more = this.paused() - mark;
-      if (more > 1e-9) this.after(fn, more);
+    const check = () => {
+      const left = seconds - (this.clock.now() - start - (this.paused() - mark));
+      // within a microsecond counts as due (a float clock can land a hair short)
+      if (left > 1e-6) this.clock.setTimeout(check, left);
       else fn();
-    }, seconds);
+    };
+    this.clock.setTimeout(check, seconds);
   }
 }
 

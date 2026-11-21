@@ -7,6 +7,7 @@
 // here, the order that once ended every link.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DeviceClock, type Rng } from "../../../../scripts/nearby-chaos/radio";
+import { VirtualClock, pauseWatch } from "../clock";
 import { MOVE_TIMER } from "../server";
 import { setNearbyForTests } from "./flag";
 import { LIMITS, NEARBY_V, PING_TEXT } from "./protocol";
@@ -125,4 +126,26 @@ describe("a joiner page frozen past its pong wait", () => {
     expect(sock.readyState).toBe(NearbySocket.OPEN);
     expect(t.nearbyHost!.refused.silent).toBeUndefined();
   }, 60_000);
+});
+
+describe("a deadline on the page's awake time", () => {
+  it("that came due inside a pause has only what it had left before it", async () => {
+    const vc = new VirtualClock();
+    const dc = new DeviceClock(vc);
+    const watch = pauseWatch(dc);
+    const release = watch.hold();
+    let at = -1;
+    watch.after(() => { at = vc.now(); }, 5);
+    await vc.run(() => vc.now() >= 4);
+    dc.suspend();
+    let woke = false;
+    vc.setTimeout(() => { dc.resume(timersFirst); woke = true; }, 16);
+    await vc.run(() => woke);
+    await vc.run(() => at >= 0 || vc.now() > 60);
+    release();
+    // 4 s before the pause, about 1 s after it (the beat measures the pause
+    // to within its 1 s), never the whole 5 s again
+    expect(at).toBeGreaterThan(20);
+    expect(at).toBeLessThan(23);
+  });
 });

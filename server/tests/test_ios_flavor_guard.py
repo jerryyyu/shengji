@@ -35,17 +35,18 @@ BONJOUR = "\t<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_shengji-nearb
 
 
 def _guard(tmp_path: Path, configuration: str, *, extra: str = "", built_extra: str | None = None,
-           swift: str = "", other: str = "", gcc: str = ""):
+           swift: str = "", other: str = "", gcc: str = "", source_text: str | None = None,
+           built_text: str | None = None):
     project = tmp_path / "App"
     (project / "App").mkdir(parents=True, exist_ok=True)
-    (project / "App" / "Info.plist").write_text(PLAIN.format(extra=extra))
+    (project / "App" / "Info.plist").write_text(PLAIN.format(extra=extra) if source_text is None else source_text)
     env = {**os.environ, "CONFIGURATION": configuration, "PROJECT_DIR": str(project),
            "INFOPLIST_FILE": "App/Info.plist", "SWIFT_ACTIVE_COMPILATION_CONDITIONS": swift,
            "OTHER_SWIFT_FLAGS": other, "GCC_PREPROCESSOR_DEFINITIONS": gcc}
     if built_extra is not None:
         built = tmp_path / "build" / "App.app"
         built.mkdir(parents=True, exist_ok=True)
-        (built / "Info.plist").write_text(PLAIN.format(extra=built_extra))
+        (built / "Info.plist").write_text(PLAIN.format(extra=built_extra) if built_text is None else built_text)
         env.update(TARGET_BUILD_DIR=str(tmp_path / "build"), INFOPLIST_PATH="App.app/Info.plist")
     return subprocess.run(["bash", str(GUARD)], capture_output=True, text=True, env=env)
 
@@ -80,6 +81,31 @@ def test_release_checks_the_processed_plist_too(tmp_path):
     r = _guard(tmp_path, "Release", built_extra=BONJOUR)
     assert r.returncode == 1
     assert "build/App.app/Info.plist has NSBonjourServices" in r.stdout
+
+
+@pytest.mark.parametrize("where", ["source", "built"])
+def test_a_spaced_path_is_checked_whole(tmp_path, where):
+    root = tmp_path / "with space"
+    if where == "source":
+        r = _guard(root, "Release", extra=BONJOUR)
+    else:
+        r = _guard(root, "Release", built_extra=BONJOUR)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "NSBonjourServices" in r.stdout
+    clean = _guard(tmp_path / "also spaced", "Release", built_extra="")
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    assert "nearby off" in clean.stdout
+
+
+@pytest.mark.parametrize("where", ["source", "built"])
+def test_an_unparseable_plist_is_refused(tmp_path, where):
+    broken = "<plist><dict><key>oops"
+    if where == "source":
+        r = _guard(tmp_path, "Release", source_text=broken)
+    else:
+        r = _guard(tmp_path, "Release", built_extra="", built_text=broken)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "not a readable plist" in r.stdout
 
 
 def test_debug_may_carry_the_device_test_flags(tmp_path):

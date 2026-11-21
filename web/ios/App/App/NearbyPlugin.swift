@@ -429,6 +429,12 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private func pathFollowOn(satisfied: Bool, regained: Bool) {
         notifyListeners("path", data: ["satisfied": satisfied])
         if regained { lookAgainOnNewPath() }
+        wifiFollowOn()
+    }
+
+    /// What a Wi-Fi-joined change alone sets going (a faked one included):
+    /// the network's own state is unchanged, so the page hears nothing.
+    func wifiFollowOn() {
         watchForWifiHost()
     }
 
@@ -1415,7 +1421,7 @@ extension ShengjiNearbyPlugin {
         let run = Self.chaosWifiRun
         wifiUp = !real
         spikeLog("CHAOS wifi fake \(real ? "left" : "joined") for \(Int(seconds.rounded())) s")
-        pathFollowOn(satisfied: pathWatch.satisfied ?? false, regained: false)
+        wifiFollowOn()
         queue.asyncAfter(deadline: .now() + seconds) { [weak self] in
             guard let self = self, Self.chaosWifiRun == run else { return }
             self.chaosWifiEnd(restore: true)
@@ -1433,7 +1439,7 @@ extension ShengjiNearbyPlugin {
         spikeLog("CHAOS wifi fake over\(restore ? "" : ": a real path change")")
         guard restore, wifiUp != real else { return }
         wifiUp = real
-        pathFollowOn(satisfied: pathWatch.satisfied ?? false, regained: false)
+        wifiFollowOn()
     }
 }
 #else
@@ -1483,6 +1489,25 @@ extension ShengjiNearbyPlugin {
                     guard fm.createFile(atPath: file.path, contents: Data()) else { return call.reject("clear failed", "io") }
                 case "size":
                     break
+                case "read":
+                    // whole lines from `offset`, at most `max` bytes, of the current file or the older one
+                    let src = call.getString("file") == "old" ? old : file
+                    let offset = max(0, call.getInt("offset") ?? 0)
+                    let limit = min(max(1, call.getInt("max") ?? 1_000_000), Self.logFileMaxAppend)
+                    let srcSize = ((try? fm.attributesOfItem(atPath: src.path))?[.size] as? NSNumber)?.intValue ?? 0
+                    guard fm.fileExists(atPath: src.path), offset < srcSize else {
+                        return call.resolve(["text": "", "bytes": 0, "size": srcSize, "exists": fm.fileExists(atPath: src.path)])
+                    }
+                    let handle = try FileHandle(forReadingFrom: src)
+                    defer { try? handle.close() }
+                    try handle.seek(toOffset: UInt64(offset))
+                    var data = try handle.read(upToCount: limit) ?? Data()
+                    if let nl = data.lastIndex(of: 0x0A) {
+                        data = data.prefix(through: nl)
+                    } else if data.count < limit {
+                        data = Data()   // a line still being written
+                    }
+                    return call.resolve(["text": String(decoding: data, as: UTF8.self), "bytes": data.count, "size": srcSize, "exists": true])
                 default:
                     return call.reject("unknown op", "invalid")
                 }

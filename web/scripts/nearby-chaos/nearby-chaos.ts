@@ -17,7 +17,8 @@
 // --hostile      also duplicate frames inside a link (TCP never does): the
 //                safety invariants still hold
 // --page MODEL   the joiner page's reconnect: sim (default) or ws (ws.ts's
-//                5 s connect timer and long-lived retry, pageModel.ts)
+//                nearby retry waits, no connect timer, and long-lived retry,
+//                pageModel.ts)
 // --gaps MODE    the app's known gaps (S3: a reconnect under 3 s adds no
 //                chat line; S4: a move pending at a rebuild is applied or
 //                sent again within 1 s): report (counted as "gap ..." in the

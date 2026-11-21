@@ -375,6 +375,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
 
     override public func load() {
         observe(UIApplication.willResignActiveNotification) {
+            $0.chaosWifiEnd(restore: true)
             $0.appActive = false
             $0.joinPaused()
         }
@@ -400,16 +401,27 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 satisfied: satisfied,
                 wifiInterfaces: path.availableInterfaces.filter { $0.type == .wifi }.map { $0.name },
                 gateways: path.gateways.count)
-            guard satisfied != self.pathWatch.satisfied || wifi != self.wifiUp else { return }
+            // while a device-test fake runs, wifiUp is the fake: a change is
+            // judged against the real value, and a real change ends the fake
+            guard satisfied != self.pathWatch.satisfied || wifi != (Self.chaosWifiReal ?? self.wifiUp) else { return }
+            self.chaosWifiEnd(restore: false)
             let regained = self.pathWatch.update(satisfied)
             self.wifiUp = wifi
             let names = path.availableInterfaces.map { $0.name }.joined(separator: ",")
             self.spikeLog("path \(path.status) [\(names)] gateways \(path.gateways.count) Wi-Fi joined \(wifi)\(regained ? " (regained)" : "")")
-            self.notifyListeners("path", data: ["satisfied": satisfied])
-            if regained { self.lookAgainOnNewPath() }
-            self.watchForWifiHost()
+            self.pathFollowOn(satisfied: satisfied, regained: regained)
         }
         pathMonitor.start(queue: queue)
+    }
+
+    /// What a path change sets going: the page hears it, a regain starts the
+    /// look over, and a peer-to-peer host link looks for the host over Wi-Fi.
+    /// A look's includePeerToPeer and a link's keep-browse rule read wifiUp
+    /// when they decide.
+    private func pathFollowOn(satisfied: Bool, regained: Bool) {
+        notifyListeners("path", data: ["satisfied": satisfied])
+        if regained { lookAgainOnNewPath() }
+        watchForWifiHost()
     }
 
     /// The host link runs over peer-to-peer while the access point's Wi-Fi
@@ -1358,6 +1370,10 @@ extension ShengjiNearbyPlugin {
                 guard self.hosting else { return call.resolve(["done": false]) }
                 self.spikeLog("CHAOS listener restart")
                 self.listenerLost()
+            case "wifi":
+                guard self.chaosWifiStart(seconds: min(max(call.getDouble("seconds") ?? 45, 20), 90)) else {
+                    return call.resolve(["done": false])
+                }
             default:
                 return call.reject("unknown chaos", "invalid")
             }
@@ -1369,6 +1385,53 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
     static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
+}
+#endif
+
+#if DEBUG && SHENGJI_NEARBY_DEV
+/// The chaos kind "wifi": the phone's Wi-Fi network seems to leave (or join)
+/// for 20-90 s, inside the plugin's path logic only; the radio is never
+/// touched. It holds in memory, ends when the app resigns active or a real
+/// path change arrives (the real value wins), and is gone on a restart.
+extension ShengjiNearbyPlugin {
+    /// On `queue`: the real Wi-Fi value while a fake runs, else nil.
+    static var chaosWifiReal: Bool?
+    private static var chaosWifiRun = 0
+
+    /// On `queue`: starts a fake, unless one runs or the app is not active.
+    func chaosWifiStart(seconds: Double) -> Bool {
+        guard Self.chaosWifiReal == nil, appActive, pathWatch.satisfied != nil else { return false }
+        let real = wifiUp
+        Self.chaosWifiReal = real
+        Self.chaosWifiRun += 1
+        let run = Self.chaosWifiRun
+        wifiUp = !real
+        spikeLog("CHAOS wifi fake \(real ? "left" : "joined") for \(Int(seconds.rounded())) s")
+        pathFollowOn(satisfied: pathWatch.satisfied ?? false, regained: false)
+        queue.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self = self, Self.chaosWifiRun == run else { return }
+            self.chaosWifiEnd(restore: true)
+        }
+        return true
+    }
+
+    /// On `queue`: ends a running fake. `restore` puts the real value back
+    /// and runs the path follow-on; a real path change passes false and sets
+    /// the value itself.
+    func chaosWifiEnd(restore: Bool) {
+        guard let real = Self.chaosWifiReal else { return }
+        Self.chaosWifiReal = nil
+        Self.chaosWifiRun += 1
+        spikeLog("CHAOS wifi fake over\(restore ? "" : ": a real path change")")
+        guard restore, wifiUp != real else { return }
+        wifiUp = real
+        pathFollowOn(satisfied: pathWatch.satisfied ?? false, regained: false)
+    }
+}
+#else
+extension ShengjiNearbyPlugin {
+    static var chaosWifiReal: Bool? { nil }
+    func chaosWifiEnd(restore: Bool) {}
 }
 #endif
 

@@ -5,6 +5,7 @@
 // hello waits for the host and the seat is back when its stall ends.
 import { describe, expect, it } from "vitest";
 import { LONG_LIVED_MS, NEARBY_RETRY_MS } from "./ws";
+import { LIMITS } from "./offline/server/nearby/protocol";
 import { LONG_LIVED_S, NEARBY_RETRY_S } from "../scripts/nearby-chaos/pageModel";
 import { runGame, type Fault } from "../scripts/nearby-chaos/sim";
 
@@ -47,15 +48,19 @@ describe("the simulator's page model", () => {
     expect(r.violation).toBeNull();
   });
 
-  it("seed 1, a 9 s stall: the host's hello timer ends the attempt, not the page", async () => {
+  it("seed 1, a 9 s stall: the joiner ends its held attempt itself, before the host's hello timer", async () => {
     const { r, at, stallEnd } = await seed1(9);
     expect(r.trace.some((l) => / J1 page: attempt \d+ cut/.test(l))).toBe(false);
     const began = at(/ J1 page: attempt 2$/);
     const hello = at(/resume: link up in \d+ ms; hello sent/, began);
-    const refused = at(/ H js\/host: REFUSED hello_timeout/, began);
-    expect(refused - hello).toBeCloseTo(5, 1);
-    expect(refused).toBeLessThan(stallEnd);
-    expect(at(/ J1 page: attempt 3$/) - refused).toBeLessThan(1);
+    // the socket's wait for the answer (resumeSeconds, then its 2 s grace)
+    // is shorter than the host's hello deadline, so the joiner gives up
+    // first and the host refuses nothing
+    const next = at(/ J1 page: attempt 3$/, began);
+    expect(next - hello).toBeGreaterThan(LIMITS.resumeSeconds + 2 - 0.1);
+    expect(next - hello).toBeLessThan(LIMITS.resumeSeconds + 2 + 0.5);
+    expect(next - hello).toBeLessThan(LIMITS.helloSeconds);
+    expect(r.trace.some((l) => / H js\/host: REFUSED hello_timeout/.test(l))).toBe(false);
     expect(at(/ J1 js\/socket: resume: accepted/, stallEnd)).toBeLessThan(stallEnd + 15);
     expect(r.violation).toBeNull();
   });

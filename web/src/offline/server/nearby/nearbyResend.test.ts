@@ -113,3 +113,34 @@ describe("a move sent on a link that is rebuilt applies exactly once", () => {
     expect(t.room!.round!.phase).toBe("round_end");
   }, 120_000);
 });
+
+describe("a move the host had is never sent again", () => {
+  it("a Start applied before the link went", async () => {
+    const t = new NearbyTable(4, 1, DELAY);
+    await t.open();
+    const j = await t.join("Mei");
+    const count = counter(t);
+    t.send(j, { type: "table_start" });
+    await t.settle(() => t.room!.lobbyReady.has(j.seat!), 10_000);
+    // the link goes before the joiner hears the answer
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => (j.sock as NearbySocket).readyState === NearbySocket.CLOSED, 1000);
+    await t.resume(j);
+    await t.advance(1);
+    expect(count(j.seat!, "table_start")).toBe(1);
+    expect(t.room!.lobbyReady.has(j.seat!)).toBe(true);
+    expect(nearbyLogText()).not.toMatch(/sent again/);
+  }, 60_000);
+
+  it("a Start taken back on a lost link goes again, once", async () => {
+    const t = new NearbyTable(4, 1, DELAY);
+    await t.open();
+    const j = await t.join("Mei");
+    t.send(j, { type: "table_start" });
+    await t.settle(() => t.room!.lobbyReady.has(j.seat!), 10_000);
+    const count = counter(t);
+    await sendOnALostLink(t, j, { type: "table_start", on: false });
+    expect(count(j.seat!, "table_start")).toBe(1);
+    expect(t.room!.lobbyReady.has(j.seat!)).toBe(false);
+  }, 60_000);
+});

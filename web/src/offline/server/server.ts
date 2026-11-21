@@ -62,8 +62,10 @@ export const AWAY_PER_ROUND = 3;
  *  before the bot plays for them (nearby rooms). */
 export const TAKEOVER_AFTER = MOVE_TIMER;
 /** A nearby lobby seat whose link dropped is kept this long for its owner
- *  to come back by token, then freed. */
-export const LOBBY_SEAT_HOLD = 12.0;
+ *  to come back by token, then freed: longer than a stuck link's recovery
+ *  (up to 8 s to call it stuck over peer-to-peer, 8 s for the new link, 7 s
+ *  for the host's answer to its hello), so a seat is never lost to one. */
+export const LOBBY_SEAT_HOLD = 30.0;
 /** server.py's casual-room watchdog period. */
 export const WATCHDOG_POLL = 5.0;
 /** A nearby seat's link that is back within this long was a blip: the
@@ -810,10 +812,9 @@ export class LocalServer {
 
   detach(seat: Seat, room: LocalRoom | null, gen: number | null): void {
     if (gen !== null && gen !== seat.gen) return;
-    if (room && room.seatIndex(seat) >= 0) {
-      room.ready.delete(room.seatIndex(seat));
-      room.lobbyReady.delete(room.seatIndex(seat));
-    }
+    // a lobby seat keeps its Start while its link is down: the table does
+    // not start without a person who has not tapped it (startIfReady)
+    if (room && room.seatIndex(seat) >= 0) room.ready.delete(room.seatIndex(seat));
     seat.connected = false;
     seat.leftAt = this.clock.now();
     seat.writer?.cancel();
@@ -1260,12 +1261,14 @@ export class LocalServer {
     }
   }
 
-  /** A nearby lobby starts once every connected person has tapped Start;
-   *  the host alone starts at once, bots in the open seats. */
+  /** A nearby lobby starts once every seated person has tapped Start,
+   *  including one whose link is down within its LOBBY_SEAT_HOLD (their
+   *  Start is kept through the drop); the host alone starts at once, bots
+   *  in the open seats. */
   startIfReady(room: LocalRoom): boolean {
     const lobby = room.lobby;
     if (!lobby) return false;
-    const waiting = lobby.some((s, i) => s !== null && !s.isBot && s.connected && !room.lobbyReady.has(i));
+    const waiting = lobby.some((s, i) => s !== null && !s.isBot && !room.lobbyReady.has(i));
     if (waiting) return false;
     this.startNearby(room);
     return true;
@@ -1627,6 +1630,7 @@ export class LocalConnection {
       server.endNearbyRoom(room, me);
     } else if (room.lobby) {
       room.lobby[idx] = null;
+      room.lobbyReady.delete(idx);
       server.syncBotsTimer(room);
       server.startIfReady(room);
       server.broadcast(room);

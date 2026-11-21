@@ -36,6 +36,10 @@ export function subscribeNearbyKeepalive(fn: () => void): () => void {
  *  them never makes new links faster than LIMITS.stuckSpacingSeconds. */
 const lastStuck = new WeakMap<Clock, number>();
 
+/** A resume's link that has answered nothing by LIMITS.resumeSeconds gets
+ *  this much longer for the host's answer before a fresh attempt. */
+const RESUME_GRACE_SECONDS = 2;
+
 /** A play or bury the host has not answered, kept across this seat's links
  *  so the link that replaces a stuck one sends it again, once. */
 interface Unanswered {
@@ -199,38 +203,54 @@ export class NearbySocket {
             this.close();
             return;
           }
+          // the ping behind the hello says whether the link carries
+          if (!this.sendPing(link)) return;
           this.awaitResume(link, this.clock.now());
         },
         () => this.finish(),
       );
   }
 
-  /** The hello is out on a link that is up. Unanswered after
-   *  LIMITS.resumeSeconds, the link is pinged: while its pongs come back
-   *  the hello is still on its way (the link is TCP) and the link is kept;
-   *  a ping unanswered for the pong window, or no answer by
-   *  LIMITS.silentSeconds, ends the attempt for a fresh one. */
+  /** The hello is out on a link that is up, with a ping behind it. By
+   *  LIMITS.resumeSeconds a link that has answered that ping carries (the
+   *  hello is on TCP and still on its way): it is kept, pinged every
+   *  LIMITS.pingSeconds, until the answer, a missed pong, or
+   *  LIMITS.silentSeconds. One that has answered nothing gets
+   *  RESUME_GRACE_SECONDS more, then the attempt ends for a fresh one. */
   private awaitResume(link: JoinLink, since: number): void {
-    const check = () => {
-      if (this.link !== link || !this.resuming) return;
-      const now = this.clock.now();
-      if (now - since >= LIMITS.silentSeconds - 1e-6) {
+    const live = () => this.link === link && this.resuming;
+    const carry = () => {
+      if (!live()) return;
+      if (this.clock.now() - since >= LIMITS.silentSeconds - 1e-6) {
         nearbyLog("socket", `resume: no answer in ${LIMITS.silentSeconds} s; a fresh attempt`);
         this.close();
         return;
       }
-      if (this.pingSent !== null && now - this.pingSent >= this.pongWindow(link) - 1e-6) {
-        nearbyLog("socket", `resume: no answer and no pong; a fresh attempt`);
+      if (this.pingSent !== null) {
+        nearbyLog("socket", "resume: no answer and no pong; a fresh attempt");
         this.close();
         return;
       }
-      if (this.pingSent === null) {
-        nearbyLog("socket", "resume: no answer yet; the link is checked");
-        if (!this.sendPing(link)) return;
-      }
-      this.clock.setTimeout(check, Math.min(LIMITS.pingSeconds, this.pongWindow(link)));
+      if (!this.sendPing(link)) return;
+      this.clock.setTimeout(carry, LIMITS.pingSeconds);
     };
-    this.clock.setTimeout(check, LIMITS.resumeSeconds);
+    this.clock.setTimeout(() => {
+      if (!live()) return;
+      if (this.pingSent === null) {
+        nearbyLog("socket", `resume: no answer in ${LIMITS.resumeSeconds} s, but the link carries; kept`);
+        carry();
+        return;
+      }
+      this.clock.setTimeout(() => {
+        if (!live()) return;
+        if (this.pingSent === null) {
+          carry();
+          return;
+        }
+        nearbyLog("socket", `resume: no answer and no pong in ${LIMITS.resumeSeconds + RESUME_GRACE_SECONDS} s; a fresh attempt`);
+        this.close();
+      }, RESUME_GRACE_SECONDS);
+    }, LIMITS.resumeSeconds);
   }
 
   /** The host answered the resume: the socket is open, and the frames that

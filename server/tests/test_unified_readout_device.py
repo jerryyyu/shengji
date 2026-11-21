@@ -7,6 +7,7 @@ this fixture; a change to the CPU path's arithmetic moves them past ``CPU_REL_TO
 """
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import shutil
@@ -293,6 +294,60 @@ def test_the_first_producer_binds_a_cache_for_every_worker(tmp_path):
     with pytest.raises(ur.UnifiedReadoutError, match="--device mps, not --device cpu"):
         ur.bind_cache_device(cache, "cpu")
     assert sorted(p.name for p in cache.iterdir()) == [ur.CACHE_DEVICE]
+
+
+@pytest.mark.parametrize("device", ["mps", "cpu"])
+def test_a_marker_published_after_the_first_look_is_read_before_the_output_is_classified(tmp_path, monkeypatch,
+                                                                                        device):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    real = ur._cache_has_output
+
+    def worker_b_publishes(out):                     # B binds mps and finishes between A's two looks
+        (out / ur.CACHE_DEVICE).write_text(json.dumps({"device": "mps"}))
+        (out / "DONE.1").write_text("{}")
+        return real(out)
+    monkeypatch.setattr(ur, "_cache_has_output", worker_b_publishes)
+    if device == "mps":
+        ur.bind_cache_device(cache, "mps")
+    else:
+        with pytest.raises(ur.UnifiedReadoutError, match="--device mps, not --device cpu"):
+            ur.bind_cache_device(cache, "cpu")
+    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "mps"}
+
+
+@pytest.mark.parametrize("text", ["", "{\"dev", "[]"], ids=["empty", "torn", "not-an-object"])
+def test_an_unreadable_marker_refuses_clearly_after_a_bounded_wait(tmp_path, monkeypatch, text):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / ur.CACHE_DEVICE).write_text(text)       # what an interrupted non-atomic publisher left behind
+    monkeypatch.setattr(ur, "MARKER_WAIT_S", 0.2)
+    t0 = time.monotonic()
+    with pytest.raises(ur.UnifiedReadoutError, match="unreadable"):
+        ur.bind_cache_device(cache, "mps")
+    assert time.monotonic() - t0 < 2.0
+    assert (cache / ur.CACHE_DEVICE).read_text() == text
+
+
+def test_a_publisher_killed_before_its_link_leaves_a_cache_that_resumes(tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / f"{ur.CACHE_DEVICE}.99999.tmp").write_text("{\"dev")   # killed while writing its private copy
+    ur.bind_cache_device(cache, "mps")
+    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "mps"}
+    ur.bind_cache_device(cache, "mps")
+
+
+def test_storage_without_hard_links_is_refused_before_a_marker_exists(tmp_path, monkeypatch):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+
+    def no_links(src, dst):
+        raise OSError(errno.ENOTSUP, "Operation not supported")
+    monkeypatch.setattr(ur.os, "link", no_links)
+    with pytest.raises(ur.UnifiedReadoutError, match="hard links"):
+        ur.bind_cache_device(cache, "mps")
+    assert list(cache.iterdir()) == []
 
 
 def test_an_mps_cache_refuses_a_cpu_worker_through_main(data, cpu_root, tmp_path):

@@ -548,45 +548,70 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> di
 
 
 CACHE_DEVICE = "cache_device.json"
+MARKER_WAIT_S = 2.0
 
 
 def _cache_has_output(out: Path) -> bool:
     return any(out.glob("calib-*.npz")) or any(out.glob("train-*.npz")) or any(out.glob("DONE.*"))
 
 
+def _publish_marker(out: Path, marker: Path, device: str) -> None:
+    """Create ``marker`` holding ``{"device": device}`` unless a worker already did, so that no reader ever sees
+    it partly written: the bytes go to a private file, are synced, then hard-linked to the final name, which
+    either appears whole or fails because it exists.  Storage without hard links is refused, with no marker
+    made."""
+    tmp = out / f"{CACHE_DEVICE}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w") as fh:
+            fh.write(json.dumps({"device": device}))
+            fh.flush()
+            os.fsync(fh.fileno())
+        try:
+            os.link(tmp, marker)
+        except FileExistsError:                      # another worker bound the directory first
+            pass
+        except OSError as e:
+            raise UnifiedReadoutError(f"cache {out}: its storage does not support hard links ({e}), so "
+                                      f"{CACHE_DEVICE} cannot be published atomically; use local storage") from e
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _read_marker(out: Path, marker: Path) -> str:
+    """The device in a published marker.  Markers are published whole, so a marker that stays unreadable for
+    ``MARKER_WAIT_S`` was left by something else (an interrupted older publisher, a copy) and is refused."""
+    deadline = time.monotonic() + MARKER_WAIT_S
+    while True:
+        text = marker.read_text()
+        try:
+            was = json.loads(text)
+            if isinstance(was, dict) and isinstance(was.get("device"), str):
+                return was["device"]
+        except ValueError:
+            pass
+        if time.monotonic() >= deadline:
+            raise UnifiedReadoutError(f"cache {out}: {CACHE_DEVICE} is unreadable ({text[:40]!r}); once no "
+                                      f"worker is running, remove it if the shards' device is known, else "
+                                      f"start a fresh cache")
+        time.sleep(0.05)
+
+
 def bind_cache_device(out: Path, device: str) -> None:
     """Bind the cache directory ``out`` to the device that produces its shards, before any shard is made or kept.
 
-    ``OUT/cache_device.json`` names the producer's device.  It is created once, atomically, by the first worker;
-    every later worker (and every resume) must name the same device.  A directory that already holds shards but
-    no such file was written before devices existed, by the CPU: it binds to ``cpu``, so a CPU run keeps its
-    shards and any other device refuses.  Shard files are never read or rewritten here."""
+    ``OUT/cache_device.json`` names the producer's device.  It is published once, atomically, by the first worker;
+    every later worker (and every resume) must name the same device.  A directory that holds shards and still no
+    such file once the shards are seen was written before devices existed, by the CPU: it binds to ``cpu``, so a
+    CPU run keeps its shards and any other device refuses.  Workers publish the file before their first shard, so
+    a marker that appears between the two looks is the producer's and decides.  Shard files are never read or
+    rewritten here."""
     marker = out / CACHE_DEVICE
     if not marker.exists():
-        if device != "cpu" and _cache_has_output(out):
+        if _cache_has_output(out) and not marker.exists() and device != "cpu":
             raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
                                       f"--device {device} would mix producers")
-        tmp = out / f"{CACHE_DEVICE}.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps({"device": device}))
-        try:
-            os.link(tmp, marker)                     # fails when another worker bound the directory first
-        except FileExistsError:
-            pass
-        except OSError:                              # a filesystem without hard links
-            try:
-                fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-                with os.fdopen(fd, "w") as fh:
-                    fh.write(json.dumps({"device": device}))
-            except FileExistsError:
-                pass
-        finally:
-            tmp.unlink()
-    for _ in range(50):                              # a worker that lost the race may read before the winner writes
-        text = marker.read_text()
-        if text:
-            break
-        time.sleep(0.1)
-    was = json.loads(text).get("device")
+        _publish_marker(out, marker, device)
+    was = _read_marker(out, marker)
     if was != device:
         raise UnifiedReadoutError(f"cache {out}: its shards were made with --device {was}, not --device {device}")
 

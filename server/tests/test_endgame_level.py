@@ -470,3 +470,24 @@ def test_frozen_benchmark_preserves_real_root_solver_inputs(backend):
             return value, session.nodes, session.cache_hits
         assert solve(root) == solve(saved)
         root.play(root.turn, bots[root.turn].decide_play(root, root.turn))
+
+
+def test_frozen_capture_observes_search_and_restores_on_failure():
+    from scripts.bench_exact_frozen import capture_search_roots, thaw
+
+    original = CompactWorldSession.solve_level
+    root, _ = _lead_at(53000, 4)
+    with pytest.raises(RuntimeError, match='caller failed'):
+        with capture_search_roots(limit=1) as records:
+            for cap in (1, 10000):
+                session = CompactWorldSession(root, max_hand_cards=8, max_nodes=cap,
+                                              backend='python', level=True)
+                try:
+                    session.solve_level(root)
+                except ExactEndgameBudgetExceeded:
+                    pass
+            assert len(records) == 1
+            assert records[0]['nodes'] > 1
+            assert _reference_points(thaw(records[0]['root'])) == _reference_points(root)
+            raise RuntimeError('caller failed')
+    assert CompactWorldSession.solve_level is original

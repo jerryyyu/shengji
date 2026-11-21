@@ -12,6 +12,7 @@ This is a kernel diagnostic, not a served-policy or strength measurement.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib
 import json
@@ -60,6 +61,43 @@ def thaw(row):
     return rnd
 
 
+@contextmanager
+def capture_search_roots(limit=16):
+    """Keep the highest-node level calls from a single-threaded diagnostic.
+
+    Capture observes calls, including failures; it never changes their budgets.
+    Saved roots replay cold, so observed warm-session work is descriptive only.
+    """
+    if limit < 1:
+        raise ValueError('capture limit must be positive')
+    records = []
+    original = CompactWorldSession.solve_level
+
+    def observed(session, rnd, *args, **kwargs):
+        root = json.loads(packed(freeze(rnd)))
+        before = session.nodes
+        outcome = None
+        try:
+            value = original(session, rnd, *args, **kwargs)
+            outcome = ['value', value]
+            return value
+        except Exception as exc:
+            outcome = ['exception', type(exc).__name__]
+            raise
+        finally:
+            records.append(dict(root=root, nodes=session.nodes - before,
+                                outcome=outcome, alpha_beta=session.alpha_beta,
+                                level_opts=session.level_opts))
+            records.sort(key=lambda r: r['nodes'], reverse=True)
+            del records[limit:]
+
+    CompactWorldSession.solve_level = observed
+    try:
+        yield records
+    finally:
+        CompactWorldSession.solve_level = original
+
+
 def capture(seeds, cards):
     roots = []
     for seed in seeds:
@@ -97,7 +135,7 @@ def run(fixture, repeats, cap, opts, backend='compiled'):
             rnd = thaw(root)
             start = time.perf_counter()
             session = CompactWorldSession(rnd, max_hand_cards=8, max_nodes=cap,
-                                          backend=backend, level=True, level_opts=opts)
+                                          backend=backend, alpha_beta=True, level=True, level_opts=opts)
             setup = time.perf_counter() - start
             start = time.perf_counter()
             try:
@@ -115,12 +153,12 @@ def run(fixture, repeats, cap, opts, backend='compiled'):
                 samples.append(dict(setup_s=setup, solve_s=elapsed))
         rows.append(dict(witness=witness, samples=samples))
     return dict(schema='exact-timing-v1', fixture_sha256=hashlib.sha256(packed(fixture)).hexdigest(),
-                cap=cap, opts=opts, backend=backend, rows=rows, server=str(SERVER), native=native,
+                cap=cap, opts=opts, alpha_beta=True, backend=backend, rows=rows, server=str(SERVER), native=native,
                 head=subprocess.check_output(['git', '-C', str(SERVER), 'rev-parse', 'HEAD'], text=True).strip())
 
 
 def compare(base, candidate):
-    for key in ('schema', 'fixture_sha256', 'cap', 'opts', 'backend'):
+    for key in ('schema', 'fixture_sha256', 'cap', 'opts', 'alpha_beta', 'backend'):
         if base[key] != candidate[key]:
             raise ValueError(f'incompatible {key}')
     if not base['rows'] or len(base['rows']) != len(candidate['rows']):

@@ -450,3 +450,59 @@ def test_canonical_cache_handles_slot_growth_and_repeated_roots():
         assert session.solve_level(rnd) == want
     assert session.solver.canon_hits > 0
     assert session.solver.canon_misses > 0
+
+
+def _canonical_growing_roots(seed):
+    import copy
+    from shengji.engine.cards import make_deck
+    from test_endgame_compact import _play_round
+    rng = random.Random(seed)
+    deck = make_deck()
+    rng.shuffle(deck)
+    hands = [deck[i * 5:(i + 1) * 5] for i in range(4)]
+    first = _play_round('H', '2', 0, hands, deck[20:28], leader=rng.randrange(4),
+                        attacker_points=0)
+    roots, current = [first], first
+    for _ in range(3):
+        current = copy.deepcopy(current)
+        a, b = rng.sample(range(4), 2)
+        i, j = rng.randrange(5), rng.randrange(5)
+        current.hands[a][i], current.hands[b][j] = current.hands[b][j], current.hands[a][i]
+        roots.append(current)
+        for action in exhaustive_legal_actions(current, current.turn, max_hand_cards=8)[:2]:
+            child = _clone_for_play(current)
+            child.play(current.turn, list(action))
+            roots.append(child)
+    return roots + [first]
+
+
+def _canonical_work(roots, bypass):
+    session = CompactWorldSession(roots[0], max_hand_cards=8, max_nodes=200000,
+                                  alpha_beta=True, backend='compiled', level=True)
+    session._check_root(roots[0])
+    assert session.solver.canon_bypass is False
+    session.solver.canon_bypass = bypass
+    native_solver = session.solver
+    rows = []
+    for rnd in roots:
+        try:
+            value = session.solve_level(rnd)
+        except ExactEndgameBudgetExceeded:
+            value = 'cap'
+        if session.backend != 'compiled':
+            break
+        rows.append((value, session.nodes, session.cache_hits, session.solver.probes))
+    if bypass:
+        assert native_solver.canon_hits == 0
+    return rows
+
+
+@pytest.mark.skipif(not HAVE_FAST, reason='native canonicalization cache')
+def test_canonical_cache_keeps_the_uncached_search_through_slot_growth():
+    compared = 0
+    for seed in range(40):
+        roots = _canonical_growing_roots(seed)
+        cached, plain = _canonical_work(roots, False), _canonical_work(roots, True)
+        assert cached == plain, seed
+        compared += len(cached)
+    assert compared >= 200

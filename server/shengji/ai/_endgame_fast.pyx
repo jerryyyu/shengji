@@ -478,6 +478,7 @@ cdef inline uint64_t _lkey(uint8_t* hands, int turn, int leader, uint8_t* plays,
 cdef class FastWorld:
     """One world's exact solver (``endgame_compact.CompactWorldSession``)."""
     cdef CanonEntry canon_cache[16384]
+    cdef public bint canon_bypass
     cdef public long canon_hits
     cdef public long canon_misses
     cdef Tables T
@@ -556,6 +557,7 @@ cdef class FastWorld:
         memset(self.g_built, 0xff, sizeof(self.g_built))
         memset(self.cgen, 0xff, sizeof(self.cgen))
         memset(self.canon_cache, 0, sizeof(self.canon_cache))
+        self.canon_bypass = False
         self.canon_hits = 0
         self.canon_misses = 0
         self.last_level = -1
@@ -1944,7 +1946,7 @@ cdef class FastWorld:
                | (<uint64_t>self.n_slots[2] << 40)
                | (<uint64_t>self.n_slots[3] << 44))
         cached = &self.canon_cache[_mix(raw, 0) & 16383]
-        if cached.key == raw:
+        if not self.canon_bypass and cached.key == raw:
             self.canon_hits += 1
             return cached.value | (<uint64_t>turn << 56) | (<uint64_t>turn << 58)
         self.canon_misses += 1

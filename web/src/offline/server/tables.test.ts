@@ -170,7 +170,7 @@ const SENDABLE = {
   table_start_level: LOCAL, table_bot_level: LOCAL, table_chat: LOCAL, table_leave: LOCAL, table_join: LOCAL, table_peek: LOCAL,
   ping: "the heartbeat of a network socket; the device's socket never drops",
   table_move: LOCAL,
-  im_back: "the ranked move timer, which offline rooms do not run",
+  im_back: LOCAL,
   report_player: "moderation, a service of the game server",
   block_player: "moderation, a service of the game server",
   client_event: "telemetry, collected by the game server",

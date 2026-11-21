@@ -1,0 +1,44 @@
+// The device test's Autoplay decides from the seat's own table frames only
+// (no look at the room): driven that way, a joiner plays whole rounds at a
+// nearby table with every move accepted, and answers each round's end.
+import { describe, expect, it } from "vitest";
+import { SmartBot } from "./offline/bot";
+import { NearbyTable, type Frame } from "./offline/server/nearby/testkit";
+import { autoplayMove, freshMemory, remember } from "./nearbySoak";
+
+describe("Autoplay", () => {
+  it("plays a joiner's seat from its frames alone: two rounds, no move refused", async () => {
+    const t = new NearbyTable(17, 2);
+    await t.open(true);
+    const j = await t.join("P1");
+    const mem = freshMemory();
+    const bot = new SmartBot();
+    let sent = 0;
+    let gen = 0;
+    let ends = 0;
+    const sock = j.sock;
+    const prev = sock.onmessage!;
+    sock.onmessage = (ev) => {
+      prev.call(sock as never, ev);
+      const f = JSON.parse(ev.data as string) as Frame;
+      if (f.type !== "state") return;
+      if (f.phase === "round_end" && j.frames.filter((x) => x.type === "state").at(-2)?.phase !== "round_end") ends += 1;
+      remember(mem, f);
+      // as on the device: the move is decided at the person's pace, on the
+      // latest frame
+      const mine = ++gen;
+      t.clock.setTimeout(() => {
+        if (mine !== gen) return;
+        const move = autoplayMove(f, mem, bot);
+        if (!move) return;
+        sent += 1;
+        sock.send(JSON.stringify(move));
+      }, 0.6);
+    };
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => ends >= 2, 3_000_000);
+    expect(ends).toBeGreaterThanOrEqual(2);
+    expect(sent).toBeGreaterThan(40);
+    expect(j.frames.filter((f) => f.type === "error")).toEqual([]);
+  });
+});

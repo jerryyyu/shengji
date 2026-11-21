@@ -40,33 +40,71 @@ const lastStuck = new WeakMap<Clock, number>();
  *  this much longer for the host's answer before a fresh attempt. */
 const RESUME_GRACE_SECONDS = 2;
 
-/** A play or bury the host has not answered, kept across this seat's links
- *  so the link that replaces a stuck one sends it again, once. */
+/** The moves the host may not have had, kept across a seat's links so the
+ *  link that replaces a stuck one sends the last of them again, once. */
+type MoveKind = "play" | "bury" | "declare" | "pass_declare" | "next_round" | "table_start";
+const MOVE_KINDS: ReadonlySet<string> = new Set<MoveKind>(["play", "bury", "declare", "pass_declare", "next_round", "table_start"]);
+
+/** A move the host has not answered. */
 interface Unanswered {
   text: string;
-  kind: "play" | "bury";
+  kind: MoveKind;
+  /** The cards of a play, bury or declare; empty otherwise. */
   ids: number[];
+  /** A table_start's `on`: false takes the Start back. */
+  on: boolean;
   /** Already sent again on a later link: never a third time. */
   resent: boolean;
 }
 
-/** Each clock's unanswered moves, by seat token. */
-const unansweredMoves = new WeakMap<Clock, Map<string, Unanswered>>();
+/** Each clock's unanswered moves, by seat token, the latest of each kind
+ *  in the order sent: a stale move the page sends after a real one (a pass
+ *  after its bury) never takes the real one's place. */
+const unansweredMoves = new WeakMap<Clock, Map<string, Map<MoveKind, Unanswered>>>();
 
-function movesOf(clock: Clock): Map<string, Unanswered> {
+function movesOf(clock: Clock, token: string): Map<MoveKind, Unanswered> {
   let m = unansweredMoves.get(clock);
   if (!m) unansweredMoves.set(clock, m = new Map());
-  return m;
+  let mine = m.get(token);
+  if (!mine) m.set(token, mine = new Map());
+  return mine;
 }
 
-/** Whether a state frame still asks `move`'s seat for that move, with its
- *  cards in hand: the host has not applied it. */
-function stillOwed(state: Record<string, unknown> | null, move: Unanswered): boolean {
-  if (state === null || state.type !== "state") return false;
-  if (state.turn !== state.you || state.phase !== move.kind || state.joining_you) return false;
-  const hand = Array.isArray(state.hand) ? state.hand as { id?: unknown }[] : [];
-  const ids = new Set(hand.map((c) => c?.id));
-  return move.ids.every((id) => ids.has(id));
+const sameIds = (a: readonly unknown[], b: readonly number[]) =>
+  a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+
+/** Whether a table frame shows the host has not applied `move`, so sending
+ *  it again applies it once: the frame still asks this seat for that move
+ *  (a play or bury with its cards in hand, a declare still on offer, a pass
+ *  or Next not yet counted) or, in the lobby, still shows its Start as it
+ *  was. Anything else (another phase, a declaration that beat it, a new
+ *  round) means it was applied or is stale, and it is never sent again. */
+function stillOwed(frame: Record<string, unknown> | null, move: Unanswered): boolean {
+  if (frame === null) return false;
+  const you = frame.you;
+  if (move.kind === "table_start") {
+    const lobby = frame.type === "room" ? frame.nearby as { ready?: unknown } | undefined : undefined;
+    if (!lobby || !Array.isArray(lobby.ready)) return false;
+    return lobby.ready.includes(you) !== move.on;
+  }
+  if (frame.type !== "state" || frame.joining_you) return false;
+  switch (move.kind) {
+    case "declare": {
+      if (frame.phase !== "deal" && frame.phase !== "declare") return false;
+      const options = Array.isArray(frame.declare_options) ? frame.declare_options as unknown[] : [];
+      return options.some((o) => Array.isArray(o) && sameIds(o, move.ids));
+    }
+    case "pass_declare":
+      return frame.phase === "declare" && Array.isArray(frame.passed) && !frame.passed.includes(you);
+    case "next_round":
+      return frame.phase === "round_end" && Array.isArray(frame.ready) && !frame.ready.includes(you);
+    default: {
+      if (frame.turn !== you || frame.phase !== move.kind) return false;
+      const hand = Array.isArray(frame.hand) ? frame.hand as { id?: unknown }[] : [];
+      const ids = new Set(hand.map((c) => c?.id));
+      return move.ids.every((id) => ids.has(id));
+    }
+  }
 }
 
 export class NearbySocket {
@@ -105,9 +143,9 @@ export class NearbySocket {
   /** The seat's token (the hello's, or the host's resume frame), which
    *  keys its unanswered move across links. */
   private token: string | null = null;
-  /** The move this link sent again after its resume: the same text from
+  /** The moves this link sent again after its resume: the same text from
    *  the page (Table's own once-more, an autoplay) is not sent a second time. */
-  private resentText: string | null = null;
+  private resentTexts = new Set<string>();
 
   /** `greet`: a seated joiner's resume, called once the link is up. When it
    *  gives a table_join, this socket sends it as the hello and reports open
@@ -261,7 +299,7 @@ export class NearbySocket {
     const early = this.early;
     this.early = [];
     for (const text of early) if (frameType(text) === "resume") this.noteAnswer(text);
-    this.sendAgain(link, type === "state" ? parseObject(early[early.length - 1]) : null);
+    this.sendAgain(link, type === "state" || type === "room" ? parseObject(early[early.length - 1]) : null);
     this.ping(link);
     this.summarize(link);
     this.onopen?.({} as Event);
@@ -273,8 +311,8 @@ export class NearbySocket {
   }
 
   /** A frame from the host: the seat's token from a resume frame; an
-   *  unanswered move is settled by an error, a room frame, or a state that
-   *  no longer asks for it. */
+   *  unanswered move is settled by an error, or a state or room frame that
+   *  no longer shows it owed. */
   private noteAnswer(text: string): void {
     const type = frameType(text);
     if (type === "resume") {
@@ -283,37 +321,42 @@ export class NearbySocket {
       return;
     }
     if (this.token === null || (type !== "state" && type !== "error" && type !== "room")) return;
-    const moves = movesOf(this.clock);
-    const move = moves.get(this.token);
-    const owed = move !== undefined && type === "state" && stillOwed(parseObject(text), move);
-    if (move && !owed) moves.delete(this.token);
-    // the move sent again is settled: the same text later is a new move
+    const frame = type === "error" ? null : parseObject(text);
+    const moves = movesOf(this.clock, this.token);
+    const owed = new Set<string>();
+    for (const [kind, move] of moves) {
+      if (stillOwed(frame, move)) owed.add(move.text);
+      else moves.delete(kind);
+    }
+    // a move sent again is settled: the same text later is a new move
     // (card ids repeat from round to round)
-    if (this.resentText !== null && !(owed && move!.text === this.resentText)) this.resentText = null;
+    for (const t of this.resentTexts) if (!owed.has(t)) this.resentTexts.delete(t);
   }
 
   /** Just resumed: a move the last link sent and the host never answered
    *  goes once more, before the page hears anything, when the resumed
-   *  state still asks this seat for it (the host refuses it otherwise). */
-  private sendAgain(link: JoinLink, state: Record<string, unknown> | null): void {
+   *  state or lobby frame shows it was not applied (stillOwed). */
+  private sendAgain(link: JoinLink, frame: Record<string, unknown> | null): void {
     if (this.token === null) return;
-    const moves = movesOf(this.clock);
-    const move = moves.get(this.token);
-    if (!move) return;
-    if (move.resent || !stillOwed(state, move)) {
-      moves.delete(this.token);
-      return;
+    const moves = movesOf(this.clock, this.token);
+    let sent = false;
+    for (const [kind, move] of [...moves]) {
+      if (move.resent || !stillOwed(frame, move)) {
+        moves.delete(kind);
+        continue;
+      }
+      try {
+        link.send(move.text);
+      } catch {
+        return;
+      }
+      move.resent = true;
+      this.resentTexts.add(move.text);
+      this.movedAt = this.clock.now();
+      sent = true;
+      nearbyLog("socket", `resume: the unanswered ${move.kind} sent again`);
     }
-    try {
-      link.send(move.text);
-    } catch {
-      return;
-    }
-    move.resent = true;
-    this.resentText = move.text;
-    this.movedAt = this.clock.now();
-    nearbyLog("socket", `resume: the unanswered ${move.kind} sent again`);
-    this.probe(link);
+    if (sent) this.probe(link);
   }
 
   /** Ping the host every LIMITS.pingSeconds, so it knows this phone is
@@ -473,7 +516,7 @@ export class NearbySocket {
     const text = NearbySocket.outbound(data);
     if (text === null) return;
     const link = this.link;
-    if (text === this.resentText) {
+    if (this.resentTexts.has(text)) {
       nearbyLog("socket", `out ${frameType(text)}: already sent again on this link`);
       return;
     }
@@ -489,13 +532,20 @@ export class NearbySocket {
     this.probe(link);
   }
 
-  /** A play or bury going out is the seat's unanswered move until the
-   *  host answers it. */
+  /** A move going out is the seat's unanswered move until the host
+   *  answers it. */
   private noteMove(text: string): void {
     if (this.token === null) return;
     const msg = parseObject(text);
-    if (msg === null || (msg.type !== "play" && msg.type !== "bury")) return;
-    movesOf(this.clock).set(this.token, { text, kind: msg.type, ids: msg.card_ids as number[], resent: false });
+    if (msg === null || typeof msg.type !== "string" || !MOVE_KINDS.has(msg.type)) return;
+    const kind = msg.type as MoveKind;
+    const moves = movesOf(this.clock, this.token);
+    // re-inserted, so the kinds stay in the order sent
+    moves.delete(kind);
+    moves.set(kind, {
+      text, kind, ids: Array.isArray(msg.card_ids) ? msg.card_ids as number[] : [],
+      on: msg.on !== false, resent: false,
+    });
   }
 
   close(): void {

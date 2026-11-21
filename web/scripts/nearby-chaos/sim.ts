@@ -1513,6 +1513,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const endAt = Math.max(opts.seconds, ...schedule.map((f) => f.t + f.dur)) + 45;
   try {
     await vc.run(() => violation !== null || vc.now() >= endAt, 5_000_000);
+    // a phase-targeted fault runs at its phase, often well after its t: a
+    // fault still armed now never runs, and the settle comes 45 s after the
+    // last fault that did run has cleared
+    armed.length = 0;
+    const settled = () => all.every((d) => d.activeFaults === 0 && vc.now() - d.clearedAt >= 45);
+    if (opts.phaseTargeted) await vc.run(() => violation !== null || settled(), 5_000_000);
   } catch (e) {
     fail("simulator", String(e));
   }

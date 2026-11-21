@@ -134,6 +134,7 @@ export class NearbySocket {
         message: (text) => {
           if (this.resuming) {
             this.heard = this.clock.now();
+            if (text === PONG_TEXT) this.pingSent = null;
             if (text === PONG_TEXT || text === KEEPALIVE_TEXT) return;
             this.early.push(text);
             const type = frameType(text);
@@ -196,15 +197,38 @@ export class NearbySocket {
             this.close();
             return;
           }
-          this.clock.setTimeout(() => {
-            if (this.link === link && this.resuming) {
-              nearbyLog("socket", `resume: no answer in ${LIMITS.resumeSeconds} s; a fresh attempt`);
-              this.close();
-            }
-          }, LIMITS.resumeSeconds);
+          this.awaitResume(link, this.clock.now());
         },
         () => this.finish(),
       );
+  }
+
+  /** The hello is out on a link that is up. Unanswered after
+   *  LIMITS.resumeSeconds, the link is pinged: while its pongs come back
+   *  the hello is still on its way (the link is TCP) and the link is kept;
+   *  a ping unanswered for the pong window, or no answer by
+   *  LIMITS.silentSeconds, ends the attempt for a fresh one. */
+  private awaitResume(link: JoinLink, since: number): void {
+    const check = () => {
+      if (this.link !== link || !this.resuming) return;
+      const now = this.clock.now();
+      if (now - since >= LIMITS.silentSeconds - 1e-6) {
+        nearbyLog("socket", `resume: no answer in ${LIMITS.silentSeconds} s; a fresh attempt`);
+        this.close();
+        return;
+      }
+      if (this.pingSent !== null && now - this.pingSent >= this.pongWindow(link) - 1e-6) {
+        nearbyLog("socket", `resume: no answer and no pong; a fresh attempt`);
+        this.close();
+        return;
+      }
+      if (this.pingSent === null) {
+        nearbyLog("socket", "resume: no answer yet; the link is checked");
+        if (!this.sendPing(link)) return;
+      }
+      this.clock.setTimeout(check, Math.min(LIMITS.pingSeconds, this.pongWindow(link)));
+    };
+    this.clock.setTimeout(check, LIMITS.resumeSeconds);
   }
 
   /** The host answered the resume: the socket is open, and the frames that

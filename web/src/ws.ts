@@ -72,7 +72,9 @@ export const PROBE_MS = 2000;
 export const ANSWER_MS = 1500;
 export const ACTION_PONG_MS = 3000;
 /** A socket still connecting this long is abandoned for a fresh one: a
- *  handshake can hang on a network that has just changed. */
+ *  handshake can hang on a network that has just changed. Not for a nearby
+ *  link: its socket's own link and resume timers end an attempt, and a link
+ *  that is up with its hello unanswered is kept while it still carries. */
 export const CONNECT_MS = 5000;
 /** A wake event (back online, back in view) restarts a connect this old. */
 export const STALE_CONNECT_MS = 2000;
@@ -489,7 +491,7 @@ class Connection {
     this.ws = ws;
     this.openedAt = null;
     this.connectAt = Date.now();
-    let connectTimer: number | null = window.setTimeout(() => {
+    let connectTimer: number | null = this.transport === "nearby" ? null : window.setTimeout(() => {
       connectTimer = null;
       if (this.ws === ws && this.openedAt === null) {
         // never opened: cut it, so a late open or close changes nothing

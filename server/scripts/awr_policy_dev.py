@@ -146,17 +146,25 @@ def cache_part(model, part, entry, records: Records, *, heldout: bool):
         hit = [i for i, a in enumerate(acts) if Counter(a) == Counter(rec["action"])]
         chosen[r] = hit[0] if hit else -1
         complete[r] = bool(rec.get("legal_actions_complete")) and bool(hit)
+        # the search's means index its ballot (``eligible_indices``); a late stage may append an
+        # unpriced candidate (mean None), which is left out
         av = rec.get("action_values") or {}
+        ballot = rec.get("ballot") or []
         el, means = list(av.get("eligible_indices") or []), list(av.get("means") or [])
-        if len(el) != len(means) or any(m is None for m in means):
+        if len(el) != len(means):
             el, means = [], []
-        cand.append(np.asarray(el, np.int32))
-        cand_mean.append(np.asarray(means, np.float32))
+        keep = [(i, m) for i, m in zip(el, means) if m is not None and 0 <= int(i) < len(ballot)]
+        cv = np.zeros((len(keep), K), np.uint8)
+        for j, (i, _) in enumerate(keep):
+            for c, v in _counts(ballot[int(i)]).items():
+                cv[j, slot_of[c]] = v
+        cand.append(cv)
+        cand_mean.append(np.asarray([m for _, m in keep], np.float32))
     out["L_off"] = np.cumsum([0] + [len(v) for v in legal]).astype(np.int64)
     out["L"] = np.concatenate(legal) if legal else np.zeros((0, K), np.uint8)
     out["chosen"], out["complete"] = chosen, complete
     out["C_off"] = np.cumsum([0] + [len(v) for v in cand]).astype(np.int64)
-    out["C_idx"] = np.concatenate(cand) if cand else np.zeros(0, np.int32)
+    out["C_vec"] = np.concatenate(cand) if cand else np.zeros((0, K), np.uint8)
     out["C_mean"] = np.concatenate(cand_mean) if cand_mean else np.zeros(0, np.float32)
     out["qcat"] = part["q_target"].astype(np.int16)
     for k in ("store", "cluster", "round_index", "decision", "row_seat", "row_ply", "deal", "trick", "role"):
@@ -172,7 +180,7 @@ def concat(chunks, dir_ids):
         if k in ("L_off", "C_off"):
             continue
         out[k] = np.concatenate([c[k] for c in chunks])
-    for off, arr in (("L_off", "L"), ("C_off", "C_idx")):
+    for off, arr in (("L_off", "L"), ("C_off", "C_vec")):
         offs, base = [np.zeros(1, np.int64)], 0
         for c in chunks:
             offs.append(c[off][1:] + base)
@@ -344,6 +352,8 @@ def advantages(z, baseline: str, lam: float, ridge=None) -> np.ndarray:
         return out
     if baseline == "hand":
         return out - ridge(z)
+    if baseline == "search":
+        return search_advantage(z)
     seq = (z["dir_id"] * 10**9 + z["store"] * 10**7 + z["cluster"] * 100 + z["round_index"]) * 4 + z["row_seat"]
     if lam == 1.0:
         return out - z["V"].astype(np.float64)
@@ -369,6 +379,22 @@ def fit_ridge(z, alpha=1.0):
     return predict
 
 
+def search_advantage(z) -> np.ndarray:
+    """The played action's search mean minus the mean over the priced candidates (levels); 0 where
+    the played action is unpriced or fewer than two candidates are priced."""
+    out = np.zeros(len(z["V"]), np.float64)
+    for r in range(len(out)):
+        a, b = z["C_off"][r], z["C_off"][r + 1]
+        if b - a < 2:
+            continue
+        act = z["L"][z["L_off"][r] + z["chosen"][r]]
+        hit = np.flatnonzero((z["C_vec"][a:b] == act).all(1))
+        if len(hit):
+            m = z["C_mean"][a:b].astype(np.float64)
+            out[r] = m[hit[0]] - m.mean()
+    return out
+
+
 def search_targets(z, tau: float) -> np.ndarray:
     """``(N, K)`` card targets: a softmax over the searched candidates of (mean - max)/tau, each
     candidate's card multiset normalised; the attempted action where no candidate values exist."""
@@ -381,8 +407,7 @@ def search_targets(z, tau: float) -> np.ndarray:
         m = z["C_mean"][a:b].astype(np.float64)
         p = np.exp((m - m.max()) / tau)
         p /= p.sum()
-        L = z["L"][z["L_off"][r]:z["L_off"][r + 1]].astype(np.float64)
-        c = L[z["C_idx"][a:b]]
+        c = z["C_vec"][a:b].astype(np.float64)
         t = (p[:, None] * c / c.sum(1, keepdims=True)).sum(0)
         out[r] = t
         has[r] = True
@@ -552,6 +577,8 @@ def cmd_sweep(args) -> int:
         for tau in (0.05, 0.15, 0.5):
             args._search_tgt[tau], has = search_targets(ztr, tau)
             go(f"search-tau{tau}", {"beta": None, "tau": tau, "search_rows": float(has.mean())})
+        for m in (0.5, 1.0, 2.0):
+            go(f"search-adv{m}", {"beta_mult": m, "cap": 20.0, "baseline": "search", "lam": 1.0, "shape": "exp"})
     cand = [r for r in results if r["arm"] != "control"]
     win = max(cand, key=score) if cand else None
     summary = {"best_chain": best, "winner": win and win["arm"], "ridge_r2": ridge.r2}

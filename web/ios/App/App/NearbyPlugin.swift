@@ -619,6 +619,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         findDeadline = Date().addingTimeInterval(lookTime)
         let params = NWParameters.tcp
         params.includePeerToPeer = lookP2P
+        chaosBar(params)
         spikeLog("browse: peer-to-peer \(lookP2P ? "allowed" : "off (Wi-Fi up)")")
         let browser = NWBrowser(for: .bonjourWithTXTRecord(type: NearbyBuild.serviceType, domain: nil),
                                 using: params)
@@ -969,6 +970,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     private func tryTable(_ endpoint: NWEndpoint, psk: Data, salt: String) {
         let params = Self.parameters(psk: psk)
         params.includePeerToPeer = lookP2P
+        chaosBar(params)
         let connection = NWConnection(to: endpoint, using: params)
         let link = Link(peer: "host", connection: connection)
         attempts.append(link)
@@ -1433,10 +1435,27 @@ extension ShengjiNearbyPlugin {
 /// for 20-90 s, inside the plugin's path logic only; the radio is never
 /// touched. It holds in memory, ends when the app resigns active or a real
 /// path change arrives (the real value wins), and is gone on a restart.
+/// A faked leave also ends a joiner's host link over the access point's
+/// Wi-Fi and bars that interface from its looks while the fake runs, so the
+/// page's resume makes the link again over peer-to-peer, as it would with
+/// the network really gone; the fake's end lifts the bar and the move back
+/// to Wi-Fi follows its own rule (Migration).
 extension ShengjiNearbyPlugin {
     /// On `queue`: the real Wi-Fi value while a fake runs, else nil.
     static var chaosWifiReal: Bool?
     private static var chaosWifiRun = 0
+    /// On `queue`: a faked leave runs, so looks leave out the Wi-Fi
+    /// interface. Only the fake sets it; its end and a real path change
+    /// clear it.
+    private static var chaosBarWifi = false
+
+    /// A look's browse or try under a faked leave: the access point's Wi-Fi
+    /// interface is prohibited, leaving peer-to-peer.
+    func chaosBar(_ params: NWParameters) {
+        guard Self.chaosBarWifi else { return }
+        params.prohibitedInterfaces = pathMonitor.currentPath.availableInterfaces
+            .filter { $0.type == .wifi && !LinkPath.isPeerToPeer($0.name) }
+    }
 
     /// On `queue`: starts a fake, unless one runs or the app is not active.
     func chaosWifiStart(seconds: Double) -> Bool {
@@ -1446,8 +1465,13 @@ extension ShengjiNearbyPlugin {
         Self.chaosWifiRun += 1
         let run = Self.chaosWifiRun
         wifiUp = !real
+        Self.chaosBarWifi = real
         spikeLog("CHAOS wifi fake \(real ? "left" : "joined") for \(Int(seconds.rounded())) s")
         wifiFollowOn()
+        if real, !hosting, links["host"] != nil, !hostOverP2P {
+            spikeLog("wifi fake: the host link over Wi-Fi drops; looks leave Wi-Fi out until the fake ends")
+            drop("host")
+        }
         queue.asyncAfter(deadline: .now() + seconds) { [weak self] in
             guard let self = self, Self.chaosWifiRun == run else { return }
             self.chaosWifiEnd(restore: true)
@@ -1462,6 +1486,7 @@ extension ShengjiNearbyPlugin {
         guard let real = Self.chaosWifiReal else { return }
         Self.chaosWifiReal = nil
         Self.chaosWifiRun += 1
+        Self.chaosBarWifi = false
         spikeLog("CHAOS wifi fake over\(restore ? "" : ": a real path change")")
         guard restore, wifiUp != real else { return }
         wifiUp = real
@@ -1472,6 +1497,7 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static var chaosWifiReal: Bool? { nil }
     func chaosWifiEnd(restore: Bool) {}
+    func chaosBar(_ params: NWParameters) {}
 }
 #endif
 

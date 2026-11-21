@@ -55,8 +55,20 @@ describe("the plugin's faked Wi-Fi change", () => {
   const swift = readFileSync(join(process.cwd(), "ios/App/App/NearbyPlugin.swift"), "utf8");
   it("exists only in the device test and the Beta, and every other build has a no-op", () => {
     expect(swift.match(/func chaosWifiStart/g)).toHaveLength(1);
-    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    \/\/\/[^\n]*\n    static var chaosWifiReal: Bool\?\n[\s\S]*?func chaosWifiStart[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static var chaosWifiReal: Bool\? \{ nil \}\n    func chaosWifiEnd\(restore: Bool\) \{\}\n\}\n#endif/);
+    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    \/\/\/[^\n]*\n    static var chaosWifiReal: Bool\?\n[\s\S]*?func chaosWifiStart[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static var chaosWifiReal: Bool\? \{ nil \}\n    func chaosWifiEnd\(restore: Bool\) \{\}\n    func chaosBar\(_ params: NWParameters\) \{\}\n\}\n#endif/);
     expect(swift).toContain('case "wifi":');
+  });
+  it("a faked leave drops a joiner's Wi-Fi host link and bars Wi-Fi from its looks; the fake's end and a real path lift the bar", () => {
+    const start = swift.indexOf("func chaosWifiStart");
+    const fake = swift.slice(start, swift.indexOf("\n#else", start));
+    expect(fake).toMatch(/Self\.chaosBarWifi = real\n/);
+    expect(fake).toMatch(/if real, !hosting, links\["host"\] != nil, !hostOverP2P \{\n[^\n]*\n\s+drop\("host"\)/);
+    const end = fake.slice(fake.indexOf("func chaosWifiEnd"));
+    expect(end).toMatch(/guard let real = Self\.chaosWifiReal else \{ return \}\n\s+Self\.chaosWifiReal = nil\n\s+Self\.chaosWifiRun \+= 1\n\s+Self\.chaosBarWifi = false/);
+    // the bar is set only by the fake (its declaration, the fake, its end); the look's browse and every try read it
+    expect(swift.match(/chaosBarWifi = /g)).toHaveLength(3);
+    expect(swift.match(/params\.includePeerToPeer = lookP2P\n\s+chaosBar\(params\)/g)).toHaveLength(2);
+    expect(swift).toMatch(/params\.prohibitedInterfaces = pathMonitor\.currentPath\.availableInterfaces\n\s+\.filter \{ \$0\.type == \.wifi && !LinkPath\.isPeerToPeer\(\$0\.name\) \}/);
   });
   it("never tells the page the network is unsatisfied: the fake changes only the Wi-Fi-joined state", () => {
     const start = swift.indexOf("func chaosWifiStart");

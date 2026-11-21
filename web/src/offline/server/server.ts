@@ -48,6 +48,11 @@ const KITTY_FIRST_ID = 100;
  *  connected person has this long for each bury, play and round-end Next;
  *  then the bot makes that one decision. */
 export const MOVE_TIMER = 60.0;
+/** A nearby player back on their link mid-decision has at least this long
+ *  left for it: their clock stood still while they were gone, and one that
+ *  had nearly run out before the drop gets enough for a decision, but no
+ *  more, so dropping and coming back never buys a whole new clock. */
+export const RETURN_MIN = 15.0;
 /** server.py AWAY_IN_A_ROW and AWAY_PER_ROUND: this many timeouts mark the
  *  seat away, and the bot plays every decision for it until its player is back. */
 export const AWAY_IN_A_ROW = 2;
@@ -658,6 +663,18 @@ export class LocalServer {
     }
   }
 
+  /** A nearby seat back from a drop while it owes a decision: its clock
+   *  takes up where it stood at the drop (no time away counts, so no strike
+   *  comes of it), with at least RETURN_MIN left, and is checked again then. */
+  private resumeMoveClock(room: LocalRoom, seat: Seat): void {
+    if (!room.nearby || room.game === null || seat.connected || seat.leftAt === null || seat.turnStarted === null) return;
+    const now = this.clock.now();
+    const used = Math.max(0, seat.leftAt - seat.turnStarted);
+    const left = Math.min(MOVE_TIMER, Math.max(RETURN_MIN, MOVE_TIMER - used));
+    seat.turnStarted = now - (MOVE_TIMER - left);
+    this.moveCheckIn(room, left);
+  }
+
   private moveCheckIn(room: LocalRoom, seconds: number): void {
     this.clock.setTimeout(() => this.moveTimerTick(room), Math.max(0, seconds));
   }
@@ -768,6 +785,7 @@ export class LocalServer {
   }
 
   attach(room: LocalRoom, seat: Seat, writer: Writer): number {
+    this.resumeMoveClock(room, seat);
     seat.writer?.cancel();
     seat.gen += 1;
     seat.connected = true;

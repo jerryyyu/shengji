@@ -284,3 +284,36 @@ it("places a bubble beside its seat, never over a card", () => {
   const wall = { x: 0, y: 0, w: 800, h: 400 };
   expect(placeBubble(seat, size, ["right", "left"], bounds, [[wall]])).toBeNull();
 });
+
+it("snapshots shared obstacles once per live multi-bubble placement pass", () => {
+  render();
+  const layer = host.querySelector<HTMLElement>(".chat-bubbles")!;
+  Object.defineProperty(layer, "offsetWidth", { configurable: true, value: 1000 });
+  Object.defineProperty(layer, "offsetHeight", { configurable: true, value: 600 });
+  const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    if (this === layer) return new DOMRect(0, 0, 1000, 600);
+    if (this.matches(".chat-bubble")) return new DOMRect(0, 0, 100, 30);
+    if (this.matches(".opponent")) return new DOMRect(400, 100, 100, 40);
+    return new DOMRect(400, 300, 100, 40);
+  });
+  try {
+    serverSays(line(1, 1, "one"));
+    serverSays(line(2, 2, "two"));
+    serverSays(line(3, 3, "three"));
+    expect(bubbles()).toHaveLength(3);
+    rect.mockClear();
+    later(250);
+    const felt = host.querySelector(".trick-area");
+    expect(felt).not.toBeNull();
+    expect(rect.mock.contexts.filter((el) => el === felt)).toHaveLength(1);
+    for (const el of host.querySelectorAll(".hud-group")) {
+      expect(rect.mock.contexts.filter((read) => read === el)).toHaveLength(1);
+    }
+    const before = bubbles().map((el) => [el.style.left, el.style.top, el.dataset.side, el.style.visibility]);
+    later(250);
+    expect(bubbles().map((el) => [el.style.left, el.style.top, el.dataset.side, el.style.visibility])).toEqual(before);
+    expect(before.some(([, , , visibility]) => visibility === "")).toBe(true);
+  } finally {
+    rect.mockRestore();
+  }
+});

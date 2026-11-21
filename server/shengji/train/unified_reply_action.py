@@ -54,7 +54,7 @@ def action_feats(legal, root, seat):
 
 
 def _stored_precision(a):
-    """Match the feature precision used to fit the residual head."""
+    """The residual head consumes float16-rounded features as float32."""
     return np.asarray(a, np.float16).astype(np.float32)
 
 

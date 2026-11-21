@@ -197,14 +197,20 @@ describe("a stuck link", () => {
     // the page's new link resumes by token; the page itself sends nothing
     const sock = await t.resume(j);
     expect(sock.readyState).toBe(NearbySocket.OPEN);
-    await t.advance(1);
-    expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
     expect(nearbyLogText()).toMatch(/resume: the unanswered bury sent again/);
-    // the page's own once-more on the new link (Table's resend) is not sent twice
+    // the page's own once-more on the new link (Table's resend, on the
+    // resumed state) while that is unanswered is not sent twice
     t.send(j, bury);
+    expect(nearbyLogText()).toMatch(/out bury: already sent again on this link/);
     await t.advance(1);
     expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
     expect(j.frames.filter((f) => f.type === "error").length).toBe(errorsBefore);
+    // once answered, the same text is a new move (card ids repeat each
+    // round): it goes to the host, which refuses it here
+    t.send(j, bury);
+    await t.advance(1);
+    expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
+    expect(j.frames.filter((f) => f.type === "error").length).toBe(errorsBefore + 1);
     // and a later rebuild sends nothing again
     t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
     await t.settle(() => sock.readyState === NearbySocket.CLOSED, 1000);

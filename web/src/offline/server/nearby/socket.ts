@@ -267,7 +267,11 @@ export class NearbySocket {
     if (this.token === null || (type !== "state" && type !== "error" && type !== "room")) return;
     const moves = movesOf(this.clock);
     const move = moves.get(this.token);
-    if (move && (type !== "state" || !stillOwed(parseObject(text), move))) moves.delete(this.token);
+    const owed = move !== undefined && type === "state" && stillOwed(parseObject(text), move);
+    if (move && !owed) moves.delete(this.token);
+    // the move sent again is settled: the same text later is a new move
+    // (card ids repeat from round to round)
+    if (this.resentText !== null && !(owed && move!.text === this.resentText)) this.resentText = null;
   }
 
   /** Just resumed: a move the last link sent and the host never answered

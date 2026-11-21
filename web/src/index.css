@@ -1067,6 +1067,13 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   border: 1px solid var(--panel-edge);
   background: #0a0c11;       /* opaque: cards under a translucent menu read as menu rows */
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  /* the rows scroll within the visible screen below the button, never past
+     its foot; vh first for a browser without dvh, which is taller than the
+     page while Mobile Safari's toolbar shows */
+  max-height: calc(100vh - 72px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - 72px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .hud-menu-row {
@@ -2365,11 +2372,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     inset: -8px -6px;
   }
 
-  /* a phone's menu: the header's height above it, and the rest of the
-     landscape screen below, which it scrolls within */
+  /* a phone's menu: it opens 6px under the header and ends 6px above the
+     frame's foot or at its bottom safe area (the home indicator, a toolbar
+     over the page), in the turned frame too, and scrolls within that */
   .hud-menu {
-    max-height: calc(100dvh - var(--safe-t) - var(--header-h) - 18px);
-    overflow-y: auto;
+    max-height: calc(var(--view-h) - var(--header-bottom) - 6px - max(6px, var(--safe-b)));
   }
   /* Leave game stays in view at the menu's foot while the rows above scroll */
   .hud-menu-row.leave {

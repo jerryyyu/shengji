@@ -6,7 +6,7 @@
 // seat. Faults come from a schedule, so a failing game can be replayed and
 // shrunk. The invariants are checked as the game runs.
 import { VirtualClock } from "../../src/offline/server/clock";
-import { LocalServer, type LocalRoom } from "../../src/offline/server/server";
+import { LocalServer, type LocalRoom, type Seat } from "../../src/offline/server/server";
 import { LocalSocket } from "../../src/offline/server/socket";
 import { NearbyHost } from "../../src/offline/server/nearby/host";
 import { NearbySocket, setNearbyKeepalive } from "../../src/offline/server/nearby/socket";
@@ -51,6 +51,11 @@ export interface GameOpts {
   /** The joiner page's reconnect: "sim" (the simulator's own loop) or "ws"
    *  (ws.ts's connect timer and long-lived retry, pageModel.ts). */
   page?: PageModel;
+  /** The known gaps the app has yet to close, checked as they happen:
+   *  "report" counts each in the stats (gap ...) and never fails a game,
+   *  "strict" fails it; off (the default) skips them. S3: a reconnect under
+   *  3 s adds no chat line. */
+  gaps?: "off" | "report" | "strict";
 }
 
 export interface Violation {
@@ -256,6 +261,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     violation = { invariant, detail, t: vc.now() };
     log("!!", `VIOLATION ${invariant}: ${detail}`);
   };
+  const gapMode = opts.gaps ?? "off";
+  const gap = (invariant: string, detail: string) => {
+    stats[`gap ${invariant}`] = (stats[`gap ${invariant}`] ?? 0) + 1;
+    log("gap", `${invariant}: ${detail}`);
+    if (gapMode === "strict") fail(invariant, detail);
+  };
 
   // determinism: the room's tokens and codes come from the seed too
   const savedRandom = Math.random;
@@ -304,6 +315,38 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   // the host page: its room on its own clock, its seat on a LocalSocket
   const server = new LocalServer({ clock: H.clock, seed: () => opts.seed });
+  if (gapMode !== "off") {
+    // S3: the room's chat lines, and each seat's outage as the room sees it
+    const chatAt: { t: number; text: string }[] = [];
+    const chatSystem = server.chatSystem.bind(server);
+    server.chatSystem = (r, text) => {
+      chatAt.push({ t: vc.now(), text });
+      chatSystem(r, text);
+    };
+    const downAt = new Map<Seat, number>();
+    const seen = new Set<Seat>();
+    const detach = server.detach.bind(server);
+    server.detach = (seat, r, gen) => {
+      if ((gen === null || gen === seat.gen) && !downAt.has(seat)) downAt.set(seat, vc.now());
+      detach(seat, r, gen);
+    };
+    const attach = server.attach.bind(server);
+    server.attach = (r, seat, writer) => {
+      const now = vc.now();
+      const from = downAt.get(seat) ?? now;
+      downAt.delete(seat);
+      const again = seen.has(seat);
+      seen.add(seat);
+      const gen = attach(r, seat, writer);
+      if (again && now - from < 3) {
+        vc.setTimeout(() => {
+          const lines = chatAt.filter((c) => c.t >= from && c.t <= now + 1 && c.text.includes(seat.name));
+          if (lines.length) gap("quick reconnect adds no chat", `${seat.name} back in ${(now - from).toFixed(1)} s; chat: ${lines.map((c) => `"${c.text}"`).join(", ")}`);
+        }, 1);
+      }
+      return gen;
+    };
+  }
   const hostBot = new SmartBot();
   const hostSock = new LocalSocket(server);
   let room: LocalRoom | null = null;

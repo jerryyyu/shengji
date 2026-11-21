@@ -193,6 +193,33 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     invalid_summary = json.loads(capsys.readouterr().out)
     assert invalid_summary['validity'] == 'DEV_INVALID'
     assert 'value_gate' not in invalid_summary and 'reply_gate' not in invalid_summary
+    invalid_cli_out = tmp_path / 'invalid-cli.json'
+    invalid_cli = subprocess.run([sys.executable, '-I', str(PATH.with_name('unified_value_gate_read.py')),
+                                  str(invalid_cli_out), str(chosen), str(invalid_file)],
+                                 cwd=foreign, capture_output=True, text=True)
+    assert invalid_cli.returncode == 1, invalid_cli.stdout + invalid_cli.stderr
+    assert json.loads(invalid_cli_out.read_text())['validity']['verdict'] == 'DEV_INVALID'
+    assert 'value_gate' not in json.loads(invalid_cli.stdout)
+    assert 'reply_gate' not in json.loads(invalid_cli.stdout)
+
+    occupied = tmp_path / 'occupied-worker.jsonl'
+    occupied.write_text(''.join(json.dumps(dict(row, workers=2)) + '\n' for row in rows(full)))
+    empty = tmp_path / 'empty-worker.jsonl'
+    terminal = dict(rows(full)[-1], worker=1, workers=2, clusters=0, rows=0)
+    empty.write_text(json.dumps(terminal) + '\n')
+    empty_ok = tmp_path / 'empty-ok.json'
+    reader.main([str(empty_ok), str(chosen), str(occupied), str(empty)])
+    assert json.loads(empty_ok.read_text()) == result
+    capsys.readouterr()
+    for key in reader.IDENTITY:
+        if key == 'workers':
+            continue
+        changed = dict(terminal, **{key: 'different'})
+        empty.write_text(json.dumps(changed) + '\n')
+        bad_empty = tmp_path / 'empty-invalid.json'
+        with pytest.raises(ValueError, match='worker identity'):
+            reader.main([str(bad_empty), str(chosen), str(occupied), str(empty)])
+        assert not bad_empty.exists()
     with pytest.raises(ValueError, match='already exists'):
         reader.main([str(result_path), 'missing', 'missing'])
     valid = rows(full)[:-1]

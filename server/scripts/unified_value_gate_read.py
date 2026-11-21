@@ -186,6 +186,8 @@ def main(argv=None):
     if (any(t.get('workers') != len(terminals) for t in terminals)
             or sorted(t.get('worker', -1) for t in terminals) != list(range(len(terminals)))):
         raise ValueError('incomplete or duplicated worker partitions')
+    if any(any(t.get(k) != terminals[0].get(k) for k in IDENTITY) for t in terminals[1:]):
+        raise ValueError("mixed worker identity, including empty partitions")
     result = analyze(rows, want)
     serialized = json.dumps(result, indent=1, allow_nan=False)
     with open(args.out, 'x') as stream:
@@ -197,7 +199,8 @@ def main(argv=None):
     if result['validity']['verdict'] == va.VALID:
         summary.update(value_gate=result['value']['gate'], reply_gate=result['reply']['gate'])
     print(json.dumps(summary, allow_nan=False))
+    return 0 if result["validity"]["verdict"] == va.VALID else 1
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

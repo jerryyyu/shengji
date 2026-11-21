@@ -816,3 +816,14 @@ def test_final_duplicate_checks_budget_after_cache_lookup(monkeypatch):
     with pytest.raises(RuntimeError, match='expired during final lookup'):
         exact.rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
                             [world, world], check_budget=guard)
+
+
+def test_fourth_hand_changes_exact_follow_world_score():
+    rnd = _follow_round()
+    legal = exhaustive_legal_actions(rnd, 1)
+    other = copy.deepcopy(rnd.hands)
+    other[3][0] = "S7"
+    result = rerank_follow(rnd, 1, legal, [(rnd.hands, []), (other, [])],
+                           solver="compact-level", retain_world_scores=True)
+    assert result.world_scores == ((-3.5, -2.5), (-2.5, -2.5))
+    assert result.scores == (-3.0, -2.5)

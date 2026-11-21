@@ -18,7 +18,7 @@ describe("the soak's link split", () => {
     s.see(n(60_000, "moving the host link off peer-to-peer"));
     s.see(n(60_100, "drop host"));
     s.see(n(61_000, "host link up via en0 (wifi)"));
-    expect(s.summary(100_000)).toBe("links wifi 2 / p2p 1, p2p time 20%, STUCK wifi 1 / p2p 1, moved off p2p 1");
+    expect(s.summary(100_000)).toBe("links wifi 2 / p2p 1, p2p time 20% 20 s, STUCK wifi 1 / p2p 1, moved off p2p 1");
   });
 
   it("reads a host's inbound links, peer-to-peer by the line or by an awdl or llw interface", () => {
@@ -30,12 +30,12 @@ describe("the soak's link split", () => {
     s.see(n(20_000, "inbound p1 up via en0"));   // the same peer again: its first link ends
     expect(s.ups).toEqual({ wifi: 2, p2p: 2 });
     // en0 20 + 20 s, awdl0 40 s, llw0 10 s at t=40 s
-    expect(s.summary(40_000)).toBe("links wifi 2 / p2p 2, p2p time 56%, STUCK wifi 0 / p2p 0, moved off p2p 0");
+    expect(s.summary(40_000)).toBe("links wifi 2 / p2p 2, p2p time 56% 50 s, STUCK wifi 0 / p2p 0, moved off p2p 0");
   });
 
   it("before any link the split says so, and the SOAK line carries it", () => {
     expect(new LinkSplit().summary(5)).toBe("links wifi 0 / p2p 0, p2p time -, STUCK wifi 0 / p2p 0, moved off p2p 0");
-    expect(soakSummary()).toMatch(/\(n=\d+\), links wifi \d+ \/ p2p \d+, p2p time (-|\d+%), STUCK wifi \d+ \/ p2p \d+, moved off p2p \d+; warnings 0$/);
+    expect(soakSummary()).toMatch(/\(n=\d+\), links wifi \d+ \/ p2p \d+, p2p time (-|\d+%[^,]*), STUCK wifi \d+ \/ p2p \d+, moved off p2p \d+, freeze n=\d+.*, chaos not applied \d+; warnings 0$/);
   });
 });
 

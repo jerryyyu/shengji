@@ -149,6 +149,7 @@ let offFrames: (() => void) | null = null;
 function resetStats(): void {
   Object.assign(stats, { started: Date.now(), rounds: 0, games: 0, faults: 0, reconnects: 0, stuck: 0, refused: 0, moves: [], warnings: [] });
   links = new LinkSplit();
+  metrics = new SoakMetrics();
 }
 
 type LinkKind = "wifi" | "p2p";
@@ -201,12 +202,205 @@ export class LinkSplit {
     for (const l of this.live.values()) ms[l.kind] += Math.max(0, t - l.since);
     const all = ms.wifi + ms.p2p;
     const share = all > 0 ? `${Math.round((100 * ms.p2p) / all)}%` : "-";
-    return `links wifi ${this.ups.wifi} / p2p ${this.ups.p2p}, p2p time ${share}, ` +
+    const low = all > 0 && ms.p2p < 0.2 * all ? " (under 20%)" : "";
+    return `links wifi ${this.ups.wifi} / p2p ${this.ups.p2p}, p2p time ${share}${all > 0 ? ` ${Math.round(ms.p2p / 1000)} s${low}` : ""}, ` +
       `STUCK wifi ${this.stuck.wifi} / p2p ${this.stuck.p2p}, moved off p2p ${this.movedOff}`;
   }
 }
 
 let links = new LinkSplit();
+
+type Line = Pick<LogLine, "t" | "from" | "text">;
+const SOCKET_MOVES = /^out (play|bury|declare|pass_declare)$/;
+const sec = (ms: number): string => (ms / 1000).toFixed(1);
+const spreadS = (xs: number[]): string =>
+  xs.length ? `n=${xs.length} p50 ${sec(pct(xs, 0.5))} p95 ${sec(pct(xs, 0.95))} max ${sec(Math.max(...xs))} s` : "n=0";
+
+/** The soak's link health, from this phone's log lines and its table
+ *  frames (all times page milliseconds):
+ *  - an outage runs from a joiner's link going (its drop, a STUCK, or a
+ *    resume attempt) to "resume: accepted"; its freeze is from the last
+ *    frame heard before it to then, its recovery from the clear of the
+ *    fault that ran on this phone (a stall's or blackhole's end, a
+ *    one-shot fault's own line, when the outage began within 5 s of it) to
+ *    then;
+ *  - per outage, the resume attempts made and the hellos sent with no
+ *    answer on their link;
+ *  - a move is ignored when its link goes before its answer, and re-sent
+ *    when the same kind goes out within 5 s of the resume after it;
+ *  - each STUCK by its fault: a stall running, a stall ended within 1 s, a
+ *    blackhole running or ended within 1 s, or none;
+ *  - stalls and blackholes over 4 s with no STUCK from their start to 1 s
+ *    after their end;
+ *  - the bytes of each chat_history (one per resume), state frames repeated
+ *    exactly, and the frames' bytes per second while dealing (deal, declare,
+ *    bury) and in play;
+ *  - migration: from the move off peer-to-peer to the next Wi-Fi link up;
+ *  - the log's upload bytes, and chaos picks the plugin said do not apply. */
+export class SoakMetrics {
+  freezes: number[] = [];
+  recoveries: number[] = [];
+  attempts: number[] = [];
+  abandonedHellos = 0;
+  ignored = 0;
+  resent = 0;
+  hostIgnored = 0;
+  stuck = { stall: 0, after: 0, blackhole: 0, none: 0 };
+  quiet = { stall: 0, stalls: 0, blackhole: 0, blackholes: 0 };
+  chatHistory: number[] = [];
+  dupStates = 0;
+  bytes = { dealing: 0, play: 0 };
+  ms = { dealing: 0, play: 0 };
+  migrations: number[] = [];
+  uploaded = 0;
+  notApplied = 0;
+  private lastHeard: number | null = null;
+  private outage: { from: number; at: number; attempts: number; hellos: number } | null = null;
+  private cleared: number | null = null;
+  private moveOut: string | null = null;
+  private owed: { kind: string; by: number } | null = null;
+  private resend: string | null = null;
+  private fault: { kind: "stall" | "blackhole"; from: number; long: boolean; stuck: boolean } | null = null;
+  private ended: { kind: "stall" | "blackhole"; at: number; long: boolean; stuck: boolean } | null = null;
+  private lastState = "";
+  private phase: { kind: "dealing" | "play" | null; since: number } = { kind: null, since: 0 };
+  private movingSince: number | null = null;
+
+  see(l: Line): void {
+    const { t, from, text } = l;
+    if (from === "socket" && (/^in [a-z_]+/.test(text) || text.startsWith("pong in "))) {
+      if (this.outage === null) this.lastHeard = t;
+      const m = /, (\d+) ms after the move$/.exec(text);
+      if (m) this.moveOut = null;
+    }
+    if (from === "socket") {
+      const out = SOCKET_MOVES.exec(text);
+      if (out) {
+        if (this.owed && out[1] === this.owed.kind && t <= this.owed.by) this.resent += 1;
+        this.owed = null;
+        this.moveOut = out[1];
+      }
+    }
+    if ((from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)")) this.down(t);
+    if (from === "join" && text === "attempt (resume)" && this.outage) this.outage.attempts += 1;
+    if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text) && this.outage) this.outage.hellos += 1;
+    if (from === "socket" && text.startsWith("resume: accepted")) this.back(t);
+    if (text.startsWith("STUCK")) this.stuckAt(t);
+    if (from === "host" && text.startsWith("IGNORED ")) this.hostIgnored += 1;
+    if (from === "native") this.chaos(t, text);
+    if (from === "native" && text === "moving the host link off peer-to-peer") this.movingSince = t;
+    if (from === "native" && this.movingSince !== null && /^host link up via (\S+)/.test(text)) {
+      if (LinkSplit.kind(/^host link up via (\S+)/.exec(text)![1], text.endsWith("peer-to-peer")) === "wifi") this.migrations.push(t - this.movingSince);
+      this.movingSince = null;
+    }
+    const up = /^upload (\d+) B ok/.exec(text);
+    if (from === "log" && up) this.uploaded += Number(up[1]);
+  }
+
+  private down(t: number): void {
+    if (this.outage !== null) return;
+    // a fault's clear long before this outage did not cause it
+    if (this.cleared !== null && t - this.cleared > 5000) this.cleared = null;
+    this.outage = { from: this.lastHeard ?? t, at: t, attempts: 0, hellos: 0 };
+    if (this.moveOut !== null) {
+      this.ignored += 1;
+      this.resend = this.moveOut;
+      this.moveOut = null;
+    }
+  }
+
+  private back(t: number): void {
+    const o = this.outage;
+    if (o === null) return;
+    this.outage = null;
+    this.freezes.push(t - o.from);
+    this.attempts.push(o.attempts);
+    this.abandonedHellos += Math.max(0, o.hellos - 1);
+    if (this.cleared !== null) this.recoveries.push(t - this.cleared);
+    this.cleared = null;
+    this.lastHeard = t;
+    if (this.resend !== null) this.owed = { kind: this.resend, by: t + 5000 };
+    this.resend = null;
+  }
+
+  private stuckAt(t: number): void {
+    if (this.fault) {
+      this.fault.stuck = true;
+      this.stuck[this.fault.kind] += 1;
+    } else if (this.ended && t - this.ended.at <= 1000) {
+      this.ended.stuck = true;
+      this.stuck[this.ended.kind === "stall" ? "after" : "blackhole"] += 1;
+    } else this.stuck.none += 1;
+  }
+
+  private chaos(t: number, text: string): void {
+    const start = /^CHAOS (stall|blackhole)[: ].* for ([\d.]+) s$/.exec(text);
+    if (start) {
+      this.settle();
+      this.fault = { kind: start[1] as "stall" | "blackhole", from: t, long: Number(start[2]) > 4, stuck: false };
+      return;
+    }
+    if (/^CHAOS (stall|blackhole) over/.test(text) && this.fault) {
+      this.ended = { kind: this.fault.kind, at: t, long: this.fault.long, stuck: this.fault.stuck };
+      this.fault = null;
+      this.cleared = t;
+      return;
+    }
+    if (/^CHAOS (cancel|path|listener)/.test(text) || text.startsWith("CHAOS wifi fake over")) this.cleared = t;
+  }
+
+  /** A fault's quiet tally once its 1 s after has passed (or a new one starts). */
+  private settle(): void {
+    const e = this.ended;
+    if (!e) return;
+    this.ended = null;
+    if (!e.long) return;
+    if (e.kind === "stall") {
+      this.quiet.stalls += 1;
+      if (!e.stuck) this.quiet.stall += 1;
+    } else {
+      this.quiet.blackholes += 1;
+      if (!e.stuck) this.quiet.blackhole += 1;
+    }
+  }
+
+  /** One table frame this phone's page was handed, at `t`. */
+  frame(m: Frame, t: number): void {
+    const text = JSON.stringify(m);
+    if (m.type === "chat_history") this.chatHistory.push(text.length);
+    if (m.type === "state") {
+      if (text === this.lastState) this.dupStates += 1;
+      this.lastState = text;
+      const kind = m.phase === "play" ? "play" : m.phase === "deal" || m.phase === "declare" || m.phase === "bury" ? "dealing" : null;
+      this.time(t);
+      this.phase = { kind, since: t };
+    }
+    if (this.phase.kind) this.bytes[this.phase.kind] += text.length;
+  }
+
+  private time(t: number): void {
+    if (this.phase.kind) this.ms[this.phase.kind] += Math.max(0, t - this.phase.since);
+    this.phase.since = t;
+  }
+
+  summary(t: number, minutes: number): string {
+    if (this.ended && t - this.ended.at > 1000) this.settle();
+    this.time(t);
+    const rate = (k: "dealing" | "play") => (this.ms[k] > 0 ? Math.round(this.bytes[k] / (this.ms[k] / 1000)) : 0);
+    const kb = (b: number) => `${(b / 1024).toFixed(1)} KB`;
+    const per10 = minutes > 0 ? (this.uploaded / minutes) * 10 : 0;
+    return `freeze ${spreadS(this.freezes)}, recovery ${spreadS(this.recoveries)}, ` +
+      `attempts/outage max ${Math.max(0, ...this.attempts)} (hellos abandoned ${this.abandonedHellos}), ` +
+      `moves ignored ${this.ignored} re-sent ${this.resent} (host ignored ${this.hostIgnored}), ` +
+      `STUCK in stall ${this.stuck.stall} / stall ended <1 s ${this.stuck.after} / blackhole ${this.stuck.blackhole} / no fault ${this.stuck.none}, ` +
+      `no STUCK in stalls >4 s ${this.quiet.stall}/${this.quiet.stalls} blackholes >4 s ${this.quiet.blackhole}/${this.quiet.blackholes}, ` +
+      `chat_history n=${this.chatHistory.length} max ${kb(Math.max(0, ...this.chatHistory))}, dup states ${this.dupStates}, ` +
+      `B/s dealing ${rate("dealing")} play ${rate("play")}, migration ${spreadS(this.migrations)}, ` +
+      `upload ${kb(per10)}/10 min, chaos not applied ${this.notApplied}`;
+  }
+}
+
+let metrics = new SoakMetrics();
 const pageMs = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 function pct(xs: number[], q: number): number {
@@ -221,7 +415,7 @@ export function soakSummary(): string {
   const warn = stats.warnings.length ? ` WARN ${stats.warnings.length}: ${[...new Set(stats.warnings)].slice(0, 3).join("; ")}` : " warnings 0";
   return `SOAK ${mins} min: games ${stats.games}, rounds ${stats.rounds}, faults ${stats.faults}, reconnects ${stats.reconnects}, ` +
     `STUCK ${stats.stuck}, refused ${stats.refused}, move->state worst ${Math.max(0, ...stats.moves)} ms p95 ${pct(stats.moves, 0.95)} ms (n=${stats.moves.length}), ` +
-    `${links.summary(Math.round(pageMs()))};${warn}`;
+    `${links.summary(Math.round(pageMs()))}, ${metrics.summary(Math.round(pageMs()), (Date.now() - stats.started) / 60_000)};${warn}`;
 }
 
 function writeSummary(): void {
@@ -242,6 +436,7 @@ function readLog(): void {
   const l = lines[lines.length - 1];
   if (!l || l.from === "soak") return;
   links.see(l);
+  metrics.see(l);
   if (l.text.includes("STUCK")) stats.stuck += 1;
   if (l.text.startsWith("resume: accepted")) stats.reconnects += 1;
   if (l.text.startsWith("REFUSED")) stats.refused += 1;
@@ -260,6 +455,7 @@ let actTimer: number | null = null;
 let startSent = "";
 
 function onFrame(m: Frame): void {
+  metrics.frame(m, Math.round(pageMs()));
   if (m.type === "left") {
     lastYou = null;
     return;
@@ -359,7 +555,10 @@ function armChaos(): void {
     if (p && typeof p.debugChaos === "function") {
       nearbyLog("soak", `chaos: ${kind}${kind === "cancel" || kind === "path" || kind === "listener" ? "" : ` ${seconds.toFixed(1)} s`}`);
       void p.debugChaos({ kind, seconds }).then((r) => {
-        if (r?.done === false) nearbyLog("soak", `chaos: ${kind} does not apply here`);
+        if (r?.done === false) {
+          metrics.notApplied += 1;
+          nearbyLog("soak", `chaos: ${kind} does not apply here`);
+        }
       }, (e: unknown) => nearbyLog("soak", `chaos: ${kind} failed: ${String(e)}`));
     }
     armChaos();

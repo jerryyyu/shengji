@@ -21,6 +21,14 @@ export const DRAIN_SECONDS = 1;
 /** After the host's Leave, its links stop once the room has told every
  *  joiner, or after this long at the most. */
 export const STOP_FALLBACK_SECONDS = 3;
+/** A newcomer's seat its phone has not shown it holds (confirms()) by
+ *  this long after the hello, or by the end of its link if that comes
+ *  later, is given up as by a Leave, unless the phone took it back by its
+ *  token meanwhile: so an answer lost on the way leaves no seat held for a
+ *  phone that never had it. A phone that has its answer shows it within
+ *  one of its socket's ping intervals (and a round trip), and one that
+ *  drops in between has this long to resume. */
+export const CONFIRM_SECONDS = LIMITS.silentSeconds;
 
 interface Peer {
   conn: LocalConnection | null;
@@ -46,6 +54,15 @@ interface Peer {
   /** The latest state frame sent on this link, until another kind of frame
    *  (chat aside) goes out after it. */
   lastState: string | null;
+  /** A newcomer's hello seated this link, and nothing yet shows its phone
+   *  has the answer (the seat's token): see confirms(). */
+  unconfirmed: boolean;
+  /** CONFIRM_SECONDS have passed unconfirmed: the seat goes with the link. */
+  giveUp: (() => void) | null;
+  /** The seat's answer (its resume frame) has gone out on this link. */
+  replied: boolean;
+  /** A pong has gone out after that answer. */
+  pongAfterReply: boolean;
 }
 
 export interface NearbyHostEvents {
@@ -150,7 +167,8 @@ export class NearbyHost {
       return;
     }
     const peer: Peer = { conn: null, device, token: null, deadline: 0, peeked: false, recent: [], upkeep: [],
-                         heard: this.clock.now(), ending: false, closed: false, lastState: null };
+                         heard: this.clock.now(), ending: false, closed: false, lastState: null,
+                         unconfirmed: false, giveUp: null, replied: false, pongAfterReply: false };
     this.peers.set(id, peer);
     this.helloBy(id, peer, LIMITS.helloSeconds);
     this.listen(id, peer);
@@ -190,6 +208,54 @@ export class NearbyHost {
     this.peers.delete(id);
     peer.closed = true;
     peer.conn?.close();
+    if (peer.unconfirmed) peer.giveUp?.();
+  }
+
+  /** CONFIRM_SECONDS after a newcomer's seat: still unconfirmed, and not
+   *  taken back by its token since, it is given up (a lobby seat is free
+   *  again; a game's is the bot's, and anyone's to take). */
+  private confirmBy(id: string, peer: Peer): void {
+    const seat = peer.conn!.seat!;
+    const gen = seat.gen;
+    this.clock.setTimeout(() => {
+      if (!peer.unconfirmed || this.stopped) return;
+      peer.giveUp = () => {
+        peer.unconfirmed = false;
+        // taken back by its token on another link: the phone had it
+        if (seat.gen !== gen || seat.connected) return;
+        nearbyLog("host", `link ${id}: its new seat was never confirmed; given up`);
+        this.server.giveUpNearbySeat(this.room, seat);
+      };
+      // a link still up goes on (its silence ends it); the seat goes with it
+      if (peer.closed) peer.giveUp();
+    }, CONFIRM_SECONDS);
+  }
+
+  /** For a ping from a newcomer's link: whether its pong is held (true),
+   *  and whether the ping shows the phone has its seat's answer. The
+   *  joiner's socket has one ping out at a time, sending the next only once
+   *  the last one's pong is in, and frames on a link arrive in order: so a
+   *  ping after a pong that went out after the answer was sent once the
+   *  answer had arrived. A pong is held until the answer has gone, so the
+   *  hello's own probe's pong counts, and the socket's next regular ping
+   *  (within LIMITS.pingSeconds) confirms the seat. A phone whose answer
+   *  was lost gets no pong either: it sends no more pings, and gives the
+   *  link up as stuck. */
+  private confirms(id: string, peer: Peer): boolean {
+    if (!peer.unconfirmed) return false;
+    if (peer.pongAfterReply) {
+      peer.unconfirmed = false;
+      nearbyLog("host", `link ${id}: its new seat is confirmed`);
+      return false;
+    }
+    if (peer.replied) return false;
+    // the answer is still in the room's writer: the pong goes after it
+    this.clock.setTimeout(() => {
+      if (this.peers.get(id) !== peer || peer.closed) return;
+      this.link?.send(id, PONG_TEXT);
+      if (peer.replied) peer.pongAfterReply = true;
+    }, 0);
+    return true;
   }
 
   /** End one link: its seat waits for a resume, as after a dropped socket. */
@@ -240,7 +306,9 @@ export class NearbyHost {
         this.end(id);
         return;
       }
+      if (text === PING_TEXT && this.confirms(id, peer)) return;
       this.link?.send(id, text === PING_TEXT ? PONG_TEXT : KEEPALIVE_TEXT);
+      if (text === PING_TEXT && peer.unconfirmed && peer.replied) peer.pongAfterReply = true;
       return;
     }
     peer.recent = peer.recent.filter((t) => now - t < 1);
@@ -266,6 +334,8 @@ export class NearbyHost {
       this.hello(id, peer, msg);
       return;
     }
+    // the page sends a game or lobby message only once it holds its seat
+    peer.unconfirmed = false;
     const clean = cleanJoinerMessage(msg);
     if (clean === null) {
       // an unknown or malformed message is ignored, as the device ignores
@@ -311,7 +381,13 @@ export class NearbyHost {
     if (token) {
       // a joiner back with its token: any older link of its seat is closed,
       // so frames never reach that phone twice
-      for (const [other, p] of this.peers) if (other !== id && p.token === token) this.end(other);
+      // (the phone has its token, so that link's seat was confirmed)
+      for (const [other, p] of this.peers) {
+        if (other !== id && p.token === token) {
+          p.unconfirmed = false;
+          this.end(other);
+        }
+      }
     }
     peer.conn = this.server.connect((frame) => this.deliver(id, peer, frame));
     // the join is handled in this call: the seat is bound to this link (its
@@ -320,6 +396,10 @@ export class NearbyHost {
     peer.conn.receive(JSON.stringify({ type: "table_join", code: this.room.code, name: hello.name, token,
                                        seat: hello.seat ?? null }));
     const room = peer.conn.currentRoom;
+    // a newcomer's seat (no token, or one the table did not know) waits for
+    // its phone to show it has the answer
+    peer.unconfirmed = room !== null && peer.conn.seat!.token !== token;
+    if (peer.unconfirmed) this.confirmBy(id, peer);
     nearbyLog("host", `${token ? "resume" : "join"} from ${id}: ${room ? `seat ${room.seatIndex(peer.conn.seat!)} bound` : "refused"}`);
   }
 
@@ -342,6 +422,7 @@ export class NearbyHost {
     }
     if (frame.startsWith('{"type":"resume"')) {
       peer.token = (parseObject(frame)?.token as string | undefined) ?? null;
+      peer.replied = true;
     }
     if (frame.startsWith('{"type":"left"')) this.endSoon(id, peer);
     else if (frame.startsWith('{"type":"error"')) {

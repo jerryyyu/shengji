@@ -1306,6 +1306,22 @@ export class LocalServer {
     this.kickBots(room);
   }
 
+  /** A nearby joiner's seat its phone never showed it had (host.ts
+   *  confirmBy), with its link gone: given up as by that joiner's Leave. */
+  giveUpNearbySeat(room: LocalRoom, seat: Seat): void {
+    const idx = room.seatIndex(seat);
+    if (room.closed || idx < 0 || idx === room.host || seat.connected) return;
+    this.chatSystem(room, `${seat.name} left`);
+    if (room.lobby) {
+      room.lobby[idx] = null;
+      room.lobbyReady.delete(idx);
+      this.syncBotsTimer(room);
+      this.startIfReady(room);
+    } else seat.leftByChoice = true;
+    this.broadcast(room);
+    this.kickBots(room);
+  }
+
   /** A nearby seat's link went: the chat says so once the seat has been
    *  gone DISCONNECT_NOTICE, so a link that is back at once leaves the chat
    *  as it was. */

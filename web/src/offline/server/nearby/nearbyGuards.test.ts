@@ -146,6 +146,8 @@ describe("lobby seats", () => {
 
   it("everyone else ready, a not-ready joiner's drop waits out its hold, then the game starts", async () => {
     const t = await lobby(3);
+    // seated a moment: each phone's socket has shown the host it has its seat
+    await t.advance(LIMITS.pingSeconds + 1);
     t.send(t.host, { type: "table_start" });
     t.send(t.joiners[0], { type: "table_start" });
     await t.advance(1);

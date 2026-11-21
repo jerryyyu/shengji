@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearNearbyLog } from "../../../nearbyLog";
 import { LOBBY_SEAT_HOLD } from "../server";
 import { setNearbyForTests } from "./flag";
+import { LIMITS } from "./protocol";
 import { NearbySocket } from "./socket";
 import { NearbyTable, type Player } from "./testkit";
 
@@ -21,6 +22,8 @@ async function lobby(): Promise<{ t: NearbyTable; a: Player; b: Player }> {
   await t.open();
   const a = await t.join("Ann");
   const b = await t.join("Bo");
+  // seated a moment: each phone's socket has shown the host it has its seat
+  await t.advance(LIMITS.pingSeconds + 1);
   return { t, a, b };
 }
 

@@ -296,6 +296,8 @@ describe("drops, resume and bot cover", () => {
     const seat = j.seat!;
     const token = j.token;
     j.driver = null;
+    // seated a moment: the phone's socket has shown the host it has its seat
+    await t.advance(LIMITS.pingSeconds + 1);
     t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
     const covered = () => t.room!.seats[seat].botAnnounced;
     await t.settle(covered, 2_000_000);

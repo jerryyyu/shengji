@@ -123,7 +123,7 @@
       sampleLimit: session.maxSamples,
       latencyKind: "callback",
       paintedPixelLatency: false,
-      latencyNote: "Input-to-next-animation-frame timings are callback latency, not painted pixel latency.",
+      latencyNote: "Input-to-next-animation-frame timings are callback latency, not painted pixel latency. Timing starts in the input handler and excludes pre-handler queue delay.",
       visibilitySource: "harness-controlled (qa.setHidden)",
     };
   };

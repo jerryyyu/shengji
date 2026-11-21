@@ -35,6 +35,9 @@
 //   for f in web/scripts/nearby-chaos/replays/*.json; do npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay $f; done
 //
 // 581 and 1475 must fail again with --bug migrate-stale.
+//
+// replays/gaps/ keeps the app's known gaps (--gaps strict): each fails with
+// its gap until the app closes it, and then moves up to replays/.
 import { writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGame, type Fault, type GameOpts, type GameResult } from "./sim";

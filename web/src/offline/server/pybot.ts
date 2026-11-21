@@ -1,11 +1,11 @@
 // The release bot for offline bot seats, when the app carries it.
 //
-// The iOS app embeds CPython with the served pv-search bot (web/ios/pybot/
-// offline_bot.py) behind the native ShengjiBot plugin. For a bot seat's
+// The iOS app embeds CPython with the served bot at both Bots levels (web/ios/
+// pybot/offline_bot.py) behind the native ShengjiBot plugin. For a bot seat's
 // decision the local server sends it a request that rebuilds the round as the
 // game server holds it: the deck in deal order, the trump rank, the round's
 // starting banker and every committed action so far. The bot answers with the
-// cards to declare (or none), bury or play.
+// cards to declare (or none), bury or play, at the table's Bots level.
 //
 // Every decision is settled: the bot searches on a copy of itself, and the
 // copy becomes the bot only when the page commits that decision (the engine
@@ -22,6 +22,7 @@
 // treated as busy so no decision queues behind it. The game never waits on
 // the plugin longer than the limit.
 import type { Card } from "../engine/cards";
+import type { BotLevel } from "../../queue/messages";
 import type { RoundState } from "../engine/round";
 import { nativeBot } from "../../native";
 import type { Clock } from "./clock";
@@ -48,6 +49,8 @@ export interface DecisionRequest {
   banker: number | null;
   log: ActionEntry[];
   final?: boolean;
+  /** The table's Bots; the bot plays Standard when it is absent. */
+  level?: BotLevel;
   /** This decision's name, for its verdict. */
   token?: string;
   /** Verdicts on earlier decisions, oldest first: [token, committed]. */
@@ -66,7 +69,11 @@ export interface RemoteBot {
   decide(request: DecisionRequest): Promise<Card[] | null>;
 }
 
-export function requestFor(rnd: RoundState, log: readonly ActionEntry[], kind: DecisionKind, seat: number, final = false): DecisionRequest {
+/** The Bots level of an offline table that names none, as a casual table's (matchmaking.py CASUAL_BOT_LEVEL). */
+export const DEFAULT_BOT_LEVEL: BotLevel = "standard";
+
+export function requestFor(rnd: RoundState, log: readonly ActionEntry[], kind: DecisionKind, seat: number,
+                           final = false, level: BotLevel = DEFAULT_BOT_LEVEL): DecisionRequest {
   const req: DecisionRequest = {
     v: 1,
     kind,
@@ -75,6 +82,7 @@ export function requestFor(rnd: RoundState, log: readonly ActionEntry[], kind: D
     trump_rank: rnd.trumpRank,
     banker: rnd.firstRound ? null : rnd.banker,
     log: log.map((e) => [...e] as ActionEntry),
+    level,
   };
   if (kind === "declare") req.final = final;
   return req;

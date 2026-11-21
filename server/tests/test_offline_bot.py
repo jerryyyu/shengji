@@ -15,6 +15,13 @@ or extra RNG draw shows as a different choice.  With
 (``web/ios/pybot/build_payload.sh``) the served bot itself is checked too, on
 fly.toml's own environment, where a choice may differ only where a wall-clock
 limit fired.
+
+The Standard level is checked the same way against a casual room whose Bots
+are Standard (``bot_level`` "standard", built by the server's own
+``make_relaxed_bot``): MCBot stands in for the served bot it wraps, and the
+S136 scorer package plays the cards (``SHENGJI_RELAXED_SF_PACKAGE_PATH``, or
+the built payload's copy).  Every choice must match, the near-best softmax
+draws included.
 """
 
 import copy
@@ -32,10 +39,30 @@ import bridge_harness  # noqa: E402
 import gen_bridge_fixtures  # noqa: E402
 import offline_bot  # noqa: E402
 from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.train import relaxed_play  # noqa: E402
 
 FIXTURE = PYBOT.parents[2] / "web" / "src" / "offline" / "fixtures" / gen_bridge_fixtures.FIXTURE
 BOT_SEED = 7
 GAMES = [(41_000 + g, {"startLevel": "A" if g == 2 else None, "throws": g == 1}) for g in range(3)]
+
+
+def _sf_package() -> Path | None:
+    """The S136 scorer package, from its CI variable or a built payload."""
+    value = os.environ.get("SHENGJI_RELAXED_SF_PACKAGE_PATH")
+    if not value and os.environ.get("SHENGJI_OFFLINE_BOT_PAYLOAD"):
+        value = offline_bot.standard_package(os.environ["SHENGJI_OFFLINE_BOT_PAYLOAD"])
+    return Path(value) if value and Path(value).exists() else None
+
+
+needs_sf = pytest.mark.skipif(_sf_package() is None,
+                              reason="needs the S136 scorer package (SHENGJI_RELAXED_SF_PACKAGE_PATH "
+                                     "or SHENGJI_OFFLINE_BOT_PAYLOAD)")
+
+
+def _standard(served, seed=BOT_SEED):
+    bot, error = offline_bot.standard_bot(served, str(_sf_package()), seed)
+    assert error is None and isinstance(bot, relaxed_play.RelaxedBot)
+    return bot
 
 
 def _ask(req: dict, token: str) -> dict:
@@ -166,10 +193,10 @@ def test_served_bot_offline_matches_server(tmp_path):
                                              seed=13)
     seed, config = GAMES[0]
     records, _ = bridge_harness.record_session(seed, 1, config, make)
-    offline_bot.start_session(make())
+    offline_bot.start_session(make(), level="advanced")
     unexplained = []
     for i, r in enumerate(records):
-        out = _ask(r["request"], f"t{i}")
+        out = _ask({**r["request"], "level": "advanced"}, f"t{i}")
         _settle(f"t{i}", True)
         clock = {k: out[k] for k in ("fallback", "exact_lead", "leaf_deadline") if k in out}
         if out["cards"] != r["cards"] and not clock and not r["clock"]:
@@ -192,3 +219,132 @@ def test_replayed_commit_does_not_replace_a_later_pending_copy(mc_games):
     assert offline_bot._STATE["pending"]["next"]["bot"] is pending
     assert _settle("next", True)["adopted"]
     assert offline_bot._STATE["bot"] is pending
+
+
+def test_the_offline_levels_are_the_servers():
+    from shengji.api import matchmaking, server
+    assert set(offline_bot.LEVELS) == set(matchmaking.BOT_LEVELS)
+    assert offline_bot.DEFAULT_LEVEL == matchmaking.CASUAL_BOT_LEVEL == "standard"
+    assert Path(server.RELAXED_SF_PACKAGE).name == relaxed_play.CASUAL_PACKAGE
+    assert server.RELAXED_SF_SHA256 == relaxed_play.CASUAL_SHA256
+    assert server.RELAXED_BOT == relaxed_play.casual_suffix()
+    # the payload bundles the package, pinned like the release weights
+    manifest = (PYBOT / "MANIFEST.sha256").read_text().split("\n")
+    assert f"{relaxed_play.CASUAL_SHA256}  {relaxed_play.CASUAL_PACKAGE}" in manifest
+
+
+def test_a_missing_scorer_package_plays_the_served_bot_as_the_server_does(tmp_path):
+    served = make_bot("mc", seed=BOT_SEED)
+    bot, error = offline_bot.standard_bot(served, str(tmp_path / relaxed_play.CASUAL_PACKAGE), BOT_SEED)
+    assert bot is served and error
+
+
+@pytest.fixture(scope="module")
+def mc_standard_games():
+    package = str(_sf_package())
+    return [bridge_harness.record_session(seed, 2, config, lambda: make_bot("mc", seed=BOT_SEED),
+                                          standard=(package, BOT_SEED))[0]
+            for seed, config in GAMES]
+
+
+def _replay_level(records, bots, level):
+    offline_bot.start_sessions(bots)
+    out = []
+    for i, r in enumerate(records):
+        out.append(_ask({**r["request"], "level": level}, f"t{i}")["cards"])
+        assert _settle(f"t{i}", True)["adopted"]
+    return out
+
+
+@needs_sf
+def test_standard_offline_chooses_what_a_standard_room_chose(mc_standard_games):
+    """Both levels in the session, as ``init`` builds them; Standard decides."""
+    kinds, n = {}, 0
+    for records in mc_standard_games:
+        served = make_bot("mc", seed=BOT_SEED)
+        bots = {"advanced": make_bot("mc", seed=BOT_SEED), "standard": _standard(served)}
+        got = _replay_level(records, bots, "standard")
+        assert got == [r["cards"] for r in records]
+        for r in records:
+            kinds[r["request"]["kind"]] = kinds.get(r["request"]["kind"], 0) + 1
+        n += len(records)
+    assert n >= 600 and kinds["play"] >= 300 and kinds["bury"] >= 3 and kinds["declare"] >= 200
+
+
+@needs_sf
+def test_a_request_without_a_level_plays_standard(mc_standard_games):
+    records = mc_standard_games[0]
+    offline_bot.start_sessions({"advanced": make_bot("mc", seed=BOT_SEED),
+                                "standard": _standard(make_bot("mc", seed=BOT_SEED))})
+    got = []
+    for i, r in enumerate(records):
+        out = _ask(r["request"], f"t{i}")
+        assert out["level"] == "standard"
+        got.append(out["cards"])
+        _settle(f"t{i}", True)
+    assert got == [r["cards"] for r in records]
+
+
+@needs_sf
+def test_standard_is_told_apart_from_advanced_and_from_another_seed(mc_standard_games):
+    records = mc_standard_games[0]
+    plays = [i for i, r in enumerate(records) if r["request"]["kind"] == "play"]
+    advanced = _replay_level(records, {"advanced": make_bot("mc", seed=BOT_SEED)}, "advanced")
+    assert sum(advanced[i] != records[i]["cards"] for i in plays) > 0
+    # the softmax's own stream: the same served bot, the scorer seeded differently
+    reseeded = _replay_level(records, {"standard": _standard(make_bot("mc", seed=BOT_SEED), BOT_SEED + 1)},
+                             "standard")
+    assert sum(reseeded[i] != records[i]["cards"] for i in plays) > 0
+
+
+@needs_sf
+def test_the_levels_keep_separate_sessions(mc_standard_games, mc_games):
+    """Interleaved tables at both levels: each level's bot sees only its own
+    decisions, and a verdict reaches the level that holds its token."""
+    std, adv = mc_standard_games[0], mc_games[0]
+    offline_bot.start_sessions({"advanced": make_bot("mc", seed=BOT_SEED),
+                                "standard": _standard(make_bot("mc", seed=BOT_SEED))})
+    got_std, got_adv, verdicts = [], [], []
+    for i in range(max(len(std), len(adv))):
+        for level, records, got in (("standard", std, got_std), ("advanced", adv, got_adv)):
+            if i < len(records):
+                token = f"{level[0]}{i}"
+                got.append(_ask({**records[i]["request"], "level": level, "settle": verdicts}, token)["cards"])
+                verdicts = [[token, True]]
+    assert got_std == [r["cards"] for r in std]
+    assert got_adv == [r["cards"] for r in adv]
+    with pytest.raises(offline_bot.RequestError):
+        _ask({**std[0]["request"], "level": "expert"}, "x")
+    offline_bot.start_session(make_bot("mc", seed=BOT_SEED), level="advanced")
+    with pytest.raises(offline_bot.RequestError):
+        _ask(std[0]["request"], "y")  # Standard, which this session has no bot for
+
+
+@pytest.mark.skipif(not os.environ.get("SHENGJI_OFFLINE_BOT_PAYLOAD"),
+                    reason="needs a built payload with the release weights")
+def test_served_standard_offline_matches_a_standard_room(tmp_path):
+    """Standard on release weights, through ``init``: the served bot declares
+    and buries under its wall-clock limits (a differing declare or bury must
+    show a limit firing), and the scorer plays every card exactly."""
+    payload = os.environ["SHENGJI_OFFLINE_BOT_PAYLOAD"]
+    make = bridge_harness.served_bot_factory(payload, str(tmp_path / "rec"), seed=13)
+    package = offline_bot.standard_package(payload)
+    records = []
+    for seed, config in GAMES:
+        records.append(bridge_harness.record_session(seed, 1, config, make, standard=(package, 13))[0])
+    ident = json.loads(offline_bot.init(payload, str(tmp_path / "out"), 13))
+    assert ident["matches_fly_toml"] and ident["standard_error"] is None
+    assert ident["levels"]["standard"] == f"{ident['bot']}-{relaxed_play.casual_suffix()}"
+    unexplained, plays = [], 0
+    for g, game in enumerate(records):
+        if g:
+            ident = json.loads(offline_bot.init(payload, str(tmp_path / "out"), 13))
+        for i, r in enumerate(game):
+            out = _ask({**r["request"], "level": "standard"}, f"g{g}t{i}")
+            _settle(f"g{g}t{i}", True)
+            kind = r["request"]["kind"]
+            plays += kind == "play"
+            clock = {k: out[k] for k in ("fallback", "exact_lead", "leaf_deadline") if k in out}
+            if out["cards"] != r["cards"] and (kind == "play" or (not clock and not r["clock"])):
+                unexplained.append((g, i, kind, out["cards"], r["cards"]))
+    assert sum(len(g) for g in records) >= 200 and plays >= 100 and unexplained == []

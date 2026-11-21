@@ -1,4 +1,4 @@
-"""The app's offline bot: the served pv-search bot, deciding for the offline game.
+"""The app's offline bot: the served bot at either Bots level, deciding for the offline game.
 
 The iOS app bundles this module with the unmodified ``shengji`` package, the
 ``fly.toml`` the release was cut from and the weight files it names.  The offline
@@ -23,9 +23,19 @@ handed the same ``Round`` the server hands it:
   ``final``;
 * ``token``: the page's name for this decision, and ``settle``: the page's
   verdicts on earlier decisions, ``[token, committed]`` in the order it
-  reached them, applied before this decision (``settle``).
+  reached them, applied before this decision (``settle``);
+* ``level``: the table's Bots, ``standard`` (the default when absent) or
+  ``advanced``, as a casual room's ``bot_level``.
 
-The bot object lives for the whole session, as the server's room bot lives for
+The two levels are the server's two room bots.  Advanced is the served bot
+built from fly.toml.  Standard is ``server.make_relaxed_bot`` of a served bot
+seeded the same: ``relaxed_play.build_casual``, the served declare and bury
+with the S136 search-free scorer's card play under the near-best softmax, its
+package (``models/<relaxed_play.CASUAL_PACKAGE>``) checked against
+``relaxed_play.CASUAL_SHA256``.  As on the server, a package that is missing
+or fails its sha256 leaves Standard playing the served bot.
+
+Each level's bot object lives for the whole session, as the server's room bot lives for
 the room: its RNG and its public-notice ledger carry over between decisions and
 rounds.  As on the server, every committed play is shown to it
 (``observe_public``), and each decision is searched on a copy of the bot that
@@ -36,7 +46,7 @@ by replaying the log, and replay is incremental: a request whose log extends
 the previous one applies only the new actions.
 
 Calls from the native plugin (JSON strings in and out): ``call(name, args)``
-with ``init(payload_dir, out_dir, seed)``, ``decide(request_json)`` and
+with ``init(payload_dir, out_dir, seed)`` (which builds both levels), ``decide(request_json)`` and
 ``settle(token, accepted)``.
 """
 from __future__ import annotations
@@ -53,7 +63,11 @@ MODEL_PREFIX = "/data/models/"
 NATIVE_MODULES = ("shengji.engine._fast", "shengji.ai._cwv_math",
                   "shengji.ai._endgame_fast", "shengji.train._pv_fast", "shengji.train._reply_fast")
 LOG_KINDS = ("deal", "declare", "pass", "finalize", "bury", "play")
+LEVELS = ("standard", "advanced")
+DEFAULT_LEVEL = "standard"
 
+# One session per level; _STATE is the one the current request decides in.
+_SESSIONS: dict[str, dict] = {}
 _STATE: dict = {}
 
 
@@ -115,9 +129,13 @@ def init(payload_dir: str, out_dir: str, seed: int = 13) -> str:
     t_import = time.perf_counter()
     name, bot = served_config.build_served_bot(env, seed=int(seed), expected_name=fly["SHENGJI_BOT"])
     t_build = time.perf_counter()
+    # a copy of the bot before its first decision is the served bot freshly
+    # built with this seed, which the server wraps for a Standard room
+    standard, standard_error = standard_bot(copy.deepcopy(bot), standard_package(payload_dir), int(seed))
+    t_standard = time.perf_counter()
     if "torch" in sys.modules:
         raise RuntimeError("torch was imported on the served bot path")
-    start_session(bot)
+    start_sessions({"advanced": bot, "standard": standard})
     inputs_file = os.path.join(payload_dir, "BUNDLE_INPUTS")
     bundle_inputs = open(inputs_file).read().strip() if os.path.exists(inputs_file) else None
     ident = {
@@ -125,6 +143,8 @@ def init(payload_dir: str, out_dir: str, seed: int = 13) -> str:
         # the digest the build phase printed over the sources this bundle was built from
         "bundle_inputs": bundle_inputs,
         "matches_fly_toml": name == fly["SHENGJI_BOT"],
+        "levels": {"advanced": name, "standard": getattr(standard, "policy_name", name)},
+        "standard_error": standard_error,
         "seed": int(seed),
         "worlds": int(env["SHENGJI_PV_WORLDS"]),
         "fast_engine": engine_fast.HAVE_FAST,
@@ -135,18 +155,62 @@ def init(payload_dir: str, out_dir: str, seed: int = 13) -> str:
         "seconds": {"hash_weights": round(t_hash - t0, 3),
                     "import": round(t_import - t_hash, 3),
                     "build_bot": round(t_build - t_import, 3),
-                    "total": round(t_build - t0, 3)},
+                    "build_standard": round(t_standard - t_build, 3),
+                    "total": round(t_standard - t0, 3)},
     }
     print(f"[pybot] init {json.dumps(ident)}", flush=True)
     return json.dumps(ident)
 
 
-def start_session(bot) -> None:
-    """Make ``bot`` the session's bot (``init`` does this; tests pass their own)."""
-    _STATE.clear()
-    _STATE["bot"] = bot
-    _STATE["decisions"] = 0
-    _STATE["pending"] = {}
+def standard_package(payload_dir: str) -> str:
+    """The bundled scorer package of the Standard level."""
+    from shengji.train import relaxed_play
+    return os.path.join(payload_dir, "models", relaxed_play.CASUAL_PACKAGE)
+
+
+def standard_bot(served, path: str, seed: int):
+    """``(bot, error)``: ``served`` wrapped as the Standard level, as
+    ``server.make_relaxed_bot`` wraps a Standard room's served bot, with the
+    scorer package at ``path``; or ``served`` itself and the reason when that
+    package cannot be used."""
+    from shengji.train import relaxed_play
+    try:
+        return relaxed_play.build_casual(served, path, seed=seed, sha256=relaxed_play.CASUAL_SHA256), None
+    except Exception as exc:  # noqa: BLE001 - as the server, the table still plays
+        print(f"[pybot] standard bots unavailable ({type(exc).__name__}: {exc}); "
+              "Standard plays the served bot", flush=True)
+        return served, f"{type(exc).__name__}: {exc}"[:200]
+
+
+def _new_session(bot) -> dict:
+    return {"bot": bot, "decisions": 0, "pending": {}}
+
+
+def start_sessions(bots: dict) -> None:
+    """A fresh session for each level in ``bots`` (``{level: bot}``)."""
+    global _STATE
+    unknown = set(bots) - set(LEVELS)
+    if unknown:
+        raise ValueError(f"unknown levels {sorted(unknown)}")
+    _SESSIONS.clear()
+    for level, bot in bots.items():
+        _SESSIONS[level] = _new_session(bot)
+    _STATE = _SESSIONS.get(DEFAULT_LEVEL) or next(iter(_SESSIONS.values()))
+
+
+def start_session(bot, level: str = DEFAULT_LEVEL) -> None:
+    """Make ``bot`` the only session's bot, at ``level`` (tests pass their own)."""
+    start_sessions({level: bot})
+
+
+def _use(level) -> None:
+    """Make ``level``'s session the one this request decides in."""
+    global _STATE
+    if level not in LEVELS:
+        raise RequestError(f"unknown level {level!r}; one of {LEVELS}")
+    if level not in _SESSIONS:
+        raise RequestError(f"no {level} bot in this session")
+    _STATE = _SESSIONS[level]
 
 
 def clock_flags(bot, kind: str) -> dict:
@@ -271,7 +335,7 @@ def _position(req: dict) -> str:
 
 
 def decide(request_json: str) -> str:
-    """The bot's action for the request's seat: ``{"cards": [...] | null, "seconds": s}``.
+    """The bot's action for the request's seat: ``{"cards": [...] | null, "seconds": s, "kind": k, "level": l}``.
 
     The decision runs on a copy of the bot, held under the request's ``token``
     until the page settles it (``settle``): the copy becomes the session's bot
@@ -279,9 +343,9 @@ def decide(request_json: str) -> str:
     copied bot only when ``_commit_bot_turn`` (or a gated declare) commits it.
     A held copy whose position the log has moved past is dropped unsettled."""
     req = json.loads(request_json)
-    bot = _STATE.get("bot")
-    if bot is None:
+    if not _SESSIONS:
         raise RuntimeError("the bot is not built yet")
+    _use(req.get("level", DEFAULT_LEVEL))
     token = req.get("token")
     if not isinstance(token, str) or not token:
         raise RequestError("a request needs a token")
@@ -328,6 +392,7 @@ def decide(request_json: str) -> str:
     t_end = time.perf_counter()
     _STATE["decisions"] += 1
     out = {"cards": cards, "seconds": round(t_end - t0, 4),
+           "kind": kind, "level": next(lv for lv, s in _SESSIONS.items() if s is _STATE),
            "replay_seconds": round(t_replay - t0, 4), "n": _STATE["decisions"]}
     out.update(clock_flags(bot_copy, kind))
     return json.dumps(out)
@@ -340,12 +405,14 @@ def settle(token: str, accepted: bool) -> str:
     held copy is dropped, since each was copied from the bot it replaces.  A
     dropped decision's copy is discarded, so a late, refused or overtaken
     answer leaves no trace in the bot.  A token no longer held (already
-    settled, or passed by the log) changes nothing."""
-    pending = _STATE.setdefault("pending", {})
+    settled, or passed by the log) changes nothing.  Tokens name decisions
+    across levels, so the token is settled in whichever level's session holds it."""
+    session = next((s for s in _SESSIONS.values() if token in s.get("pending", {})), _STATE)
+    pending = session.setdefault("pending", {})
     held = pending.pop(token, None)
     adopted = bool(accepted) and held is not None
     if adopted:
-        _STATE["bot"] = held["bot"]
+        session["bot"] = held["bot"]
         pending.clear()
     return json.dumps({"token": token, "adopted": adopted, "held": held is not None})
 

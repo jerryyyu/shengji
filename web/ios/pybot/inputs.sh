@@ -10,8 +10,10 @@
 #   inputs.sh identity DIR...            one digest over the recorded lists (and any
 #                                        plain files given), for the build log
 #
-# payload: every file build_payload.sh copies from server/shengji, and fly.toml
-#   (whose sha256 pins also pin the weights, which init() checks on the device).
+# payload: every file build_payload.sh copies from server/shengji, fly.toml
+#   (whose sha256 pins also pin the weights, which init() checks on the device),
+#   build_payload.sh itself and MANIFEST.sha256 (which pins every bundled weight
+#   file, the Standard level's scorer package among them).
 # fast: the Cython sources build_fast_ext.sh compiles (and the .pxd files they
 #   may cimport), that script itself, and the Python headers and xcframework
 #   description of both slices (the ABI the extensions are compiled against).
@@ -38,6 +40,8 @@ list_payload() {
      ! -name '*.so' ! -name '*.c' ! -name '*.pyx' ! -name '.DS_Store' | LC_ALL=C sort) |
     while IFS= read -r f; do line "$REPO/server/$f" "server/$f"; done
   line "$REPO/fly.toml" fly.toml
+  line "$HERE/build_payload.sh" web/ios/pybot/build_payload.sh
+  line "$HERE/MANIFEST.sha256" web/ios/pybot/MANIFEST.sha256
 }
 
 list_fast() {

@@ -12,6 +12,7 @@ export interface NearbyCapabilities {
   beta?: unknown;
   debug?: unknown;
   logFile?: unknown;
+  chaos?: unknown;
 }
 
 /** Whether nearby play may be offered, given what the app binary reports. */

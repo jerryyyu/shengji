@@ -99,7 +99,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
 
   const joiners = opener && (!offline || nearby) ? allowJoiners : undefined;
   const showCode = !offline || nearby;
-  // a device-test Debug build's rows (nearbyUi.tsx), at a nearby table only
+  // the soak's rows and the code's hidden-switch taps (nearbyUi.tsx), at a nearby table only
   const nb = useNearbyUi();
 
   return (
@@ -133,7 +133,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode}</div> : null}
           {showCode ? (
             <div className="hud-menu-code" role="none">
-              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}>{room}</span>
+              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}
+                    {...(nearby && nb ? tapHandlers(nb.nearbyMenuTitleTap) : {})}>{room}</span>
               {offline ? null : (
                 <button className="hud-menu-row hud-menu-invite" role="menuitem" {...tapHandlers(invite)}>
                   {copied ? "Link copied" : "Invite link"}

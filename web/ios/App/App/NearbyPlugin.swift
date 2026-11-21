@@ -536,7 +536,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func capabilities(_ call: CAPPluginCall) {
         call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild, "logFile": Self.logFileBuild,
-                      "nearbyV": NearbyBuild.nearbyV, "serviceType": NearbyBuild.serviceType])
+                      "chaos": Self.chaosBuild, "nearbyV": NearbyBuild.nearbyV, "serviceType": NearbyBuild.serviceType])
     }
 
     @objc func openSettings(_ call: CAPPluginCall) {
@@ -1318,10 +1318,11 @@ extension ShengjiNearbyPlugin {
     static let spikeTLS13 = false
     func spikeOptions(_ call: CAPPluginCall) {}
     /// The device-test log: in a Debug build made for the device test
-    /// (SHENGJI_NEARBY_DEV), each line goes to the console and to the page's
-    /// debug pane; in any other build it is never even formatted.
+    /// (SHENGJI_NEARBY_DEV) and in a build with the soak's log file (the
+    /// Beta), each line goes to the console and to the page's log; in any
+    /// other build it is never even formatted.
     func spikeLog(_ text: @autoclosure () -> String) {
-        guard NearbyBuild.debugBuild else { return }
+        guard NearbyBuild.debugBuild || Self.logFileBuild else { return }
         let line = text()
         NSLog("nearby: %@", line)
         notifyListeners("debugLog", data: ["text": line])
@@ -1329,14 +1330,16 @@ extension ShengjiNearbyPlugin {
 }
 #endif
 
-#if DEBUG && SHENGJI_NEARBY_DEV
-/// The device test's chaos mode (the page's Chaos switch, in a Debug build
-/// made for the device test only): faults injected on real hardware, each
-/// one logged.
+#if (DEBUG && SHENGJI_NEARBY_DEV) || SHENGJI_NEARBY_BETA
+/// The soak's chaos mode (the page's Chaos switch): faults injected on real
+/// hardware, each one logged. Compiled in a Debug build made for the device
+/// test and in the Beta (TestFlight internal testing only), never in an App
+/// Store build.
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "debugChaos", returnType: CAPPluginReturnPromise)
     ]
+    static let chaosBuild = true
     private static var heldUntil = Date.distantPast
     private static var held: [() -> Void] = []
 
@@ -1394,11 +1397,12 @@ extension ShengjiNearbyPlugin {
 #else
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
+    static let chaosBuild = false
     static func chaosHold(_ work: @escaping () -> Void) -> Bool { false }
 }
 #endif
 
-#if DEBUG && SHENGJI_NEARBY_DEV
+#if (DEBUG && SHENGJI_NEARBY_DEV) || SHENGJI_NEARBY_BETA
 /// The chaos kind "wifi": the phone's Wi-Fi network seems to leave (or join)
 /// for 20-90 s, inside the plugin's path logic only; the radio is never
 /// touched. It holds in memory, ends when the app resigns active or a real
@@ -1445,10 +1449,12 @@ extension ShengjiNearbyPlugin {
 }
 #endif
 
-#if DEBUG && SHENGJI_NEARBY_DEV
-/// The device test's log file: Documents/nearby-log.txt in the app's data
+#if (DEBUG && SHENGJI_NEARBY_DEV) || SHENGJI_NEARBY_BETA
+/// The soak's log file: Documents/nearby-log.txt in the app's data
 /// container, one older file kept as nearby-log.1.txt, for a Mac to pull with
-/// devicectl after a soak. The page batches lines and decides when to roll;
+/// devicectl after a soak or for the page to read and upload. Compiled in a
+/// Debug build made for the device test and in the Beta, never in an App
+/// Store build. The page batches lines and decides when to roll;
 /// this appends, rolls and clears them in order, off the link's queue.
 extension ShengjiNearbyPlugin {
     static let logFileMethods: [CAPPluginMethod] = [

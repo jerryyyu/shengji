@@ -13,14 +13,15 @@ import { NEARBY_LINK_LABEL, nearbyLinkState } from "./nearbyLink";
 import { isNearbyCode } from "./offline/server/nearby/codes";
 import { NEARBY_COPY } from "./offline/server/nearby/copy";
 import {
-  clearNearbyLogFile, copyNearbyLog, nearbyLogFileOn, uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive, useNearbySoak,
+  clearNearbyLogFile, copyNearbyLog, nearbySoakSwitchTap, uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive,
+  useNearbyLogFile, useNearbySoak, useNearbySoakSwitch,
 } from "./nearbyDebug";
 import { tapHandlers } from "./tap";
 import { NearbyJoinPanel as JoinPanel, NearbyRoomPanel as RoomPanel } from "./queue/TablePanel";
 import { fromNearbyJoin, nearbyRoomModel } from "./queue/nearbyModel";
 import type { ComponentProps } from "react";
 
-export { default as NearbyDebugPane } from "./nearbyDebug";
+export { default as NearbyDebugPane, startNearbyLogFile } from "./nearbyDebug";
 export { nearbyJoin } from "./nearbyJoin";
 export { nearbyHost, openNearbySettings } from "./nearbySession";
 export { isNearbyCode, NEARBY_CODE_LEN } from "./offline/server/nearby/codes";
@@ -67,29 +68,38 @@ export function NearbyLinkDot({ state }: { state: GameState }) {
   return <span className={`nearby-link-dot ${link}`} role="img" aria-label={NEARBY_LINK_LABEL[link]} />;
 }
 
-/** The ⋯ menu's device-test rows at a nearby table. In a Debug build for the
- *  device test (`debug`): Copy log and the peer-to-peer keepalive. With the
- *  device test's log file as well (`logFile`): Clear log file, Upload log
- *  now and the soak's Autoplay, Chaos and summary. A Beta or reviewed binary
- *  reports neither and draws none of them. */
+/** A tap on the ⋯ menu's table code: the hidden switch's counter, where the
+ *  plugin reports `chaos` (nearbyDebug.tsx); a no-op anywhere else. */
+export function nearbyMenuTitleTap(): void {
+  nearbySoakSwitchTap(nearbyGate().chaos);
+}
+
+/** The ⋯ menu's soak rows at a nearby table. With the log file
+ *  (`logFile`: the device test and the Beta): Copy log, Clear log file and
+ *  Upload log now. In a Debug build for the device test (`debug`): the
+ *  peer-to-peer keepalive, and the soak's Autoplay, Chaos and summary; in
+ *  the Beta (`chaos`) those three only while the hidden switch is on. A
+ *  reviewed App Store binary reports none and draws none of them. */
 export function NearbyMenuRows({ close }: { close: () => void }) {
-  const debug = useNearbyDebug(nearbyGate().debug);
-  const logFile = debug && nearbyGate().logFile;
+  const gate = nearbyGate();
+  const debug = useNearbyDebug(gate.debug);
+  const logFile = useNearbyLogFile(gate.logFile);
+  const hidden = useNearbySoakSwitch();
   const keepalive = useNearbyKeepalive(debug);
-  const soak = useNearbySoak(logFile);
+  const soak = useNearbySoak(gate.logFile && (debug || (gate.chaos && hidden)));
   return (
     <>
-      {debug ? (
+      {debug || logFile ? (
         <button className="hud-menu-row" role="menuitem" {...tapHandlers(() => { void copyNearbyLog(); close(); })}>
           <span>Copy log</span>
         </button>
       ) : null}
-      {logFile && nearbyLogFileOn() ? (
+      {logFile ? (
         <button className="hud-menu-row" role="menuitem" {...tapHandlers(() => { void clearNearbyLogFile(); close(); })}>
           <span>Clear log file</span>
         </button>
       ) : null}
-      {logFile && nearbyLogFileOn() ? (
+      {logFile ? (
         <button className="hud-menu-row" role="menuitem" {...tapHandlers(() => { void uploadNearbyLogNow(); close(); })}>
           <span>Upload log now</span>
         </button>
@@ -100,7 +110,7 @@ export function NearbyMenuRows({ close }: { close: () => void }) {
           <span>AWDL keepalive</span><span className={`ios-switch${keepalive.on ? " on" : ""}`} aria-hidden="true" />
         </button>
       ) : null}
-      {logFile && soak ? (
+      {soak ? (
         <>
           <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={soak.autoplay}
                   {...tapHandlers(soak.toggleAutoplay)}>

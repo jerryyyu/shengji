@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { chaosPick, LinkSplit, soakSummary } from "./nearbySoak";
+import { CHAOS_WEIGHTS, chaosPick, LinkSplit, soakSummary } from "./nearbySoak";
 
 const n = (t: number, text: string) => ({ t, from: "native", text });
 
@@ -18,7 +18,7 @@ describe("the soak's link split", () => {
     s.see(n(60_000, "moving the host link off peer-to-peer"));
     s.see(n(60_100, "drop host"));
     s.see(n(61_000, "host link up via en0 (wifi)"));
-    expect(s.summary(100_000)).toBe("links wifi 2 / p2p 1, p2p time 20% 20 s, STUCK wifi 1 / p2p 1, moved off p2p 1");
+    expect(s.summary(100_000)).toBe("links wifi 2 / p2p 1, p2p time 20% 20 s (under 30%), STUCK wifi 1 / p2p 1, moved off p2p 1");
   });
 
   it("reads a host's inbound links, peer-to-peer by the line or by an awdl or llw interface", () => {
@@ -40,33 +40,71 @@ describe("the soak's link split", () => {
 });
 
 describe("the chaos pick", () => {
-  it("draws only kinds this phone can run, each equally likely; wifi lasts 20-90 s, a stall 3-12 s", () => {
-    expect([0, 0.25, 0.5, 0.75].map((r) => chaosPick("host", () => r).kind)).toEqual(["cancel", "stall", "blackhole", "listener"]);
-    expect([0, 0.2, 0.4, 0.6, 0.8].map((r) => chaosPick("joiner", () => r).kind)).toEqual(["cancel", "stall", "blackhole", "path", "wifi"]);
-    const wifi = (r: number) => { let i = 0; return chaosPick("joiner", () => (i++ === 0 ? 0.9 : r)); };
-    expect(wifi(0)).toEqual({ kind: "wifi", seconds: 20 });
-    expect(wifi(0.999).seconds).toBeCloseTo(89.93, 1);
-    const stall = (r: number) => { let i = 0; return chaosPick("host", () => (i++ === 0 ? 0.3 : r)); };
-    expect(stall(0)).toEqual({ kind: "stall", seconds: 3 });
-    expect(stall(0.999).seconds).toBeLessThan(12);
-    const hole = (r: number) => { let i = 0; return chaosPick("joiner", () => (i++ === 0 ? 0.5 : r)); };
-    expect(hole(0)).toEqual({ kind: "blackhole", seconds: 4 });
-    expect(hole(0.999).seconds).toBeLessThan(20);
+  /** Every kind a role draws, over an even sweep of the first draw. */
+  const kinds = (role: "host" | "joiner") => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 2000; i++) {
+      const r = (i + 0.5) / 2000;
+      let k = 0;
+      seen.add(chaosPick(role, () => (k++ === 0 ? r : 0.5)).kind);
+    }
+    return [...seen].sort();
+  };
+
+  it("draws by the role's weights: the host leans on storm, jsfreeze and bgfake, a joiner on loss, oneway, reload and leave", () => {
+    expect(kinds("host")).toEqual(["bgfake", "blackhole", "cancel", "jsfreeze", "listener", "loss", "oneway", "outage60", "stall", "storm"]);
+    expect(kinds("joiner")).toEqual(["blackhole", "cancel", "jsfreeze", "leave", "loss", "oneway", "outage60", "path", "reload", "stall", "wifi"]);
+    const share = (role: "host" | "joiner", kind: string) => {
+      let n = 0;
+      for (let i = 0; i < 10_000; i++) {
+        let k = 0;
+        if (chaosPick(role, () => (k++ === 0 ? (i + 0.5) / 10_000 : 0.5)).kind === kind) n += 1;
+      }
+      return n / 10_000;
+    };
+    const hostTotal = Object.values(CHAOS_WEIGHTS.host).reduce((a, b) => a + (b ?? 0), 0);
+    expect(share("host", "storm")).toBeCloseTo(2 / hostTotal, 2);
+    expect(share("host", "storm")).toBeGreaterThan(share("host", "cancel"));
+    expect(share("joiner", "loss")).toBeGreaterThan(share("joiner", "cancel"));
   });
 
-  it("never picks a path change or a Wi-Fi fake on the host, or a listener restart on a joiner", () => {
-    const seen = { host: new Set<string>(), joiner: new Set<string>() };
-    for (let i = 0; i < 1000; i++) {
-      const r = (i + 0.5) / 1000;
-      seen.host.add(chaosPick("host", () => r).kind);
-      seen.joiner.add(chaosPick("joiner", () => r).kind);
-    }
-    expect([...seen.host].sort()).toEqual(["blackhole", "cancel", "listener", "stall"]);
-    expect([...seen.joiner].sort()).toEqual(["blackhole", "cancel", "path", "stall", "wifi"]);
+  it("gives each kind its span: wifi 20-90 s, a stall 3-12 s, a blackhole 4-20 s, outage60 55-75 s, jsfreeze 2-15 s (30-50 s one time in twenty), bgfake past the 60 s window one time in four", () => {
+    const at = (role: "host" | "joiner", kind: string, rs: number[]) => {
+      const total = Object.values(CHAOS_WEIGHTS[role]).reduce((a, b) => a + (b ?? 0), 0);
+      let x = 0;
+      for (const [k, w] of Object.entries(CHAOS_WEIGHTS[role])) {
+        if (k === kind) break;
+        x += w ?? 0;
+      }
+      const first = (x + 0.0001) / total;
+      let i = 0;
+      return chaosPick(role, () => (i++ === 0 ? first : rs[(i - 2) % rs.length]));
+    };
+    expect(at("joiner", "wifi", [0])).toEqual({ kind: "wifi", seconds: 20 });
+    expect(at("joiner", "wifi", [0.999]).seconds).toBeCloseTo(89.93, 1);
+    expect(at("host", "stall", [0])).toEqual({ kind: "stall", seconds: 3 });
+    expect(at("host", "stall", [0.999]).seconds).toBeLessThan(12);
+    expect(at("joiner", "blackhole", [0])).toEqual({ kind: "blackhole", seconds: 4 });
+    expect(at("host", "outage60", [0]).seconds).toBe(55);
+    expect(at("host", "outage60", [0.999]).seconds).toBeLessThan(75);
+    expect(at("host", "jsfreeze", [0.5, 0]).seconds).toBe(2);
+    expect(at("host", "jsfreeze", [0.01, 0]).seconds).toBe(30);
+    expect(at("host", "bgfake", [0.1, 0]).seconds).toBe(61);
+    expect(at("host", "bgfake", [0.5, 0]).seconds).toBe(5);
+    const loss = at("joiner", "loss", [0.5]);
+    expect(loss).toMatchObject({ kind: "loss", count: 3, dir: "out" });
+  });
+
+  it("never picks a path change or a Wi-Fi fake on the host, or a listener restart, a storm or a bgfake on a joiner", () => {
+    expect(kinds("host")).not.toContain("path");
+    expect(kinds("host")).not.toContain("wifi");
+    for (const k of ["listener", "storm", "bgfake"]) expect(kinds("joiner")).not.toContain(k);
     // the plugin refuses exactly these elsewhere (done: false)
     const swift = readFileSync(join(process.cwd(), "ios/App/App/NearbyPlugin.swift"), "utf8");
     expect(swift).toMatch(/case "path":\n\s+guard !self\.hosting/);
     expect(swift).toMatch(/case "listener":\n\s+guard self\.hosting/);
+    expect(swift).toMatch(/case "storm":\n\s+guard self\.hosting/);
+    expect(swift).toMatch(/case "bgfake":\n(?:\s+\/\/[^\n]*\n)*\s+guard self\.hosting/);
   });
 });
 

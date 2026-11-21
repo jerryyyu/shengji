@@ -81,20 +81,21 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(swift).toContain(`${SOAK}\n/// The soak's chaos mode`);
     expect(swift).toContain(`${SOAK}\n/// The chaos kind "wifi"`);
     expect(swift).toContain(`${SOAK}\n/// The soak's log file`);
-    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[^\n]*\n    \]\n    static let chaosBuild = true\n[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static let chaosBuild = false\n    func chaosHold\(_ peer: String, _ work: @escaping \(\) -> Void, dropped: @escaping \(_ stale: Bool\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
+    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[^\n]*\n(?:        CAPPluginMethod\(name: "debugHealth"[^\n]*\n)?    \]\n    static let chaosBuild = true\n[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static let chaosBuild = false\n    func chaosHold\(_ peer: String, _ work: @escaping \(\) -> Void, dropped: @escaping \(_ stale: Bool\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
     // every CHAOS line is inside a soak block
     const outside = swift.split(SOAK).map((part, i) => (i === 0 ? part : part.slice(part.indexOf("\n#else\n"))));
     for (const part of outside) expect(part).not.toContain("CHAOS");
     expect(swift).toContain('"chaos": Self.chaosBuild');
     // the plugin's own lines reach the page only in the device test or with the file
     expect(swift).toContain("guard NearbyBuild.debugBuild || Self.logFileBuild else { return }");
-    // the page loads the soak module only from the soak rows, by a dynamic
+    // the page loads the soak's modules only from the soak rows, by a dynamic
     // import, and shows its switches in the device test (`debug`), or with
     // `chaos` once the hidden switch is on
     const src = fileURLToPath(new URL("../../../", import.meta.url));
     const files = readdirSync(src, { recursive: true }).map(String)
-      .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.endsWith("nearbySoak.ts"));
-    const users = files.filter((f) => /nearbySoak["']/.test(readFileSync(join(src, f), "utf8")));
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && !/(^|\/)nearbySoak[A-Za-z]*\.ts$/.test(f));
+    // (the soak's own modules, nearbySoak*.ts, load only with it)
+    const users = files.filter((f) => /nearbySoak[A-Za-z]*["']/.test(readFileSync(join(src, f), "utf8")));
     expect(users.sort()).toEqual(["nearbyDebug.tsx"]);
     const debugPane = readFileSync(join(src, "nearbyDebug.tsx"), "utf8");
     expect(debugPane).not.toMatch(/^import[^\n]*nearbySoak/m);

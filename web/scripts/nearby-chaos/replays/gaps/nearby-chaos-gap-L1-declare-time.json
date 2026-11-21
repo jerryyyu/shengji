@@ -1,0 +1,42 @@
+{
+  "seed": 4,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 59.689314004732296,
+      "kind": "joinReplyLost",
+      "who": "J1",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 97.78986677434295,
+      "kind": "drop",
+      "who": "J1",
+      "dur": 0,
+      "arg": 1
+    },
+    {
+      "t": 190.5936313518323,
+      "kind": "drop",
+      "who": "J1",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 207.88701712409966,
+      "kind": "kill",
+      "who": "J1",
+      "dur": 22.695852980948985,
+      "arg": 0
+    }
+  ],
+  "invariant": "5 s of declare time (L1)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "declare time",
+  "wholeApp": true
+}

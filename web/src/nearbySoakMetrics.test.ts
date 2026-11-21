@@ -83,11 +83,11 @@ describe("the soak's link-health metrics", () => {
     expect(m.bytes).toEqual({ dealing: JSON.stringify(deal).length, play: 2 * JSON.stringify(play).length });
   });
 
-  it("flags p2p time under a fifth of the link time", () => {
+  it("flags p2p time under 30% of the link time", () => {
     const s = new LinkSplit();
     s.see(line(0, "native", "host link up via en0 (wifi)"));
     s.see(line(90_000, "native", "drop host"));
     s.see(line(90_000, "native", "host link up via awdl0 (wifi) peer-to-peer"));
-    expect(s.summary(100_000)).toContain("p2p time 10% 10 s (under 20%)");
+    expect(s.summary(100_000)).toContain("p2p time 10% 10 s (under 30%)");
   });
 });

@@ -44,6 +44,8 @@ export class DeviceClock {
   private vc: VirtualClock;
   suspended = false;
   private waiting: (() => void)[] = [];
+  /** The posts that are this phone's own timers (the rest are its events). */
+  private timers = new WeakSet<() => void>();
   constructor(vc: VirtualClock) {
     this.vc = vc;
   }
@@ -51,7 +53,9 @@ export class DeviceClock {
     return this.vc.now();
   }
   setTimeout(fn: () => void, seconds: number): void {
-    this.vc.setTimeout(() => this.post(fn), seconds);
+    const timer = () => fn();
+    this.timers.add(timer);
+    this.vc.setTimeout(() => this.post(timer), seconds);
   }
   /** Run `fn` in this phone's JS now, or when it is back in the foreground. */
   post(fn: () => void): void {
@@ -61,10 +65,22 @@ export class DeviceClock {
   suspend(): void {
     this.suspended = true;
   }
-  resume(): void {
+  /** Back in the foreground: what waited runs in order or, with `shuffle`,
+   *  with its timers dealt in among its events at random (each kind keeps
+   *  its own order, as a frozen page's events still arrive in order). */
+  resume(shuffle?: Rng): void {
     this.suspended = false;
-    const w = this.waiting;
+    let w = this.waiting;
     this.waiting = [];
+    if (shuffle) {
+      const timers = w.filter((fn) => this.timers.has(fn));
+      const events = w.filter((fn) => !this.timers.has(fn));
+      w = [];
+      while (timers.length || events.length) {
+        const fromTimers = timers.length > 0 && (events.length === 0 || shuffle.chance(timers.length / (timers.length + events.length)));
+        w.push((fromTimers ? timers : events).shift()!);
+      }
+    }
     for (const fn of w) this.vc.setTimeout(() => this.post(fn), 0);
   }
 }
@@ -109,6 +125,9 @@ export class SimLink {
   onHostClosed: () => void = () => {};
   joinerNotified = false;
   hostNotified = false;
+  /** The loss fault: the next `left` frames of type `frame` ("" any) one
+   *  way are lost, the link up. */
+  losses: { toHost: boolean; frame: string; left: number }[] = [];
   constructor(id: number, iface: Iface, joiner: Phone, host: Phone, now: number, idleLimit: number) {
     this.id = id;
     this.iface = iface;
@@ -171,6 +190,8 @@ export class Radio {
   private browsers = new Set<Browser>();
   private seq = 0;
   trace: TraceFn;
+  /** Called with each link a loss fault takes a frame from. */
+  onLoss: ((link: SimLink) => void) | null = null;
   /** Every link ever made, for the invariants (via, reconnect counts). */
   readonly history: SimLink[] = [];
 
@@ -323,6 +344,13 @@ export class Radio {
     }
     if (link.silent) return;
     if (dir.mode === "lose") return;
+    const loss = link.losses.find((r) => r.toHost === fromJoiner && r.left > 0 && (r.frame === "" || text.startsWith(`{"type":"${r.frame}"`)));
+    if (loss) {
+      loss.left -= 1;
+      this.trace(fromJoiner ? link.joiner.id : link.host.id, `radio: ${text.slice(0, 24)} lost on link ${link.id} (loss)`);
+      this.onLoss?.(link);
+      return;
+    }
     link.lastTraffic = now;
     const deliver = () => {
       if (link.dead || link.silent) return;

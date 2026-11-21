@@ -669,7 +669,8 @@ def readout_reply_ply(served_ply):
             bot.unified_reply_served += len(active)
             return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
         scorer = getattr(bot, "unified_reply_action", None)
-        if scorer is not None and len(active[0].trick.plays[0].cards) < 2:
+        multi = [len(clone.trick.plays[0].cards) >= 2 for clone in active] if scorer is not None else []
+        if scorer is not None and not any(multi):
             scorer = None
         if scorer is not None and kw.get("rank_fn") is not None:
             raise UnifiedSlotError("reply action ranking cannot replace another ranking hook")
@@ -711,6 +712,8 @@ def readout_reply_ply(served_ply):
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         if scorer is not None:
             def rank(index, legal, scoring, row):
+                if not multi[index]:
+                    return scoring @ row
                 return scorer.scores(active[index], legal, row, hidden[index], frame.cache(model)[0], planes[index])
             kw["rank_fn"] = rank
         served_predict = bot.predict

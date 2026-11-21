@@ -410,3 +410,70 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
     assert len(calls) == (2 if multi else 0)
     assert bot.predict is original_predict
     assert stats["tree_forced_plays"] == 1
+
+
+@pytest.mark.parametrize("fast", [False, True])
+@pytest.mark.parametrize("multi_first", [False, True])
+def test_action_scorer_gates_each_clone_in_a_mixed_lead_ply(package, tmp_path, monkeypatch, fast, multi_first):
+    from shengji.train import unified_reply_action as ra
+    from shengji.harvest.legal import enumerate_legal
+    from tests.test_pv_small_joker_lead import _fresh_round
+
+    _, model = _model(tmp_path)
+    root = _fresh_round(707_001)
+    sources = {}
+    while root.phase == "play":
+        if not root.trick.plays:
+            sources = {}
+            for action in enumerate_legal(root, root.turn, cap=30).actions:
+                child = pts.child_position(root, root.turn, list(action))
+                if len(enumerate_legal(child, child.turn, cap=6).actions) >= 2:
+                    sources.setdefault(len(action) > 1, child)
+            if len(sources) == 2:
+                break
+        root.play(root.turn, HeuristicBot().decide_play(root, root.turn))
+    assert len(sources) == 2
+    originals = [sources[multi_first], sources[not multi_first], sources[True]]
+    baseline, active = [[copy.deepcopy(c) for c in originals] for _ in range(2)]
+    bot = us.install_reply_readout(_bot(package), model)
+    bot.unified_fast = fast
+    bot.batch_size = 1
+    bot.unified_frame = us.LeafFrame(bot, root, root.turn)
+    ply = us.readout_reply_ply(pts.greedy_reply_ply)
+
+    def run(clones):
+        def listing(clone, seat, cache):
+            actions = [list(a) for a in enumerate_legal(clone, seat, cap=6).actions]
+            if clone is clones[-1]:
+                actions = actions[:1]
+            return actions, np.stack([_counts(a) for a in actions])
+        stats = pts.greedy_stats()
+        ply(bot, clones, None, {}, stats, 1, 1, listing,
+            lambda leaves, seat, gate: (np.zeros(len(leaves)), 1))
+        assert stats["tree_forced_plays"] == 1
+
+    run(baseline)
+    scorer = ra.ReplyActionScorer(_action_weights(), model.package_sha256, "b" * 64)
+    ra.install_reply_action(bot, scorer)
+    seen, targets = [], {}
+
+    def scores(clone, legal, *unused):
+        seen.append(len(clone.trick.plays[0].cards))
+        target = legal[-1]
+        targets[id(clone)] = target
+        return np.arange(len(legal), dtype=np.float64)
+
+    monkeypatch.setattr(scorer, "scores", scores)
+    original_predict = bot.predict
+    run(active)
+    assert seen == [len(sources[True].trick.plays[0].cards)]
+    for before, actual, default in zip(originals, active, baseline):
+        if id(actual) in targets:
+            expected = copy.deepcopy(before)
+            expected.play(expected.turn, targets[id(actual)])
+        else:
+            expected = default
+        assert actual.hands == expected.hands
+        assert actual.turn == expected.turn
+        assert actual.trick.plays == expected.trick.plays
+    assert bot.predict is original_predict

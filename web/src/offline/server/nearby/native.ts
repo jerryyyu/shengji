@@ -11,7 +11,7 @@ interface Listener {
 }
 
 export interface NearbyPlugin {
-  capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
+  capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; beta?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
   openSettings(): Promise<unknown>;
   host(opts: { code: string }): Promise<unknown>;
   join(opts: { code: string; resume?: boolean }): Promise<unknown>;
@@ -34,14 +34,15 @@ function nearbyPlugin(): NearbyPlugin | null {
 }
 
 /** Whether this app binary may run nearby play (flag.ts): it was reviewed
- *  with it, or it is a Debug build compiled for the device test. A shipped
- *  binary reports neither. */
+ *  with it, it is a Debug build compiled for the device test, or it is the
+ *  Beta build (TestFlight internal testing only). An App Store binary
+ *  reports none of them. */
 export async function binaryReviewed(): Promise<boolean> {
   const p = nearbyPlugin();
   if (!p) return false;
   try {
     const c = await p.capabilities();
-    return c.reviewed === true || c.debug === true;
+    return c.reviewed === true || c.debug === true || c.beta === true;
   } catch {
     return false;
   }

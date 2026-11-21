@@ -43,6 +43,7 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
 
   it("the plugin cannot run unreviewed and is not registered in a shipped build", () => {
     expect(swift).toMatch(/static let reviewed = false/);
+    expect(swift).toMatch(/#if SHENGJI_NEARBY_BETA\s+static let betaBuild = true\s+#else\s+static let betaBuild = false\s+#endif\s+static var enabled: Bool \{ reviewed \|\| debugBuild \|\| betaBuild \}/);
     expect(swift).toMatch(/#else\s+static let debugBuild = false/);
     expect(shell).toMatch(/#if SHENGJI_NEARBY\s+(?:\/\/[^\n]*\s+)?bridge\?\.registerPluginInstance\(ShengjiNearbyPlugin\(\)\)\s+#endif/);
   });
@@ -50,12 +51,16 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
   it("the device-test switches turn on only from the xcodebuild command line, in Debug", () => {
     const project = read("../../../../ios/App/App.xcodeproj/project.pbxproj");
     const xcconfig = read("../../../../ios/debug.xcconfig");
-    for (const text of [project, xcconfig]) expect(text).not.toMatch(/SHENGJI_NEARBY/);
+    expect(xcconfig).not.toMatch(/SHENGJI_NEARBY/);
+    // the project names the nearby flags once: the Beta configuration's
+    expect(project.match(/SHENGJI_NEARBY/g)).toHaveLength(2);
+    expect(project).toMatch(/\/\* Beta \*\/ = \{[^}]*SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SHENGJI_NEARBY SHENGJI_NEARBY_BETA";[^}]*\};\s*name = Beta;/);
+    expect(project).not.toMatch(/SHENGJI_NEARBY_(DEV|SPIKE)/);
     expect(swift.match(/static let debugBuild = true/g)).toHaveLength(1);
     expect(swift).toMatch(/#if DEBUG && \(SHENGJI_NEARBY_SPIKE \|\| SHENGJI_NEARBY_DEV\)\s+static let debugBuild = true\s+#else\s+static let debugBuild = false\s+#endif/);
     expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\n[\s\S]*func spikeBench[\s\S]*#else\n/);
     expect(shell).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\s+(?:\/\/\/[^\n]*\s+)?override open func instanceDescriptor/);
-    expect(shell).toMatch(/#elseif DEBUG && SHENGJI_NEARBY_DEV\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);
+    expect(shell).toMatch(/#elseif \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);
   });
 
   it("the soak's chaos and autoplay are only in a device-test Debug build", () => {
@@ -80,14 +85,20 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     for (const label of ["Autoplay", "Chaos", "Copy soak summary"]) expect(menu.split(`<span>${label}</span>`)).toHaveLength(2);
   });
 
-  it("Info.plist, when it has NSBonjourServices, lists the nearby type", () => {
-    const services = plistArray("NSBonjourServices");
-    if (services === null) {
-      // not yet: the keys wait for the nearby release's review
-      expect(plist).not.toContain("NSLocalNetworkUsageDescription");
-      return;
-    }
-    expect(services).toContain(NEARBY_SERVICE_TYPE);
-    expect(plist).toContain("<key>NSLocalNetworkUsageDescription</key>");
+  it("the App Store Info.plist has no local-network keys; the Beta one has them and the nearby type", () => {
+    // the keys wait for the nearby release's review
+    expect(plistArray("NSBonjourServices")).toBeNull();
+    expect(plist).not.toContain("NSLocalNetworkUsageDescription");
+    const beta = read("../../../../ios/App/App/Info-Beta.plist");
+    const services = beta.match(/<key>NSBonjourServices<\/key>\s*<array>([\s\S]*?)<\/array>/);
+    expect(services).not.toBeNull();
+    expect([...services![1].matchAll(/<string>([^<]*)<\/string>/g)].map((x) => x[1])).toEqual([NEARBY_SERVICE_TYPE]);
+    expect(beta).toContain("<key>NSLocalNetworkUsageDescription</key>");
+    // otherwise the Beta plist is the App Store one, under its own name
+    const strip = (text: string) => text
+      .replace(/\t<key>NSLocalNetworkUsageDescription<\/key>\n\t<string>[^<]*<\/string>\n/, "")
+      .replace(/\t<key>NSBonjourServices<\/key>\n\t<array>[\s\S]*?<\/array>\n/, "")
+      .replace("<string>Sheng Ji Beta</string>", "<string>Sheng Ji</string>");
+    expect(strip(beta)).toBe(plist);
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { lastInputModality, trackInputModality } from "../inputModality";
+import { tapHandlers } from "../tap";
 
 trackInputModality();
 
@@ -88,9 +89,9 @@ export default function ConfirmSheet({
         </div>
         <div className="leave-sheet-actions">
           <button ref={cancelRef} type="button" className="leave-sheet-stay" aria-disabled={busy || undefined}
-                  onClick={back}>{cancel}</button>
+                  {...tapHandlers(back)}>{cancel}</button>
           <button type="button" className={`leave-sheet-leave${go}${confirmClass ? ` ${confirmClass}` : ""}`}
-                  aria-disabled={busy || undefined} onClick={() => { if (!busy) onConfirm(); }}>{confirm}</button>
+                  aria-disabled={busy || undefined} {...tapHandlers(() => { if (!busy) onConfirm(); })}>{confirm}</button>
         </div>
         {error ? <p className="leave-sheet-error" role="alert">{error}</p> : null}
       </div>

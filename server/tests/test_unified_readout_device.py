@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -26,8 +30,10 @@ SCRATCH = "d=32,heads=4,enc_layers=1,xattn_layers=1,x_hidden=32"
 #: 1e-6 of the CPU's; the polish trains on a float16 cache whose rounding can differ, and drifts to ~6e-4
 MPS_REL_TOL = {"train": 1e-4, "polish": 5e-3}
 #: the CPU reference is float32 arithmetic through the platform's BLAS; this covers BLAS differences and
-#: no change of the computation
-CPU_REL_TOL = 1e-4
+#: no change of the computation.  The joint trainer's losses agree across platforms within 1e-4; the polish
+#: trains on a float16 cache, where a last-bit difference in the trunk flips some roundings, and a Linux x86
+#: BLAS lands ~3e-3 from the macOS arm64 reference
+CPU_REL_TOL = {"train": 1e-4, "polish": 1e-2}
 CPU_REFERENCE = {
     "train": {
         "e1_train_belief": 1.368365627979476,
@@ -169,8 +175,14 @@ def data(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def cpu_default(data, tmp_path_factory):
-    return run_fixture(data, tmp_path_factory.mktemp("cpu-default"))
+def cpu_root(data, tmp_path_factory):
+    root = tmp_path_factory.mktemp("cpu-default")
+    return root, run_fixture(data, root)
+
+
+@pytest.fixture(scope="module")
+def cpu_default(cpu_root):
+    return cpu_root[1]
 
 
 def _close(got, want, rel):
@@ -187,8 +199,8 @@ def test_device_cpu_is_the_default_path_bit_for_bit(data, cpu_default, tmp_path)
 
 
 def test_the_cpu_path_gives_the_reference_losses(cpu_default):
-    _close(cpu_default["train"], CPU_REFERENCE["train"], CPU_REL_TOL)
-    _close(cpu_default["polish"], CPU_REFERENCE["polish"], CPU_REL_TOL)
+    _close(cpu_default["train"], CPU_REFERENCE["train"], CPU_REL_TOL["train"])
+    _close(cpu_default["polish"], CPU_REFERENCE["polish"], CPU_REL_TOL["polish"])
 
 
 mps = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
@@ -247,3 +259,126 @@ def test_an_mps_corpus_weighted_run_tracks_the_cpu_run(data, cpu_weighted, tmp_p
     got = run_fixture(data, tmp_path, "mps", weighted=True, cache_device="cpu")
     _close(got["train"], cpu_weighted["train"], MPS_REL_TOL["train"])
     _close(got["polish"], cpu_weighted["polish"], MPS_REL_TOL["polish"])
+
+
+def _cache_copy(cpu_root, tmp_path) -> Path:
+    cache = tmp_path / "cache"
+    shutil.copytree(cpu_root[0] / "cache", cache)
+    return cache
+
+
+def _shard_bytes(cache: Path) -> dict:
+    return {p.name: (p.stat().st_mtime_ns, hashlib.sha256(p.read_bytes()).hexdigest()) for p in sorted(cache.glob("*.npz"))}
+
+
+def _cache_argv(data, cpu_root, cache, *extra):
+    return ["cache", "--ckpt", str(cpu_root[0] / "train" / "best.pt"), "--data", str(data), "--out", str(cache),
+            "--threads", "1", "--group-chunks", "1", "--calib-rows", "100000", *extra]
+
+
+def test_a_cpu_cache_records_its_device(cpu_root):
+    cache = cpu_root[0] / "cache"
+    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "cpu"}
+
+
+@pytest.mark.parametrize("record", [True, False], ids=["recorded-cpu", "metadata-free"])
+def test_a_cpu_cache_refuses_an_mps_producer_and_keeps_its_shards(data, cpu_root, tmp_path, monkeypatch, record):
+    cache = _cache_copy(cpu_root, tmp_path)
+    if not record:
+        (cache / ur.CACHE_DEVICE).unlink()          # a cache written before producers recorded a device
+    (cache / "train-0000.npz").unlink()             # a shard still to make: the run would write before the fix
+    before = _shard_bytes(cache)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    with pytest.raises(ur.UnifiedReadoutError, match="cpu"):
+        ur.main(_cache_argv(data, cpu_root, cache, "--device", "mps"))
+    assert _shard_bytes(cache) == before
+    assert (cache / ur.CACHE_DEVICE).exists() == record
+
+
+@pytest.mark.parametrize("record", [True, False], ids=["recorded-cpu", "metadata-free"])
+def test_a_cpu_cache_continues_on_the_cpu(data, cpu_root, tmp_path, record):
+    cache = _cache_copy(cpu_root, tmp_path)
+    if not record:
+        (cache / ur.CACHE_DEVICE).unlink()
+    want = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(cache.glob("*.npz"))}
+    (cache / "train-0000.npz").unlink()
+    kept = _shard_bytes(cache)
+    assert ur.main(_cache_argv(data, cpu_root, cache, "--device", "cpu")) == 0
+    after = _shard_bytes(cache)
+    assert {k: after[k] for k in kept} == kept         # kept shards are not rewritten
+    assert {k: v[1] for k, v in after.items()} == want  # the remade shard is the one the first run made
+    assert json.loads((cache / ur.CACHE_DEVICE).read_text()) == {"device": "cpu"}
+
+
+def test_the_first_producer_binds_a_cache_for_every_worker(tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    ur.bind_cache_device(cache, "mps")
+    ur.bind_cache_device(cache, "mps")               # another mps worker, or an mps resume, continues
+    with pytest.raises(ur.UnifiedReadoutError, match="--device mps, not --device cpu"):
+        ur.bind_cache_device(cache, "cpu")
+    assert sorted(p.name for p in cache.iterdir()) == [ur.CACHE_DEVICE]
+
+
+def test_an_mps_cache_refuses_a_cpu_worker_through_main(data, cpu_root, tmp_path):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    ur.bind_cache_device(cache, "mps")
+    with pytest.raises(ur.UnifiedReadoutError, match="--device mps"):
+        ur.main(_cache_argv(data, cpu_root, cache, "--worker", "1", "--workers", "2"))
+    assert sorted(p.name for p in cache.iterdir()) == [ur.CACHE_DEVICE]
+
+
+BENCH = Path(__file__).resolve().parents[1] / "scripts" / "bench_unified_readout_device.py"
+
+
+def _bench(*argv, timeout=120):
+    return subprocess.run([sys.executable, str(BENCH), *argv], capture_output=True, text=True, timeout=timeout)
+
+
+def _empty_shard(path: Path) -> None:
+    z = {"S": np.zeros((0, 1), np.float16), "c": np.zeros((0, 1), np.float16), "leaf_row": np.zeros(0, np.int32)}
+    np.savez(path, **z)
+
+
+@pytest.mark.parametrize("shards", ["none", "empty"])
+def test_the_polish_bench_fails_on_a_cache_with_no_batch(cpu_root, tmp_path, shards):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    if shards == "empty":
+        _empty_shard(cache / "train-0000.npz")
+        _empty_shard(cache / "train-0001.npz")
+    try:
+        res = _bench("polish", "--ckpt", str(cpu_root[0] / "train" / "best.pt"), "--cache", str(cache), "--steps", "2",
+                     "--warmup", "0", timeout=60)
+    except subprocess.TimeoutExpired:
+        pytest.fail("the bench spun without a batch")
+    assert res.returncode != 0
+    assert ("no train-*.npz shards" if shards == "none" else "yielded no batch") in res.stderr, res.stderr
+
+
+@pytest.mark.parametrize("flag", [("--steps", "0"), ("--warmup", "-1"), ("--batch", "0")])
+def test_the_polish_bench_refuses_bad_counts(cpu_root, tmp_path, flag):
+    res = _bench("polish", "--ckpt", str(cpu_root[0] / "train" / "best.pt"), "--cache", str(cpu_root[0] / "cache"), *flag)
+    assert res.returncode == 2 and flag[0] in res.stderr, res.stderr
+
+
+def test_the_polish_bench_wall_interval_covers_the_load_it_reports(cpu_root, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("bench_unified_readout_device", BENCH)
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    real_load = np.load
+
+    def slow_load(path, *a, **k):
+        if Path(path).name.startswith("train-"):
+            time.sleep(0.3)
+        return real_load(path, *a, **k)
+    monkeypatch.setattr(np, "load", slow_load)
+    args = bench.build_parser().parse_args(["polish", "--ckpt", str(cpu_root[0] / "train" / "best.pt"),
+                                            "--cache", str(cpu_root[0] / "cache"), "--batch", "1000000",
+                                            "--warmup", "0", "--steps", "1", "--threads", "1"])
+    out = bench.bench_polish(args)
+    assert out["steps"] == 1 and out["share"]["shard_load"] > 0
+    assert out["wall_s"] >= out["step_s_median"] >= 0.3       # the one timed step, its shard load included
+    assert out["recipe"] == bench.POLISH_RECIPE

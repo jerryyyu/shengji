@@ -11,13 +11,21 @@
 // --bug NAME     re-plant a fixed bug to check the simulator finds it:
 //                tried (the look before the path watch: no fresh look on the
 //                network's return, the tried set kept, 12 s looks), keepalive
-//                (no peer-to-peer keepalive and no kept browse)
+//                (no peer-to-peer keepalive and no kept browse), migrate-stale
+//                (a move off peer-to-peer stays spent on a link made with no
+//                Wi-Fi network); with --replay, added to the replay's bugs
 // --hostile      also duplicate frames inside a link (TCP never does): the
 //                safety invariants still hold
 // --replay FILE  run one game from a replay file, deterministically
 // --no-shrink    on a failure, keep the whole fault schedule
 // --out DIR      where replay files go (default: the current directory)
 // --verbose      print every trace line
+//
+// replays/ keeps games that once failed; each must replay with no violation:
+//
+//   for f in web/scripts/nearby-chaos/replays/*.json; do npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay $f; done
+//
+// 581 and 1475 must fail again with --bug migrate-stale.
 import { writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runGame, type Fault, type GameOpts, type GameResult } from "./sim";
@@ -87,7 +95,8 @@ async function main(): Promise<void> {
   const out = typeof a.out === "string" ? a.out : ".";
   if (typeof a.replay === "string") {
     const rp = JSON.parse(readFileSync(a.replay, "utf8")) as Replay;
-    const r = await runGame({ seed: rp.seed, bugs: rp.bugs, seconds: rp.seconds, bound: rp.bound, hostile: rp.hostile,
+    const planted = typeof a.bug === "string" ? a.bug.split(",") : [];
+    const r = await runGame({ seed: rp.seed, bugs: [...rp.bugs, ...planted], seconds: rp.seconds, bound: rp.bound, hostile: rp.hostile,
                               schedule: rp.schedule, verbose: a.verbose === true });
     if (r.violation) {
       report(r, a.verbose ? 0 : 200);

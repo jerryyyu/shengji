@@ -36,6 +36,10 @@ export function subscribeNearbyKeepalive(fn: () => void): () => void {
  *  them never makes new links faster than LIMITS.stuckSpacingSeconds. */
 const lastStuck = new WeakMap<Clock, number>();
 
+/** The link state's detail when the host refused a seat's resume: the
+ *  table no longer knows its token. */
+export const SEAT_GONE = "seat_gone";
+
 /** A resume's link that has answered nothing by LIMITS.resumeSeconds gets
  *  this much longer for the host's answer before a fresh attempt. */
 const RESUME_GRACE_SECONDS = 2;
@@ -293,6 +297,16 @@ export class NearbySocket {
    *  came with the answer go to the page after its open, in order. */
   private resumed(type: string): void {
     const link = this.link!;
+    const refusal = type === "error" ? parseObject(this.early[this.early.length - 1])?.code : null;
+    if (refusal === "room_not_found" || refusal === "room_full") {
+      // the table no longer knows this seat's token: no new link can take
+      // it back, so the page is told and goes to the seat picker, rather
+      // than trying the same token until the host's window runs out
+      nearbyLog("socket", `resume: refused (${refusal}); the seat is gone`);
+      this.onState?.("failed", SEAT_GONE);
+      this.close();
+      return;
+    }
     this.resuming = false;
     this.readyState = NearbySocket.OPEN;
     nearbyLog("socket", `resume: accepted (${type}); open`);

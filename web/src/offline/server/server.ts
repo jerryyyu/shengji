@@ -1459,6 +1459,14 @@ export class LocalConnection {
         let seat = room && typeof tok === "string" && tok
           ? room.humans().find((s) => s.token === tok)
           : undefined;
+        if (room && !seat && room.nearby && typeof tok === "string" && tok && (msg.seat === undefined || msg.seat === null)) {
+          // a seated phone's resume whose token the table no longer knows
+          // (its seat was taken over, or freed): it is refused, never seated
+          // in some other seat without the player's pick, and the phone
+          // goes back to the seat picker
+          this.sendDirect({ type: "error", code: "room_not_found", message: "Seat no longer exists." });
+          return;
+        }
         if (room && !seat && room.nearby && !room.lobby) {
           // a game in progress: a newcomer takes over a seat a bot plays, at
           // once, as the online by-code join does (server.py _join_room)

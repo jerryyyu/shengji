@@ -266,8 +266,9 @@ describe("drops, resume and bot cover", () => {
 
   it("a token for nobody, after the start with every seat a person's, gets no seat", async () => {
     const t = await started(4);
+    // a resume with a token the table does not know: refused, no seat
     const stranger = await t.join("X", { token: "nope" });
-    expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
+    expect(errors(stranger)).toEqual([{ type: "error", code: "room_not_found", message: "Seat no longer exists." }]);
   });
 
   it("a joiner back with its token supersedes its old link: the host closes it, so nothing arrives twice", async () => {

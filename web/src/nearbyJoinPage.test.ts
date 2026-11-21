@@ -1,12 +1,14 @@
-// A joiner's Leave reaches the host even when its link is down: the page's
-// Connection (ws.ts) and the join's store (nearbyJoin.ts) over NearbySockets
-// on the fake transport, real timers faked. A Leave tapped with the link
-// down, or one whose link goes before the host's answer, goes out on the
-// next link as it opens, so the bot covers the seat at once rather than
-// after a dropped seat's 60 s; and the page, back in the lobby, never sees
-// that link's frames of the seat it left.
+// The joiner's page at a nearby table, end to end: the page's Connection
+// (ws.ts) and the join's store (nearbyJoin.ts) over NearbySockets on the
+// fake transport, real timers faked.
+// - A Leave tapped with the link down, or one whose link goes before the
+//   host's answer, goes out on the next link as it opens, so the bot covers
+//   the seat at once rather than after a dropped seat's 60 s; and the page,
+//   back in the lobby, never sees that link's frames of the seat it left.
+// - A resume the table refuses (it no longer knows the token) goes to the
+//   seat picker, forgets the token and never loops.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { NearbyJoinStore } from "./nearbyJoin";
+import { NearbyJoinStore, SEATS_KEY } from "./nearbyJoin";
 import { realClock } from "./offline/server/clock";
 import { setNearbyForTests } from "./offline/server/nearby/flag";
 import { NearbyHost } from "./offline/server/nearby/host";
@@ -38,7 +40,10 @@ async function seatedJoiner() {
   const { conn } = await import("./ws");
   const store = new NearbyJoinStore({
     conn,
-    socketFor: async (code, onState, greet) => () => new NearbySocket(fake, code, onState, realClock, greet) as unknown as WebSocket,
+    socketFor: async (code, onState, greet) => () => {
+      links += 1;
+      return new NearbySocket(fake, code, onState, realClock, greet) as unknown as WebSocket;
+    },
     watchPath: async () => () => {},
     offline: () => true,
     setOffline: () => {},
@@ -48,6 +53,7 @@ async function seatedJoiner() {
     onVisible: () => {},
   });
   const seen: Msg[] = [];
+  let links = 0;
   conn.subscribe((m) => { seen.push(m as unknown as Msg); });
   conn.start();
   store.open(room.code, "Mei");
@@ -60,7 +66,7 @@ async function seatedJoiner() {
   await vi.advanceTimersByTimeAsync(2000);
   const seat = room.seats.find((s) => s.name !== "Host" && !s.isBot)!;
   expect(seat.connected).toBe(true);
-  return { fake, server, room, store, conn, seen, seat };
+  return { fake, server, room, store, conn, seen, seat, links: () => links };
 }
 
 it("a Leave tapped while the link is down: the next link carries it, and the bot covers within 5 s", async () => {
@@ -106,5 +112,27 @@ it("a Leave whose link goes before the host's answer is sent again on the next l
   expect(seat.connected).toBe(false);
   expect(store.seated).toBe(false);
   expect(seen.slice(after).filter((m) => m.type === "state" || m.type === "room")).toHaveLength(0);
+  conn.stop();
+});
+
+it("a resume the table no longer knows: the seat picker, the token forgotten, no loop and no seat taken", async () => {
+  const { fake, room, store, conn, seat, links } = await seatedJoiner();
+  expect(localStorage.getItem(SEATS_KEY)).toContain(room.code);
+  // the table has given the seat to someone else meanwhile
+  seat.token = "someone-else";
+  const owners = room.seats.map((s) => `${s.name}:${s.isBot}`);
+  fake.drop(room.code, fake.peersOf(room.code)[0]);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(store.seated).toBe(false);
+  expect(store.view?.step).toBe("panel");
+  expect(store.view?.peek?.in_game).toBe(true);
+  expect(localStorage.getItem(SEATS_KEY)).toBeNull();
+  // no seat changed hands without the player's pick
+  expect(room.seats.map((s) => `${s.name}:${s.isBot}`)).toEqual(owners);
+  const made = links();
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(links()).toBe(made);
+  expect(store.view?.step).toBe("panel");
+  expect(store.hostLeft).toBe(false);
   conn.stop();
 });

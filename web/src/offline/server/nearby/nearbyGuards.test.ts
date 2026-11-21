@@ -6,7 +6,6 @@
 // fuzz of a seated joiner's frames paced under the rate limit.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LOBBY_SEAT_HOLD, MOVE_TIMER } from "../server";
-import { NEARBY_COPY } from "./copy";
 import { setNearbyForTests } from "./flag";
 import { PEEK_SECONDS } from "./host";
 import { validNearbyName } from "./names";
@@ -261,8 +260,9 @@ describe("resume tokens", () => {
 
   it("with a seat dropped, a wrong token gets no seat, and the seat stays its owner's", async () => {
     const { t, j } = await dropped(4);
+    // a resume with a token the table does not know: refused, no seat
     const stranger = await t.join("X", { token: "nope" });
-    expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
+    expect(errors(stranger)).toEqual([{ type: "error", code: "room_not_found", message: "Seat no longer exists." }]);
     expect(t.room!.seats[j.seat!].connected).toBe(false);
     await t.join("P1", { token: j.token, player: j });
     expect(t.lastState(j)!.you).toBe(j.seat);
@@ -274,7 +274,7 @@ describe("resume tokens", () => {
     const flip = (c: string) => (c === "A" ? "B" : "A");
     for (const bad of [tok.slice(0, -1) + flip(tok.slice(-1)), flip(tok[0]) + tok.slice(1)]) {
       const x = await t.join("X", { token: bad });
-      expect(errors(x).map((f) => f.code)).toEqual(["room_full"]);
+      expect(errors(x).map((f) => f.code)).toEqual(["room_not_found"]);
     }
     expect(t.room!.seats[j.seat!].connected).toBe(false);
   });

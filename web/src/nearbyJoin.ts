@@ -71,6 +71,9 @@ export const LEAVE_LINK_MS = 3000;
  *  for a new link to carry it: a resume's link up (8 s) and its answer
  *  (up to 20 s on a link that carries), with room for one more try. */
 export const LEAVE_OWED_MS = 30_000;
+/** The socket's link-state detail for a refused resume (its SEAT_GONE),
+ *  spelled here so this module never loads the socket's. */
+const SEAT_GONE = "seat_gone";
 
 /** A seat token kept on the phone lets a restarted app take its seat back by
  *  the code: it lasts this long from its last write. */
@@ -255,7 +258,14 @@ export class NearbyJoinStore {
 
   private onLink(attempt: number, state: LinkState, detail?: string): void {
     if (attempt !== this.attempt) return;
-    if (this.seated) return;
+    if (this.seated) {
+      // the seat is gone: a Leave waiting for a link has nothing to leave
+      if (detail === SEAT_GONE) {
+        if (this.leaving === null) this.seatGone();
+        else this.cancel();
+      }
+      return;
+    }
     const step = this.view?.step;
     if (step !== "looking") return;
     // a denial is final for this attempt: no later not-found replaces its line
@@ -343,6 +353,19 @@ export class NearbyJoinStore {
       if (this.live && this.unwatch === null && this.attempt >= live) this.unwatch = unwatch;
       else unwatch();
     }, () => {});
+  }
+
+  /** The host refused the seat's resume: the table no longer knows its
+   *  token. It is forgotten, and the code's join starts over with the
+   *  table's seats, so the player picks one. */
+  private seatGone(): void {
+    nearbyLog("join", "resume refused: the seat is gone; the seats again");
+    const code = this.seatedCode;
+    this.forgetTable();
+    this.token = null;
+    this.seated = false;
+    this.clearGone();
+    this.look(code);
   }
 
   /** Move the glowing seat to another open seat. */

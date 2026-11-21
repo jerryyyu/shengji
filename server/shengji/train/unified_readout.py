@@ -547,20 +547,66 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> di
     return out
 
 
+CACHE_DEVICE = "cache_device.json"
+
+
+def _cache_has_output(out: Path) -> bool:
+    return any(out.glob("calib-*.npz")) or any(out.glob("train-*.npz")) or any(out.glob("DONE.*"))
+
+
+def bind_cache_device(out: Path, device: str) -> None:
+    """Bind the cache directory ``out`` to the device that produces its shards, before any shard is made or kept.
+
+    ``OUT/cache_device.json`` names the producer's device.  It is created once, atomically, by the first worker;
+    every later worker (and every resume) must name the same device.  A directory that already holds shards but
+    no such file was written before devices existed, by the CPU: it binds to ``cpu``, so a CPU run keeps its
+    shards and any other device refuses.  Shard files are never read or rewritten here."""
+    marker = out / CACHE_DEVICE
+    if not marker.exists():
+        if device != "cpu" and _cache_has_output(out):
+            raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
+                                      f"--device {device} would mix producers")
+        tmp = out / f"{CACHE_DEVICE}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps({"device": device}))
+        try:
+            os.link(tmp, marker)                     # fails when another worker bound the directory first
+        except FileExistsError:
+            pass
+        except OSError:                              # a filesystem without hard links
+            try:
+                fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+                with os.fdopen(fd, "w") as fh:
+                    fh.write(json.dumps({"device": device}))
+            except FileExistsError:
+                pass
+        finally:
+            tmp.unlink()
+    for _ in range(50):                              # a worker that lost the race may read before the winner writes
+        text = marker.read_text()
+        if text:
+            break
+        time.sleep(0.1)
+    was = json.loads(text).get("device")
+    if was != device:
+        raise UnifiedReadoutError(f"cache {out}: its shards were made with --device {was}, not --device {device}")
+
+
 def cache(args) -> int:
     """Write the polish cache of a checkpoint: ``OUT/calib-0000.npz`` (the trainer's calibration rows) and
     ``OUT/train-NNNN.npz`` (consecutive groups of ``--group-chunks`` train chunks; ``--worker I --workers N``
-    takes every N-th group).  A shard that exists is kept."""
+    takes every N-th group).  A shard that exists is kept when the directory's producer device
+    (``bind_cache_device``) is this run's; a run on another device refuses before it writes anything."""
     import torch
     torch.set_num_threads(args.threads)
     device = _device(args.device)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    bind_cache_device(out, args.device)
     model, _ = load_checkpoint(args.ckpt)
     if device.type != "cpu":
         model.to(device)
     verified = bs._Verified()
     index = us.OutcomeIndex(us.parse_store_map(args.store_map))
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
 
     def write(name, part):
         tmp = out / (name + ".tmp.npz")

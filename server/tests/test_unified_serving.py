@@ -522,6 +522,12 @@ def test_the_fused_forward_writes_in_place_with_the_same_bits(tmp_path):
         assert np.array_equal(model.leaf_value_probs_fused(fused, planes, scalars), probs(fused, planes, scalars))
         assert np.array_equal(model.leaf_reply_logits_fused(fused, planes, scalars),
                               hidden(fused, planes, scalars) @ t["reply.weight"] + r["reply.bias"])
+        compact = planes.astype(np.uint8)
+        assert compact.nbytes * 4 == planes.nbytes
+        assert np.array_equal(model.leaf_value_probs_fused(fused, compact, scalars),
+                              model.leaf_value_probs_fused(fused, planes, scalars))
+        assert np.array_equal(model.leaf_reply_logits_fused(fused, compact, scalars),
+                              model.leaf_reply_logits_fused(fused, planes, scalars))
 
 
 def test_memo_rows_computes_each_new_key_once():
@@ -618,11 +624,12 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
         mine, planes, scalars, keys = features(frame, leaves)
         want_mine, want_planes, want_scalars = us.leaf_features_batch(frame, leaves)
         assert mine == want_mine
-        assert np.array_equal(planes, want_planes.reshape(len(mine), -1)) and planes.dtype == np.float32
+        assert np.array_equal(planes, want_planes.reshape(len(mine), -1)) and planes.dtype == np.uint8
         assert np.array_equal(scalars, want_scalars)
         rows = {}
         for key, p, sc in zip(keys, planes, scalars):
             row = p.tobytes() + sc.tobytes()
+            assert key == row
             assert rows.setdefault(key, row) == row
         checked[0] += len(mine)
         checked[1] += len(mine) - len(set(keys))
@@ -653,6 +660,31 @@ def test_the_fast_readout_decides_as_the_readout(release50_packages, pair, monke
             memo[name] += got["memo"][name]
     assert checked[0] > 0
     assert memo["value_memo"] > 0
+
+
+def test_compact_leaf_counts_decide_exactly_as_float_planes(
+        release50_packages, pair, monkeypatch, served_functions):
+    from shengji.train import unified_slots as us
+
+    env = fast_env(unified_env(release50_packages, pair))
+    features = us.leaf_features_fast
+    rows = 0
+
+    def float_features(*args, **kwargs):
+        nonlocal rows
+        mine, planes, scalars, keys = features(*args, **kwargs)
+        expanded = planes.astype(np.float32)
+        assert planes.nbytes * 4 == expanded.nbytes
+        rows += len(mine)
+        return mine, expanded, scalars, keys
+
+    for position in P.POSITIONS:
+        got = decide(registry_bot(monkeypatch, env, P.SEED), P.replay(*position))
+        with monkeypatch.context() as patch:
+            patch.setattr(us, "leaf_features_fast", float_features)
+            want = decide(registry_bot(patch, env, P.SEED), P.replay(*position))
+        assert got == want, P.label(*position)
+    assert rows > 0
 
 
 def test_the_fast_readout_scores_reply_leaves_ahead_as_it_scores_chunks(

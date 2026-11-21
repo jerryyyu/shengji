@@ -35,11 +35,13 @@ listing declines and the Python reference runs.
 """
 import copy
 import random
+import sys
 from itertools import islice
 
 import numpy as np
 import pytest
 
+from shengji.engine.cards import Ordering
 from shengji.engine.game import Game
 from shengji.harvest import legal as harvest_legal
 from shengji.harvest.legal import iter_follow_actions, iter_lead_actions
@@ -95,6 +97,49 @@ def _cases(seeds, rng):
 
 
 # ------------------------------------------------- (a) the same listing
+
+@needs_native
+@pytest.mark.parametrize("hand, lead, ordering", [
+    (["H4", "H10", "H4", "D3", "S7"], ["H3"], Ordering("S", "7")),
+    (["H4", "H10", "H4", "D3", "S7"], ["C3"], Ordering("S", "7")),
+    (["LJ", "H4", "D7", "BJ", "S7", "BJ"], ["H7"], Ordering(None, "7")),
+    ([], ["H3"], Ordering("S", "7")),
+])
+def test_single_follow_builds_the_iterator_prefix_directly(hand, lead, ordering, monkeypatch):
+    def unexpected_subset(*args):
+        pytest.fail("singleton follow used the general subset kernel")
+
+    monkeypatch.setattr(pv_native._pv_fast, "subset_listing", unexpected_subset)
+    for cap in (0, 1, 2, 20, None, np.int64(1), sys.maxsize):
+        expected = list(islice(iter_follow_actions(hand, lead, ordering), cap))
+        listing = pv_native.follow_listing(hand, lead, ordering, cap)
+        cards, offsets = listing
+        assert _decoded(listing) == expected
+        assert cards.dtype == np.int8 and offsets.dtype == np.int32
+        assert offsets.tolist() == list(range(len(expected) + 1))
+    for cap in (-1, 1.0, sys.maxsize + 1):
+        with pytest.raises(ValueError):
+            pv_native.follow_listing(hand, lead, ordering, cap)
+
+
+@needs_native
+def test_single_follow_caps_accepted_cards_and_keeps_the_live_validator(monkeypatch):
+    hand, lead, ordering = ["H4", "H10", "H4", "H5"], ["H3"], Ordering("S", "7")
+    tried = []
+
+    def validate(play, *_):
+        tried.append(play)
+        if play == ["H10"]:
+            raise harvest_legal.IllegalPlay("skip the first candidate")
+
+    monkeypatch.setattr(harvest_legal, "validate_follow", validate)
+    assert _decoded(pv_native.follow_listing(hand, lead, ordering, 0)) == []
+    assert tried == []
+    assert _decoded(pv_native.follow_listing(hand, ["C3"], ordering, 1)) == [("H10",)]
+    assert tried == []
+    assert _decoded(pv_native.follow_listing(hand, lead, ordering, 1)) == [("H4",)]
+    assert tried == [["H10"], ["H4"]]
+
 
 @needs_native
 def test_the_native_follow_listing_is_the_python_enumeration_over_seeded_deals():

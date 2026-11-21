@@ -2,16 +2,15 @@
 
 ``SHENGJI_PV_LEGAL_NATIVE=1`` (OFF by default; no name, payload or decision
 reads it) builds the ``lgf`` greedy finish's follow listings
-(`pv_tree_search.legal_replies_compact`) with the compiled
-`_pv_fast.subset_listing`: the actions of
-``islice(harvest.legal.iter_follow_actions(hand, lead, ordering), cap)`` in
-the same order, stored as `pv_tree_search.CompactReplies` stores them, without
-a Python tuple per action.  The follow case (in-suit, short, void) is
-`harvest.legal._follow_case`'s own; the in-suit rows are kept by the same
-``validate_follow`` (the module attribute at call time, so the compiled engine
-validator when ``SHENGJI_FAST`` routed it) refusing with the same
-``IllegalPlay``.  Without the compiled module every call returns None and the
-caller takes the Python reference.
+(`pv_tree_search.legal_replies_compact`) in the order of
+``islice(harvest.legal.iter_follow_actions(hand, lead, ordering), cap)``.
+It packs distinct cards directly for singleton leads and calls the compiled
+`_pv_fast.subset_listing` for wider leads. Both produce the arrays used by
+`pv_tree_search.CompactReplies` without building a Python tuple per action.
+`harvest.legal._follow_case` selects in-suit, short-suit or void enumeration.
+In-suit rows use `harvest.legal.validate_follow` at call time, including the
+compiled validator when ``SHENGJI_FAST`` routes it. If the compiled listing
+module is unavailable, the caller runs the Python reference.
 
 ``SHENGJI_PV_WORLD_FAST=1`` (OFF by default; no name or payload reads it)
 speeds up the belief-proposed world draw: the proposal's copy loop
@@ -24,6 +23,9 @@ The worlds, the generator's state and every refusal are the reference's.
 from __future__ import annotations
 
 from collections import Counter
+from itertools import islice
+
+import numpy as np
 
 from ..ai.mcbot import MCBot
 from ..harvest import legal as harvest_legal
@@ -200,6 +202,19 @@ def reply_multiplicity(cards, offsets):
     return None if kernel is None else kernel(cards, offsets)
 
 
+def _single_follow_codes(hand, lead, ordering):
+    case, h_suit, off, _ = harvest_legal._follow_case(hand, lead, ordering)
+    if case == "void":
+        yield from sorted(set(off))
+        return
+    for code in sorted(set(h_suit)):
+        try:
+            harvest_legal.validate_follow([code], hand, lead, ordering)
+        except harvest_legal.IllegalPlay:
+            continue
+        yield code
+
+
 def follow_listing(hand, lead, ordering, cap):
     """``(cards, offsets)`` (int8 card indices, int32 row offsets) of the
     first ``cap`` actions of ``iter_follow_actions(hand, lead, ordering)``
@@ -208,6 +223,11 @@ def follow_listing(hand, lead, ordering, cap):
     if (_pv_fast is None or harvest_legal.multiset_subsets is not _REFERENCE_MULTISET_SUBSETS
             or harvest_legal.iter_follow_actions is not _REFERENCE_ITER_FOLLOW):
         return None
+    if len(lead) == 1:
+        codes = islice(_single_follow_codes(hand, lead, ordering), cap)
+        card_index = _tables()[0]
+        cards = np.fromiter(map(card_index.__getitem__, codes), dtype=np.int8)
+        return cards, np.arange(cards.size + 1, dtype=np.int32)
     case, h_suit, off, n = harvest_legal._follow_case(hand, lead, ordering)
     card_index, rank, names = _tables()
     limit = (1 << 30) if cap is None else int(cap)

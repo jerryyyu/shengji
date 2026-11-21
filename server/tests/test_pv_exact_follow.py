@@ -702,3 +702,117 @@ def test_budget_callback_cancels_before_exact_result():
     with pytest.raises(RuntimeError, match="cancel"):
         rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
                       [([list(h) for h in rnd.hands], [])], check_budget=cancel)
+
+
+@pytest.mark.parametrize('solver', ['reference', 'compact-level'])
+def test_duplicate_worlds_preserve_weighted_scores_and_points_witness(monkeypatch, solver):
+    from shengji.train import pv_exact_follow as exact
+    rnd = _follow_round()
+    legal = exhaustive_legal_actions(rnd, 1)
+    first = (copy.deepcopy(rnd.hands), [])
+    other = copy.deepcopy(first)
+    other[0][2][0], other[0][3][0] = other[0][3][0], other[0][2][0]
+    worlds = [first, other, copy.deepcopy(first), copy.deepcopy(first), other]
+    calls = []
+    original = exact._world_scores
+
+    def tracked(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(exact, '_world_scores', tracked)
+    result = exact.rerank_follow(rnd, 1, legal, worlds, solver=solver,
+                                 max_nodes=10000, retain_world_scores=True)
+    assert len(calls) == 2
+    calls.clear()
+    monkeypatch.setattr(exact, '_ordered_world_key', lambda world: None)
+    baseline = exact.rerank_follow(rnd, 1, legal, worlds, solver=solver,
+                                   max_nodes=10000, retain_world_scores=True)
+    assert len(calls) == 5
+    assert replace(result, nodes=baseline.nodes) == baseline
+    assert result.nodes < baseline.nodes
+    assert exact.rerank_follow_points(result, rnd, 1, legal, worlds, solver=solver) == \
+        exact.rerank_follow_points(baseline, rnd, 1, legal, worlds, solver=solver)
+
+
+def test_duplicate_world_hit_still_checks_cancellation(monkeypatch):
+    from shengji.train import pv_exact_follow as exact
+    rnd = _follow_round()
+    world = (copy.deepcopy(rnd.hands), [])
+    completed = []
+    original = exact._world_scores
+
+    def tracked(*args, **kwargs):
+        result = original(*args, **kwargs)
+        completed.append(True)
+        return result
+
+    def guard():
+        if completed:
+            raise RuntimeError('cancel after first world')
+
+    monkeypatch.setattr(exact, '_world_scores', tracked)
+    with pytest.raises(RuntimeError, match='cancel after first world'):
+        exact.rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
+                            [world, copy.deepcopy(world)], check_budget=guard)
+
+
+def test_world_cache_does_not_hide_invalid_later_world():
+    rnd = _follow_round()
+    world = (copy.deepcopy(rnd.hands), [])
+    invalid = copy.deepcopy(world)
+    invalid[0][1][0] = 'SA'
+    with pytest.raises(ExactFollowRefusal, match='acting hand'):
+        rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
+                      [world, world, invalid])
+
+
+def test_world_key_keeps_card_order_kitty_and_seat_identity():
+    from shengji.train.pv_exact_follow import _ordered_world_key
+    first = ([['S3', 'S4'], ['S5'], ['S6'], ['S7']], ['S8'])
+    changed = copy.deepcopy(first)
+    changed[0][0].reverse()
+    kitty = (first[0], ['S9'])
+    swapped = ([first[0][0], first[0][2], first[0][1], first[0][3]], first[1])
+    assert len({_ordered_world_key(w) for w in (first, changed, kitty, swapped)}) == 4
+    assert _ordered_world_key((first[0], tuple(first[1]))) is None
+
+
+def test_duplicate_worlds_keep_sample_weight_in_winner(monkeypatch):
+    from shengji.train import pv_exact_follow as exact
+    rnd = _follow_round()
+    first = (copy.deepcopy(rnd.hands), [])
+    other = copy.deepcopy(first)
+    other[0][2][0], other[0][3][0] = other[0][3][0], other[0][2][0]
+
+    def scores(rnd, seat, admitted, world, *args):
+        return ([1.0, 0.0] if world == first else [0.0, 2.0]), 10
+
+    monkeypatch.setattr(exact, '_world_scores', scores)
+    result = exact.rerank_follow(rnd, 1, [['C4'], ['C5']],
+                                 [first, other, first, first], retain_world_scores=True)
+    assert result.winner == 0
+    assert result.scores == (.75, .5)
+    assert result.worlds == 4 and result.nodes == 20
+    assert result.world_scores == ((1., 0.), (0., 2.), (1., 0.), (1., 0.))
+
+
+def test_final_duplicate_checks_budget_after_cache_lookup(monkeypatch):
+    from shengji.train import pv_exact_follow as exact
+    rnd = _follow_round()
+    world = (copy.deepcopy(rnd.hands), [])
+    lookups = []
+    key = exact._ordered_world_key
+
+    def lookup(world):
+        lookups.append(True)
+        return key(world)
+
+    def guard():
+        if len(lookups) == 2:
+            raise RuntimeError('expired during final lookup')
+
+    monkeypatch.setattr(exact, '_ordered_world_key', lookup)
+    with pytest.raises(RuntimeError, match='expired during final lookup'):
+        exact.rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
+                            [world, world], check_budget=guard)

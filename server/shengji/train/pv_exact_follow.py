@@ -72,15 +72,26 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
     nodes = 0
     root_attacker = bool(rnd.is_attacker(seat))
     world_rows = []
+    completed = {}
     for world in worlds:
-        row, solved = _world_scores(
-            rnd, seat, admitted, world, max_hand_cards, max_nodes,
-            check_budget, solver, root_attacker)
+        if check_budget is not None:
+            check_budget()
+        key = _ordered_world_key(world)
+        if key is not None and key in completed:
+            row, solved = completed[key], 0
+        else:
+            row, solved = _world_scores(
+                rnd, seat, admitted, world, max_hand_cards, max_nodes,
+                check_budget, solver, root_attacker)
+            if key is not None:
+                completed[key] = tuple(row)
         for index, value in enumerate(row):
             scores[index] += value
         if retain_world_scores:
             world_rows.append(tuple(row))
         nodes += solved
+    if check_budget is not None:
+        check_budget()
     means = tuple(score / len(worlds) for score in scores)
     baseline = means[baseline_index]
     winner = max(range(len(means)), key=lambda i: (means[i], -i))
@@ -88,6 +99,24 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
         winner = baseline_index
     return ExactFollowResult(winner=winner, scores=means, worlds=len(worlds), nodes=nodes,
                              world_scores=(tuple(world_rows) if retain_world_scores else None))
+
+
+def _ordered_world_key(world):
+    """Only identical ordered card lists share a completed solve.
+
+    Keeping order preserves search traversal and per-world node-cap behavior.
+    Malformed inputs still go through the solver's validation path.
+    """
+    if type(world) not in (tuple, list) or len(world) != 2:
+        return None
+    hands, buried = world
+    if type(hands) is not list or len(hands) != 4 or type(buried) is not list:
+        return None
+    if any(type(hand) is not list for hand in hands):
+        return None
+    if any(type(card) is not str for cards in [*hands, buried] for card in cards):
+        return None
+    return tuple(tuple(hand) for hand in hands), tuple(buried)
 
 
 def rerank_follow_points(primary: ExactFollowResult, rnd, seat: int, admitted,

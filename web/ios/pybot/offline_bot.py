@@ -1,7 +1,7 @@
 """The app's offline bot: the served pv-search bot, deciding for the offline game.
 
 The iOS app bundles this module with the unmodified ``shengji`` package, the
-``fly.toml`` the release was cut from and its four weight files.  The offline
+``fly.toml`` the release was cut from and the weight files it names.  The offline
 game itself runs in the web page (``web/src/offline/server``); for a bot seat's
 turn the page sends a decision request through the native ``ShengjiBot``
 plugin, and this module answers it with the served bot.
@@ -51,7 +51,7 @@ import tomllib
 
 MODEL_PREFIX = "/data/models/"
 NATIVE_MODULES = ("shengji.engine._fast", "shengji.ai._cwv_math",
-                  "shengji.ai._endgame_fast", "shengji.train._pv_fast")
+                  "shengji.ai._endgame_fast", "shengji.train._pv_fast", "shengji.train._reply_fast")
 LOG_KINDS = ("deal", "declare", "pass", "finalize", "bury", "play")
 
 _STATE: dict = {}

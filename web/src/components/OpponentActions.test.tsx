@@ -155,3 +155,18 @@ it("a later game's state frame keeps the seat blocked, and an unblocked frame cl
   expect(log()).toContain("Cy again");
   expect(sent).toEqual([]);
 });
+
+it("a table on a device (offline, or a nearby phone's) offers neither: they are the game server's", async () => {
+  const { setOffline } = await import("../offlineMode");
+  setOffline(true);
+  try {
+    act(() => root.render(<Table state={state()} />));
+    longPress(seatOf("Bea"));
+    expect(dialog()).toBeNull();
+    act(() => { seatOf("Cy").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
+    expect(dialog()).toBeNull();
+    expect(sent.filter((m) => /report|block/.test((m as { type: string }).type))).toEqual([]);
+  } finally {
+    setOffline(false);
+  }
+});

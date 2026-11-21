@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
+import { NEARBY_SESSION, useOffline } from "../offlineMode";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";
@@ -38,6 +39,8 @@ const XrayPanel = lazy(() => import("./XrayPanel"));
 const DECLARE_WINDOW_SECS = 5;
 
 const LAST_TRICK_MS = 1500;
+/** At a nearby table, how late a move's answer is before Play says Sending…. */
+export const SENDING_AFTER_MS = 1500;
 // The sweep ends a little before the finished trick is replaced, so the
 // table never waits on it.
 const SWEEP_AFTER_MS = LAST_TRICK_MS - DUR.sweep - 40;
@@ -108,9 +111,11 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
   // a long press (or a right click) on a person's seat also offers block and
-  // report; offline play seats only bots, so it never offers them there
+  // report, which are the game server's; a table on a device (offline, or a
+  // nearby phone's) never offers them
   const [actions, setActions] = useState(false);
-  const canAct = !player.is_bot;
+  const offline = useOffline();
+  const canAct = !player.is_bot && !offline;
   const pressTimer = useRef<number | null>(null);
   const longPressed = useRef(false);
   useEffect(() => {
@@ -369,7 +374,18 @@ export default function Table({ state }: { state: GameState }) {
   // What Play or Bury says while its send is unanswered: the cards stay put
   // until the server's state moves them, and a dropped connection says so
   // instead of waiting silently.
-  const pendingLabel = pending === null ? null : online ? "Sending…" : "Reconnecting…";
+  // At a nearby table a move's answer can take a moment over the radio: Play
+  // says Sending… only once the answer is SENDING_AFTER_MS late, and the
+  // link's own state (the pill, the dot) says when it has really stalled.
+  const [late, setLate] = useState(false);
+  useEffect(() => {
+    setLate(false);
+    if (pending === null) return;
+    const timer = window.setTimeout(() => setLate(true), SENDING_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, [pending]);
+  const pendingLabel = pending === null ? null : !online ? "Reconnecting…"
+    : NEARBY_SESSION && !late ? null : "Sending…";
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
     setPending({ kind: msg.type, cardIds: msg.card_ids, handKey, turn: state.turn,

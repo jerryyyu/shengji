@@ -39,7 +39,7 @@ vi.mock("../ws", () => ({
 }));
 const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) fn(m); });
 
-const { default: Table } = await import("./Table");
+const { default: Table, SENDING_AFTER_MS } = await import("./Table");
 const { default: Hand } = await import("./Hand");
 
 function player(seat: number, over: Partial<StatePlayer> = {}): StatePlayer {
@@ -514,6 +514,54 @@ describe("Play and Bury say they are sending", () => {
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(sent).toHaveLength(1);
   });
+
+  // telemetry rides the same stand-in connection
+  const moves = () => sent.filter((m) => (m as { type: string }).type === "bury" || (m as { type: string }).type === "play");
+
+  it("at a nearby table a bury that never committed goes out once more on the new link, and only once", async () => {
+    const mode = await import("../offlineMode");
+    vi.useFakeTimers();
+    mode.setNearbySession(true);
+    onTestFinished(() => { mode.setNearbySession(false); vi.useRealTimers(); });
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    expect(moves()).toHaveLength(1);
+    // the link was stuck: a new one, whose first state shows the same hand
+    setStatus("closed");
+    expect(label()).toBe("Reconnecting…");
+    setStatus("open");
+    render(burying());
+    expect(moves()).toHaveLength(2);
+    expect(moves()[1]).toEqual(moves()[0]);
+    // the resent move's answer is not late yet: no Sending… flash
+    expect(label()).toBe("Bury (8/8)");
+    act(() => { vi.advanceTimersByTime(SENDING_AFTER_MS); });
+    expect(label()).toBe("Sending…");
+    // stuck again: no third send; the selection stays for the player
+    setStatus("closed");
+    setStatus("open");
+    render(burying());
+    expect(moves()).toHaveLength(2);
+    expect(label()).toBe("Bury (8/8)");
+    expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("at a nearby table Play says Sending… only once the answer is late", async () => {
+    const mode = await import("../offlineMode");
+    vi.useFakeTimers();
+    mode.setNearbySession(true);
+    onTestFinished(() => { mode.setNearbySession(false); vi.useRealTimers(); });
+    render(burying());
+    for (let i = 0; i < 8; i++) pick(i);
+    act(() => primary().click());
+    expect(label()).toBe("Bury (8/8)");
+    act(() => { vi.advanceTimersByTime(SENDING_AFTER_MS - 100); });
+    expect(label()).toBe("Bury (8/8)");
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(label()).toBe("Sending…");
+  });
+
 });
 
 describe("following", () => {

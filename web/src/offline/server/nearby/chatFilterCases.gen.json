@@ -1,0 +1,2162 @@
+[
+ {
+  "text": "fuck",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "FUCK",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the fuck here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "fucking",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "fucks",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "fck",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "FCK",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the fck here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "fcking",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "fcks",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "fuk",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "FUK",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the fuk here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "fuking",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "fuks",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "fucc",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "FUCC",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the fucc here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "fuccing",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "fuccs",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "phuck",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "PHUCK",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the phuck here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "phucking",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "phucks",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "motherfuck",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "MOTHERFUCK",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "the motherfuck here",
+  "mask": "the ********** here",
+  "contains": true
+ },
+ {
+  "text": "m0th3rfuck",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "motherfucking",
+  "mask": "*************",
+  "contains": true
+ },
+ {
+  "text": "motherfucks",
+  "mask": "***********",
+  "contains": true
+ },
+ {
+  "text": "mothafucka",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "MOTHAFUCKA",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "the mothafucka here",
+  "mask": "the ********** here",
+  "contains": true
+ },
+ {
+  "text": "m0th@fuck@",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "mothafuckaing",
+  "mask": "*************",
+  "contains": true
+ },
+ {
+  "text": "mothafuckas",
+  "mask": "***********",
+  "contains": true
+ },
+ {
+  "text": "shit",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "SHIT",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the shit here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "$h1t",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "shiting",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "shits",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "bullshit",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "BULLSHIT",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "the bullshit here",
+  "mask": "the ******** here",
+  "contains": true
+ },
+ {
+  "text": "bull$h1t",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "bullshiting",
+  "mask": "***********",
+  "contains": true
+ },
+ {
+  "text": "bullshits",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "bitch",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "BITCH",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the bitch here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "b1tch",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "bitching",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "bitchs",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "cunt",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "CUNT",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the cunt here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "cunting",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "cunts",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "ass",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "ASS",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the ass here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "@$$",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "asshole",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "ASSHOLE",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "the asshole here",
+  "mask": "the ******* here",
+  "contains": true
+ },
+ {
+  "text": "@$$h0l3",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "assholeing",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "assholes",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "asshat",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "ASSHAT",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the asshat here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "@$$h@t",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "asshating",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "asshats",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "arsehole",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "ARSEHOLE",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "the arsehole here",
+  "mask": "the ******** here",
+  "contains": true
+ },
+ {
+  "text": "@r$3h0l3",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "arseholeing",
+  "mask": "***********",
+  "contains": true
+ },
+ {
+  "text": "arseholes",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "dumbass",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "DUMBASS",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "the dumbass here",
+  "mask": "the ******* here",
+  "contains": true
+ },
+ {
+  "text": "dumb@$$",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "dumbassing",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "dumbasss",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "jackass",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "JACKASS",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "the jackass here",
+  "mask": "the ******* here",
+  "contains": true
+ },
+ {
+  "text": "j@ck@$$",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "jackassing",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "jackasss",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "dick",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "DICK",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the dick here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "d1ck",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "dicks",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "DICKS",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the dicks here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "d1ck$",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "dickhead",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "DICKHEAD",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "the dickhead here",
+  "mask": "the ******** here",
+  "contains": true
+ },
+ {
+  "text": "d1ckh3@d",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "dickheading",
+  "mask": "***********",
+  "contains": true
+ },
+ {
+  "text": "dickheads",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "cocksucker",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "COCKSUCKER",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "the cocksucker here",
+  "mask": "the ********** here",
+  "contains": true
+ },
+ {
+  "text": "c0ck$uck3r",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "cocksuckering",
+  "mask": "*************",
+  "contains": true
+ },
+ {
+  "text": "cocksuckers",
+  "mask": "***********",
+  "contains": true
+ },
+ {
+  "text": "pussy",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "PUSSY",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the pussy here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "pu$$y",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "pussies",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "PUSSIES",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "the pussies here",
+  "mask": "the ******* here",
+  "contains": true
+ },
+ {
+  "text": "pu$$13$",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "twat",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "TWAT",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the twat here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "tw@t",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "twating",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "twats",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "wanker",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "WANKER",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the wanker here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "w@nk3r",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "wankering",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "wankers",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "bastard",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "BASTARD",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "the bastard here",
+  "mask": "the ******* here",
+  "contains": true
+ },
+ {
+  "text": "b@$t@rd",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "bastarding",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "bastards",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "whore",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "WHORE",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the whore here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "wh0r3",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "whoreing",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "whores",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "slut",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "SLUT",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the slut here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "$lut",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "sluting",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "sluts",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "stfu",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "STFU",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the stfu here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "$tfu",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "kys",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "KYS",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the kys here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "ky$",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "sb",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "SB",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the sb here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "$b",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "nigger",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "NIGGER",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the nigger here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "n1gg3r",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "niggering",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "niggers",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "nigga",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "NIGGA",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the nigga here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "n1gg@",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "niggaing",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "niggas",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "NIGGAS",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the niggas here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "n1gg@$",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "faggot",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "FAGGOT",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the faggot here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "f@gg0t",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "faggoting",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "faggots",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "fag",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "FAG",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the fag here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "f@g",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "fags",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "FAGS",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the fags here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "f@g$",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "retard",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "RETARD",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the retard here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "r3t@rd",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "retarding",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "retards",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "tranny",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "TRANNY",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the tranny here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "tr@nny",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "trannies",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "TRANNIES",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "the trannies here",
+  "mask": "the ******** here",
+  "contains": true
+ },
+ {
+  "text": "tr@nn13$",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "dyke",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "DYKE",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the dyke here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "dyk3",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "dykes",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "DYKES",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the dykes here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "dyk3$",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "chink",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "CHINK",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the chink here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "ch1nk",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "chinks",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "CHINKS",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the chinks here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "ch1nk$",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "gook",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "GOOK",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the gook here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "g00k",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "gooks",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "GOOKS",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the gooks here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "g00k$",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "spic",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "SPIC",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the spic here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "$p1c",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "spics",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "SPICS",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the spics here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "$p1c$",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "kike",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "KIKE",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the kike here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "k1k3",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "kikes",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "KIKES",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the kikes here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "k1k3$",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "wetback",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "WETBACK",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "the wetback here",
+  "mask": "the ******* here",
+  "contains": true
+ },
+ {
+  "text": "w3tb@ck",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "wetbacking",
+  "mask": "**********",
+  "contains": true
+ },
+ {
+  "text": "wetbacks",
+  "mask": "********",
+  "contains": true
+ },
+ {
+  "text": "rape",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "RAPE",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the rape here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "r@p3",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "raped",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "RAPED",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "the raped here",
+  "mask": "the ***** here",
+  "contains": true
+ },
+ {
+  "text": "r@p3d",
+  "mask": "*****",
+  "contains": true
+ },
+ {
+  "text": "rapist",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "RAPIST",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "the rapist here",
+  "mask": "the ****** here",
+  "contains": true
+ },
+ {
+  "text": "r@p1$t",
+  "mask": "******",
+  "contains": true
+ },
+ {
+  "text": "rapisting",
+  "mask": "*********",
+  "contains": true
+ },
+ {
+  "text": "rapists",
+  "mask": "*******",
+  "contains": true
+ },
+ {
+  "text": "傻逼",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 傻逼 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "傻屄",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 傻屄 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "傻比",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 傻比 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "傻B",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 傻B here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "煞笔",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 煞笔 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "他妈的",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 他妈的 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "他媽的",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 他媽的 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "你妈的",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 你妈的 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "你媽的",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 你媽的 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "去你妈",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 去你妈 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "去你媽",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 去你媽 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "操你妈",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 操你妈 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "操你媽",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 操你媽 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "操你娘",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 操你娘 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "操你",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 操你 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "肏",
+  "mask": "*",
+  "contains": true
+ },
+ {
+  "text": "the 肏 here",
+  "mask": "the * here",
+  "contains": true
+ },
+ {
+  "text": "屌",
+  "mask": "*",
+  "contains": true
+ },
+ {
+  "text": "the 屌 here",
+  "mask": "the * here",
+  "contains": true
+ },
+ {
+  "text": "操",
+  "mask": "*",
+  "contains": true
+ },
+ {
+  "text": "the 操 here",
+  "mask": "the * here",
+  "contains": true
+ },
+ {
+  "text": "体操",
+  "mask": "体操",
+  "contains": false
+ },
+ {
+  "text": "我操",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 我操 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "我操作",
+  "mask": "我操作",
+  "contains": false
+ },
+ {
+  "text": "我操控",
+  "mask": "我操控",
+  "contains": false
+ },
+ {
+  "text": "我操心",
+  "mask": "我操心",
+  "contains": false
+ },
+ {
+  "text": "我操练",
+  "mask": "我操练",
+  "contains": false
+ },
+ {
+  "text": "我操練",
+  "mask": "我操練",
+  "contains": false
+ },
+ {
+  "text": "我操场",
+  "mask": "我操场",
+  "contains": false
+ },
+ {
+  "text": "我操場",
+  "mask": "我操場",
+  "contains": false
+ },
+ {
+  "text": "我操办",
+  "mask": "我操办",
+  "contains": false
+ },
+ {
+  "text": "我操辦",
+  "mask": "我操辦",
+  "contains": false
+ },
+ {
+  "text": "我操持",
+  "mask": "我操持",
+  "contains": false
+ },
+ {
+  "text": "我操纵",
+  "mask": "我操纵",
+  "contains": false
+ },
+ {
+  "text": "我操縱",
+  "mask": "我操縱",
+  "contains": false
+ },
+ {
+  "text": "我操劳",
+  "mask": "我操劳",
+  "contains": false
+ },
+ {
+  "text": "我操勞",
+  "mask": "我操勞",
+  "contains": false
+ },
+ {
+  "text": "我操守",
+  "mask": "我操守",
+  "contains": false
+ },
+ {
+  "text": "我操行",
+  "mask": "我操行",
+  "contains": false
+ },
+ {
+  "text": "我操盘",
+  "mask": "我操盘",
+  "contains": false
+ },
+ {
+  "text": "我操盤",
+  "mask": "我操盤",
+  "contains": false
+ },
+ {
+  "text": "草泥马",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 草泥马 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "草泥馬",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 草泥馬 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "妈逼",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 妈逼 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "媽逼",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 媽逼 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "妈了个逼",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the 妈了个逼 here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "媽了個逼",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "the 媽了個逼 here",
+  "mask": "the **** here",
+  "contains": true
+ },
+ {
+  "text": "日你妈",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 日你妈 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "日你媽",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 日你媽 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "日你娘",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 日你娘 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "干你娘",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 干你娘 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "幹你娘",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 幹你娘 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "鸡巴",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 鸡巴 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "雞巴",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 雞巴 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "婊子",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 婊子 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "贱人",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 贱人 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "賤人",
+  "mask": "**",
+  "contains": true
+ },
+ {
+  "text": "the 賤人 here",
+  "mask": "the ** here",
+  "contains": true
+ },
+ {
+  "text": "王八蛋",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 王八蛋 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "狗日的",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 狗日的 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "滚你妈",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 滚你妈 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "滾你媽",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "the 滾你媽 here",
+  "mask": "the *** here",
+  "contains": true
+ },
+ {
+  "text": "fuck you",
+  "mask": "**** you",
+  "contains": true
+ },
+ {
+  "text": "Fuuuuuck this",
+  "mask": "******** this",
+  "contains": true
+ },
+ {
+  "text": "sh1t happens",
+  "mask": "**** happens",
+  "contains": true
+ },
+ {
+  "text": "what an a$$hole",
+  "mask": "what an *******",
+  "contains": true
+ },
+ {
+  "text": "@ss",
+  "mask": "***",
+  "contains": true
+ },
+ {
+  "text": "shitty play",
+  "mask": "****** play",
+  "contains": true
+ },
+ {
+  "text": "fucking hell",
+  "mask": "******* hell",
+  "contains": true
+ },
+ {
+  "text": "you bitches",
+  "mask": "you *******",
+  "contains": true
+ },
+ {
+  "text": "gg, fuck!",
+  "mask": "gg, ****!",
+  "contains": true
+ },
+ {
+  "text": "fuck你",
+  "mask": "****你",
+  "contains": true
+ },
+ {
+  "text": "stfu sb",
+  "mask": "**** **",
+  "contains": true
+ },
+ {
+  "text": "class",
+  "mask": "class",
+  "contains": false
+ },
+ {
+  "text": "assassin",
+  "mask": "assassin",
+  "contains": false
+ },
+ {
+  "text": "Scunthorpe",
+  "mask": "Scunthorpe",
+  "contains": false
+ },
+ {
+  "text": "cockpit",
+  "mask": "cockpit",
+  "contains": false
+ },
+ {
+  "text": "cocktail",
+  "mask": "cocktail",
+  "contains": false
+ },
+ {
+  "text": "passage",
+  "mask": "passage",
+  "contains": false
+ },
+ {
+  "text": "glass",
+  "mask": "glass",
+  "contains": false
+ },
+ {
+  "text": "assess",
+  "mask": "assess",
+  "contains": false
+ },
+ {
+  "text": "assist",
+  "mask": "assist",
+  "contains": false
+ },
+ {
+  "text": "Sussex",
+  "mask": "Sussex",
+  "contains": false
+ },
+ {
+  "text": "spicy",
+  "mask": "spicy",
+  "contains": false
+ },
+ {
+  "text": "dickens",
+  "mask": "dickens",
+  "contains": false
+ },
+ {
+  "text": "therapist",
+  "mask": "therapist",
+  "contains": false
+ },
+ {
+  "text": "grape",
+  "mask": "grape",
+  "contains": false
+ },
+ {
+  "text": "analysis",
+  "mask": "analysis",
+  "contains": false
+ },
+ {
+  "text": "hancock",
+  "mask": "hancock",
+  "contains": false
+ },
+ {
+  "text": "skyscraper",
+  "mask": "skyscraper",
+  "contains": false
+ },
+ {
+  "text": "shitake",
+  "mask": "shitake",
+  "contains": false
+ },
+ {
+  "text": "Fukushima",
+  "mask": "Fukushima",
+  "contains": false
+ },
+ {
+  "text": "bass",
+  "mask": "bass",
+  "contains": false
+ },
+ {
+  "text": "pass",
+  "mask": "pass",
+  "contains": false
+ },
+ {
+  "text": "hello",
+  "mask": "hello",
+  "contains": false
+ },
+ {
+  "text": "hell",
+  "mask": "hell",
+  "contains": false
+ },
+ {
+  "text": "damn",
+  "mask": "damn",
+  "contains": false
+ },
+ {
+  "text": "nice hand",
+  "mask": "nice hand",
+  "contains": false
+ },
+ {
+  "text": "gg",
+  "mask": "gg",
+  "contains": false
+ },
+ {
+  "text": "2023",
+  "mask": "2023",
+  "contains": false
+ },
+ {
+  "text": "1337",
+  "mask": "1337",
+  "contains": false
+ },
+ {
+  "text": "45s",
+  "mask": "45s",
+  "contains": false
+ },
+ {
+  "text": "455",
+  "mask": "455",
+  "contains": false
+ },
+ {
+  "text": "wait 45s",
+  "mask": "wait 45s",
+  "contains": false
+ },
+ {
+  "text": "你个傻逼",
+  "mask": "你个**",
+  "contains": true
+ },
+ {
+  "text": "他媽的又输了",
+  "mask": "***又输了",
+  "contains": true
+ },
+ {
+  "text": "操！",
+  "mask": "*！",
+  "contains": true
+ },
+ {
+  "text": "我操了",
+  "mask": "**了",
+  "contains": true
+ },
+ {
+  "text": "操作",
+  "mask": "操作",
+  "contains": false
+ },
+ {
+  "text": "曹操",
+  "mask": "曹操",
+  "contains": false
+ },
+ {
+  "text": "我操作一下",
+  "mask": "我操作一下",
+  "contains": false
+ },
+ {
+  "text": "节操",
+  "mask": "节操",
+  "contains": false
+ },
+ {
+  "text": "妈妈的牌",
+  "mask": "妈妈的牌",
+  "contains": false
+ },
+ {
+  "text": "今日你来吗",
+  "mask": "今日你来吗",
+  "contains": false
+ },
+ {
+  "text": "加油",
+  "mask": "加油",
+  "contains": false
+ },
+ {
+  "text": "好牌",
+  "mask": "好牌",
+  "contains": false
+ },
+ {
+  "text": "  fuck,  shit.  ",
+  "mask": "  ****,  ****.  ",
+  "contains": true
+ },
+ {
+  "text": "Player 2",
+  "mask": "Player 2",
+  "contains": false
+ },
+ {
+  "text": "Jerry",
+  "mask": "Jerry",
+  "contains": false
+ },
+ {
+  "text": "小明",
+  "mask": "小明",
+  "contains": false
+ },
+ {
+  "text": "Ünïcödé",
+  "mask": "Ünïcödé",
+  "contains": false
+ },
+ {
+  "text": "x fuckface y",
+  "mask": "x ******** y",
+  "contains": true
+ },
+ {
+  "text": "sh!t",
+  "mask": "sh!t",
+  "contains": false
+ },
+ {
+  "text": "f u c k",
+  "mask": "f u c k",
+  "contains": false
+ },
+ {
+  "text": "Dick",
+  "mask": "****",
+  "contains": true
+ },
+ {
+  "text": "a s s",
+  "mask": "a s s",
+  "contains": false
+ },
+ {
+  "text": "emoji 😀 fuck 😀",
+  "mask": "emoji 😀 **** 😀",
+  "contains": true
+ },
+ {
+  "text": "😀操😀",
+  "mask": "😀*😀",
+  "contains": true
+ },
+ {
+  "text": "İstanbul",
+  "mask": "İstanbul",
+  "contains": false
+ },
+ {
+  "text": "ΣΊΣΥΦΟΣ",
+  "mask": "ΣΊΣΥΦΟΣ",
+  "contains": false
+ }
+]

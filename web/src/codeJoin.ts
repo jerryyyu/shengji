@@ -9,12 +9,16 @@
 
 import { useSyncExternalStore } from "react";
 import { CODE_LEN, aliasInviteLink, normalizeCode } from "./codes";
-import { roomChoices, roomDefaultSeat, tableFull, tableJoinSeat } from "./joinSeats";
+import { nearbyChoices, nearbyDefaultSeat, roomChoices, roomDefaultSeat, tableFull, tableJoinSeat } from "./joinSeats";
 import type { RoomSeats, ServerMsg, TableSeats } from "./protocol";
 import { queue } from "./queue/store";
 import { showToast } from "./toast";
 import type { ConnStatus } from "./ws";
 import { conn, getResumeToken, getSavedRoom } from "./ws";
+import { OFFLINE, setNearbySession, setOffline } from "./offlineMode";
+import { forgetNearbyAllowed, noteNearbyAllowed } from "./nearbySession";
+import type { LinkState } from "./offline/server/nearby/transport";
+import { nearbyLog } from "./nearbyLog";
 
 /** Where a code came from: the Play box or a link. */
 export type CodeFrom = "play" | "link";
@@ -319,4 +323,413 @@ codes.attach();
 
 export function useCodes(): CodeJoin | null {
   return useSyncExternalStore(codes.subscribe, codes.getSnapshot, codes.getSnapshot);
+}
+
+/** A nearby code's join, from the code box: look for the table on the
+ *  local network, show its seats (the seat picker), then Join. Once seated
+ *  the link is the page's socket until the table ends.
+ *  - `looking`: the link is being made ("Looking for the table…").
+ *  - `panel`: the table's seats are up; Join is the player's.
+ *  - `joining`: Join sent; the seat is on its way.
+ *  - `notFound`: no table answered the code, after one automatic retry.
+ *  - `denied` / `wifiOff`: the link could not be made; the code box says why.
+ *  - `full` / `version`: the table answered, and has no seat for this phone. */
+export type NearbyStep = "looking" | "panel" | "joining" | "notFound" | "denied" | "wifiOff" | "full" | "version";
+
+export interface NearbyJoin {
+  code: string;
+  step: NearbyStep;
+  peek: RoomSeats | null;
+  /** While looking: the link to the table is up and its seats are on their
+   *  way, so the panel's line says it is connecting rather than looking. */
+  linked?: boolean;
+  seat: number | null;
+}
+
+/** What the nearby join needs of the page: its socket, the on-device
+ *  server's module, offline mode and the app's return to the foreground. */
+export interface NearbyJoinDeps {
+  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby" | "reconnect">;
+  /** `greet` gives the hello a seated joiner's new link resumes with. */
+  socketFor(code: string, onState: (state: LinkState, detail?: string) => void,
+            greet: () => Record<string, unknown> | null): Promise<() => WebSocket>;
+  /** Calls `fn` with each change of the phone's network path; returns the
+   *  unsubscribe. */
+  watchPath(fn: (up: boolean) => void): Promise<() => void>;
+  offline(): boolean;
+  setOffline(on: boolean): void;
+  setSession(on: boolean): void;
+  allowed(): void;
+  /** Local Network access was refused: the explaining line shows again. */
+  refused(): void;
+  /** Calls `fn` each time the page comes back into view. */
+  onVisible(fn: () => void): void;
+}
+
+/** After the host is gone this long, its table is over for the joiner: the
+ *  window the host has to come back in (the plugin's hostWindow), and a few
+ *  seconds more, so a host back at the last moment still finds its joiners. */
+export const HOST_WINDOW_MS = 65_000;
+/** A look that has neither found the table nor been told why by then ends
+ *  as not found. It is held while the system's Local Network prompt is up
+ *  (the plugin's "waiting" with "prompt"), and any other "waiting" starts
+ *  it over. */
+export const LOOK_LIMIT_MS = 30_000;
+/** After a Leave, the link waits this long at most for the host's answer
+ *  before it closes. */
+export const LEAVE_LINK_MS = 3000;
+
+export class NearbyJoinStore {
+  view: NearbyJoin | null = null;
+  /** Seated at the table: the socket is the link, and a drop rejoins by token. */
+  seated = false;
+  /** The host has been gone past HOST_WINDOW_MS: the end screen is up. */
+  hostLeft = false;
+  private listeners = new Set<() => void>();
+  private deps: NearbyJoinDeps;
+  private name = "";
+  private live = false;
+  private wasOffline = false;
+  private retried = false;
+  private denied = false;
+  private gone: number | null = null;
+  private attempt = 0;
+  private lookTimer: number | null = null;
+  private joinTimer: number | null = null;
+  /** A Leave is waiting for the host's answer (the link's close). */
+  private leaving: number | null = null;
+  /** The seat token, held in memory only: nothing about a nearby table is
+   *  written to storage or ever sent to the game server. */
+  private token: string | null = null;
+  /** The socket's latest status. */
+  private status: ConnStatus = "closed";
+  /** Ends the network path watch, while the link is live. */
+  private unwatch: (() => void) | null = null;
+
+  constructor(deps: NearbyJoinDeps) {
+    this.deps = deps;
+    deps.conn.subscribe((m) => this.onMessage(m));
+    deps.conn.subscribeStatus((s) => this.onStatus(s));
+    deps.onVisible(() => {
+      // back from Settings: the join tries again on its own with the kept code
+      if (this.view?.step === "denied") this.look(this.view.code);
+    });
+  }
+
+  subscribe = (fn: () => void): (() => void) => {
+    this.listeners.add(fn);
+    return () => { this.listeners.delete(fn); };
+  };
+
+  getSnapshot = (): NearbyJoin | null => this.view;
+
+  private emit(): void {
+    this.listeners.forEach((l) => l());
+  }
+
+  private set(next: NearbyJoin | null): void {
+    if (next?.step !== "joining") this.clearJoinTimer();
+    if (next?.step !== "looking") this.clearLookTimer();
+    this.view = next;
+    this.emit();
+  }
+
+  /** The code box's Join on a nearby code, under `name`. */
+  open(code: string, name: string): void {
+    this.name = name;
+    this.hostLeft = false;
+    this.look(code);
+  }
+
+  private look(code: string): void {
+    this.retried = false;
+    this.denied = false;
+    this.set({ code, step: "looking", peek: null, seat: null });
+    const attempt = ++this.attempt;
+    this.armLook(attempt);
+    void this.deps.socketFor(code, (s, detail) => this.onLink(attempt, s, detail), () => this.greeting()).then((make) => {
+      if (attempt !== this.attempt || this.view?.step !== "looking") return;
+      if (!this.live) {
+        this.live = true;
+        this.wasOffline = this.deps.offline();
+        this.deps.setOffline(true);
+        this.deps.setSession(true);
+        this.watchPath();
+      }
+      this.deps.conn.useNearby(make);
+    }, () => {
+      if (attempt === this.attempt) this.stop("notFound");
+    });
+  }
+
+  /** The look ends as not found LOOK_LIMIT_MS from now unless it has its answer. */
+  private armLook(attempt: number): void {
+    this.clearLookTimer();
+    this.lookTimer = window.setTimeout(() => {
+      this.lookTimer = null;
+      if (attempt === this.attempt && this.view?.step === "looking") this.stop("notFound");
+    }, LOOK_LIMIT_MS);
+  }
+
+  private clearLookTimer(): void {
+    if (this.lookTimer !== null) window.clearTimeout(this.lookTimer);
+    this.lookTimer = null;
+  }
+
+  private clearJoinTimer(): void {
+    if (this.joinTimer !== null) window.clearTimeout(this.joinTimer);
+    this.joinTimer = null;
+  }
+
+  /** The panel's link dropped, or its Join went unanswered: look at the
+   *  table again, so the seats shown are the table's now. */
+  private lookAgain(): void {
+    const v = this.view;
+    if (!v) return;
+    this.set({ ...v, step: "looking", peek: null });
+    this.armLook(this.attempt);
+    this.deps.conn.send({ type: "table_peek", code: v.code });
+  }
+
+  private onLink(attempt: number, state: LinkState, detail?: string): void {
+    if (attempt !== this.attempt) return;
+    if (this.seated) return;
+    const step = this.view?.step;
+    if (step !== "looking") return;
+    // a denial is final for this attempt: no later not-found replaces its line
+    if (state === "denied") {
+      this.denied = true;
+      this.deps.refused();
+      this.stop("denied");
+    } else if (state === "wifiOff") this.stop("wifiOff");
+    else if (state === "version") this.stop("version");
+    else if (state === "waiting" && detail === "prompt") {
+      // the system's Local Network prompt is up: no answer is not a miss
+      this.clearLookTimer();
+    } else if (state === "waiting") this.armLook(attempt);
+    else if ((state === "notFound" || state === "failed") && !this.denied) {
+      // one miss in a few is the radio: the socket's reconnect looks once more
+      if (!this.retried) this.retried = true;
+      else this.stop("notFound");
+    }
+  }
+
+  /** The link attempt ends with `step` on the panel or the code box. */
+  private stop(step: NearbyStep): void {
+    const v = this.view;
+    this.attempt += 1;
+    this.endLink();
+    if (v) this.set({ ...v, step, peek: step === "full" || step === "version" ? v.peek : null });
+  }
+
+  private endLink(): void {
+    this.clearGone();
+    this.clearLeaving();
+    this.token = null;
+    this.unwatch?.();
+    this.unwatch = null;
+    if (!this.live) return;
+    this.live = false;
+    this.seated = false;
+    this.deps.conn.leaveNearby();
+    this.deps.setSession(false);
+    this.deps.setOffline(this.wasOffline);
+  }
+
+  /** A new link's hello while seated: the seat's resume by its token. */
+  private greeting(): Record<string, unknown> | null {
+    if (!this.seated) return null;
+    return { type: "table_join", code: this.seatedCode, name: this.name, ...(this.token ? { token: this.token } : {}) };
+  }
+
+  /** While the link is live: when the phone's network comes back and the
+   *  seat is not connected, a fresh attempt starts at once rather than
+   *  after the socket's backoff or on a link that went stale with the old
+   *  path. */
+  private watchPath(): void {
+    const live = this.attempt;
+    void this.deps.watchPath((up) => {
+      nearbyLog("join", `path ${up ? "back" : "down"} (${this.status})`);
+      if (up && this.live && this.seated && this.status !== "open" && this.leaving === null) {
+        nearbyLog("join", "reconnect now: the network is back");
+        this.deps.conn.reconnect();
+      }
+    }).then((unwatch) => {
+      if (this.live && this.unwatch === null && this.attempt >= live) this.unwatch = unwatch;
+      else unwatch();
+    }, () => {});
+  }
+
+  /** Move the glowing seat to another open seat. */
+  pick(seat: number): void {
+    const v = this.view;
+    if (!v || v.step !== "panel" || !v.peek) return;
+    if (!nearbyChoices(v.peek).includes(seat)) return;
+    this.set({ ...v, seat });
+  }
+
+  /** The panel's Join: the picked seat. If no seat or refusal comes back
+   *  within JOIN_TIMEOUT_MS, the table is looked at again. */
+  join(): void {
+    const v = this.view;
+    if (!v || v.step !== "panel" || v.seat === null) return;
+    if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat })) return;
+    this.set({ ...v, step: "joining" });
+    this.joinTimer = window.setTimeout(() => {
+      this.joinTimer = null;
+      if (this.view?.step === "joining" && !this.seated) this.lookAgain();
+    }, JOIN_TIMEOUT_MS);
+  }
+
+  /** Try again after not found: another look, for as long as the first. */
+  again(): void {
+    const v = this.view;
+    if (v && (v.step === "notFound" || v.step === "wifiOff")) this.look(v.code);
+  }
+
+  /** Not now, the code box's edit, or the end screen's Leave: the nearby
+   *  join is over and the page is back where it was. */
+  cancel(): void {
+    this.attempt += 1;
+    this.hostLeft = false;
+    this.endLink();
+    this.set(null);
+  }
+
+  /** The seated joiner's Leave: the host is told, and the link closes once
+   *  it has answered (it ends the link), or after LEAVE_LINK_MS. */
+  leave(): void {
+    if (this.seated) this.deps.conn.leaveToLobby();
+    else this.cancel();
+  }
+
+  /** The page has left the table (leaveToLobby's own `left`): the page is
+   *  back at once, and the link stays until the host has the leave. */
+  private leaveSent(): void {
+    if (this.leaving !== null) return;
+    this.clearGone();
+    this.hostLeft = false;
+    this.leaving = window.setTimeout(() => {
+      this.leaving = null;
+      this.cancel();
+    }, LEAVE_LINK_MS);
+    this.set(null);
+  }
+
+  private clearLeaving(): void {
+    if (this.leaving !== null) window.clearTimeout(this.leaving);
+    this.leaving = null;
+  }
+
+  private clearGone(): void {
+    if (this.gone !== null) window.clearTimeout(this.gone);
+    this.gone = null;
+  }
+
+  private onStatus(s: ConnStatus): void {
+    this.status = s;
+    if (!this.live) return;
+    if (this.leaving !== null) {
+      // the host answered the Leave by ending the link; the socket's
+      // reconnect is dropped with the transport, outside this callback
+      if (s !== "open") window.setTimeout(() => { if (this.leaving !== null) this.cancel(); }, 0);
+      return;
+    }
+    if (s !== "open") {
+      // a seated joiner's link dropped: the socket keeps looking, by token,
+      // for as long as the host may take to come back
+      if (this.seated && this.gone === null) {
+        this.gone = window.setTimeout(() => {
+          this.gone = null;
+          this.hostLeft = true;
+          this.endLink();
+          this.emit();
+        }, HOST_WINDOW_MS);
+      } else if (!this.seated && (this.view?.step === "panel" || this.view?.step === "joining")) {
+        // the seats on the panel are from the dropped link: look again once
+        // the socket is back
+        this.set({ ...this.view, step: "looking", peek: null, linked: false });
+        this.armLook(this.attempt);
+      } else if (!this.seated && this.view?.step === "looking" && this.view.linked) {
+        this.set({ ...this.view, linked: false });
+      }
+      return;
+    }
+    if (this.seated) {
+      // the new link's hello was the resume (greeting), and it is open only
+      // once the host answered it
+      nearbyLog("join", "resume: connected");
+    } else if (this.view?.step === "looking") {
+      this.set({ ...this.view, linked: true });
+      this.deps.conn.send({ type: "table_peek", code: this.view.code });
+    }
+  }
+
+  /** The table's code while seated (the panel's view is gone then). */
+  private seatedCode = "";
+
+  private onMessage(m: ServerMsg): void {
+    if (!this.live) return;
+    const v = this.view;
+    if (m.type === "resume") {
+      if (m.token) this.token = m.token;
+      return;
+    }
+    if (this.leaving !== null) return;
+    if (m.type === "room_seats" && v?.step === "looking" && !m.table) {
+      this.deps.allowed();
+      if (m.full) {
+        this.stop("full");
+        this.set({ ...this.view!, peek: m });
+        return;
+      }
+      this.set({ ...v, step: "panel", peek: m, seat: nearbyDefaultSeat(m) });
+    } else if ((m.type === "room" || m.type === "state") && (v?.step === "joining" || this.seated)) {
+      this.clearGone();
+      if (!this.seated) {
+        this.seated = true;
+        this.seatedCode = v!.code;
+        this.set(null);
+      }
+    } else if (m.type === "error" && (m.code as string | undefined) === "nearby_version") {
+      this.stop("version");
+    } else if (m.type === "error" && m.code === "room_full" && v?.step === "joining") {
+      this.stop("full");
+    } else if (m.type === "left" && this.seated) {
+      // the host ended the table: the link ends with it. Any other `left` is
+      // this page's own Leave, whose link waits for the host's answer.
+      if (m.reason === "host_left") this.cancel();
+      else this.leaveSent();
+    }
+  }
+}
+
+export const nearbyJoin = new NearbyJoinStore({
+  conn,
+  async socketFor(code, onState, greet) {
+    const m = await import("./offline/server");
+    return () => m.nearbyJoinSocket(code, onState, greet) as unknown as WebSocket;
+  },
+  async watchPath(fn) {
+    const m = await import("./offline/server");
+    return m.onNearbyPath(fn);
+  },
+  offline: () => OFFLINE,
+  setOffline,
+  setSession: setNearbySession,
+  allowed: noteNearbyAllowed,
+  refused: forgetNearbyAllowed,
+  onVisible(fn) {
+    if (typeof document === "undefined") return;
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") fn(); });
+  },
+});
+
+export function useNearbyJoin(): NearbyJoin | null {
+  return useSyncExternalStore(nearbyJoin.subscribe, nearbyJoin.getSnapshot, nearbyJoin.getSnapshot);
+}
+
+/** The end screen after the host's window passed. */
+export function useNearbyHostLeft(): boolean {
+  return useSyncExternalStore(nearbyJoin.subscribe, () => nearbyJoin.hostLeft, () => nearbyJoin.hostLeft);
 }

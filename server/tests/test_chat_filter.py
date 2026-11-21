@@ -81,3 +81,20 @@ def test_the_list_syntax():
     assert latin.fullmatch("heck") and not latin.fullmatch("hecking")
     assert cjk.search("咦") and not cjk.search("咦呀")
     assert cjk.search("哎哟") and not cjk.search("哎呀")
+
+
+def test_the_web_copy_for_nearby_names_is_current():
+    import importlib.util
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "gen_nearby_name_filter.py"
+    spec = importlib.util.spec_from_file_location("gen_nearby_name_filter", script)
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+    assert gen.main(["--check"]) == 0
+
+
+def test_every_entry_folds_the_same_in_javascript():
+    # the web copy lower-cases with toLowerCase, which casefold matches only here
+    for raw in chat_filter.WORDS_FILE.read_text(encoding="utf-8").splitlines():
+        assert raw.casefold() == raw.lower(), raw

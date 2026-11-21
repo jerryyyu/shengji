@@ -428,3 +428,45 @@ def test_six_card_follow_candidate_scores_match_reference(monkeypatch):
         assert (got.winner, got.scores, got.worlds) == (want.winner, want.scores, want.worlds)
         checked += len(admitted) * len(worlds)
     assert checked >= 6
+
+
+def test_frozen_benchmark_roundtrip_and_comparison():
+    import copy
+    from scripts.bench_exact_frozen import capture, compare, freeze, run, thaw
+
+    fixture = capture([53000], 3)
+    for row in fixture['roots']:
+        assert freeze(thaw(row)) == row
+        rnd = thaw(row)
+        assert _reference_points(rnd) == _reference_points(thaw(freeze(rnd)))
+    result = run(fixture, 2, 10000, 511, backend='python')
+    assert compare(result, result)['median_ratio'] == 1
+    capped = run(fixture, 1, 1, 511, backend='python')
+    assert any(r['witness']['outcome'] == ['node_cap'] for r in capped['rows'])
+    altered = copy.deepcopy(result)
+    altered['rows'][0]['witness']['nodes'] += 1
+    with pytest.raises(ValueError, match='work differs'):
+        compare(result, altered)
+    altered = copy.deepcopy(result)
+    altered['fixture_sha256'] = 'different'
+    with pytest.raises(ValueError, match='fixture_sha256'):
+        compare(result, altered)
+    with pytest.raises(ValueError, match='positive'):
+        run(fixture, 0, 10000, 511)
+
+
+@pytest.mark.parametrize('backend', BACKENDS)
+def test_frozen_benchmark_preserves_real_root_solver_inputs(backend):
+    from scripts.bench_exact_frozen import freeze, thaw
+
+    root, bots = _lead_at(53000, 4)
+    assert root is not None
+    for _ in range(4):
+        saved = thaw(freeze(root))
+        def solve(rnd):
+            session = CompactWorldSession(rnd, max_hand_cards=8, max_nodes=1000000,
+                                          backend=backend, level=True, level_opts=511)
+            value = session.solve_level(rnd)
+            return value, session.nodes, session.cache_hits
+        assert solve(root) == solve(saved)
+        root.play(root.turn, bots[root.turn].decide_play(root, root.turn))

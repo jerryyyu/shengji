@@ -4,8 +4,8 @@ The Xcode phase "Check flavor (nearby)" stops a Release build whose Swift
 flags define ``SHENGJI_NEARBY*`` or whose Info.plist asks for the local
 network, and a Beta build (TestFlight internal testing only) that lacks
 either. These tests run the real script on stand-in plists, and check that
-the real project runs it on every build and that the committed Release
-configuration and Info.plist pass it.
+the real project runs it on every build and that the committed Release and
+Beta configurations and their Info.plists pass it.
 """
 
 import os
@@ -163,6 +163,50 @@ def test_debug_and_release_share_the_version():
                 for name, block in configs.items() if name in ("Debug", "Release")}
     assert versions["Debug"] == versions["Release"]
     assert "DEVELOPMENT_TEAM" not in PBXPROJ.read_text()
+
+
+def test_the_committed_beta_configuration_passes_the_guard(tmp_path):
+    configs = _target_configs()
+    beta = configs["Beta"]
+    flags = re.search(r'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "([^"]*)";', beta).group(1)
+    assert flags.split() == ["SHENGJI_NEARBY", "SHENGJI_NEARBY_BETA"]
+    plist = re.search(r'INFOPLIST_FILE = "?([^";]+)"?;', beta).group(1)
+    assert plist == "App/Info-Beta.plist"
+    r = subprocess.run(["bash", str(GUARD)], capture_output=True, text=True, env={
+        **os.environ, "CONFIGURATION": "Beta", "PROJECT_DIR": str(IOS / "App"), "INFOPLIST_FILE": plist,
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": flags, "OTHER_SWIFT_FLAGS": "", "GCC_PREPROCESSOR_DEFINITIONS": ""})
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "nearby on" in r.stdout
+
+
+def test_the_beta_is_the_release_build_under_its_own_name():
+    configs = _target_configs()
+    release, beta = configs["Release"], configs["Beta"]
+
+    def setting(block, key):
+        return re.search(key + r" = ([^;]+);", block).group(1)
+
+    # Only the plist, the nearby flags and the build number set the two apart.
+    differ = {"INFOPLIST_FILE", "SWIFT_ACTIVE_COMPILATION_CONDITIONS", "CURRENT_PROJECT_VERSION"}
+    keys = set(re.findall(r"^\t\t\t\t(\w+) = ", release, re.M)) | set(re.findall(r"^\t\t\t\t(\w+) = ", beta, re.M))
+    for key in keys - differ:
+        assert setting(beta, key) == setting(release, key), key
+    assert setting(beta, "CURRENT_PROJECT_VERSION").startswith(setting(release, "CURRENT_PROJECT_VERSION") + ".")
+    # The Beta Info.plist is the App Store one plus the local-network keys.
+    store = plistlib.loads((IOS / "App" / "App" / "Info.plist").read_bytes())
+    beta_plist = plistlib.loads((IOS / "App" / "App" / "Info-Beta.plist").read_bytes())
+    assert beta_plist.pop("NSBonjourServices") == ["_shengji-nearby._tcp"]
+    assert beta_plist.pop("NSLocalNetworkUsageDescription")
+    assert beta_plist.pop("CFBundleDisplayName") == "Sheng Ji Beta"
+    store.pop("CFBundleDisplayName")
+    assert beta_plist == store
+
+
+def test_the_shared_schemes_archive_release_and_beta():
+    schemes = IOS / "App" / "App.xcodeproj" / "xcshareddata" / "xcschemes"
+    archive = {s.stem: re.search(r'<ArchiveAction\s+buildConfiguration = "(\w+)"', s.read_text()).group(1)
+               for s in schemes.glob("*.xcscheme")}
+    assert archive == {"App": "Release", "Beta": "Beta"}
 
 
 @pytest.mark.parametrize("contents,code", [

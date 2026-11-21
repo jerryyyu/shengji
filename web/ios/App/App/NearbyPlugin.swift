@@ -689,7 +689,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 })
             }
             // a device-test stall holds the send until it ends (never in a shipped build)
-            if self.chaosHold(peer, go, dropped: { call.reject("no such peer", "noPeer") }) { return }
+            if self.chaosHold(peer, go, dropped: { stale in stale ? call.reject("no such peer", "noPeer") : call.resolve() }) { return }
             go()
         }
     }
@@ -1109,7 +1109,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 if content.count > Self.quietFrameBytes { self.spikeLog("recv \(link.peer) \(content.count) B") }
                 let peer = link.peer
                 let deliver = { self.notifyListeners("message", data: ["peer": peer, "text": text]) }
-                if !self.chaosHold(peer, deliver, dropped: {}) { deliver() }
+                if !self.chaosHold(peer, deliver, dropped: { _ in }) { deliver() }
             case .ping?, .pong?:
                 break
             default:
@@ -1358,19 +1358,29 @@ extension ShengjiNearbyPlugin {
 
     /// Held work whose link had gone by the stall's end, in the current stall.
     private static var heldStale = 0
+    /// On `queue`: a blackhole runs; every frame on this phone's links is
+    /// lost (a send reads as sent), the case the page's STUCK check is for.
+    private static var blackholing = false
+    private static var blackholeLost = 0
 
     /// On `queue`: while a stall runs, `work` for a frame on `peer`'s link
     /// waits for its end, in order. It runs then only if the same link still
     /// serves `peer`: a frame held on a link that has since gone never goes
     /// out on (or arrives as if from) the link made after it; `dropped` runs
-    /// in its place.
-    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping () -> Void) -> Bool {
+    /// in its place (`stale`). While a blackhole runs, `work` is lost:
+    /// `dropped` runs at once, not stale.
+    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping (_ stale: Bool) -> Void) -> Bool {
+        if Self.blackholing {
+            Self.blackholeLost += 1
+            dropped(false)
+            return true
+        }
         guard Self.stalling else { return false }
         let link = links[peer]
         Self.held.append { [weak self] in
             guard let self = self, self.links[peer] === link else {
                 Self.heldStale += 1
-                return dropped()
+                return dropped(true)
             }
             work()
         }
@@ -1390,7 +1400,7 @@ extension ShengjiNearbyPlugin {
                 self.spikeLog("CHAOS cancel the link \(peer)")
                 self.drop(peer)
             case "stall":
-                guard !Self.stalling else { return call.resolve(["done": false]) }
+                guard !Self.stalling, !Self.blackholing else { return call.resolve(["done": false]) }
                 self.spikeLog("CHAOS stall sends and receives for \(String(format: "%.1f", seconds)) s")
                 Self.stalling = true
                 self.queue.asyncAfter(deadline: .now() + seconds) {
@@ -1400,6 +1410,15 @@ extension ShengjiNearbyPlugin {
                     Self.heldStale = 0
                     for w in work { w() }
                     self.spikeLog("CHAOS stall over: \(work.count) held, \(Self.heldStale) dropped (link gone)")
+                }
+            case "blackhole":
+                guard !Self.stalling, !Self.blackholing, !self.links.isEmpty else { return call.resolve(["done": false]) }
+                self.spikeLog("CHAOS blackhole: frames on every link lost for \(String(format: "%.1f", seconds)) s")
+                Self.blackholing = true
+                Self.blackholeLost = 0
+                self.queue.asyncAfter(deadline: .now() + seconds) {
+                    Self.blackholing = false
+                    self.spikeLog("CHAOS blackhole over: \(Self.blackholeLost) lost")
                 }
             case "path":
                 guard !self.hosting, self.links["host"] != nil else { return call.resolve(["done": false]) }
@@ -1426,7 +1445,7 @@ extension ShengjiNearbyPlugin {
 extension ShengjiNearbyPlugin {
     static let chaosMethods: [CAPPluginMethod] = []
     static let chaosBuild = false
-    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping () -> Void) -> Bool { false }
+    func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping (_ stale: Bool) -> Void) -> Bool { false }
 }
 #endif
 

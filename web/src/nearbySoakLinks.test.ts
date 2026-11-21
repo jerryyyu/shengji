@@ -41,14 +41,17 @@ describe("the soak's link split", () => {
 
 describe("the chaos pick", () => {
   it("draws only kinds this phone can run, each equally likely; wifi lasts 20-90 s, a stall 3-12 s", () => {
-    expect([0, 0.34, 0.67].map((r) => chaosPick("host", () => r).kind)).toEqual(["cancel", "stall", "listener"]);
-    expect([0, 0.25, 0.5, 0.75].map((r) => chaosPick("joiner", () => r).kind)).toEqual(["cancel", "stall", "path", "wifi"]);
+    expect([0, 0.25, 0.5, 0.75].map((r) => chaosPick("host", () => r).kind)).toEqual(["cancel", "stall", "blackhole", "listener"]);
+    expect([0, 0.2, 0.4, 0.6, 0.8].map((r) => chaosPick("joiner", () => r).kind)).toEqual(["cancel", "stall", "blackhole", "path", "wifi"]);
     const wifi = (r: number) => { let i = 0; return chaosPick("joiner", () => (i++ === 0 ? 0.9 : r)); };
     expect(wifi(0)).toEqual({ kind: "wifi", seconds: 20 });
     expect(wifi(0.999).seconds).toBeCloseTo(89.93, 1);
-    const stall = (r: number) => { let i = 0; return chaosPick("host", () => (i++ === 0 ? 0.4 : r)); };
+    const stall = (r: number) => { let i = 0; return chaosPick("host", () => (i++ === 0 ? 0.3 : r)); };
     expect(stall(0)).toEqual({ kind: "stall", seconds: 3 });
     expect(stall(0.999).seconds).toBeLessThan(12);
+    const hole = (r: number) => { let i = 0; return chaosPick("joiner", () => (i++ === 0 ? 0.5 : r)); };
+    expect(hole(0)).toEqual({ kind: "blackhole", seconds: 4 });
+    expect(hole(0.999).seconds).toBeLessThan(20);
   });
 
   it("never picks a path change or a Wi-Fi fake on the host, or a listener restart on a joiner", () => {
@@ -58,8 +61,8 @@ describe("the chaos pick", () => {
       seen.host.add(chaosPick("host", () => r).kind);
       seen.joiner.add(chaosPick("joiner", () => r).kind);
     }
-    expect([...seen.host].sort()).toEqual(["cancel", "listener", "stall"]);
-    expect([...seen.joiner].sort()).toEqual(["cancel", "path", "stall", "wifi"]);
+    expect([...seen.host].sort()).toEqual(["blackhole", "cancel", "listener", "stall"]);
+    expect([...seen.joiner].sort()).toEqual(["blackhole", "cancel", "path", "stall", "wifi"]);
     // the plugin refuses exactly these elsewhere (done: false)
     const swift = readFileSync(join(process.cwd(), "ios/App/App/NearbyPlugin.swift"), "utf8");
     expect(swift).toMatch(/case "path":\n\s+guard !self\.hosting/);

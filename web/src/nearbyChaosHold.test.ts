@@ -49,11 +49,18 @@ describe("the stall hold", () => {
 
   it("the plugin's hold captures the link at hold time and drops the work when the link changed", () => {
     expect(chaosBlock).toMatch(/let link = links\[peer\]/);
-    expect(chaosBlock).toMatch(/guard let self = self, self\.links\[peer\] === link else \{\n\s+Self\.heldStale \+= 1\n\s+return dropped\(\)/);
-    // a held send rejects as a send with no link; a held receive is dropped
-    expect(swift).toContain('if self.chaosHold(peer, go, dropped: { call.reject("no such peer", "noPeer") }) { return }');
-    expect(swift).toContain("if !self.chaosHold(peer, deliver, dropped: {}) { deliver() }");
+    expect(chaosBlock).toMatch(/guard let self = self, self\.links\[peer\] === link else \{\n\s+Self\.heldStale \+= 1\n\s+return dropped\(true\)/);
+    // a stale held send rejects as a send with no link, a lost one reads as sent; a held receive is dropped
+    expect(swift).toContain('if self.chaosHold(peer, go, dropped: { stale in stale ? call.reject("no such peer", "noPeer") : call.resolve() }) { return }');
+    expect(swift).toContain("if !self.chaosHold(peer, deliver, dropped: { _ in }) { deliver() }");
     expect(swift).toContain('spikeLog("CHAOS stall over: \\(work.count) held, \\(Self.heldStale) dropped (link gone)")');
+  });
+
+  it("a blackhole loses every frame at once, never holds one, and runs only when nothing else does", () => {
+    expect(chaosBlock).toMatch(/if Self\.blackholing \{\n\s+Self\.blackholeLost \+= 1\n\s+dropped\(false\)\n\s+return true\n\s+\}\n\s+guard Self\.stalling/);
+    expect(swift).toMatch(/case "blackhole":\n\s+guard !Self\.stalling, !Self\.blackholing, !self\.links\.isEmpty else/);
+    expect(swift).toMatch(/case "stall":\n\s+guard !Self\.stalling, !Self\.blackholing else/);
+    expect(swift).toContain('spikeLog("CHAOS blackhole over: \\(Self.blackholeLost) lost")');
   });
 
   it("the plugin holds on a flag that only the stall's flush clears, not on the clock", () => {

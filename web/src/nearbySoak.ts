@@ -245,7 +245,7 @@ function readLog(): void {
   if (l.text.includes("STUCK")) stats.stuck += 1;
   if (l.text.startsWith("resume: accepted")) stats.reconnects += 1;
   if (l.text.startsWith("REFUSED")) stats.refused += 1;
-  if (l.text.startsWith("CHAOS ") && !/^CHAOS (stall over|wifi fake over)/.test(l.text)) stats.faults += 1;
+  if (l.text.startsWith("CHAOS ") && !/^CHAOS (stall over|wifi fake over|blackhole over)/.test(l.text)) stats.faults += 1;
   const m = /, (\d+) ms after the move$/.exec(l.text);
   if (m) stats.moves.push(Number(m[1]));
 }
@@ -328,22 +328,23 @@ interface ChaosPlugin {
   debugChaos(opts: { kind: string; seconds?: number }): Promise<{ done?: boolean }>;
 }
 let chaosTimer: number | null = null;
-export type ChaosKind = "cancel" | "stall" | "path" | "listener" | "wifi";
+export type ChaosKind = "cancel" | "stall" | "blackhole" | "path" | "listener" | "wifi";
 export type ChaosRole = "host" | "joiner";
-/** The kinds each phone can run, each equally likely: a path change and a
- *  faked Wi-Fi change (20-90 s inside the plugin's path logic) move a
- *  joiner's host link, a listener restart is the host's. */
+/** The kinds each phone can run, each equally likely: a blackhole loses
+ *  every frame on the phone's links (4-20 s, past the ping's window), a
+ *  path change and a faked Wi-Fi change (20-90 s inside the plugin's path
+ *  logic) move a joiner's host link, a listener restart is the host's. */
 export const CHAOS_KINDS: Record<ChaosRole, readonly ChaosKind[]> = {
-  host: ["cancel", "stall", "listener"],
-  joiner: ["cancel", "stall", "path", "wifi"],
+  host: ["cancel", "stall", "blackhole", "listener"],
+  joiner: ["cancel", "stall", "blackhole", "path", "wifi"],
 };
 
-/** One fault this phone can run: its kind, and how long a stall (3-12 s) or
- *  a faked Wi-Fi change (20-90 s) lasts. */
+/** One fault this phone can run: its kind, and how long a stall (3-12 s), a
+ *  blackhole (4-20 s) or a faked Wi-Fi change (20-90 s) lasts. */
 export function chaosPick(role: ChaosRole, rand: () => number = Math.random): { kind: ChaosKind; seconds: number } {
   const kinds = CHAOS_KINDS[role];
   const kind = kinds[Math.min(kinds.length - 1, Math.floor(rand() * kinds.length))];
-  return { kind, seconds: kind === "wifi" ? 20 + rand() * 70 : 3 + rand() * 9 };
+  return { kind, seconds: kind === "wifi" ? 20 + rand() * 70 : kind === "blackhole" ? 4 + rand() * 16 : 3 + rand() * 9 };
 }
 
 /** This phone's part at the table: the host while its nearby switch is on. */
@@ -356,7 +357,7 @@ function armChaos(): void {
     const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
     const { kind, seconds } = chaosPick(chaosRole());
     if (p && typeof p.debugChaos === "function") {
-      nearbyLog("soak", `chaos: ${kind}${kind === "stall" || kind === "wifi" ? ` ${seconds.toFixed(1)} s` : ""}`);
+      nearbyLog("soak", `chaos: ${kind}${kind === "cancel" || kind === "path" || kind === "listener" ? "" : ` ${seconds.toFixed(1)} s`}`);
       void p.debugChaos({ kind, seconds }).then((r) => {
         if (r?.done === false) nearbyLog("soak", `chaos: ${kind} does not apply here`);
       }, (e: unknown) => nearbyLog("soak", `chaos: ${kind} failed: ${String(e)}`));

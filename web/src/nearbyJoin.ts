@@ -6,7 +6,7 @@ import { JOIN_TIMEOUT_MS } from "./codeJoin";
 import { nearbyChoices, nearbyDefaultSeat } from "./joinSeats";
 import type { RoomSeats, ServerMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
-import { conn } from "./ws";
+import { conn, STALE_CONNECT_MS } from "./ws";
 import { OFFLINE, setNearbySession, setOffline } from "./offlineMode";
 import { forgetNearbyAllowed, noteNearbyAllowed } from "./nearbySession";
 import type { LinkState } from "./offline/server/nearby/transport";
@@ -154,6 +154,8 @@ export class NearbyJoinStore {
   private keptAt = 0;
   /** The socket's latest status. */
   private status: ConnStatus = "closed";
+  /** When the socket's current attempt began (its latest "connecting"). */
+  private connectingAt = 0;
   /** Ends the network path watch, while the link is live. */
   private unwatch: (() => void) | null = null;
 
@@ -316,12 +318,15 @@ export class NearbyJoinStore {
   /** While the link is live: when the phone's network comes back and the
    *  seat is not connected, a fresh attempt starts at once rather than
    *  after the socket's backoff or on a link that went stale with the old
-   *  path. */
+   *  path. An attempt begun within STALE_CONNECT_MS is on the new path
+   *  already and is kept, as ws.ts keeps a fresh connect on a wake. */
   private watchPath(): void {
     const live = this.attempt;
     void this.deps.watchPath((up) => {
       nearbyLog("join", `path ${up ? "back" : "down"} (${this.status})`);
-      if (up && this.live && this.seated && this.status !== "open" && this.leaving === null) {
+      if (up && this.live && this.seated && this.status === "connecting" && Date.now() - this.connectingAt <= STALE_CONNECT_MS) {
+        nearbyLog("join", "the attempt under way is fresh: kept");
+      } else if (up && this.live && this.seated && this.status !== "open" && this.leaving === null) {
         nearbyLog("join", "reconnect now: the network is back");
         this.deps.conn.reconnect();
       }
@@ -405,6 +410,7 @@ export class NearbyJoinStore {
 
   private onStatus(s: ConnStatus): void {
     this.status = s;
+    if (s === "connecting") this.connectingAt = Date.now();
     if (!this.live) return;
     if (this.leaving !== null) {
       // the host answered the Leave by ending the link; the socket's

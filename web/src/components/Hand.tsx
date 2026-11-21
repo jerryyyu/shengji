@@ -77,13 +77,16 @@ function recordCards(el: HTMLElement | null, reg: HandRects | undefined, codes: 
 }
 
 /** Slot x within the hand, without any running reflow transform. */
-function measureLayout(el: HTMLElement | null): Map<number, number> {
+function measureLayout(el: HTMLElement | null, translations?: Map<number, number>): Map<number, number> {
   const next = new Map<number, number>();
   if (!el) return next;
   const base = el.getBoundingClientRect().left - el.scrollLeft;
   for (const slot of el.querySelectorAll<HTMLElement>(".hand-slot")) {
-    next.set(Number(slot.dataset.id),
-      slot.getBoundingClientRect().left - base - currentTranslate(slot).dx);
+    const id = Number(slot.dataset.id);
+    const left = slot.getBoundingClientRect().left;
+    const dx = currentTranslate(slot).dx;
+    next.set(id, left - base - dx);
+    translations?.set(id, dx);
   }
   return next;
 }
@@ -186,7 +189,10 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
   useLayoutEffect(() => {
     const el = handRef.current;
     const prev = layoutX.current;
-    const next = measureLayout(el);
+    // Snapshot all transforms before starting any reflows, so writes to one
+    // slot cannot force another layout read for the next slot.
+    const translations = new Map<number, number>();
+    const next = measureLayout(el, translations);
     layoutX.current = next;
     if (el && prev.size > 0) {
       // FLIP: start each moved slot where it was drawn, then glide to its new
@@ -197,7 +203,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
         const was = prev.get(id);
         const now = next.get(id);
         if (was === undefined || now === undefined || !canAnimate(slot)) continue;
-        const dx = was + currentTranslate(slot).dx - now;
+        const dx = was + translations.get(id)! - now;
         if (Math.abs(dx) < 0.5) continue;
         anims.current.get(id)?.cancel();
         const a = slot.animate(
@@ -213,10 +219,11 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
       // kitty's worth of new cards (the deal, the banker's pickup) fly.
       const fresh = [...el.querySelectorAll<HTMLElement>(".hand-slot")]
         .filter((s) => !prev.has(Number(s.dataset.id)));
-      const origin = el.closest(".table-screen")?.querySelector(".trick-area")?.getBoundingClientRect();
       // only cards dealt while watching: after an empty hand, or into one already drawn
       const watching = prev.size > 0 || sawEmpty.current;
-      if (origin && watching && fresh.length > 0 && fresh.length <= MAX_ARRIVALS) {
+      const origin = watching && fresh.length > 0 && fresh.length <= MAX_ARRIVALS
+        ? el.closest(".table-screen")?.querySelector(".trick-area")?.getBoundingClientRect() : undefined;
+      if (origin) {
         fresh.forEach((slot, i) => {
           if (!canAnimate(slot)) return;
           const r = slot.getBoundingClientRect();

@@ -735,7 +735,7 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
     from functools import partial
     from ..engine import fast
     from . import pv_encode_prefix, pv_tree_search as search
-    if (not active or active[0].trick is None
+    if (not active or active[0].trick is None or planes.dtype != np.uint8 or not planes.flags.c_contiguous
             or not isinstance(values_fn, partial) or values_fn.func is not search._STANDARD_TEAM_VALUES
             or values_fn.args != (bot,) or kw.get("children_fn") is not search._STANDARD_REPLY_CHILDREN
             or len(args) != 2 or args[1] is not search.child_position_fast

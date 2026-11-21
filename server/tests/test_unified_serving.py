@@ -696,6 +696,8 @@ def test_the_fast_readout_scores_reply_leaves_ahead_as_it_scores_chunks(
     from shengji.train import unified_slots as us
 
     fast = fast_env(unified_env(release50_packages, pair))
+    # Exercise the materialized ahead-vs-chunk path even when projected replies are available.
+    monkeypatch.setattr(us, "_projected_reply_callbacks", lambda *args, **kw: None)
     ahead_values = us._values_ahead
     consumed = [0]
 

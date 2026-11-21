@@ -19,8 +19,10 @@
 // --page MODEL   the joiner page's reconnect: sim (default) or ws (ws.ts's
 //                5 s connect timer and long-lived retry, pageModel.ts)
 // --gaps MODE    the app's known gaps (S3: a reconnect under 3 s adds no
-//                chat line): report (counted as "gap ..." in the
-//                totals, never failing) or strict (failing)
+//                chat line; S4: a move pending at a rebuild is applied or
+//                sent again within 1 s): report (counted as "gap ..." in the
+//                totals, never failing) or strict (failing; --gap-only WORD
+//                fails only on the gap whose name has WORD, e.g. pending)
 // --new-faults   the device test's faults too: stallPhone (every frame of
 //                one phone held, on all its links; two phones may overlap)
 // --replay FILE  run one game from a replay file, deterministically
@@ -48,6 +50,7 @@ interface Replay {
   invariant: string;
   page?: PageModel;
   gaps?: "off" | "report" | "strict";
+  gapOnly?: string;
 }
 
 function args(argv: string[]): Record<string, string | boolean> {
@@ -108,7 +111,8 @@ async function main(): Promise<void> {
     const planted = typeof a.bug === "string" ? a.bug.split(",") : [];
     const r = await runGame({ seed: rp.seed, bugs: [...rp.bugs, ...planted], seconds: rp.seconds, bound: rp.bound, hostile: rp.hostile,
                               schedule: rp.schedule, verbose: a.verbose === true, page: rp.page,
-                              gaps: a.gaps === "report" || a.gaps === "strict" ? a.gaps : rp.gaps });
+                              gaps: a.gaps === "report" || a.gaps === "strict" ? a.gaps : rp.gaps,
+                              gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : rp.gapOnly });
     if (r.violation) {
       report(r, a.verbose ? 0 : 200);
       process.exitCode = 1;
@@ -126,6 +130,7 @@ async function main(): Promise<void> {
     newFaults: a["new-faults"] === true,
     page: (a.page === "ws" ? "ws" : "sim") as PageModel,
     gaps: (a.gaps === "report" || a.gaps === "strict" ? a.gaps : "off") as "off" | "report" | "strict",
+    gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : undefined,
   };
   const totals: Record<string, number> = {};
   const recoveries: number[] = [];
@@ -144,7 +149,7 @@ async function main(): Promise<void> {
       if (a["no-shrink"] !== true) r = await shrink(opts, r);
       report(r);
       const rp: Replay = { seed, bugs: base.bugs, seconds: base.seconds, bound: base.bound, hostile: base.hostile,
-                           schedule: r.schedule, invariant: r.violation!.invariant, page: base.page, gaps: base.gaps };
+                           schedule: r.schedule, invariant: r.violation!.invariant, page: base.page, gaps: base.gaps, gapOnly: base.gapOnly };
       const file = join(out, `nearby-chaos-${seed}.json`);
       writeFileSync(file, JSON.stringify(rp, null, 2));
       console.log(`replay: npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay ${file}`);

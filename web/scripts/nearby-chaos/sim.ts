@@ -54,8 +54,11 @@ export interface GameOpts {
   /** The known gaps the app has yet to close, checked as they happen:
    *  "report" counts each in the stats (gap ...) and never fails a game,
    *  "strict" fails it; off (the default) skips them. S3: a reconnect under
-   *  3 s adds no chat line. */
+   *  3 s adds no chat line. S4: a move pending at a rebuild is applied or
+   *  sent again within 1 s of the resume. */
   gaps?: "off" | "report" | "strict";
+  /** With "strict": fail only on the gap whose name contains this. */
+  gapOnly?: string;
 }
 
 export interface Violation {
@@ -265,7 +268,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const gap = (invariant: string, detail: string) => {
     stats[`gap ${invariant}`] = (stats[`gap ${invariant}`] ?? 0) + 1;
     log("gap", `${invariant}: ${detail}`);
-    if (gapMode === "strict") fail(invariant, detail);
+    if (gapMode === "strict" && (!opts.gapOnly || invariant.includes(opts.gapOnly))) fail(invariant, detail);
   };
 
   // determinism: the room's tokens and codes come from the seed too
@@ -422,6 +425,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   // the joiner pages
   const wsPage = opts.page === "ws";
+  const pendingChecked = new Set<Sent>();
   class Page {
     readonly d: Device;
     readonly transport: NearbyTransport;
@@ -514,6 +518,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         this.openedAt = vc.now();
         this.backoff = BACKOFF_FIRST_S;
         this.misses = 0;
+        if (gapMode !== "off" && this.seated) this.checkPending(no);
         if (!this.seated) sock.send(JSON.stringify({ ...PEEK, code }));
       };
       sock.onmessage = (ev) => {
@@ -539,6 +544,21 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       this.backoff = Math.min(this.backoff * 2, BACKOFF_MAX_S);
       const r = ++this.retry;
       this.clock.setTimeout(() => { if (r === this.retry && this.sock === null && !this.done) this.open(); }, wait);
+    }
+    /** S4: each move whose link went while it was pending, for the decision
+     *  still open at this resume, is applied or sent again within 1 s. */
+    private checkPending(no: number): void {
+      const d = this.d;
+      const point = pointOf(room!);
+      const owed = d.sent.filter((s) => s.state === "closed" && s.key === point && s.sock < no && !pendingChecked.has(s));
+      if (owed.length === 0) return;
+      for (const s of owed) pendingChecked.add(s);
+      vc.setTimeout(() => {
+        for (const s of owed) {
+          const again = d.sent.some((x) => x !== s && x.key === s.key && x.seat === s.seat && x.sock > s.sock);
+          if (s.state !== "applied" && !again) gap("pending move re-sent after a rebuild", `${d.id}'s ${s.text.slice(0, 40)} (for ${s.key}) pending when socket ${s.sock} went: neither applied nor sent again 1 s after socket ${no} opened`);
+        }
+      }, 1);
     }
     reconnectNow(): void {
       this.retry += 1;

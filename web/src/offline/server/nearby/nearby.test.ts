@@ -195,6 +195,36 @@ describe("full nearby games", () => {
       expect(errors(p).filter((f) => "code" in f)).toEqual([]);
     }
   }, 60_000);
+
+  it("a next_round sends each joiner one state, and no link two identical states in a row", async () => {
+    const t = new NearbyTable(11, 3);
+    await t.open(true);
+    const p1 = await t.join("P1", { drive: true });
+    const p2 = await t.join("P2", { drive: true });
+    // nobody's driver says next round: the test sends P1's itself
+    const raw = new Map<Player, (d: string) => void>();
+    for (const p of t.players()) {
+      const send = p.sock.send.bind(p.sock);
+      raw.set(p, send);
+      p.sock.send = (d: string) => { if ((JSON.parse(d) as Frame).type !== "next_round") send(d); };
+    }
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.lastState(p1)?.phase === "round_end" && t.lastState(p2)?.phase === "round_end", 4_000_000);
+    await t.advance(1);
+    const peers = t.fake.peersOf(t.code);
+    const from = t.fake.wire.length;
+    raw.get(p1)!(JSON.stringify({ type: "next_round" }));
+    await t.advance(1);
+    const states = t.fake.wire.slice(from).filter((f) => f.from === "host" && f.text.startsWith('{"type":"state"'));
+    for (const peer of peers) expect(states.filter((f) => f.to === peer), peer).toHaveLength(1);
+    // and over the whole game so far, no link was sent one state twice in a row
+    const last = new Map<string, string>();
+    for (const f of t.fake.wire) {
+      if (f.from !== "host" || !f.text.startsWith('{"type":"state"')) continue;
+      expect(last.get(f.to) === f.text, f.to).toBe(false);
+      last.set(f.to, f.text);
+    }
+  }, 60_000);
 });
 
 describe("drops, resume and bot cover", () => {

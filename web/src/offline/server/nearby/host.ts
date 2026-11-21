@@ -43,6 +43,9 @@ interface Peer {
   /** The host is ending the link after its last frame: nothing more is read. */
   ending: boolean;
   closed: boolean;
+  /** The latest state frame sent on this link, until another kind of frame
+   *  (chat aside) goes out after it. */
+  lastState: string | null;
 }
 
 export interface NearbyHostEvents {
@@ -138,7 +141,7 @@ export class NearbyHost {
       return;
     }
     const peer: Peer = { conn: null, device, token: null, deadline: 0, peeked: false, recent: [], upkeep: [],
-                         heard: this.clock.now(), ending: false, closed: false };
+                         heard: this.clock.now(), ending: false, closed: false, lastState: null };
     this.peers.set(id, peer);
     this.helloBy(id, peer, LIMITS.helloSeconds);
     this.listen(id, peer);
@@ -312,9 +315,15 @@ export class NearbyHost {
   }
 
   /** A frame from the room to one joiner. A `left`, or a refusal that
-   *  leaves the connection with no seat, ends the link after it is sent. */
+   *  leaves the connection with no seat, ends the link after it is sent. A
+   *  state the same, byte for byte, as the last one this link was sent is
+   *  not sent again: the room can broadcast twice for one action. */
   private deliver(id: string, peer: Peer, frame: string): void {
     if (peer.closed || this.peers.get(id) !== peer) return;
+    const state = frame.startsWith('{"type":"state"');
+    if (state && frame === peer.lastState) return;
+    if (state) peer.lastState = frame;
+    else if (!frame.startsWith('{"type":"chat"')) peer.lastState = null;
     try {
       this.link?.send(id, frame);
       nearbyLog("host", `out ${frameType(frame)} to ${id}`);

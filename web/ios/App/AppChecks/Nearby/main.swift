@@ -163,6 +163,12 @@ expect(relinked.shouldMove(peerToPeer: true, wifiUp: true, hostSeenOverWifi: tru
 // The host's table is known by its salt, which it keeps when its listener
 // is made again under a new name; a link on peer-to-peer then still sees
 // its host over Wi-Fi and moves.
+expect(Handover.adoptable(age: 0.05, code: "K7Q2M", joinCode: "K7Q2M"), "the resume right after the move takes the Wi-Fi link")
+expect(Handover.adoptable(age: Handover.keepSeconds, code: "K7Q2M", joinCode: "K7Q2M"), "up to keepSeconds")
+expect(!Handover.adoptable(age: Handover.keepSeconds + 0.1, code: "K7Q2M", joinCode: "K7Q2M"), "an older one is not taken")
+expect(!Handover.adoptable(age: 0.05, code: "K7Q2M", joinCode: "ABCDE"), "another table's join does not take it")
+expect(!Handover.adoptable(age: 0.05, code: "", joinCode: ""), "no code, no handover")
+expect(Handover.keepSeconds < 5, "taken well inside the host's 5 s for a hello")
 final class Browse {}
 let running = Browse()
 expect(Migration.isCurrentBrowse(running, running), "the running Wi-Fi browse's own timer is current")

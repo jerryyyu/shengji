@@ -207,6 +207,20 @@ struct PathWatch {
     }
 }
 
+/// Moving a host link off peer-to-peer, make before break: a link to the
+/// host over Wi-Fi is made while the peer-to-peer one still carries, and
+/// only once it is ready is the old one dropped. The page's resume, which
+/// that drop starts, takes the ready link at once instead of looking from
+/// scratch, if it comes within `keepSeconds` for the same table code
+/// (well inside the host's 5 s for a hello); an untaken one is cancelled.
+struct Handover {
+    static let keepSeconds: TimeInterval = 3
+
+    static func adoptable(age: TimeInterval, code: String, joinCode: String) -> Bool {
+        !code.isEmpty && code == joinCode && age >= 0 && age <= keepSeconds
+    }
+}
+
 #if !NEARBY_KEY_ONLY
 import UIKit
 import Capacitor
@@ -385,6 +399,12 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     /// While the host link is on peer-to-peer and Wi-Fi is up: a short
     /// Wi-Fi-only browse for the same host.
     private var wifiBrowser: NWBrowser?
+    /// The Wi-Fi link to the host being made while the peer-to-peer one
+    /// still carries (Handover).
+    private var handoverTry: Link?
+    /// That link, ready, waiting for the page's resume to take it. It
+    /// outlives reset(): the page stops the old join before it resumes.
+    private var handover: (link: Link, at: Date, code: String, name: String?, salt: String)?
 
     private var lookP2P: Bool { LinkPath.includePeerToPeer(wifiUp: wifiUp, fellBack: fellBack) }
 
@@ -464,15 +484,16 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         spikeLog("host link is peer-to-peer while Wi-Fi is up: looking for the host over Wi-Fi")
         browser.browseResultsChangedHandler = { [weak self, weak browser] results, _ in
             guard let self = self, self.session == session, self.wifiBrowser === browser else { return }
-            let seen = results.contains { r in
+            let found = results.first { r in
                 Migration.sameTable(name: Self.serviceName(r.endpoint), salt: Self.salt(r), linkedName: name, linkedSalt: salt)
                     && !r.interfaces.contains { LinkPath.isPeerToPeer($0.name) }
             }
+            let seen = found != nil
             self.spikeLog("Wi-Fi browse: \(results.count) result(s) [\(Self.interfaceNames(results))]\(seen ? ", host seen" : "")")
-            guard self.migration.shouldMove(peerToPeer: self.hostOverP2P, wifiUp: self.wifiUp, hostSeenOverWifi: seen) else { return }
+            guard self.migration.shouldMove(peerToPeer: self.hostOverP2P, wifiUp: self.wifiUp, hostSeenOverWifi: seen),
+                  let result = found else { return }
             self.stopWifiBrowse()
-            self.spikeLog("moving the host link off peer-to-peer")
-            self.drop("host")
+            self.startHandover(result)
         }
         wifiBrowser = browser
         browser.start(queue: queue)
@@ -486,6 +507,98 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.watchForWifiHost()
             }
         }
+    }
+
+    /// Make the host's Wi-Fi link while the peer-to-peer one still carries;
+    /// once it is ready, drop the old link, and the page's resume takes the
+    /// new one (join). If it cannot be made, the old link is dropped anyway
+    /// and the resume looks from scratch, as a move did before.
+    private func startHandover(_ result: NWBrowser.Result) {
+        guard let saltText = Self.salt(result), let saltData = Data(base64Encoded: saltText),
+              saltData.count == NearbyKey.saltBytes,
+              let psk = NearbyKey.derive(code: joinCode, salt: saltData) else {
+            spikeLog("moving the host link off peer-to-peer (no key for the Wi-Fi link)")
+            return drop("host")
+        }
+        let params = Self.parameters(psk: psk)
+        params.includePeerToPeer = false
+        let connection = NWConnection(to: result.endpoint, using: params)
+        let link = Link(peer: "host", connection: connection)
+        let hostLink = links["host"]
+        let code = joinCode
+        let name = Self.serviceName(result.endpoint)
+        handoverTry?.connection.cancel()
+        handoverTry = link
+        spikeLog("moving the host link off peer-to-peer: making the Wi-Fi link first")
+        connection.stateUpdateHandler = { [weak self, weak link] state in
+            guard let self = self, let link = link else { return }
+            switch state {
+            case .ready:
+                guard self.handoverTry === link, let old = self.links["host"], old === hostLink else {
+                    return connection.cancel()
+                }
+                self.handoverTry = nil
+                link.ready = true
+                self.handover = (link, Date(), code, name, saltText)
+                let via = connection.currentPath?.availableInterfaces.first
+                self.spikeLog("Wi-Fi link to the host ready via \(via?.name ?? "?"): dropping the peer-to-peer one")
+                self.drop("host")
+                self.queue.asyncAfter(deadline: .now() + Handover.keepSeconds) { [weak self, weak link] in
+                    guard let self = self, let link = link, self.handover?.link === link else { return }
+                    self.spikeLog("Wi-Fi link to the host not taken in \(Handover.keepSeconds) s: cancelled")
+                    self.handover = nil
+                    link.connection.stateUpdateHandler = nil
+                    link.connection.cancel()
+                }
+            case .failed, .cancelled:
+                if self.handoverTry === link {
+                    self.handoverTry = nil
+                    if self.links["host"] === hostLink, hostLink != nil {
+                        self.spikeLog("Wi-Fi link to the host not made: moving off peer-to-peer from scratch")
+                        self.drop("host")
+                    }
+                } else if self.handover?.link === link {
+                    self.handover = nil
+                } else if self.links["host"] === link {
+                    self.drop("host")
+                }
+            default:
+                break
+            }
+        }
+        startWithTimeout(link, Self.joinHandshakeTimeout)
+    }
+
+    /// The page's resume on the same table takes the ready Wi-Fi link:
+    /// it is the host link now, reported as a link that has come up.
+    private func adoptHandover(code: String) -> Bool {
+        guard let h = handover,
+              Handover.adoptable(age: Date().timeIntervalSince(h.at), code: h.code, joinCode: code) else {
+            cancelHandover()
+            return false
+        }
+        handover = nil
+        let link = h.link
+        links["host"] = link
+        lastHostName = h.name
+        lastHostSalt = h.salt
+        let via = link.connection.currentPath?.availableInterfaces.first
+        hostOverP2P = LinkPath.isPeerToPeer(via?.name)
+        migration.linkUp(peerToPeer: hostOverP2P)
+        spikeLog("host link up via \(via?.name ?? "?") (the Wi-Fi link made before the move)")
+        emitPeer("host", "connected", via: hostOverP2P ? "p2p" : "wifi")
+        receive(link)
+        watchForWifiHost()
+        return true
+    }
+
+    private func cancelHandover() {
+        for link in [handoverTry, handover?.link].compactMap({ $0 }) {
+            link.connection.stateUpdateHandler = nil
+            link.connection.cancel()
+        }
+        handoverTry = nil
+        handover = nil
     }
 
     private func stopWifiBrowse() {
@@ -579,6 +692,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         spikeOptions(call)
         queue.async { [self] in
             self.reset()
+            self.cancelHandover()
             let salt = NearbyKey.randomBytes(NearbyKey.saltBytes)
             guard let psk = NearbyKey.derive(code: code, salt: salt) else {
                 call.reject("key derivation failed", "failed")
@@ -615,6 +729,10 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
             self.fellBackUnseen = false
             self.spikeLog("join (\(resume ? "resume, \(JoinPlan.resumeFindTimeout) s look" : "first look"))")
             self.setLive(true)
+            if resume && self.adoptHandover(code: code) {
+                call.resolve()
+                return
+            }
             self.startBrowse()
             self.fallBackToPeerToPeerSoon()
             call.resolve()
@@ -1164,6 +1282,11 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
         fellBackUnseen = false
         hostOverP2P = false
         stopWifiBrowse()
+        // a ready Wi-Fi link made for a move stays for the page's resume
+        // (it expires on its own); one still being made ends here
+        handoverTry?.connection.stateUpdateHandler = nil
+        handoverTry?.connection.cancel()
+        handoverTry = nil
         findDeadline = .distantFuture
         candidateArrivals = 0
         policyDenied = false

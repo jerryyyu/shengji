@@ -137,7 +137,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   const rating = ranked ? result.rating : undefined;
   const shownDelta = rating ? (gameWon && rating.game_delta !== undefined ? rating.game_delta : rating.delta) : null;
   const ratingBit = shownDelta !== null
-    ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}> · rating {shortDelta(shownDelta)}</span>
+    ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}> · rating {rating!.rating} ({shortDelta(shownDelta)})</span>
     : null;
   const { took, climb } = resultSentences(state, result);
   const bonus = kittyBonusText(state, result);

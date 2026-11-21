@@ -81,7 +81,29 @@ const FLUSH_LINES = 200;
 const MAX_FAILURES = 5;
 
 export interface LogFile {
-  debugLogFile(o: { op: "append" | "roll" | "clear" | "size"; text?: string }): Promise<{ size?: number }>;
+  debugLogFile(o: {
+    op: "append" | "roll" | "clear" | "size" | "read"; text?: string; file?: "current" | "old"; offset?: number; max?: number;
+  }): Promise<{ size?: number; text?: string; bytes?: number; exists?: boolean }>;
+}
+
+export type LogFileReset = "roll" | "clear";
+const resetListeners = new Set<(why: LogFileReset) => void>();
+
+/** Hears each roll and clear of the file, in order with its writes. */
+export function onNearbyLogFileReset(fn: (why: LogFileReset) => void): () => void {
+  resetListeners.add(fn);
+  return () => { resetListeners.delete(fn); };
+}
+
+/** Whole lines of the current file (or the older one) from `offset`, at
+ *  most `max` bytes, in order with the writes; null without a file. */
+export function readNearbyLogFile(which: "current" | "old", offset: number, max: number): Promise<{ text: string; bytes: number; size: number } | null> {
+  const f = file;
+  if (!f) return Promise.resolve(null);
+  return serial(async () => {
+    const r = await f.debugLogFile({ op: "read", file: which, offset, max });
+    return { text: r?.text ?? "", bytes: r?.bytes ?? 0, size: r?.size ?? 0 };
+  });
 }
 
 let file: LogFile | null = null;
@@ -122,6 +144,7 @@ export function flushNearbyLogFile(): Promise<void> {
     if (fileSize > 0 && fileSize + bytes > cap) {
       await f.debugLogFile({ op: "roll" });
       fileSize = 0;
+      resetListeners.forEach((l) => l("roll"));
     }
     const r = await f.debugLogFile({ op: "append", text });
     fileSize = typeof r?.size === "number" ? r.size : fileSize + bytes;
@@ -172,6 +195,7 @@ export function clearNearbyLogFile(): Promise<boolean> {
   return serial(async () => {
     await f.debugLogFile({ op: "clear" });
     fileSize = 0;
+    resetListeners.forEach((l) => l("clear"));
   }).then(() => true, () => false);
 }
 

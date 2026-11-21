@@ -9,7 +9,7 @@ import { VirtualClock } from "../../src/offline/server/clock";
 import { LocalServer, type LocalRoom, type Seat } from "../../src/offline/server/server";
 import { LocalSocket } from "../../src/offline/server/socket";
 import { NearbyHost } from "../../src/offline/server/nearby/host";
-import { NearbySocket, setNearbyKeepalive } from "../../src/offline/server/nearby/socket";
+import { NearbySocket, SEAT_GONE, setNearbyKeepalive } from "../../src/offline/server/nearby/socket";
 import { pluginTransport } from "../../src/offline/server/nearby/native";
 import type { NearbyTransport } from "../../src/offline/server/nearby/transport";
 import { subscribeNearbyLog, nearbyLogLines, clearNearbyLog } from "../../src/nearbyLog";
@@ -654,7 +654,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       stats.links += 1;
       this.status = "connecting";
       this.boundSeat = null;
-      const sock = new NearbySocket(this.transport, code, (s) => this.onLinkState(no, s), this.clock, this.greet);
+      const sock = new NearbySocket(this.transport, code, (s, detail) => this.onLinkState(no, s, detail), this.clock, this.greet);
       this.sock = sock;
       this.openedAt = null;
       // ws.ts sets no connect timer on a nearby link: the attempt lasts
@@ -733,8 +733,23 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       }
       this.open();
     }
-    onLinkState(no: number, s: string): void {
-      if (no !== this.sockNo || this.seated) return;
+    onLinkState(no: number, s: string, detail?: string): void {
+      if (no !== this.sockNo) return;
+      if (this.seated) {
+        // nearbyJoin.ts onLink: a refused resume (the table no longer knows
+        // the token) forgets it, and the code's join starts over with the
+        // seats; a Leave waiting for a link has nothing left to leave
+        if (detail === SEAT_GONE) {
+          if (this.leaving) this.finishLeave();
+          else {
+            log(this.d.id, "page: resume refused: the seat is gone; the seats again");
+            this.goneRun += 1;
+            this.goneArmed = false;
+            this.look();
+          }
+        }
+        return;
+      }
       if (s === "notFound" || s === "failed") {
         // the store's one retry, then Try again after a moment
         this.misses += 1;

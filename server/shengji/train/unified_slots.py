@@ -423,7 +423,7 @@ def leaf_features_fast(frame: LeafFrame, leaves, native=True):
     come from the compiled `_pv_fast.leaf_counts` where `_native_leaf_counts` offers it (and ``native``),
     else from `_leaf_entries_fast`; both give the same rows, keys and order. Count planes stay compact
     through memo lookup; the fused forward converts only rows it actually scores to the model dtype."""
-    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS, leaf_scalars
+    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS
     tables = _fast_tables()
     width = N_PLANES * N_CARDS
     kernel = _native_leaf_counts() if native else None
@@ -435,6 +435,11 @@ def leaf_features_fast(frame: LeafFrame, leaves, native=True):
         mine, counts, m = _leaf_counts_python(frame, leaves, tables, width)
     if not mine:
         return mine, np.zeros((0, width), np.uint8), np.zeros((0, N_SCALARS), np.float32), []
+    return _feature_rows(mine, counts, m)
+
+
+def _feature_rows(mine, counts, m):
+    from ..ai.unified_readout_numpy import leaf_scalars
     scalars = leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
     counts = np.asarray(counts, dtype=np.uint8)
     raw = np.ascontiguousarray(np.concatenate([counts, scalars.view(np.uint8)], 1))
@@ -511,13 +516,14 @@ def readout_evaluator(evaluator, bot, model):
             self.unified_bot.unified_value_served += len(rest)
             return values
 
-        def readout_ahead(self, frame, leaves, chunk, gate=None):
+        def readout_ahead(self, frame, leaves, chunk, gate=None, features=None):
             """`leaf_features_fast` of ``leaves`` in ``chunk``-leaf slices (``gate`` before each, as
             `team_values` calls it), with every `READOUT_BATCH` leaves' rows the value memo lacks
             scored in one forward into it.  Per slice ``[leaves, mine, planes, scalars, keys, new]``:
             ``new`` counts the keys first scored for that slice, as `memo_rows` would have."""
             m = self.unified_model
             memo = frame.value_memo
+            features = leaf_features_fast if features is None else features
             window = max(chunk, READOUT_BATCH // chunk * chunk)
             out = []
             for first in range(0, len(leaves), window):
@@ -526,7 +532,7 @@ def readout_evaluator(evaluator, bot, model):
                     if gate is not None:
                         gate()
                     part = leaves[start:start + chunk]
-                    mine, planes, scalars, keys = leaf_features_fast(frame, part)
+                    mine, planes, scalars, keys = features(frame, part)
                     new = 0
                     for i, key in enumerate(keys):
                         if key not in memo and key not in todo:
@@ -561,24 +567,30 @@ def readout_evaluator(evaluator, bot, model):
             values = np.empty(len(positions), dtype=np.float64)
             if rest:
                 values[rest] = base.score_many(self, [positions[i] for i in rest], [seats[i] for i in rest], **kw)
-            m = self.unified_model
+            values[mine] = self._covered_values(frame, planes, scalars, keys, new, [seats[i] for i in mine])
+            bot.unified_value_served += len(rest)
+            return values
+
+        def _covered_values(self, frame, planes, scalars, keys, new, seats):
+            bot, m = self.unified_bot, self.unified_model
             if new is None:
                 fused = frame.fused(m)
                 expected, hits = memo_rows(frame.value_memo, keys,
                                            lambda rows: m.leaf_value_probs_fused(fused, planes[rows], scalars[rows]) @ self.support)
             else:
                 expected, hits = [frame.value_memo[key] for key in keys], len(keys) - new
-            sign = np.asarray([1.0 if (int(seats[i]) - frame.seat) % 2 == 0 else -1.0 for i in mine])
-            values[mine] = sign * np.asarray(expected, np.float64)
-            self.positions += len(mine)
-            self.model_rows += len(mine)
-            bot.unified_value_rows += len(mine)
+            sign = np.asarray([1.0 if (int(seat) - frame.seat) % 2 == 0 else -1.0 for seat in seats])
+            self.positions += len(keys)
+            self.model_rows += len(keys)
+            bot.unified_value_rows += len(keys)
             bot.unified_value_memo += hits
-            bot.unified_value_served += len(rest)
-            return values
+            return sign * np.asarray(expected, np.float64)
 
     out = copy.copy(evaluator)
     out.__class__ = ReadoutEvaluator
+    from ..ai.cwv_policy import CompleteWorldEvaluator
+    out._fourth_score_methods = (CompleteWorldEvaluator.score, ReadoutEvaluator.score_many,
+                                 ReadoutEvaluator._score_many_fast, ReadoutEvaluator.readout_ahead)
     out.unified_bot = bot
     out.unified_model = model
     return out
@@ -591,6 +603,7 @@ def readout_score_leaves(served_score_leaves):
         if getattr(evaluator, "unified_model", None) is None:
             return served_score_leaves(evaluator, leaves, seat, *args, **kw)
         return evaluator.score(leaves, seat)
+    score_leaves.readout_dispatch = score_leaves
     return score_leaves
 
 
@@ -650,6 +663,75 @@ def _values_ahead(bot, frame, values_fn):
     return values
 
 
+def _fourth_reply_features(frame, items):
+    """Build the completed-trick rows from the indexed moves and their parent count planes."""
+    counts = np.stack([parent for parent, *_ in items]).astype(np.uint8, copy=False)
+    meta = np.empty((len(items), 5), np.int64)
+    for i, (_, hand_slots, points, winner) in enumerate(items):
+        for slot in hand_slots:
+            counts[i, slot] -= 1
+            counts[i, slot + 5 * N_CARDS] += 1
+        meta[i] = (4 - frame.pos, 4, points, winner, winner)
+    return _feature_rows(list(range(len(items))), counts, meta)
+
+
+def _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw):
+    """The served fast-clone finish can rank a covered, nonterminal fourth reply from its card move."""
+    from functools import partial
+    from ..engine import fast
+    from . import pv_encode_prefix, pv_tree_search as search
+    if (not active or active[0].trick is None or len(active[0].trick.plays) != 3
+            or not isinstance(values_fn, partial) or values_fn.func is not search._STANDARD_TEAM_VALUES
+            or values_fn.args != (bot,) or kw.get("children_fn") is not search._STANDARD_REPLY_CHILDREN
+            or len(args) != 2 or args[1] is not search.child_position_fast
+            or not fast.is_active() or search.Round.play is not fast._fast.round_play):
+        return None
+    # The canonical builder is supplied only while its clone and finisher references are intact.
+    evaluator = bot.evaluator
+    methods = tuple(getattr(getattr(evaluator, name, None), "__func__", None)
+                    for name in ("score", "score_many", "_score_many_fast", "readout_ahead"))
+    if methods != getattr(evaluator, "_fourth_score_methods", None):
+        return None
+    if values_fn.keywords.get("prefix") is not None:
+        score = pv_encode_prefix.score_leaves
+        if getattr(score, "readout_dispatch", None) is not score:
+            return None
+    for clone in active:
+        trick = clone.trick
+        if (trick is None or len(trick.plays) != 3 or len(clone.history) != frame.tricks
+                or len(clone.hands[clone.turn]) <= len(trick.plays[0].cards)
+                or trick.incumbent is None or trick.running_points is None
+                or not search._round_default_copy(clone) or "play" in vars(clone)):
+            return None
+    plane_maps, pts, _, legal = _fast_tables()
+
+    def children(clone, seat, candidates):
+        trick = clone.trick
+        incumbent, suit, top = trick.incumbent
+        rel = (seat - frame.seat) % 4
+        lookup = plane_maps[rel].__getitem__
+        parent = planes[index_of[id(clone)]]
+        result = []
+        for cards in candidates:
+            won, _ = legal.beats(cards, trick.plays[0].cards, suit, top, clone.ordering)
+            winner = rel if won else (incumbent - frame.seat) % 4
+            points = trick.running_points + sum(map(pts.__getitem__, cards))
+            result.append((parent, tuple(map(lookup, cards)), points, winner))
+        return result
+
+    def values(items, seat, gate=None):
+        evaluator = bot.evaluator
+        ahead = iter(evaluator.readout_ahead(frame, items, bot.batch_size, gate, _fourth_reply_features))
+
+        def score(part, seat):
+            _, _, counts, scalars, keys, new = next(ahead)
+            return evaluator._covered_values(frame, counts, scalars, keys, new, [seat] * len(part))
+
+        return search.value_batches(items, seat, bot.batch_size, gate, score)
+
+    return children, values
+
+
 def readout_reply_ply(served_ply):
     """``served_ply`` (``pv_tree_search.greedy_reply_ply``) for every bot, except that a bot marked by
     `install_reply_readout` ranks each clone's follows by the readout's reply log-odds inside a framed
@@ -698,9 +780,13 @@ def readout_reply_ply(served_ply):
                 return np.stack(rows) if rows else np.zeros((0, N_CARDS), np.float32)
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
-        bot.predict = predict
         if fast:
-            values_fn = _values_ahead(bot, frame, values_fn)
+            callbacks = _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw)
+            if callbacks is None:
+                values_fn = _values_ahead(bot, frame, values_fn)
+            else:
+                kw["children_fn"], values_fn = callbacks
+        bot.predict = predict
         try:
             return served_ply(bot, active, gate, cache, stats, keep, version, listing, values_fn, rows, *args, **kw)
         finally:

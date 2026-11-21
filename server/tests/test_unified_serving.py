@@ -886,3 +886,65 @@ def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
         assert saved["ballot"][saved["allocation"]["played_index"]] == saved["action"]
         assert saved["allocation"]["serving_decision"]["unified"]["shared"] == 1
         assert saved["allocation"]["serving_decision"]["unified"]["missed"] == 0
+
+
+def test_fourth_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch):
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.engine import fast
+    from shengji.train import pv_tree_search as search, unified_slots as us
+    from test_pv_encode_batch_fast import lgf_bot
+    from test_pv_reply_native import _follow_clones
+
+    if not fast.is_active():
+        pytest.skip("direct rows require the compiled reply path")
+    path, sha = _random_pair(tmp_path)["unified"]
+    model = load_unified_readout_numpy(path, sha)
+    states = []
+    for clone, _, candidates in _follow_clones((707_001,), True):
+        if len(clone.trick.plays) == 3 and len(candidates) >= 2:
+            states.append(clone)
+            if len(states) == 8:
+                break
+    assert len(states) == 8
+    real_features = us._fourth_reply_features
+    real_probs = model.leaf_value_probs_fused
+    monkeypatch.setattr(search, "greedy_reply_ply", us.readout_reply_ply(search.greedy_reply_ply))
+    trace = []
+    direct = []
+
+    def features(frame, items):
+        result = real_features(frame, items)
+        direct.extend(result[3])
+        return result
+
+    def probs(fused, planes, scalars):
+        trace.append(("forward", planes.shape, planes.tobytes(), scalars.tobytes()))
+        return real_probs(fused, planes, scalars)
+
+    monkeypatch.setattr(us, "_fourth_reply_features", features)
+    monkeypatch.setattr(model, "leaf_value_probs_fused", probs)
+    monkeypatch.setattr(us, "READOUT_BATCH", 6)
+
+    def run(clone):
+        trace.clear()
+        bot = lgf_bot(7, True, 5)
+        bot.unified_fast = True
+        bot.batch_size = 3
+        us.install_value_readout(bot, model)
+        us.install_reply_readout(bot, model)
+        bot.unified_frame = frame = us.LeafFrame(bot, clone, clone.trick.leader)
+        frame.pos = 0
+        copies = [copy.deepcopy(clone) for _ in range(9)]
+        stats = search.greedy_finish_current_trick(bot, copies, frame.tricks + 1,
+                                                   lambda: trace.append("gate"), 3, 7, fast_clone=True,
+                                                   guard=lambda: trace.append("guard"))
+        return ([c.history[-1].plays[-1].cards for c in copies], stats, list(trace),
+                frame.value_memo, bot.unified_value_memo, bot.unified_value_rows,
+                bot.evaluator.positions, bot.evaluator.model_rows)
+
+    for clone in states:
+        got = run(clone)
+        with monkeypatch.context() as patch:
+            patch.setattr(us, "_fourth_reply_callbacks", lambda *a: None)
+            assert run(clone) == got
+    assert len(direct) > 60

@@ -668,6 +668,11 @@ def _values_ahead(bot, frame, values_fn):
 
 def _direct_reply_features(frame, items):
     """Build the completed-trick rows from the indexed moves and their parent count planes."""
+    from . import pv_tree_search as search
+    kernel = getattr(search._reply_fast, "pack_reply_rows", None)
+    if kernel is not None:
+        counts, meta = kernel(items, 4 - frame.pos)
+        return _feature_rows(list(range(len(items))), counts, meta)
     counts = np.stack([parent for parent, *_ in items]).astype(np.uint8, copy=False)
     meta = np.empty((len(items), 5), np.int64)
     for i, (_, hand_slots, points, winner) in enumerate(items):

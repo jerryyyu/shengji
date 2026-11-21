@@ -1,6 +1,5 @@
 # cython: language_level=3, boundscheck=False, wraparound=False
-"""The greedy finish's reply children of one clone, compiled
-(`pv_tree_search.reply_children_fast`).
+"""Compiled reply children and completed-trick count planes for the greedy finish.
 
 `reply_children` builds, for each candidate in order, exactly what
 ``child_position_fast(clone, seat, candidate)`` followed by
@@ -17,7 +16,11 @@ reference's attribute operations.
 that a same-trick readout consumes. It needs the standard compiled follow
 policy and a trusted, nonterminal singleton trick.
 """
+import numpy as np
+
 from cpython.dict cimport PyDict_Copy
+from cpython.long cimport PyLong_AsLong, PyLong_AsLongLong
+from libc.string cimport memcpy
 
 
 def reply_children(object clone, object seat, list candidates, object round_cls,
@@ -147,3 +150,50 @@ def project_singleton_replies(clone, int seat, list candidates, int frame_seat,
             incumbent = updated
         out.append((parent, slots, total, (incumbent[0] - frame_seat) % 4))
     return out
+
+DEF N_CARDS = 54
+DEF HAND_WIDTH = 4 * N_CARDS
+DEF PLAY_OFFSET = 5 * N_CARDS
+DEF COUNT_WIDTH = 9 * N_CARDS
+
+
+def pack_reply_rows(items, n_delta):
+    """Copy each parent row and move the listed hand slots into played planes."""
+    cdef tuple rows = tuple(items)
+    cdef Py_ssize_t n = len(rows), i
+    cdef long delta = PyLong_AsLong(n_delta)
+    cdef long slot, won
+    cdef object source, slots, points, winner, card
+    cdef object held = None
+    cdef const unsigned char[::1] parent
+    if n == 0 or not 1 <= delta <= 4:
+        raise ValueError("invalid completed-trick batch")
+    counts = np.empty((n, COUNT_WIDTH), dtype=np.uint8)
+    meta = np.empty((n, 5), dtype=np.int64)
+    cdef unsigned char[:, ::1] cv = counts
+    cdef long long[:, ::1] mv = meta
+    for i, (source, slots, points, winner) in enumerate(rows):
+        # Consecutive replies from one parent reuse its buffer view.
+        if i == 0 or source is not held:
+            parent = source
+            if parent is None or parent.shape[0] != COUNT_WIDTH:
+                raise ValueError("invalid reply parent width")
+            held = source
+        memcpy(&cv[i, 0], &parent[0], COUNT_WIDTH)
+        for card in slots:
+            slot = PyLong_AsLong(card)
+            if not 0 <= slot < HAND_WIDTH:
+                raise ValueError("reply hand slot out of range")
+            if cv[i, slot] == 0 or cv[i, slot + PLAY_OFFSET] == 255:
+                raise ValueError("invalid reply count delta")
+            cv[i, slot] -= 1
+            cv[i, slot + PLAY_OFFSET] += 1
+        won = PyLong_AsLong(winner)
+        if not 0 <= won < 4:
+            raise ValueError("reply winner out of range")
+        mv[i, 0] = delta
+        mv[i, 1] = 4
+        mv[i, 2] = PyLong_AsLongLong(points)
+        mv[i, 3] = won
+        mv[i, 4] = won
+    return counts, meta

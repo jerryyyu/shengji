@@ -888,6 +888,75 @@ def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
         assert saved["allocation"]["serving_decision"]["unified"]["missed"] == 0
 
 
+def test_fourth_reply_packing_matches_python_with_repeated_parent_rows(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.train import pv_tree_search as search, unified_slots as us
+
+    kernel = getattr(search._reply_fast, "pack_reply_rows", None)
+    if kernel is None:
+        pytest.skip("compiled reply packing is unavailable")
+    first = np.zeros(9 * 54, np.uint8)
+    first[[0, 4 * 54 - 1, 4 * 54]] = [2, 1, 2]
+    first.flags.writeable = False
+    second = np.zeros_like(first)
+    second[54] = 1
+    items = [(first, (0, 0), 20, 3), (first, (4 * 54 - 1,), 35, 2),
+             (second, (54,), 50, 1), (first, (0, 4 * 54 - 1), 60, 0)]
+    seen = []
+
+    def pack(rows, delta):
+        assert rows is items
+        counts, meta = kernel(rows, delta)
+        assert counts.dtype == np.uint8 and meta.dtype == np.int64
+        assert counts.flags.c_contiguous and meta.flags.c_contiguous
+        assert meta.tolist() == [[delta, 4, points, winner, winner]
+                                 for _, _, points, winner in rows]
+        seen.append(delta)
+        return counts, meta
+
+    monkeypatch.setattr(search._reply_fast, "pack_reply_rows", pack)
+    for pos in range(4):
+        frame = SimpleNamespace(pos=pos)
+        indices, counts, scalars, keys = us._direct_reply_features(frame, items)
+        with monkeypatch.context() as patch:
+            patch.setattr(search, "_reply_fast", SimpleNamespace())
+            expected = us._direct_reply_features(frame, items)
+        assert indices == expected[0] and keys == expected[3]
+        assert counts.tobytes() == expected[1].tobytes()
+        assert scalars.tobytes() == expected[2].tobytes()
+    assert seen == [4, 3, 2, 1]
+    assert first[[0, 4 * 54 - 1, 5 * 54]].tolist() == [2, 1, 0]
+    assert second[54] == 1
+
+
+def test_fourth_reply_packing_refuses_malformed_rows():
+    from shengji.train import pv_tree_search as search
+
+    kernel = getattr(search._reply_fast, "pack_reply_rows", None)
+    if kernel is None:
+        pytest.skip("compiled reply packing is unavailable")
+    parent = np.zeros(9 * 54, np.uint8)
+    parent[0] = parent[1] = 1
+    parent[5 * 54 + 1] = 255
+
+    for source in (None, parent[:-1], parent.astype(np.int64), parent.reshape(9, 54),
+                   np.zeros(parent.size * 2, np.uint8)[::2]):
+        with pytest.raises(ValueError):
+            kernel([(source, (0,), 0, 0)], 1)
+    for slots in ((-1,), (4 * 54,), (0, 0), (1,)):
+        with pytest.raises(ValueError):
+            kernel([(parent, slots, 0, 0)], 1)
+    with pytest.raises(TypeError):
+        kernel([(parent, (0.5,), 0, 0)], 1)
+    with pytest.raises(ValueError):
+        kernel([(parent, (0,), 0, 4)], 1)
+    with pytest.raises(OverflowError):
+        kernel([(parent, (0,), 2**63, 0)], 1)
+    with pytest.raises(ValueError):
+        kernel([(parent, (0,), 0, 0)], 0)
+    assert parent[[0, 1, 5 * 54, 5 * 54 + 1]].tolist() == [1, 1, 0, 255]
+
+
 @pytest.mark.parametrize("pos", [1, 2, 3])
 def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch, pos):
     from shengji.ai.unified_readout_numpy import load_unified_readout_numpy

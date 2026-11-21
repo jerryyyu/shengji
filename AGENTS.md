@@ -177,7 +177,8 @@ against a rule marked *none* counts as a repeat.
 | deploys, destructive actions and Sol resumes are Jerry's call; the bus carries no authority | none | judgement |
 | correctness, performance, calibration and strength are separate claims | none | reviewer |
 | inconclusive reads are not written as absolute claims; docs name the current comparator | `check_doc_claims.py` on the lines a PR adds to `AI_POLICIES.md`, `RL_PLAN.md`, `README.md`, `DEPLOY.md`; a line keeps such text only with `claim-ok: <reason>` | CI `comment-provenance` |
-| never `git add .`; preserve unrelated changes | none | judgement |
+| never `git add .`; preserve unrelated changes | Claude: a PreToolUse Bash guard refuses `git add .`/`-A`; Codex: none | Claude's user settings (outside the repo); judgement |
+| no `git stash`, `git clean`, `git worktree prune` or `git gc --prune` on the shared `.git`; a recursive `rm` outside `/tmp` goes through `safe_rm.py`; a test piped through `tail`/`head` never gates a commit or push in the same line | Claude: the same PreToolUse guard refuses each; Codex: none | Claude's user settings (outside the repo) |
 | a cleanup deletes only through `server/scripts/safe_rm.py` (live links, in-use, launcher, keep and packet pins refuse); the fleet copy equals the repo copy | `tests/test_safe_rm.py` | CI `server` |
 | every dialog, sheet and modal layer is a listed surface; every leave and join send site is listed; the table panel's frame renders only from `TablePanel.tsx` | `web/src/flows.test.ts` (literal lists: a new one fails, a removed one must shrink its list) | CI `frontend` |
 | the copy rule: switches and setting rows take a label only, one status line per panel, the ring is the clock; cut copy stays cut | `web/src/queue/copyRule.test.tsx` on every panel kind; `web/src/copyCuts.test.ts` on the `docs/design/COPY_CUTS.md` strings | CI `frontend` |

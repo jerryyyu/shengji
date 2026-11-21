@@ -9,6 +9,7 @@ configuration and Info.plist pass it.
 """
 
 import os
+import plistlib
 import re
 import shutil
 import subprocess
@@ -162,3 +163,31 @@ def test_debug_and_release_share_the_version():
                 for name, block in configs.items() if name in ("Debug", "Release")}
     assert versions["Debug"] == versions["Release"]
     assert "DEVELOPMENT_TEAM" not in PBXPROJ.read_text()
+
+
+@pytest.mark.parametrize("contents,code", [
+    (plistlib.dumps({}), 0),
+    (plistlib.dumps({"NSBonjourServices": []}), 1),
+    (plistlib.dumps({}, fmt=plistlib.FMT_BINARY), 0),
+    (plistlib.dumps({"NSBonjourServices": []}, fmt=plistlib.FMT_BINARY), 1),
+    (b"<plist><dict><key>oops", 1),
+], ids=["xml-clean", "xml-forbidden", "binary-clean", "binary-forbidden", "malformed"])
+def test_portable_parser_without_apple_tools(tmp_path, contents, code):
+    guard = tmp_path / "portable-guard.sh"
+    guard.write_text(GUARD.read_text().replace("/usr/bin/plutil", str(tmp_path / "no-plutil"))
+                     .replace("/usr/libexec/PlistBuddy", str(tmp_path / "no-PlistBuddy")))
+    project = tmp_path / "spaced project"
+    project.mkdir()
+    (project / "Info.plist").write_bytes(contents)
+    result = subprocess.run(["bash", str(guard)], capture_output=True, text=True, env={
+        **os.environ, "CONFIGURATION": "Release", "PROJECT_DIR": str(project),
+        "INFOPLIST_FILE": "Info.plist", "INFOPLIST_PATH": "",
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "", "OTHER_SWIFT_FLAGS": "",
+        "GCC_PREPROCESSOR_DEFINITIONS": ""})
+    assert result.returncode == code, result.stdout + result.stderr
+    if code == 0:
+        assert "nearby off" in result.stdout
+    elif contents == b"<plist><dict><key>oops":
+        assert "not a readable plist" in result.stdout
+    else:
+        assert "has NSBonjourServices" in result.stdout

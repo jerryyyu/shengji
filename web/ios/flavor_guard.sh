@@ -19,7 +19,7 @@ plist_ok() {  # plist_ok FILE: FILE is a readable, parseable (XML or binary) pli
   if [ -x /usr/bin/plutil ]; then
     /usr/bin/plutil -lint -s "$1" >/dev/null 2>&1
   else
-    [ -r "$1" ] && grep -q "<plist" "$1"
+    python3 -c 'import plistlib, sys; plistlib.load(open(sys.argv[1], "rb"))' "$1" >/dev/null 2>&1
   fi
 }
 
@@ -27,7 +27,7 @@ plist_has() {  # plist_has KEY FILE: the top-level KEY is in the plist (FILE alr
   if [ -x /usr/libexec/PlistBuddy ]; then
     /usr/libexec/PlistBuddy -c "Print :$1" "$2" >/dev/null 2>&1
   else
-    grep -q "<key>$1</key>" "$2"
+    python3 -c 'import plistlib, sys; sys.exit(0 if sys.argv[1] in plistlib.load(open(sys.argv[2], "rb")) else 1)' "$1" "$2"
   fi
 }
 

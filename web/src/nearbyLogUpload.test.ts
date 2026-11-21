@@ -2,7 +2,7 @@
 // The device-test log upload: whole lines in chunks, the offset moves only on
 // 204, a missing or failing endpoint is retried next tick, 413 halves the
 // chunk, 400 skips to the file's end, a roll or a clear starts the new file at
-// 0, and outside the device-test page build nothing is started or bundled.
+// 0, and outside the device test and the Beta nothing is started or bundled.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -228,12 +228,12 @@ describe("the log upload", () => {
   });
 });
 
-describe("the log upload outside the device-test build", () => {
-  it("is loaded only from the device-test branch, behind the logFile capability, so other builds bundle none of it", () => {
+describe("the log upload outside the device test and the Beta", () => {
+  it("is loaded only behind the logFile capability, so other builds bundle none of it", () => {
     const src = readFileSync(join(process.cwd(), "src/nearbyDebug.tsx"), "utf8");
     expect(src).not.toMatch(/from "\.\/nearbyLogUpload"/);   // no static import: only the gated dynamic one
     expect(src.match(/= import\("\.\/nearbyLogUpload"\)/g)).toHaveLength(1);
-    expect(src).toMatch(/c\.logFile === true[^\n]*\n      if \(await attachNearbyLogFile\(p as unknown as LogFile\)\) startUpload\(\);/);
+    expect(src).toMatch(/c\.logFile === true[^\n]*\n      listenNativeLog\(p as DebugPlugin\);\n      if \(await attachNearbyLogFile\(p as unknown as LogFile\)\) startUpload\(\);/);
     // nothing else imports it
     for (const f of ["src/components/HudMenu.tsx", "src/nearbyUi.tsx"]) {
       expect(readFileSync(join(process.cwd(), f), "utf8")).not.toContain("nearbyLogUpload");

@@ -1,7 +1,7 @@
 // @vitest-environment node
 // The device-test log file: every log line is appended in batches, the file
 // rolls to one older file at its cap, a line that looks like personal data is
-// withheld, and outside the device-test page build nothing is ever written.
+// withheld, and outside the device test and the Beta nothing is ever written.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,7 +36,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the nearby log file, in the device-test build", () => {
+describe("the nearby log file, in the device test and the Beta", () => {
   it("starts with what the log holds, then appends each line in one batched write", async () => {
     nearbyLog("host", "link p1 up");
     const { f, files, calls } = fakeFile();
@@ -141,7 +141,7 @@ describe("the nearby log file, in any other build", () => {
   it("is attached only where the plugin reports logFile, and unattached writes nothing", async () => {
     const debug = readFileSync(fileURLToPath(new URL("./nearbyDebug.tsx", import.meta.url)), "utf8");
     expect(debug.match(/attachNearbyLogFile\(/g)).toHaveLength(1);
-    expect(debug).toMatch(/c\.debug === true && c\.logFile === true[^\n]*\n      if \(await attachNearbyLogFile\(/);
+    expect(debug).toMatch(/if \(c\.logFile === true && typeof \(p as Partial<LogFile>\)\.debugLogFile === "function"\) \{\n      listenNativeLog\(p as DebugPlugin\);\n      if \(await attachNearbyLogFile\(/);
     const { calls } = fakeFile();
     nearbyLog("host", "link p1 up");
     await flushNearbyLogFile();
@@ -150,10 +150,10 @@ describe("the nearby log file, in any other build", () => {
     expect(nearbyLogFileOn()).toBe(false);
   });
 
-  it("the plugin compiles the file method only in a Debug build for the device test", () => {
+  it("the plugin compiles the file method only in the device test and the Beta", () => {
     const swift = readFileSync(fileURLToPath(new URL("../ios/App/App/NearbyPlugin.swift", import.meta.url)), "utf8");
     expect(swift.match(/func debugLogFile/g)).toHaveLength(1);
-    expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_DEV\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let logFileMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugLogFile"[\s\S]*?func debugLogFile[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let logFileMethods: \[CAPPluginMethod\] = \[\]\n    static let logFileBuild = false\n\}\n#endif/);
+    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let logFileMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugLogFile"[\s\S]*?func debugLogFile[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let logFileMethods: \[CAPPluginMethod\] = \[\]\n    static let logFileBuild = false\n\}\n#endif/);
     expect(swift).toContain('"logFile": Self.logFileBuild');
   });
 });

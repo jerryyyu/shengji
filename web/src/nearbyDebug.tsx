@@ -3,10 +3,13 @@
 // binary or on the web. A Log tab at the screen's bottom-left corner, clear of
 // the rounded corner and the home indicator and above the table, opens the
 // last lines of nearbyLog.ts, with Copy, so a tester can paste what the link
-// did; the nearby table's ⋯ menu has Copy log too. In the device-test page
-// build it also starts the log file (nearbyLog.ts), which the ⋯ menu's Clear
-// log file empties. With the file on, the file's new bytes also go to the
-// server (nearbyLogUpload.ts), and the ⋯ menu has Upload log now.
+// did. Wherever the plugin reports `logFile` (the device test and the Beta),
+// the log file (nearbyLog.ts) is always on from the page's start, its new
+// bytes go to the server (nearbyLogUpload.ts), and the nearby table's ⋯ menu
+// has Copy log, Clear log file and Upload log now. The soak's Autoplay, Chaos
+// and summary rows show in the device test, and in the Beta (`chaos`) only
+// once the hidden switch is on: five taps on the ⋯ menu's table code within
+// SWITCH_WINDOW_MS, five more to turn it off, kept in localStorage.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { nearbyPluginProxy } from "./native";
 import {
@@ -23,7 +26,8 @@ interface DebugPlugin {
 
 let checked: Promise<DebugPlugin | null> | null = null;
 
-/** The plugin, when this is a device-test Debug build; asked once per page. */
+/** The plugin, when this is a device-test Debug build; asked once per page,
+ *  and the log file attached on the way wherever the plugin has one. */
 function debugPlugin(): Promise<DebugPlugin | null> {
   checked ??= askDebugPlugin();
   return checked;
@@ -39,14 +43,76 @@ async function askDebugPlugin(): Promise<DebugPlugin | null> {
   if (!p || typeof p.capabilities !== "function" || typeof p.addListener !== "function") return null;
   try {
     const c = await p.capabilities();
-    // the plugin has the file only when built for the device test
-    if (c.debug === true && c.logFile === true && typeof (p as Partial<LogFile>).debugLogFile === "function") {
+    // the plugin has the file only in the device test and the Beta
+    if (c.logFile === true && typeof (p as Partial<LogFile>).debugLogFile === "function") {
+      listenNativeLog(p as DebugPlugin);
       if (await attachNearbyLogFile(p as unknown as LogFile)) startUpload();
     }
     return c.debug === true ? (p as DebugPlugin) : null;
   } catch {
     return null;
   }
+}
+
+/** Starts the log file and its upload; nearbyGate.ts calls it once the
+ *  plugin reports `logFile`. */
+export function startNearbyLogFile(): void {
+  void debugPlugin();
+}
+
+/** Whether lines are going to the file; asked only while `ask` holds. */
+export function useNearbyLogFile(ask: boolean): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (!ask) return;
+    let live = true;
+    debugPlugin().then(() => { if (live) setOn(nearbyLogFileOn()); }, () => {});
+    return () => { live = false; };
+  }, [ask]);
+  return ask && on;
+}
+
+// The hidden switch for the soak's Autoplay and Chaos rows, where the plugin
+// reports `chaos` without `debug` (the Beta).
+export const SWITCH_TAPS = 5;
+export const SWITCH_WINDOW_MS = 3000;
+const SWITCH_KEY = "shengji.nearbySoakSwitch.v1";
+const switchListeners = new Set<() => void>();
+let taps: number[] = [];
+let soakModule: typeof import("./nearbySoak") | null = null;
+
+function readSwitch(): boolean {
+  try { return localStorage.getItem(SWITCH_KEY) === "1"; } catch { return false; }
+}
+
+let switchOn = readSwitch();
+
+const subscribeSwitch = (fn: () => void): (() => void) => {
+  switchListeners.add(fn);
+  return () => { switchListeners.delete(fn); };
+};
+const switchSnapshot = (): boolean => switchOn;
+
+/** Whether the hidden switch is on. */
+export function useNearbySoakSwitch(): boolean {
+  return useSyncExternalStore(subscribeSwitch, switchSnapshot, switchSnapshot);
+}
+
+/** One tap on the ⋯ menu's table code: the fifth within SWITCH_WINDOW_MS
+ *  turns the switch over. A no-op unless the plugin reports `chaos`.
+ *  Turning it off stops Autoplay and Chaos. */
+export function nearbySoakSwitchTap(chaos: boolean, now: number = Date.now()): void {
+  if (!chaos) return;
+  taps = [...taps.filter((t) => now - t < SWITCH_WINDOW_MS), now];
+  if (taps.length < SWITCH_TAPS) return;
+  taps = [];
+  switchOn = !switchOn;
+  try { localStorage.setItem(SWITCH_KEY, switchOn ? "1" : "0"); } catch { /* this page only */ }
+  if (!switchOn && soakModule) {
+    soakModule.setAutoplay(false);
+    soakModule.setChaos(false);
+  }
+  switchListeners.forEach((l) => l());
 }
 
 let upload: Promise<typeof import("./nearbyLogUpload") | null> = Promise.resolve(null);
@@ -62,9 +128,12 @@ export function uploadNearbyLogNow(): Promise<void> {
   return upload.then((m) => m?.uploadNearbyLogNow());
 }
 
-/** Tests: ask the plugin again. */
+/** Tests: ask the plugin again, and read the hidden switch afresh. */
 export function resetNearbyDebugForTests(): void {
   checked = null;
+  taps = [];
+  switchOn = readSwitch();
+  switchListeners.forEach((l) => l());
 }
 
 const TOP = 2147483647;
@@ -113,9 +182,9 @@ export function useNearbyKeepalive(ask: boolean): { on: boolean; toggle: () => v
   return { on: mod.nearbyKeepalive(), toggle: () => mod.setNearbyKeepalive(!mod.nearbyKeepalive()) };
 }
 
-/** The device-test soak's switches (nearbySoak.ts: Autoplay, Chaos, the
- *  soak summary), once its module is in; null before, and never loaded
- *  outside a device-test Debug build. */
+/** The soak's switches (nearbySoak.ts: Autoplay, Chaos, the soak summary),
+ *  once its module is in; null before, and never loaded until their rows may
+ *  show (the device test, or the Beta with the hidden switch on). */
 export function useNearbySoak(ask: boolean): {
   autoplay: boolean; chaos: boolean; toggleAutoplay: () => void; toggleChaos: () => void; copy: () => Promise<boolean>;
 } | null {
@@ -126,6 +195,7 @@ export function useNearbySoak(ask: boolean): {
     let live = true;
     let off = () => {};
     void import("./nearbySoak").then((m) => {
+      soakModule = m;
       if (!live) return;
       setMod(m);
       off = m.subscribeSoak(() => bump((n) => n + 1));

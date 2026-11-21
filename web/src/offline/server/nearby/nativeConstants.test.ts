@@ -58,26 +58,40 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(shell).toMatch(/#elseif DEBUG && SHENGJI_NEARBY_DEV\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);
   });
 
-  it("the soak's chaos and autoplay are only in a device-test Debug build", () => {
-    // the plugin's fault injection is compiled only with SHENGJI_NEARBY_DEV
-    // in Debug; every other build has no debugChaos and never holds a frame
+  it("the soak's chaos, log file and native lines are only in the device test and the Beta", () => {
+    // the plugin's fault injection, its Wi-Fi fake and its log file are
+    // compiled only with SHENGJI_NEARBY_DEV in Debug or with
+    // SHENGJI_NEARBY_BETA; an App Store build has no debugChaos, never holds
+    // a frame and has no file
+    const SOAK = "#if (DEBUG && SHENGJI_NEARBY_DEV) || SHENGJI_NEARBY_BETA";
+    expect(swift.split(`${SOAK}\n`)).toHaveLength(4);
     expect(swift.match(/func debugChaos/g)).toHaveLength(1);
-    expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_DEV\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static func chaosHold\(_ work: @escaping \(\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
-    // the page loads the soak module only from the debug rows, by a dynamic
-    // import, and shows its switches only when the plugin says `logFile`
+    expect(swift).toContain(`${SOAK}\n/// The soak's chaos mode`);
+    expect(swift).toContain(`${SOAK}\n/// The chaos kind "wifi"`);
+    expect(swift).toContain(`${SOAK}\n/// The soak's log file`);
+    expect(swift).toMatch(/#if \(DEBUG && SHENGJI_NEARBY_DEV\) \|\| SHENGJI_NEARBY_BETA\n(?:\/\/\/[^\n]*\n)*extension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\n        CAPPluginMethod\(name: "debugChaos"[^\n]*\n    \]\n    static let chaosBuild = true\n[\s\S]*?func debugChaos[\s\S]*?\n#else\nextension ShengjiNearbyPlugin \{\n    static let chaosMethods: \[CAPPluginMethod\] = \[\]\n    static let chaosBuild = false\n    static func chaosHold\(_ work: @escaping \(\) -> Void\) -> Bool \{ false \}\n\}\n#endif/);
+    // every CHAOS line is inside a soak block
+    const outside = swift.split(SOAK).map((part, i) => (i === 0 ? part : part.slice(part.indexOf("\n#else\n"))));
+    for (const part of outside) expect(part).not.toContain("CHAOS");
+    expect(swift).toContain('"chaos": Self.chaosBuild');
+    // the plugin's own lines reach the page only in the device test or with the file
+    expect(swift).toContain("guard NearbyBuild.debugBuild || Self.logFileBuild else { return }");
+    // the page loads the soak module only from the soak rows, by a dynamic
+    // import, and shows its switches in the device test (`debug`), or with
+    // `chaos` once the hidden switch is on
     const src = fileURLToPath(new URL("../../../", import.meta.url));
     const files = readdirSync(src, { recursive: true }).map(String)
       .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && !f.endsWith("nearbySoak.ts"));
-    const users = files.filter((f) => readFileSync(join(src, f), "utf8").includes("nearbySoak"));
+    const users = files.filter((f) => /nearbySoak["']/.test(readFileSync(join(src, f), "utf8")));
     expect(users.sort()).toEqual(["nearbyDebug.tsx"]);
     const debugPane = readFileSync(join(src, "nearbyDebug.tsx"), "utf8");
     expect(debugPane).not.toMatch(/^import[^\n]*nearbySoak/m);
     expect(debugPane).toContain('import("./nearbySoak")');
     expect(debugPane).toMatch(/c\.debug === true \? \(p as DebugPlugin\) : null/);
+    expect(debugPane).toMatch(/export function nearbySoakSwitchTap\(chaos: boolean[^\n]*\n  if \(!chaos\) return;/);
     const menu = readFileSync(join(src, "nearbyUi.tsx"), "utf8");
-    expect(menu).toMatch(/const logFile = debug && nearbyGate\(\)\.logFile;/);
-    expect(menu).toMatch(/const soak = useNearbySoak\(logFile\);/);
-    expect(menu).toMatch(/\{logFile && soak \? \(/);
+    expect(menu).toMatch(/const soak = useNearbySoak\(gate\.logFile && \(debug \|\| \(gate\.chaos && hidden\)\)\);/);
+    expect(menu).toMatch(/\{soak \? \(/);
     for (const label of ["Autoplay", "Chaos", "Copy soak summary"]) expect(menu.split(`<span>${label}</span>`)).toHaveLength(2);
   });
 

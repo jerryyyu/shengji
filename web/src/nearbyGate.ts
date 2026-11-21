@@ -6,7 +6,9 @@
 // nothing nearby renders and none of its modules load: the one plugin call
 // is `capabilities()`, made only where the plugin is registered. Once it is
 // yes, the nearby UI (nearbyUi.tsx) is imported, and components draw its
-// parts. The device-test soak tools need `logFile` as well.
+// parts. The soak's log file (with its upload) runs wherever the plugin
+// reports `logFile` (the device test and the Beta); its Autoplay and Chaos
+// rows need `debug`, or `chaos` with the hidden switch (nearbyDebug.tsx).
 import { createElement, useSyncExternalStore } from "react";
 import { nearbyPluginProxy, pluginAvailable } from "./native";
 import { nearbyEnabled, type NearbyCapabilities } from "./offline/server/nearby/flag";
@@ -15,15 +17,16 @@ import type { NearbyHostView } from "./nearbySession";
 
 export type NearbyUi = typeof import("./nearbyUi");
 
-/** What the binary allows: nearby play, the device test's Debug tools, and
- *  the device test's log file with its soak tools. */
+/** What the binary allows: nearby play, the device test's Debug tools, the
+ *  soak's log file, and the soak's chaos faults. */
 export interface NearbyGate {
   on: boolean;
   debug: boolean;
   logFile: boolean;
+  chaos: boolean;
 }
 
-const OFF: NearbyGate = { on: false, debug: false, logFile: false };
+const OFF: NearbyGate = { on: false, debug: false, logFile: false, chaos: false };
 
 let gate: NearbyGate = OFF;
 let ui: NearbyUi | null = null;
@@ -43,8 +46,7 @@ function subscribe(l: () => void): () => void {
 /** The gate for these capabilities. */
 export function gateFor(c: NearbyCapabilities | null): NearbyGate {
   const on = nearbyEnabled(c);
-  const debug = on && c?.debug === true;
-  return { on, debug, logFile: debug && c?.logFile === true };
+  return { on, debug: on && c?.debug === true, logFile: on && c?.logFile === true, chaos: on && c?.chaos === true };
 }
 
 async function probe(): Promise<NearbyGate> {
@@ -63,6 +65,7 @@ function open(next: NearbyGate): void {
   if (!next.on) return;
   void load().then((m) => {
     ui = m;
+    if (next.logFile) m.startNearbyLogFile();
     emit();
   }, () => {});
 }
@@ -135,7 +138,11 @@ export function setNearbyGateForTests(c: NearbyCapabilities | null | undefined,
   const next = gateFor(c);
   gate = next;
   if (!next.on) { emit(); return Promise.resolve(); }
-  return load().then((m) => { ui = m; emit(); });
+  return load().then((m) => {
+    ui = m;
+    if (next.logFile) m.startNearbyLogFile();
+    emit();
+  });
 }
 
 /** Tests: forget the answer, so the next render asks the binary again

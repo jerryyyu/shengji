@@ -1,10 +1,15 @@
 // The nearby joiner's flow on a fake socket: look, the seat picker, Join,
 // a denial that no later not-found replaces, one automatic retry before not
 // found, the retry on coming back from Settings, the rejoin by token after a
-// drop, and the end screen once the host's window has passed.
+// drop, the end screen once the host's window has passed, and the seat token
+// kept on the phone by the table's code for a restarted app's join.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JOIN_TIMEOUT_MS } from "./codeJoin";
-import { HOST_WINDOW_MS, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, type NearbyJoinDeps } from "./nearbyJoin";
+import {
+  HOST_WINDOW_MS, keepSeatToken, keptSeatToken, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, SEAT_KEEP_MAX, SEAT_KEEP_MS,
+  SEATS_KEY, type NearbyJoinDeps,
+} from "./nearbyJoin";
+import { nearbyLogLines } from "./nearbyLog";
 import type { LinkState } from "./offline/server/nearby/transport";
 import type { ConnStatus } from "./ws";
 
@@ -57,8 +62,21 @@ const flush = () => vi.advanceTimersByTimeAsync(0);
 const seats = { type: "room_seats", room: "K7Q2M", in_game: false, full: false,
   seats: [{ seat: 0, name: "Jerry", is_bot: false, connected: true, team: 0, claimable: false, controller: "human", reserved_secs: null }] };
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+beforeEach(() => { vi.useFakeTimers(); localStorage.clear(); });
+afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
+
+async function seated() {
+  const h = harness();
+  h.store.open("K7Q2M", "Mei");
+  await flush();
+  h.status("open");
+  h.msg(seats);
+  h.store.join();
+  h.msg({ type: "resume", token: "tok-9", gen: 1 });
+  h.msg({ type: "room", room: "K7Q2M" });
+  expect(h.store.seated).toBe(true);
+  return h;
+}
 
 describe("the nearby join", () => {
   it("a denial stays on the code box: neither a late not-found nor the look's limit replaces it", async () => {
@@ -175,19 +193,6 @@ describe("the nearby join", () => {
     expect(h.calls.session).toEqual([true, false]);
   });
 
-  async function seated() {
-    const h = harness();
-    h.store.open("K7Q2M", "Mei");
-    await flush();
-    h.status("open");
-    h.msg(seats);
-    h.store.join();
-    h.msg({ type: "resume", token: "tok-9", gen: 1 });
-    h.msg({ type: "room", room: "K7Q2M" });
-    expect(h.store.seated).toBe(true);
-    return h;
-  }
-
   it("a Leave keeps the link until the host answers by ending it, so the leave is not lost", async () => {
     const h = await seated();
     h.store.leave();
@@ -221,8 +226,7 @@ describe("the nearby join", () => {
     expect(g.calls.leaveNearby).toBe(1);
   });
 
-  it("keeps the seat token in memory only: the rejoin uses the table's, and storage holds nothing of the table", async () => {
-    localStorage.clear();
+  it("the rejoin uses the table's token, and once the host ends the table storage holds nothing of it", async () => {
     const h = await seated();
     h.status("closed");
     await vi.advanceTimersByTimeAsync(1000);
@@ -322,5 +326,137 @@ describe("the nearby join", () => {
     expect(h.store.hostLeft).toBe(true);
     expect(h.calls.leaveNearby).toBe(1);
     expect(h.watching()).toBe(0);
+  });
+});
+
+describe("the seat token kept on the phone", () => {
+  /** A fresh store (the app again after iOS ended it) at the panel for `code`. */
+  async function atPanel(code = "K7Q2M") {
+    const h = harness();
+    h.store.open(code, "Mei");
+    await flush();
+    h.status("open");
+    h.msg({ ...seats, room: code });
+    expect(h.store.view?.step).toBe("panel");
+    return h;
+  }
+  const joinSent = (h: ReturnType<typeof harness>) => h.sent.find((m) => m.type === "table_join")!;
+
+  it("is kept when it arrives, and a restarted app's join sends it", async () => {
+    const h = await seated();
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+    const again = await atPanel();
+    again.store.join();
+    expect(joinSent(again)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-9" });
+    expect(h.store.seated).toBe(true);
+  });
+
+  it("a Leave forgets it, so the next join is a newcomer's; the menu's Leave the same", async () => {
+    const h = await seated();
+    h.store.leave();
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+    expect(localStorage.getItem(SEATS_KEY)).toBeNull();
+    const again = await atPanel();
+    again.store.join();
+    expect(joinSent(again).token).toBeUndefined();
+    const g = await seated();
+    g.msg({ type: "left" });
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+  });
+
+  it("the host's end of the table, the host's window passing, and game over each forget it", async () => {
+    const a = await seated();
+    a.msg({ type: "left", reason: "host_left" });
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+    const b = await seated();
+    b.status("closed");
+    await vi.advanceTimersByTimeAsync(HOST_WINDOW_MS + 1000);
+    expect(b.store.hostLeft).toBe(true);
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+    const c = await seated();
+    c.msg({ type: "state", room: "K7Q2M", round_result: { game_over: false } });
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+    c.msg({ type: "state", room: "K7Q2M", round_result: { game_over: true } });
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+    // a resume after the game is over does not keep it again
+    c.msg({ type: "resume", token: "tok-10", gen: 2 });
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+  });
+
+  it("past its two hours it is not sent", async () => {
+    await seated();
+    await vi.advanceTimersByTimeAsync(SEAT_KEEP_MS - 60_000);
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+    await vi.advanceTimersByTimeAsync(120_000);
+    const again = await atPanel();
+    again.store.join();
+    expect(joinSent(again).token).toBeUndefined();
+  });
+
+  it("a game longer than two hours keeps it: the seat's frames write its time again", async () => {
+    const h = await seated();
+    for (let t = 0; t < 3 * 60 * 60 * 1000; t += 15 * 60 * 1000) {
+      await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+      h.msg({ type: "state", room: "K7Q2M", round_result: null });
+    }
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+  });
+
+  it("a token kept for one code is never sent to another", async () => {
+    await seated();
+    const other = await atPanel("ZZ9QX");
+    other.store.join();
+    expect(joinSent(other).token).toBeUndefined();
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+  });
+
+  it("a token the table did not know comes back as a new seat's: the new token replaces it, once", async () => {
+    keepSeatToken("K7Q2M", "stale");
+    const h = await atPanel();
+    h.store.join();
+    expect(joinSent(h).token).toBe("stale");
+    // the host seated the phone as a newcomer, with a token of its own
+    h.msg({ type: "resume", token: "fresh", gen: 1 });
+    h.msg({ type: "room", room: "K7Q2M" });
+    expect(h.store.seated).toBe(true);
+    expect(keptSeatToken("K7Q2M")).toBe("fresh");
+    expect(h.sent.filter((m) => m.type === "table_join")).toHaveLength(1);
+  });
+
+  it("one per table, the newest few tables only", async () => {
+    for (let i = 0; i < SEAT_KEEP_MAX + 2; i++) {
+      keepSeatToken(`CODE${i}`, `t${i}`);
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    keepSeatToken("CODE5", "t5b");
+    const kept = JSON.parse(localStorage.getItem(SEATS_KEY)!) as Record<string, { token: string }>;
+    expect(Object.keys(kept).sort()).toEqual(["CODE2", "CODE3", "CODE4", "CODE5"]);
+    expect(kept.CODE5.token).toBe("t5b");
+  });
+
+  it("storage that throws or holds junk: no token, and the join goes on", async () => {
+    localStorage.setItem(SEATS_KEY, "not json");
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("denied"); });
+    try {
+      const h = await seated();
+      expect(h.store.seated).toBe(true);
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+
+  it("no log line carries a token's value", async () => {
+    const h = await seated();
+    h.status("closed");
+    await vi.advanceTimersByTimeAsync(1000);
+    h.status("open");
+    const again = await atPanel();
+    again.store.join();
+    const lines = nearbyLogLines().map((l) => l.text);
+    expect(lines.some((l) => l.includes("with token"))).toBe(true);
+    expect(lines.some((l) => l.includes("tok-9"))).toBe(false);
   });
 });

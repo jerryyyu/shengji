@@ -66,6 +66,65 @@ export const LOOK_LIMIT_MS = 30_000;
  *  before it closes. */
 export const LEAVE_LINK_MS = 3000;
 
+/** A seat token kept on the phone lets a restarted app take its seat back by
+ *  the code: it lasts this long from its last write. */
+export const SEAT_KEEP_MS = 2 * 60 * 60 * 1000;
+/** At most this many tables' tokens are kept; the oldest goes first. */
+export const SEAT_KEEP_MAX = 4;
+export const SEATS_KEY = "shengji.nearbySeats";
+/** While seated, the kept token's time is written again this often, so a
+ *  long game does not outlast it. */
+const SEAT_REFRESH_MS = 10 * 60 * 1000;
+
+type KeptSeats = Record<string, { token: string; at: number }>;
+
+/** The kept tokens still within SEAT_KEEP_MS, by table code. A nearby code
+ *  is drawn at random for each new table and kept by that table alone, so
+ *  the code names the table; a token that reaches another table with the
+ *  same code is unknown there, and the join is a newcomer's. */
+function keptSeats(): KeptSeats {
+  let raw: unknown;
+  try { raw = JSON.parse(localStorage.getItem(SEATS_KEY) ?? "{}"); } catch { return {}; }
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const now = Date.now();
+  const out: KeptSeats = {};
+  for (const [code, v] of Object.entries(raw as Record<string, unknown>)) {
+    const e = v as { token?: unknown; at?: unknown } | null;
+    if (e && typeof e.token === "string" && e.token && typeof e.at === "number" && now - e.at < SEAT_KEEP_MS && e.at <= now) {
+      out[code] = { token: e.token, at: e.at };
+    }
+  }
+  return out;
+}
+
+function writeSeats(seats: KeptSeats): void {
+  try {
+    if (Object.keys(seats).length === 0) localStorage.removeItem(SEATS_KEY);
+    else localStorage.setItem(SEATS_KEY, JSON.stringify(seats));
+  } catch { /* storage refused: a restart joins as a newcomer */ }
+}
+
+/** The kept seat token for the table `code`, if one is still fresh. */
+export function keptSeatToken(code: string): string | null {
+  return keptSeats()[code]?.token ?? null;
+}
+
+/** Keep `token` as the seat at the table `code`, in place of any other. */
+export function keepSeatToken(code: string, token: string): void {
+  const seats = keptSeats();
+  seats[code] = { token, at: Date.now() };
+  const codes = Object.keys(seats).sort((a, b) => seats[b].at - seats[a].at);
+  for (const old of codes.slice(SEAT_KEEP_MAX)) delete seats[old];
+  writeSeats(seats);
+}
+
+/** The table `code` is over for this phone: its token is not kept. */
+export function forgetSeatToken(code: string): void {
+  const seats = keptSeats();
+  delete seats[code];
+  writeSeats(seats);
+}
+
 export class NearbyJoinStore {
   view: NearbyJoin | null = null;
   /** Seated at the table: the socket is the link, and a drop rejoins by token. */
@@ -85,9 +144,14 @@ export class NearbyJoinStore {
   private joinTimer: number | null = null;
   /** A Leave is waiting for the host's answer (the link's close). */
   private leaving: number | null = null;
-  /** The seat token, held in memory only: nothing about a nearby table is
-   *  written to storage or ever sent to the game server. */
+  /** The seat token. It is also kept on the phone by the table's code
+   *  (keepSeatToken) until the table is over for this phone, and is never
+   *  sent to the game server or written to the log. */
   private token: string | null = null;
+  /** The game at the table is over: its token is no longer kept. */
+  private over = false;
+  /** Date.now() of the kept token's last write. */
+  private keptAt = 0;
   /** The socket's latest status. */
   private status: ConnStatus = "closed";
   /** Ends the network path watch, while the link is live. */
@@ -129,6 +193,7 @@ export class NearbyJoinStore {
   }
 
   private look(code: string): void {
+    this.over = false;
     this.retried = false;
     this.denied = false;
     this.set({ code, step: "looking", peek: null, seat: null });
@@ -223,6 +288,25 @@ export class NearbyJoinStore {
     this.deps.setOffline(this.wasOffline);
   }
 
+  /** The table this join is at, or is looking at. */
+  private tableCode(): string | null {
+    return this.seated ? this.seatedCode : (this.view?.code ?? null);
+  }
+
+  /** Keep this seat's token on the phone, by the table's code. */
+  private keepToken(): void {
+    const code = this.tableCode();
+    if (!code || !this.token || this.over || this.leaving !== null) return;
+    keepSeatToken(code, this.token);
+    this.keptAt = Date.now();
+  }
+
+  /** The table is over for this phone: its kept token goes. */
+  private forgetTable(): void {
+    const code = this.tableCode();
+    if (code) forgetSeatToken(code);
+  }
+
   /** A new link's hello while seated: the seat's resume by its token. */
   private greeting(): Record<string, unknown> | null {
     if (!this.seated) return null;
@@ -255,12 +339,16 @@ export class NearbyJoinStore {
     this.set({ ...v, seat });
   }
 
-  /** The panel's Join: the picked seat. If no seat or refusal comes back
-   *  within JOIN_TIMEOUT_MS, the table is looked at again. */
+  /** The panel's Join: the picked seat, with the seat token kept for this
+   *  table if there is one (after a restart, the seat it held; a token the
+   *  table does not know seats the phone as a newcomer). If no seat or
+   *  refusal comes back within JOIN_TIMEOUT_MS, the table is looked at again. */
   join(): void {
     const v = this.view;
     if (!v || v.step !== "panel" || v.seat === null) return;
-    if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat })) return;
+    const kept = keptSeatToken(v.code);
+    if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat, ...(kept ? { token: kept } : {}) })) return;
+    nearbyLog("join", `join sent (${kept ? "with" : "no"} token)`);
     this.set({ ...v, step: "joining" });
     this.joinTimer = window.setTimeout(() => {
       this.joinTimer = null;
@@ -286,6 +374,7 @@ export class NearbyJoinStore {
   /** The seated joiner's Leave: the host is told, and the link closes once
    *  it has answered (it ends the link), or after LEAVE_LINK_MS. */
   leave(): void {
+    this.forgetTable();
     if (this.seated) this.deps.conn.leaveToLobby();
     else this.cancel();
   }
@@ -294,6 +383,7 @@ export class NearbyJoinStore {
    *  back at once, and the link stays until the host has the leave. */
   private leaveSent(): void {
     if (this.leaving !== null) return;
+    this.forgetTable();
     this.clearGone();
     this.hostLeft = false;
     this.leaving = window.setTimeout(() => {
@@ -328,6 +418,7 @@ export class NearbyJoinStore {
       if (this.seated && this.gone === null) {
         this.gone = window.setTimeout(() => {
           this.gone = null;
+          this.forgetTable();
           this.hostLeft = true;
           this.endLink();
           this.emit();
@@ -359,7 +450,12 @@ export class NearbyJoinStore {
     if (!this.live) return;
     const v = this.view;
     if (m.type === "resume") {
-      if (m.token) this.token = m.token;
+      if (m.token) {
+        // a token the table did not know comes back as a new seat's: it
+        // replaces the kept one
+        this.token = m.token;
+        this.keepToken();
+      }
       return;
     }
     if (this.leaving !== null) return;
@@ -373,6 +469,10 @@ export class NearbyJoinStore {
       this.set({ ...v, step: "panel", peek: m, seat: nearbyDefaultSeat(m) });
     } else if ((m.type === "room" || m.type === "state") && (v?.step === "joining" || this.seated)) {
       this.clearGone();
+      if (m.type === "state" && m.round_result?.game_over && !this.over) {
+        this.over = true;
+        this.forgetTable();
+      } else if (Date.now() - this.keptAt > SEAT_REFRESH_MS) this.keepToken();
       if (!this.seated) {
         this.seated = true;
         this.seatedCode = v!.code;
@@ -385,8 +485,10 @@ export class NearbyJoinStore {
     } else if (m.type === "left" && this.seated) {
       // the host ended the table: the link ends with it. Any other `left` is
       // this page's own Leave, whose link waits for the host's answer.
-      if (m.reason === "host_left") this.cancel();
-      else this.leaveSent();
+      if (m.reason === "host_left") {
+        this.forgetTable();
+        this.cancel();
+      } else this.leaveSent();
     }
   }
 }

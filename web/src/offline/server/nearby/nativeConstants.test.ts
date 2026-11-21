@@ -53,6 +53,9 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     for (const text of [project, xcconfig]) expect(text).not.toMatch(/SHENGJI_NEARBY/);
     expect(swift.match(/static let debugBuild = true/g)).toHaveLength(1);
     expect(swift).toMatch(/#if DEBUG && \(SHENGJI_NEARBY_SPIKE \|\| SHENGJI_NEARBY_DEV\)\s+static let debugBuild = true\s+#else\s+static let debugBuild = false\s+#endif/);
+    // the Beta binary (TestFlight internal testing only) turns nearby on and says so in its capabilities
+    expect(swift).toMatch(/#if SHENGJI_NEARBY_BETA\s+static let betaBuild = true\s+#else\s+static let betaBuild = false\s+#endif\s+static var enabled: Bool \{ reviewed \|\| debugBuild \|\| betaBuild \}/);
+    expect(swift).toMatch(/"beta": NearbyBuild\.betaBuild/);
     expect(swift).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\n[\s\S]*func spikeBench[\s\S]*#else\n/);
     expect(shell).toMatch(/#if DEBUG && SHENGJI_NEARBY_SPIKE\s+(?:\/\/\/[^\n]*\s+)?override open func instanceDescriptor/);
     expect(shell).toMatch(/#elseif DEBUG && SHENGJI_NEARBY_DEV\s+(?:\/\/\/[^\n]*\s+)*override open func instanceDescriptor/);

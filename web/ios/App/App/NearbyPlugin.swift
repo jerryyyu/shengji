@@ -235,7 +235,15 @@ enum NearbyBuild {
     #else
     static let debugBuild = false
     #endif
-    static var enabled: Bool { reviewed || debugBuild }
+    // The Beta configuration (TestFlight internal testing only) defines
+    // SHENGJI_NEARBY_BETA; flavor_guard.sh stops any other non-Debug build
+    // that defines it.
+    #if SHENGJI_NEARBY_BETA
+    static let betaBuild = true
+    #else
+    static let betaBuild = false
+    #endif
+    static var enabled: Bool { reviewed || debugBuild || betaBuild }
     static let nearbyV = 2
     /// Must equal the NSBonjourServices entry in Info.plist.
     static let serviceType = "_shengji-nearby._tcp"
@@ -535,7 +543,7 @@ public class ShengjiNearbyPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: JS methods
 
     @objc func capabilities(_ call: CAPPluginCall) {
-        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild, "logFile": Self.logFileBuild,
+        call.resolve(["reviewed": NearbyBuild.reviewed, "debug": NearbyBuild.debugBuild, "beta": NearbyBuild.betaBuild, "logFile": Self.logFileBuild,
                       "chaos": Self.chaosBuild, "nearbyV": NearbyBuild.nearbyV, "serviceType": NearbyBuild.serviceType])
     }
 

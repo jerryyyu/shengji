@@ -286,6 +286,12 @@ export class NearbyJoinStore {
 
   private onLink(attempt: number, state: LinkState, detail?: string): void {
     if (attempt !== this.attempt) return;
+    if (this.claiming && !this.seated && detail === SEAT_GONE) {
+      // the socket turns a refused resume into this detail: for the kept
+      // token's resume it is the full outcome, and the token goes
+      this.claimEnd(true);
+      return;
+    }
     if (this.seated) {
       // the seat is gone: a Leave waiting for a link has nothing to leave
       if (detail === SEAT_GONE) {

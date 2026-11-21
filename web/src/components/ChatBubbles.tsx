@@ -196,13 +196,16 @@ function layout(layer: HTMLElement, you: number) {
   if (layer.offsetWidth === 0 || outer.width === 0) return;
   const turned = Math.abs(layer.offsetWidth - outer.width) > 1 && Math.abs(layer.offsetWidth - outer.height) <= 1;
   const scope = layer.closest(".table-screen") ?? document;
-  const boxes = (sel: string, skip?: Element | null) => [...scope.querySelectorAll(sel)]
-    .filter((e) => e !== skip && !layer.contains(e))
-    .map((e) => e.getBoundingClientRect())
-    .filter((r) => r.width > 0 && r.height > 0)
-    .map((r) => localBox(r, outer, turned));
+  const snapshot = (sel: string) => [...scope.querySelectorAll(sel)]
+    .filter((e) => !layer.contains(e))
+    .map((e) => ({ e, r: e.getBoundingClientRect() }))
+    .filter(({ r }) => r.width > 0 && r.height > 0)
+    .map(({ e, r }) => ({ e, box: localBox(r, outer, turned) }));
   // cards and the controls you tap are never covered
-  const hard = boxes(".trick-area .card, .hand, .toast, .you-row button, .hud button, .chat-launch");
+  const hard = snapshot(".trick-area .card, .hand, .toast, .you-row button, .hud button, .chat-launch").map(({ box }) => box);
+  // Bubble writes do not move the surrounding table obstacles.
+  const chromeSnapshot = snapshot(".opponent, .you-row > *, .hud .chip, .hud-group");
+  const felt = snapshot(".trick-area").map(({ box }) => box);
   const placed: Box[] = [];
   for (const el of layer.querySelectorAll<HTMLElement>(".chat-bubble")) {
     const seat = Number(el.dataset.seat);
@@ -218,10 +221,9 @@ function layout(layer: HTMLElement, you: number) {
     // the phone's trick area spans the middle; leaving its empty felt is the
     // first thing to give up, never the cards
     const chrome = [
-      ...boxes(".opponent, .you-row > *, .hud .chip, .hud-group", anchorEl),
+      ...chromeSnapshot.filter(({ e }) => e !== anchorEl).map(({ box }) => box),
       ...placed,
     ];
-    const felt = boxes(".trick-area");
     const tiers = [[...felt, ...chrome, ...hard], [...chrome, ...hard], hard];
     const spot = anchorRect
       ? placeBubble(localBox(anchorRect, outer, turned), size, anchorSides(anchorEl, pos),

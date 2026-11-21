@@ -325,3 +325,40 @@ def test_one_info_line_per_request_with_no_body(client, nearby, caplog):
 def test_stored_files_are_owner_only(client, nearby):
     assert _post(client).status_code == 204
     assert (os.stat(_files(nearby)[0]).st_mode & 0o777) == 0o600
+
+
+def test_repeated_short_writes_still_store_the_whole_record(client, nearby, monkeypatch):
+    real_write = os.write
+
+    def short_write(fd, data):
+        return real_write(fd, bytes(data[:7]))
+
+    _post(client, body="1732189999.000 first record")
+    monkeypatch.setattr(nearby.os, "write", short_write)
+    r = _post(client, offset="27")
+    assert r.status_code == 204
+    text = (nearby.root() / DEVICE / f"{_today()}.txt").read_text("utf-8")
+    assert text.count("# recv ") == 2
+    assert text.endswith(LOG)
+
+
+@pytest.mark.parametrize("fault", ["zero", "error"])
+def test_a_write_that_stops_part_way_is_not_acknowledged_and_leaves_no_partial_record(client, nearby, monkeypatch, fault):
+    assert _post(client, body="1732189999.000 first record").status_code == 204
+    path = nearby.root() / DEVICE / f"{_today()}.txt"
+    before = path.read_bytes()
+    real_write = os.write
+    calls = {"n": 0}
+
+    def stalling_write(fd, data):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real_write(fd, bytes(data[:10]))
+        if fault == "zero":
+            return 0
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(nearby.os, "write", stalling_write)
+    r = _post(client, offset="27")
+    assert r.status_code != 204
+    assert path.read_bytes() == before

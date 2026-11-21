@@ -176,8 +176,23 @@ def _append(device: str, offset: int, build: str, text: str, now: datetime) -> N
         path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         try:
-            os.write(fd, record)
-            os.fsync(fd)
+            start = os.fstat(fd).st_size
+            try:
+                view = memoryview(record)
+                while view:
+                    n = os.write(fd, view)
+                    if n <= 0:
+                        raise OSError("append made no progress")
+                    view = view[n:]
+                os.fsync(fd)
+            except OSError:
+                # a record is whole or absent: cut back to the length before this append
+                try:
+                    os.ftruncate(fd, start)
+                    os.fsync(fd)
+                except OSError:
+                    pass
+                raise
         finally:
             os.close(fd)
 

@@ -17,8 +17,12 @@ export const LIMITS = {
   /** Pings and keepalives a joiner may send per second (a paused
    *  peer-to-peer link's held ones arrive together). */
   upkeepPerSecond: 120,
-  /** The hello must arrive this soon after the link opens. */
-  helloSeconds: 5,
+  /** The hello must arrive this soon after the link opens: longer than a
+   *  resume's own wait for the host's answer (resumeSeconds and the
+   *  socket's 2 s grace), so a hello held on the way, as in a stall, is
+   *  given up by the joiner first, never refused by the host while the
+   *  joiner still waits on it. */
+  helloSeconds: 8,
   /** Seated joiners plus links still in their hello. */
   peers: 6,
   /** Links not yet seated (in their hello or looking at the seats). */

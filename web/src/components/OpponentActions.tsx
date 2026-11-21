@@ -5,6 +5,7 @@ import { setBlocked, useBlocks } from "../chatBlocks";
 import { guestName } from "../guestName";
 import type { ReportReason } from "../protocol";
 import { conn } from "../ws";
+import { inertOutside, trapTab } from "../queue/Sheet";
 import "./OpponentActions.css";
 
 const REASONS: { value: ReportReason; label: string }[] = [
@@ -33,16 +34,29 @@ export default function OpponentActions({ room, seat, name, onClose }: {
   const status = useAuth().status;
   const mustSignIn = status === "out" || status === "error";
   const box = useRef<HTMLDivElement | null>(null);
+  const scrim = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     box.current?.querySelector<HTMLButtonElement>("button")?.focus();
   }, [reporting]);
+  // aria-modal is kept true: the table behind is inert and Tab cycles inside,
+  // the way every Sheet does
+  useEffect(() => {
+    const boxEl = box.current!;
+    const undoInert = inertOutside(scrim.current!);
+    const key = (e: KeyboardEvent) => trapTab(e, boxEl);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("keydown", key);
+      undoInert();
+    };
+  }, []);
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   const report = (reason: ReportReason) => {
     conn.send({ type: "report_player", seat, reason });
     onClose();
   };
   return createPortal(
-    <div className="opp-actions-scrim" onClick={(e) => { stop(e); onClose(); }} onPointerDown={stop}
+    <div className="opp-actions-scrim" ref={scrim} onClick={(e) => { stop(e); onClose(); }} onPointerDown={stop}
          onPointerUp={stop} onContextMenu={stop}>
       <div className="opp-actions" role="dialog" aria-modal="true" aria-label={`${name}: player options`} ref={box}
            onClick={stop} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>

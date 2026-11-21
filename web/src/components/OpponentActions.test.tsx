@@ -208,6 +208,28 @@ it("Escape closes the options a seat button opened", () => {
   expect(dialog()).toBeNull();
 });
 
+it("while the options are open the table behind is inert and Tab cycles inside them", () => {
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Bea")!.click());
+  const box = dialog()!;
+  expect(host.hasAttribute("inert")).toBe(true);
+  const rows = Array.from(box.querySelectorAll<HTMLButtonElement>("button"));
+  const first = rows[0], last = rows[rows.length - 1];
+  const tab = (shiftKey: boolean) => {
+    const e = new KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+    act(() => { document.activeElement!.dispatchEvent(e); });
+    return e;
+  };
+  last.focus();
+  expect(tab(false).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(first);
+  expect(tab(true).defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(last);
+  act(() => rowButton("Cancel")!.click());
+  expect(host.hasAttribute("inert")).toBe(false);
+  expect(document.activeElement).toBe(optionsButton("Bea"));
+});
+
 it("the reason rows take focus too, so a screen reader moves on into them", () => {
   act(() => root.render(<Table state={state()} />));
   act(() => optionsButton("Cy")!.click());

@@ -1,7 +1,8 @@
 // Block and report on another player's seat: a long press opens the options,
 // Block sends the seat to the server and hides that seat's chat lines at
 // once, the server's state frames keep the seat blocked in later games,
-// Report sends the seat and a reason, and a bot's seat offers neither.
+// Report sends the seat and a reason, and a bot's seat offers neither. A
+// screen reader reaches the same options through each person's seat button.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -154,4 +155,51 @@ it("a later game's state frame keeps the seat blocked, and an unblocked frame cl
   expect(isBlocked("ROOM2", 3)).toBe(false);
   expect(log()).toContain("Cy again");
   expect(sent).toEqual([]);
+});
+
+const optionsButton = (name: string) =>
+  seatOf(name).querySelector<HTMLButtonElement>("button.opp-options");
+
+it("each person's seat has a named button that opens the same options; a bot's seat has none", () => {
+  act(() => root.render(<Table state={state()} />));
+  const bea = optionsButton("Bea")!;
+  expect(bea.getAttribute("aria-label")).toBe("Bea, player options");
+  expect(bea.getAttribute("aria-haspopup")).toBe("dialog");
+  expect(bea.getAttribute("aria-expanded")).toBe("false");
+  expect(bea.classList.contains("sr-only")).toBe(true);
+  expect(bea.textContent).toBe("");
+  expect(optionsButton("Cy")?.getAttribute("aria-label")).toBe("Cy, player options");
+  expect(optionsButton("Bot 2")).toBeNull();
+  act(() => bea.click());
+  const box = dialog()!;
+  expect(box.getAttribute("role")).toBe("dialog");
+  expect(box.getAttribute("aria-modal")).toBe("true");
+  expect(box.getAttribute("aria-label")).toBe("Bea: player options");
+  expect(bea.getAttribute("aria-expanded")).toBe("true");
+  // the tap that opens the options is not also the seat's full-name tap
+  expect(seatOf("Bea").querySelector(".opp-fullname")).toBeNull();
+  // focus lands inside, on the first row, and every row is a named button
+  expect(document.activeElement).toBe(rowButton("Block player"));
+  for (const b of box.querySelectorAll("button")) {
+    expect(b.getAttribute("type")).toBe("button");
+    expect((b.textContent ?? "").trim().length).toBeGreaterThan(0);
+  }
+  act(() => rowButton("Cancel")!.click());
+  expect(dialog()).toBeNull();
+  expect(document.activeElement).toBe(optionsButton("Bea"));
+  expect(sent).toEqual([]);
+});
+
+it("Escape closes the options a seat button opened", () => {
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  expect(dialog()).toBeNull();
+});
+
+it("the reason rows take focus too, so a screen reader moves on into them", () => {
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  act(() => rowButton("Report player")!.click());
+  expect(document.activeElement).toBe(rowButton("Abusive chat"));
 });

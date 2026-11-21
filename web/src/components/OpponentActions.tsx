@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { setBlocked, useBlocks } from "../chatBlocks";
 import type { ReportReason } from "../protocol";
@@ -16,7 +16,8 @@ const REASONS: { value: ReportReason; label: string }[] = [
  *  them. A block goes to the server, which then sends this viewer none of
  *  their chat in this game or any later one; a report goes to the server,
  *  which answers with a toast. Drawn over the table in a portal, and events
- *  stop here so a tap inside never reaches the seat underneath. */
+ *  stop here so a tap inside never reaches the seat underneath; focus moves
+ *  to the first row so a screen reader lands inside. */
 export default function OpponentActions({ room, seat, name, onClose }: {
   room: string;
   seat: number;
@@ -25,6 +26,10 @@ export default function OpponentActions({ room, seat, name, onClose }: {
 }) {
   const blocked = useBlocks()(room, seat);
   const [reporting, setReporting] = useState(false);
+  const box = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    box.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [reporting]);
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   const report = (reason: ReportReason) => {
     conn.send({ type: "report_player", seat, reason });
@@ -33,7 +38,7 @@ export default function OpponentActions({ room, seat, name, onClose }: {
   return createPortal(
     <div className="opp-actions-scrim" onClick={(e) => { stop(e); onClose(); }} onPointerDown={stop}
          onPointerUp={stop} onContextMenu={stop}>
-      <div className="opp-actions" role="dialog" aria-label={`${name}: player options`}
+      <div className="opp-actions" role="dialog" aria-modal="true" aria-label={`${name}: player options`} ref={box}
            onClick={stop} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
         <div className="opp-actions-title">{reporting ? `Report ${name}` : name}</div>
         {reporting ? (

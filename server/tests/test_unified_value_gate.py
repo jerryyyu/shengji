@@ -138,6 +138,36 @@ def test_real_gate_loop_preserves_sampler_inputs_and_resume_frames(tmp_path, mon
     assert summary['value_gate'] == result['value']['gate']
     assert summary['reply_gate'] == result['reply']['gate']
     assert summary['replay'] == reader.REPLAY
+    # Cluster coverage alone cannot detect deleted decisions inside a worker file.
+    damaged = rows(full)
+    del damaged[3]
+    lost = tmp_path / 'lost-row.jsonl'
+    lost.write_text(''.join(json.dumps(row) + '\n' for row in damaged))
+    lost_before = lost.read_bytes()
+    with pytest.raises(ValueError, match='row count'):
+        reader.main([str(tmp_path / 'lost-read.json'), str(chosen), str(lost)])
+    assert not (tmp_path / 'lost-read.json').exists()
+    with pytest.raises(ValueError, match='row count'):
+        run(lost, 0)
+    assert lost.read_bytes() == lost_before
+    assert rows(full)[-1]['rows'] == len(rows(full)[:-1]) == 8
+    for count in (None, True, 8.0, -1, 7, 9):
+        damaged = rows(full)
+        damaged[-1]['rows'] = count
+        lost.write_text(''.join(json.dumps(row) + '\n' for row in damaged))
+        with pytest.raises(ValueError, match='row count'):
+            reader.main([str(tmp_path / 'lost-read.json'), str(chosen), str(lost)])
+        with pytest.raises(ValueError, match='row count'):
+            run(lost, 0)
+    assert not (tmp_path / 'lost-read.json').exists()
+    duplicate = rows(full)
+    duplicate.insert(1, duplicate[0])
+    duplicate[-1]['rows'] += 1
+    lost.write_text(''.join(json.dumps(row) + '\n' for row in duplicate))
+    lost_before = lost.read_bytes()
+    with pytest.raises(ValueError, match='duplicate decision'):
+        run(lost, 0)
+    assert lost.read_bytes() == lost_before
     invalid_file = tmp_path / 'invalid-worlds.jsonl'
     invalid_rows = rows(full)
     invalid_rows[0]['worlds'] = 63

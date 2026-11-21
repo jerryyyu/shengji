@@ -165,6 +165,8 @@ def main(argv=None):
         if not records or records[-1].get('kind') != 'worker_done' or any(r.get('kind') == 'worker_done' for r in records[:-1]):
             raise ValueError('missing or misplaced terminal marker')
         terminal = records[-1]
+        if type(terminal.get('rows')) is not int or terminal['rows'] != len(records) - 1:
+            raise ValueError('terminal row count differs from completed decisions')
         worker, workers = terminal.get('worker'), terminal.get('workers')
         if type(worker) is not int or type(workers) is not int or workers != len(args.rows) or not 0 <= worker < workers:
             raise ValueError('incomplete or duplicated worker partitions')

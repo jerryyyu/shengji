@@ -94,10 +94,14 @@ def main(argv=None):
             if row.get('kind') == 'worker_done':
                 if row.get('worker') != a.worker or row.get('clusters') != len(mine):
                     raise ValueError('output belongs to a different worker partition')
+                if type(row.get('rows')) is not int or row['rows'] != len(done):
+                    raise ValueError('terminal row count differs from completed decisions')
                 completed = True
                 continue
             if not row.get('ref'):
                 raise ValueError('output has incompatible replay or model/input identity; use a new output path')
+            if row['ref'] in done:
+                raise ValueError('duplicate decision in resumed output')
             done.add(row['ref'])
     if completed:
         return
@@ -172,7 +176,7 @@ def main(argv=None):
             if a.limit and n >= a.limit:
                 fh.close()
                 return
-    fh.write(json.dumps(dict(**identity, kind='worker_done', clusters=len(mine))) + '\n')
+    fh.write(json.dumps(dict(**identity, kind='worker_done', clusters=len(mine), rows=len(done) + n)) + '\n')
     fh.close()
 
 

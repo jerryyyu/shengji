@@ -626,8 +626,7 @@ def polish(args) -> int:
         if cm["leaf_value_end"] < best["score"]:
             best = {"score": cm["leaf_value_end"], "epoch": epoch + 1, "calib": cm}
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-    if state is not None:
-        model.load_state_dict(state)
+    model.load_state_dict(saved["model"] if state is None else state)
     torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
                 "calib": dict(saved.get("calib") or {}, polish=best["calib"], polish_epoch=best["epoch"]),
                 "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=vars(args))}, out / "best.pt")
@@ -737,8 +736,7 @@ def mixpolish(args) -> int:
         if cm["mixture_nll"] < best["score"]:
             best = {"score": cm["mixture_nll"], "epoch": epoch + 1, "calib": cm}
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-    if state is not None:
-        model.load_state_dict(state)
+    model.load_state_dict(saved["model"] if state is None else state)
     torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
                 "calib": dict(saved.get("calib") or {}, mixpolish=best["calib"], mixpolish_epoch=best["epoch"], mixpolish_init=init),
                 "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, mixpolish=vars(args))}, out / "best.pt")

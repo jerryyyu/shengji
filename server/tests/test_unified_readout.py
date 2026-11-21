@@ -302,3 +302,64 @@ def test_mixture_nll_is_the_nll_of_the_mean_distribution_and_reaches_the_body(tm
     assert torch.allclose(v[2, 3], one[0], atol=1e-5)
     ur.mixture_nll(v, t).mean().backward()
     assert float(m.readout.stem.weight.grad.abs().sum()) > 0
+
+
+@pytest.mark.parametrize("mode", ["polish", "mixpolish"])
+@pytest.mark.parametrize("scores,best_epoch", [([1.0, 1.0, 1.1], 0), ([1.0, 0.8, 0.9], 1)])
+def test_polish_checkpoint_weights_match_selected_epoch(tmp_path, monkeypatch, mode, scores, best_epoch):
+    from types import SimpleNamespace
+
+    torch.manual_seed(7)
+    model = ur.build(ARCH, READOUT)
+    source = tmp_path / "input.pt"
+    torch.save({"schema": ur.CKPT_SCHEMA, "model": model.state_dict(),
+                "config": model.config, "epoch": 9, "calib": {"input": 1},
+                "init_calib": {"baseline": 2}, "run": {"original": True}}, source)
+    source_bytes = source.read_bytes()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    rng = np.random.default_rng(9)
+    n = 2
+    S = rng.standard_normal((n, 54, READOUT["dp"])).astype(np.float16)
+    c = rng.standard_normal((n, READOUT["dc"])).astype(np.float16)
+    planes = np.zeros((n, 9, 54), np.uint8)
+    scalars = np.zeros((n, 12), np.float32)
+    z = dict(S=S, c=c, leaf_row=np.arange(n, dtype=np.int32),
+             leaf_planes=planes, leaf_scalars=scalars,
+             leaf_target=np.full(n, 7, np.int16),
+             leaf_reply=np.zeros((n, 54), np.uint8),
+             leaf_reply_hand=np.ones((n, 54), bool),
+             leaf_has_reply=np.zeros(n, bool))
+    np.savez(cache / "train-0000.npz", **z)
+    np.savez(cache / "calib-0000.npz", **z)
+    (cache / "DONE.0").touch()
+    mix = tmp_path / "mix"
+    mix.mkdir()
+    mz = dict(S=S, c=c, planes=planes[:, None], scalars=scalars[:, None],
+              tplanes=planes, tscalars=scalars, target=z["leaf_target"])
+    np.savez(mix / "train-0000.npz", **mz)
+    np.savez(mix / "calib-0000.npz", **mz)
+    snapshots = []
+    score_key = "leaf_value_end" if mode == "polish" else "mixture_nll"
+
+    def evaluate(readout, *args):
+        snapshots.append({k: v.detach().clone() for k, v in readout.state_dict().items()})
+        return {score_key: scores[len(snapshots) - 1]}
+
+    monkeypatch.setattr(ur, "polish_eval" if mode == "polish" else "mix_eval", evaluate)
+    args = SimpleNamespace(ckpt=str(source), cache=str(cache), mix=str(mix),
+                           out=str(tmp_path / "out"), threads=1, seed=3, epochs=2,
+                           lr=0.01, weight_decay=0.01, reply_weight=0.2,
+                           batch=2, decisions=2, true_weight=1.0)
+    assert getattr(ur, mode)(args) == 0
+    loaded, saved = ur.load_checkpoint(str(tmp_path / "out" / "best.pt"))
+    assert saved["calib"][mode + "_epoch"] == best_epoch
+    assert saved["calib"][mode][score_key] == scores[best_epoch]
+    assert saved["epoch"] == 9 and saved["run"]["original"]
+    assert source.read_bytes() == source_bytes
+    assert any(not torch.equal(snapshots[0][k], snapshots[-1][k]) for k in snapshots[0])
+    for k, value in loaded.readout.state_dict().items():
+        assert torch.equal(value, snapshots[best_epoch][k]), k
+    for k, value in loaded.state_dict().items():
+        if not k.startswith("readout."):
+            assert torch.equal(value, model.state_dict()[k]), k

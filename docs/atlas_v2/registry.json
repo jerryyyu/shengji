@@ -4941,6 +4941,27 @@
    ],
    "takeaway": "Belief and heads + trunk each help alone; interaction unresolved; split control outcome 0.",
    "note": "Read once each 11-20 with ut_mix_read.py, VALID on all checks. B +0.027 [0.001, 0.053]; U (RT2 heads and their trunk) +0.0355 [0.0075, 0.0635]; W outcome 0.000. Interaction vs R2H, descriptive only: -0.034, approximate independent-normal 95% interval [-0.082, +0.014], crosses zero. B and U are independent noisy contrasts, not additive shares. Archive readouts/RT2-attrib/ (SHA256SUMS sha256 a2fc161495bebc0d5aa8620eaf931bc51221fbc218af8bcc6dceec1badfa8512)."
+  },
+  {
+   "status": "sealed",
+   "box": "ultra",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "id": "rt3fs",
+   "date": "2026-11-20",
+   "title": "RT3-FT vs release 54 as served (screen)",
+   "candidate": "RT3-FT: RT2 fine-tuned on the 11.5M UT-GEN2 rows (unified package 0ab200ee2cec39d4, belief af11dea78a9dcdac), release 54's search and fast readout otherwise; M5 Ultra",
+   "comparator": "release 54 as served (unified model 97c07be8614ed5c4 + belief 1b1fd2deb43b109b, bury 3 s, fast readout), head to head",
+   "vs": 54,
+   "vs_group": "release 54 as served, head to head: the formal seat-swapped screen (two-stage duel bar, screen stage), not a common-control screen",
+   "instrument": "3,920 seat-swapped deal pairs [2652000000, 2652003920), candidate vs release 54 head to head; served budgets; one look; host M5 Ultra; SCREEN_PASS iff mean >= +0.005 AND one-sided 80% lower bound > 0",
+   "seeds": "2652000000 (ultra)",
+   "point": 0.061479591836734696,
+   "lo": 0.047193877551020405,
+   "hi": 0.07576530612244899,
+   "takeaway": "SCREEN_PASS +0.0615 [+0.0472, +0.0758], LB80 +0.0554, latency 1.009x.",
+   "note": "Read once 11-20 with the pinned reader 6adcb218, VALID on all checks (64 worlds throughout, 0 play/bury fallbacks, 0 declare abandons). n 3920, mean 0.061479591836734696, CI95 [0.047193877551020405, 0.07576530612244899], LB80 0.055357142857142855, LB95 0.049489795918367344; latency ratio 1.0089 (candidate p95 190.1 ms, p99 380.4 ms). Launcher identity 760d354c; Codex saved-read check #1525 issuecomment-7052171219. Screen stage only; confirmation not run (Jerry: draw the data curve to 500k first); no release claim. UT-GEN2 generator switched to rt3f at the next leg on this PASS. Archive readouts/RT3-FT-screen/ (SHA256SUMS sha256 d2c12fdade63968c5f64a51e17cd4158ecf3dab8992958810ea4d6b2f87c1e64)."
   }
  ],
  "context_screens": [

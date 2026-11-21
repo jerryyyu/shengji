@@ -1353,6 +1353,9 @@ extension ShengjiNearbyPlugin {
     /// On `queue`: a stall runs. Only its flush clears it, so nothing sent
     /// or received between the stall's nominal end and the flush overtakes
     /// a frame held before it.
+    /// A stall holds the plugin's frames only: the page's timers run through
+    /// it, so a host may refuse, as a hello timeout, a hello it was itself
+    /// holding. A stall's refusals on the host are read with that in mind.
     private static var stalling = false
     private static var held: [() -> Void] = []
 

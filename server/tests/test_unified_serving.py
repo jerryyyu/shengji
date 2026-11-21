@@ -886,3 +886,277 @@ def test_served_trajectory_capture_preserves_unified_decisions_and_labels(
         assert saved["ballot"][saved["allocation"]["played_index"]] == saved["action"]
         assert saved["allocation"]["serving_decision"]["unified"]["shared"] == 1
         assert saved["allocation"]["serving_decision"]["unified"]["missed"] == 0
+
+
+def test_fourth_reply_packing_matches_python_with_repeated_parent_rows(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.train import pv_tree_search as search, unified_slots as us
+
+    kernel = getattr(search._reply_fast, "pack_reply_rows", None)
+    if kernel is None:
+        pytest.skip("compiled reply packing is unavailable")
+    first = np.zeros(9 * 54, np.uint8)
+    first[[0, 4 * 54 - 1, 4 * 54]] = [2, 1, 2]
+    first.flags.writeable = False
+    second = np.zeros_like(first)
+    second[54] = 1
+    items = [(first, (0, 0), 20, 3), (first, (4 * 54 - 1,), 35, 2),
+             (second, (54,), 50, 1), (first, (0, 4 * 54 - 1), 60, 0)]
+    seen = []
+
+    def pack(rows, delta):
+        assert rows is items
+        counts, meta = kernel(rows, delta)
+        assert counts.dtype == np.uint8 and meta.dtype == np.int64
+        assert counts.flags.c_contiguous and meta.flags.c_contiguous
+        assert meta.tolist() == [[delta, 4, points, winner, winner]
+                                 for _, _, points, winner in rows]
+        seen.append(delta)
+        return counts, meta
+
+    monkeypatch.setattr(search._reply_fast, "pack_reply_rows", pack)
+    for pos in range(4):
+        frame = SimpleNamespace(pos=pos)
+        indices, counts, scalars, keys = us._direct_reply_features(frame, items)
+        with monkeypatch.context() as patch:
+            patch.setattr(search, "_reply_fast", SimpleNamespace())
+            expected = us._direct_reply_features(frame, items)
+        assert indices == expected[0] and keys == expected[3]
+        assert counts.tobytes() == expected[1].tobytes()
+        assert scalars.tobytes() == expected[2].tobytes()
+    assert seen == [4, 3, 2, 1]
+    assert first[[0, 4 * 54 - 1, 5 * 54]].tolist() == [2, 1, 0]
+    assert second[54] == 1
+
+
+def test_fourth_reply_packing_refuses_malformed_rows():
+    from shengji.train import pv_tree_search as search
+
+    kernel = getattr(search._reply_fast, "pack_reply_rows", None)
+    if kernel is None:
+        pytest.skip("compiled reply packing is unavailable")
+    parent = np.zeros(9 * 54, np.uint8)
+    parent[0] = parent[1] = 1
+    parent[5 * 54 + 1] = 255
+
+    for source in (None, parent[:-1], parent.astype(np.int64), parent.reshape(9, 54),
+                   np.zeros(parent.size * 2, np.uint8)[::2]):
+        with pytest.raises(ValueError):
+            kernel([(source, (0,), 0, 0)], 1)
+    for slots in ((-1,), (4 * 54,), (0, 0), (1,)):
+        with pytest.raises(ValueError):
+            kernel([(parent, slots, 0, 0)], 1)
+    with pytest.raises(TypeError):
+        kernel([(parent, (0.5,), 0, 0)], 1)
+    with pytest.raises(ValueError):
+        kernel([(parent, (0,), 0, 4)], 1)
+    with pytest.raises(OverflowError):
+        kernel([(parent, (0,), 2**63, 0)], 1)
+    with pytest.raises(ValueError):
+        kernel([(parent, (0,), 0, 0)], 0)
+    assert parent[[0, 1, 5 * 54, 5 * 54 + 1]].tolist() == [1, 1, 0, 255]
+
+
+def _multi_reply_fixture(pos, width):
+    from collections import Counter
+    from shengji.engine.cards import Ordering, make_deck
+    from shengji.engine.round import HAND_SIZE, Round, Trick
+    from shengji.harvest.legal import enumerate_legal
+    from shengji.train import pv_tree_search as search
+
+    rnd = Round("7", 0, rng=random.Random(7))
+    rnd.phase, rnd.turn, rnd.trick = "play", 0, Trick(leader=0)
+    rnd.trump_suit, rnd.ordering = "H", Ordering("H", "7")
+    pairs = [("S5", "S6"), ("S8", "S9", "SJ", "SQ"), ("S2", "S3", "SK", "SA"), ("S4", "S10")]
+    rnd.hands = [[card for card in hand for _ in range(2)] for hand in pairs]
+    dealt = Counter(card for hand in rnd.hands for card in hand)
+    residual = list((Counter(make_deck()) - dealt).elements())
+    for hand in rnd.hands:
+        needed = HAND_SIZE - len(hand)
+        hand.extend(residual[:needed])
+        del residual[:needed]
+    rnd.buried = residual
+
+    def after(lead):
+        clone = search.afterstate_fast(rnd, 0, rnd.hands, rnd.buried, lead)
+        if pos == 2:
+            seat = clone.turn
+            clone.play(seat, search.default_finisher().decide_play(clone, seat))
+        return clone
+
+    multi = after(["S5", "S5", "S6", "S6"][:width])
+    singleton = after(["S5"])
+    fallback = copy.deepcopy(multi)
+    fallback.trick.running_points = 201
+    candidates = [list(cards) for cards in enumerate_legal(multi, multi.turn, cap=6).actions]
+    assert len(candidates) >= 2 and all(len(set(cards)) < width for cards in candidates)
+    return (multi, multi.turn, candidates), [copy.deepcopy(multi), singleton, fallback] * 3
+
+
+@pytest.mark.parametrize(("pos", "width"), [(1, 1), (2, 1), (3, None), (1, 2), (2, 2), (1, 4), (2, 4)])
+def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_path, monkeypatch, pos, width):
+    from shengji.ai.unified_readout_numpy import load_unified_readout_numpy
+    from shengji.engine import fast
+    from shengji.train import pv_tree_search as search, unified_slots as us
+    from test_pv_encode_batch_fast import lgf_bot
+    from test_pv_reply_native import _follow_clones
+
+    if not fast.is_active():
+        pytest.skip("direct rows require the compiled reply path")
+    path, sha = _random_pair(tmp_path)["unified"]
+    model = load_unified_readout_numpy(path, sha)
+    states = []
+    alternatives = {}
+    mixed = None
+    if width in (2, 4):
+        state, mixed = _multi_reply_fixture(pos, width)
+        states.append(state)
+    else:
+        for clone, seat, candidates in _follow_clones((707_001, 707_002, 707_003), True):
+            if len(clone.trick.plays) != pos or len(candidates) < 2:
+                continue
+            singleton = len(clone.trick.plays[0].cards) == 1
+            if (pos == 3 or singleton) and len(states) < 8:
+                states.append((clone, seat, candidates))
+            if pos == 2:
+                key = (len(clone.history), seat)
+                pair = alternatives.setdefault(key, {})
+                pair[singleton] = clone
+                if len(pair) == 2:
+                    mixed = [pair[True], pair[False]] * 4
+            if len(states) == 8 and (pos != 2 or mixed is not None):
+                break
+        assert len(states) == 8
+    stale, seat, candidates = states[0]
+    clean = search.reply_children_fast(stale, seat, candidates)
+    stale.trick.running_points = 50
+    stale.trick.incumbent = ((seat + 1) % 4, "T", 15)
+    if pos < 3 and (width == 1 or pos == 1):
+        changed = search.reply_children_fast(stale, seat, candidates)
+        assert any(a.history[-1].plays != b.history[-1].plays for a, b in zip(clean, changed))
+    real_features = us._direct_reply_features
+    real_probs = model.leaf_value_probs_fused
+    real_project = search._reply_fast.project_replies
+    real_materialize = search._reply_fast.reply_children
+    monkeypatch.setattr(search, "greedy_reply_ply", us.readout_reply_ply(search.greedy_reply_ply))
+    trace = []
+    direct = []
+    projected = []
+    materialized = []
+
+    def project(clone, seat, candidates, *args, **kw):
+        assert kw == {"memo_heuristic": True}
+        result = real_project(clone, seat, candidates, *args, **kw)
+        assert len(result) == len(candidates)
+        n_prior, n_cards = len(clone.trick.plays), len(clone.trick.plays[0].cards)
+        if width in (2, 4) and n_cards == width and (n_prior, n_cards) not in projected:
+            frame_seat, _, plane_maps, *_ = args
+            reference = search.reply_children_fast(clone, seat, candidates)
+            for item, child in zip(result, reference):
+                expected = [plane_maps[(play.seat - frame_seat) % 4][card]
+                            for play in child.history[-1].plays[n_prior:] for card in play.cards]
+                assert item[1] == expected
+            hand = clone.hands[seat]
+            single = next(card for card in hand if hand.count(card) == 1)
+            assert real_project(clone, seat, [[single] * n_cards], *args, **kw) is None
+        projected.append((n_prior, n_cards))
+        return result
+
+    def materialize(clone, *args):
+        materialized.append((len(clone.trick.plays), clone.trick.running_points))
+        return real_materialize(clone, *args)
+
+    def features(frame, items):
+        result = real_features(frame, items)
+        direct.extend(result[3])
+        return result
+
+    def probs(fused, planes, scalars):
+        trace.append(("forward", planes.shape, planes.tobytes(), scalars.tobytes()))
+        return real_probs(fused, planes, scalars)
+
+    monkeypatch.setattr(search._reply_fast, "project_replies", project)
+    monkeypatch.setattr(search._reply_fast, "reply_children", materialize)
+    monkeypatch.setattr(us, "_direct_reply_features", features)
+    monkeypatch.setattr(model, "leaf_value_probs_fused", probs)
+    monkeypatch.setattr(us, "READOUT_BATCH", 6)
+
+    def run(clones):
+        trace.clear()
+        bot = lgf_bot(7, True, 5)
+        bot.unified_fast = True
+        bot.batch_size = 3
+        us.install_value_readout(bot, model)
+        us.install_reply_readout(bot, model)
+        clone = clones[0]
+        bot.unified_frame = frame = us.LeafFrame(bot, clone, clone.trick.leader)
+        frame.pos = pos - 1
+        copies = [copy.deepcopy(c) for c in clones]
+        stats = search.greedy_finish_current_trick(bot, copies, frame.tricks + 1,
+                                                   lambda: trace.append("gate"), 3, 7, fast_clone=True,
+                                                   guard=lambda: trace.append("guard"))
+        return ([c.history[-1] for c in copies], stats, list(trace),
+                frame.value_memo, bot.unified_value_memo, bot.unified_value_rows,
+                bot.evaluator.positions, bot.evaluator.model_rows)
+
+    groups = [[clone] * 9 for clone, _, _ in states]
+    if mixed is not None:
+        groups.append(mixed)
+    for group in groups:
+        projected.clear()
+        materialized.clear()
+        got = run(group)
+        if pos < 3:
+            assert (pos, width) in projected
+        if group is mixed and width in (2, 4):
+            assert (pos, 1) in projected and (pos, 201) in materialized
+        with monkeypatch.context() as patch:
+            patch.setattr(us, "_projected_reply_callbacks", lambda *a: None)
+            assert run(group) == got
+    assert len(direct) > (30 if width in (2, 4) else 60)
+
+
+def test_projected_reply_heuristic_memo_keeps_seats_caches_and_candidate_rows_distinct():
+    from shengji.engine import fast
+    from shengji.train import pv_tree_search as search, unified_slots as us
+
+    if not fast.is_active():
+        pytest.skip("projected replies require the compiled reply path")
+    (clone, seat, _), _ = _multi_reply_fixture(1, 2)
+    for other, incoming, outgoing in (((seat + 1) % 4, "S2", "S9"), ((seat + 2) % 4, "S10", "S8")):
+        for _ in range(2):
+            clone.hands[other].remove(incoming)
+            clone.hands[seat].remove(outgoing)
+            clone.hands[other].append(outgoing)
+            clone.hands[seat].append(incoming)
+    candidates = [[card] * 2 for card in ("S2", "SJ", "SQ", "S10")]
+    clone.trick.incumbent = ((seat + 1) % 4, "S", clone.ordering.level("SJ"))
+    clone.trick.running_points = 50
+    plane_maps, points, combos, legal = us._fast_tables()
+    actual = us._winner_fast(clone.trick, clone.ordering, combos, legal, with_level=True)
+    prior_points = sum(points[card] for play in clone.trick.plays for card in play.cards)
+    stock = search.default_finisher().decide_play
+    parent = object()
+    calls = []
+
+    def decide(state, turn):
+        calls.append((turn, state.trick.incumbent, state.trick.running_points))
+        return stock(state, turn)
+
+    args = (clone, seat, candidates, 0, parent, plane_maps, points, actual, prior_points,
+            decide, legal.beats, search.TrickPlay)
+    project = search._reply_fast.project_replies
+    want = project(*args)
+    assert len(calls) == 2 * len(candidates)
+    distinct = list(dict.fromkeys(calls))
+    assert len(distinct) < len(calls)
+    assert {turn for turn, _, _ in distinct} == {(seat + 1) % 4, (seat + 2) % 4}
+    assert len({inc for turn, inc, _ in distinct if turn == (seat + 1) % 4}) == 2
+    assert {pts for turn, _, pts in distinct if turn == (seat + 1) % 4} == {50, 70}
+    assert len({tuple(slots) for _, slots, _, _ in want}) == len(candidates)
+    assert len({winner for _, _, _, winner in want}) > 1
+
+    for _ in range(2):
+        calls.clear()
+        assert project(*args, memo_heuristic=True) == want
+        assert calls == distinct

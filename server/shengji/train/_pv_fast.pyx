@@ -18,6 +18,47 @@ from libc.string cimport memcpy
 import numpy as np
 
 
+def top_short_follows(const signed char[::1] cards, const int[::1] offsets,
+                      const double[::1] logits, int keep):
+    """Stable top follows for one or two cards, where the score is one lookup or one addition."""
+    cdef Py_ssize_t n = offsets.shape[0] - 1
+    cdef int width, first, second, j, used = 0
+    cdef Py_ssize_t i, start
+    cdef Py_ssize_t best[4]
+    cdef double scores[4]
+    cdef double score
+    if n < 1 or keep < 1 or keep > 4 or logits.shape[0] != 54:
+        return None
+    width = offsets[1]
+    if width not in (1, 2) or offsets[0] != 0 or cards.shape[0] != n * width:
+        return None
+    for i in range(n):
+        start = i * width
+        if offsets[i + 1] != start + width:
+            return None
+        first = cards[start]
+        if first < 0 or first >= 54:
+            raise ValueError("invalid reply card index")
+        score = logits[first]
+        if width == 2:
+            second = cards[start + 1]
+            if second < 0 or second >= 54:
+                raise ValueError("invalid reply card index")
+            score += logits[second]
+        if used == keep and score <= scores[used - 1]:
+            continue
+        j = min(used, keep - 1)
+        while j > 0 and score > scores[j - 1]:
+            best[j] = best[j - 1]
+            scores[j] = scores[j - 1]
+            j -= 1
+        best[j] = i
+        scores[j] = score
+        if used < keep:
+            used += 1
+    return [best[j] for j in range(used)]
+
+
 def reply_multiplicity(const signed char[::1] cards, const int[::1] offsets):
     """Dense float64 card counts, preserving listing row and column order."""
     cdef Py_ssize_t n = offsets.shape[0] - 1

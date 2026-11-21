@@ -58,6 +58,24 @@ export interface NearbyJoinDeps {
  *  window the host has to come back in (the plugin's hostWindow), and a few
  *  seconds more, so a host back at the last moment still finds its joiners. */
 export const HOST_WINDOW_MS = 65_000;
+/** The host-left window counts this page's awake time in ticks this long. */
+const AWAKE_TICK_MS = 1000;
+
+/** `fn` once `ms` of this page's awake time have passed, counted in ticks:
+ *  a tick that comes late (the page frozen, or in the background) still
+ *  counts as one, so the time the page itself was stopped is left out.
+ *  Returns the call that cancels it. */
+export function afterAwake(fn: () => void, ms: number): () => void {
+  let left = Math.ceil(ms / AWAKE_TICK_MS);
+  let id = 0;
+  const tick = () => {
+    left -= 1;
+    if (left <= 0) fn();
+    else id = window.setTimeout(tick, AWAKE_TICK_MS);
+  };
+  id = window.setTimeout(tick, AWAKE_TICK_MS);
+  return () => window.clearTimeout(id);
+}
 /** A look that has neither found the table nor been told why by then ends
  *  as not found. It is held while the system's Local Network prompt is up
  *  (the plugin's "waiting" with "prompt"), and any other "waiting" starts
@@ -147,7 +165,8 @@ export class NearbyJoinStore {
   private wasOffline = false;
   private retried = false;
   private denied = false;
-  private gone: number | null = null;
+  /** Cancels the host-left window while it runs. */
+  private gone: (() => void) | null = null;
   private attempt = 0;
   private lookTimer: number | null = null;
   private joinTimer: number | null = null;
@@ -460,7 +479,7 @@ export class NearbyJoinStore {
   }
 
   private clearGone(): void {
-    if (this.gone !== null) window.clearTimeout(this.gone);
+    this.gone?.();
     this.gone = null;
   }
 
@@ -489,7 +508,8 @@ export class NearbyJoinStore {
       // a seated joiner's link dropped: the socket keeps looking, by token,
       // for as long as the host may take to come back
       if (this.seated && this.gone === null) {
-        this.gone = window.setTimeout(() => {
+        // the page's own time stopped (the background) is not the host's
+        this.gone = afterAwake(() => {
           this.gone = null;
           this.forgetTable();
           this.hostLeft = true;

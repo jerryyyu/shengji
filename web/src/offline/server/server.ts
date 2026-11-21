@@ -27,7 +27,7 @@ import {
   sortedHand,
 } from "../engine/round";
 import { SmartBot, viewFor } from "../bot";
-import { type Clock, realClock, sleep } from "./clock";
+import { type Clock, type PauseWatch, pausedAfter, pauseWatch, realClock, sleep } from "./clock";
 import { BOT_LEVELS, type BotLevel } from "../../queue/messages";
 import { type ActionEntry, BotGate, DEFAULT_BOT_LEVEL, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
@@ -624,8 +624,13 @@ export class LocalServer {
   readonly autoplay: boolean;
   private seed: () => number;
 
+  /** The page's own pauses, told while a nearby host holds the watch. */
+  private pauses: PauseWatch;
+
   constructor(opts: LocalServerOptions = {}) {
     this.clock = opts.clock ?? realClock;
+    this.pauses = pauseWatch(this.clock);
+    this.pauses.on((from, to) => this.paused(from, to));
     this.seed = opts.seed ?? randomSeed;
     this.remote = opts.remote ? new BotGate(opts.remote, this.clock) : null;
     this.autoplay = opts.autoplay ?? false;
@@ -689,6 +694,23 @@ export class LocalServer {
     this.moveCheckIn(room, left);
   }
 
+  /** The host page was stopped from `from` to `to`: no one at a nearby
+   *  table could move, so every move clock, the declare window and a
+   *  dropped seat's wait for its bot leave that time out, and no one is
+   *  struck for the host's own pause. */
+  private paused(from: number, to: number): void {
+    for (const room of this.rooms.values()) {
+      if (!room.nearby || room.closed || !room.game) continue;
+      for (const sd of room.seats) {
+        // a dropped seat's clock already stopped at its drop: both ends move
+        if (!sd.connected && sd.leftAt !== null) sd.leftAt += pausedAfter(sd.leftAt, from, to);
+        if (sd.turnStarted !== null) sd.turnStarted += pausedAfter(sd.turnStarted, from, to);
+      }
+      if (room.declareUntil !== null && room.declareUntil > from) room.declareUntil += to - from;
+      this.broadcast(room);
+    }
+  }
+
   private moveCheckIn(room: LocalRoom, seconds: number): void {
     this.clock.setTimeout(() => this.moveTimerTick(room), Math.max(0, seconds));
   }
@@ -698,6 +720,8 @@ export class LocalServer {
    *  round end. */
   moveTimerTick(room: LocalRoom): void {
     if (room.closed || !room.game) return;
+    // a pause that ends now moves the clocks on before they are read
+    this.pauses.poll();
     this.syncMoveTimer(room);
     const game = room.game;
     const rnd = room.round;
@@ -835,6 +859,7 @@ export class LocalServer {
     this.clock.setTimeout(() => {
       room.watching = false;
       if (room.closed || !room.game) return;
+      this.pauses.poll();
       const now = this.clock.now();
       const seat = this.currentActor(room);
       const sd = seat === null ? null : room.seats[seat];
@@ -1077,6 +1102,9 @@ export class LocalServer {
     for (;;) {
       await sleep(this.clock, DECLARE_POLL);
       if (room.closed || room.round !== rnd || rnd.phase !== "declare") return;
+      // the window moved on over a pause of the host page (paused())
+      this.pauses.poll();
+      if (room.declareUntil !== null && room.declareUntil > deadline) deadline = room.declareUntil;
       let respond = false;
       if (needsResponse || rnd.declaration !== lastDeclaration) {
         lastDeclaration = rnd.declaration;
@@ -1296,7 +1324,7 @@ export class LocalServer {
    *  is free again, so a phone that is gone never holds a place at the table. */
   lobbyDropped(room: LocalRoom, seat: Seat): void {
     const gen = seat.gen;
-    this.clock.setTimeout(() => {
+    this.pauses.after(() => {
       if (room.closed || !room.lobby || seat.connected || seat.gen !== gen) return;
       const i = room.lobby.indexOf(seat);
       if (i < 0 || i === room.host) return;

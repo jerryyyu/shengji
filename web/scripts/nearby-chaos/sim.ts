@@ -16,7 +16,7 @@ import { subscribeNearbyLog, nearbyLogLines, clearNearbyLog } from "../../src/ne
 import { SmartBot, viewFor } from "../../src/offline/bot";
 import type { RoundState } from "../../src/offline/engine/round";
 import { Radio, Rng, type Phone, type SimLink } from "./radio";
-import { LONG_LIVED_S, NEARBY_RETRY_S, type PageModel } from "./pageModel";
+import { HOST_WINDOW_S, LONG_LIVED_S, NEARBY_RETRY_S, type PageModel } from "./pageModel";
 import { frameTriggers, TRIGGER_PHASES, type TriggerPhase } from "../../src/nearbySoakChaos";
 
 type Frame = Record<string, unknown> & { type: string };
@@ -604,13 +604,21 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       if (!wholeApp || !this.seated || this.done || this.goneArmed) return;
       this.goneArmed = true;
       const run = ++this.goneRun;
-      this.clock.setTimeout(() => {
+      // nearbyJoin.ts afterAwake: 65 one-second ticks of the page's own
+      // time, so a tick held while its JS is stopped counts once
+      let left = HOST_WINDOW_S;
+      const tick = () => {
         if (run !== this.goneRun) return;
+        if (--left > 0) {
+          this.clock.setTimeout(tick, 1);
+          return;
+        }
         this.goneArmed = false;
         if (this.status === "open" || this.done || !this.seated) return;
         log(this.d.id, "page: host left (65 s with no link)");
         this.giveUp(false);
-      }, 65);
+      };
+      this.clock.setTimeout(tick, 1);
     }
     get clock() {
       return this.d.phone.clock;

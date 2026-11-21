@@ -12,3 +12,6 @@ export type PageModel = "sim" | "ws";
 export const LONG_LIVED_S = 10;
 /** ws.ts NEARBY_RETRY_MS: a nearby retry's wait by tries since the last open. */
 export const NEARBY_RETRY_S: readonly number[] = [0, 0.25, 0.5, 1];
+/** nearbyJoin.ts HOST_WINDOW_MS: a seated page with no link this long of
+ *  its own awake time shows the host left. */
+export const HOST_WINDOW_S = 65;

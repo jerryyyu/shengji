@@ -6,7 +6,8 @@
 import { describe, expect, it } from "vitest";
 import { LONG_LIVED_MS, NEARBY_RETRY_MS } from "./ws";
 import { LIMITS } from "./offline/server/nearby/protocol";
-import { LONG_LIVED_S, NEARBY_RETRY_S } from "../scripts/nearby-chaos/pageModel";
+import { HOST_WINDOW_MS } from "./nearbyJoin";
+import { HOST_WINDOW_S, LONG_LIVED_S, NEARBY_RETRY_S } from "../scripts/nearby-chaos/pageModel";
 import { runGame, type Fault } from "../scripts/nearby-chaos/sim";
 
 async function seed1(stall: number) {
@@ -23,7 +24,8 @@ async function seed1(stall: number) {
 }
 
 describe("the simulator's page model", () => {
-  it("copies ws.ts's long-lived retry and nearby retry waits", () => {
+  it("copies ws.ts's long-lived retry and nearby retry waits, and nearbyJoin.ts's host-left window", () => {
+    expect(HOST_WINDOW_S * 1000).toBe(HOST_WINDOW_MS);
     expect(LONG_LIVED_S * 1000).toBe(LONG_LIVED_MS);
     expect(NEARBY_RETRY_S.map((s) => s * 1000)).toEqual([...NEARBY_RETRY_MS]);
   });

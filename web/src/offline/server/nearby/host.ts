@@ -4,7 +4,7 @@
 // Every byte from a joiner passes this boundary first: size, rate, the hello
 // and its version, and the joiner allow-list (protocol.ts). Anything that
 // fails is dropped or ends that link; nothing here throws into the room.
-import type { Clock } from "../clock";
+import { type Clock, type PauseWatch, pauseWatch } from "../clock";
 import { nearbyPeekJson, type LocalConnection, type LocalRoom, type LocalServer } from "../server";
 import { NEARBY_COPY } from "./copy";
 import { frameType, nearbyLog } from "../../../nearbyLog";
@@ -77,6 +77,9 @@ export class NearbyHost {
   private room: LocalRoom;
   private clock: Clock;
   private events: NearbyHostEvents;
+  /** The host page's own pauses: a link's silence leaves them out. */
+  private pauses: PauseWatch;
+  private offPauses: () => void = () => {};
   /** Counts of what the boundary refused, by reason, for tests and the M1 page. */
   readonly refused: Record<string, number> = {};
 
@@ -85,6 +88,7 @@ export class NearbyHost {
     this.room = room;
     this.clock = server.clock;
     this.events = events;
+    this.pauses = pauseWatch(this.clock);
   }
 
   /** Advertise the room's table on `transport`. */
@@ -107,10 +111,17 @@ export class NearbyHost {
       throw new NearbyError("failed", "stopped");
     }
     this.link = link;
+    const release = this.pauses.hold();
+    const off = this.pauses.on((from, to) => this.paused(from, to));
+    this.offPauses = () => {
+      release();
+      off();
+    };
   }
 
   stop(): void {
     this.stopped = true;
+    this.offPauses();
     for (const id of [...this.peers.keys()]) this.end(id);
     this.link?.stop();
     this.link = null;
@@ -179,7 +190,7 @@ export class NearbyHost {
   /** The link must be seated within `seconds`, or it ends. */
   private helloBy(id: string, peer: Peer, seconds: number): void {
     const mine = ++peer.deadline;
-    this.clock.setTimeout(() => {
+    this.pauses.after(() => {
       if (this.peers.get(id) === peer && peer.conn === null && peer.deadline === mine) {
         this.refuse("hello_timeout", id);
         this.end(id);
@@ -194,6 +205,7 @@ export class NearbyHost {
     const wait = Math.max(0, peer.heard + LIMITS.silentSeconds - this.clock.now());
     this.clock.setTimeout(() => {
       if (this.peers.get(id) !== peer || peer.closed) return;
+      this.pauses.poll();
       // within a microsecond counts as due: a clock's float time can land a
       // hair short, and a wait that small would never move it forward
       if (this.clock.now() - peer.heard >= LIMITS.silentSeconds - 1e-6) {
@@ -201,6 +213,15 @@ export class NearbyHost {
         this.end(id);
       } else this.listen(id, peer);
     }, wait);
+  }
+
+  /** The host page was stopped from `from` to `to` (a JS freeze, the
+   *  background): every link's frames from then are still queued on their
+   *  way in, so no link counts that time as its own silence. The room's
+   *  clocks leave it out too (LocalServer.paused). */
+  private paused(from: number, to: number): void {
+    nearbyLog("host", `the host page was paused ${(to - from).toFixed(1)} s; every link is kept`);
+    for (const peer of this.peers.values()) peer.heard = Math.max(peer.heard, to);
   }
 
   private onGone(id: string): void {
@@ -219,7 +240,7 @@ export class NearbyHost {
   private confirmBy(id: string, peer: Peer): void {
     const seat = peer.conn!.seat!;
     const gen = seat.gen;
-    this.clock.setTimeout(() => {
+    this.pauses.after(() => {
       if (!peer.unconfirmed || this.stopped) return;
       peer.giveUp = () => {
         peer.unconfirmed = false;

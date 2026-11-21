@@ -4,7 +4,7 @@
 // in socketUrl() never crosses; it sends only the hello and the joiner
 // allow-list (protocol.ts), so presence, the queue, heartbeats, telemetry and
 // chat stay on the phone.
-import { type Clock, realClock } from "../clock";
+import { type Clock, type PauseWatch, pauseWatch, realClock } from "../clock";
 import { frameType, nearbyLog } from "../../../nearbyLog";
 import { KEEPALIVE_TEXT, LIMITS, NEARBY_V, PING_TEXT, PONG_TEXT, cleanJoinerMessage, parseObject, utf8Bytes, type NearbyHello } from "./protocol";
 import type { JoinLink, LinkState, NearbyTransport } from "./transport";
@@ -144,6 +144,10 @@ export class NearbySocket {
   /** The keepalive loop is running. */
   private keeping = false;
   private offKeepalive: () => void = () => {};
+  /** This page's own pauses (a JS freeze, the background): the host's
+   *  silence and a pong's wait leave them out. */
+  private pauses: PauseWatch;
+  private offPauses: () => void = () => {};
   /** The seat's token (the hello's, or the host's resume frame), which
    *  keys its unanswered move across links. */
   private token: string | null = null;
@@ -161,6 +165,13 @@ export class NearbySocket {
     this.onState = onState;
     this.clock = clock;
     this.offKeepalive = subscribeNearbyKeepalive(() => this.resumeKeepalive());
+    this.pauses = pauseWatch(clock);
+    const release = this.pauses.hold();
+    const off = this.pauses.on((from, to) => this.paused(from, to));
+    this.offPauses = () => {
+      release();
+      off();
+    };
     const started = clock.now();
     // a seated joiner's new link: its hello will be the resume
     const resume = greet !== null && greet() !== null;
@@ -168,7 +179,7 @@ export class NearbySocket {
       // a resume that has not reached the host by now is stuck (a stale
       // path after the network came back): this attempt ends, and the page
       // makes a fresh one
-      clock.setTimeout(() => {
+      this.pauses.after(() => {
         if (this.readyState === NearbySocket.CONNECTING && this.link === null) {
           nearbyLog("socket", `resume: no link after ${LIMITS.linkSeconds} s; a fresh attempt`);
           this.finish();
@@ -259,9 +270,10 @@ export class NearbySocket {
    *  RESUME_GRACE_SECONDS more, then the attempt ends for a fresh one. */
   private awaitResume(link: JoinLink, since: number): void {
     const live = () => this.link === link && this.resuming;
+    const mark = this.pauses.paused();
     const carry = () => {
       if (!live()) return;
-      if (this.clock.now() - since >= LIMITS.silentSeconds - 1e-6) {
+      if (this.clock.now() - since - (this.pauses.paused() - mark) >= LIMITS.silentSeconds - 1e-6) {
         nearbyLog("socket", `resume: no answer in ${LIMITS.silentSeconds} s; a fresh attempt`);
         this.close();
         return;
@@ -272,16 +284,16 @@ export class NearbySocket {
         return;
       }
       if (!this.sendPing(link)) return;
-      this.clock.setTimeout(carry, LIMITS.pingSeconds);
+      this.pauses.after(carry, LIMITS.pingSeconds);
     };
-    this.clock.setTimeout(() => {
+    this.pauses.after(() => {
       if (!live()) return;
       if (this.pingSent === null) {
         nearbyLog("socket", `resume: no answer in ${LIMITS.resumeSeconds} s, but the link carries; kept`);
         carry();
         return;
       }
-      this.clock.setTimeout(() => {
+      this.pauses.after(() => {
         if (!live()) return;
         if (this.pingSent === null) {
           carry();
@@ -381,6 +393,7 @@ export class NearbySocket {
   private ping(link: JoinLink): void {
     this.clock.setTimeout(() => {
       if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
+      this.pauses.poll();
       // a stuck link that is given more time, and answers, stays watched:
       // the loop goes on until the link is replaced
       if (this.clock.now() - this.heard >= LIMITS.silentSeconds) this.stuck("the host is silent", link);
@@ -466,6 +479,7 @@ export class NearbySocket {
     const sent = this.pingSent;
     const window = this.pongWindow(link) - (sent === null ? 0 : this.clock.now() - sent);
     this.clock.setTimeout(() => {
+      this.pauses.poll();
       if (this.link === link && this.readyState === NearbySocket.OPEN && this.pingSent === sent && sent !== null) {
         this.stuck("no pong after a move", link);
       }
@@ -489,6 +503,7 @@ export class NearbySocket {
       const ping = this.pingSent;
       this.clock.setTimeout(() => {
         if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
+        this.pauses.poll();
         // the ping answered (or, with none out, anything heard): alive
         if (ping !== null ? this.pingSent !== ping : this.heard !== heard) return;
         this.stuck(why, link);
@@ -568,10 +583,22 @@ export class NearbySocket {
     this.finish();
   }
 
+  /** This page was stopped from `from` to `to`: the host's frames and the
+   *  pong it sent meanwhile are still on their way in, so neither the
+   *  silence nor the pong's wait counts that time. The ping out stays the
+   *  one ping in flight (no other is sent until its pong). */
+  private paused(from: number, to: number): void {
+    if (this.readyState === NearbySocket.CLOSED) return;
+    nearbyLog("socket", `this page was paused ${(to - from).toFixed(1)} s; the link is kept`);
+    this.heard = Math.max(this.heard, to);
+    if (this.pingSent !== null) this.pingSent = Math.max(this.pingSent, to);
+  }
+
   private finish(): void {
     if (this.readyState === NearbySocket.CLOSED) return;
     this.readyState = NearbySocket.CLOSED;
     this.offKeepalive();
+    this.offPauses();
     this.resuming = false;
     this.early = [];
     this.link = null;

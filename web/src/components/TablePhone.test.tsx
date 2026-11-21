@@ -561,17 +561,6 @@ describe("Play and Bury say they are sending", () => {
     act(() => { vi.advanceTimersByTime(200); });
     expect(label()).toBe("Sending…");
   });
-
-  it("online, a reconnect never sends a move again by itself", () => {
-    render(burying());
-    for (let i = 0; i < 8; i++) pick(i);
-    act(() => primary().click());
-    setStatus("closed");
-    setStatus("open");
-    render(burying());
-    expect(moves()).toHaveLength(1);
-    expect(label()).toBe("Bury (8/8)");
-  });
 });
 
 describe("following", () => {

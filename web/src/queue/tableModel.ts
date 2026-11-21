@@ -511,7 +511,7 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
     status: others.length ? { text: `${people.filter((p) => ready.has(p.seat)).length} of ${people.length} ready` } : undefined,
     seats,
     you: room.you,
-    rows: { code: room.room, invite: false, ranked: true, opener: false, level: room.start_level, joiners: undefined },
+    rows: { code: room.room, invite: false, ranked: true, opener: false, level: room.start_level, joiners: undefined, bots: undefined },
     waitSwitch: null,
     nearbySwitch: host ? { on: true, disabled: nb.locked } : null,
     chat: null,

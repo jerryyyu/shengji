@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
 import type { ConnStatus } from "../ws";
-import { useOffline } from "../offlineMode";
+import { NEARBY_SESSION, useOffline } from "../offlineMode";
 import Card, { shortLabel } from "./Card";
 import Hand from "./Hand";
 import type { HandRects } from "./Hand";

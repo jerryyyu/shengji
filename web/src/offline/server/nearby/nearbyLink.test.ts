@@ -230,6 +230,27 @@ describe("a stuck link", () => {
     expect(j.frames.filter((f) => f.type === "error").length).toBe(errorsBefore);
   }, 120_000);
 
+  it("a regular ping unanswered is called stuck at its own pong deadline, not at the next ping", async () => {
+    const t = new NearbyTable(5, 1, DELAY);
+    await t.open();
+    const j = await t.join("Mei");
+    const peer = peerOf(t);
+    const pings: number[] = [];
+    const push = t.fake.wire.push.bind(t.fake.wire);
+    t.fake.wire.push = (...e) => {
+      for (const f of e) if (f.from === peer && f.text.includes("nearby_ping")) pings.push(t.clock.now());
+      return push(...e);
+    };
+    await t.settle(() => pings.length > 0, 100_000);
+    // the joiner's frames stop reaching the host (that ping got through)
+    t.fake.lose(peer);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 100_000);
+    const at = pings[pings.length - 1];
+    expect(pings.length).toBe(2);
+    expect(nearbyLogText()).toMatch(/STUCK: no pong;/);
+    expect(t.clock.now() - at).toBeLessThanOrEqual(LIMITS.pongSeconds + 1e-6);
+  }, 120_000);
+
   it("a link that only answers late is not called stuck", async () => {
     const t = new NearbyTable(5, 1, 1.5);
     await t.open(true);

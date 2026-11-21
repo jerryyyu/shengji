@@ -9,7 +9,7 @@ import type { Card, TrumpSuit } from "./offline/engine/cards";
 import type { RoundState } from "./offline/engine/round";
 import { SmartBot, type BotView, type PublicTrick } from "./offline/bot";
 import { nearbyPluginProxy } from "./native";
-import { nearbyLog, nearbyLogLines, subscribeNearbyLog } from "./nearbyLog";
+import { nearbyLog, nearbyLogLines, subscribeNearbyLog, type LogLine } from "./nearbyLog";
 import { conn } from "./ws";
 
 type Frame = Record<string, unknown> & { type: string };
@@ -147,7 +147,66 @@ let offFrames: (() => void) | null = null;
 
 function resetStats(): void {
   Object.assign(stats, { started: Date.now(), rounds: 0, games: 0, faults: 0, reconnects: 0, stuck: 0, refused: 0, moves: [], warnings: [] });
+  links = new LinkSplit();
 }
+
+type LinkKind = "wifi" | "p2p";
+
+/** The soak's split by connection kind, from the plugin's log lines: link-ups
+ *  over Wi-Fi and peer-to-peer, the link time on each, and each STUCK put on
+ *  the kind of the link last made. A link is peer-to-peer when its line says
+ *  so or its interface is awdl or llw. */
+export class LinkSplit {
+  ups: Record<LinkKind, number> = { wifi: 0, p2p: 0 };
+  stuck: Record<LinkKind, number> = { wifi: 0, p2p: 0 };
+  ms: Record<LinkKind, number> = { wifi: 0, p2p: 0 };
+  movedOff = 0;
+  private live = new Map<string, { kind: LinkKind; since: number }>();
+  private current: LinkKind | null = null;
+
+  static kind(iface: string, says: boolean): LinkKind {
+    return says || /^(awdl|llw)/.test(iface) ? "p2p" : "wifi";
+  }
+
+  see(l: Pick<LogLine, "t" | "from" | "text">): void {
+    const host = /^host link up via (\S+) \([^)]*\)( peer-to-peer)?$/.exec(l.text);
+    const inbound = /^inbound (\S+) up via (\S+)( peer-to-peer)?$/.exec(l.text);
+    if (l.from === "native" && host) this.up("host", LinkSplit.kind(host[1], !!host[2]), l.t);
+    else if (l.from === "native" && inbound) this.up(inbound[1], LinkSplit.kind(inbound[2], !!inbound[3]), l.t);
+    else if (l.from === "native" && l.text === "moving the host link off peer-to-peer") { this.movedOff += 1; this.end("host", l.t); }
+    else if (l.from === "native" && l.text.startsWith("drop ")) this.end(l.text.slice(5).split(" ")[0], l.t);
+    else if (l.from === "host" && /^link \S+ gone/.test(l.text)) this.end(l.text.split(" ")[1], l.t);
+    if (l.text.includes("STUCK") && this.current) this.stuck[this.current] += 1;
+  }
+
+  private up(id: string, kind: LinkKind, t: number): void {
+    this.end(id, t);
+    this.live.set(id, { kind, since: t });
+    this.ups[kind] += 1;
+    this.current = kind;
+  }
+
+  private end(id: string, t: number): void {
+    const l = this.live.get(id);
+    if (!l) return;
+    this.ms[l.kind] += Math.max(0, t - l.since);
+    this.live.delete(id);
+  }
+
+  /** `links wifi 12 / p2p 7, p2p time 41%, STUCK wifi 0 / p2p 1, moved off p2p 2`, with the
+   *  links still up counted to `t`. */
+  summary(t: number): string {
+    const ms = { ...this.ms };
+    for (const l of this.live.values()) ms[l.kind] += Math.max(0, t - l.since);
+    const all = ms.wifi + ms.p2p;
+    const share = all > 0 ? `${Math.round((100 * ms.p2p) / all)}%` : "-";
+    return `links wifi ${this.ups.wifi} / p2p ${this.ups.p2p}, p2p time ${share}, ` +
+      `STUCK wifi ${this.stuck.wifi} / p2p ${this.stuck.p2p}, moved off p2p ${this.movedOff}`;
+  }
+}
+
+let links = new LinkSplit();
+const pageMs = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 function pct(xs: number[], q: number): number {
   if (!xs.length) return 0;
@@ -160,7 +219,8 @@ export function soakSummary(): string {
   const mins = Math.round((Date.now() - stats.started) / 60_000);
   const warn = stats.warnings.length ? ` WARN ${stats.warnings.length}: ${[...new Set(stats.warnings)].slice(0, 3).join("; ")}` : " warnings 0";
   return `SOAK ${mins} min: games ${stats.games}, rounds ${stats.rounds}, faults ${stats.faults}, reconnects ${stats.reconnects}, ` +
-    `STUCK ${stats.stuck}, refused ${stats.refused}, move->state worst ${Math.max(0, ...stats.moves)} ms p95 ${pct(stats.moves, 0.95)} ms (n=${stats.moves.length});${warn}`;
+    `STUCK ${stats.stuck}, refused ${stats.refused}, move->state worst ${Math.max(0, ...stats.moves)} ms p95 ${pct(stats.moves, 0.95)} ms (n=${stats.moves.length}), ` +
+    `${links.summary(Math.round(pageMs()))};${warn}`;
 }
 
 function writeSummary(): void {
@@ -180,10 +240,11 @@ function readLog(): void {
   const lines = nearbyLogLines();
   const l = lines[lines.length - 1];
   if (!l || l.from === "soak") return;
+  links.see(l);
   if (l.text.includes("STUCK")) stats.stuck += 1;
   if (l.text.startsWith("resume: accepted")) stats.reconnects += 1;
   if (l.text.startsWith("REFUSED")) stats.refused += 1;
-  if (l.text.startsWith("CHAOS ") && !l.text.startsWith("CHAOS stall over")) stats.faults += 1;
+  if (l.text.startsWith("CHAOS ") && !/^CHAOS (stall over|wifi fake over)/.test(l.text)) stats.faults += 1;
   const m = /, (\d+) ms after the move$/.exec(l.text);
   if (m) stats.moves.push(Number(m[1]));
 }
@@ -266,17 +327,25 @@ interface ChaosPlugin {
   debugChaos(opts: { kind: string; seconds?: number }): Promise<{ done?: boolean }>;
 }
 let chaosTimer: number | null = null;
-const KINDS = ["cancel", "stall", "path", "listener"] as const;
+// each kind equally likely; "wifi" fakes the Wi-Fi network leaving or
+// joining for 20-90 s inside the plugin's path logic
+const KINDS = ["cancel", "stall", "path", "listener", "wifi"] as const;
+
+/** One fault: its kind, and how long a stall (3-12 s) or a faked Wi-Fi
+ *  change (20-90 s) lasts. */
+export function chaosPick(rand: () => number = Math.random): { kind: (typeof KINDS)[number]; seconds: number } {
+  const kind = KINDS[Math.min(KINDS.length - 1, Math.floor(rand() * KINDS.length))];
+  return { kind, seconds: kind === "wifi" ? 20 + rand() * 70 : 3 + rand() * 9 };
+}
 
 function armChaos(): void {
   if (!chaosOn) return;
   chaosTimer = window.setTimeout(() => {
     chaosTimer = null;
     const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
-    const kind = KINDS[Math.floor(Math.random() * KINDS.length)];
-    const seconds = 3 + Math.random() * 9;
+    const { kind, seconds } = chaosPick();
     if (p && typeof p.debugChaos === "function") {
-      nearbyLog("soak", `chaos: ${kind}${kind === "stall" ? ` ${seconds.toFixed(1)} s` : ""}`);
+      nearbyLog("soak", `chaos: ${kind}${kind === "stall" || kind === "wifi" ? ` ${seconds.toFixed(1)} s` : ""}`);
       void p.debugChaos({ kind, seconds }).then((r) => {
         if (r?.done === false) nearbyLog("soak", `chaos: ${kind} does not apply here`);
       }, (e: unknown) => nearbyLog("soak", `chaos: ${kind} failed: ${String(e)}`));

@@ -337,14 +337,14 @@ def _fast_tables():
     return _FAST_TABLES
 
 
-def _winner_fast(trick, ordering, combos, legal):
+def _winner_fast(trick, ordering, combos, legal, *, with_level=False):
     """``belief_history._winner_so_far`` with its modules passed in (the same loop)."""
     if not trick.plays:
         return None
     lead = trick.plays[0].cards
     inc_suit = legal.uniform_suit(lead, ordering)
     if inc_suit is None:
-        return trick.plays[0].seat
+        return (trick.plays[0].seat, None, None) if with_level else trick.plays[0].seat
     inc_top = combos.decompose(lead, ordering).top_level()
     winner = trick.plays[0].seat
     for tp in trick.plays[1:]:
@@ -352,7 +352,7 @@ def _winner_fast(trick, ordering, combos, legal):
         if won:
             winner, inc_top = tp.seat, top
             inc_suit = ordering.eff_suit(tp.cards[0])
-    return winner
+    return (winner, inc_suit, inc_top) if with_level else winner
 
 
 def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
@@ -703,19 +703,20 @@ def _fourth_reply_callbacks(bot, frame, active, planes, index_of, values_fn, arg
                 or trick.incumbent is None or trick.running_points is None
                 or not search._round_default_copy(clone) or "play" in vars(clone)):
             return None
-    plane_maps, pts, _, legal = _fast_tables()
+    plane_maps, pts, combos, legal = _fast_tables()
 
     def children(clone, seat, candidates):
         trick = clone.trick
-        incumbent, suit, top = trick.incumbent
+        incumbent, suit, top = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
+        prior_points = sum(pts[c] for play in trick.plays for c in play.cards)
         rel = (seat - frame.seat) % 4
         lookup = plane_maps[rel].__getitem__
         parent = planes[index_of[id(clone)]]
         result = []
         for cards in candidates:
-            won, _ = legal.beats(cards, trick.plays[0].cards, suit, top, clone.ordering)
+            won = suit is not None and legal.beats(cards, trick.plays[0].cards, suit, top, clone.ordering)[0]
             winner = rel if won else (incumbent - frame.seat) % 4
-            points = trick.running_points + sum(map(pts.__getitem__, cards))
+            points = prior_points + sum(map(pts.__getitem__, cards))
             result.append((parent, tuple(map(lookup, cards)), points, winner))
         return result
 

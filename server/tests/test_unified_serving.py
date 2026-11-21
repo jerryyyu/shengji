@@ -906,6 +906,9 @@ def test_fourth_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp_pa
             if len(states) == 8:
                 break
     assert len(states) == 8
+    states[0].trick.running_points += 15
+    winner, suit, top = states[0].trick.incumbent
+    states[0].trick.incumbent = ((winner + 1) % 4, suit, top)
     real_features = us._fourth_reply_features
     real_probs = model.leaf_value_probs_fused
     monkeypatch.setattr(search, "greedy_reply_ply", us.readout_reply_ply(search.greedy_reply_ply))

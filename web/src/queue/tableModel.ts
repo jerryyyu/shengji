@@ -60,8 +60,17 @@ export type CodeAction =
   | { type: "code_join" }
   | { type: "code_cancel" };
 
-/** What the offline table does: Start deals at once; Leave puts Play back. */
-export type OfflineAction = { type: "offline_start" } | { type: "offline_leave" };
+/** What the offline table does: Start deals at once; Leave puts Play back;
+ *  the Nearby switch opens the table to nearby phones (or closes it), and
+ *  its denied line's link opens Settings. At a nearby table Start is the
+ *  shared table's ready, and the joiner's not-found panel tries again. */
+export type OfflineAction =
+  | { type: "offline_start" }
+  | { type: "offline_leave" }
+  | { type: "nearby_toggle" }
+  | { type: "nearby_settings" }
+  | { type: "nearby_ready"; on: boolean }
+  | { type: "nearby_again" };
 
 /** What the panel answers itself: the leave sheet, and the opener's tap on
  *  a person and then on the seat they go to (one confirm sends the move);
@@ -97,6 +106,8 @@ export interface TableButton {
  *  others read them), and Allow joiners when `joiners` is set. */
 export interface TableRows {
   code: string | null;
+  /** The Invite link beside the code; a nearby table has no link to share. */
+  invite?: boolean;
   ranked: boolean;
   opener: boolean;
   /** The Starting level; null for a table that has no such row (offline). */
@@ -118,12 +129,16 @@ export interface TableModel {
   /** The mode tag above the title; a ranked table has none. */
   tag?: "Casual" | "Offline";
   title: string;
-  status?: { text: string; warn?: boolean };
+  /** `link`: a button at the line's end (the denied line's Open Settings). */
+  status?: { text: string; warn?: boolean; link?: { label: string; act: PanelAction } };
   seats: ModelSeat[] | null;
   you: number;
   rows: TableRows | null;
   /** The leader's Wait for people on your own table. */
   waitSwitch: { on: boolean; disabled: boolean } | null;
+  /** The offline host's Nearby switch; `disabled` once someone has joined,
+   *  when only Leave ends the table. */
+  nearbySwitch?: { label: string; on: boolean; disabled: boolean } | null;
   /** The table's chat row; `disabled` draws it greyed, for a table with
    *  no server to chat through. */
   chat: { messages: ChatMsg[]; you: number } | { disabled: true } | null;
@@ -138,7 +153,7 @@ export interface TableModel {
  *  opener tapped to move (null for none). */
 export interface PanelState { now: number; picked: number | null }
 
-const teamWord = (ours: boolean) => (ours ? "your team" : "other team");
+export const teamWord = (ours: boolean) => (ours ? "your team" : "other team");
 
 /** The seats of the table an offer would sit you at, you in the picked seat. */
 function offerSeats(o: OfferView, busy: boolean): ModelSeat[] {
@@ -424,19 +439,39 @@ const OFFLINE_SEATS: ModelSeat[] = [
   { at: 3, look: "bot", name: "Bot 3", sub: "", label: "Bot 3, other team" },
 ];
 
+/** The offline table's Nearby switch row and its line, as nearbyModel.ts
+ *  words them. */
+export interface NearbySwitch {
+  label: string;
+  on: boolean;
+  status?: TableModel["status"];
+}
+
 /** Your offline table in Play's place, its mode tag saying Offline: the
  *  chat row greyed (chat needs the server), Start and Leave. `ready` is the
  *  on-device server's socket being open; `starting`, a Start on its way. */
-export function offlineModel({ ready, starting, bots }: { ready: boolean; starting: boolean; bots: BotLevel }): TableModel {
+export function offlineModel({ ready, starting, bots, nearby = null }: {
+  ready: boolean; starting: boolean; bots: BotLevel;
+  /** The Nearby switch, where this page offers nearby play (nearbyModel.ts
+   *  builds it): `on` while the table is being opened to nearby phones;
+   *  `status`, its one line after it fell back off. */
+  nearby?: NearbySwitch | null;
+}): TableModel {
+  const status = nearby?.status;
   return {
     kind: "offline",
     tag: "Offline",
     title: "You and 3 bots",
+    status,
     seats: OFFLINE_SEATS,
     you: 0,
-    // the Bots row only, which you pick until Start
-    rows: { code: null, ranked: false, opener: !starting, level: null, joiners: undefined, bots },
-    waitSwitch: null, chat: { disabled: true },
+    // the Bots row only, which you pick until Start; a table being opened to
+    // nearby phones has none (its bots are Standard)
+    rows: nearby?.on ? null : { code: null, ranked: false, opener: !starting, level: null, joiners: undefined, bots },
+    waitSwitch: null,
+    nearbySwitch: nearby ? { label: nearby.label, on: nearby.on, disabled: nearby.on } : null,
+    // nearby tables have no chat
+    chat: nearby?.on ? null : { disabled: true },
     primary: { label: starting ? "Starting…" : "Start", disabled: !ready || starting, busy: starting,
                act: { type: "offline_start" } },
     secondary: { label: "Leave", disabled: false, act: { type: "offline_leave" } },

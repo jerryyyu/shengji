@@ -88,11 +88,21 @@ const ANSWERED: ReadonlySet<ClientMsg["type"]> = new Set<ClientMsg["type"]>([
   "play", "bury", "declare", "pass_declare", "next_round", "im_back",
   "table_chat", "table_allow_joiners",
 ]);
+/** The longest wait between a nearby link's reconnect attempts. */
+export const NEARBY_BACKOFF_MAX_MS = 2000;
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
-import { OFFLINE } from "./offlineMode";
+import { NEARBY_SESSION, OFFLINE } from "./offlineMode";
 export { OFFLINE };
+
+/** Whether this page may remember its seat in storage: only for the game
+ *  server. A table on this device or a nearby phone's is never written down,
+ *  so a later launch with a network never sends its code or token to the
+ *  game server. */
+function remembersSeats(): boolean {
+  return !OFFLINE && !NEARBY_SESSION;
+}
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
@@ -110,7 +120,7 @@ export function getSavedRoom(): string | null {
   return localStorage.getItem(ROOM_KEY);
 }
 export function saveRoom(room: string): void {
-  localStorage.setItem(ROOM_KEY, room);
+  if (remembersSeats()) localStorage.setItem(ROOM_KEY, room);
 }
 export function clearSavedRoom(): void {
   localStorage.removeItem(ROOM_KEY);
@@ -125,7 +135,7 @@ export function getResumeToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 export function saveResumeToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  if (remembersSeats()) localStorage.setItem(TOKEN_KEY, token);
 }
 
 type MsgListener = (msg: ServerMsg) => void;
@@ -163,7 +173,9 @@ class Connection {
   /** Which server the socket talks to. "local" is set as soon as offline play
    *  is asked for, while the on-device server's module may still be loading;
    *  browser wake events never open the network socket then. */
-  private transport: "remote" | "local" = "remote";
+  private transport: "remote" | "local" | "nearby" = "remote";
+  /** The transport a nearby join replaced, which its end goes back to. */
+  private beforeNearby: "remote" | "local" = "remote";
   /** Bumped on every transport request, so a module load that finishes after
    *  a later request changes nothing. */
   private transportSeq = 0;
@@ -277,6 +289,30 @@ class Connection {
     if (seq !== this.transportSeq) return;
     this.makeSocket = () => new m.LocalSocket() as unknown as WebSocket;
     if (this.started) this.open();
+  }
+
+  /** Play at a nearby phone's table from now on, in place: `make` opens the
+   *  link to it (a NearbySocket). Reconnects open a new link the same way,
+   *  until `leaveNearby` goes back to the transport this replaced. */
+  useNearby(make: () => WebSocket): void {
+    this.transportSeq += 1;
+    if (this.transport !== "nearby") this.beforeNearby = this.transport;
+    this.transport = "nearby";
+    this.retireTransport();
+    this.makeSocket = make;
+    if (this.started) this.open();
+  }
+
+  /** The nearby table is over for this page: back to the transport it replaced. */
+  leaveNearby(): void {
+    if (this.transport !== "nearby") return;
+    if (this.beforeNearby === "local") {
+      this.transport = "remote";
+      void this.useLocalServer().catch(() => {});
+    } else {
+      this.transport = "local";
+      this.useGameServer();
+    }
   }
 
   /** Back to the game server, in place. */
@@ -604,7 +640,7 @@ class Connection {
       }
       switch (msg.type) {
         case "resume":
-          if (msg.token) saveResumeToken(msg.token);
+          if (msg.token && this.transport === "remote") saveResumeToken(msg.token);
           break;
         case "chat_history":
           this.chatLog = msg.messages.slice(-100);   // REPLACE, never merge
@@ -644,7 +680,10 @@ class Connection {
     if (this.reconnectTimer !== null) return;
     const delay = this.immediate ? 0 : this.backoff;
     this.immediate = false;
-    this.backoff = Math.min(this.backoff * 2, this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
+    // a nearby seat has the host's window (about a minute) to get back in:
+    // its attempts stay close together through it
+    this.backoff = Math.min(this.backoff * 2,
+      this.transport === "nearby" ? NEARBY_BACKOFF_MAX_MS : this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

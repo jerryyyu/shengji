@@ -35,6 +35,9 @@ export type ClientMsg =
       /** The game starts at once with a bot in every empty seat, with or
        *  without this; a refused start sends an `error`, then `left`. */
       start?: boolean;
+      /** On the device only: a nearby table, which waits in a lobby for
+       *  people on nearby phones until everyone is ready. */
+      nearby?: boolean;
       /** The on-device server's table Bots (Standard when omitted); the game
        *  server sets Bots on a queue table instead. */
       bot_level?: BotLevel;
@@ -109,6 +112,10 @@ export interface RoomMsg {
   /** The table's Bots, fixed for the game (a ranked room is always
    *  "advanced"). Absent offline. */
   bot_level?: BotLevel;
+  /** A nearby table's lobby, hosted on a phone (offline/server/nearby):
+   *  whose Start is in, the seconds until bots take the open seats (null
+   *  while the host is alone), and whether someone has joined. */
+  nearby?: { ready: number[]; bots_in: number | null; locked: boolean };
 }
 
 export interface StatePlayer {
@@ -295,7 +302,7 @@ export interface LeftMsg {
    *  player; the away owner came back before a newcomer's handover
    *  (reclaimed); the game ended first (table_closed); or this away
    *  player's seat went to a newcomer (seat_given). */
-  reason?: "removed" | "reclaimed" | "table_closed" | "seat_given" | "partner_left";
+  reason?: "removed" | "reclaimed" | "table_closed" | "seat_given" | "partner_left" | "host_left";
   message?: string;
 }
 

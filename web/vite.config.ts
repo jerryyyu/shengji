@@ -55,9 +55,17 @@ function buildId(): Plugin {
   };
 }
 
+// The nearby M1 transport spike's test page (nearby-spike.html) is built only
+// with SHENGJI_NEARBY_SPIKE=1, for the Debug app the spike's xcodebuild makes;
+// no served or shipped build contains it.
+const NEARBY_SPIKE = process.env.SHENGJI_NEARBY_SPIKE === "1";
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), precompressAssets(), buildId()],
+  ...(NEARBY_SPIKE
+    ? { build: { rollupOptions: { input: { main: "index.html", spike: "nearby-spike.html" } } } }
+    : {}),
   server: {
     // Same-origin /api in dev: the session cookie is set and read on one
     // host, so no CORS and nothing differs from the served build. The

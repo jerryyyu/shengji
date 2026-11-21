@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { effectiveName, useAuth } from "../auth";
 import { ChatBody } from "../components/ChatPanel";
@@ -11,13 +11,14 @@ import { COPIED_MS, shareInvite } from "../codes";
 import type { CodeJoin } from "../codeJoin";
 import { takeoverSeats } from "../joinSeats";
 import type { DroppedSeat } from "../joinSeats";
-import type { ChatMsg, Rank } from "../protocol";
+import type { ChatMsg, Rank, RoomMsg } from "../protocol";
+import type { NearbyJoin } from "../nearbyJoin";
 import { RANKS } from "../protocol";
 import Sheet from "./Sheet";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
 import { fromCode, fromQueue, offlineModel, queueSend } from "./tableModel";
-import type { MoverSeat, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
+import type { MoverSeat, NearbySwitch, PanelAction, Ring, SeatItem, TableButton, TableModel, TableRows as Rows } from "./tableModel";
 import { BOT_LEVELS } from "./messages";
 import type { BotLevel } from "./messages";
 import { OFFER_CLOCK_MS, announcement, moveQuestion, panelKind, shortName } from "./tableText";
@@ -134,10 +135,26 @@ function PanelView({ m, guarded, sheet, act }: {
     <section ref={box} className={`tp tp-${m.kind}`} aria-labelledby={titleId}>
       {m.tag ? <ModeTag tag={m.tag} /> : null}
       <h2 className="tp-title" id={titleId}>{m.title}</h2>
-      {m.status ? <p className={`tp-line${m.status.warn ? " warn" : ""}`}>{m.status.text}</p> : null}
+      {m.status ? (
+        <p className={`tp-line${m.status.warn ? " warn" : ""}`}>
+          {m.status.text}
+          {m.status.link ? (
+            <>
+              {" "}
+              <button type="button" className="howto-link tp-line-link" onClick={() => act(m.status!.link!.act)}>
+                {m.status.link.label}
+              </button>
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {seats ? <TeamColumns seats={seats} you={m.you} /> : null}
       {m.rows ? <TableRows rows={m.rows} act={act} /> : null}
       {m.waitSwitch ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
+      {m.nearbySwitch ? (
+        <SwitchRow label={m.nearbySwitch.label} on={m.nearbySwitch.on} disabled={m.nearbySwitch.disabled}
+                   onToggle={() => act({ type: "nearby_toggle" })} />
+      ) : null}
       {m.chat && "disabled" in m.chat ? (
         <button type="button" className="tp-chat" disabled aria-label="Chat needs a connection">
           <span className="tp-chat-label" aria-hidden="true">Chat</span>
@@ -187,7 +204,8 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
     else if (a.type === "pick_person") mover.pick(a.at);
     else if (a.type === "move_to") mover.to(a.at);
     else if (a.type !== "code_pick" && a.type !== "code_join" && a.type !== "code_cancel"
-             && a.type !== "offline_start" && a.type !== "offline_leave") queueSend(a);
+             && a.type !== "offline_start" && a.type !== "offline_leave" && a.type !== "nearby_toggle"
+             && a.type !== "nearby_settings" && a.type !== "nearby_ready" && a.type !== "nearby_again") queueSend(a);
   };
   const sheet = asking ? (
     <LeaveSheet context={m.leave}
@@ -223,18 +241,68 @@ export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
   return <PanelView m={m} guarded={false} sheet={sheet} act={act} />;
 }
 
+/** What the offline and nearby panels answer, beyond Start and Leave. */
+export interface NearbyActs {
+  onToggle?: () => void;
+  onSettings?: () => void;
+  onReady?: (on: boolean) => void;
+}
+
+function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }: NearbyActs & {
+  onStart?: () => void; onLeave: () => void; onBots?: (level: BotLevel) => void;
+}) {
+  return (a: PanelAction) => {
+    if (a.type === "offline_start") onStart?.();
+    else if (a.type === "offline_leave") onLeave();
+    else if (a.type === "bot_level") onBots?.(a.level);
+    else if (a.type === "nearby_toggle") onToggle?.();
+    else if (a.type === "nearby_settings") onSettings?.();
+    else if (a.type === "nearby_ready") onReady?.(a.on);
+  };
+}
+
 /** Your offline table in Play's place (`offlineModel`), with its Bots
- *  row until Start. Leave asks nothing: no one else sits at it. */
-export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave }: {
+ *  row until Start. Leave asks nothing: no one else sits at it. `nearby`:
+ *  the Nearby switch row. */
+export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave, nearby = null, ...acts }: {
   ready: boolean; starting: boolean; bots: BotLevel; onBots: (level: BotLevel) => void;
   onStart: () => void; onLeave: () => void;
+  nearby?: NearbySwitch | null;
+} & NearbyActs) {
+  return <PanelView m={offlineModel({ ready, starting, bots, nearby })} guarded={false}
+                    act={offlineAct({ onStart, onLeave, onBots, ...acts })} />;
+}
+
+/** A nearby table's lobby in Play's place, for its host and each joiner:
+ *  the shared table's ready count and ring. `model` is nearbyModel.ts's
+ *  `nearbyRoomModel`, passed in by the nearby UI (nearbyUi.tsx), so this
+ *  file carries none of nearby play's copy. */
+export function NearbyRoomPanel({ room, model, onLeave, ...acts }: {
+  room: RoomMsg; onLeave: () => void;
+  model: (room: RoomMsg, at: { now: number; botsAt: number | null }) => TableModel;
+} & NearbyActs) {
+  // the ring's end, from when this frame arrived: each frame restamps it
+  const botsAt = useMemo(() => {
+    const botsIn = room.nearby?.bots_in ?? null;
+    return botsIn === null ? null : Date.now() + botsIn * 1000;
+  }, [room]);
+  const now = useNow(botsAt !== null, 250);
+  return <PanelView m={model(room, { now, botsAt })} guarded={false} act={offlineAct({ onLeave, ...acts })} />;
+}
+
+/** A nearby code's Join panel: looking, the seat picker, Join and Not now,
+ *  or Try again. `model` is nearbyModel.ts's `fromNearbyJoin`. */
+export function NearbyJoinPanel({ join, model, onJoin, onCancel, onPick, onAgain }: {
+  join: NearbyJoin; model: (join: NearbyJoin) => TableModel;
+  onJoin: () => void; onCancel: () => void; onPick: (seat: number) => void; onAgain: () => void;
 }) {
   const act = (a: PanelAction) => {
-    if (a.type === "offline_start") onStart();
-    else if (a.type === "offline_leave") onLeave();
-    else if (a.type === "bot_level") onBots(a.level);
+    if (a.type === "code_pick") onPick(a.seat);
+    else if (a.type === "code_cancel") onCancel();
+    else if (a.type === "code_join") onJoin();
+    else if (a.type === "nearby_again") onAgain();
   };
-  return <PanelView m={offlineModel({ ready, starting, bots })} guarded={false} act={act} />;
+  return <PanelView m={model(join)} guarded={false} act={act} />;
 }
 
 /** The confirm before taking a dropped player's seat: one question, then
@@ -310,8 +378,9 @@ export function ChatRow({ messages, you, onSend }: {
   );
 }
 
-/** The code with its Invite link: the share sheet, or a copy. */
-function CodeRow({ code }: { code: string }) {
+/** The code with its Invite link: the share sheet, or a copy. A nearby
+ *  table's code has no link (there is no URL offline). */
+function CodeRow({ code, invite: withInvite = true }: { code: string; invite?: boolean }) {
   const [copied, setCopied] = useState(false);
   const invite = () => {
     void shareInvite(code).then((didCopy) => {
@@ -323,15 +392,20 @@ function CodeRow({ code }: { code: string }) {
   return (
     <div className="tp-code-row">
       <span className="tp-code" aria-label={`Table code ${code.split("").join(" ")}`}>{code}</span>
-      <button type="button" className="tp-invite" onClick={invite}>{copied ? "Link copied" : "Invite link"}</button>
+      {withInvite ? (
+        <button type="button" className="tp-invite" onClick={invite}>{copied ? "Link copied" : "Invite link"}</button>
+      ) : null}
     </div>
   );
 }
 
 /** A labelled switch row, label only. */
-function SwitchRow({ label, on, onToggle }: { label: string; on: boolean; onToggle: () => void }) {
+function SwitchRow({ label, on, onToggle, disabled = false }: {
+  label: string; on: boolean; onToggle: () => void; disabled?: boolean;
+}) {
   return (
-    <button type="button" role="switch" aria-checked={on} className="q-wait tp-switch" onClick={onToggle}>
+    <button type="button" role="switch" aria-checked={on} className="q-wait tp-switch" disabled={disabled}
+            onClick={onToggle}>
       <span className="q-wait-label">{label}</span>
       <span className="q-switch" aria-hidden="true" />
     </button>
@@ -362,13 +436,14 @@ function SetRow<V extends string>({ label, value, values, names, opener, onPick 
 /** Every table's settings rows, labels only: the code with its Invite link,
  *  Starting level and Bots on a casual table (the opener picks them, others
  *  read them; a ranked table starts at 2 with Advanced bots and has neither
- *  row), and the opener's Allow joiners switch when ``joiners`` is set. */
-function TableRows({ rows: { code, ranked, opener, level, joiners, bots }, act }: {
+ *  row), and the opener's Allow joiners switch when ``joiners`` is set. A
+ *  nearby table's code row has no Invite link (``invite`` false). */
+function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, act }: {
   rows: Rows; act: (a: PanelAction) => void;
 }) {
   return (
     <>
-      {code ? <CodeRow code={code} /> : null}
+      {code ? <CodeRow code={code} invite={invite !== false} /> : null}
       {ranked || level === null ? null : (
         <SetRow label="Starting level" value={level as Rank} values={RANKS} names={(r) => r} opener={opener}
                 onPick={(r) => act({ type: "start_level", level: r })} />

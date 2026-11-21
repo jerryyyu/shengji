@@ -7,10 +7,11 @@ import { useCountUp } from "../useCountUp";
 import { SUIT_SYMBOL, shortLabel } from "./Card";
 import HudMenu from "./HudMenu";
 import { formatTableMessage, isDeclareMessage } from "../messageCopy";
-import { OFFLINE } from "../offlineMode";
+import { OFFLINE, useNearbySession } from "../offlineMode";
 import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
 import { showToast } from "../toast";
+import { useNearbyUi } from "../nearbyGate";
 
 function TrumpChip({ state }: { state: GameState }) {
   const trump = state.trump;
@@ -217,6 +218,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
   useStripWidth(barRef);
   useTableToasts(state);
   const mode = gameMode(state, practice);
+  const nb = useNearbyUi();
+  const nearby = useNearbySession() && practice && nb !== null;
   // a guest is never ranked: the seat's own flag, or no account on this device
   const account = useAuth().status;
   const guest = state.guest === true || account === "out" || account === "off";
@@ -229,8 +232,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
     <div className="hud">
       <div className="hud-bar" ref={barRef}>
         {/* game state only: the table's code, the settings and Leave live in the ⋯ menu */}
-        {/* empty: the bar's layout places the groups by position */}
-        <div className="hud-group" />
+        {/* the bar's layout places the groups by position; a nearby table's link dot sits here */}
+        <div className="hud-group">{nearby && nb ? <nb.NearbyLinkDot state={state} /> : null}</div>
 
         <div className="hud-group">
           {/* your team first */}
@@ -253,7 +256,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
           </span>
           {/* a guest is never rated, so its leave sheet speaks of no ranking even at a ranked table;
               Allow joiners is at every table that takes joiners (the frame carries it), ranked or casual */}
-          <HudMenu room={state.room} mode={modeWord(mode, guest)} ranked={mode === "ranked"} guest={guest} offline={practice}
+          <HudMenu room={state.room} mode={modeWord(mode, guest)} ranked={mode === "ranked"} guest={guest} offline={practice} nearby={nearby}
                    allowJoiners={!state.joining_you ? state.allow_joiners : undefined}
                    opener={state.opener === state.you} />
         </div>

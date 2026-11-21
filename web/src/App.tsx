@@ -38,6 +38,7 @@ import { queueLeaveContext } from "./queue/tableModel";
 import { firstJoinerText } from "./queue/tableText";
 import { offlineGame } from "./components/offlineGame";
 import { codes, useCodes } from "./codeJoin";
+import { useNearbyHostLeft, useNearbyUi } from "./nearbyGate";
 import { setSeatSafe, startReloadGate } from "./reloadGate";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
@@ -279,6 +280,9 @@ export default function App() {
   useEffect(() => { setSeatSafe(seatSafe); }, [seatSafe]);
   // a link to another table while you sit at one asks first
   const link = useCodes();
+  // a nearby joiner whose host stayed away past its window
+  const nearbyUi = useNearbyUi();
+  const hostLeft = useNearbyHostLeft();
   const linkPrompt = link?.step === "ask" ? link.code : null;
   // Continue on a saved game: a new room with bots in the other seats, which
   // the server starts at once. Only from outside a room, so no game in
@@ -333,7 +337,10 @@ export default function App() {
   return (
     <div className={`app${rotated ? " rotated" : ""}${offline ? " offline" : ""}`}>
       {screen}
-      {offline && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} pill={!playNoTable} />}
+      {hostLeft && nearbyUi ? (
+        <ConnectionPill status={status} inRoom={inRoom} inGame={false}
+                        ended={{ title: nearbyUi.NEARBY_COPY.hostLeft, onLeave: () => nearbyUi.nearbyJoin.cancel() }} />
+      ) : offline && !inRoom ? null : <ConnectionPill status={status} inRoom={inRoom} inGame={game !== null} pill={!playNoTable} />}
       {screenIsTable ? null : <Toast />}
       {/* the one identity sheet: a guest's chip, Edit name and every Sign in */}
       <IdentitySheet />

@@ -19,7 +19,7 @@ import { Radio, Rng, type Phone, type SimLink } from "./radio";
 
 type Frame = Record<string, unknown> & { type: string };
 
-export type FaultKind = "wifi" | "radio" | "drop" | "halfOpen" | "stall" | "bg" | "listener" | "leave" | "allow" | "midjoin" | "dup";
+export type FaultKind = "wifi" | "radio" | "drop" | "halfOpen" | "stall" | "stallPhone" | "bg" | "listener" | "leave" | "allow" | "midjoin" | "dup";
 
 export interface Fault {
   t: number;
@@ -43,6 +43,10 @@ export interface GameOpts {
   /** In-link duplicates (not something TCP does): safety invariants only. */
   hostile: boolean;
   verbose: boolean;
+  /** The device test's faults too (stallPhone: a whole phone's frames held,
+   *  host or joiner, two phones at once sometimes). Off, a seed makes the
+   *  schedule it always made. */
+  newFaults?: boolean;
 }
 
 export interface Violation {
@@ -81,11 +85,24 @@ export function makeSetup(rng: Rng): Setup {
   return { joiners, hostJoined, joinerJoined, late };
 }
 
-export function makeSchedule(rng: Rng, setup: Setup, seconds: number): Fault[] {
+export function makeSchedule(rng: Rng, setup: Setup, seconds: number, newFaults = false): Fault[] {
   const out: Fault[] = [];
   const joiners = Array.from({ length: setup.joiners }, (_, i) => `J${i + 1}`);
+  const phones = ["H", ...joiners];
   let t = rng.range(20, 40);
   while (t < seconds - 20) {
+    if (newFaults && rng.chance(0.2)) {
+      // the device test's stall: one phone's frames, on every link, held
+      const who = rng.pick(phones);
+      const dur = rng.range(3, 12);
+      out.push({ t, kind: "stallPhone", who, dur, arg: 0 });
+      if (rng.chance(0.3)) {
+        const other = rng.pick(phones.filter((p) => p !== who));
+        out.push({ t: t + rng.range(0, dur), kind: "stallPhone", who: other, dur: rng.range(3, 12), arg: 0 });
+      }
+      t += rng.range(8, 45);
+      continue;
+    }
     const r = rng.next();
     const j = rng.pick(joiners);
     let f: Fault;
@@ -246,7 +263,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   const radio = new Radio(vc, rng, { silentAfterIdle: [3, 5], bugs }, log);
   const setup = makeSetup(setupRng);
-  const schedule = opts.schedule ?? makeSchedule(setupRng, setup, opts.seconds);
+  const schedule = opts.schedule ?? makeSchedule(setupRng, setup, opts.seconds, opts.newFaults === true);
 
   /** A person's time to act: mostly quick, sometimes a long look. */
   const think = () => (driverRng.chance(0.25) ? driverRng.range(2, 12) : driverRng.range(0.5, 2));
@@ -696,6 +713,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           if (!l) return;
           radio.stall(l);
           begin(d, f.dur, () => radio.unstall(l), true);
+          return;
+        }
+        case "stallPhone": {
+          const p = d.phone.plugin;
+          if (!p.stallStart()) return;
+          begin(d, f.dur, () => p.stallEnd(), true);
           return;
         }
         case "bg": {

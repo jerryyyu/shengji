@@ -16,6 +16,8 @@
 //                Wi-Fi network); with --replay, added to the replay's bugs
 // --hostile      also duplicate frames inside a link (TCP never does): the
 //                safety invariants still hold
+// --new-faults   the device test's faults too: stallPhone (every frame of
+//                one phone held, on all its links; two phones may overlap)
 // --replay FILE  run one game from a replay file, deterministically
 // --no-shrink    on a failure, keep the whole fault schedule
 // --out DIR      where replay files go (default: the current directory)
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
     bound: Number(a.bound ?? 15),
     hostile: a.hostile === true,
     verbose: a.verbose === true,
+    newFaults: a["new-faults"] === true,
   };
   const totals: Record<string, number> = {};
   const recoveries: number[] = [];

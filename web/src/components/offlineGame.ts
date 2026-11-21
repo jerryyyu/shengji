@@ -4,6 +4,7 @@ import { conn } from "../ws";
 import { queue } from "../queue/store";
 import { clearToast } from "../toast";
 import { isNative } from "../native";
+import type { BotLevel } from "../queue/messages";
 
 /** The live site, for the app's bundled page to load when back online. */
 export const ONLINE_URL = "https://shengji.fly.dev/";
@@ -50,10 +51,17 @@ export const offlineGame = {
   tableOpen: arrivedForTable(),
   /** A game started at this page's offline table, until the player is back on the Play tab. */
   played: false,
+  /** The offline table's Bots, kept for the next table: Standard until you pick Advanced. */
+  botLevel: "standard" as BotLevel,
 
   subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => { listeners.delete(listener); };
+  },
+  setBotLevel(level: BotLevel): void {
+    if (this.botLevel === level) return;
+    this.botLevel = level;
+    listeners.forEach((l) => l());
   },
   setTable(open: boolean): void {
     if (this.tableOpen === open) return;
@@ -102,6 +110,12 @@ export const offlineGame = {
     else window.setTimeout(load, 2000);
   },
 };
+
+/** The offline table's Bots. */
+export function useOfflineBotLevel(): BotLevel {
+  return useSyncExternalStore((l) => offlineGame.subscribe(l),
+                              () => offlineGame.botLevel, () => offlineGame.botLevel);
+}
 
 /** Whether the offline table is up on this page's Play tab. */
 export function useOfflineTable(local: boolean): boolean {

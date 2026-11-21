@@ -193,8 +193,32 @@ it("Start sends one create_room with start, and the local server deals it", asyn
   const send = vi.spyOn(conn, "send");
   await startGame();
   const sent = send.mock.calls.map(([m]) => m).filter((m) => m.type !== "ping");
-  expect(sent).toEqual([{ type: "create_room", name: "Cheerful Tractor", start: true }]);
+  expect(sent).toEqual([{ type: "create_room", name: "Cheerful Tractor", start: true, bot_level: "standard" }]);
   expect(host.querySelectorAll(".opponent").length).toBe(3);
+  send.mockRestore();
+});
+
+it("the table's Bots row starts at Standard, and Start takes the level you pick", async () => {
+  await mount();
+  await until(() => panel() !== null);
+  const bots = panel()!.querySelector<HTMLSelectElement>("select[aria-label='Bots']")!;
+  expect(bots.value).toBe("standard");
+  expect([...bots.options].map((o) => o.textContent)).toEqual(["Standard", "Advanced"]);
+  // the only setting row: an offline table has no Starting level
+  expect(panel()!.querySelectorAll(".tp-set").length).toBe(1);
+  const { conn } = await import("./ws");
+  const send = vi.spyOn(conn, "send");
+  act(() => {
+    bots.value = "advanced";
+    bots.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(panel()!.querySelector<HTMLSelectElement>("select[aria-label='Bots']")!.value).toBe("advanced");
+  await startGame();
+  const sent = send.mock.calls.map(([m]) => m).filter((m) => m.type !== "ping");
+  expect(sent).toEqual([{ type: "create_room", name: "Cheerful Tractor", start: true, bot_level: "advanced" }]);
+  // the next table opens at the level picked last
+  const { offlineGame } = await import("./components/offlineGame");
+  expect(offlineGame.botLevel).toBe("advanced");
   send.mockRestore();
 });
 

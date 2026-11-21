@@ -172,16 +172,41 @@ async def _inline_to_thread(fn, /, *args, **kwargs):
     return fn(*args, **kwargs)
 
 
-def record_session(seed: int, rounds: int, config: dict, make_room_bot) -> tuple[list, list]:
+def record_session(seed: int, rounds: int, config: dict, make_room_bot, *,
+                   standard: tuple[str, int] | None = None) -> tuple[list, list]:
     """``(records, frames)`` of one seeded solo game whose room bot is
-    ``make_room_bot()``."""
+    ``make_room_bot()``.
+
+    ``standard=(package, bot_seed)`` plays the room at the Standard level: the
+    room's ``bot_level`` is "standard", so ``Room.__post_init__`` wraps the
+    served bot (``make_room_bot()``) with the server's own ``make_relaxed_bot``,
+    reading the scorer package from ``package`` and seeding it with
+    ``bot_seed`` in place of the room's random seed."""
     gen = importlib.import_module("gen_offline_server_fixtures")
     server = gen.server
     records: list = []
     p = _Patches()
     try:
         _install_round_log(p)
-        p.set(server, "make_bot", lambda name, **kw: recording_bot(make_room_bot(), records))
+        if standard is None:
+            p.set(server, "make_bot", lambda name, **kw: recording_bot(make_room_bot(), records))
+        else:
+            package, bot_seed = standard
+            make_relaxed = server.make_relaxed_bot
+            post_init = server.Room.__post_init__
+
+            def standard_post_init(self):
+                if self.bot is None:
+                    self.bot_level = "standard"
+                post_init(self)
+                if self.bot is not None and type(self.bot).__name__ != "RecordingRelaxedBot":
+                    raise RuntimeError("the Standard room did not build the relaxed bot")
+
+            p.set(server, "RELAXED_SF_PACKAGE", package)
+            p.set(server, "make_bot", lambda name, **kw: make_room_bot())
+            p.set(server, "make_relaxed_bot",
+                  lambda served, seed: recording_bot(make_relaxed(served, bot_seed), records))
+            p.set(server.Room, "__post_init__", standard_post_init)
         p.set(asyncio, "to_thread", _inline_to_thread)
         frames = gen.play_session(seed, rounds, config)
     finally:

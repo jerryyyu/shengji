@@ -11,7 +11,7 @@ import { useOnline } from "../useOnline";
 import { ModeSwitch, PlayRow, PresenceLine } from "../queue/Ranked";
 import { OfflinePanel } from "../queue/TablePanel";
 import { useToast } from "../toast";
-import { offlineGame, useOfflineTable } from "./offlineGame";
+import { offlineGame, useOfflineBotLevel, useOfflineTable } from "./offlineGame";
 import { CodeRow } from "./Lobby";
 import "./OfflinePlay.css";
 
@@ -31,6 +31,7 @@ interface OfflineControlsProps {
  *  in place of its own, so what surrounds them stays mounted. */
 export function OfflineControls({ local, status, room = null }: OfflineControlsProps) {
   const showTable = useOfflineTable(local);
+  const bots = useOfflineBotLevel();
   // an error frees Start; the toast says it
   const error = useToast()?.text ?? null;
   const online = useOnline();
@@ -78,7 +79,8 @@ export function OfflineControls({ local, status, room = null }: OfflineControlsP
     setSent(true);
     offlineGame.played = true;
     clearSavedRoom();
-    conn.send({ type: "create_room", name: (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player", start: true });
+    conn.send({ type: "create_room", name: (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player",
+                start: true, bot_level: bots });
   };
 
   return (
@@ -86,8 +88,8 @@ export function OfflineControls({ local, status, room = null }: OfflineControlsP
       <ModeSwitch value="casual" disabled={false} rankedOff />
 
       {showTable ? (
-        <OfflinePanel ready={status === "open"} starting={sent || room !== null}
-                      onStart={start} onLeave={leave} />
+        <OfflinePanel ready={status === "open"} starting={sent || room !== null} bots={bots}
+                      onBots={(b) => offlineGame.setBotLevel(b)} onStart={start} onLeave={leave} />
       ) : (
         <>
           <PlayRow label="Play" disabled={false} duoDisabled onPlay={() => offlineGame.startFromPlay()} />

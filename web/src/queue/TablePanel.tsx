@@ -223,16 +223,18 @@ export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
   return <PanelView m={m} guarded={false} sheet={sheet} act={act} />;
 }
 
-/** Your offline table in Play's place (`offlineModel`). Leave asks
- *  nothing: no one else sits at it. */
-export function OfflinePanel({ ready, starting, onStart, onLeave }: {
-  ready: boolean; starting: boolean; onStart: () => void; onLeave: () => void;
+/** Your offline table in Play's place (`offlineModel`), with its Bots
+ *  row until Start. Leave asks nothing: no one else sits at it. */
+export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave }: {
+  ready: boolean; starting: boolean; bots: BotLevel; onBots: (level: BotLevel) => void;
+  onStart: () => void; onLeave: () => void;
 }) {
   const act = (a: PanelAction) => {
     if (a.type === "offline_start") onStart();
     else if (a.type === "offline_leave") onLeave();
+    else if (a.type === "bot_level") onBots(a.level);
   };
-  return <PanelView m={offlineModel({ ready, starting })} guarded={false} act={act} />;
+  return <PanelView m={offlineModel({ ready, starting, bots })} guarded={false} act={act} />;
 }
 
 /** The confirm before taking a dropped player's seat: one question, then
@@ -367,7 +369,7 @@ function TableRows({ rows: { code, ranked, opener, level, joiners, bots }, act }
   return (
     <>
       {code ? <CodeRow code={code} /> : null}
-      {ranked ? null : (
+      {ranked || level === null ? null : (
         <SetRow label="Starting level" value={level as Rank} values={RANKS} names={(r) => r} opener={opener}
                 onPick={(r) => act({ type: "start_level", level: r })} />
       )}

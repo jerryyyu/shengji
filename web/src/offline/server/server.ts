@@ -27,7 +27,8 @@ import {
 } from "../engine/round";
 import { SmartBot, viewFor } from "../bot";
 import { type Clock, realClock, sleep } from "./clock";
-import { type ActionEntry, BotGate, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
+import { BOT_LEVELS, type BotLevel } from "../../queue/messages";
+import { type ActionEntry, BotGate, DEFAULT_BOT_LEVEL, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
 import { CANONICAL, LOBBY, RETIRED_MESSAGE, forQueue, forRoom, retired } from "./tables";
 
@@ -121,12 +122,15 @@ export class LocalRoom {
   declareUntil: number | null = null;
   readonly code: string;
   startLevel: string;
+  /** The table's Bots, fixed for its game: every release-bot request names it. */
+  readonly botLevel: BotLevel;
   readonly decks: DeckRng;
 
-  constructor(code: string, startLevel: string, decks: DeckRng) {
+  constructor(code: string, startLevel: string, decks: DeckRng, botLevel: BotLevel = DEFAULT_BOT_LEVEL) {
     this.code = code;
     this.startLevel = startLevel;
     this.decks = decks;
+    this.botLevel = botLevel;
   }
 
   get round(): RoundState | null {
@@ -416,10 +420,10 @@ export class LocalServer {
     return new LocalConnection(this, deliver);
   }
 
-  newRoom(startLevel: string): LocalRoom {
+  newRoom(startLevel: string, botLevel: BotLevel = DEFAULT_BOT_LEVEL): LocalRoom {
     let code = randomCode();
     while (this.rooms.has(code)) code = randomCode();
-    const room = new LocalRoom(code, startLevel, new DeckRng(this.seed()));
+    const room = new LocalRoom(code, startLevel, new DeckRng(this.seed()), botLevel);
     this.rooms.set(code, room);
     return room;
   }
@@ -546,7 +550,7 @@ export class LocalServer {
    *  unavailable, too slow, or answers something the engine refuses. */
   private async remoteTurn(room: LocalRoom, rnd: RoundState, seat: number, phase: "bury" | "play"): Promise<{ cards: Card[]; token: string | null }> {
     const gate = this.remote!;
-    const res = await gate.ask(requestFor(rnd, room.actions, phase, seat));
+    const res = await gate.ask(requestFor(rnd, room.actions, phase, seat, false, room.botLevel));
     if (res.ok && res.cards && this.acceptable(rnd, seat, phase, res.cards)) return { cards: res.cards, token: res.token };
     if (res.ok) gate.drop(res.token, "invalid");
     return { cards: phase === "bury" ? room.bot.bury(viewFor(rnd, seat)) : room.bot.play(viewFor(rnd, seat)), token: null };
@@ -580,7 +584,7 @@ export class LocalServer {
       const phase = rnd.phase;
       const declaration = rnd.declaration;
       const gate = this.remote;
-      const res = gate?.usable() ? await gate.ask(requestFor(rnd, room.actions, "declare", s, final)) : null;
+      const res = gate?.usable() ? await gate.ask(requestFor(rnd, room.actions, "declare", s, final, room.botLevel)) : null;
       if (room.closed || room.round !== rnd || rnd.phase !== phase || rnd.declaration !== declaration || !room.seats[s].isBot) {
         // a human declaration (or a closed room) overtook this decision
         if (res?.ok) gate!.drop(res.token, "stale");
@@ -877,7 +881,13 @@ export class LocalConnection {
           this.sendDirect({ type: "error", code: "bad_start_level", message: "Unknown starting level." });
           return;
         }
-        const room = server.newRoom(level as string);
+        // the table's Bots, as a casual table's (matchmaking.py): Standard unless it names Advanced
+        const bots = msg.bot_level ?? DEFAULT_BOT_LEVEL;
+        if (typeof bots !== "string" || !(BOT_LEVELS as readonly string[]).includes(bots)) {
+          this.sendDirect({ type: "error", code: "bad_setting", message: "Bots is Standard or Advanced." });
+          return;
+        }
+        const room = server.newRoom(level as string, bots as BotLevel);
         const me = new Seat(String(msg.name || "Player"), false, randomToken());
         room.seats.push(me);
         this.room = room;

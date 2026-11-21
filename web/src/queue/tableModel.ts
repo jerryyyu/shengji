@@ -99,7 +99,8 @@ export interface TableRows {
   code: string | null;
   ranked: boolean;
   opener: boolean;
-  level: string;
+  /** The Starting level; null for a table that has no such row (offline). */
+  level: string | null;
   joiners: boolean | undefined;
   bots: BotLevel | undefined;
 }
@@ -426,14 +427,16 @@ const OFFLINE_SEATS: ModelSeat[] = [
 /** Your offline table in Play's place, its mode tag saying Offline: the
  *  chat row greyed (chat needs the server), Start and Leave. `ready` is the
  *  on-device server's socket being open; `starting`, a Start on its way. */
-export function offlineModel({ ready, starting }: { ready: boolean; starting: boolean }): TableModel {
+export function offlineModel({ ready, starting, bots }: { ready: boolean; starting: boolean; bots: BotLevel }): TableModel {
   return {
     kind: "offline",
     tag: "Offline",
     title: "You and 3 bots",
     seats: OFFLINE_SEATS,
     you: 0,
-    rows: null, waitSwitch: null, chat: { disabled: true },
+    // the Bots row only, which you pick until Start
+    rows: { code: null, ranked: false, opener: !starting, level: null, joiners: undefined, bots },
+    waitSwitch: null, chat: { disabled: true },
     primary: { label: starting ? "Starting…" : "Start", disabled: !ready || starting, busy: starting,
                act: { type: "offline_start" } },
     secondary: { label: "Leave", disabled: false, act: { type: "offline_leave" } },

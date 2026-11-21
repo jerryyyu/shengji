@@ -56,9 +56,10 @@ function canonical(msg: unknown): string {
 
 const digest = (msg: unknown) => createHash("sha256").update(canonical(msg)).digest("hex").slice(0, 8);
 
-/** A request as the round describes it: without its token and the verdicts it carries. */
+/** A request as the round describes it: without its token, the verdicts it
+ *  carries and the table's Bots level (server.py's round has no level). */
 function roundPart(req: DecisionRequest): DecisionRequest {
-  const { token: _token, settle: _settle, ...rest } = req;
+  const { token: _token, settle: _settle, level: _level, ...rest } = req;
   return rest;
 }
 
@@ -107,7 +108,7 @@ interface Session {
 async function playSession(
   seed: number,
   rounds: number,
-  config: { startLevel: string | null; throws: boolean },
+  config: { startLevel: string | null; throws: boolean; botLevel?: string },
   makeRemote: (server: () => LocalServer, clock: VirtualClock) => RemoteBot | null,
 ): Promise<Session> {
   const clock = new VirtualClock();
@@ -121,6 +122,7 @@ async function playSession(
   socket.onopen = () => {
     const create: Record<string, unknown> = { type: "create_room", name: "You", start: true };
     if (config.startLevel !== null) create.start_level = config.startLevel;
+    if (config.botLevel !== undefined) create.bot_level = config.botLevel;
     socket.send(JSON.stringify(create));
   };
   socket.onmessage = (ev) => {
@@ -176,6 +178,8 @@ describe("release-bot requests vs server.py's rounds", () => {
         counts[r.kind] = (counts[r.kind] ?? 0) + 1;
         expect(r.seat).not.toBe(HUMAN_SEAT);
       }
+      // a table that names no Bots plays Standard
+      expect(requests.every((r) => r.level === "standard")).toBe(true);
       const got = requests.map((r) => digest(roundPart(r))).join("");
       // every answer was played, so every decision is committed, exactly once
       const verdicts = verdictsOf(requests, server);
@@ -198,6 +202,70 @@ describe("release-bot requests vs server.py's rounds", () => {
     expect(counts.bury).toBe(header.stats.bury);
     expect(counts.play).toBe(header.stats.play);
   }, 600_000);
+});
+
+describe("the table's Bots level", () => {
+  const seed = 20261112;
+
+  it("names the table's level on every request and changes nothing else", async () => {
+    const sessions: Record<string, { frames: Frame[]; requests: DecisionRequest[] }> = {};
+    for (const botLevel of [undefined, "standard", "advanced"]) {
+      let remote: ReturnType<typeof standIn> | null = null;
+      const { frames } = await playSession(seed, 1, { startLevel: null, throws: false, botLevel }, (server) => {
+        const answer = smartAnswer(server);
+        remote = standIn((req) => Promise.resolve(answer(req)));
+        return remote;
+      });
+      sessions[botLevel ?? "none"] = { frames, requests: remote!.requests };
+    }
+    expect(sessions.none.requests.length).toBeGreaterThan(50);
+    expect(sessions.none.requests.every((r) => r.level === "standard")).toBe(true);
+    expect(sessions.standard.requests.every((r) => r.level === "standard")).toBe(true);
+    expect(sessions.advanced.requests.every((r) => r.level === "advanced")).toBe(true);
+    // the same game at either level: the same frames and the same rounds asked about
+    for (const level of ["standard", "advanced"]) {
+      expect(sessions[level].frames.map(digest)).toEqual(sessions.none.frames.map(digest));
+      expect(sessions[level].requests.map((r) => digest(roundPart(r))))
+        .toEqual(sessions.none.requests.map((r) => digest(roundPart(r))));
+    }
+  }, 60_000);
+
+  it("refuses an unknown level before making a table", async () => {
+    const { frames, server } = await playSession(seed, 1, { startLevel: null, throws: false, botLevel: "expert" }, () => null);
+    expect(frames).toEqual([{ type: "error", code: "bad_setting", message: "Bots is Standard or Advanced." }]);
+    expect(server.rooms.size).toBe(0);
+  });
+
+  it("keeps the level when you rejoin the table", async () => {
+    const clock = new VirtualClock();
+    let server: LocalServer | null = null;
+    const answer = smartAnswer(() => server!);
+    const remote = standIn((req) => Promise.resolve(answer(req)));
+    server = new LocalServer({ clock, seed: () => seed, remote, autoplay: true });
+    let room = "";
+    let token = "";
+    const first = new LocalSocket(server);
+    first.onopen = () => first.send(JSON.stringify({ type: "create_room", name: "You", start: true, bot_level: "advanced" }));
+    first.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data as string) as Frame;
+      if (msg.type === "room") room = msg.room as string;
+      if (msg.type === "resume") token = msg.token as string;
+    };
+    await clock.run(() => remote.requests.length >= 10);
+    first.close();
+    const before = remote.requests.length;
+    let roundEnd = false;
+    const again = new LocalSocket(server);
+    again.onopen = () => again.send(JSON.stringify({ type: "table_join", code: room, token }));
+    again.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data as string) as Frame;
+      if (msg.type === "state" && msg.phase === "round_end") roundEnd = true;
+    };
+    await clock.run(() => roundEnd);
+    expect(roundEnd).toBe(true);
+    expect(remote.requests.length).toBeGreaterThan(before);
+    expect(remote.requests.every((r) => r.level === "advanced")).toBe(true);
+  }, 60_000);
 });
 
 describe("SmartBot takes over when the release bot cannot answer", () => {

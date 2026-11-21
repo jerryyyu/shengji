@@ -35,6 +35,9 @@ export type ClientMsg =
       /** The game starts at once with a bot in every empty seat, with or
        *  without this; a refused start sends an `error`, then `left`. */
       start?: boolean;
+      /** The on-device server's table Bots (Standard when omitted); the game
+       *  server sets Bots on a queue table instead. */
+      bot_level?: BotLevel;
     }
   | { type: "declare"; card_ids: number[] } // anytime during deal or declare phase
   | { type: "pass_declare" } // declare phase: marks you done with the declare window

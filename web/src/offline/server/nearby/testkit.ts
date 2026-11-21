@@ -2,8 +2,10 @@
 // NearbySockets over a FakeTransport, all on one VirtualClock, each seat
 // optionally played by the fixtures' HumanDriver. Used by the nearby tests
 // only; nothing in the page imports it.
+import type { BotLevel } from "../../../queue/messages";
 import { VirtualClock } from "../clock";
 import { HumanDriver } from "../driver";
+import type { RemoteBot } from "../pybot";
 import { LocalServer, type LocalRoom } from "../server";
 import { LocalSocket } from "../socket";
 import { NearbyHost } from "./host";
@@ -35,8 +37,8 @@ export class NearbyTable {
   /** Seconds a driven player takes to answer a frame. */
   think = 0.3;
 
-  constructor(seed: number, rounds = 1, delay = 0) {
-    this.server = new LocalServer({ clock: this.clock, seed: () => seed });
+  constructor(seed: number, rounds = 1, delay = 0, remote: RemoteBot | null = null) {
+    this.server = new LocalServer({ clock: this.clock, seed: () => seed, remote });
     this.fake = new FakeTransport(this.clock, delay);
     this.rounds = rounds;
   }
@@ -71,11 +73,12 @@ export class NearbyTable {
   }
 
   /** The host page creates a nearby table and starts advertising it. */
-  async open(drive = false, name = "Host"): Promise<void> {
+  async open(drive = false, name = "Host", botLevel?: BotLevel): Promise<void> {
     const sock = new LocalSocket(this.server);
     this.host = { name, sock, frames: [], token: null, driver: null, seat: null, left: false };
     this.wire(this.host, drive);
-    sock.onopen = () => sock.send(JSON.stringify({ type: "create_room", nearby: true, name }));
+    sock.onopen = () => sock.send(JSON.stringify({ type: "create_room", nearby: true, name,
+                                                         ...(botLevel ? { bot_level: botLevel } : {}) }));
     await this.clock.run(() => this.host.frames.some((f) => f.type === "room"), 10_000);
     this.room = [...this.server.rooms.values()][0];
     this.nearbyHost = new NearbyHost(this.server, this.room);

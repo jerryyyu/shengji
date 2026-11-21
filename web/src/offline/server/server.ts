@@ -181,7 +181,8 @@ export class LocalRoom {
   readonly code: string;
   startLevel: string;
   /** The table's Bots, fixed for its game: every release-bot request names it. */
-  readonly botLevel: BotLevel;
+  /** The table's Bots; a nearby lobby's host may change it before the game. */
+  botLevel: BotLevel;
   readonly decks: DeckRng;
   /** A table for nearby phones: it waits in a lobby for joiners until the
    *  host starts it, and a dropped seat is covered by a bot. */
@@ -571,6 +572,7 @@ export function roomJson(room: LocalRoom, seat: number, now = 0): Json {
     allow_joiners: room.allowJoiners,
     players: room.slots().flatMap((s, i) =>
       s === null ? [] : [{ seat: i, name: s.name, is_bot: s.isBot, connected: s.connected || s.isBot }]),
+    ...(room.nearby ? { bot_level: room.botLevel } : {}),
     ...(room.lobby ? { nearby: nearbyJson(room, now) } : {}),
   };
 }
@@ -1247,6 +1249,11 @@ export class LocalServer {
       const level = msg.level ?? msg.start_level;
       if (typeof level !== "string" || !(RANKS as readonly string[]).includes(level)) throw new IllegalPlay("Unknown starting level.");
       room.startLevel = level;
+    } else if (t === "table_bot_level") {
+      if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets the bots.");
+      const level = msg.level ?? msg.bot_level;
+      if (typeof level !== "string" || !(BOT_LEVELS as readonly string[]).includes(level)) throw new IllegalPlay("Bots is Standard or Advanced.");
+      room.botLevel = level as BotLevel;
     } else if (t === "table_move") {
       const to = msg.seat;
       const from = msg.from === undefined || msg.from === null ? seat : msg.from;

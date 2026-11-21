@@ -9,6 +9,7 @@ import { openNearbySettings } from "./offline/server/nearby/native";
 import type { LinkState } from "./offline/server/nearby/transport";
 import { setNearbySession } from "./offlineMode";
 import type { ServerMsg } from "./protocol";
+import type { BotLevel } from "./queue/messages";
 import { conn } from "./ws";
 
 /** The host's switch: off (the solo table), starting (the room or its
@@ -74,14 +75,15 @@ export class NearbyHostSession {
     conn.subscribe?.((m) => this.onMessage(m));
   }
 
-  /** The switch on: a nearby room on the on-device server, under `name`. */
-  turnOn(name: string): void {
+  /** The switch on: a nearby room on the on-device server, under `name`,
+   *  with the offline table's Bots (`bots`; Standard when not given). */
+  turnOn(name: string, bots?: BotLevel): void {
     if (this.view.phase !== "off") return;
     this.attach();
     this.room = null;
     setNearbySession(true);
     this.set({ phase: "starting", line: null });
-    if (!conn.send({ type: "create_room", nearby: true, name })) this.fallBack(null);
+    if (!conn.send({ type: "create_room", nearby: true, name, ...(bots ? { bot_level: bots } : {}) })) this.fallBack(null);
   }
 
   /** The switch off, or the host's Leave: the room ends for everyone. The

@@ -2,7 +2,9 @@
 // Block sends the seat to the server and hides that seat's chat lines at
 // once, the server's state frames keep the seat blocked in later games,
 // Report sends the seat and a reason, and a bot's seat offers neither. A
-// screen reader reaches the same options through each person's seat button.
+// screen reader reaches the same options through each person's seat button,
+// and a signed-out viewer's Report row opens sign-in, since the server takes
+// reports from accounts only.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -21,7 +23,15 @@ vi.mock("../ws", () => ({
   },
 }));
 
+// the signed-in state the options read; "loading" until a test sets it
+const authState = vi.hoisted(() => ({ status: "loading" as string }));
+vi.mock("../auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auth")>()),
+  useAuth: () => ({ status: authState.status, clientId: null, user: null }),
+}));
+
 const { default: Table } = await import("./Table");
+const { guestName } = await import("../guestName");
 const { default: ChatPanel } = await import("./ChatPanel");
 const { clearBlocks, isBlocked } = await import("../chatBlocks");
 
@@ -54,6 +64,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   sent.length = 0;
+  authState.status = "loading";
   clearBlocks();
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -202,4 +213,33 @@ it("the reason rows take focus too, so a screen reader moves on into them", () =
   act(() => optionsButton("Cy")!.click());
   act(() => rowButton("Report player")!.click());
   expect(document.activeElement).toBe(rowButton("Abusive chat"));
+});
+
+it("a signed-out guest's Report row opens sign-in instead of reasons the server would refuse", () => {
+  authState.status = "out";
+  const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  expect(rowButton("Report player")).toBeUndefined();
+  act(() => rowButton("Sign in to report")!.click());
+  expect(open).toHaveBeenCalledTimes(1);
+  expect(dialog()).toBeNull();
+  expect(sent).toEqual([]);
+  open.mockRestore();
+});
+
+it("once signed in, the same seat reports as before", () => {
+  authState.status = "out";
+  const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+  act(() => root.render(<Table state={state()} />));
+  act(() => optionsButton("Cy")!.click());
+  act(() => rowButton("Sign in to report")!.click());
+  authState.status = "in";
+  act(() => root.render(<Table state={{ ...state() }} />));
+  act(() => optionsButton("Cy")!.click());
+  expect(rowButton("Sign in to report")).toBeUndefined();
+  act(() => rowButton("Report player")!.click());
+  act(() => rowButton("Cheating")!.click());
+  expect(sent).toEqual([{ type: "report_player", seat: 3, reason: "cheating" }]);
+  open.mockRestore();
 });

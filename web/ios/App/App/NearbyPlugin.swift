@@ -1348,7 +1348,10 @@ extension ShengjiNearbyPlugin {
         CAPPluginMethod(name: "debugChaos", returnType: CAPPluginReturnPromise)
     ]
     static let chaosBuild = true
-    private static var heldUntil = Date.distantPast
+    /// On `queue`: a stall runs. Only its flush clears it, so nothing sent
+    /// or received between the stall's nominal end and the flush overtakes
+    /// a frame held before it.
+    private static var stalling = false
     private static var held: [() -> Void] = []
 
     /// Held work whose link had gone by the stall's end, in the current stall.
@@ -1360,7 +1363,7 @@ extension ShengjiNearbyPlugin {
     /// out on (or arrives as if from) the link made after it; `dropped` runs
     /// in its place.
     func chaosHold(_ peer: String, _ work: @escaping () -> Void, dropped: @escaping () -> Void) -> Bool {
-        guard Date() < Self.heldUntil else { return false }
+        guard Self.stalling else { return false }
         let link = links[peer]
         Self.held.append { [weak self] in
             guard let self = self, self.links[peer] === link else {
@@ -1385,13 +1388,13 @@ extension ShengjiNearbyPlugin {
                 self.spikeLog("CHAOS cancel the link \(peer)")
                 self.drop(peer)
             case "stall":
-                guard Date() >= Self.heldUntil else { return call.resolve(["done": false]) }
+                guard !Self.stalling else { return call.resolve(["done": false]) }
                 self.spikeLog("CHAOS stall sends and receives for \(String(format: "%.1f", seconds)) s")
-                Self.heldUntil = Date().addingTimeInterval(seconds)
+                Self.stalling = true
                 self.queue.asyncAfter(deadline: .now() + seconds) {
                     let work = Self.held
                     Self.held = []
-                    Self.heldUntil = .distantPast
+                    Self.stalling = false
                     Self.heldStale = 0
                     for w in work { w() }
                     self.spikeLog("CHAOS stall over: \(work.count) held, \(Self.heldStale) dropped (link gone)")

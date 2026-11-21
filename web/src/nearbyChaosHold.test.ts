@@ -55,4 +55,11 @@ describe("the stall hold", () => {
     expect(swift).toContain("if !self.chaosHold(peer, deliver, dropped: {}) { deliver() }");
     expect(swift).toContain('spikeLog("CHAOS stall over: \\(work.count) held, \\(Self.heldStale) dropped (link gone)")');
   });
+
+  it("the plugin holds on a flag that only the stall's flush clears, not on the clock", () => {
+    expect(swift).not.toMatch(/heldUntil/);
+    expect(chaosBlock).toMatch(/guard Self\.stalling else \{ return false \}/);
+    // the flush takes the held work and clears the flag in one step on the queue, then runs it in order
+    expect(swift).toMatch(/let work = Self\.held\n\s+Self\.held = \[\]\n\s+Self\.stalling = false\n\s+Self\.heldStale = 0\n\s+for w in work \{ w\(\) \}/);
+  });
 });

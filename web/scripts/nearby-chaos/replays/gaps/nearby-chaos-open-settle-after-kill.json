@@ -1,0 +1,50 @@
+{
+  "seed": 5724,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 21.447169645689428,
+      "kind": "joinReplyLost",
+      "who": "J1",
+      "dur": 0,
+      "arg": 0,
+      "phase": "leave",
+      "offset": 0.4682609965093434
+    },
+    {
+      "t": 116.89803502010182,
+      "kind": "leave",
+      "who": "J1",
+      "dur": 25.627365342574194,
+      "arg": 0,
+      "phase": "after_move",
+      "offset": 0.26399591148365287
+    },
+    {
+      "t": 171.45842529693618,
+      "kind": "leaveOffline",
+      "who": "J2",
+      "dur": 5.1567685143090785,
+      "arg": 0,
+      "phase": "declare_open",
+      "offset": 0.8479392272420228
+    },
+    {
+      "t": 207.79257934424095,
+      "kind": "kill",
+      "who": "J1",
+      "dur": 26.075395698659122,
+      "arg": 0,
+      "phase": "declare_open",
+      "offset": 0.4650170081295073
+    }
+  ],
+  "invariant": "same state after the settle",
+  "page": "sim",
+  "gaps": "report",
+  "wholeApp": true,
+  "phaseTargeted": true
+}

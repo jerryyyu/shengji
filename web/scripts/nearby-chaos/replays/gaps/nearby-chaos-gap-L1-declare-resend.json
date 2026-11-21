@@ -1,0 +1,56 @@
+{
+  "seed": 175,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 39.61605955846608,
+      "kind": "drop",
+      "who": "J1",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 77.05607430054806,
+      "kind": "halfOpen",
+      "who": "J1",
+      "dur": 0,
+      "arg": 1
+    },
+    {
+      "t": 92.34307408588938,
+      "kind": "kill",
+      "who": "J2",
+      "dur": 2.4953113654628396,
+      "arg": 0
+    },
+    {
+      "t": 149.090414860053,
+      "kind": "storm",
+      "who": "H",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 185.6837674160488,
+      "kind": "jsFreeze",
+      "who": "J1",
+      "dur": 3.8544494134839624,
+      "arg": 0
+    },
+    {
+      "t": 219.04421480745077,
+      "kind": "jsFreeze",
+      "who": "H",
+      "dur": 14.529541587922722,
+      "arg": 0
+    }
+  ],
+  "invariant": "declare re-sent after a rebuild (L1)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "declare re-sent",
+  "wholeApp": true
+}

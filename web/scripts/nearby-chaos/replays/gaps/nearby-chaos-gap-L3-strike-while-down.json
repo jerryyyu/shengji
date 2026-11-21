@@ -1,0 +1,28 @@
+{
+  "seed": 8,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 138.75371686089784,
+      "kind": "storm",
+      "who": "H",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 163.58780048438348,
+      "kind": "botSlow",
+      "who": "H",
+      "dur": 45.49035762436688,
+      "arg": 0
+    }
+  ],
+  "invariant": "no timeout strike while the link is down (L3)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "strike",
+  "wholeApp": true
+}

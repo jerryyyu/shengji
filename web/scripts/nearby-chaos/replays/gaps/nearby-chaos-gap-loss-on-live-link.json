@@ -1,0 +1,28 @@
+{
+  "seed": 46,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 28.27193872537464,
+      "kind": "kill",
+      "who": "J1",
+      "dur": 16.54171679355204,
+      "arg": 0
+    },
+    {
+      "t": 52.122718897648156,
+      "kind": "loss",
+      "who": "J1",
+      "dur": 0,
+      "arg": 2
+    }
+  ],
+  "invariant": "a lost frame on a live link is made good (loss)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "(loss)",
+  "wholeApp": true
+}

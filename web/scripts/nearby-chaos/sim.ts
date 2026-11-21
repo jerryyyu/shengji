@@ -17,10 +17,25 @@ import { SmartBot, viewFor } from "../../src/offline/bot";
 import type { RoundState } from "../../src/offline/engine/round";
 import { Radio, Rng, type Phone, type SimLink } from "./radio";
 import { LONG_LIVED_S, NEARBY_RETRY_S, type PageModel } from "./pageModel";
+import { frameTriggers, TRIGGER_PHASES, type TriggerPhase } from "../../src/nearbySoakChaos";
 
 type Frame = Record<string, unknown> & { type: string };
 
-export type FaultKind = "wifi" | "radio" | "drop" | "halfOpen" | "stall" | "stallPhone" | "bg" | "listener" | "leave" | "allow" | "midjoin" | "dup";
+export type FaultKind = "wifi" | "radio" | "drop" | "halfOpen" | "stall" | "stallPhone" | "bg" | "listener" | "leave" | "allow" | "midjoin" | "dup"
+  | "storm" | "jsFreeze" | "loss" | "joinReplyLost" | "leaveOffline" | "kill" | "botSlow";
+
+/** The whole-app faults (--whole-app):
+ *  - storm: every ready link of the host broken at once, both ends told;
+ *  - jsFreeze: one phone's JS stopped `dur` s (its links up), then its
+ *    timers dealt in among its events at random;
+ *  - loss: the next `arg % 10` frames of LOSS_TYPES[floor(arg / 10) % 10]
+ *    on a joiner's host link lost, toward the host when arg >= 100;
+ *  - joinReplyLost: the host's next resume frame to a joiner lost;
+ *  - leaveOffline: a joiner's Leave with its link down (the radio off `dur` s);
+ *  - kill: a joiner's app killed, and relaunched `dur` s later with its
+ *    kept seat token;
+ *  - botSlow: for `dur` s, the host's JS blocked 0-6 s on each bot turn. */
+export const LOSS_TYPES = ["state", "resume", "room", "ping", "pong", "play", "declare", "nearby_hello", "pass_declare", ""] as const;
 
 export interface Fault {
   t: number;
@@ -30,6 +45,10 @@ export interface Fault {
   dur: number;
   /** halfOpen: 1 = frames to the host lost; wifi: 1 = a new address. */
   arg: number;
+  /** Phase-targeted: the fault runs at the first `phase` after `t`, `offset`
+   *  s later (nearbySoakChaos.ts TRIGGER_PHASES). */
+  phase?: TriggerPhase;
+  offset?: number;
 }
 
 export interface GameOpts {
@@ -59,6 +78,13 @@ export interface GameOpts {
   gaps?: "off" | "report" | "strict";
   /** With "strict": fail only on the gap whose name contains this. */
   gapOnly?: string;
+  /** The whole app: the joiner pages' personas (slow, double-tap,
+   *  stale-tap, leaver, declarer; the latecomer is the setup's), their
+   *  host-left window, the whole-app faults and invariants. */
+  wholeApp?: boolean;
+  /** Each fault aimed at a phase (TRIGGER_PHASES), run at its first
+   *  occurrence after the fault's time. */
+  phaseTargeted?: boolean;
 }
 
 export interface Violation {
@@ -100,12 +126,30 @@ export function makeSetup(rng: Rng): Setup {
   return { joiners, hostJoined, joinerJoined, late };
 }
 
-export function makeSchedule(rng: Rng, setup: Setup, seconds: number, newFaults = false): Fault[] {
+/** One whole-app fault at `t`. */
+function wholeAppFault(rng: Rng, t: number, phones: string[], joiners: string[]): Fault {
+  const r = rng.next();
+  const j = rng.pick(joiners);
+  if (r < 0.14) return { t, kind: "storm", who: "H", dur: 0, arg: 0 };
+  if (r < 0.32) return { t, kind: "jsFreeze", who: rng.pick(phones), dur: rng.chance(0.05) ? rng.range(30, 50) : rng.range(2, 15), arg: 0 };
+  if (r < 0.50) return { t, kind: "loss", who: j, dur: 0, arg: rng.int(1, 5) + 10 * rng.int(0, LOSS_TYPES.length - 1) + (rng.chance(0.5) ? 100 : 0) };
+  if (r < 0.60) return { t, kind: "joinReplyLost", who: j, dur: 0, arg: 0 };
+  if (r < 0.72) return { t, kind: "leaveOffline", who: j, dur: rng.range(3, 30), arg: 0 };
+  if (r < 0.86) return { t, kind: "kill", who: j, dur: rng.range(2, 30), arg: 0 };
+  return { t, kind: "botSlow", who: "H", dur: rng.range(20, 60), arg: 0 };
+}
+
+export function makeSchedule(rng: Rng, setup: Setup, seconds: number, newFaults = false, wholeApp = false, phaseTargeted = false): Fault[] {
   const out: Fault[] = [];
   const joiners = Array.from({ length: setup.joiners }, (_, i) => `J${i + 1}`);
   const phones = ["H", ...joiners];
   let t = rng.range(20, 40);
   while (t < seconds - 20) {
+    if (wholeApp && rng.chance(0.4)) {
+      out.push(wholeAppFault(rng, t, phones, joiners));
+      t += rng.range(8, 45);
+      continue;
+    }
     if (newFaults && rng.chance(0.2)) {
       // the device test's stall: one phone's frames, on every link, held
       const who = rng.pick(phones);
@@ -133,6 +177,15 @@ export function makeSchedule(rng: Rng, setup: Setup, seconds: number, newFaults 
     else f = { t, kind: "drop", who: j, dur: 0, arg: 0 };
     out.push(f);
     t += rng.range(8, 45);
+  }
+  if (phaseTargeted) {
+    // each fault waits for a phase; the lobby and the game's start come
+    // early, so faults aimed there are armed from the first second
+    for (const f of out) {
+      f.phase = rng.pick([...TRIGGER_PHASES]);
+      f.offset = f.phase === "after_move" ? rng.range(0, 0.3) : rng.range(0, 2);
+      if (f.phase === "lobby" || f.phase === "start" || f.phase === "join_handshake") f.t = rng.range(0, 5);
+    }
   }
   if (setup.late !== null) out.push({ t: rng.range(40, Math.max(41, seconds / 2)), kind: "midjoin", who: `J${setup.late + 1}`, dur: 0, arg: 0 });
   return out.sort((a, b) => a.t - b.t);
@@ -175,6 +228,10 @@ class Device {
   /** That time when the current outage began. */
   frozenFrom = 0;
   unhealthySince: number | null = null;
+  /** When a loss fault last armed on this phone's link. */
+  lossAt = -1e9;
+  /** Trips to the background under way. */
+  bg = 0;
   constructor(id: string, phone: Phone, name: string) {
     this.id = id;
     this.phone = phone;
@@ -241,6 +298,11 @@ function decide(bot: SmartBot, msg: Frame, rnd: RoundState, seat: number): Recor
 
 const PEEK = { type: "table_peek" };
 
+/** A simulated joiner's persona (--whole-app). */
+type Persona = "pacer" | "slow" | "doubleTap" | "staleTap" | "leaver";
+
+const frameTypeOf = (text: string): string => /^\{"type":"([a-z_]+)"/.exec(text)?.[1] ?? "?";
+
 export async function runGame(opts: GameOpts): Promise<GameResult> {
   const vc = new VirtualClock();
   const rng = new Rng(opts.seed);
@@ -290,7 +352,9 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
 
   const radio = new Radio(vc, rng, { silentAfterIdle: [3, 5], bugs }, log);
   const setup = makeSetup(setupRng);
-  const schedule = opts.schedule ?? makeSchedule(setupRng, setup, opts.seconds, opts.newFaults === true);
+  const wholeApp = opts.wholeApp === true;
+  const schedule = opts.schedule ?? makeSchedule(setupRng, setup, opts.seconds, opts.newFaults === true, wholeApp, opts.phaseTargeted === true);
+  const appRng = new Rng(opts.seed ^ 0xa11a);
 
   /** A person's time to act: mostly quick, sometimes a long look. */
   const think = () => (driverRng.chance(0.25) ? driverRng.range(2, 12) : driverRng.range(0.5, 2));
@@ -302,6 +366,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     devices.push(new Device(p.id, p, `P${i + 1}`));
   }
   const all = [hostDev, ...devices];
+  radio.onLoss = (l) => {
+    const d = devices.find((x) => x.phone === l.joiner);
+    if (d) d.lossAt = vc.now();
+  };
   for (const d of all) {
     const post = d.phone.clock.post.bind(d.phone.clock);
     d.phone.clock.post = (fn) => post(() => {
@@ -355,10 +423,47 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   let room: LocalRoom | null = null;
   let nearbyHost: NearbyHost | null = null;
   let ended = false;
+  let endedAt: number | null = null;
+  /** When the host's table was over for its joiners: its end, or 60 s
+   *  (the plugin's host window) into an away that outlasts it. */
+  const hostGoneAt = (): number | null => {
+    if (endedAt !== null) return endedAt;
+    const away = H.plugin.backgroundedAt;
+    return away !== null && vc.now() - away > 60 ? away + 60 : null;
+  };
   let hostDecide: number | null = null;
   const hostAct = (msg: Record<string, unknown>) => hostSock.send(JSON.stringify(msg));
+  // phase-targeted faults wait here for their phase (nearbySoakChaos.ts's
+  // triggers, read off the host's own frames and the host's boundary)
+  const armed: Fault[] = [];
+  let runFault: (f: Fault) => void = () => {};
+  const phaseRng = new Rng(opts.seed ^ 0xfa5e);
+  let dealCard = phaseRng.int(1, 25);
+  let prevHostFrame: Frame | null = null;
+  const emitPhase = (ph: TriggerPhase) => {
+    stats[`phase ${ph} seen`] = (stats[`phase ${ph} seen`] ?? 0) + 1;
+    for (let i = armed.length - 1; i >= 0; i--) {
+      const f = armed[i];
+      if (f.phase !== ph) continue;
+      armed.splice(i, 1);
+      vc.setTimeout(() => {
+        stats[`phase ${ph}`] = (stats[`phase ${ph}`] ?? 0) + 1;
+        runFault(f);
+      }, f.offset ?? 0);
+    }
+  };
   hostSock.onmessage = (ev) => {
     const f = JSON.parse(ev.data as string) as Frame;
+    if (f.type === "room" || f.type === "state") {
+      const was = prevHostFrame;
+      prevHostFrame = f;
+      for (const ph of frameTriggers(was, f, dealCard)) emitPhase(ph);
+      // the lobby lasts: each lobby frame is the lobby; a bury is the
+      // banker's, whoever it is
+      if (f.type === "room" && was?.type === "room") emitPhase("lobby");
+      if (f.type === "state" && f.phase === "bury" && (was?.type !== "state" || was.phase !== "bury") && f.turn !== f.you) emitPhase("own_bury");
+      if (f.type === "state" && f.phase === "round_end" && was?.type === "state" && was.phase !== "round_end") dealCard = phaseRng.int(1, 25);
+    }
     if (f.type === "state") {
       hostDev.lastState = f;
       hostDev.lastStateAt = vc.now();
@@ -386,6 +491,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     state: (s) => {
       if (s === "ended") {
         ended = true;
+        endedAt = vc.now();
         log("H", "table ended (host away past its window)");
       }
     },
@@ -404,7 +510,9 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       const s = dev.sent.find((x) => x.text === text && !x.arrived);
       if (s) s.arrived = true;
     }
+    if (text.startsWith('{"type":"nearby_hello"') && !text.includes('"peek":true')) emitPhase("join_handshake");
     run();
+    if (r.actions.length > before && dev) emitPhase("after_move");
     if (!dev) return;
     for (const a of r.actions.slice(before)) {
       if (a[0] !== "play" && a[0] !== "bury" && a[0] !== "declare" && a[0] !== "pass") continue;
@@ -416,7 +524,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         continue;
       }
       if (s.state === "applied") fail("no double apply", `${dev.id}'s ${a[0]} for seat ${seat} applied twice`);
-      if (s.key !== point) fail("no stale apply", `${dev.id}'s ${a[0]} meant for ${s.key} applied at ${point} (sent ${s.at.toFixed(2)} on socket ${s.sock})`);
+      // a call made while dealing stands in the declare window too: one point
+      const calling = (k: string) => k.replace(/\|(deal|declare)\|0$/, "|calling|0");
+      const samePoint = s.key === point || (wholeApp && a[0] === "declare" && calling(s.key) === calling(point));
+      if (!samePoint) fail("no stale apply", `${dev.id}'s ${a[0]} meant for ${s.key} applied at ${point} (sent ${s.at.toFixed(2)} on socket ${s.sock})`);
       if (s.seat !== seat) fail("seat ownership", `${dev.id}'s move for seat ${s.seat} applied to seat ${seat}`);
       s.state = "applied";
       stats.applied += 1;
@@ -429,6 +540,13 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const SIM_BACKOFF_FIRST_S = 0.5;
   const SIM_BACKOFF_MAX_S = 2;
   const pendingChecked = new Set<Sent>();
+  /** Each token's seat index, from its resumes. */
+  const tokenSeat = new Map<string, number>();
+  /** Each Leave in play: its seat must have the bot's cover soon after. */
+  const leaves: { d: Device; token: string; at: number; offline: boolean; back: number }[] = [];
+  /** The tokens of seats left with the link down. */
+  const offlineLeft = new Set<string>();
+  const offlineLeftSeen = new Set<Device>();
   class Page {
     readonly d: Device;
     readonly transport: NearbyTransport;
@@ -452,9 +570,47 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     readyOn = -1;
     bot = new SmartBot();
     unwatch: (() => void) | null = null;
+    /** The whole app's persona for this page (pacer without --whole-app). */
+    persona: Persona = "pacer";
+    /** The host-left window's run (nearbyJoin.ts HOST_WINDOW_MS). */
+    goneRun = 0;
+    /** The window runs from the first drop, not from each retry's. */
+    goneArmed = false;
+    /** Killed: no page until its relaunch. */
+    killed = false;
+    /** The last move this page sent and its decision point, for a stale tap. */
+    lastMove: Sent | null = null;
+    /** Per socket: the last state's phase rank and cards left, the gens seen. */
+    prog: { no: number; rank: number; left: number; phase: string } | null = null;
+    lastGen = -1;
     constructor(d: Device) {
       this.d = d;
       this.transport = pluginTransport(d.phone.plugin, { owner: 0 });
+      if (wholeApp) {
+        const r = appRng.next();
+        this.persona = r < 0.15 ? "slow" : r < 0.3 ? "doubleTap" : r < 0.4 ? "staleTap" : r < 0.5 ? "leaver" : "pacer";
+        stats[`persona ${this.persona}`] = (stats[`persona ${this.persona}`] ?? 0) + 1;
+      }
+    }
+    /** This page's time to act. A slow player takes 55-59 s, past the 60 s
+     *  move clock one time in five. */
+    think(): number {
+      if (this.persona === "slow") return appRng.chance(0.2) ? appRng.range(60, 66) : appRng.range(55, 59);
+      return think();
+    }
+    /** The host-left window: a seated page with no open link for 65 s shows
+     *  the end screen (nearbyJoin.ts). */
+    private armGone(): void {
+      if (!wholeApp || !this.seated || this.done || this.goneArmed) return;
+      this.goneArmed = true;
+      const run = ++this.goneRun;
+      this.clock.setTimeout(() => {
+        if (run !== this.goneRun) return;
+        this.goneArmed = false;
+        if (this.status === "open" || this.done || !this.seated) return;
+        log(this.d.id, "page: host left (65 s with no link)");
+        this.giveUp(false);
+      }, 65);
     }
     get clock() {
       return this.d.phone.clock;
@@ -507,6 +663,8 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       sock.onopen = () => {
         if (this.sock !== sock) return;
         this.status = "open";
+        this.goneRun += 1;
+        this.goneArmed = false;
         this.openedAt = vc.now();
         this.backoff = SIM_BACKOFF_FIRST_S;
         this.tries = 0;
@@ -516,13 +674,17 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       };
       sock.onmessage = (ev) => {
         if (this.sock !== sock) return;
-        this.onFrame(no, JSON.parse(ev.data as string) as Frame);
+        const text = ev.data as string;
+        stats.maxFrame = Math.max(stats.maxFrame ?? 0, text.length);
+        if (wholeApp && text.length > 16 * 1024) fail("frame at most 16 KB", `${this.d.id} got a ${frameTypeOf(text)} of ${text.length} B`);
+        this.onFrame(no, JSON.parse(text) as Frame);
       };
       sock.onclose = () => {
         if (this.sock !== sock) return;
         this.status = "closed";
         this.sock = null;
         for (const s of this.d.sent) if (s.sock === no && s.state === "pending") s.state = "closed";
+        this.armGone();
         if (this.leaving) {
           this.finishLeave();
           return;
@@ -556,7 +718,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       vc.setTimeout(() => {
         for (const s of owed) {
           const again = d.sent.some((x) => x !== s && x.key === s.key && x.seat === s.seat && x.sock > s.sock);
-          if (s.state !== "applied" && !again) gap("pending move re-sent after a rebuild", `${d.id}'s ${s.text.slice(0, 40)} (for ${s.key}) pending when socket ${s.sock} went: neither applied nor sent again 1 s after socket ${no} opened`);
+          if (s.state !== "applied" && !again) gap(s.text.includes('"declare"') ? "declare re-sent after a rebuild (L1)" : "pending move re-sent after a rebuild", `${d.id}'s ${s.text.slice(0, 40)} (for ${s.key}) pending when socket ${s.sock} went: neither applied nor sent again 1 s after socket ${no} opened`);
         }
       }, 1);
     }
@@ -585,11 +747,23 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     onFrame(no: number, f: Frame): void {
       const d = this.d;
       if (f.type === "resume") {
+        const same = this.token === f.token;
         this.token = f.token as string;
         d.tokens.add(this.token);
         const r = room!;
         const at = r.lobby ? r.lobby.findIndex((s) => s?.token === this.token) : r.seats.findIndex((s) => s.token === this.token);
         this.boundSeat = at >= 0 ? at : null;
+        if (wholeApp) {
+          const gen = typeof f.gen === "number" ? f.gen : -1;
+          if (same && gen >= 0 && gen <= this.lastGen) fail("gen monotonic", `${d.id}'s resume on socket ${no} has gen ${gen} after gen ${this.lastGen}`);
+          if (!same) this.lastGen = -1;
+          this.lastGen = Math.max(this.lastGen, gen);
+          const was = tokenSeat.get(this.token);
+          if (was !== undefined && at >= 0 && was !== at && !r.lobby) fail("a resume keeps the seat", `${d.id}'s token was seat ${was}, its resume on socket ${no} bound seat ${at}`);
+          if (at >= 0) tokenSeat.set(this.token, at);
+          this.prog = null;
+          vc.setTimeout(() => this.trickAfterResume(no), 2);
+        }
         return;
       }
       if (f.type === "room_seats" && !this.seated) {
@@ -633,13 +807,55 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       d.lastState = f;
       d.lastStateAt = vc.now();
       this.checkHand(f);
+      if (wholeApp) this.checkProgress(no, f);
       const seat = f.you as number;
       // a frame showing the decision a pending move was for has passed
       const r = room!;
       const point = pointOf(r);
       for (const s of d.sent) if (s.state === "pending" && s.key !== point) s.state = "moot";
       const gen = ++this.decideGen;
-      this.clock.setTimeout(() => this.act(gen, no, seat), think());
+      this.clock.setTimeout(() => this.act(gen, no, seat), wholeApp ? this.think() : think());
+      if (!wholeApp) return;
+      // a stale tap: the move already applied, tapped again on this frame
+      const lm = this.lastMove;
+      if (this.persona === "staleTap" && lm && lm.state === "applied" && lm.sock === no && lm.seat === seat && /"(play|bury)"/.test(lm.text) && appRng.chance(0.2)) {
+        this.clock.setTimeout(() => {
+          if (this.sock && this.status === "open" && this.sockNo === no) {
+            log(d.id, "page: stale tap");
+            stats["stale taps"] = (stats["stale taps"] ?? 0) + 1;
+            this.sock.send(lm.text);
+          }
+        }, appRng.range(0.05, 0.5));
+      }
+      // a leaver leaves now and then, and comes back by code 3-90 s later
+      if (this.persona === "leaver" && appRng.chance(0.004)) {
+        this.clock.setTimeout(() => {
+          if (!this.seated || this.status !== "open" || this.leaving) return;
+          this.leave();
+          const back = appRng.range(3, 90);
+          vc.setTimeout(() => d.phone.clock.post(() => { if (!this.killed) { log(d.id, "page: rejoins by code (leaver)"); this.look(); } }), back);
+        }, appRng.range(0.2, 3));
+      }
+    }
+    /** Per socket, the state never goes back: a round's phases only move on
+     *  (round_end to the next deal), and the cards left only fall in play. */
+    private checkProgress(no: number, f: Frame): void {
+      const RANK: Record<string, number> = { deal: 0, declare: 1, bury: 2, play: 3, round_end: 4 };
+      const rank = RANK[f.phase as string] ?? -1;
+      const left = ((f.players as { cards_left?: number }[]) ?? []).reduce((a, p) => a + (p.cards_left ?? 0), 0);
+      const p = this.prog;
+      this.prog = { no, rank, left, phase: f.phase as string };
+      if (!p || p.no !== no || rank < 0 || p.rank < 0) return;
+      if (rank < p.rank && p.phase !== "round_end") fail("state never goes back", `${this.d.id}'s socket ${no} went from ${p.phase} to ${String(f.phase)}`);
+      if (rank === p.rank && f.phase === "play" && left > p.left) fail("state never goes back", `${this.d.id}'s socket ${no} cards left ${p.left} -> ${left} in play`);
+    }
+    /** 2 s after a resume, the joiner's table is the host's (unless the host's
+     *  moved on in the last 2 s, or a fault still runs). */
+    private trickAfterResume(no: number): void {
+      const d = this.d;
+      if (violation || ended || no !== this.sockNo || this.status !== "open" || !room?.round || d.activeFaults > 0 || hostDev.activeFaults > 0) return;
+      if (d.phone.clock.suspended || H.clock.suspended || vc.now() - hostDev.lastStateAt < 2) return;
+      if (summary(d.lastState) !== summary(hostDev.lastState)) fail("the trick matches 2 s after a resume", `${d.id} shows ${summary(d.lastState)}, the host ${summary(hostDev.lastState)}`);
     }
     checkHand(f: Frame): void {
       const r = room!;
@@ -669,12 +885,31 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         if (!(f.ready as number[]).includes(seat)) this.send({ type: "next_round" }, seat, "none");
         return;
       }
-      const a = decide(this.bot, f, r.round, seat);
+      let a = decide(this.bot, f, r.round, seat);
+      // a declarer calls while the cards are dealt, too
+      if (!a && wholeApp && f.phase === "deal" && ((f.declare_options as unknown[]) ?? []).length && appRng.chance(0.3)) {
+        const cards = this.bot.declare(viewFor(r.round, seat), false);
+        const hand = f.hand as { id: number; code: string }[];
+        const byId = new Map(hand.map((c) => [c.id, c.code]));
+        const opt = cards ? (f.declare_options as number[][]).find((o) => sameCards(o.map((i) => byId.get(i)!), cards)) : undefined;
+        if (opt) a = { type: "declare", card_ids: opt };
+      }
       if (!a) return;
       const point = pointOf(r);
       // one tap per decision on a link; a new link's fresh state is a new chance
       if (this.d.sent.some((s) => s.key === point && s.sock === no && s.seat === seat)) return;
       this.send(a, seat, point);
+      if (a.type === "declare") stats["declares sent"] = (stats["declares sent"] ?? 0) + 1;
+      this.lastMove = this.d.sent[this.d.sent.length - 1] ?? null;
+      if (this.persona === "doubleTap" && appRng.chance(0.5)) {
+        const text = JSON.stringify(a);
+        this.clock.setTimeout(() => {
+          if (this.sock && this.sockNo === no) {
+            stats["double taps"] = (stats["double taps"] ?? 0) + 1;
+            this.sock.send(text);
+          }
+        }, appRng.range(0, 0.05));
+      }
     }
     send(msg: Record<string, unknown>, seat: number, key: string): void {
       const text = NearbySocket.outbound(JSON.stringify(msg));
@@ -686,14 +921,59 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         if (link) radio.send(link, true, text);
       }
     }
-    leave(): void {
-      if (!this.seated || !this.sock || this.status !== "open") return;
+    leave(): boolean {
+      if (!this.seated || !this.sock || this.status !== "open") return false;
       log(this.d.id, "page: Leave");
+      emitPhase("leave");
       this.leaving = true;
       this.d.inPlay = false;
+      if (wholeApp && this.token && room && !room.lobby) leaves.push({ d: this.d, token: this.token, at: vc.now(), offline: false, back: vc.now() });
       this.sock.send(JSON.stringify({ type: "table_leave" }));
       const sock = this.sock;
       this.clock.setTimeout(() => { if (this.sock === sock && this.leaving) this.finishLeave(); }, 3);
+      return true;
+    }
+    /** Leave with the link down: the page is off the table at once; the
+     *  socket's own sending decides whether the host ever hears. */
+    leaveOffline(back: number): void {
+      if (!this.seated || this.done) return;
+      log(this.d.id, `page: Leave with the link down (network back in ${back.toFixed(1)} s)`);
+      emitPhase("leave");
+      this.leaving = true;
+      this.d.inPlay = false;
+      if (this.token) offlineLeft.add(this.token);
+      if (this.token && room && !room.lobby) leaves.push({ d: this.d, token: this.token, at: vc.now(), offline: true, back: vc.now() + back });
+      this.sock?.send(JSON.stringify({ type: "table_leave" }));
+      this.clock.setTimeout(() => { if (this.leaving) this.finishLeave(); }, 3);
+    }
+    /** The app is killed: its page and links are gone at once. */
+    kill(): void {
+      log(this.d.id, "page: app killed");
+      this.killed = true;
+      this.goneRun += 1;
+      this.goneArmed = false;
+      const s = this.sock;
+      this.sock = null;
+      this.status = "closed";
+      if (s) {
+        s.onopen = null;
+        s.onmessage = null;
+        s.onclose = null;
+      }
+      void this.d.phone.plugin.stop();
+    }
+    /** The relaunch: a seated page resumes by its kept token. */
+    relaunch(): void {
+      if (!this.killed) return;
+      this.killed = false;
+      log(this.d.id, `page: relaunched (${this.seated && this.token ? "kept token" : "no seat"})`);
+      if (this.done) return;
+      if (!this.seated) {
+        this.look();
+        return;
+      }
+      this.retry += 1;
+      this.open();
     }
     finishLeave(): void {
       this.leaving = false;
@@ -710,6 +990,13 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     }
     giveUp(full: boolean): void {
       log(this.d.id, `page: gives up (${full ? "table full" : "host left"})`);
+      if (!full && wholeApp) {
+        vc.setTimeout(() => {
+          const ownAway = this.d.activeFaults > 0 || vc.now() - this.d.clearedAt < 66;
+          if (!ended && !room?.closed && hostGoneAt() === null && ownAway) gap("host-left only after the host's own 65 s away (joiner's away counted)", `${this.d.id} showed the host left after its own time away, the host still at its table`);
+          else if (!ended && !room?.closed && hostGoneAt() === null) fail("no host-left while the host is alive", `${this.d.id} showed the host left with the host still at its table`);
+        }, 1);
+      }
       this.done = true;
       this.d.inPlay = false;
       const s = this.sock;
@@ -773,8 +1060,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     }, dur);
   };
   const hostLink = (d: Device): SimLink | null => d.phone.plugin.hostLink();
-  for (const f of schedule) {
-    vc.setTimeout(() => {
+  runFault = (f: Fault) => {
       if (ended) return;
       const d = dev(f.who);
       if (!d) return;
@@ -826,6 +1112,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         }
         case "bg": {
           const p = d.phone;
+          d.bg += 1;
           p.clock.suspend();
           p.plugin.appActive = false;
           if (d === hostDev) p.plugin.hostLeft();
@@ -839,6 +1126,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
             if (d === hostDev) p.plugin.listenerLost();
           }, cut);
           begin(d, f.dur, () => {
+            d.bg -= 1;
             back = true;
             p.plugin.appActive = true;
             if (d === hostDev) p.plugin.hostReturned();
@@ -856,8 +1144,20 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         case "leave": {
           const pg = pages.get(d);
           if (!pg || !pg.seated) return;
-          d.phone.clock.post(() => pg.leave());
           touch(d, true);
+          if (wholeApp) {
+            // the rejoin comes after the Leave itself (a frozen page leaves late), never for a
+            // Leave that did not happen
+            d.phone.clock.post(() => {
+              const left = pg.leave();
+              vc.setTimeout(() => {
+                touch(d, false);
+                if (left && !pg.killed) d.phone.clock.post(() => { log(d.id, "page: rejoins by code"); pg.look(); });
+              }, Math.max(4, f.dur));
+            });
+            return;
+          }
+          d.phone.clock.post(() => pg.leave());
           vc.setTimeout(() => {
             touch(d, false);
             d.phone.clock.post(() => { log(d.id, "page: rejoins by code"); pg.look(); });
@@ -877,11 +1177,222 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           touch(d, false);
           return;
         }
+        case "storm": {
+          const ls = radio.linksOf(H).filter((l) => l.host === H);
+          if (!ls.length) return;
+          const hit = devices.filter((x) => ls.some((l) => l.joiner === x.phone));
+          for (const x of hit) touch(x, true);
+          for (const l of ls) radio.breakLink(l, false, false);
+          for (const x of hit) touch(x, false);
+          return;
+        }
+        case "jsFreeze": {
+          const c = d.phone.clock;
+          if (c.suspended) return;
+          c.suspend();
+          // a trip to the background that began during the freeze keeps the page stopped
+          begin(d, f.dur, () => { if (d.bg === 0) c.resume(appRng); }, d === hostDev);
+          return;
+        }
+        case "loss": {
+          const l = hostLink(d);
+          if (!l) return;
+          l.losses.push({ toHost: f.arg >= 100, frame: LOSS_TYPES[Math.floor(f.arg / 10) % 10], left: f.arg % 10 });
+          d.lossAt = vc.now();
+          touch(d, true);
+          touch(d, false);
+          return;
+        }
+        case "joinReplyLost": {
+          // the host's answer to the hello on the joiner's next link is lost
+          const l = hostLink(d);
+          if (!l) return;
+          touch(d, true);
+          radio.breakLink(l, false, false);
+          const arm = () => {
+            const n = hostLink(d);
+            if (n && n !== l) {
+              n.losses.push({ toHost: false, frame: "resume", left: 1 });
+              d.lossAt = vc.now();
+            }
+            else if (vc.now() - armAt < 30) vc.setTimeout(arm, 0.02);
+          };
+          const armAt = vc.now();
+          vc.setTimeout(arm, 0.02);
+          touch(d, false);
+          return;
+        }
+        case "leaveOffline": {
+          const pg = pages.get(d);
+          if (!pg || !pg.seated || pg.done) return;
+          const was = d.phone.joined;
+          radio.setNet(d.phone, { radio: false, joined: false });
+          d.phone.clock.post(() => pg.leaveOffline(f.dur));
+          begin(d, f.dur, () => {
+            radio.setNet(d.phone, { radio: true, joined: was, newAddress: false });
+            vc.setTimeout(() => d.phone.clock.post(() => { if (!pg.killed) { log(d.id, "page: rejoins by code"); pg.look(); } }), 5);
+          }, true);
+          return;
+        }
+        case "kill": {
+          const pg = pages.get(d);
+          if (!pg || pg.killed || pg.done) return;
+          d.phone.clock.post(() => pg.kill());
+          const wasIn = d.inPlay;
+          d.inPlay = false;
+          begin(d, f.dur, () => {
+            d.inPlay = wasIn && !pg.done;
+            d.phone.clock.post(() => pg.relaunch());
+          }, true);
+          return;
+        }
+        case "botSlow": {
+          // each bot turn in the window blocks the host's JS 0-6 s
+          const until = vc.now() + f.dur;
+          let seen = "";
+          const look = () => {
+            if (vc.now() >= until || ended) return;
+            const r = room!;
+            const actor = r.round?.turn;
+            const key = pointOf(r);
+            if (r.round && actor !== null && actor !== undefined && r.seats[actor]?.isBot && key !== seen && !H.clock.suspended) {
+              seen = key;
+              H.clock.suspend();
+              stats["bot blocks"] = (stats["bot blocks"] ?? 0) + 1;
+              vc.setTimeout(() => H.clock.resume(), appRng.range(0, 6));
+            }
+            vc.setTimeout(look, 0.25);
+          };
+          begin(hostDev, f.dur, () => {}, true);
+          look();
+          return;
+        }
         default:
           return;
       }
+  };
+  for (const f of schedule) {
+    vc.setTimeout(() => {
+      if (f.phase) armed.push(f);
+      else runFault(f);
     }, f.t);
   }
+
+
+  // the whole app's invariants, each check (every 0.5 s)
+  const held = new Map<Seat, { idx: number; at: number }>();
+  const wasConnected = new Map<Seat, boolean>();
+  const strikes = new Map<Seat, number>();
+  let lobbySnap: { held: boolean; ready: boolean; human: boolean }[] | null = null;
+  let turnKey = "";
+  let turnFor = 0;
+  let lastCheck = 0;
+  let declWin: { key: string; time: Map<Device, number>; acted: Set<Device> } | null = null;
+  const ghostSince = new Map<Seat, number>();
+  const holderOf = (token: string): Device | undefined => devices.find((x) => x.tokens.has(token));
+  const wholeAppChecks = (r: LocalRoom, now: number) => {
+    const dt = now - lastCheck;
+    lastCheck = now;
+    // the host ended: every joiner still at the table shows it within 70 s
+    const goneAt = hostGoneAt();
+    if (goneAt !== null) {
+      for (const d of devices) {
+        const pg = pages.get(d)!;
+        if (d.inPlay && pg.seated && !pg.done && !pg.killed && now - goneAt > 70) fail("host-left within 70 s", `${d.id} still at the table ${Math.round(now - goneAt)} s after the host's table was over`);
+      }
+      if (ended) return;
+    }
+    if (r.closed) return;
+    const hostAwake = !H.clock.suspended && hostDev.activeFaults === 0;
+    // L6: no lobby start while a seated joiner's seat is held, unless all tapped Start
+    if (r.lobby) {
+      lobbySnap = r.lobby.map((sd, i) => ({ held: !!sd && !sd.isBot && !sd.connected, ready: r.lobbyReady.has(i), human: !!sd && !sd.isBot }));
+    } else if (lobbySnap) {
+      const snap = lobbySnap;
+      lobbySnap = null;
+      const holds = snap.map((x, i) => (x.held && !x.ready ? i : -1)).filter((i) => i >= 0);
+      if (holds.length && !snap.every((x) => !x.human || x.ready)) gap("no lobby start during a hold (L6)", `the game started with seat ${holds.join(",")} held and not ready`);
+    }
+    if (!r.round) return;
+    const rnd = r.round;
+    for (const [i, sd] of r.seats.entries()) {
+      // a held seat is not given to anyone else within 60 s
+      const was = wasConnected.get(sd);
+      if (was === true && !sd.connected && !sd.isBot && !sd.leftByChoice) held.set(sd, { idx: i, at: now });
+      if (sd.connected || sd.leftByChoice) held.delete(sd);
+      wasConnected.set(sd, sd.connected);
+      // L3: no timeout strike while the seat's link is down or the host is away
+      const n = strikes.get(sd) ?? sd.timeoutsInRound;
+      if (sd.timeoutsInRound > n && !sd.isBot) {
+        const holder = holderOf(sd.token);
+        const pg = holder ? pages.get(holder) : undefined;
+        const down = !!pg && (pg.status !== "open" || holder!.activeFaults > 0 || holder!.phone.clock.suspended);
+        if (down || !hostAwake) gap("no timeout strike while the link is down (L3)", `seat ${i} (${sd.name}) struck with ${down ? "its link down" : "the host away"}`);
+      }
+      strikes.set(sd, sd.timeoutsInRound);
+      // L5: no seat shown connected that no phone holds
+      const holder = holderOf(sd.token);
+      const pg = holder ? pages.get(holder) : undefined;
+      const ghost = !sd.isBot && sd.connected && !!pg && (pg.done || pg.killed) && !pg.leaving;
+      if (ghost) {
+        const since = ghostSince.get(sd) ?? now;
+        ghostSince.set(sd, since);
+        if (now - since > 15) {
+          gap("no ghost seat (L5)", `seat ${i} (${sd.name}) connected ${Math.round(now - since)} s after its phone ${pg!.killed ? "was killed" : "left the table"}`);
+          ghostSince.set(sd, now + 1e9);
+        }
+      } else ghostSince.delete(sd);
+    }
+    for (const [sd, h] of held) {
+      const cur = r.seats[h.idx];
+      if (now - h.at > 60) held.delete(sd);
+      else if (cur !== sd && !cur.isBot) fail("a held seat is kept 60 s", `seat ${h.idx} given to ${cur.name} ${Math.round(now - h.at)} s after its link went`);
+    }
+    // L3: no human turn pending over 75 s of the host's time
+    const actor = rnd.turn;
+    const key = `${pointOf(r)}|${String(actor)}`;
+    if (key !== turnKey) {
+      turnKey = key;
+      turnFor = 0;
+    } else if (!H.clock.suspended) turnFor += dt;
+    if ((rnd.phase === "play" || rnd.phase === "bury") && actor !== null && actor !== undefined && !r.seats[actor].isBot && turnFor > 75) {
+      gap("no human turn over 75 s (L3)", `seat ${actor} (${r.seats[actor].name}) to move for ${Math.round(turnFor)} s`);
+      turnFor = -1e9;
+    }
+    // every connected person has 5 s of the declare window to call in
+    if (rnd.phase === "declare") {
+      const k = pointOf(r);
+      if (!declWin || declWin.key !== k) declWin = { key: k, time: new Map(), acted: new Set() };
+      for (const d of devices) {
+        const pg = pages.get(d)!;
+        const idx = pg.token ? r.seats.findIndex((x) => x.token === pg.token) : -1;
+        if (idx < 0 || !r.seats[idx].connected) continue;
+        if (rnd.passed.includes(idx) || (rnd.declaration && rnd.declaration.seat === idx)) declWin.acted.add(d);
+        if (pg.status === "open" && !d.phone.clock.suspended && d.activeFaults === 0 && hostAwake) declWin.time.set(d, (declWin.time.get(d) ?? 0) + dt);
+        else if (!declWin.time.has(d)) declWin.time.set(d, 0);
+      }
+    } else if (declWin) {
+      for (const [d, t] of declWin.time) {
+        if (t < 5 && !declWin.acted.has(d)) gap("5 s of declare time (L1)", `${d.id} had ${t.toFixed(1)} s of the declare window it could reach`);
+      }
+      declWin = null;
+    }
+    // a Leave gives the seat a bot within 5 s (of the network's return, for a Leave offline)
+    for (let i = leaves.length - 1; i >= 0; i--) {
+      const l = leaves[i];
+      const due = (l.offline ? l.back : l.at) + 5;
+      if (now < due) continue;
+      leaves.splice(i, 1);
+      const sd = r.seats.find((x) => x.token === l.token);
+      if (!sd || sd.isBot || sd.leftByChoice || !sd.connected) {
+        if (sd && !sd.isBot && !sd.leftByChoice && !sd.connected && l.offline) gap("Leave offline gives the seat a bot in 5 s (L2)", `${l.d.id}'s seat ${sd.name} held, not covered, 5 s after its network came back`);
+        continue;
+      }
+      if (l.d.activeFaults > 0 || hostDev.activeFaults > 0 || l.d.clearedAt > l.at - 1 || hostDev.clearedAt > l.at - 1 || H.clock.suspended) continue;
+      if (l.offline) gap("Leave offline gives the seat a bot in 5 s (L2)", `${l.d.id}'s seat ${sd.name} still connected 5 s after its network came back`);
+      else fail("a Leave gives the seat a bot in 5 s", `${l.d.id}'s seat ${sd.name} still connected ${Math.round(now - l.at)} s after its Leave`);
+    }
+  };
 
   // the invariants that are checked over time
   const quiet = () => all.every((d) => d.activeFaults === 0);
@@ -896,17 +1407,27 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       lastPhase = r.round.phase;
     }
     stats.rounds = roundsSeen;
+    if (wholeApp) wholeAppChecks(r, now);
+    if (violation) return;
     if (ended || r.closed) return;
     const hostOk = hostDev.activeFaults === 0 && !H.clock.suspended;
     for (const d of devices) {
       const pg = pages.get(d)!;
       // each phone at most one seat
-      const held = r.seats.filter((s) => !s.isBot && s.connected && d.tokens.has(s.token)).length;
-      if (held > 1) fail("one seat per phone", `${d.id} holds ${held} connected seats`);
+      const mine = r.seats.filter((s) => !s.isBot && s.connected && d.tokens.has(s.token));
+      const held = mine.length;
+      // a seat left with the link down that the host never heard of is the Leave offline's gap
+      if (held > 1 && mine.some((s) => offlineLeft.has(s.token))) {
+        if (!offlineLeftSeen.has(d)) gap("Leave offline gives the seat a bot in 5 s (L2)", `${d.id} holds ${held} connected seats: one left with the link down`);
+        offlineLeftSeen.add(d);
+      } else if (held > 1) fail("one seat per phone", `${d.id} holds ${held} connected seats`);
       // every move sent is applied, refused, or its link ends
       for (const s of d.sent) {
         // (the page's JS runs to find a dead link: not while it is suspended)
-        if (s.state === "pending" && now - Math.max(s.at, d.clearedAt) > 30 && d.activeFaults === 0 && pg.status === "open" && pg.sockNo === s.sock) {
+        if (s.state === "pending" && now - Math.max(s.at, d.clearedAt) > 30 && d.activeFaults === 0 && pg.status === "open" && pg.sockNo === s.sock && wholeApp && now - d.lossAt < 120) {
+          gap("a lost frame on a live link is made good (loss)", `${d.id}'s ${s.text.slice(0, 40)} unanswered ${Math.round(now - s.at)} s after a loss on its open link`);
+          s.state = "moot";
+        } else if (s.state === "pending" && now - Math.max(s.at, d.clearedAt) > 30 && d.activeFaults === 0 && pg.status === "open" && pg.sockNo === s.sock) {
           fail("every move answered", `${d.id}'s ${s.text.slice(0, 40)} (for ${s.key}) unanswered ${Math.round(now - s.at)} s on a link still open${s.arrived ? " (it reached the host)" : " (never reached the host)"}`);
         }
       }
@@ -925,7 +1446,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         }
         const from = Math.max(since, d.unhealthySince);
         const bound = opts.bound + (d.openAtStart ? DETECT : 0);
-        if (now - from > bound) {
+        if (now - from > bound && wholeApp && now - d.lossAt < 90) {
+          gap("a lost frame on a live link is made good (loss)", `${d.id} behind ${Math.round(now - from)} s after frames were lost on its open link`);
+          d.unhealthySince = now;
+        } else if (now - from > bound) {
           fail("back within the bound", `${d.id} not back ${Math.round(now - from)} s after the last fault cleared (socket ${pg.status}, seat ${seatIdx >= 0 ? `${seatIdx} ${seatOk ? "connected" : "not connected"}` : "none"}, state ${fresh ? "current" : "behind"})`);
         }
       } else if (healthy && d.unhealthySince !== null) {
@@ -976,7 +1500,9 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       const pg = pages.get(d)!;
       if (!d.inPlay || pg.done || !room.round || d.activeFaults > 0) continue;
       if (room.lobby) continue;
-      if (summary(d.lastState) !== summary(hostDev.lastState) && vc.now() - hostDev.lastStateAt > 3) {
+      if (summary(d.lastState) !== summary(hostDev.lastState) && vc.now() - hostDev.lastStateAt > 3 && wholeApp && vc.now() - d.lossAt < 120) {
+        gap("a lost frame on a live link is made good (loss)", `${d.id} shows ${summary(d.lastState)} at the settle, the host ${summary(hostDev.lastState)}, after frames were lost`);
+      } else if (summary(d.lastState) !== summary(hostDev.lastState) && vc.now() - hostDev.lastStateAt > 3) {
         fail("same state after the settle", `${d.id} shows ${summary(d.lastState)}, the host ${summary(hostDev.lastState)}`);
       }
     }

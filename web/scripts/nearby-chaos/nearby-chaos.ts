@@ -26,6 +26,16 @@
 //                fails only on the gap whose name has WORD, e.g. pending)
 // --new-faults   the device test's faults too: stallPhone (every frame of
 //                one phone held, on all its links; two phones may overlap)
+// --whole-app    the whole app: personas on the joiner pages (slow,
+//                double-tap, stale-tap, leaver, declarer while dealing), the
+//                page's 65 s host-left window, the faults storm, jsFreeze,
+//                loss, joinReplyLost, leaveOffline, kill and botSlow, and the
+//                whole-app invariants (sim.ts wholeAppChecks); its gaps are
+//                named for the app fixes they wait on (L1, L2, L3, L5, L6)
+// --phase-targeted  each fault waits for a phase (a deal card, the declare
+//                window, a bury, the last trick, a round's end, just after a
+//                move, the lobby, Start, a join's handshake, a Leave, a
+//                game's end) and runs at its first occurrence
 // --replay FILE  run one game from a replay file, deterministically
 // --no-shrink    on a failure, keep the whole fault schedule
 // --out DIR      where replay files go (default: the current directory)
@@ -55,6 +65,8 @@ interface Replay {
   page?: PageModel;
   gaps?: "off" | "report" | "strict";
   gapOnly?: string;
+  wholeApp?: boolean;
+  phaseTargeted?: boolean;
 }
 
 function args(argv: string[]): Record<string, string | boolean> {
@@ -116,7 +128,8 @@ async function main(): Promise<void> {
     const r = await runGame({ seed: rp.seed, bugs: [...rp.bugs, ...planted], seconds: rp.seconds, bound: rp.bound, hostile: rp.hostile,
                               schedule: rp.schedule, verbose: a.verbose === true, page: rp.page,
                               gaps: a.gaps === "report" || a.gaps === "strict" ? a.gaps : rp.gaps,
-                              gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : rp.gapOnly });
+                              gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : rp.gapOnly,
+                              wholeApp: rp.wholeApp, phaseTargeted: rp.phaseTargeted });
     if (r.violation) {
       report(r, a.verbose ? 0 : 200);
       process.exitCode = 1;
@@ -135,6 +148,8 @@ async function main(): Promise<void> {
     page: (a.page === "ws" ? "ws" : "sim") as PageModel,
     gaps: (a.gaps === "report" || a.gaps === "strict" ? a.gaps : "off") as "off" | "report" | "strict",
     gapOnly: typeof a["gap-only"] === "string" ? a["gap-only"] : undefined,
+    wholeApp: a["whole-app"] === true,
+    phaseTargeted: a["phase-targeted"] === true,
   };
   const totals: Record<string, number> = {};
   const recoveries: number[] = [];
@@ -153,7 +168,8 @@ async function main(): Promise<void> {
       if (a["no-shrink"] !== true) r = await shrink(opts, r);
       report(r);
       const rp: Replay = { seed, bugs: base.bugs, seconds: base.seconds, bound: base.bound, hostile: base.hostile,
-                           schedule: r.schedule, invariant: r.violation!.invariant, page: base.page, gaps: base.gaps, gapOnly: base.gapOnly };
+                           schedule: r.schedule, invariant: r.violation!.invariant, page: base.page, gaps: base.gaps, gapOnly: base.gapOnly,
+                           ...(base.wholeApp ? { wholeApp: true } : {}), ...(base.phaseTargeted ? { phaseTargeted: true } : {}) };
       const file = join(out, `nearby-chaos-${seed}.json`);
       writeFileSync(file, JSON.stringify(rp, null, 2));
       console.log(`replay: npx tsx web/scripts/nearby-chaos/nearby-chaos.ts --replay ${file}`);
@@ -164,7 +180,15 @@ async function main(): Promise<void> {
   const ran = failures.length && a["keep-going"] !== true ? failures[0].game : games;
   console.log(`\n${ran} game(s) from seed ${seed0}${base.bugs.length ? `, planted [${base.bugs.join(",")}]` : ""}: ${failures.length} failing` +
               `${failures.length ? ` (first in game ${failures[0].game}, seed ${failures[0].seed}: ${failures[0].invariant})` : ""}`);
-  console.log(`totals: ${Object.entries(totals).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  const plain = Object.entries(totals).filter(([k]) => !k.startsWith("phase ") && !k.startsWith("gap ") && !k.startsWith("persona "));
+  console.log(`totals: ${plain.map(([k, v]) => `${k} ${k === "maxFrame" ? Math.round(v / games) : v}`).join(", ")}`);
+  const group = (prefix: string) => Object.entries(totals).filter(([k]) => k.startsWith(prefix) && !k.endsWith(" seen")).map(([k, v]) => `${k.slice(prefix.length)} ${v}`).join(", ");
+  if (base.wholeApp) console.log(`personas: ${group("persona ")}`);
+  if (base.phaseTargeted) {
+    console.log(`faults by phase: ${group("phase ")}`);
+    console.log(`phases seen: ${Object.entries(totals).filter(([k]) => k.endsWith(" seen")).map(([k, v]) => `${k.slice(6, -5)} ${v}`).join(", ")}`);
+  }
+  console.log(`gaps: ${group("gap ") || "none"}`);
   const spread = (xs: number[]) => `n=${xs.length} p50 ${pct(xs, 0.5).toFixed(1)} s p95 ${pct(xs, 0.95).toFixed(1)} s max ${pct(xs, 1).toFixed(1)} s`;
   console.log(`recovery after a fault: ${spread(recoveries)}`);
   console.log(`freeze, last frame heard to back: ${spread(freezes)}`);

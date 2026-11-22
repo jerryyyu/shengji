@@ -530,6 +530,19 @@ def test_the_fused_forward_writes_in_place_with_the_same_bits(tmp_path):
                               model.leaf_reply_logits_fused(fused, planes, scalars))
 
 
+def test_native_bias_relu_respects_numpy_overflow_and_buffer_width():
+    from shengji.ai import unified_readout_numpy as rn
+
+    if rn._bias_relu is None:
+        pytest.skip("native readout kernel unavailable")
+    limit = np.finfo(np.float32).max
+    row = np.array([[limit]], dtype=np.float32)
+    with np.errstate(over="raise"), pytest.raises(FloatingPointError):
+        rn._bias_relu(row, np.array([limit], dtype=np.float32))
+    with pytest.raises(ValueError, match="width"):
+        rn._bias_relu(row, np.zeros(2, dtype=np.float32))
+
+
 def test_memo_rows_computes_each_new_key_once():
     from shengji.train import unified_slots as us
 

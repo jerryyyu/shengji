@@ -24,6 +24,11 @@ import numpy as np
 from . import belief_numpy as bn
 from .unified_numpy import PACKAGE_MAX_BYTES, UnifiedNumpy, UnifiedNumpyError, _ln
 
+try:
+    from ._cwv_math import bias_relu_inplace as _bias_relu
+except ImportError:
+    _bias_relu = None
+
 SCHEMA = "shengji-unified-readout-numpy-v1"
 N_CARDS = 54
 OUTCOME_CLASSES = 204
@@ -173,8 +178,11 @@ class UnifiedReadoutNumpy(UnifiedNumpy):
         for i in range(self.blocks):
             _ln_into(h, r[f"ln.{i}.weight"], r[f"ln.{i}.bias"], u, square)
             np.matmul(u, t[f"up.{i}.weight"], out=wide)
-            wide += r[f"up.{i}.bias"]
-            np.maximum(wide, 0.0, out=wide)
+            if _bias_relu is not None and wide.dtype == np.float32:
+                _bias_relu(wide, r[f"up.{i}.bias"])
+            else:
+                wide += r[f"up.{i}.bias"]
+                np.maximum(wide, 0.0, out=wide)
             np.matmul(wide, t[f"down.{i}.weight"], out=u)
             h += u
             h += r[f"down.{i}.bias"]

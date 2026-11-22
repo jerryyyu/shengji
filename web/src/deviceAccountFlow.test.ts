@@ -152,6 +152,50 @@ describe("restore after a reinstall", () => {
   });
 });
 
+describe("past the 6 s bound", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("a sign-in answered after the deadline sends nothing for that tap; a new tap queues once on the account's socket", async () => {
+    vi.useFakeTimers();
+    mods.conn.start();
+    await vi.advanceTimersByTimeAsync(10);
+    await mods.auth.init();
+    await vi.advanceTimersByTimeAsync(10);
+    let answer!: (a: Answer) => void;
+    deviceAnswers.push(new Promise<Answer>((r) => { answer = r; }));
+    mods.queue.join();
+    await vi.advanceTimersByTimeAsync(6100);
+    expect(joins()).toEqual([]);
+    expect(mods.queue.getSnapshot().note?.title).toBe("Couldn't open a table.");
+    answer({ status: 200, body: { token: "tok-new", user: DEVICE_USER }, cookie: "account:9" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mods.auth.state.status).toBe("in");
+    expect(joins()).toEqual([]);
+    mods.queue.join();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(joins()).toEqual([{ who: "account:9", msg: { type: "queue_join", mode: "ranked" } }]);
+    expect(deviceCalls).toHaveLength(1);
+  });
+
+  it("a restore answered after the deadline sends nothing for the tap made during it", async () => {
+    vi.useFakeTimers();
+    keychain.value = "tok-kept";
+    let answer!: (a: Answer) => void;
+    deviceAnswers.push(new Promise<Answer>((r) => { answer = r; }));
+    mods.conn.start();
+    const init = mods.auth.init();
+    await vi.advanceTimersByTimeAsync(10);
+    mods.queue.join();
+    await vi.advanceTimersByTimeAsync(6100);
+    answer({ status: 200, body: { user: DEVICE_USER }, cookie: "account:7" });
+    await init;
+    await vi.advanceTimersByTimeAsync(50);
+    expect(mods.auth.state.status).toBe("in");
+    expect(joins()).toEqual([]);
+    expect(live().map((w) => w.who)).toEqual(["account:7"]);
+  });
+});
+
 describe("the first online Play", () => {
   beforeEach(async () => {
     mods.conn.start();
@@ -185,15 +229,24 @@ describe("the first online Play", () => {
     expect(mods.auth.state.status).toBe("out");
   });
 
-  it("a secret the Keychain will not keep: the account is deleted and the Play goes as a guest", async () => {
+  it("a secret the Keychain will not keep: the account stays signed in on the cookie, nothing is deleted, and the next Play saves it", async () => {
     keychain.failSet = 2;
     deviceAnswers.push({ status: 200, body: { token: "tok-new", user: DEVICE_USER }, cookie: "account:9" });
     mods.queue.join();
     await settle();
-    expect(cookie).toBeNull();
-    expect(mods.auth.state).toEqual({ status: "out", clientId: "cid", user: null });
-    expect(joins()).toHaveLength(1);
-    expect(joins()[0].who).toBeNull();
+    expect(cookie).toBe("account:9");
+    expect(mods.auth.state.status).toBe("in");
+    expect(joins()).toEqual([{ who: "account:9", msg: { type: "queue_join", mode: "ranked" } }]);
+    expect(keychain.value).toBeNull();
+    mods.queue.reset();
+    mods.queue.join();
+    await settle();
+    // a signed-in Play goes at once; the next launch saves the secret
+    expect(joins()).toHaveLength(2);
+    mods.auth.reset();
+    deviceAnswers.push({ status: 200, body: { user: DEVICE_USER }, cookie: "account:9" });
+    await mods.auth.init();
+    expect(keychain.value).toBe("tok-new");
   });
 
   it("a mode switched while the account is made drops the held Play", async () => {

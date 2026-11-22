@@ -4,58 +4,58 @@
 // account, on a socket that carries it. Anywhere else the action runs at
 // once, exactly as it always has.
 //
-// One tap is one attempt. While it is under way (sign-in, then the socket
-// reopening as the account) a further tap does nothing. The attempt is
-// bounded as a whole, sign-in included: at INTENT_MS it is abandoned and
-// the action goes ahead as things stand. An action whose place is gone by
-// then (another tab, another mode, a seat already taken) does not fire.
+// One tap is one attempt, and identity changes are serialized: one sign-in
+// (with its Keychain work and the socket reopening) runs at a time, and a
+// launch's restore counts as one. The tap waits at most INTENT_MS for it. Past
+// that the tap is given up with nothing sent (the sign-in finishes on its own,
+// and the next tap waits for it), so an action never goes out on the socket
+// of an identity that is about to change. An action whose place is gone by
+// the time it could go (another tab, another mode, a seat already taken)
+// does not fire either.
 //
 // A failure never blocks play: a server with device accounts off (404), too
 // many attempts (429), no connection, a refused secret (401, which also
 // clears it) or a Keychain that cannot be read leave the player a guest for
-// this action, and an existing secret is never replaced.
+// this action, and an existing secret is never replaced. A new account whose
+// secret the Keychain will not keep stays signed in on the cookie; the
+// secret is saved at the next launch, before the Keychain is read.
 
 import { useEffect, useState } from "react";
-import { auth, deleteAccount, deviceAccountsAvailable, deviceAuth, forgetDeviceSecret } from "./auth";
-import { keychainGet, keychainSet } from "./keychain";
+import {
+  auth, deviceAccountsAvailable, deviceAuth, forgetDeviceSecret, leaveDeviceSecretUnsaved, saveDeviceSecret, settleKeychain,
+} from "./auth";
+import { keychainGet } from "./keychain";
 import { deviceIdiom } from "./native";
 
-/** How long one Play, Duo or Join may wait, sign-in included. */
+/** How long a Play, Duo or Join waits for the device's sign-in. */
 export const INTENT_MS = 6000;
 
 /** The server has device accounts off: no more asking on this page. */
 let off = false;
-/** The Keychain refused to keep a new account's secret: no more accounts
- *  are made on this page, since each would be lost with the cookie. */
-let unkept = false;
-/** The attempt under way, if any. */
+/** The tap waiting, if any. */
 let pending: { cancel: () => void } | null = null;
+/** The identity change under way, if any. */
+let identityOp: Promise<SetupOutcome> | null = null;
 /** True while a deferred action runs, so a join it makes in turn runs at
  *  once instead of starting a second attempt. */
 let inAction = false;
 
 /** What the last attempt came to; for tests and the log. */
-export type SetupOutcome = "signed_in" | "restored" | "guest" | "off" | "read_failed" | "write_failed" | "timed_out";
+export type SetupOutcome = "signed_in" | "unsaved" | "restored" | "superseded" | "guest" | "off" | "read_failed" | "timed_out";
 let lastOutcome: SetupOutcome | null = null;
 export function lastSetupOutcome(): SetupOutcome | null {
   return lastOutcome;
 }
 
-/** Keeps a new secret, trying once more on a refusal. */
-async function keep(token: string): Promise<boolean> {
-  for (let i = 0; i < 2; i += 1) {
-    try {
-      await keychainSet(token);
-      return true;
-    } catch {
-      /* tried again once */
-    }
-  }
-  return false;
+/** Whether a sign-in holds the session now; read fresh after each wait. */
+function signedInNow(): boolean {
+  return auth.state?.status === "in";
 }
 
-/** Signs this device in, as one attempt. */
-async function signInDevice(signal: AbortSignal): Promise<SetupOutcome> {
+/** Signs this device in. */
+async function signInDevice(): Promise<SetupOutcome> {
+  // a removal or a save an earlier run could not finish comes first
+  if (!(await settleKeychain())) return "read_failed";
   let token: string | null;
   try {
     token = await keychainGet();
@@ -63,8 +63,7 @@ async function signInDevice(signal: AbortSignal): Promise<SetupOutcome> {
     // an unreadable Keychain may hold a secret: never make a second account over it
     return "read_failed";
   }
-  if (signal.aborted) return "timed_out";
-  const got = await deviceAuth(token, signal);
+  const got = await deviceAuth(token);
   if (got.status === 404 || got.status === 403) {
     off = true;
     auth.noDeviceAccounts?.();
@@ -75,62 +74,78 @@ async function signInDevice(signal: AbortSignal): Promise<SetupOutcome> {
     await forgetDeviceSecret();
     return "guest";
   }
-  if (!got.user) return signal.aborted ? "timed_out" : "guest";
-  if (got.token && !(await keep(got.token))) {
-    // The new account could live only in the cookie and be lost with it.
-    // It is deleted at once (it has nothing yet) and this device stays a
-    // guest, shown as one; only if that delete fails is it signed in, so
-    // the account is at least visible and can be deleted from Me.
-    unkept = true;
-    auth.noDeviceAccounts?.();
-    try {
-      await deleteAccount();
-      return "write_failed";
-    } catch {
-      /* signed in below */
+  if (!got.user) return "guest";
+  // a sign-in that landed meanwhile holds the session now; it is not undone
+  if (signedInNow()) return "superseded";
+  let outcome: SetupOutcome = "signed_in";
+  if (got.token) {
+    const kept = await saveDeviceSecret(got.token);
+    // nothing is kept for an account a later sign-in has replaced
+    if (signedInNow()) return "superseded";
+    if (!kept) {
+      leaveDeviceSecretUnsaved(got.token);
+      outcome = "unsaved";
     }
   }
   auth.signedIn(got.user);
-  return "signed_in";
+  await auth.settled();
+  return outcome;
 }
 
-async function attempt(signal: AbortSignal): Promise<SetupOutcome> {
+async function changeIdentity(): Promise<SetupOutcome> {
   // a launch still restoring the account, or a socket reopening as it
   await auth.settled();
-  if (signal.aborted) return "timed_out";
   const status = auth.state?.status;
   if (status !== "out" && status !== "off") return status === "in" ? "restored" : "guest";
-  if (off || unkept) return "guest";
-  const outcome = await signInDevice(signal);
-  if (outcome === "signed_in") await auth.settled();
-  return outcome;
+  if (off) return "guest";
+  return signInDevice();
+}
+
+/** The one identity change at a time: a tap joins the one under way. */
+function identity(): Promise<SetupOutcome> {
+  if (!identityOp) {
+    const op = changeIdentity().catch((): SetupOutcome => "guest");
+    identityOp = op;
+    void op.then(() => { if (identityOp === op) identityOp = null; });
+  }
+  return identityOp;
 }
 
 /** Run `action` (an online Play, Duo or Join) as the device's account.
  *  `stillWanted` is asked before a deferred action fires; the action is
- *  also dropped when the page has moved on (its address changed). */
-export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean = () => true): void {
+ *  also dropped when the page has moved on (its address changed).
+ *  `gaveUp` runs when the wait passes INTENT_MS and the tap is dropped. */
+export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean = () => true,
+                                  gaveUp?: () => void): void {
   if (inAction || !deviceAccountsAvailable()) {
     action();
     return;
   }
   if (pending) return;
   const status = auth.state?.status;
-  const settled = status === "in" || status === "error" || off || unkept;
-  if (settled && !auth.isReopening?.()) {
+  const settled = status === "in" || status === "error" || off;
+  if (settled && !identityOp && !auth.isReopening?.()) {
     action();
     return;
   }
   const where = window.location.href;
-  const abort = new AbortController();
   let done = false;
-  const finish = (outcome: SetupOutcome) => {
-    if (done) return;
+  const end = () => {
     done = true;
     window.clearTimeout(timer);
     pending = null;
+  };
+  const timer = window.setTimeout(() => {
+    if (done) return;
+    end();
+    lastOutcome = "timed_out";
+    gaveUp?.();
+  }, INTENT_MS);
+  pending = { cancel: end };
+  void identity().then((outcome) => {
+    if (done) return;
+    end();
     lastOutcome = outcome;
-    abort.abort();
     if (window.location.href !== where || !stillWanted()) return;
     inAction = true;
     try {
@@ -138,17 +153,7 @@ export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean
     } finally {
       inAction = false;
     }
-  };
-  const timer = window.setTimeout(() => finish("timed_out"), INTENT_MS);
-  pending = {
-    cancel: () => {
-      done = true;
-      window.clearTimeout(timer);
-      pending = null;
-      abort.abort();
-    },
-  };
-  void attempt(abort.signal).catch((): SetupOutcome => "guest").then(finish);
+  });
 }
 
 /** The one line saying where the app's own account lives, by the device the
@@ -167,8 +172,8 @@ export function useOnThisDeviceLine(): string {
 export function resetDeviceAccountForTests(): void {
   pending?.cancel();
   off = false;
-  unkept = false;
   pending = null;
+  identityOp = null;
   inAction = false;
   lastOutcome = null;
 }

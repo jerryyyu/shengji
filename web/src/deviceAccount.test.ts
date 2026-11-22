@@ -49,7 +49,8 @@ function mockFetch() {
 
 /** The app's shell: iOS (or `platform`), with a Keychain kept in memory. */
 function shell(platform = "ios", keychain = true) {
-  const store = { value: null as string | null, calls: [] as string[], failGet: 0, failSet: 0, failRemove: 0 };
+  const store = { value: null as string | null, calls: [] as string[], failGet: 0, failSet: 0, failRemove: 0,
+                  holdSet: null as Promise<void> | null };
   const refuse = (n: "failGet" | "failSet" | "failRemove") => {
     if (store[n] <= 0) return;
     store[n] -= 1;
@@ -57,7 +58,11 @@ function shell(platform = "ios", keychain = true) {
   };
   const methods: Record<string, (opts?: { value?: string }) => Promise<unknown>> = {
     get: async () => { refuse("failGet"); return { value: store.value }; },
-    set: async (opts) => { refuse("failSet"); store.value = opts?.value ?? null; },
+    set: async (opts) => {
+      if (store.holdSet) { const hold = store.holdSet; store.holdSet = null; await hold; }
+      refuse("failSet");
+      store.value = opts?.value ?? null;
+    },
     remove: async () => { refuse("failRemove"); store.value = null; },
   };
   (window as unknown as { Capacitor: unknown }).Capacitor = {
@@ -83,6 +88,7 @@ const deviceCalls = () => calls.filter((c) => c.url === "/api/auth/device");
 const opens = () => { status.current = "open"; for (const fn of [...listeners]) fn("open"); };
 
 beforeEach(() => {
+  localStorage.clear();
   routes = new Map();
   calls = [];
   reconnect.mockClear();
@@ -301,33 +307,50 @@ describe("the first online Play in the app", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("the bound covers sign-in too: a server that never answers lets the Play go at 6 s, as a guest", async () => {
+  it("the bound covers sign-in too: past 6 s the tap is given up with nothing sent, and a late answer sends nothing", async () => {
     vi.useFakeTimers();
     shell();
-    globalThis.fetch = vi.fn((_u: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_r, reject) => {
-      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
-    })) as typeof fetch;
+    let answer!: (r: Response) => void;
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), method: init?.method ?? "GET", headers: {}, body: undefined });
+      return new Promise<Response>((r) => { answer = r; });
+    }) as typeof fetch;
     const action = vi.fn();
-    beforeOnlineSetup(action);
+    const gaveUp = vi.fn();
+    beforeOnlineSetup(action, () => true, gaveUp);
     await vi.advanceTimersByTimeAsync(5900);
-    expect(action).not.toHaveBeenCalled();
+    expect(gaveUp).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(200);
-    expect(action).toHaveBeenCalledTimes(1);
+    expect(gaveUp).toHaveBeenCalledTimes(1);
     expect(lastSetupOutcome()).toBe("timed_out");
-    expect(auth.state.status).toBe("out");
+    // a tap while that sign-in still runs waits for it: no second request
+    const next = vi.fn();
+    beforeOnlineSetup(next);
+    answer({ status: 200, json: async () => ({ token: "tok-new", user: DEVICE_USER }) } as Response);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(auth.state.status).toBe("in");
+    expect(action).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    opens();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(action).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(calls.filter((c) => c.url === "/api/auth/device")).toHaveLength(1);
   });
 
-  it("a socket that never opens still lets the Play go after the wait", async () => {
+  it("a socket that never reopens: the tap is given up at 6 s, and fires never", async () => {
     vi.useFakeTimers();
     shell();
     status.current = "connecting";
     routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
     const action = vi.fn();
-    beforeOnlineSetup(action);
-    await vi.advanceTimersByTimeAsync(5000);
+    const gaveUp = vi.fn();
+    beforeOnlineSetup(action, () => true, gaveUp);
+    await vi.advanceTimersByTimeAsync(6100);
+    expect(gaveUp).toHaveBeenCalledTimes(1);
+    opens();
+    await vi.advanceTimersByTimeAsync(10);
     expect(action).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(action).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -360,36 +383,93 @@ describe("the Keychain failing", () => {
     expect(auth.state.status).toBe("in");
   });
 
-  it("a write refused twice deletes the new account and leaves a guest, shown as one", async () => {
+  it("a write refused twice keeps the account signed in on the cookie, deletes nothing, and saves it at the next launch", async () => {
     const keychain = shell();
     keychain.failSet = 2;
-    auth.state = { status: "out", clientId: "cid", user: null, deviceAccounts: true };
     routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
-    routes.set("DELETE /api/me", { status: 204 });
     const action = vi.fn();
     beforeOnlineSetup(action);
     await flush();
-    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/auth/device", "DELETE /api/me"]);
-    expect(keychain.value).toBeNull();
-    expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
-    expect(action).toHaveBeenCalledTimes(1);
-    expect(lastSetupOutcome()).toBe("write_failed");
-    expect(reconnect).not.toHaveBeenCalled();
-    // and no more accounts are made on this page
-    beforeOnlineSetup(action);
-    expect(action).toHaveBeenCalledTimes(2);
+    opens();
     await flush();
-    expect(deviceCalls()).toHaveLength(1);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/auth/device"]);
+    expect(keychain.value).toBeNull();
+    expect(auth.state.status).toBe("in");
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(lastSetupOutcome()).toBe("unsaved");
+    // the next launch saves it before reading the Keychain, then signs in with it
+    auth.reset();
+    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
+    routes.set("POST /api/auth/device", { status: 200, body: { user: DEVICE_USER } });
+    await auth.init();
+    expect(keychain.value).toBe("tok-new");
+    expect(deviceCalls()[1].headers.Authorization).toBe("Device tok-new");
+    expect(auth.state.status).toBe("in");
   });
 
-  it("if that delete fails too, the account is signed in, so it is seen and can be deleted", async () => {
+  it("a provider sign-in during a storage failure deletes nothing, and its own secret is the one kept", async () => {
     const keychain = shell();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    keychain.holdSet = gate;
     keychain.failSet = 2;
     routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
-    routes.set("DELETE /api/me", { status: 500 });
+    routes.set("POST /api/auth/google", { status: 200, body: { ...MEI, device_token: "tok-mei" } });
+    const action = vi.fn();
+    beforeOnlineSetup(action);
+    await flush();
+    // while the Keychain holds the write, the player signs in with Google: a merge into Mei
+    const signing = loginWithGoogle("jwt", "n1").then((u) => auth.signedIn(u));
+    await signing;
+    expect(auth.state.user?.name_shown).toBe("Mei");
+    await flush();
+    keychain.failSet = 2;
+    release();
+    await flush();
+    // the device sign-in finished after Mei's: it is not signed in over her
+    expect(lastSetupOutcome()).toBe("superseded");
+    expect(auth.state.user?.name_shown).toBe("Mei");
+    opens();
+    await flush();
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    expect(auth.state.user?.name_shown).toBe("Mei");
+    // the device secret's writes failed; Mei's came after them and stands
+    expect(keychain.value).toBe("tok-mei");
+    expect(localStorage.getItem("shengji.deviceSecretUnsaved")).toBeNull();
+  });
+
+  it("signed out with the switch off and a removal the Keychain refuses: the next launch removes it before any sign-in", async () => {
+    const keychain = shell();
+    keychain.value = "tok-mei";
+    keychain.failRemove = 2;
+    auth.state = { status: "in", clientId: "cid", user: MEI };
+    // the switch is off: the server ends the session and leaves the secret alone
+    routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
+    await auth.signOut();
+    expect(auth.state.status).toBe("out");
+    expect(keychain.value).toBe("tok-mei");
+    // the switch is on again, and the secret would still sign Mei in
+    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
+    routes.set("POST /api/auth/device", { status: 200, body: { user: MEI } });
+    routes.set("GET /api/me", { status: 401, body: {} });
+    // a launch (and then a Play) whose removal is refused again does not sign in with it
+    keychain.failRemove = 2;
+    auth.reset();
+    await auth.init();
+    expect(deviceCalls()).toEqual([]);
+    expect(auth.state.status).toBe("out");
+    expect(keychain.value).toBe("tok-mei");
+    // nor does a Play
     beforeOnlineSetup(() => {});
     await flush();
-    expect(auth.state.status).toBe("in");
+    expect(deviceCalls()).toEqual([]);
+    // the next launch removes it, and Mei is not restored
+    auth.reset();
+    resetDeviceAccountForTests();
+    await auth.init();
+    expect(keychain.value).toBeNull();
+    expect(deviceCalls()).toEqual([]);
+    expect(auth.state.status).toBe("out");
   });
 
   it("sign-out with an unreadable Keychain is refused, not reported done", async () => {

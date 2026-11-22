@@ -199,12 +199,10 @@ async function signInAnswer(status: number, body: SignInBody | null): Promise<Au
   if (status !== 200 || !body) {
     throw new Error(typeof detail === "string" ? detail : `Sign-in failed (${status})`);
   }
+  // queued behind any write under way, so it lands last; the sign-in does
+  // not wait for it, and one still bootstrapping sees it signed in and yields
   if (typeof body.device_token === "string" && body.device_token && deviceAccountsApply()) {
-    try {
-      await keychainSet(body.device_token);
-    } catch {
-      /* the session cookie still holds the account; the next launch's re-auth is refused and the cookie carries on */
-    }
+    void keepDeviceSecret(body.device_token);
   }
   return toUser(body);
 }
@@ -336,12 +334,12 @@ export const IOS_APP_CLIENT = "ios-app";
  *  it; without, make a new account, whose token comes back this once.
  *  Status 0 is no connection. 404 means the server has device accounts
  *  off, and 429 too many attempts: either way the app plays as a guest. */
-export async function deviceAuth(token: string | null, signal?: AbortSignal): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
+export async function deviceAuth(token: string | null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
   const headers: Record<string, string> = { [CLIENT_HEADER]: IOS_APP_CLIENT };
   if (token) headers.Authorization = `Device ${token}`;
   let got: { status: number; body: (Partial<AuthUser> & { user?: AuthUser; token?: string }) | null };
   try {
-    got = await api("/api/auth/device", { method: "POST", headers, ...(signal ? { signal } : {}) });
+    got = await api("/api/auth/device", { method: "POST", headers });
   } catch {
     return { status: 0, user: null, token: null };
   }
@@ -355,6 +353,7 @@ export async function deviceAuth(token: string | null, signal?: AbortSignal): Pr
  *  next online Play makes a fresh one; any other failure keeps it for the
  *  next launch. Null when there is no secret or no sign-in. */
 export async function reauthFromKeychain(): Promise<AuthUser | null> {
+  if (!(await settleKeychain())) return null;
   let token: string | null = null;
   try {
     token = await keychainGet();
@@ -367,14 +366,123 @@ export async function reauthFromKeychain(): Promise<AuthUser | null> {
   return got.user;
 }
 
+// Keychain work an earlier attempt could not finish, kept in the page's
+// storage so the next launch (or a guest's next Play) finishes it before the
+// Keychain is used:
+// a secret the Keychain refused to keep (its account stays signed in on the
+// cookie meanwhile), and a secret a sign-out could not remove.
+const UNSAVED_KEY = "shengji.deviceSecretUnsaved";
+const FORGET_KEY = "shengji.deviceSecretForget";
+
+function stored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* storage refused: the work is simply not retried */
+  }
+}
+
+// Keychain writes run one after another in the order they were asked for,
+// so a secret issued later (a merge's) is never overwritten by an earlier one.
+let keychainWrites: Promise<unknown> = Promise.resolve();
+
+function setWithRetry(token: string): Promise<boolean> {
+  const write = keychainWrites.then(async () => {
+    for (let i = 0; i < 2; i += 1) {
+      try {
+        await keychainSet(token);
+        return true;
+      } catch {
+        /* tried again once */
+      }
+    }
+    return false;
+  });
+  keychainWrites = write;
+  return write;
+}
+
+/** Writes a secret to the Keychain, trying once more on a refusal. True
+ *  when the Keychain has it; nothing is left for later either way. */
+export async function saveDeviceSecret(token: string): Promise<boolean> {
+  const saved = await setWithRetry(token);
+  if (saved) store(UNSAVED_KEY, null);
+  return saved;
+}
+
+/** A secret the Keychain refused, to be saved at the next launch; its
+ *  account stays signed in on the cookie meanwhile. */
+export function leaveDeviceSecretUnsaved(token: string): void {
+  store(UNSAVED_KEY, token);
+}
+
+/** Keeps the newest secret the server issued (a merge's), or leaves it for
+ *  the next launch when the Keychain refuses it twice. */
+async function keepDeviceSecret(token: string): Promise<void> {
+  if (!(await saveDeviceSecret(token))) leaveDeviceSecretUnsaved(token);
+}
+
+/** Finishes Keychain work an earlier run left: a removal first, then a save.
+ *  False while a removal is still refused: the Keychain may hold a secret
+ *  its owner signed out of, so it must not be used to sign in. */
+export async function settleKeychain(): Promise<boolean> {
+  if (stored(FORGET_KEY)) {
+    try {
+      await keychainRemove();
+    } catch {
+      return false;
+    }
+    store(FORGET_KEY, null);
+    store(UNSAVED_KEY, null);
+  }
+  const unsaved = stored(UNSAVED_KEY);
+  if (unsaved) {
+    try {
+      await keychainSet(unsaved);
+      store(UNSAVED_KEY, null);
+    } catch {
+      /* tried again next time */
+    }
+  }
+  return true;
+}
+
 /** Removes the Keychain's secret; a failure leaves it, and the server then
  *  refuses it on the next launch. */
 export async function forgetDeviceSecret(): Promise<void> {
+  store(UNSAVED_KEY, null);
   try {
     await keychainRemove();
   } catch {
     /* refused by the Keychain: the next re-auth's 401 tries again */
   }
+}
+
+/** Removes the secret of an account signed out of here. The server may not
+ *  have revoked it (device accounts off), so a refused removal is tried
+ *  again, then left to the next launch, which removes it before any
+ *  sign-in with the Keychain. */
+async function forgetSignedOutSecret(): Promise<void> {
+  store(UNSAVED_KEY, null);
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      await keychainRemove();
+      store(FORGET_KEY, null);
+      return;
+    } catch {
+      /* tried again once */
+    }
+  }
+  store(FORGET_KEY, "1");
 }
 
 /** Resolves at the next time the socket opens, not counting its status now. */
@@ -526,15 +634,16 @@ class AuthStore {
     // is refused rather than reported done. Once the server has removed the
     // secret, a copy left behind is refused at the next launch and cleared.
     let device: string | null = null;
-    if (deviceAccountsApply()) {
+    const app = deviceAccountsApply();
+    if (app) {
       try {
-        device = await keychainGet();
+        device = (await keychainGet()) ?? stored(UNSAVED_KEY);
       } catch {
         throw new Error("Sign-out failed. Try again.");
       }
     }
     await logout(device);
-    if (device) await forgetDeviceSecret();
+    if (app) await forgetSignedOutSecret();
     try {
       window.google?.accounts?.id?.disableAutoSelect();
     } catch {

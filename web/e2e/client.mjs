@@ -117,6 +117,14 @@ if (!only || only.test("drop")) {
     await page2.waitForSelector(".hand .hand-slot");
     await page2.locator(`.hand .hand-slot[data-id="7"] .card`).click({ force: true, position: { x: 8, y: 14 } });
     await page2.locator(".action-bar .btn", { hasText: /^Play/ }).click();
+    // frames sent since a cursor, so each reconnect is checked on its own socket's frames
+    const cursor = () => page2.evaluate(() => window.__fake.sent.length);
+    const since = (n) => page2.evaluate((k) => window.__fake.sent.slice(k).map((m) => ({ type: m.type, ids: m.card_ids ?? null })), n);
+    const playOf7 = (f) => f.type === "play" && JSON.stringify(f.ids) === "[7]";
+    const first = await since(0);
+    await rep.check("drop-play-in-flight: the play goes with card 7",
+      first.filter((f) => f.type === "play").length === 1 && first.some(playOf7) ? null : `sent before the drop: ${JSON.stringify(first)}`, page2);
+    const c1 = await cursor();
     await page2.evaluate(() => window.__fake.drop());       // the play's answer never comes
     await sleep(400);
     const label = await page2.evaluate(() => document.querySelector(".action-bar")?.innerText.replace(/\\s+/g, " "));
@@ -125,10 +133,28 @@ if (!only || only.test("drop")) {
     const back = await until(page2, () => !document.querySelector(".reconnect-banner") && window.__fake.socks.filter((s) => s.readyState === 1).length === 1, { timeout: 15000 });
     await rep.check("drop-play-in-flight: reconnects", back ? null : "still disconnected after 15 s", page2);
     await sleep(300);
+    // first reconnect: a fresh join, then exactly one identical play after it
+    const r1 = await since(c1);
+    const j1 = r1.findIndex((f) => f.type === "table_join");
+    const plays1 = r1.filter((f) => f.type === "play");
+    const chosen = () => page2.evaluate(() => document.querySelectorAll(".hand .card.selected").length);
+    await rep.check("drop-play-in-flight: the new socket rejoins, then the same play goes exactly once, card still chosen",
+      [j1 >= 0 ? null : `no table_join after the drop: ${JSON.stringify(r1)}`,
+       plays1.length === 1 && playOf7(plays1[0]) && r1.indexOf(plays1[0]) > j1 ? null : `after the drop: ${JSON.stringify(r1)}`,
+       (await chosen()) === 1 ? null : "the chosen card is no longer chosen"], page2);
+    // second reconnect with the resend still unanswered: a fresh join and no play
+    const c2 = await cursor();
+    await page2.evaluate(() => window.__fake.drop());
+    const back2 = await until(page2, () => !document.querySelector(".reconnect-banner") && window.__fake.socks.filter((s) => s.readyState === 1).length === 1, { timeout: 15000 });
+    await rep.check("drop-play-in-flight: reconnects a second time", back2 ? null : "still disconnected after 15 s", page2);
+    await sleep(300);
+    const r2 = await since(c2);
     const play = page2.locator(".action-bar .btn", { hasText: /^Play/ });
-    await rep.check("drop-play-in-flight: Play is offered again, card still chosen",
-      [(await play.count()) && (await play.isEnabled()) ? null : "Play is not enabled after the reconnect",
-       (await page2.evaluate(() => document.querySelectorAll(".hand .card.selected").length)) === 1 ? null : "the chosen card is no longer chosen"], page2);
+    await rep.check("drop-play-in-flight: the second socket rejoins, sends no play, and Play is offered again",
+      [r2.some((f) => f.type === "table_join") ? null : `no table_join after the second drop: ${JSON.stringify(r2)}`,
+       r2.every((f) => f.type !== "play") ? null : `the play went a third time: ${JSON.stringify(r2)}`,
+       (await play.count()) && (await play.isEnabled()) ? null : "Play is not enabled after the second reconnect",
+       (await chosen()) === 1 ? null : "the chosen card is no longer chosen"], page2);
   });
   await page2.context().close();
 }

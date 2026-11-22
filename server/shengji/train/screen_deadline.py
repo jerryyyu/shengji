@@ -38,7 +38,9 @@ def validate_deadline(value):
 def _snapshot(wrapped):
     # Evaluators are immutable runtime assets, reconstructed through the factory
     # and shared per process; they must never cross the per-move IPC channel.
-    state = {k: v for k, v in vars(wrapped.bot).items() if k != "evaluator"}
+    factory_fields = getattr(wrapped.bot, "_screen_factory_fields", ())
+    state = {k: v for k, v in vars(wrapped.bot).items()
+             if k not in ("evaluator", "_screen_factory_fields") and k not in factory_fields}
     timing = {k: v for k, v in vars(wrapped).items()
               if k not in ("bot", "decisions", "bury_decisions", "declare_decisions")}
     defaults = {}

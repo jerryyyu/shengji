@@ -2,9 +2,12 @@
 // the chaos pick, drawn from the kinds the phone can run.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { CHAOS_WEIGHTS, chaosPick, LinkSplit, soakSummary } from "./nearbySoak";
-import { describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S } from "./nearbySoakChaos";
+import { describe, expect, it, vi } from "vitest";
+import { nearbyLogLines, subscribeNearbyLog } from "./nearbyLog";
+import { CHAOS_WEIGHTS, chaosPick, LinkSplit, setChaos, soakSummary } from "./nearbySoak";
+import {
+  BACKGROUND_LAG_MS, CHAOS_GAP_MS, describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S, ROUND_CALM_MS,
+} from "./nearbySoakChaos";
 
 const n = (t: number, text: string) => ({ t, from: "native", text });
 
@@ -177,5 +180,132 @@ describe("the plugin's faked Wi-Fi change", () => {
     expect(swift).toMatch(/private func pathFollowOn\(satisfied: Bool, regained: Bool\) \{\n        notifyListeners\("path"[^\n]*\n        if regained \{ lookAgainOnNewPath\(\) \}\n        wifiFollowOn\(\)\n    \}/);
     expect(swift).toContain('spikeLog("CHAOS wifi fake \\(real ? "left" : "joined") for');
     expect(swift).toContain('spikeLog("CHAOS wifi fake over');
+  });
+});
+
+describe("the soak's chaos timer", () => {
+  it("runs background faults at least CHAOS_GAP_MS apart once chaos is on", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const rand = vi.spyOn(Math, "random").mockReturnValue(0.05);
+    const at: number[] = [];
+    const off = subscribeNearbyLog(() => {
+      const l = nearbyLogLines().at(-1);
+      if (l?.from === "soak" && l.text.startsWith("chaos: ") && l.text.endsWith("by bg)")) at.push(Date.now());
+    });
+    try {
+      setChaos(true);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      setChaos(false);
+      expect(at.length).toBeGreaterThan(0);
+      expect(at[0]).toBeGreaterThanOrEqual(CHAOS_GAP_MS);
+      const gaps = at.slice(1).map((t, i) => t - at[i]);
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(CHAOS_GAP_MS);
+    } finally {
+      off();
+      rand.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("a delayed after-move fault", () => {
+  type Soak = typeof import("./nearbySoak");
+  type Log = typeof import("./nearbyLog");
+  /** A fresh page: the soak's module state from scratch, localStorage kept. */
+  async function page(): Promise<{ soak: Soak; log: Log; emit: (m: Record<string, unknown>) => void; faults: string[]; off: () => void }> {
+    vi.resetModules();
+    const log = await import("./nearbyLog");
+    const soak = await import("./nearbySoak");
+    const { conn } = await import("./ws");
+    const faults: string[] = [];
+    const off = log.subscribeNearbyLog(() => {
+      const l = log.nearbyLogLines().at(-1);
+      if (l?.from === "soak" && l.text.startsWith("chaos: ") && / by \w+\)$/.test(l.text)) faults.push(`${Date.now()} ${l.text}`);
+    });
+    const emit = (m: Record<string, unknown>) => (conn as unknown as { emit(m: unknown): void }).emit(m);
+    return { soak, log, emit, faults, off };
+  }
+  const roundEnd = {
+    type: "state", room: "ABCDEF", you: 1, phase: "round_end", turn: null, hand: [], trick: null, last_trick: null,
+    players: [0, 1, 2, 3].map((seat) => ({ seat, name: `S${seat}`, is_bot: seat > 1, connected: true, controller: "human", away: false })),
+    round_result: { game_over: false },
+  };
+  let rand: { mockRestore(): void } | null = null;
+  const start = () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(0);
+    rand = vi.spyOn(Math, "random").mockReturnValue(0.1);
+    localStorage.clear();
+  };
+  const end = () => {
+    rand?.mockRestore();
+    vi.useRealTimers();
+    localStorage.clear();
+  };
+
+  it("does not run when a round's end arrives inside its delay; the round's end keeps its own chance", async () => {
+    start();
+    const p = await page();
+    try {
+      p.soak.setChaos(true);
+      await vi.advanceTimersByTimeAsync(42_001);
+      p.log.nearbyLog("socket", "out play");
+      p.emit(roundEnd);
+      await vi.advanceTimersByTimeAsync(31);
+      expect(p.faults.filter((f) => f.endsWith("by after_move)"))).toEqual([]);
+      expect(p.faults.filter((f) => f.endsWith("by round_end)"))).toHaveLength(1);
+      p.soak.setChaos(false);
+    } finally {
+      p.off();
+      end();
+    }
+  });
+
+  it("does not run when the soak stops inside its delay", async () => {
+    start();
+    const p = await page();
+    try {
+      p.soak.setChaos(true);
+      await vi.advanceTimersByTimeAsync(42_001);
+      p.log.nearbyLog("socket", "out play");
+      p.soak.setChaos(false);
+      await vi.advanceTimersByTimeAsync(31);
+      expect(p.faults).toEqual([]);
+    } finally {
+      p.off();
+      end();
+    }
+  });
+
+  it("a reload inside a round's calm keeps the rest of the calm", async () => {
+    start();
+    const a = await page();
+    try {
+      a.soak.setChaos(true);
+      await vi.advanceTimersByTimeAsync(42_001);
+      a.emit(roundEnd);
+      expect(a.faults).toHaveLength(1);
+      // the page reloads 10 s into the calm, the soak still on
+      await vi.advanceTimersByTimeAsync(10_000);
+      const kept = localStorage.getItem("shengji.nearbySoak.v1");
+      a.soak.setChaos(false);
+      localStorage.setItem("shengji.nearbySoak.v1", kept!);
+    } finally {
+      a.off();
+    }
+    const b = await page();
+    try {
+      expect(b.soak.resumeSoak()).toBe(true);
+      // a fresh gap would fault ~44 s after the reload; the calm runs to 42,001 + 120,000
+      await vi.advanceTimersByTimeAsync(42_001 + ROUND_CALM_MS - 52_001 - 1);
+      expect(b.faults).toEqual([]);
+      await vi.advanceTimersByTimeAsync(BACKGROUND_LAG_MS + 1);
+      expect(b.faults.filter((f) => f.endsWith("by bg)"))).toHaveLength(1);
+      b.soak.setChaos(false);
+      b.soak.setAutoplay(false);
+    } finally {
+      b.off();
+      end();
+    }
   });
 });

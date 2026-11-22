@@ -6,7 +6,7 @@ import RoundEndModal from "./RoundEndModal";
 import { auth } from "../auth";
 
 const sent: unknown[] = [];
-vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); } } }));
+vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); return true; } } }));
 
 function makePlayer(seat: number, name: string, team: 0 | 1): StatePlayer {
   return {
@@ -117,6 +117,22 @@ describe("round end modal", () => {
     const next = [...host.querySelectorAll("button")].find((b) => b.textContent === "Next game")!;
     act(() => next.click());
     expect(sent).toEqual([{ type: "next_round" }]);
+  });
+
+  it("Next round goes once per state: taps while it is on its way send nothing; the next state frees it", () => {
+    const result = makeResult();
+    renderModal(result);
+    const next = () => [...host.querySelectorAll("button")].find((b) => b.textContent === "Next round")!;
+    act(() => next().click());
+    act(() => next().click());
+    act(() => next().click());
+    expect(sent).toEqual([{ type: "next_round" }]);
+    expect(next().disabled).toBe(true);
+    // a new state (a resumed link's, the seat not yet ready): it may go again
+    act(() => { root.render(<RoundEndModal state={{ ...state }} result={result} clock={null} />); });
+    expect(next().disabled).toBe(false);
+    act(() => next().click());
+    expect(sent).toHaveLength(2);
   });
 
   it("the games score puts your team first, and a loss names your side", () => {

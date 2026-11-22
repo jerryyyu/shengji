@@ -72,7 +72,9 @@ export const PROBE_MS = 2000;
 export const ANSWER_MS = 1500;
 export const ACTION_PONG_MS = 3000;
 /** A socket still connecting this long is abandoned for a fresh one: a
- *  handshake can hang on a network that has just changed. */
+ *  handshake can hang on a network that has just changed. Not for a nearby
+ *  link: its socket's own link and resume timers end an attempt, and a link
+ *  that is up with its hello unanswered is kept while it still carries. */
 export const CONNECT_MS = 5000;
 /** A wake event (back online, back in view) restarts a connect this old. */
 export const STALE_CONNECT_MS = 2000;
@@ -88,11 +90,23 @@ const ANSWERED: ReadonlySet<ClientMsg["type"]> = new Set<ClientMsg["type"]>([
   "play", "bury", "declare", "pass_declare", "next_round", "im_back",
   "table_chat", "table_allow_joiners",
 ]);
+/** A nearby link's reconnect attempts wait these long, the last one
+ *  repeating: the host's few unseated links bound what they cost, and a
+ *  seat has the host's window (about a minute) to get back in. */
+export const NEARBY_RETRY_MS: readonly number[] = [0, 250, 500, 1000];
 
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
-import { OFFLINE } from "./offlineMode";
+import { NEARBY_SESSION, OFFLINE } from "./offlineMode";
 export { OFFLINE };
+
+/** Whether this page may remember its seat in storage: only for the game
+ *  server. A table on this device or a nearby phone's is never written down,
+ *  so a later launch with a network never sends its code or token to the
+ *  game server. */
+function remembersSeats(): boolean {
+  return !OFFLINE && !NEARBY_SESSION;
+}
 
 const NAME_KEY = "shengji.name";
 const ROOM_KEY = "shengji.room";
@@ -110,7 +124,7 @@ export function getSavedRoom(): string | null {
   return localStorage.getItem(ROOM_KEY);
 }
 export function saveRoom(room: string): void {
-  localStorage.setItem(ROOM_KEY, room);
+  if (remembersSeats()) localStorage.setItem(ROOM_KEY, room);
 }
 export function clearSavedRoom(): void {
   localStorage.removeItem(ROOM_KEY);
@@ -125,7 +139,7 @@ export function getResumeToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 export function saveResumeToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  if (remembersSeats()) localStorage.setItem(TOKEN_KEY, token);
 }
 
 type MsgListener = (msg: ServerMsg) => void;
@@ -154,7 +168,14 @@ class Connection {
    *  we just left and must not pull the UI back into it. */
   private leavingWs: WebSocket | null = null;
   private leaveTimer: number | null = null;
+  /** A nearby table's Leave the host has not answered with its `left`: a
+   *  Leave tapped while the link was down, or one whose link went before
+   *  the answer. The next link sends it as soon as it opens, so the seat
+   *  gets the bot at once instead of waiting out a dropped seat's hold. */
+  private nearbyLeave = false;
   private backoff = 500;
+  /** Nearby reconnect attempts since the last open, into NEARBY_RETRY_MS. */
+  private nearbyTries = 0;
   private reconnectTimer: number | null = null;
   private started = false;
   /** Opens the transport: the game server's WebSocket, or offline the
@@ -163,7 +184,9 @@ class Connection {
   /** Which server the socket talks to. "local" is set as soon as offline play
    *  is asked for, while the on-device server's module may still be loading;
    *  browser wake events never open the network socket then. */
-  private transport: "remote" | "local" = "remote";
+  private transport: "remote" | "local" | "nearby" = "remote";
+  /** The transport a nearby join replaced, which its end goes back to. */
+  private beforeNearby: "remote" | "local" = "remote";
   /** Bumped on every transport request, so a module load that finishes after
    *  a later request changes nothing. */
   private transportSeq = 0;
@@ -279,6 +302,30 @@ class Connection {
     if (this.started) this.open();
   }
 
+  /** Play at a nearby phone's table from now on, in place: `make` opens the
+   *  link to it (a NearbySocket). Reconnects open a new link the same way,
+   *  until `leaveNearby` goes back to the transport this replaced. */
+  useNearby(make: () => WebSocket): void {
+    this.transportSeq += 1;
+    if (this.transport !== "nearby") this.beforeNearby = this.transport;
+    this.transport = "nearby";
+    this.retireTransport();
+    this.makeSocket = make;
+    if (this.started) this.open();
+  }
+
+  /** The nearby table is over for this page: back to the transport it replaced. */
+  leaveNearby(): void {
+    if (this.transport !== "nearby") return;
+    if (this.beforeNearby === "local") {
+      this.transport = "remote";
+      void this.useLocalServer().catch(() => {});
+    } else {
+      this.transport = "local";
+      this.useGameServer();
+    }
+  }
+
   /** Back to the game server, in place. */
   useGameServer(): void {
     this.transportSeq += 1;
@@ -296,7 +343,9 @@ class Connection {
    *  a leave. The next socket opens as a fresh page's would. */
   private retireTransport(): void {
     this.cutSocket();
+    this.nearbyLeave = false;
     this.backoff = 500;
+    this.nearbyTries = 0;
     this.immediate = false;
     if (this.opened) {
       clearSavedRoom();
@@ -348,20 +397,31 @@ class Connection {
    *  resume it. */
   leaveToLobby(): void {
     clearSavedRoom();
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      const ws = this.ws;
-      ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
-      this.leavingWs = ws;
-      // Fail-safe: no confirmation means no barrier can be lifted safely, so
-      // give up on this socket rather than swallow the next room's replies.
-      if (this.leaveTimer !== null) window.clearTimeout(this.leaveTimer);
-      this.leaveTimer = window.setTimeout(() => {
-        this.leaveTimer = null;
-        if (this.leavingWs === ws) this.retire(ws);
-      }, LEAVE_ACK_MS);
-    }
+    // at a nearby table the seat is held for its phone, not dropped: the
+    // leave is owed until the host answers it
+    if (this.transport === "nearby") this.nearbyLeave = true;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) this.sendLeave(this.ws);
     this.clearChat();
     this.emit({ type: "left" });
+  }
+
+  /** Whether a nearby Leave still waits for the host's answer. */
+  nearbyLeaveOwed(): boolean {
+    return this.nearbyLeave;
+  }
+
+  /** Tell the server about the Leave on `ws`, and read nothing more from
+   *  it until the server's `left`. */
+  private sendLeave(ws: WebSocket): void {
+    ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
+    this.leavingWs = ws;
+    // Fail-safe: no confirmation means no barrier can be lifted safely, so
+    // give up on this socket rather than swallow the next room's replies.
+    if (this.leaveTimer !== null) window.clearTimeout(this.leaveTimer);
+    this.leaveTimer = window.setTimeout(() => {
+      this.leaveTimer = null;
+      if (this.leavingWs === ws) this.retire(ws);
+    }, LEAVE_ACK_MS);
   }
 
   /** Replace the socket: the server reads who we are (the session cookie)
@@ -453,7 +513,7 @@ class Connection {
     this.ws = ws;
     this.openedAt = null;
     this.connectAt = Date.now();
-    let connectTimer: number | null = window.setTimeout(() => {
+    let connectTimer: number | null = this.transport === "nearby" ? null : window.setTimeout(() => {
       connectTimer = null;
       if (this.ws === ws && this.openedAt === null) {
         // never opened: cut it, so a late open or close changes nothing
@@ -539,12 +599,16 @@ class Connection {
       if (connectTimer !== null) window.clearTimeout(connectTimer);
       connectTimer = null;
       this.backoff = 500;
+      this.nearbyTries = 0;
       this.generation += 1;
       this.openedAt = Date.now();
       if (this.lostAt !== null) {
         noteLink({ kind: "up", ms: Date.now() - this.lostAt });
         this.lostAt = null;
       }
+      // a nearby Leave the last link never delivered goes first, so none
+      // of the resumed seat's frames reach the page
+      if (this.nearbyLeave && this.transport === "nearby") this.sendLeave(ws);
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
       // room wins between an invite link, an explicit action, and a saved
       // session, is App's call (intent.ts); reading localStorage here would
@@ -587,8 +651,10 @@ class Connection {
         // (stale_connection / no room). Neither is safe to read as the end of
         // the old room, so an error retires the socket instead; a close, or
         // the timeout above, ends the wait the same way.
-        if (msg.type === "left") this.endLeave();
-        else if (msg.type === "error") this.retire(ws);
+        if (msg.type === "left") {
+          this.endLeave();
+          this.nearbyLeave = false;
+        } else if (msg.type === "error") this.retire(ws);
         return;
       }
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
@@ -604,7 +670,7 @@ class Connection {
       }
       switch (msg.type) {
         case "resume":
-          if (msg.token) saveResumeToken(msg.token);
+          if (msg.token && this.transport === "remote") saveResumeToken(msg.token);
           break;
         case "chat_history":
           this.chatLog = msg.messages.slice(-100);   // REPLACE, never merge
@@ -642,9 +708,15 @@ class Connection {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer !== null) return;
-    const delay = this.immediate ? 0 : this.backoff;
+    let delay: number;
+    if (this.transport === "nearby") {
+      delay = this.immediate ? 0 : NEARBY_RETRY_MS[Math.min(this.nearbyTries, NEARBY_RETRY_MS.length - 1)];
+      this.nearbyTries += 1;
+    } else {
+      delay = this.immediate ? 0 : this.backoff;
+      this.backoff = Math.min(this.backoff * 2, this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
+    }
     this.immediate = false;
-    this.backoff = Math.min(this.backoff * 2, this.atTable ? TABLE_RETRY_MAX_MS : RETRY_MAX_MS);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
       this.open();

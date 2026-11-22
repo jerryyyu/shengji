@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B0C0012FF0000100000401 /* NearbyPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000402 /* NearbyPlugin.swift */; };
 		A1B0C0012FF0000100000001 /* PyBotPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000101 /* PyBotPlugin.swift */; };
 		A1B0C0012FF0000100000002 /* PyBotBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000102 /* PyBotBridge.c */; };
 		A1B0C0012FF0000100000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000106 /* PrivacyInfo.xcprivacy */; };
@@ -40,6 +41,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1B0C0012FF0000100000402 /* NearbyPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyPlugin.swift; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000101 /* PyBotPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PyBotPlugin.swift; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000102 /* PyBotBridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = PyBotBridge.c; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000104 /* PyBotBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PyBotBridge.h; sourceTree = "<group>"; };
@@ -99,6 +101,7 @@
 				9582B6842FE993A70072D4E8 /* ShellViewController.swift */,
 				A1B0C0012FF0000100000302 /* InviteLink.swift */,
 				A1B0C0012FF0000100000101 /* PyBotPlugin.swift */,
+				A1B0C0012FF0000100000402 /* NearbyPlugin.swift */,
 				A1B0C0012FF0000100000102 /* PyBotBridge.c */,
 				A1B0C0012FF0000100000104 /* PyBotBridge.h */,
 				A1B0C0012FF0000100000105 /* App-Bridging-Header.h */,
@@ -240,6 +243,7 @@
 				9582B6852FE993A70072D4E8 /* ShellViewController.swift in Sources */,
 				A1B0C0012FF0000100000301 /* InviteLink.swift in Sources */,
 				A1B0C0012FF0000100000001 /* PyBotPlugin.swift in Sources */,
+				A1B0C0012FF0000100000401 /* NearbyPlugin.swift in Sources */,
 				A1B0C0012FF0000100000002 /* PyBotBridge.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -375,6 +379,57 @@
 			};
 			name = Release;
 		};
+		A1B0C0012FF0000100000501 /* Beta */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Beta;
+		};
 		504EC3171FED79650016851F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
@@ -425,6 +480,30 @@
 			};
 			name = Release;
 		};
+		A1B0C0012FF0000100000502 /* Beta */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10.1;
+				INFOPLIST_FILE = "App/Info-Beta.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jerryyu.shengji;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "App/App-Bridging-Header.h";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SHENGJI_NEARBY SHENGJI_NEARBY_BETA";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Beta;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -433,6 +512,7 @@
 			buildConfigurations = (
 				504EC3141FED79650016851F /* Debug */,
 				504EC3151FED79650016851F /* Release */,
+				A1B0C0012FF0000100000501 /* Beta */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -442,6 +522,7 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+				A1B0C0012FF0000100000502 /* Beta */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

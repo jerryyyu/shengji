@@ -39,6 +39,10 @@ class ShellViewController: CAPBridgeViewController {
         webView?.allowsBackForwardNavigationGestures = true
         bridge?.registerPluginInstance(ShengjiShellPlugin())
         bridge?.registerPluginInstance(ShengjiBotPlugin())
+        #if SHENGJI_NEARBY
+        // Nearby play is registered only in builds that define SHENGJI_NEARBY.
+        bridge?.registerPluginInstance(ShengjiNearbyPlugin())
+        #endif
         // Launched from Xcode with -offline-autoplay, the offline game plays the
         // human's seat too, so a whole round of the bots can be watched and timed.
         if ProcessInfo.processInfo.arguments.contains("-offline-autoplay") {
@@ -67,6 +71,24 @@ class ShellViewController: CAPBridgeViewController {
             _ = self.webView?.load(URLRequest(url: target))
         }
     }
+
+    #if DEBUG && SHENGJI_NEARBY_SPIKE
+    /// The M1 transport spike opens its bundled test page, not the live site.
+    override open func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        descriptor.serverURL = nil
+        descriptor.appStartPath = "nearby-spike.html"
+        return descriptor
+    }
+    #elseif DEBUG && SHENGJI_NEARBY_DEV
+    /// A Debug-only switch: the bundled page, which carries the nearby UI in
+    /// a dev build, instead of the live site.
+    override open func instanceDescriptor() -> InstanceDescriptor {
+        let descriptor = super.instanceDescriptor()
+        descriptor.serverURL = nil
+        return descriptor
+    }
+    #endif
 
     override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
         inGame ? .bottom : []
@@ -154,7 +176,7 @@ public class ShengjiShellPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         DispatchQueue.main.async {
             // A hand can sit idle for a while between turns.
-            UIApplication.shared.isIdleTimerDisabled = on
+            ScreenAwake.set(game: on)
             (self.bridge?.viewController as? ShellViewController)?.inGame = on
             call.resolve()
         }

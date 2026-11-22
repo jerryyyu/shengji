@@ -10,7 +10,11 @@ import { effectiveName, useAuth } from "../auth";
 import { useOnline } from "../useOnline";
 import { ModeSwitch, PlayRow, PresenceLine } from "../queue/Ranked";
 import { OfflinePanel } from "../queue/TablePanel";
+import type { RoomMsg } from "../protocol";
+import type { BotLevel } from "../queue/messages";
+import { useNearbyHostView, useNearbyJoinView, useNearbyUi } from "../nearbyGate";
 import { useToast } from "../toast";
+import { NEARBY_SESSION } from "../offlineMode";
 import { offlineGame, useOfflineBotLevel, useOfflineTable } from "./offlineGame";
 import { CodeRow } from "./Lobby";
 import "./OfflinePlay.css";
@@ -21,15 +25,24 @@ interface OfflineControlsProps {
    *  socket to the on-device server with the table open. */
   local: boolean;
   status: ConnStatus;
-  /** The room Start made, until its deal starts. */
-  room?: string | null;
+  /** The room Start made, until its deal starts; a nearby table's lobby. */
+  room?: RoomMsg | null;
+  /** The code box, which takes a nearby table's code where nearby play is offered. */
+  code?: string;
+  onCode?: (code: string) => void;
+  onJoinCode?: () => void;
 }
 
 /** The Play tab's controls with no connection, between the name chip and How
  *  to play: the mode switch, then Play, Duo, the presence line and the code
  *  box, or the offline table in their place. The online Play tab shows these
  *  in place of its own, so what surrounds them stays mounted. */
-export function OfflineControls({ local, status, room = null }: OfflineControlsProps) {
+export function OfflineControls({ local, status, room: roomMsg = null, code = "", onCode, onJoinCode }: OfflineControlsProps) {
+  const room = roomMsg?.room ?? null;
+  const nbUi = useNearbyUi();
+  const nb = local ? nbUi : null;
+  const host = useNearbyHostView();
+  const joinView = useNearbyJoinView();
   const showTable = useOfflineTable(local);
   const bots = useOfflineBotLevel();
   // an error frees Start; the toast says it
@@ -60,11 +73,20 @@ export function OfflineControls({ local, status, room = null }: OfflineControlsP
   useEffect(() => {
     const cameBack = online && !wasOnline.current;
     wasOnline.current = online;
-    if (!local || showTable || !online) return;
+    // a nearby table is played over the local network: nothing moves it online
+    if (!local || showTable || !online || NEARBY_SESSION) return;
     if (cameBack || left.current || !inApp) offlineGame.goOnline();
   }, [local, showTable, online, inApp]);
 
+  const myName = () => (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player";
   const leave = () => {
+    if (host.phase !== "off") {
+      // the host's Leave ends the nearby table for everyone
+      nbUi?.nearbyHost.turnOff();
+      left.current = true;
+      offlineGame.setTable(false);
+      return;
+    }
     if (room) conn.send({ type: "table_leave" });
     // a Start whose room has not come back yet: the leave waits for that
     // room on the socket
@@ -79,22 +101,48 @@ export function OfflineControls({ local, status, room = null }: OfflineControlsP
     setSent(true);
     offlineGame.played = true;
     clearSavedRoom();
-    conn.send({ type: "create_room", name: (signedIn ? effectiveName(signedIn) : getSavedName()).trim() || "Player",
-                start: true, bot_level: bots });
+    conn.send({ type: "create_room", name: myName(), start: true, bot_level: bots });
   };
+  const toggleNearby = () => {
+    if (host.phase === "off") nbUi?.nearbyHost.turnOn(myName(), bots);
+    else nbUi?.nearbyHost.turnOff();
+  };
+  // the host's Bots for the nearby table, kept as the offline table's too
+  const pickNearbyBots = (level: BotLevel) => {
+    offlineGame.setBotLevel(level);
+    conn.send({ type: "table_bot_level", level });
+  };
+  const ready = (on: boolean) => {
+    conn.send(on ? { type: "table_start" } : { type: "table_start", on: false });
+  };
+
+  // a nearby table's lobby, for its host and for a joiner
+  if (roomMsg?.nearby && nbUi && host.phase !== "starting") {
+    return (
+      <>
+        <ModeSwitch value="casual" disabled={false} rankedOff />
+        <nbUi.NearbyRoomPanel room={roomMsg} onReady={ready} onToggle={toggleNearby} onBots={pickNearbyBots}
+                              onLeave={host.phase !== "off" ? leave : () => nbUi.nearbyJoin.leave()} />
+      </>
+    );
+  }
 
   return (
     <>
       <ModeSwitch value="casual" disabled={false} rankedOff />
 
       {showTable ? (
-        <OfflinePanel ready={status === "open"} starting={sent || room !== null} bots={bots}
-                      onBots={(b) => offlineGame.setBotLevel(b)} onStart={start} onLeave={leave} />
+        <OfflinePanel ready={status === "open" && host.phase === "off"} starting={sent || room !== null}
+                      bots={bots} onBots={(b) => offlineGame.setBotLevel(b)}
+                      onStart={start} onLeave={leave}
+                      nearby={nb ? nb.nearbySwitch({ on: host.phase !== "off", line: host.line }) : null}
+                      onToggle={toggleNearby} onSettings={() => nb?.openNearbySettings()} />
       ) : (
         <>
           <PlayRow label="Play" disabled={false} duoDisabled onPlay={() => offlineGame.startFromPlay()} />
           <PresenceLine q={null} online={false} offline />
-          <CodeRow disabled />
+          <CodeRow disabled code={code} onCode={onCode} onJoin={onJoinCode} nearby={nb}
+                   nearbyJoinView={joinView} />
         </>
       )}
     </>

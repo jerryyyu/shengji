@@ -20,6 +20,7 @@ interface PluginProxy {
 
 interface CapacitorGlobal {
   isNativePlatform?: () => boolean;
+  isPluginAvailable?: (name: string) => boolean;
   registerPlugin?: (name: string) => PluginProxy;
   Plugins?: Record<string, PluginProxy | undefined>;
 }
@@ -274,6 +275,24 @@ export function nativeBot(): NativeBot | null {
       return out.response;
     },
   };
+}
+
+/** Whether the app binary registered the native plugin `name`. A shell
+ *  whose bridge cannot say is taken at its word that it might have it. */
+export function pluginAvailable(name: string): boolean {
+  if (!isNative()) return false;
+  try {
+    const has = capacitor()?.isPluginAvailable;
+    return typeof has === "function" ? has(name) === true : true;
+  } catch {
+    return false;
+  }
+}
+
+/** The nearby link plugin (ShengjiNearby), untyped; null outside the app and
+ *  in a binary that does not register it. offline/server/nearby/native.ts wraps it. */
+export function nearbyPluginProxy(): unknown {
+  return plugin("ShengjiNearby");
 }
 
 /** Test hook: forget cached plugin lookups and state. */

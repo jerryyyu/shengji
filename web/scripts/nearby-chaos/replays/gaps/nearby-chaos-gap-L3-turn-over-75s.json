@@ -1,0 +1,42 @@
+{
+  "seed": 3,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 33.749363576062024,
+      "kind": "wifi",
+      "who": "J3",
+      "dur": 22.128150504548103,
+      "arg": 0
+    },
+    {
+      "t": 77.55424528406002,
+      "kind": "allow",
+      "who": "H",
+      "dur": 11.357343627605587,
+      "arg": 0
+    },
+    {
+      "t": 119.45898847281933,
+      "kind": "halfOpen",
+      "who": "J3",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 129.41286121332087,
+      "kind": "storm",
+      "who": "H",
+      "dur": 0,
+      "arg": 0
+    }
+  ],
+  "invariant": "no human turn over 75 s (L3)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "75 s",
+  "wholeApp": true
+}

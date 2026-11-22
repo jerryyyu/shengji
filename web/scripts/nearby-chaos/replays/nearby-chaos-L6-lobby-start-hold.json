@@ -1,0 +1,21 @@
+{
+  "seed": 11,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 33.66552967578173,
+      "kind": "kill",
+      "who": "J2",
+      "dur": 25.06168507412076,
+      "arg": 0
+    }
+  ],
+  "invariant": "no lobby start during a hold (L6)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "L6",
+  "wholeApp": true
+}

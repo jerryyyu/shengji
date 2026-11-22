@@ -1,0 +1,21 @@
+{
+  "seed": 2,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 211.73801470012404,
+      "kind": "leaveOffline",
+      "who": "J1",
+      "dur": 14.510080378269777,
+      "arg": 0
+    }
+  ],
+  "invariant": "no ghost seat (L5)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "L5",
+  "wholeApp": true
+}

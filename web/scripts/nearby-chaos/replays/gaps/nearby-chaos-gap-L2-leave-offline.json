@@ -1,0 +1,21 @@
+{
+  "seed": 6,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 128.8254314835649,
+      "kind": "leaveOffline",
+      "who": "J1",
+      "dur": 22.588049619924277,
+      "arg": 0
+    }
+  ],
+  "invariant": "Leave offline gives the seat a bot in 5 s (L2)",
+  "page": "sim",
+  "gaps": "strict",
+  "gapOnly": "L2",
+  "wholeApp": true
+}

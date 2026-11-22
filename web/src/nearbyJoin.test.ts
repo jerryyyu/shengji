@@ -34,6 +34,7 @@ function harness() {
       // as ws.ts: the page's own `left` at once, before the host answers
       leaveToLobby: () => { calls.leaveToLobby += 1; onMsg({ type: "left" }); },
       reconnect: () => { calls.reconnect += 1; },
+      nearbyLeaveOwed: () => false,
     },
     socketFor: async (_code, fn, hello) => { onState = fn; greet = hello; return () => ({}) as WebSocket; },
     watchPath: async (fn) => { paths.add(fn); return () => { paths.delete(fn); }; },
@@ -307,6 +308,19 @@ describe("the nearby join", () => {
     expect(h.calls.reconnect).toBe(1);
     // connected again: a path change is nothing to do
     h.status("open");
+    h.path(true);
+    expect(h.calls.reconnect).toBe(1);
+  });
+
+  it("the network back during an attempt under 2 s old keeps it; an older one is replaced", async () => {
+    const h = await seated();
+    h.status("closed");
+    h.path(false);
+    h.status("connecting");
+    await vi.advanceTimersByTimeAsync(5);
+    h.path(true);
+    expect(h.calls.reconnect).toBe(0);
+    await vi.advanceTimersByTimeAsync(2100);
     h.path(true);
     expect(h.calls.reconnect).toBe(1);
   });

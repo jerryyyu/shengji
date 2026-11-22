@@ -195,6 +195,36 @@ describe("full nearby games", () => {
       expect(errors(p).filter((f) => "code" in f)).toEqual([]);
     }
   }, 60_000);
+
+  it("a next_round sends each joiner one state, and no link two identical states in a row", async () => {
+    const t = new NearbyTable(11, 3);
+    await t.open(true);
+    const p1 = await t.join("P1", { drive: true });
+    const p2 = await t.join("P2", { drive: true });
+    // nobody's driver says next round: the test sends P1's itself
+    const raw = new Map<Player, (d: string) => void>();
+    for (const p of t.players()) {
+      const send = p.sock.send.bind(p.sock);
+      raw.set(p, send);
+      p.sock.send = (d: string) => { if ((JSON.parse(d) as Frame).type !== "next_round") send(d); };
+    }
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.lastState(p1)?.phase === "round_end" && t.lastState(p2)?.phase === "round_end", 4_000_000);
+    await t.advance(1);
+    const peers = t.fake.peersOf(t.code);
+    const from = t.fake.wire.length;
+    raw.get(p1)!(JSON.stringify({ type: "next_round" }));
+    await t.advance(1);
+    const states = t.fake.wire.slice(from).filter((f) => f.from === "host" && f.text.startsWith('{"type":"state"'));
+    for (const peer of peers) expect(states.filter((f) => f.to === peer), peer).toHaveLength(1);
+    // and over the whole game so far, no link was sent one state twice in a row
+    const last = new Map<string, string>();
+    for (const f of t.fake.wire) {
+      if (f.from !== "host" || !f.text.startsWith('{"type":"state"')) continue;
+      expect(last.get(f.to) === f.text, f.to).toBe(false);
+      last.set(f.to, f.text);
+    }
+  }, 60_000);
 });
 
 describe("drops, resume and bot cover", () => {
@@ -215,10 +245,30 @@ describe("drops, resume and bot cover", () => {
     expect((t.lastState(t.host)!.players as PlayerJson[])[seat!].controller).toBe("human");
   });
 
+  it("a link back within a second leaves the chat as it was; a seat gone 5 s is said gone and back", async () => {
+    const t = await started(2);
+    const j = t.joiners[0];
+    const texts = () => t.room!.chat.map((c) => c.text);
+    const before = texts();
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.advance(0.5);
+    await t.join("P1", { token: j.token, player: j });
+    expect(t.lastState(j)!.you).toBe(j.seat);
+    await t.advance(4);
+    expect(texts()).toEqual(before);
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.advance(5);
+    await t.join("P1", { token: j.token, player: j });
+    expect(texts().slice(before.length)).toEqual(["P1 disconnected", "P1 reconnected"]);
+  });
+
   it("a token for nobody, after the start with every seat a person's, gets no seat", async () => {
     const t = await started(4);
+    // a resume with a token the table does not know: refused, no seat
     const stranger = await t.join("X", { token: "nope" });
-    expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
+    expect(errors(stranger)).toEqual([{ type: "error", code: "room_not_found", message: "Seat no longer exists." }]);
   });
 
   it("a joiner back with its token supersedes its old link: the host closes it, so nothing arrives twice", async () => {
@@ -246,6 +296,8 @@ describe("drops, resume and bot cover", () => {
     const seat = j.seat!;
     const token = j.token;
     j.driver = null;
+    // seated a moment: the phone's socket has shown the host it has its seat
+    await t.advance(LIMITS.pingSeconds + 1);
     t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
     const covered = () => t.room!.seats[seat].botAnnounced;
     await t.settle(covered, 2_000_000);

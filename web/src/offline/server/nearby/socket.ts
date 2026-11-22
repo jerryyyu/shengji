@@ -4,7 +4,7 @@
 // in socketUrl() never crosses; it sends only the hello and the joiner
 // allow-list (protocol.ts), so presence, the queue, heartbeats, telemetry and
 // chat stay on the phone.
-import { type Clock, realClock } from "../clock";
+import { type Clock, type PauseWatch, pauseWatch, realClock } from "../clock";
 import { frameType, nearbyLog } from "../../../nearbyLog";
 import { KEEPALIVE_TEXT, LIMITS, NEARBY_V, PING_TEXT, PONG_TEXT, cleanJoinerMessage, parseObject, utf8Bytes, type NearbyHello } from "./protocol";
 import type { JoinLink, LinkState, NearbyTransport } from "./transport";
@@ -35,6 +35,147 @@ export function subscribeNearbyKeepalive(fn: () => void): () => void {
 /** When each clock's sockets last gave up on a stuck link, so a run of
  *  them never makes new links faster than LIMITS.stuckSpacingSeconds. */
 const lastStuck = new WeakMap<Clock, number>();
+
+/** The link state's detail when the host refused a seat's resume: the
+ *  table no longer knows its token. */
+export const SEAT_GONE = "seat_gone";
+
+/** A resume's link that has answered nothing by LIMITS.resumeSeconds gets
+ *  this much longer for the host's answer before a fresh attempt. */
+const RESUME_GRACE_SECONDS = 2;
+
+/** The moves the host may not have had, kept across a seat's links so the
+ *  link that replaces a stuck one sends the last of them again, once. */
+type MoveKind = "play" | "bury" | "declare" | "pass_declare" | "next_round" | "table_start";
+const MOVE_KINDS: ReadonlySet<string> = new Set<MoveKind>(["play", "bury", "declare", "pass_declare", "next_round", "table_start"]);
+
+/** A move the host has not answered. */
+interface Unanswered {
+  text: string;
+  kind: MoveKind;
+  /** The cards of a play, bury or declare; empty otherwise. */
+  ids: number[];
+  /** A table_start's `on`: false takes the Start back. */
+  on: boolean;
+  /** The table frame the page had when it sent the move: the decision it
+   *  answers (decisionAt). */
+  at: Record<string, unknown>;
+  /** Already sent again on a later link: never a third time. */
+  resent: boolean;
+}
+
+/** Each clock's unanswered moves, by seat token, the latest of each kind
+ *  in the order sent: a stale move the page sends after a real one (a pass
+ *  after its bury) never takes the real one's place. */
+const unansweredMoves = new WeakMap<Clock, Map<string, Map<MoveKind, Unanswered>>>();
+
+function movesOf(clock: Clock, token: string): Map<MoveKind, Unanswered> {
+  let m = unansweredMoves.get(clock);
+  if (!m) unansweredMoves.set(clock, m = new Map());
+  let mine = m.get(token);
+  if (!mine) m.set(token, mine = new Map());
+  return mine;
+}
+
+const sameIds = (a: readonly unknown[], b: readonly number[]) =>
+  a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+
+/** A declare sent with fewer of this seat's cards in hand is never sent
+ *  again: so few cards could be dealt the same in a later round. */
+export const DECLARE_WITNESS_CARDS = 8;
+
+/** A frame's own cards as "id:code", sorted. Card ids are deck positions
+ *  and repeat every round; the codes at them come from that round's shuffle. */
+function cardsOf(frame: Record<string, unknown>): string[] {
+  const hand = Array.isArray(frame.hand) ? frame.hand as { id?: unknown; code?: unknown }[] : [];
+  return hand.map((c) => `${String(c?.id)}:${String(c?.code)}`).sort();
+}
+
+/** The decision a table frame shows for a move of `kind`, as one string,
+ *  or null when it shows none. The frames carry no round number, so a
+ *  decision is named by what only it shows: the game's levels and games
+ *  won, this seat's own cards (id and code) and the table's public cards
+ *  (the trick, the last trick, the round's result). A later decision of
+ *  the same kind changes one of them within a round, and a later round
+ *  shows the same only if its shuffle dealt the same. What can change while the decision still waits
+ *  (who else is ready or has passed, connections, clocks, a rival
+ *  declaration) is left out. A declare during the deal names its round by
+ *  the cards it was sent with, which stay in hand as more are dealt. */
+function decisionAt(frame: Record<string, unknown>, kind: MoveKind): string | null {
+  if (frame.type !== "state" || frame.joining_you) return null;
+  const game = { levels: frame.levels, games_won: frame.games_won };
+  switch (kind) {
+    case "next_round":
+      if (frame.phase !== "round_end") return null;
+      return JSON.stringify({ ...game, banker: frame.banker, trump: frame.trump, round_result: frame.round_result,
+                              last_trick: frame.last_trick, attacker_points: frame.attacker_points });
+    case "play": {
+      if (frame.phase !== "play") return null;
+      const players = Array.isArray(frame.players) ? frame.players as { cards_left?: unknown }[] : [];
+      return JSON.stringify({ ...game, banker: frame.banker, trump: frame.trump, turn: frame.turn, hand: cardsOf(frame),
+                              cards_left: players.map((p) => p?.cards_left), trick: frame.trick,
+                              last_trick: frame.last_trick, attacker_points: frame.attacker_points });
+    }
+    case "bury":
+      if (frame.phase !== "bury") return null;
+      return JSON.stringify({ ...game, banker: frame.banker, trump: frame.trump, turn: frame.turn, hand: cardsOf(frame) });
+    case "pass_declare":
+      if (frame.phase !== "declare") return null;
+      return JSON.stringify({ ...game, hand: cardsOf(frame) });
+    default:
+      return null;
+  }
+}
+
+/** Whether `frame` shows the decision `move` was sent at, still waiting. */
+function sameDecision(frame: Record<string, unknown>, move: Unanswered): boolean {
+  if (move.kind === "table_start") return true;
+  if (move.kind === "declare") {
+    if (frame.type !== "state" || frame.joining_you) return false;
+    if (JSON.stringify([frame.levels, frame.games_won]) !== JSON.stringify([move.at.levels, move.at.games_won])) return false;
+    const now = new Set(cardsOf(frame));
+    const then = cardsOf(move.at);
+    return then.length >= DECLARE_WITNESS_CARDS && then.every((c) => now.has(c));
+  }
+  const at = decisionAt(move.at, move.kind);
+  return at !== null && at === decisionAt(frame, move.kind);
+}
+
+/** Whether a table frame shows the host has not applied `move`, so sending
+ *  it again applies it once: the frame shows the same decision the move was
+ *  sent at (sameDecision), and it still asks this seat for that move (a
+ *  play or bury with its cards in hand, a declare still on offer, a pass or
+ *  Next not yet counted) or, in the lobby, still shows its Start as it
+ *  was. Anything else (another phase, a declaration that beat it, a later
+ *  decision that looks like it) means it was applied or is stale, and it is
+ *  never sent again. */
+function stillOwed(frame: Record<string, unknown> | null, move: Unanswered): boolean {
+  if (frame === null || !sameDecision(frame, move)) return false;
+  const you = frame.you;
+  if (move.kind === "table_start") {
+    const lobby = frame.type === "room" ? frame.nearby as { ready?: unknown } | undefined : undefined;
+    if (!lobby || !Array.isArray(lobby.ready)) return false;
+    return lobby.ready.includes(you) !== move.on;
+  }
+  if (frame.type !== "state" || frame.joining_you) return false;
+  switch (move.kind) {
+    case "declare": {
+      if (frame.phase !== "deal" && frame.phase !== "declare") return false;
+      const options = Array.isArray(frame.declare_options) ? frame.declare_options as unknown[] : [];
+      return options.some((o) => Array.isArray(o) && sameIds(o, move.ids));
+    }
+    case "pass_declare":
+      return frame.phase === "declare" && Array.isArray(frame.passed) && !frame.passed.includes(you);
+    case "next_round":
+      return frame.phase === "round_end" && Array.isArray(frame.ready) && !frame.ready.includes(you);
+    default: {
+      if (frame.turn !== you || frame.phase !== move.kind) return false;
+      const hand = Array.isArray(frame.hand) ? frame.hand as { id?: unknown }[] : [];
+      const ids = new Set(hand.map((c) => c?.id));
+      return move.ids.every((id) => ids.has(id));
+    }
+  }
+}
 
 export class NearbySocket {
   static readonly CONNECTING = 0;
@@ -69,6 +210,19 @@ export class NearbySocket {
   /** The keepalive loop is running. */
   private keeping = false;
   private offKeepalive: () => void = () => {};
+  /** This page's own pauses (a JS freeze, the background): the host's
+   *  silence and a pong's wait leave them out. */
+  private pauses: PauseWatch;
+  private offPauses: () => void = () => {};
+  /** The seat's token (the hello's, or the host's resume frame), which
+   *  keys its unanswered move across links. */
+  private token: string | null = null;
+  /** The moves this link sent again after its resume: the same text from
+   *  the page (Table's own once-more, an autoplay) is not sent a second time. */
+  private resentTexts = new Set<string>();
+  /** The latest state or room frame handed to the page: what a move the
+   *  page sends now answers. */
+  private seen: Record<string, unknown> | null = null;
 
   /** `greet`: a seated joiner's resume, called once the link is up. When it
    *  gives a table_join, this socket sends it as the hello and reports open
@@ -80,6 +234,13 @@ export class NearbySocket {
     this.onState = onState;
     this.clock = clock;
     this.offKeepalive = subscribeNearbyKeepalive(() => this.resumeKeepalive());
+    this.pauses = pauseWatch(clock);
+    const release = this.pauses.hold();
+    const off = this.pauses.on((from, to) => this.paused(from, to));
+    this.offPauses = () => {
+      release();
+      off();
+    };
     const started = clock.now();
     // a seated joiner's new link: its hello will be the resume
     const resume = greet !== null && greet() !== null;
@@ -87,7 +248,7 @@ export class NearbySocket {
       // a resume that has not reached the host by now is stuck (a stale
       // path after the network came back): this attempt ends, and the page
       // makes a fresh one
-      clock.setTimeout(() => {
+      this.pauses.after(() => {
         if (this.readyState === NearbySocket.CONNECTING && this.link === null) {
           nearbyLog("socket", `resume: no link after ${LIMITS.linkSeconds} s; a fresh attempt`);
           this.finish();
@@ -99,6 +260,7 @@ export class NearbySocket {
         message: (text) => {
           if (this.resuming) {
             this.heard = this.clock.now();
+            if (text === PONG_TEXT) this.pingSent = null;
             if (text === PONG_TEXT || text === KEEPALIVE_TEXT) return;
             this.early.push(text);
             const type = frameType(text);
@@ -110,6 +272,7 @@ export class NearbySocket {
           const now = this.clock.now();
           this.heard = now;
           if (text === KEEPALIVE_TEXT) return;
+          if (text !== PONG_TEXT) this.noteAnswer(text);
           if (text === PONG_TEXT) {
             if (this.pingSent !== null) {
               const ms = Math.round((now - this.pingSent) * 1000);
@@ -127,6 +290,7 @@ export class NearbySocket {
             this.movedAt = null;
           } else nearbyLog("socket", `in ${type}`);
           this.noteTable(type);
+          this.noteSeen(text, type);
           this.onmessage?.({ data: text } as MessageEvent);
         },
         closed: () => this.finish(),
@@ -142,6 +306,7 @@ export class NearbySocket {
           this.link = link;
           this.heard = this.clock.now();
           const hello = greet?.() ?? null;
+          if (hello !== null && typeof hello.token === "string" && hello.token) this.token = hello.token;
           const text = hello === null ? null : NearbySocket.outbound(JSON.stringify(hello));
           if (text === null) {
             this.readyState = NearbySocket.OPEN;
@@ -159,34 +324,140 @@ export class NearbySocket {
             this.close();
             return;
           }
-          this.clock.setTimeout(() => {
-            if (this.link === link && this.resuming) {
-              nearbyLog("socket", `resume: no answer in ${LIMITS.resumeSeconds} s; a fresh attempt`);
-              this.close();
-            }
-          }, LIMITS.resumeSeconds);
+          // the ping behind the hello says whether the link carries
+          if (!this.sendPing(link)) return;
+          this.awaitResume(link, this.clock.now());
         },
         () => this.finish(),
       );
+  }
+
+  /** The hello is out on a link that is up, with a ping behind it. By
+   *  LIMITS.resumeSeconds a link that has answered that ping carries (the
+   *  hello is on TCP and still on its way): it is kept, pinged every
+   *  LIMITS.pingSeconds, until the answer, a missed pong, or
+   *  LIMITS.silentSeconds. One that has answered nothing gets
+   *  RESUME_GRACE_SECONDS more, then the attempt ends for a fresh one. */
+  private awaitResume(link: JoinLink, since: number): void {
+    const live = () => this.link === link && this.resuming;
+    const mark = this.pauses.paused();
+    const carry = () => {
+      if (!live()) return;
+      if (this.clock.now() - since - (this.pauses.paused() - mark) >= LIMITS.silentSeconds - 1e-6) {
+        nearbyLog("socket", `resume: no answer in ${LIMITS.silentSeconds} s; a fresh attempt`);
+        this.close();
+        return;
+      }
+      if (this.pingSent !== null) {
+        nearbyLog("socket", "resume: no answer and no pong; a fresh attempt");
+        this.close();
+        return;
+      }
+      if (!this.sendPing(link)) return;
+      this.pauses.after(carry, LIMITS.pingSeconds);
+    };
+    this.pauses.after(() => {
+      if (!live()) return;
+      if (this.pingSent === null) {
+        nearbyLog("socket", `resume: no answer in ${LIMITS.resumeSeconds} s, but the link carries; kept`);
+        carry();
+        return;
+      }
+      this.pauses.after(() => {
+        if (!live()) return;
+        if (this.pingSent === null) {
+          carry();
+          return;
+        }
+        nearbyLog("socket", `resume: no answer and no pong in ${LIMITS.resumeSeconds + RESUME_GRACE_SECONDS} s; a fresh attempt`);
+        this.close();
+      }, RESUME_GRACE_SECONDS);
+    }, LIMITS.resumeSeconds);
   }
 
   /** The host answered the resume: the socket is open, and the frames that
    *  came with the answer go to the page after its open, in order. */
   private resumed(type: string): void {
     const link = this.link!;
+    const refusal = type === "error" ? parseObject(this.early[this.early.length - 1])?.code : null;
+    if (refusal === "room_not_found" || refusal === "room_full") {
+      // the table no longer knows this seat's token: no new link can take
+      // it back, so the page is told and goes to the seat picker, rather
+      // than trying the same token until the host's window runs out
+      nearbyLog("socket", `resume: refused (${refusal}); the seat is gone`);
+      this.onState?.("failed", SEAT_GONE);
+      this.close();
+      return;
+    }
     this.resuming = false;
     this.readyState = NearbySocket.OPEN;
     nearbyLog("socket", `resume: accepted (${type}); open`);
+    const early = this.early;
+    this.early = [];
+    for (const text of early) {
+      const type = frameType(text);
+      if (type === "resume") this.noteAnswer(text);
+      // a move the page sends at the open answers the resumed frame
+      this.noteSeen(text, type);
+    }
+    this.sendAgain(link, type === "state" || type === "room" ? parseObject(early[early.length - 1]) : null);
     this.ping(link);
     this.summarize(link);
     this.onopen?.({} as Event);
-    const early = this.early;
-    this.early = [];
     for (const text of early) {
       if (this.readyState !== NearbySocket.OPEN) return;
       this.noteTable(frameType(text));
       this.onmessage?.({ data: text } as MessageEvent);
     }
+  }
+
+  /** A frame from the host: the seat's token from a resume frame; an
+   *  unanswered move is settled by an error, or a state or room frame that
+   *  no longer shows it owed. */
+  private noteAnswer(text: string): void {
+    const type = frameType(text);
+    if (type === "resume") {
+      const tok = parseObject(text)?.token;
+      if (typeof tok === "string" && tok) this.token = tok;
+      return;
+    }
+    if (this.token === null || (type !== "state" && type !== "error" && type !== "room")) return;
+    const frame = type === "error" ? null : parseObject(text);
+    const moves = movesOf(this.clock, this.token);
+    const owed = new Set<string>();
+    for (const [kind, move] of moves) {
+      if (stillOwed(frame, move)) owed.add(move.text);
+      else moves.delete(kind);
+    }
+    // a move sent again is settled: the same text later is a new move
+    // (card ids repeat from round to round)
+    for (const t of this.resentTexts) if (!owed.has(t)) this.resentTexts.delete(t);
+  }
+
+  /** Just resumed: a move the last link sent and the host never answered
+   *  goes once more, before the page hears anything, when the resumed
+   *  state or lobby frame shows it was not applied (stillOwed). */
+  private sendAgain(link: JoinLink, frame: Record<string, unknown> | null): void {
+    if (this.token === null) return;
+    const moves = movesOf(this.clock, this.token);
+    let sent = false;
+    for (const [kind, move] of [...moves]) {
+      if (move.resent || !stillOwed(frame, move)) {
+        moves.delete(kind);
+        continue;
+      }
+      try {
+        link.send(move.text);
+      } catch {
+        return;
+      }
+      move.resent = true;
+      this.resentTexts.add(move.text);
+      this.movedAt = this.clock.now();
+      sent = true;
+      nearbyLog("socket", `resume: the unanswered ${move.kind} sent again`);
+    }
+    if (sent) this.probe(link);
   }
 
   /** Ping the host every LIMITS.pingSeconds, so it knows this phone is
@@ -197,6 +468,7 @@ export class NearbySocket {
   private ping(link: JoinLink): void {
     this.clock.setTimeout(() => {
       if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
+      this.pauses.poll();
       // a stuck link that is given more time, and answers, stays watched:
       // the loop goes on until the link is replaced
       if (this.clock.now() - this.heard >= LIMITS.silentSeconds) this.stuck("the host is silent", link);
@@ -243,6 +515,10 @@ export class NearbySocket {
     this.clock.setTimeout(tick, LIMITS.keepaliveSeconds);
   }
 
+  private noteSeen(text: string, type: string): void {
+    if (type === "state" || type === "room") this.seen = parseObject(text);
+  }
+
   /** Turned back on: the open link's keepalive starts again. */
   private resumeKeepalive(): void {
     if (this.link) this.keepAwake(this.link);
@@ -282,6 +558,7 @@ export class NearbySocket {
     const sent = this.pingSent;
     const window = this.pongWindow(link) - (sent === null ? 0 : this.clock.now() - sent);
     this.clock.setTimeout(() => {
+      this.pauses.poll();
       if (this.link === link && this.readyState === NearbySocket.OPEN && this.pingSent === sent && sent !== null) {
         this.stuck("no pong after a move", link);
       }
@@ -305,6 +582,7 @@ export class NearbySocket {
       const ping = this.pingSent;
       this.clock.setTimeout(() => {
         if (this.link !== link || this.readyState !== NearbySocket.OPEN) return;
+        this.pauses.poll();
         // the ping answered (or, with none out, anything heard): alive
         if (ping !== null ? this.pingSent !== ping : this.heard !== heard) return;
         this.stuck(why, link);
@@ -346,6 +624,11 @@ export class NearbySocket {
     const text = NearbySocket.outbound(data);
     if (text === null) return;
     const link = this.link;
+    if (this.resentTexts.has(text)) {
+      nearbyLog("socket", `out ${frameType(text)}: already sent again on this link`);
+      return;
+    }
+    this.noteMove(text);
     try {
       link.send(text);
     } catch {
@@ -357,16 +640,48 @@ export class NearbySocket {
     this.probe(link);
   }
 
+  /** A move going out is the seat's unanswered move until the host
+   *  answers it, kept with the frame it answers. One sent with no frame
+   *  that names its decision is not kept, so it is never sent again. */
+  private noteMove(text: string): void {
+    if (this.token === null) return;
+    const msg = parseObject(text);
+    if (msg === null || typeof msg.type !== "string" || !MOVE_KINDS.has(msg.type)) return;
+    const kind = msg.type as MoveKind;
+    const moves = movesOf(this.clock, this.token);
+    // re-inserted, so the kinds stay in the order sent
+    moves.delete(kind);
+    if (this.seen === null) return;
+    const move: Unanswered = {
+      text, kind, ids: Array.isArray(msg.card_ids) ? msg.card_ids as number[] : [],
+      on: msg.on !== false, at: this.seen, resent: false,
+    };
+    if (!sameDecision(this.seen, move)) return;
+    moves.set(kind, move);
+  }
+
   close(): void {
     if (this.readyState >= NearbySocket.CLOSING) return;
     this.link?.close();
     this.finish();
   }
 
+  /** This page was stopped from `from` to `to`: the host's frames and the
+   *  pong it sent meanwhile are still on their way in, so neither the
+   *  silence nor the pong's wait counts that time. The ping out stays the
+   *  one ping in flight (no other is sent until its pong). */
+  private paused(from: number, to: number): void {
+    if (this.readyState === NearbySocket.CLOSED) return;
+    nearbyLog("socket", `this page was paused ${(to - from).toFixed(1)} s; the link is kept`);
+    this.heard = Math.max(this.heard, to);
+    if (this.pingSent !== null) this.pingSent = Math.max(this.pingSent, to);
+  }
+
   private finish(): void {
     if (this.readyState === NearbySocket.CLOSED) return;
     this.readyState = NearbySocket.CLOSED;
     this.offKeepalive();
+    this.offPauses();
     this.resuming = false;
     this.early = [];
     this.link = null;

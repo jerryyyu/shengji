@@ -6,10 +6,14 @@
 // did. Wherever the plugin reports `logFile` (the device test and the Beta),
 // the log file (nearbyLog.ts) is always on from the page's start, its new
 // bytes go to the server (nearbyLogUpload.ts), and the nearby table's ⋯ menu
-// has Copy log, Clear log file and Upload log now. The soak's Autoplay, Chaos
-// and summary rows show in the device test, and in the Beta (`chaos`) only
-// once the hidden switch is on: five taps on the ⋯ menu's table code within
-// SWITCH_WINDOW_MS, five more to turn it off, kept in localStorage.
+// has Copy log, Clear log file and Upload log now, with the soak's Autoplay,
+// Chaos and summary. Those rows show in the device test, and in the Beta
+// (`chaos`) only once the hidden switch is on: five taps on the ⋯ menu's
+// table code within SWITCH_WINDOW_MS, five more to turn it off, kept in
+// localStorage; a dot after the code marks it on. The file and its upload
+// run with the switch off as well. A soak
+// left on (its switches kept by nearbySoak.ts) resumes at the page's start,
+// so a reload keeps it going.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { nearbyPluginProxy } from "./native";
 import {
@@ -21,7 +25,7 @@ export { clearNearbyLogFile, nearbyLogFileOn };
 
 interface DebugPlugin {
   capabilities(): Promise<{ debug?: unknown; logFile?: unknown }>;
-  addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<unknown>;
+  addListener(event: "debugLog", fn: (ev: { text: string }) => void): unknown;
 }
 
 let checked: Promise<DebugPlugin | null> | null = null;
@@ -48,10 +52,30 @@ async function askDebugPlugin(): Promise<DebugPlugin | null> {
       listenNativeLog(p as DebugPlugin);
       if (await attachNearbyLogFile(p as unknown as LogFile)) startUpload();
     }
+    if (c.logFile === true && (c.debug === true || ((c as { chaos?: unknown }).chaos === true && switchOn))) resumeSoak();
     return c.debug === true ? (p as DebugPlugin) : null;
   } catch {
     return null;
   }
+}
+
+// the soak's own record (nearbySoak.ts KEEP_KEY): its switches and the
+// table's code, so a reload (its chaos kind, or a crash) resumes it
+const SOAK_KEY = "shengji.nearbySoak.v1";
+
+/** At the page's start: a soak left on loads and resumes, and its driver
+ *  rejoins the kept code. */
+function resumeSoak(): void {
+  let on = false;
+  try {
+    const k = JSON.parse(localStorage.getItem(SOAK_KEY) ?? "null") as { autoplay?: boolean; chaos?: boolean } | null;
+    on = !!k && (k.autoplay === true || k.chaos === true);
+  } catch { /* nothing kept */ }
+  if (!on) return;
+  void import("./nearbySoak").then((m) => {
+    soakModule = m;
+    m.resumeSoak();
+  }, () => {});
 }
 
 /** Starts the log file and its upload; nearbyGate.ts calls it once the
@@ -72,7 +96,7 @@ export function useNearbyLogFile(ask: boolean): boolean {
   return ask && on;
 }
 
-// The hidden switch for the soak's Autoplay and Chaos rows, where the plugin
+// The hidden switch for the ⋯ menu's log and soak rows, where the plugin
 // reports `chaos` without `debug` (the Beta).
 export const SWITCH_TAPS = 5;
 export const SWITCH_WINDOW_MS = 3000;
@@ -93,6 +117,8 @@ const subscribeSwitch = (fn: () => void): (() => void) => {
 };
 const switchSnapshot = (): boolean => switchOn;
 
+export { subscribeSwitch as subscribeNearbySoakSwitch, switchSnapshot as nearbySoakSwitchOn };
+
 /** Whether the hidden switch is on. */
 export function useNearbySoakSwitch(): boolean {
   return useSyncExternalStore(subscribeSwitch, switchSnapshot, switchSnapshot);
@@ -108,9 +134,10 @@ export function nearbySoakSwitchTap(chaos: boolean, now: number = Date.now()): v
   taps = [];
   switchOn = !switchOn;
   try { localStorage.setItem(SWITCH_KEY, switchOn ? "1" : "0"); } catch { /* this page only */ }
-  if (!switchOn && soakModule) {
-    soakModule.setAutoplay(false);
-    soakModule.setChaos(false);
+  if (!switchOn) {
+    soakModule?.setAutoplay(false);
+    soakModule?.setChaos(false);
+    try { localStorage.removeItem(SOAK_KEY); } catch { /* this page only */ }
   }
   switchListeners.forEach((l) => l());
 }

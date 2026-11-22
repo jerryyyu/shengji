@@ -51,6 +51,7 @@ function phone(t: NearbyTable) {
         subs.forEach((f) => f({ type: "left" }));
       },
       reconnect: () => {},
+      nearbyLeaveOwed: () => false,
     },
     socketFor: async (code, onState, greet) => () => new NearbySocket(t.fake, code, onState, t.clock, greet) as unknown as WebSocket,
     watchPath: async () => () => {},

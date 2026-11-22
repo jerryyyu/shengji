@@ -186,6 +186,56 @@ describe("a stuck link", () => {
     expect(j.frames.filter((f) => f.type === "error").length).toBeGreaterThan(0);
   }, 120_000);
 
+  it("a bury in flight when the link is called stuck goes once more on the resumed link, and only once", async () => {
+    const { t, j, seat, send } = await atJoinersBury();
+    const bury = { type: "bury", card_ids: hand(j).slice(0, 8).map((c) => c.id) };
+    const errorsBefore = j.frames.filter((f) => f.type === "error").length;
+    t.fake.lose(peerOf(t));
+    send(bury);
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 100_000);
+    expect(t.room!.round!.phase).toBe("bury");
+    // the page's new link resumes by token; the page itself sends nothing
+    const sock = await t.resume(j);
+    expect(sock.readyState).toBe(NearbySocket.OPEN);
+    expect(nearbyLogText()).toMatch(/resume: the unanswered bury sent again/);
+    // the page's own once-more on the new link (Table's resend, on the
+    // resumed state) while that is unanswered is not sent twice
+    t.send(j, bury);
+    expect(nearbyLogText()).toMatch(/out bury: already sent again on this link/);
+    await t.advance(1);
+    expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
+    expect(j.frames.filter((f) => f.type === "error").length).toBe(errorsBefore);
+    // once answered, the same text is a new move (card ids repeat each
+    // round): it goes to the host, which refuses it here
+    t.send(j, bury);
+    await t.advance(1);
+    expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
+    expect(j.frames.filter((f) => f.type === "error").length).toBe(errorsBefore + 1);
+    // and a later rebuild sends nothing again
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.resume(j);
+    await t.advance(1);
+    expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
+    expect(nearbyLogText().match(/the unanswered bury sent again/g)).toHaveLength(1);
+  }, 120_000);
+
+  it("a bury the host applied before the link went is not sent again", async () => {
+    const { t, j, seat, send } = await atJoinersBury();
+    const bury = { type: "bury", card_ids: hand(j).slice(0, 8).map((c) => c.id) };
+    const errorsBefore = j.frames.filter((f) => f.type === "error").length;
+    send(bury);
+    await t.settle(() => t.room!.round!.phase !== "bury", 10_000);
+    // the link goes before the joiner hears the answer
+    t.fake.drop(t.code, peerOf(t));
+    await t.settle(() => j.sock.readyState === NearbySocket.CLOSED, 1000);
+    await t.resume(j);
+    await t.advance(1);
+    expect(t.room!.actions.filter((a) => a[0] === "bury" && a[1] === seat)).toHaveLength(1);
+    expect(nearbyLogText()).not.toMatch(/sent again/);
+    expect(j.frames.filter((f) => f.type === "error").length).toBe(errorsBefore);
+  }, 120_000);
+
   it("a link that only answers late is not called stuck", async () => {
     const t = new NearbyTable(5, 1, 1.5);
     await t.open(true);

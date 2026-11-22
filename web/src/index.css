@@ -1158,6 +1158,15 @@ dialog.conn-lost::backdrop { background: var(--chrome); }
   letter-spacing: 0.25em;
   padding-left: 0.25em;
 }
+/* the Beta's hidden switch on: a dot after the code, no text */
+.hud-menu-code-text.soak-on::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+}
 .hud-menu-row.hud-menu-invite {
   flex: none;
   justify-content: center;

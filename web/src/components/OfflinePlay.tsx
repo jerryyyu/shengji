@@ -11,6 +11,7 @@ import { useOnline } from "../useOnline";
 import { ModeSwitch, PlayRow, PresenceLine } from "../queue/Ranked";
 import { OfflinePanel } from "../queue/TablePanel";
 import type { RoomMsg } from "../protocol";
+import type { BotLevel } from "../queue/messages";
 import { useNearbyHostView, useNearbyJoinView, useNearbyUi } from "../nearbyGate";
 import { useToast } from "../toast";
 import { NEARBY_SESSION } from "../offlineMode";
@@ -103,8 +104,13 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     conn.send({ type: "create_room", name: myName(), start: true, bot_level: bots });
   };
   const toggleNearby = () => {
-    if (host.phase === "off") nbUi?.nearbyHost.turnOn(myName());
+    if (host.phase === "off") nbUi?.nearbyHost.turnOn(myName(), bots);
     else nbUi?.nearbyHost.turnOff();
+  };
+  // the host's Bots for the nearby table, kept as the offline table's too
+  const pickNearbyBots = (level: BotLevel) => {
+    offlineGame.setBotLevel(level);
+    conn.send({ type: "table_bot_level", level });
   };
   const ready = (on: boolean) => {
     conn.send(on ? { type: "table_start" } : { type: "table_start", on: false });
@@ -115,7 +121,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
     return (
       <>
         <ModeSwitch value="casual" disabled={false} rankedOff />
-        <nbUi.NearbyRoomPanel room={roomMsg} onReady={ready} onToggle={toggleNearby}
+        <nbUi.NearbyRoomPanel room={roomMsg} onReady={ready} onToggle={toggleNearby} onBots={pickNearbyBots}
                               onLeave={host.phase !== "off" ? leave : () => nbUi.nearbyJoin.leave()} />
       </>
     );

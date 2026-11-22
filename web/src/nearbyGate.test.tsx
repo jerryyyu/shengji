@@ -1,9 +1,10 @@
 // Nearby play is gated at run time by the app binary: in a browser, an App
 // Store binary (no plugin) or a binary whose plugin is not enabled, nothing
 // nearby renders and the nearby UI module is never imported; the Beta shows
-// the nearby UI, and with `logFile` its log rows, with Autoplay and Chaos
-// behind the hidden switch (five taps on the menu's table code); the device
-// test shows every soak row.
+// the nearby UI, and with `logFile` its log file and upload, always on, with
+// every log and soak row behind the hidden switch (five taps on the menu's
+// table code, marked by a dot after the code); the device test shows every
+// soak row.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -45,18 +46,21 @@ import HudMenu from "./components/HudMenu";
 import { OfflineControls } from "./components/OfflinePlay";
 import { nearbyGate, resetNearbyGateForTests, type NearbyUi } from "./nearbyGate";
 import { nearbySoakSwitchTap, resetNearbyDebugForTests, SWITCH_TAPS, SWITCH_WINDOW_MS } from "./nearbyDebug";
-import { detachNearbyLogFile } from "./nearbyLog";
-import { stopNearbyLogUploadForTests } from "./nearbyLogUpload";
+import { detachNearbyLogFile, forgetNativeLogForTests } from "./nearbyLog";
+import { nearbyLogUploadOn, stopNearbyLogUploadForTests } from "./nearbyLogUpload";
 
-/** A plugin that answers `capabilities()` with `caps` and records every call. */
-function fakePlugin(caps: Record<string, unknown>) {
+/** A plugin that answers `capabilities()` with `caps` and records every call.
+ *  With `bridge`, `addListener` returns what the app's Capacitor bridge
+ *  (native-bridge.js on iOS) returns: a plain `{ remove }`, not a promise. */
+function fakePlugin(caps: Record<string, unknown>, { bridge = false } = {}) {
   const calls: string[] = [];
   const record = (name: string, value: unknown = undefined) => async () => { calls.push(name); return value; };
+  const listen = () => { calls.push("addListener"); listeners.n += 1; return { remove: () => {} }; };
   return {
     calls,
     p: {
       capabilities: record("capabilities", caps),
-      addListener: async () => { calls.push("addListener"); listeners.n += 1; return { remove: () => {} }; },
+      addListener: bridge ? listen : async () => listen(),
       host: record("host"), join: record("join"), send: record("send"), close: record("close"), stop: record("stop"),
       openSettings: record("openSettings"),
       debugLogFile: async (o: { op: string }) => { calls.push(`debugLogFile:${o.op}`); return { size: 0, text: "" }; },
@@ -96,11 +100,12 @@ async function renderAll() {
   act(() => host.querySelector<HTMLButtonElement>(".menu .hud-more-btn")!.click());
   await settle();
   const rows = () => Array.from(host.querySelectorAll<HTMLElement>(".menu .hud-menu-row")).map((r) => r.textContent);
+  const code = () => host.querySelector<HTMLElement>(".menu .hud-menu-code-text");
   const tapCode = async (n: number) => {
     for (let i = 0; i < n; i++) act(() => host.querySelector<HTMLElement>(".menu .hud-menu-code-text")!.click());
     await settle();
   };
-  return { host, rows, tapCode, unmount: () => { act(() => root.unmount()); host.remove(); } };
+  return { host, rows, code, tapCode, unmount: () => { act(() => root.unmount()); host.remove(); } };
 }
 
 const SOAK_ROWS = ["Autoplay", "Chaos", "Copy soak summary", "Clear log file", "Upload log now"];
@@ -112,6 +117,20 @@ async function waitForRow(v: Awaited<ReturnType<typeof renderAll>>, label: strin
   for (let i = 0; i < 100 && !v.rows().includes(label); i++) await settle();
 }
 
+async function waitFor(ok: () => boolean) {
+  for (let i = 0; i < 100 && !ok(); i++) await settle();
+}
+
+/** The hidden switch's marker on the menu's code: a CSS dot and an
+ *  accessible-name suffix, never text. */
+function expectMarker(v: Awaited<ReturnType<typeof renderAll>>, on: boolean) {
+  const code = v.code();
+  if (!code) { expect(on).toBe(false); return; }
+  expect(code.classList.contains("soak-on")).toBe(on);
+  expect(code.getAttribute("aria-label")!.endsWith(", soak tools on")).toBe(on);
+  expect(code.textContent).toBe("K7Q2M");
+}
+
 function expectNoNearby(v: Awaited<ReturnType<typeof renderAll>>) {
   expect(v.host.querySelector(".join-row.nearby")).toBeNull();
   for (const input of v.host.querySelectorAll<HTMLInputElement>(".room-input")) expect(input.maxLength).toBe(4);
@@ -120,6 +139,7 @@ function expectNoNearby(v: Awaited<ReturnType<typeof renderAll>>) {
   expect(v.host.querySelector("[role='switch']")).toBeNull();
   expect(v.host.textContent).not.toMatch(/nearby|Nearby|Local Network/);
   expect(v.rows().filter((r) => r === "Copy log" || SOAK_ROWS.includes(r ?? ""))).toEqual([]);
+  expect(v.host.querySelector(".soak-on")).toBeNull();
 }
 
 beforeAll(() => {
@@ -129,6 +149,7 @@ beforeAll(() => {
 afterEach(() => {
   stopNearbyLogUploadForTests();
   detachNearbyLogFile();
+  forgetNativeLogForTests();
   localStorage.clear();
   resetNearbyDebugForTests();
   resetNearbyGateForTests();
@@ -222,10 +243,12 @@ describe("nearby play's run-time gate", () => {
     await waitForRow(v, "Autoplay");
     for (const r of ["Copy log", ...SOAK_ROWS, "AWDL keepalive"]) expect(v.rows()).toContain(r);
     expect(calls.some((c) => c.startsWith("debugLogFile"))).toBe(true);
+    // the rows need no switch here, so no marker
+    expectMarker(v, false);
     v.unmount();
   });
 
-  it("the Beta with the soak (logFile, chaos): the log file on and its rows, Autoplay and Chaos only after five taps", async () => {
+  it("the Beta with the soak (logFile, chaos): the log file on, every log and soak row only after five taps", async () => {
     native.available = true;
     const { p, calls } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true });
     native.plugin = p;
@@ -233,21 +256,42 @@ describe("nearby play's run-time gate", () => {
     resetNearbyGateForTests(loader);
     const v = await renderAll();
     expect(nearbyGate()).toEqual({ on: true, debug: false, logFile: true, chaos: true });
-    await waitForRow(v, "Upload log now");
-    // the file is on from the page's start, with no debug pane
+    await waitFor(nearbyLogUploadOn);
+    // the file and its upload are on from the page's start, with no debug pane and no rows
     expect(calls).toContain("debugLogFile:size");
     expect(calls.some((c) => c.startsWith("debugLogFile:append"))).toBe(true);
-    for (const r of LOG_ROWS) expect(v.rows()).toContain(r);
-    for (const r of [...HIDDEN_ROWS, "AWDL keepalive"]) expect(v.rows()).not.toContain(r);
+    expect(nearbyLogUploadOn()).toBe(true);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS, "AWDL keepalive"]) expect(v.rows()).not.toContain(r);
+    expectMarker(v, false);
     // four taps are not enough
     await v.tapCode(SWITCH_TAPS - 1);
     for (let i = 0; i < 5; i++) await settle();
-    for (const r of HIDDEN_ROWS) expect(v.rows()).not.toContain(r);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).not.toContain(r);
+    expectMarker(v, false);
     await v.tapCode(1);
     await waitForRow(v, "Autoplay");
     for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).toContain(r);
     expect(v.rows()).not.toContain("AWDL keepalive");
+    expectMarker(v, true);
     expect(localStorage.getItem(SWITCH_KEY)).toBe("1");
+    v.unmount();
+  });
+
+  it("the Beta on the app's bridge (addListener returns no promise), switch off: no rows, the log file and its upload on", async () => {
+    native.available = true;
+    const { p, calls } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true }, { bridge: true });
+    native.plugin = p;
+    loads = 0;
+    resetNearbyGateForTests(loader);
+    const v = await renderAll();
+    await waitFor(nearbyLogUploadOn);
+    expect(calls).toContain("debugLogFile:size");
+    expect(calls.some((c) => c.startsWith("debugLogFile:append"))).toBe(true);
+    expect(calls, "the native log is captured").toContain("addListener");
+    expect(nearbyLogUploadOn()).toBe(true);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(v.rows().filter((r) => [...LOG_ROWS, ...HIDDEN_ROWS, "AWDL keepalive"].includes(r ?? ""))).toEqual([]);
+    expectMarker(v, false);
     v.unmount();
   });
 
@@ -260,11 +304,14 @@ describe("nearby play's run-time gate", () => {
     resetNearbyGateForTests(loader);
     const v = await renderAll();
     await waitForRow(v, "Autoplay");
-    for (const r of HIDDEN_ROWS) expect(v.rows()).toContain(r);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).toContain(r);
+    expectMarker(v, true);
     await v.tapCode(SWITCH_TAPS);
     for (let i = 0; i < 5; i++) await settle();
-    for (const r of HIDDEN_ROWS) expect(v.rows()).not.toContain(r);
-    for (const r of LOG_ROWS) expect(v.rows()).toContain(r);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).not.toContain(r);
+    expectMarker(v, false);
+    // off again: the log file and its upload keep running
+    expect(nearbyLogUploadOn()).toBe(true);
     expect(localStorage.getItem(SWITCH_KEY)).toBe("0");
     v.unmount();
   });

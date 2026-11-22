@@ -110,3 +110,12 @@ it("the switch off while the listener is on its way leaves no listener up", asyn
     offline.setNearbyTransportForTests(fake);
   }
 });
+
+it("the switch on makes the nearby table at the offline table's Bots", async () => {
+  const session = new NearbyHostSession(async () => offline);
+  session.turnOn("Host", "advanced");
+  await until(() => session.view.phase === "on");
+  const room = [...offline.localServer().rooms.values()].filter((r) => r.nearby && !r.closed).pop()!;
+  expect(room.botLevel).toBe("advanced");
+  session.turnOff();
+});

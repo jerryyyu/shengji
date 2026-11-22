@@ -75,3 +75,30 @@ it("a join the page gave up on while it connected cannot end the join that repla
   expect(firstClosed).toBe(0);
   link.close();
 });
+
+it("a host send the plugin refuses reaches the room's host as a failed send, for its link alone", async () => {
+  const t = nativeTransport()!;
+  const failed: string[][] = [];
+  const link = await t.host("K7Q2M", {
+    peer: () => {}, message: () => {}, state: () => {},
+    sendFailed: (peer, why) => failed.push([peer, why]),
+  });
+  const send = plugin.send;
+  plugin.send = (async ({ peer }: { peer: string }) => {
+    if (peer === "p2") throw new Error("message over 16 KB");
+  }) as typeof plugin.send;
+  link.send("p1", "ok");
+  link.send("p2", "x".repeat(17 * 1024));
+  await tick();
+  plugin.send = send;
+  expect(failed).toEqual([["p2", "Error: message over 16 KB"]]);
+});
+
+it("an inbound link the plugin refused reaches the room's host by its reason, with no address", async () => {
+  const t = nativeTransport()!;
+  const refused: string[] = [];
+  await t.host("K7Q2M", { peer: () => {}, message: () => {}, state: () => {}, refused: (r) => refused.push(r) });
+  plugin.emit("refused", { reason: "connected" });
+  plugin.emit("refused", {});
+  expect(refused).toEqual(["connected", "?"]);
+});

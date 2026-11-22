@@ -60,3 +60,106 @@ function settle(): Promise<void> {
   const immediate = (globalThis as { setImmediate?: (fn: () => void) => void }).setImmediate;
   return new Promise((resolve) => (immediate ? immediate(() => resolve()) : globalThis.setTimeout(resolve, 0)));
 }
+
+/** A beat this much later than its second is the page's own pause. */
+export const PAUSE_SECONDS = 2;
+const BEAT_SECONDS = 1;
+
+/**
+ * The page's own pauses on one clock: a JS freeze, or a trip to the
+ * background, in which its timers and events wait and then all come due at
+ * once. While someone holds the watch, a beat runs every second; a beat (or
+ * any poll) that comes more than PAUSE_SECONDS after the last shows that the
+ * page was stopped in between. Each pause is told once, as [from, to] in
+ * clock time, to the listeners, by whichever timer polls first; a timer that
+ * makes a liveness or deadline decision polls before it decides, so time the
+ * page itself was stopped is never counted against someone else.
+ */
+export class PauseWatch {
+  private users = 0;
+  private gen = 0;
+  private last = 0;
+  private total = 0;
+  private listeners = new Set<(from: number, to: number) => void>();
+
+  private clock: Clock;
+
+  constructor(clock: Clock) {
+    this.clock = clock;
+  }
+
+  /** Starts the beat for this user; the returned call stops it once every user has. */
+  hold(): () => void {
+    if (this.users++ === 0) {
+      this.last = this.clock.now();
+      this.beat(++this.gen);
+    }
+    let held = true;
+    return () => {
+      if (!held) return;
+      held = false;
+      if (--this.users === 0) this.gen++;
+    };
+  }
+
+  private beat(gen: number): void {
+    this.clock.setTimeout(() => {
+      if (gen !== this.gen) return;
+      this.poll();
+      this.beat(gen);
+    }, BEAT_SECONDS);
+  }
+
+  /** Tells the listeners of a pause that has just ended, if there was one. */
+  poll(): void {
+    if (this.users === 0) return;
+    const now = this.clock.now();
+    const from = this.last;
+    this.last = now;
+    if (now - from <= BEAT_SECONDS + PAUSE_SECONDS) return;
+    this.total += now - from;
+    for (const fn of [...this.listeners]) fn(from, now);
+  }
+
+  /** `fn(from, to)` on each pause; the returned call removes it. */
+  on(fn: (from: number, to: number) => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  /** Seconds of pause told so far. */
+  paused(): number {
+    this.poll();
+    return this.total;
+  }
+
+  /** `fn` once `seconds` of the page's awake time have passed: a pause in
+   *  between is left out, so a deadline that came due inside a pause has
+   *  only the awake time it had left before the pause. */
+  after(fn: () => void, seconds: number): void {
+    const start = this.clock.now();
+    const mark = this.paused();
+    const check = () => {
+      const left = seconds - (this.clock.now() - start - (this.paused() - mark));
+      // within a microsecond counts as due (a float clock can land a hair short)
+      if (left > 1e-6) this.clock.setTimeout(check, left);
+      else fn();
+    };
+    this.clock.setTimeout(check, seconds);
+  }
+}
+
+const watches = new WeakMap<Clock, PauseWatch>();
+
+/** The one pause watch of `clock` (so the host's room, its links and a
+ *  joiner's socket on the same page agree on its pauses). */
+export function pauseWatch(clock: Clock): PauseWatch {
+  let w = watches.get(clock);
+  if (!w) watches.set(clock, (w = new PauseWatch(clock)));
+  return w;
+}
+
+/** The part of the pause [from, to] after `t`. */
+export function pausedAfter(t: number, from: number, to: number): number {
+  return Math.max(0, to - Math.max(from, t));
+}

@@ -62,7 +62,10 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
     status: others.length ? { text: `${people.filter((p) => ready.has(p.seat)).length} of ${people.length} ready` } : undefined,
     seats,
     you: room.you,
-    rows: { code: room.room, invite: false, ranked: true, opener: false, level: room.start_level, joiners: undefined, bots: undefined },
+    // the host picks the Bots, as an online casual table's opener does;
+    // `ranked` keeps the Starting level row off (it is fixed at Play)
+    rows: { code: room.room, invite: false, ranked: true, opener: host, level: room.start_level, joiners: undefined,
+            bots: room.bot_level ?? "standard" },
     waitSwitch: null,
     nearbySwitch: host ? { label: NEARBY_COPY.switchLabel, on: true, disabled: nb.locked } : null,
     chat: null,

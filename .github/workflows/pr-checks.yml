@@ -781,6 +781,7 @@ jobs:
             tests/test_unified_seq.py \
             tests/test_unified_slots.py \
             tests/test_unified_readout.py \
+            tests/test_unified_readout_device.py \
             tests/test_unified_serving.py \
             tests/test_search_free_play.py \
             tests/test_relaxed_play.py \

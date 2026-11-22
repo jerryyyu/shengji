@@ -262,7 +262,8 @@ describe("nearby panels and the code box's one exception", () => {
     act(() => root.render(<OfflinePanel ready starting={false} bots="standard" onBots={() => {}} onStart={() => {}} onLeave={() => {}}
                                         nearby={nearbySwitch({ on: true, line: null })} />));
     expect(host.querySelector(".tp-chat"), "no Chat row while Nearby is on").toBeNull();
-    expect(host.textContent, "no Bots row while Nearby is on").not.toContain("Bots");
+    expect(host.textContent, "the Bots row, read-only, while Nearby is on").toContain("Bots");
+    expect(host.querySelector("select[aria-label='Bots']"), "picked in the nearby lobby, not here").toBeNull();
   });
 
   it("the code box's lines are exactly the listed exception", async () => {

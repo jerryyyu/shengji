@@ -30,9 +30,12 @@ import types
 
 import numpy as np
 
+from ..ai.heuristic import HeuristicBot
+
 TOKEN = "uprior"
 SHARED_TOKEN = "ushare"
 N_CARDS = 54
+_STANDARD_DECIDE_PLAY = HeuristicBot.decide_play
 
 
 class UnifiedSlotError(ValueError):
@@ -337,14 +340,14 @@ def _fast_tables():
     return _FAST_TABLES
 
 
-def _winner_fast(trick, ordering, combos, legal):
+def _winner_fast(trick, ordering, combos, legal, *, with_level=False):
     """``belief_history._winner_so_far`` with its modules passed in (the same loop)."""
     if not trick.plays:
         return None
     lead = trick.plays[0].cards
     inc_suit = legal.uniform_suit(lead, ordering)
     if inc_suit is None:
-        return trick.plays[0].seat
+        return (trick.plays[0].seat, None, None) if with_level else trick.plays[0].seat
     inc_top = combos.decompose(lead, ordering).top_level()
     winner = trick.plays[0].seat
     for tp in trick.plays[1:]:
@@ -352,7 +355,7 @@ def _winner_fast(trick, ordering, combos, legal):
         if won:
             winner, inc_top = tp.seat, top
             inc_suit = ordering.eff_suit(tp.cards[0])
-    return winner
+    return (winner, inc_suit, inc_top) if with_level else winner
 
 
 def _leaf_entries_fast(frame: LeafFrame, leaf, tables):
@@ -423,7 +426,7 @@ def leaf_features_fast(frame: LeafFrame, leaves, native=True):
     come from the compiled `_pv_fast.leaf_counts` where `_native_leaf_counts` offers it (and ``native``),
     else from `_leaf_entries_fast`; both give the same rows, keys and order. Count planes stay compact
     through memo lookup; the fused forward converts only rows it actually scores to the model dtype."""
-    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS, leaf_scalars
+    from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS
     tables = _fast_tables()
     width = N_PLANES * N_CARDS
     kernel = _native_leaf_counts() if native else None
@@ -435,6 +438,11 @@ def leaf_features_fast(frame: LeafFrame, leaves, native=True):
         mine, counts, m = _leaf_counts_python(frame, leaves, tables, width)
     if not mine:
         return mine, np.zeros((0, width), np.uint8), np.zeros((0, N_SCALARS), np.float32), []
+    return _feature_rows(mine, counts, m)
+
+
+def _feature_rows(mine, counts, m):
+    from ..ai.unified_readout_numpy import leaf_scalars
     scalars = leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
     counts = np.asarray(counts, dtype=np.uint8)
     raw = np.ascontiguousarray(np.concatenate([counts, scalars.view(np.uint8)], 1))
@@ -511,13 +519,14 @@ def readout_evaluator(evaluator, bot, model):
             self.unified_bot.unified_value_served += len(rest)
             return values
 
-        def readout_ahead(self, frame, leaves, chunk, gate=None):
+        def readout_ahead(self, frame, leaves, chunk, gate=None, features=None):
             """`leaf_features_fast` of ``leaves`` in ``chunk``-leaf slices (``gate`` before each, as
             `team_values` calls it), with every `READOUT_BATCH` leaves' rows the value memo lacks
             scored in one forward into it.  Per slice ``[leaves, mine, planes, scalars, keys, new]``:
             ``new`` counts the keys first scored for that slice, as `memo_rows` would have."""
             m = self.unified_model
             memo = frame.value_memo
+            features = leaf_features_fast if features is None else features
             window = max(chunk, READOUT_BATCH // chunk * chunk)
             out = []
             for first in range(0, len(leaves), window):
@@ -526,7 +535,7 @@ def readout_evaluator(evaluator, bot, model):
                     if gate is not None:
                         gate()
                     part = leaves[start:start + chunk]
-                    mine, planes, scalars, keys = leaf_features_fast(frame, part)
+                    mine, planes, scalars, keys = features(frame, part)
                     new = 0
                     for i, key in enumerate(keys):
                         if key not in memo and key not in todo:
@@ -561,24 +570,30 @@ def readout_evaluator(evaluator, bot, model):
             values = np.empty(len(positions), dtype=np.float64)
             if rest:
                 values[rest] = base.score_many(self, [positions[i] for i in rest], [seats[i] for i in rest], **kw)
-            m = self.unified_model
+            values[mine] = self._covered_values(frame, planes, scalars, keys, new, [seats[i] for i in mine])
+            bot.unified_value_served += len(rest)
+            return values
+
+        def _covered_values(self, frame, planes, scalars, keys, new, seats):
+            bot, m = self.unified_bot, self.unified_model
             if new is None:
                 fused = frame.fused(m)
                 expected, hits = memo_rows(frame.value_memo, keys,
                                            lambda rows: m.leaf_value_probs_fused(fused, planes[rows], scalars[rows]) @ self.support)
             else:
                 expected, hits = [frame.value_memo[key] for key in keys], len(keys) - new
-            sign = np.asarray([1.0 if (int(seats[i]) - frame.seat) % 2 == 0 else -1.0 for i in mine])
-            values[mine] = sign * np.asarray(expected, np.float64)
-            self.positions += len(mine)
-            self.model_rows += len(mine)
-            bot.unified_value_rows += len(mine)
+            sign = np.asarray([1.0 if (int(seat) - frame.seat) % 2 == 0 else -1.0 for seat in seats])
+            self.positions += len(keys)
+            self.model_rows += len(keys)
+            bot.unified_value_rows += len(keys)
             bot.unified_value_memo += hits
-            bot.unified_value_served += len(rest)
-            return values
+            return sign * np.asarray(expected, np.float64)
 
     out = copy.copy(evaluator)
     out.__class__ = ReadoutEvaluator
+    from ..ai.cwv_policy import CompleteWorldEvaluator
+    out._fourth_score_methods = (CompleteWorldEvaluator.score, ReadoutEvaluator.score_many,
+                                 ReadoutEvaluator._score_many_fast, ReadoutEvaluator.readout_ahead)
     out.unified_bot = bot
     out.unified_model = model
     return out
@@ -591,6 +606,7 @@ def readout_score_leaves(served_score_leaves):
         if getattr(evaluator, "unified_model", None) is None:
             return served_score_leaves(evaluator, leaves, seat, *args, **kw)
         return evaluator.score(leaves, seat)
+    score_leaves.readout_dispatch = score_leaves
     return score_leaves
 
 
@@ -650,6 +666,174 @@ def _values_ahead(bot, frame, values_fn):
     return values
 
 
+def _direct_reply_features(frame, items):
+    """Build the completed-trick rows from the indexed moves and their parent count planes."""
+    from . import pv_tree_search as search
+    kernel = getattr(search._reply_fast, "pack_reply_rows", None)
+    if kernel is not None:
+        counts, meta = kernel(items, 4 - frame.pos)
+        return _feature_rows(list(range(len(items))), counts, meta)
+    counts = np.stack([parent for parent, *_ in items]).astype(np.uint8, copy=False)
+    meta = np.empty((len(items), 5), np.int64)
+    for i, (_, hand_slots, points, winner) in enumerate(items):
+        for slot in hand_slots:
+            counts[i, slot] -= 1
+            counts[i, slot + 5 * N_CARDS] += 1
+        meta[i] = (4 - frame.pos, 4, points, winner, winner)
+    return _feature_rows(list(range(len(items))), counts, meta)
+
+
+def _projected_reply_features(frame, items):
+    """Join projected rows and materialized leaves in the original candidate order."""
+    projected = [i for i, item in enumerate(items) if type(item) is tuple]
+    if len(projected) == len(items):
+        return _direct_reply_features(frame, items)
+    if not projected:
+        return leaf_features_fast(frame, items)
+    materialized = [i for i, item in enumerate(items) if type(item) is not tuple]
+    _, direct_planes, direct_scalars, direct_keys = _direct_reply_features(
+        frame, [items[i] for i in projected])
+    mine, leaf_planes, leaf_scalars, leaf_keys = leaf_features_fast(frame, [items[i] for i in materialized])
+    covered = projected + [materialized[i] for i in mine]
+    order = np.argsort(covered)
+    keys = direct_keys + leaf_keys
+    return ([covered[i] for i in order], np.concatenate((direct_planes, leaf_planes))[order],
+            np.concatenate((direct_scalars, leaf_scalars))[order], [keys[i] for i in order])
+
+
+def _projectable_reply_clone(clone, pos, search, fast):
+    trick = clone.trick
+    if (getattr(clone, "_trusted_rollout", False) is not True or type(trick) is not search.Trick
+            or type(trick.plays) is not list or len(trick.plays) != pos
+            or type(clone.ordering) is not fast.Ordering
+            or type(clone.turn) is not int or type(trick.leader) is not int
+            or not 0 <= trick.leader < 4 or clone.turn != (trick.leader + pos) % 4
+            or type(clone.banker) is not int or not 0 <= clone.banker < 4
+            or type(clone.attacker_points) is not int
+            or type(clone.hands) is not list or len(clone.hands) != 4
+            or any(type(hand) is not list or len(hand) > search.engine_round.HAND_SIZE
+                   for hand in clone.hands)):
+        return False
+    first = trick.plays[0]
+    if type(first) is not search.TrickPlay or type(first.cards) is not list:
+        return False
+    width = len(first.cards)
+    if not width or any(len(clone.hands[(trick.leader + i) % 4]) <= width for i in range(pos, 4)):
+        return False
+    inc, points = trick.incumbent, trick.running_points
+    return (type(inc) is tuple and len(inc) == 3 and type(inc[0]) is int and 0 <= inc[0] < 4
+            and type(inc[1]) is str and inc[1] in ("S", "H", "D", "C", "T")
+            and type(inc[2]) is int and -1 <= inc[2] <= 15
+            and type(points) is int and 0 <= points <= 200
+            and all(type(play) is search.TrickPlay and play.seat == (trick.leader + i) % 4
+                    and type(play.cards) is list and len(play.cards) == width
+                    for i, play in enumerate(trick.plays)))
+
+
+def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw):
+    """Rank covered continuations by their card moves when the standard finish permits it."""
+    from functools import partial
+    from ..engine import fast
+    from . import pv_encode_prefix, pv_tree_search as search
+    if (not active or active[0].trick is None or planes.dtype != np.uint8 or not planes.flags.c_contiguous
+            or not isinstance(values_fn, partial) or values_fn.func is not search._STANDARD_TEAM_VALUES
+            or values_fn.args != (bot,) or kw.get("children_fn") is not search._STANDARD_REPLY_CHILDREN
+            or len(args) != 2 or args[1] is not search.child_position_fast
+            or not fast.is_active() or search.Round.play is not fast._fast.round_play):
+        return None
+    # The canonical builder is supplied only while its clone and finisher references are intact.
+    evaluator = bot.evaluator
+    methods = tuple(getattr(getattr(evaluator, name, None), "__func__", None)
+                    for name in ("score", "score_many", "_score_many_fast", "readout_ahead"))
+    if methods != getattr(evaluator, "_fourth_score_methods", None):
+        return None
+    if values_fn.keywords.get("prefix") is not None:
+        score = pv_encode_prefix.score_leaves
+        if getattr(score, "readout_dispatch", None) is not score:
+            return None
+    plane_maps, pts, combos, legal = _fast_tables()
+    pos = len(active[0].trick.plays)
+    if not 1 <= pos <= 3:
+        return None
+    if pos < 3:
+        project = getattr(search._reply_fast, "project_replies", None)
+        if (project is None or legal.beats is not fast._fast.beats
+                or combos.decompose is not fast._fast.decompose
+                or legal.uniform_suit is not fast._fast.uniform_suit
+                or HeuristicBot._follow is not fast._fast.heuristic_follow
+                or HeuristicBot._forced_follow is not fast._forced_follow_fast
+                or _STANDARD_DECIDE_PLAY.__globals__.get("validate_follow") is not fast._fast.validate_follow):
+            return None
+        finisher = search.default_finisher()
+        if type(finisher) is not HeuristicBot or vars(finisher) or HeuristicBot.decide_play is not _STANDARD_DECIDE_PLAY:
+            return None
+        decide = finisher.decide_play
+    eligible = set()
+    for clone in active:
+        trick = clone.trick
+        if (trick is None or len(trick.plays) != pos or len(clone.history) != frame.tricks
+                or trick.incumbent is None or trick.running_points is None
+                or not search._round_default_copy(clone) or "play" in vars(clone)):
+            continue
+        if pos == 3:
+            if len(clone.hands[clone.turn]) > len(trick.plays[0].cards):
+                eligible.add(id(clone))
+        elif _projectable_reply_clone(clone, pos, search, fast):
+            eligible.add(id(clone))
+    if not eligible or (pos == 3 and len(eligible) != len(active)):
+        return None
+
+    def children(clone, seat, candidates):
+        if id(clone) not in eligible:
+            return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
+        trick = clone.trick
+        lead = trick.plays[0].cards
+        # The compiled follow can call the Python shape picker for throws.
+        if pos < 3 and len(lead) > 1 and len(combos.decompose(lead, clone.ordering).components) != 1:
+            return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
+        actual = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
+        prior_points = sum(pts[c] for play in trick.plays for c in play.cards)
+        parent = planes[index_of[id(clone)]]
+        if pos < 3:
+            if actual[1] is None:
+                return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
+            result = project(clone, seat, candidates, frame.seat, parent, plane_maps, pts,
+                             actual, prior_points, decide, legal.beats, search.TrickPlay, memo_heuristic=True)
+            if result is None:
+                return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
+            return result
+        incumbent, suit, top = actual
+        rel = (seat - frame.seat) % 4
+        lookup = plane_maps[rel].__getitem__
+        result = []
+        for cards in candidates:
+            won = suit is not None and legal.beats(cards, lead, suit, top, clone.ordering)[0]
+            winner = rel if won else (incumbent - frame.seat) % 4
+            points = prior_points + sum(map(pts.__getitem__, cards))
+            result.append((parent, tuple(map(lookup, cards)), points, winner))
+        return result
+
+    def values(items, seat, gate=None):
+        evaluator = bot.evaluator
+        features = _direct_reply_features if pos == 3 else _projected_reply_features
+        rows = evaluator.readout_ahead(frame, items, bot.batch_size, gate, features)
+        if any(len(part) != len(mine) for part, mine, *_ in rows):
+            frame.ahead = rows
+            try:
+                return values_fn(items, seat, gate)
+            finally:
+                frame.ahead = None
+        ahead = iter(rows)
+
+        def score(part, seat):
+            _, _, counts, scalars, keys, new = next(ahead)
+            return evaluator._covered_values(frame, counts, scalars, keys, new, [seat] * len(part))
+
+        return search.value_batches(items, seat, bot.batch_size, gate, score)
+
+    return children, values
+
+
 def readout_reply_ply(served_ply):
     """``served_ply`` (``pv_tree_search.greedy_reply_ply``) for every bot, except that a bot marked by
     `install_reply_readout` ranks each clone's follows by the readout's reply log-odds inside a framed
@@ -698,9 +882,13 @@ def readout_reply_ply(served_ply):
                 return np.stack(rows) if rows else np.zeros((0, N_CARDS), np.float32)
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
-        bot.predict = predict
         if fast:
-            values_fn = _values_ahead(bot, frame, values_fn)
+            callbacks = _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw)
+            if callbacks is None:
+                values_fn = _values_ahead(bot, frame, values_fn)
+            else:
+                kw["children_fn"], values_fn = callbacks
+        bot.predict = predict
         try:
             return served_ply(bot, active, gate, cache, stats, keep, version, listing, values_fn, rows, *args, **kw)
         finally:

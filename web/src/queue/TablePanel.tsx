@@ -246,10 +246,12 @@ export interface NearbyActs {
   onToggle?: () => void;
   onSettings?: () => void;
   onReady?: (on: boolean) => void;
+  /** The Bots row's pick (the offline table's, or a nearby lobby's host). */
+  onBots?: (level: BotLevel) => void;
 }
 
 function offlineAct({ onStart, onLeave, onBots, onToggle, onSettings, onReady }: NearbyActs & {
-  onStart?: () => void; onLeave: () => void; onBots?: (level: BotLevel) => void;
+  onStart?: () => void; onLeave: () => void;
 }) {
   return (a: PanelAction) => {
     if (a.type === "offline_start") onStart?.();

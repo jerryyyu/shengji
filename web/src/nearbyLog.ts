@@ -45,14 +45,18 @@ export function subscribeNearbyLog(fn: () => void): () => void {
   return () => { listeners.delete(fn); };
 }
 
-const lineText = (l: LogLine): string => `${(l.t / 1000).toFixed(3)} ${l.from} ${l.text}`;
+// one record per line: a newline inside a line's text (a stack, a native
+// error's description) is written as the two characters \n
+const lineText = (l: LogLine): string => `${(l.t / 1000).toFixed(3)} ${l.from} ${l.text.replace(/\r\n|\r|\n/g, "\\n")}`;
 
 export function nearbyLogText(): string {
   return snapshot.map(lineText).join("\n");
 }
 
+// The app's Capacitor bridge (native-bridge.js) returns the listener itself,
+// not a promise of it, so the result is wrapped before it is chained.
 interface LogSource {
-  addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<unknown>;
+  addListener(event: "debugLog", fn: (ev: { text: string }) => void): unknown;
 }
 
 let nativeListening = false;
@@ -61,7 +65,16 @@ let nativeListening = false;
 export function listenNativeLog(p: LogSource): void {
   if (nativeListening) return;
   nativeListening = true;
-  void p.addListener("debugLog", (ev) => nearbyLog("native", ev.text)).catch(() => { nativeListening = false; });
+  try {
+    void Promise.resolve(p.addListener("debugLog", (ev) => nearbyLog("native", ev.text))).catch(() => { nativeListening = false; });
+  } catch {
+    nativeListening = false;
+  }
+}
+
+/** Tests: listen to the plugin's lines again on the next attach. */
+export function forgetNativeLogForTests(): void {
+  nativeListening = false;
 }
 
 /** Tests: start with an empty log. */
@@ -168,7 +181,7 @@ export function attachNearbyLogFile(f: LogFile, opts: { cap?: number } = {}): Pr
   file = f;
   cap = opts.cap ?? LOG_FILE_CAP;
   failures = 0;
-  pending.push(`--- log file attached ${new Date().toISOString()} at page time ${(now() / 1000).toFixed(3)} ---`);
+  pending.push(`${(now() / 1000).toFixed(3)} log --- log file attached ${new Date().toISOString()} ---`);
   pending.push(...snapshot.map(lineText));
   if (!hideListening && typeof document !== "undefined") {
     hideListening = true;

@@ -4,9 +4,11 @@ answer for the app's ``capacitor://localhost`` page.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -122,6 +124,18 @@ def test_a_line_at_the_limit_is_kept_and_blank_lines_pass(client, nearby):
     line = "1732190000.123 link " + "x" * (2000 - len("1732190000.123 link "))
     assert len(line) == 2000
     assert _post(client, body="\n" + line + "\n\n").status_code == 204
+
+
+# Shared with web/src/nearbyLogSanitize.test.ts, which asserts that the app's
+# sanitizeLogChunk turns "input" into exactly "output".
+SANITIZE_FIXTURE = Path(__file__).resolve().parents[2] / "web" / "src" / "__fixtures__" / "nearbyLogSanitize.json"
+
+
+def test_the_apps_sanitized_log_fixture_passes_the_line_rule(client, nearby):
+    fixture = json.loads(SANITIZE_FIXTURE.read_text(encoding="utf-8"))
+    assert not nearby.valid_log_text(fixture["input"])
+    assert nearby.valid_log_text(fixture["output"])
+    assert _post(client, body=fixture["output"].encode("utf-8")).status_code == 204
 
 
 def test_invalid_utf8_is_a_400(client, nearby):

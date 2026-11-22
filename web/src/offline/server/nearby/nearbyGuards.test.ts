@@ -6,7 +6,6 @@
 // fuzz of a seated joiner's frames paced under the rate limit.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LOBBY_SEAT_HOLD, MOVE_TIMER } from "../server";
-import { NEARBY_COPY } from "./copy";
 import { setNearbyForTests } from "./flag";
 import { PEEK_SECONDS } from "./host";
 import { validNearbyName } from "./names";
@@ -145,15 +144,19 @@ describe("lobby seats", () => {
     expect((lastRoom(t.host).players as PlayerJson[]).map((p) => [p.seat, p.connected])).toEqual([[0, true], [1, true]]);
   });
 
-  it("everyone else ready, a not-ready joiner's drop starts the game at once", async () => {
+  it("everyone else ready, a not-ready joiner's drop waits out its hold, then the game starts", async () => {
     const t = await lobby(3);
+    // seated a moment: each phone's socket has shown the host it has its seat
+    await t.advance(LIMITS.pingSeconds + 1);
     t.send(t.host, { type: "table_start" });
     t.send(t.joiners[0], { type: "table_start" });
     await t.advance(1);
     const t0 = t.clock.now();
     t.fake.drop(t.code, t.fake.peersOf(t.code)[1]);
+    await t.advance(LOBBY_SEAT_HOLD - 1);
+    expect(t.room!.game).toBeNull();
     await t.settle(() => t.lastState(t.host) !== undefined, 2_000_000);
-    expect(t.clock.now() - t0).toBeLessThan(2);
+    expect(t.clock.now() - t0).toBeLessThan(LOBBY_SEAT_HOLD + 2);
   });
 
   it("one phone holds one lobby seat: its later links resume the same seat by its token", async () => {
@@ -261,8 +264,9 @@ describe("resume tokens", () => {
 
   it("with a seat dropped, a wrong token gets no seat, and the seat stays its owner's", async () => {
     const { t, j } = await dropped(4);
+    // a resume with a token the table does not know: refused, no seat
     const stranger = await t.join("X", { token: "nope" });
-    expect(errors(stranger)).toEqual([{ type: "error", code: "room_full", message: NEARBY_COPY.full }]);
+    expect(errors(stranger)).toEqual([{ type: "error", code: "room_not_found", message: "Seat no longer exists." }]);
     expect(t.room!.seats[j.seat!].connected).toBe(false);
     await t.join("P1", { token: j.token, player: j });
     expect(t.lastState(j)!.you).toBe(j.seat);
@@ -274,7 +278,7 @@ describe("resume tokens", () => {
     const flip = (c: string) => (c === "A" ? "B" : "A");
     for (const bad of [tok.slice(0, -1) + flip(tok.slice(-1)), flip(tok[0]) + tok.slice(1)]) {
       const x = await t.join("X", { token: bad });
-      expect(errors(x).map((f) => f.code)).toEqual(["room_full"]);
+      expect(errors(x).map((f) => f.code)).toEqual(["room_not_found"]);
     }
     expect(t.room!.seats[j.seat!].connected).toBe(false);
   });

@@ -10,6 +10,8 @@ interface Listener {
   remove(): Promise<void> | void;
 }
 
+/** On the app's Capacitor bridge (native-bridge.js) `addListener` returns the
+ *  listener itself, not a promise of it; every caller awaits or wraps it. */
 export interface NearbyPlugin {
   capabilities(): Promise<{ reviewed?: unknown; debug?: unknown; beta?: unknown; nearbyV?: unknown; serviceType?: unknown }>;
   openSettings(): Promise<unknown>;
@@ -18,11 +20,12 @@ export interface NearbyPlugin {
   send(opts: { peer: string; text: string }): Promise<unknown>;
   close(opts: { peer: string }): Promise<unknown>;
   stop(): Promise<unknown>;
-  addListener(event: "peer", fn: (ev: { peer: string; state: string; device?: string; via?: string }) => void): Promise<Listener>;
-  addListener(event: "message", fn: (ev: { peer: string; text: string }) => void): Promise<Listener>;
-  addListener(event: "state", fn: (ev: { state: string; detail?: string }) => void): Promise<Listener>;
-  addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<Listener>;
-  addListener(event: "path", fn: (ev: { satisfied: boolean }) => void): Promise<Listener>;
+  addListener(event: "peer", fn: (ev: { peer: string; state: string; device?: string; via?: string }) => void): Promise<Listener> | Listener;
+  addListener(event: "message", fn: (ev: { peer: string; text: string }) => void): Promise<Listener> | Listener;
+  addListener(event: "state", fn: (ev: { state: string; detail?: string }) => void): Promise<Listener> | Listener;
+  addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<Listener> | Listener;
+  addListener(event: "path", fn: (ev: { satisfied: boolean }) => void): Promise<Listener> | Listener;
+  addListener(event: "refused", fn: (ev: { reason?: string }) => void): Promise<Listener> | Listener;
 }
 
 const STATES: ReadonlySet<string> = new Set(["ready", "waiting", "denied", "wifiOff", "notFound", "failed", "ended", "version"]);
@@ -81,10 +84,10 @@ export function pluginTransport(p: NearbyPlugin, session: PluginSession): Nearby
     path(fn) {
       let gone = false;
       let listener: Listener | null = null;
-      void p.addListener("path", (ev) => {
+      void Promise.resolve(p.addListener("path", (ev) => {
         nearbyLog("join", `path ${ev.satisfied ? "satisfied" : "unsatisfied"}`);
         if (!gone) fn(ev.satisfied === true);
-      }).then((l) => { if (gone) void l.remove(); else listener = l; }, () => {});
+      })).then((l) => { if (gone) void l.remove(); else listener = l; }, () => {});
       return () => {
         gone = true;
         void listener?.remove();
@@ -103,6 +106,9 @@ export function pluginTransport(p: NearbyPlugin, session: PluginSession): Nearby
           if (live()) handlers.peer(ev.peer, ev.state === "connected", typeof ev.device === "string" ? ev.device : undefined);
         }),
         p.addListener("message", (ev) => { if (live()) handlers.message(ev.peer, ev.text); }),
+        p.addListener("refused", (ev) => {
+          if (live()) handlers.refused?.(typeof ev.reason === "string" ? ev.reason.slice(0, 32) : "?");
+        }),
         p.addListener("state", (ev) => {
           if (!live()) return;
           const state = asState(ev.state);
@@ -115,7 +121,11 @@ export function pluginTransport(p: NearbyPlugin, session: PluginSession): Nearby
       refuse = null;
       return {
         send: (peer, text) => {
-          if (live()) void p.send({ peer, text }).catch((e: unknown) => nearbyLog("host", `send to ${peer} failed: ${String(e)}`));
+          if (!live()) return;
+          void p.send({ peer, text }).catch((e: unknown) => {
+            nearbyLog("host", `send to ${peer} failed: ${String(e)}`);
+            if (live()) handlers.sendFailed?.(peer, String(e));
+          });
         },
         close: (peer) => { if (live()) void p.close({ peer }).catch(() => {}); },
         stop: () => {

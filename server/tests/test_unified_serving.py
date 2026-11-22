@@ -776,6 +776,25 @@ def test_the_compiled_leaf_counts_are_used_with_the_compiled_engine_only():
         assert native is not None, "the compiled engine runs without the compiled leaf counts"
 
 
+def test_compiled_leaf_keys_preserve_scalar_bits_and_own_their_bytes():
+    from shengji.train import pv_native, unified_slots as us
+
+    if not pv_native.HAVE_NATIVE:
+        pytest.skip("train/_pv_fast is not built")
+    counts = np.arange(201 * 486, dtype=np.int64).astype(np.uint8).reshape(201, 486)
+    points = np.arange(201)
+    meta = np.column_stack((points % 4 + 1, points % 4 + 1, points,
+                            points % 4, (points // 4) % 4)).astype(np.int64)
+    mine = list(range(len(points)))
+    expected = us._feature_rows(mine, counts, meta)
+    scalars, keys = pv_native._pv_fast.leaf_scalars_and_keys(counts, meta)
+    assert scalars.tobytes() == expected[2].tobytes()
+    assert keys == expected[3]
+    counts.fill(0)
+    scalars.fill(0)
+    assert keys == expected[3]
+
+
 def test_the_compiled_leaf_counts_kernel_counts_every_leaf_as_python(monkeypatch):
     """`_pv_fast.leaf_counts` on a real round's positions, each frame against every position (in and
     out of the frame, mid trick, a just-completed trick, a non-play leaf), as a list and as an

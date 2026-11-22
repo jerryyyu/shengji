@@ -462,10 +462,16 @@ def leaf_features_fast(frame: LeafFrame, leaves, native=True):
         mine, counts, m = _leaf_counts_python(frame, leaves, tables, width)
     if not mine:
         return mine, np.zeros((0, width), np.uint8), np.zeros((0, N_SCALARS), np.float32), []
-    return _feature_rows(mine, counts, m)
+    return _feature_rows(mine, counts, m, native=kernel is not None)
 
 
-def _feature_rows(mine, counts, m):
+def _feature_rows(mine, counts, m, *, native=False):
+    if native:
+        from . import pv_native
+        encode = getattr(pv_native._pv_fast, "leaf_scalars_and_keys", None)
+        if encode is not None:
+            scalars, keys = encode(counts, m)
+            return mine, counts, scalars, keys
     from ..ai.unified_readout_numpy import leaf_scalars
     scalars = leaf_scalars(m[:, 0], m[:, 1], m[:, 2], m[:, 3], m[:, 4])
     counts = np.asarray(counts, dtype=np.uint8)
@@ -707,7 +713,7 @@ def _direct_reply_features(frame, items):
     kernel = getattr(search._reply_fast, "pack_reply_rows", None)
     if kernel is not None:
         counts, meta = kernel(items, 4 - frame.pos)
-        return _feature_rows(list(range(len(items))), counts, meta)
+        return _feature_rows(list(range(len(items))), counts, meta, native=True)
     counts = np.stack([parent for parent, *_ in items]).astype(np.uint8, copy=False)
     meta = np.empty((len(items), 5), np.int64)
     for i, (_, hand_slots, points, winner) in enumerate(items):

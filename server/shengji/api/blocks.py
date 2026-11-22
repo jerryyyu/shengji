@@ -38,6 +38,12 @@ LIMITER = accounts.RateLimiter(limit=20, window=60.0)
 
 _lists: dict[Key, set[Key]] = {}
 _loaded: set[int] = set()
+# A merged device account's id -> the account it merged into. Chat history
+# (a room's ``chat_senders``, a waiting table's ``senders``) keeps the id a
+# line was written under; ``hides`` reads that id as its winner, so a block
+# moved by the merge still covers the lines written before it. History is
+# held in memory only, so the aliases are too.
+_merged_into: dict[int, int] = {}
 
 
 class BlockRefused(Exception):
@@ -52,8 +58,19 @@ def is_account(key: Key | None) -> bool:
     return type(key) is int and key > 0
 
 
+def _current(key: Key | None) -> Key | None:
+    """``key``, or the account a merged device account's id now lives on."""
+    seen = 0
+    while type(key) is int and key in _merged_into and seen < len(_merged_into):
+        key = _merged_into[key]
+        seen += 1
+    return key
+
+
 def hides(viewer: Key | None, sender: Key | None) -> bool:
-    """Whether ``viewer`` blocked ``sender``: their chat is not sent to it."""
+    """Whether ``viewer`` blocked ``sender``: their chat is not sent to it.
+    A merged device account's id counts as the account it merged into."""
+    viewer, sender = _current(viewer), _current(sender)
     if viewer is None or sender is None or viewer == sender:
         return False
     listed = _lists.get(viewer)
@@ -108,6 +125,7 @@ def reset() -> None:
     """Forget every block in memory (tests)."""
     _lists.clear()
     _loaded.clear()
+    _merged_into.clear()
     LIMITER.reset()
 
 
@@ -124,6 +142,7 @@ def merged(device_id: int, user_id: int) -> None:
     if own:
         _lists.setdefault(user_id, set()).update(own)
     _loaded.discard(user_id)
+    _merged_into[device_id] = user_id
 
 
 accounts.USER_DELETED_HOOKS.append(forget)

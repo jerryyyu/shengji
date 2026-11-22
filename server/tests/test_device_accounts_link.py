@@ -361,6 +361,88 @@ def test_a_merge_detaches_the_device_from_live_seats(linking, client, keypair): 
         srv.rooms.pop("MRGE", None)
 
 
+def _room_with_lines(srv, lines):
+    """A room whose scrollback holds ``lines``: (text, sender id)."""
+    room = srv.Room(code="HIST")
+    for i, (text, sender) in enumerate(lines, 1):
+        room.chat.append({"seat": 0, "name": "x", "text": text, "t": float(i), "id": i,
+                          "room": "HIST"})
+        room.chat_senders[i] = sender
+    room.chat_seq = len(lines)
+    return room
+
+
+def _texts(srv, room, uid):
+    return [m["text"] for m in srv.chat_snapshot(room, srv.Seat(name="v", user_id=uid))
+            ["messages"]]
+
+
+def test_a_rooms_history_keeps_a_block_across_a_merge(linking, client, keypair):  # noqa: F811
+    from shengji.api import blocks, server as srv
+
+    store = linking.STORE
+    target = _existing(store)
+    _token, cookie, _user = _device(client)
+    device = 2
+    blocker = store.upsert_user(_claims(sub="g-a", name="Ann Person"))["id"]
+    viewer = store.upsert_user(_claims(sub="g-c", name="Cy Person"))["id"]
+    blocks.reset()
+    try:
+        store.set_block(blocker, device, True)
+        blocks.set_block(blocker, device, True)
+        room = _room_with_lines(srv, [("before the merge", device), ("from the winner", target)])
+        assert _texts(srv, room, blocker) == ["from the winner"]
+        assert _google(client, keypair, cookie=cookie, confirm=True,
+                       sub="g-old").status_code == 200
+        # The old line is still hidden from the blocker, now along with the
+        # winner's own lines; everyone else, the winner included, sees both.
+        assert _texts(srv, room, blocker) == []
+        assert _texts(srv, room, viewer) == ["before the merge", "from the winner"]
+        assert _texts(srv, room, target) == ["before the merge", "from the winner"]
+        assert blocks.hides(blocker, target) and not blocks.hides(viewer, device)
+    finally:
+        blocks.reset()
+
+
+def test_a_waiting_tables_history_keeps_a_block_across_a_merge(linking):
+    from shengji.api import blocks
+    from tests.test_matchmaking import Env, run
+
+    store = linking.STORE
+    target = _existing(store)
+    device = store.create_device_user("w" * 43)["id"]
+    blocker = store.upsert_user(_claims(sub="g-a", name="Ann Person"))["id"]
+    viewer = store.upsert_user(_claims(sub="g-c", name="Cy Person"))["id"]
+    blocks.reset()
+
+    async def go():
+        env = Env()
+        await env.join(device)
+        await env.send(device, "table_chat", text="before the merge")
+        env.clock.advance(1.0)
+        await env.join(blocker)
+        await env.join(viewer)
+        store.set_block(blocker, device, True)
+        blocks.set_block(blocker, device, True)
+        (table,) = env.mm.tables.values()
+
+        def history(uid):
+            env.mm._send_chat_history(table, [uid])
+            return [m["text"] for m in env.conns[uid].last("table_chat_history")["messages"]]
+
+        assert history(blocker) == [] and history(viewer) == ["before the merge"]
+        out = store.link_provider(device, "google", "g-old", {}, True)
+        assert out["outcome"] == "merged"
+        linking.after_merge(device, target)
+        assert history(blocker) == []
+        assert history(viewer) == ["before the merge"]
+
+    try:
+        run(go())
+    finally:
+        blocks.reset()
+
+
 def test_a_suspended_holder_refuses_the_link(linking, client, keypair):  # noqa: F811
     store = linking.STORE
     target = _existing(store)
@@ -473,6 +555,29 @@ def test_an_unlinked_device_account_cannot_sign_out(linking, client):
     assert _rows(store, "SELECT COUNT(*) FROM device_credentials") == [(1,)]
     # Delete stays available.
     assert client.delete("/api/me", headers={"cookie": cookie}).status_code == 204
+
+
+def test_with_the_flag_off_logout_only_ends_the_session(linking, client, keypair, monkeypatch):  # noqa: F811
+    """Accounts made while the flag was on, then the flag turned off: logout
+    is the session contract of before, for an unlinked and a linked device
+    account alike, and never touches a credential."""
+    store = linking.STORE
+    token, cookie, _user = _device(client)
+    linked_token, linked_cookie, _u = _device(client)
+    linked = _google(client, keypair, cookie=linked_cookie, sub="g-new")
+    assert linked.status_code == 200
+    monkeypatch.delenv("SHENGJI_DEVICE_ACCOUNTS")
+    for session, device in ((cookie, token), (_cookie(linked), linked_token)):
+        resp = client.post("/api/auth/logout", headers={
+            "cookie": session, "authorization": f"Device {device}"})
+        assert resp.status_code == 200 and resp.json() == {"ok": True}
+        assert 'sj_session=""' in resp.headers["set-cookie"] or \
+            "Max-Age=0" in resp.headers["set-cookie"]
+        assert client.get("/api/me", headers={"cookie": session}).status_code == 401
+    assert _rows(store, "SELECT COUNT(*) FROM device_credentials") == [(2,)]
+    # No cookie at all is still a plain 200.
+    client.cookies.clear()
+    assert client.post("/api/auth/logout").json() == {"ok": True}
 
 
 def test_sign_out_with_the_credential_removes_it(linking, client, keypair):  # noqa: F811

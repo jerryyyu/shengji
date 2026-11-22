@@ -2085,8 +2085,14 @@ async def logout(request: Request, response: Response) -> dict:
     phone does not sign it straight back in. A device account with no
     provider cannot sign out (409 ``{"code": "unlinked_device_account"}``,
     the session kept): it would be left with no way back in; it can be
-    deleted instead."""
+    deleted instead. With device accounts off, only the session ends, as
+    before they existed."""
     token = request.cookies.get(COOKIE)
+    if not device_accounts_enabled():
+        if token:
+            await STORE.run(STORE.delete_session, token)
+        _clear_session_cookie(response, request)
+        return {"ok": True}
     try:
         device = _device_token(request)
     except HTTPException:
@@ -2144,18 +2150,25 @@ async def link_device_session(request: Request, provider: str, sub: str,
                             detail={"code": "account_exists", "name": outcome["name"]})
     user = outcome["user"]
     if kind == "merged":
-        STORE.deleted_ids.add(device_id)
-        for merged_hook in USER_MERGED_HOOKS:
-            try:
-                merged_hook(device_id, int(user["id"]))
-            except Exception:       # noqa: BLE001 - the merge is stored either way
-                log.exception("account-merge hook failed")
-        for hook in USER_DELETED_HOOKS:
-            try:
-                hook(device_id)
-            except Exception:       # noqa: BLE001 - the merge is stored either way
-                log.exception("account-deletion hook failed after merge")
+        after_merge(device_id, int(user["id"]))
     return user, outcome["session"], outcome.get("device_token")
+
+
+def after_merge(device_id: int, user_id: int) -> None:
+    """On the event loop, after ``Store.link_provider`` merged ``device_id``
+    into ``user_id``: the device id reads as deleted, ``USER_MERGED_HOOKS``
+    run while it is still held anywhere, then ``USER_DELETED_HOOKS``."""
+    STORE.deleted_ids.add(device_id)
+    for merged_hook in USER_MERGED_HOOKS:
+        try:
+            merged_hook(device_id, user_id)
+        except Exception:           # noqa: BLE001 - the merge is stored either way
+            log.exception("account-merge hook failed")
+    for hook in USER_DELETED_HOOKS:
+        try:
+            hook(device_id)
+        except Exception:           # noqa: BLE001 - the merge is stored either way
+            log.exception("account-deletion hook failed after merge")
 
 
 def sign_in_payload(payload: dict, device_token: str | None) -> dict:

@@ -1,0 +1,2180 @@
+{
+ "name": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-3a676f3c01ea-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast",
+ "main": "44f0c2f9f3b26526d265b1f98c73c66420c19c46",
+ "seeds_note": "r54_selfplay_positions.SEEDS",
+ "engines": {
+  "compiled": {
+   "2669920000:1:0": {
+    "cards": [
+     "D2",
+     "D2",
+     "D3",
+     "D3"
+    ],
+    "digest": "017bac0458b3b04ed2e7668d68aa916e2568ef0cdaf8033e62497f21ea93f317",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 25
+   },
+   "2669920000:1:1": {
+    "cards": [
+     "D4",
+     "D5",
+     "D6",
+     "DJ"
+    ],
+    "digest": "8a6a4a21a49a1fa5c978d15f568b734a3e41ebb1def3d9677b9edf6f6ce261a5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:1:2": {
+    "cards": [
+     "D7",
+     "D7",
+     "DA",
+     "DA"
+    ],
+    "digest": "90ebe2b3ac2c0b9c10b1a51dad13008e8bc0177bfe3d05162ecb47a8b47b1f22",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:1:3": {
+    "cards": [
+     "D6",
+     "D8",
+     "H2",
+     "H4"
+    ],
+    "digest": "8faefbd4567d9969ad0a8eae7bf4a5023bccc54879b553cf9ae2c725a3747832",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 133
+   },
+   "2669920000:2:0": {
+    "cards": [
+     "CA"
+    ],
+    "digest": "dd93d005c449ccccd1e2208d37a4ff1b738377c4e15d389a4093747dd442665e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 12
+   },
+   "2669920000:2:1": {
+    "cards": [
+     "CQ"
+    ],
+    "digest": "1ce1888f4ef7c502403a15e5e453541c0ada6a7ac2b294e6a6bfab9fad93a559",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920000:2:2": {
+    "cards": [
+     "D9"
+    ],
+    "digest": "d09b576ef3171bbadca112d1cc83b5c752f01c4497cf569a2bbd866a97a23b03",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920000:2:3": {
+    "cards": [
+     "C4"
+    ],
+    "digest": "2132f0230da6c1abf1540d812c365f070b318efabddf5f66c64dab96a9886a23",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:3:0": {
+    "cards": [
+     "HJ",
+     "HJ"
+    ],
+    "digest": "3f4f01fa1ca62d28e8d02e8d59fc4cbdd4dad56be507ae0955057b8094b8b92b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 19
+   },
+   "2669920000:3:1": {
+    "cards": [
+     "H10",
+     "H7"
+    ],
+    "digest": "428d55dfc7000677835f99754b1a736f3de95b89f10d0222809da61b0a3022b5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:3:2": {
+    "cards": [
+     "DJ",
+     "DQ"
+    ],
+    "digest": "a368ecff6049485dda9056582acc310f37da2d4c30002298ebc700583fd5f367",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 102
+   },
+   "2669920000:3:3": {
+    "cards": [
+     "HQ",
+     "HQ"
+    ],
+    "digest": "0232e50ef6798117daf5fd3966911385170f474c1a056b5547291bb1cdde4191",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:4:0": {
+    "cards": [
+     "DK"
+    ],
+    "digest": "94c513c3805e15b0f69cf9471fbadb2cdc1b792ce1348c6cffe682ec51739544",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 11
+   },
+   "2669920000:4:1": {
+    "cards": [
+     "DQ"
+    ],
+    "digest": "d1123b74d189843e3aec1dbb844923c5650e5aac65b68d9555b6b7874194e2d3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:4:2": {
+    "cards": [
+     "S10"
+    ],
+    "digest": "afe343393ff4960d10bf7948312f7baf1cec8e9b7271a7811ea2de487067b9e7",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 8
+   },
+   "2669920000:4:3": {
+    "cards": [
+     "D10"
+    ],
+    "digest": "79361720d67908f972b144a54d3977e3a346422f3873c7d1e2e0db1085c551f5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:5:0": {
+    "cards": [
+     "H6",
+     "H6",
+     "HA"
+    ],
+    "digest": "d1fac500371657b09949540eb79b2ff6f12c970f25320d406bfedf8fd428ab13",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 81
+   },
+   "2669920000:5:1": {
+    "cards": [
+     "H3",
+     "H5",
+     "H7"
+    ],
+    "digest": "b1c3fd08fb08ba48f4cfa19e120d699e758ee4a622220e8a45658877636093c8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:5:2": {
+    "cards": [
+     "S5",
+     "S6",
+     "SK"
+    ],
+    "digest": "df10a5e57b35c1d56ff7a9506412242698928cbde59fa373c3df1edee1ea52fa",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 475
+   },
+   "2669920000:5:3": {
+    "cards": [
+     "C2",
+     "C2",
+     "C4"
+    ],
+    "digest": "d4ac619cd846b38fb3cdde3edd8048b9560c96d7275042007f8da1cd6963df60",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 81
+   },
+   "2669920000:6:0": {
+    "cards": [
+     "CJ"
+    ],
+    "digest": "3ee14e76f9ef9d9575817b7678d4ad5451337928d387219d76e0f73628b33727",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 7
+   },
+   "2669920000:6:1": {
+    "cards": [
+     "C7"
+    ],
+    "digest": "d2b995328adc44313146c284b7459dc37b209b44e9033a2912908c668f168598",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920000:6:2": {
+    "cards": [
+     "CA"
+    ],
+    "digest": "76c129a56499054fc69f81a791bbfb6d6740e1f456ddbbc441d336eb8d2f27be",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:6:3": {
+    "cards": [
+     "C7"
+    ],
+    "digest": "4dc109debfafb5ee20db2483a3529da6604439126b63cd0e5e98992bade21189",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920000:7:0": {
+    "cards": [
+     "HK"
+    ],
+    "digest": "69e7dbbd1fa5ceabfee9d49e2516de9d5265acf5c882efe043038abe254c5ef3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:7:1": {
+    "cards": [
+     "S9"
+    ],
+    "digest": "f74087cb028b3153644581ec5e4572ecdebb7c997eab69a79678686fc5696b7c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 10
+   },
+   "2669920000:7:2": {
+    "cards": [
+     "C9"
+    ],
+    "digest": "060a7085a38727d98b6b4c6fba0757894e4ed2f409b566cb2b9cfa659b140386",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:7:3": {
+    "cards": [
+     "H2"
+    ],
+    "digest": "bbdb5d7381e15bf3fa1a216c34736fef28f3fe703153263db336bda0185b181f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:8:0": {
+    "cards": [
+     "S8",
+     "S8"
+    ],
+    "digest": "f683371e82e04721afc8e25989abe6e4bd22d87850eb4c64e720b8c1bc4ec9fa",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 10
+   },
+   "2669920000:8:1": {
+    "cards": [
+     "S2",
+     "SJ"
+    ],
+    "digest": "6753aab99583d3c347683b5aedc26d8f67f21179fcbd2e334b8ebae4361b1352",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:8:2": {
+    "cards": [
+     "S10",
+     "SK"
+    ],
+    "digest": "fe551428ccdea90ea2228a0611dfa53c25f86f8f92161b9aae617ecba253016f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:8:3": {
+    "cards": [
+     "S3",
+     "S4"
+    ],
+    "digest": "63466eea864cb66e7b0d38249d05ca59fc612cdb433e396b82866e4fdb774a61",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:9:0": {
+    "cards": [
+     "SQ"
+    ],
+    "digest": "ef291d2d2e907176177ff14697efdb892d41c727a829b5a6f54aee6935b59cda",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:9:1": {
+    "cards": [
+     "SA"
+    ],
+    "digest": "7430593b9a13a71a0819de1f6cfeb94232c727ff8c10f12ef540601f9b30f118",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:9:2": {
+    "cards": [
+     "CK"
+    ],
+    "digest": "d48e18397d2d2ce8b420e2e30d027c7ebb5fb920e461d9392ae364ffd412c16c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:9:3": {
+    "cards": [
+     "S5"
+    ],
+    "digest": "cda3f19597ec86bd8f9fd410953a1724da809ebeb81e14e6879b24a1e8e2cc96",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:10:0": {
+    "cards": [
+     "H4",
+     "H8"
+    ],
+    "digest": "f03fea3495204d44004733f6a501cc1986cbe7256ab22429915be5c0d744286b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 9
+   },
+   "2669920000:10:1": {
+    "cards": [
+     "SA"
+    ],
+    "digest": "6ed0ae9ec5d94516e4baa16c09583bbfa4b1a2be1e5e907c3919f76da04385ef",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 7
+   },
+   "2669920000:10:2": {
+    "cards": [
+     "S7"
+    ],
+    "digest": "46ce6286ecc21eb284337564d9bbc4292357ca73bd90947b553ca8ec0847e4f2",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920000:10:3": {
+    "cards": [
+     "HK"
+    ],
+    "digest": "3b796b6ce21b4395401bcafae03fa44499795b0358daffa30900497fa6339258",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:11:0": {
+    "cards": [
+     "BJ"
+    ],
+    "digest": "e0eefe2effc8541726b58d45e3ba0bd642fc25558cca8b2c908139b4240b3797",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:11:1": {
+    "cards": [
+     "CQ"
+    ],
+    "digest": "2400c76f6b09bcbce1d0b0c6baebc6e1b485da15b0392c2427b8aab9b69fa8e2",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:11:2": {
+    "cards": [
+     "C10"
+    ],
+    "digest": "f4c0650d2b6a07381a1425405cd490fb47d9c42923b8aaed84084a291c8df51a",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:11:3": {
+    "cards": [
+     "H9"
+    ],
+    "digest": "5750aa79f450bf4ac4e462bc85f4045ed97ddbb8a5f0607b0e7455476d81646f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920000:12:0": {
+    "cards": [
+     "H8"
+    ],
+    "digest": "bbda3da46c3307533faef0da0581ff987962410df9d40e95ca3a8e6375a7b878",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920000:12:1": {
+    "cards": [
+     "H8"
+    ],
+    "digest": "3521035a68e77bcacda1eccbde625728366b87ed966b4818af2bf478cb28878a",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:12:2": {
+    "cards": [
+     "C5"
+    ],
+    "digest": "4d3bfb13e405578433a7f0c5ad372e4f5ea6d4c1179318d0d4e0db24ab503769",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:12:3": {
+    "cards": [
+     "D9"
+    ],
+    "digest": "09de4c5b313095b93b6d874332e1cfb0a6932d6f9722412b6edc63b8531c6a62",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:13:0": {
+    "cards": [
+     "SJ"
+    ],
+    "digest": "54401edbefe3a83b3abf020d150d3c7c6fa7811d557b5dfc54319df4762cb802",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:13:1": {
+    "cards": [
+     "SQ"
+    ],
+    "digest": "10fbc919c39c40fad70e63fd3a050f887ba5c8b4de6a9d69d261a9d2ff3307a3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:13:2": {
+    "cards": [
+     "C9"
+    ],
+    "digest": "3ace39ac907957710d30bf0d0ba0ec06a0cbc8227350bca58d95b33c7475ee6b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:13:3": {
+    "cards": [
+     "LJ"
+    ],
+    "digest": "23d9266df1b767dcea16cbb3cb3cbb27f57895410f02cddc0eeeceb018e331d8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:14:0": {
+    "cards": [
+     "C3",
+     "C3"
+    ],
+    "digest": "a4d0703912f7a73805ed72f9fde22c6f0c07660d9f3d13019271d7ef467a7486",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:14:1": {
+    "cards": [
+     "C6",
+     "C6"
+    ],
+    "digest": "857b03a5883b049c0a992c1f33351d2ab6923985b62c7e8b8d58ce75f8963baa",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:14:2": {
+    "cards": [
+     "C5",
+     "CK"
+    ],
+    "digest": "b044f61c9c9e772c80358c370f0ed3d89b6c63a27f6a20fc907b910c03ff7e94",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:14:3": {
+    "cards": [
+     "C8",
+     "DK"
+    ],
+    "digest": "9004ce43ed6e01ce570590ab478c458bf38aeebc084e9747c7f0e8acd3f31e97",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920000:15:0": {
+    "cards": [
+     "BJ",
+     "LJ",
+     "S9"
+    ],
+    "digest": "7d72d0e846be73357564cb5c038e414dbc8e4a03256ec1fd9a915a277badf111",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 6
+   },
+   "2669920000:15:1": {
+    "cards": [
+     "C10",
+     "H10",
+     "S7"
+    ],
+    "digest": "8beee1ca61c185352b9d05be8fc7170642ac88debb8f5feb8759bcb7f77bbd67",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:15:2": {
+    "cards": [
+     "D10",
+     "D5",
+     "D8"
+    ],
+    "digest": "feff81fb5efa9cb5807a09d276a33b74e5be6f25ceecca1dd33731cf8b71d1d9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:15:3": {
+    "cards": [
+     "C8",
+     "CJ",
+     "H9"
+    ],
+    "digest": "ce847090f6724bb334d9d5f0a77ae74b2e5e99165ddb8a36077693ff7e497056",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:1:0": {
+    "cards": [
+     "C10",
+     "C10",
+     "LJ",
+     "LJ"
+    ],
+    "digest": "15414fc76c040995f410a58b321b8af4c76e54020c0b9e2c32b4556a3e9b3a27",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 25
+   },
+   "2669920001:1:1": {
+    "cards": [
+     "C6",
+     "D7",
+     "H10",
+     "S10"
+    ],
+    "digest": "de0cc7c5fd07b4526e561d3595b79429215ec1310d825ddf297519bfb1fa65e1",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 40
+   },
+   "2669920001:1:2": {
+    "cards": [
+     "BJ",
+     "D10",
+     "H5",
+     "S5"
+    ],
+    "digest": "e576a05e879bd1bb058b7652ac9a68bee263387d5144256c3f98ce7df0ae534e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 150
+   },
+   "2669920001:1:3": {
+    "cards": [
+     "BJ",
+     "C6",
+     "C7",
+     "D10"
+    ],
+    "digest": "b4421ccabaa0d2873ce9fffa272b8df9694e0c35a362c320e89fca3226958e4b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:2:0": {
+    "cards": [
+     "CA",
+     "CK",
+     "CK"
+    ],
+    "digest": "254d2ede35ecf37ba6e2c1e4692e41518b8e466ef683c30f598665ca2685591e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 75
+   },
+   "2669920001:2:1": {
+    "cards": [
+     "C3",
+     "CQ",
+     "CQ"
+    ],
+    "digest": "9078cdc99a022611bfb16024eafabd152940503fdad28d59676ebae50363c2b1",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:2:2": {
+    "cards": [
+     "C4",
+     "C4",
+     "C9"
+    ],
+    "digest": "a47ef70cb3f206a552c149c37bb403b3313dc9c6b5cbd2a731b86501b2482cd4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920001:2:3": {
+    "cards": [
+     "C8",
+     "C8",
+     "CJ"
+    ],
+    "digest": "85e6f9b674cd0bef03287c68420b74f27760dbface3586e7f9eb0797bf55d60b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:3:0": {
+    "cards": [
+     "D9",
+     "D9"
+    ],
+    "digest": "f075c94057eb9d1a68c49f1bd416214239cd8044a9070f364c2130802bc7dfdd",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 17
+   },
+   "2669920001:3:1": {
+    "cards": [
+     "D4",
+     "D4"
+    ],
+    "digest": "91cabff7a6c1031561317a02c5c546647686d3214d237e205ad30a020f091009",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:3:2": {
+    "cards": [
+     "D3",
+     "DJ"
+    ],
+    "digest": "7894612f1b06909b35002e5e84a39019e238596f57cb7e306dab89cf586ca0e2",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:3:3": {
+    "cards": [
+     "DQ",
+     "DQ"
+    ],
+    "digest": "cd78e555911e0e171d93d85ca7fea2532199315fe7850208cdd2ca4ee32d8fdc",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:4:0": {
+    "cards": [
+     "D3"
+    ],
+    "digest": "369c4bd72f84cb1759da50418fd8a0df100af56f59da8a15ee21222c0e42b7c2",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 10
+   },
+   "2669920001:4:1": {
+    "cards": [
+     "D7"
+    ],
+    "digest": "6f193f32964a51952266fee87ae8ccf27a658e6f10ad6880b5edb3f667b071a4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920001:4:2": {
+    "cards": [
+     "DA"
+    ],
+    "digest": "56104d7fe656e4cc78d175ee47d013342250869f61870a0f40f25710d548d549",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:4:3": {
+    "cards": [
+     "DK"
+    ],
+    "digest": "ae2ca1233842e0aff1c0a30ce6d1060315fec65a11bd8cab453dd5d82ee22609",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:5:0": {
+    "cards": [
+     "CJ"
+    ],
+    "digest": "0f9a884dd7151acbdc050913dfff6ffe3e050fc68a4529ecbeefd4405da422b0",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 11
+   },
+   "2669920001:5:1": {
+    "cards": [
+     "C2"
+    ],
+    "digest": "28b7f2d03121ea464b6c70ede5e192e24e71acbb0c07e2ab911c57d582e25420",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:5:2": {
+    "cards": [
+     "SK"
+    ],
+    "digest": "aa4e523a21126324b2532ea3a9b4564b8a37f0a19b4728b132b34a923e3ab8f3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 11
+   },
+   "2669920001:5:3": {
+    "cards": [
+     "C9"
+    ],
+    "digest": "75171844a1af1254e0d282716712f996adadf1de8cd6df89a218e267817fc5cc",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:6:0": {
+    "cards": [
+     "C5",
+     "CA"
+    ],
+    "digest": "de0568615741ed7d5a705e66ebf475bef9721b781d17f6538e01b591aee194a9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 30
+   },
+   "2669920001:6:1": {
+    "cards": [
+     "C3",
+     "H9"
+    ],
+    "digest": "60c1b8f56adcfe8fb786f86e9577ebb76d4e4b5a7fa948ea0f6228635491ad10",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920001:6:2": {
+    "cards": [
+     "HK",
+     "S5"
+    ],
+    "digest": "7f7610e260fc73cb85a7c0199f60f8a60ab08f949ff28d39778a1bf982904d3b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 43
+   },
+   "2669920001:6:3": {
+    "cards": [
+     "C5",
+     "H8"
+    ],
+    "digest": "4a69fa3cf2bbe6f4b4323b1fe35bcec33a680c203a3c1b9e434219b489a977f3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 9
+   },
+   "2669920001:7:0": {
+    "cards": [
+     "DA"
+    ],
+    "digest": "1b5e1a30bb0223d842c255ee8144c7e03ba8467a0e9ba82757f10bea7014d4a9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 10
+   },
+   "2669920001:7:1": {
+    "cards": [
+     "HJ"
+    ],
+    "digest": "a91b908e15458477c8b48fe17509f108b8d9bd1228556fa358934c1f4e38189e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920001:7:2": {
+    "cards": [
+     "D8"
+    ],
+    "digest": "b9ce40856486123db72d3f46680b20ba117505766d62d7c5e44122efef1f590c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920001:7:3": {
+    "cards": [
+     "D2"
+    ],
+    "digest": "247adaa19d9969bceb1a4b04cfd0d6b294e19725e743e6b9bd4ca97d9f1b14e6",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:8:0": {
+    "cards": [
+     "SA"
+    ],
+    "digest": "53ab54cc7d1951bc01e68ea698a166d2d429f1d241ceeec9827584827075651f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920001:8:1": {
+    "cards": [
+     "S3"
+    ],
+    "digest": "9291adf06affc11ec8c050e54355ac28f4645319327334bc3d076226d9455806",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:8:2": {
+    "cards": [
+     "S8"
+    ],
+    "digest": "22ed467a39200d4f29485ed1abf430ad0508cbd2287ec9d4829758455a9eaa67",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920001:8:3": {
+    "cards": [
+     "S10"
+    ],
+    "digest": "c3f74fa407c9aac668d9e3fa63126ba7f215016bc6dabf4107b146c4b37211c9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 9
+   },
+   "2669920001:9:0": {
+    "cards": [
+     "D6",
+     "D8",
+     "DK"
+    ],
+    "digest": "dae01cd439584cb29064f31aa2790687f92488ed0efbbcd123b73be20dc38225",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 33
+   },
+   "2669920001:9:1": {
+    "cards": [
+     "D5",
+     "H3",
+     "H7"
+    ],
+    "digest": "6558ee9b8a02c7a412d1163fefa9c2ccd2a9ee8503e9a38bf611510c643c01ab",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 8
+   },
+   "2669920001:9:2": {
+    "cards": [
+     "H3",
+     "HK",
+     "SK"
+    ],
+    "digest": "a9327acf7bd8a34e9c1940a19a1ae539c66d42e1c450c0deee1209e82c9ac87f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 39
+   },
+   "2669920001:9:3": {
+    "cards": [
+     "D2",
+     "D6",
+     "H8"
+    ],
+    "digest": "c81b1d209f4614a869e6743a4a611e10e88b1b782f4aafacad125b3b997a4f8b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:10:0": {
+    "cards": [
+     "H10"
+    ],
+    "digest": "877840f3aa97f5da3994776189fc37766d02b15f38fc3497ed77ea55cc276c4c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920001:10:1": {
+    "cards": [
+     "H2"
+    ],
+    "digest": "f808aa272f063ceadcd109bcb7ec5f63c997aca359761605ce0ffd357b75de9d",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:10:2": {
+    "cards": [
+     "HA"
+    ],
+    "digest": "9ae962816397840eea09d08ab7b3c1fd774b88bc975afd62def077447cc8d901",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:10:3": {
+    "cards": [
+     "S4"
+    ],
+    "digest": "9eb216269d1e920dd92ddb25a9f3827152009af392eb2a2cc8edd1333e47adbe",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920001:11:0": {
+    "cards": [
+     "D5"
+    ],
+    "digest": "adf659351475855af60aa657ba391438599b566e32947aa0b062cf50fa3c8f5d",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920001:11:1": {
+    "cards": [
+     "H9"
+    ],
+    "digest": "fd7cacd7d494519d13787e50bb208d4e1baa4bf6885bc97cf670f1a263cb24f7",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:11:2": {
+    "cards": [
+     "HA"
+    ],
+    "digest": "1e4b4f2b8079434ef24ead4b891a5dff90a48597daf01bd14ef6068e600e450b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:11:3": {
+    "cards": [
+     "H6"
+    ],
+    "digest": "5c84eb1a4d62ea514fb945128975824e4a33621b17becce46c30305b591769e5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:12:0": {
+    "cards": [
+     "H4",
+     "H4"
+    ],
+    "digest": "4d5740dc90491334289115ed56804ffd55923401a5c9fdf0c8e5a9315e104d57",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920001:12:1": {
+    "cards": [
+     "H5",
+     "S9"
+    ],
+    "digest": "23a7037b4bd08d8cb69199f4d565baf1d16ce966144b384464e0f056f2cf92b3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:12:2": {
+    "cards": [
+     "H2",
+     "S8"
+    ],
+    "digest": "d5150219c887ee1e4e404f1b2188cb4c981195b9dcf985e01d523b08b0b9f327",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:12:3": {
+    "cards": [
+     "HQ",
+     "HQ"
+    ],
+    "digest": "01647d272fd02417e201a0fd003beac936a005456e6cfc64c908403e867f5417",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:13:0": {
+    "cards": [
+     "S7"
+    ],
+    "digest": "516eb415b7a00696682697ab3e717c620469d0c4e78b6bdd07ae1a33a06c3ccd",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:13:1": {
+    "cards": [
+     "DJ"
+    ],
+    "digest": "2d2011251fbd08655ffacb4a54234c44ad136d46b40607902f3288c170c39dcc",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:13:2": {
+    "cards": [
+     "SJ"
+    ],
+    "digest": "00c97cca796f667a56a6d44d68bbb16938c3ba68798e0f75661c26f4dd61e3c5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:13:3": {
+    "cards": [
+     "S9"
+    ],
+    "digest": "9b440811d4e1ed5ceb02895d16d4232efba78f4aa53c3d6b20c83674f8532391",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:14:0": {
+    "cards": [
+     "S6"
+    ],
+    "digest": "cc4a7ed3424d30ce7324c68e865c6e198b30c145955961bd5edb418fc7496eb3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:14:1": {
+    "cards": [
+     "SQ"
+    ],
+    "digest": "6aa1f94f8868d2e4e1bced0b8973d418a8a995a35e2bbf2a0df2e7d7666d5788",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920001:14:2": {
+    "cards": [
+     "S7"
+    ],
+    "digest": "bd9b831a6eef4779502a088df16c89818e20ccb377b8463dd673d7cf1d095946",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:14:3": {
+    "cards": [
+     "H7"
+    ],
+    "digest": "7bb969428e151b60b67e6515bab1c36872bcdc3b3f37ab355ce76d314701dc69",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:15:0": {
+    "cards": [
+     "SJ"
+    ],
+    "digest": "bb8a5017fb4676bc855437d4eda6607245cf8b978fbf3621b67fc8cac7898b43",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:15:1": {
+    "cards": [
+     "H6"
+    ],
+    "digest": "abc47b764d7e0c0a797ff4cdbe80d1022f43a92f28710e809ce1edc761398cdf",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:15:2": {
+    "cards": [
+     "HJ"
+    ],
+    "digest": "31c571aaf48cbd29e835fc70fdfcafaa47711510b72b7d8eebbe9c90b2a29e41",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920001:15:3": {
+    "cards": [
+     "S6"
+    ],
+    "digest": "2096983ba416983b28dd96429bf84d69426c019a29e0fdc27674b38f31be0bb8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:1:0": {
+    "cards": [
+     "C8",
+     "C8",
+     "CA"
+    ],
+    "digest": "7870ef4ac9fc989d6ea0538f389c987b1889827f31de1a921ada60a9c61b741e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 158
+   },
+   "2669920002:1:1": {
+    "cards": [
+     "C3",
+     "C5",
+     "C9"
+    ],
+    "digest": "bc9dbb2d93db92d10558b60b1b78416ec9c3ccac965ad372fb2575fe8994154a",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:1:2": {
+    "cards": [
+     "C10",
+     "C7",
+     "C7"
+    ],
+    "digest": "45e1a89de7712dd2a157a05f8547c5b2d86726206b8d6768fa5129778bf66587",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:1:3": {
+    "cards": [
+     "C2",
+     "CA",
+     "CQ"
+    ],
+    "digest": "3e914b67cba48127a57bd19b6786bd43ee4d2c5b306e82d1100a95f7d5d1a4d4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:2:0": {
+    "cards": [
+     "C6",
+     "C6"
+    ],
+    "digest": "440489654f9620b3249a15900d076cbb293bb4ae281aa4591bc179605ac3533c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 20
+   },
+   "2669920002:2:1": {
+    "cards": [
+     "CK",
+     "HQ"
+    ],
+    "digest": "25f7acfd93be864c53cc8b6209221d736054aa558f0bbf81303f6578067acbb1",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 11
+   },
+   "2669920002:2:2": {
+    "cards": [
+     "C4",
+     "C5"
+    ],
+    "digest": "7bf31c133fe2f418402ad43bf57584c8dd52fbf672a6e2797c1e52eadd4ca682",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920002:2:3": {
+    "cards": [
+     "D3",
+     "S3"
+    ],
+    "digest": "9f04a2c4232285174e46844a789a2165d50bdb833f33abe288f3cd5545327ac6",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 28
+   },
+   "2669920002:3:0": {
+    "cards": [
+     "S8",
+     "S8"
+    ],
+    "digest": "815fdebb5754d365a0de41198fa27ea553c110c2b5f0ff67730cca1858dadf2e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 18
+   },
+   "2669920002:3:1": {
+    "cards": [
+     "S10",
+     "S10"
+    ],
+    "digest": "b384705494d73c9822aefab90cbbaf2baab6124b87ea708dd2781de89ca9bc7b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:3:2": {
+    "cards": [
+     "S4",
+     "S6"
+    ],
+    "digest": "3d924ee9766dfe0c1cb9e56302109a193af7bfa17ac39bd59b00cfeb9de32cb8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920002:3:3": {
+    "cards": [
+     "S2",
+     "SA"
+    ],
+    "digest": "44875a7fd1a0dd27aff48dc8a641b4f01efd07e7224b7e8ab112c39716de46d8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:4:0": {
+    "cards": [
+     "D6"
+    ],
+    "digest": "ba98600456993c1406d7a683b8baa1948a173c4e93fa0929d16998fab3175263",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 9
+   },
+   "2669920002:4:1": {
+    "cards": [
+     "DA"
+    ],
+    "digest": "e3a9f3520083f25d0e2b3ea1cc7a9df4c30a6691982061052c157715eef49408",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920002:4:2": {
+    "cards": [
+     "D9"
+    ],
+    "digest": "73783c1f2580613780d4ab69d2e7d9f93e38271ac9abcbe8a9a5abd14893a0bc",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920002:4:3": {
+    "cards": [
+     "D10"
+    ],
+    "digest": "b8861599266588518a6b133dd3e874b134cda5627c0b25b792c56f62336a20e8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:5:0": {
+    "cards": [
+     "DQ",
+     "DQ"
+    ],
+    "digest": "d3e8d28876fa30eef0b576be42f25b14006bc43dea307d0e468cdde9aa836300",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 16
+   },
+   "2669920002:5:1": {
+    "cards": [
+     "D5",
+     "DA"
+    ],
+    "digest": "1f47cfe4b0602dea6ba9efe5b1fdb605c294db00cae55f04c3aae88949562d1c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:5:2": {
+    "cards": [
+     "C10",
+     "SK"
+    ],
+    "digest": "fd5a766e5b100650a2197c7aee8a674c5e849f01f51451eb7e2dcaf2e0239dca",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 27
+   },
+   "2669920002:5:3": {
+    "cards": [
+     "D2",
+     "D3"
+    ],
+    "digest": "30c7ba750d38f01bd85588ec6be2d1094116dadbd400f87a967690e629a9b6ff",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920002:6:0": {
+    "cards": [
+     "DK"
+    ],
+    "digest": "4a276cf7ac7821647bde9c1a89596d8bb78907321e1a2e01d707fd23b8a8faba",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 9
+   },
+   "2669920002:6:1": {
+    "cards": [
+     "BJ"
+    ],
+    "digest": "7b6112a2f4223c9707e52da74a60bd3759774b225a6c7b22de10d0073f5f7488",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:6:2": {
+    "cards": [
+     "SQ"
+    ],
+    "digest": "c4ccca89b2d1d5cc41c779b26cf513318d5d53f8cd3f7e637ec68572a12bcb4b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 13
+   },
+   "2669920002:6:3": {
+    "cards": [
+     "D10"
+    ],
+    "digest": "ac6e8d5117699fbc97dc8c4d08ddd13b0bf497ac0b8e05ffaa231b7bfe2a0372",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:7:0": {
+    "cards": [
+     "DJ",
+     "DJ",
+     "HA",
+     "HA",
+     "HK",
+     "HK"
+    ],
+    "digest": "712a3ecf939656af4b4cc0577d680b32f197ac512a09e8190938d3a463d93e94",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 17
+   },
+   "2669920002:7:1": {
+    "cards": [
+     "CJ",
+     "H3",
+     "H6",
+     "HJ",
+     "HJ",
+     "SJ"
+    ],
+    "digest": "8967f13becffe92c34eac04b458dfc4a667e6446b95d6479dd8d77ff9df47540",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 28
+   },
+   "2669920002:7:2": {
+    "cards": [
+     "H10",
+     "H2",
+     "H3",
+     "H6",
+     "H7",
+     "LJ"
+    ],
+    "digest": "7030584edf7ce1c69e1168b883be867313e25de97093b0a78fc8c6f08c83d818",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:7:3": {
+    "cards": [
+     "CJ",
+     "H2",
+     "H4",
+     "HQ",
+     "LJ",
+     "S7"
+    ],
+    "digest": "0fff2127e24800e54a7becf508e587ba6a691bc85b749dde1c8e0c4e9dab654f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 6
+   },
+   "2669920002:8:0": {
+    "cards": [
+     "H9",
+     "H9"
+    ],
+    "digest": "48dd43e291c1a9029319d728773ec50c805c19fe578738ac96ec3e40690780f6",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 7
+   },
+   "2669920002:8:1": {
+    "cards": [
+     "H10",
+     "H5"
+    ],
+    "digest": "e08efe95419fed2e896e48ed184d6fb9d49c1c2cf59b42eb626cc797e167aedd",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920002:8:2": {
+    "cards": [
+     "DK",
+     "S5"
+    ],
+    "digest": "a2fe90fbd5ae8351d16f246d9264432f05fb27a2b8ddb25e4319760453a2e9ac",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 10
+   },
+   "2669920002:8:3": {
+    "cards": [
+     "C3",
+     "D4"
+    ],
+    "digest": "f12f2d95fa7b9b589a91fc737804624b483e4b3a76edb5fe0041cc8dbf3a709c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920002:9:0": {
+    "cards": [
+     "H8",
+     "H8"
+    ],
+    "digest": "8a4e5b53ceae28c1075e1372fbac7fd5a934205f69f7ad90c63aec0db474bc6c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920002:9:1": {
+    "cards": [
+     "BJ",
+     "C2"
+    ],
+    "digest": "8d9e5c6acd2859c8293e75d267c6d2e7be3ab2838cb82658a1381717c9dcd536",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:9:2": {
+    "cards": [
+     "S2",
+     "S3"
+    ],
+    "digest": "bf73da52cd6d9a3e441ca1a2e7a4373aedabfbed2465d76c66a5bb6de320d1e4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920002:9:3": {
+    "cards": [
+     "CQ",
+     "D7"
+    ],
+    "digest": "b786cfd47e491a0cca2bbf5e2944215bf6191c3f13c576369c5cbf5d1a0f10b0",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:10:0": {
+    "cards": [
+     "H4",
+     "H5",
+     "H7",
+     "SJ"
+    ],
+    "digest": "5307eb91cca9a327c38bab65c60872fd17a713f9794ed93689e574e57ccb0332",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 14
+   },
+   "2669920002:10:1": {
+    "cards": [
+     "C4",
+     "C9",
+     "CK",
+     "S9"
+    ],
+    "digest": "3d1a7598c8bf8c255615697a107ad2f8f8f2c571c4e9f83d8a53f457cfd95737",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:10:2": {
+    "cards": [
+     "D8",
+     "S4",
+     "S9",
+     "SQ"
+    ],
+    "digest": "c30ee158608ae038b2641bd5731ec99f83aad020822122c6b2c00d4591a6931c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920002:10:3": {
+    "cards": [
+     "D8",
+     "S5",
+     "SA",
+     "SK"
+    ],
+    "digest": "b9323ad17b56075bd59a83307c695111cc65d855df8012b243e2a95d063a04e9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:1:0": {
+    "cards": [
+     "HA"
+    ],
+    "digest": "063596312a1ca809b2a728fa3838ba6542caa16167bc9284a0c1e6335b25c209",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 16
+   },
+   "2669920003:1:1": {
+    "cards": [
+     "DQ"
+    ],
+    "digest": "1b4afdd8deace1f4519b67d2d4437a85486426761d84a1af0e92f31eb055d27d",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:1:2": {
+    "cards": [
+     "HQ"
+    ],
+    "digest": "fcc6146d52ca6865916e89aaa5b1ddd1e9595834c54e658656ea9ec4a644a7b4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 8
+   },
+   "2669920003:1:3": {
+    "cards": [
+     "H6"
+    ],
+    "digest": "b8eb20baaa0672499a13244cffb03f4a3fa82865898483ee67ee3fda7fb83b29",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920003:2:0": {
+    "cards": [
+     "S6",
+     "S6"
+    ],
+    "digest": "6b3c4e4c56f185f11940a4bf5c8b219bdc2c38de8cc59f8a62b78e5c5d86f56f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 20
+   },
+   "2669920003:2:1": {
+    "cards": [
+     "SK",
+     "SK"
+    ],
+    "digest": "19812c13c1f142c296b68d736106bc6d3995454d9c911ff9893c7ecb6cbc44ac",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920003:2:2": {
+    "cards": [
+     "S2",
+     "S2"
+    ],
+    "digest": "ef569e0aa222c36b24580fad55653e5465393cf40632bdb5f3e63a2d9d54dde6",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:2:3": {
+    "cards": [
+     "S3",
+     "S7"
+    ],
+    "digest": "c13521893c1b9058c087da4c38b4613555cb0fbc239f9354e82425dd838f2584",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:3:0": {
+    "cards": [
+     "S8",
+     "S8",
+     "S9",
+     "S9",
+     "SA"
+    ],
+    "digest": "611f409df6bcbfb10af1fbdd2c95d242b3f01f30e308746e2395954199fdc892",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 193
+   },
+   "2669920003:3:1": {
+    "cards": [
+     "D2",
+     "D8",
+     "D9",
+     "S10",
+     "S10"
+    ],
+    "digest": "58710620209745dbf7d75d82277b465928878d83eae105fe3cba6f06a2b7ae8e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 181
+   },
+   "2669920003:3:2": {
+    "cards": [
+     "C10",
+     "CK",
+     "D5",
+     "SA",
+     "SJ"
+    ],
+    "digest": "a29cf2fb5a3078e79462b4dad67204b8f514c18c2c1e356dd760aa87731fdb1d",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 56
+   },
+   "2669920003:3:3": {
+    "cards": [
+     "C4",
+     "D3",
+     "D4",
+     "D6",
+     "S5"
+    ],
+    "digest": "6d461e8865c69376cdb848abad275476e58fc57fcbf7ccc61502f49eb63cddc5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1311
+   },
+   "2669920003:4:0": {
+    "cards": [
+     "DA"
+    ],
+    "digest": "c9e5d6562548be684618d034615bd1821714011326781d0db3f6baa7d5276461",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 11
+   },
+   "2669920003:4:1": {
+    "cards": [
+     "D4"
+    ],
+    "digest": "80fc2eebf2a31230d38e77069f7eaf1d81cf8b4f967e991109007fee372020f7",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:4:2": {
+    "cards": [
+     "D8"
+    ],
+    "digest": "616f5b840e9976d6ea5c6c46c8cae0786f9e313b41703edf4743983c65da478f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:4:3": {
+    "cards": [
+     "D10"
+    ],
+    "digest": "0862b47e6aa0b04a3b8b1979268cfdd02e434c1c1d1085f8bf1456487af6160c",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:5:0": {
+    "cards": [
+     "C9"
+    ],
+    "digest": "aee4482d00ddafa4968bde0dacebe01f8635e71da69f833892dd46e280ea7c04",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 6
+   },
+   "2669920003:5:1": {
+    "cards": [
+     "H10"
+    ],
+    "digest": "3981a8c11424c21c10b8c5e697a1f7347bb7dfafe869cf4f33bac8a0108f6897",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920003:5:2": {
+    "cards": [
+     "C4"
+    ],
+    "digest": "6c2a1baf5b17bc592f9655c31de6be1c52f1cd3450f7bb2ce13dd1a8bd769aea",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:5:3": {
+    "cards": [
+     "C5"
+    ],
+    "digest": "555d4ef7b207414fdf5c1a5661f5889220db62aa19c7fd6b4a32ac846e721c27",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:6:0": {
+    "cards": [
+     "DK",
+     "DK"
+    ],
+    "digest": "f57749cce8dc893ce139bcfec1c7810b449bc7b675256f42162456f6ec2509bd",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 14
+   },
+   "2669920003:6:1": {
+    "cards": [
+     "DJ",
+     "DJ"
+    ],
+    "digest": "3398a1b6ae198f2b6d6032c776f8d698ffa9396b37698f8de82305ad126d106f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:6:2": {
+    "cards": [
+     "C7",
+     "C7"
+    ],
+    "digest": "3c6b6d2ad6634f0e54ad5c081f8d1d74ba4a6d4a17b012f98cc7ac4f9c19b517",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 12
+   },
+   "2669920003:6:3": {
+    "cards": [
+     "D3",
+     "D6"
+    ],
+    "digest": "dc4e031e68c3571861f6262df0dcf3d331103dfa82a315250ea695ab4d81b0bf",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920003:7:0": {
+    "cards": [
+     "D10"
+    ],
+    "digest": "0ae20188a017aa8f914bbc854b27e51c3dd03d01f0c0aaa7243579b0a743f8b4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:7:1": {
+    "cards": [
+     "D9"
+    ],
+    "digest": "0678889ddc2154ff7098bcd00af9a09a70fc04f05e301472bae59d9e4b1051f2",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:7:2": {
+    "cards": [
+     "HJ"
+    ],
+    "digest": "dda9a645b31b43fef2a87e173a26cc7643a55de1bb9a2136030a63da54a63080",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 9
+   },
+   "2669920003:7:3": {
+    "cards": [
+     "D2"
+    ],
+    "digest": "63ea0df215d551b7f747f6c875c2b160c1faada307d55cdf038bd38b858b6aeb",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:8:0": {
+    "cards": [
+     "CA"
+    ],
+    "digest": "6bee1af74334e9a056b6bfe98956b8103e6633f17e15462a2563fa0e60db86b1",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920003:8:1": {
+    "cards": [
+     "CJ"
+    ],
+    "digest": "805924d8f4504120cdc9236f545aa5b15875472723709d94ced1480a220ff601",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920003:8:2": {
+    "cards": [
+     "D5"
+    ],
+    "digest": "8ad44963f87bdb1f0f869d8fb5587a4a161ac30598fd67f12c646547aa11f5db",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:8:3": {
+    "cards": [
+     "C6"
+    ],
+    "digest": "cc14816c33fa9a27cfec00d152dfc749eb671c99e661faab33221554c77095e0",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:9:0": {
+    "cards": [
+     "C8"
+    ],
+    "digest": "be2d1c874b2a81a0dcfeb2b71ec1b34032dbf0b07854a16a6e6362aae23211f9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:9:1": {
+    "cards": [
+     "C8"
+    ],
+    "digest": "cfccc3c0e8269a294de04d6669f05d6ee4a1c22248874e84e619ef16c3d421bd",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920003:9:2": {
+    "cards": [
+     "HJ"
+    ],
+    "digest": "ea49e4441664d1c5cf198136c7f34e313e53f3ba685c56d8c7c0bb121d8c4bdf",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 6
+   },
+   "2669920003:9:3": {
+    "cards": [
+     "CA"
+    ],
+    "digest": "67d06cd7f618290bf27ad225a01c7f07b40eabfe45aa6f7d8a2f1b810d283199",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:10:0": {
+    "cards": [
+     "SQ"
+    ],
+    "digest": "a72a86c705c10ff50fcd17c44a70615d2093acbc6e4f560b67e9a0b28a2233a7",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 8
+   },
+   "2669920003:10:1": {
+    "cards": [
+     "H2"
+    ],
+    "digest": "e5373b567c5fe27a491faf43b5c6e97627ee8f5f40ec50a203c9fc9c68934d37",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:10:2": {
+    "cards": [
+     "HK"
+    ],
+    "digest": "9ca3d74bf07bc63f3ec2cd75a3860d5cb7f9ba59584371fd9dcbc308819f476f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 6
+   },
+   "2669920003:10:3": {
+    "cards": [
+     "CQ"
+    ],
+    "digest": "cd4e6724dde597ff144f923c25dbdb1e3ec2f7ff9ec9554e4e0d8ae6b9439a5f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:11:0": {
+    "cards": [
+     "D7",
+     "D7"
+    ],
+    "digest": "7f1932f449e0d97b160d60df41fcc04dfb06f7fe1d61a7f83dde3e74a29cc3e0",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 8
+   },
+   "2669920003:11:1": {
+    "cards": [
+     "CQ",
+     "DA"
+    ],
+    "digest": "c43ed43652ce4742d9f14b2d93d88597d4182d32b02aec6873cdd7ddeacde3a8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:11:2": {
+    "cards": [
+     "H4",
+     "HK"
+    ],
+    "digest": "51d0b749b2fec6b1451587877239866ae95c6e4bf595c3e662c7e9756aa60b06",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 22
+   },
+   "2669920003:11:3": {
+    "cards": [
+     "HA",
+     "S3"
+    ],
+    "digest": "45ece5f348c6d01436d9090e862a4ea9144f3c9bcf871941142438a0e39b6bd8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 26
+   },
+   "2669920003:12:0": {
+    "cards": [
+     "DQ"
+    ],
+    "digest": "a6939b9c123f7acfc42866d1e1574674b5d5d6b28304f1b2846b391d7bf08a38",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:12:1": {
+    "cards": [
+     "H3"
+    ],
+    "digest": "5ec07d5469dfef0728db8bb4609dd79a06010c03366bfc7cbc1ba54c102266db",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:12:2": {
+    "cards": [
+     "H7"
+    ],
+    "digest": "fde2ec16d7a1c2d1fcd00a8a533f50066715d39acbcdf4452e563ab43d94a64f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920003:12:3": {
+    "cards": [
+     "SQ"
+    ],
+    "digest": "a354d42bb9db38724347200a96509100b5f892779c4e80892fb00d32c0302d16",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920003:13:0": {
+    "cards": [
+     "H3"
+    ],
+    "digest": "3f92145e95ce457f7896422c83c988d2cdeaa8a110ee05d3b90f3aa0aacf7283",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:13:1": {
+    "cards": [
+     "H5"
+    ],
+    "digest": "9f1e9956202461fb5eb81a641b7d60e22f5c3247c67b49078abbf84cfe2c9edf",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:13:2": {
+    "cards": [
+     "H8"
+    ],
+    "digest": "cabee477bb24306a55774e2a8c2749efda970b36441cc3cd0787a790dbabf706",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 3
+   },
+   "2669920003:13:3": {
+    "cards": [
+     "H10"
+    ],
+    "digest": "f7459abc5cdfabbc8a284193dbbf2db70c363de07822f3631618bc1b075bad3b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:14:0": {
+    "cards": [
+     "S4"
+    ],
+    "digest": "67abe0cccd5281388f288402d5243ecde5d7018ae9c613be67035f157df221a3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:14:1": {
+    "cards": [
+     "LJ"
+    ],
+    "digest": "2a7acba73316e96ac6570f757ac691d17fb2238dca21a454d08c665f91df34a8",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920003:14:2": {
+    "cards": [
+     "H9"
+    ],
+    "digest": "e704ba18c6f67c122f298722e2f99d1646684dc6fe446d0556db2d136ce6fd2d",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:14:3": {
+    "cards": [
+     "C9"
+    ],
+    "digest": "30e1dbd5d694a04214a15db9e5a5dc5c2030d7437e9234b855f3900d7ca86c3b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:15:0": {
+    "cards": [
+     "H4"
+    ],
+    "digest": "288e3f6e917f37ac947a29f184cfd097f8ff8d295f45cb81a9f59786eee1f62f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:15:1": {
+    "cards": [
+     "H9"
+    ],
+    "digest": "d3f4e5a47cdc3c3f909b04c9668259f0967ce52c8d7c99256818dd85f485c0e4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:15:2": {
+    "cards": [
+     "BJ"
+    ],
+    "digest": "314ab7e050897520505756c13cb2935cd9944789df5796aeb9648202a6c1bab9",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:15:3": {
+    "cards": [
+     "H5"
+    ],
+    "digest": "2c5acf41a64bf3de1bdbfccab266de638da32dbe0dc23c935d8a0d4cf929657b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:16:0": {
+    "cards": [
+     "BJ"
+    ],
+    "digest": "3137603ac8fe8ec6d9405a45cfec139b7ffe06548cd9ca088168f45709becae6",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:16:1": {
+    "cards": [
+     "C5"
+    ],
+    "digest": "db7cab2e6c2c90a569de3a3765947f30f60a9ec5371862ffd7eb952f3202f7f4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:16:2": {
+    "cards": [
+     "H7"
+    ],
+    "digest": "84f1af976559575e72adb49694bf25e2c3d33854dc7f42be7f05d9013fb14124",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:16:3": {
+    "cards": [
+     "LJ"
+    ],
+    "digest": "548894cb2c63ebd13d68829e94e02504282e5c87cf8d1221898bcd964880ce96",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:17:0": {
+    "cards": [
+     "H2"
+    ],
+    "digest": "ec32cceca8d503dca752351ca97f17f04cbcfaaa8880de8f7ef5edcb27c139f4",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:17:1": {
+    "cards": [
+     "S5"
+    ],
+    "digest": "501279ee8bed5e562ce2554aa59dc71973d8a6046e1e3dfebe95c72119ea7a93",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920003:17:2": {
+    "cards": [
+     "H8"
+    ],
+    "digest": "cea2a3024744bbbdfb7a6a0dc5fce95d8a0cc572a0f7b99d3d7ea2a4936a2e79",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:17:3": {
+    "cards": [
+     "C3"
+    ],
+    "digest": "505c505f7b6d3f7d6a25547708777730b9e6260ad936f9d8db74210ecd561d74",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:18:0": {
+    "cards": [
+     "HQ"
+    ],
+    "digest": "c52f8dc7af6347168a902b8c31c36a5f25fa95a57dc2a3a116bedcc4c0cddb8f",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:18:1": {
+    "cards": [
+     "C3"
+    ],
+    "digest": "fa0185d9aeb5f214bb9996c972b6e3a9c169bac476d44d20e632ad7f0579bc10",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:18:2": {
+    "cards": [
+     "H6"
+    ],
+    "digest": "641f5bec68522840d3884df5a905bcf2ba4973d3999e56f0f1815643eb887dae",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920003:18:3": {
+    "cards": [
+     "C10"
+    ],
+    "digest": "ba14cbb16cb57a68ee93da728e5c65f37b9913cbc3c4d345b76839084def13a5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   }
+  },
+  "pure": {
+   "2669920000:1:0": {
+    "cards": [
+     "D2",
+     "D2",
+     "D3",
+     "D3"
+    ],
+    "digest": "017bac0458b3b04ed2e7668d68aa916e2568ef0cdaf8033e62497f21ea93f317",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 25
+   },
+   "2669920000:1:1": {
+    "cards": [
+     "D4",
+     "D5",
+     "D6",
+     "DJ"
+    ],
+    "digest": "8a6a4a21a49a1fa5c978d15f568b734a3e41ebb1def3d9677b9edf6f6ce261a5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:1:2": {
+    "cards": [
+     "D7",
+     "D7",
+     "DA",
+     "DA"
+    ],
+    "digest": "90ebe2b3ac2c0b9c10b1a51dad13008e8bc0177bfe3d05162ecb47a8b47b1f22",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:1:3": {
+    "cards": [
+     "D6",
+     "D8",
+     "H2",
+     "H4"
+    ],
+    "digest": "8faefbd4567d9969ad0a8eae7bf4a5023bccc54879b553cf9ae2c725a3747832",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 133
+   },
+   "2669920000:2:0": {
+    "cards": [
+     "CA"
+    ],
+    "digest": "dd93d005c449ccccd1e2208d37a4ff1b738377c4e15d389a4093747dd442665e",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 12
+   },
+   "2669920000:2:1": {
+    "cards": [
+     "CQ"
+    ],
+    "digest": "1ce1888f4ef7c502403a15e5e453541c0ada6a7ac2b294e6a6bfab9fad93a559",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920000:2:2": {
+    "cards": [
+     "D9"
+    ],
+    "digest": "d09b576ef3171bbadca112d1cc83b5c752f01c4497cf569a2bbd866a97a23b03",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 5
+   },
+   "2669920000:2:3": {
+    "cards": [
+     "C4"
+    ],
+    "digest": "2132f0230da6c1abf1540d812c365f070b318efabddf5f66c64dab96a9886a23",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 2
+   },
+   "2669920000:3:0": {
+    "cards": [
+     "HJ",
+     "HJ"
+    ],
+    "digest": "3f4f01fa1ca62d28e8d02e8d59fc4cbdd4dad56be507ae0955057b8094b8b92b",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 19
+   },
+   "2669920000:3:1": {
+    "cards": [
+     "H10",
+     "H7"
+    ],
+    "digest": "428d55dfc7000677835f99754b1a736f3de95b89f10d0222809da61b0a3022b5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   },
+   "2669920000:3:2": {
+    "cards": [
+     "DJ",
+     "DQ"
+    ],
+    "digest": "a368ecff6049485dda9056582acc310f37da2d4c30002298ebc700583fd5f367",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 102
+   },
+   "2669920000:3:3": {
+    "cards": [
+     "HQ",
+     "HQ"
+    ],
+    "digest": "0232e50ef6798117daf5fd3966911385170f474c1a056b5547291bb1cdde4191",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 1
+   },
+   "2669920000:4:0": {
+    "cards": [
+     "DK"
+    ],
+    "digest": "94c513c3805e15b0f69cf9471fbadb2cdc1b792ce1348c6cffe682ec51739544",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 11
+   },
+   "2669920000:4:1": {
+    "cards": [
+     "DQ"
+    ],
+    "digest": "d1123b74d189843e3aec1dbb844923c5650e5aac65b68d9555b6b7874194e2d3",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 4
+   },
+   "2669920000:4:2": {
+    "cards": [
+     "S10"
+    ],
+    "digest": "afe343393ff4960d10bf7948312f7baf1cec8e9b7271a7811ea2de487067b9e7",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 8
+   },
+   "2669920000:4:3": {
+    "cards": [
+     "D10"
+    ],
+    "digest": "79361720d67908f972b144a54d3977e3a346422f3873c7d1e2e0db1085c551f5",
+    "schema": "pv-search-decision-v1",
+    "selected_index": 0
+   }
+  }
+ }
+}

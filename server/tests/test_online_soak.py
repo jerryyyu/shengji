@@ -268,6 +268,7 @@ def test_round_floor_counts_only_successfully_logged_round_end_events(tmp_path):
     room = Room(code="SOAK", bot=object(), log_dir=tmp_path)
     assert room.log_event("round_end") == 0
     room.log_event("chat", seat=0, text="round_end")
+    room.log_event("play_refused", seat=0, phase="round_end")
     assert s.report(1, brief=True)["rounds_logged"] == 1
     room.log_dir = tmp_path / "SOAK.jsonl"
     assert room.log_event("round_end") is None

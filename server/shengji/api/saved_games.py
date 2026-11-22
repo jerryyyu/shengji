@@ -143,6 +143,12 @@ def _submit(method: str, *args: Any) -> None:
     loop.run_in_executor(_EXECUTOR, bound, *args).add_done_callback(_done)
 
 
+async def after_link_writes(fn: Callable[..., Any], *args: Any) -> Any:
+    """Run ``fn(*args)`` on the link worker, after every link write queued
+    so far, and return its result; its errors are the caller's."""
+    return await asyncio.get_running_loop().run_in_executor(_EXECUTOR, fn, *args)
+
+
 def flush(timeout: float = 10.0) -> None:
     """Block until every write queued so far has run (tests, shutdown)."""
     _EXECUTOR.submit(lambda: None).result(timeout=timeout)

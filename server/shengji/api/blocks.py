@@ -111,4 +111,12 @@ def reset() -> None:
     LIMITER.reset()
 
 
+def merged(device_id: int, user_id: int) -> None:
+    """A device account's stored blocks moved to ``user_id``: read that
+    account's list again at its next connection (``ensure_loaded`` adds to
+    what is in memory)."""
+    _loaded.discard(user_id)
+
+
 accounts.USER_DELETED_HOOKS.append(forget)
+accounts.USER_MERGED_HOOKS.append(merged)

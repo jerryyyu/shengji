@@ -285,6 +285,8 @@ class AppleLogin(BaseModel):
     authorization_code: str | None = None
     given_name: str | None = None
     family_name: str | None = None
+    # As ``accounts.GoogleLogin.confirm``.
+    confirm: bool = False
 
 
 _NAME_FORBIDDEN = frozenset({"Cc", "Cs", "Co", "Zl", "Zp", "Cf"})
@@ -315,8 +317,14 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
     email = claims.get("email") if isinstance(claims.get("email"), str) else None
     name = first_authorization_name(body.given_name, body.family_name)
     store = accounts.STORE
-    user = await store.run(store.upsert_apple_user, claims["sub"], email, name)
-    accounts.refuse_suspended(user)
+    linked = await accounts.link_device_session(
+        request, "apple", str(claims["sub"]), {"email": email, "name": name}, body.confirm)
+    if linked is not None:
+        user, token = linked
+    else:
+        user = await store.run(store.upsert_apple_user, claims["sub"], email, name)
+        accounts.refuse_suspended(user)
+        token = None
     code = body.authorization_code
     if code and len(code) <= CODE_MAX:
         if not configured():
@@ -331,6 +339,7 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
             except Exception as exc:    # noqa: BLE001 - the sign-in still succeeds
                 _count("exchange_failed")
                 log.warning("apple code exchange failed (%s)", type(exc).__name__)
-    token = await store.run(store.create_session, user["id"])
+    if token is None:
+        token = await store.run(store.create_session, user["id"])
     accounts._set_session_cookie(response, request, token)   # noqa: SLF001
     return await accounts.account_payload(store, user)

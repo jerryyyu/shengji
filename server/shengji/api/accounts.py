@@ -117,7 +117,12 @@ DEVICE_IDLE_DAYS = 365
 DEVICE_SEEN_EVERY = 3600
 # Random draws before the name search walks the whole list.
 NAME_DRAWS = 32
+# Numbers tried on a new provider account's taken default name before it
+# gets a generated name.
+NUMBERED_TRIES = 1000
 _NAME_RNG = random.SystemRandom()
+# The ``users`` column holding each provider's subject.
+PROVIDER_COLUMNS = {"google": "google_sub", "apple": "apple_sub"}
 
 
 class AuthError(Exception):
@@ -199,6 +204,34 @@ def _free_device_name(taken: Collection[str], rng: random.Random) -> str:
         if usable(name):
             return name
     raise DisplayNameError("taken")
+
+
+def _numbered_name(base: str, taken: Collection[str], rng: random.Random | None = None) -> str:
+    """``base`` with the smallest number from 2 up whose result is not in
+    ``taken`` (casefolded) and passes ``validate_display_name``, the base
+    cut so the result fits ``DISPLAY_NAME_MAX``. A base that yields no such
+    name within ``NUMBERED_TRIES`` (``Bot`` is reserved with any number)
+    gets a free generated name instead."""
+    for n in range(2, NUMBERED_TRIES + 2):
+        suffix = f" {n}"
+        candidate = base[:DISPLAY_NAME_MAX - len(suffix)].rstrip() + suffix
+        if candidate.casefold() in taken:
+            continue
+        try:
+            if validate_display_name(candidate) == candidate:
+                return candidate
+        except DisplayNameError:
+            continue
+    return _free_device_name(taken, rng or _NAME_RNG)
+
+
+def _google_profile(claims: Mapping[str, Any]) -> tuple[str, Any, Any, Any]:
+    """``(sub, email, name, picture)`` of verified Google claims; the name
+    falls back to the given name, then the email's local part."""
+    email = claims.get("email")
+    name = claims.get("name") or claims.get("given_name") or (
+        email.split("@")[0] if isinstance(email, str) else None)
+    return str(claims["sub"]), email, name, claims.get("picture")
 
 
 # ----------------------------------------------------------------- config
@@ -793,47 +826,79 @@ class Store:
             return int(row["v"] or 0)
 
     # -- users
-    def upsert_user(self, claims: Mapping[str, Any], now: float | None = None) -> dict:
+    def upsert_user(self, claims: Mapping[str, Any], now: float | None = None,
+                    unique_name: bool | None = None) -> dict:
         """Create or refresh the user for a verified token's claims; returns
-        the stored row as a dict."""
+        the stored row as a dict. With ``unique_name`` (default: device
+        accounts on), a new account whose default name another account
+        already shows is given a numbered display name (``_numbered_name``);
+        an existing account is never renamed."""
         t = int(now if now is not None else time.time())
-        sub = str(claims["sub"])
-        email = claims.get("email")
-        name = claims.get("name") or claims.get("given_name") or (
-            email.split("@")[0] if isinstance(email, str) else None)
-        picture = claims.get("picture")
+        sub, email, name, picture = _google_profile(claims)
         with closing(self._open()) as conn:
-            conn.execute(
-                """INSERT INTO users(google_sub, email, name, picture, created_at,
-                                     last_login_at, rating)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(google_sub) DO UPDATE SET
-                       email = excluded.email,
-                       name = COALESCE(excluded.name, users.name),
-                       picture = COALESCE(excluded.picture, users.picture),
-                       last_login_at = excluded.last_login_at""",
-                (sub, email, name, picture, t, t, START_RATING))
-            row = conn.execute("SELECT * FROM users WHERE google_sub = ?", (sub,)).fetchone()
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                display = self._new_account_name(conn, "google_sub", sub, name, unique_name)
+                conn.execute(
+                    """INSERT INTO users(google_sub, email, name, picture, created_at,
+                                         last_login_at, rating, display_name)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(google_sub) DO UPDATE SET
+                           email = excluded.email,
+                           name = COALESCE(excluded.name, users.name),
+                           picture = COALESCE(excluded.picture, users.picture),
+                           last_login_at = excluded.last_login_at""",
+                    (sub, email, name, picture, t, t, START_RATING, display))
+                row = conn.execute("SELECT * FROM users WHERE google_sub = ?", (sub,)).fetchone()
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
             return dict(row)
 
     def upsert_apple_user(self, sub: str, email: str | None, name: str | None,
-                          now: float | None = None) -> dict:
+                          now: float | None = None, unique_name: bool | None = None) -> dict:
         """Create or refresh the account of a verified Apple identity. Apple
         sends the name only on the first authorization and may omit the email
-        later, so a missing value keeps the stored one."""
+        later, so a missing value keeps the stored one. ``unique_name`` as
+        for ``upsert_user``."""
         t = int(now if now is not None else time.time())
         with closing(self._open()) as conn:
-            conn.execute(
-                """INSERT INTO users(apple_sub, email, name, picture, created_at,
-                                     last_login_at, rating)
-                   VALUES (?, ?, ?, NULL, ?, ?, ?)
-                   ON CONFLICT(apple_sub) DO UPDATE SET
-                       email = COALESCE(excluded.email, users.email),
-                       name = COALESCE(excluded.name, users.name),
-                       last_login_at = excluded.last_login_at""",
-                (str(sub), email, name, t, t, START_RATING))
-            row = conn.execute("SELECT * FROM users WHERE apple_sub = ?", (str(sub),)).fetchone()
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                display = self._new_account_name(conn, "apple_sub", str(sub), name, unique_name)
+                conn.execute(
+                    """INSERT INTO users(apple_sub, email, name, picture, created_at,
+                                         last_login_at, rating, display_name)
+                       VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+                       ON CONFLICT(apple_sub) DO UPDATE SET
+                           email = COALESCE(excluded.email, users.email),
+                           name = COALESCE(excluded.name, users.name),
+                           last_login_at = excluded.last_login_at""",
+                    (str(sub), email, name, t, t, START_RATING, display))
+                row = conn.execute("SELECT * FROM users WHERE apple_sub = ?",
+                                   (str(sub),)).fetchone()
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
             return dict(row)
+
+    def _new_account_name(self, conn: sqlite3.Connection, column: str, sub: str,
+                          name: str | None, unique_name: bool | None) -> str | None:
+        """The display name a new provider account starts with: None (its
+        provider first name shows) unless names are unique and that first
+        name is already shown by another account, then a numbered one. None
+        for an existing account, which keeps its name."""
+        if not (device_accounts_enabled() if unique_name is None else unique_name):
+            return None
+        if conn.execute(f"SELECT 1 FROM users WHERE {column} = ?", (sub,)).fetchone():
+            return None
+        shown = first_name(name)
+        taken = self._shown_names(conn)
+        if not shown or shown.casefold() not in taken:
+            return None
+        return _numbered_name(shown, taken)
 
     def set_apple_refresh_token(self, user_id: int, refresh_token: str,
                                 now: float | None = None) -> None:
@@ -969,6 +1034,111 @@ class Store:
                 conn.execute("ROLLBACK")
                 raise
             return user, session
+
+    def link_provider(self, device_id: int, provider: str, sub: str,
+                      profile: Mapping[str, Any], confirm: bool,
+                      now: float | None = None) -> dict:
+        """A signed-in device account signs in with a verified provider
+        identity, decided and done in one transaction. Returns a dict whose
+        ``outcome`` is one of:
+
+        - ``not_device``: ``device_id`` is gone, suspended or already has a
+          provider; nothing changed, and the caller signs in as usual.
+        - ``linked``: no account held ``sub``, so it is written onto the
+          device account, which keeps its id, name, rating, stats and games;
+          ``user`` and a new ``session``.
+        - ``suspended``: the account holding ``sub`` is suspended (``user``);
+          nothing changed.
+        - ``conflict``: another account holds ``sub`` and ``confirm`` is
+          false; only that account's shown ``name``, nothing changed.
+        - ``merged``: ``confirm`` was true. The account holding ``sub`` wins:
+          the device account's game links (open ones closed at their game's
+          latest round) and the blocks it made move to it, then the device
+          account is deleted with its rating, rating history, credentials
+          and sessions. ``user`` (the winner, its profile refreshed) and a
+          new ``session``.
+
+        ``profile`` holds the provider's ``email``, ``name`` and ``picture``;
+        a missing value keeps the stored one."""
+        column = PROVIDER_COLUMNS[provider]
+        t = int(now if now is not None else time.time())
+        email, name, picture = profile.get("email"), profile.get("name"), profile.get("picture")
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                found = conn.execute("SELECT * FROM users WHERE id = ?", (device_id,)).fetchone()
+                device = dict(found) if found is not None else None
+                if device is None or not is_device_account(device) or is_suspended(device):
+                    conn.execute("COMMIT")
+                    return {"outcome": "not_device"}
+                found = conn.execute(f"SELECT * FROM users WHERE {column} = ?", (sub,)).fetchone()
+                target = dict(found) if found is not None else None
+                if target is not None and is_suspended(target):
+                    conn.execute("COMMIT")
+                    return {"outcome": "suspended", "user": dict(target)}
+                if target is not None and not confirm:
+                    conn.execute("COMMIT")
+                    return {"outcome": "conflict", "name": effective_name(target) or "Player"}
+                user_id = device_id if target is None else int(target["id"])
+                if target is not None:
+                    self._merge_device(conn, device_id, user_id)
+                conn.execute(
+                    f"""UPDATE users SET {column} = ?, email = COALESCE(?, email),
+                            name = COALESCE(?, name), picture = COALESCE(?, picture),
+                            last_login_at = ? WHERE id = ?""",
+                    (sub, email, name, picture, t, user_id))
+                user = dict(conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone())
+                session = self._insert_session(conn, user_id, t)
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        return {"outcome": "linked" if target is None else "merged", "user": user,
+                "session": session}
+
+    @staticmethod
+    def _merge_device(conn: sqlite3.Connection, device_id: int, target_id: int) -> None:
+        """Move a device account's game links and the blocks it made to
+        ``target_id``, then delete it (caller holds the transaction). A link
+        the target already has at the same game, seat and first round is
+        kept as the target's; the device's copy goes with the row."""
+        conn.execute(
+            """UPDATE game_players SET to_round = (
+                   SELECT g.last_round FROM games g WHERE g.id = game_players.game_id)
+               WHERE user_id = ? AND to_round IS NULL""", (device_id,))
+        conn.execute("UPDATE OR IGNORE game_players SET user_id = ? WHERE user_id = ?",
+                     (target_id, device_id))
+        conn.execute(
+            """INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at)
+               SELECT ?, blocked_id, created_at FROM blocks
+               WHERE blocker_id = ? AND blocked_id != ?""", (target_id, device_id, target_id))
+        conn.execute("DELETE FROM users WHERE id = ?", (device_id,))
+        conn.execute(
+            """DELETE FROM games WHERE NOT EXISTS (
+                   SELECT 1 FROM game_players p WHERE p.game_id = games.id)""")
+
+    def sign_out(self, session: str | None, device_token: str | None = None) -> None:
+        """End a session and, when ``device_token`` is given, remove that
+        device credential if it belongs to the session's account, in one
+        transaction, so the device cannot sign straight back in with it."""
+        if not session:
+            return
+        digest = _hash_token(session)
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute("SELECT user_id FROM sessions WHERE token_hash = ?",
+                                   (digest,)).fetchone()
+                conn.execute("DELETE FROM sessions WHERE token_hash = ?", (digest,))
+                if (row is not None and device_token
+                        and re.fullmatch(r"[A-Za-z0-9_-]{20,200}", device_token)):
+                    conn.execute(
+                        "DELETE FROM device_credentials WHERE token_hash = ? AND user_id = ?",
+                        (_hash_token(device_token), int(row["user_id"])))
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
 
     def purge_device_accounts(self, now: float | None = None) -> list[int]:
         """Delete the device accounts (no provider) that have no rated round
@@ -1685,6 +1855,9 @@ router = APIRouter(prefix="/api")
 class GoogleLogin(BaseModel):
     credential: str
     nonce: str | None = None
+    # A signed-in device account confirms giving way to the account that
+    # already holds this identity (``link_device_session``).
+    confirm: bool = False
 
 
 class DisplayNamePatch(BaseModel):
@@ -1753,9 +1926,15 @@ async def auth_google(body: GoogleLogin, request: Request, response: Response) -
         raise HTTPException(status_code=401, detail=f"Sign-in rejected ({exc.reason}).") from exc
     if body.nonce is not None and claims.get("nonce") != body.nonce:
         raise HTTPException(status_code=401, detail="Sign-in rejected (nonce).")
-    user = await STORE.run(STORE.upsert_user, claims)
-    refuse_suspended(user)
-    token = await STORE.run(STORE.create_session, user["id"])
+    sub, email, name, picture = _google_profile(claims)
+    linked = await link_device_session(
+        request, "google", sub, {"email": email, "name": name, "picture": picture}, body.confirm)
+    if linked is not None:
+        user, token = linked
+    else:
+        user = await STORE.run(STORE.upsert_user, claims)
+        refuse_suspended(user)
+        token = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, token)
     return await account_payload(STORE, user)
 
@@ -1873,11 +2052,77 @@ async def delete_me(request: Request) -> Response:
 
 @router.post("/auth/logout")
 async def logout(request: Request, response: Response) -> dict:
+    """End the cookie's session. The app also sends its device credential
+    (``Authorization: Device <token>``), which is then removed when it
+    belongs to the same account, so signing out of a linked account on the
+    phone does not sign it straight back in."""
     token = request.cookies.get(COOKIE)
+    try:
+        device = _device_token(request)
+    except HTTPException:
+        device = None
     if token:
-        await STORE.run(STORE.delete_session, token)
+        await STORE.run(STORE.sign_out, token, device)
     _clear_session_cookie(response, request)
     return {"ok": True}
+
+
+# Called on the event loop with ``(device_id, user_id)`` after a device
+# account gave way to the account ``user_id`` and was deleted
+# (``link_device_session``), and after ``USER_DELETED_HOOKS`` ran for it.
+USER_MERGED_HOOKS: list[Callable[[int, int], None]] = []
+
+
+async def link_device_session(request: Request, provider: str, sub: str,
+                              profile: Mapping[str, Any],
+                              confirm: bool) -> tuple[dict, str] | None:
+    """A provider sign-in from a device account's session
+    (``Store.link_provider``). Returns ``(user, session token)`` when the
+    identity was linked in place or the device account was merged into the
+    identity's account; None when there is no device-account session (or
+    device accounts are off), so the caller signs in as usual.
+
+    When another account holds the identity and ``confirm`` is false: 409
+    with ``{"code": "account_exists", "name": <its shown name>}`` and
+    nothing changed; the client asks "Switch to <name>?" and repeats the
+    request with ``confirm``. A suspended holder: 403.
+
+    The decision and the write run on the saved-games link worker, after
+    every link write already queued, so a game link the device account's
+    live seat queued is in place before it moves. After a merge the device
+    id is detached from live seats, sockets and block lists as a deletion
+    would be; the client's next connection carries the winner's session."""
+    if not device_accounts_enabled():
+        return None
+    current = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
+    if current is None or not is_device_account(current):
+        return None
+    from . import saved_games
+    device_id = int(current["id"])
+    outcome = await saved_games.after_link_writes(
+        STORE.link_provider, device_id, provider, sub, dict(profile), bool(confirm))
+    kind = outcome["outcome"]
+    if kind == "not_device":
+        return None
+    if kind == "suspended":
+        raise HTTPException(status_code=403, detail=SUSPENDED_MESSAGE)
+    if kind == "conflict":
+        raise HTTPException(status_code=409,
+                            detail={"code": "account_exists", "name": outcome["name"]})
+    user = outcome["user"]
+    if kind == "merged":
+        STORE.deleted_ids.add(device_id)
+        for hook in USER_DELETED_HOOKS:
+            try:
+                hook(device_id)
+            except Exception:       # noqa: BLE001 - the merge is stored either way
+                log.exception("account-deletion hook failed after merge")
+        for merged_hook in USER_MERGED_HOOKS:
+            try:
+                merged_hook(device_id, int(user["id"]))
+            except Exception:       # noqa: BLE001 - the merge is stored either way
+                log.exception("account-merge hook failed")
+    return user, outcome["session"]
 
 
 def is_device_account(row: Mapping[str, Any]) -> bool:

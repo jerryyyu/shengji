@@ -634,6 +634,88 @@ describe("a Leave while the socket is down is delivered by the next one", () => 
     }
   });
 
+  // Runs `between` once, inside the next storage access to an owed Leave:
+  // another tab's write landing while this tab is mid read-and-write.
+  const interleave = (between: () => void) => {
+    const get = Storage.prototype.getItem;
+    const set = Storage.prototype.setItem;
+    const remove = Storage.prototype.removeItem;
+    let armed = true;
+    let fired = 0;
+    const hook = (k: string) => {
+      if (armed && k.startsWith("shengji.owedLeave")) {
+        armed = false;
+        fired += 1;
+        between();
+      }
+    };
+    // after a read returns and before this tab writes from it
+    Storage.prototype.getItem = function (k: string) { const v = get.call(this, k); hook(k); return v; };
+    Storage.prototype.setItem = function (k: string, v: string) { hook(k); set.call(this, k, v); };
+    Storage.prototype.removeItem = function (k: string) { hook(k); remove.call(this, k); };
+    return {
+      fired: () => fired,
+      restore: () => {
+        Storage.prototype.getItem = get;
+        Storage.prototype.setItem = set;
+        Storage.prototype.removeItem = remove;
+      },
+    };
+  };
+
+  it("two tabs' Leaves stored at once both survive and both go", async () => {
+    vi.useFakeTimers();
+    let hook: ReturnType<typeof interleave> | null = null;
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      b.ws.close();
+      hook = interleave(() => { b.conn.send({ type: "table_leave" }); });
+      a.conn.send({ type: "table_leave" });             // B's Leave is stored while A stores its own
+      hook.restore();
+      expect(hook.fired()).toBe(1);
+      const before = FakeWS.all.length;
+      vi.advanceTimersByTime(500);
+      const fresh = FakeWS.all.slice(before);
+      fresh.forEach((ws) => ws.onopen?.());
+      const sent = fresh.map((ws) => ws.sent);
+      expect(sent).toContainEqual(resumeThenLeave);
+      expect(sent).toContainEqual(resumeThenLeaveB);
+    } finally {
+      hook?.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("one seat's Leave answered while another tab stores its own keeps the other's", async () => {
+    vi.useFakeTimers();
+    let hook: ReturnType<typeof interleave> | null = null;
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      a.conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(500);
+      const mine = FakeWS.all.at(-1)!;
+      mine.onopen?.();
+      expect(mine.sent).toEqual(resumeThenLeave);
+      b.ws.close();
+      hook = interleave(() => { b.conn.send({ type: "table_leave" }); });
+      mine.deliver({ type: "left" });                   // A's answer lands while B stores its Leave
+      hook.restore();
+      expect(hook.fired()).toBe(1);
+      const before = FakeWS.all.length;
+      vi.advanceTimersByTime(500);
+      const theirs = FakeWS.all.slice(before);
+      theirs.forEach((ws) => ws.onopen?.());
+      expect(theirs.map((ws) => ws.sent)).toContainEqual(resumeThenLeaveB);
+    } finally {
+      hook?.restore();
+      vi.useRealTimers();
+    }
+  });
+
   it("with storage refusing writes, the page itself still delivers its owed Leave", async () => {
     vi.useFakeTimers();
     const setItem = Storage.prototype.setItem;

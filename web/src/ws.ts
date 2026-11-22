@@ -116,9 +116,13 @@ const TOKEN_KEY = "shengji.token";   // opaque seat identity, per room
 const LEAVE_ACK_MS = 5000;
 /** How many sockets in a row try to deliver one owed Leave before it is dropped. */
 const OWED_LEAVE_TRIES = 3;
-/** The game-server Leaves the server has not answered yet, one per seat,
- *  kept across a reload or relaunch so the next page delivers them. */
-const OWED_LEAVE_KEY = "shengji.owedLeave";
+/** The game-server Leaves the server has not answered yet, each under its
+ *  own key (this prefix, then its seat), kept across a reload or relaunch so
+ *  the next page delivers them. One key per seat: a tab writes or removes
+ *  only its own, never a collection another tab may be writing too. */
+const OWED_LEAVE_PREFIX = "shengji.owedLeave.";
+/** The one shared key an earlier build of this page kept them under. */
+const OWED_LEAVE_OLD_KEY = "shengji.owedLeave";
 /** How long an owed Leave is worth delivering: the server holds a dropped
  *  seat for 60 s, after which the bot has it anyway. */
 const OWED_LEAVE_MS = 90_000;
@@ -173,23 +177,34 @@ function isOwedLeave(o: unknown): o is OwedLeave {
   return typeof x?.seat?.room === "string" && (x.seat.token === null || typeof x.seat.token === "string")
     && typeof x.name === "string" && typeof x.tries === "number" && typeof x.until === "number";
 }
-/** The stored owed Leaves, expired or not, or null when storage cannot be
- *  read; unreadable entries are left out. */
-function readOwedLeaves(): OwedLeave[] | null {
-  let raw: string | null;
-  try { raw = localStorage.getItem(OWED_LEAVE_KEY); } catch { return null; }
-  if (raw === null) return [];
-  try {
-    const list: unknown = JSON.parse(raw);
-    return Array.isArray(list) ? list.filter(isOwedLeave) : [];
-  } catch { return []; }
+function owedLeaveKey(seat: Seat): string {
+  return `${OWED_LEAVE_PREFIX}${encodeURIComponent(seat.room)}.${encodeURIComponent(seat.token ?? "")}`;
 }
-function writeOwedLeaves(list: OwedLeave[]): boolean {
+/** The stored owed Leaves, expired or not, or null when storage cannot be
+ *  read; unreadable entries are removed. */
+function readOwedLeaves(): OwedLeave[] | null {
   try {
-    if (list.length === 0) localStorage.removeItem(OWED_LEAVE_KEY);
-    else localStorage.setItem(OWED_LEAVE_KEY, JSON.stringify(list));
-    return true;
-  } catch { return false; }
+    localStorage.removeItem(OWED_LEAVE_OLD_KEY);
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(OWED_LEAVE_PREFIX)) keys.push(k);
+    }
+    const list: OwedLeave[] = [];
+    for (const k of keys) {
+      const o = parseOwedLeave(localStorage.getItem(k));
+      if (o && owedLeaveKey(o.seat) === k) list.push(o);
+      else localStorage.removeItem(k);
+    }
+    return list;
+  } catch { return null; }
+}
+function parseOwedLeave(raw: string | null): OwedLeave | null {
+  if (raw === null) return null;
+  try {
+    const o: unknown = JSON.parse(raw);
+    return isOwedLeave(o) ? o : null;
+  } catch { return null; }
 }
 function sameSeat(a: Seat, b: Seat): boolean {
   return a.room === b.room && a.token === b.token;
@@ -198,25 +213,28 @@ function sameSeat(a: Seat, b: Seat): boolean {
 function sameOwedLeave(a: OwedLeave, b: OwedLeave): boolean {
   return sameSeat(a.seat, b.seat) && a.until === b.until;
 }
-/** Store an owed Leave in place of any older one for its seat, keeping the
- *  other seats'; false when this page cannot, and so holds it alone. */
+/** Store an owed Leave under its seat's key, in place of any older one for
+ *  that seat; false when this page cannot, and so holds it alone. */
 function writeOwedLeave(owed: OwedLeave): boolean {
   if (!remembersSeats()) return false;
-  const list = readOwedLeaves();
-  if (list === null) return false;
-  return writeOwedLeaves([...list.filter((o) => !sameSeat(o.seat, owed.seat)), owed]);
+  try {
+    localStorage.setItem(owedLeaveKey(owed.seat), JSON.stringify(owed));
+    return true;
+  } catch { return false; }
 }
 /** Whether storage still holds `owed`: a page that had it answered removes
  *  it. A storage that cannot be read leaves this page's copy owed. */
 function owedLeaveStored(owed: OwedLeave): boolean {
-  const list = readOwedLeaves();
-  return list === null || list.some((o) => sameOwedLeave(o, owed));
+  let raw: string | null;
+  try { raw = localStorage.getItem(owedLeaveKey(owed.seat)); } catch { return true; }
+  const o = parseOwedLeave(raw);
+  return o !== null && sameOwedLeave(o, owed);
 }
-/** Remove `owed` from storage (compare and delete), keeping every other seat's. */
+/** Remove `owed` from storage if its seat's key still holds it (compare and
+ *  delete); no other seat's key is touched. */
 function forgetOwedLeave(owed: OwedLeave): void {
-  const list = readOwedLeaves();
-  if (list === null || !list.some((o) => sameOwedLeave(o, owed))) return;
-  writeOwedLeaves(list.filter((o) => !sameOwedLeave(o, owed)));
+  if (!owedLeaveStored(owed)) return;
+  try { localStorage.removeItem(owedLeaveKey(owed.seat)); } catch { /* nothing to forget */ }
 }
 
 /** Opaque resume token for our seat. Names are NOT identity: two players

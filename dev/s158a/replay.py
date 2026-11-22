@@ -28,6 +28,8 @@ N_WORLDS = 64
 SPLITS = {"tune": (1011400000, 1011401500), "read": (1011401500, 1011403000)}
 CAPTURE_SPAN = (1011400000, 1011403000)
 TERMINAL_LINE = "RUN DONE 3000/3000 deals"
+HAND = 25          # cards per seat after the bury
+CAPTURE_HAND = 8   # capture.py records every follow whose pre-play max hand is this
 
 
 class ReplayInputError(ValueError):
@@ -44,8 +46,11 @@ def validate_row(r, seed):
     """A malformed captured row raises; a well-formed one is returned unchanged."""
     _req(r.get("seed") == seed, f"row seed {r.get('seed')} != deal seed {seed}")
     n = r.get("n_adm")
-    _req(type(n) is int and n >= 1, f"seed {seed}: bad n_adm {n!r}")
-    if n == 1:
+    _req(type(n) is int and n >= 0, f"seed {seed}: bad n_adm {n!r}")
+    for key in ("trick", "pos", "seat"):
+        _req(type(r.get(key)) is int, f"seed {seed}: row {key}")
+    if n <= 1:
+        # n_adm 0: a served play fallback (no ballot); 1: a single candidate. Ineligible, kept for the census.
         return r
     _req(isinstance(r.get("admitted"), list) and len(r["admitted"]) == n, f"seed {seed}: admitted length")
     _req(type(r.get("served_idx")) is int and 0 <= r["served_idx"] < n, f"seed {seed}: served_idx")
@@ -71,9 +76,73 @@ def validate_row(r, seed):
     return r
 
 
-def load(d, lo, hi):
+def expected_rows(plays):
+    """The (trick, pos, seat, cards) of every follow capture.py records, from the complete play history.
+    Tricks are four consecutive plays in seat rotation; every seat holds HAND cards after the bury; each
+    trick removes the followers' width from every seat (a refused throw's lead records the attempted cards,
+    wider than what was played)."""
+    _req(isinstance(plays, list) and plays and len(plays) % 4 == 0, "play history is not whole tricks")
+    count = {s: HAND for s in range(4)}
+    out = []
+    for t in range(0, len(plays), 4):
+        trick = plays[t:t + 4]
+        for x in trick:
+            _req(isinstance(x, list) and len(x) == 2 and x[0] in count and isinstance(x[1], list) and x[1],
+                 "malformed play")
+        seats = [x[0] for x in trick]
+        _req(all((seats[i + 1] - seats[i]) % 4 == 1 for i in range(3)), f"trick {t // 4 + 1}: seats out of turn")
+        w = len(trick[1][1])
+        _req(all(len(x[1]) == w for x in trick[1:]), f"trick {t // 4 + 1}: follow widths differ")
+        _req(len(trick[0][1]) >= w, f"trick {t // 4 + 1}: lead narrower than the follows")
+        for pos in range(1, 4):
+            before = {s: count[s] - (w if s in seats[:pos] else 0) for s in range(4)}
+            if max(before.values()) == CAPTURE_HAND:
+                out.append((t // 4 + 1, pos, seats[pos], sorted(trick[pos][1])))
+        for s in seats:
+            count[s] -= w
+    _req(all(v == 0 for v in count.values()), f"play history incomplete: cards left {count}")
+    return out
+
+
+def validate_deal(deal, seed):
+    """A complete instrumented deal whose rows are exactly the follows its play history says were captured."""
+    _req(isinstance(deal, dict) and deal.get("seed") == seed, f"deal file {seed} holds seed {deal.get('seed')}")
+    _req(deal.get("plain") is False, f"deal {seed} is not an instrumented capture")
+    _req(isinstance(deal.get("decisions"), list), f"deal {seed}: no decisions list")
+    try:
+        want = expected_rows(deal.get("plays"))
+    except ReplayInputError as exc:
+        raise ReplayInputError(f"deal {seed}: {exc}")
+    rows = deal["decisions"]
+    for r in rows:
+        _req(isinstance(r, dict), f"deal {seed}: row is not an object")
+        validate_row(r, seed)
+    keys = [(r["trick"], r["pos"], r["seat"]) for r in rows]
+    _req(len(set(keys)) == len(keys), f"deal {seed}: duplicate captured rows")
+    wk = {(t, p, s): c for t, p, s, c in want}
+    _req(set(keys) == set(wk), f"deal {seed}: captured rows {sorted(set(keys) ^ set(wk))} do not match the history")
+    for r in rows:
+        if r["n_adm"] > 1 and not r.get("capture_error"):
+            _req(r.get("played") == wk[(r["trick"], r["pos"], r["seat"])],
+                 f"deal {seed}: row {r['trick']}/{r['pos']} played cards differ from the history")
+    return rows
+
+
+def ineligible_census(rows_all):
+    """n_adm <= 1 positions by class, faults visible."""
+    from collections import Counter
+    c = Counter()
+    for r in rows_all:
+        if r["n_adm"] <= 1:
+            c[f"n_adm={r['n_adm']} schema={r.get('schema')} fallback={r.get('fallback')} "
+              f"reason={r.get('fallback_reason')}"] += 1
+    return dict(c)
+
+
+def load(d, lo, hi, splits=None, census=None):
     """Every deal of [lo, hi) exactly once, complete and non-plain, or ReplayInputError before scoring."""
-    _req((lo, hi) in SPLITS.values(), f"[{lo}, {hi}) is not a declared split {SPLITS}")
+    splits = SPLITS if splits is None else splits
+    _req((lo, hi) in splits.values(), f"[{lo}, {hi}) is not a declared split {splits}")
     names = set(os.listdir(d))
     rows = []
     for seed in range(lo, hi):
@@ -84,13 +153,9 @@ def load(d, lo, hi):
             deal = json.load(open(os.path.join(d, f"{seed}.json")))
         except ValueError as exc:
             raise ReplayInputError(f"deal {seed}: unreadable ({exc})")
-        _req(isinstance(deal, dict) and deal.get("seed") == seed, f"deal file {seed} holds seed {deal.get('seed')}")
-        _req(deal.get("plain") is False, f"deal {seed} is not an instrumented capture")
-        _req(isinstance(deal.get("plays"), list) and deal["plays"], f"deal {seed}: no plays")
-        _req(isinstance(deal.get("decisions"), list), f"deal {seed}: no decisions list")
-        for r in deal["decisions"]:
-            _req(isinstance(r, dict), f"deal {seed}: row is not an object")
-            validate_row(r, seed)
+        for r in validate_deal(deal, seed):
+            if census is not None:
+                census.append(r)
             if r["n_adm"] > 1:
                 rows.append(r)
     return rows, hi - lo
@@ -306,8 +371,9 @@ def main(argv=None):
     mode, d, lo, hi = a[0], a[1], int(a[2]), int(a[3])
     if mode == "tune":
         _req((lo, hi) == SPLITS["tune"], f"tune needs the tune split {SPLITS['tune']}")
-        rows, deals = load(d, lo, hi)
-        summ = capture_summary(rows, deals)
+        allr = []
+        rows, deals = load(d, lo, hi, census=allr)
+        summ = dict(capture_summary(rows, deals), ineligible=ineligible_census(allr))
         res = [evaluate(rows, r) for r in rules()]
         best = choose(res)
         refs = {f"prune{int(p*100)}_only": evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=p, cap=None), True)
@@ -324,8 +390,9 @@ def main(argv=None):
     sha_path = a[a.index("--rule-sha") + 1] if "--rule-sha" in a else rule_path + ".sha256"
     check_read_preconditions(d, rule_path, sha_path)      # before any deal file is opened
     rule = json.load(open(rule_path))["rule"]
-    rows, deals = load(d, lo, hi)
-    out = dict(summary=capture_summary(rows, deals), rule_sha256=file_sha256(rule_path),
+    allr = []
+    rows, deals = load(d, lo, hi, census=allr)
+    out = dict(summary=dict(capture_summary(rows, deals), ineligible=ineligible_census(allr)), rule_sha256=file_sha256(rule_path),
                frozen=evaluate(rows, rule, True))
     out["verdict"] = stage_a_verdict(out["frozen"])
     out["references"] = {f"prune{int(p*100)}_only": evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=p, cap=None), True)

@@ -158,7 +158,7 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 1. Duo flow as mocked (core.html section 5, "Duo: one table, paired"): approved, build it.
 2. Allow joiners is the opener's switch only (server and client); others see nothing (copy rule).
 3. Offline copy: plain "Offline" (cut the subtext); "Offline · you'll play the bots on this device" and "Ranked needs a connection" are dropped.
-4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail. A guest at a ranked table reads "Sign in to be ranked" as plain text under the result line (Jerry 11-20; the "Guest" box stays gone); a seat taken mid-round reads "Unranked · joined mid-round" in the same place, because each explains the missing number (Jerry 11-15).
+4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail. A guest at a ranked table reads "Sign in to be ranked ›" under the result line, the same words as a link that opens the one identity sheet, drawn inside the round-end dialog (Jerry 11-20 plain text; a link since 11-22, so guests at a table reach sign-in; the "Guest" box stays gone; an account, one signed in on this round end too, sees no line); a seat taken mid-round reads "Unranked · joined mid-round" in the same place, because each explains the missing number (Jerry 11-15).
 5. The guest line "Playing as a guest · Sign in to be ranked" stays.
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
@@ -188,9 +188,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
    dice, then the sign-in buttons with one line under them, "By signing in you agree to the Terms of use."
    (the sheet's only copy; App Store guideline 1.2, Jerry 2026-11-16), then Done. Every Sign in opens that same sheet: the Play tab's guest line
    ("Playing as a guest · Sign in to be ranked", which stays), a guest's one name row on Me, the
-   Leaderboard's one row "Sign in to be ranked ›" (its card and its sentence on ratings are gone; saying
+   Leaderboard's one row "Sign in to be ranked ›", a guest's round-end line at a ranked table (same words) (its card and its sentence on ratings are gone; saying
    what ranked means in How to play is a follow-up) and a lapsed session's "Sign in to see your saved games." The top bar's separate Sign in
-   is gone, and signing in closes the sheet.
+   is gone, and signing in closes the sheet. Over an open modal dialog (a round end, a confirm) the sheet
+   is drawn inside the newest one (`modalHosts.ts`), since the browser blocks and hides anything outside
+   a `showModal()` dialog; the connection notice stays above it. Signing in at a table keeps the seat: the
+   socket is replaced and the seat moves to the account by its token, rated from the next round.
    - Sign in with Apple shows where it works today: the iOS app, when `nativeAuth` reports the Apple
      provider ready, above Google. The website shows Google only, until web Apple sign-in has its Services
      ID, return URL and server audience.

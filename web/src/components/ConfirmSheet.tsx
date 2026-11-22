@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { lastInputModality, trackInputModality } from "../inputModality";
 import { tapHandlers } from "../tap";
+import { useModalHost } from "../modalHosts";
 
 trackInputModality();
 
@@ -41,6 +42,7 @@ export default function ConfirmSheet({
   className = "", confirmClass = "",
 }: ConfirmSheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  useModalHost(ref);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const lineId = useId();

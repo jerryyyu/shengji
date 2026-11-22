@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, RoundResult, StatePlayer } from "../protocol";
 import RoundEndModal from "./RoundEndModal";
 import { auth } from "../auth";
+import { guestName } from "../guestName";
+import { IdentitySheet } from "./GuestChip";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); return true; } } }));
@@ -61,6 +63,11 @@ afterEach(() => {
 });
 function renderModal(result: RoundResult, shown: GameState = state, clock: number | null = null): string {
   sent.length = 0;
+  // one round end at a time: an earlier one still mounted would stay an open dialog
+  if (host?.isConnected) {
+    act(() => root.unmount());
+    host.remove();
+  }
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -313,6 +320,92 @@ describe("round end rating line", () => {
   it("says nothing about ratings while sign-in is still loading", () => {
     renderModal(makeResult(), ranked);
     expect(host.querySelector(".rating-unranked")).toBeNull();
+  });
+
+  async function signedInAccount() {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/auth/config") return { status: 200, json: async () => ({ google_client_id: "cid" }) } as Response;
+      if (url === "/api/me") {
+        return { status: 200, json: async () => ({ name: "Ada", email: "a@x", picture: null, display_name: null, name_shown: "Ada" }) } as Response;
+      }
+      return { status: 404, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+    await auth.init();
+  }
+
+  it("a guest's line at a ranked table is a button that opens the identity sheet", async () => {
+    await signedOutWithSignIn();
+    const open = vi.spyOn(guestName, "open").mockImplementation(() => {});
+    try {
+      for (const [result, shown] of [[makeResult(), { ...ranked, guest: true }],
+                                      [makeResult({ unranked: "guest" }), ranked]] as const) {
+        renderModal(result, shown);
+        const line = host.querySelector(".rating-unranked")!;
+        expect(line.textContent).toBe("Sign in to be ranked");
+        const button = line.querySelector<HTMLButtonElement>("button.rating-signin")!;
+        expect(button.type).toBe("button");
+        expect(button.textContent).toBe("Sign in to be ranked");
+        open.mockClear();
+        act(() => button.click());
+        expect(open).toHaveBeenCalledTimes(1);
+        expect(sent).toEqual([]);
+        act(() => root.unmount());
+        host.remove();
+      }
+      renderModal(makeResult(), state);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it("joined mid-round and an unranked room keep their lines, with nothing to tap", async () => {
+    await signedOutWithSignIn();
+    renderModal(makeResult({ unranked: "joined" }), { ...ranked, guest: true });
+    expect(host.querySelector(".rating-unranked")!.textContent).toBe("Unranked · joined mid-round");
+    expect(host.querySelector(".rating-signin")).toBeNull();
+    act(() => root.unmount());
+    host.remove();
+    renderModal(makeResult({ unranked: "guest" }), { ...state, guest: true });
+    expect(host.querySelector(".rating-unranked")).toBeNull();
+    expect(host.querySelector(".rating-signin")).toBeNull();
+  });
+
+  it("an account sees no sign-in line, even on the round it signed in during", async () => {
+    await signedInAccount();
+    expect(auth.state.status).toBe("in");
+    renderModal(makeResult({ unranked: "guest" }), ranked);
+    expect(host.querySelector(".rating-unranked")).toBeNull();
+    expect(host.textContent).not.toContain("Sign in");
+  });
+
+  it("the identity sheet opened over the round end is drawn inside its dialog, and outside once it closes", async () => {
+    await signedOutWithSignIn();
+    renderModal(makeResult(), { ...ranked, guest: true });
+    const app = document.createElement("div");
+    document.body.appendChild(app);
+    const appRoot = createRoot(app);
+    act(() => appRoot.render(<IdentitySheet />));
+    try {
+      act(() => host.querySelector<HTMLButtonElement>(".rating-signin")!.click());
+      const dialog = host.querySelector("dialog")!;
+      const sheet = document.querySelector(".identity-sheet")!;
+      expect(sheet).not.toBeNull();
+      expect(sheet.closest("dialog")).toBe(dialog);
+      expect(app.querySelector(".identity-sheet")).toBeNull();
+      act(() => root.unmount());
+      host.remove();
+      const after = document.querySelector(".identity-sheet")!;
+      expect(after).not.toBeNull();
+      expect(after.closest("dialog")).toBeNull();
+      expect(app.contains(after)).toBe(true);
+      root = createRoot(host = document.createElement("div"));
+      document.body.appendChild(host);
+    } finally {
+      act(() => guestName.close());
+      act(() => appRoot.unmount());
+      app.remove();
+    }
   });
 });
 

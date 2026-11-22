@@ -10,6 +10,8 @@ import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
 import { attackingTeam, myTeam, nextBankerText, pointsOf, teamMembers, teamWord } from "../tableCopy";
 import RoundEndLastTrick from "./RoundEndLastTrick";
+import { useAuth } from "../auth";
+import { guestName } from "../guestName";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
@@ -64,13 +66,25 @@ export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null 
 }
 
 /** The note for a ranked seat with no rating change: a seat taken mid-round
- *  from an open table, or a guest, who is told how to be ranked. An account
- *  whose rating is still on its way gets no note; an unranked room shows none. */
+ *  from an open table, or a guest, who is told how to be ranked. A guest's
+ *  note opens the one identity sheet wherever the Leaderboard's row would; a
+ *  sign-in there replaces the socket and the seat follows it by its token.
+ *  An account (one signed in on this round end too) and an account whose
+ *  rating is still on its way get no note; an unranked room shows none. */
 export function RatingLine({ result, ranked, guest }: { result: RoundResult; ranked: boolean; guest: boolean }) {
+  const account = useAuth();
   if (!ranked) return null;
   if (result.unranked === "joined") return <p className="rating-unranked">Unranked · joined mid-round</p>;
-  if (guest || result.unranked === "guest") return <p className="rating-unranked">Sign in to be ranked</p>;
-  return null;
+  if (!guest && result.unranked !== "guest") return null;
+  if (account.status === "in") return null;
+  const canOpen = (account.status === "out" && account.clientId) || account.status === "error";
+  return (
+    <p className="rating-unranked">
+      {canOpen ? (
+        <button type="button" className="rating-signin" onClick={() => guestName.open()}>Sign in to be ranked</button>
+      ) : "Sign in to be ranked"}
+    </p>
+  );
 }
 
 /** "+12", "−4" or "±0": a rating change short enough for the result line. */

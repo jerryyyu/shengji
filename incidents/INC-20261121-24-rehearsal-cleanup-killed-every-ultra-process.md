@@ -90,9 +90,10 @@ kills from a `ps`, `pgrep` or `awk` match.
 - **Enforcer (Claude, partial):** the PreToolUse guard hook (Claude's user
   settings, outside the repo) now refuses `pkill`, `killall`, and any `kill`
   whose targets are not strictly positive literal pids. That covers variables, loops,
-  `xargs` and command substitution, including inside ssh remote commands. `0`, negative
-  and `--` targets address process groups and are refused; `kill -0` probes are allowed.
-  Option parsing is conservative: forms it doesn't recognise, such as `-s TERM`, are refused.
+  `xargs` and command substitution, including inside ssh remote commands. It parses one
+  leading signal selector (`-9`, `-TERM`, `-s TERM`, `-n 9`) and an optional `--`, then requires
+  every remaining operand to be a strictly positive literal pid. A `0` or negative operand anywhere
+  (process-group semantics) is refused, as in `kill 123 -456`; `kill -0` probes are allowed.
 - **Limit:** the hook sees only commands typed into the Bash tool. A script
   file run by the tool, which is how this harness ran, is not inspected.
   Rehearsal harnesses therefore record the pids they spawn and kill only those.

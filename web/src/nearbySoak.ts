@@ -4,8 +4,9 @@
 // entry points: a join by code, the lobby, Start, the deal with declares,
 // bury and play (SmartBot on what the seat can see), each round's end, Leave
 // and a rejoin, the ⋯ menu. Chaos runs about one fault a minute, aimed at a
-// phase trigger or from a background timer, with 2 min of calm after each
-// round's end (nearbySoakChaos.ts ChaosPacer): native kinds in the
+// phase trigger or from a background timer, with 30 s of calm after a
+// round's end that finds no gap running (nearbySoakChaos.ts
+// ChaosPacer): native kinds in the
 // plugin's debugChaos, page kinds (a frozen main thread, frame loss at the
 // bridge, a reload, a Leave) here. A soak summary and its coverage table
 // (nearbySoakCoverage.ts) go to the log every 10 minutes and when either
@@ -420,8 +421,8 @@ export function soakState(): { autoplay: boolean; chaos: boolean } {
 }
 
 // what the soak keeps across a reload: its switches, the table's code, the
-// persona mix, whether a reload is the soak's own, and when a round's calm
-// ends (epoch ms), so a reload inside it keeps the rest
+// persona mix, whether a reload is the soak's own, and when the calm or gap
+// a round's end found ends (epoch ms), so a reload inside it keeps the rest
 const KEEP_KEY = "shengji.nearbySoak.v1";
 interface Kept {
   autoplay: boolean; chaos: boolean; code: string | null; mix?: PersonaMix; reload?: boolean; hosted?: boolean;

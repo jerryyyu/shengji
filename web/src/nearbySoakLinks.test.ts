@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { nearbyLogLines, subscribeNearbyLog } from "./nearbyLog";
 import { CHAOS_WEIGHTS, chaosPick, LinkSplit, setChaos, soakSummary } from "./nearbySoak";
 import {
-  BACKGROUND_LAG_MS, CHAOS_GAP_MS, describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S, ROUND_CALM_MS,
+  BACKGROUND_LAG_MS, CHAOS_GAP_MS, CHAOS_JITTER_MS, describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S, ROUND_CALM_MS,
 } from "./nearbySoakChaos";
 
 const n = (t: number, text: string) => ({ t, from: "native", text });
@@ -277,15 +277,52 @@ describe("a delayed after-move fault", () => {
     }
   });
 
-  it("a reload inside a round's calm keeps the rest of the calm", async () => {
+  it("a round's end inside a calm does not extend it", async () => {
     start();
+    // 0.5: a phase trigger never fires (p = 0.3), each gap is 50 s, the background lag 10 s
+    vi.mocked(Math.random).mockReturnValue(0.5);
+    const p = await page();
+    try {
+      p.soak.setChaos(true);
+      await vi.advanceTimersByTimeAsync(50_001);
+      // the gate is open and no fault ran: the round's end starts the calm
+      p.emit(roundEnd);
+      const calmEnd = 50_001 + ROUND_CALM_MS;
+      expect(JSON.parse(localStorage.getItem("shengji.nearbySoak.v1")!).calmUntil).toBe(calmEnd);
+      await vi.advanceTimersByTimeAsync(10_000);
+      // the next round, then its end, 10 s into the calm
+      p.emit({ ...roundEnd, phase: "play", turn: 0, hand: [{ id: 1, code: "S2" }, { id: 2, code: "S3" }] });
+      p.emit(roundEnd);
+      expect(JSON.parse(localStorage.getItem("shengji.nearbySoak.v1")!).calmUntil).toBe(calmEnd);
+      expect(p.faults).toEqual([]);
+      // the background timer asked at 60 s and comes back at the calm's end plus its lag
+      await vi.advanceTimersByTimeAsync(calmEnd + 10_000 - 1 - Date.now());
+      expect(p.faults).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(p.faults).toHaveLength(1);
+      expect(p.faults[0]).toMatch(new RegExp(`^${calmEnd + 10_000} .* by bg\\)$`));
+      p.soak.setChaos(false);
+    } finally {
+      p.off();
+      end();
+    }
+  });
+
+  it("a reload inside the gap a round's end found keeps the rest of it", async () => {
+    start();
+    // the round's end takes its own fault (0.1 < p) with the longest gap (0.95); every other draw 0.1
+    const draws: number[] = [];
+    vi.mocked(Math.random).mockImplementation(() => draws.shift() ?? 0.1);
+    const gateAt = 42_001 + CHAOS_GAP_MS + 0.95 * CHAOS_JITTER_MS;
     const a = await page();
     try {
       a.soak.setChaos(true);
       await vi.advanceTimersByTimeAsync(42_001);
+      draws.push(0.1, 0.95);
       a.emit(roundEnd);
       expect(a.faults).toHaveLength(1);
-      // the page reloads 10 s into the calm, the soak still on
+      expect(JSON.parse(localStorage.getItem("shengji.nearbySoak.v1")!).calmUntil).toBe(gateAt);
+      // the page reloads 10 s into the gap, the soak still on
       await vi.advanceTimersByTimeAsync(10_000);
       const kept = localStorage.getItem("shengji.nearbySoak.v1");
       a.soak.setChaos(false);
@@ -296,8 +333,8 @@ describe("a delayed after-move fault", () => {
     const b = await page();
     try {
       expect(b.soak.resumeSoak()).toBe(true);
-      // a fresh gap would fault ~44 s after the reload; the calm runs to 42,001 + 120,000
-      await vi.advanceTimersByTimeAsync(42_001 + ROUND_CALM_MS - 52_001 - 1);
+      // a fresh gap would fault ~44 s after the reload, at 96,001; the kept gap runs to 101,001
+      await vi.advanceTimersByTimeAsync(gateAt - 52_001 - 1);
       expect(b.faults).toEqual([]);
       await vi.advanceTimersByTimeAsync(BACKGROUND_LAG_MS + 1);
       expect(b.faults.filter((f) => f.endsWith("by bg)"))).toHaveLength(1);

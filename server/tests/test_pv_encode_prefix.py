@@ -250,6 +250,158 @@ def test_scores_and_counters_are_the_reference(scenario):
 
 # ------------------------------------------------- (b) where the prefix does not apply
 
+def _bury_evaluator(version, *, native):
+    from shengji.train.unified_slots import readout_evaluator
+
+    bot = SimpleNamespace(unified_frame=None, unified_value_served=0, encode_prefix_cache=True,
+                          encode_batch_fast=True, encode_native=native)
+    evaluator = readout_evaluator(stub_evaluator(version), bot, None)
+    evaluator.max_batch = 4
+    return evaluator
+
+
+def _score_bury(evaluator):
+    from shengji.train.cwv_bury import score_bury_candidates
+    from tests.test_cwv_bury import _bury_state
+
+    rnd = _bury_state(12)
+    worlds = worlds_for(rnd, rnd.banker, 5, seed=19)
+    policy = HeuristicBot()
+    first = policy.decide_bury(rnd, rnd.banker)
+    remaining = list(rnd.hands[rnd.banker])
+    for card in first:
+        remaining.remove(card)
+    second = [*first[:-1], next(card for card in remaining if card != first[-1])]
+    return score_bury_candidates(rnd, [first, second], worlds, evaluator, first_trick_policy=policy)
+
+
+@pytest.mark.parametrize("version", [1, 2, 7])
+def test_bury_native_encoder_scores_world_specific_first_tricks(monkeypatch, version):
+    from shengji.train import pv_native
+
+    reference = _bury_evaluator(version, native=False)
+    candidate = _bury_evaluator(version, native=True)
+    original = prefix_module.native_arrays
+    packed = []
+
+    def record(prefix, positions, seats, version):
+        assert prefix.tricks == () and prefix.events == 0
+        arrays = original(prefix, positions, seats, version)
+        assert arrays is not None
+        expected = [reference.encoder(rnd, seat) for rnd, seat in zip(positions, seats)]
+        for actual, field in zip(arrays, ("public", "world", "perspective")):
+            assert actual.tobytes() == np.stack([getattr(row, field) for row in expected]).tobytes()
+        packed.extend(tuple(tuple(play.cards) for play in rnd.history[0].plays) for rnd in positions)
+        return arrays
+
+    monkeypatch.setattr(prefix_module, "native_arrays", record)
+    np.testing.assert_array_equal(_score_bury(candidate), _score_bury(reference))
+    assert counters(candidate) == counters(reference) == (3, 10, 10, 0, 3)
+    assert candidate.unified_bot.unified_value_served == reference.unified_bot.unified_value_served == 10
+    if pv_native.HAVE_NATIVE:
+        assert len(packed) == 10 and len(set(packed)) > 2
+    else:
+        assert not packed
+
+
+@pytest.mark.parametrize("override", [
+    "instance_probabilities", "base_probabilities", "wrapped_probabilities",
+    "wrapped_stacked", "encoder", "subclass",
+])
+def test_bury_native_encoder_keeps_overridden_callbacks(monkeypatch, override):
+    from shengji.ai.cwv_policy import CompleteWorldEvaluator
+    from shengji.train.unified_slots import readout_evaluator
+
+    evaluator = _bury_evaluator(2, native=True)
+    calls = []
+    if override.endswith("_probabilities"):
+        probabilities = NumpyCompleteWorldEvaluator.probabilities
+
+        def score(self, rows):
+            calls.append(len(rows))
+            return probabilities(self, rows)
+
+        if override == "instance_probabilities":
+            evaluator.probabilities = score.__get__(evaluator)
+        else:
+            cls = NumpyCompleteWorldEvaluator if override == "base_probabilities" else type(evaluator)
+            monkeypatch.setattr(cls, "probabilities", score)
+    elif override == "wrapped_stacked":
+        def unexpected_stacked(*args):
+            pytest.fail("custom stacked callback must not replace the reference probability call")
+
+        monkeypatch.setattr(type(evaluator), "probabilities_stacked", unexpected_stacked)
+    elif override == "encoder":
+        encoder = CompleteWorldEvaluator.encoder.fget
+
+        def custom(self):
+            original = encoder(self)
+
+            def encode(rnd, seat):
+                calls.append(1)
+                return original(rnd, seat)
+
+            return encode
+
+        monkeypatch.setattr(CompleteWorldEvaluator, "encoder", property(custom))
+    else:
+        class CustomEvaluator(NumpyCompleteWorldEvaluator):
+            def score_many(self, positions, seats, **kw):
+                calls.append(len(positions))
+                return super().score_many(positions, seats, **kw)
+
+        base = stub_evaluator(2)
+        base.__class__ = CustomEvaluator
+        evaluator = readout_evaluator(base, evaluator.unified_bot, None)
+
+    def unexpected(*args):
+        pytest.fail("override must retain the evaluator's reference path")
+
+    monkeypatch.setattr(prefix_module, "native_arrays", unexpected)
+    _score_bury(evaluator)
+    assert sum(calls) == (0 if override == "wrapped_stacked" else 10)
+
+
+@pytest.mark.parametrize("failure", ["none", "extra_rows", "wrong_width"])
+def test_bury_native_encoder_decline_uses_reference(monkeypatch, failure):
+    from shengji.train import pv_native
+
+    reference = _bury_evaluator(2, native=False)
+    candidate = _bury_evaluator(2, native=True)
+    expected = _score_bury(reference)
+    original = prefix_module.native_arrays
+    attempts = []
+
+    def decline(prefix, positions, seats, version):
+        attempts.append(len(positions))
+        if failure == "none":
+            return None
+        if failure == "extra_rows":
+            return original(prefix, [*positions, positions[-1]], [*seats, seats[-1]], version)
+        return original(prefix, positions, seats, 7)
+
+    monkeypatch.setattr(prefix_module, "native_arrays", decline)
+    np.testing.assert_array_equal(_score_bury(candidate), expected)
+    assert attempts == ([4, 4, 2] if pv_native.HAVE_NATIVE else [])
+    assert counters(candidate) == counters(reference)
+
+
+def test_bury_native_forward_error_is_not_retried(monkeypatch):
+    evaluator = _bury_evaluator(2, native=True)
+    calls = []
+
+    def fail(public, world, perspective):
+        calls.append(len(public))
+        raise RuntimeError("value forward failed")
+
+    monkeypatch.setattr(evaluator.model, "probabilities", fail)
+    with pytest.raises(RuntimeError, match="value forward failed"):
+        _score_bury(evaluator)
+    assert calls == [4]
+    assert counters(evaluator) == (0, 0, 0, 0, 0)
+    assert evaluator.unified_bot.unified_value_served == 4
+
+
 def test_a_leaf_that_does_not_extend_the_prefix_takes_the_reference():
     rnd, seat = find_root(_pair)
     ev = stub_evaluator()

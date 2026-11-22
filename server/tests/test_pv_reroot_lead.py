@@ -231,8 +231,32 @@ def test_the_pins_are_release54_on_both_engines():
     assert list(compiled) == order
     first = [k for k in order if k.startswith(f"{S.SEEDS[0]}:")]
     assert list(pure) == first[:PURE_DECISIONS]
+    assert PINS["pinned_on"] == "darwin-arm64"
     for key in pure:
-        assert pure[key]["cards"] == compiled[key]["cards"]
+        assert pure[key]["projection"]["cards"] == compiled[key]["projection"]["cards"]
+    for pins in (compiled, pure):
+        for entry in pins.values():
+            assert S.digest(entry["projection"]) == entry["digest"]
+
+
+def test_the_portable_comparison_is_exact_on_everything_but_float_rounding():
+    base = {"cards": ["D3"], "worlds": "w", "record": {"value_means": [0.25, -0.5], "selected_index": 1,
+                                                       "admitted": [["D3"], ["SA"]], "work_complete": True}}
+    near = json.loads(json.dumps(base))
+    near["record"]["value_means"][0] += 1e-9
+    assert S.first_difference(near, base) is None
+    for path, edit in (("decision.record.value_means[1]", lambda d: d["record"]["value_means"].__setitem__(1, -0.49)),
+                       ("decision.record.selected_index", lambda d: d["record"].__setitem__("selected_index", 0)),
+                       ("decision.worlds", lambda d: d.__setitem__("worlds", "x")),
+                       ("decision.cards[0]", lambda d: d["cards"].__setitem__(0, "D4")),
+                       ("decision.record.admitted[1][0]", lambda d: d["record"]["admitted"][1].__setitem__(0, "SK")),
+                       ("decision.record.work_complete", lambda d: d["record"].__setitem__("work_complete", False))):
+        changed = json.loads(json.dumps(base))
+        edit(changed)
+        assert S.first_difference(changed, base) == path
+    extra = json.loads(json.dumps(base))
+    extra["record"]["vp2_eligible"] = False
+    assert S.first_difference(extra, base).startswith("decision.record (keys")
 
 
 def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, monkeypatch,
@@ -242,14 +266,19 @@ def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, 
     assert bot.value_prune_lead is False and "value_prune_lead" not in vars(bot)
     S.P.lift(bot)
     pins = _pins()["engines"]["compiled" if COMPILED else "pure"]
+    assert S.PLATFORM == "darwin-arm64" or S.PLATFORM.startswith("linux"), S.PLATFORM
     seen = 0
     for seed in (S.SEEDS if COMPILED else S.SEEDS[:1]):
         limit = None if COMPILED else PURE_DECISIONS
         for trick, pos, projection in S.deal_decisions(bot, seed, limit):
             key = S.label(seed, trick, pos)
             assert not any(k.startswith("vp2_") for k in projection["record"]), key
-            assert projection["cards"] == pins[key]["cards"], key
-            assert S.digest(projection) == pins[key]["digest"], key
+            expected = pins[key]["projection"]
+            assert projection["cards"] == expected["cards"], key
+            if S.PLATFORM == _pins()["pinned_on"]:
+                assert S.digest(projection) == pins[key]["digest"], (key, S.first_difference(projection, expected))
+            else:
+                assert S.first_difference(projection, expected) is None, (key, S.first_difference(projection, expected))
             seen += 1
     assert seen == len(pins)
 

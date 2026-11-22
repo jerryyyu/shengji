@@ -74,8 +74,8 @@
 .play-section .play-mode-opt.on:disabled { color: #fff; }
 .play-mode-opt:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
 
-/* A room's rows in the table panel: the code with its Invite link, the
-   starting level, and the chat row. Labels only. */
+/* A room's rows in the table panel: the code with its Invite, the settings
+   rows, and the chat row. Labels only. */
 .tp-code-row { display: flex; gap: 8px; align-items: center; }
 .tp-code {
   flex: 1;
@@ -93,20 +93,37 @@
   letter-spacing: 0.3em;
   padding-left: 0.3em;
 }
+/* the code and its Invite as one control: the code on the left, the share
+   mark and Invite on the right */
 .tp-invite {
   appearance: none;
-  flex: none;
-  min-height: 40px;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
   padding: 0 14px;
   border-radius: 10px;
-  border: 1px solid #3a4250;
-  background: transparent;
+  border: 1px solid #333b49;
+  background: #11141a;
   color: #e9ecf2;
   font: inherit;
-  font-size: var(--fs-14, 14px);
-  font-weight: 600;
   cursor: pointer;
 }
+.tp-invite .tp-code {
+  flex: none;
+  height: auto;
+  border: 0;
+  background: none;
+  justify-content: flex-start;
+}
+.tp-invite-word {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-15, 15px);
+  font-weight: 600;
+}
+.tp-share { width: 18px; height: 18px; margin-top: -2px; }
 .tp-set {
   display: flex;
   align-items: center;
@@ -127,6 +144,50 @@
   font: inherit;
 }
 .tp-set-val { color: #c3cad6; font-weight: 600; }
+/* Table settings: one row, its values dimmed at the end as a select shows
+   its value; a tap opens the setting rows under it */
+.tp-settings {
+  appearance: none;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-16, 16px);
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.tp-settings-label { flex: none; }
+.tp-settings .tp-set-val {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  color: #9aa3b2;
+  font-weight: 400;
+}
+.tp-chev {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-left: -2px;
+  color: #9aa3b2;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.tp-settings[aria-expanded="true"] .tp-chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .tp-chev { transition: none; } }
+.tp-settings:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.tp-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 2px solid rgba(79, 178, 122, 0.35);
+}
 .tp-chat {
   appearance: none;
   display: flex;

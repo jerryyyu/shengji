@@ -308,19 +308,26 @@ describe("every Play table has a code", () => {
     ...over,
   });
 
-  it("a lone Play table shows the code and Invite link, and Allow joiners; a ranked one has no Starting level", async () => {
+  it("a lone Play table shows the code as its Invite, and Allow joiners; a ranked one has no Starting level", async () => {
     await renderApp();
     say(own());
     const p = q(".tp-own")!;
     // your seat shows your own initial, not the first letters of "You"
     expect(p.querySelector(".tp-seat.you .tp-av")?.textContent).toBe("J");
-    expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
-    click(button("Invite link", p));
+    // the code and Invite are one control: a tap copies the link where there is no share sheet
+    const invite = p.querySelector<HTMLButtonElement>("button.tp-invite")!;
+    expect(invite.querySelector(".tp-code")?.textContent).toBe("4N5Z");
+    expect(invite.textContent).toBe("4N5ZInvite");
+    expect(invite.getAttribute("aria-label")).toBe("Invite, table code 4 N 5 Z");
+    expect(p.querySelectorAll("button.tp-invite, .tp-code")).toHaveLength(2);
+    click(invite);
     await settle();
     expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
-    // ranked starts at 2: no row
+    expect(invite.getAttribute("aria-label")).toBe("Link copied, table code 4 N 5 Z");
+    // ranked starts at 2: no row; Allow joiners, the one setting, is its own row
     expect(p.textContent).not.toContain("Starting level");
     expect(p.querySelector("select")).toBeNull();
+    expect(p.querySelector(".tp-settings")).toBeNull();
     const joiners = [...p.querySelectorAll<HTMLButtonElement>("[role='switch']")]
       .find((b) => b.textContent === "Allow joiners")!;
     expect(joiners.getAttribute("aria-checked")).toBe("true");
@@ -330,9 +337,80 @@ describe("every Play table has a code", () => {
     expect(p.querySelector(".tp-hint, .tp-kicker")).toBeNull();
   });
 
+  /** The Table settings row of a panel, opened. */
+  const openSettings = (p: Element) => {
+    const row = p.querySelector<HTMLButtonElement>("button.tp-settings")!;
+    if (row.getAttribute("aria-expanded") !== "true") click(row);
+    return row;
+  };
+
+  it("a casual table folds its settings into one Table settings row, closed until tapped", async () => {
+    await renderApp();
+    say(own({ mode: "casual", start_level: "4", bot_level: "standard" }));
+    const p = q(".tp-own")!;
+    const row = p.querySelector<HTMLButtonElement>("button.tp-settings")!;
+    expect(p.querySelectorAll("button.tp-settings")).toHaveLength(1);
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(row.textContent).toBe("Table settingsLevel 4 · Standard");
+    expect(row.getAttribute("aria-label")).toBe("Table settings, Level 4, Standard");
+    // closed: none of the three setting rows
+    expect(p.querySelector("select")).toBeNull();
+    expect(p.querySelector(".tp-settings-body")).toBeNull();
+    expect(p.textContent).not.toMatch(/Starting level|Allow joiners/);
+    // Wait for people stays its own row beside the ring
+    expect([...p.querySelectorAll("[role='switch']")].map((b) => b.textContent)).toEqual(["Wait for people"]);
+    click(row);
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    const body = p.querySelector(".tp-settings-body")!;
+    expect(row.getAttribute("aria-controls")).toBe(body.id);
+    expect([...body.querySelectorAll("select")].map((s) => s.getAttribute("aria-label"))).toEqual(["Starting level", "Bots"]);
+    expect([...body.querySelectorAll("[role='switch']")].map((b) => b.textContent)).toEqual(["Allow joiners"]);
+    // a new frame keeps it open
+    say(own({ mode: "casual", start_level: "5", bot_level: "standard" }));
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect(row.textContent).toBe("Table settingsLevel 5 · Standard");
+    click(row);
+    expect(row.getAttribute("aria-expanded")).toBe("false");
+    expect(row.hasAttribute("aria-controls")).toBe(false);
+    expect(p.querySelector(".tp-settings-body")).toBeNull();
+    expect([...sentOf("table_start_level"), ...sentOf("table_allow_joiners")]).toEqual([]);
+  });
+
+  it("the opener changes each setting from inside Table settings", async () => {
+    await renderApp();
+    say(own({ mode: "casual", start_level: "2", bot_level: "standard" }));
+    const body = () => q(".tp-own .tp-settings-body")!;
+    openSettings(q(".tp-own")!);
+    const pick = (label: string, value: string) => act(() => {
+      const sel = body().querySelector<HTMLSelectElement>(`select[aria-label='${label}']`)!;
+      sel.value = value;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    pick("Starting level", "9");
+    expect(lastSent()).toEqual({ type: "table_start_level", start_level: "9" });
+    pick("Bots", "advanced");
+    expect(lastSent()).toEqual({ type: "table_bot_level", level: "advanced" });
+    click([...body().querySelectorAll<HTMLButtonElement>("[role='switch']")].find((b) => b.textContent === "Allow joiners"));
+    expect(lastSent()).toEqual({ type: "table_allow_joiners", on: false });
+  });
+
+  it("a joiner's Table settings shows the values read-only, and no Allow joiners", async () => {
+    await renderApp();
+    say(shared({ mode: "casual", start_level: "7", bot_level: "advanced" }));
+    const p = q(".tp-shared")!;
+    const row = openSettings(p);
+    expect(row.textContent).toBe("Table settingsLevel 7 · Advanced");
+    const body = p.querySelector(".tp-settings-body")!;
+    expect(body.querySelector("select")).toBeNull();
+    expect(body.querySelector("[role='switch']")).toBeNull();
+    expect([...body.querySelectorAll("[role='group']")].map((g) => g.getAttribute("aria-label")))
+      .toEqual(["Starting level 7", "Bots Advanced"]);
+  });
+
   it("a casual table's opener sets the Starting level; others read it", async () => {
     await renderApp();
     say(own({ mode: "casual", start_level: "4" }));
+    openSettings(q(".tp-own")!);
     const level = q(".tp-own select[aria-label='Starting level']") as HTMLSelectElement;
     expect(level.value).toBe("4");
     act(() => {
@@ -342,8 +420,9 @@ describe("every Play table has a code", () => {
     expect(lastSent()).toEqual({ type: "table_start_level", start_level: "7" });
     say(shared({ mode: "casual", start_level: "7" }));
     const p = q(".tp-shared")!;
+    openSettings(p);
     expect(p.querySelector("select")).toBeNull();
-    expect(p.querySelector(".tp-set-val")?.textContent).toBe("7");
+    expect(p.querySelector(".tp-settings-body .tp-set-val")?.textContent).toBe("7");
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
   });
 
@@ -354,6 +433,7 @@ describe("every Play table has a code", () => {
     expect(bots(q(".tp-own")!)).toBeNull();
     expect(q(".tp-own")!.textContent).not.toContain("Bots");
     say(own({ mode: "casual", bot_level: "standard" }));
+    openSettings(q(".tp-own")!);
     const select = bots(q(".tp-own")!)!;
     expect(select.value).toBe("standard");
     expect([...select.options].map((o) => [o.value, o.textContent])).toEqual(
@@ -367,6 +447,7 @@ describe("every Play table has a code", () => {
     expect(bots(q(".tp-own")!)!.value).toBe("advanced");
     say(shared({ mode: "casual", bot_level: "standard" }));
     const theirs = q(".tp-shared")!;
+    openSettings(theirs);
     expect(theirs.querySelector("select")).toBeNull();
     const row = theirs.querySelector("[role='group'][aria-label^='Bots']");
     expect(row?.getAttribute("aria-label")).toBe("Bots Standard");

@@ -35,7 +35,7 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
   const seats = [0, 1, 2, 3].map((at): ModelSeat => {
     const p = room.players.find((x) => x.seat === at);
     const ours = (at - room.you + 4) % 2 === 0;
-    if (!p) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    if (!p) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
     const tick = ready.has(at);
     const sub = !p.connected ? "Reconnecting" : "";
     if (at === room.you) {
@@ -87,7 +87,7 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
     const ours = (at - (j.seat ?? 0) + 4) % 2 === 0;
     if (at === j.seat) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
     if (!sd) {
-      return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}`,
+      return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`,
                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     }
     return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}` };

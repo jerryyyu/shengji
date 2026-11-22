@@ -564,7 +564,7 @@ describe("a Duo is a table", () => {
   const joiners = (p: Element) => [...p.querySelectorAll("[role='switch']")].filter((b) => b.textContent === "Allow joiners");
   const lobby = () => q(".lobby-panel")!;
 
-  it("tap Duo: Your Duo, the partner seat held, the table's code and Invite link, Start with bots and Leave", async () => {
+  it("tap Duo: Your Duo, the partner seat held, the table's code as its Invite, Start with bots and Leave", async () => {
     await renderApp();
     click(button("Duo", q(".lobby-panel")!));
     expect(lastSent()).toEqual({ type: "queue_join", mode: "ranked", duo: true });
@@ -577,7 +577,9 @@ describe("a Duo is a table", () => {
     expect(held.tagName).not.toBe("BUTTON");
     expect(p.querySelectorAll(".tp-seat.open")).toHaveLength(2);
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
-    expect(button("Invite link", p)).toBeDefined();
+    expect(p.querySelector("button.tp-invite")?.getAttribute("aria-label")).toBe("Invite, table code 4 N 5 Z");
+    // ranked: Allow joiners is the one setting, so it is its own row
+    expect(p.querySelector(".tp-settings")).toBeNull();
     expect(joiners(p)).toHaveLength(1);
     expect(lines()).toEqual([]);
     expect(words(primary()!)).toBe("Start with bots");
@@ -1307,9 +1309,10 @@ describe("one code for rooms and tables", () => {
     await renderApp();
     click(button("Duo"));
     say(queued({ duo: true, held_seat: 2, code: "4N5Z", opener: true }));
-    click(button("Invite link", panel()!));
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
     await settle();
     expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
+    expect(panel()!.querySelector("button.tp-invite")?.textContent).toBe("4N5ZLink copied");
   });
 });
 
@@ -1475,10 +1478,10 @@ describe("open tables", () => {
                                                   offerSeat("Samantha-Rose", false, false), offerSeat("Li", false, true)] }),
                   bots_paused: true, bots_at: null }));
     expect(panel()?.querySelector(".tp-title")?.textContent).toBe("Join Mei & Samantha-R…");
-    // the away seat is an open seat by its name alone; only its label says whose it was
+    // the away seat is an open seat, its "+" alone; only its label says whose it was
     const away = [...panel()!.querySelectorAll(".tp-seat")].find((s) => s.getAttribute("aria-label")?.includes("away"));
     expect(away?.getAttribute("aria-label")).toBe("Open seat, your team, Li is away. Sit here");
-    expect(away?.textContent).toBe("+Open seat");
+    expect(away?.textContent).toBe("+");
     expect(away?.querySelector(".tp-seat-sub")).toBeNull();
     tell(queued({ offer: offer({ seats: [offerSeat("Mei", false, false), offerSeat("Sam", false, false),
                                          offerSeat("Bot 2", true, true), offerSeat("Li", false, false)] }),
@@ -2100,13 +2103,15 @@ describe("the unified table on the client", () => {
     expect(modeBtn("Casual").getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("a casual table's panel carries the Casual tag above its title; a ranked one has none", async () => {
+  it("a queue table's panel has no mode tag: the Ranked / Casual switch above it says the mode", async () => {
     await renderApp();
     say(queued({ mode: "casual" }));
-    expect(panel()!.querySelector(".tp-tag")?.textContent).toBe("Casual");
-    expect(panel()!.querySelector(".tp-tag + .tp-title")?.textContent).toBe("Your table");
+    expect(panel()!.querySelector(".tp-tag")).toBeNull();
+    expect(q(".play-mode-opt.on")?.textContent).toBe("Casual");
+    expect(panel()!.firstElementChild?.className).toBe("tp-title");
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { mode: "casual" }));
-    expect(panel()!.querySelector(".tp-tag")?.textContent).toBe("Casual");
+    expect(panel()!.querySelector(".tp-tag")).toBeNull();
+    expect(q(".play-mode-opt.on")?.textContent).toBe("Casual");
     say(atTable([seat("Jerry", { you: true }), seat("Alice"), null, null], {}, { mode: "ranked" }));
     expect(panel()!.querySelector(".tp-tag")).toBeNull();
     say(queued({ mode: "ranked" }));

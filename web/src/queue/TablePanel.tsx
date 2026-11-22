@@ -34,8 +34,11 @@ function useMyInitial(): string {
   return name.slice(0, 1).toUpperCase();
 }
 
+/** A seat's avatar and words; an open seat with no name is its "+" alone,
+ *  and its `label` says what it is. */
 function SeatBody({ s }: { s: SeatItem }) {
   const mine = useMyInitial();
+  if (s.look === "open" && !s.name) return <span className="tp-av" aria-hidden="true">+</span>;
   const av = s.look === "open" ? "+" : s.look === "bot" || s.look === "held" ? "·"
     : s.look === "you" ? mine || "·" : s.name.slice(0, 2).toUpperCase();
   return (
@@ -50,7 +53,7 @@ function SeatBody({ s }: { s: SeatItem }) {
 }
 
 function Seat({ s, team }: { s: SeatItem; team: 0 | 1 }) {
-  const className = `tp-seat ${s.look} team${team}${s.picked ? " picked" : ""}`;
+  const className = `tp-seat ${s.look}${s.look === "open" && !s.name ? " bare" : ""} team${team}${s.picked ? " picked" : ""}`;
   if (s.pick) {
     return (
       <button type="button" className={className} aria-label={s.label} aria-pressed={s.picked}
@@ -63,17 +66,15 @@ function Seat({ s, team }: { s: SeatItem; team: 0 | 1 }) {
 }
 
 /** The seats at every width: your team on the left, partner above you,
- *  the other team on the right. */
+ *  the other team on the right; the gap between the columns divides them. */
 function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
   const ours = [(you + 2) % 4, you].map((at) => seats[at]);
   const theirs = [(you + 1) % 4, (you + 3) % 4].map((at) => seats[at]);
   return (
     <div className="tp-teams">
       <span className="tp-team-label ours" aria-hidden="true">Us</span>
-      <span aria-hidden="true" />
       <span className="tp-team-label theirs" aria-hidden="true">Them</span>
       <div className="tp-col">{ours.map((s) => <Seat key={s.at} s={s} team={0} />)}</div>
-      <span className="tp-vs" aria-hidden="true">VS</span>
       <div className="tp-col">{theirs.map((s) => <Seat key={s.at} s={s} team={1} />)}</div>
     </div>
   );
@@ -380,10 +381,22 @@ export function ChatRow({ messages, you, onSend }: {
   );
 }
 
-/** The code with its Invite link: the share sheet, or a copy. A nearby
- *  table's code has no link (there is no URL offline). */
+/** The share mark beside Invite: a box with an arrow up, in the text's colour. */
+function ShareIcon() {
+  return (
+    <svg className="tp-share" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The code and its Invite as one control: a tap opens the share sheet, or
+ *  copies the link. A nearby table's code is the code alone (there is no
+ *  URL offline). */
 function CodeRow({ code, invite: withInvite = true }: { code: string; invite?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const spelled = code.split("").join(" ");
   const invite = () => {
     void shareInvite(code).then((didCopy) => {
       if (!didCopy) return;
@@ -391,13 +404,19 @@ function CodeRow({ code, invite: withInvite = true }: { code: string; invite?: b
       window.setTimeout(() => setCopied(false), COPIED_MS);
     });
   };
+  if (!withInvite) {
+    return (
+      <div className="tp-code-row">
+        <span className="tp-code" aria-label={`Table code ${spelled}`}>{code}</span>
+      </div>
+    );
+  }
+  const word = copied ? "Link copied" : "Invite";
   return (
-    <div className="tp-code-row">
-      <span className="tp-code" aria-label={`Table code ${code.split("").join(" ")}`}>{code}</span>
-      {withInvite ? (
-        <button type="button" className="tp-invite" onClick={invite}>{copied ? "Link copied" : "Invite link"}</button>
-      ) : null}
-    </div>
+    <button type="button" className="tp-code-row tp-invite" onClick={invite} aria-label={`${word}, table code ${spelled}`}>
+      <span className="tp-code" aria-hidden="true">{code}</span>
+      <span className="tp-invite-word" aria-hidden="true"><ShareIcon />{word}</span>
+    </button>
   );
 }
 
@@ -435,28 +454,60 @@ function SetRow<V extends string>({ label, value, values, names, opener, onPick 
   );
 }
 
-/** Every table's settings rows, labels only: the code with its Invite link,
- *  Starting level and Bots on a casual table (the opener picks them, others
- *  read them; a ranked table starts at 2 with Advanced bots and has neither
- *  row), and the opener's Allow joiners switch when ``joiners`` is set. A
- *  nearby table's code row has no Invite link (``invite`` false). */
+/** The chevron at a disclosure row's end; it turns down while the row is open. */
+function Chevron() {
+  return (
+    <svg className="tp-chev" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Every table's rows, labels only: the code with its Invite, then the
+ *  settings. Starting level and Bots on a casual table (the opener picks
+ *  them, others read them; a ranked table starts at 2 with Advanced bots and
+ *  has neither row), and the opener's Allow joiners switch when ``joiners``
+ *  is set. Two or more settings fold into one Table settings row, closed
+ *  until tapped, its values beside the label as a select shows its value;
+ *  one setting (Bots offline and at a nearby table, Allow joiners at a
+ *  ranked table) is its own row. A nearby table's code has no Invite
+ *  (``invite`` false). */
 function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, act }: {
   rows: Rows; act: (a: PanelAction) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const hasLevel = !ranked && level !== null;
+  const settings: ReactNode[] = [];
+  if (hasLevel) {
+    settings.push(<SetRow key="level" label="Starting level" value={level as Rank} values={RANKS} names={(r) => r}
+                          opener={opener} onPick={(r) => act({ type: "start_level", level: r })} />);
+  }
+  if (bots !== undefined) {
+    settings.push(<SetRow key="bots" label="Bots" value={bots} values={BOT_LEVELS} names={(b) => BOT_LEVEL_NAMES[b]}
+                          opener={opener} onPick={(b) => act({ type: "bot_level", level: b })} />);
+  }
+  if (joiners !== undefined) {
+    settings.push(<SwitchRow key="joiners" label="Allow joiners" on={joiners}
+                             onToggle={() => act({ type: "allow_joiners", on: !joiners })} />);
+  }
+  const values = [hasLevel ? `Level ${level}` : null, bots !== undefined ? BOT_LEVEL_NAMES[bots] : null]
+    .filter((v): v is string => v !== null);
   return (
     <>
       {code ? <CodeRow code={code} invite={invite !== false} /> : null}
-      {ranked || level === null ? null : (
-        <SetRow label="Starting level" value={level as Rank} values={RANKS} names={(r) => r} opener={opener}
-                onPick={(r) => act({ type: "start_level", level: r })} />
-      )}
-      {joiners !== undefined ? (
-        <SwitchRow label="Allow joiners" on={joiners} onToggle={() => act({ type: "allow_joiners", on: !joiners })} />
-      ) : null}
-      {bots !== undefined ? (
-        <SetRow label="Bots" value={bots} values={BOT_LEVELS} names={(b) => BOT_LEVEL_NAMES[b]} opener={opener}
-                onPick={(b) => act({ type: "bot_level", level: b })} />
-      ) : null}
+      {settings.length > 1 ? (
+        <>
+          <button type="button" className="tp-set tp-settings" aria-expanded={open}
+                  aria-controls={open ? bodyId : undefined} aria-label={["Table settings", ...values].join(", ")}
+                  onClick={() => setOpen((o) => !o)}>
+            <span className="tp-settings-label" aria-hidden="true">Table settings</span>
+            <span className="tp-set-val" aria-hidden="true">{values.join(" · ")}</span>
+            <Chevron />
+          </button>
+          {open ? <div className="tp-settings-body" id={bodyId}>{settings}</div> : null}
+        </>
+      ) : settings}
     </>
   );
 }

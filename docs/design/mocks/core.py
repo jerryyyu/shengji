@@ -7,7 +7,7 @@ unified Play table. All frames are drawn HTML: no screenshot shows the decided d
 import pathlib
 
 import build as b
-from build import (B, FONT, G, GOLD, O, btn, chip, grp, chev, sw, ghead, phone, sheet, shot, seat, tpanel,
+from build import (B, FONT, G, GOLD, O, btn, chip, grp, chev, sw, ghead, phone, sheet, shot, seat,
                    room_rows, chat_row, toggle, narrow_table, desk_with, inner)
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -144,7 +144,17 @@ def you(tick=False, picked=False):
 
 
 def opn(team=B):
-    return seat("", "", "open", team=team)
+    """An open seat: its dashed box and one '+' (Jerry 2026-11-22, declutter B); only its label says 'Open seat'."""
+    return (f'<div style="display:flex;align-items:center;justify-content:center;padding:8px;border-radius:12px;'
+            f'border:1.5px dashed {G};min-height:44px;box-sizing:border-box;color:{G};font-size:20px">+</div>')
+
+
+VS = '<span style="font-size:11px;font-weight:700;color:#6b7484">VS</span>'
+
+
+def tpanel(*args, **kw):
+    """build.tpanel without the VS between the team columns (cut 2026-11-22): the gap divides them."""
+    return b.tpanel(*args, **kw).replace(VS, '<span style="width:8px"></span>')
 
 
 def bot(n, team=B):
@@ -214,25 +224,42 @@ def f2_join():
     ]
 
 
-def table_rows(mode="Ranked", opener=True, code="4N5Z"):
-    """What every table opened by Play shows (Jerry 11-14, 'Every table has a code'): the code with Invite link and
-    Allow joiners (on). Casual adds Starting level and Bots (Standard by default), each the opener's select and
-    read-only for others; ranked omits both (ranked always starts at 2 and plays Advanced bots).
-    The mode is not a switch here: the Play tab's Ranked / Casual set it when the table opened. Labels only."""
-    rows = ['<div style="display:flex;gap:8px;align-items:center">'
-            '<span style="flex:1;height:38px;border-radius:10px;background:#11141a;border:1px solid #333b49;display:flex;align-items:center;'
-            f'justify-content:center;font-size:19px;font-weight:800;letter-spacing:.3em;color:#f2c14e">{code}</span>'
-            + btn("Invite link", "ghost", grow=False, h=38) + '</div>']
+SHARE = ('<svg viewBox="0 0 24 24" width="16" height="16" style="margin-top:-2px"><path d="M12 3v12M7.5 7.5 12 3l4.5 4.5M8 10H6a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1h-2" '
+         'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+def table_rows(mode="Ranked", opener=True, code="4N5Z", settings_open=False):
+    """What every table opened by Play shows (Jerry 11-14, 'Every table has a code'), as the 11-22 declutter (option B)
+    draws it: the code and its Invite as one control (a tap shares the link), then the settings. Casual has Starting
+    level, Bots (Standard by default) and the opener's Allow joiners (on): two or more settings fold into one
+    'Table settings' row with its values at its end, opened in place (selects for the opener, values read-only for
+    others). Ranked omits Starting level and Bots (it starts at 2 and plays Advanced bots), so the opener's Allow
+    joiners is its own row. The mode is not a switch here: the Play tab's Ranked / Casual set it. Labels only."""
+    rows = ['<div style="display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 14px;border-radius:10px;'
+            'background:#11141a;border:1px solid #333b49;box-sizing:border-box">'
+            f'<span style="font-size:19px;font-weight:800;letter-spacing:.3em;color:#f2c14e">{code}</span>'
+            f'<span style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:#e9ecf2">{SHARE}Invite</span></div>']
+    row = 'display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600;min-height:32px'
+    settings = []
     if mode == "Casual":
-        val = (f'<span style="padding:5px 12px;border-radius:8px;background:#11141a;border:1px solid #333b49">2 ▾</span>' if opener
+        val = ('<span style="padding:5px 12px;border-radius:8px;background:#11141a;border:1px solid #333b49">2 ▾</span>' if opener
                else '<span style="color:#c3cad6">2</span>')
-        rows.append('<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600">Starting level' + val + '</div>')
-    if opener:
-        rows.append(toggle("Allow joiners", True))
-    if mode == "Casual":
+        settings.append(f'<div style="{row}">Starting level{val}</div>')
         val = ('<span style="padding:5px 12px;border-radius:8px;background:#11141a;border:1px solid #333b49">Standard ▾</span>'
                if opener else '<span style="color:#c3cad6">Standard</span>')
-        rows.append('<div style="display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600">Bots' + val + '</div>')
+        settings.append(f'<div style="{row}">Bots{val}</div>')
+    if opener:
+        settings.append(toggle("Allow joiners", True))
+    if len(settings) > 1:
+        turn = "transform:rotate(90deg);" if settings_open else ""
+        rows.append(f'<div style="{row};gap:8px"><span>Table settings</span>'
+                    '<span style="flex:1;text-align:right;color:#9aa3b2;font-weight:400">Level 2 · Standard</span>'
+                    f'<span style="color:#9aa3b2;display:inline-block;{turn}">›</span></div>')
+        if settings_open:
+            rows.append('<div style="display:flex;flex-direction:column;gap:8px;padding-left:12px;border-left:2px solid rgba(79,178,122,.35)">'
+                        + "".join(settings) + '</div>')
+    else:
+        rows += settings
     return '<div style="display:flex;flex-direction:column;gap:8px">' + "".join(rows) + '</div>'
 
 
@@ -246,12 +273,12 @@ def f3_own_table():
     game = felt(top=pill("Alice", B), left=pill("Bot 1", O), right=pill("Bot 3", O))
     S_ = lambda nm, kind="person", team=B, tick=False: seat(nm, "", kind, team, tick)
     desk = wide_play(b.desk_panel("", "You and Alice", ["0 of 2 ready"],
-                                  narrow_table({"bottom": S_("You", "you"), "top": S_("Alice"), "left": S_("", "open", O), "right": S_("", "open", O)}),
+                                  narrow_table({"bottom": S_("You", "you"), "top": S_("Alice"), "left": opn(O), "right": opn(O)}),
                                   "Start now", "Leave", extra=table_rows() + chat_row()))
     return [
         ("Play → your own table → someone joins → ready → game", [
             shot(play_tab(SIGNED, pres="Nobody is playing right now"), 390, 844, "Start", "Nobody to join."),
-            shot(alone, 390, 844, "Tap Play", "Your table, with its code and Invite link and Allow joiners (on), as every table has. No Starting level: ranked starts at 2. The ring is the bots' timer."),
+            shot(alone, 390, 844, "Tap Play", "Your table, with its code as its Invite and Allow joiners (on), as every table has. No Starting level: ranked starts at 2, so Allow joiners is the one setting and needs no Table settings row. Open seats are a bare '+'. The ring is the bots' timer."),
             shot(joined, 390, 844, "Alice presses Play", "She sits as your partner. One status: '0 of 2 ready'. Start now carries the same timer."),
             shot(ready, 390, 844, "Tap Start now", "Your tick; the button says who you wait for."),
             shot(game, 844, 390, "Alice taps Start (or the timer)", "Bots take the empty seats; strangers can still join (Allow joiners is on)."),
@@ -262,8 +289,12 @@ def f3_own_table():
 
 def f4_room():
     pc = play_tab(SIGNED, "Casual", pres="Nobody is playing right now")
-    own = play_tab(SIGNED, "Casual", panel=tpanel("Casual", "Your table", [], [opn(), you()], [opn(O), opn(O)],
-                                                   btn("Start with bots") + LEAVE, extra=table_rows("Casual") + chat_row()))
+    own = play_tab(SIGNED, "Casual", panel=tpanel("", "Your table", [], [opn(), you()], [opn(O), opn(O)],
+                                                   rbtn("Start with bots", 59, 1) + LEAVE,
+                                                   extra=table_rows("Casual") + toggle("Wait for people", False) + chat_row()))
+    own_open = play_tab(SIGNED, "Casual", panel=tpanel("", "Your table", [], [opn(), you()], [opn(O), opn(O)],
+                                                        rbtn("Start with bots", 52, .88) + LEAVE,
+                                                        extra=table_rows("Casual", settings_open=True) + toggle("Wait for people", False) + chat_row()))
     share = ('<div style="position:absolute;inset:0;background:rgba(8,10,14,.5)"></div>'
              '<div style="position:absolute;left:0;right:0;bottom:0;padding:16px 16px 34px;border-radius:22px 22px 0 0;background:#2a2f38;display:flex;flex-direction:column;gap:14px">'
              '<div style="display:flex;gap:10px;align-items:center"><span style="width:44px;height:44px;border-radius:10px;background:radial-gradient(ellipse at 50% 45%,#35845a,#123a26)"></span>'
@@ -271,25 +302,26 @@ def f4_room():
              '<div style="display:flex;gap:18px">' + "".join(
                  f'<div style="display:flex;flex-direction:column;align-items:center;gap:6px;font-size:11px;color:#c3cad6"><span style="width:52px;height:52px;border-radius:14px;background:{c}"></span>{n}</div>'
                  for n, c in (("Messages", "#3fbf5f"), ("Mail", "#3b82f6"), ("WhatsApp", "#25d366"), ("Copy", "#4a5262"))) + '</div></div>')
-    shared = phone(who_chip(SIGNED) + seg("Casual") + tpanel("Casual", "Your table", [], [opn(), you()], [opn(O), opn(O)],
+    shared = phone(who_chip(SIGNED) + seg("Casual") + tpanel("", "Your table", [], [opn(), you()], [opn(O), opn(O)],
                                                                btn("Start with bots") + LEAVE, extra=table_rows("Casual") + chat_row()), user="CT", overlay=share)
     msg = ('<div style="width:390px;height:844px;box-sizing:border-box;background:#0f1115;color:#e9ecf2;font-family:' + FONT + ';padding:70px 16px;display:flex;flex-direction:column;gap:12px">'
            '<div style="text-align:center;font-size:13px;color:#9aa3b2">Messages · Jerry</div>'
            '<div style="align-self:flex-start;width:270px;border-radius:16px;overflow:hidden;background:#2a2f38">'
            '<div style="height:110px;background:radial-gradient(ellipse at 50% 45%,#35845a,#1d5638 62%,#123a26);display:flex;align-items:center;justify-content:center;color:#f2c14e;font-size:30px;font-weight:800">升级</div>'
            '<div style="padding:8px 12px;font-size:13px"><b>Join my table · 4N5Z</b><div style="color:#9aa3b2">…/?room=4N5Z</div></div></div></div>')
-    alice = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("Casual", "You and Jerry", ["0 of 2 ready"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
+    alice = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["0 of 2 ready"], [seat("Jerry", ""), you()], [opn(O), opn(O)],
                                                                       btn("Start") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row()))
-    alice_r = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("Casual", "You and Jerry", ["1 of 2 ready"], [seat("Jerry", ""), you(tick=True)], [opn(O), opn(O)],
+    alice_r = play_tab(("Alice", "Guest", "A"), "Casual", panel=tpanel("", "You and Jerry", ["1 of 2 ready"], [seat("Jerry", ""), you(tick=True)], [opn(O), opn(O)],
                                                                         btn("Waiting for Jerry", "off") + LEAVE, extra=table_rows("Casual", opener=False) + chat_row("Jerry: yay")))
     game = felt(mode="Casual", top=pill("Jerry", B), left=pill("Bot 1", O), right=pill("Bot 3", O))
     return [
-        ("Play (here Casual) → your table, which has a code → Invite link → the friend opens the link → both ready → game", [
+        ("Play (here Casual) → your table, which has a code → Invite → the friend opens the link → both ready → game", [
             shot(pc, 390, 844, "Start (Casual)", "No casual table has a seat."),
-            shot(own, 390, 844, "Tap Play", "The same table as flow 3, no Create room step: code with Invite link, Starting level (opener only on casual), Allow joiners (on). Labels only."),
-            shot(shared, 390, 844, "Tap Invite link", "The system share sheet."),
+            shot(own, 390, 844, "Tap Play", "The same table as flow 3, no Create room step: the code as its Invite, one Table settings row with its values, Wait for people beside the ring. No CASUAL tag: the switch above says it. Labels only."),
+            shot(own_open, 390, 844, "Tap Table settings", "It opens in place (no sheet): Starting level and Bots (the opener's selects), then Allow joiners (on). Tap again to close."),
+            shot(shared, 390, 844, "Tap Invite", "The system share sheet."),
             shot(msg, 390, 844, "Alice taps the link", "The link carries the code."),
-            shot(alice, 390, 844, "The app opens on Play", "The same panel, no room screen. Alice sees the code and the level; Allow joiners is Jerry's."),
+            shot(alice, 390, 844, "The app opens on Play", "The same panel, no room screen. Alice sees the code and the values on the Table settings row (read-only when opened); Allow joiners is Jerry's."),
             shot(alice_r, 390, 844, "Alice taps Start", "'1 of 2 ready'. Jerry can Start now after 30 s if anyone is absent."),
             shot(game, 844, 390, "Jerry taps Start", "A casual game with bots in the empty seats."),
         ]),

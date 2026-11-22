@@ -47,8 +47,7 @@ describe("the contrast helper", () => {
 });
 
 describe("text tokens meet AA on their ground", () => {
-  it("the table panel's vs line is --text-dim on the panel", () => {
-    expect(decls(".tp-vs")).toContain("color: var(--text-dim)");
+  it("the table panel's seat sub-line is --text-dim on the panel", () => {
     expect(decls(".tp-seat-sub")).toContain("color: var(--text-dim)");
     expect(contrast(token("text-dim"), token("panel"))).toBeGreaterThanOrEqual(AA);
     expect(contrast(token("text-dim"), token("chrome"))).toBeGreaterThanOrEqual(AA);
@@ -81,7 +80,7 @@ describe("small labels follow the reader's text size", () => {
     for (const sel of [
       ".declare-tag", ".round-end-col-label", ".round-end-play-who", ".lb-new",
       ".howto-label", ".howto-note", ".howto-arrow-up", ".howto-kitty-head", ".howto-scale-line span",
-      ".howto-ticks", ".howto-seat-name", ".topbar-mark span", ".tp-team-label", ".tp-vs", ".tp-seat-sub",
+      ".howto-ticks", ".howto-seat-name", ".topbar-mark span", ".tp-team-label", ".tp-seat-sub",
     ]) {
       expect(decls(sel), sel).toMatch(/font-size: var\(--fs-\d+\)/);
     }

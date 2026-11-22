@@ -22,7 +22,7 @@ function viewport(wide: boolean) {
 }
 
 /** The rule's three checks on one rendered panel; each returns what breaks it. */
-const ROWS = "[role='switch'], .tp-switch, .tp-set, .tp-row, .tp-code-row, .tp-chat";
+const ROWS = "[role='switch'], .tp-switch, .tp-set, .tp-settings, .tp-row, .tp-code-row, .tp-chat";
 const SUB_LINE = "small, [class*='-sub']";
 const STATUS = ".tp-line, .tp-led, .tp-hint";
 const CLOCK = /\d:\d\d/;
@@ -153,6 +153,13 @@ describe("online panels", () => {
         for (const f of frames()) tell(f);
         await settle();
         expectCopyRule(host.querySelector(sel), kind);
+        // and with Table settings open, its rows held to the same rule
+        const settings = host.querySelector<HTMLButtonElement>(`${sel} .tp-settings`);
+        if (settings) {
+          act(() => settings.click());
+          expect(host.querySelector(`${sel} .tp-settings-body`)).not.toBeNull();
+          expectCopyRule(host.querySelector(sel), `${kind}, settings open`);
+        }
       });
     }
   }
@@ -249,6 +256,27 @@ describe("nearby panels and the code box's one exception", () => {
       expect(!!host.querySelector("[role='switch']"), "only the host has the Nearby switch").toBe(r.you === r.host);
     });
   }
+
+  it("a panel with one setting shows that row itself, not Table settings: Bots offline and at a nearby table", async () => {
+    const { OfflinePanel } = await import("./TablePanel");
+    const { NearbyRoomPanel } = await import("../nearbyUi");
+    const picked: string[] = [];
+    act(() => root.render(<OfflinePanel ready starting={false} bots="standard" onBots={(b) => picked.push(b)}
+                                        onStart={() => {}} onLeave={() => {}} />));
+    expect(host.querySelector(".tp-settings"), "offline: no Table settings row").toBeNull();
+    const bots = host.querySelector<HTMLSelectElement>(".tp-offline select[aria-label='Bots']")!;
+    expect(bots.value).toBe("standard");
+    act(() => { bots.value = "advanced"; bots.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(picked).toEqual(["advanced"]);
+    act(() => root.render(<NearbyRoomPanel room={room()} onLeave={() => {}} />));
+    expect(host.querySelector(".tp-settings"), "nearby host: no Table settings row").toBeNull();
+    expect(host.querySelector(".tp-offline select[aria-label='Bots']"), "the host picks Bots in place").not.toBeNull();
+    act(() => root.render(<NearbyRoomPanel room={room({ you: 2 })} onLeave={() => {}} />));
+    expect(host.querySelector(".tp-settings"), "nearby joiner: no Table settings row").toBeNull();
+    expect(host.querySelector("[role='group'][aria-label='Bots Standard']"), "a joiner reads Bots in place").not.toBeNull();
+    expect(host.querySelector("button.tp-invite"), "a nearby code is not a share control").toBeNull();
+    expect(host.querySelector(".tp-code")?.textContent).toBe("K7Q2M");
+  });
 
   it("the offline panel's denied line: one status line, its link inside it", async () => {
     const { OfflinePanel } = await import("./TablePanel");

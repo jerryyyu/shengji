@@ -1003,15 +1003,13 @@ cdef class FastWorld:
                 return e
             i = (i + 1) & mask
 
-    cdef inline LEnt* _llookup(self, uint64_t key) noexcept:
+    cdef inline LEnt* _lprobe(self, uint64_t key) noexcept:
         cdef uint64_t mask = self.tt_cap - 1
         cdef uint64_t i = _mix(key, 0) & mask
         cdef LEnt* e
         while True:
             e = &self.ltt[i]
-            if e.key == 0:
-                return NULL
-            if e.key == key:
+            if e.key == 0 or e.key == key:
                 return e
             i = (i + 1) & mask
 
@@ -1345,7 +1343,7 @@ cdef class FastWorld:
     cdef int lval(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
                   int nplays, int alpha, int beta, int raw_points) except? RAISED:
         """Fail-soft alpha-beta on attacker points still to come."""
-        cdef uint64_t key
+        cdef uint64_t key, lookup_capacity = self.tt_cap, slot = 0
         cdef LEnt* e
         cdef int lower = 0, upper, original_alpha = alpha
         cdef int original_beta = beta, answer, v, i, n, rem, left
@@ -1370,8 +1368,11 @@ cdef class FastWorld:
             key = self._ckey0(hands, turn)
         else:
             key = _lkey(hands, turn, leader, plays, nplays)
-        e = self._llookup(key) if use_tt else NULL
-        if e != NULL:
+        e = NULL
+        if use_tt:
+            e = self._lprobe(key)
+            slot = e - self.ltt
+        if e != NULL and e.key:
             hint = e.best
             if e.lo == e.hi:
                 self.cache_hits += 1
@@ -1437,7 +1438,14 @@ cdef class FastWorld:
         self.st[nplays][4] += n
         if not use_tt:
             return answer
-        e = self._lslot(key)
+        # Recursion may grow the table or occupy the bucket we probed.
+        e = &self.ltt[slot]
+        if self.tt_cap != lookup_capacity or (e.key != key and
+                (e.key != 0 or (self.tt_used + 1) * 2 > self.tt_cap)):
+            e = self._lslot(key)
+        elif e.key == 0:
+            e.key = key
+            self.tt_used += 1
         e.best = best
         if original_alpha < answer < original_beta:
             e.lo = answer
@@ -1768,8 +1776,8 @@ cdef class FastWorld:
                     key = self._ckey0(ch, winner)
                 else:
                     key = _lkey(ch, winner, winner, cp, 0)
-            e = self._llookup(key)
-            if e == NULL:
+            e = self._lprobe(key)
+            if e.key == 0:
                 continue
             if maximize:
                 h = e.lo

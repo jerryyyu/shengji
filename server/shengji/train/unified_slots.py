@@ -110,6 +110,31 @@ def _plays_so_far(rnd) -> int:
     return sum(len(t.plays) for t in rnd.history) + (len(trick.plays) if trick is not None else 0)
 
 
+def _matching_trunk_weights(belief, trunk):
+    if belief.w.keys() != trunk.w.keys():
+        return False
+    previous = getattr(trunk, "_verified_belief_buffers", {})
+    verified = {}
+    for name, right in trunk.w.items():
+        left = belief.w[name]
+        # Only entire, contiguous immutable buffers have a stable comparison result.
+        cacheable = (type(left.base) is bytes and type(right.base) is bytes
+                     and left.flags.c_contiguous and right.flags.c_contiguous
+                     and left.nbytes == len(left.base) and right.nbytes == len(right.base)
+                     and left.shape == right.shape and left.dtype == right.dtype)
+        if cacheable:
+            prior = previous.get(name)
+            if (prior is not None and prior[0] is left.base and prior[1] is right.base
+                    and prior[2] == left.dtype):
+                verified[name] = prior
+                continue
+            verified[name] = (left.base, right.base, left.dtype)
+        if not np.array_equal(left, right):
+            return False
+    trunk._verified_belief_buffers = verified
+    return True
+
+
 def shared_trunk_belief(belief_model, model):
     """``belief_model`` (a served ``BeliefNumpy``) as a `SharedTrunkBelief` over ``model``'s trunk.
     Refuses unless every trunk array of the two is equal: the belief the search draws from must be
@@ -139,9 +164,8 @@ def shared_trunk_belief(belief_model, model):
 
     if type(belief_model) is not BeliefNumpy:
         raise UnifiedSlotError("the bot's belief model is not a served BeliefNumpy")
-    tw = model.trunk.w
-    if belief_model.config != model.trunk.config or belief_model.dtype != model.dtype or set(belief_model.w) != set(tw) \
-            or any(not np.array_equal(belief_model.w[k], tw[k]) for k in tw):
+    if belief_model.config != model.trunk.config or belief_model.dtype != model.dtype \
+            or not _matching_trunk_weights(belief_model, model.trunk):
         raise UnifiedSlotError("the belief package's trunk is not the unified model's trunk")
     import copy
     shared = copy.copy(belief_model)

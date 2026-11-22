@@ -150,9 +150,8 @@ class BeliefNumpy:
             a = np.asarray(weights[k], dtype)
             if a.shape != shape or not np.isfinite(a).all():
                 raise BeliefNumpyError(f"{k}: shape {a.shape} != {shape} or non-finite")
-            a = a.copy()
-            a.setflags(write=False)
-            w[k] = a
+            # Immutable backing lets registry builds reuse a verified trunk comparison.
+            w[k] = np.ndarray(a.shape, dtype=a.dtype, buffer=a.tobytes(order="C"))
         self.w = w
         self.dtype = np.dtype(dtype)
         self._eye = {n: np.eye(n, dtype=dtype) for n in (4, 5)}

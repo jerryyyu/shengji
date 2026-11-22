@@ -20,23 +20,101 @@ PI: true-deal exact points of each admitted candidate; side points = points (att
 loss vs full = side(full-exact pick) - side(rule pick); regret vs served = side(served) - side(rule)
 (negative = rule better). Bootstrap by deal, 10,000 resamples, seed 1.
 """
-import glob, itertools, json, math, os, random, sys
+import hashlib, itertools, json, math, os, random, sys
 
 D_DEFAULT = 1.95
+N_WORLDS = 64
+#: the predeclared split (PREDECLARE_S158A.md); a CLI interval must equal one of them
+SPLITS = {"tune": (1011400000, 1011401500), "read": (1011401500, 1011403000)}
+CAPTURE_SPAN = (1011400000, 1011403000)
+TERMINAL_LINE = "RUN DONE 3000/3000 deals"
+
+
+class ReplayInputError(ValueError):
+    pass
 GRID = dict(Wmin=[0, 8, 12, 16, 24], z=[None, 1.5, 2.0, 2.5], prune=[0.0, 0.2, 0.3, 0.4], cap=[None, 0.1, 0.25])
 
 
+def _req(cond, msg):
+    if not cond:
+        raise ReplayInputError(msg)
+
+
+def validate_row(r, seed):
+    """A malformed captured row raises; a well-formed one is returned unchanged."""
+    _req(r.get("seed") == seed, f"row seed {r.get('seed')} != deal seed {seed}")
+    n = r.get("n_adm")
+    _req(type(n) is int and n >= 1, f"seed {seed}: bad n_adm {n!r}")
+    if n == 1:
+        return r
+    _req(isinstance(r.get("admitted"), list) and len(r["admitted"]) == n, f"seed {seed}: admitted length")
+    _req(type(r.get("served_idx")) is int and 0 <= r["served_idx"] < n, f"seed {seed}: served_idx")
+    _req(isinstance(r.get("attacker"), bool), f"seed {seed}: attacker")
+    if r.get("capture_error"):
+        return r
+    vm = r.get("value_means")
+    _req(isinstance(vm, list) and len(vm) == n and all(isinstance(v, (int, float)) for v in vm),
+         f"seed {seed}: value_means")
+    _req(r.get("n_worlds") == N_WORLDS, f"seed {seed}: n_worlds {r.get('n_worlds')} != {N_WORLDS}")
+    wd = r.get("worlds_done")
+    _req(type(wd) is int and 0 <= wd <= N_WORLDS, f"seed {seed}: worlds_done")
+    _req(wd == N_WORLDS or r.get("censored") is True, f"seed {seed}: {wd} worlds without a censor flag")
+    for key in ("L", "N", "T"):
+        m = r.get(key)
+        _req(isinstance(m, list) and len(m) == wd and all(isinstance(x, list) and len(x) == n for x in m),
+             f"seed {seed}: {key} shape")
+    _req(all(v is None or isinstance(v, (int, float)) for x in r["L"] for v in x), f"seed {seed}: L values")
+    _req(all(isinstance(v, int) and v >= 0 for x in r["T"] for v in x), f"seed {seed}: T values")
+    _req(isinstance(r.get("nodecap"), list), f"seed {seed}: nodecap")
+    _req(isinstance(r.get("pi"), list) and all(isinstance(v, int) for v in r["pi"]), f"seed {seed}: pi")
+    _req(len(r["pi"]) == n or r.get("pi_censored") is True, f"seed {seed}: pi incomplete without a censor flag")
+    return r
+
+
 def load(d, lo, hi):
-    rows, deals = [], 0
-    for s in range(lo, hi):
-        f = os.path.join(d, f"{s}.json")
-        if not os.path.exists(f):
-            continue
-        deals += 1
-        for r in json.load(open(f))["decisions"]:
-            if r.get("n_adm", 0) > 1:
+    """Every deal of [lo, hi) exactly once, complete and non-plain, or ReplayInputError before scoring."""
+    _req((lo, hi) in SPLITS.values(), f"[{lo}, {hi}) is not a declared split {SPLITS}")
+    names = set(os.listdir(d))
+    rows = []
+    for seed in range(lo, hi):
+        _req(f"{seed}.json" in names, f"missing deal {seed}")
+        stray = [x for x in names if x.startswith(f"{seed}.json.tmp")]
+        _req(not stray, f"unfinished temp file for {seed}: {stray}")
+        try:
+            deal = json.load(open(os.path.join(d, f"{seed}.json")))
+        except ValueError as exc:
+            raise ReplayInputError(f"deal {seed}: unreadable ({exc})")
+        _req(isinstance(deal, dict) and deal.get("seed") == seed, f"deal file {seed} holds seed {deal.get('seed')}")
+        _req(deal.get("plain") is False, f"deal {seed} is not an instrumented capture")
+        _req(isinstance(deal.get("plays"), list) and deal["plays"], f"deal {seed}: no plays")
+        _req(isinstance(deal.get("decisions"), list), f"deal {seed}: no decisions list")
+        for r in deal["decisions"]:
+            _req(isinstance(r, dict), f"deal {seed}: row is not an object")
+            validate_row(r, seed)
+            if r["n_adm"] > 1:
                 rows.append(r)
-    return rows, deals
+    return rows, hi - lo
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def check_read_preconditions(d, rule_path, sha_path):
+    """Before the held-out CLI opens any deal file: the capture's terminal line and the frozen rule's
+    recorded sha256."""
+    log = os.path.join(d, "status.log")
+    _req(os.path.exists(log), "no status.log: capture not terminal")
+    lines = [x.rstrip("\n") for x in open(log) if x.strip()]
+    _req(lines and lines[-1].endswith(TERMINAL_LINE), f"capture not terminal: last line {lines[-1:]!r}")
+    _req(os.path.exists(sha_path), f"no recorded freeze sha {sha_path}")
+    want = open(sha_path).read().split()[0]
+    got = file_sha256(rule_path)
+    _req(want == got, f"frozen rule sha {got} != recorded {want}")
 
 
 def pick(means, alive, base):
@@ -44,19 +122,22 @@ def pick(means, alive, base):
     return base if means[w] <= means[base] else w
 
 
-def prefix_means(L, worlds, n):
+def prefix_means(L, worlds, idx):
+    """Mean over ``worlds`` of each candidate in ``idx`` only (a node-capped null outside ``idx`` is never read)."""
     k = len(worlds)
-    return [sum(L[w][i] for w in worlds) / k for i in range(n)] if k else [0.0] * n
+    return {i: sum(L[w][i] for w in worlds) / k for i in idx}
 
 
 def full_ref(r):
     """Full 64-world exact pick, or None when the capture was censored, node-capped or PI is missing."""
     if r.get("capture_error") or r.get("censored") or r.get("nodecap") or r.get("pi_censored"):
         return None
-    if r["worlds_done"] != r["n_worlds"] or len(r["pi"]) != r["n_adm"]:
+    if r["worlds_done"] != N_WORLDS or len(r["L"]) != N_WORLDS or len(r["pi"]) != r["n_adm"]:
+        return None
+    if any(v is None for x in r["L"] for v in x):
         return None
     n = r["n_adm"]
-    return pick(prefix_means(r["L"], range(r["worlds_done"]), n), list(range(n)), r["served_idx"])
+    return pick(prefix_means(r["L"], range(N_WORLDS), range(n)), list(range(n)), r["served_idx"])
 
 
 def pruned_set(r, p):
@@ -72,6 +153,8 @@ def pruned_set(r, p):
 def sim(r, D, Wmin, z, prune, cap):
     """(pick, abandoned, stage_cpu_s) of one rule on one captured decision; pick None if undetermined
     (the capture stopped before the rule would)."""
+    if r.get("capture_error"):
+        return None, None, None
     n, base, L, T = r["n_adm"], r["served_idx"], r["L"], r["T"]
     alive = [i for i in range(n) if i not in pruned_set(r, prune)]
     t, done, tripped = 0.0, [], False
@@ -91,7 +174,7 @@ def sim(r, D, Wmin, z, prune, cap):
         t += cost; done.append(w)
         k = len(done)
         if z is not None and k >= 8 and (k - 8) % 4 == 0 and len(alive) > 1:
-            m = prefix_means(L, done, n)
+            m = prefix_means(L, done, alive)
             lead = max(alive, key=lambda i: (m[i], -i)); keep = []
             for i in alive:
                 d = [L[x][lead] - L[x][i] for x in done]; mu = sum(d) / k
@@ -105,7 +188,7 @@ def sim(r, D, Wmin, z, prune, cap):
         t = D
     if not done:
         return base, True, t
-    return pick(prefix_means(L, done, n), alive, base), False, t
+    return pick(prefix_means(L, done, alive), alive, base), False, t
 
 
 def side(r, i):
@@ -131,28 +214,33 @@ def boot(vals_by_deal, reps=10_000, seed=1):
 
 
 def evaluate(rows, rule, with_ci=False):
+    """Every eligible follow (more than one admitted candidate) is in E: confirmed abandons A, unresolved U
+    (capture error, capture stopped before the rule would, or a null cell the rule needs). The abandon rate
+    is the interval [A/E, (A+U)/E]. PI loss and regret use the paired subset with a full 64-world exact
+    reference and complete PI (coverage reported)."""
     D = rule.get("D", D_DEFAULT)
-    ab = n = 0; times = []; loss = {}; reg = {}; best_pruned = 0; nref = 0; undetermined = 0; cpu_ratio = []
+    E = len(rows); A = U = 0; times = []; loss = {}; reg = {}; best_pruned = 0; nref = 0; cpu_ratio = []
     for r in rows:
-        if r.get("capture_error"):
-            continue
         pk, abd, t = sim(r, D, rule["Wmin"], rule["z"], rule["prune"], rule["cap"])
-        ref = full_ref(r)
         if pk is None:
-            undetermined += 1; continue
-        n += 1; ab += bool(abd); times.append(t)
+            U += 1; continue
+        A += bool(abd); times.append(t)
         if r.get("stage_cpu") and not r.get("censored"):
             cpu_ratio.append(t / max(r["stage_cpu"], 1e-9))
+        ref = full_ref(r)
         if ref is not None:
             nref += 1
             best_pruned += ref in pruned_set(r, rule["prune"])
             loss.setdefault(r["seed"], []).append(side(r, ref) - side(r, pk))
             reg.setdefault(r["seed"], []).append(side(r, r["served_idx"]) - side(r, pk))
     times.sort()
-    out = dict(rule=rule, decisions=n, undetermined=undetermined, abandons=ab,
-               abandon_rate=ab / n if n else None, p99_s=times[min(len(times) - 1, int(math.ceil(0.99 * len(times))) - 1)] if times else None,
+    lo_rate = A / E if E else None; hi_rate = (A + U) / E if E else None
+    out = dict(rule=rule, eligible=E, abandons=A, unresolved=U,
+               abandon_interval=[lo_rate, hi_rate],
+               p99_s_resolved=times[min(len(times) - 1, int(math.ceil(0.99 * len(times))) - 1)] if times else None,
                mean_cpu_ratio=sum(cpu_ratio) / len(cpu_ratio) if cpu_ratio else None,
-               ref_decisions=nref, exact_best_pruned=best_pruned / nref if nref else None)
+               ref_decisions=nref, pi_coverage=nref / E if E else None,
+               exact_best_pruned=best_pruned / nref if nref else None)
     flat = [v for vs in loss.values() for v in vs]
     out["pi_loss"] = sum(flat) / len(flat) if flat else None
     flat2 = [v for vs in reg.values() for v in vs]
@@ -160,15 +248,38 @@ def evaluate(rows, rule, with_ci=False):
     if with_ci:
         out["pi_loss_ci"] = boot(loss)[1:]
         out["pi_regret_vs_served_ci"] = boot(reg)[1:]
+    out["abandon_bar"] = abandon_verdict(out)
     return out
+
+
+def abandon_verdict(x, bar=0.02):
+    """PASS only when the upper end of the abandon interval clears the bar; FAIL when the lower end
+    exceeds it; else INCONCLUSIVE."""
+    lo, hi = x["abandon_interval"]
+    if hi is None:
+        return "INCONCLUSIVE"
+    if hi <= bar:
+        return "PASS"
+    return "FAIL" if lo > bar else "INCONCLUSIVE"
+
+
+def stage_a_verdict(x):
+    """The plan's stop rule on the frozen rule: abandons PASS (upper bound <= 2%) and PI loss <= +0.05."""
+    if x["abandon_bar"] == "FAIL" or (x["pi_loss"] is not None and x["pi_loss"] > 0.05):
+        return "PARK"
+    if x["abandon_bar"] == "PASS" and x["pi_loss"] is not None:
+        return "PASS"
+    return "INCONCLUSIVE"
 
 
 def capture_summary(rows, deals):
     elig = [r for r in rows if not r.get("capture_error")]
     cens = sum(bool(r.get("censored")) for r in elig)
+    nref = sum(full_ref(r) is not None for r in rows)
     st = sorted(r["stage_cpu"] for r in elig if not r.get("censored"))
     q = lambda p: st[min(len(st) - 1, int(p * len(st)))] if st else None
-    return dict(deals=deals, eligible=len(elig), capture_errors=len(rows) - len(elig), censored=cens,
+    return dict(deals=deals, eligible=len(rows), capture_errors=len(rows) - len(elig), censored=cens,
+                full_reference=nref,
                 nodecap=sum(bool(r.get("nodecap")) for r in elig),
                 pi_censored=sum(bool(r.get("pi_censored")) for r in elig),
                 full_stage_cpu=dict(p50=q(.5), p90=q(.9), p98=q(.98), p99=q(.99), max=st[-1] if st else None))
@@ -182,36 +293,47 @@ def rules():
 def choose(results):
     """Predeclared: abandons <= 2% on the tune half; minimum PI-loss point estimate; ties -> fewer abandons,
     then lower mean CPU ratio, then fewer active components."""
-    ok = [x for x in results if x["abandon_rate"] is not None and x["abandon_rate"] <= 0.02 and x["pi_loss"] is not None]
+    ok = [x for x in results if x["abandon_bar"] == "PASS" and x["pi_loss"] is not None]
     if not ok:
         return None
     comp = lambda r: (r["Wmin"] > 0) + (r["z"] is not None) + (r["prune"] > 0) + (r["cap"] is not None)
-    return min(ok, key=lambda x: (round(x["pi_loss"], 9), x["abandon_rate"], x["mean_cpu_ratio"] or 0, comp(x["rule"])))
+    return min(ok, key=lambda x: (round(x["pi_loss"], 9), x["abandon_interval"][1], x["mean_cpu_ratio"] or 0,
+                                  comp(x["rule"])))
 
 
-def main():
-    mode, d, lo, hi = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
-    rows, deals = load(d, lo, hi)
-    summ = capture_summary(rows, deals)
+def main(argv=None):
+    a = sys.argv[1:] if argv is None else argv
+    mode, d, lo, hi = a[0], a[1], int(a[2]), int(a[3])
     if mode == "tune":
+        _req((lo, hi) == SPLITS["tune"], f"tune needs the tune split {SPLITS['tune']}")
+        rows, deals = load(d, lo, hi)
+        summ = capture_summary(rows, deals)
         res = [evaluate(rows, r) for r in rules()]
         best = choose(res)
-        refs = {"all_or_nothing_D1.95": evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=0.0, cap=None), True)}
-        for p in GRID["prune"]:
-            refs[f"prune{int(p*100)}_only"] = evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=p, cap=None), True)
+        refs = {f"prune{int(p*100)}_only": evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=p, cap=None), True)
+                for p in GRID["prune"]}
         if best is not None:
             best = evaluate(rows, best["rule"], True)
-        json.dump(dict(summary=summ, chosen=best, references=refs, all=res), open(sys.argv[5], "w"), indent=1)
+        out = dict(summary=summ, chosen=best, references=refs, all=res)
+        json.dump(out, open(a[4], "w"), indent=1)
         print(json.dumps(dict(summary=summ, chosen=best), indent=1))
-    else:
-        rule = json.load(open(sys.argv[5]))["rule"]
-        out = dict(summary=summ, frozen=evaluate(rows, rule, True))
-        out["references"] = {f"prune{int(p*100)}_only": evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=p, cap=None), True)
-                             for p in GRID["prune"]}
-        out["references"]["all_or_nothing_D1.95"] = out["references"]["prune0_only"]
-        out["frozen_prune_sweep"] = {f"prune{int(p*100)}": evaluate(rows, dict(rule, prune=p), True) for p in GRID["prune"]}
-        json.dump(out, open(sys.argv[6], "w"), indent=1)
-        print(json.dumps(out, indent=1))
+        return out
+    _req(mode == "read", f"unknown mode {mode!r}")
+    _req((lo, hi) == SPLITS["read"], f"read needs the read split {SPLITS['read']}")
+    rule_path, out_path = a[4], a[5]
+    sha_path = a[a.index("--rule-sha") + 1] if "--rule-sha" in a else rule_path + ".sha256"
+    check_read_preconditions(d, rule_path, sha_path)      # before any deal file is opened
+    rule = json.load(open(rule_path))["rule"]
+    rows, deals = load(d, lo, hi)
+    out = dict(summary=capture_summary(rows, deals), rule_sha256=file_sha256(rule_path),
+               frozen=evaluate(rows, rule, True))
+    out["verdict"] = stage_a_verdict(out["frozen"])
+    out["references"] = {f"prune{int(p*100)}_only": evaluate(rows, dict(D=1.95, Wmin=0, z=None, prune=p, cap=None), True)
+                         for p in GRID["prune"]}
+    out["frozen_prune_sweep"] = {f"prune{int(p*100)}": evaluate(rows, dict(rule, prune=p), True) for p in GRID["prune"]}
+    json.dump(out, open(out_path, "w"), indent=1)
+    print(json.dumps(dict(summary=out["summary"], frozen=out["frozen"], verdict=out["verdict"]), indent=1))
+    return out
 
 
 if __name__ == "__main__":

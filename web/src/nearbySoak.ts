@@ -684,17 +684,26 @@ export function runChaos(pick: ChaosPick, by: TriggerPhase | "bg"): void {
 
 type UploadModule = Pick<typeof import("./nearbyLogUpload"), "nearbyLogUploadOn" | "uploadNearbyLogNow">;
 
-/** The soak's reload: the log's unsent bytes go first (at most `capMs`), so
+/** The soak's reload: the log's unsent bytes go first (the import and the
+ *  upload together at most `capMs`), so
  *  a page reloaded more often than the upload's tick still uploads. */
 export async function uploadThenReload(
   reload: () => void = () => location.reload(),
   load: () => Promise<UploadModule> = () => import("./nearbyLogUpload"),
   capMs = 5000,
 ): Promise<void> {
-  try {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const deadline = new Promise<void>((r) => { timer = setTimeout(r, capMs); });
+  // the deadline covers the module's import as well as the upload
+  let late = false;
+  const send = (async () => {
     const m = await load();
-    if (m.nearbyLogUploadOn()) await Promise.race([m.uploadNearbyLogNow(), new Promise<void>((r) => setTimeout(r, capMs))]);
-  } catch { /* the reload goes regardless */ }
+    // an import that lands after the deadline starts no upload
+    if (!late && m.nearbyLogUploadOn()) await m.uploadNearbyLogNow();
+  })().catch(() => { /* the reload goes regardless */ });
+  await Promise.race([send, deadline]);
+  late = true;
+  if (timer !== null) clearTimeout(timer);
   reload();
 }
 

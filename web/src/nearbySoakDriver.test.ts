@@ -325,6 +325,23 @@ describe("the driver after its table ends", () => {
     expect(r.log.some((l) => l.startsWith("SOAK DRIVER STALLED"))).toBe(false);
   });
 
+  it("a driver started on an existing host saves the role, so the next driver after a reload hosts again", () => {
+    const first = rig({}, "host");
+    first.d.start();
+    first.d.frame(room({ you: 0 }));
+    first.d.stop();
+    expect(first.page.wasHost).toBe(true);
+    // the reload: a fresh driver, the same saved state, Nearby off
+    const second = rig({}, "joiner", { wasHost: first.page.wasHost });
+    second.d.start();
+    second.advance(10_000);
+    expect(second.calls).toEqual(["host"]);
+    // saved at the start already, before any frame
+    const bare = rig({}, "host");
+    bare.d.start();
+    expect(bare.page.wasHost).toBe(true);
+  });
+
   it("as a former host back from a reload, hosts again instead of joining its old code", () => {
     const r = rig({}, "joiner", { wasHost: true });
     r.d.start();

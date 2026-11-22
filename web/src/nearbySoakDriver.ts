@@ -123,6 +123,8 @@ export class SoakDriver {
     if (this.personas.main === "leaver") this.leave = leavePlan(this.d.rand);
     this.watch();
     this.hosted = this.d.role() === "host" || (this.d.wasHost?.() ?? false);
+    // a driver started on an existing host saves the role for the next one
+    if (this.d.role() === "host") this.d.keepWasHost?.(true);
     if (this.hosted && this.d.role() !== "host") {
       // a host back from a reload after its table ended
       this.hostEnded();
@@ -256,9 +258,9 @@ export class SoakDriver {
       return;
     }
     if (f.type !== "room" && f.type !== "state") return;
-    if (this.d.role() === "host" && !this.hosted) {
+    if (this.d.role() === "host") {
+      if (!this.hosted || this.d.wasHost?.() === false) this.d.keepWasHost?.(true);
       this.hosted = true;
-      this.d.keepWasHost?.(true);
     }
     this.before = this.last;
     this.last = f;

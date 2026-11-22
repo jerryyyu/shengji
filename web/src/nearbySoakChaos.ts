@@ -126,15 +126,16 @@ export const ROUND_CALM_MS = 120_000;
 
 /** When the soak's next fault may run: one fault per gap, whether a phase
  *  trigger or the background timer takes it. A pacer starts in a gap, so a
- *  soak resumed after a reload does not fault at once. */
+ *  soak resumed after a reload does not fault at once, and no earlier than
+ *  `notBefore` (a round's calm kept across the reload). */
 export class ChaosPacer {
   private next: number;
   private now: () => number;
   private rand: Rand;
-  constructor(now: () => number, rand: Rand = Math.random) {
+  constructor(now: () => number, rand: Rand = Math.random, notBefore = 0) {
     this.now = now;
     this.rand = rand;
-    this.next = now() + this.gap();
+    this.next = Math.max(now() + this.gap(), notBefore);
   }
 
   private gap(): number {
@@ -164,9 +165,10 @@ export class ChaosPacer {
     return Math.max(0, this.next - this.now()) + this.rand() * BACKGROUND_LAG_MS;
   }
 
-  /** A round ended: no fault for ROUND_CALM_MS. */
-  roundEnded(): void {
+  /** A round ended: no fault for ROUND_CALM_MS. Returns when the calm ends. */
+  roundEnded(): number {
     this.next = Math.max(this.next, this.now() + ROUND_CALM_MS);
+    return this.next;
   }
 }
 

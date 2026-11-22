@@ -420,9 +420,13 @@ export function soakState(): { autoplay: boolean; chaos: boolean } {
 }
 
 // what the soak keeps across a reload: its switches, the table's code, the
-// persona mix, and whether a reload is the soak's own
+// persona mix, whether a reload is the soak's own, and when a round's calm
+// ends (epoch ms), so a reload inside it keeps the rest
 const KEEP_KEY = "shengji.nearbySoak.v1";
-interface Kept { autoplay: boolean; chaos: boolean; code: string | null; mix?: PersonaMix; reload?: boolean; hosted?: boolean }
+interface Kept {
+  autoplay: boolean; chaos: boolean; code: string | null; mix?: PersonaMix; reload?: boolean; hosted?: boolean;
+  calmUntil?: number;
+}
 
 export function keptSoak(): Kept | null {
   try {
@@ -534,8 +538,12 @@ function onFrame(m: Frame): void {
   if (m.type !== "room" && m.type !== "state") return;
   const reached = frameTriggers(lastFrame, m, dealCard);
   for (const t of reached) trigger(t, 0);
-  // the round's end may take its own fault first, then the calm begins
-  if (reached.includes("round_end")) pacer.roundEnded();
+  // the round's end may take its own fault first, then the calm begins and
+  // a fault still waiting on its delay is dropped
+  if (reached.includes("round_end") && chaosOn) {
+    cancelAimed();
+    keep({ calmUntil: pacer.roundEnded() });
+  }
   if (m.type === "state") {
     const you = m.you as number;
     if (lastYou !== null && you !== lastYou) stats.warnings.push(`seat changed ${lastYou}->${you} without a Leave`);
@@ -651,13 +659,32 @@ interface ChaosPlugin {
 }
 let chaosTimer: number | null = null;
 let pacer = new ChaosPacer(() => Date.now());
+/** Bumped on each Chaos switch, so a delayed fault from an earlier run of
+ *  chaos never runs in a later one. */
+let chaosSession = 0;
+let aimedTimer: number | null = null;
 const bridge = new BridgeFaults();
 
+/** A delayed fault is admitted when it fires, against the pacer and the
+ *  chaos run it was aimed in; one at a time. */
 function trigger(t: TriggerPhase, delayMs: number): void {
-  if (!chaosOn || !pacer.aimed()) return;
+  if (!chaosOn) return;
   const run = () => runChaos(chaosPick(chaosRole()), t);
-  if (delayMs > 0) window.setTimeout(run, delayMs);
-  else run();
+  if (delayMs <= 0) {
+    if (pacer.aimed()) run();
+    return;
+  }
+  if (aimedTimer !== null) return;
+  const session = chaosSession;
+  aimedTimer = window.setTimeout(() => {
+    aimedTimer = null;
+    if (chaosOn && session === chaosSession && pacer.aimed()) run();
+  }, delayMs);
+}
+
+function cancelAimed(): void {
+  if (aimedTimer !== null) window.clearTimeout(aimedTimer);
+  aimedTimer = null;
 }
 
 function linkKind(): string {
@@ -841,8 +868,10 @@ export function setChaos(on: boolean): void {
   chaosOn = on;
   keep({ chaos: on });
   nearbyLog("soak", `chaos ${on ? "on" : "off"}`);
+  chaosSession += 1;
+  cancelAimed();
   if (on) {
-    pacer = new ChaosPacer(() => Date.now());
+    pacer = new ChaosPacer(() => Date.now(), Math.random, keptSoak()?.calmUntil ?? 0);
     armChaos();
   } else if (chaosTimer !== null) {
     window.clearTimeout(chaosTimer);

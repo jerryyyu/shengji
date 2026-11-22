@@ -252,7 +252,10 @@ def means(s) -> dict[str, float]:
             "leaf_value_k0": s["v0_sum"] / max(s["rows"], 1.0), "leaf_value_end": s["ve_sum"] / max(s["ends"], 1.0), "reply": s["r_sum"] / max(s["replies"], 1.0)}
 
 
-def evaluate(model, part, *, rounds_per_batch: int = 32, device="cpu") -> dict[str, float]:
+DEFAULT_CALIB_ROUNDS_PER_BATCH = 32
+
+
+def evaluate(model, part, *, rounds_per_batch: int = DEFAULT_CALIB_ROUNDS_PER_BATCH, device="cpu") -> dict[str, float]:
     """Calibration-split means of every loss (identity relabeling) and the belief log-loss."""
     import torch
     sums = np.zeros(len(SUM_KEYS))
@@ -315,6 +318,8 @@ def _run_identity(args) -> dict:
     run = {k: getattr(args, k) for k in keys}
     if getattr(args, "device", "cpu") != "cpu":
         run["device"] = args.device          # absent means cpu: a CPU run keeps the identity it always had
+    if args.calib_rounds_per_batch != DEFAULT_CALIB_ROUNDS_PER_BATCH:
+        run["calib_rounds_per_batch"] = args.calib_rounds_per_batch
     return json.loads(json.dumps(run, default=str))
 
 
@@ -334,6 +339,8 @@ def train(args) -> int:
 
 
 def _train(args, out: Path, status: str) -> int:
+    if args.calib_rounds_per_batch < 1:
+        raise UnifiedReadoutError("--calib-rounds-per-batch must be positive")
     import torch
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
@@ -431,7 +438,7 @@ def _train(args, out: Path, status: str) -> int:
         _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}"
                         + ("" if device.type == "cpu" else f" device={args.device}"))
     else:
-        state["init_calib"] = evaluate(model, calib, device=device)
+        state["init_calib"] = evaluate(model, calib, rounds_per_batch=args.calib_rounds_per_batch, device=device)
         _status(status, f"{LANE} START params={sum(p.numel() for p in model.parameters())} "
                         f"readout_params={sum(p.numel() for p in model.readout.parameters())} rows={stream.rows} "
                         f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']}"
@@ -473,7 +480,7 @@ def _train(args, out: Path, status: str) -> int:
             steps += 1
             if args.max_steps and steps >= args.max_steps:
                 break
-        cm = evaluate(model, calib, device=device)
+        cm = evaluate(model, calib, rounds_per_batch=args.calib_rounds_per_batch, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
                         f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s)")
@@ -909,6 +916,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--loader-threads", type=int, default=3)
     t.add_argument("--buffer-chunks", type=int, default=24)
     t.add_argument("--rounds-per-batch", type=int, default=16)
+    t.add_argument("--calib-rounds-per-batch", type=int, default=DEFAULT_CALIB_ROUNDS_PER_BATCH,
+                   help="whole rounds per calibration forward at initialization and epoch end")
     t.add_argument("--max-train-rows", type=int, default=None)
     t.add_argument("--max-steps", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=180000)

@@ -412,3 +412,30 @@ def test_the_polish_bench_wall_interval_covers_the_load_it_reports(cpu_root, mon
     assert out["steps"] == 1 and out["share"]["shard_load"] > 0
     assert out["wall_s"] >= out["step_s_median"] >= 0.3       # the one timed step, its shard load included
     assert out["recipe"] == bench.POLISH_RECIPE
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_calibration_batch_limit_covers_every_row_at_init_and_epoch_end(data, tmp_path, monkeypatch, device):
+    batches = ur.bs.round_batches
+    passes = []
+
+    def observed(part, rounds_per_batch, rng, *args):
+        if rng is not None:
+            yield from batches(part, rounds_per_batch, rng, *args)
+            return
+        seen = []
+        for rids, rows in batches(part, rounds_per_batch, rng, *args):
+            assert len(rids) <= 1
+            seen.extend(rows.tolist())
+            yield rids, rows
+        assert sorted(seen) == list(range(len(part["X"])))
+        passes.append(len(seen))
+
+    monkeypatch.setattr(ur.bs, "round_batches", observed)
+    out = tmp_path / "train"
+    common = ["train", "--data", str(data), "--out", str(out), "--scratch-arch", SCRATCH,
+              "--threads", "1", "--loader-threads", "1", "--buffer-chunks", "1", "--epochs", "1"]
+    assert ur.main(common + ["--device", device, "--calib-rounds-per-batch", "1"]) == 0
+    assert len(passes) == 2 and passes[0] == passes[1] > 0
+    ck = torch.load(out / "checkpoint.pt", weights_only=False, map_location="cpu")
+    assert ck["run"]["calib_rounds_per_batch"] == 1

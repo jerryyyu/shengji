@@ -23,6 +23,7 @@ the public voids (a seat that showed out holds none of the suit now and,
 truthfully, never plays it later), so in practice only the pair and tractor
 obligations reject. The sampler omits singleton checks whose result is
 fixed by public cards or an earlier void check for the same seat and suit.
+It also omits two-card follows that meet every obligation from the public play.
 
 Leads are not tested here: a lead is legal for any hand that holds its cards,
 which every world does, and a refused throw is the refusal rule's subject
@@ -177,6 +178,15 @@ def _world_dependent_follows(events, ordering):
             if key in voids:
                 continue
             voids.add(key)
+        elif len(event.lead) == len(event.cards) == 2:
+            lead_a, lead_b = event.lead
+            a, b = event.cards
+            # A two-card lead can require at most one pair. Both played cards
+            # are held in every reconstruction.
+            if lead_a != lead_b or a == b:
+                suit = ordering.eff_suit(lead_a)
+                if ordering.eff_suit(a) == suit and ordering.eff_suit(b) == suit:
+                    continue
         checks.append(event)
     return checks
 

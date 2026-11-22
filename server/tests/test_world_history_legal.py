@@ -615,3 +615,20 @@ def test_singleton_void_checks_keep_the_earliest_event_per_seat_and_effective_su
             assert reduced is None
         else:
             assert checks[reduced] is events[full]
+
+
+def test_two_card_history_checks_preserve_first_violation():
+    from itertools import product
+    from shengji.engine.cards import Ordering
+
+    ordering = Ordering("H", "7")
+    for lead in (("HA", "HA"), ("HA", "HK")):
+        for cards in (("D7", "D7"), ("D7", "H2"), ("C2", "C2"), ("H2", "C2")):
+            event = HL.FollowEvent(1, cards, lead, cards, 0)
+            checks = HL._world_dependent_follows([event], ordering)
+            for extra in product(("H3", "D3"), repeat=2):
+                hands = [[], list(extra), [], []]
+                assert HL.first_violation(checks, hands, ordering) == HL.first_violation([event], hands, ordering)
+            same_suit = all(ordering.eff_suit(c) == ordering.eff_suit(lead[0]) for c in cards)
+            guaranteed = same_suit and (lead[0] != lead[1] or cards[0] == cards[1])
+            assert checks == ([] if guaranteed else [event])

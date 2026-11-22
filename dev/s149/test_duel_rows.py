@@ -35,6 +35,16 @@ class DuelRowTest(unittest.TestCase):
         row["play_faults"]["ex"].append(dict(decision_index=0))
         validate_row(row)
 
+    def test_completed_decisions_require_64_worlds_on_each_side(self):
+        for side in ("ex", "r45"):
+            for delivered in (1, 63, 65, 64.0, None):
+                with self.subTest(side=side, delivered=delivered):
+                    row = fixture()
+                    row["s149"][side][0]["worlds"] = delivered
+                    row["dhist"][side][0][18] = delivered
+                    with self.assertRaisesRegex(ValueError, "64 worlds"):
+                        validate_row(row)
+
     def test_refuses_missing_swapped_and_inconsistent_evidence(self):
         for mutate in (
             lambda row: row["s149"]["ex"].clear(),

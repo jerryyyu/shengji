@@ -91,6 +91,8 @@ def validate_row(row):
             if (not completed and r["schema"] != "pv-search-fallback-v1") or r["work_complete"] is not completed:
                 raise ValueError(f"{side}: unexpected decision schema or completion flag")
             if completed:
+                if type(r["worlds"]) is not int or r["worlds"] != 64:
+                    raise ValueError(f"{side}: completed play must deliver 64 worlds")
                 if (type(r["deadline"]) is not bool or type(r["cut_leaves"]) is not int
                         or r["cut_leaves"] < 0 or r["deadline"] != (r["cut_leaves"] > 0)):
                     raise ValueError(f"{side}: missing or inconsistent deadline evidence")

@@ -471,7 +471,8 @@ class Soak:
                 if left:
                     return "censored", None, "left_table"      # this client's own Leave
                 return "failed", None, "seat_lost"
-            cview, sview = audit.state_view(client.state), self._server_view(room, seat)
+            cview = audit.state_view(client.state) if client.state_gen == client.gen else None
+            sview = self._server_view(room, seat)
             for name, held in (("new_socket", client.gen != gen0), ("ws_open", client.ws is not None),
                                ("rx_since_end", client.last_rx >= end),
                                ("seat_connected", sd.connected and not sd.is_bot),
@@ -483,7 +484,7 @@ class Soak:
                                   server_view=sview, ws_open=client.ws is not None,
                                   seat_connected=sd.connected, seat_bot=sd.is_bot,
                                   rx_at=client.last_rx, same_socket=client.gen == gen0,
-                                  new_socket=(client.state_gen is not None and client.state_gen != gen0
+                                  new_socket=(cut and client.state_gen == client.gen and client.gen != gen0
                                               and client.socket_opened.get(client.state_gen, -1.0)
                                               >= origin["fresh_after"]))
             if via is not None:

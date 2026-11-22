@@ -2,6 +2,9 @@
 
 Sign in with Apple (the iOS app only) lives in ``apple_auth``; its accounts
 share the ``users`` table, keyed by ``apple_sub`` instead of ``google_sub``.
+Device accounts (the iOS app only, ``POST /api/auth/device``, off unless
+``SHENGJI_DEVICE_ACCOUNTS=1``) are ``users`` rows with neither, held by a
+device credential.
 
 The feature is OFF unless ``GOOGLE_CLIENT_ID`` is set: the login endpoint then
 answers 404 and ``/api/auth/config`` reports no client id, so the web app shows
@@ -29,6 +32,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import secrets
 import sqlite3
@@ -45,7 +49,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
-from . import chat_filter
+from . import chat_filter, device_names
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +90,28 @@ _FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cs", "Co", "Zl", "Zp"})
 # True when it must be refused (reason ``not_allowed``); the chat filter's
 # word list. None means no such filter is installed.
 DISPLAY_NAME_BLOCKLIST: Callable[[str], bool] | None = chat_filter.contains
+# Device accounts (``POST /api/auth/device``): accounts with no provider, for
+# the iOS app only. Everything about them, and the unique-name rule on
+# ``PATCH /api/me``, is off unless ``SHENGJI_DEVICE_ACCOUNTS=1``.
+DEVICE_FLAG = "SHENGJI_DEVICE_ACCOUNTS"
+DEVICE_AUTH_SCHEME = "Device"
+# The header by which a client declares itself the iOS app, and the value it
+# sends. A soft gate: any HTTP client can send it. The web client never calls
+# the endpoint, so web players stay guests; the header keeps a stray or older
+# web caller from minting accounts.
+CLIENT_HEADER = "X-Shengji-Client"
+IOS_APP_CLIENT = "ios-app"
+# New device accounts per address: per hour and per day. Over either, the
+# endpoint answers 429 and the app plays on as a guest.
+DEVICE_CREATES_PER_HOUR = 5
+DEVICE_CREATES_PER_DAY = 20
+# A device account with no rated round this many days after creation is
+# purged, and so is one nobody has used for ``DEVICE_IDLE_DAYS``.
+DEVICE_UNRATED_DAYS = 30
+DEVICE_IDLE_DAYS = 365
+# Random draws before the name search walks the whole list.
+NAME_DRAWS = 32
+_NAME_RNG = random.SystemRandom()
 
 
 class AuthError(Exception):
@@ -99,8 +125,9 @@ class AuthError(Exception):
 
 class DisplayNameError(ValueError):
     """A display name the server will not store; ``reason`` is one of
-    ``empty``, ``too_long``, ``control_chars``, ``reserved``, ``not_allowed``
-    or ``not_a_string``, safe to return to the browser."""
+    ``empty``, ``too_long``, ``control_chars``, ``reserved``, ``not_allowed``,
+    ``not_a_string`` or ``taken`` (another account shows it), safe to return
+    to the browser."""
 
     def __init__(self, reason: str):
         super().__init__(reason)
@@ -136,6 +163,36 @@ def validate_display_name(raw: Any) -> str:
     if DISPLAY_NAME_BLOCKLIST is not None and DISPLAY_NAME_BLOCKLIST(name):
         raise DisplayNameError("not_allowed")
     return name
+
+
+def device_accounts_enabled() -> bool:
+    """Whether device accounts are on; read per request, like ``client_id``."""
+    return os.environ.get(DEVICE_FLAG, "").strip() == "1"
+
+
+def _free_device_name(taken: Collection[str], rng: random.Random) -> str:
+    """An "Adjective Noun" name whose casefold is not in ``taken`` and that
+    passes ``validate_display_name``: up to ``NAME_DRAWS`` random draws,
+    then every name in a random order. ``DisplayNameError("taken")`` when
+    none is free."""
+    def usable(name: str) -> bool:
+        if name.casefold() in taken:
+            return False
+        try:
+            return validate_display_name(name) == name
+        except DisplayNameError:
+            return False
+
+    for _ in range(NAME_DRAWS):
+        name = f"{rng.choice(device_names.ADJECTIVES)} {rng.choice(device_names.NOUNS)}"
+        if usable(name):
+            return name
+    names = device_names.all_names()
+    rng.shuffle(names)
+    for name in names:
+        if usable(name):
+            return name
+    raise DisplayNameError("taken")
 
 
 # ----------------------------------------------------------------- config
@@ -519,6 +576,89 @@ _SEGMENTS_V9 = """
 """
 
 
+# The v6 rule that every account has a provider; v10 drops it, so a device
+# account (``POST /api/auth/device``) has neither ``google_sub`` nor
+# ``apple_sub``.
+_PROVIDER_CHECK_RE = re.compile(
+    r",\s*CHECK\s*\(\s*google_sub\s+IS\s+NOT\s+NULL\s+OR\s+apple_sub\s+IS\s+NOT\s+NULL\s*\)",
+    re.IGNORECASE)
+_CREATE_TABLE_RE = re.compile(r'^\s*CREATE\s+TABLE\s+("?)(\w+)\1', re.IGNORECASE)
+# A device account's credential: only the SHA-256 of the 256-bit token the
+# app holds. Deleting the account deletes its credentials by cascade.
+_DEVICE_CREDENTIALS_V10 = """
+    CREATE TABLE IF NOT EXISTS device_credentials (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS device_credentials_user ON device_credentials(user_id)
+"""
+
+
+def _children_of_users(conn: sqlite3.Connection) -> list[str]:
+    """Every table with a foreign key to ``users``, in ``sqlite_master`` order."""
+    tables = [r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+        "ORDER BY rowid")]
+    return [t for t in tables if t != "users" and any(
+        fk["table"] == "users" for fk in conn.execute(f"PRAGMA foreign_key_list({t})"))]
+
+
+def _migrate_v10(conn: sqlite3.Connection) -> None:
+    """Rebuild ``users`` without the provider CHECK, and add
+    ``device_credentials``.
+
+    The rebuild follows v6 (foreign keys stay on inside the transaction, so
+    no referenced ``users`` row is ever deleted while a child still points at
+    it): every child's and index's DDL is read first, ``users`` is renamed
+    (which repoints the children at the renamed table), the new ``users`` is
+    the old DDL minus the CHECK and is filled with every row and id, each
+    child is copied into a twin made from its own DDL (so it references the
+    new ``users``), the old children and then the old ``users`` are dropped,
+    the twins take the old names and the indexes are re-created. Column
+    order, constraints, ``WITHOUT ROWID`` and the AUTOINCREMENT high-water
+    marks are kept. A re-run on a table with no CHECK only re-creates what is
+    missing."""
+    users_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()["sql"]
+    relaxed = _PROVIDER_CHECK_RE.sub("", users_sql)
+    if relaxed != users_sql:
+        children = _children_of_users(conn)
+        ddl = {t: conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+                               (t,)).fetchone()["sql"] for t in children}
+        owners = [*children, "users"]
+        indexes = [r["sql"] for r in conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL "
+            f"AND tbl_name IN ({','.join('?' * len(owners))})", owners)]
+        sequences = {r["name"]: int(r["seq"]) for r in conn.execute(
+            "SELECT name, seq FROM sqlite_sequence")}
+        conn.execute("ALTER TABLE users RENAME TO users_v9")
+        conn.execute(relaxed)
+        conn.execute("INSERT INTO users SELECT * FROM users_v9 ORDER BY id")
+        for child in children:
+            twin = _CREATE_TABLE_RE.sub(f"CREATE TABLE {child}_v10", ddl[child], count=1)
+            conn.execute(twin)
+            conn.execute(f"INSERT INTO {child}_v10 SELECT * FROM {child}")
+        for child in children:
+            conn.execute(f"DROP TABLE {child}")
+        conn.execute("DROP TABLE users_v9")
+        for child in children:
+            conn.execute(f"ALTER TABLE {child}_v10 RENAME TO {child}")
+        for statement in indexes:
+            conn.execute(_CREATE_INDEX_RE.sub("CREATE INDEX IF NOT EXISTS ", statement, count=1))
+        for table, seq in sequences.items():
+            _set_sequence(conn, table, seq)
+    for statement in filter(None, (s.strip() for s in _DEVICE_CREDENTIALS_V10.split(";"))):
+        conn.execute(statement)
+    problems = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if problems:
+        raise sqlite3.IntegrityError(f"foreign key check failed after v10: {len(problems)} rows")
+
+
+_CREATE_INDEX_RE = re.compile(r"^\s*CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?", re.IGNORECASE)
+
+
 # Each entry is one version: SQL statements separated by ';', or a callable
 # taking the connection. Entry i brings the database to version i + 1.
 SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
@@ -560,6 +700,8 @@ SCHEMA: list[str | Callable[[sqlite3.Connection], None]] = [
     _BLOCKS_V8,
     # version 9: the logs of a saved game's continuations.
     _SEGMENTS_V9,
+    # version 10: device accounts (no provider) and their credentials.
+    _migrate_v10,
 ]
 
 # Saved games: kept for twelve months; the history list shows the latest
@@ -714,6 +856,111 @@ class Store:
             conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (name, user_id))
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             return dict(row) if row else None
+
+    @staticmethod
+    def _shown_names(conn: sqlite3.Connection, exclude_id: int | None = None) -> set[str]:
+        """Every account's effective name, casefolded, but ``exclude_id``'s."""
+        return {effective_name(dict(r)).casefold() for r in conn.execute(
+            "SELECT id, display_name, name FROM users WHERE id IS NOT ?", (exclude_id,))}
+
+    def set_unique_display_name(self, user_id: int, name: str | None) -> dict | None:
+        """``set_display_name``, refusing with ``DisplayNameError("taken")`` a
+        name another account shows (case-insensitively). Keeping one's own
+        current name, in any case, is never refused, so an account whose name
+        already collided keeps it. Clearing (None) is not checked."""
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+                if row is None:
+                    conn.execute("COMMIT")
+                    return None
+                if (name is not None
+                        and name.casefold() != effective_name(dict(row)).casefold()
+                        and name.casefold() in self._shown_names(conn, user_id)):
+                    raise DisplayNameError("taken")
+                conn.execute("UPDATE users SET display_name = ? WHERE id = ?", (name, user_id))
+                row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            return dict(row)
+
+    # -- device accounts
+    def create_device_user(self, token: str, now: float | None = None,
+                           rng: random.Random | None = None) -> dict:
+        """Create a device account (no provider) holding ``token``'s
+        credential, named with an unused generated name; returns the row.
+        Only the token's SHA-256 is stored. Raises ``DisplayNameError("taken")``
+        when every generated name is in use."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                name = _free_device_name(self._shown_names(conn), rng or _NAME_RNG)
+                cur = conn.execute(
+                    """INSERT INTO users(google_sub, apple_sub, email, name, picture, created_at,
+                                         last_login_at, display_name, rating)
+                       VALUES (NULL, NULL, NULL, ?, NULL, ?, ?, ?, ?)""",
+                    (name, t, t, name, START_RATING))
+                user_id = int(cur.lastrowid)
+                conn.execute(
+                    """INSERT INTO device_credentials(token_hash, user_id, created_at, last_seen_at)
+                       VALUES (?, ?, ?, ?)""", (_hash_token(token), user_id, t, t))
+                row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            return dict(row)
+
+    def device_account(self, token: str | None, now: float | None = None) -> dict | None:
+        """The account holding a device credential, suspended or not, else
+        None; a hit marks the credential seen and the account logged in."""
+        if not token or not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", token):
+            return None
+        t = int(now if now is not None else time.time())
+        digest = _hash_token(token)
+        with closing(self._open()) as conn:
+            row = conn.execute(
+                """SELECT u.* FROM device_credentials d JOIN users u ON u.id = d.user_id
+                   WHERE d.token_hash = ?""", (digest,)).fetchone()
+            if row is None:
+                return None
+            conn.execute("UPDATE device_credentials SET last_seen_at = ? WHERE token_hash = ?",
+                         (t, digest))
+            conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (t, row["id"]))
+            return dict(conn.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone())
+
+    def purge_device_accounts(self, now: float | None = None) -> list[int]:
+        """Delete the device accounts (no provider) that have no rated round
+        ``DEVICE_UNRATED_DAYS`` after creation, or that nobody has used for
+        ``DEVICE_IDLE_DAYS``; their credentials, sessions, links and blocks
+        go by cascade, and so do games no other account links. A linked
+        account is never touched. Returns the ids, which also join
+        ``deleted_ids`` so a live socket holding one reads as signed out."""
+        t = int(now if now is not None else time.time())
+        with closing(self._open()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                ids = [int(r["id"]) for r in conn.execute(
+                    """SELECT id FROM users
+                       WHERE google_sub IS NULL AND apple_sub IS NULL
+                         AND ((rated_rounds = 0 AND created_at < ?) OR last_login_at < ?)""",
+                    (t - DEVICE_UNRATED_DAYS * 86400, t - DEVICE_IDLE_DAYS * 86400))]
+                for user_id in ids:
+                    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                if ids:
+                    conn.execute(
+                        """DELETE FROM games WHERE NOT EXISTS (
+                               SELECT 1 FROM game_players p WHERE p.game_id = games.id)""")
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+        self.deleted_ids.update(ids)
+        return ids
 
     # -- sessions
     def create_session(self, user_id: int, now: float | None = None) -> str:
@@ -1474,7 +1721,17 @@ async def patch_me(body: DisplayNamePatch, request: Request) -> dict:
             name = validate_display_name(body.display_name)
         except DisplayNameError as exc:
             raise HTTPException(status_code=400, detail=exc.reason) from exc
-    updated = await STORE.run(STORE.set_display_name, user["id"], name)
+    if not device_accounts_enabled():
+        updated = await STORE.run(STORE.set_display_name, user["id"], name)
+    else:
+        # A device account's only name is its display name: clearing it
+        # would leave the first word of the generated one.
+        if name is None and is_device_account(user):
+            raise HTTPException(status_code=400, detail="empty")
+        try:
+            updated = await STORE.run(STORE.set_unique_display_name, user["id"], name)
+        except DisplayNameError as exc:
+            raise HTTPException(status_code=400, detail=exc.reason) from exc
     if updated is None:
         raise HTTPException(status_code=401, detail="Not signed in.")
     shown = effective_name(updated)
@@ -1558,6 +1815,85 @@ async def logout(request: Request, response: Response) -> dict:
         await STORE.run(STORE.delete_session, token)
     _clear_session_cookie(response, request)
     return {"ok": True}
+
+
+def is_device_account(row: Mapping[str, Any]) -> bool:
+    """An account with no provider: made by ``POST /api/auth/device``."""
+    return row.get("google_sub") is None and row.get("apple_sub") is None
+
+
+DEVICE_HOURLY = RateLimiter(DEVICE_CREATES_PER_HOUR, 3600.0)
+DEVICE_DAILY = RateLimiter(DEVICE_CREATES_PER_DAY, 86400.0)
+
+
+def _device_token(request: Request) -> str | None:
+    """The token of an ``Authorization: Device <token>`` header; None when
+    the header is absent. Any other scheme, or an empty token, is a 401."""
+    header = request.headers.get("authorization")
+    if header is None:
+        return None
+    scheme, _, token = header.strip().partition(" ")
+    token = token.strip()
+    if scheme.lower() != DEVICE_AUTH_SCHEME.lower() or not token:
+        raise HTTPException(status_code=401, detail="Device sign-in rejected (malformed).")
+    return token
+
+
+@router.post("/auth/device")
+async def auth_device(request: Request, response: Response) -> dict:
+    """The iOS app's account, with no provider.
+
+    With no ``Authorization`` header: create a device account with a
+    server-assigned unique name, start a session (the ``sj_session``
+    cookie, as every sign-in does) and return ``{"token", "user"}``. The
+    256-bit token is returned this once; the server keeps only its SHA-256.
+    With ``Authorization: Device <token>``: start a session for the account
+    holding that credential and return ``{"user"}``.
+
+    404 unless ``SHENGJI_DEVICE_ACCOUNTS=1``. 403 unless the request
+    declares the iOS app (``X-Shengji-Client: ios-app``), a soft gate: the
+    web client never calls this, so web players stay guests. Creation is
+    limited per address (``DEVICE_CREATES_PER_HOUR`` and ``_PER_DAY``),
+    sign-in shares the sign-in endpoints' per-address budget; over either,
+    429, and the app plays on as a guest."""
+    if not device_accounts_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    if request.headers.get(CLIENT_HEADER, "").strip().lower() != IOS_APP_CLIENT:
+        raise HTTPException(status_code=403, detail="Device accounts are for the app only.")
+    token = _device_token(request)
+    ip = client_ip(request)
+    if token is not None:
+        if not LIMITER.allow(ip):
+            raise HTTPException(status_code=429, detail="Too many sign-in attempts; try again in a minute.")
+        user = await STORE.run(STORE.device_account, token)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Device sign-in rejected (unknown).")
+        refuse_suspended(user)
+        session = await STORE.run(STORE.create_session, user["id"])
+        _set_session_cookie(response, request, session)
+        return {"user": await account_payload(STORE, user)}
+    if not DEVICE_HOURLY.allow(ip) or not DEVICE_DAILY.allow(ip):
+        raise HTTPException(status_code=429, detail="Too many new accounts; play as a guest for now.")
+    token = secrets.token_urlsafe(32)
+    try:
+        user = await STORE.run(STORE.create_device_user, token)
+    except DisplayNameError as exc:
+        log.warning("device account not created: no free name")
+        raise HTTPException(status_code=503, detail="No account available; play as a guest.") from exc
+    session = await STORE.run(STORE.create_session, user["id"])
+    _set_session_cookie(response, request, session)
+    return {"token": token, "user": await account_payload(STORE, user)}
+
+
+def detach_purged(user_ids: list[int]) -> None:
+    """After ``Store.purge_device_accounts``, on the event loop: the same
+    hooks a ``DELETE /api/me`` runs, so no live seat keeps a purged id."""
+    for user_id in user_ids:
+        for hook in USER_DELETED_HOOKS:
+            try:
+                hook(user_id)
+            except Exception:       # noqa: BLE001 - the purge already happened
+                log.exception("account-deletion hook failed after purge")
 
 
 async def websocket_user(ws: WebSocket) -> dict | None:

@@ -173,6 +173,31 @@ def _maybe_purge() -> None:
             return
         _last_purge = now
     _submit("purge_games")
+    if accounts.device_accounts_enabled():
+        _purge_device_accounts()
+
+
+def _purge_device_accounts() -> None:
+    """Queue ``Store.purge_device_accounts`` on the link worker, then detach
+    the purged ids from live seats on the loop (``accounts.detach_purged``)."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is None:                # called off the loop (scripts, unit tests)
+        try:
+            accounts.detach_purged(accounts.STORE.purge_device_accounts())
+        except Exception as exc:    # noqa: BLE001 - never raise into a game
+            _count_failure(exc)
+        return
+
+    def done(fut: "asyncio.Future[Any]") -> None:
+        if fut.cancelled() or fut.exception() is not None:
+            _done(fut)
+        else:
+            accounts.detach_purged(fut.result())
+
+    loop.run_in_executor(_EXECUTOR, accounts.STORE.purge_device_accounts).add_done_callback(done)
 
 
 def _open(room: Any, link: GameLink, seat: int, user_id: int, from_round: int) -> None:

@@ -13,8 +13,8 @@ import { NEARBY_LINK_LABEL, nearbyLinkState } from "./nearbyLink";
 import { isNearbyCode } from "./offline/server/nearby/codes";
 import { NEARBY_COPY } from "./offline/server/nearby/copy";
 import {
-  clearNearbyLogFile, copyNearbyLog, nearbySoakSwitchTap, uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive,
-  useNearbyLogFile, useNearbySoak, useNearbySoakSwitch,
+  clearNearbyLogFile, copyNearbyLog, nearbySoakSwitchOn, nearbySoakSwitchTap, subscribeNearbySoakSwitch,
+  uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive, useNearbyLogFile, useNearbySoak, useNearbySoakSwitch,
 } from "./nearbyDebug";
 import { tapHandlers } from "./tap";
 import { NearbyJoinPanel as JoinPanel, NearbyRoomPanel as RoomPanel } from "./queue/TablePanel";
@@ -74,11 +74,19 @@ export function nearbyMenuTitleTap(): void {
   nearbySoakSwitchTap(nearbyGate().chaos);
 }
 
-/** The ⋯ menu's soak rows at a nearby table. With the log file
- *  (`logFile`: the device test and the Beta): Copy log, Clear log file and
- *  Upload log now. In a Debug build for the device test (`debug`): the
- *  peer-to-peer keepalive, and the soak's Autoplay, Chaos and summary; in
- *  the Beta (`chaos`) those three only while the hidden switch is on. A
+/** The hidden switch as the ⋯ menu's code marks it: on only where the
+ *  plugin reports `chaos`, so a switch kept from another build marks nothing. */
+export const nearbySoakMarker = {
+  subscribe: subscribeNearbySoakSwitch,
+  getSnapshot: (): boolean => nearbyGate().chaos && nearbySoakSwitchOn(),
+};
+
+/** The ⋯ menu's soak rows at a nearby table. In a Debug build for the
+ *  device test (`debug`), and in the Beta (`chaos`) only while the hidden
+ *  switch is on: with the log file (`logFile`), Copy log, Clear log file and
+ *  Upload log now, and the soak's Autoplay, Chaos and summary. The
+ *  peer-to-peer keepalive is the Debug build's alone. The log file and its
+ *  upload run wherever `logFile` is, rows or not (nearbyGate.ts). A
  *  reviewed App Store binary reports none and draws none of them. */
 export function NearbyMenuRows({ close }: { close: () => void }) {
   const gate = nearbyGate();
@@ -86,20 +94,21 @@ export function NearbyMenuRows({ close }: { close: () => void }) {
   const logFile = useNearbyLogFile(gate.logFile);
   const hidden = useNearbySoakSwitch();
   const keepalive = useNearbyKeepalive(debug);
-  const soak = useNearbySoak(gate.logFile && (debug || (gate.chaos && hidden)));
+  const tools = debug || (gate.chaos && hidden);
+  const soak = useNearbySoak(gate.logFile && tools);
   return (
     <>
-      {debug || logFile ? (
+      {debug || (tools && logFile) ? (
         <button className="hud-menu-row" role="menuitem" {...tapHandlers(() => { void copyNearbyLog(); close(); })}>
           <span>Copy log</span>
         </button>
       ) : null}
-      {logFile ? (
+      {tools && logFile ? (
         <button className="hud-menu-row" role="menuitem" {...tapHandlers(() => { void clearNearbyLogFile(); close(); })}>
           <span>Clear log file</span>
         </button>
       ) : null}
-      {logFile ? (
+      {tools && logFile ? (
         <button className="hud-menu-row" role="menuitem" {...tapHandlers(() => { void uploadNearbyLogNow(); close(); })}>
           <span>Upload log now</span>
         </button>

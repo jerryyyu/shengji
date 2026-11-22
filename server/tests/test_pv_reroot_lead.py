@@ -1,0 +1,398 @@
+"""The value-pruned, re-rooted two-trick lead lookahead (`train.pv_reroot`, ``vp2``), OFF BY DEFAULT.
+
+Flag off: release 54 as served decides every play decision of the fixed self-play deals of
+`r54_selfplay_positions` as main did (its pinned per-engine digests), and the rule is absent from the
+name, the payload and the record.  Flag on: the keep set, the switch and the re-rooted leaf pricing,
+unit by unit and through the real release-54 bot (the served pass it reads is the flag-off pass; the
+decision the bot plays is the one an offline reader derives from the bot's own deepened columns).
+
+Correctness and identity only; no strength claim.
+"""
+import copy
+import json
+import os
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+
+import r54_selfplay_positions as S
+from test_release46_fly_config import fly_env
+from test_release50_fly_config import release50_packages  # noqa: F401
+from test_release53_fly_config import BURY3_NAME, local_env, release53_pair, served_bot  # noqa: F401
+from test_unified_serving import served_functions  # noqa: F401
+
+from shengji.train import pv_reroot as R
+
+COMPILED = os.environ.get("SHENGJI_FAST") == "1"
+#: the pure engine replays the first decisions of the first deal (its decisions are many times
+#: slower); the compiled engine replays every pinned decision
+PURE_DECISIONS = 16
+
+
+# -- the keep set ------------------------------------------------------------------------------
+
+def _matrix(means, noise=0.0, worlds=64, seed=3):
+    rng = np.random.default_rng(seed)
+    common = rng.standard_normal((worlds, 1))
+    own = noise * rng.standard_normal((worlds, len(means)))
+    v0 = np.asarray(means)[None, :] + common + own
+    v0 -= own.mean(axis=0)            # the column means are ``means`` exactly
+    v0 -= common.mean()
+    return v0
+
+
+def test_keep_set_holds_the_served_pick_and_the_top_three_capped_at_four():
+    means = [0.0, 0.5, 0.4, 0.3, 0.2, -1.0]
+    v0 = _matrix(means, noise=0.0)
+    m = v0.mean(axis=0)
+    # served outside the top three: served + top three = the cap
+    assert R.keep_set(v0, m, 5) == [1, 2, 3, 5]
+    # served inside the top three, nobody else within a paired SE (no noise: SE 0, gaps < 0)
+    assert R.keep_set(v0, m, 1) == [1, 2, 3]
+    assert R.keep_set(v0, m, 3) == [1, 2, 3]
+    # a single candidate: only the served pick
+    assert R.keep_set(v0[:, :1], m[:1], 0) == [0]
+
+
+def test_keep_set_adds_a_candidate_within_one_paired_se_and_never_cuts_by_level():
+    means = [0.50, 0.49, 0.48, 0.47, 0.10]
+    v0 = _matrix(means, noise=0.2)
+    m = v0.mean(axis=0)
+    # the fourth is within one paired SE of the best (gap 0.03, SE ~0.035): it fills the cap
+    assert R.keep_set(v0, m, 0) == [0, 1, 2, 3]
+    # far below the best by many SEs: not kept, whatever its level
+    assert 4 not in R.keep_set(v0, m, 0)
+    # a constant shift of every value changes nothing (rank and paired margin only)
+    assert R.keep_set(v0 + 7.5, m + 7.5, 0) == R.keep_set(v0, m, 0)
+    # the served pick is kept even when it is the worst
+    assert R.keep_set(v0, m, 4) == [0, 1, 2, 4]
+
+
+def test_keep_set_breaks_ties_by_admission_order_and_refuses_bad_input():
+    v0 = np.zeros((8, 5))
+    assert R.keep_set(v0, v0.mean(axis=0), 4) == [0, 1, 2, 4]
+    bad = v0.copy()
+    bad[0, 1] = np.nan
+    with pytest.raises(ValueError):
+        R.keep_set(bad, v0.mean(axis=0), 0)
+    with pytest.raises(ValueError):
+        R.keep_set(v0, v0.mean(axis=0)[:3], 0)
+
+
+# -- the switch --------------------------------------------------------------------------------
+
+def test_the_switch_needs_paired_depth_evidence_at_z_two():
+    rng = np.random.default_rng(5)
+    w = 64
+    v0 = np.column_stack([np.full(w, 0.30), np.full(w, 0.25)])     # served (col 0) ahead shallow
+    base = rng.standard_normal(w)
+    # deep: candidate 1 gains 0.10 over its shallow value, the served pick gains nothing
+    noise = 0.05 * rng.standard_normal(w)
+    q2 = np.column_stack([0.30 + base, 0.35 + base + noise])
+    pick, test = R.choose(q2, v0, [2, 6], 2)
+    assert pick == 6 and test["override"] and test["z"] >= 2
+    # the same mean gain drowned in noise: z < 2, the served pick stands
+    q2_noisy = np.column_stack([0.30 + base, 0.35 + base + 2.0 * rng.standard_normal(w)])
+    pick, test = R.choose(q2_noisy, v0, [2, 6], 2)
+    if test is not None:
+        assert test["z"] < 2 or not test["override"]
+    assert pick == 2 or test["override"]
+
+
+def test_the_switch_keeps_the_served_pick_when_its_deep_mean_is_best():
+    v0 = np.column_stack([np.zeros(16), np.zeros(16)])
+    q2 = np.column_stack([np.full(16, 0.2), np.full(16, 0.1)])
+    assert R.choose(q2, v0, [0, 3], 0) == (0, None)
+    # a deep tie keeps the served pick too
+    assert R.choose(np.full((16, 2), 0.2), v0, [0, 3], 3) == (3, None)
+
+
+def test_the_shallow_gap_is_never_evidence():
+    w = 32
+    rng = np.random.default_rng(9)
+    base = rng.standard_normal(w)
+    # candidate 1 is far behind shallow and only level deep: its depth correction is large and
+    # paired, but its deep mean equals the served one's, so nothing switches
+    v0 = np.column_stack([np.full(w, 1.0), np.full(w, -1.0)])
+    q2 = np.column_stack([base, base])
+    assert R.choose(q2, v0, [0, 1], 0) == (0, None)
+    # ahead deep by a hair with a correction that is NOT consistent across worlds: no switch
+    q2 = np.column_stack([base, base + 0.01 + 3.0 * rng.standard_normal(w)])
+    v0 = np.column_stack([base, base])
+    pick, test = R.choose(q2, v0, [0, 1], 0)
+    assert pick == 0
+
+
+# -- the continuation's proposals and the leaf contract ------------------------------------------
+
+def test_lead_proposals_take_the_top_three_by_mean_log_odds_with_softmax_weights(monkeypatch):
+    from shengji.engine.cards import Ordering
+    from shengji.rl.encode import CARD_INDEX
+    from shengji.train import unified_slots
+
+    hand = ["SA", "SA", "SK", "H2", "D9"]
+    logits = np.zeros(54)
+    for card, value in {"SA": 2.0, "SK": 1.0, "H2": 1.0, "D9": -3.0}.items():
+        logits[CARD_INDEX[card]] = value
+    monkeypatch.setattr(unified_slots, "policy_from_states", lambda model, q: logits)
+    ordering = Ordering("C", "5")
+    leads, weights = R.lead_proposals(None, None, hand, ordering)
+    # singles first in enumeration order, then the pair: SA 2.0, SA-SA 2.0, SK 1.0 (H2 1.0 is later)
+    assert leads[0] == ["SA"] and sorted(map(tuple, leads)) == sorted([("SA",), ("SA", "SA"), ("SK",)])
+    expected = np.exp(np.array([2.0, 2.0, 1.0]) - 2.0)
+    assert np.allclose(sorted(weights), sorted(expected / expected.sum()))
+    assert abs(weights.sum() - 1.0) < 1e-12
+
+
+def test_a_leaf_off_the_trick_boundary_is_a_contract_error():
+    from shengji.train.pv_search_policy import PVSearchPolicyError
+    root = SimpleNamespace(history=[object()] * 3)
+    mid_trick = SimpleNamespace(phase="play", history=[object()] * 4,
+                                trick=SimpleNamespace(plays=[object()]))
+    too_deep = SimpleNamespace(phase="play", history=[object()] * 5, trick=None)
+    bot = SimpleNamespace(unified_frame=None)
+    for leaf in (mid_trick, too_deep):
+        with pytest.raises(PVSearchPolicyError) as err:
+            R.candidate_values(bot, None, root, 0, [leaf], (), lambda: None,
+                               {"reroots": 0, "value_left": 0, "reply_left": 0})
+        assert err.value.stage == "vp2_leaf_horizon"
+
+
+# -- the recipe: absent when off -----------------------------------------------------------------
+
+def _config(**kw):
+    from shengji.train.pv_search_policy import PVSearchConfig
+    return PVSearchConfig(checkpoint_sha256="0" * 64, **kw)
+
+
+def test_off_is_absent_from_the_name_and_the_payload_and_on_is_named():
+    from shengji.train import pv_search_policy as pv
+    off = _config()
+    payload = pv.recipe_payload(off)
+    assert "value_prune_lead" not in payload and "value_prune_lead_max_seconds" not in payload
+    assert "vp2" not in pv.pv_policy_name("00000000", off)
+    on = _config(value_prune_lead=True)
+    name = pv.pv_policy_name("00000000", on)
+    assert "-vp2-r" in name and pv.recipe_payload(on)["value_prune_lead"]["rule"] == R.VP2_RULE_ID
+    capped = _config(value_prune_lead=True, value_prune_lead_max_seconds=2.5)
+    assert "-vp2-vp2s2500-r" in pv.pv_policy_name("00000000", capped)
+    assert pv.recipe_digest(on) != pv.recipe_digest(off) != pv.recipe_digest(capped)
+
+
+def test_the_rule_refuses_a_cap_alone_and_the_rules_that_reprice_a_lead():
+    from shengji.train import pv_search_policy as pv
+    with pytest.raises(pv.PVSearchPolicyError, match="needs value_prune_lead"):
+        pv.recipe_payload(_config(value_prune_lead_max_seconds=2.0))
+    for clash in (dict(two_trick_lead=True), dict(lead_confirm=32), dict(adaptive_worlds=True),
+                  dict(leaf_greedy_top=2, leaf_greedy_finish=True)):
+        with pytest.raises(pv.PVSearchPolicyError, match="does not combine"):
+            pv.recipe_payload(_config(value_prune_lead=True, **clash))
+    with pytest.raises(pv.PVSearchPolicyError):
+        pv.recipe_payload(_config(value_prune_lead="1"))
+
+
+def test_the_env_switch(monkeypatch):
+    from shengji.ai import cwv_policy
+    from shengji.train import pv_search_policy as pv
+    monkeypatch.setattr(cwv_policy, "checkpoint_id", lambda path: "f4f4127e")
+    monkeypatch.setattr(pv, "file_sha256", lambda path: "f" * 64)
+    base = {"SHENGJI_PV_CKPT": "/x/value.npz", "SHENGJI_PV_SHA256": "f" * 64,
+            "SHENGJI_PV_UNIFIED_CKPT": "/x/u.npz"}
+    recipe = pv.pv_env_recipe(base)
+    assert "value_prune_lead" not in recipe
+    assert pv.pv_env_recipe({**base, "SHENGJI_PV_VP2": "0"}) == recipe
+    assert pv.pv_env_recipe({**base, "SHENGJI_PV_VP2": "1"})["value_prune_lead"] is True
+    got = pv.pv_env_recipe({**base, "SHENGJI_PV_VP2": "1", "SHENGJI_PV_VP2_MAX_SECONDS": "4"})
+    assert got["value_prune_lead_max_seconds"] == 4.0
+    with pytest.raises(pv.PVSearchPolicyError, match="needs the unified package"):
+        pv.pv_env_recipe({k: v for k, v in base.items() if k != "SHENGJI_PV_UNIFIED_CKPT"}
+                         | {"SHENGJI_PV_VP2": "1"})
+    with pytest.raises(pv.PVSearchPolicyError, match="needs SHENGJI_PV_VP2=1"):
+        pv.pv_env_recipe({**base, "SHENGJI_PV_VP2_MAX_SECONDS": "4"})
+    with pytest.raises(pv.PVSearchPolicyError, match="must be 0 or 1"):
+        pv.pv_env_recipe({**base, "SHENGJI_PV_VP2": "2"})
+
+
+# -- release 54, flag off: main's decisions ------------------------------------------------------
+
+def _pins():
+    return json.loads(S.PINNED.read_text())
+
+
+def test_the_pins_are_release54_on_both_engines():
+    PINS = _pins()
+    assert set(PINS["engines"]) == {"compiled", "pure"}
+    assert PINS["name"] == BURY3_NAME
+    compiled, pure = PINS["engines"]["compiled"], PINS["engines"]["pure"]
+    assert len(compiled) >= 200
+    assert {key.split(":")[0] for key in compiled} == {str(seed) for seed in S.SEEDS}
+    order = sorted(compiled, key=lambda key: tuple(map(int, key.split(":"))))
+    assert list(compiled) == order
+    first = [k for k in order if k.startswith(f"{S.SEEDS[0]}:")]
+    assert list(pure) == first[:PURE_DECISIONS]
+    for key in pure:
+        assert pure[key]["cards"] == compiled[key]["cards"]
+
+
+def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, monkeypatch,
+                                            served_functions):
+    name, bot = served_bot(release50_packages, release53_pair, monkeypatch, env=fly_env(), seed=S.BOT_SEED)
+    assert name == bot.policy_name == BURY3_NAME
+    assert bot.value_prune_lead is False and "value_prune_lead" not in vars(bot)
+    S.P.lift(bot)
+    pins = _pins()["engines"]["compiled" if COMPILED else "pure"]
+    seen = 0
+    for seed in (S.SEEDS if COMPILED else S.SEEDS[:1]):
+        limit = None if COMPILED else PURE_DECISIONS
+        for trick, pos, projection in S.deal_decisions(bot, seed, limit):
+            key = S.label(seed, trick, pos)
+            assert not any(k.startswith("vp2_") for k in projection["record"]), key
+            assert projection["cards"] == pins[key]["cards"], key
+            assert S.digest(projection) == pins[key]["digest"], key
+            seen += 1
+    assert seen == len(pins)
+
+
+# -- release 54, flag on -------------------------------------------------------------------------
+
+def _vp2_bot(packages, pair, monkeypatch, seed, **attrs):
+    from shengji.eval.served_config import registry_name
+    env = {**fly_env(), "SHENGJI_PV_VP2": "1"}
+    env["SHENGJI_BOT"] = registry_name(local_env(packages, pair, env))
+    name, bot = served_bot(packages, pair, monkeypatch, env=env, seed=seed)
+    assert name == bot.policy_name and "-vp2-" in name and name.replace("-vp2", "") != name
+    S.P.lift(bot)
+    bot.value_prune_lead_max_seconds = 600.0
+    for key, value in attrs.items():
+        setattr(bot, key, value)
+    return bot
+
+
+def _leads(bot, seed, n):
+    """The first ``n`` eligible leads of deal ``seed`` played by ``bot`` (rule off on it while it plays)."""
+    from shengji.ai.env import observe_committed_play, prepare_round
+    from shengji.engine.cards import RANKS
+    from shengji.engine.game import Game
+    import random
+    game = Game(rng=random.Random(seed), start_level=RANKS[seed % len(RANKS)])
+    rnd = prepare_round(game, [bot] * 4)
+    out = []
+    while rnd.phase == "play" and len(out) < n:
+        seat = rnd.turn
+        if R.eligible(rnd, seat) and len(rnd.history) >= 1:
+            out.append(copy.deepcopy(rnd))
+        cards = bot.decide_play(rnd, seat)
+        rnd.play(seat, list(cards))
+        observe_committed_play(rnd, [bot] * 4)
+    return out
+
+
+@pytest.fixture(scope="module")
+def r54_leads(release50_packages, release53_pair):
+    """Two eligible leads of the first pinned deal, from release 54 as served."""
+    mp = pytest.MonkeyPatch()
+    try:
+        from shengji.ai import belief_numpy as bn
+        mp.setattr(bn, "PREP_SECONDS", 60.0)
+        _, bot = served_bot(release50_packages, release53_pair, mp, env=fly_env(), seed=S.BOT_SEED)
+        S.P.lift(bot)
+        return _leads(bot, S.SEEDS[0], 2)
+    finally:
+        mp.undo()
+
+
+def _off_record(packages, pair, monkeypatch, rnd):
+    _, off = served_bot(packages, pair, monkeypatch, env=fly_env(), seed=S.BOT_SEED)
+    S.P.lift(off)
+    cards = sorted(off.decide_play(copy.deepcopy(rnd), rnd.turn))
+    return cards, off.last_decision_record
+
+
+def test_on_reads_the_served_pass_and_plays_what_its_own_columns_derive(
+        release50_packages, release53_pair, monkeypatch, served_functions, r54_leads):
+    for rnd in r54_leads[:1 if not COMPILED else 2]:
+        off_cards, off = _off_record(release50_packages, release53_pair, monkeypatch, rnd)
+        # the probe: every admitted candidate deepened, the decision still the keep set's
+        probe = _vp2_bot(release50_packages, release53_pair, monkeypatch, S.BOT_SEED, vp2_deepen_all=True)
+        cards = sorted(probe.decide_play(copy.deepcopy(rnd), rnd.turn))
+        rec, trace = probe.last_decision_record, probe._vp2["trace"]
+        # the served pass is the flag-off one
+        assert rec["value_means"] == off["value_means"] and rec["admitted"] == off["admitted"]
+        assert rec["admitted_indices"][rec["vp2_served"]] == off["selected_index"]
+        assert rec["vp2_applied"] and rec["vp2_eligible"] and rec["vp2_fallback"] is None
+        assert rec["vp2_value_left"] == 0 and rec["vp2_reply_left"] == 0
+        assert rec["vp2_reroots"] == len(rec["admitted"]) * rec["worlds"]
+        # an offline reader re-derives the bot's keep set and pick from the bot's own columns
+        kept = R.keep_set(trace["v0"], trace["means"], trace["served"])
+        pick, _ = R.choose(trace["q2"][:, kept], trace["v0"][:, kept], kept, trace["served"])
+        assert kept == rec["vp2_kept"] and pick == rec["vp2_selected"]
+        assert cards == sorted(rec["admitted"][pick])
+        if pick == trace["served"]:
+            assert cards == off_cards
+        # the live rule (keep set only) prices each kept candidate as the probe did
+        live = _vp2_bot(release50_packages, release53_pair, monkeypatch, S.BOT_SEED)
+        live_cards = sorted(live.decide_play(copy.deepcopy(rnd), rnd.turn))
+        got = live.last_decision_record
+        assert live_cards == cards and got["vp2_kept"] == kept and got["vp2_selected"] == pick
+        assert got["vp2_reroots"] == len(kept) * got["worlds"]
+        # the same column per kept candidate, up to the float rounding of a forward's memory layout
+        assert np.allclose(got["vp2_q2_means"], trace["q2"][:, kept].mean(axis=0), rtol=0, atol=1e-12)
+        assert live._vp2["trace"] is None
+
+
+def test_the_reroot_prices_trick_two_from_the_root_team(
+        release50_packages, release53_pair, monkeypatch, served_functions, r54_leads):
+    from shengji.train.pv_tree_search import greedy_stats
+    from shengji.train.pv_two_trick import leaf_copy
+    from shengji.train.unified_slots import LeafFrame
+    from shengji.ai.belief_numpy import decision_inputs
+    root = copy.deepcopy(r54_leads[0])
+    seat = root.turn
+    bot = _vp2_bot(release50_packages, release53_pair, monkeypatch, S.BOT_SEED)
+    bot.decide_play(root, seat)
+    # the decision state keeps the served pass's leaves; price the first candidate in four worlds
+    state = bot._vp2
+    assert state["actions"] is not None and state["v0"].shape[1] == len(state["actions"])
+    leaves = [row[0] for row in state["leaves"][:4]]
+    assert {leaf.turn for leaf in leaves} <= {0, 1, 2, 3}
+    counters = {"reroots": 0, "value_left": 0, "reply_left": 0}
+    model = bot.unified_value_model
+    q2 = R.candidate_values(bot, model, root, seat, leaves, (), lambda: None, counters)
+    assert counters == {"reroots": 4, "value_left": 0, "reply_left": 0} and bot.unified_frame is None
+    # independently, on a copy: each leaf's own frame running its own trunk forward
+    # (`LeafFrame.cache`), the continuation valued from the NEXT LEADER's team, then signed into
+    # the root seat's team
+    other = copy.deepcopy(bot)
+    for leaf, value in zip(leaves, q2):
+        leader = leaf.turn
+        inp = decision_inputs(leaf, leader, ())
+        q, _ = model.card_states(inp, model.trunk.encode_history(inp))
+        leads, weights = R.lead_proposals(model, q, leaf.hands[leader], leaf.ordering)
+        clones = []
+        for lead in leads:
+            clone = leaf_copy(leaf)
+            clone.play(leader, list(lead))
+            clones.append(clone)
+        other.unified_frame = LeafFrame(other, leaf, leader)
+        try:
+            other._greedy_finish(clones, len(root.history) + 2, None, greedy_stats())
+            own = np.asarray(other.evaluator.score(clones, leader), dtype=np.float64)
+        finally:
+            other.unified_frame = None
+        sign = 1.0 if (leader - seat) % 2 == 0 else -1.0
+        assert abs(float(weights @ (sign * own)) - value) < 1e-5
+        assert all(len(c.history) == len(root.history) + 2 and not c.trick.plays for c in clones)
+
+
+def test_on_past_its_cap_plays_the_served_pick_whole(
+        release50_packages, release53_pair, monkeypatch, served_functions, r54_leads):
+    rnd = r54_leads[0]
+    off_cards, off = _off_record(release50_packages, release53_pair, monkeypatch, rnd)
+    bot = _vp2_bot(release50_packages, release53_pair, monkeypatch, S.BOT_SEED,
+                   value_prune_lead_max_seconds=0.001)
+    cards = sorted(bot.decide_play(copy.deepcopy(rnd), rnd.turn))
+    rec = bot.last_decision_record
+    assert rec["vp2_fallback"] == "deadline" and not rec["vp2_applied"] and not rec["vp2_changed"]
+    assert cards == off_cards and rec["selected_index"] == off["selected_index"]
+    assert bot._vp2["trace"] is None

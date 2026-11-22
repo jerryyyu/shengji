@@ -62,7 +62,7 @@ describe("press feedback", () => {
     ".leave-sheet-actions button",
   ];
   const DIM = [
-    ".tabbar-item", ".topbar-tab", ".segmented-btn", ".howto-link", "button.tp-seat", ".tp-chat",
+    ".tabbar-item", ".topbar-tab", ".segmented-btn", ".howto-link", "button.tp-seat", ".tp-chat", ".tp-settings",
     ".play-mode-opt", ".chat-quick-btn", "button.q-link", ".account-pill", ".last-trick-close",
   ];
   const active = (sel: string) => rules.filter((r) => r.sels.some((s) => s.startsWith(`${sel}:active`)));
@@ -79,7 +79,7 @@ describe("press feedback", () => {
 
 describe("tap targets", () => {
   // controls drawn at 44px or more
-  const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".q-link", ".leave-sheet-actions button"];
+  const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".tp-invite", ".q-link", ".leave-sheet-actions button"];
   it.each(DRAWN)("%s is drawn at least 44px tall", (sel) => {
     const h = bodies(sel).flatMap((b) => [...b.matchAll(/(?:^|[ ;])(?:min-)?height: (\d+)px/g)].map((m) => Number(m[1])));
     expect(h.length).toBeGreaterThan(0);
@@ -90,7 +90,7 @@ describe("tap targets", () => {
   // selector ends at the control (".x", ".state .x"), so a state override
   // that shrinks the control is measured, not assumed.
   const EXTENDED = [
-    ".last-trick-btn", ".reconnect-retry", ".play-mode-opt", ".tp-invite", ".btn.join-leave",
+    ".last-trick-btn", ".reconnect-retry", ".play-mode-opt", ".tp-settings", ".btn.join-leave",
     ".table-pill", ".last-trick-close", ".chat-quick-btn", ".account-pill", ".segmented-btn",
   ];
   // States drawn under 44px on purpose, each with its reason.

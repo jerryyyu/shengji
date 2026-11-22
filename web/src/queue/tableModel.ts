@@ -21,6 +21,8 @@ export interface SeatItem {
   at: number;
   /** `held`: an empty seat kept for a Duo opener's friend. */
   look: "you" | "friend" | "person" | "open" | "held" | "bot";
+  /** Empty for an open seat, drawn as its "+" alone; a dropped player's
+   *  open seat in a Join panel keeps "Name (away)". */
   name: string;
   sub: string;
   /** Read by a screen reader: the full name and the seat's team. */
@@ -101,12 +103,13 @@ export interface TableButton {
   busy?: boolean;
 }
 
-/** The settings rows: the code with its Invite link, Starting level and
- *  Bots (when `bots` is set) on a casual table (the opener picks them,
- *  others read them), and Allow joiners when `joiners` is set. */
+/** The rows: the code with its Invite, then the settings, Starting level
+ *  and Bots (when `bots` is set) on a casual table (the opener picks them,
+ *  others read them), and Allow joiners when `joiners` is set. The panel
+ *  folds two or more settings into one Table settings row. */
 export interface TableRows {
   code: string | null;
-  /** The Invite link beside the code; a nearby table has no link to share. */
+  /** The code is the Invite control; a nearby table has no link to share. */
   invite?: boolean;
   ranked: boolean;
   opener: boolean;
@@ -126,7 +129,9 @@ export type MoverSeat = { name: string; sit?: string | null; pair?: boolean } | 
 export interface TableModel {
   /** Drawn as the class `tp-${kind}`. */
   kind: Exclude<PanelKind, "play"> | "join-code" | "offline";
-  /** The mode tag above the title; a ranked table has none. */
+  /** The mode tag above the title, where nothing else on screen says the
+   *  mode: the offline panels and a code's Join panel. The queue's panels sit
+   *  under the Ranked / Casual switch and have none. */
   tag?: "Casual" | "Offline";
   title: string;
   /** `link`: a button at the line's end (the denied line's Open Settings). */
@@ -167,7 +172,7 @@ function offerSeats(o: OfferView, busy: boolean): ModelSeat[] {
     if (s.open && !o.partner) {
       // whose seat it was is the screen reader's only; the seat shows a name alone
       const away = s.bot ? "" : `, ${s.name} is away`;
-      return { at, look: "open", name: "Open seat", sub: "", busy,
+      return { at, look: "open", name: "", sub: "", busy,
                label: `Open seat, ${teamWord(ours)}${away}. Sit here`, act: { type: "offer_pick", seat: at } };
     }
     if (s.bot || s.open) return { at, look: "bot", name: "Bot", sub: "", label: `Bot, ${teamWord(ours)}` };
@@ -206,15 +211,15 @@ function frameSeats(f: TableFrame, now: number, { alone = false, move = false, b
     if (!s && targets) {
       const name = people[picked!]?.name ?? "";
       return targets.includes(at)
-        ? { at, look: "open", name: "Open seat", sub: "", busy,
+        ? { at, look: "open", name: "", sub: "", busy,
             label: `Open seat, ${teamWord(ours)}. Move ${name} here`, act: { type: "move_to", at } }
-        : { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+        : { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
     }
     if (!s && move) {
-      return { at, look: "open", name: "Open seat", sub: "", busy,
+      return { at, look: "open", name: "", sub: "", busy,
                label: `Open seat, ${teamWord(ours)}. Move here`, act: { type: "move", seat: at } };
     }
-    if (!s) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    if (!s) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
     const name = s.name ?? "";
     const ready = s.ready === true;
     const status = alone ? ""
@@ -264,14 +269,13 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   const led = q.leader || tableDuo(q) ? undefined : `${shortName(partner ?? "Your partner")} leads`;
   const leaveBtn: TableButton = { label: "Leave", disabled: q.pending === "leave", act: { type: "ask_leave" } };
   const ranked = (q.queueMode ?? q.playMode) === "ranked";
-  const tag = (q.queueMode ?? q.playMode) === "casual" && kind !== "elsewhere" ? "Casual" as const : undefined;
   const f = q.frame;
   const opener = isOpener(q);
   const rows: TableRows = { code: f?.code ?? null, ranked, opener, level: f?.settings.start_level ?? "2",
                             joiners: opener ? f?.settings.allow_joiners !== false : undefined,
                             bots: ranked ? undefined : f?.settings.bot_level };
   const leave = queueLeaveContext(q);
-  const base = { tag, leave, rows: null, waitSwitch: null, chat: null };
+  const base = { leave, rows: null, waitSwitch: null, chat: null };
   if (kind === "join" && q.offer) {
     const o = q.offer;
     const busy = q.pending !== null;
@@ -378,7 +382,7 @@ function roomSeats(peek: RoomSeats, you: number | null, busy: boolean): ModelSea
             label: `${sd.name} is away, ${teamWord(ours)}. Sit here`, ...move };
     }
     if (at === you) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
-    if (!sd) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}`, ...move };
+    if (!sd) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`, ...move };
     if (sd.is_bot) {
       return { at, look: "bot", name: "Bot", sub: "",
                label: `Bot, ${teamWord(ours)}${choices.has(at) ? ". Sit here" : ""}`, ...move };
@@ -398,7 +402,7 @@ function queuedSeats(peek: TableSeats, you: number | null): ModelSeat[] {
     const ours = (at - from + 4) % 2 === 0;
     if (at === you) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
     if (sd?.state === "held") return { at, look: "held", name: "Partner", sub: "", label: `Partner seat, held, ${teamWord(ours)}` };
-    if (sd?.state !== "taken" || !sd.name) return { at, look: "open", name: "Open seat", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    if (sd?.state !== "taken" || !sd.name) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
     return { at, look: "person", name: shortName(sd.name), sub: "", tick: sd.ready,
              label: [sd.name, sd.ready ? "ready" : null, teamWord(ours)].filter(Boolean).join(", ") };
   });

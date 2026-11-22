@@ -26,8 +26,6 @@ exports[`the offline Play block and its table, as drawn 2`] = `
 <h2 class="tp-title" id="«id0»">You and 3 bots</h2>
 <div class="tp-teams">
 <span class="tp-team-label ours" aria-hidden="true">Us</span>
-<span aria-hidden="true">
-</span>
 <span class="tp-team-label theirs" aria-hidden="true">Them</span>
 <div class="tp-col">
 <div class="tp-seat bot team0" role="group" aria-label="Bot 2, your team">
@@ -43,7 +41,6 @@ exports[`the offline Play block and its table, as drawn 2`] = `
 </span>
 </div>
 </div>
-<span class="tp-vs" aria-hidden="true">VS</span>
 <div class="tp-col">
 <div class="tp-seat bot team1" role="group" aria-label="Bot 1, other team">
 <span class="tp-av" aria-hidden="true">·</span>
@@ -82,8 +79,6 @@ exports[`the offline Play block and its table, as drawn 3`] = `
 <h2 class="tp-title" id="«id0»">You and 3 bots</h2>
 <div class="tp-teams">
 <span class="tp-team-label ours" aria-hidden="true">Us</span>
-<span aria-hidden="true">
-</span>
 <span class="tp-team-label theirs" aria-hidden="true">Them</span>
 <div class="tp-col">
 <div class="tp-seat bot team0" role="group" aria-label="Bot 2, your team">
@@ -99,7 +94,6 @@ exports[`the offline Play block and its table, as drawn 3`] = `
 </span>
 </div>
 </div>
-<span class="tp-vs" aria-hidden="true">VS</span>
 <div class="tp-col">
 <div class="tp-seat bot team1" role="group" aria-label="Bot 1, other team">
 <span class="tp-av" aria-hidden="true">·</span>

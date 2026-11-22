@@ -5521,6 +5521,7 @@ button.grp-row:disabled { cursor: default; }
 }
 button.tp-seat,
 .tp-chat,
+.tp-settings,
 .play-mode-opt,
 .chat-quick-btn,
 button.q-link,
@@ -5530,6 +5531,7 @@ button.q-link,
 }
 button.tp-seat:active:not(:disabled),
 .tp-chat:active:not(:disabled),
+.tp-settings:active,
 .play-mode-opt:active:not(:disabled),
 .chat-quick-btn:active,
 button.q-link:active,
@@ -5544,10 +5546,10 @@ button.q-link:active,
    extender reaches only up, into the row's top padding; the keyboard-up
    compact chat keeps 4px there, so its chips stay about 35px. */
 .play-mode-opt,
-.tp-invite,
+.tp-settings,
 .chat-quick-btn { position: relative; }
 .play-mode-opt::after { content: ""; position: absolute; inset: -4px 0; }
-.tp-invite::after { content: ""; position: absolute; inset: -2px 0; }
+.tp-settings::before { content: ""; position: absolute; inset: -2px 0; }
 .chat-quick-btn::after { content: ""; position: absolute; inset: -8px 0 0; }
 /* the panel's live counts keep fixed digit widths as they change */
 .tp-chat-badge,
@@ -5592,6 +5594,7 @@ button[role="switch"]:active .ios-switch {
   .leave-sheet-actions button,
   button.tp-seat,
   .tp-chat,
+  .tp-settings,
   .play-mode-opt,
   .chat-quick-btn,
   button.q-link,
@@ -5715,14 +5718,13 @@ button[role="switch"]:active .ios-switch {
 }
 .tp-line.warn { color: var(--gold); }
 .tp-teams {
-  display: grid; grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr); column-gap: 6px; row-gap: 6px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; row-gap: 6px;
   align-items: center;
 }
 .tp-team-label { font-size: var(--fs-10); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .tp-team-label.ours { color: var(--team0); }
 .tp-team-label.theirs { color: var(--team1); text-align: right; }
 .tp-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.tp-vs { text-align: center; font-size: var(--fs-11); font-weight: 700; color: var(--text-dim); }
 .tp-seat {
   appearance: none; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 52px;
   box-sizing: border-box; padding: 6px 7px; border-radius: 12px; border: 1.5px solid #333b49;
@@ -5746,6 +5748,10 @@ button[role="switch"]:active .ios-switch {
 .tp-seat.open { border: 1.5px dashed #4fb27a; background: transparent; }
 .tp-seat.open .tp-av { background: transparent; border: 1.5px dashed #4fb27a; color: #4fb27a; font-size: 14px; }
 .tp-seat.open .tp-seat-name { color: #4fb27a; }
+/* an open seat with no name (not a dropped player's) is its dashed box and
+   one "+" in the middle */
+.tp-seat.open.bare { justify-content: center; }
+.tp-seat.open.bare .tp-av { border: 0; font-size: 20px; font-weight: 500; }
 .tp-seat.bot .tp-seat-name { color: #9aa3b2; }
 /* the seat a Duo holds for its friend: dashed gold, never a stranger's to take */
 .tp-seat.held { border: 1.5px dashed rgba(242, 193, 78, 0.7); background: rgba(242, 193, 78, 0.06); }
@@ -5753,7 +5759,7 @@ button[role="switch"]:active .ios-switch {
 .tp-seat.held .tp-seat-name { color: var(--gold); }
 button.tp-seat { cursor: pointer; }
 /* the narrowest phones give the seat's words the avatar's room */
-@media (max-width: 359px) { .tp .tp-av { display: none; } }
+@media (max-width: 359px) { .tp .tp-seat:not(.bare) .tp-av { display: none; } }
 button.tp-seat:disabled { opacity: 0.6; cursor: default; }
 button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .tp .q-wait { justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 0; font-size: var(--fs-16); color: #fff; }

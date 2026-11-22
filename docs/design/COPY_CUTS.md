@@ -86,6 +86,10 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | s10_offline | hand edit | Offline · you'll play the bots on this device (presence line) | Offline |
 | s10_offline | hand edit | Ranked needs a connection. / Duo and rooms need a connection. | cut (the controls are greyed) |
 | s10_offline | hand edit | Chat needs a connection | cut (chat row greyed) |
+| table_declutter | hand edit | CASUAL tag above a queue panel's title (Jerry 2026-11-22, option B) | cut (the Ranked / Casual switch above says it) |
+| table_declutter | hand edit | VS between the team columns | cut (the gap divides them) |
+| table_declutter | hand edit | 'Open seat' on each open seat | + (the seat's label keeps 'Open seat, your team') |
+| table_declutter | hand edit | Invite link (a button beside the code) | Invite (the code is the one control) |
 
 ## Kept, and why
 
@@ -95,9 +99,9 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | panel status | '1 of 2 ready' | The one live status: tells you who you wait for. |
 | panel status | 'Bots in 0:40' (own table, alone) | The one live status when no ready count exists; becomes the ring in section 9. |
 | leave sheet | one line: 'Free.' / 'Wait 1 minute to play again.' / 'This round counts as at best a draw.' / 'The room closes.' / 'This offline game ends.' | The leave cost changes the decision; it is the only place it is said. |
-| mode tag | 'Casual' / 'Offline' above the panel title | Says what the table is when the switch is not visible; one word. |
+| mode tag | 'Casual' / 'Offline' above the panel title: the offline panels and a code's Join panel only (cut from the queue's panels 2026-11-22) | Says what the table is when the switch is not visible; one word. |
 | round end / game won | outcome in words, 'Games: Us 1 · Them 0' | The news itself, not a description. |
-| seat labels | names, 'Open seat', bot icon, ready tick | The seats are the panel. |
+| seat labels | names, bot icon, ready tick; an open seat is a bare '+' ('Open seat' is its accessible label since 2026-11-22), a dropped player's 'Alice (away)' | The seats are the panel. |
 
 ## Question for Jerry
 

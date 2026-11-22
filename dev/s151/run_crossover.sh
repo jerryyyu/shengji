@@ -35,6 +35,7 @@ root=$packet/capture
 check_slot() {
   local path terminal actual count=0
   local utc='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  local rt4_done="^DUEL DONE $utc rc=0$"
   local state_prefix="^($utc )?[^[:space:]]+ "
   local s156_done="${state_prefix}DONE [^[:space:]]+( .*)?$"
   local s156_housekeeping="${state_prefix}(UNLOCKED|WARNING)( |$)"
@@ -43,12 +44,12 @@ check_slot() {
   while IFS=$'\t' read -r path terminal; do
     case $count in
       0)
-        [ "$path" = "$fleet/claude-ut-retrain4/DRV.status" ] &&
-          [[ "$terminal" =~ ^DRV\ DONE\ [^[:space:]]+\ duels\ rc=0$ ]] || return 1
+        [ "$path" = "$fleet/claude-ut-retrain4/DUEL.status" ] &&
+          [[ "$terminal" =~ $rt4_done ]] || return 1
         actual=$(tail -n 1 "$path") || return 1
         ;;
       1)
-        [[ "$path" = "$fleet/"* ]] && [ "$path" != "$fleet/claude-ut-retrain4/DRV.status" ] &&
+        [[ "$path" = "$fleet/"* && "$path" != "$fleet/claude-ut-retrain4/"* ]] &&
           [[ "$terminal" =~ $s156_done && ! "$terminal" =~ $failed &&
              ! "$terminal" =~ $nonzero_rc ]] || return 1
         actual=$(LANE_HOUSEKEEPING_RE=$s156_housekeeping lane_last_state "$path") || return 1

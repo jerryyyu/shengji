@@ -451,7 +451,7 @@ def _run_one_fault(tmp_path, monkeypatch, during):
     s.srv = SimpleNamespace(rooms={"AAAA": _table("AAAA", 2, "dev1")}, trick_json=lambda t, o: t)
     c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, None)
     c.ws, c.gen, c.room, c.seat = _WS(), 1, "AAAA", 2
-    c.state, c.state_at = _frame("AAAA", 2), 0.0
+    c.state, c.state_at, c.state_gen = _frame("AAAA", 2), 0.0, c.gen
 
     async def run():
         import time as _t
@@ -469,6 +469,7 @@ def _run_one_fault(tmp_path, monkeypatch, during):
 
 def _fresh(c, code, seat_no):
     import time as _t
+    c.state_gen = c.gen
     c.state, c.state_at, c.last_rx = _frame(code, seat_no), _t.monotonic() + 1.0, _t.monotonic() + 1.0
 
 
@@ -682,3 +683,43 @@ def test_a_strike_after_time_away_is_flagged_from_the_server_s_presence_record(t
 def test_a_state_on_a_socket_opened_after_the_last_cut_recovers():
     assert _recovered(state_at=9.0, new_socket=True) == "new_socket"
     assert _recovered(state_at=9.0, new_socket=True, server_view=audit.state_view({**_ST, "turn": 3})) is None
+
+
+@pytest.mark.parametrize("current_gen", [2, 3])
+def test_a_state_during_a_stall_requires_evidence_after_it_ends(tmp_path, monkeypatch, current_gen):
+    import time
+
+    monkeypatch.setattr(soak, "RECOVERY_DEADLINE_SECS", 0.05)
+
+    async def during(s, c):
+        c.gen = 2
+        c.socket_opened[c.gen] = time.monotonic()
+        c.state, c.state_gen, c.state_at = _frame("AAAA", 2), c.gen, time.monotonic()
+        c.gen = current_gen
+        c.last_rx = c.state_at
+
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("failed", "deadline")
+
+
+@pytest.mark.parametrize("current_gen, outcome", [(2, "recovered"), (3, "failed")])
+def test_recovery_after_the_last_cut_uses_the_current_socket(tmp_path, monkeypatch, current_gen, outcome):
+    import time
+
+    s = _bare_soak(tmp_path)
+    s.scale = 1.0
+    s.srv = SimpleNamespace(rooms={"AAAA": _table("AAAA", 2, "dev1")}, trick_json=lambda t, o: t)
+    c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, None)
+    c.ws, c.gen, c.room, c.seat = _WS(), 1, "AAAA", 2
+    origin = s._origin(c)
+    c.gen = 2
+    c.socket_opened[2] = time.monotonic()
+    c.state, c.state_gen, c.state_at = _frame("AAAA", 2), 2, time.monotonic()
+    c.gen = current_gen
+    monkeypatch.setattr(soak, "RECOVERY_DEADLINE_SECS", 0.03)
+    end = time.monotonic()
+    trace = {}
+    result = asyncio.run(s._recovered(c, end, end + 1, True, trace, origin))
+    assert result[0] == outcome
+    if outcome == "recovered":
+        assert trace["via"] == "new_socket"

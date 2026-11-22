@@ -58,6 +58,11 @@ export interface NearbyJoinDeps {
  *  window the host has to come back in (the plugin's hostWindow), and a few
  *  seconds more, so a host back at the last moment still finds its joiners. */
 export const HOST_WINDOW_MS = 65_000;
+/** The host-left window, run out while a resume attempt is under way, waits
+ *  for that attempt at most this long: a resume's link up (the socket's
+ *  LIMITS.linkSeconds, 8 s) and the host's answer on a link that carries
+ *  (LIMITS.silentSeconds, 20 s), with 2 s spare. */
+export const ATTEMPT_MAX_MS = 30_000;
 /** The host-left window counts this page's awake time in ticks this long. */
 const AWAKE_TICK_MS = 1000;
 
@@ -167,6 +172,10 @@ export class NearbyJoinStore {
   private denied = false;
   /** Cancels the host-left window while it runs. */
   private gone: (() => void) | null = null;
+  /** The host-left window ran out during a resume attempt: that attempt
+   *  alone decides, an open keeping the seat and a close ending the table.
+   *  `gone` is then its ATTEMPT_MAX_MS cap. */
+  private goneDue = false;
   private attempt = 0;
   private lookTimer: number | null = null;
   private joinTimer: number | null = null;
@@ -527,6 +536,15 @@ export class NearbyJoinStore {
   private clearGone(): void {
     this.gone?.();
     this.gone = null;
+    this.goneDue = false;
+  }
+
+  /** The host is gone past its window: the table is over for this phone. */
+  private hostGone(): void {
+    this.forgetTable();
+    this.hostLeft = true;
+    this.endLink();
+    this.emit();
   }
 
   private onStatus(s: ConnStatus): void {
@@ -555,6 +573,14 @@ export class NearbyJoinStore {
       if (s === "closed") this.claimEnd(false);
       return;
     }
+    if (s !== "open" && this.seated && this.goneDue) {
+      // the attempt the window waited for failed: the host is gone
+      if (s === "closed") {
+        nearbyLog("join", "the attempt past the host's window closed: the table is over");
+        this.hostGone();
+      }
+      return;
+    }
     if (s !== "open") {
       // a seated joiner's link dropped: the socket keeps looking, by token,
       // for as long as the host may take to come back
@@ -562,10 +588,20 @@ export class NearbyJoinStore {
         // the page's own time stopped (the background) is not the host's
         this.gone = afterAwake(() => {
           this.gone = null;
-          this.forgetTable();
-          this.hostLeft = true;
-          this.endLink();
-          this.emit();
+          if (this.status !== "connecting") {
+            this.hostGone();
+            return;
+          }
+          // an attempt under way may have found the host: it is not cut,
+          // and it decides, within its own time limit
+          nearbyLog("join", "the host's window is over during an attempt: that attempt decides");
+          this.goneDue = true;
+          this.gone = afterAwake(() => {
+            this.gone = null;
+            this.goneDue = false;
+            nearbyLog("join", "the attempt past the host's window did not finish: the table is over");
+            this.hostGone();
+          }, ATTEMPT_MAX_MS);
         }, HOST_WINDOW_MS);
       } else if (!this.seated && (this.view?.step === "panel" || this.view?.step === "joining")) {
         // the seats on the panel are from the dropped link: look again once
@@ -581,6 +617,10 @@ export class NearbyJoinStore {
       // the new link's hello was the resume (greeting), and it is open only
       // once the host answered it
       nearbyLog("join", "resume: connected");
+      if (this.goneDue) {
+        // the attempt past the host's window found it: the seat stays
+        this.clearGone();
+      }
     } else if (this.view?.step === "looking") {
       this.set({ ...this.view, linked: true });
       this.deps.conn.send({ type: "table_peek", code: this.view.code });

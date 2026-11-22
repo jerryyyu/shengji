@@ -1,8 +1,11 @@
 // The soak summary's link-health metrics, from a fixture log: an outage
 // under a stall (its freeze, recovery, attempts and the move it cost), a
-// blackhole no STUCK caught, a migration, and the table frames' sizes.
-import { describe, expect, it } from "vitest";
+// blackhole no STUCK caught, a migration, an outage a rejoin by code ends,
+// the table frames' sizes, and the live soak's page-suspended lag spans and
+// bot-fallback count.
+import { describe, expect, it, vi } from "vitest";
 import { LinkSplit, SoakMetrics } from "./nearbySoak";
+import { Coverage } from "./nearbySoakCoverage";
 
 const line = (t: number, from: string, text: string) => ({ t, from, text });
 
@@ -67,6 +70,25 @@ describe("the soak's link-health metrics", () => {
     expect(m.quiet.stalls).toBe(0);
   });
 
+  it("a seat won again by the code ends the open outage, as an accepted resume does", () => {
+    const m = new SoakMetrics();
+    for (const l of [
+      line(0, "socket", "in state"),
+      line(500, "native", "CHAOS blackhole: frames on every link lost for 8.0 s"),
+      line(1000, "native", "drop host"),
+      line(2000, "join", "attempt (resume)"),
+      line(8500, "native", "CHAOS blackhole over: 16 lost"),
+      line(10_000, "join", "attempt (resume)"),
+      line(40_000, "soak", "flow: seated"),
+      line(41_000, "socket", "in state"),
+      line(60_000, "socket", "STUCK: no pong; making a new link"),
+      line(61_000, "socket", "resume: accepted (state); open"),
+    ]) m.see(l);
+    expect(m.freezes).toEqual([40_000, 20_000]);
+    expect(m.recoveries).toEqual([31_500]);
+    expect(m.attempts).toEqual([2, 0]);
+  });
+
   it("measures chat_history at each resume, repeated state frames, and bytes per second dealing and in play", () => {
     const m = new SoakMetrics();
     const hist = { type: "chat_history", room: "ABCD", through_id: 3, messages: [{ seat: -1, name: "", text: "P1 joined", t: 1 }] };
@@ -89,5 +111,62 @@ describe("the soak's link-health metrics", () => {
     s.see(line(90_000, "native", "drop host"));
     s.see(line(90_000, "native", "host link up via awdl0 (wifi) peer-to-peer"));
     expect(s.summary(100_000)).toContain("p2p time 10% 10 s (under 30%)");
+  });
+});
+
+describe("the soak's page health", () => {
+  it("counts a tick with the page hidden since the last as suspended, apart from the loop lag", () => {
+    const c = new Coverage();
+    c.loop(12, false);
+    c.loop(12_000, true);
+    c.loop(800, false);
+    expect(c.table()[3]).toContain("loop lag p95 800 max 800 ms (n=2), suspended n=1 max 12.0 s, host pong service n=0");
+    expect(new Coverage().table()[3]).toContain("loop lag n=0, suspended n=0, host pong service n=0");
+  });
+
+  it("counts bot fallbacks from the game's lines, never the soak's own summary lines", () => {
+    const c = new Coverage();
+    c.see({ t: 0, from: "soak", text: "coverage health: loop lag n=0, bot fallbacks 0, max frame 0 B" });
+    c.see({ t: 1, from: "host", text: "bot timeout: SmartBot fallback (seat 2)" });
+    expect(c.botFallbacks).toBe(1);
+  });
+
+  it("on the live soak: a hidden page's late tick is suspended, a rejoin by code ends the outage, and its own summary is no fallback", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(0);
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    let vis: DocumentVisibilityState = "visible";
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => vis);
+    vi.resetModules();
+    const log = await import("./nearbyLog");
+    const soak = await import("./nearbySoak");
+    try {
+      soak.setChaos(true);
+      await vi.advanceTimersByTimeAsync(2000);
+      log.nearbyLog("socket", "in state");
+      log.nearbyLog("native", "drop host");
+      // the page goes to the background and its timers stop for 12.5 s
+      vis = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      now += 12_500;
+      vis = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(500);
+      now += 1000;
+      log.nearbyLog("soak", "flow: seated");
+      await vi.advanceTimersByTimeAsync(2000);
+      soak.setChaos(false);
+      expect(soak.soakSummary()).toContain("freeze n=1 p50 13.5 p95 13.5 max 13.5 s");
+      const health = soak.soakCoverage()[3];
+      expect(health).toContain("suspended n=1 max 12.0 s");
+      expect(health).toMatch(/loop lag p95 \d+ max (\d+) ms/);
+      expect(Number(/loop lag p95 \d+ max (\d+) ms/.exec(health)![1])).toBeLessThan(12_000);
+      expect(health).toContain("bot fallbacks 0");
+    } finally {
+      clock.mockRestore();
+      visibility.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

@@ -6,10 +6,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JOIN_TIMEOUT_MS } from "./codeJoin";
 import {
-  HOST_WINDOW_MS, keepSeatToken, keptSeatToken, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, SEAT_KEEP_MAX, SEAT_KEEP_MS,
+  ATTEMPT_MAX_MS, HOST_WINDOW_MS, keepSeatToken, keptSeatToken, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, SEAT_KEEP_MAX, SEAT_KEEP_MS,
   SEATS_KEY, type NearbyJoinDeps,
 } from "./nearbyJoin";
 import { nearbyLogLines } from "./nearbyLog";
+import { LIMITS } from "./offline/server/nearby/protocol";
 import type { LinkState } from "./offline/server/nearby/transport";
 import type { ConnStatus } from "./ws";
 
@@ -340,6 +341,53 @@ describe("the nearby join", () => {
     expect(h.store.hostLeft).toBe(true);
     expect(h.calls.leaveNearby).toBe(1);
     expect(h.watching()).toBe(0);
+  });
+
+  it("the host's window running out during an attempt lets that attempt finish", async () => {
+    const h = await seated();
+    h.status("closed");
+    await vi.advanceTimersByTimeAsync(HOST_WINDOW_MS - 500);
+    // the attempt that finds the host
+    h.status("connecting");
+    // the window runs out mid-attempt
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.store.hostLeft).toBe(false);
+    expect(h.calls.leaveNearby).toBe(0);
+    expect(h.greet()).toMatchObject({ token: "tok-9" });
+    h.status("open");
+    h.msg({ type: "state", room: "K7Q2M" });
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+    // seated again: the next drop has the whole window
+    h.status("closed");
+    await vi.advanceTimersByTimeAsync(HOST_WINDOW_MS - 1000);
+    expect(h.store.hostLeft).toBe(false);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.store.hostLeft).toBe(true);
+  });
+
+  it("that attempt closing ends the table at once; one that never finishes ends it by its own limit", async () => {
+    const h = await seated();
+    h.status("closed");
+    await vi.advanceTimersByTimeAsync(HOST_WINDOW_MS - 500);
+    h.status("connecting");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(h.store.hostLeft).toBe(false);
+    h.status("closed");
+    expect(h.store.hostLeft).toBe(true);
+    expect(h.calls.leaveNearby).toBe(1);
+    expect(keptSeatToken("K7Q2M")).toBeNull();
+
+    const g = await seated();
+    g.status("closed");
+    await vi.advanceTimersByTimeAsync(HOST_WINDOW_MS - 500);
+    g.status("connecting");
+    await vi.advanceTimersByTimeAsync(ATTEMPT_MAX_MS - 1000);
+    expect(g.store.hostLeft).toBe(false);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(g.store.hostLeft).toBe(true);
+    expect(g.calls.leaveNearby).toBe(1);
+    // the limit covers the socket's longest resume attempt
+    expect(ATTEMPT_MAX_MS).toBeGreaterThanOrEqual((LIMITS.linkSeconds + LIMITS.silentSeconds) * 1000);
   });
 });
 

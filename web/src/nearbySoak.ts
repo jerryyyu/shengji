@@ -213,7 +213,8 @@ const spreadS = (xs: number[]): string =>
 /** The soak's link health, from this phone's log lines and its table
  *  frames (all times page milliseconds):
  *  - an outage runs from a joiner's link going (its drop, a STUCK, or a
- *    resume attempt) to "resume: accepted"; its freeze is from the last
+ *    resume attempt) to "resume: accepted" or the driver's "flow: seated"
+ *    (a seat won again by the code); its freeze is from the last
  *    frame heard before it to then, its recovery from the clear of the
  *    fault that ran on this phone (a stall's or blackhole's end, a
  *    one-shot fault's own line, when the outage began within 5 s of it) to
@@ -278,7 +279,7 @@ export class SoakMetrics {
     if ((from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)")) this.down(t);
     if (from === "join" && text === "attempt (resume)" && this.outage) this.outage.attempts += 1;
     if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text) && this.outage) this.outage.hellos += 1;
-    if (from === "socket" && text.startsWith("resume: accepted")) this.back(t);
+    if ((from === "socket" && text.startsWith("resume: accepted")) || (from === "soak" && text === "flow: seated")) this.back(t);
     if (text.startsWith("STUCK")) this.stuckAt(t);
     if (from === "host" && text.startsWith("IGNORED ")) this.hostIgnored += 1;
     if (from === "native") this.chaos(t, text);
@@ -501,6 +502,8 @@ function readLog(): void {
   if (!l) return;
   coverage.see(l);
   for (const t of lineTriggers(l)) trigger(t, t === "after_move" ? Math.random() * 300 : 0);
+  // a seat won by the code ends an open outage; the soak's other lines are its own
+  if (l.from === "soak" && l.text === "flow: seated") metrics.see(l);
   if (l.from === "soak") return;
   links.see(l);
   metrics.see(l);
@@ -787,14 +790,20 @@ function armChaos(): void {
   }, pacer.backgroundDelay());
 }
 
+/** The page was hidden at some point since the lag sampler's last tick. */
+let hiddenSinceTick = false;
+
 /** The page's health while the soak runs: its event loop's lag (a 500 ms
- *  timer's lateness), and each minute the phone's thermal state, Low Power
+ *  timer's lateness; a tick with the page hidden since the last one is the
+ *  page suspended, counted apart), and each minute the phone's thermal state, Low Power
  *  and memory (the plugin's debugHealth) and the log upload's backlog. */
 function startHealth(): void {
   let due = pageMs() + 500;
+  hiddenSinceTick = document.visibilityState === "hidden";
   lagTimer = window.setInterval(() => {
     const now = pageMs();
-    coverage.lag(Math.max(0, now - due));
+    coverage.loop(Math.max(0, now - due), hiddenSinceTick || document.visibilityState === "hidden");
+    hiddenSinceTick = document.visibilityState === "hidden";
     due = now + 500;
   }, 500);
   healthTimer = window.setInterval(() => {
@@ -817,7 +826,10 @@ function stopHealth(): void {
   lagTimer = healthTimer = null;
 }
 
-const onVisibility = () => nearbyLog("soak", document.visibilityState === "visible" ? "page visible" : "page hidden");
+const onVisibility = () => {
+  if (document.visibilityState === "hidden") hiddenSinceTick = true;
+  nearbyLog("soak", document.visibilityState === "visible" ? "page visible" : "page hidden");
+};
 
 function running(): void {
   const any = autoplayOn || chaosOn;

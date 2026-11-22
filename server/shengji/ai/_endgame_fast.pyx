@@ -1426,7 +1426,7 @@ cdef class FastWorld:
                 if answer < beta:
                     beta = answer
             if alpha >= beta:
-                left = (self._ms(turn, hands[turn]).size if hands[turn] else 0) + 1
+                left = _popc(hands[turn]) + 1
                 if self.hist[turn][played[i]] < (1 << 30):
                     self.hist[turn][played[i]] += left * left
                 self.st[nplays][0] += 1

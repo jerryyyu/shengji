@@ -291,10 +291,15 @@ def _leads(bot, seed, n):
 @pytest.fixture(scope="module")
 def r54_leads(release50_packages, release53_pair):
     """Two eligible leads of the first pinned deal, from release 54 as served."""
+    from shengji.ai import belief_numpy as bn
+    from shengji.train import pv_encode_prefix, pv_tree_search, unified_serving
     mp = pytest.MonkeyPatch()
     try:
-        from shengji.ai import belief_numpy as bn
+        # as `served_functions`: the wrapped served functions and the package cache restored after
         mp.setattr(bn, "PREP_SECONDS", 60.0)
+        mp.setattr(pv_tree_search, "greedy_reply_ply", pv_tree_search.greedy_reply_ply)
+        mp.setattr(pv_encode_prefix, "score_leaves", pv_encode_prefix.score_leaves)
+        mp.setattr(unified_serving, "_MODELS", {})
         _, bot = served_bot(release50_packages, release53_pair, mp, env=fly_env(), seed=S.BOT_SEED)
         S.P.lift(bot)
         return _leads(bot, S.SEEDS[0], 2)

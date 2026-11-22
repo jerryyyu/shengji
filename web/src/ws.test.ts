@@ -346,14 +346,16 @@ describe("a Leave while the socket is down is delivered by the next one", () => 
     conn.subscribe((m) => got.push(m.type));
     return got;
   };
+  // the server's answer to a seat's join, and what App saves from it
   const seated = async () => {
     const mod = await load();
     mod.conn.start();
     const ws = FakeWS.last!;
     ws.onopen?.();
     mod.saveName("jerry");
+    ws.deliver({ type: "resume", token: "tok", gen: 1 });
+    ws.deliver({ type: "state", room: "AAAA", you: 1, phase: "play" });
     mod.saveRoom("AAAA");
-    mod.saveResumeToken("tok");
     return { ...mod, ws };
   };
   const resumeThenLeave = [
@@ -436,6 +438,105 @@ describe("a Leave while the socket is down is delivered by the next one", () => 
     const got = record(conn);
     expect(conn.send({ type: "table_leave" })).toBe(false);
     expect(got).toEqual([]);
+  });
+
+  it("leaves this tab's own seat, not one another tab saved since", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, clearSavedRoom, getSavedRoom, getResumeToken } = await seated();
+      // App forgets the saved seat on every left it hears
+      conn.subscribe((m) => { if (m.type === "left") clearSavedRoom(); });
+      ws.close();                                       // tab A's link is down
+      localStorage.setItem("shengji.room", "BBBB");     // tab B sits down meanwhile
+      localStorage.setItem("shengji.token", "tokB");
+      expect(conn.send({ type: "table_leave" })).toBe(true);
+      expect(getSavedRoom()).toBe("BBBB");              // B's seat is still saved
+      expect(getResumeToken()).toBe("tokB");
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a socket replaced with a slow close hands its Leave to the successor", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, getSavedRoom } = await seated();
+      ws.close = () => { ws.readyState = 2; };          // closing: its close event comes later
+      const got = record(conn);
+      conn.send({ type: "table_leave" });
+      conn.reconnect();
+      expect(got).toEqual(["left"]);                    // the page leaves before the successor opens
+      expect(getSavedRoom()).toBeNull();
+      vi.advanceTimersByTime(0);
+      const next = FakeWS.last!;
+      expect(next).not.toBe(ws);
+      next.onopen?.();
+      expect(next.sent).toEqual(resumeThenLeave);
+      ws.readyState = 3;
+      ws.onclose?.();                                   // the old socket's close, late
+      expect(got).toEqual(["left"]);
+      next.deliver({ type: "left" });
+      next.deliver({ type: "state", room: "CCCC", you: 0, phase: "play" });   // the next table
+      expect(got).toEqual(["left", "state"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reload delivers the owed Leave once, then forgets it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      conn.send({ type: "table_leave" });               // then the app is closed
+      const again = await load();                       // relaunch: a new page, same storage
+      again.conn.start();
+      const first = FakeWS.last!;
+      first.onopen?.();
+      expect(first.sent).toEqual(resumeThenLeave);
+      first.deliver({ type: "left" });
+      const third = await load();
+      third.conn.start();
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Leave sent just before the app closed is delivered on relaunch, not resumed", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await seated();
+      conn.send({ type: "table_leave" });               // sent; the app closes before the left
+      const again = await load();
+      expect(again.getSavedRoom()).toBe("AAAA");
+      again.conn.start();
+      expect(again.getSavedRoom()).toBeNull();          // App does not resume the seat left
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an owed Leave older than the seat's hold is not delivered on relaunch", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(91_000);
+      const again = await load();
+      again.conn.start();
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("the left answered on the same socket clears it: nothing goes again", async () => {

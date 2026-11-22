@@ -116,6 +116,15 @@ const TOKEN_KEY = "shengji.token";   // opaque seat identity, per room
 const LEAVE_ACK_MS = 5000;
 /** How many sockets in a row try to deliver one owed Leave before it is dropped. */
 const OWED_LEAVE_TRIES = 3;
+/** A game-server Leave the server has not answered yet, kept across a reload
+ *  or relaunch so the next page delivers it. */
+const OWED_LEAVE_KEY = "shengji.owedLeave";
+/** How long an owed Leave is worth delivering: the server holds a dropped
+ *  seat for 60 s, after which the bot has it anyway. */
+const OWED_LEAVE_MS = 90_000;
+
+/** A seat on the game server: its room and the resume token it answered with. */
+interface Seat { room: string; token: string | null }
 
 export function getSavedName(): string {
   return localStorage.getItem(NAME_KEY) ?? "";
@@ -129,9 +138,64 @@ export function getSavedRoom(): string | null {
 export function saveRoom(room: string): void {
   if (remembersSeats()) localStorage.setItem(ROOM_KEY, room);
 }
+/** While set, clearSavedRoom() forgets the saved seat only if it is this
+ *  one: during the page's own `left` for an owed Leave, whose seat another
+ *  tab may have replaced in the shared storage since. */
+let clearOnly: Seat | null = null;
 export function clearSavedRoom(): void {
+  if (clearOnly) {
+    clearSavedSeat(clearOnly);
+    return;
+  }
   localStorage.removeItem(ROOM_KEY);
   localStorage.removeItem(TOKEN_KEY);
+}
+/** Forget the saved seat only if storage still names `seat`. */
+function clearSavedSeat(seat: Seat): void {
+  if (localStorage.getItem(ROOM_KEY) !== seat.room) return;
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token !== null && seat.token !== null && token !== seat.token) return;
+  localStorage.removeItem(ROOM_KEY);
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+interface OwedLeave {
+  seat: Seat;
+  name: string;
+  /** Delivery attempts so far. */
+  tries: number;
+  /** Epoch ms after which it is not worth delivering. */
+  until: number;
+}
+function writeOwedLeave(owed: OwedLeave): void {
+  if (!remembersSeats()) return;
+  try {
+    localStorage.setItem(OWED_LEAVE_KEY, JSON.stringify(owed));
+  } catch { /* storage full or blocked: this page still delivers it */ }
+}
+function readOwedLeave(): OwedLeave | null {
+  let raw: string | null = null;
+  try { raw = localStorage.getItem(OWED_LEAVE_KEY); } catch { return null; }
+  if (raw === null) return null;
+  try {
+    const o = JSON.parse(raw) as OwedLeave;
+    if (typeof o?.seat?.room === "string" && (o.seat.token === null || typeof o.seat.token === "string")
+        && typeof o.name === "string" && typeof o.tries === "number" && typeof o.until === "number"
+        && o.until > Date.now()) return o;
+  } catch { /* unreadable: dropped below */ }
+  forgetOwedLeave(null);
+  return null;
+}
+/** Drop the stored owed Leave: any, or only one for `seat`. */
+function forgetOwedLeave(seat: Seat | null): void {
+  try {
+    if (seat !== null) {
+      const raw = localStorage.getItem(OWED_LEAVE_KEY);
+      const o = raw === null ? null : (JSON.parse(raw) as OwedLeave);
+      if (o?.seat?.room !== seat.room || o.seat.token !== seat.token) return;
+    }
+    localStorage.removeItem(OWED_LEAVE_KEY);
+  } catch { /* nothing to forget */ }
 }
 
 /** Opaque resume token for our seat. Names are NOT identity: two players
@@ -177,14 +241,21 @@ class Connection {
    *  gets the bot at once instead of waiting out a dropped seat's hold. */
   private nearbyLeave = false;
   /** A game-server table's Leave the server has not answered with its
-   *  `left`: tapped while the socket was down (`on` null), or sent on the
-   *  socket `on` that then closed first. The page is already in the lobby;
-   *  the next socket takes the seat back by its token and leaves it there,
-   *  so the bot covers the seat at once and a ranked leave is counted,
-   *  instead of the seat waiting out a dropped seat's hold. */
-  private owedLeave: {
-    room: string; name: string; token: string | null; on: WebSocket | null; tries: number;
-  } | null = null;
+   *  `left`, for the seat this page last held: tapped while the socket was
+   *  down (`sentOn` null), or sent on the socket `sentOn`, which still owes
+   *  its answer. The connection owns it, not a socket: a socket given up
+   *  hands it on (sentOn null) before the next one opens. The page is then
+   *  in the lobby; the next socket takes the seat back by its token and
+   *  leaves it there, so the bot covers the seat at once and a ranked leave
+   *  is counted, instead of the seat waiting out a dropped seat's hold. It
+   *  is stored too, so a reload or relaunch within the hold delivers it. */
+  private owedLeave: (OwedLeave & { sentOn: WebSocket | null }) | null = null;
+  /** The game-server seat this page last heard the server confirm (its
+   *  room's `room` or first `state`, with the token the attach's `resume`
+   *  carried); null after a `left`. Shared storage may name another tab's. */
+  private seat: Seat | null = null;
+  /** The token the current socket's last `resume` carried. */
+  private seatToken: string | null = null;
   private backoff = 500;
   /** Nearby reconnect attempts since the last open, into NEARBY_RETRY_MS. */
   private nearbyTries = 0;
@@ -273,7 +344,26 @@ class Connection {
       document.removeEventListener("visibilitychange", visible);
     };
     if (OFFLINE) void this.useLocalServer().catch(() => {});
-    else this.open();
+    else {
+      this.loadOwedLeave();
+      this.open();
+    }
+  }
+
+  /** A Leave an earlier page owed the game server: the first socket
+   *  delivers it, and the seat it leaves is not resumed from storage. */
+  private loadOwedLeave(): void {
+    if (!remembersSeats() || this.owedLeave) return;
+    const owed = readOwedLeave();
+    if (!owed) return;
+    this.owedLeave = { ...owed, sentOn: null };
+    clearSavedSeat(owed.seat);
+  }
+
+  /** The owed Leave is answered or given up. */
+  private dropOwedLeave(): void {
+    if (this.owedLeave) forgetOwedLeave(this.owedLeave.seat);
+    this.owedLeave = null;
   }
 
   /** Undo start(). The page never calls it; a test that started the
@@ -356,7 +446,7 @@ class Connection {
   private retireTransport(): void {
     this.cutSocket();
     this.nearbyLeave = false;
-    this.owedLeave = null;
+    this.dropOwedLeave();
     this.backoff = 500;
     this.nearbyTries = 0;
     this.immediate = false;
@@ -419,47 +509,58 @@ class Connection {
     this.emit({ type: "left" });
   }
 
-  /** A game-server table's Leave. With a seat saved, it is owed until the
-   *  server's `left`: sent now when the socket is open, else the page goes
-   *  to the lobby at once and the next socket delivers it. With no seat
-   *  saved (a queue table before its game) it goes only on an open socket. */
+  /** A game-server table's Leave. At a seat this page holds, it is owed
+   *  until the server's `left`: sent now when the socket is open, else the
+   *  page goes to the lobby at once and the next socket delivers it. With no
+   *  seat (a queue table before its game) it goes only on an open socket. */
   private sendTableLeave(): boolean {
     const ws = this.ws && this.ws.readyState === WebSocket.OPEN ? this.ws : null;
-    const room = getSavedRoom();
-    if (room !== null) {
-      this.owedLeave = { room, name: getSavedName() || "Player", token: getResumeToken(), on: ws, tries: 0 };
+    const seat = this.seat;
+    if (seat !== null) {
+      const owed = { seat, name: getSavedName() || "Player", tries: 0, until: Date.now() + OWED_LEAVE_MS };
+      this.owedLeave = { ...owed, sentOn: ws };
+      writeOwedLeave(owed);
     }
     if (ws) {
       ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
       this.awaitAnswer?.();
       return true;
     }
-    if (room === null) return false;
+    if (seat === null) return false;
     this.exitToOwedLeave();
     return true;
   }
 
-  /** The page leaves the table now; the owed Leave goes on the next socket. */
+  /** The page leaves the table now; the owed Leave goes on the next socket.
+   *  Storage is forgotten only where it still names the owed seat. */
   private exitToOwedLeave(): void {
-    if (this.owedLeave) this.owedLeave.on = null;
-    clearSavedRoom();
-    this.clearChat();
-    this.emit({ type: "left" });
+    const owed = this.owedLeave;
+    if (!owed) return;
+    owed.sentOn = null;
+    clearOnly = owed.seat;
+    try {
+      clearSavedRoom();
+      this.clearChat();
+      this.emit({ type: "left" });
+    } finally {
+      clearOnly = null;
+    }
   }
 
   /** On a socket just opened: take the owed Leave's seat back by its token
    *  and leave it, reading nothing from the resumed seat (sendLeave). */
   private deliverOwedLeave(ws: WebSocket): void {
     const owed = this.owedLeave;
-    if (!owed || owed.on !== null || this.transport !== "remote") return;
+    if (!owed || owed.sentOn !== null || this.transport !== "remote") return;
     owed.tries += 1;
-    const join = owed.tries <= OWED_LEAVE_TRIES
-      ? intentToJoin({ kind: "resume", room: owed.room, name: owed.name, token: owed.token ?? undefined })
+    const join = owed.tries <= OWED_LEAVE_TRIES && Date.now() < owed.until
+      ? intentToJoin({ kind: "resume", room: owed.seat.room, name: owed.name, token: owed.seat.token ?? undefined })
       : null;
     if (!join) {
-      this.owedLeave = null;
+      this.dropOwedLeave();
       return;
     }
+    writeOwedLeave({ seat: owed.seat, name: owed.name, tries: owed.tries, until: owed.until });
     ws.send(JSON.stringify(join));
     this.sendLeave(ws);
   }
@@ -496,6 +597,9 @@ class Connection {
   /** Give up the current socket (or connect) and open a new one at once. */
   private replace(cause: DropCause): void {
     if (!this.started) return;
+    // a Leave the socket given up still owes: the page leaves now, and the
+    // successor delivers it whenever this socket's own close event comes
+    if (this.ws && this.owedLeave?.sentOn === this.ws) this.exitToOwedLeave();
     this.immediate = true;
     this.stopHeartbeat?.();
     const ws = this.ws;
@@ -542,6 +646,10 @@ class Connection {
   }
 
   private emit(msg: ServerMsg): void {
+    if (msg.type === "left") {
+      this.seat = null;
+      this.seatToken = null;
+    }
     const atTable = msg.type === "state" ? true : msg.type === "left" ? false : this.atTable;
     if (atTable !== this.atTable) {
       this.atTable = atTable;
@@ -715,10 +823,10 @@ class Connection {
         if (msg.type === "left") {
           this.endLeave();
           this.nearbyLeave = false;
-          this.owedLeave = null;
+          this.dropOwedLeave();
         } else if (msg.type === "error") {
           // the owed seat is gone or refused: a later socket would hear the same
-          this.owedLeave = null;
+          this.dropOwedLeave();
           this.retire(ws);
         }
         return;
@@ -726,7 +834,7 @@ class Connection {
       // A Leave sent on this socket is answered: by its `left`, or by an
       // error, which carries no request id and so ends the owed Leave rather
       // than resume a seat the server may have refused for a reason.
-      if (this.owedLeave?.on === ws && (msg.type === "left" || msg.type === "error")) this.owedLeave = null;
+      if (this.owedLeave?.sentOn === ws && (msg.type === "left" || msg.type === "error")) this.dropOwedLeave();
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
       // subscribes — so it is buffered here. The server sends one
       // authoritative chat_history snapshot per attach, then live events with
@@ -740,7 +848,19 @@ class Connection {
       }
       switch (msg.type) {
         case "resume":
-          if (msg.token && this.transport === "remote") saveResumeToken(msg.token);
+          if (msg.token && this.transport === "remote") {
+            saveResumeToken(msg.token);
+            this.seatToken = msg.token;
+          }
+          break;
+        case "room":
+          if (this.transport === "remote") this.seat = { room: msg.room, token: this.seatToken };
+          break;
+        case "state":
+          // the same frames App remembers a seat by
+          if (this.transport === "remote" && msg.room && !msg.joining_you) {
+            this.seat = { room: msg.room, token: this.seatToken };
+          }
           break;
         case "chat_history":
           this.chatLog = msg.messages.slice(-100);   // REPLACE, never merge
@@ -762,10 +882,12 @@ class Connection {
     };
 
     ws.onclose = () => {
+      // a Leave this socket took to its close unanswered: the page leaves
+      // now. A socket already replaced has handed its Leave on (replace), so
+      // its late close changes nothing the successor holds.
+      if (this.ws === ws && this.owedLeave?.sentOn === ws) this.exitToOwedLeave();
       stop();
       if (this.leavingWs === ws) this.endLeave();
-      // a Leave this socket took to its close unanswered: the page leaves now
-      if (this.owedLeave?.on === ws) this.exitToOwedLeave();
       if (this.ws !== ws) return;
       this.lose("closed");
       this.ws = null;

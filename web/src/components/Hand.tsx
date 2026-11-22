@@ -70,14 +70,18 @@ function toBox(r: DOMRect): Box {
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
+function recordCard(reg: HandRects, slot: HTMLElement, card: Element, codes: Map<number, string>) {
+  const id = Number(slot.dataset.id);
+  const code = codes.get(id);
+  if (code) reg.set(id, { code, card: toBox(card.getBoundingClientRect()), departed: false });
+}
+
 /** Record where each card is drawn; selection lifts and reflow are included. */
 function recordCards(el: HTMLElement | null, reg: HandRects | undefined, codes: Map<number, string>) {
   if (!el || !reg) return;
   for (const slot of el.querySelectorAll<HTMLElement>(".hand-slot")) {
-    const id = Number(slot.dataset.id);
     const card = slot.querySelector(".card");
-    const code = codes.get(id);
-    if (card && code) reg.set(id, { code, card: toBox(card.getBoundingClientRect()), departed: false });
+    if (card) recordCard(reg, slot, card, codes);
   }
 }
 
@@ -302,13 +306,30 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
       cardW.current = drawnCardWidth(el);
       recordCards(el, rects?.current, codes.current);
     };
+    const onTransitionEnd = (event: TransitionEvent) => {
+      const { target: card, propertyName, pseudoElement } = event;
+      if (card instanceof HTMLElement && card.classList.contains("card")) {
+        const slot = card.parentElement;
+        if (el && slot?.parentElement === el && slot.classList.contains("hand-slot")) {
+          // The chosen ring fades on its own layer without moving the card.
+          if (pseudoElement === "::before" && propertyName === "opacity") return;
+          if (!pseudoElement && propertyName === "box-shadow") return;
+          // A lift changes only this card's flight origin while the hand is settled.
+          if (!pseudoElement && propertyName === "transform" && anims.current.size === 0 && !el.querySelector(`.${ARRIVING}`)) {
+            if (rects) recordCard(rects.current, slot, card, codes.current);
+            return;
+          }
+        }
+      }
+      refresh();
+    };
     window.addEventListener("resize", refresh);
     window.addEventListener("scroll", refresh, true);
-    el?.addEventListener("transitionend", refresh);
+    el?.addEventListener("transitionend", onTransitionEnd);
     return () => {
       window.removeEventListener("resize", refresh);
       window.removeEventListener("scroll", refresh, true);
-      el?.removeEventListener("transitionend", refresh);
+      el?.removeEventListener("transitionend", onTransitionEnd);
     };
   }, [empty, rects]);
 

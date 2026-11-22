@@ -147,6 +147,72 @@ describe("play flight", () => {
   });
 });
 
+function endTransition(target: Element, propertyName: string, pseudoElement = "") {
+  const event = Object.assign(new Event("transitionend", { bubbles: true }), { propertyName, pseudoElement });
+  act(() => { target.dispatchEvent(event); });
+}
+
+it("reads only the lifted card at transition end and flies from its new position", () => {
+  const hand = [...HAND, ...Array.from({ length: 20 }, (_, i) => ({ id: i + 5, code: "H7" }))];
+  const view = renderTable(makeState({ turn: 0, hand, trick: trick(1, [[1, "S2"]]) }));
+  const card = view.container.querySelector<HTMLElement>(".hand-slot[data-id='0'] .card")!;
+  const handReads: Element[] = [];
+  let lift = 0;
+  vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+    if (this.closest(".hand")) handReads.push(this);
+    const r = fakeRect.call(this);
+    return this === card ? box(r.left, r.top - lift, r.width, r.height) : r;
+  });
+  class SilentAudioContext { state = "running"; currentTime = 0; async resume() {} }
+  vi.stubGlobal("AudioContext", SilentAudioContext);
+  try {
+    act(() => card.click());
+    expect(card.classList.contains("selected")).toBe(true);
+    lift = 18;
+    handReads.length = 0;
+
+    endTransition(card, "box-shadow");
+    endTransition(card, "opacity", "::before");
+    expect(handReads).toHaveLength(0);
+    endTransition(card, "transform");
+    expect(handReads).toHaveLength(1);
+    expect(handReads[0]).toBe(card);
+
+    view.rerender(makeState({ turn: 1, hand: hand.slice(1), trick: trick(1, [[1, "S2"], [0, "S5"]]) }));
+    expect(flights()).toHaveLength(1);
+    expect(flights()[0].frames[0].transform).toBe("translate(-200px, 182px) rotate(-6deg) scale(1)");
+    expect(reflows()).toHaveLength(24);
+    expect(reflows().every((c) => c.frames[0].transform === "translateX(30px)")).toBe(true);
+  } finally {
+    view.unmount();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("refreshes all card and slot geometry on width, resize, scroll and unknown transitions", () => {
+  const view = renderTable(makeState());
+  const slot = view.container.querySelector(".hand-slot")!;
+  const card = slot.querySelector(".card")!;
+  let handReads = 0;
+  vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+    if (this.closest(".hand")) handReads++;
+    return fakeRect.call(this);
+  });
+  for (const refresh of [
+    () => endTransition(card, "width"),
+    () => endTransition(card, "height"),
+    () => endTransition(card, "transform", "::before"),
+    () => endTransition(slot, "transform"),
+    () => window.dispatchEvent(new Event("resize")),
+    () => window.dispatchEvent(new Event("scroll")),
+  ]) {
+    handReads = 0;
+    refresh();
+    expect(handReads).toBe(1 + 2 * HAND.length);
+  }
+  view.unmount();
+});
+
 it("snapshots each hand transform once before reflow writes and preserves a running offset", () => {
   const fullHand = Array.from({ length: 25 }, (_, id) => ({ id, code: "S5" }));
   const view = renderTable(makeState({ hand: fullHand }));
@@ -176,6 +242,11 @@ it("snapshots each hand transform once before reflow writes and preserves a runn
   expect(reflows()).toHaveLength(24);
   expect(reflows().every((c) => c.frames[0].transform === "translateX(37px)")).toBe(true);
   expect(arrivalOriginReads).toBe(0);
+
+  // While slots are moving, a lift can share a frame with other changed origins.
+  events.length = 0;
+  endTransition(view.container.querySelector(".hand-slot .card")!, "transform");
+  expect(events).toEqual(fullHand.slice(1).map((c) => `read:${c.id}`));
   view.unmount();
 });
 
@@ -201,6 +272,13 @@ describe("deal arrival", () => {
     expect(arrivals()).toHaveLength(0);   // a page loading mid-round does not fly its cards in
     view.rerender(makeState({ phase: "bury", hand: HAND }));
     expect(arrivals().map((c) => c.opts.delay)).toEqual([0, 40, 80, 120]);
+    const originReads: Element[] = [];
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.matches(".hand-slot .card")) originReads.push(this);
+      return fakeRect.call(this);
+    });
+    endTransition(view.container.querySelector(".hand-slot .card")!, "transform");
+    expect(originReads).toHaveLength(HAND.length);
     view.unmount();
   });
 

@@ -34,15 +34,28 @@ export PYTHONPATH=$tools/server
 root=$packet/capture
 check_slot() {
   local path terminal actual count=0
+  local utc='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
+  local state_prefix="^($utc )?[^[:space:]]+ "
+  local s156_done="${state_prefix}DONE [^[:space:]]+( .*)?$"
+  local s156_housekeeping="${state_prefix}(UNLOCKED|WARNING)( |$)"
+  local failed='(^|[[:space:]])(ABORT|REFUSING:?|PAUSED|FAILED)([[:space:]]|$)'
+  local nonzero_rc='(^|[[:space:]])rc=(0[^[:space:]]+|[^0[:space:]][^[:space:]]*)?([[:space:]]|$)'
   while IFS=$'\t' read -r path terminal; do
     case $count in
-      0) [ "$path" = "$fleet/claude-ut-retrain4/DRV.status" ] &&
-         [[ "$terminal" =~ ^DRV\ DONE\ [^[:space:]]+\ duels\ rc=0$ ]] || return 1 ;;
-      1) [[ "$path" = "$fleet/"* ]] && [ "$path" != "$fleet/claude-ut-retrain4/DRV.status" ] &&
-         [ -n "$terminal" ] || return 1 ;;
+      0)
+        [ "$path" = "$fleet/claude-ut-retrain4/DRV.status" ] &&
+          [[ "$terminal" =~ ^DRV\ DONE\ [^[:space:]]+\ duels\ rc=0$ ]] || return 1
+        actual=$(tail -n 1 "$path") || return 1
+        ;;
+      1)
+        [[ "$path" = "$fleet/"* ]] && [ "$path" != "$fleet/claude-ut-retrain4/DRV.status" ] &&
+          [[ "$terminal" =~ $s156_done && ! "$terminal" =~ $failed &&
+             ! "$terminal" =~ $nonzero_rc ]] || return 1
+        actual=$(LANE_HOUSEKEEPING_RE=$s156_housekeeping lane_last_state "$path") || return 1
+        ;;
       *) return 1 ;;
     esac
-    actual=$(tail -n 1 "$path") && [ "$actual" = "$terminal" ] || return 1
+    [ "$actual" = "$terminal" ] || return 1
     count=$((count + 1))
   done < "$packet/predecessors.tsv"
   [ "$count" = 2 ]
@@ -81,6 +94,7 @@ lane_say START "pid=$$ host=$(hostname)"
 for ((i=0; i<16; i++)); do
   lane_admit "capture $i" || lane_abort 6 "$LANE_MSG"
   check_slot || lane_abort 6 'predecessor changed'
+  check_inputs || lane_abort 6 'capture tools or native inputs changed'
   lane_supervise "$LANE_PY" -B "$source_dir/capture_generator.py" capture "$i" \
     --root "$root" --base "$base" --candidate "$candidate" --models "$models" --registry "$registry"
   rc=$?

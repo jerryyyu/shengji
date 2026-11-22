@@ -149,6 +149,9 @@ async def after_link_writes(fn: Callable[..., Any], *args: Any) -> Any:
     return await asyncio.get_running_loop().run_in_executor(_EXECUTOR, fn, *args)
 
 
+accounts.AFTER_LINK_WRITES = after_link_writes
+
+
 def flush(timeout: float = 10.0) -> None:
     """Block until every write queued so far has run (tests, shutdown)."""
     _EXECUTOR.submit(lambda: None).result(timeout=timeout)

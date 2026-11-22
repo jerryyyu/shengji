@@ -42,7 +42,7 @@ import unicodedata
 import urllib.request
 from collections import deque
 from contextlib import closing
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -2108,6 +2108,10 @@ async def logout(request: Request, response: Response) -> dict:
 # (``link_device_session``), before ``USER_DELETED_HOOKS`` run for it, so a
 # hook can still find the device id where it was held.
 USER_MERGED_HOOKS: list[Callable[[int, int], None]] = []
+# Runs a store call behind every saved-game link write already queued
+# (``saved_games.after_link_writes``, which sets it), so this module needs
+# no import of ``saved_games``. None: ``STORE.run``.
+AFTER_LINK_WRITES: Callable[..., Awaitable[Any]] | None = None
 
 
 async def link_device_session(request: Request, provider: str, sub: str,
@@ -2136,9 +2140,9 @@ async def link_device_session(request: Request, provider: str, sub: str,
     current = await STORE.run(STORE.session_user, request.cookies.get(COOKIE))
     if current is None or not is_device_account(current):
         return None
-    from . import saved_games
     device_id = int(current["id"])
-    outcome = await saved_games.after_link_writes(
+    run = AFTER_LINK_WRITES or STORE.run
+    outcome = await run(
         STORE.link_provider, device_id, provider, sub, dict(profile), bool(confirm))
     kind = outcome["outcome"]
     if kind == "not_device":

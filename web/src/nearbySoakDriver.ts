@@ -7,7 +7,11 @@
 // rejoin by code, the menus. Its persona (nearbySoakPersonas.ts) sets its
 // pace and which flows it walks. A watchdog resets it to a known flow (a
 // Leave and a rejoin; on the host, its owed message again) when nothing has
-// moved for STALL_MS. Every flow it walks is a "flow: ..." line in the log,
+// moved for STALL_MS. Once its table ends, a host opens a new one (Play
+// offline, Nearby on, Start) and plays on with bots; the new table has a new
+// code, which only the tester can carry to the joiners, so a joiner whose
+// table stays not found for TABLE_GONE_MS logs SOAK TABLE ENDED and waits
+// for a code from the tester. Every flow it walks is a "flow: ..." line in the log,
 // which the coverage table (nearbySoakCoverage.ts) counts.
 import type { SmartBot } from "./offline/bot";
 import { autoplayMove, freshMemory, remember, type SeatMemory } from "./nearbySoak";
@@ -21,6 +25,11 @@ type Frame = Record<string, unknown> & { type: string };
 export const STALL_MS = 120_000;
 /** The watchdog's look interval. */
 export const WATCH_MS = 5000;
+/** A host whose new table has not come by then asks for it again. */
+export const REHOST_RETRY_MS = 15_000;
+/** A joiner's table not found for this long is over: its host's new table
+ *  has a new code. Longer than any outage the soak's faults make. */
+export const TABLE_GONE_MS = 5 * 60_000;
 
 /** The join store's face the driver uses (nearbyJoin.ts's public calls). */
 export interface JoinPort {
@@ -46,6 +55,13 @@ export interface DriverDeps {
   join: JoinPort;
   /** The table's code (the last one this phone sat at). */
   code(): string | null;
+  /** Play offline and the Nearby switch on: a new nearby table, hosted here. */
+  host?(): void;
+  /** Whether this phone hosted the soak's table, kept across a reload. */
+  wasHost?(): boolean;
+  keepWasHost?(on: boolean): void;
+  /** The kept code is dropped: a reload does not look for it again. */
+  forgetCode?(): void;
   name(): string;
   menu?: MenuWalk;
   bot: SmartBot;
@@ -57,7 +73,12 @@ export interface DriverDeps {
 }
 
 /** What the driver is doing, for the log and the stall line. */
-export type DriverPhase = "idle" | "joining" | "lobby" | "deal" | "declare" | "bury" | "play" | "round_end" | "away" | "rejoin_wait";
+export type DriverPhase =
+  | "idle" | "joining" | "lobby" | "deal" | "declare" | "bury" | "play" | "round_end" | "away" | "rejoin_wait"
+  /** A host whose table ended, its new one on the way. */
+  | "rehost"
+  /** A joiner with no table to look for, until the tester enters a code. */
+  | "ended";
 
 export class SoakDriver {
   phase: DriverPhase = "idle";
@@ -77,6 +98,15 @@ export class SoakDriver {
   private lateWait = false;
   private wasSeated = false;
   private pointsSeen = new Set<string>();
+  /** This phone hosts the soak's table (or did, until it ended). */
+  private hosted = false;
+  private rehostAt = 0;
+  private hostTimer: number | null = null;
+  /** The code a joiner has found no table at, since when. */
+  private notFound: { code: string; at: number } | null = null;
+  private goneCode: string | null = null;
+  /** This phone's own Leave or cancel is running: a left frame is its own. */
+  private leaving = false;
   readonly personas: Personas;
   private d: DriverDeps;
   constructor(personas: Personas, d: DriverDeps) {
@@ -92,14 +122,20 @@ export class SoakDriver {
     this.d.log(`flow: driver on (${this.personas.main}${this.personas.declarer ? "+declarer" : ""}${this.personas.menuWalker ? "+menu" : ""}${this.personas.latecomer ? "+late" : ""}, ${this.d.role()})`);
     if (this.personas.main === "leaver") this.leave = leavePlan(this.d.rand);
     this.watch();
+    this.hosted = this.d.role() === "host" || (this.d.wasHost?.() ?? false);
+    if (this.hosted && this.d.role() !== "host") {
+      // a host back from a reload after its table ended
+      this.hostEnded();
+      return;
+    }
     // a page that came back from a reload (or a joiner left at home) joins by code
     if (this.d.role() === "joiner" && !this.d.join.seated() && this.d.join.view() === null) this.rejoin(2000 + this.d.rand() * 3000, false);
   }
 
   stop(): void {
     this.running = false;
-    for (const t of [this.actTimer, this.watchTimer, this.joinTimer, this.rejoinTimer]) if (t !== null) this.d.clearTimeout(t);
-    this.actTimer = this.watchTimer = this.joinTimer = this.rejoinTimer = null;
+    for (const t of [this.actTimer, this.watchTimer, this.joinTimer, this.rejoinTimer, this.hostTimer]) if (t !== null) this.d.clearTimeout(t);
+    this.actTimer = this.watchTimer = this.joinTimer = this.rejoinTimer = this.hostTimer = null;
     this.d.log("flow: driver off");
   }
 
@@ -119,9 +155,16 @@ export class SoakDriver {
     }, WATCH_MS);
   }
 
-  /** The watchdog's look: a rejoin waiting is not a stall. */
+  /** The watchdog's look: a rejoin waiting, a new table on its way or no
+   *  table to look for is not a stall. */
   tick(): void {
-    if (this.phase === "rejoin_wait") {
+    if (this.hosted && this.d.role() !== "host") {
+      this.progressAt = this.d.now();
+      if (this.phase !== "rehost") this.hostEnded();
+      else if (this.hostTimer === null && this.d.now() - this.rehostAt >= REHOST_RETRY_MS) this.hostAgain();
+      return;
+    }
+    if (this.phase === "rejoin_wait" || this.phase === "ended") {
       this.progressAt = this.d.now();
       return;
     }
@@ -144,17 +187,32 @@ export class SoakDriver {
     const j = this.d.join;
     const v = j.view();
     this.progress(`join|${v?.step ?? "none"}|${j.seated()}|${j.hostLeft()}`);
-    if (j.seated() && !this.wasSeated) this.d.log("flow: seated");
+    if (j.seated() && !this.wasSeated) {
+      this.d.log("flow: seated");
+      this.notFound = null;
+      this.goneCode = null;
+      if (this.hosted) {
+        this.hosted = false;
+        this.d.keepWasHost?.(false);
+      }
+    }
     this.wasSeated = j.seated();
     if (j.hostLeft()) {
       if (this.phase !== "rejoin_wait") {
         this.d.log("flow: host left (end screen)");
-        j.cancel();
+        this.quietly(() => j.cancel());
         this.rejoin(30_000 + this.d.rand() * 30_000, false);
       }
       return;
     }
     if (!v || j.seated()) return;
+    // the table that ended stays ended; a new code from the tester is a new start
+    if (this.phase === "ended" && v.code === this.goneCode) return;
+    if (v.step === "panel") this.notFound = null;
+    if (v.step === "notFound") {
+      if (this.notFound?.code !== v.code) this.notFound = { code: v.code, at: this.d.now() };
+      if (this.d.now() - this.notFound.at >= TABLE_GONE_MS) return this.tableGone(v.code);
+    }
     this.phase = "joining";
     if (this.joinTimer !== null) this.d.clearTimeout(this.joinTimer);
     const later = (ms: number, fn: () => void) => {
@@ -172,7 +230,7 @@ export class SoakDriver {
     else if (v.step === "full" || v.step === "version" || v.step === "denied") {
       later(1000, () => {
         this.d.log(`flow: join ${v.step}; back later`);
-        j.cancel();
+        this.quietly(() => j.cancel());
         this.rejoin(20_000 + this.d.rand() * 40_000, false);
       });
     }
@@ -188,10 +246,20 @@ export class SoakDriver {
   frame(f: Frame): void {
     if (!this.running) return;
     if (f.type === "left") {
-      if (this.phase !== "rejoin_wait" && this.d.role() === "joiner") this.phase = "idle";
+      if (this.hosted) this.hostEnded();
+      else if (!this.leaving && this.phase !== "rejoin_wait" && this.phase !== "ended") {
+        // the host's own end, or its seat given up: the table's code again
+        this.d.log("flow: table left (left frame)");
+        this.forgetTable();
+        this.rejoin(30_000 + this.d.rand() * 30_000, false);
+      }
       return;
     }
     if (f.type !== "room" && f.type !== "state") return;
+    if (this.d.role() === "host" && !this.hosted) {
+      this.hosted = true;
+      this.d.keepWasHost?.(true);
+    }
     this.before = this.last;
     this.last = f;
     if (f.type === "room") {
@@ -308,11 +376,8 @@ export class SoakDriver {
     if (this.d.role() !== "joiner") return;
     const plan = this.leave ?? leavePlan(this.d.rand);
     this.d.log(`flow: leave (${why}, ${this.phase}, link ${this.d.open() ? "open" : "down"})`);
-    this.d.join.leave();
-    this.last = null;
-    this.before = null;
-    this.sinceStart = 0;
-    this.mem = freshMemory();
+    this.quietly(() => this.d.join.leave());
+    this.forgetTable();
     if (this.leave) this.leave = leavePlan(this.d.rand);
     this.rejoin(rejoinMs ?? plan.rejoinMs, plan.dropToken);
   }
@@ -328,6 +393,7 @@ export class SoakDriver {
       this.progressAt = this.d.now();
       if (!code) {
         this.d.log("flow: rejoin: no code kept");
+        this.phase = "ended";
         return;
       }
       if (this.d.join.seated()) return;
@@ -335,5 +401,61 @@ export class SoakDriver {
       this.d.log(`flow: rejoin by code (${dropToken ? "no token" : "token kept"})`);
       this.d.join.open(code, this.d.name());
     }, ms);
+  }
+
+  /** `fn` is this phone's own Leave or cancel: a left frame it brings is not
+   *  the table's end. */
+  private quietly(fn: () => void): void {
+    this.leaving = true;
+    try {
+      fn();
+    } finally {
+      this.leaving = false;
+    }
+  }
+
+  private forgetTable(): void {
+    if (this.actTimer !== null) this.d.clearTimeout(this.actTimer);
+    this.actTimer = null;
+    this.last = null;
+    this.before = null;
+    this.sinceStart = 0;
+    this.mem = freshMemory();
+  }
+
+  /** The host's table ended (the room's left, or the switch found off): a
+   *  new table, after a person's pause. */
+  private hostEnded(): void {
+    this.d.log("SOAK TABLE ENDED (host): hosting a new table");
+    this.phase = "rehost";
+    this.forgetTable();
+    this.rehostAt = this.d.now();
+    if (this.hostTimer !== null) this.d.clearTimeout(this.hostTimer);
+    this.hostTimer = this.d.setTimeout(() => {
+      this.hostTimer = null;
+      if (this.running) this.hostAgain();
+    }, 3000 + this.d.rand() * 3000);
+  }
+
+  /** Play offline and the Nearby switch on; the lobby's Start follows from
+   *  the new table's room frame. */
+  private hostAgain(): void {
+    this.rehostAt = this.d.now();
+    if (this.d.role() === "host") return;
+    this.d.log("flow: host again (Play offline, Nearby on)");
+    this.d.host?.();
+  }
+
+  /** A joiner's table is not found for TABLE_GONE_MS: it is over, and the
+   *  driver waits for the tester's code. */
+  private tableGone(code: string): void {
+    this.d.log(`SOAK TABLE ENDED (joiner): table ${code} not found for ${Math.round(TABLE_GONE_MS / 60_000)} min; its host's new code is the tester's to enter`);
+    for (const t of [this.joinTimer, this.rejoinTimer]) if (t !== null) this.d.clearTimeout(t);
+    this.joinTimer = this.rejoinTimer = null;
+    this.notFound = null;
+    this.goneCode = code;
+    this.quietly(() => this.d.join.cancel());
+    this.d.forgetCode?.();
+    this.phase = "ended";
   }
 }

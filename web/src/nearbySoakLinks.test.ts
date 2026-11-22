@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHAOS_WEIGHTS, chaosPick, LinkSplit, soakSummary } from "./nearbySoak";
+import { describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S } from "./nearbySoakChaos";
 
 const n = (t: number, text: string) => ({ t, from: "native", text });
 
@@ -68,7 +69,7 @@ describe("the chaos pick", () => {
     expect(share("joiner", "loss")).toBeGreaterThan(share("joiner", "cancel"));
   });
 
-  it("gives each kind its span: wifi 20-90 s, a stall 3-12 s, a blackhole 4-20 s, outage60 55-75 s, jsfreeze 2-15 s (30-50 s one time in twenty), bgfake past the 60 s window one time in four", () => {
+  it("gives each kind its span: wifi 20-90 s, a stall 3-12 s, a blackhole 4-20 s, outage60 55-75 s on a joiner and 40-50 s on the host, jsfreeze 2-15 s (30-50 s one time in twenty), bgfake 5-50 s", () => {
     const at = (role: "host" | "joiner", kind: string, rs: number[]) => {
       const total = Object.values(CHAOS_WEIGHTS[role]).reduce((a, b) => a + (b ?? 0), 0);
       let x = 0;
@@ -85,14 +86,46 @@ describe("the chaos pick", () => {
     expect(at("host", "stall", [0])).toEqual({ kind: "stall", seconds: 3 });
     expect(at("host", "stall", [0.999]).seconds).toBeLessThan(12);
     expect(at("joiner", "blackhole", [0])).toEqual({ kind: "blackhole", seconds: 4 });
-    expect(at("host", "outage60", [0]).seconds).toBe(55);
-    expect(at("host", "outage60", [0.999]).seconds).toBeLessThan(75);
+    expect(at("joiner", "outage60", [0]).seconds).toBe(55);
+    expect(at("joiner", "outage60", [0.999]).seconds).toBeLessThan(75);
+    expect(at("host", "outage60", [0]).seconds).toBe(40);
+    expect(at("host", "outage60", [0.999]).seconds).toBeLessThan(50);
     expect(at("host", "jsfreeze", [0.5, 0]).seconds).toBe(2);
     expect(at("host", "jsfreeze", [0.01, 0]).seconds).toBe(30);
-    expect(at("host", "bgfake", [0.1, 0]).seconds).toBe(61);
-    expect(at("host", "bgfake", [0.5, 0]).seconds).toBe(5);
+    expect(at("host", "bgfake", [0]).seconds).toBe(5);
+    expect(at("host", "bgfake", [0.999]).seconds).toBeLessThan(50);
     const loss = at("joiner", "loss", [0.5]);
     expect(loss).toMatchObject({ kind: "loss", count: 3, dir: "out" });
+  });
+
+  it("never keeps the host away past the plugin's host window: every absence fault on the host ends 10 s inside it, over many seeds", () => {
+    const swift = readFileSync(join(process.cwd(), "ios/App/App/NearbyPlugin.swift"), "utf8");
+    expect(swift).toMatch(new RegExp(`static let hostWindow: TimeInterval = ${HOST_WINDOW_S}\\n`));
+    expect(HOST_ABSENCE_MAX_S).toBe(HOST_WINDOW_S - 10);
+    let s = 1;
+    // a seeded generator: the same 200k draws each run
+    const rand = () => {
+      s = (s * 16807) % 2147483647;
+      return (s - 1) / 2147483646;
+    };
+    const worst: Record<string, number> = {};
+    for (let i = 0; i < 200_000; i++) {
+      const p = chaosPick("host", rand);
+      if (HOST_ABSENCE_KINDS.has(p.kind)) worst[p.kind] = Math.max(worst[p.kind] ?? 0, p.seconds);
+    }
+    for (const k of ["bgfake", "outage60", "jsfreeze", "blackhole", "stall", "oneway"]) {
+      expect(worst[k]).toBeGreaterThan(0);
+      expect(worst[k]).toBeLessThanOrEqual(HOST_ABSENCE_MAX_S);
+    }
+  });
+
+  it("keeps the host's end (a bgfake past the window) as its own kind, never drawn unless its weight is set", () => {
+    expect(CHAOS_WEIGHTS.host.hostend).toBe(0);
+    expect(kinds("host")).not.toContain("hostend");
+    const p = chaosPick("host", () => 0.5, { hostend: 1 });
+    expect(p.kind).toBe("hostend");
+    expect(p.seconds).toBeGreaterThan(HOST_WINDOW_S);
+    expect(describePick(p)).toBe("hostend: bgfake away 66 s");
   });
 
   it("never picks a path change or a Wi-Fi fake on the host, or a listener restart, a storm or a bgfake on a joiner", () => {

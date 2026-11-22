@@ -42,3 +42,22 @@ describe("Autoplay", () => {
     expect(j.frames.filter((f) => f.type === "error")).toEqual([]);
   });
 });
+
+describe("the soak's own reload", () => {
+  it("sends the log's unsent bytes first, so a joiner reloaded every few minutes still uploads", async () => {
+    const { uploadThenReload } = await import("./nearbySoak");
+    const order: string[] = [];
+    const up = { nearbyLogUploadOn: () => true, uploadNearbyLogNow: async () => { order.push("upload"); } };
+    await uploadThenReload(() => order.push("reload"), async () => up);
+    expect(order).toEqual(["upload", "reload"]);
+    // an upload that hangs, or no upload running, never holds the reload
+    const hung = { nearbyLogUploadOn: () => true, uploadNearbyLogNow: () => new Promise<void>(() => {}) };
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), async () => hung, 10);
+    expect(order).toEqual(["reload"]);
+    const off = { nearbyLogUploadOn: () => false, uploadNearbyLogNow: async () => { order.push("upload"); } };
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), async () => off);
+    expect(order).toEqual(["reload"]);
+  });
+});

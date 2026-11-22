@@ -8,7 +8,7 @@ import { freshMemory } from "./nearbySoak";
 import {
   DEFAULT_MIX, declareMove, leavePlan, lobbyMove, moveDelay, pickPersonas, twitchPlan, MOVE_CLOCK_MS, type Personas,
 } from "./nearbySoakPersonas";
-import { SoakDriver, STALL_MS, WATCH_MS, type DriverDeps, type JoinPort } from "./nearbySoakDriver";
+import { REHOST_RETRY_MS, SoakDriver, STALL_MS, TABLE_GONE_MS, WATCH_MS, type DriverDeps, type JoinPort } from "./nearbySoakDriver";
 
 type Frame = Record<string, unknown> & { type: string };
 
@@ -99,7 +99,9 @@ describe("the personas", () => {
 });
 
 /** A fake page for the driver: a clock, the join store, the sent messages. */
-function rig(personas: Partial<Personas> = {}, role: "host" | "joiner" = "joiner") {
+function rig(personas: Partial<Personas> = {}, startRole: "host" | "joiner" = "joiner", opts: { wasHost?: boolean } = {}) {
+  let role = startRole;
+  const page = { code: "ABCDEF" as string | null, wasHost: opts.wasHost ?? false };
   let now = 0;
   const timers: { at: number; fn: () => void; id: number }[] = [];
   let nextId = 1;
@@ -112,7 +114,7 @@ function rig(personas: Partial<Personas> = {}, role: "host" | "joiner" = "joiner
     open: (code) => { calls.push(`open ${code}`); j.view = { code, step: "looking", seat: null }; },
     pick: (s) => calls.push(`pick ${s}`),
     join: () => calls.push("join"),
-    again: () => calls.push("again"),
+    again: () => { calls.push("again"); if (j.view) j.view = { ...j.view, step: "looking" }; },
     cancel: () => { calls.push("cancel"); j.view = null; },
     leave: () => { calls.push("leave"); j.seated = false; j.view = null; },
     forgetToken: (code) => calls.push(`forget ${code}`),
@@ -122,7 +124,11 @@ function rig(personas: Partial<Personas> = {}, role: "host" | "joiner" = "joiner
     open: () => true,
     role: () => role,
     join,
-    code: () => "ABCDEF",
+    code: () => page.code,
+    host: () => { calls.push("host"); return true; },
+    wasHost: () => page.wasHost,
+    keepWasHost: (on) => { page.wasHost = on; },
+    forgetCode: () => { calls.push("forget code"); page.code = null; },
     name: () => "P1",
     bot: new SmartBot(),
     rand: () => 0.5,
@@ -144,7 +150,8 @@ function rig(personas: Partial<Personas> = {}, role: "host" | "joiner" = "joiner
     }
     now = end;
   };
-  return { d, j, sent, log, calls, advance };
+  const setRole = (r: "host" | "joiner") => { role = r; };
+  return { d, j, sent, log, calls, advance, setRole, page };
 }
 
 describe("the driver", () => {
@@ -271,5 +278,141 @@ describe("the driver", () => {
     r.j.hostLeft = false;
     r.advance(61_000);
     expect(r.calls).toEqual(["cancel", "open ABCDEF"]);
+  });
+});
+
+describe("the driver after its table ends", () => {
+  it("as the host, starts a new nearby table and plays on: Play offline, Nearby on, Start", async () => {
+    const r = rig({}, "host");
+    r.d.start();
+    r.d.frame(room({ you: 0 }));
+    r.d.frame(state({ phase: "round_end", you: 0, hand: [], round_result: {}, ready: [] }));
+    // the bgfake past the window: the room says left, the switch is off
+    r.setRole("joiner");
+    r.d.frame({ type: "left" });
+    expect(r.log).toContain("SOAK TABLE ENDED (host): hosting a new table");
+    expect(r.d.phase).toBe("rehost");
+    r.advance(6000);
+    expect(r.calls).toEqual(["host"]);
+    expect(r.log).toContain("flow: host again (Play offline, Nearby on)");
+    r.setRole("host");
+    r.d.frame(room({ room: "NEWONE", you: 0, players: [{ seat: 0, name: "Host" }] }));
+    r.advance(2500);
+    expect(r.sent).toContainEqual({ type: "table_start" });
+    r.d.frame(state({ room: "NEWONE", you: 0, phase: "play", turn: 0, hand: hand(["S2", "S3"]) }));
+    r.advance(2500);
+    await Promise.resolve();
+    expect(r.log).toContain("flow: game started");
+    expect(r.sent.at(-1)).toMatchObject({ type: "play" });
+    // never a join of its own old table, and no stall
+    r.advance(10 * STALL_MS);
+    expect(r.calls.filter((c) => c.startsWith("open"))).toEqual([]);
+    expect(r.log.filter((l) => l.startsWith("SOAK TABLE ENDED"))).toHaveLength(1);
+  });
+
+  it("as the host, tries again while no new table comes, and finds the end with no left frame", () => {
+    const r = rig({}, "host");
+    r.d.start();
+    r.d.frame(state({ phase: "play", you: 0, turn: 1 }));
+    // the left frame was missed: the watchdog sees the switch off
+    r.setRole("joiner");
+    r.advance(WATCH_MS + 1);
+    expect(r.log).toContain("SOAK TABLE ENDED (host): hosting a new table");
+    r.advance(6000);
+    expect(r.calls).toEqual(["host"]);
+    r.advance(REHOST_RETRY_MS + WATCH_MS);
+    expect(r.calls).toEqual(["host", "host"]);
+    expect(r.log.some((l) => l.startsWith("SOAK DRIVER STALLED"))).toBe(false);
+  });
+
+  it("as a former host back from a reload, hosts again instead of joining its old code", () => {
+    const r = rig({}, "joiner", { wasHost: true });
+    r.d.start();
+    r.advance(10_000);
+    expect(r.calls).toEqual(["host"]);
+    expect(r.log).toContain("SOAK TABLE ENDED (host): hosting a new table");
+  });
+
+  it("as a joiner, looks for the table's code for TABLE_GONE_MS, then logs one SOAK TABLE ENDED and waits for a new code", () => {
+    const r = rig();
+    r.j.seated = true;
+    r.d.start();
+    r.d.frame(state({ phase: "play", turn: 0 }));
+    r.j.seated = false;
+    r.j.hostLeft = true;
+    r.d.joinChanged();
+    r.j.hostLeft = false;
+    r.advance(61_000);
+    expect(r.calls).toEqual(["cancel", "open ABCDEF"]);
+    // the host's new table has a new code: this one is never found again
+    const notFound = () => {
+      r.j.view = { code: "ABCDEF", step: "notFound", seat: null };
+      r.d.joinChanged();
+    };
+    r.calls.length = 0;
+    notFound();
+    const end = TABLE_GONE_MS + 60_000;
+    // each try: the store looks (a change the driver hears), then finds nothing
+    for (let t = 0; t < end; t += 10_000) {
+      if (r.j.view && r.j.view.step !== "notFound") {
+        r.d.joinChanged();
+        notFound();
+      }
+      r.advance(10_000);
+    }
+    const tries = r.calls.filter((c) => c === "again").length;
+    expect(tries).toBeGreaterThan(10);
+    expect(r.log.filter((l) => l.startsWith("SOAK TABLE ENDED"))).toEqual([
+      "SOAK TABLE ENDED (joiner): table ABCDEF not found for 5 min; its host's new code is the tester's to enter",
+    ]);
+    expect(r.calls).toContain("forget code");
+    expect(r.d.phase).toBe("ended");
+    // idle from here: no more tries, no stall, no rejoin
+    const after = r.calls.length;
+    r.advance(10 * STALL_MS);
+    expect(r.calls.length).toBe(after);
+    expect(r.log.some((l) => l.startsWith("SOAK DRIVER STALLED"))).toBe(false);
+    // the tester enters the new code: the driver joins and plays again
+    r.j.view = { code: "NEWONE", step: "panel", seat: 2 };
+    r.d.joinChanged();
+    r.advance(2000);
+    expect(r.calls.at(-1)).toBe("join");
+  });
+
+  it("as a joiner back from a reload with no code kept, waits for the tester and never stalls", () => {
+    const r = rig();
+    r.page.code = null;
+    r.d.start();
+    r.advance(10 * STALL_MS);
+    expect(r.calls).toEqual([]);
+    expect(r.log).toContain("flow: rejoin: no code kept");
+    expect(r.log.some((l) => l.startsWith("SOAK DRIVER STALLED"))).toBe(false);
+  });
+
+  it("as a joiner told left by its host, comes back by code with no stall first", () => {
+    const r = rig();
+    r.j.seated = true;
+    r.d.start();
+    r.d.frame(state({ phase: "play", turn: 0 }));
+    r.j.seated = false;
+    r.d.frame({ type: "left" });
+    expect(r.log).toContain("flow: table left (left frame)");
+    r.advance(61_000);
+    expect(r.calls).toEqual(["open ABCDEF"]);
+    expect(r.log.some((l) => l.startsWith("SOAK DRIVER STALLED"))).toBe(false);
+  });
+
+  it("as a joiner leaving on its own, reads its own left frame as its Leave", () => {
+    const r = rig({ main: "leaver" });
+    r.j.seated = true;
+    const leave = r.j as unknown as { seated: boolean };
+    r.d.start();
+    // the join store's leave emits left at once, as conn.leaveToLobby does
+    const deps = (r.d as unknown as { d: DriverDeps }).d;
+    const plain = deps.join.leave;
+    deps.join.leave = () => { plain(); leave.seated = false; r.d.frame({ type: "left" }); };
+    r.d.frame(state({ phase: "bury", turn: 0 }));
+    expect(r.log).not.toContain("flow: table left (left frame)");
+    expect(r.d.phase).toBe("rejoin_wait");
   });
 });

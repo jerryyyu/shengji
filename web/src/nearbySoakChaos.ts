@@ -23,14 +23,27 @@ type Rand = () => number;
 export type ChaosRole = "host" | "joiner";
 export type NativeKind = "cancel" | "stall" | "blackhole" | "path" | "listener" | "wifi" | "storm" | "outage60" | "bgfake";
 export type PageKind = "jsfreeze" | "loss" | "oneway" | "reload" | "leave";
-export type ChaosKind = NativeKind | PageKind;
+/** hostend: the plugin's bgfake with an away past its host window, which
+ *  ends the host's table for everyone, as designed; drawn only when its
+ *  weight is set. */
+export type ChaosKind = NativeKind | PageKind | "hostend";
 
 export const PAGE_KINDS: ReadonlySet<ChaosKind> = new Set<ChaosKind>(["jsfreeze", "loss", "oneway", "reload", "leave"]);
 
+/** NearbyPlugin.swift's hostWindow: a host back after more than this ends
+ *  its table. */
+export const HOST_WINDOW_S = 60;
+/** The longest a fault keeps the host away or silent: well inside the host
+ *  window, so the soak never ends its own table by chance. */
+export const HOST_ABSENCE_MAX_S = HOST_WINDOW_S - 10;
+/** The kinds that make the host look absent for their seconds. */
+export const HOST_ABSENCE_KINDS: ReadonlySet<ChaosKind> = new Set<ChaosKind>(["bgfake", "outage60", "jsfreeze", "blackhole", "stall", "oneway"]);
+
 /** Each role's kinds and weights: the host leans on storm, jsfreeze and
- *  bgfake; a joiner on loss, oneway, reload and leave. */
+ *  bgfake; a joiner on loss, oneway, reload and leave. The host's end
+ *  (hostend) is off: a soak that tests it sets its weight. */
 export const CHAOS_WEIGHTS: Record<ChaosRole, Partial<Record<ChaosKind, number>>> = {
-  host: { cancel: 1, stall: 1, blackhole: 1, listener: 1, storm: 2, jsfreeze: 2, bgfake: 2, outage60: 0.5, loss: 0.5, oneway: 0.5 },
+  host: { cancel: 1, stall: 1, blackhole: 1, listener: 1, storm: 2, jsfreeze: 2, bgfake: 2, outage60: 0.5, loss: 0.5, oneway: 0.5, hostend: 0 },
   joiner: { cancel: 1, stall: 1, blackhole: 1, path: 1, wifi: 1, loss: 2, oneway: 2, reload: 1.5, leave: 1.5, jsfreeze: 1, outage60: 0.5 },
 };
 
@@ -48,7 +61,8 @@ export interface ChaosPick {
 /** The frame types a loss picks from. */
 export const LOSS_FRAMES = ["state", "room", "ping", "pong", "play", "declare", "resume", "chat", ""] as const;
 
-/** One fault for `role`, by its weights. */
+/** One fault for `role`, by its weights. On the host, every absence kind
+ *  ends within HOST_ABSENCE_MAX_S. */
 export function chaosPick(role: ChaosRole, rand: Rand = Math.random, weights = CHAOS_WEIGHTS[role]): ChaosPick {
   const kinds = Object.entries(weights).filter(([, w]) => (w ?? 0) > 0) as [ChaosKind, number][];
   const total = kinds.reduce((a, [, w]) => a + w, 0);
@@ -64,9 +78,11 @@ export function chaosPick(role: ChaosRole, rand: Rand = Math.random, weights = C
   switch (kind) {
     case "wifi": return { kind, seconds: 20 + rand() * 70 };
     case "blackhole": return { kind, seconds: 4 + rand() * 16 };
-    case "outage60": return { kind, seconds: 55 + rand() * 20 };
+    // on the host, a long outage inside the host window; on a joiner, past its own 65 s
+    case "outage60": return { kind, seconds: role === "host" ? HOST_ABSENCE_MAX_S - 10 + rand() * 10 : 55 + rand() * 20 };
     case "jsfreeze": return { kind, seconds: rand() < 0.05 ? 30 + rand() * 20 : 2 + rand() * 13 };
-    case "bgfake": return { kind, seconds: rand() < 0.25 ? 61 + rand() * 9 : 5 + rand() * 50 };
+    case "bgfake": return { kind, seconds: 5 + rand() * (HOST_ABSENCE_MAX_S - 5) };
+    case "hostend": return { kind, seconds: HOST_WINDOW_S + 1 + rand() * 9 };
     case "oneway": return { kind, seconds: 4 + rand() * 16, dir: rand() < 0.5 ? "in" : "out" };
     case "loss": return {
       kind, seconds: 0, count: 1 + Math.floor(rand() * 5),
@@ -81,6 +97,7 @@ export function describePick(p: ChaosPick): string {
   if (p.kind === "loss") return `loss ${p.dir} ${p.frame || "any"} x${p.count}`;
   if (p.kind === "oneway") return `oneway ${p.dir} ${p.seconds.toFixed(1)} s`;
   if (p.kind === "bgfake") return `bgfake away ${p.seconds.toFixed(0)} s`;
+  if (p.kind === "hostend") return `hostend: bgfake away ${p.seconds.toFixed(0)} s`;
   if (p.kind === "cancel" || p.kind === "path" || p.kind === "listener" || p.kind === "storm" || p.kind === "reload" || p.kind === "leave") return p.kind;
   return `${p.kind} ${p.seconds.toFixed(1)} s`;
 }

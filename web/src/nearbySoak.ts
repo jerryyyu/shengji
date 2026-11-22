@@ -20,6 +20,7 @@ import { nearbyLog, nearbyLogLines, readNearbyLogFile, subscribeNearbyLog, type 
 import { nearbyHost } from "./nearbySession";
 import { forgetSeatToken, nearbyJoin } from "./nearbyJoin";
 import { conn, getSavedName } from "./ws";
+import { offlineGame } from "./components/offlineGame";
 import {
   BridgeFaults, busyWait, chaosPick, describePick, frameTriggers, lineTriggers, PAGE_KINDS, TRIGGER_P,
   type Bridge, type ChaosPick, type ChaosRole, type TriggerPhase,
@@ -420,7 +421,7 @@ export function soakState(): { autoplay: boolean; chaos: boolean } {
 // what the soak keeps across a reload: its switches, the table's code, the
 // persona mix, and whether a reload is the soak's own
 const KEEP_KEY = "shengji.nearbySoak.v1";
-interface Kept { autoplay: boolean; chaos: boolean; code: string | null; mix?: PersonaMix; reload?: boolean }
+interface Kept { autoplay: boolean; chaos: boolean; code: string | null; mix?: PersonaMix; reload?: boolean; hosted?: boolean }
 
 export function keptSoak(): Kept | null {
   try {
@@ -612,6 +613,15 @@ function startDriver(): void {
     role: chaosRole,
     join: joinPort,
     code: () => keptSoak()?.code ?? nearbyJoin.view?.code ?? null,
+    host: () => {
+      // the offline table (in place; a page on the game server swaps its
+      // socket first), then its Nearby switch with the table's Bots
+      offlineGame.startFromPlay();
+      nearbyHost.turnOn(getSavedName().trim() || "Soak", offlineGame.botLevel);
+    },
+    wasHost: () => keptSoak()?.hosted === true,
+    keepWasHost: (on) => keep({ hosted: on }),
+    forgetCode: () => keep({ code: null }),
     name: () => getSavedName().trim() || "Soak",
     menu: () => walkMenu(),
     bot,
@@ -663,13 +673,29 @@ export function runChaos(pick: ChaosPick, by: TriggerPhase | "bg"): void {
   if (PAGE_KINDS.has(pick.kind)) return pageChaos(pick, role);
   const p = nearbyPluginProxy() as Partial<ChaosPlugin> | null;
   if (!p || typeof p.debugChaos !== "function") return;
-  const kind = pick.kind === "outage60" ? "blackhole" : pick.kind;
+  const kind = pick.kind === "outage60" ? "blackhole" : pick.kind === "hostend" ? "bgfake" : pick.kind;
   void p.debugChaos({ kind, seconds: pick.seconds }).then((r) => {
     if (r?.done === false) {
       metrics.notApplied += 1;
       nearbyLog("soak", `chaos: ${pick.kind} does not apply here`);
     }
   }, (e: unknown) => nearbyLog("soak", `chaos: ${pick.kind} failed: ${String(e)}`));
+}
+
+type UploadModule = Pick<typeof import("./nearbyLogUpload"), "nearbyLogUploadOn" | "uploadNearbyLogNow">;
+
+/** The soak's reload: the log's unsent bytes go first (at most `capMs`), so
+ *  a page reloaded more often than the upload's tick still uploads. */
+export async function uploadThenReload(
+  reload: () => void = () => location.reload(),
+  load: () => Promise<UploadModule> = () => import("./nearbyLogUpload"),
+  capMs = 5000,
+): Promise<void> {
+  try {
+    const m = await load();
+    if (m.nearbyLogUploadOn()) await Promise.race([m.uploadNearbyLogNow(), new Promise<void>((r) => setTimeout(r, capMs))]);
+  } catch { /* the reload goes regardless */ }
+  reload();
 }
 
 function pageChaos(pick: ChaosPick, role: ChaosRole): void {
@@ -703,7 +729,7 @@ function pageChaos(pick: ChaosPick, role: ChaosRole): void {
       if (role !== "joiner") return;
       keep({ autoplay: autoplayOn, chaos: chaosOn, reload: true });
       writeSummary();
-      window.setTimeout(() => location.reload(), 500);
+      window.setTimeout(() => { void uploadThenReload(); }, 500);
       return;
     }
     case "leave": {
@@ -794,7 +820,8 @@ function running(): void {
 export function setAutoplay(on: boolean): void {
   if (autoplayOn === on) return;
   autoplayOn = on;
-  keep({ autoplay: on });
+  // a soak switched off forgets that this phone hosted its table
+  keep(on ? { autoplay: on } : { autoplay: on, hosted: false });
   nearbyLog("soak", `autoplay ${on ? "on" : "off"}`);
   running();
   if (on) startDriver();

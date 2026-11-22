@@ -20,7 +20,7 @@ vi.mock("./ws", () => ({
 }));
 
 import {
-  AccountExists, auth, deviceAccountsApply, isUnlinkedDevice, loginWithApple, loginWithGoogle, NAME_MESSAGES,
+  AccountExists, auth, deviceAccountPending, deviceAccountsApply, isUnlinkedDevice, loginWithApple, loginWithGoogle, NAME_MESSAGES,
   NameRejected, updateDisplayName,
 } from "./auth";
 import { beforeOnlineSetup, resetDeviceAccountForTests } from "./deviceAccount";
@@ -70,8 +70,8 @@ function shell(platform = "ios", keychain = true) {
 }
 
 const DEVICE_USER = { name: "Gentle Tractor", email: "", picture: null, display_name: "Gentle Tractor",
-                      name_shown: "Gentle Tractor", rounds_played: 0 };
-const MEI = { name: "Mei Chen", email: "mei@x", picture: null, display_name: "Mei", name_shown: "Mei", rounds_played: 40 };
+                      name_shown: "Gentle Tractor", rounds_played: 0, linked: false };
+const MEI = { name: "Mei Chen", email: "mei@x", picture: null, display_name: "Mei", name_shown: "Mei", rounds_played: 40, linked: true };
 const flush = async () => { for (let i = 0; i < 3; i += 1) await new Promise((r) => setTimeout(r, 0)); };
 const deviceCalls = () => calls.filter((c) => c.url === "/api/auth/device");
 
@@ -129,11 +129,13 @@ describe("the gate", () => {
     expect(calls).toEqual([]);
   });
 
-  it("an account counts as the app's own only in the app and only without an email", () => {
+  it("an account counts as the app's own only in the app and only when the server says it is not linked", () => {
     expect(isUnlinkedDevice(DEVICE_USER)).toBe(false);
     shell();
     expect(isUnlinkedDevice(DEVICE_USER)).toBe(true);
     expect(isUnlinkedDevice(MEI)).toBe(false);
+    // an empty email alone is not taken as unlinked
+    expect(isUnlinkedDevice({ ...MEI, email: "", linked: undefined })).toBe(false);
     expect(isUnlinkedDevice(null)).toBe(false);
   });
 });
@@ -299,6 +301,44 @@ describe("launch", () => {
     await auth.init();
     expect(deviceCalls()).toEqual([]);
     expect(auth.state.status).toBe("out");
+  });
+
+  it("with device accounts on, the app knows before its first Play; off, it does not", async () => {
+    shell();
+    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
+    routes.set("GET /api/me", { status: 401, body: {} });
+    await auth.init();
+    expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null, deviceAccounts: true });
+    expect(deviceAccountPending(auth.state)).toBe(true);
+    auth.reset();
+    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: false } });
+    await auth.init();
+    expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
+    expect(deviceAccountPending(auth.state)).toBe(false);
+  });
+
+  it("an iOS build without the Keychain plugin is not pending, the switch on or not", async () => {
+    shell("ios", false);
+    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
+    routes.set("GET /api/me", { status: 401, body: {} });
+    await auth.init();
+    expect(deviceAccountPending(auth.state)).toBe(false);
+  });
+
+  it("on the website the switch changes nothing", async () => {
+    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
+    routes.set("GET /api/me", { status: 401, body: {} });
+    await auth.init();
+    expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
+  });
+
+  it("a 404 at the first Play (the switch turned off since launch) drops the pending state", async () => {
+    shell();
+    auth.state = { status: "out", clientId: "cid", user: null, deviceAccounts: true };
+    routes.set("POST /api/auth/device", { status: 404, body: {} });
+    beforeOnlineSetup(() => {});
+    await flush();
+    expect(auth.state).toEqual({ status: "out", clientId: "cid", user: null });
   });
 
   it("on the website, launch is unchanged: config then /api/me", async () => {

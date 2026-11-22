@@ -90,7 +90,7 @@ the ⋯ menu. "Kitty 8 cards" moves out of ⋯.
 
 **Section 7, guest name.** One name control: the chip opens the same edit sheet on every tab. Me shows the
 guest's name and initial with "Guest · not ranked" (cut to "Guest" by the copy rule; the iOS app's own account
-reads "On this device only" there since 2026-11-22).
+reads "On this iPhone only" there, "On this iPad only" on an iPad, since 2026-11-22).
 
 **Section 9, timers.** One ring component with one rule, including a thin ring on other players' turns.
 **The ring shows the seconds left as a number** (Jerry). Your own ring runs the whole move time. The Your table
@@ -161,8 +161,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 2. Allow joiners is the opener's switch only (server and client); others see nothing (copy rule).
 3. Offline copy: plain "Offline" (cut the subtext); "Offline · you'll play the bots on this device" and "Ranked needs a connection" are dropped.
 4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail. A guest at a ranked table reads "Sign in to be ranked ›" under the result line, the same words as a link that opens the one identity sheet, drawn inside the round-end dialog (Jerry 11-20 plain text; a link since 11-22, so guests at a table reach sign-in; the "Guest" box stays gone; an account, one signed in on this round end too, sees no line); a seat taken mid-round reads "Unranked · joined mid-round" in the same place, because each explains the missing number (Jerry 11-15).
-5. The guest line "Playing as a guest · Sign in to be ranked" stays on the website, and in the iOS app until its
-   first online Play makes the device's account (2026-11-22; with device accounts off on the server, it stays).
+5. The guest line "Playing as a guest · Sign in to be ranked" stays on the website. In the iOS app with device
+   accounts on it does not show (2026-11-22); with them off on the server, it stays.
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
 1. **One invite path.** One link kind, `?code=`, opens Play with the Join panel for that table, and so
@@ -356,12 +356,16 @@ for the table (`deviceAccount.ts`): with a secret in the Keychain it signs in wi
 secret (the account was deleted or purged) is cleared and that Play goes ahead as a guest; the server's switch
 off, too many attempts or no connection leave a guest exactly as today. The mock is `account_frames` in
 `docs/design/mocks/core.py`.
+`/api/auth/config` says whether device accounts are on (`device_accounts`) and `/api/me` whether an account is
+`linked`; with them off the app is today's guest, exactly.
+- **Before the first Play:** the guest chip with the name alone (no "Guest", no rating) and no guest line.
 - **Chip:** the name and the rating, with the guest chip's pencil; a tap opens the identity sheet.
-- **Play tab:** no guest line once the account exists; nothing else changes.
+- **Play tab:** no guest line; nothing else changes.
 - **Round end:** the rating on the result line, as an account sees it; no "Sign in to be ranked".
 - **Identity sheet:** the name (Done saves it on the account; a name another account shows is refused, "That
-  name is taken."), one status line "On this iPhone only", Sign in with Apple and Google, the Terms line, Done.
-- **Me:** the header's line "On this device only", Stats and Games, the settings, the name row (opens the
+  name is taken."), one status line "On this iPhone only" ("On this iPad only" on an iPad, by the shell's device
+  idiom), Sign in with Apple and Google, the Terms line, Done.
+- **Me:** the header's line, the sheet's same "On this iPhone only" (or iPad), Stats and Games, the settings, the name row (opens the
   sheet), "Show me on the leaderboard", the help rows and Delete account; no Sign out, which would leave the
   account with no way back in. Delete clears the Keychain.
 - **Leaderboard:** the signed-in board: the own row in rank order, or pinned with the "new" tag.

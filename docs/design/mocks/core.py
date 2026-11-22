@@ -685,6 +685,8 @@ Each row is one flow, click by click: the label above a frame is the tap that le
 # One account in the iOS app (FLOWS.md "One account in the iOS app"): the approved frames, today | built.
 
 DEVICE = ("Gentle Tractor", "1,000", "G")
+# before the first Play makes the account: the name alone, no rating
+PENDING = ("Gentle Tractor", "", "G")
 DEVICE_BACK = ("Gentle Tractor", "962", "G")
 MEI = ("Mei", "1,042", "M")
 LOST = ("Quiet Ace", "1,000", "Q")
@@ -770,7 +772,7 @@ DELETE = grp(['<span style="color:#f08a96">Delete account</span><span style="col
 
 def me_device(u=DEVICE_BACK):
     """Frame 5: an unlinked device account's Me."""
-    body = (me_head(u, "On this device only") + stats_block() + SETTINGS
+    body = (me_head(u, "On this iPhone only") + stats_block() + SETTINGS
             + grp([chev(u[0]), sw("Show me on the leaderboard", True)]) + DELETE)
     return phone(body, active="Me", title="Me", user=u[2])
 
@@ -846,8 +848,8 @@ def account_frames():
     switch = phone_card("Switch to Mei?", "This device's rating is replaced.", btn("Cancel", "ghost", h=46) + btn("Switch", h=46))
     IOS, WEB = "iOS app", "Website"
     return [
-        (1, "First open", "Chip's second line was 'Guest'; 'Playing as a guest · Sign in to be ranked' is gone.",
-         play_tab_today(GUEST), play_tab(DEVICE), 390, 844, IOS),
+        (1, "First open", "Device accounts on: the chip is the name alone (no 'Guest', no rating until the first Play makes the account); 'Playing as a guest · Sign in to be ranked' is gone. Off: today's guest tab.",
+         play_tab_today(GUEST), play_tab(PENDING), 390, 844, IOS),
         (2, "Back again", "Was identical to a first visit; now the rating carries over (12 rounds).",
          play_tab_today(GUEST), play_tab(DEVICE_BACK), 390, 844, IOS),
         (3, "Round end", "'Sign in to be ranked ›' is gone; the rating sits on the result line, as signed-in players see it.",
@@ -872,7 +874,7 @@ def account_frames():
         ("11b", "Same player on the website", "Today's web guest Play tab, unchanged. To carry the account to the web, sign in with Apple or Google in the app first, then on the web.",
          None, play_tab_today(GUEST), 390, 844, WEB),
         (12, "Delete account", "The sheet a signed-in player gets today; new for a non-signed-in player. After: frame 1 with no account until the next Play.",
-         None, phone(me_head(DEVICE_BACK, "On this device only") + stats_block() + SETTINGS
+         None, phone(me_head(DEVICE_BACK, "On this iPhone only") + stats_block() + SETTINGS
                      + grp([chev(DEVICE_BACK[0]), sw("Show me on the leaderboard", True)]) + DELETE,
                      active="Me", title="Me", user="G", overlay=del_sheet), 390, 844, IOS),
         (13, "Mixed table", "A web guest's round end, unchanged. The iOS device account at the same table is rated normally; the web guest still counts as a fixed 1000.",

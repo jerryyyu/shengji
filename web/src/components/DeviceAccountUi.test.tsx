@@ -24,14 +24,15 @@ vi.mock("../auth", async (importOriginal) => {
 import { AccountExists } from "../auth";
 import MePage from "./MePage";
 import AccountChip from "./AccountChip";
-import { IdentitySheet } from "./GuestChip";
+import GuestChip, { IdentitySheet } from "./GuestChip";
+import { RankedSection } from "../queue/Ranked";
 import { forgetHomeSession } from "../home/session";
 import { guestName } from "../guestName";
 import { resetNativeForTests } from "../native";
 import { resetNativeAuthForTests } from "../nativeAuth";
 
 const DEVICE = { name: "Gentle Tractor", email: "", picture: null, display_name: "Gentle Tractor",
-                 name_shown: "Gentle Tractor", rounds_played: 12 };
+                 name_shown: "Gentle Tractor", rounds_played: 12, linked: false };
 const STATS = { name: "Gentle Tractor", rating: 962, rank: 7, rounds: 12, provisional: true, levels_per_round: 0.31,
                 won_pct: 58, defender_won_pct: 61, attacker_won_pct: 54, best_streak: 7, games_won: 1,
                 week_delta: -38, history: [1000, 962], visible: true, recent_games: [] };
@@ -44,14 +45,16 @@ beforeAll(() => {
 let calls: { url: string; method: string; body?: unknown }[];
 let patch: { status: number; body: unknown };
 
-function iosShell(withGoogle = false) {
+function iosShell(withGoogle = false, idiom = "phone") {
+  const shell = { ShengjiShell: { idiom: vi.fn(() => Promise.resolve({ idiom })) } };
   const Plugins: Record<string, unknown> = withGoogle ? {
+    ...shell,
     SocialLogin: {
       initialize: vi.fn(() => Promise.resolve()),
       login: vi.fn(() => Promise.resolve({ provider: "google", result: { idToken: "jwt.tok" } })),
       logout: vi.fn(),
     },
-  } : {};
+  } : { ...shell };
   (window as unknown as { Capacitor: unknown }).Capacitor = {
     isNativePlatform: () => true,
     getPlatform: () => "ios",
@@ -184,6 +187,16 @@ describe("the identity sheet", () => {
     expect(updated).not.toHaveBeenCalled();
   });
 
+  it("on an iPad the sheet and Me both say 'On this iPad only'", async () => {
+    iosShell(false, "pad");
+    await render(<MePage section="stats" />);
+    await settle();
+    expect(host.querySelector(".me-sub")?.textContent).toBe("On this iPad only");
+    act(() => guestName.open());
+    await settle();
+    expect(sheet()?.querySelector(".identity-status")?.textContent).toBe("On this iPad only");
+  });
+
   it("on the website a signed-in account never sees the sheet", async () => {
     await render(null);
     act(() => guestName.open());
@@ -197,7 +210,7 @@ describe("Me", () => {
     iosShell();
     await render(<MePage section="stats" />);
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
-    expect(host.querySelector(".me-sub")?.textContent).toBe("On this device only");
+    expect(host.querySelector(".me-sub")?.textContent).toBe("On this iPhone only");
     expect([...host.querySelectorAll(".segmented-btn")].map((b) => b.textContent)).toEqual(["Stats", "Games"]);
     expect(host.querySelectorAll(".me-tile")).toHaveLength(3);
     const labels = rowLabels();
@@ -223,11 +236,40 @@ describe("Me", () => {
 
   it("a linked account in the app keeps Edit name and Sign out", async () => {
     iosShell();
-    authState.current = { status: "in", clientId: "cid", user: { ...DEVICE, email: "g@x" } };
+    authState.current = { status: "in", clientId: "cid", user: { ...DEVICE, email: "g@x", linked: true } };
     await render(<MePage section="stats" />);
     expect(rowLabels()).toContain("Sign out");
     expect(rowLabels()).toContain("Edit name");
-    expect(host.querySelector(".me-sub")?.textContent).not.toBe("On this device only");
+    expect(host.querySelector(".me-sub")?.textContent).not.toBe("On this iPhone only");
+  });
+});
+
+describe("before the first Play", () => {
+  const pending = (on: boolean): AuthState => ({ status: "out", clientId: "cid", user: null, ...(on ? { deviceAccounts: true as const } : {}) });
+
+  it("with device accounts on: the chip is the name alone, and Play has no guest line", async () => {
+    iosShell();
+    authState.current = pending(true);
+    guestName.getSnapshot();
+    guestName.setName("Gentle Tractor");
+    await render(<><GuestChip /><RankedSection online /></>);
+    const chip = host.querySelector(".guest-pill")!;
+    expect(chip.querySelector(".account-pill-name")?.textContent).toBe("Gentle Tractor");
+    expect(chip.querySelector(".account-pill-rating")).toBeNull();
+    expect(chip.getAttribute("aria-label")).toBe("Gentle Tractor, edit name");
+    expect(host.querySelector(".play-guest-line")).toBeNull();
+    expect(host.querySelector(".q-find")).not.toBeNull();
+  });
+
+  it("with them off: today's guest chip and guest line, exactly", async () => {
+    iosShell();
+    authState.current = pending(false);
+    guestName.getSnapshot();
+    guestName.setName("Gentle Tractor");
+    await render(<><GuestChip /><RankedSection online /></>);
+    expect(host.querySelector(".guest-pill .account-pill-rating")?.textContent).toBe("Guest");
+    expect(host.querySelector(".guest-pill")?.getAttribute("aria-label")).toBe("Gentle Tractor, guest, edit name");
+    expect(host.querySelector(".play-guest-line")?.textContent).toBe("Playing as a guest · Sign in to be ranked");
   });
 });
 

@@ -22,6 +22,9 @@ export interface AuthUser {
   name_shown: string;
   /** Rounds the account has sat in; null or absent when the server does not say. */
   rounds_played?: number | null;
+  /** False for an account with no Google or Apple identity (the iOS app's
+   *  own); absent when the server does not say. */
+  linked?: boolean;
 }
 
 /** The `/api/me` body as the server sends it; older servers lack the two
@@ -34,6 +37,7 @@ function toUser(body: Partial<AuthUser> & { name: string; email: string }): Auth
     display_name: body.display_name ?? null,
     name_shown: body.name_shown ?? firstName(body.name),
     rounds_played: typeof body.rounds_played === "number" ? body.rounds_played : null,
+    ...(typeof body.linked === "boolean" ? { linked: body.linked } : {}),
   };
 }
 
@@ -46,6 +50,9 @@ export interface AuthState {
   status: AuthStatus;
   clientId: string | null;
   user: AuthUser | null;
+  /** Set only in the iOS app with the Keychain, when the server has device
+   *  accounts on: the first online Play makes this device's account. */
+  deviceAccounts?: true;
 }
 
 const GIS_SRC = "https://accounts.google.com/gsi/client";
@@ -86,17 +93,17 @@ async function api<T>(path: string, init?: RequestInit): Promise<{ status: numbe
  *  5xx. A server without the route (404) has no sign-in, which is "off". */
 export class AuthConfigUnavailable extends Error {}
 
-export async function fetchAuthConfig(): Promise<{ google_client_id: string | null }> {
-  let got: { status: number; body: { google_client_id: string | null } | null };
+export async function fetchAuthConfig(): Promise<{ google_client_id: string | null; device_accounts?: true }> {
+  let got: { status: number; body: { google_client_id: string | null; device_accounts?: unknown } | null };
   try {
-    got = await api<{ google_client_id: string | null }>("/api/auth/config");
+    got = await api<{ google_client_id: string | null; device_accounts?: unknown }>("/api/auth/config");
   } catch {
     throw new AuthConfigUnavailable("no connection");
   }
   const { status, body } = got;
   if (status >= 500) throw new AuthConfigUnavailable(`status ${status}`);
   if (status !== 200 || !body) return { google_client_id: null };
-  return { google_client_id: body.google_client_id ?? null };
+  return { google_client_id: body.google_client_id ?? null, ...(body.device_accounts === true ? { device_accounts: true as const } : {}) };
 }
 
 export async function fetchMe(): Promise<AuthUser | null> {
@@ -310,10 +317,16 @@ export function deviceAccountsAvailable(): boolean {
   return deviceAccountsApply() && keychainAvailable();
 }
 
-/** A signed-in account with no Apple or Google identity: one the app made.
- *  Only such an account has no email, since both providers give one. */
+/** A signed-in account with no Apple or Google identity: one the app made. */
 export function isUnlinkedDevice(user: AuthUser | null | undefined): boolean {
-  return !!user && deviceAccountsApply() && !user.email;
+  return !!user && user.linked === false && deviceAccountsApply();
+}
+
+/** The app before its first online Play, with device accounts on: the
+ *  player is not yet an account, but is about to be one, so neither the
+ *  guest line nor a rating shows. */
+export function deviceAccountPending(state: AuthState): boolean {
+  return state.deviceAccounts === true && (state.status === "out" || state.status === "off");
 }
 
 export const CLIENT_HEADER = "X-Shengji-Client";
@@ -422,12 +435,14 @@ class AuthStore {
       const cfg = await fetchAuthConfig();
       // the app's device account signs in again at every launch
       const relaunched = deviceAccountsApply() ? await reauthFromKeychain() : null;
+      const device = cfg.device_accounts === true && deviceAccountsAvailable() ? { deviceAccounts: true as const } : {};
       if (!cfg.google_client_id) {
-        this.set(relaunched ? { status: "in", clientId: null, user: relaunched } : { status: "off", clientId: null, user: null });
+        this.set(relaunched ? { status: "in", clientId: null, user: relaunched, ...device }
+          : { status: "off", clientId: null, user: null, ...device });
         return;
       }
       const user = relaunched ?? await fetchMe();
-      this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user });
+      this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user, ...device });
     } catch {
       this.set({ status: "error", clientId: null, user: null });
     }
@@ -439,6 +454,16 @@ class AuthStore {
     forgetPrivateSession();
     this.set({ status: "in", user });
     conn.reconnect();
+  }
+
+  /** The server refused to make a device account (device accounts off):
+   *  the app is a guest exactly as on any other day. */
+  noDeviceAccounts(): void {
+    if (this.state.deviceAccounts) {
+      const { deviceAccounts: _gone, ...rest } = this.state;
+      this.state = rest;
+      for (const fn of this.listeners) fn(this.state);
+    }
   }
 
   /** The account changed (a saved display name): every subscriber follows. */

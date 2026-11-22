@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTopModalHost } from "../modalHosts";
-import { auth, checkDisplayName, effectiveName, isUnlinkedDevice, updateDisplayName, useAuth } from "../auth";
+import { auth, checkDisplayName, deviceAccountPending, effectiveName, isUnlinkedDevice, updateDisplayName, useAuth } from "../auth";
+import { useOnThisDeviceLine } from "../deviceAccount";
 import type { AuthState, AuthUser } from "../auth";
 import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
@@ -15,13 +16,15 @@ import { followInfoLink } from "../support/route";
  *  pencil. */
 export default function GuestChip({ compact = false }: { compact?: boolean }) {
   const { name } = useGuestName();
+  // in the app, before its first Play makes the account: the name alone
+  const pending = deviceAccountPending(useAuth());
   const shown = name.trim() || "Guest";
   return (
     <button type="button" className="account-pill guest-pill" onClick={() => guestName.open()}
-            aria-label={`${shown}, guest, edit name`}>
+            aria-label={`${shown}${pending ? "" : ", guest"}, edit name`}>
       <span className="avatar avatar-sm" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>
       <span className="account-pill-name">{shown}</span>
-      <span className="account-pill-rating">{GUEST_LINE}</span>
+      {pending ? null : <span className="account-pill-rating">{GUEST_LINE}</span>}
       {compact ? null : <span className="guest-pill-edit" aria-hidden="true">✎</span>}
     </button>
   );
@@ -129,6 +132,7 @@ function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) 
   const [name, setName] = useState(() => effectiveName(user));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const where = useOnThisDeviceLine();
   const close = () => guestName.close();
   const done = () => {
     if (saving) return;
@@ -155,7 +159,7 @@ function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) 
     <Sheet title="Your name" onClose={close} cancel={null} className="identity-sheet">
       <div className="q-sheet-pad guest-name-sheet">
         <NameField name={name} onChange={(n) => { setName(n); setError(null); }} onDone={done} error={error} />
-        <p className="identity-status">On this iPhone only</p>
+        <p className="identity-status">{where}</p>
         <SignInBlock account={account} done={close} />
         <button type="button" className="btn gold" aria-busy={saving || undefined} onClick={done}>Done</button>
       </div>

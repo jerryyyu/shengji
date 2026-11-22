@@ -8,8 +8,10 @@
 // many attempts (429), no connection or a refused secret (401, which also
 // clears it) leave the player a guest and the action goes ahead.
 
+import { useEffect, useState } from "react";
 import { auth, deviceAccountsAvailable, deviceAuth, forgetDeviceSecret } from "./auth";
 import { keychainGet, keychainSet } from "./keychain";
+import { deviceIdiom } from "./native";
 import { conn } from "./ws";
 import type { ConnStatus } from "./ws";
 
@@ -49,6 +51,7 @@ async function signInDevice(): Promise<boolean> {
   const got = await deviceAuth(token);
   if (got.status === 404 || got.status === 403) {
     off = true;
+    auth.noDeviceAccounts?.();
     return false;
   }
   if (got.status === 401) {
@@ -89,6 +92,18 @@ export function beforeOnlineSetup(action: () => void): void {
       inFlight = false;
       action();
     });
+}
+
+/** The one line saying where the app's own account lives, by the device the
+ *  shell reports: "On this iPad only" on an iPad, else "On this iPhone only". */
+export function useOnThisDeviceLine(): string {
+  const [pad, setPad] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void deviceIdiom().then((i) => { if (live) setPad(i === "pad"); });
+    return () => { live = false; };
+  }, []);
+  return `On this ${pad ? "iPad" : "iPhone"} only`;
 }
 
 /** Test seam: forget what this page learned. */

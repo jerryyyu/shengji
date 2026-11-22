@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { auth, deleteAccount, effectiveName, isUnlinkedDevice, useAuth } from "../auth";
+import { useOnThisDeviceLine } from "../deviceAccount";
 import type { AuthUser } from "../auth";
 import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
@@ -55,10 +56,11 @@ function Row({ label, value, chevron, onClick, className = "", children }: {
 
 /** Name, rating, all-time rank and this week's change; for the app's own
  *  account with no Apple or Google sign-in, the one line that it lives on
- *  this device only. */
+ *  this iPhone (or iPad) only. */
 function Identity({ user, stats }: { user: AuthUser; stats: Stats | null }) {
+  const where = useOnThisDeviceLine();
   let sub: ReactNode = " ";
-  if (isUnlinkedDevice(user)) sub = "On this device only";
+  if (isUnlinkedDevice(user)) sub = where;
   else if (stats) {
     sub = (
       <>

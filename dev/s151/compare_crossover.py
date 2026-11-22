@@ -1,0 +1,114 @@
+"""Read the proposed 26-worker S151 generator crossover. Run with PYTHONPATH=server."""
+import argparse
+from collections import Counter
+from contextlib import ExitStack
+import json
+import math
+from pathlib import Path
+import sys
+
+from compare_generator import comparable_config, comparable_row, read, read_store, read_times, require
+
+SEEDS = (4301400, 4301504, 4301608, 4301712)
+HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "2fb1cc3f0a9d3cec3f4c4d8dcd407671af4a1d89")
+
+
+def percent(a, b):
+    return 200 * (a - b) / (a + b)
+
+
+def block_order(block):
+    first = 2 * block
+    arms = "bccb" if block % 2 == 0 else "cbbc"
+    return [(first + i // 2, arm) for i, arm in enumerate(arms)]
+
+
+def cluster_interval(store, clusters):
+    tasks = read(store / "runtime.json")["per_cluster"]
+    require(set(tasks) == {str(i) for i in range(clusters)}, f"{store}: missing cluster intervals")
+    intervals = [(v["started_at"], v["finished_at"]) for v in tasks.values()]
+    require(all(math.isfinite(a) and math.isfinite(b) and 0 < a < b for a, b in intervals),
+            f"{store}: invalid cluster timestamps")
+    return min(a for a, _ in intervals), max(b for _, b in intervals)
+
+
+def read_block(root, seed, order, times, args, previous_end, configuration):
+    stores = []
+    manifests = []
+    for i, arm in order:
+        store = root / f"{i}-{arm}" / "store"
+        manifest, host = read_store(store, seed, args, HEADS["bc".index(arm)], times[i, arm])
+        require(host[0][0] == args.host, f"{store}: expected host {args.host}")
+        start, end = cluster_interval(store, args.rounds // 2)
+        require(start >= previous_end, f"{store}: cluster execution overlaps or is out of order")
+        previous_end = end
+        config = comparable_config(manifest)
+        del config["seed0"]
+        if configuration is None:
+            configuration = host, config
+        require((host, config) == configuration, f"{store}: configuration or host drift")
+        if manifests:
+            require(all(manifest[k] == manifests[0][k] for k in ("counts", "work_realized")),
+                    f"{store}: repeated work differs")
+        stores.append(store)
+        manifests.append(manifest)
+
+    events = Counter()
+    for shards in zip(*(m["shards"] for m in manifests), strict=True):
+        with ExitStack() as stack:
+            files = [stack.enter_context((p / shard["path"]).open()) for p, shard in zip(stores, shards)]
+            for lines in zip(*files, strict=True):
+                row = comparable_row(lines[0], manifests[0]["run_id"])
+                for j in range(1, len(lines)):
+                    require(row == comparable_row(lines[j], manifests[j]["run_id"]),
+                            f"{stores[j]}: record differs at {row['source_ref']}")
+                rec = row["allocation"].get("serving_decision", {})
+                events["greedy_deadline_fired"] += bool(rec.get("leaf_greedy_deadline_fired"))
+                if rec.get("exact_follow_abandoned"):
+                    events[f"exact_follow_abandoned:{rec['exact_follow_abandoned']}"] += 1
+                if rec.get("exact_lead_status"):
+                    events[f"exact_lead:{rec['exact_lead_status']}"] += 1
+    counts = manifests[0]["counts"]
+    events.update({k: v for k, v in counts.items() if "fallback" in k or k == "incomplete_work"})
+    pairs = [dict(base=times[i, "b"][0], candidate=times[i, "c"][0]) for i in sorted({i for i, _ in order})]
+    base, candidate = ([pair[k] for pair in pairs] for k in ("base", "candidate"))
+    for pair in pairs:
+        pair["reduction_percent"] = percent(pair["base"], pair["candidate"])
+    block = dict(seed=seed, pairs=pairs, base=sum(base), candidate=sum(candidate),
+                 reduction_percent=percent(sum(base), sum(candidate)),
+                 repeat_difference_percent=dict(base=abs(percent(*base)), candidate=abs(percent(*candidate))),
+                 events_per_invocation=dict(events))
+    return block, previous_end, configuration
+
+
+def verdict(blocks):
+    base = sum(b["base"] for b in blocks)
+    candidate = sum(b["candidate"] for b in blocks)
+    gain = percent(base, candidate)
+    noise = max(max(b["repeat_difference_percent"].values()) for b in blocks)
+    passed = all(b["candidate"] < b["base"] for b in blocks) and gain > noise
+    return dict(blocks=blocks, pooled_seconds=dict(base=base, candidate=candidate),
+                pooled_symmetric_reduction_percent=gain, largest_repeat_difference_percent=noise,
+                observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
+
+
+def compare(root):
+    args = argparse.Namespace(rounds=208, workers=26, host="Jerrys-Mac-Studio.local")
+    times = read_times(root, [s for s in SEEDS for _ in range(2)])
+    orders = [block_order(i) for i in range(len(SEEDS))]
+    require(list(times) == [key for order in orders for key in order], "timing sequence differs from crossover plan")
+    blocks = []
+    previous_end, configuration = 0, None
+    for seed, order in zip(SEEDS, orders, strict=True):
+        block, previous_end, configuration = read_block(root, seed, order, times, args, previous_end, configuration)
+        blocks.append(block)
+    return verdict(blocks)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("root", type=Path)
+    try:
+        print(json.dumps(compare(parser.parse_args().root), indent=2))
+    except (KeyError, OSError, TypeError, ValueError) as exc:
+        sys.exit(f"comparison refused: {exc}")

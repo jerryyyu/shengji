@@ -82,9 +82,15 @@ def test_real_generator_persists_labels_and_preserves_play(teacher, tmp_path):
         trajectory.generate(rounds=2, seed0=config["seed0"], out_dir=on[0],
                             policy=teacher, explore_rate=0, resume=True,
                             seed_windows=tmp_path / "seeds-True.json")
+    committed = tmp_path / "committed"
+    (committed / "shards").mkdir(parents=True)
+    trajectory._install_worker_shard(on[0], committed, 0, config)
+    assert trajectory.verify_shard(committed, config, 0, config["seed0"]) == (receipt, "ok")
+    path = shortlist_scores.score_path(committed, 0)
+    assert path.read_bytes() == before
     # Missing optional artifacts may not silently pass the existing shard check.
     path.unlink()
-    assert trajectory.verify_shard(on[0], config, 0, config["seed0"])[1] == "full-legal score file binding"
+    assert trajectory.verify_shard(committed, config, 0, config["seed0"])[1] == "full-legal score file binding"
 
 
 def test_cli_flag_and_non_shortlist_refusal():

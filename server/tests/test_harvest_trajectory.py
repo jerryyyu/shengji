@@ -7,7 +7,6 @@ identity, shard manifest, resume witnesses, bury path, class-knob overrides
 Reduced work (N=2 selection worlds, R=30 report worlds -- the LCB minimum)
 keeps the whole file around a minute and a half of pure-engine self-play.
 """
-import gc
 import hashlib
 import inspect
 import json
@@ -296,22 +295,39 @@ RETENTION = dict(rounds=12, seed0=4_200_000, policy="mc", select_worlds=1,
 
 @pytest.fixture(scope="module")
 def retention_run(tmp_path_factory):
-    """A 6-cluster run on 2 workers, sampling the parent's live cluster
-    results at every publish, plus the same run on 1 worker."""
-    live = []
+    """Compare the published metadata returned by spawned workers with a serial run."""
+    out = tmp_path_factory.mktemp("retention") / "w2"
+    seen = []
 
     def progress(event):
-        gc.collect()             # only strong references count
-        live.append((event["cluster"], len(trajectory.LIVE_RESULTS)))
+        cluster = event["cluster"]
+        shard, side = trajectory.shard_paths(out, cluster)
+        assert shard.is_file() and json.loads(side.read_text())["cluster"] == cluster
+        seen.append(cluster)
 
-    out = tmp_path_factory.mktemp("retention") / "w2"
-    manifest = trajectory.generate(out_dir=out, workers=2, merge=False,
-                                   seed_windows=_seed_windows(out),
-                                   progress=progress, **RETENTION)
+    wait = trajectory.wait
+
+    def inspect_worker_results(*args, **kwargs):
+        done, pending = wait(*args, **kwargs)
+        for future in done:
+            sidecar, timing = future.result()
+            shard, side = trajectory.shard_paths(out, sidecar["cluster"])
+            assert not shard.exists() and not side.exists()
+            assert isinstance(sidecar["records"], int)
+            assert set(timing) == {"started_at", "finished_at", "wall_secs", "round_wall_secs", "search_secs"}
+            staged, = (out / "shards").glob(".workers-*/shards/" + side.name)
+            assert json.loads(staged.read_text()) == sidecar
+        return done, pending
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(trajectory, "wait", inspect_worker_results)
+        manifest = trajectory.generate(out_dir=out, workers=2, merge=False,
+                                       seed_windows=_seed_windows(out),
+                                       progress=progress, **RETENTION)
     single = tmp_path_factory.mktemp("retention") / "w1"
     trajectory.generate(out_dir=single, workers=1, merge=False,
                         seed_windows=_seed_windows(single), **RETENTION)
-    return {"out": out, "manifest": manifest, "live": live,
+    return {"out": out, "manifest": manifest, "seen": seen,
             "runtime": json.loads((out / "runtime.json").read_text()),
             "w2": _read_dir(out), "w1": _read_dir(single)}
 
@@ -861,20 +877,10 @@ def test_corrupted_shard_is_regenerated_on_resume(clean4, tmp_path):
 
 # W6 --------------------------- the parent drops published results (#208)
 
-def test_parent_does_not_retain_published_results(retention_run):
-    live = retention_run["live"]
-    manifest = retention_run["manifest"]
-    assert manifest["clusters"] == 6 and len(live) == 6
+def test_workers_publish_shards_before_progress_and_match_serial(retention_run):
+    assert sorted(retention_run["seen"]) == list(range(6))
     assert retention_run["runtime"]["workers"] == 2
     assert retention_run["runtime"]["clusters"]["generated"] == list(range(6))
-    # at every publish the parent holds at most the in-flight window of
-    # results (the one being published + those completed but not yet
-    # consumed), never every cluster published so far
-    window = trajectory.INFLIGHT_PER_WORKER * 2
-    assert max(n for _, n in live) <= window < 6
-    assert live[-1][1] <= 2                       # nothing accumulated by the end
-    assert len(trajectory.LIVE_RESULTS) == 0      # and nothing outlives the pool
-    # the bounded window changes scheduling only: bytes as on one worker
     assert retention_run["w2"]["shards"] == retention_run["w1"]["shards"]
     assert retention_run["w2"]["sidecars"] == retention_run["w1"]["sidecars"]
     assert retention_run["w2"]["manifest_bytes"] == retention_run["w1"]["manifest_bytes"]

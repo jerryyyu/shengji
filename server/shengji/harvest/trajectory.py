@@ -275,11 +275,9 @@ an IMMUTABLE shard ``shards/cluster-<index:06d>.jsonl`` (records in
 sidecar ``shards/cluster-<index:06d>.json`` (run_id, cluster, seed, sha256,
 byte size, record count, counts, realized work): both are written to a
 temporary name and ``os.replace``d into place, then made read-only.  The
-parent submits at most ``INFLIGHT_PER_WORKER x workers`` clusters ahead and
-drops each result the moment its shard is published, so its memory stays
-bounded however many clusters a run has (#208: submitting every cluster at
-once and keeping the Future mapping until the pool closed retained every
-published cluster's records); ``runtime.json`` stamps each cluster's OWN
+worker stages its shard and returns only the sidecar and timing. The parent
+installs the files, sidecar last, before reporting progress. The parent submits at most ``INFLIGHT_PER_WORKER x workers`` clusters
+ahead; ``runtime.json`` stamps each cluster's OWN
 task duration and wall-clock start/finish.  Progress lines carry counts
 only.
 
@@ -354,12 +352,12 @@ import statistics
 import subprocess
 import sys
 import time
-import weakref
 
 import numpy as np
 from collections import Counter
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Callable, Iterator
 
 from .. import seeds
@@ -1996,46 +1994,27 @@ def play_trajectory_cluster(config: dict, cluster: int, seed: int
     return records, stats
 
 
-#: every ``ClusterResult`` alive in this process (weak references): the
-#: retention witness reads it from the progress callback
-LIVE_RESULTS: weakref.WeakSet = weakref.WeakSet()
+class _PublicationError(Exception):
+    """A shard writer failure aborts scheduling just as it does in the serial path."""
 
 
-class ClusterResult:
-    """One cluster's records, per-round stats and task timing, as the task
-    hands them back.  Instances register weakly in ``LIVE_RESULTS`` -- on
-    construction in the worker, on unpickling in the parent -- so a test
-    can witness that the parent drops each result once its shard is
-    published (#208: the parent used to retain every published cluster)."""
-
-    __slots__ = ("records", "stats", "timing", "__weakref__")
-
-    def __init__(self, records: list[dict], stats: list[dict], timing: dict):
-        self.records = records
-        self.stats = stats
-        self.timing = timing
-        LIVE_RESULTS.add(self)
-
-    def __getstate__(self):
-        return (self.records, self.stats, self.timing)
-
-    def __setstate__(self, state):
-        self.records, self.stats, self.timing = state
-        LIVE_RESULTS.add(self)
-
-
-def _cluster_task(args) -> ClusterResult:
-    """The unit of work, timed by itself: ``timing.wall_secs`` is this
-    cluster's OWN duration, whichever process runs it and whenever it was
-    scheduled; ``started_at`` / ``finished_at`` are wall-clock stamps."""
-    config, cluster, seed = args
+def _cluster_task(config: dict, cluster: int, seed: int, out_dir: Path):
+    """Play and publish one cluster locally. Only metadata crosses the pool boundary."""
     started_at = time.time()
     started = time.perf_counter()
     records, stats = play_trajectory_cluster(config, cluster, seed)
     timing = {"started_at": round(started_at, 3),
               "finished_at": round(time.time(), 3),
-              "wall_secs": round(time.perf_counter() - started, 4)}
-    return ClusterResult(records, stats, timing)
+              "wall_secs": round(time.perf_counter() - started, 4),
+              "round_wall_secs": [st["timing"]["wall_secs"] for st in stats],
+              "search_secs": round(sum(st["timing"]["search_secs"] for st in stats), 4)}
+    if any("bury_wall_secs" in st["timing"] for st in stats):
+        timing["bury_wall_secs"] = sum(st["timing"].get("bury_wall_secs", 0.0) for st in stats)
+    try:
+        sidecar = publish_shard(out_dir, config, cluster, seed, records, stats)
+    except Exception as exc:
+        raise _PublicationError(exc) from exc
+    return sidecar, timing
 
 
 # ------------------------------------------------------------------- shards
@@ -2107,6 +2086,17 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
     _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n",
                        mode=0o444)
     return sidecar
+
+
+def _install_worker_shard(staging: Path, out_dir: Path, cluster: int, config: dict) -> None:
+    data, side = shard_paths(staging, cluster)
+    paths = [data]
+    if config.get("capture_full_legal_scores"):
+        from .shortlist_scores import score_path
+        paths.append(score_path(staging, cluster))
+    # Only the parent commits. An orphaned worker can finish only in its attempt directory.
+    for path in (*paths, side):
+        os.replace(path, out_dir / "shards" / path.name)
 
 
 def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
@@ -2215,53 +2205,49 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
                 continue
         todo.append(c)
 
-    def publish(cluster: int, result: ClusterResult) -> None:
-        sidecars[cluster] = publish_shard(out_dir, config, cluster, seed0 + cluster,
-                                          result.records, result.stats)
-        timing[cluster] = {
-            **result.timing,        # the task's OWN duration and wall-clock stamps
-            "round_wall_secs": [st["timing"]["wall_secs"] for st in result.stats],
-            "search_secs": round(sum(st["timing"]["search_secs"]
-                                     for st in result.stats), 4),
-            **({"bury_wall_secs": sum(st["timing"].get("bury_wall_secs", 0.0)
-                                      for st in result.stats)}
-               if any("bury_wall_secs" in st["timing"] for st in result.stats) else {}),
-        }
+    def collect(cluster: int, result) -> None:
+        sidecars[cluster], timing[cluster] = result
         note(cluster, sidecars[cluster], False)
 
-    def consume(cluster: int, future) -> None:
+    def consume(cluster: int, future, staging: Path) -> None:
         try:
             result = future.result()
+        except _PublicationError as exc:
+            raise exc.args[0] from exc
         except Exception as exc:  # noqa: BLE001 - drained, then re-raised as one
             failures.append((cluster, f"{type(exc).__name__}: {exc}"))
             return
-        publish(cluster, result)
+        _install_worker_shard(staging, out_dir, cluster, config)
+        collect(cluster, result)
 
     if workers == 1:
         for c in todo:
             try:
-                result = _cluster_task((config, c, seed0 + c))
+                result = _cluster_task(config, c, seed0 + c, out_dir)
+            except _PublicationError as exc:
+                raise exc.args[0] from exc
             except Exception as exc:  # noqa: BLE001 - reported, then re-raised as one
                 failures.append((c, f"{type(exc).__name__}: {exc}"))
                 continue
-            publish(c, result)
+            collect(c, result)
             del result
     elif todo:
         ctx = multiprocessing.get_context("spawn")
         max_workers = min(workers, len(todo))
         window = INFLIGHT_PER_WORKER * max_workers
         queue = list(todo)
-        # Future -> cluster for the clusters in flight only.  Each Future is
-        # popped as it completes, so its result is reclaimed once published;
-        # submitting everything up front and keeping the whole mapping
-        # retained every published cluster's records until the pool closed
-        # (#208: 12 GiB parent RSS, +2.8 MiB per cluster).
+        # Bound queued work while workers publish disjoint cluster paths.
         in_flight: dict = {}
-        with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as pool:
+        shard_dir = out_dir / "shards"
+        shard_dir.mkdir(parents=True, exist_ok=True)
+        with (TemporaryDirectory(dir=shard_dir, prefix=".workers-") as attempt,
+              ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as pool):
+            staging = Path(attempt)
+
             def fill() -> None:
                 while queue and len(in_flight) < window:
                     c = queue.pop(0)
-                    in_flight[pool.submit(_cluster_task, (config, c, seed0 + c))] = c
+                    in_flight[pool.submit(_cluster_task, config, c, seed0 + c, staging)] = c
 
             fill()
             while in_flight:
@@ -2270,7 +2256,7 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
                 del finished
                 while completed:
                     future = completed.pop(0)
-                    consume(in_flight.pop(future), future)
+                    consume(in_flight.pop(future), future, staging)
                     del future                   # the last reference to the result
                 fill()
     failures.sort()

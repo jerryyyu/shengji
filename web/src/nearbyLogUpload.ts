@@ -6,7 +6,9 @@
 // TICK_MAX per tick; the uploaded offset is kept per file in localStorage, so
 // a byte is never sent twice, and a roll or a Clear starts the new file at 0.
 // An endpoint that is missing or down keeps the offset for the next tick and
-// writes at most one "pending" line per tick. Nothing here runs inside a game
+// writes at most one "pending" line per tick. Each chunk is posted in the
+// server's line shape (sanitizeLogChunk), and a 400 drops only that chunk, so
+// one bad line never costs the rest of the file. Nothing here runs inside a game
 // handler: every tick is a timer, a visibility event or a menu tap.
 import { flushNearbyLogFile, nearbyLog, onNearbyLogFileReset, readNearbyLogFile, type LogFileReset } from "./nearbyLog";
 
@@ -72,6 +74,42 @@ const buildLabel = (): string => {
   return (v && v.trim() ? v.trim() : "beta-soak").slice(0, 60);
 };
 
+// The server's line rule (shengji/api/nearby_logs.py LINE_RE and MAX_LINE):
+// Python's `.` takes every character but "\n", hence `[^\n]` here.
+export const MAX_LINE = 2000;
+const LINE_RE = /^[0-9]+\.[0-9]{3} [a-z]+ [^\n]*$/;
+const STAMP_RE = /^[0-9]+\.[0-9]{3}(?= )/;
+// C0 controls and DEL; the line split already took "\n" out
+const CONTROL_RE = /[\x00-\x1f\x7f]/g;
+
+const escapeControl = (c: string): string =>
+  c === "\r" ? "\\r" : c === "\t" ? "\\t" : `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`;
+
+/** `line` cut to MAX_LINE characters with a marker naming how many went. */
+function fitLine(line: string): string {
+  if (line.length <= MAX_LINE) return line;
+  let keep = MAX_LINE - ` …[truncated ${line.length}]`.length;
+  // never split a surrogate pair
+  const c = line.charCodeAt(keep - 1);
+  if (c >= 0xd800 && c <= 0xdbff) keep -= 1;
+  return `${line.slice(0, keep)} …[truncated ${line.length - keep}]`;
+}
+
+/** Each line of a chunk in the shape the server takes, keeping every line's
+ *  text: control characters are escaped, a line without the shape (a stack
+ *  trace's continuation, a header, a cut line) becomes a `raw` line at the
+ *  previous line's time, and an overlong line is cut with a marker. */
+export function sanitizeLogChunk(text: string): string {
+  let stamp = "0.000";
+  return text.split("\n").map((raw) => {
+    if (!raw) return raw;
+    let line = raw.replace(CONTROL_RE, escapeControl);
+    if (LINE_RE.test(line)) stamp = STAMP_RE.exec(line)![0];
+    else line = `${stamp} raw ${line}`;
+    return fitLine(line);
+  }).join("\n");
+}
+
 type Sent = { status: number } | { error: string };
 
 async function post(body: string, offset: number): Promise<Sent> {
@@ -125,7 +163,7 @@ async function tick(): Promise<void> {
         if (which === "old") { saveUploadState({ ...loadUploadState(), old: null }); continue; }
         break;
       }
-      const res = await post(r.text, s.stream);
+      const res = await post(sanitizeLogChunk(r.text), s.stream);
       if ("error" in res) { pending = res.error; break; }
       if (res.status === 204) {
         advance(s.gen, which, r.bytes, r.bytes);
@@ -137,9 +175,9 @@ async function tick(): Promise<void> {
         continue;
       }
       if (res.status === 400) {
-        nearbyLog("log", "upload refused (400)");
-        const skip = Math.max(r.bytes, r.size - off);
-        advance(s.gen, which, skip, skip);
+        // only this chunk is dropped; the rest of the file goes next tick
+        nearbyLog("log", `upload refused (400): skipped ${r.bytes} bytes`);
+        advance(s.gen, which, r.bytes, r.bytes);
         break;
       }
       pending = String(res.status);

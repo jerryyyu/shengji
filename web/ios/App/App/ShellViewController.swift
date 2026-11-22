@@ -46,11 +46,14 @@ class ShellViewController: CAPBridgeViewController {
         #endif
         // Launched from Xcode with -offline-autoplay, the offline game plays the
         // human's seat too, so a whole round of the bots can be watched and timed.
+        // A test tool: in Debug and the Beta, never in an App Store build.
+        #if DEBUG || SHENGJI_NEARBY_BETA
         if ProcessInfo.processInfo.arguments.contains("-offline-autoplay") {
             webView?.configuration.userContentController.addUserScript(WKUserScript(
                 source: "window.__shengjiOfflineAutoplay = true;",
                 injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        #endif
         // WKWebView holds its navigation delegate weakly, so the gate lives here.
         if let webView = webView, let inner = webView.navigationDelegate {
             let gate = OfflineFallbackGate(inner: inner)

@@ -14,7 +14,8 @@
     "capture:lobby": "node scripts/capture_lobby.mjs",
     "e2e": "node e2e/run.mjs ci",
     "e2e:full": "node e2e/run.mjs full",
-    "ios:sync": "npm run build && cap sync ios"
+    "ios:sync": "npm run build && cap sync ios",
+    "ios:sync:appstore": "VITE_SHENGJI_APP_STORE=1 npm run build && cap sync ios"
   },
   "dependencies": {
     "@capacitor/core": "^8.6.0",

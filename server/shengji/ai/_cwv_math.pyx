@@ -58,14 +58,23 @@ cdef extern from *:
         #if defined(__clang__)
         #pragma clang fp contract(off)
         #endif
+        for (int col = 0; col < 288; ++col)
+            if (!isfinite(w[col]) || !isfinite(b[col]))
+                return 0;
         fenv_t previous;
         if (feholdexcept(&previous) != 0)
             return 0;
+        int usable = 1;
         for (Py_ssize_t i = 0; i < rows; ++i) {
             const float *input = x + i * 288;
             float *result = out + i * 288;
             float *squares = square + i * 288;
             float mean = shengji_mean288(input);
+            // NaN payload propagation depends on the implementation of its ufunc.
+            if (!isfinite(mean)) {
+                usable = 0;
+                break;
+            }
             for (int col = 0; col < 288; ++col) {
                 float centered = input[col] - mean;
                 result[col] = centered;
@@ -80,7 +89,7 @@ cdef extern from *:
         // Let NumPy apply its usual seterr policy for exceptional arithmetic.
         int status = fetestexcept(FE_INVALID | FE_DIVBYZERO | FE_OVERFLOW | FE_UNDERFLOW);
         fesetenv(&previous);
-        return status == 0;
+        return usable && status == 0;
     }
     #else
     #define SHENGJI_NORM_288 0
@@ -90,6 +99,9 @@ cdef extern from *:
     int SHENGJI_NORM_288
     int shengji_ln288(const float *x, const float *w, const float *b, float *out,
                       float *square, Py_ssize_t rows, float epsilon) noexcept nogil
+
+
+HAVE_LAYER_NORM_288 = bool(SHENGJI_NORM_288)
 
 
 cdef inline bint _overlap(uintptr_t start, size_t length,

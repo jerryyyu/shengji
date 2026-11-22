@@ -145,6 +145,32 @@ def test_readout_layer_norm_matches_numpy_bits_and_error_handling(monkeypatch):
     assert used[-1] is False
     np.testing.assert_array_equal(out.view(np.uint32), reference.view(np.uint32))
 
+    aliased = x.copy()
+    rn._ln_into(aliased, w, b, aliased, square)
+    assert used[-1] is False
+    with monkeypatch.context() as oracle:
+        oracle.setattr(rn, "_native_layer_norm", None)
+        expected = x.copy()
+        rn._ln_into(expected, w, b, expected, reference_square)
+    np.testing.assert_array_equal(aliased.view(np.uint32), expected.view(np.uint32))
+
+    raw = bytearray(x.nbytes + 1)
+    unaligned = np.ndarray(x.shape, dtype=np.float32, buffer=raw, offset=1)
+    unaligned[:] = x
+    assert not unaligned.flags.aligned
+    rn._ln_into(unaligned, w, b, out, square)
+    assert used[-1] is False
+    np.testing.assert_array_equal(out.view(np.uint32), expected.view(np.uint32))
+
+    nan = x[:1].copy()
+    nan.view(np.uint32)[0, [0, 8]] = [0x7fc01234, 0xffc04321]
+    with monkeypatch.context() as oracle:
+        oracle.setattr(rn, "_native_layer_norm", None)
+        rn._ln_into(nan, w, b, reference[:1], reference_square[:1])
+    rn._ln_into(nan, w, b, out[:1], square[:1])
+    assert used[-1] is False
+    np.testing.assert_array_equal(out[:1].view(np.uint32), reference[:1].view(np.uint32))
+
     overflow = np.full((1, 288), np.float32(1e20))
     overflow[:, ::2] *= -1
     with np.errstate(over="raise"), pytest.raises(FloatingPointError):

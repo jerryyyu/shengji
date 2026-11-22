@@ -25,7 +25,9 @@ from . import belief_numpy as bn
 from .unified_numpy import PACKAGE_MAX_BYTES, UnifiedNumpy, UnifiedNumpyError, _ln
 
 try:
-    from ._cwv_math import layer_norm_288 as _native_layer_norm
+    from ._cwv_math import HAVE_LAYER_NORM_288, layer_norm_288 as _native_layer_norm
+    if not HAVE_LAYER_NORM_288:
+        _native_layer_norm = None
 except ImportError:
     _native_layer_norm = None
 

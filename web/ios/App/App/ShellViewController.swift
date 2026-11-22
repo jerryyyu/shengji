@@ -39,6 +39,7 @@ class ShellViewController: CAPBridgeViewController {
         webView?.allowsBackForwardNavigationGestures = true
         bridge?.registerPluginInstance(ShengjiShellPlugin())
         bridge?.registerPluginInstance(ShengjiBotPlugin())
+        bridge?.registerPluginInstance(ShengjiKeychainPlugin())
         #if SHENGJI_NEARBY
         // Nearby play is registered only in builds that define SHENGJI_NEARBY.
         bridge?.registerPluginInstance(ShengjiNearbyPlugin())

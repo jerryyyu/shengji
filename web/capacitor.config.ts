@@ -28,6 +28,11 @@ const config: CapacitorConfig = {
   appId: "com.jerryyu.shengji",
   appName: "Sheng Ji",
   webDir: "dist",
+  // Capacitor's bridge logs every plugin call's options and the first 256
+  // characters of every result, natively and in the page console, whenever
+  // logging is on (Debug builds by default). The Keychain plugin carries the
+  // device credential through both, so bridge logging is off in every build.
+  loggingBehavior: "none",
   server: {
     url: serverUrl,
     cleartext: serverUrl.startsWith("http://"),

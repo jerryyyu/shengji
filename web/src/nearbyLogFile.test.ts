@@ -42,7 +42,7 @@ describe("the nearby log file, in the device test and the Beta", () => {
     const { f, files, calls } = fakeFile();
     expect(await attachNearbyLogFile(f)).toBe(true);
     expect(nearbyLogFileOn()).toBe(true);
-    expect(files.main).toMatch(/^--- log file attached \d{4}-\d\d-\d\dT[^\n]* ---\n[\d.]+ host link p1 up\n$/);
+    expect(files.main).toMatch(/^[\d.]+ log --- log file attached \d{4}-\d\d-\d\dT[^\n]* ---\n[\d.]+ host link p1 up\n$/);
     vi.useFakeTimers();
     nearbyLog("socket", "STUCK: no state; making a new link");
     nearbyLog("soak", "SOAK 10 min: games 1, rounds 3");
@@ -54,6 +54,17 @@ describe("the nearby log file, in the device test and the Beta", () => {
     expect(files.main.split("\n").slice(-3)).toEqual([
       expect.stringMatching(/^[\d.]+ socket STUCK: no state; making a new link$/),
       expect.stringMatching(/^[\d.]+ soak SOAK 10 min: games 1, rounds 3$/),
+      "",
+    ]);
+  });
+
+  it("writes a newline inside a line's text as \\n, so each record stays one line", async () => {
+    const { f, files } = fakeFile();
+    expect(await attachNearbyLogFile(f)).toBe(true);
+    nearbyLog("soak", "chaos failed: Error: boom\n    at drop (index.js:1:2)\r\n    at tick");
+    await flushNearbyLogFile();
+    expect(files.main.split("\n").slice(-2)).toEqual([
+      expect.stringMatching(/^[\d.]+ soak chaos failed: Error: boom\\n    at drop \(index\.js:1:2\)\\n    at tick$/),
       "",
     ]);
   });

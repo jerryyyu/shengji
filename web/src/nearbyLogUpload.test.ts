@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // The device-test log upload: whole lines in chunks, the offset moves only on
 // 204, a missing or failing endpoint is retried next tick, 413 halves the
-// chunk, 400 skips to the file's end, a roll or a clear starts the new file at
+// chunk, 400 skips that chunk only, a roll or a clear starts the new file at
 // 0, and outside the device test and the Beta nothing is started or bundled.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import {
   nearbyLogLines, type LogFile,
 } from "./nearbyLog";
 import {
-  loadUploadState, startNearbyLogUpload, stopNearbyLogUploadForTests, TICK_MS, UPLOAD_URL, uploadChunkForTests,
+  FIRST_TICK_MS, loadUploadState, startNearbyLogUpload, stopNearbyLogUploadForTests, TICK_MS, UPLOAD_URL, uploadChunkForTests,
   uploadDeviceId, uploadNearbyLogNow,
 } from "./nearbyLogUpload";
 
@@ -42,13 +42,22 @@ function fakeFile() {
   return { f, files };
 }
 
+// The server's rule, copied from shengji/api/nearby_logs.py (LINE_RE with
+// re.ASCII, MAX_LINE, and valid_log_text's split on "\n" only).
+const SERVER_LINE_RE = /^[0-9]+\.[0-9]{3} [a-z]+ [^\n]*$/;
+const serverTakes = (body: string) =>
+  body.split("\n").every((l) => !l || ([...l].length <= 2000 && SERVER_LINE_RE.test(l)));
+
 type Reply = number | "network";
+/** The endpoint: a body the server's rule refuses is a 400, as on the server;
+ *  otherwise the next scripted reply. */
 function mockFetch(replies: Reply[], fallback: Reply = 204) {
   const calls: { body: string; headers: Record<string, string> }[] = [];
   const fn = vi.fn(async (url: string, init: RequestInit) => {
     expect(url).toBe(UPLOAD_URL);
     expect(init.method).toBe("POST");
     calls.push({ body: String(init.body), headers: init.headers as Record<string, string> });
+    if (!serverTakes(String(init.body))) return new Response("bad_content", { status: 400 });
     const r = replies.length ? replies.shift()! : fallback;
     if (r === "network") throw new TypeError("Failed to fetch");
     return new Response(r === 204 ? null : "secret server text", { status: r });
@@ -160,18 +169,55 @@ describe("the log upload", () => {
     expect(loadUploadState().cur).toBeGreaterThan(0);
   });
 
-  it("on 400 logs one refusal, skips to the end of the file and does not retry that chunk", async () => {
-    const { files } = await withFile(["link p1 up", "link p2 up"]);
+  it("on 400 skips only that chunk, logs its size, and sends the chunks after it next tick", async () => {
+    const { files } = await withFile(Array.from({ length: 20_000 }, (_, i) => `line ${i} ${"z ".repeat(30)}`));
     const { calls } = mockFetch([400]);
     await uploadNearbyLogNow();
-    const end = size(files.main);
-    expect(uploadLines()).toEqual(["upload refused (400)", "upload 0 B ok"]);
     expect(calls).toHaveLength(1);
-    expect(loadUploadState().cur).toBe(end);
-    await flushNearbyLogFile();
+    const first = size(calls[0].body);
+    expect(first).toBeLessThan(size(files.main));
+    expect(loadUploadState()).toMatchObject({ cur: first, stream: first });
+    expect(uploadLines()).toEqual([`upload refused (400): skipped ${first} bytes`, "upload 0 B ok"]);
     await uploadNearbyLogNow();
-    expect(calls[1].headers["X-Nearby-Offset"]).toBe(String(end));
-    expect(calls[1].body).not.toContain("link p1 up");
+    expect(calls).toHaveLength(2);
+    expect(calls[1].headers["X-Nearby-Offset"]).toBe(String(first));
+    expect(calls[1].body).toContain("line 19999 ");
+    // every life's lines reached the server, the last one's too
+    expect(loadUploadState().cur).toBeGreaterThan(0);
+  });
+
+  it("a backlog with lines the server's rule refuses uploads whole: nothing skipped, nothing lost", async () => {
+    const ff = fakeFile();
+    // what a 10.1 file holds: its header line, then a line with a stack
+    ff.files.main = "--- log file attached 2026-11-20T18:02:11.512Z at page time 0.412 ---\n"
+      + "0.413 host link p1 up\n"
+      + "1.020 soak chaos failed: Error: boom\n    at drop (index.js:1:2)\n"
+      + "1.500 native recv p1 error reset\r\n"
+      + `2.000 host ${"w".repeat(5000)}\n`
+      + "2.100 join seat 2 张伟 ready\n";
+    expect(await attachNearbyLogFile(ff.f)).toBe(true);
+    await flushNearbyLogFile();
+    const { calls } = mockFetch([]);
+    await uploadNearbyLogNow();
+    expect(uploadLines()).toEqual([`upload ${size(ff.files.main)} B ok`]);
+    expect(loadUploadState().cur).toBe(size(ff.files.main));
+    const body = calls.map((c) => c.body).join("");
+    for (const text of ["--- log file attached 2026-11-20T18:02:11.512Z", "link p1 up", "    at drop (index.js:1:2)",
+      "reset\\r", "张伟 ready", "…[truncated"]) expect(body).toContain(text);
+  });
+
+  it("a legacy line with an overlong stamp does not cost its neighbour: the chunk uploads whole", async () => {
+    const ff = fakeFile();
+    const valid = "1.000 native " + "🀄".repeat(1000);
+    ff.files.main = `${"9".repeat(2001)}.000 host bad\n1.000 host good\n${valid}\n`;
+    expect(await attachNearbyLogFile(ff.f)).toBe(true);
+    await flushNearbyLogFile();
+    const { calls } = mockFetch([]);
+    await uploadNearbyLogNow();
+    expect(uploadLines()).toEqual([`upload ${size(ff.files.main)} B ok`]);
+    const lines = calls.map((c) => c.body).join("").split("\n");
+    expect(lines).toContain("1.000 host good");
+    expect(lines).toContain(valid);
   });
 
   it("a roll sends the rest of the older file, then the new one from 0; the stream offset keeps counting", async () => {
@@ -210,21 +256,45 @@ describe("the log upload", () => {
     expect(ff.files.main).toBe("");
   });
 
-  it("ticks every 10 minutes and when the page hides", async () => {
+  it("ticks a minute after the page's start, then every 10 minutes, and when the page hides", async () => {
     await withFile(["link p1 up"]);
     vi.useFakeTimers();
     const { calls } = mockFetch([]);
     expect(startNearbyLogUpload()).toBe(true);
-    await vi.advanceTimersByTimeAsync(TICK_MS - 1000);
+    await vi.advanceTimersByTimeAsync(FIRST_TICK_MS - 1000);
     expect(calls).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(2000);
     expect(calls).toHaveLength(1);
+    nearbyLog("host", "later");
+    await vi.advanceTimersByTimeAsync(TICK_MS - 2000);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(calls).toHaveLength(2);
     nearbyLog("host", "more");
     Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(10);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  });
+
+  it("uploads from a page that never lives 10 minutes: a joiner whose soak reloads it every few minutes", async () => {
+    // each life: the file has new lines, the page starts its upload, and is
+    // gone (a reload) five minutes later
+    await withFile([]);
+    vi.useFakeTimers();
+    const { calls } = mockFetch([]);
+    for (let life = 0; life < 4; life++) {
+      nearbyLog("join", `resume: connected ${life}`);
+      await flushNearbyLogFile();
+      expect(startNearbyLogUpload()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      stopNearbyLogUploadForTests();
+    }
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    // every life's lines reached the server, the last one's too
+    expect(loadUploadState().cur).toBeGreaterThan(0);
+    expect(calls.map((c) => c.body).join("")).toContain("resume: connected 3");
   });
 });
 

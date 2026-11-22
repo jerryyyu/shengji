@@ -1,9 +1,10 @@
 // Nearby play is gated at run time by the app binary: in a browser, an App
 // Store binary (no plugin) or a binary whose plugin is not enabled, nothing
 // nearby renders and the nearby UI module is never imported; the Beta shows
-// the nearby UI, and with `logFile` its log rows, with Autoplay and Chaos
-// behind the hidden switch (five taps on the menu's table code); the device
-// test shows every soak row.
+// the nearby UI, and with `logFile` its log file and upload, always on, with
+// every log and soak row behind the hidden switch (five taps on the menu's
+// table code, marked by a dot after the code); the device test shows every
+// soak row.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -43,10 +44,10 @@ vi.mock("./nearbyUi", async (orig) => {
 import Lobby from "./components/Lobby";
 import HudMenu from "./components/HudMenu";
 import { OfflineControls } from "./components/OfflinePlay";
-import { nearbyGate, resetNearbyGateForTests, type NearbyUi } from "./nearbyGate";
+import { NearbyDebugMount, nearbyGate, resetNearbyGateForTests, type NearbyUi } from "./nearbyGate";
 import { nearbySoakSwitchTap, resetNearbyDebugForTests, SWITCH_TAPS, SWITCH_WINDOW_MS } from "./nearbyDebug";
 import { detachNearbyLogFile, forgetNativeLogForTests } from "./nearbyLog";
-import { stopNearbyLogUploadForTests } from "./nearbyLogUpload";
+import { nearbyLogUploadOn, stopNearbyLogUploadForTests } from "./nearbyLogUpload";
 
 /** A plugin that answers `capabilities()` with `caps` and records every call.
  *  With `bridge`, `addListener` returns what the app's Capacitor bridge
@@ -99,11 +100,12 @@ async function renderAll() {
   act(() => host.querySelector<HTMLButtonElement>(".menu .hud-more-btn")!.click());
   await settle();
   const rows = () => Array.from(host.querySelectorAll<HTMLElement>(".menu .hud-menu-row")).map((r) => r.textContent);
+  const code = () => host.querySelector<HTMLElement>(".menu .hud-menu-code-text");
   const tapCode = async (n: number) => {
     for (let i = 0; i < n; i++) act(() => host.querySelector<HTMLElement>(".menu .hud-menu-code-text")!.click());
     await settle();
   };
-  return { host, rows, tapCode, unmount: () => { act(() => root.unmount()); host.remove(); } };
+  return { host, rows, code, tapCode, unmount: () => { act(() => root.unmount()); host.remove(); } };
 }
 
 const SOAK_ROWS = ["Autoplay", "Chaos", "Copy soak summary", "Clear log file", "Upload log now"];
@@ -115,6 +117,20 @@ async function waitForRow(v: Awaited<ReturnType<typeof renderAll>>, label: strin
   for (let i = 0; i < 100 && !v.rows().includes(label); i++) await settle();
 }
 
+async function waitFor(ok: () => boolean) {
+  for (let i = 0; i < 100 && !ok(); i++) await settle();
+}
+
+/** The hidden switch's marker on the menu's code: a CSS dot and an
+ *  accessible-name suffix, never text. */
+function expectMarker(v: Awaited<ReturnType<typeof renderAll>>, on: boolean) {
+  const code = v.code();
+  if (!code) { expect(on).toBe(false); return; }
+  expect(code.classList.contains("soak-on")).toBe(on);
+  expect(code.getAttribute("aria-label")!.endsWith(", soak tools on")).toBe(on);
+  expect(code.textContent).toBe("K7Q2M");
+}
+
 function expectNoNearby(v: Awaited<ReturnType<typeof renderAll>>) {
   expect(v.host.querySelector(".join-row.nearby")).toBeNull();
   for (const input of v.host.querySelectorAll<HTMLInputElement>(".room-input")) expect(input.maxLength).toBe(4);
@@ -123,6 +139,7 @@ function expectNoNearby(v: Awaited<ReturnType<typeof renderAll>>) {
   expect(v.host.querySelector("[role='switch']")).toBeNull();
   expect(v.host.textContent).not.toMatch(/nearby|Nearby|Local Network/);
   expect(v.rows().filter((r) => r === "Copy log" || SOAK_ROWS.includes(r ?? ""))).toEqual([]);
+  expect(v.host.querySelector(".soak-on")).toBeNull();
 }
 
 beforeAll(() => {
@@ -226,10 +243,12 @@ describe("nearby play's run-time gate", () => {
     await waitForRow(v, "Autoplay");
     for (const r of ["Copy log", ...SOAK_ROWS, "AWDL keepalive"]) expect(v.rows()).toContain(r);
     expect(calls.some((c) => c.startsWith("debugLogFile"))).toBe(true);
+    // the rows need no switch here, so no marker
+    expectMarker(v, false);
     v.unmount();
   });
 
-  it("the Beta with the soak (logFile, chaos): the log file on and its rows, Autoplay and Chaos only after five taps", async () => {
+  it("the Beta with the soak (logFile, chaos): the log file on, every log and soak row only after five taps", async () => {
     native.available = true;
     const { p, calls } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true });
     native.plugin = p;
@@ -237,34 +256,42 @@ describe("nearby play's run-time gate", () => {
     resetNearbyGateForTests(loader);
     const v = await renderAll();
     expect(nearbyGate()).toEqual({ on: true, debug: false, logFile: true, chaos: true });
-    await waitForRow(v, "Upload log now");
-    // the file is on from the page's start, with no debug pane
+    await waitFor(nearbyLogUploadOn);
+    // the file and its upload are on from the page's start, with no debug pane and no rows
     expect(calls).toContain("debugLogFile:size");
     expect(calls.some((c) => c.startsWith("debugLogFile:append"))).toBe(true);
-    for (const r of LOG_ROWS) expect(v.rows()).toContain(r);
-    for (const r of [...HIDDEN_ROWS, "AWDL keepalive"]) expect(v.rows()).not.toContain(r);
+    expect(nearbyLogUploadOn()).toBe(true);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS, "AWDL keepalive"]) expect(v.rows()).not.toContain(r);
+    expectMarker(v, false);
     // four taps are not enough
     await v.tapCode(SWITCH_TAPS - 1);
     for (let i = 0; i < 5; i++) await settle();
-    for (const r of HIDDEN_ROWS) expect(v.rows()).not.toContain(r);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).not.toContain(r);
+    expectMarker(v, false);
     await v.tapCode(1);
     await waitForRow(v, "Autoplay");
     for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).toContain(r);
     expect(v.rows()).not.toContain("AWDL keepalive");
+    expectMarker(v, true);
     expect(localStorage.getItem(SWITCH_KEY)).toBe("1");
     v.unmount();
   });
 
-  it("the Beta on the app's bridge (addListener returns no promise): the log file on and its rows", async () => {
+  it("the Beta on the app's bridge (addListener returns no promise), switch off: no rows, the log file and its upload on", async () => {
     native.available = true;
     const { p, calls } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true }, { bridge: true });
     native.plugin = p;
     loads = 0;
     resetNearbyGateForTests(loader);
     const v = await renderAll();
-    await waitForRow(v, "Upload log now");
+    await waitFor(nearbyLogUploadOn);
     expect(calls).toContain("debugLogFile:size");
-    for (const r of LOG_ROWS) expect(v.rows()).toContain(r);
+    expect(calls.some((c) => c.startsWith("debugLogFile:append"))).toBe(true);
+    expect(calls, "the native log is captured").toContain("addListener");
+    expect(nearbyLogUploadOn()).toBe(true);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(v.rows().filter((r) => [...LOG_ROWS, ...HIDDEN_ROWS, "AWDL keepalive"].includes(r ?? ""))).toEqual([]);
+    expectMarker(v, false);
     v.unmount();
   });
 
@@ -277,11 +304,14 @@ describe("nearby play's run-time gate", () => {
     resetNearbyGateForTests(loader);
     const v = await renderAll();
     await waitForRow(v, "Autoplay");
-    for (const r of HIDDEN_ROWS) expect(v.rows()).toContain(r);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).toContain(r);
+    expectMarker(v, true);
     await v.tapCode(SWITCH_TAPS);
     for (let i = 0; i < 5; i++) await settle();
-    for (const r of HIDDEN_ROWS) expect(v.rows()).not.toContain(r);
-    for (const r of LOG_ROWS) expect(v.rows()).toContain(r);
+    for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).not.toContain(r);
+    expectMarker(v, false);
+    // off again: the log file and its upload keep running
+    expect(nearbyLogUploadOn()).toBe(true);
     expect(localStorage.getItem(SWITCH_KEY)).toBe("0");
     v.unmount();
   });
@@ -302,5 +332,102 @@ describe("nearby play's run-time gate", () => {
     expect(on()).toBe("1");
     for (let i = 0; i < SWITCH_TAPS; i++) nearbySoakSwitchTap(true, t1 + 10_000 + i * 500);
     expect(on()).toBe("0");
+  });
+
+});
+
+const SOAK_KEY = "shengji.nearbySoak.v1";
+
+/** The Play page with the app's one debug mount, as main.tsx draws them. */
+async function renderPlay() {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<><div className="online"><Lobby status="open" /></div><NearbyDebugMount /></>));
+  await settle();
+  await act(async () => { await loading; });
+  await settle();
+  const pill = () => host.querySelector<HTMLButtonElement>(".nearby-soak-pill");
+  const button = (label: string) => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent === label) ?? null;
+  return { host, pill, button, unmount: () => { act(() => root.unmount()); host.remove(); } };
+}
+
+describe("the soak's controls off the table", () => {
+  it("the Beta with a soak running: a pill on the Play page opens Autoplay, Chaos and Stop soak; Stop soak ends it for good", async () => {
+    native.available = true;
+    localStorage.setItem(SWITCH_KEY, "1");
+    localStorage.setItem(SOAK_KEY, JSON.stringify({ autoplay: true, chaos: false, code: null }));
+    resetNearbyDebugForTests();
+    const { p } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true });
+    native.plugin = p;
+    resetNearbyGateForTests(loader);
+    const v = await renderPlay();
+    await waitFor(() => v.pill() !== null);
+    expect(v.pill()!.textContent).toBe("Autoplay");
+    act(() => v.pill()!.click());
+    await settle();
+    for (const label of ["Autoplay", "Chaos", "Stop soak"]) expect(v.button(label), label).not.toBeNull();
+    expect(v.button("Autoplay")!.getAttribute("aria-checked")).toBe("true");
+    expect(v.button("Chaos")!.getAttribute("aria-checked")).toBe("false");
+    act(() => v.button("Stop soak")!.click());
+    await settle();
+    const soak = await import("./nearbySoak");
+    expect(soak.soakState()).toEqual({ autoplay: false, chaos: false });
+    // a relaunch finds nothing to resume
+    expect(localStorage.getItem(SOAK_KEY)).toBeNull();
+    expect(v.pill()).toBeNull();
+    expect(v.button("Stop soak")).toBeNull();
+    v.unmount();
+  });
+
+  it("the Beta with no soak running: no pill, and the soak's module is never loaded for it", async () => {
+    native.available = true;
+    localStorage.setItem(SWITCH_KEY, "1");
+    resetNearbyDebugForTests();
+    const { p } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true });
+    native.plugin = p;
+    resetNearbyGateForTests(loader);
+    const v = await renderPlay();
+    await waitFor(nearbyLogUploadOn);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(v.pill()).toBeNull();
+    expect(v.button("Stop soak")).toBeNull();
+    v.unmount();
+  });
+
+  it("an App Store binary (no plugin, or no chaos and no debug): no pill even with a soak kept", async () => {
+    localStorage.setItem(SOAK_KEY, JSON.stringify({ autoplay: true, chaos: true, code: null }));
+    for (const caps of [null, { reviewed: true, beta: false, debug: false, logFile: false, chaos: false }]) {
+      native.available = caps !== null;
+      native.plugin = caps ? fakePlugin(caps).p : null;
+      resetNearbyDebugForTests();
+      resetNearbyGateForTests(loader);
+      const v = await renderPlay();
+      for (let i = 0; i < 5; i++) await settle();
+      expect(v.pill()).toBeNull();
+      expect(v.button("Stop soak")).toBeNull();
+      v.unmount();
+    }
+  });
+
+  it("the device test: the Log pane carries the same three controls while a soak runs", async () => {
+    native.available = true;
+    localStorage.setItem(SOAK_KEY, JSON.stringify({ autoplay: true, chaos: false, code: null }));
+    resetNearbyDebugForTests();
+    const { p } = fakePlugin({ debug: true, logFile: true, chaos: true });
+    native.plugin = p;
+    resetNearbyGateForTests(loader);
+    const v = await renderPlay();
+    const logTab = () => Array.from(v.host.querySelectorAll<HTMLButtonElement>("button")).find((b) => /^Log \d+$/.test(b.textContent ?? ""));
+    await waitFor(() => logTab() !== undefined);
+    expect(v.pill()).toBeNull();
+    act(() => logTab()!.click());
+    await waitFor(() => v.button("Stop soak") !== null);
+    for (const label of ["Autoplay", "Chaos", "Stop soak", "Copy", "Close"]) expect(v.button(label), label).not.toBeNull();
+    act(() => v.button("Stop soak")!.click());
+    await settle();
+    expect(localStorage.getItem(SOAK_KEY)).toBeNull();
+    expect(v.button("Stop soak")).toBeNull();
+    v.unmount();
   });
 });

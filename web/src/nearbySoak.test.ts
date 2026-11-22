@@ -42,3 +42,38 @@ describe("Autoplay", () => {
     expect(j.frames.filter((f) => f.type === "error")).toEqual([]);
   });
 });
+
+describe("the soak's own reload", () => {
+  it("sends the log's unsent bytes first, so a joiner reloaded every few minutes still uploads", async () => {
+    const { uploadThenReload } = await import("./nearbySoak");
+    const order: string[] = [];
+    const up = { nearbyLogUploadOn: () => true, uploadNearbyLogNow: async () => { order.push("upload"); } };
+    await uploadThenReload(() => order.push("reload"), async () => up);
+    expect(order).toEqual(["upload", "reload"]);
+    // an upload that hangs, or no upload running, never holds the reload
+    const hung = { nearbyLogUploadOn: () => true, uploadNearbyLogNow: () => new Promise<void>(() => {}) };
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), async () => hung, 10);
+    expect(order).toEqual(["reload"]);
+    // the deadline covers the module's import too: exactly one reload either way
+    const pendingImport = () => new Promise<typeof up>(() => {});
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), pendingImport, 10);
+    expect(order).toEqual(["reload"]);
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), async () => hung, 10);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(order).toEqual(["reload"]);
+    // an import that lands after the deadline does not reload again
+    let land: (m: typeof up) => void = () => {};
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), () => new Promise<typeof up>((r) => { land = r; }), 10);
+    land(up);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(order).toEqual(["reload"]);
+    const off = { nearbyLogUploadOn: () => false, uploadNearbyLogNow: async () => { order.push("upload"); } };
+    order.length = 0;
+    await uploadThenReload(() => order.push("reload"), async () => off);
+    expect(order).toEqual(["reload"]);
+  });
+});

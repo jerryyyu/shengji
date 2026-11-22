@@ -7,8 +7,9 @@
 // is `capabilities()`, made only where the plugin is registered. Once it is
 // yes, the nearby UI (nearbyUi.tsx) is imported, and components draw its
 // parts. The soak's log file (with its upload) runs wherever the plugin
-// reports `logFile` (the device test and the Beta); its Autoplay and Chaos
-// rows need `debug`, or `chaos` with the hidden switch (nearbyDebug.tsx).
+// reports `logFile` (the device test and the Beta), whatever the menu shows;
+// the ⋯ menu's log and soak rows need `debug`, or `chaos` with the hidden
+// switch (nearbyDebug.tsx).
 import { createElement, useSyncExternalStore } from "react";
 import { nearbyPluginProxy, pluginAvailable } from "./native";
 import { nearbyEnabled, type NearbyCapabilities } from "./offline/server/nearby/flag";
@@ -101,6 +102,16 @@ export function useNearbyJoinView(): NearbyJoin | null {
   return useSyncExternalStore(m ? m.nearbyJoin.subscribe : noSubscribe, get, get);
 }
 
+const off = () => false;
+
+/** Whether the ⋯ menu's code marks the Beta's hidden switch as on; false
+ *  without the nearby UI. */
+export function useNearbySoakMarker(): boolean {
+  const m = useNearbyUi();
+  const get = m ? m.nearbySoakMarker.getSnapshot : off;
+  return useSyncExternalStore(m ? m.nearbySoakMarker.subscribe : noSubscribe, get, get);
+}
+
 const HOST_OFF: NearbyHostView = { phase: "off", line: null };
 const hostOff = () => HOST_OFF;
 
@@ -120,10 +131,11 @@ export function useNearbyHostLeft(): boolean {
   return useSyncExternalStore(m ? m.nearbyJoin.subscribe : noSubscribe, get, get);
 }
 
-/** The device test's log pane, in a Debug build for the device test only. */
+/** The device test's log pane, in a Debug build for the device test only;
+ *  in the Beta (`chaos` and `logFile`), a running soak's controls only. */
 export function NearbyDebugMount() {
   const m = useNearbyUi();
-  return m && gate.debug ? createElement(m.NearbyDebugPane) : null;
+  return m && (gate.debug || (gate.chaos && gate.logFile)) ? createElement(m.NearbyDebugPane, { soak: gate.chaos && gate.logFile }) : null;
 }
 
 /** Tests: answer the gate with `c` (null: no plugin) and load the UI with

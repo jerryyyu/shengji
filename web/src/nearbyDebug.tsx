@@ -6,12 +6,16 @@
 // did. Wherever the plugin reports `logFile` (the device test and the Beta),
 // the log file (nearbyLog.ts) is always on from the page's start, its new
 // bytes go to the server (nearbyLogUpload.ts), and the nearby table's ⋯ menu
-// has Copy log, Clear log file and Upload log now. The soak's Autoplay, Chaos
-// and summary rows show in the device test, and in the Beta (`chaos`) only
-// once the hidden switch is on: five taps on the ⋯ menu's table code within
-// SWITCH_WINDOW_MS, five more to turn it off, kept in localStorage. A soak
+// has Copy log, Clear log file and Upload log now, with the soak's Autoplay,
+// Chaos and summary. Those rows show in the device test, and in the Beta
+// (`chaos`) only once the hidden switch is on: five taps on the ⋯ menu's
+// table code within SWITCH_WINDOW_MS, five more to turn it off, kept in
+// localStorage; a dot after the code marks it on. The file and its upload
+// run with the switch off as well. A soak
 // left on (its switches kept by nearbySoak.ts) resumes at the page's start,
-// so a reload keeps it going.
+// so a reload keeps it going. While a soak runs, its Autoplay, Chaos and
+// Stop soak are on every page too: in the device test inside the Log pane,
+// in the Beta behind a pill in the same corner, which shows only then.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { nearbyPluginProxy } from "./native";
 import {
@@ -71,7 +75,7 @@ function resumeSoak(): void {
   } catch { /* nothing kept */ }
   if (!on) return;
   void import("./nearbySoak").then((m) => {
-    soakModule = m;
+    setSoakModule(m);
     m.resumeSoak();
   }, () => {});
 }
@@ -94,7 +98,7 @@ export function useNearbyLogFile(ask: boolean): boolean {
   return ask && on;
 }
 
-// The hidden switch for the soak's Autoplay and Chaos rows, where the plugin
+// The hidden switch for the ⋯ menu's log and soak rows, where the plugin
 // reports `chaos` without `debug` (the Beta).
 export const SWITCH_TAPS = 5;
 export const SWITCH_WINDOW_MS = 3000;
@@ -102,6 +106,26 @@ const SWITCH_KEY = "shengji.nearbySoakSwitch.v1";
 const switchListeners = new Set<() => void>();
 let taps: number[] = [];
 let soakModule: typeof import("./nearbySoak") | null = null;
+const soakLoaded = new Set<() => void>();
+
+function setSoakModule(m: typeof import("./nearbySoak")): void {
+  if (soakModule === m) return;
+  soakModule = m;
+  soakLoaded.forEach((l) => l());
+}
+
+const subscribeSoakLoaded = (fn: () => void): (() => void) => {
+  soakLoaded.add(fn);
+  return () => { soakLoaded.delete(fn); };
+};
+const soakModuleSnapshot = () => soakModule;
+
+/** Stop soak: Autoplay and Chaos off, and nothing kept for a relaunch to resume. */
+export function stopNearbySoak(): void {
+  soakModule?.setAutoplay(false);
+  soakModule?.setChaos(false);
+  try { localStorage.removeItem(SOAK_KEY); } catch { /* this page only */ }
+}
 
 function readSwitch(): boolean {
   try { return localStorage.getItem(SWITCH_KEY) === "1"; } catch { return false; }
@@ -114,6 +138,8 @@ const subscribeSwitch = (fn: () => void): (() => void) => {
   return () => { switchListeners.delete(fn); };
 };
 const switchSnapshot = (): boolean => switchOn;
+
+export { subscribeSwitch as subscribeNearbySoakSwitch, switchSnapshot as nearbySoakSwitchOn };
 
 /** Whether the hidden switch is on. */
 export function useNearbySoakSwitch(): boolean {
@@ -131,9 +157,7 @@ export function nearbySoakSwitchTap(chaos: boolean, now: number = Date.now()): v
   switchOn = !switchOn;
   try { localStorage.setItem(SWITCH_KEY, switchOn ? "1" : "0"); } catch { /* this page only */ }
   if (!switchOn) {
-    soakModule?.setAutoplay(false);
-    soakModule?.setChaos(false);
-    try { localStorage.removeItem(SOAK_KEY); } catch { /* this page only */ }
+    stopNearbySoak();
   }
   switchListeners.forEach((l) => l());
 }
@@ -218,7 +242,7 @@ export function useNearbySoak(ask: boolean): {
     let live = true;
     let off = () => {};
     void import("./nearbySoak").then((m) => {
-      soakModule = m;
+      setSoakModule(m);
       if (!live) return;
       setMod(m);
       off = m.subscribeSoak(() => bump((n) => n + 1));
@@ -236,16 +260,42 @@ export function useNearbySoak(ask: boolean): {
   };
 }
 
+/** A soak running on this page (its module is loaded only by the ⋯ menu's
+ *  rows or a resume): its switches and Stop soak; null while none runs. */
+function useRunningSoak(): { autoplay: boolean; chaos: boolean; toggleAutoplay: () => void; toggleChaos: () => void } | null {
+  const mod = useSyncExternalStore(subscribeSoakLoaded, soakModuleSnapshot, soakModuleSnapshot);
+  const [, bump] = useState(0);
+  useEffect(() => (mod ? mod.subscribeSoak(() => bump((n) => n + 1)) : undefined), [mod]);
+  if (!mod) return null;
+  const s = mod.soakState();
+  if (!s.autoplay && !s.chaos) return null;
+  return { ...s, toggleAutoplay: () => mod.setAutoplay(!s.autoplay), toggleChaos: () => mod.setChaos(!s.chaos) };
+}
+
+function SoakControls({ soak }: { soak: NonNullable<ReturnType<typeof useRunningSoak>> }) {
+  return (
+    <>
+      <button type="button" role="switch" aria-checked={soak.autoplay} onClick={soak.toggleAutoplay}>Autoplay</button>
+      <button type="button" role="switch" aria-checked={soak.chaos} onClick={soak.toggleChaos}>Chaos</button>
+      <button type="button" onClick={stopNearbySoak}>Stop soak</button>
+    </>
+  );
+}
+
 /** Puts the log on the clipboard; resolves whether it did. */
 export function copyNearbyLog(): Promise<boolean> {
   return navigator.clipboard?.writeText(nearbyLogText()).then(() => true, () => false) ?? Promise.resolve(false);
 }
 
-export default function NearbyDebugPane() {
+/** The device test's Log tab and pane; in the Beta (`soak`), only the
+ *  running soak's pill and its controls. */
+export default function NearbyDebugPane({ soak: soakTools = false }: { soak?: boolean }) {
   const [on, setOn] = useState(false);
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const lines = useSyncExternalStore(subscribeNearbyLog, nearbyLogLines, nearbyLogLines);
+  const running = useRunningSoak();
+  const soak = soakTools || on ? running : null;
   useEffect(() => {
     let live = true;
     void debugPlugin().then((p) => {
@@ -255,7 +305,21 @@ export default function NearbyDebugPane() {
     });
     return () => { live = false; };
   }, []);
-  if (!on) return null;
+  if (!on) {
+    // the Beta: the pill only while a soak runs
+    if (!soak) return null;
+    if (!open) {
+      return <button type="button" className="nearby-soak-pill" style={tab} onClick={() => setOpen(true)}>{soak.autoplay ? "Autoplay" : "Chaos"}</button>;
+    }
+    return (
+      <div style={{ ...pane, height: "auto" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 8 }}>
+          <SoakControls soak={soak} />
+          <button type="button" onClick={() => setOpen(false)}>Close</button>
+        </div>
+      </div>
+    );
+  }
   if (!open) return <button type="button" style={tab} onClick={() => setOpen(true)}>Log {lines.length}</button>;
   const copy = () => {
     void copyNearbyLog().then(setCopied);
@@ -265,6 +329,7 @@ export default function NearbyDebugPane() {
       <div style={{ display: "flex", gap: 8, padding: 4 }}>
         <button type="button" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
         <button type="button" onClick={() => { setOpen(false); setCopied(false); }}>Close</button>
+        {soak ? <SoakControls soak={soak} /> : null}
       </div>
       <div style={{ overflowY: "auto", flex: 1, padding: "0 4px", whiteSpace: "pre-wrap" }}>
         {lines.slice().reverse().map((l, i) => (

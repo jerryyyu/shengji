@@ -558,6 +558,18 @@ def test_single_follow_keeps_all_validation_failures(pure_routing, suit, rank):
             _outcome(legal.validate_follow, play, hand, lead, Ordering(suit, rank)))
 
 
+def test_single_follow_native_input_errors_preserve_order():
+    ordering = Ordering("H", "7")
+    with pytest.raises(ValueError, match="play too large"):
+        fast.validate_follow(["H3"], ["H3"] * 129, ["invalid lead"], ordering)
+    with pytest.raises(KeyError, match="invalid hand"):
+        fast.validate_follow(["H3"], ["H3", "invalid hand"], ["invalid lead"], ordering)
+    with pytest.raises(legal.IllegalPlay, match="hold those cards"):
+        fast.validate_follow(["H3"], ["S3"], ["invalid lead"], ordering)
+    with pytest.raises(KeyError, match="invalid lead"):
+        fast.validate_follow(["H3"], ["H3"], ["invalid lead"], ordering)
+
+
 def test_validate_follow_and_helpers_random_parity(pure_routing):
     """validate_follow / check_in_hand / uniform_suit / pair_count parity:
     same result or the same exception type AND message."""

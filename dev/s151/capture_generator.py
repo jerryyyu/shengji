@@ -5,11 +5,12 @@ import os
 from pathlib import Path
 import platform
 import resource
-import shutil
 import subprocess
 import sys
 import time
 from tempfile import NamedTemporaryFile
+
+from shengji import seeds
 
 from compare_crossover import HEADS, SEEDS, block_order
 from compare_generator import read, require
@@ -92,7 +93,8 @@ def capture(args):
     require(sha == head and not dirty, f"{tree}: expected a clean checkout at {head}")
     prior_timings(root, args.index)
     dest.mkdir()
-    shutil.copyfile(args.registry, dest / "seed_windows.json")
+    require(args.registry.is_file(), f"missing registry: {args.registry}")
+    publish(dest / "seed_windows.json", seeds.load(args.registry))
     wall, cpu = measure(cmd, tree, dest)
     runtime = read(dest / "store/runtime.json")
     run = read(dest / "store/run.json")

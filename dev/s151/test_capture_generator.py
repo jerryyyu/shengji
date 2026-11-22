@@ -6,6 +6,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from shengji import seeds
+from shengji.harvest import trajectory
+
 import capture_generator as capture
 from compare_generator import read_times
 
@@ -16,7 +19,7 @@ class GeneratorCaptureTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name).resolve()
         registry = root / "registry.json"
-        registry.write_text('{"windows":[]}')
+        capture.publish(registry, {"schema": seeds.SCHEMA, "windows": []})
         self.args = argparse.Namespace(root=root, registry=registry, base=root/"base", candidate=root/"trial",
                                        models=root/"models", index=0, print_command=False)
 
@@ -51,6 +54,27 @@ class GeneratorCaptureTest(unittest.TestCase):
         capture.assemble(self.args.root)
         self.assertEqual(expected, path.read_bytes())
         self.assertEqual(list(read_times(self.args.root, [s for s in capture.SEEDS for _ in range(2)])), capture.ORDER)
+
+    def test_fragment_reservation_reaches_generator(self):
+        registry = self.args.registry
+        fragments = seeds.registry_dir(registry)
+        fragments.mkdir()
+        entry = seeds.make_entry(name="reserved", purpose="screen", seed0=capture.SEEDS[0], clusters=1)
+        capture.publish(fragments / "reserved.json", entry)
+
+        def generate(cmd, tree, dest):
+            private = Path(cmd[cmd.index("--seed-registry") + 1])
+            trajectory.generate(rounds=2, seed0=capture.SEEDS[0], out_dir=dest / "store",
+                                seed_windows=private)
+
+        with patch.object(capture, "require_supervisor"), patch.object(
+                capture.subprocess, "check_output", side_effect=self.fake_git), patch.object(
+                    capture, "measure", side_effect=generate), patch.object(
+                        trajectory, "run_clusters", side_effect=AssertionError("dealt a reserved seed")):
+            with self.assertRaisesRegex(trajectory.TrajectoryError, "reserved"):
+                capture.capture(self.args)
+        self.assertFalse((self.args.root / "0-b/store/run.json").exists())
+        self.assertFalse((self.args.root / "0-b/capture.json").exists())
 
     def test_child_failure_propagates_through_timer(self):
         (self.args.base / "server").mkdir(parents=True)

@@ -679,8 +679,7 @@ class Connection {
       ws.close();     // onclose -> scheduleReconnect (immediately, see above)
       if (this.ws === ws) {   // a fake or half-open socket that never fired onclose
         this.ws = null;
-        this.setStatus("closed");
-        this.scheduleReconnect();
+        this.closedThenRetry();
       }
     } else if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer);
@@ -770,8 +769,7 @@ class Connection {
         try { ws.close(); } catch { /* already closed */ }
         this.ws = null;
         stop();
-        this.setStatus("closed");
-        this.scheduleReconnect();
+        this.closedThenRetry();
       }
     }, CONNECT_MS);
     // One ping in flight at a time. `timer` is the next ping's, or the
@@ -972,13 +970,24 @@ class Connection {
       if (this.ws !== ws) return;
       this.lose("closed");
       this.ws = null;
-      this.setStatus("closed");
-      this.scheduleReconnect();
+      this.closedThenRetry();
     };
 
     ws.onerror = () => {
       ws.close();
     };
+  }
+
+  /** The socket is gone: say so, then retry on the same transport. A
+   *  status listener may switch the transport or open a socket in that same
+   *  call (a nearby table ending on this close); the next socket is then
+   *  already made, and a retry scheduled here would open a second one on
+   *  the new transport and strand the first. */
+  private closedThenRetry(): void {
+    const seq = this.transportSeq;
+    this.setStatus("closed");
+    if (seq !== this.transportSeq || this.ws !== null) return;
+    this.scheduleReconnect();
   }
 
   private scheduleReconnect(): void {

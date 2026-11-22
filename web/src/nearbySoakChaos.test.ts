@@ -2,7 +2,7 @@
 // its page faults: frame loss at the bridge and the frozen main thread.
 import { describe, expect, it } from "vitest";
 import {
-  BridgeFaults, busyWait, CHAOS_GAP_MS, ChaosPacer, frameTriggers, lineTriggers, ROUND_CALM_MS, type Bridge,
+  BridgeFaults, busyWait, CHAOS_GAP_MS, CHAOS_JITTER_MS, ChaosPacer, frameTriggers, lineTriggers, ROUND_CALM_MS, type Bridge,
 } from "./nearbySoakChaos";
 
 type Frame = Record<string, unknown> & { type: string };
@@ -97,12 +97,12 @@ describe("the chaos pace", () => {
   };
 
   /** Two hours of a soak on a fake clock: a phase trigger every 6 s, a
-   *  round's end every 8 min, and the background timer as the page arms it. */
-  function soak(seed: number) {
+   *  round's end every `roundMs`, and the background timer as the page arms it. */
+  function soak(seed: number, roundMs: number) {
     let t = 0;
     const p = new ChaosPacer(() => t, seeded(seed));
     const faults: { at: number; by: "aimed" | "bg" }[] = [];
-    const roundEnds: number[] = [];
+    const roundEnds: { at: number; gateAt: number }[] = [];
     let bgAt = t + p.backgroundDelay();
     for (t = 0; t <= 2 * 3600_000; t += 1000) {
       if (t % 6000 === 0 && p.aimed()) faults.push({ at: t, by: "aimed" });
@@ -110,33 +110,62 @@ describe("the chaos pace", () => {
         if (p.background()) faults.push({ at: t, by: "bg" });
         bgAt = t + p.backgroundDelay();
       }
-      if (t > 0 && t % 480_000 === 0) {
-        roundEnds.push(t);
-        p.roundEnded();
+      // as the page does: the round's end takes its own chance, then the calm
+      if (t > 0 && t % roundMs === 0) {
+        if (p.aimed()) faults.push({ at: t, by: "aimed" });
+        roundEnds.push({ at: t, gateAt: p.roundEnded() });
       }
     }
     return { faults, roundEnds };
   }
 
-  it("keeps faults at least CHAOS_GAP_MS apart, about one a minute", () => {
-    for (const seed of [1, 7, 42]) {
-      const { faults } = soak(seed);
-      const gaps = faults.slice(1).map((f, i) => f.at - faults[i].at);
-      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(CHAOS_GAP_MS);
-      // about one a minute over two hours, calm stretches included
-      expect(faults.length).toBeGreaterThanOrEqual(80);
-      expect(faults.length).toBeLessThanOrEqual(130);
-      // both the phase triggers and the background timer still fire
-      expect(faults.some((f) => f.by === "aimed")).toBe(true);
-      expect(faults.some((f) => f.by === "bg")).toBe(true);
+  it("keeps faults at least CHAOS_GAP_MS apart, about one a minute, for long and short rounds", () => {
+    for (const roundMs of [480_000, 85_000]) {
+      for (const seed of [1, 7, 42]) {
+        const { faults } = soak(seed, roundMs);
+        const gaps = faults.slice(1).map((f, i) => f.at - faults[i].at);
+        expect(Math.min(...gaps)).toBeGreaterThanOrEqual(CHAOS_GAP_MS);
+        // one every 55-75 s on average over two hours, calm stretches included
+        expect(faults.length).toBeGreaterThanOrEqual(100);
+        expect(faults.length).toBeLessThanOrEqual(130);
+        // both the phase triggers and the background timer still fire
+        expect(faults.some((f) => f.by === "aimed")).toBe(true);
+        expect(faults.some((f) => f.by === "bg")).toBe(true);
+      }
     }
   });
 
-  it("is calm for ROUND_CALM_MS after a round's end", () => {
-    const { faults, roundEnds } = soak(3);
-    for (const end of roundEnds) {
-      expect(faults.filter((f) => f.at > end && f.at < end + ROUND_CALM_MS)).toEqual([]);
+  it("is calm for ROUND_CALM_MS after a round's end that finds no gap running", () => {
+    for (const roundMs of [480_000, 85_000]) {
+      const { faults, roundEnds } = soak(3, roundMs);
+      for (const end of roundEnds) {
+        expect(end.gateAt).toBeGreaterThanOrEqual(end.at);
+        expect(end.gateAt - end.at).toBeLessThanOrEqual(Math.max(ROUND_CALM_MS, CHAOS_GAP_MS + CHAOS_JITTER_MS));
+        expect(faults.filter((f) => f.at > end.at && f.at < end.gateAt)).toEqual([]);
+        // no gap ran (no fault in the longest gap before): a full calm
+        if (!faults.some((f) => f.at <= end.at && f.at > end.at - CHAOS_GAP_MS - CHAOS_JITTER_MS)) expect(end.gateAt).toBe(end.at + ROUND_CALM_MS);
+      }
     }
+  });
+
+  it("a round's end inside a calm or a gap does not push the next fault later", () => {
+    let t = 0;
+    const p = new ChaosPacer(() => t, () => 0);
+    t = CHAOS_GAP_MS;
+    // the gate is open: a round's end starts the calm
+    expect(p.roundEnded()).toBe(CHAOS_GAP_MS + ROUND_CALM_MS);
+    t += 10_000;
+    // another round's end inside that calm leaves it as it was
+    expect(p.roundEnded()).toBe(CHAOS_GAP_MS + ROUND_CALM_MS);
+    t = CHAOS_GAP_MS + ROUND_CALM_MS - 1;
+    expect(p.background()).toBe(false);
+    t += 1;
+    expect(p.background()).toBe(true);
+    // a round's end inside the gap after that fault leaves the gap as it was
+    t += CHAOS_GAP_MS - 1;
+    expect(p.roundEnded()).toBe(t + 1);
+    t += 1;
+    expect(p.aimed()).toBe(true);
   });
 
   it("starts with a gap, so a reload's resumed soak does not fault at once", () => {

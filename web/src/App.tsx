@@ -108,6 +108,8 @@ export default function App() {
       if (OFFLINE) return;
       // the app's Play offline must work once the network has gone: its server loads now
       offlineGame.prefetch();
+      // this socket is leaving the page's last table: no saved seat is resumed on it
+      if (conn.deliversOwedLeave()) return;
       // ONE decision, made in intent.ts and unit-tested there. An invite opens
       // the Lobby's Join panel and never joins by itself, so the only thing to
       // act on here is a saved resume.

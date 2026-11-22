@@ -379,3 +379,61 @@ it("in a browser the full screen offers Retry alone, and Play keeps its own cont
   recover();
   expect(lost()).toBeNull();
 });
+
+// An owed Leave with App's own open-time resume in the loop: the page leaves
+// only its own seat, and nothing App does on that socket undoes the Leave.
+const seatedAtABCD = async () => {
+  const m = await mount();
+  m.ws.saveName("Me");
+  act(() => latest().open());
+  act(() => latest().deliver({ type: "resume", token: "tok-1", gen: 1 }));
+  act(() => latest().deliver(playing));
+  expect(m.ws.getSavedRoom()).toBe("ABCD");
+  return m;
+};
+const resumeThenLeave = [
+  { type: "table_join", code: "ABCD", name: "Me", expect: "room", token: "tok-1" },
+  { type: "table_leave" },
+];
+const otherTabSits = () => {
+  localStorage.setItem("shengji.room", "BBBB");
+  localStorage.setItem("shengji.token", "tok-B");
+};
+
+it("the socket that delivers an owed Leave resumes no other tab's saved seat, and its left keeps that seat", async () => {
+  const { ws } = await seatedAtABCD();
+  act(() => latest().close());
+  otherTabSits();
+  act(() => { ws.conn.send({ type: "table_leave" }); });
+  expect(host.querySelector(".table-screen")).toBeNull();
+  act(() => { vi.advanceTimersByTime(500); });
+  const next = latest();
+  act(() => next.open());
+  expect(next.sent).toEqual(resumeThenLeave);
+  act(() => next.deliver({ type: "left" }));
+  expect(ws.getSavedRoom()).toBe("BBBB");
+  expect(ws.getResumeToken()).toBe("tok-B");
+});
+
+it("the server's left for a Leave on an open socket keeps the seat another tab saved since", async () => {
+  const { ws } = await seatedAtABCD();
+  otherTabSits();
+  act(() => { ws.conn.send({ type: "table_leave" }); });
+  act(() => latest().deliver({ type: "left" }));
+  expect(host.querySelector(".table-screen")).toBeNull();
+  expect(ws.getSavedRoom()).toBe("BBBB");
+  expect(ws.getResumeToken()).toBe("tok-B");
+});
+
+it("an owed Leave past its hold, reopened later, still does not resume the seat it left", async () => {
+  const { ws } = await seatedAtABCD();
+  act(() => { ws.conn.send({ type: "table_leave" }); });   // sent; the page closes before the left
+  act(() => { ws.conn.stop(); root.unmount(); });
+  host.remove();
+  act(() => { vi.advanceTimersByTime(91_000); });
+  vi.resetModules();
+  const again = await mount();
+  act(() => latest().open());
+  expect(latest().sent).toEqual([]);
+  expect(again.ws.getSavedRoom()).toBeNull();
+});

@@ -539,6 +539,48 @@ describe("a Leave while the socket is down is delivered by the next one", () => 
     }
   });
 
+  it("an owed Leave another live page delivered is not sent again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      conn.send({ type: "table_leave" });               // page 1 owes it, stored
+      const other = await load();                       // page 2 opens meanwhile
+      other.conn.start();
+      const theirs = FakeWS.last!;
+      theirs.onopen?.();
+      expect(theirs.sent).toEqual(resumeThenLeave);
+      theirs.deliver({ type: "left" });                 // and the server answers it there
+      vi.advanceTimersByTime(500);
+      const mine = FakeWS.last!;
+      expect(mine).not.toBe(theirs);
+      mine.onopen?.();
+      expect(mine.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with storage refusing writes, the page itself still delivers its owed Leave", async () => {
+    vi.useFakeTimers();
+    const setItem = Storage.prototype.setItem;
+    try {
+      const { conn, ws } = await seated();
+      Storage.prototype.setItem = function (k: string, v: string) {
+        if (k === "shengji.owedLeave") throw new Error("QuotaExceededError");
+        setItem.call(this, k, v);
+      };
+      ws.close();
+      conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      Storage.prototype.setItem = setItem;
+      vi.useRealTimers();
+    }
+  });
+
   it("the left answered on the same socket clears it: nothing goes again", async () => {
     vi.useFakeTimers();
     try {

@@ -167,12 +167,27 @@ interface OwedLeave {
   /** Epoch ms after which it is not worth delivering. */
   until: number;
 }
-function writeOwedLeave(owed: OwedLeave): void {
-  if (!remembersSeats()) return;
+/** Store an owed Leave; false when this page cannot, and so holds it alone. */
+function writeOwedLeave(owed: OwedLeave): boolean {
+  if (!remembersSeats()) return false;
   try {
     localStorage.setItem(OWED_LEAVE_KEY, JSON.stringify(owed));
-  } catch { /* storage full or blocked: this page still delivers it */ }
+    return true;
+  } catch { return false; }
 }
+/** Two owed Leaves are the same one: the same seat, owed from the same tap. */
+function sameOwedLeave(a: OwedLeave, b: OwedLeave): boolean {
+  return a.seat.room === b.seat.room && a.seat.token === b.seat.token && a.until === b.until;
+}
+/** Whether storage still holds `owed`: another page that had it answered
+ *  removes it. A storage that cannot be read leaves this page's copy owed. */
+function owedLeaveStored(owed: OwedLeave): boolean {
+  let raw: string | null;
+  try { raw = localStorage.getItem(OWED_LEAVE_KEY); } catch { return true; }
+  if (raw === null) return false;
+  try { return sameOwedLeave(JSON.parse(raw) as OwedLeave, owed); } catch { return false; }
+}
+/** The stored owed Leave, expired or not; an unreadable one is removed. */
 function readOwedLeave(): OwedLeave | null {
   let raw: string | null = null;
   try { raw = localStorage.getItem(OWED_LEAVE_KEY); } catch { return null; }
@@ -180,20 +195,15 @@ function readOwedLeave(): OwedLeave | null {
   try {
     const o = JSON.parse(raw) as OwedLeave;
     if (typeof o?.seat?.room === "string" && (o.seat.token === null || typeof o.seat.token === "string")
-        && typeof o.name === "string" && typeof o.tries === "number" && typeof o.until === "number"
-        && o.until > Date.now()) return o;
+        && typeof o.name === "string" && typeof o.tries === "number" && typeof o.until === "number") return o;
   } catch { /* unreadable: dropped below */ }
   forgetOwedLeave(null);
   return null;
 }
-/** Drop the stored owed Leave: any, or only one for `seat`. */
-function forgetOwedLeave(seat: Seat | null): void {
+/** Drop the stored owed Leave: any, or only `owed` (compare and delete). */
+function forgetOwedLeave(owed: OwedLeave | null): void {
   try {
-    if (seat !== null) {
-      const raw = localStorage.getItem(OWED_LEAVE_KEY);
-      const o = raw === null ? null : (JSON.parse(raw) as OwedLeave);
-      if (o?.seat?.room !== seat.room || o.seat.token !== seat.token) return;
-    }
+    if (owed !== null && !owedLeaveStored(owed)) return;
     localStorage.removeItem(OWED_LEAVE_KEY);
   } catch { /* nothing to forget */ }
 }
@@ -249,7 +259,10 @@ class Connection {
    *  leaves it there, so the bot covers the seat at once and a ranked leave
    *  is counted, instead of the seat waiting out a dropped seat's hold. It
    *  is stored too, so a reload or relaunch within the hold delivers it. */
-  private owedLeave: (OwedLeave & { sentOn: WebSocket | null }) | null = null;
+  private owedLeave: (OwedLeave & { sentOn: WebSocket | null; stored: boolean }) | null = null;
+  /** The socket generation that is delivering an owed Leave: App resumes no
+   *  saved seat on it, since the page has just left its table. */
+  private leaveGeneration: number | null = null;
   /** The game-server seat this page last heard the server confirm (its
    *  room's `room` or first `state`, with the token the attach's `resume`
    *  carried); null after a `left`. Shared storage may name another tab's. */
@@ -356,14 +369,24 @@ class Connection {
     if (!remembersSeats() || this.owedLeave) return;
     const owed = readOwedLeave();
     if (!owed) return;
-    this.owedLeave = { ...owed, sentOn: null };
+    // the seat left is not resumed, even once its Leave is too old to send
     clearSavedSeat(owed.seat);
+    if (owed.until <= Date.now()) {
+      forgetOwedLeave(owed);
+      return;
+    }
+    this.owedLeave = { ...owed, sentOn: null, stored: true };
   }
 
   /** The owed Leave is answered or given up. */
   private dropOwedLeave(): void {
-    if (this.owedLeave) forgetOwedLeave(this.owedLeave.seat);
+    if (this.owedLeave?.stored) forgetOwedLeave(this.owedLeave);
     this.owedLeave = null;
+  }
+
+  /** Whether the socket now open is delivering an owed Leave. */
+  deliversOwedLeave(): boolean {
+    return this.leaveGeneration === this.generation;
   }
 
   /** Undo start(). The page never calls it; a test that started the
@@ -518,8 +541,7 @@ class Connection {
     const seat = this.seat;
     if (seat !== null) {
       const owed = { seat, name: getSavedName() || "Player", tries: 0, until: Date.now() + OWED_LEAVE_MS };
-      this.owedLeave = { ...owed, sentOn: ws };
-      writeOwedLeave(owed);
+      this.owedLeave = { ...owed, sentOn: ws, stored: writeOwedLeave(owed) };
     }
     if (ws) {
       ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
@@ -552,15 +574,22 @@ class Connection {
   private deliverOwedLeave(ws: WebSocket): void {
     const owed = this.owedLeave;
     if (!owed || owed.sentOn !== null || this.transport !== "remote") return;
+    // another page holding the same stored Leave has had it answered
+    if (owed.stored && !owedLeaveStored(owed)) {
+      this.owedLeave = null;
+      return;
+    }
     owed.tries += 1;
     const join = owed.tries <= OWED_LEAVE_TRIES && Date.now() < owed.until
       ? intentToJoin({ kind: "resume", room: owed.seat.room, name: owed.name, token: owed.seat.token ?? undefined })
       : null;
     if (!join) {
+      clearSavedSeat(owed.seat);
       this.dropOwedLeave();
       return;
     }
-    writeOwedLeave({ seat: owed.seat, name: owed.name, tries: owed.tries, until: owed.until });
+    if (owed.stored) writeOwedLeave({ seat: owed.seat, name: owed.name, tries: owed.tries, until: owed.until });
+    this.leaveGeneration = this.generation;
     ws.send(JSON.stringify(join));
     this.sendLeave(ws);
   }
@@ -646,6 +675,9 @@ class Connection {
   }
 
   private emit(msg: ServerMsg): void {
+    // a left ends this page's seat: storage is forgotten only where it still
+    // names that seat, not one another tab has saved since
+    const scope = msg.type === "left" && clearOnly === null ? this.seat : null;
     if (msg.type === "left") {
       this.seat = null;
       this.seatToken = null;
@@ -655,7 +687,12 @@ class Connection {
       this.atTable = atTable;
       this.retime?.();
     }
-    for (const fn of this.msgListeners) fn(msg);
+    if (scope) clearOnly = scope;
+    try {
+      for (const fn of this.msgListeners) fn(msg);
+    } finally {
+      if (scope) clearOnly = null;
+    }
   }
 
   subscribe(fn: MsgListener): () => void {

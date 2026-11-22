@@ -1,9 +1,11 @@
-// The whole-app soak's chaos picks and its page-side faults. A phone runs a
-// fault every 20-120 s in the background and, on top, with p = 0.3 each time
-// its frames or log reach a phase trigger (a deal card, the declare window,
-// its own bury, the last trick, a round's end, just after its own move, the
-// lobby, Start, a join's handshake, a Leave, a game's end). Kinds are
-// weighted by the phone's part at the table. The native kinds run in the
+// The whole-app soak's chaos picks and its page-side faults. A phone runs
+// about one fault a minute (ChaosPacer): faults keep 40-60 s apart, a round's
+// end starts 2 min of calm, and once a gap is over the next fault comes with
+// p = 0.3 at a phase trigger its frames or log reach (a deal card, the
+// declare window, its own bury, the last trick, a round's end, just after its
+// own move, the lobby, Start, a join's handshake, a Leave, a game's end) or
+// from the background timer 0-20 s later. Kinds are weighted by the phone's
+// part at the table. The native kinds run in the
 // plugin's debugChaos (NearbyPlugin.swift, a device-test or Beta build
 // only); the page kinds run here:
 //   - jsfreeze: the page's main thread busy for 2-15 s (30-50 s one time in
@@ -111,6 +113,62 @@ export type TriggerPhase = (typeof TRIGGER_PHASES)[number];
 
 /** The chance a trigger fires a fault. */
 export const TRIGGER_P = 0.3;
+
+/** The least time between two faults; each gap adds up to CHAOS_JITTER_MS. */
+export const CHAOS_GAP_MS = 40_000;
+export const CHAOS_JITTER_MS = 20_000;
+/** The background timer comes up to this long after a gap is over, so a
+ *  phase trigger gets the first chance at it. */
+export const BACKGROUND_LAG_MS = 20_000;
+/** The calm after a round's end: the next round's deal and first tricks
+ *  play out with no fault. */
+export const ROUND_CALM_MS = 120_000;
+
+/** When the soak's next fault may run: one fault per gap, whether a phase
+ *  trigger or the background timer takes it. A pacer starts in a gap, so a
+ *  soak resumed after a reload does not fault at once. */
+export class ChaosPacer {
+  private next: number;
+  private now: () => number;
+  private rand: Rand;
+  constructor(now: () => number, rand: Rand = Math.random) {
+    this.now = now;
+    this.rand = rand;
+    this.next = now() + this.gap();
+  }
+
+  private gap(): number {
+    return CHAOS_GAP_MS + this.rand() * CHAOS_JITTER_MS;
+  }
+
+  private take(): boolean {
+    const t = this.now();
+    if (t < this.next) return false;
+    this.next = t + this.gap();
+    return true;
+  }
+
+  /** A phase trigger reached: whether it runs a fault (p = TRIGGER_P, once
+   *  the gap is over). */
+  aimed(): boolean {
+    return this.rand() < TRIGGER_P && this.take();
+  }
+
+  /** The background timer fired: whether it runs a fault. */
+  background(): boolean {
+    return this.take();
+  }
+
+  /** How long the background timer waits before it asks again. */
+  backgroundDelay(): number {
+    return Math.max(0, this.next - this.now()) + this.rand() * BACKGROUND_LAG_MS;
+  }
+
+  /** A round ended: no fault for ROUND_CALM_MS. */
+  roundEnded(): void {
+    this.next = Math.max(this.next, this.now() + ROUND_CALM_MS);
+  }
+}
 
 const handLen = (f: Frame | null): number => ((f?.hand as unknown[] | undefined) ?? []).length;
 

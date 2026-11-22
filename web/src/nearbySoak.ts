@@ -3,8 +3,9 @@
 // on its own as one persona (nearbySoakPersonas.ts) through the app's own
 // entry points: a join by code, the lobby, Start, the deal with declares,
 // bury and play (SmartBot on what the seat can see), each round's end, Leave
-// and a rejoin, the ⋯ menu. Chaos runs a fault every 20-120 s and, with
-// p = 0.3, at each phase trigger (nearbySoakChaos.ts): native kinds in the
+// and a rejoin, the ⋯ menu. Chaos runs about one fault a minute, aimed at a
+// phase trigger or from a background timer, with 2 min of calm after each
+// round's end (nearbySoakChaos.ts ChaosPacer): native kinds in the
 // plugin's debugChaos, page kinds (a frozen main thread, frame loss at the
 // bridge, a reload, a Leave) here. A soak summary and its coverage table
 // (nearbySoakCoverage.ts) go to the log every 10 minutes and when either
@@ -22,7 +23,7 @@ import { forgetSeatToken, nearbyJoin } from "./nearbyJoin";
 import { conn, getSavedName } from "./ws";
 import { offlineGame } from "./components/offlineGame";
 import {
-  BridgeFaults, busyWait, chaosPick, describePick, frameTriggers, lineTriggers, PAGE_KINDS, TRIGGER_P,
+  BridgeFaults, busyWait, ChaosPacer, chaosPick, describePick, frameTriggers, lineTriggers, PAGE_KINDS,
   type Bridge, type ChaosPick, type ChaosRole, type TriggerPhase,
 } from "./nearbySoakChaos";
 import { Coverage } from "./nearbySoakCoverage";
@@ -531,7 +532,10 @@ function onFrame(m: Frame): void {
     return;
   }
   if (m.type !== "room" && m.type !== "state") return;
-  for (const t of frameTriggers(lastFrame, m, dealCard)) trigger(t, 0);
+  const reached = frameTriggers(lastFrame, m, dealCard);
+  for (const t of reached) trigger(t, 0);
+  // the round's end may take its own fault first, then the calm begins
+  if (reached.includes("round_end")) pacer.roundEnded();
   if (m.type === "state") {
     const you = m.you as number;
     if (lastYou !== null && you !== lastYou) stats.warnings.push(`seat changed ${lastYou}->${you} without a Leave`);
@@ -640,22 +644,17 @@ function stopDriver(): void {
   driver = null;
 }
 
-// Chaos: a fault every 20-120 s, and on phase triggers
+// Chaos: about one fault a minute, on phase triggers or the background timer
 interface ChaosPlugin {
   debugChaos(opts: { kind: string; seconds?: number }): Promise<{ done?: boolean }>;
   debugHealth?(): Promise<{ thermal?: string; lowPower?: boolean; memMb?: number }>;
 }
 let chaosTimer: number | null = null;
-/** Phase-aimed faults keep this far apart, so a game still moves. */
-export const TRIGGER_GAP_MS = 10_000;
-let lastAimed = 0;
+let pacer = new ChaosPacer(() => Date.now());
 const bridge = new BridgeFaults();
 
 function trigger(t: TriggerPhase, delayMs: number): void {
-  if (!chaosOn || Math.random() >= TRIGGER_P) return;
-  const now = Date.now();
-  if (now - lastAimed < TRIGGER_GAP_MS) return;
-  lastAimed = now;
+  if (!chaosOn || !pacer.aimed()) return;
   const run = () => runChaos(chaosPick(chaosRole()), t);
   if (delayMs > 0) window.setTimeout(run, delayMs);
   else run();
@@ -755,9 +754,9 @@ function armChaos(): void {
   if (!chaosOn) return;
   chaosTimer = window.setTimeout(() => {
     chaosTimer = null;
-    runChaos(chaosPick(chaosRole()), "bg");
+    if (pacer.background()) runChaos(chaosPick(chaosRole()), "bg");
     armChaos();
-  }, 20_000 + Math.random() * 100_000);
+  }, pacer.backgroundDelay());
 }
 
 /** The page's health while the soak runs: its event loop's lag (a 500 ms
@@ -842,8 +841,10 @@ export function setChaos(on: boolean): void {
   chaosOn = on;
   keep({ chaos: on });
   nearbyLog("soak", `chaos ${on ? "on" : "off"}`);
-  if (on) armChaos();
-  else if (chaosTimer !== null) {
+  if (on) {
+    pacer = new ChaosPacer(() => Date.now());
+    armChaos();
+  } else if (chaosTimer !== null) {
     window.clearTimeout(chaosTimer);
     chaosTimer = null;
   }

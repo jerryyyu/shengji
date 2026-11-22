@@ -2,9 +2,10 @@
 // the chaos pick, drawn from the kinds the phone can run.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { CHAOS_WEIGHTS, chaosPick, LinkSplit, soakSummary } from "./nearbySoak";
-import { describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S } from "./nearbySoakChaos";
+import { describe, expect, it, vi } from "vitest";
+import { nearbyLogLines, subscribeNearbyLog } from "./nearbyLog";
+import { CHAOS_WEIGHTS, chaosPick, LinkSplit, setChaos, soakSummary } from "./nearbySoak";
+import { CHAOS_GAP_MS, describePick, HOST_ABSENCE_KINDS, HOST_ABSENCE_MAX_S, HOST_WINDOW_S } from "./nearbySoakChaos";
 
 const n = (t: number, text: string) => ({ t, from: "native", text });
 
@@ -177,5 +178,30 @@ describe("the plugin's faked Wi-Fi change", () => {
     expect(swift).toMatch(/private func pathFollowOn\(satisfied: Bool, regained: Bool\) \{\n        notifyListeners\("path"[^\n]*\n        if regained \{ lookAgainOnNewPath\(\) \}\n        wifiFollowOn\(\)\n    \}/);
     expect(swift).toContain('spikeLog("CHAOS wifi fake \\(real ? "left" : "joined") for');
     expect(swift).toContain('spikeLog("CHAOS wifi fake over');
+  });
+});
+
+describe("the soak's chaos timer", () => {
+  it("runs background faults at least CHAOS_GAP_MS apart once chaos is on", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    const rand = vi.spyOn(Math, "random").mockReturnValue(0.05);
+    const at: number[] = [];
+    const off = subscribeNearbyLog(() => {
+      const l = nearbyLogLines().at(-1);
+      if (l?.from === "soak" && l.text.startsWith("chaos: ") && l.text.endsWith("by bg)")) at.push(Date.now());
+    });
+    try {
+      setChaos(true);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      setChaos(false);
+      expect(at.length).toBeGreaterThan(0);
+      expect(at[0]).toBeGreaterThanOrEqual(CHAOS_GAP_MS);
+      const gaps = at.slice(1).map((t, i) => t - at[i]);
+      expect(Math.min(...gaps)).toBeGreaterThanOrEqual(CHAOS_GAP_MS);
+    } finally {
+      off();
+      rand.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

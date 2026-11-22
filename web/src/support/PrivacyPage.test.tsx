@@ -27,6 +27,14 @@ describe("the privacy page", () => {
     expect(text).toContain("deleted after 30 days unused");
     expect(text).toContain("12 months unused");
     expect(text).toContain("Deleting the app does not delete the account");
+    expect(text).toContain("the first time it sets you up to play online");
+    expect(text).toContain("Games played offline make none");
+    expect(text).toContain("console logs (below) may record it when you connect");
+    expect(text).not.toContain("never writes it down");
+    expect(text).not.toContain("everything tied to it");
+    expect(text).toContain("the same way as Delete account (below)");
+    expect(text).toContain("top-rated players who leave “Show me on the leaderboard” on in Me");
+    expect(text).toContain("Support messages and player reports are kept");
     expect(text).toContain("Fly.io");
     expect(text).toContain("hash");
     expect(text).toContain("Show me on the leaderboard");

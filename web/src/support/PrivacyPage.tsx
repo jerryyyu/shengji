@@ -44,15 +44,17 @@ export default function PrivacyPage() {
           </p>
           <p>
             Your browser, or the app, also keeps a random device key, which it sends when it connects
-            so the server can tell two tabs on one device from two people. The server holds it only while you are
-            seated and never writes it down.
+            so the server can tell two tabs on one device from two people. The server uses it only
+            while you are seated and never stores it with your games or account. It travels in the
+            connection’s address, so our server’s console logs (below) may record it when you
+            connect; those lines hold no account id.
           </p>
         </Section>
 
         <Section title="Accounts in the iOS app">
           <p>
-            From version 1.0.1, the iOS app makes you an account the first time you play, with no
-            sign-in. Our server gives it a random name, such as “Lucky Tractor”, which you can change
+            From version 1.0.1, the iOS app makes you an account the first time it sets you up to
+            play online, with no sign-in. Games played offline make none. Our server gives it a random name, such as “Lucky Tractor”, which you can change
             in Me. Other players see that name at the table, on the leaderboard and in the game
             records.
           </p>
@@ -71,12 +73,12 @@ export default function PrivacyPage() {
           </p>
           <p>
             An account that has played no ranked round is deleted after 30 days unused, and any app
-            account after 12 months unused, with everything tied to it. Neither happens while its
-            30-day sign-in is still open. An account linked to Google or Apple is not deleted this way.
+            account after 12 months unused, the same way as Delete account (below). Neither happens
+            while its 30-day sign-in is still open. An account linked to Google or Apple is not deleted this way.
           </p>
           <p>
-            The account is on the leaderboard from its first ranked round; turn off “Show me on the
-            leaderboard” in Me to leave it. To delete the account, open Me and choose Delete account.
+            After its first ranked round the account can appear on the leaderboard, which lists the
+            top-rated players who leave “Show me on the leaderboard” on in Me. To delete the account, open Me and choose Delete account.
             Deleting the app does not delete the account.
           </p>
         </Section>
@@ -226,9 +228,10 @@ export default function PrivacyPage() {
         <Section title="Deleting your account">
           <p>
             You can delete your account in the app: open Me and choose Delete account. That removes
-            your account record, your sessions, an app account’s key hash, your saved-game links, your rating, your rating
-            history and the blocks you made, or others made of you, at once. If you signed in with Apple, we also ask Apple to revoke the app’s access
-            to your Apple ID.
+            your account record, your sessions, an app account’s key hash, your saved-game links,
+            your rating, your rating history and the blocks you made, or others made of you, at once.
+            A game that another account also saved stays in that account’s history. If you signed in
+            with Apple, we also ask Apple to revoke the app’s access to your Apple ID.
           </p>
           <p>
             The game records stay, because they never held your account; they still carry the name

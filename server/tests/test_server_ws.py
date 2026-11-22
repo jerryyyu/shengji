@@ -3760,3 +3760,37 @@ def test_a_leave_queued_before_a_resume_does_not_leave_the_resumed_seat(client):
         seat = room.seats[2]
         assert seat.connected and not getattr(seat, "left_by_choice", False)
         assert not any("bob left" in (m.get("text") or "") for m in getattr(room, "chat", []) if isinstance(m, dict))
+
+
+def test_a_leave_owed_across_a_drop_resumes_by_token_and_is_covered_at_once(client, monkeypatch):
+    """The page's owed Leave (ws.ts): a seat whose socket died is taken back
+    by its token on a fresh socket and left in the next frame, without
+    waiting for the resume's state. The seat is left by choice, so the bot
+    covers it at once instead of after the dropped seat's hold, and the
+    leave reaches the ratings as a Leave."""
+    from shengji.api import server as srv
+
+    told = []
+    real = srv.ratings.seat_left
+    monkeypatch.setattr(srv.ratings, "seat_left", lambda room, seat: (told.append(seat), real(room, seat)))
+
+    with client.websocket_connect("/ws") as a:
+        code, room = _start_game(client, a, to_play=True)
+        want = next(i for i, sd in enumerate(room.seats) if sd.is_bot)
+        with client.websocket_connect("/ws") as b:
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james", "seat": want})
+            _drain(b, "state")
+        dropped = room.seats[want]
+        assert not dropped.connected and not dropped.left_by_choice
+        assert srv._reserved(room, want) and told == []
+        with client.websocket_connect("/ws") as back:
+            back.send_json({"type": "table_join", "expect": "room", "code": code, "name": "james",
+                            "token": dropped.token})
+            back.send_json({"type": "table_leave"})
+            _drain(back, "left")
+        left = room.seats[want]
+        assert left is dropped and not left.connected and left.left_by_choice
+        assert told == [want]
+        st = srv.state_for(room, 0)
+        seat = next(p for p in st["players"] if p["seat"] == want)
+        assert seat["left"] is True and seat["takeover_in"] is None

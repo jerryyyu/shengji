@@ -340,6 +340,120 @@ describe("leaveToLobby (Back to lobby without a page reload)", () => {
   });
 });
 
+describe("a Leave while the socket is down is delivered by the next one", () => {
+  const record = (conn: { subscribe: (fn: (m: any) => void) => () => void }) => {
+    const got: string[] = [];
+    conn.subscribe((m) => got.push(m.type));
+    return got;
+  };
+  const seated = async () => {
+    const mod = await load();
+    mod.conn.start();
+    const ws = FakeWS.last!;
+    ws.onopen?.();
+    mod.saveName("jerry");
+    mod.saveRoom("AAAA");
+    mod.saveResumeToken("tok");
+    return { ...mod, ws };
+  };
+  const resumeThenLeave = [
+    { type: "table_join", code: "AAAA", name: "jerry", expect: "room", token: "tok" },
+    { type: "table_leave" },
+  ];
+
+  it("goes to the lobby now, then resumes the seat and leaves it on the next socket", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, getSavedRoom } = await seated();
+      ws.close();                                       // the link is down
+      const got = record(conn);
+      expect(conn.send({ type: "table_leave" })).toBe(true);
+      expect(got).toEqual(["left"]);                    // the page leaves at once
+      expect(getSavedRoom()).toBeNull();                // App resumes nothing itself
+      vi.advanceTimersByTime(500);
+      const next = FakeWS.last!;
+      expect(next).not.toBe(ws);
+      next.onopen?.();
+      expect(next.sent).toEqual(resumeThenLeave);
+      next.deliver({ type: "state", room: "AAAA", you: 1, phase: "play" });   // the resumed seat's frames
+      next.deliver({ type: "left" });
+      expect(got).toEqual(["left"]);
+      next.deliver({ type: "room", room: "BBBB", you: 0 });   // the socket is the lobby's again
+      expect(got).toEqual(["left", "room"]);
+      next.close();
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);            // delivered once
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Leave whose socket closed before the server's left goes again on the next one", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, getSavedRoom } = await seated();
+      const got = record(conn);
+      expect(conn.send({ type: "table_leave" })).toBe(true);
+      expect(ws.sent).toEqual([{ type: "table_leave" }]);
+      ws.close();                                       // no "left" came back
+      expect(got).toEqual(["left"]);
+      expect(getSavedRoom()).toBeNull();
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a refused resume ends the owed Leave: the next socket sends nothing", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      record(conn);
+      conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(500);
+      const next = FakeWS.last!;
+      next.onopen?.();
+      next.deliver({ type: "error", code: "room_not_found", message: "Room not found." });
+      expect(next.readyState).toBe(3);                  // retired, as any leave's error is
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with no seat saved, a Leave that cannot go is refused as before", async () => {
+    const { conn, FakeWSref } = { ...(await load()), FakeWSref: FakeWS };
+    conn.start();
+    const ws = FakeWSref.last!;
+    ws.onopen?.();
+    ws.close();
+    const got = record(conn);
+    expect(conn.send({ type: "table_leave" })).toBe(false);
+    expect(got).toEqual([]);
+  });
+
+  it("the left answered on the same socket clears it: nothing goes again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      conn.send({ type: "table_leave" });
+      ws.deliver({ type: "left" });
+      ws.close();
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("reconnect(): the identity lives on the handshake", () => {
   it("closes the live socket and opens a new one at once, without the failure backoff", async () => {
     vi.useFakeTimers();

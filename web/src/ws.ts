@@ -98,6 +98,7 @@ export const NEARBY_RETRY_MS: readonly number[] = [0, 250, 500, 1000];
 // Offline mode is decided in its own module, so components can read it
 // where a test stands in for this one.
 import { NEARBY_SESSION, OFFLINE } from "./offlineMode";
+import { intentToJoin } from "./intent";
 export { OFFLINE };
 
 /** Whether this page may remember its seat in storage: only for the game
@@ -113,6 +114,8 @@ const ROOM_KEY = "shengji.room";
 const TOKEN_KEY = "shengji.token";   // opaque seat identity, per room
 /** How long leaveToLobby() waits for the server's "left" before retiring the socket. */
 const LEAVE_ACK_MS = 5000;
+/** How many sockets in a row try to deliver one owed Leave before it is dropped. */
+const OWED_LEAVE_TRIES = 3;
 
 export function getSavedName(): string {
   return localStorage.getItem(NAME_KEY) ?? "";
@@ -173,6 +176,15 @@ class Connection {
    *  the answer. The next link sends it as soon as it opens, so the seat
    *  gets the bot at once instead of waiting out a dropped seat's hold. */
   private nearbyLeave = false;
+  /** A game-server table's Leave the server has not answered with its
+   *  `left`: tapped while the socket was down (`on` null), or sent on the
+   *  socket `on` that then closed first. The page is already in the lobby;
+   *  the next socket takes the seat back by its token and leaves it there,
+   *  so the bot covers the seat at once and a ranked leave is counted,
+   *  instead of the seat waiting out a dropped seat's hold. */
+  private owedLeave: {
+    room: string; name: string; token: string | null; on: WebSocket | null; tries: number;
+  } | null = null;
   private backoff = 500;
   /** Nearby reconnect attempts since the last open, into NEARBY_RETRY_MS. */
   private nearbyTries = 0;
@@ -344,6 +356,7 @@ class Connection {
   private retireTransport(): void {
     this.cutSocket();
     this.nearbyLeave = false;
+    this.owedLeave = null;
     this.backoff = 500;
     this.nearbyTries = 0;
     this.immediate = false;
@@ -380,6 +393,7 @@ class Connection {
   /** Sends when the socket is open; returns whether it did, so a caller can
    *  confirm an action (a haptic, a pending state) only for a real send. */
   send(msg: ClientMsg): boolean {
+    if (msg.type === "table_leave" && this.transport === "remote") return this.sendTableLeave();
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
       if (ANSWERED.has(msg.type)) this.awaitAnswer?.();
@@ -403,6 +417,51 @@ class Connection {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.sendLeave(this.ws);
     this.clearChat();
     this.emit({ type: "left" });
+  }
+
+  /** A game-server table's Leave. With a seat saved, it is owed until the
+   *  server's `left`: sent now when the socket is open, else the page goes
+   *  to the lobby at once and the next socket delivers it. With no seat
+   *  saved (a queue table before its game) it goes only on an open socket. */
+  private sendTableLeave(): boolean {
+    const ws = this.ws && this.ws.readyState === WebSocket.OPEN ? this.ws : null;
+    const room = getSavedRoom();
+    if (room !== null) {
+      this.owedLeave = { room, name: getSavedName() || "Player", token: getResumeToken(), on: ws, tries: 0 };
+    }
+    if (ws) {
+      ws.send(JSON.stringify({ type: "table_leave" } satisfies ClientMsg));
+      this.awaitAnswer?.();
+      return true;
+    }
+    if (room === null) return false;
+    this.exitToOwedLeave();
+    return true;
+  }
+
+  /** The page leaves the table now; the owed Leave goes on the next socket. */
+  private exitToOwedLeave(): void {
+    if (this.owedLeave) this.owedLeave.on = null;
+    clearSavedRoom();
+    this.clearChat();
+    this.emit({ type: "left" });
+  }
+
+  /** On a socket just opened: take the owed Leave's seat back by its token
+   *  and leave it, reading nothing from the resumed seat (sendLeave). */
+  private deliverOwedLeave(ws: WebSocket): void {
+    const owed = this.owedLeave;
+    if (!owed || owed.on !== null || this.transport !== "remote") return;
+    owed.tries += 1;
+    const join = owed.tries <= OWED_LEAVE_TRIES
+      ? intentToJoin({ kind: "resume", room: owed.room, name: owed.name, token: owed.token ?? undefined })
+      : null;
+    if (!join) {
+      this.owedLeave = null;
+      return;
+    }
+    ws.send(JSON.stringify(join));
+    this.sendLeave(ws);
   }
 
   /** Whether a nearby Leave still waits for the host's answer. */
@@ -609,6 +668,8 @@ class Connection {
       // a nearby Leave the last link never delivered goes first, so none
       // of the resumed seat's frames reach the page
       if (this.nearbyLeave && this.transport === "nearby") this.sendLeave(ws);
+      // so does a game-server Leave the last socket never had answered
+      this.deliverOwedLeave(ws);
       // Report "open" and stop there. Deciding WHETHER to rejoin, and which
       // room wins between an invite link, an explicit action, and a saved
       // session, is App's call (intent.ts); reading localStorage here would
@@ -654,9 +715,18 @@ class Connection {
         if (msg.type === "left") {
           this.endLeave();
           this.nearbyLeave = false;
-        } else if (msg.type === "error") this.retire(ws);
+          this.owedLeave = null;
+        } else if (msg.type === "error") {
+          // the owed seat is gone or refused: a later socket would hear the same
+          this.owedLeave = null;
+          this.retire(ws);
+        }
         return;
       }
+      // A Leave sent on this socket is answered: by its `left`, or by an
+      // error, which carries no request id and so ends the owed Leave rather
+      // than resume a seat the server may have refused for a reason.
+      if (this.owedLeave?.on === ws && (msg.type === "left" || msg.type === "error")) this.owedLeave = null;
       // Chat arrives BEFORE the first state — i.e. before <Table> mounts and
       // subscribes — so it is buffered here. The server sends one
       // authoritative chat_history snapshot per attach, then live events with
@@ -694,6 +764,8 @@ class Connection {
     ws.onclose = () => {
       stop();
       if (this.leavingWs === ws) this.endLeave();
+      // a Leave this socket took to its close unanswered: the page leaves now
+      if (this.owedLeave?.on === ws) this.exitToOwedLeave();
       if (this.ws !== ws) return;
       this.lose("closed");
       this.ws = null;

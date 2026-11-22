@@ -37,6 +37,7 @@ def build(side, words):
 def play_mirror(arm, deal_seed, mirror, keep_history, defender_env, exploiter_env, plan_entry):
     if arm != "identity" or defender_env == exploiter_env:
         raise ValueError("S149 requires identity and distinct control and challenger arguments")
+    buries = []
     observations = {"r45": [], "ex": []}
 
     def variant(words):
@@ -44,7 +45,9 @@ def play_mirror(arm, deal_seed, mirror, keep_history, defender_env, exploiter_en
         name, factory = build(side, tuple(words))
 
         def make(seed):
-            return duel_rows.record_play(factory(seed), observations[side])
+            bot = factory(seed)
+            duel_rows.record_bury(bot, side, buries)
+            return duel_rows.record_play(bot, observations[side])
 
         return name, make
 
@@ -54,6 +57,7 @@ def play_mirror(arm, deal_seed, mirror, keep_history, defender_env, exploiter_en
         row = original_play(arm, deal_seed, mirror, keep_history, defender_env, exploiter_env, plan_entry)
     finally:
         duel.variant_factory = previous
+    row["s149_bury"] = buries
     row["s149"] = observations
     duel_rows.validate_row(row)
     return row

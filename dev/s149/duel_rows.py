@@ -24,11 +24,54 @@ def record_play(bot, observations):
     return bot
 
 
+def record_bury(bot, side, observations):
+    decide = bot.decide_bury
+
+    def observed(rnd, seat):
+        cards = decide(rnd, seat)
+        rec = bot.last_bury_record
+        chosen = (rec["candidates"][rec["picked_index"]] if rec["schema"] == "cwv-bury-policy-v1"
+                  else rec["action"])
+        if sorted(chosen) != sorted(cards):
+            raise ValueError("bury record differs from the submitted cards")
+        observations.append(dict(side=side, seat=seat, cards=sorted(cards), schema=rec["schema"],
+                                 belief_worlds=rec.get("bury_belief_worlds"),
+                                 belief_fallbacks=rec.get("bury_belief_fallbacks")))
+        return cards
+
+    bot.decide_bury = observed
+
+
+def validate_bury(row):
+    bury, = row["s149_bury"]
+    seat = row["banker"]
+    side = "ex" if seat % 2 == row["mirror"] else "r45"
+    trace = [(entry[1], entry[-1]) for entry in row["dtrace"] if entry[0] == "B"]
+    who, schema, reason, _, worlds, _ = row["bury_rec"]
+    if (type(seat) is not int or not 0 <= seat < 4 or trace != [(seat, bury["cards"])]
+            or row["ex_team"] != row["mirror"]
+            or bury["seat"] != seat or who != side or bury["side"] != side or bury["schema"] != schema):
+        raise ValueError("bury evidence differs from banker, side or trace")
+    if "belief_worlds" not in bury or "belief_fallbacks" not in bury:
+        raise ValueError("missing bury belief evidence")
+    flag, count = bury["belief_worlds"], bury["belief_fallbacks"]
+    if schema == "cwv-bury-fallback-v1":
+        if reason not in ("budget", "search-error"):
+            raise ValueError("missing bury fallback reason")
+        if flag is None and count is None:
+            return
+    elif schema != "cwv-bury-policy-v1" or reason is not None or type(worlds) is not int or worlds != 32:
+        raise ValueError("unexpected completed bury work")
+    if flag is not True or type(count) is not int or count not in (0, 1):
+        raise ValueError("missing or inconsistent bury belief evidence")
+
+
 def validate_row(row):
     if (row["arm"] != "identity" or row["defender"] != CONTROL or row["exploiter_base"] != CHALLENGER
             or row["fired"] != {"play": 0, "bury": 0, "declare": 0} or row["mirror"] not in (0, 1)
             or set(row["s149"]) != {"ex", "r45"}):
         raise ValueError("unexpected S149 arms")
+    validate_bury(row)
     for side in ("ex", "r45"):
         obs = row["s149"][side]
         seats = [seat for phase, seat, *_ in row["dtrace"]

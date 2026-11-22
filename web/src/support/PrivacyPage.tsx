@@ -44,8 +44,9 @@ export default function PrivacyPage() {
           </p>
           <p>
             Your browser, or the app, also keeps a random device key, which it sends when it connects
-            so the server can tell two tabs on one device from two people. The server uses it only
-            while you are seated and never stores it with your games or account. It travels in the
+            so the server can tell two tabs on one device from two people. The server keeps it in
+            memory for queues and seats and to recognise a returning guest, and never stores it with
+            your games or account. It travels in the
             connection’s address, so our server’s console logs (below) may record it when you
             connect; those lines hold no account id.
           </p>

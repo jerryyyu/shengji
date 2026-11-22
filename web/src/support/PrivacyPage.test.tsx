@@ -31,6 +31,8 @@ describe("the privacy page", () => {
     expect(text).toContain("Games played offline make none");
     expect(text).toContain("console logs (below) may record it when you connect");
     expect(text).not.toContain("never writes it down");
+    expect(text).toContain("for queues and seats and to recognise a returning guest");
+    expect(text).not.toContain("only while you are seated");
     expect(text).not.toContain("everything tied to it");
     expect(text).toContain("the same way as Delete account (below)");
     expect(text).toContain("top-rated players who leave “Show me on the leaderboard” on in Me");

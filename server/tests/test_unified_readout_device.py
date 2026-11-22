@@ -412,3 +412,27 @@ def test_the_polish_bench_wall_interval_covers_the_load_it_reports(cpu_root, mon
     assert out["steps"] == 1 and out["share"]["shard_load"] > 0
     assert out["wall_s"] >= out["step_s_median"] >= 0.3       # the one timed step, its shard load included
     assert out["recipe"] == bench.POLISH_RECIPE
+
+
+def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
+    clusters = [synthetic_cluster(s) for s in range(1000, 1012)]
+    data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
+                       calib=0.25, task_clusters=1)
+    common = ["train", "--data", str(data), "--scratch-arch", SCRATCH, "--threads", "1",
+              "--loader-threads", "1", "--rounds-per-batch", "1", "--buffer-chunks", "1",
+              "--report-buffer", "2", "--save-every", "999999"]
+    baseline, split = tmp_path / "baseline", tmp_path / "split"
+    assert ur.main(common + ["--out", str(baseline)]) == 0
+    split.mkdir()
+    stop = split / "STOP"
+    stop.touch()
+    assert ur.main(common + ["--out", str(split)]) == 3
+    report = "epoch-1-buffer-2.json"
+    assert not (split / report).exists()
+    stop.unlink()
+    assert ur.main(common + ["--out", str(split)]) == 0
+    actual = json.loads((split / report).read_text())
+    assert actual["epoch"] == 1 and actual["completed_buffers"] == 2
+    assert actual["rows"] > 0 and actual["leaves"] > 0
+    assert actual["train"]["leaf_value"] > 0 and actual["train"]["policy"] > 0
+    assert actual == json.loads((baseline / report).read_text())

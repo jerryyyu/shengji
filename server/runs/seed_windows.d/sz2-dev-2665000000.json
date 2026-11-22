@@ -1,0 +1,14 @@
+{
+  "name": "sz2-dev-2665000000",
+  "purpose": "screen",
+  "seed0": 2665000000,
+  "clusters": 2200,
+  "span": [
+    2665000000,
+    2665002200
+  ],
+  "created_at": "2026-11-22T17:18:55-0500",
+  "host": "ultra",
+  "git_head": "c2beff0910e774a27bb95d0aa810c918eacf615c",
+  "note": "S156 model-size DEV, paired seat-swapped rank-mixed deals. SZ2-A M2 versus S2 uses [2665000000,2665001000); SZ2-B descriptive M2 versus FT-500k uses [2665001000,2665002000). The final 200 seeds [2665002000,2665002200) are reserved for validity-only pilots and excluded from both estimates. Exact checkpoint lineage and UT-GEN2 corpus clearance are required before use."
+}

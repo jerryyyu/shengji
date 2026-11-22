@@ -14,6 +14,7 @@ class FakeWS {
   static OPEN = 1;
   static last: FakeWS | null = null;
   static count = 0;
+  static all: FakeWS[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
@@ -25,6 +26,7 @@ class FakeWS {
     this.url = url;
     FakeWS.last = this;
     FakeWS.count += 1;
+    FakeWS.all.push(this);
   }
   send(raw: string) {
     this.sent.push(JSON.parse(raw));
@@ -49,6 +51,7 @@ const load = async () => {
 beforeEach(() => {
   localStorage.clear();
   FakeWS.last = null;
+  FakeWS.all = [];
 });
 
 describe("chat: snapshot + identified live events", () => {
@@ -556,6 +559,76 @@ describe("a Leave while the socket is down is delivered by the next one", () => 
       expect(mine).not.toBe(theirs);
       mine.onopen?.();
       expect(mine.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // a second page on the same storage, seated at BBBB by the server's frames
+  const seatedAtB = async () => {
+    const mod = await load();
+    mod.conn.start();
+    const ws = FakeWS.last!;
+    ws.onopen?.();
+    ws.deliver({ type: "resume", token: "tokB", gen: 1 });
+    ws.deliver({ type: "state", room: "BBBB", you: 2, phase: "play" });
+    mod.saveRoom("BBBB");
+    return { ...mod, ws };
+  };
+  const resumeThenLeaveB = [
+    { type: "table_join", code: "BBBB", name: "jerry", expect: "room", token: "tokB" },
+    { type: "table_leave" },
+  ];
+
+  it("two tabs owing Leaves for two seats each deliver their own, and one answered keeps the other owed", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      b.ws.close();
+      expect(a.conn.send({ type: "table_leave" })).toBe(true);
+      expect(b.conn.send({ type: "table_leave" })).toBe(true);
+      const before = FakeWS.all.length;
+      vi.advanceTimersByTime(500);
+      const [first, second] = FakeWS.all.slice(before);
+      first.onopen?.();
+      first.deliver({ type: "left" });                  // one seat's Leave answered
+      second.onopen?.();
+      const sent = [first.sent, second.sent];
+      expect(sent).toContainEqual(resumeThenLeave);
+      expect(sent).toContainEqual(resumeThenLeaveB);
+      expect(a.conn.deliversOwedLeave()).toBe(true);
+      expect(b.conn.deliversOwedLeave()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a relaunch after two tabs' Leaves delivers both seats', one after the other's left", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      b.ws.close();
+      a.conn.send({ type: "table_leave" });
+      b.conn.send({ type: "table_leave" });
+      a.conn.stop();
+      b.conn.stop();
+      const again = await load();
+      again.conn.start();
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      expect(again.conn.deliversOwedLeave()).toBe(true);
+      expect(ws.sent).toEqual(resumeThenLeave);
+      ws.deliver({ type: "left" });
+      expect(ws.sent).toEqual([...resumeThenLeave, ...resumeThenLeaveB]);
+      ws.deliver({ type: "left" });
+      const later = await load();
+      later.conn.start();
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);            // both answered: nothing owed
     } finally {
       vi.useRealTimers();
     }

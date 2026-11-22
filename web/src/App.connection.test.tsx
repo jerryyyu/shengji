@@ -437,3 +437,25 @@ it("an owed Leave past its hold, reopened later, still does not resume the seat 
   expect(latest().sent).toEqual([]);
   expect(again.ws.getSavedRoom()).toBeNull();
 });
+
+it("a reconnect whose owed Leave another page answered resumes no other tab's saved seat", async () => {
+  const { ws } = await seatedAtABCD();
+  act(() => latest().close());
+  act(() => { ws.conn.send({ type: "table_leave" }); });
+  otherTabSits();
+  // another page on the same storage delivers the stored Leave and has it answered
+  vi.resetModules();
+  const other = await import("./ws");
+  other.conn.start();
+  const theirs = latest();
+  act(() => theirs.open());
+  expect(theirs.sent).toEqual(resumeThenLeave);
+  act(() => theirs.deliver({ type: "left" }));
+  act(() => { vi.advanceTimersByTime(500); });
+  const mine = latest();
+  expect(mine).not.toBe(theirs);
+  act(() => mine.open());
+  expect(mine.sent).toEqual([]);                         // no join BBBB
+  expect(ws.getSavedRoom()).toBe("BBBB");
+  other.conn.stop();
+});

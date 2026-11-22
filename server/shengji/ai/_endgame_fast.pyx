@@ -894,13 +894,13 @@ cdef class FastWorld:
         cdef MS* lead = self._ms(leader, plays[0])
         cdef MS* p
         cdef int inc_suit = lead.eff, inc_top = lead.top_level
-        cdef int winner = leader, i, seat, top, won
+        cdef int winner = leader, i, seat, top
         cdef int pts = lead.pts
         for i in range(1, k):
             seat = (leader + i) % 4
             p = self._ms(seat, plays[i])
             pts += p.pts
-            if p.eff == NONE_EFF:
+            if p.eff == NONE_EFF or (p.eff != inc_suit and p.eff != TRUMP_EFF):
                 continue
             if p.size == 1 and lead.size == 1:
                 top = p.max_level
@@ -908,13 +908,7 @@ cdef class FastWorld:
                 top = self.T.match_top(self._msi(seat, plays[i]), lead.shape_id)
                 if top == NEG:
                     continue
-            if p.eff == inc_suit:
-                won = top > inc_top
-            elif p.eff == TRUMP_EFF:
-                won = 1
-            else:
-                won = 0
-            if won:
+            if p.eff != inc_suit or top > inc_top:
                 winner = seat
                 inc_top = top
                 inc_suit = p.eff
@@ -946,11 +940,11 @@ cdef class FastWorld:
     cdef inline int _tstep(self, MS* lead, int seat, int play, TState* st) except -1:
         """``_resolve_k``'s loop body: ``seat`` plays ``play`` into ``st``."""
         cdef PInfo* p = &self.pinfo[seat][play]
-        cdef int top, won
+        cdef int top
         if not p.ok:
             p = self._pfill(seat, play)
         st.pts += p.pts
-        if p.eff == NONE_EFF:
+        if p.eff == NONE_EFF or (p.eff != st.inc_suit and p.eff != TRUMP_EFF):
             return 0
         if p.size == 1 and lead.size == 1:
             top = p.max_level
@@ -958,13 +952,7 @@ cdef class FastWorld:
             top = self.T.match_top(self._msi(seat, play), lead.shape_id)
             if top == NEG:
                 return 0
-        if p.eff == st.inc_suit:
-            won = top > st.inc_top
-        elif p.eff == TRUMP_EFF:
-            won = 1
-        else:
-            won = 0
-        if won:
+        if p.eff != st.inc_suit or top > st.inc_top:
             st.winner = seat
             st.inc_top = top
             st.inc_suit = p.eff

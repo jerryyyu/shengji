@@ -85,28 +85,38 @@ const CONTROL_RE = /[\x00-\x1f\x7f]/g;
 const escapeControl = (c: string): string =>
   c === "\r" ? "\\r" : c === "\t" ? "\\t" : `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`;
 
-/** `line` cut to MAX_LINE characters with a marker naming how many went. */
+// A stamp longer than this is never carried to the next raw line.
+const STAMP_MAX = 24;
+
+/** `line` cut to MAX_LINE code points (Python's len), with a marker naming how
+ *  many went; a line short in UTF-16 units is short in code points too. */
 function fitLine(line: string): string {
   if (line.length <= MAX_LINE) return line;
-  let keep = MAX_LINE - ` …[truncated ${line.length}]`.length;
-  // never split a surrogate pair
-  const c = line.charCodeAt(keep - 1);
-  if (c >= 0xd800 && c <= 0xdbff) keep -= 1;
-  return `${line.slice(0, keep)} …[truncated ${line.length - keep}]`;
+  const points = Array.from(line);
+  if (points.length <= MAX_LINE) return line;
+  const keep = MAX_LINE - Array.from(` …[truncated ${points.length}]`).length;
+  return `${points.slice(0, keep).join("")} …[truncated ${points.length - keep}]`;
 }
 
 /** Each line of a chunk in the shape the server takes, keeping every line's
  *  text: control characters are escaped, a line without the shape (a stack
  *  trace's continuation, a header, a cut line) becomes a `raw` line at the
- *  previous line's time, and an overlong line is cut with a marker. */
+ *  previous line's time, and an overlong line is cut with a marker. A line
+ *  whose cut would land in its own stamp is rewrapped as a `raw` line. */
 export function sanitizeLogChunk(text: string): string {
   let stamp = "0.000";
   return text.split("\n").map((raw) => {
     if (!raw) return raw;
-    let line = raw.replace(CONTROL_RE, escapeControl);
-    if (LINE_RE.test(line)) stamp = STAMP_RE.exec(line)![0];
-    else line = `${stamp} raw ${line}`;
-    return fitLine(line);
+    const line = raw.replace(CONTROL_RE, escapeControl);
+    if (LINE_RE.test(line)) {
+      const fitted = fitLine(line);
+      if (LINE_RE.test(fitted)) {
+        const own = STAMP_RE.exec(line)![0];
+        if (own.length <= STAMP_MAX) stamp = own;
+        return fitted;
+      }
+    }
+    return fitLine(`${stamp} raw ${line}`);
   }).join("\n");
 }
 

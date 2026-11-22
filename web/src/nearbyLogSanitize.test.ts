@@ -60,6 +60,36 @@ describe("sanitizeLogChunk", () => {
     expect(out.length - m![0].length + Number(m![1])).toBe(line.length);
   });
 
+  it("in the fixture, a legacy line cut inside its stamp is rewrapped raw and its good neighbour is kept", () => {
+    const outLines = fixture.output.split("\n");
+    const i = outLines.indexOf("1.000 host good");
+    expect(i).toBeGreaterThan(0);
+    expect(outLines[i - 1]).toMatch(/^[0-9]{1,24}\.[0-9]{3} raw 9{100}/);
+    expect(serverTakesLine(outLines[i - 1])).toBe(true);
+  });
+
+  it("in the fixture, a valid line long in UTF-16 units but within 2000 code points is byte-identical", () => {
+    const line = "1.000 native " + "🀄".repeat(1000);
+    expect(line.length).toBeGreaterThan(SERVER_MAX_LINE);
+    expect([...line].length).toBeLessThanOrEqual(SERVER_MAX_LINE);
+    expect(fixture.input.split("\n")).toContain(line);
+    expect(fixture.output.split("\n")).toContain(line);
+    expect(sanitizeLogChunk(line + "\n")).toBe(line + "\n");
+  });
+
+  it("counts and reports a cut in code points", () => {
+    const line = "1.000 native " + "🀄".repeat(3000);
+    const out = sanitizeLogChunk(line);
+    expect([...out].length).toBe(SERVER_MAX_LINE);
+    const m = / …\[truncated (\d+)\]$/.exec(out)!;
+    expect([...out].length - [...m[0]].length + Number(m[1])).toBe([...line].length);
+  });
+
+  it("never carries an overlong stamp to the next raw line", () => {
+    const long = "7".repeat(30) + ".000 host ok";
+    expect(sanitizeLogChunk(`1.500 host a\n${long}\n  next\n`)).toBe(`1.500 host a\n${long}\n1.500 raw   next\n`);
+  });
+
   it("never splits a surrogate pair when it cuts", () => {
     for (let pad = 0; pad < 4; pad++) {
       const out = sanitizeLogChunk("3.000 host " + "a".repeat(pad) + "🀄".repeat(3000));

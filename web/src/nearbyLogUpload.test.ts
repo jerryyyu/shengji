@@ -205,6 +205,20 @@ describe("the log upload", () => {
       "reset\\r", "张伟 ready", "…[truncated"]) expect(body).toContain(text);
   });
 
+  it("a legacy line with an overlong stamp does not cost its neighbour: the chunk uploads whole", async () => {
+    const ff = fakeFile();
+    const valid = "1.000 native " + "🀄".repeat(1000);
+    ff.files.main = `${"9".repeat(2001)}.000 host bad\n1.000 host good\n${valid}\n`;
+    expect(await attachNearbyLogFile(ff.f)).toBe(true);
+    await flushNearbyLogFile();
+    const { calls } = mockFetch([]);
+    await uploadNearbyLogNow();
+    expect(uploadLines()).toEqual([`upload ${size(ff.files.main)} B ok`]);
+    const lines = calls.map((c) => c.body).join("").split("\n");
+    expect(lines).toContain("1.000 host good");
+    expect(lines).toContain(valid);
+  });
+
   it("a roll sends the rest of the older file, then the new one from 0; the stream offset keeps counting", async () => {
     const ff = fakeFile();
     expect(await attachNearbyLogFile(ff.f, { cap: 400 })).toBe(true);

@@ -616,13 +616,20 @@ export class QueueStore {
    *  room that table has just become, if it started meanwhile, seats you
    *  under it. */
   join(code?: string, name?: string): void {
-    beforeOnlineSetup(() => this.sendJoin(code, false, name));
+    beforeOnlineSetup(() => this.sendJoin(code, false, name), this.sameIntent());
   }
 
   /** Duo: your own table, as Play opens it, with the partner seat held for
    *  the friend who joins by its code. A formed pair queues as the pair. */
   joinDuo(): void {
-    beforeOnlineSetup(() => this.sendJoin(undefined, true));
+    beforeOnlineSetup(() => this.sendJoin(undefined, true), this.sameIntent());
+  }
+
+  /** Whether a Play held back for the device's sign-in still means what it
+   *  did when tapped: the same mode, and no search or table since. */
+  private sameIntent(): () => boolean {
+    const mode = this.view.playMode;
+    return () => this.view.playMode === mode && !this.view.queued && this.view.pending === null;
   }
 
   private sendJoin(code: string | undefined, duo: boolean, name?: string): void {

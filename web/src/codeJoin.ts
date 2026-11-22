@@ -213,7 +213,11 @@ export class CodeStore {
   /** The panel's Join, under `name`: a room's chosen seat, or a queued
    *  table by its code. */
   join(name: string): void {
-    beforeOnlineSetup(() => this.joinNow(name));
+    const j = this.view;
+    if (!j || j.step !== "panel") return;
+    // held back for the device's sign-in, it joins only the panel still showing
+    beforeOnlineSetup(() => this.joinNow(name),
+                      () => this.view?.code === j.code && this.view.step === "panel");
   }
 
   private joinNow(name: string): void {

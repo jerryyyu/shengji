@@ -354,7 +354,12 @@ first online Play, Duo or Join makes the device's own account, with no Apple or 
 for the table (`deviceAccount.ts`): with a secret in the Keychain it signs in with it, otherwise it makes one
 (`POST /api/auth/device`) and keeps the secret there. Every launch with a secret signs in again. A refused
 secret (the account was deleted or purged) is cleared and that Play goes ahead as a guest; the server's switch
-off, too many attempts or no connection leave a guest exactly as today. The mock is `account_frames` in
+off, too many attempts or no connection leave a guest exactly as today. A launch that restores the account
+replaces the socket before any Play goes, so a table is never asked for under the guest's handshake. One tap is
+one attempt, bounded at 6 s with the sign-in included; a further tap meanwhile does nothing, and a held Play
+whose mode, tab or table changed does not fire. A Keychain that cannot be read makes no account (that Play is a
+guest's); one that will not keep a new secret, tried twice, has the new account deleted and the device shown as
+a guest. The mock is `account_frames` in
 `docs/design/mocks/core.py`.
 `/api/auth/config` says whether device accounts are on (`device_accounts`) and `/api/me` whether an account is
 `linked`; with them off the app is today's guest, exactly.

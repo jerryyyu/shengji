@@ -336,12 +336,12 @@ export const IOS_APP_CLIENT = "ios-app";
  *  it; without, make a new account, whose token comes back this once.
  *  Status 0 is no connection. 404 means the server has device accounts
  *  off, and 429 too many attempts: either way the app plays as a guest. */
-export async function deviceAuth(token: string | null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
+export async function deviceAuth(token: string | null, signal?: AbortSignal): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
   const headers: Record<string, string> = { [CLIENT_HEADER]: IOS_APP_CLIENT };
   if (token) headers.Authorization = `Device ${token}`;
   let got: { status: number; body: (Partial<AuthUser> & { user?: AuthUser; token?: string }) | null };
   try {
-    got = await api("/api/auth/device", { method: "POST", headers });
+    got = await api("/api/auth/device", { method: "POST", headers, ...(signal ? { signal } : {}) });
   } catch {
     return { status: 0, user: null, token: null };
   }
@@ -377,6 +377,21 @@ export async function forgetDeviceSecret(): Promise<void> {
   }
 }
 
+/** Resolves at the next time the socket opens, not counting its status now. */
+function nextOpen(): Promise<void> {
+  return new Promise((resolve) => {
+    let armed = false;
+    const stop = conn.subscribeStatus?.((status) => {
+      if (armed && status === "open") {
+        stop?.();
+        resolve();
+      }
+    });
+    if (!stop) resolve();
+    armed = true;
+  });
+}
+
 let gisLoading: Promise<GoogleAccountsId> | null = null;
 
 /** Load the GIS script once (only ever called when a client id exists). */
@@ -409,7 +424,8 @@ type Listener = (state: AuthState) => void;
 class AuthStore {
   state: AuthState = { status: "loading", clientId: null, user: null };
   private listeners = new Set<Listener>();
-  private started = false;
+  private initRun: Promise<void> | null = null;
+  private reopen: Promise<void> | null = null;
 
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
@@ -428,9 +444,13 @@ class AuthStore {
    *  server without sign-in reads as "off"; a server that could not be
    *  reached reads as "error", so the sign-in controls stay in place,
    *  unavailable, instead of vanishing. */
-  async init(): Promise<void> {
-    if (this.started) return;
-    this.started = true;
+  init(): Promise<void> {
+    if (this.initRun) return this.initRun;
+    this.initRun = this.load();
+    return this.initRun;
+  }
+
+  private async load(): Promise<void> {
     try {
       const cfg = await fetchAuthConfig();
       // the app's device account signs in again at every launch
@@ -439,10 +459,12 @@ class AuthStore {
       if (!cfg.google_client_id) {
         this.set(relaunched ? { status: "in", clientId: null, user: relaunched, ...device }
           : { status: "off", clientId: null, user: null, ...device });
-        return;
+      } else {
+        const user = relaunched ?? await fetchMe();
+        this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user, ...device });
       }
-      const user = relaunched ?? await fetchMe();
-      this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user, ...device });
+      // a socket opened before the restore carries the guest handshake
+      if (relaunched) this.replaceSocket();
     } catch {
       this.set({ status: "error", clientId: null, user: null });
     }
@@ -453,7 +475,31 @@ class AuthStore {
   signedIn(user: AuthUser): void {
     forgetPrivateSession();
     this.set({ status: "in", user });
+    this.replaceSocket();
+  }
+
+  /** Replace the socket so its handshake carries the current session. In
+   *  the app, `settled` waits for the replacement to open, so a Play is
+   *  never sent on the socket of the identity before. */
+  private replaceSocket(): void {
+    if (deviceAccountsApply()) {
+      const next = nextOpen();
+      this.reopen = next;
+      void next.then(() => { if (this.reopen === next) this.reopen = null; });
+    }
     conn.reconnect();
+  }
+
+  /** A socket replaced for a sign-in has not opened yet. */
+  isReopening(): boolean {
+    return this.reopen !== null;
+  }
+
+  /** Resolves once sign-in is known and the socket carries it: after
+   *  `init`, and after the socket a sign-in replaced has opened. */
+  async settled(): Promise<void> {
+    if (this.initRun) await this.initRun;
+    while (this.reopen) await this.reopen;
   }
 
   /** The server refused to make a device account (device accounts off):
@@ -475,8 +521,18 @@ class AuthStore {
    *  confirm the revocation; the caller shows the error and may retry. On
    *  success the socket is replaced so the seat stops carrying the account. */
   async signOut(): Promise<void> {
-    // in the app the device secret goes too, or the next launch signs it back in
-    const device = deviceAccountsApply() ? await keychainGet().catch(() => null) : null;
+    // In the app the device secret goes too, or the next launch signs it
+    // back in. A Keychain that cannot be read may still hold it, so sign-out
+    // is refused rather than reported done. Once the server has removed the
+    // secret, a copy left behind is refused at the next launch and cleared.
+    let device: string | null = null;
+    if (deviceAccountsApply()) {
+      try {
+        device = await keychainGet();
+      } catch {
+        throw new Error("Sign-out failed. Try again.");
+      }
+    }
     await logout(device);
     if (device) await forgetDeviceSecret();
     try {
@@ -488,7 +544,7 @@ class AuthStore {
     void nativeAppleSignOut(false);
     forgetPrivateSession();
     this.set({ status: "out", user: null });
-    conn.reconnect();
+    this.replaceSocket();
   }
 
   /** The server deleted the account and cleared its cookie: forget it here
@@ -504,12 +560,13 @@ class AuthStore {
     void nativeAppleSignOut(true);
     forgetPrivateSession();
     this.set({ status: "out", user: null });
-    conn.reconnect();
+    this.replaceSocket();
   }
 
   /** Test seam: forget everything, as a fresh page would. */
   reset(): void {
-    this.started = false;
+    this.initRun = null;
+    this.reopen = null;
     this.state = { status: "loading", clientId: null, user: null };
     gisLoading = null;
   }

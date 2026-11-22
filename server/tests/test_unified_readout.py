@@ -107,6 +107,51 @@ def _model(tmp_path, seed=0):
     return m, rn.load_unified_readout_numpy(path, sha)
 
 
+def test_readout_layer_norm_matches_numpy_bits_and_error_handling(monkeypatch):
+    native = rn._native_layer_norm
+    if native is None:
+        pytest.skip("optional readout norm extension is not built")
+    rng = np.random.default_rng(812078)
+    x = rng.standard_normal((257, 288), dtype=np.float32)
+    x[:2] *= np.float32(1e14)
+    x[2:4] *= np.float32(1e-12)
+    x[4] = np.float32(-0.0)
+    x[5] = 7
+    w = rng.standard_normal(288, dtype=np.float32)
+    b = rng.standard_normal(288, dtype=np.float32)
+    w[0], b[0] = 1, -0.0
+    out, square = np.empty_like(x), np.empty_like(x)
+    reference, reference_square = np.empty_like(x), np.empty_like(x)
+    with monkeypatch.context() as oracle:
+        oracle.setattr(rn, "_native_layer_norm", None)
+        rn._ln_into(x, w, b, reference, reference_square)
+    used = []
+
+    def witness(*args):
+        used.append(native(*args))
+        return used[-1]
+
+    monkeypatch.setattr(rn, "_native_layer_norm", witness)
+    assert rn._ln_into(x, w, b, out, square) is out
+    assert used == [True]
+    np.testing.assert_array_equal(out.view(np.uint32), reference.view(np.uint32))
+    np.testing.assert_array_equal(square.view(np.uint32), reference_square.view(np.uint32))
+
+    strided = x[:, ::-1]
+    with monkeypatch.context() as oracle:
+        oracle.setattr(rn, "_native_layer_norm", None)
+        rn._ln_into(strided, w, b, reference, reference_square)
+    rn._ln_into(strided, w, b, out, square)
+    assert used[-1] is False
+    np.testing.assert_array_equal(out.view(np.uint32), reference.view(np.uint32))
+
+    overflow = np.full((1, 288), np.float32(1e20))
+    overflow[:, ::2] *= -1
+    with np.errstate(over="raise"), pytest.raises(FloatingPointError):
+        rn._ln_into(overflow, w, b, out[:1], square[:1])
+    assert used[-1] is False
+
+
 def test_numpy_readout_equals_the_torch_readout_and_exports_its_belief_package(tmp_path):
     m, model = _model(tmp_path)
     states, final = _game()

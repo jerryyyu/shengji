@@ -24,6 +24,11 @@ import numpy as np
 from . import belief_numpy as bn
 from .unified_numpy import PACKAGE_MAX_BYTES, UnifiedNumpy, UnifiedNumpyError, _ln
 
+try:
+    from ._cwv_math import layer_norm_288 as _native_layer_norm
+except ImportError:
+    _native_layer_norm = None
+
 SCHEMA = "shengji-unified-readout-numpy-v1"
 N_CARDS = 54
 OUTCOME_CLASSES = 204
@@ -50,6 +55,8 @@ def leaf_scalars(n_delta, n_trick, points, winner, nxt) -> np.ndarray:
 def _ln_into(x: np.ndarray, w: np.ndarray, b: np.ndarray, out: np.ndarray, square: np.ndarray) -> np.ndarray:
     """`_ln(x, w, b)` written into ``out`` (``square`` is scratch of the same shape): the same
     operations in the same order, so the same bits."""
+    if _native_layer_norm is not None and _native_layer_norm(x, w, b, out, square, bn.LAYERNORM_EPS):
+        return out
     mu = x.mean(-1, keepdims=True)
     np.subtract(x, mu, out=out)
     np.multiply(out, out, out=square)

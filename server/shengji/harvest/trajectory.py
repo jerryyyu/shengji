@@ -1998,7 +1998,7 @@ class _PublicationError(Exception):
     """A shard writer failure aborts scheduling just as it does in the serial path."""
 
 
-def _cluster_task(config: dict, cluster: int, seed: int, out_dir: Path):
+def _cluster_task(config: dict, cluster: int, seed: int, out_dir: Path, *, staged: bool = False):
     """Play and publish one cluster locally. Only metadata crosses the pool boundary."""
     started_at = time.time()
     started = time.perf_counter()
@@ -2011,7 +2011,7 @@ def _cluster_task(config: dict, cluster: int, seed: int, out_dir: Path):
     if any("bury_wall_secs" in st["timing"] for st in stats):
         timing["bury_wall_secs"] = sum(st["timing"].get("bury_wall_secs", 0.0) for st in stats)
     try:
-        sidecar = publish_shard(out_dir, config, cluster, seed, records, stats)
+        sidecar = publish_shard(out_dir, config, cluster, seed, records, stats, staged=staged)
     except Exception as exc:
         raise _PublicationError(exc) from exc
     return sidecar, timing
@@ -2032,7 +2032,7 @@ def _atomic_write_text(path: Path, text: str, mode: int = 0o644) -> None:
 
 
 def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
-                  records: list[dict], stats: list[dict]) -> dict:
+                  records: list[dict], stats: list[dict], *, staged: bool = False) -> dict:
     """Write the cluster's shard + sidecar atomically (temp name, then
     ``os.replace``), read-only once published.  Returns the sidecar.
 
@@ -2045,6 +2045,10 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
             drawn_banker is not None and any(st["banker"] != drawn_banker for st in stats)):
         raise TrajectoryError(f"cluster {cluster} played a round other than its draw")
     jsonl, side = shard_paths(out_dir, cluster)
+    record_path = f"shards/{jsonl.name}"
+    if staged:
+        jsonl = jsonl.with_suffix(".jsonl.pending")
+        side = side.with_suffix(".json.pending")
     jsonl.parent.mkdir(parents=True, exist_ok=True)
     tmp = jsonl.with_name(jsonl.name + ".tmp")
     n, digest = write_jsonl(tmp, records)
@@ -2062,7 +2066,7 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
         "run_id": config["run_id"],
         "cluster": int(cluster),
         "seed": int(seed),
-        "path": f"shards/{jsonl.name}",
+        "path": record_path,
         "records": n,
         "sha256": digest,
         "bytes": jsonl.stat().st_size,
@@ -2082,7 +2086,7 @@ def publish_shard(out_dir: Path, config: dict, cluster: int, seed: int,
         from .shortlist_scores import publish_scores
         sidecar["full_legal_scores"] = publish_scores(
             out_dir, cluster, records,
-            [row for st in stats for row in st["full_legal_scores"]])
+            [row for st in stats for row in st["full_legal_scores"]], staged=staged)
     _atomic_write_text(side, json.dumps(sidecar, indent=1, sort_keys=True) + "\n",
                        mode=0o444)
     return sidecar
@@ -2096,7 +2100,7 @@ def _install_worker_shard(staging: Path, out_dir: Path, cluster: int, config: di
         paths.append(score_path(staging, cluster))
     # Only the parent commits. An orphaned worker can finish only in its attempt directory.
     for path in (*paths, side):
-        os.replace(path, out_dir / "shards" / path.name)
+        os.replace(path.with_name(path.name + ".pending"), out_dir / "shards" / path.name)
 
 
 def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
@@ -2247,7 +2251,7 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
             def fill() -> None:
                 while queue and len(in_flight) < window:
                     c = queue.pop(0)
-                    in_flight[pool.submit(_cluster_task, config, c, seed0 + c, staging)] = c
+                    in_flight[pool.submit(_cluster_task, config, c, seed0 + c, staging, staged=True)] = c
 
             fill()
             while in_flight:

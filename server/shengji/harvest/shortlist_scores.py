@@ -63,12 +63,16 @@ def _validate(row: dict, record: dict) -> None:
         raise ValueError("full-legal score vector")
 
 
-def publish_scores(out_dir: Path, cluster: int, records: list[dict], rows: list[dict]) -> dict:
+def publish_scores(out_dir: Path, cluster: int, records: list[dict], rows: list[dict],
+                   *, staged: bool = False) -> dict:
     by_ref = {row["source_ref"]: row for row in rows}
     expected = [r for r in records if r["decision_kind"] == "play"]
     if len(by_ref) != len(rows) or set(by_ref) != {r["source_ref"] for r in expected}:
         raise ValueError("full-legal score row population")
     path = score_path(out_dir, cluster)
+    receipt_path = f"shards/{path.name}"
+    if staged:
+        path = path.with_name(path.name + ".pending")
     with tempfile.NamedTemporaryFile(mode="wb", dir=path.parent,
                                      prefix=path.name + ".", suffix=".tmp", delete=False) as raw:
         tmp = Path(raw.name)
@@ -82,7 +86,7 @@ def publish_scores(out_dir: Path, cluster: int, records: list[dict], rows: list[
         os.fsync(raw.fileno())
     os.chmod(tmp, 0o444)
     os.replace(tmp, path)
-    return {"schema": SCHEMA, "path": f"shards/{path.name}", "records": len(rows),
+    return {"schema": SCHEMA, "path": receipt_path, "records": len(rows),
             "bytes": path.stat().st_size, "sha256": sha256_file(path)}
 
 

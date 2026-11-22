@@ -309,13 +309,18 @@ def retention_run(tmp_path_factory):
 
     def inspect_worker_results(*args, **kwargs):
         done, pending = wait(*args, **kwargs)
+        expected = {trajectory.shard_paths(out, cluster)[1] for cluster in seen}
+        for args in ([str(out / "shards"), "-name", "cluster-*.json"],
+                     [str(out), "-path", "*/shards/cluster-*.json"]):
+            matches = subprocess.check_output(["find", *args], text=True).splitlines()
+            assert set(map(Path, matches)) == expected
         for future in done:
             sidecar, timing = future.result()
             shard, side = trajectory.shard_paths(out, sidecar["cluster"])
             assert not shard.exists() and not side.exists()
             assert isinstance(sidecar["records"], int)
             assert set(timing) == {"started_at", "finished_at", "wall_secs", "round_wall_secs", "search_secs"}
-            staged, = (out / "shards").glob(".workers-*/shards/" + side.name)
+            staged, = (out / "shards").glob(".workers-*/shards/" + side.name + ".pending")
             assert json.loads(staged.read_text()) == sidecar
         return done, pending
 

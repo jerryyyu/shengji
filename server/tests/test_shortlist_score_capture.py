@@ -84,6 +84,9 @@ def test_real_generator_persists_labels_and_preserves_play(teacher, tmp_path):
                             seed_windows=tmp_path / "seeds-True.json")
     committed = tmp_path / "committed"
     (committed / "shards").mkdir(parents=True)
+    assert shortlist_scores.publish_scores(on[0], 0, on[2], rows, staged=True) == receipt["full_legal_scores"]
+    for file in trajectory.shard_paths(on[0], 0):
+        file.rename(file.with_name(file.name + ".pending"))
     trajectory._install_worker_shard(on[0], committed, 0, config)
     assert trajectory.verify_shard(committed, config, 0, config["seed0"]) == (receipt, "ok")
     path = shortlist_scores.score_path(committed, 0)

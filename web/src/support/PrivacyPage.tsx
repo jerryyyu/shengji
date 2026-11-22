@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const PRIVACY_UPDATED = "2026-11-17";
+export const PRIVACY_UPDATED = "2026-11-22";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -37,15 +37,47 @@ export default function PrivacyPage() {
 
         <Section title="Playing as a guest">
           <p>
-            You can play without an account. You type a name, which the other players at your table
-            see. Your browser remembers that name, the last room you were in (so you can rejoin it), a
+            On the website you can play without an account. You type a name, which the other players
+            at your table see. Your browser remembers that name, the last room you were in (so you can rejoin it), a
             seat token for that room, and your settings, such as sound, haptics and the coach. These
             stay on your device in its local storage; clearing the site’s data removes them.
           </p>
           <p>
-            Your browser also keeps a random device key, which it sends when it connects so the server
-            can tell two tabs on one device from two people. The server holds it only while you are
+            Your browser, or the app, also keeps a random device key, which it sends when it connects
+            so the server can tell two tabs on one device from two people. The server holds it only while you are
             seated and never writes it down.
+          </p>
+        </Section>
+
+        <Section title="Accounts in the iOS app">
+          <p>
+            From version 1.0.1, the iOS app makes you an account the first time you play, with no
+            sign-in. Our server gives it a random name, such as “Lucky Tractor”, which you can change
+            in Me. Other players see that name at the table, on the leaderboard and in the game
+            records.
+          </p>
+          <p>
+            The app keeps a random secret key in this device’s keychain. It is not synced to iCloud.
+            Our server stores only a one-way hash of the key, never the key itself.
+          </p>
+          <p>
+            For the account we store its name, when it was made and last used, and the same rating,
+            rating history, saved games and blocks as any account (below). We store no email, no real
+            name and no advertising or hardware identifier.
+          </p>
+          <p>
+            Linking Google or Apple is optional. If you link one, we also store what that sign-in
+            shares (below).
+          </p>
+          <p>
+            An account that has played no ranked round is deleted after 30 days unused, and any app
+            account after 12 months unused, with everything tied to it. Neither happens while its
+            30-day sign-in is still open. An account linked to Google or Apple is not deleted this way.
+          </p>
+          <p>
+            The account is on the leaderboard from its first ranked round; turn off “Show me on the
+            leaderboard” in Me to leave it. To delete the account, open Me and choose Delete account.
+            Deleting the app does not delete the account.
           </p>
         </Section>
 
@@ -71,8 +103,8 @@ export default function PrivacyPage() {
 
         <Section title="Signing in with Google or Apple">
           <p>
-            Signing in is optional; it lets you keep your games and get a rating. You can sign in with
-            Google, or with Apple in the iOS app. For either, we store the display name you choose (if
+            On the website, signing in is optional; it lets you keep your games and get a rating. You
+            can sign in with Google, or with Apple in the iOS app. For either, we store the display name you choose (if
             any) and when you signed up and last signed in, and, if we suspend the account under the
             Terms, when we did.
           </p>
@@ -101,7 +133,7 @@ export default function PrivacyPage() {
 
         <Section title="Saved games">
           <p>
-            For a signed-in player we link your account to the seat and rounds you played, with each
+            For a player with an account we link it to the seat and rounds you played, with each
             game’s final levels and wins, so you can see your games and replay them. Saved games are
             kept for twelve months. You can remove any game from your history in Me, under Games.
           </p>
@@ -109,7 +141,7 @@ export default function PrivacyPage() {
 
         <Section title="Ratings and the leaderboard">
           <p>
-            Signed-in players get a rating; guests are unranked. For your account we store your
+            Players with an account get a rating; guests are unranked. For your account we store your
             current rating, how many ranked rounds it rests on, and one entry per ranked round: the
             game and round, your team and whether it won, the levels it moved, your rating before
             and after and the change, whether the round was abandoned, your partner’s name at the
@@ -194,7 +226,7 @@ export default function PrivacyPage() {
         <Section title="Deleting your account">
           <p>
             You can delete your account in the app: open Me and choose Delete account. That removes
-            your account record, your sessions, your saved-game links, your rating, your rating
+            your account record, your sessions, an app account’s key hash, your saved-game links, your rating, your rating
             history and the blocks you made, or others made of you, at once. If you signed in with Apple, we also ask Apple to revoke the app’s access
             to your Apple ID.
           </p>

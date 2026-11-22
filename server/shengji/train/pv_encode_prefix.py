@@ -939,10 +939,13 @@ def _plain_evaluator(evaluator) -> bool:
 
 def score_bury_leaves(evaluator, base, positions, seats):
     """Score a stock bury batch with the native encoder, or decline before inference."""
-    from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+    from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator, _STOCK_NUMPY_FORWARDS
 
     cls = type(evaluator)
     if (base is not NumpyCompleteWorldEvaluator
+            or _BURY_SCORE_SNAPSHOT is None
+            or base.probabilities is not _STOCK_NUMPY_FORWARDS[0]
+            or base.probabilities_stacked is not _STOCK_NUMPY_FORWARDS[1]
             or type(positions) not in (list, tuple) or type(seats) not in (list, tuple)
             or not positions or len(seats) != len(positions)
             or any(name in vars(evaluator) or getattr(cls, name) is not getattr(base, name)
@@ -1157,10 +1160,13 @@ def _bury_references(base):
 
 
 def _bury_snapshot():
-    from .pv_native import ReferenceSnapshot
-    from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
+    try:
+        from .pv_native import ReferenceSnapshot
+        from ..ai.cwv_numpy_evaluator import NumpyCompleteWorldEvaluator
 
-    return ReferenceSnapshot(*_bury_references(NumpyCompleteWorldEvaluator))
+        return ReferenceSnapshot(*_bury_references(NumpyCompleteWorldEvaluator))
+    except Exception:
+        return None
 
 
 _BURY_SCORE_SNAPSHOT = _bury_snapshot()

@@ -386,6 +386,45 @@ def test_bury_native_encoder_decline_uses_reference(monkeypatch, failure):
     assert counters(candidate) == counters(reference)
 
 
+def test_bury_native_encoder_unresolved_snapshot_keeps_reference(monkeypatch):
+    with monkeypatch.context() as before_snapshot:
+        before_snapshot.setattr(NumpyCompleteWorldEvaluator, "probabilities", len)
+        snapshot = prefix_module._bury_snapshot()
+    assert snapshot is None
+    monkeypatch.setattr(prefix_module, "_BURY_SCORE_SNAPSHOT", snapshot)
+
+    def unexpected(*args):
+        pytest.fail("unresolved snapshot must keep the reference path")
+
+    monkeypatch.setattr(prefix_module, "native_arrays", unexpected)
+    candidate = _bury_evaluator(2, native=True)
+    reference = _bury_evaluator(2, native=False)
+    np.testing.assert_array_equal(_score_bury(candidate), _score_bury(reference))
+    assert counters(candidate) == counters(reference)
+
+
+@pytest.mark.parametrize("method", ["probabilities", "probabilities_stacked"])
+def test_bury_native_encoder_refuses_replacement_at_snapshot_creation(monkeypatch, method):
+    original = getattr(NumpyCompleteWorldEvaluator, method)
+    calls = []
+
+    def custom(self, *args):
+        calls.append(len(args[0]))
+        return original(self, *args)
+
+    monkeypatch.setattr(NumpyCompleteWorldEvaluator, method, custom)
+    snapshot = prefix_module._bury_snapshot()
+    assert snapshot is not None
+    monkeypatch.setattr(prefix_module, "_BURY_SCORE_SNAPSHOT", snapshot)
+
+    def unexpected(*args):
+        pytest.fail("a replacement present during snapshot creation must remain a custom callback")
+
+    monkeypatch.setattr(prefix_module, "native_arrays", unexpected)
+    _score_bury(_bury_evaluator(2, native=True))
+    assert calls == ([4, 4, 2] if method == "probabilities" else [])
+
+
 def test_bury_native_forward_error_is_not_retried(monkeypatch):
     evaluator = _bury_evaluator(2, native=True)
     calls = []

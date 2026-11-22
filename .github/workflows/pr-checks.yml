@@ -198,6 +198,7 @@ jobs:
           tests/test_bury_fly_config.py
           tests/test_ci_review_ledger_step.py
           tests/test_safe_rm.py
+          tests/test_agent_wait.py
           tests/test_pr_ship.py
           tests/test_client_server_constants.py
           tests/test_ops_dashboard.py

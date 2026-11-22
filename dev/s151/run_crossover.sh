@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run directly under env -i HOME=/Users/jeryyu PATH=/usr/bin:/bin:/usr/sbin:/sbin.
-# The release owner freezes the native hashes and the two actual predecessor
+# The release owner freezes the native hashes and the canonical seed registry and both actual predecessor
 # terminal records before reviewing the host packet.
 set -u
 for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 6; done
@@ -12,6 +12,7 @@ base=$trees/codex-s151-fd968f7f
 candidate=$trees/codex-s151-2fb1cc3f
 source_dir=$tools/dev/s151
 lib=$tools/server/scripts/lanes/lane_lib.sh
+canonical_registry=$packet/canonical-seeds.json
 registry=/Users/jeryyu/Projects/shengji/server/runs/seed_windows.json
 models=$fleet/claude-ut-gen2/models
 LANE_PY=/Users/jeryyu/Projects/shengji/server/.venv/bin/python
@@ -25,7 +26,7 @@ LANE_MIN_FREE_GIB=150
 LANE_MAX_SECONDS=3600
 LANE_WAIT_CEILING=2
 LANE_POLL=1
-LANE_FILES=("$0" "$lib" "$packet/native.sha256" "$packet/predecessors.tsv")
+LANE_FILES=("$0" "$lib" "$packet/native.sha256" "$packet/predecessors.tsv" "$canonical_registry")
 export PYTHONPATH=$tools/server
 . "$lib" || exit 6
 
@@ -60,12 +61,19 @@ check_inputs() {
     done
   done
 }
+check_seed_windows() {
+  local file
+  for file in "$canonical_registry" "$registry"; do
+    [ -f "$file" ] && "$LANE_PY" -B "$tools/server/scripts/seed_windows.py" \
+      --registry "$file" check 4301400 416 --purpose trajectory || return 1
+  done
+}
 check_slot || { echo 'host packet or predecessor mismatch' >&2; exit 6; }
 lane_arm || { echo "$LANE_MSG" >&2; exit 6; }
 # mkdir is the one-shot claim even across competing invocations.
 lane_init
 lane_lock_acquire || { echo "$LANE_MSG" >&2; lane_abort 6 "$LANE_MSG"; }
-lane_admit after-lock && check_slot && check_inputs || { echo 'admission, slot or native inputs changed' >&2; lane_abort 6 'preflight refused'; }
+lane_admit after-lock && check_slot && check_inputs && check_seed_windows || { echo 'admission, slot or native inputs changed' >&2; lane_abort 6 'preflight refused'; }
 mkdir "$root" || lane_abort 6 'capture exists or cannot be created'
 LANE_STATUS=$root/launcher.status
 LANE_LOG=$root/launcher.log

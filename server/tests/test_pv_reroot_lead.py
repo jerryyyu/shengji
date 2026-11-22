@@ -437,15 +437,15 @@ def test_a_first_trick_that_ends_the_round_is_priced_exactly_through_the_selecti
     assert fields["vp2_terminal_leaves"] == 16 * 3 and fields["vp2_reroots"] == 0
     assert np.allclose(fields["vp2_d_means"], 0.0) and fields["vp2_kept"] == [0, 1, 2]
     # a terminal value that disagrees with the captured cell is a contract error
-    bad, _ = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a]) + (1.0 if (w, a) == (3, 1) else 0.0)))
+    bad, bad_admitted = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a]) + (1.0 if (w, a) == (3, 1) else 0.0)))
     from shengji.train.pv_search_policy import PVSearchPolicyError
     with pytest.raises(PVSearchPolicyError) as err:
-        R.apply(bad, root, 0, admitted, v0.mean(axis=0), 2)
+        R.apply(bad, root, 0, bad_admitted, v0.mean(axis=0), 2)
     assert err.value.stage == "vp2_terminal_value"
     # a terminal leaf one trick too deep is still a malformed horizon
-    deep, _ = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a]), boundary=5))
+    deep, deep_admitted = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a]), boundary=5))
     with pytest.raises(PVSearchPolicyError) as err:
-        R.apply(deep, root, 0, admitted, v0.mean(axis=0), 2)
+        R.apply(deep, root, 0, deep_admitted, v0.mean(axis=0), 2)
     assert err.value.stage == "vp2_leaf_horizon"
 
 

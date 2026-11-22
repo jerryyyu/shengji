@@ -1053,10 +1053,12 @@ class Store:
           false; only that account's shown ``name``, nothing changed.
         - ``merged``: ``confirm`` was true. The account holding ``sub`` wins:
           the device account's game links (open ones closed at their game's
-          latest round) and the blocks it made move to it, then the device
-          account is deleted with its rating, rating history, credentials
-          and sessions. ``user`` (the winner, its profile refreshed) and a
-          new ``session``.
+          latest round) and every block it made or that others placed on it
+          move to it, then the device account is deleted with its rating,
+          rating history, credentials and sessions. ``user`` (the winner,
+          its profile refreshed), a new ``session``, and ``device_token``: a
+          new device credential for the winner, returned this once, which
+          the app keeps in place of the deleted one.
 
         ``profile`` holds the provider's ``email``, ``name`` and ``picture``;
         a missing value keeps the stored one."""
@@ -1080,8 +1082,14 @@ class Store:
                     conn.execute("COMMIT")
                     return {"outcome": "conflict", "name": effective_name(target) or "Player"}
                 user_id = device_id if target is None else int(target["id"])
+                device_token = None
                 if target is not None:
                     self._merge_device(conn, device_id, user_id)
+                    device_token = secrets.token_urlsafe(32)
+                    conn.execute(
+                        """INSERT INTO device_credentials(token_hash, user_id, created_at,
+                                                          last_seen_at) VALUES (?, ?, ?, ?)""",
+                        (_hash_token(device_token), user_id, t, t))
                 conn.execute(
                     f"""UPDATE users SET {column} = ?, email = COALESCE(?, email),
                             name = COALESCE(?, name), picture = COALESCE(?, picture),
@@ -1093,15 +1101,20 @@ class Store:
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
-        return {"outcome": "linked" if target is None else "merged", "user": user,
-                "session": session}
+        if target is None:
+            return {"outcome": "linked", "user": user, "session": session}
+        return {"outcome": "merged", "user": user, "session": session,
+                "device_token": device_token}
 
     @staticmethod
     def _merge_device(conn: sqlite3.Connection, device_id: int, target_id: int) -> None:
-        """Move a device account's game links and the blocks it made to
-        ``target_id``, then delete it (caller holds the transaction). A link
-        the target already has at the same game, seat and first round is
-        kept as the target's; the device's copy goes with the row."""
+        """Move a device account's game links and its blocks, both the ones
+        it made and the ones others placed on it, to ``target_id``, then
+        delete it (caller holds the transaction). A link the target already
+        has at the same game, seat and first round is kept as the target's;
+        the device's copy goes with the row. A block that would be between
+        the target and itself is dropped, and one the target already has is
+        kept once."""
         conn.execute(
             """UPDATE game_players SET to_round = (
                    SELECT g.last_round FROM games g WHERE g.id = game_players.game_id)
@@ -1112,23 +1125,35 @@ class Store:
             """INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at)
                SELECT ?, blocked_id, created_at FROM blocks
                WHERE blocker_id = ? AND blocked_id != ?""", (target_id, device_id, target_id))
+        conn.execute(
+            """INSERT OR IGNORE INTO blocks(blocker_id, blocked_id, created_at)
+               SELECT blocker_id, ?, created_at FROM blocks
+               WHERE blocked_id = ? AND blocker_id != ?""", (target_id, device_id, target_id))
         conn.execute("DELETE FROM users WHERE id = ?", (device_id,))
         conn.execute(
             """DELETE FROM games WHERE NOT EXISTS (
                    SELECT 1 FROM game_players p WHERE p.game_id = games.id)""")
 
-    def sign_out(self, session: str | None, device_token: str | None = None) -> None:
+    def sign_out(self, session: str | None, device_token: str | None = None) -> bool:
         """End a session and, when ``device_token`` is given, remove that
         device credential if it belongs to the session's account, in one
-        transaction, so the device cannot sign straight back in with it."""
+        transaction, so the device cannot sign straight back in with it.
+        Refused (False, nothing changed) when the session's account is a
+        device account with no provider: signing out would leave an account
+        nobody can reach. True otherwise, an unknown session included."""
         if not session:
-            return
+            return True
         digest = _hash_token(session)
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                row = conn.execute("SELECT user_id FROM sessions WHERE token_hash = ?",
-                                   (digest,)).fetchone()
+                row = conn.execute(
+                    """SELECT s.user_id, u.google_sub, u.apple_sub FROM sessions s
+                       JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?""",
+                    (digest,)).fetchone()
+                if row is not None and is_device_account(dict(row)):
+                    conn.execute("COMMIT")
+                    return False
                 conn.execute("DELETE FROM sessions WHERE token_hash = ?", (digest,))
                 if (row is not None and device_token
                         and re.fullmatch(r"[A-Za-z0-9_-]{20,200}", device_token)):
@@ -1139,6 +1164,7 @@ class Store:
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
+        return True
 
     def purge_device_accounts(self, now: float | None = None) -> list[int]:
         """Delete the device accounts (no provider) that have no rated round
@@ -1929,14 +1955,15 @@ async def auth_google(body: GoogleLogin, request: Request, response: Response) -
     sub, email, name, picture = _google_profile(claims)
     linked = await link_device_session(
         request, "google", sub, {"email": email, "name": name, "picture": picture}, body.confirm)
+    device_token = None
     if linked is not None:
-        user, token = linked
+        user, token, device_token = linked
     else:
         user = await STORE.run(STORE.upsert_user, claims)
         refuse_suspended(user)
         token = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, token)
-    return await account_payload(STORE, user)
+    return sign_in_payload(await account_payload(STORE, user), device_token)
 
 
 @router.get("/me")
@@ -2055,32 +2082,38 @@ async def logout(request: Request, response: Response) -> dict:
     """End the cookie's session. The app also sends its device credential
     (``Authorization: Device <token>``), which is then removed when it
     belongs to the same account, so signing out of a linked account on the
-    phone does not sign it straight back in."""
+    phone does not sign it straight back in. A device account with no
+    provider cannot sign out (409 ``{"code": "unlinked_device_account"}``,
+    the session kept): it would be left with no way back in; it can be
+    deleted instead."""
     token = request.cookies.get(COOKIE)
     try:
         device = _device_token(request)
     except HTTPException:
         device = None
-    if token:
-        await STORE.run(STORE.sign_out, token, device)
+    if token and not await STORE.run(STORE.sign_out, token, device):
+        raise HTTPException(status_code=409, detail={"code": "unlinked_device_account"})
     _clear_session_cookie(response, request)
     return {"ok": True}
 
 
 # Called on the event loop with ``(device_id, user_id)`` after a device
 # account gave way to the account ``user_id`` and was deleted
-# (``link_device_session``), and after ``USER_DELETED_HOOKS`` ran for it.
+# (``link_device_session``), before ``USER_DELETED_HOOKS`` run for it, so a
+# hook can still find the device id where it was held.
 USER_MERGED_HOOKS: list[Callable[[int, int], None]] = []
 
 
 async def link_device_session(request: Request, provider: str, sub: str,
                               profile: Mapping[str, Any],
-                              confirm: bool) -> tuple[dict, str] | None:
+                              confirm: bool) -> tuple[dict, str, str | None] | None:
     """A provider sign-in from a device account's session
-    (``Store.link_provider``). Returns ``(user, session token)`` when the
-    identity was linked in place or the device account was merged into the
-    identity's account; None when there is no device-account session (or
-    device accounts are off), so the caller signs in as usual.
+    (``Store.link_provider``). Returns ``(user, session token, device
+    token)`` when the identity was linked in place (device token None: the
+    app's credential still holds the same account) or the device account was
+    merged into the identity's account (a new credential for that account);
+    None when there is no device-account session (or device accounts are
+    off), so the caller signs in as usual.
 
     When another account holds the identity and ``confirm`` is false: 409
     with ``{"code": "account_exists", "name": <its shown name>}`` and
@@ -2112,17 +2145,23 @@ async def link_device_session(request: Request, provider: str, sub: str,
     user = outcome["user"]
     if kind == "merged":
         STORE.deleted_ids.add(device_id)
-        for hook in USER_DELETED_HOOKS:
-            try:
-                hook(device_id)
-            except Exception:       # noqa: BLE001 - the merge is stored either way
-                log.exception("account-deletion hook failed after merge")
         for merged_hook in USER_MERGED_HOOKS:
             try:
                 merged_hook(device_id, int(user["id"]))
             except Exception:       # noqa: BLE001 - the merge is stored either way
                 log.exception("account-merge hook failed")
-    return user, outcome["session"]
+        for hook in USER_DELETED_HOOKS:
+            try:
+                hook(device_id)
+            except Exception:       # noqa: BLE001 - the merge is stored either way
+                log.exception("account-deletion hook failed after merge")
+    return user, outcome["session"], outcome.get("device_token")
+
+
+def sign_in_payload(payload: dict, device_token: str | None) -> dict:
+    """The sign-in response: the account, plus ``device_token`` when a merge
+    issued the app a new device credential (returned this once)."""
+    return payload if device_token is None else {**payload, "device_token": device_token}
 
 
 def is_device_account(row: Mapping[str, Any]) -> bool:

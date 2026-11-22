@@ -112,9 +112,17 @@ def reset() -> None:
 
 
 def merged(device_id: int, user_id: int) -> None:
-    """A device account's stored blocks moved to ``user_id``: read that
-    account's list again at its next connection (``ensure_loaded`` adds to
-    what is in memory)."""
+    """A device account's blocks moved to ``user_id`` (before ``forget``
+    drops the device id): every list holding the device id holds
+    ``user_id`` too, the device's own list joins ``user_id``'s, and that
+    account's stored list is read again at its next connection
+    (``ensure_loaded`` adds to what is in memory). No account blocks itself."""
+    for viewer, listed in _lists.items():
+        if device_id in listed and viewer != user_id:
+            listed.add(user_id)
+    own = _lists.get(device_id, set()) - {user_id}
+    if own:
+        _lists.setdefault(user_id, set()).update(own)
     _loaded.discard(user_id)
 
 

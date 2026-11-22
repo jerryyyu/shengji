@@ -319,8 +319,9 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
     store = accounts.STORE
     linked = await accounts.link_device_session(
         request, "apple", str(claims["sub"]), {"email": email, "name": name}, body.confirm)
+    device_token = None
     if linked is not None:
-        user, token = linked
+        user, token, device_token = linked
     else:
         user = await store.run(store.upsert_apple_user, claims["sub"], email, name)
         accounts.refuse_suspended(user)
@@ -342,4 +343,4 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
     if token is None:
         token = await store.run(store.create_session, user["id"])
     accounts._set_session_cookie(response, request, token)   # noqa: SLF001
-    return await accounts.account_payload(store, user)
+    return accounts.sign_in_payload(await accounts.account_payload(store, user), device_token)

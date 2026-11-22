@@ -290,17 +290,57 @@ def test_a_confirmed_merge_moves_games_drops_the_device_rating_and_deletes_it(
     assert links == sorted([("a", other, 1, 1, None), ("a", target, 0, 1, 2),
                             ("b", target, 2, 1, 4), ("old", target, 0, 1, None)])
     assert sorted(g["id"] for g in store.list_games(target)) == ["a", "b", "old"]
-    assert _rows(store, "SELECT blocker_id, blocked_id FROM blocks") == [(target, other)]
+    # Both blocks move: the one it made and the one placed on it.
+    assert sorted(_rows(store, "SELECT blocker_id, blocked_id FROM blocks")) == sorted(
+        [(target, other), (other, target)])
     assert _rows(store, "SELECT COUNT(*) FROM rating_events WHERE user_id = ?", (device,)) \
         == [(0,)]
-    assert _rows(store, "SELECT COUNT(*) FROM device_credentials") == [(0,)]
+    # The device credential is gone; one new credential holds the winner.
+    new_token = resp.json()["device_token"]
+    assert len(new_token) == 43
+    assert _rows(store, "SELECT token_hash, user_id FROM device_credentials") == [
+        (linking._hash_token(new_token), target)]
     assert _rows(store, "SELECT COUNT(*) FROM sessions WHERE user_id = ?", (device,)) == [(0,)]
     # The old device session and credential are dead; the new session is Mei's.
     assert client.get("/api/me", headers={"cookie": cookie}).status_code == 401
     assert client.post("/api/auth/device",
                        headers={**APP, "authorization": f"Device {token}"}).status_code == 401
     assert client.get("/api/me", headers={"cookie": _cookie(resp)}).json()["name_shown"] == "Mei"
+    # The app swaps in the new credential and is signed in as the winner.
+    swapped = client.post("/api/auth/device",
+                          headers={**APP, "authorization": f"Device {new_token}"})
+    assert swapped.status_code == 200 and swapped.json()["user"]["name_shown"] == "Mei"
     _check_rating_ledger(store)
+
+
+def test_a_merge_never_sheds_a_block_and_never_doubles_one(linking, client, keypair):  # noqa: F811
+    from shengji.api import blocks
+
+    store = linking.STORE
+    target = _existing(store)
+    _token, cookie, _user = _device(client)
+    device = 2
+    a = store.upsert_user(_claims(sub="g-a", name="Ann Person"))["id"]
+    b = store.upsert_user(_claims(sub="g-b", name="Ben Person"))["id"]
+    store.set_block(a, device, True)
+    store.set_block(a, target, True)           # already blocks the winner: kept once
+    store.set_block(b, device, True)
+    store.set_block(target, device, True)      # would be a self-block: dropped
+    store.set_block(device, target, True)
+    blocks.reset()
+    blocks._lists.update({a: {device, target}, b: {device}, target: {device}, device: {target, b},
+                          -7: {device}})       # -7: a guest's in-memory block
+    try:
+        resp = _google(client, keypair, cookie=cookie, confirm=True, sub="g-old")
+        assert resp.status_code == 200
+        assert sorted(_rows(store, "SELECT blocker_id, blocked_id FROM blocks")) == sorted(
+            [(a, target), (b, target)])
+        assert blocks.hides(a, target) and blocks.hides(b, target) and blocks.hides(-7, target)
+        assert blocks.hides(target, b) and not blocks.hides(target, target)
+        assert all(device not in listed for listed in blocks._lists.values())
+        assert device not in blocks._lists
+    finally:
+        blocks.reset()
 
 
 def test_a_merge_detaches_the_device_from_live_seats(linking, client, keypair):  # noqa: F811
@@ -421,6 +461,20 @@ def accounts_name(row):
 
 
 # --------------------------------------------------- sign out and delete
+def test_an_unlinked_device_account_cannot_sign_out(linking, client):
+    store = linking.STORE
+    token, cookie, _user = _device(client)
+    resp = client.post("/api/auth/logout", headers={
+        "cookie": cookie, "authorization": f"Device {token}"})
+    assert resp.status_code == 409
+    assert resp.json() == {"detail": {"code": "unlinked_device_account"}}
+    assert "set-cookie" not in resp.headers
+    assert client.get("/api/me", headers={"cookie": cookie}).status_code == 200
+    assert _rows(store, "SELECT COUNT(*) FROM device_credentials") == [(1,)]
+    # Delete stays available.
+    assert client.delete("/api/me", headers={"cookie": cookie}).status_code == 204
+
+
 def test_sign_out_with_the_credential_removes_it(linking, client, keypair):  # noqa: F811
     store = linking.STORE
     token, cookie, _user = _device(client)
@@ -492,6 +546,7 @@ class Lifecycle:
         self.owner: dict[str, int] = {}              # provider sub -> account
         self.games = 0
         self.rounds = 0
+        self.signout_refusals = 0
 
     def q(self, sql, args=()):
         return self.db.execute(sql, args).fetchall()
@@ -539,6 +594,8 @@ class Lifecycle:
             "SELECT game_id FROM game_players WHERE user_id IN (?, ?)",
             (device, target if target is not None else -1))}
         users_before = self.q("SELECT * FROM users ORDER BY id")
+        blockers_of_device = {r[0] for r in self.q(
+            "SELECT blocker_id FROM blocks WHERE blocked_id = ?", (device,))}
         out = self.store.link_provider(device, provider, sub, {"name": f"Person {sub}"}, confirm)
         if target is None:
             assert out["outcome"] == "linked"
@@ -560,8 +617,12 @@ class Lifecycle:
             games_after = {r[0] for r in self.q(
                 "SELECT game_id FROM game_players WHERE user_id = ?", (target,))}
             assert games_after == games_before
+            blockers_after = {r[0] for r in self.q(
+                "SELECT blocker_id FROM blocks WHERE blocked_id = ?", (target,))}
+            assert blockers_of_device - {target} <= blockers_after
             self.forget(device)
             self.sessions[out["session"]] = target
+            self.credentials[out["device_token"]] = target
 
     def sign_out(self):
         if not self.sessions:
@@ -570,7 +631,13 @@ class Lifecycle:
         uid = self.sessions.pop(session)
         mine = [t for t, u in self.credentials.items() if u == uid]
         token = self.rng.choice(mine) if mine and self.rng.random() < 0.5 else None
-        self.store.sign_out(session, token)
+        unlinked = self.q("SELECT 1 FROM users WHERE id = ? AND google_sub IS NULL "
+                          "AND apple_sub IS NULL", (uid,)) != []
+        assert self.store.sign_out(session, token) is not unlinked
+        if unlinked:
+            self.sessions[session] = uid           # refused: nothing changed
+            self.signout_refusals += 1
+            return
         if token is not None:
             del self.credentials[token]
         assert self.store.session_user(session) is None
@@ -673,7 +740,7 @@ def test_the_account_lifecycle_keeps_its_invariants(linking):
     and without confirm, sign out, delete, rated rounds, blocks and
     re-authentication, each on an emptied store, checked after every step."""
     store = linking.STORE
-    totals = {"links": 0, "merges": 0, "conflicts": 0, "rounds": 0}
+    totals = {"links": 0, "merges": 0, "conflicts": 0, "rounds": 0, "signout_refusals": 0}
     real = store.link_provider
 
     def counted(*args, **kwargs):
@@ -698,6 +765,7 @@ def test_the_account_lifecycle_keeps_its_invariants(linking):
         except AssertionError as exc:
             raise AssertionError(f"sequence {i} (seed {SEED + i}) broke an invariant") from exc
         totals["rounds"] += life.rounds
+        totals["signout_refusals"] += life.signout_refusals
     db.close()
     # The sequences reached every path, so a pass is not vacuous.
     assert min(totals.values()) > SEQUENCES // 20, totals

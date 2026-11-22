@@ -1,4 +1,6 @@
+/// <reference types="node" />
 import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { keychainAvailable, keychainGet, keychainRemove, keychainSet } from "./keychain";
 
 type Calls = [string, string, unknown][];
@@ -91,5 +93,11 @@ describe("keychain", () => {
 
   it("refuses an empty value", async () => {
     await expect(keychainSet("")).rejects.toThrow();
+  });
+
+  it("ships with Capacitor's bridge logging off, so no call payload reaches a log", () => {
+    const config = readFileSync(`${import.meta.dirname}/../capacitor.config.ts`, "utf8");
+    expect(config).toMatch(/^  loggingBehavior: "none",$/m);
+    expect(config).not.toMatch(/^\s+loggingBehavior:(?! "none")/m);
   });
 });

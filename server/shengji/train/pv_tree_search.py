@@ -142,6 +142,8 @@ import time
 from collections import Counter
 from itertools import islice
 
+from functools import partial
+
 import numpy as np
 
 from ..ai.cwv_policy import afterstate, child_position, default_finisher, finish_current_trick
@@ -442,6 +444,18 @@ class LazyScoring:
         return slot.dense @ row
 
 
+def _top_replies(scoring, row, keep):
+    if (type(scoring) is LazyScoring and scoring.native and not scoring.replies.leads
+            and row.flags.c_contiguous and 1 <= keep <= 4):
+        rank = getattr(pv_native._pv_fast, "top_short_follows", None)
+        if rank is not None:
+            replies = scoring.replies
+            order = rank(replies.cards, replies.offsets, row, keep)
+            if order is not None:
+                return order
+    return np.argsort(-(scoring @ row), kind="stable")[:keep]
+
+
 def legal_replies_compact(bot, clone, seat, cache, slot, native=False):
     """`legal_replies` with the listing held as `CompactReplies` and the
     scoring as `LazyScoring`: the same actions in the same order, the same
@@ -639,22 +653,35 @@ def team_values(bot, leaves, seat, gate=None, prefix=None):
     With ``prefix`` (a `pv_encode_prefix.HistoryPrefix` of the decision root)
     each batch is encoded on it (`pv_encode_prefix.score_leaves`: the
     reference's tensors, rows, forward pass and counters)."""
-    if prefix is not None:
+    if prefix is None:
+        score = bot.evaluator.score
+    else:
         from .pv_encode_prefix import score_leaves
+
+        def score(chunk, seat):
+            return score_leaves(bot.evaluator, chunk, seat, prefix)
+    return value_batches(leaves, seat, bot.batch_size, gate, score)
+
+
+def value_batches(leaves, seat, batch_size, gate, score):
+    """Score each search batch under its budget, requiring one finite value per input."""
     values = np.empty(len(leaves), dtype=np.float64)
     batches = 0
-    for start in range(0, len(leaves), bot.batch_size):
+    for start in range(0, len(leaves), batch_size):
         if gate is not None:
             gate()
-        chunk = leaves[start:start + bot.batch_size]
-        scores = bot.evaluator.score(chunk, seat) if prefix is None \
-            else score_leaves(bot.evaluator, chunk, seat, prefix)
+        chunk = leaves[start:start + batch_size]
+        scores = score(chunk, seat)
         scores = np.asarray(scores, dtype=np.float64)
         if scores.shape != (len(chunk),) or not np.isfinite(scores).all():
             raise ValueError("value evaluator requires one finite root-team score per leaf")
         values[start:start + len(chunk)] = scores
         batches += 1
     return values, batches
+
+
+_STANDARD_TEAM_VALUES = team_values
+_STANDARD_REPLY_CHILDREN = reply_children_fast
 
 
 def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn,
@@ -704,7 +731,7 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
             raise ValueError("policy requires finite rows x 54 log-odds")
         for row, (index, legal, scoring) in zip(logits, pending[start:start + bot.batch_size]):
             # the policy's top-R follows; a stable sort keeps enumeration order on ties
-            order = np.argsort(-(scoring @ row), kind="stable")[:keep]
+            order = _top_replies(scoring, row, keep)
             candidates = [list(legal[int(i)]) for i in order]
             follow = sorted(heuristic.decide_play(active[index], seat))
             if follow not in candidates:
@@ -808,8 +835,7 @@ def greedy_finish_current_trick(bot, clones, target, gate, keep, version, stats=
         if compact:
             cache, slot = {}, _DenseSlot()
         greedy_reply_ply(bot, active, ply_gate, cache, stats, keep, version, legal_fn,
-                         lambda leaves, seat, gate_=None: team_values(bot, leaves, seat, gate_,
-                                                                      prefix),
+                         partial(team_values, bot, prefix=prefix),
                          rows_fn, guard, child_fn,
                          **({'children_fn': children_fn} if children_fn is not None else {}))
         active = [c for c in active if trick_open(c, target)]

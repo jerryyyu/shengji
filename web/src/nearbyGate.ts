@@ -131,10 +131,11 @@ export function useNearbyHostLeft(): boolean {
   return useSyncExternalStore(m ? m.nearbyJoin.subscribe : noSubscribe, get, get);
 }
 
-/** The device test's log pane, in a Debug build for the device test only. */
+/** The device test's log pane, in a Debug build for the device test only;
+ *  in the Beta (`chaos` and `logFile`), a running soak's controls only. */
 export function NearbyDebugMount() {
   const m = useNearbyUi();
-  return m && gate.debug ? createElement(m.NearbyDebugPane) : null;
+  return m && (gate.debug || (gate.chaos && gate.logFile)) ? createElement(m.NearbyDebugPane, { soak: gate.chaos && gate.logFile }) : null;
 }
 
 /** Tests: answer the gate with `c` (null: no plugin) and load the UI with

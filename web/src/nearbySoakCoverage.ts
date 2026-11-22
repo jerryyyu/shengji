@@ -30,7 +30,7 @@ export const FLOWS: readonly { name: string; test: (l: Line) => boolean }[] = [
   { name: "menu", test: (l) => l.from === "soak" && l.text.startsWith("flow: menu ") && !l.text.includes("failed") },
   {
     name: "background/reload",
-    test: (l) => l.from === "soak" && (/^chaos: (bgfake|jsfreeze|reload)/.test(l.text) || l.text === "page hidden" || l.text === "flow: reload resumed"),
+    test: (l) => l.from === "soak" && (/^chaos: (bgfake|hostend|jsfreeze|reload)/.test(l.text) || l.text === "page hidden" || l.text === "flow: reload resumed"),
   },
 ];
 

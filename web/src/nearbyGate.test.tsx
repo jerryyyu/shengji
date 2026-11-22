@@ -44,7 +44,7 @@ vi.mock("./nearbyUi", async (orig) => {
 import Lobby from "./components/Lobby";
 import HudMenu from "./components/HudMenu";
 import { OfflineControls } from "./components/OfflinePlay";
-import { nearbyGate, resetNearbyGateForTests, type NearbyUi } from "./nearbyGate";
+import { NearbyDebugMount, nearbyGate, resetNearbyGateForTests, type NearbyUi } from "./nearbyGate";
 import { nearbySoakSwitchTap, resetNearbyDebugForTests, SWITCH_TAPS, SWITCH_WINDOW_MS } from "./nearbyDebug";
 import { detachNearbyLogFile, forgetNativeLogForTests } from "./nearbyLog";
 import { nearbyLogUploadOn, stopNearbyLogUploadForTests } from "./nearbyLogUpload";
@@ -332,5 +332,102 @@ describe("nearby play's run-time gate", () => {
     expect(on()).toBe("1");
     for (let i = 0; i < SWITCH_TAPS; i++) nearbySoakSwitchTap(true, t1 + 10_000 + i * 500);
     expect(on()).toBe("0");
+  });
+
+});
+
+const SOAK_KEY = "shengji.nearbySoak.v1";
+
+/** The Play page with the app's one debug mount, as main.tsx draws them. */
+async function renderPlay() {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => root.render(<><div className="online"><Lobby status="open" /></div><NearbyDebugMount /></>));
+  await settle();
+  await act(async () => { await loading; });
+  await settle();
+  const pill = () => host.querySelector<HTMLButtonElement>(".nearby-soak-pill");
+  const button = (label: string) => Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((b) => b.textContent === label) ?? null;
+  return { host, pill, button, unmount: () => { act(() => root.unmount()); host.remove(); } };
+}
+
+describe("the soak's controls off the table", () => {
+  it("the Beta with a soak running: a pill on the Play page opens Autoplay, Chaos and Stop soak; Stop soak ends it for good", async () => {
+    native.available = true;
+    localStorage.setItem(SWITCH_KEY, "1");
+    localStorage.setItem(SOAK_KEY, JSON.stringify({ autoplay: true, chaos: false, code: null }));
+    resetNearbyDebugForTests();
+    const { p } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true });
+    native.plugin = p;
+    resetNearbyGateForTests(loader);
+    const v = await renderPlay();
+    await waitFor(() => v.pill() !== null);
+    expect(v.pill()!.textContent).toBe("Autoplay");
+    act(() => v.pill()!.click());
+    await settle();
+    for (const label of ["Autoplay", "Chaos", "Stop soak"]) expect(v.button(label), label).not.toBeNull();
+    expect(v.button("Autoplay")!.getAttribute("aria-checked")).toBe("true");
+    expect(v.button("Chaos")!.getAttribute("aria-checked")).toBe("false");
+    act(() => v.button("Stop soak")!.click());
+    await settle();
+    const soak = await import("./nearbySoak");
+    expect(soak.soakState()).toEqual({ autoplay: false, chaos: false });
+    // a relaunch finds nothing to resume
+    expect(localStorage.getItem(SOAK_KEY)).toBeNull();
+    expect(v.pill()).toBeNull();
+    expect(v.button("Stop soak")).toBeNull();
+    v.unmount();
+  });
+
+  it("the Beta with no soak running: no pill, and the soak's module is never loaded for it", async () => {
+    native.available = true;
+    localStorage.setItem(SWITCH_KEY, "1");
+    resetNearbyDebugForTests();
+    const { p } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true });
+    native.plugin = p;
+    resetNearbyGateForTests(loader);
+    const v = await renderPlay();
+    await waitFor(nearbyLogUploadOn);
+    for (let i = 0; i < 5; i++) await settle();
+    expect(v.pill()).toBeNull();
+    expect(v.button("Stop soak")).toBeNull();
+    v.unmount();
+  });
+
+  it("an App Store binary (no plugin, or no chaos and no debug): no pill even with a soak kept", async () => {
+    localStorage.setItem(SOAK_KEY, JSON.stringify({ autoplay: true, chaos: true, code: null }));
+    for (const caps of [null, { reviewed: true, beta: false, debug: false, logFile: false, chaos: false }]) {
+      native.available = caps !== null;
+      native.plugin = caps ? fakePlugin(caps).p : null;
+      resetNearbyDebugForTests();
+      resetNearbyGateForTests(loader);
+      const v = await renderPlay();
+      for (let i = 0; i < 5; i++) await settle();
+      expect(v.pill()).toBeNull();
+      expect(v.button("Stop soak")).toBeNull();
+      v.unmount();
+    }
+  });
+
+  it("the device test: the Log pane carries the same three controls while a soak runs", async () => {
+    native.available = true;
+    localStorage.setItem(SOAK_KEY, JSON.stringify({ autoplay: true, chaos: false, code: null }));
+    resetNearbyDebugForTests();
+    const { p } = fakePlugin({ debug: true, logFile: true, chaos: true });
+    native.plugin = p;
+    resetNearbyGateForTests(loader);
+    const v = await renderPlay();
+    const logTab = () => Array.from(v.host.querySelectorAll<HTMLButtonElement>("button")).find((b) => /^Log \d+$/.test(b.textContent ?? ""));
+    await waitFor(() => logTab() !== undefined);
+    expect(v.pill()).toBeNull();
+    act(() => logTab()!.click());
+    await waitFor(() => v.button("Stop soak") !== null);
+    for (const label of ["Autoplay", "Chaos", "Stop soak", "Copy", "Close"]) expect(v.button(label), label).not.toBeNull();
+    act(() => v.button("Stop soak")!.click());
+    await settle();
+    expect(localStorage.getItem(SOAK_KEY)).toBeNull();
+    expect(v.button("Stop soak")).toBeNull();
+    v.unmount();
   });
 });

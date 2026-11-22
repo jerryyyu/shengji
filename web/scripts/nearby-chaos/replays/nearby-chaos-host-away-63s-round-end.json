@@ -1,0 +1,23 @@
+{
+  "seed": 6,
+  "bugs": [],
+  "seconds": 360,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 20,
+      "kind": "bg",
+      "who": "H",
+      "dur": 63,
+      "arg": 0,
+      "phase": "round_end",
+      "offset": 0.6
+    }
+  ],
+  "invariant": "the host away 63 s at a round's end (the Beta 10.2 soak's bgfake): its table ends, and every joiner shows the host left",
+  "page": "sim",
+  "gaps": "off",
+  "wholeApp": true,
+  "phaseTargeted": true
+}

@@ -1,7 +1,9 @@
 // The device-test log file's upload: in the device-test build only (the
 // plugin's debug and logFile capabilities, the same gating as the file), the
 // bytes of the file not yet sent go to the
-// server every TICK_MS, when the app goes to the background, and on the ⋯
+// server FIRST_TICK_MS after the page's start and then every TICK_MS (a
+// joiner's soak reloads its page every few minutes, so a page may never live
+// a whole TICK_MS), when the app goes to the background, and on the ⋯
 // menu's Upload log now. Whole lines only, at most CHUNK_MAX per request and
 // TICK_MAX per tick; the uploaded offset is kept per file in localStorage, so
 // a byte is never sent twice, and a roll or a Clear starts the new file at 0.
@@ -16,6 +18,7 @@ export const UPLOAD_URL = "https://shengji.fly.dev/api/nearby-log";
 export const CHUNK_MAX = 1_000_000;
 export const TICK_MAX = 5_000_000;
 export const TICK_MS = 10 * 60 * 1000;
+export const FIRST_TICK_MS = 60 * 1000;
 export const TIMEOUT_MS = 20_000;
 const CHUNK_MIN = 4096;
 const STATE_KEY = "shengji.nearbyLogUpload.v1";
@@ -216,6 +219,7 @@ function advance(gen: number, which: "current" | "old", fileBytes: number, strea
 
 let started = false;
 let interval: ReturnType<typeof setInterval> | null = null;
+let first: ReturnType<typeof setTimeout> | null = null;
 let offReset: () => void = () => {};
 let onHide: (() => void) | null = null;
 
@@ -225,7 +229,11 @@ export function startNearbyLogUpload(): boolean {
   if (started) return false;
   started = true;
   offReset = onNearbyLogFileReset(onReset);
-  interval = setInterval(() => { void uploadNearbyLogNow(); }, TICK_MS);
+  first = setTimeout(() => {
+    first = null;
+    void uploadNearbyLogNow();
+    interval = setInterval(() => { void uploadNearbyLogNow(); }, TICK_MS);
+  }, FIRST_TICK_MS);
   if (typeof document !== "undefined") {
     onHide = () => { if (document.visibilityState === "hidden") void uploadNearbyLogNow(); };
     document.addEventListener("visibilitychange", onHide);
@@ -245,6 +253,7 @@ export function stopNearbyLogUploadForTests(): void {
   offReset();
   offReset = () => {};
   if (interval !== null) { clearInterval(interval); interval = null; }
+  if (first !== null) { clearTimeout(first); first = null; }
   if (onHide && typeof document !== "undefined") document.removeEventListener("visibilitychange", onHide);
   onHide = null;
 }

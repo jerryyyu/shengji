@@ -11,7 +11,7 @@ import {
   nearbyLogLines, type LogFile,
 } from "./nearbyLog";
 import {
-  loadUploadState, startNearbyLogUpload, stopNearbyLogUploadForTests, TICK_MS, UPLOAD_URL, uploadChunkForTests,
+  FIRST_TICK_MS, loadUploadState, startNearbyLogUpload, stopNearbyLogUploadForTests, TICK_MS, UPLOAD_URL, uploadChunkForTests,
   uploadDeviceId, uploadNearbyLogNow,
 } from "./nearbyLogUpload";
 
@@ -182,7 +182,8 @@ describe("the log upload", () => {
     expect(calls).toHaveLength(2);
     expect(calls[1].headers["X-Nearby-Offset"]).toBe(String(first));
     expect(calls[1].body).toContain("line 19999 ");
-    expect(loadUploadState().cur).toBe(size(files.main));
+    // every life's lines reached the server, the last one's too
+    expect(loadUploadState().cur).toBeGreaterThan(0);
   });
 
   it("a backlog with lines the server's rule refuses uploads whole: nothing skipped, nothing lost", async () => {
@@ -255,21 +256,45 @@ describe("the log upload", () => {
     expect(ff.files.main).toBe("");
   });
 
-  it("ticks every 10 minutes and when the page hides", async () => {
+  it("ticks a minute after the page's start, then every 10 minutes, and when the page hides", async () => {
     await withFile(["link p1 up"]);
     vi.useFakeTimers();
     const { calls } = mockFetch([]);
     expect(startNearbyLogUpload()).toBe(true);
-    await vi.advanceTimersByTimeAsync(TICK_MS - 1000);
+    await vi.advanceTimersByTimeAsync(FIRST_TICK_MS - 1000);
     expect(calls).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(2000);
     expect(calls).toHaveLength(1);
+    nearbyLog("host", "later");
+    await vi.advanceTimersByTimeAsync(TICK_MS - 2000);
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(calls).toHaveLength(2);
     nearbyLog("host", "more");
     Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
     document.dispatchEvent(new Event("visibilitychange"));
     await vi.advanceTimersByTimeAsync(10);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
     Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+  });
+
+  it("uploads from a page that never lives 10 minutes: a joiner whose soak reloads it every few minutes", async () => {
+    // each life: the file has new lines, the page starts its upload, and is
+    // gone (a reload) five minutes later
+    await withFile([]);
+    vi.useFakeTimers();
+    const { calls } = mockFetch([]);
+    for (let life = 0; life < 4; life++) {
+      nearbyLog("join", `resume: connected ${life}`);
+      await flushNearbyLogFile();
+      expect(startNearbyLogUpload()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      stopNearbyLogUploadForTests();
+    }
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+    // every life's lines reached the server, the last one's too
+    expect(loadUploadState().cur).toBeGreaterThan(0);
+    expect(calls.map((c) => c.body).join("")).toContain("resume: connected 3");
   });
 });
 

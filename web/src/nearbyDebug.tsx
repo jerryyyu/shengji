@@ -23,7 +23,7 @@ export { clearNearbyLogFile, nearbyLogFileOn };
 
 interface DebugPlugin {
   capabilities(): Promise<{ debug?: unknown; logFile?: unknown }>;
-  addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<unknown>;
+  addListener(event: "debugLog", fn: (ev: { text: string }) => void): unknown;
 }
 
 let checked: Promise<DebugPlugin | null> | null = null;

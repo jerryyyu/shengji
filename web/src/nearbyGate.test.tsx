@@ -45,18 +45,21 @@ import HudMenu from "./components/HudMenu";
 import { OfflineControls } from "./components/OfflinePlay";
 import { nearbyGate, resetNearbyGateForTests, type NearbyUi } from "./nearbyGate";
 import { nearbySoakSwitchTap, resetNearbyDebugForTests, SWITCH_TAPS, SWITCH_WINDOW_MS } from "./nearbyDebug";
-import { detachNearbyLogFile } from "./nearbyLog";
+import { detachNearbyLogFile, forgetNativeLogForTests } from "./nearbyLog";
 import { stopNearbyLogUploadForTests } from "./nearbyLogUpload";
 
-/** A plugin that answers `capabilities()` with `caps` and records every call. */
-function fakePlugin(caps: Record<string, unknown>) {
+/** A plugin that answers `capabilities()` with `caps` and records every call.
+ *  With `bridge`, `addListener` returns what the app's Capacitor bridge
+ *  (native-bridge.js on iOS) returns: a plain `{ remove }`, not a promise. */
+function fakePlugin(caps: Record<string, unknown>, { bridge = false } = {}) {
   const calls: string[] = [];
   const record = (name: string, value: unknown = undefined) => async () => { calls.push(name); return value; };
+  const listen = () => { calls.push("addListener"); listeners.n += 1; return { remove: () => {} }; };
   return {
     calls,
     p: {
       capabilities: record("capabilities", caps),
-      addListener: async () => { calls.push("addListener"); listeners.n += 1; return { remove: () => {} }; },
+      addListener: bridge ? listen : async () => listen(),
       host: record("host"), join: record("join"), send: record("send"), close: record("close"), stop: record("stop"),
       openSettings: record("openSettings"),
       debugLogFile: async (o: { op: string }) => { calls.push(`debugLogFile:${o.op}`); return { size: 0, text: "" }; },
@@ -129,6 +132,7 @@ beforeAll(() => {
 afterEach(() => {
   stopNearbyLogUploadForTests();
   detachNearbyLogFile();
+  forgetNativeLogForTests();
   localStorage.clear();
   resetNearbyDebugForTests();
   resetNearbyGateForTests();
@@ -248,6 +252,19 @@ describe("nearby play's run-time gate", () => {
     for (const r of [...LOG_ROWS, ...HIDDEN_ROWS]) expect(v.rows()).toContain(r);
     expect(v.rows()).not.toContain("AWDL keepalive");
     expect(localStorage.getItem(SWITCH_KEY)).toBe("1");
+    v.unmount();
+  });
+
+  it("the Beta on the app's bridge (addListener returns no promise): the log file on and its rows", async () => {
+    native.available = true;
+    const { p, calls } = fakePlugin({ reviewed: false, beta: true, debug: false, logFile: true, chaos: true }, { bridge: true });
+    native.plugin = p;
+    loads = 0;
+    resetNearbyGateForTests(loader);
+    const v = await renderAll();
+    await waitForRow(v, "Upload log now");
+    expect(calls).toContain("debugLogFile:size");
+    for (const r of LOG_ROWS) expect(v.rows()).toContain(r);
     v.unmount();
   });
 

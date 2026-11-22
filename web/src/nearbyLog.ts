@@ -45,7 +45,9 @@ export function subscribeNearbyLog(fn: () => void): () => void {
   return () => { listeners.delete(fn); };
 }
 
-const lineText = (l: LogLine): string => `${(l.t / 1000).toFixed(3)} ${l.from} ${l.text}`;
+// one record per line: a newline inside a line's text (a stack, a native
+// error's description) is written as the two characters \n
+const lineText = (l: LogLine): string => `${(l.t / 1000).toFixed(3)} ${l.from} ${l.text.replace(/\r\n|\r|\n/g, "\\n")}`;
 
 export function nearbyLogText(): string {
   return snapshot.map(lineText).join("\n");
@@ -179,7 +181,7 @@ export function attachNearbyLogFile(f: LogFile, opts: { cap?: number } = {}): Pr
   file = f;
   cap = opts.cap ?? LOG_FILE_CAP;
   failures = 0;
-  pending.push(`--- log file attached ${new Date().toISOString()} at page time ${(now() / 1000).toFixed(3)} ---`);
+  pending.push(`${(now() / 1000).toFixed(3)} log --- log file attached ${new Date().toISOString()} ---`);
   pending.push(...snapshot.map(lineText));
   if (!hideListening && typeof document !== "undefined") {
     hideListening = true;

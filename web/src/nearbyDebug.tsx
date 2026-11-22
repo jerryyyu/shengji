@@ -6,10 +6,12 @@
 // did. Wherever the plugin reports `logFile` (the device test and the Beta),
 // the log file (nearbyLog.ts) is always on from the page's start, its new
 // bytes go to the server (nearbyLogUpload.ts), and the nearby table's ⋯ menu
-// has Copy log, Clear log file and Upload log now. The soak's Autoplay, Chaos
-// and summary rows show in the device test, and in the Beta (`chaos`) only
-// once the hidden switch is on: five taps on the ⋯ menu's table code within
-// SWITCH_WINDOW_MS, five more to turn it off, kept in localStorage. A soak
+// has Copy log, Clear log file and Upload log now, with the soak's Autoplay,
+// Chaos and summary. Those rows show in the device test, and in the Beta
+// (`chaos`) only once the hidden switch is on: five taps on the ⋯ menu's
+// table code within SWITCH_WINDOW_MS, five more to turn it off, kept in
+// localStorage; a dot after the code marks it on. The file and its upload
+// run with the switch off as well. A soak
 // left on (its switches kept by nearbySoak.ts) resumes at the page's start,
 // so a reload keeps it going.
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from "react";
@@ -94,7 +96,7 @@ export function useNearbyLogFile(ask: boolean): boolean {
   return ask && on;
 }
 
-// The hidden switch for the soak's Autoplay and Chaos rows, where the plugin
+// The hidden switch for the ⋯ menu's log and soak rows, where the plugin
 // reports `chaos` without `debug` (the Beta).
 export const SWITCH_TAPS = 5;
 export const SWITCH_WINDOW_MS = 3000;
@@ -114,6 +116,8 @@ const subscribeSwitch = (fn: () => void): (() => void) => {
   return () => { switchListeners.delete(fn); };
 };
 const switchSnapshot = (): boolean => switchOn;
+
+export { subscribeSwitch as subscribeNearbySoakSwitch, switchSnapshot as nearbySoakSwitchOn };
 
 /** Whether the hidden switch is on. */
 export function useNearbySoakSwitch(): boolean {

@@ -6,7 +6,7 @@ import { COPIED_MS, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
-import { useNearbyUi } from "../nearbyGate";
+import { useNearbySoakMarker, useNearbyUi } from "../nearbyGate";
 import { tapHandlers } from "../tap";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
@@ -101,6 +101,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   const showCode = !offline || nearby;
   // the soak's rows and the code's hidden-switch taps (nearbyUi.tsx), at a nearby table only
   const nb = useNearbyUi();
+  // the Beta's hidden switch, marked by a dot after a nearby table's code
+  const soakOn = useNearbySoakMarker() && nearby;
 
   return (
     <div className="hud-more" ref={rootRef}>
@@ -133,7 +135,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode}</div> : null}
           {showCode ? (
             <div className="hud-menu-code" role="none">
-              <span className="hud-menu-code-text" aria-label={`Table code ${room.split("").join(" ")}`}
+              <span className={`hud-menu-code-text${soakOn ? " soak-on" : ""}`}
+                    aria-label={`Table code ${room.split("").join(" ")}${soakOn ? ", soak tools on" : ""}`}
                     {...(nearby && nb ? tapHandlers(nb.nearbyMenuTitleTap) : {})}>{room}</span>
               {offline ? null : (
                 <button className="hud-menu-row hud-menu-invite" role="menuitem" {...tapHandlers(invite)}>

@@ -4,9 +4,10 @@
 //     lines, which name all four, and how each was picked);
 //   - each app flow (from the driver's "flow: ..." lines and the soak's page
 //     lines): how often it was walked, and how often with a fault running;
-//   - the page's health: event-loop lag, the host's ping service time, away
-//     marks, takeovers, seat changes, declares sent and shown, the seat's
-//     cover after a person's link went, bot fallbacks, the largest frame,
+//   - the page's health: event-loop lag, the spans the page was suspended
+//     (hidden), the host's ping service time, away marks, takeovers, seat
+//     changes, declares sent and shown, the seat's cover after a person's
+//     link went, bot fallbacks (from the game's lines), the largest frame,
 //     refusals by reason, the most seats down at once, the phone's thermal
 //     state, Low Power and memory (the plugin's HEALTH lines), the log
 //     upload's backlog, driver stalls.
@@ -56,6 +57,8 @@ export class Coverage {
   byTrigger = new Map<string, number>();
   flows = new Map<string, { n: number; faulted: number }>();
   lags: number[] = [];
+  /** The lag sampler's late ticks with the page hidden since the last one. */
+  suspends: number[] = [];
   pongMs: number[] = [];
   away = 0;
   takeovers = 0;
@@ -102,7 +105,8 @@ export class Coverage {
     if (l.from === "soak" && l.text.startsWith("flow: declare")) this.declaresSent += 1;
     const ref = /^REFUSED (\S+)/.exec(l.text);
     if (ref) this.bump(ref[1]);
-    if (/fallback|bot timed? ?out/i.test(l.text)) this.botFallbacks += 1;
+    // the soak's own lines (its summary names the count) are not fallbacks
+    if (l.from !== "soak" && /fallback|bot timed? ?out/i.test(l.text)) this.botFallbacks += 1;
     const ping = /^in ping from (\S+)/.exec(l.text);
     if (l.from === "host" && ping) this.pings.set(ping[1], l.t);
     const pong = /^out pong to (\S+)/.exec(l.text);
@@ -160,10 +164,26 @@ export class Coverage {
     this.peakDown = Math.max(this.peakDown, down);
   }
 
+  /** The lag sampler's tick came `ms` late; `hidden`: the page was hidden
+   *  at some point since its last tick, so the span is the page suspended,
+   *  not its event loop's lag. */
+  loop(ms: number, hidden: boolean): void {
+    if (!hidden) {
+      this.lag(ms);
+      return;
+    }
+    this.suspends.push(ms);
+    if (this.suspends.length > 20_000) this.suspends.splice(0, 10_000);
+  }
+
   /** The page's event loop ran `ms` late. */
   lag(ms: number): void {
     this.lags.push(ms);
     if (this.lags.length > 20_000) this.lags.splice(0, 10_000);
+  }
+
+  private suspendedText(): string {
+    return this.suspends.length ? `n=${this.suspends.length} max ${(Math.max(...this.suspends) / 1000).toFixed(1)} s` : "n=0";
   }
 
   /** The table, a few lines. */
@@ -181,7 +201,7 @@ export class Coverage {
       `coverage faults (kind/phase/role/link): ${faults.join(", ") || "none"}`,
       `coverage faults by phase: ${[...byPhase.entries()].map(([k, v]) => `${k} ${v}`).join(", ") || "none"}; aimed by trigger: ${[...this.byTrigger.entries()].map(([k, v]) => `${k} ${v}`).join(", ") || "none"}`,
       `coverage flows (walked/with a fault): ${flows.join(", ")}`,
-      `coverage health: loop lag ${s(this.lags)}, host pong service ${s(this.pongMs)}, away marks ${this.away}, takeovers ${this.takeovers}, ` +
+      `coverage health: loop lag ${s(this.lags)}, suspended ${this.suspendedText()}, host pong service ${s(this.pongMs)}, away marks ${this.away}, takeovers ${this.takeovers}, ` +
         `seat changes ${this.seatChanges}, declares sent ${this.declaresSent} shown ${this.declaresShown}, seat cover after a drop ${s(this.coverMs)}, ` +
         `bot fallbacks ${this.botFallbacks}, max frame ${this.maxFrame} B, refused ${refused}, peak seats down ${this.peakDown}, ` +
         `thermal ${this.health.thermal} (worst ${this.health.worstThermal}), low power ${this.health.lowPower}, mem ${this.health.memMb} MB (max ${this.health.maxMemMb}), ` +

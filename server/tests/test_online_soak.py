@@ -211,7 +211,8 @@ def _bare_soak(tmp_path, **floors) -> "soak.Soak":
     s = soak.Soak.__new__(soak.Soak)
     s.args = argparse.Namespace(host="127.0.0.1", shared_client_ip=False, min_rooms=floors.get("rooms", 3),
                                 min_rounds=floors.get("rounds", 10), min_recoveries=floors.get("recoveries", 20),
-                                min_resolved_share=floors.get("share", 0.8))
+                                min_resolved_share=floors.get("share", 0.8), min_faults=floors.get("faults", 0))
+    s.rounds_logged = 0
     s.scale, s.clients, s.tmp = 4.0, [], tmp_path
     s.ledger, s.plays = audit.FaultLedger(), audit.PlayAudit()
     s.strikes, s.stuck, s.double, s.socket_faults, s.writer_errors = [], [], [], [], []
@@ -251,6 +252,40 @@ def test_a_covered_clean_run_passes(tmp_path):
     rec = s.ledger.open("drop", "Soak-1", 0.0)
     audit.FaultLedger.close(rec, "recovered", secs=0.4)
     assert s.report(60.0)["verdict"]["status"] == "PASS"
+
+
+def test_round_floor_counts_only_successfully_logged_round_end_events(tmp_path):
+    from shengji.api import server
+
+    class Room(server.Room):
+        pass
+
+    s = _bare_soak(tmp_path, rounds=2)
+    s.progress = {}
+    s.srv = SimpleNamespace(Room=Room, handle_action=server.handle_action,
+                            _count_timeout=server._count_timeout, _sync_move_timer=server._sync_move_timer)
+    s._hook()
+    room = Room(code="SOAK", bot=object(), log_dir=tmp_path)
+    assert room.log_event("round_end") == 0
+    room.log_event("chat", seat=0, text="round_end")
+    room.log_event("play_refused", seat=0, phase="round_end")
+    assert s.report(1, brief=True)["rounds_logged"] == 1
+    room.log_dir = tmp_path / "SOAK.jsonl"
+    assert room.log_event("round_end") is None
+    assert "rounds" in s.report(1)["verdict"]["under_floor"]
+    room.log_dir = tmp_path
+    room.log_event("round_end")
+    assert "rounds" not in s.report(1)["verdict"]["under_floor"]
+
+
+def test_fault_floor_includes_censored_injections(tmp_path):
+    s = _bare_soak(tmp_path, rooms=0, rounds=0, recoveries=1, share=0.5, faults=2)
+    fault = s.ledger.open("drop", "Soak-1", 0)
+    audit.FaultLedger.close(fault, "recovered", secs=1.0)
+    assert s.report(1)["verdict"]["under_floor"] == ["faults"]
+    s.ledger.open("stall", "Soak-1", 2)
+    s.ledger.censor_open("shutdown")
+    assert s.report(3)["verdict"]["status"] == "PASS"
 
 
 def test_a_fault_closes_once():

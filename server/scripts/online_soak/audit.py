@@ -205,6 +205,7 @@ class Floors:
     rounds: int = 10
     recoveries: int = 20
     resolved_share: float = 0.8
+    faults: int = 0
 
 
 def verdict(out: dict, floors: Floors) -> dict:
@@ -235,6 +236,7 @@ def verdict(out: dict, floors: Floors) -> dict:
     for name, ok in (
         ("rooms", out.get("rooms", 0) >= floors.rooms),
         ("rounds", out.get("rounds_logged", 0) >= floors.rounds),
+        ("faults", faults.get("total", 0) >= floors.faults),
         ("recoveries", rec.get("n", 0) >= floors.recoveries),
         ("resolved_share", share is not None and share >= floors.resolved_share),
     ):
@@ -243,7 +245,7 @@ def verdict(out: dict, floors: Floors) -> dict:
     status = "FAIL" if failed else "INCONCLUSIVE" if thin else "PASS"
     return {"status": status, "failed": failed, "under_floor": thin,
             "floors": {"rooms": floors.rooms, "rounds": floors.rounds, "recoveries": floors.recoveries,
-                       "resolved_share": floors.resolved_share}}
+                       "resolved_share": floors.resolved_share, "faults": floors.faults}}
 
 
 def connected_in(start: float, start_connected: bool, events: Iterable[tuple[float, str]],

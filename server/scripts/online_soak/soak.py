@@ -96,6 +96,7 @@ class Soak:
         self.by_seat: dict[tuple[str, int], object] = {}
         self.progress: dict[str, float] = {}
         self.stuck: list[dict] = []
+        self.rounds_logged = 0
         self.plays = audit.PlayAudit()
         self.refused: dict[str, int] = {}
         self.strikes: list[dict] = []
@@ -148,7 +149,10 @@ class Soak:
             if kind in PROGRESS:
                 soak.progress[room.code] = time.monotonic()
             soak._presence(room, kind, data)
-            return real_log(room, kind, **data)
+            offset = real_log(room, kind, **data)
+            if kind == "round_end" and offset is not None:
+                soak.rounds_logged += 1
+            return offset
 
         def sync_move_timer(room):
             before = [sd.turn_started if sd is not None else None for sd in room.seats]
@@ -608,7 +612,7 @@ class Soak:
     def floors(self) -> audit.Floors:
         a = self.args
         return audit.Floors(rooms=a.min_rooms, rounds=a.min_rounds, recoveries=a.min_recoveries,
-                            resolved_share=a.min_resolved_share)
+                            resolved_share=a.min_resolved_share, faults=a.min_faults)
 
     async def _progress_line(self, t0: float, until: float) -> None:
         while time.monotonic() < until:
@@ -627,13 +631,12 @@ class Soak:
         for x in rec:
             for k, v in x.errors.items():
                 refusals[k] = refusals.get(k, 0) + v
-        rounds = sum(1 for _ in self._round_ends())
         away = [s for s in self.strikes if s["time_away"]]
         ledger = self.ledger.summary()
         out = {
             "elapsed_min": round(elapsed / 60, 1), "scale": self.scale, "clients": len(self.clients),
             "host": self.args.host, "client_ips": "shared" if self.args.shared_client_ip else "one per client",
-            "rooms": len(self.rooms_seen), "rounds_logged": rounds,
+            "rooms": len(self.rooms_seen), "rounds_logged": self.rounds_logged,
             "faults": ledger["total"], "fault_ledger": ledger,
             "plays_applied": self.plays.applied, "stuck_tables": len(self.stuck),
             "wrong_decision_plays": len(self.plays.wrong), "strikes_total": len(self.strikes),
@@ -674,16 +677,6 @@ class Soak:
         out["verdict"] = audit.verdict(out, self.floors())
         return out
 
-    def _round_ends(self):
-        logs = self.tmp / "logs"
-        if not logs.is_dir():
-            return
-        for f in logs.rglob("*.jsonl"):
-            with contextlib.suppress(OSError):
-                for line in f.open(encoding="utf-8", errors="replace"):
-                    if '"round_end"' in line:
-                        yield 1
-
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -702,6 +695,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="send no Fly-Client-IP, so every client shares the loopback peer's limits")
     ap.add_argument("--min-rooms", type=int, default=3, help="floor: rooms seen, else INCONCLUSIVE")
     ap.add_argument("--min-rounds", type=int, default=10, help="floor: rounds logged, else INCONCLUSIVE")
+    ap.add_argument("--min-faults", type=int, default=0, help="floor: total injected faults, else INCONCLUSIVE")
     ap.add_argument("--min-recoveries", type=int, default=20, help="floor: recovered faults, else INCONCLUSIVE")
     ap.add_argument("--min-resolved-share", type=float, default=0.8,
                     help="floor: share of faults recovered or failed (not censored), else INCONCLUSIVE")

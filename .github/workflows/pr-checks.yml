@@ -190,6 +190,7 @@ jobs:
           tests/test_accounts.py
           tests/test_apple_signin.py
           tests/test_device_accounts.py
+          tests/test_device_accounts_link.py
           tests/test_saved_games_link.py
           tests/test_matchmaking.py
           tests/test_table_frame.py

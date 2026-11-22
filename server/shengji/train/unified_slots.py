@@ -230,6 +230,15 @@ class LeafFrame:
         #: the reply ply's value chunks scored ahead, in the order `team_values` asks for them
         self.ahead: list | None = None
 
+    @classmethod
+    def at_states(cls, bot, rnd, seat: int, model, q: np.ndarray, g: np.ndarray):
+        """A frame of ``seat`` at ``rnd`` whose cache is ``model``'s on card states ``q``, ``g`` the
+        caller already computed for that information set (a re-rooted leaf, `pv_reroot`): no trunk
+        forward of its own, and the bot's refusal ledger is never read."""
+        frame = cls(bot, rnd, seat)
+        frame._cache = model.decision_cache(q, g)
+        return frame
+
     def cache(self, model):
         """The readout's per-decision cache: from the card states the shared belief forward of this
         decision kept (same model), else from the model's own trunk forward."""

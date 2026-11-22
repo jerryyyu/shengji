@@ -433,6 +433,7 @@ jobs:
           tests/test_pv_exact_lead_full_minimax.py
           tests/test_world_history_throws.py
           tests/test_pv_two_trick_lead.py
+          tests/test_pv_reroot_lead.py
           tests/test_lead_capture_collector.py
           tests/test_pv_point_leaks.py
       # The release manifests' wiring witness on the same pinned packages: the stage tables
@@ -802,6 +803,7 @@ jobs:
             tests/test_declare_pass_evidence.py \
             tests/test_endgame_level.py \
             tests/test_pv_two_trick_lead.py \
+            tests/test_pv_reroot_lead.py \
             tests/test_belief_sampler.py
       - name: Upload recorded test durations
         if: ${{ !cancelled() }}

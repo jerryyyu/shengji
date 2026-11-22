@@ -220,8 +220,7 @@ def _validate_provenance(value: Any) -> None:
             raise SchemaError(f"provenance.{k} must be a string or null")
 
 
-def validate_record(record: Mapping[str, Any]) -> None:
-    """Fail closed on a malformed record (types and cross-field rules)."""
+def _validate_fields(record: Mapping[str, Any]) -> None:
     missing = [k for k in REQUIRED if k not in record]
     if missing:
         raise SchemaError(f"missing fields: {missing}")
@@ -364,6 +363,11 @@ def validate_record(record: Mapping[str, Any]) -> None:
                 or len(hh["hands_by_seat"]) != 4
                 or not isinstance(hh.get("buried"), list)):
             raise SchemaError("hidden_hands must carry hands_by_seat[4] + buried")
+
+
+def validate_record(record: Mapping[str, Any]) -> None:
+    """Check the fields and independently verify the supplied digest."""
+    _validate_fields(record)
     if record_sha256(record) != record["record_sha256"]:
         raise SchemaError("record_sha256 drift")
 
@@ -389,7 +393,7 @@ def finalize_record(fields: Mapping[str, Any]) -> dict[str, Any]:
     if not record.get("state_private"):
         record.pop("state_private", None)
     record["record_sha256"] = record_sha256(record)
-    validate_record(record)
+    _validate_fields(record)
     return record
 
 

@@ -50,7 +50,8 @@ def _markers() -> list[str]:
 
 def _guard(tmp_path: Path, configuration: str, *, extra: str = "", built_extra: str | None = None,
            swift: str = "", other: str = "", gcc: str = "", source_text: str | None = None,
-           built_text: str | None = None, page: str | None = CLEAN_PAGE):
+           built_text: str | None = None, page: str | None = CLEAN_PAGE,
+           staged: dict[str, str] | None = None):
     project = tmp_path / "App"
     (project / "App").mkdir(parents=True, exist_ok=True)
     (project / "App" / "Info.plist").write_text(PLAIN.format(extra=extra) if source_text is None else source_text)
@@ -58,6 +59,9 @@ def _guard(tmp_path: Path, configuration: str, *, extra: str = "", built_extra: 
         (project / "App" / "public" / "assets").mkdir(parents=True, exist_ok=True)
         (project / "App" / "public" / "index.html").write_text(CLEAN_PAGE)
         (project / "App" / "public" / "assets" / "index.js").write_text(page)
+    for rel, text in (staged or {}).items():
+        (project / "App" / "public" / rel).parent.mkdir(parents=True, exist_ok=True)
+        (project / "App" / "public" / rel).write_text(text)
     env = {**os.environ, "CONFIGURATION": configuration, "PROJECT_DIR": str(project),
            "INFOPLIST_FILE": "App/Info.plist", "SWIFT_ACTIVE_COMPILATION_CONDITIONS": swift,
            "OTHER_SWIFT_FLAGS": other, "GCC_PREPROCESSOR_DEFINITIONS": gcc}
@@ -75,22 +79,27 @@ def test_release_with_nearby_and_no_tools_passes(tmp_path):
     assert "nearby on, no test tools" in r.stdout
 
 
-@pytest.mark.parametrize("flags", [
-    {"other": '$(inherited) "-D" "SHENGJI_NEARBY"'},
-    {"other": "-DSHENGJI_NEARBY"},
-    {"gcc": "SHENGJI_NEARBY=1"},
-])
-def test_release_reads_nearby_from_any_flag_form(tmp_path, flags):
-    r = _guard(tmp_path, "Release", extra=FULL, **flags)
+def test_release_reads_a_quoted_swift_condition(tmp_path):
+    r = _guard(tmp_path, "Release", extra=FULL, swift='"SHENGJI_NEARBY"')
     assert r.returncode == 0, r.stdout + r.stderr
 
 
-@pytest.mark.parametrize("flags", [{}, {"swift": "SHENGJI_NEARBY_DEV"}, {"swift": "SHENGJI_NEARBYX"},
-                                   {"other": "-DSHENGJI_NEARBY_BETA"}])
-def test_release_without_nearby_fails(tmp_path, flags):
+@pytest.mark.parametrize("flags", [
+    {},
+    {"swift": "SHENGJI_NEARBY_DEV"},
+    {"swift": "SHENGJI_NEARBYX"},
+    {"other": "-DSHENGJI_NEARBY_BETA"},
+    # a C-only define leaves Swift's #if SHENGJI_NEARBY off: not proof of nearby
+    {"gcc": "SHENGJI_NEARBY=1"},
+    {"gcc": "SHENGJI_NEARBY"},
+    # nor is a flag outside the active compilation conditions the gate reads
+    {"other": '$(inherited) "-D" "SHENGJI_NEARBY"'},
+    {"other": "-DSHENGJI_NEARBY"},
+])
+def test_release_without_the_swift_condition_fails(tmp_path, flags):
     r = _guard(tmp_path, "Release", extra=FULL, **flags)
-    assert r.returncode == 1
-    assert "does not define SHENGJI_NEARBY" in r.stdout
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "no SHENGJI_NEARBY in SWIFT_ACTIVE_COMPILATION_CONDITIONS" in r.stdout
 
 
 @pytest.mark.parametrize("flags,named", [
@@ -125,6 +134,22 @@ def test_release_refuses_a_page_with_a_test_tool(tmp_path, marker):
     assert r.returncode == 1, r.stdout + r.stderr
     assert "the bundled page carries test tools" in r.stdout
     assert "assets/index.js" in r.stdout
+
+
+@pytest.mark.parametrize("rel", ["nearby-spike.html", "assets/spike-ssn8McqT.js", "assets/spike-old.js.br"])
+def test_release_refuses_a_staged_spike_asset(tmp_path, rel):
+    """The spike's entry or bundle in App/public, a stale one included, beside a clean page."""
+    r = _guard(tmp_path, "Release", extra=FULL, swift="SHENGJI_NEARBY", staged={rel: "<!doctype html>"})
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "the bundled page carries the nearby spike" in r.stdout
+    assert rel in r.stdout
+
+
+def test_release_refuses_a_page_with_a_spike_bundle_by_content(tmp_path):
+    r = _guard(tmp_path, "Release", extra=FULL, swift="SHENGJI_NEARBY",
+               staged={"assets/renamed-1234.js": "p.spikeBench({iterations:1})"})
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "the bundled page carries test tools" in r.stdout
 
 
 def test_release_refuses_a_missing_page(tmp_path):

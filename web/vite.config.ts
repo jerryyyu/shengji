@@ -66,6 +66,12 @@ const NEARBY_SPIKE = process.env.SHENGJI_NEARBY_SPIKE === "1";
 // no soak, log-file, upload or hidden-switch module is in the bundle at all.
 // flavor_guard.sh refuses an App Store archive whose bundled page has them.
 const APP_STORE = process.env.VITE_SHENGJI_APP_STORE === "1";
+// The App Store page never takes a device-test flag: with one (the spike's
+// test page, say) the build stops rather than ship its entry or bundle.
+const MIXED = Object.keys(process.env).filter((k) => /SHENGJI_NEARBY_/.test(k) && process.env[k]);
+if (APP_STORE && MIXED.length > 0) {
+  throw new Error(`VITE_SHENGJI_APP_STORE=1 with ${MIXED.join(", ")}: the App Store page has no device-test tools`);
+}
 
 function appStoreBundle(): Plugin {
   return {

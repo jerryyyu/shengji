@@ -26,18 +26,23 @@ function emitted(dir: string): Map<string, string> {
   return out;
 }
 
-async function buildPage(appStore: boolean): Promise<Map<string, string>> {
+async function buildPage(appStore: boolean, extra: Record<string, string> = {}): Promise<Map<string, string>> {
   const { build } = await import("vite");
   const outDir = mkdtempSync(join(tmpdir(), "shengji-page-"));
-  const before = process.env.VITE_SHENGJI_APP_STORE;
-  if (appStore) process.env.VITE_SHENGJI_APP_STORE = "1";
-  else delete process.env.VITE_SHENGJI_APP_STORE;
+  const env = { VITE_SHENGJI_APP_STORE: appStore ? "1" : undefined, ...extra };
+  const before = Object.fromEntries(Object.keys(env).map((k) => [k, process.env[k]]));
+  const put = (vals: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(vals)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+  put(env);
   try {
-    // the config reads the flag when it loads, so a fresh load per build
+    // the config reads the flags when it loads, so a fresh load per build
     await build({ root: web, configFile: join(web, "vite.config.ts"), logLevel: "silent", build: { outDir, emptyOutDir: true } });
   } finally {
-    if (before === undefined) delete process.env.VITE_SHENGJI_APP_STORE;
-    else process.env.VITE_SHENGJI_APP_STORE = before;
+    put(before);
   }
   return emitted(outDir);
 }
@@ -74,8 +79,23 @@ describe("the App Store's bundled page", () => {
     expect(holding(store, "ShengjiNearby").length).toBeGreaterThan(0);
     expect([...store.keys()].some((f) => /nearbySoak|nearbyLogUpload/.test(f))).toBe(false);
 
+    expect(holding(store, "spikeBench")).toEqual([]);
+    expect([...store.keys()].some((f) => /spike/.test(f))).toBe(false);
+
     const served = await buildPage(false);
-    for (const s of markers) expect(holding(served, s).length, s).toBeGreaterThan(0);
+    // every marker is in the build that carries its tool: the spike's in the spike's build
+    for (const s of markers.filter((m) => m !== "spikeBench")) expect(holding(served, s).length, s).toBeGreaterThan(0);
     expect([...served.keys()].some((f) => /nearbySoak-[\w-]+\.js$/.test(f))).toBe(true);
+  }, 60_000);
+
+  it("refuses the App Store flag with a device-test flag, before anything is emitted", async () => {
+    for (const flag of ["SHENGJI_NEARBY_SPIKE", "SHENGJI_NEARBY_DEV", "VITE_SHENGJI_NEARBY_SPIKE"]) {
+      await expect(buildPage(true, { [flag]: "1" }), flag).rejects.toThrow(/the App Store page has no device-test tools/);
+    }
+    // the spike's own build, without the App Store flag, still makes its page
+    const spike = await buildPage(false, { SHENGJI_NEARBY_SPIKE: "1" });
+    expect([...spike.keys()]).toContain("nearby-spike.html");
+    expect(markers).toContain("spikeBench");
+    expect(holding(spike, "spikeBench").length).toBeGreaterThan(0);
   }, 60_000);
 });

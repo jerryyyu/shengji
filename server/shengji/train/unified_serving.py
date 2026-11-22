@@ -157,6 +157,12 @@ def install(bot, model, fast: bool = False):
     if fast:
         bot.policy_name = f"{bot.policy_name}-{FAST_TOKEN}"
     bot.decide_play = types.MethodType(_decide_play, bot)
+    # A replacement deadline worker builds these assets and binds these methods
+    # to its own instance. RNG, search counters and receipts cross the checkpoint.
+    bot._screen_factory_fields = frozenset((
+        "belief_model", "unified_prior_model", "unified_value_model", "unified_reply_model",
+        "_belief_worlds", "scores", "_search", "decide_play",
+    ))
     return bot
 
 

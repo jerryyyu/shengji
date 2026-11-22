@@ -447,6 +447,34 @@ def fast_env(env) -> dict:
     return out
 
 
+def test_unified_screen_resumes_the_committed_decision_state(
+        release50_packages, pair, monkeypatch, served_functions):
+    from shengji.train import cwv_shortlist_screen as screen
+    from shengji.train.screen_deadline import DeadlineSession
+
+    env = fast_env(unified_env(release50_packages, pair))
+    policy_env = {k: v for k, v in env.items() if k.startswith("SHENGJI_PV_") or k == "SHENGJI_BOT"}
+    direct = registry_bot(monkeypatch, policy_env, P.SEED)
+    config = {"arm": "policy", "arm_policy": env["SHENGJI_BOT"],
+              "arm_policy_identity": screen._policy_identity(direct)}
+    session = DeadlineSession(screen._deadline_side)
+    try:
+        remote = session.register(config, "arm", P.SEED)
+        for step, position in enumerate((("ADKY3", 9, 0), ("SDUS2", 8, 0))):
+            if step:
+                session.close()
+            rnd = P.replay(*position)
+            assert remote.decide_play(rnd, rnd.turn) == direct.decide_play(rnd, rnd.turn)
+            rec = remote.last_decision_record
+            assert rec["belief_seed"] == direct.last_decision_record["belief_seed"]
+            assert rec["value_means"] == direct.last_decision_record["value_means"]
+            assert rec["unified"] == direct.last_decision_record["unified"]
+            assert rec["work_complete"] and rec["belief_fallback"] == 0
+            assert remote.unified_prior_calls == direct.unified_prior_calls > 0
+    finally:
+        session.close()
+
+
 def test_the_fast_readout_switch_is_0_or_1_and_enters_the_name():
     from shengji.train import unified_serving as serving
     from shengji.train.pv_search_policy import PVSearchPolicyError

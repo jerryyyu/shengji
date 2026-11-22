@@ -406,3 +406,47 @@ def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
     assert actual["rows"] > 0 and actual["leaves"] > 0
     assert actual["train"]["leaf_value"] > 0 and actual["train"]["policy"] > 0
     assert actual == json.loads((baseline / report).read_text())
+
+
+def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
+    # Equal weights with distinct checkpoint bytes give an exact zero-delta control.
+    original = cpu_root[0] / "train" / "best.pt"
+    saved = torch.load(original, weights_only=False, map_location="cpu")
+    saved["fixture_arm"] = "medium"
+    other = tmp_path / "medium-init.pt"
+    torch.save(saved, other)
+    gate = [sys.executable, str(Path(__file__).resolve().parents[1] / "scripts" / "sz2_offline_gate.py"),
+            "--buffer", "1"]
+    for arm, init in (("small", original), ("medium", other)):
+        out = tmp_path / arm
+        assert ur.main(["train", "--data", str(data), "--out", str(out), "--init-readout-ckpt", str(init),
+                        "--threads", "1", "--loader-threads", "1", "--rounds-per-batch", "1",
+                        "--buffer-chunks", "1", "--report-buffer", "1"]) == 0
+        gate.extend([f"--{arm}", str(out), f"--{arm}-init-sha", hashlib.sha256(init.read_bytes()).hexdigest()])
+
+    def decision(expected_rc, expected_text):
+        result = subprocess.run(gate, capture_output=True, text=True)
+        assert result.returncode == expected_rc, (result.stdout, result.stderr)
+        assert expected_text in result.stdout + result.stderr
+
+    decision(3, "FAIL-OFFLINE")
+    for name, threshold in (("leaf_value", 0.002), ("policy", 0.015)):
+        for arm, loss in (("small", threshold), ("medium", 0)):
+            path = tmp_path / arm / "epoch-1-buffer-1.json"
+            report = json.loads(path.read_text())
+            report["train"].update(leaf_value=0, policy=0)
+            report["train"][name] = loss
+            path.write_text(json.dumps(report))
+        decision(0, "CONTINUE")
+    settings = tmp_path / "medium" / "run.json"
+    original_settings = settings.read_text()
+    settings.write_text(json.dumps({**json.loads(original_settings), "seed": 9}))
+    decision(2, "training settings")
+    settings.write_text(original_settings)
+    report["rows"] += 1
+    path.write_text(json.dumps(report))
+    decision(2, "prefix counts differ")
+    path.unlink()
+    decision(2, "INVALID")
+    gate[-1] = "0" * 64
+    decision(2, "expected warm start")

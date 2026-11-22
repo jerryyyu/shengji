@@ -224,6 +224,7 @@ class LeafFrame:
         self._fused = None
         self.value_memo: dict = {}
         self.reply_memo: dict = {}
+        self.reply_hidden_memo: dict = {}
         #: the reply ply's value chunks scored ahead, in the order `team_values` asks for them
         self.ahead: list | None = None
 
@@ -697,8 +698,15 @@ def readout_reply_ply(served_ply):
             bot.unified_reply_rows += len(take)
             if scorer is not None:
                 at_rows = np.asarray(take, np.int64)
-                h = model.leaf_hidden_fused(frame.fused(model), planes[at_rows], scalars[at_rows]) if fast else \
-                    model.leaf_hidden(frame.cache(model), planes[at_rows], scalars[at_rows])
+                if fast:
+                    fused = frame.fused(model)
+                    rows, hits = memo_rows(frame.reply_hidden_memo, [keys[i] for i in take],
+                                           lambda sub: model.leaf_hidden_fused(fused, planes[at_rows[sub]],
+                                                                               scalars[at_rows[sub]]))
+                    h = np.stack(rows)
+                    bot.unified_reply_memo += hits
+                else:
+                    h = model.leaf_hidden(frame.cache(model), planes[at_rows], scalars[at_rows])
                 hidden.update(zip(take, h))
                 return h @ model._t["reply.weight"] + model.r["reply.bias"]
             if fast:

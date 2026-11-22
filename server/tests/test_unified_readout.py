@@ -367,7 +367,8 @@ def test_compact_action_features_match_listed_card_features(trump, lead, follow)
 
 @pytest.mark.parametrize("fast", [False, True])
 @pytest.mark.parametrize("multi", [False, True])
-def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_path, monkeypatch, fast, multi):
+@pytest.mark.parametrize("batch_size", [1, 8])
+def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_path, monkeypatch, fast, multi, batch_size):
     from shengji.train import unified_reply_action as ra
     from shengji.harvest.legal import enumerate_legal
     _, model = _model(tmp_path)
@@ -388,6 +389,7 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
     assert source is not None
     seat = source.turn
     bot = us.install_reply_readout(_bot(package), model)
+    bot.batch_size = batch_size
     bot.unified_fast = fast
     weights = _action_weights()
     path = tmp_path / "action-head.npz"
@@ -422,6 +424,12 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
         actions = legal[:1] if clone is active[0] else legal
         counts = np.stack([_counts(a) for a in actions])
         return (pts.CompactReplies(actions, leads=False) if fast else actions), counts
+    forwarded_rows = []
+    original_hidden = model.leaf_hidden_fused
+    def count_hidden(fused, planes, scalars):
+        forwarded_rows.append(len(planes))
+        return original_hidden(fused, planes, scalars)
+    monkeypatch.setattr(model, "leaf_hidden_fused", count_hidden)
     stats = pts.greedy_stats()
     us.readout_reply_ply(pts.greedy_reply_ply)(bot, active, None, {}, stats, 1, 1, listing,
         lambda leaves, seat, gate: (np.zeros(len(leaves)), 1))
@@ -430,6 +438,9 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
     assert all(list(clone.trick.plays[-1].cards) == expected for clone in active[1:])
     assert all(clone.hands == want.hands and clone.turn == want.turn for clone in active[1:])
     assert len(calls) == (2 if multi else 0)
+    if fast and multi:
+        assert sum(forwarded_rows) == 1
+        assert bot.unified_reply_memo == 1
     assert bot.predict is original_predict
     assert stats["tree_forced_plays"] == 1
 

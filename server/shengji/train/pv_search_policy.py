@@ -3518,8 +3518,9 @@ class PVSearchBot(PolicyValueBot):
         if len(worlds) != expected:
             raise PVSearchPolicyError(f"policy world sampling short: {len(worlds)}/{expected}",
                                       stage="world_sampling_short")
-        if any(rnd.ordering.eff_suit(c) in mem.voids[s]
-               for hands, _ in worlds for s in range(4) if s != seat for c in hands[s]):
+        constrained = [(s, mem.voids[s]) for s in range(4) if s != seat and mem.voids[s]]
+        if constrained and any(rnd.ordering.eff_suit(c) in voids
+                               for hands, _ in worlds for s, voids in constrained for c in hands[s]):
             if self.oracle_worlds:
                 # the TRUE deal contradicts an inferred void: a memory defect,
                 # never a sampling accident; the diagnostic fails closed

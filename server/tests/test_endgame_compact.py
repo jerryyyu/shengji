@@ -69,6 +69,24 @@ def _play_round(trump_suit, trump_rank, banker, hands, buried, *, leader,
     return rnd
 
 
+@pytest.mark.skipif(not HAVE_FAST, reason="requires native follow generation")
+@pytest.mark.parametrize("follower", ["D6 D8 D9 D10 DJ DQ DK DA",
+                                     "C2 C3 C4 C5 C6 C8 C9 C10"])
+def test_follow_with_255_nonempty_subsets_can_play_the_whole_hand(follower):
+    lead = "D2 D2 D3 D3 D4 D4 D5 D5".split()
+    rnd = _play_round("H", "7", 0, [
+        lead, follower.split(), "S2 S3 S4 S5 S6 S8 S9 S10".split(),
+        "H2 H3 H4 H5 H6 H8 H9 H10".split(),
+    ], "CK SK HK CJ SJ HJ CA SA".split(), leader=0, attacker_points=15)
+    rnd.play(0, lead)
+    assert rnd.turn == 1 and len(rnd.trick.plays[0].cards) == 8
+    oracle = ExactWorldSession(rnd, max_hand_cards=8, max_nodes=256)
+    session = CompactWorldSession(rnd, max_hand_cards=8, max_nodes=256,
+                                  backend="compiled", alpha_beta=True, level=True)
+    assert session.solve_points(rnd) == oracle.solve(rnd).attacker_points
+    assert session.nodes > 0
+
+
 def _random_position(rng: random.Random) -> Round:
     """A legal bounded position, dense in pairs, tractors and trump."""
     trump_rank = rng.choice(RANKS)

@@ -125,10 +125,26 @@ if (!only || only.test("drop")) {
     const back = await until(page2, () => !document.querySelector(".reconnect-banner") && window.__fake.socks.filter((s) => s.readyState === 1).length === 1, { timeout: 15000 });
     await rep.check("drop-play-in-flight: reconnects", back ? null : "still disconnected after 15 s", page2);
     await sleep(300);
+    // the first state on the new socket shows the same hand and turn, so the play goes once more there
+    const after = () => page2.evaluate(() => {
+      const sent = window.__fake.sent.map((m) => m.type);
+      return { plays: sent.filter((t) => t === "play").length, resentAfterJoin: sent.lastIndexOf("play") > sent.lastIndexOf("table_join") };
+    });
+    const once = await after();
+    const chosen = () => page2.evaluate(() => document.querySelectorAll(".hand .card.selected").length);
+    await rep.check("drop-play-in-flight: the play goes once more on the new socket, card still chosen",
+      [once.plays === 2 && once.resentAfterJoin ? null : `${once.plays} play frames; resent after the rejoin: ${once.resentAfterJoin}`,
+       (await chosen()) === 1 ? null : "the chosen card is no longer chosen"], page2);
+    // a second drop with the resend still unanswered: nothing goes a third time and Play is offered again
+    await page2.evaluate(() => window.__fake.drop());
+    const back2 = await until(page2, () => !document.querySelector(".reconnect-banner") && window.__fake.socks.filter((s) => s.readyState === 1).length === 1, { timeout: 15000 });
+    await rep.check("drop-play-in-flight: reconnects a second time", back2 ? null : "still disconnected after 15 s", page2);
+    await sleep(300);
     const play = page2.locator(".action-bar .btn", { hasText: /^Play/ });
     await rep.check("drop-play-in-flight: Play is offered again, card still chosen",
-      [(await play.count()) && (await play.isEnabled()) ? null : "Play is not enabled after the reconnect",
-       (await page2.evaluate(() => document.querySelectorAll(".hand .card.selected").length)) === 1 ? null : "the chosen card is no longer chosen"], page2);
+      [(await play.count()) && (await play.isEnabled()) ? null : "Play is not enabled after the second reconnect",
+       (await after()).plays === 2 ? null : "the play went a third time",
+       (await chosen()) === 1 ? null : "the chosen card is no longer chosen"], page2);
   });
   await page2.context().close();
 }

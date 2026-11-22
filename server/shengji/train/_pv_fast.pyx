@@ -12,6 +12,7 @@ check and falls back to the reference whenever a kernel declines.
   (`unified_slots.leaf_features_fast`), written straight into a uint8 row
   per covered leaf.
 """
+from cpython.bytes cimport PyBytes_AS_STRING, PyBytes_FromStringAndSize
 from libc.stdlib cimport malloc, free, realloc
 from libc.string cimport memcpy
 
@@ -740,3 +741,32 @@ def leaf_counts(int seat, int tricks, int pos, object leaves, int width, tuple p
         mine.append(i)
         m += 1
     return mine, out[:m], meta_out[:m]
+
+
+def leaf_scalars_and_keys(const unsigned char[:, ::1] counts, const long long[:, ::1] meta):
+    """Encode the readout scalars and concatenate each key directly into its owning bytes."""
+    cdef Py_ssize_t n = counts.shape[0], width = counts.shape[1], i
+    cdef long long winner, nxt
+    cdef bytes key
+    cdef char* dest
+    if width != 9 * 54 or meta.shape[0] != n or meta.shape[1] != 5:
+        raise ValueError("invalid leaf feature batch")
+    scalars = np.zeros((n, 12), dtype=np.float32)
+    cdef float[:, ::1] sv = scalars
+    keys = []
+    for i in range(n):
+        winner, nxt = meta[i, 3], meta[i, 4]
+        if not 0 <= winner < 4 or not 0 <= nxt < 4:
+            raise ValueError("invalid relative seat")
+        sv[i, 0] = <float>meta[i, 0] / <float>4
+        sv[i, 1] = <float>meta[i, 1] / <float>4
+        sv[i, 2] = meta[i, 1] == 4
+        sv[i, 3] = <float>meta[i, 2] / <float>50
+        sv[i, 4 + winner] = 1
+        sv[i, 8 + nxt] = 1
+        key = PyBytes_FromStringAndSize(NULL, width + 12 * sizeof(float))
+        dest = PyBytes_AS_STRING(key)
+        memcpy(dest, &counts[i, 0], width)
+        memcpy(dest + width, &sv[i, 0], 12 * sizeof(float))
+        keys.append(key)
+    return scalars, keys

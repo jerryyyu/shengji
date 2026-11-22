@@ -210,3 +210,22 @@ def test_shared_forward_refuses_another_trunk_and_leaves_other_bots_alone(packag
     after = _belief_bot(package, belief_package)
     assert not {"scores", "_belief_worlds", "policy_name"} & set(vars(after)) and type(after.belief_model) is bn.BeliefNumpy
     assert after.decide_play(copy.deepcopy(rnd), rnd.turn) == played and _record(after) == record
+
+
+def test_shared_trunk_reuses_only_matching_immutable_buffers(belief_package, model, monkeypatch):
+    served = bn.load_belief_numpy(*belief_package)
+    first = us.shared_trunk_belief(served, model)
+    key = next(iter(served.w))
+    with pytest.raises(ValueError):
+        served.w[key].setflags(write=True)
+    with monkeypatch.context() as patch:
+        def unexpected(*args):
+            pytest.fail("identical verified buffers were compared again")
+        patch.setattr(np, "array_equal", unexpected)
+        second = us.shared_trunk_belief(served, model)
+    assert first.shared is not second.shared
+    served.w[key] = served.w[key].copy()
+    us.shared_trunk_belief(served, model)
+    served.w[key].flat[0] += 1
+    with pytest.raises(us.UnifiedSlotError, match="trunk"):
+        us.shared_trunk_belief(served, model)

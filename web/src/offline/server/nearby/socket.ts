@@ -57,6 +57,9 @@ interface Unanswered {
   ids: number[];
   /** A table_start's `on`: false takes the Start back. */
   on: boolean;
+  /** The table frame the page had when it sent the move: the decision it
+   *  answers (decisionAt). */
+  at: Record<string, unknown>;
   /** Already sent again on a later link: never a third time. */
   resent: boolean;
 }
@@ -77,14 +80,77 @@ function movesOf(clock: Clock, token: string): Map<MoveKind, Unanswered> {
 const sameIds = (a: readonly unknown[], b: readonly number[]) =>
   a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
 
+/** A declare sent with fewer of this seat's cards in hand is never sent
+ *  again: so few cards could be dealt the same in a later round. */
+export const DECLARE_WITNESS_CARDS = 8;
+
+/** A frame's own cards as "id:code", sorted. Card ids are deck positions
+ *  and repeat every round; the codes at them come from that round's shuffle. */
+function cardsOf(frame: Record<string, unknown>): string[] {
+  const hand = Array.isArray(frame.hand) ? frame.hand as { id?: unknown; code?: unknown }[] : [];
+  return hand.map((c) => `${String(c?.id)}:${String(c?.code)}`).sort();
+}
+
+/** The decision a table frame shows for a move of `kind`, as one string,
+ *  or null when it shows none. The frames carry no round number, so a
+ *  decision is named by what only it shows: the game's levels and games
+ *  won, this seat's own cards (id and code) and the table's public cards
+ *  (the trick, the last trick, the round's result). A later decision of
+ *  the same kind changes one of them within a round, and a later round
+ *  shows the same only if its shuffle dealt the same. What can change while the decision still waits
+ *  (who else is ready or has passed, connections, clocks, a rival
+ *  declaration) is left out. A declare during the deal names its round by
+ *  the cards it was sent with, which stay in hand as more are dealt. */
+function decisionAt(frame: Record<string, unknown>, kind: MoveKind): string | null {
+  if (frame.type !== "state" || frame.joining_you) return null;
+  const game = { levels: frame.levels, games_won: frame.games_won };
+  switch (kind) {
+    case "next_round":
+      if (frame.phase !== "round_end") return null;
+      return JSON.stringify({ ...game, banker: frame.banker, trump: frame.trump, round_result: frame.round_result,
+                              last_trick: frame.last_trick, attacker_points: frame.attacker_points });
+    case "play": {
+      if (frame.phase !== "play") return null;
+      const players = Array.isArray(frame.players) ? frame.players as { cards_left?: unknown }[] : [];
+      return JSON.stringify({ ...game, banker: frame.banker, trump: frame.trump, turn: frame.turn, hand: cardsOf(frame),
+                              cards_left: players.map((p) => p?.cards_left), trick: frame.trick,
+                              last_trick: frame.last_trick, attacker_points: frame.attacker_points });
+    }
+    case "bury":
+      if (frame.phase !== "bury") return null;
+      return JSON.stringify({ ...game, banker: frame.banker, trump: frame.trump, turn: frame.turn, hand: cardsOf(frame) });
+    case "pass_declare":
+      if (frame.phase !== "declare") return null;
+      return JSON.stringify({ ...game, hand: cardsOf(frame) });
+    default:
+      return null;
+  }
+}
+
+/** Whether `frame` shows the decision `move` was sent at, still waiting. */
+function sameDecision(frame: Record<string, unknown>, move: Unanswered): boolean {
+  if (move.kind === "table_start") return true;
+  if (move.kind === "declare") {
+    if (frame.type !== "state" || frame.joining_you) return false;
+    if (JSON.stringify([frame.levels, frame.games_won]) !== JSON.stringify([move.at.levels, move.at.games_won])) return false;
+    const now = new Set(cardsOf(frame));
+    const then = cardsOf(move.at);
+    return then.length >= DECLARE_WITNESS_CARDS && then.every((c) => now.has(c));
+  }
+  const at = decisionAt(move.at, move.kind);
+  return at !== null && at === decisionAt(frame, move.kind);
+}
+
 /** Whether a table frame shows the host has not applied `move`, so sending
- *  it again applies it once: the frame still asks this seat for that move
- *  (a play or bury with its cards in hand, a declare still on offer, a pass
- *  or Next not yet counted) or, in the lobby, still shows its Start as it
- *  was. Anything else (another phase, a declaration that beat it, a new
- *  round) means it was applied or is stale, and it is never sent again. */
+ *  it again applies it once: the frame shows the same decision the move was
+ *  sent at (sameDecision), and it still asks this seat for that move (a
+ *  play or bury with its cards in hand, a declare still on offer, a pass or
+ *  Next not yet counted) or, in the lobby, still shows its Start as it
+ *  was. Anything else (another phase, a declaration that beat it, a later
+ *  decision that looks like it) means it was applied or is stale, and it is
+ *  never sent again. */
 function stillOwed(frame: Record<string, unknown> | null, move: Unanswered): boolean {
-  if (frame === null) return false;
+  if (frame === null || !sameDecision(frame, move)) return false;
   const you = frame.you;
   if (move.kind === "table_start") {
     const lobby = frame.type === "room" ? frame.nearby as { ready?: unknown } | undefined : undefined;
@@ -154,6 +220,9 @@ export class NearbySocket {
   /** The moves this link sent again after its resume: the same text from
    *  the page (Table's own once-more, an autoplay) is not sent a second time. */
   private resentTexts = new Set<string>();
+  /** The latest state or room frame handed to the page: what a move the
+   *  page sends now answers. */
+  private seen: Record<string, unknown> | null = null;
 
   /** `greet`: a seated joiner's resume, called once the link is up. When it
    *  gives a table_join, this socket sends it as the hello and reports open
@@ -221,6 +290,7 @@ export class NearbySocket {
             this.movedAt = null;
           } else nearbyLog("socket", `in ${type}`);
           this.noteTable(type);
+          this.noteSeen(text, type);
           this.onmessage?.({ data: text } as MessageEvent);
         },
         closed: () => this.finish(),
@@ -324,7 +394,12 @@ export class NearbySocket {
     nearbyLog("socket", `resume: accepted (${type}); open`);
     const early = this.early;
     this.early = [];
-    for (const text of early) if (frameType(text) === "resume") this.noteAnswer(text);
+    for (const text of early) {
+      const type = frameType(text);
+      if (type === "resume") this.noteAnswer(text);
+      // a move the page sends at the open answers the resumed frame
+      this.noteSeen(text, type);
+    }
     this.sendAgain(link, type === "state" || type === "room" ? parseObject(early[early.length - 1]) : null);
     this.ping(link);
     this.summarize(link);
@@ -438,6 +513,10 @@ export class NearbySocket {
       this.clock.setTimeout(tick, LIMITS.keepaliveSeconds);
     };
     this.clock.setTimeout(tick, LIMITS.keepaliveSeconds);
+  }
+
+  private noteSeen(text: string, type: string): void {
+    if (type === "state" || type === "room") this.seen = parseObject(text);
   }
 
   /** Turned back on: the open link's keepalive starts again. */
@@ -562,7 +641,8 @@ export class NearbySocket {
   }
 
   /** A move going out is the seat's unanswered move until the host
-   *  answers it. */
+   *  answers it, kept with the frame it answers. One sent with no frame
+   *  that names its decision is not kept, so it is never sent again. */
   private noteMove(text: string): void {
     if (this.token === null) return;
     const msg = parseObject(text);
@@ -571,10 +651,13 @@ export class NearbySocket {
     const moves = movesOf(this.clock, this.token);
     // re-inserted, so the kinds stay in the order sent
     moves.delete(kind);
-    moves.set(kind, {
+    if (this.seen === null) return;
+    const move: Unanswered = {
       text, kind, ids: Array.isArray(msg.card_ids) ? msg.card_ids as number[] : [],
-      on: msg.on !== false, resent: false,
-    });
+      on: msg.on !== false, at: this.seen, resent: false,
+    };
+    if (!sameDecision(this.seen, move)) return;
+    moves.set(kind, move);
   }
 
   close(): void {

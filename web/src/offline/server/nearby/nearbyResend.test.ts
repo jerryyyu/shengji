@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearNearbyLog, nearbyLogText } from "../../../nearbyLog";
 import type { LocalRoom } from "../server";
 import { setNearbyForTests } from "./flag";
-import { NearbySocket } from "./socket";
+import { DECLARE_WITNESS_CARDS, NearbySocket } from "./socket";
 import { NearbyTable, type Frame, type Player } from "./testkit";
 
 beforeEach(() => {
@@ -66,7 +66,8 @@ describe("a move sent on a link that is rebuilt applies exactly once", () => {
       t.send(t.host, { type: "table_start_bots" });
       await t.settle(() => {
         const s = t.lastState(j);
-        return s !== undefined && (s.phase !== "deal" || (s.declare_options as unknown[]).length > 0);
+        return s !== undefined && (s.phase !== "deal"
+          || ((s.declare_options as unknown[]).length > 0 && (s.hand as unknown[]).length >= DECLARE_WITNESS_CARDS));
       }, 2_000_000);
       const s = t.lastState(j)!;
       // a declare needs the deal to run for the rebuild's few seconds more

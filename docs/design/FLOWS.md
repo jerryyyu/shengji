@@ -67,6 +67,10 @@ seat · I'm back" once the socket is open again while a bot still plays your sea
 The pill shows at a table or in a game. On the Play tab with no table the presence line is the one status:
 "Connecting…" until the socket opens, then the counts, or "Offline" once the app's Play plays on this device
 (a browser stays on "Connecting…"); the 60 s full screen still comes (Jerry 11-15).
+Leave game while the socket is down, or one whose socket closes before the server's answer, goes to Play at once;
+the next socket takes this page's own seat back by its token and leaves it (`ws.ts`, no new send site, up to three
+sockets, also after a reload or relaunch within 90 s),
+so the bot covers the seat at once instead of after a dropped seat's 60 s and a ranked Leave counts as one.
 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like

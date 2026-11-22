@@ -14,6 +14,7 @@ class FakeWS {
   static OPEN = 1;
   static last: FakeWS | null = null;
   static count = 0;
+  static all: FakeWS[] = [];
   onopen: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
@@ -25,6 +26,7 @@ class FakeWS {
     this.url = url;
     FakeWS.last = this;
     FakeWS.count += 1;
+    FakeWS.all.push(this);
   }
   send(raw: string) {
     this.sent.push(JSON.parse(raw));
@@ -49,6 +51,7 @@ const load = async () => {
 beforeEach(() => {
   localStorage.clear();
   FakeWS.last = null;
+  FakeWS.all = [];
 });
 
 describe("chat: snapshot + identified live events", () => {
@@ -337,6 +340,415 @@ describe("leaveToLobby (Back to lobby without a page reload)", () => {
     ws.onopen?.();
     ws.deliver({ type: "room", room: "BBBB", you: 0 });   // nothing suppressed
     expect(got).toEqual(["left", "room"]);
+  });
+});
+
+describe("a Leave while the socket is down is delivered by the next one", () => {
+  const record = (conn: { subscribe: (fn: (m: any) => void) => () => void }) => {
+    const got: string[] = [];
+    conn.subscribe((m) => got.push(m.type));
+    return got;
+  };
+  // the server's answer to a seat's join, and what App saves from it
+  const seated = async () => {
+    const mod = await load();
+    mod.conn.start();
+    const ws = FakeWS.last!;
+    ws.onopen?.();
+    mod.saveName("jerry");
+    ws.deliver({ type: "resume", token: "tok", gen: 1 });
+    ws.deliver({ type: "state", room: "AAAA", you: 1, phase: "play" });
+    mod.saveRoom("AAAA");
+    return { ...mod, ws };
+  };
+  const resumeThenLeave = [
+    { type: "table_join", code: "AAAA", name: "jerry", expect: "room", token: "tok" },
+    { type: "table_leave" },
+  ];
+
+  it("goes to the lobby now, then resumes the seat and leaves it on the next socket", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, getSavedRoom } = await seated();
+      ws.close();                                       // the link is down
+      const got = record(conn);
+      expect(conn.send({ type: "table_leave" })).toBe(true);
+      expect(got).toEqual(["left"]);                    // the page leaves at once
+      expect(getSavedRoom()).toBeNull();                // App resumes nothing itself
+      vi.advanceTimersByTime(500);
+      const next = FakeWS.last!;
+      expect(next).not.toBe(ws);
+      next.onopen?.();
+      expect(next.sent).toEqual(resumeThenLeave);
+      next.deliver({ type: "state", room: "AAAA", you: 1, phase: "play" });   // the resumed seat's frames
+      next.deliver({ type: "left" });
+      expect(got).toEqual(["left"]);
+      next.deliver({ type: "room", room: "BBBB", you: 0 });   // the socket is the lobby's again
+      expect(got).toEqual(["left", "room"]);
+      next.close();
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);            // delivered once
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Leave whose socket closed before the server's left goes again on the next one", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, getSavedRoom } = await seated();
+      const got = record(conn);
+      expect(conn.send({ type: "table_leave" })).toBe(true);
+      expect(ws.sent).toEqual([{ type: "table_leave" }]);
+      ws.close();                                       // no "left" came back
+      expect(got).toEqual(["left"]);
+      expect(getSavedRoom()).toBeNull();
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a refused resume ends the owed Leave: the next socket sends nothing", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      record(conn);
+      conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(500);
+      const next = FakeWS.last!;
+      next.onopen?.();
+      next.deliver({ type: "error", code: "room_not_found", message: "Room not found." });
+      expect(next.readyState).toBe(3);                  // retired, as any leave's error is
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with no seat saved, a Leave that cannot go is refused as before", async () => {
+    const { conn, FakeWSref } = { ...(await load()), FakeWSref: FakeWS };
+    conn.start();
+    const ws = FakeWSref.last!;
+    ws.onopen?.();
+    ws.close();
+    const got = record(conn);
+    expect(conn.send({ type: "table_leave" })).toBe(false);
+    expect(got).toEqual([]);
+  });
+
+  it("leaves this tab's own seat, not one another tab saved since", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, clearSavedRoom, getSavedRoom, getResumeToken } = await seated();
+      // App forgets the saved seat on every left it hears
+      conn.subscribe((m) => { if (m.type === "left") clearSavedRoom(); });
+      ws.close();                                       // tab A's link is down
+      localStorage.setItem("shengji.room", "BBBB");     // tab B sits down meanwhile
+      localStorage.setItem("shengji.token", "tokB");
+      expect(conn.send({ type: "table_leave" })).toBe(true);
+      expect(getSavedRoom()).toBe("BBBB");              // B's seat is still saved
+      expect(getResumeToken()).toBe("tokB");
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a socket replaced with a slow close hands its Leave to the successor", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws, getSavedRoom } = await seated();
+      ws.close = () => { ws.readyState = 2; };          // closing: its close event comes later
+      const got = record(conn);
+      conn.send({ type: "table_leave" });
+      conn.reconnect();
+      expect(got).toEqual(["left"]);                    // the page leaves before the successor opens
+      expect(getSavedRoom()).toBeNull();
+      vi.advanceTimersByTime(0);
+      const next = FakeWS.last!;
+      expect(next).not.toBe(ws);
+      next.onopen?.();
+      expect(next.sent).toEqual(resumeThenLeave);
+      ws.readyState = 3;
+      ws.onclose?.();                                   // the old socket's close, late
+      expect(got).toEqual(["left"]);
+      next.deliver({ type: "left" });
+      next.deliver({ type: "state", room: "CCCC", you: 0, phase: "play" });   // the next table
+      expect(got).toEqual(["left", "state"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reload delivers the owed Leave once, then forgets it", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      conn.send({ type: "table_leave" });               // then the app is closed
+      const again = await load();                       // relaunch: a new page, same storage
+      again.conn.start();
+      const first = FakeWS.last!;
+      first.onopen?.();
+      expect(first.sent).toEqual(resumeThenLeave);
+      first.deliver({ type: "left" });
+      const third = await load();
+      third.conn.start();
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Leave sent just before the app closed is delivered on relaunch, not resumed", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = await seated();
+      conn.send({ type: "table_leave" });               // sent; the app closes before the left
+      const again = await load();
+      expect(again.getSavedRoom()).toBe("AAAA");
+      again.conn.start();
+      expect(again.getSavedRoom()).toBeNull();          // App does not resume the seat left
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an owed Leave older than the seat's hold is not delivered on relaunch", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(91_000);
+      const again = await load();
+      again.conn.start();
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an owed Leave another live page delivered is not sent again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      ws.close();
+      conn.send({ type: "table_leave" });               // page 1 owes it, stored
+      const other = await load();                       // page 2 opens meanwhile
+      other.conn.start();
+      const theirs = FakeWS.last!;
+      theirs.onopen?.();
+      expect(theirs.sent).toEqual(resumeThenLeave);
+      theirs.deliver({ type: "left" });                 // and the server answers it there
+      vi.advanceTimersByTime(500);
+      const mine = FakeWS.last!;
+      expect(mine).not.toBe(theirs);
+      mine.onopen?.();
+      expect(mine.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // a second page on the same storage, seated at BBBB by the server's frames
+  const seatedAtB = async () => {
+    const mod = await load();
+    mod.conn.start();
+    const ws = FakeWS.last!;
+    ws.onopen?.();
+    ws.deliver({ type: "resume", token: "tokB", gen: 1 });
+    ws.deliver({ type: "state", room: "BBBB", you: 2, phase: "play" });
+    mod.saveRoom("BBBB");
+    return { ...mod, ws };
+  };
+  const resumeThenLeaveB = [
+    { type: "table_join", code: "BBBB", name: "jerry", expect: "room", token: "tokB" },
+    { type: "table_leave" },
+  ];
+
+  it("two tabs owing Leaves for two seats each deliver their own, and one answered keeps the other owed", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      b.ws.close();
+      expect(a.conn.send({ type: "table_leave" })).toBe(true);
+      expect(b.conn.send({ type: "table_leave" })).toBe(true);
+      const before = FakeWS.all.length;
+      vi.advanceTimersByTime(500);
+      const [first, second] = FakeWS.all.slice(before);
+      first.onopen?.();
+      first.deliver({ type: "left" });                  // one seat's Leave answered
+      second.onopen?.();
+      const sent = [first.sent, second.sent];
+      expect(sent).toContainEqual(resumeThenLeave);
+      expect(sent).toContainEqual(resumeThenLeaveB);
+      expect(a.conn.deliversOwedLeave()).toBe(true);
+      expect(b.conn.deliversOwedLeave()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a relaunch after two tabs' Leaves delivers both seats', one after the other's left", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      b.ws.close();
+      a.conn.send({ type: "table_leave" });
+      b.conn.send({ type: "table_leave" });
+      a.conn.stop();
+      b.conn.stop();
+      const again = await load();
+      again.conn.start();
+      const ws = FakeWS.last!;
+      ws.onopen?.();
+      expect(again.conn.deliversOwedLeave()).toBe(true);
+      expect(ws.sent).toEqual(resumeThenLeave);
+      ws.deliver({ type: "left" });
+      expect(ws.sent).toEqual([...resumeThenLeave, ...resumeThenLeaveB]);
+      ws.deliver({ type: "left" });
+      const later = await load();
+      later.conn.start();
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);            // both answered: nothing owed
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Runs `between` once, inside the next storage access to an owed Leave:
+  // another tab's write landing while this tab is mid read-and-write.
+  const interleave = (between: () => void) => {
+    const get = Storage.prototype.getItem;
+    const set = Storage.prototype.setItem;
+    const remove = Storage.prototype.removeItem;
+    let armed = true;
+    let fired = 0;
+    const hook = (k: string) => {
+      if (armed && k.startsWith("shengji.owedLeave")) {
+        armed = false;
+        fired += 1;
+        between();
+      }
+    };
+    // after a read returns and before this tab writes from it
+    Storage.prototype.getItem = function (k: string) { const v = get.call(this, k); hook(k); return v; };
+    Storage.prototype.setItem = function (k: string, v: string) { hook(k); set.call(this, k, v); };
+    Storage.prototype.removeItem = function (k: string) { hook(k); remove.call(this, k); };
+    return {
+      fired: () => fired,
+      restore: () => {
+        Storage.prototype.getItem = get;
+        Storage.prototype.setItem = set;
+        Storage.prototype.removeItem = remove;
+      },
+    };
+  };
+
+  it("two tabs' Leaves stored at once both survive and both go", async () => {
+    vi.useFakeTimers();
+    let hook: ReturnType<typeof interleave> | null = null;
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      b.ws.close();
+      hook = interleave(() => { b.conn.send({ type: "table_leave" }); });
+      a.conn.send({ type: "table_leave" });             // B's Leave is stored while A stores its own
+      hook.restore();
+      expect(hook.fired()).toBe(1);
+      const before = FakeWS.all.length;
+      vi.advanceTimersByTime(500);
+      const fresh = FakeWS.all.slice(before);
+      fresh.forEach((ws) => ws.onopen?.());
+      const sent = fresh.map((ws) => ws.sent);
+      expect(sent).toContainEqual(resumeThenLeave);
+      expect(sent).toContainEqual(resumeThenLeaveB);
+    } finally {
+      hook?.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("one seat's Leave answered while another tab stores its own keeps the other's", async () => {
+    vi.useFakeTimers();
+    let hook: ReturnType<typeof interleave> | null = null;
+    try {
+      const a = await seated();
+      const b = await seatedAtB();
+      a.ws.close();
+      a.conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(500);
+      const mine = FakeWS.all.at(-1)!;
+      mine.onopen?.();
+      expect(mine.sent).toEqual(resumeThenLeave);
+      b.ws.close();
+      hook = interleave(() => { b.conn.send({ type: "table_leave" }); });
+      mine.deliver({ type: "left" });                   // A's answer lands while B stores its Leave
+      hook.restore();
+      expect(hook.fired()).toBe(1);
+      const before = FakeWS.all.length;
+      vi.advanceTimersByTime(500);
+      const theirs = FakeWS.all.slice(before);
+      theirs.forEach((ws) => ws.onopen?.());
+      expect(theirs.map((ws) => ws.sent)).toContainEqual(resumeThenLeaveB);
+    } finally {
+      hook?.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("with storage refusing writes, the page itself still delivers its owed Leave", async () => {
+    vi.useFakeTimers();
+    const setItem = Storage.prototype.setItem;
+    try {
+      const { conn, ws } = await seated();
+      Storage.prototype.setItem = function (k: string, v: string) {
+        if (k === "shengji.owedLeave") throw new Error("QuotaExceededError");
+        setItem.call(this, k, v);
+      };
+      ws.close();
+      conn.send({ type: "table_leave" });
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual(resumeThenLeave);
+    } finally {
+      Storage.prototype.setItem = setItem;
+      vi.useRealTimers();
+    }
+  });
+
+  it("the left answered on the same socket clears it: nothing goes again", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn, ws } = await seated();
+      conn.send({ type: "table_leave" });
+      ws.deliver({ type: "left" });
+      ws.close();
+      vi.advanceTimersByTime(500);
+      FakeWS.last!.onopen?.();
+      expect(FakeWS.last!.sent).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

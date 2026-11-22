@@ -343,6 +343,28 @@ def test_action_scorer_matches_torch_residual_and_authenticates_package(tmp_path
         ra.ReplyActionScorer(weights, "a" * 64, "b" * 64)
 
 
+@pytest.mark.parametrize(("trump", "lead", "follow"), [
+    ("H", ["H3", "H3"], ["H4", "H4"]),
+    (None, ["S7", "S7"], ["D7", "D7"]),
+    ("D", ["C3", "C3", "C4", "C4"], ["C8", "C8", "C9", "CJ"]),
+])
+def test_compact_action_features_match_listed_card_features(trump, lead, follow):
+    from shengji.train import unified_reply_action as ra
+    from tests.test_endgame_compact import _play_round
+
+    width = len(lead)
+    cards = ["HK", "D7", "C5", "C6", "DJ", "LJ", "S7"]
+    actions = [[a, a, b, b][:width] for a in cards for b in cards if a != b]
+    actions += [[a, b, a, b][:width] for a in cards for b in cards if a != b]
+    root = _play_round(trump, "7", 0, [lead, follow, [], []], [], leader=0, attacker_points=0)
+    root.play(0, lead)
+    root.play(1, follow)
+    legal = pts.CompactReplies(actions, leads=False)
+    counts = legal.multiplicity().astype(np.float32)
+    actual = ra._compact_feats(legal, root, counts, counts.sum(1))
+    np.testing.assert_array_equal(actual, ra.action_feats(actions, root, root.turn))
+
+
 @pytest.mark.parametrize("fast", [False, True])
 @pytest.mark.parametrize("multi", [False, True])
 def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_path, monkeypatch, fast, multi):
@@ -358,7 +380,7 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
                 if (len(action) > 1) != multi:
                     continue
                 candidate = pts.child_position(root, root.turn, list(action))
-                if len(enumerate_legal(candidate, candidate.turn, cap=6).actions) >= 2:
+                if len(enumerate_legal(candidate, candidate.turn, cap=30).actions) >= (16 if multi else 2):
                     source = candidate
                     break
         if source is None:
@@ -378,7 +400,7 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
         ra.install_reply_action(us.install_reply_readout(_bot(package), model),
             ra.ReplyActionScorer(weights, "a" * 64, "b" * 64))
     active = [copy.deepcopy(source) for _ in range(3)]
-    legal = [list(a) for a in enumerate_legal(source, seat, cap=6).actions]
+    legal = [list(a) for a in enumerate_legal(source, seat, cap=30).actions]
     bot.unified_frame = us.LeafFrame(bot, root, root.turn)
     frame = bot.unified_frame
     planes, scalars = us.leaf_features(frame, source)
@@ -399,7 +421,7 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
     def listing(clone, seat, cache):
         actions = legal[:1] if clone is active[0] else legal
         counts = np.stack([_counts(a) for a in actions])
-        return actions, counts
+        return (pts.CompactReplies(actions, leads=False) if fast else actions), counts
     stats = pts.greedy_stats()
     us.readout_reply_ply(pts.greedy_reply_ply)(bot, active, None, {}, stats, 1, 1, listing,
         lambda leaves, seat, gate: (np.zeros(len(leaves)), 1))

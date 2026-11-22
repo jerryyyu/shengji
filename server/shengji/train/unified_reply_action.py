@@ -20,8 +20,7 @@ for _card, _index in CARD_INDEX.items():
     PTS[_index] = card_pts(_card)
 
 
-def action_feats(legal, root, seat):
-    """(n_legal, N_AF) engine features of each legal follow."""
+def _trick_context(root, seat):
     o = root.ordering
     plays = root.trick.plays
     lead = list(plays[0].cards)
@@ -33,6 +32,13 @@ def action_feats(legal, root, seat):
         if won:
             winner, inc_top, inc_suit = tp.seat, top, o.eff_suit(tp.cards[0])
     partner_winning = float((winner - seat) % 4 == 2)
+    return lead, lead_suit, inc_suit, inc_top, partner_winning
+
+
+def action_feats(legal, root, seat):
+    """(n_legal, N_AF) engine features of each legal follow."""
+    lead, lead_suit, inc_suit, inc_top, partner_winning = _trick_context(root, seat)
+    o = root.ordering
     F = np.zeros((len(legal), N_AF), np.float32)
     for i, a in enumerate(legal):
         n = len(a)
@@ -51,6 +57,37 @@ def action_feats(legal, root, seat):
                 mpr / max(n // 2, 1), float(one_suit), float(won), pts / 10.0, partner_winning, float(won) * pts / 10.0,
                 np.log(len(legal)))
     return F
+
+
+def _compact_feats(legal, root, counts, n):
+    """Compute listing-wide features together; only single-suit actions can win."""
+    lead, lead_suit, inc_suit, inc_top, partner = _trick_context(root, root.turn)
+    suits = np.empty(54, dtype="U1")
+    for card, index in CARD_INDEX.items():
+        suits[index] = root.ordering.eff_suit(card)
+    suit_counts = np.column_stack([counts[:, suits == suit].sum(1) for suit in ("S", "H", "D", "C", TRUMP)])
+    lead_count = counts[:, suits == lead_suit].sum(1)
+    trump_count = suit_counts[:, -1]
+    one_suit = suit_counts.max(1) == n
+    pairs = (counts // 2).sum(1)
+    denom = np.maximum(n // 2, 1)
+    points = counts @ PTS
+    feats = np.zeros((len(legal), N_AF), np.float32)
+    feats[:, 0] = n
+    feats[:, 1] = lead_count / n
+    feats[:, 2] = trump_count / n
+    feats[:, 3] = (n - lead_count - (trump_count if lead_suit != TRUMP else 0)) / n
+    feats[:, 4] = pairs / denom
+    feats[:, 6] = one_suit
+    for i in np.flatnonzero(one_suit):
+        cards = legal[i]
+        feats[i, 5] = combos.decompose(cards, root.ordering).max_pair_run() / denom[i]
+        feats[i, 7] = beats(cards, lead, inc_suit, inc_top, root.ordering)[0]
+    feats[:, 8] = points / 10
+    feats[:, 9] = partner
+    feats[:, 10] = feats[:, 7] * feats[:, 8]
+    feats[:, 11] = np.log(len(legal))
+    return feats
 
 
 def _stored_precision(a):
@@ -101,10 +138,17 @@ class ReplyActionScorer:
         return (x @ w["w.weight"].T + w["w.bias"]).reshape(-1)
 
     def scores(self, root, legal, row, hidden, card_states, planes):
-        counts = np.zeros((len(legal), 54), np.float32)
-        for i, action in enumerate(legal):
-            for card in action:
-                counts[i, CARD_INDEX[card]] += 1
+        from .pv_tree_search import CompactReplies
+
+        # Small listings cost less to walk than to set up suit masks and reductions.
+        compact = type(legal) is CompactReplies and not legal.leads and len(legal) >= 16
+        if compact:
+            counts = legal.multiplicity().astype(np.float32)
+        else:
+            counts = np.zeros((len(legal), 54), np.float32)
+            for i, action in enumerate(legal):
+                for card in action:
+                    counts[i, CARD_INDEX[card]] += 1
         n = counts.sum(1)
         if not len(legal) or np.any(n == 0):
             raise ValueError("reply action ranking requires nonempty actions")
@@ -113,7 +157,8 @@ class ReplyActionScorer:
                                 row[:, None]], axis=1)
         pool = _stored_precision(counts @ cardf)
         base = (counts.astype(np.float64) * row.astype(np.float64)).sum(1)
-        e = np.concatenate([pool / n[:, None], _stored_precision(action_feats(legal, root, root.turn)),
+        feats = _compact_feats(legal, root, counts, n) if compact else action_feats(legal, root, root.turn)
+        e = np.concatenate([pool / n[:, None], _stored_precision(feats),
                             (base / n)[:, None].astype(np.float32),
                             (base - base.max())[:, None].astype(np.float32)], axis=1)
         return base + self.residual(_stored_precision(hidden), e).astype(np.float64)

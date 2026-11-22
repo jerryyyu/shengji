@@ -1,0 +1,14 @@
+{
+ "name": "s158a-capture-1011400000",
+ "purpose": "other",
+ "seed0": 1011400000,
+ "clusters": 3100,
+ "span": [
+  1011400000,
+  1011403100
+ ],
+ "created_at": "2026-11-22T06:20:00Z",
+ "host": "mini",
+ "git_head": "a45dd2e3",
+ "note": "S158 stage A (board #1263 row S158, Jerry 2026-11-22: \"yea lets test it - can we use mini for those tests?\"): release 54 as served plays self-play deals on the Mac mini; at every 8-card follow the served pick is recorded with a full 64-world exact solve of every admitted candidate (20 s cap) and true-deal PI points, for an offline replay of world-anytime, racing, prune and world-cap rules. Tier-i DEV, not a screen. Capture [1011400000, 1011403000): tune half [1011400000, 1011401500), read-once half [1011401500, 1011403000). Smoke, benchmark-only and play-identity check deals [1011403000, 1011403100), outcomes not read. Self-play of the served bot only, so no checkpoint exposure clearance applies. This is a seed reservation only; registry disjointness is not exposure clearance, and it is not launch authorization."
+}

@@ -60,6 +60,19 @@ def test_validation_fails_closed(bad):
         schema.finalize_record(_fields(**bad))
 
 
+def test_finalize_hashes_once_and_reader_checks_changed_content(monkeypatch):
+    from unittest.mock import Mock
+
+    digest = Mock(wraps=schema.record_sha256)
+    monkeypatch.setattr(schema, "record_sha256", digest)
+    record = schema.finalize_record(_fields(record_sha256="stale"))
+    digest.assert_called_once()
+    schema.validate_record(record)
+    record["policy"] = "human:different"
+    with pytest.raises(schema.SchemaError, match="record_sha256 drift"):
+        schema.validate_record(record)
+
+
 def test_unknown_field_rejected():
     record = schema.finalize_record(_fields())
     record["extra"] = 1

@@ -331,6 +331,7 @@ class Soak:
             kind = self.rng.choice(FAULTS)
             client.gen_at_fault = client.gen
             rec = self.ledger.open(kind, client.name, time.monotonic())
+            origin = rec["origin"] = self._origin(client)
             secs = self.rng.choice(STALL_SECS) / self.scale
             if kind == "drop":
                 proxy.cut()
@@ -358,7 +359,7 @@ class Soak:
                 client.dup_sent_at = None
                 client.dup_next = True
                 while client.dup_sent_at is None and not client.stop and time.monotonic() < until:
-                    if self.srv.rooms.get(client.room or "") is None:
+                    if self.srv.rooms.get(origin["room"] or "") is None:
                         break
                     await asyncio.sleep(0.02)
                 if client.dup_sent_at is None:
@@ -370,25 +371,38 @@ class Soak:
             client.rec.faults.append({"kind": kind, "secs": secs * self.scale})
             rec["trace"] = {}
             outcome, took, reason = await self._recovered(client, end, until, kind in ("drop", "storm", "relaunch"),
-                                                          rec["trace"])
+                                                          rec["trace"], origin)
             audit.FaultLedger.close(rec, outcome, secs=None if took is None else took * self.scale, reason=reason)
 
+    def _origin(self, client) -> dict:
+        """The seat a fault hits, fixed when it is injected: the outcome is
+        resolved against this room, seat, owner and socket, wherever the
+        client is by the time the fault ends."""
+        room = self.srv.rooms.get(client.room or "")
+        sd = room.seats[client.seat] if room is not None and client.seat is not None else None
+        return {"room": client.room, "seat": client.seat, "gen": client.gen,
+                "owner": (audit.seat_owner(sd) if sd is not None else None) or client.device,
+                "leaves": client.rec.sent_types.get("table_leave", 0)}
+
     async def _recovered(self, client, end: float, until: float, cut: bool,
-                         trace: dict | None = None) -> tuple[str, float | None, str | None]:
+                         trace: dict | None = None, origin: dict | None = None) -> tuple[str, float | None, str | None]:
         """The fault's outcome: ``recovered`` (with the seconds from its end)
         once ``audit.recovered`` holds: the server holds the seat on a live
         socket, the client's state is the server's decision for that seat, and
         either that state arrived since the fault or the socket open when the
         fault began survived it with a frame through since; ``failed`` past
-        ``RECOVERY_DEADLINE_SECS`` or when the client lost a seat whose room
-        goes on; else ``censored``. ``trace`` gets the unscaled seconds after
-        the end at which each condition first held, for reading a slow one."""
+        ``RECOVERY_DEADLINE_SECS`` or when the client is off the original seat
+        (``origin``) while its room goes on, unless it sent a Leave; else
+        ``censored``. A state from any other room or seat never recovers the
+        original one. ``trace`` gets the unscaled seconds after the end at
+        which each condition first held, for reading a slow one."""
         trace = {} if trace is None else trace
-        gen0 = client.gen_at_fault
+        origin = self._origin(client) if origin is None else origin
+        gen0 = origin["gen"]
         if not cut and client.gen == client.gen_at_fault and client.ws is not None and client.awaiting is None:
             # ws.ts probes a socket that may have stalled (back online, back in view)
             client.probe()
-        room_code, seat = client.room, client.seat
+        room_code, seat = origin["room"], origin["seat"]
         deadline = end + RECOVERY_DEADLINE_SECS / self.scale
         while not client.stop:
             now = time.monotonic()
@@ -397,11 +411,14 @@ class Soak:
             room = self.srv.rooms.get(room_code or "")
             if room is None:
                 return "censored", None, "table_ended"
-            if client.room != room_code or client.seat != seat or seat is None:
-                if client.rounds_here < 0:
-                    return "censored", None, "left_table"      # this client sent its Leave
+            if seat is None:
                 return "failed", None, "seat_lost"
             sd = room.seats[seat]
+            left = client.rec.sent_types.get("table_leave", 0) > origin["leaves"] or sd.left_by_choice
+            if client.room != room_code or client.seat != seat or audit.seat_owner(sd) != origin["owner"]:
+                if left:
+                    return "censored", None, "left_table"      # this client's own Leave
+                return "failed", None, "seat_lost"
             cview, sview = audit.state_view(client.state), self._server_view(room, seat)
             for name, held in (("new_socket", client.gen != gen0), ("ws_open", client.ws is not None),
                                ("rx_since_end", client.last_rx >= end),

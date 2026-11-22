@@ -405,3 +405,125 @@ def test_a_connected_seat_without_a_live_writer_or_socket_is_flagged_when_it_hol
     assert {(f["seat"], f["fault"]) for f in s.socket_faults} == {
         (0, "connected_without_writer"), (1, "connected_without_socket")}
     assert len(s.writer_errors) == 1 and len(s.writer_disconnects) == 1
+
+
+# a fault is resolved against the seat it hit, through chaos -> _recovered -> FaultLedger
+
+class _Proxy:
+    delay = 0.0
+
+    def cut(self):
+        pass
+
+    def pause(self, *d):
+        pass
+
+    def resume(self):
+        pass
+
+
+class _WS:
+    async def send(self, raw):
+        return None
+
+
+def _table(code, seat_no, owner):
+    seats = [_bot() for _ in range(4)]
+    seats[seat_no] = _seat("Soak-1", owner)
+    rnd = SimpleNamespace(phase="play", turn=seat_no, hands={seat_no: ["SA", "D3"]}, trick=None, ordering=None)
+    return SimpleNamespace(code=code, game=SimpleNamespace(game_over=False), round=rnd, seats=seats)
+
+
+def _frame(code, seat_no):
+    return {"room": code, "you": seat_no, "phase": "play", "turn": seat_no, "trick": None,
+            "hand": [{"id": 7, "code": "SA"}, {"id": 8, "code": "D3"}]}
+
+
+def _run_one_fault(tmp_path, monkeypatch, during):
+    """One stall on the client seated at AAAA seat 2; ``during(soak, client)``
+    runs inside the outage. Returns the closed ledger record."""
+    monkeypatch.setattr(soak, "FAULTS", ("stall",))
+    monkeypatch.setattr(soak, "STALL_SECS", (0.2,))
+    s = _bare_soak(tmp_path)
+    s.scale = 1.0
+    s.args.fault_gap = (0.0, 0.0)
+    s.rng = __import__("random").Random(1)
+    s.srv = SimpleNamespace(rooms={"AAAA": _table("AAAA", 2, "dev1")}, trick_json=lambda t, o: t)
+    c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, None)
+    c.ws, c.gen, c.room, c.seat = _WS(), 1, "AAAA", 2
+    c.state, c.state_at = _frame("AAAA", 2), 0.0
+
+    async def run():
+        import time as _t
+        until = _t.monotonic() + 5
+        task = asyncio.create_task(s.chaos(c, _Proxy(), until))
+        await asyncio.sleep(0.05)
+        await during(s, c)
+        while not s.ledger.faults or s.ledger.faults[0]["outcome"] is None:
+            await asyncio.sleep(0.02)
+        c.stop = True
+        task.cancel()
+    asyncio.run(run())
+    return s.ledger.faults[0]
+
+
+def _fresh(c, code, seat_no):
+    import time as _t
+    c.state, c.state_at, c.last_rx = _frame(code, seat_no), _t.monotonic() + 1.0, _t.monotonic() + 1.0
+
+
+def test_a_seat_lost_during_the_fault_fails_it(tmp_path, monkeypatch):
+    async def during(s, c):
+        c.room = c.seat = c.state = None        # an error ended the table for this client; AAAA goes on
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("failed", "seat_lost")
+    assert rec["origin"]["room"] == "AAAA" and rec["origin"]["seat"] == 2 and rec["origin"]["owner"] == "dev1"
+
+
+def test_a_fresh_state_at_another_room_does_not_recover_the_original_seat(tmp_path, monkeypatch):
+    async def during(s, c):
+        s.srv.rooms["BBBB"] = _table("BBBB", 1, "dev1")
+        c.room, c.seat = "BBBB", 1
+        _fresh(c, "BBBB", 1)
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("failed", "seat_lost")
+
+
+def test_a_voluntary_leave_during_the_fault_censors_it(tmp_path, monkeypatch):
+    async def during(s, c):
+        await c._send({"type": "table_leave"})
+        s.srv.rooms["AAAA"].seats[2].left_by_choice = True
+        c._forget_room()
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("censored", "left_table")
+
+
+def test_the_original_room_ending_censors_it_even_after_a_rejoin_elsewhere(tmp_path, monkeypatch):
+    async def during(s, c):
+        del s.srv.rooms["AAAA"]
+        s.srv.rooms["BBBB"] = _table("BBBB", 1, "dev1")
+        c.room, c.seat = "BBBB", 1
+        _fresh(c, "BBBB", 1)
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("censored", "table_ended")
+
+
+def test_another_owner_on_the_original_seat_fails_it(tmp_path, monkeypatch):
+    async def during(s, c):
+        s.srv.rooms["AAAA"].seats[2] = _seat("Soak-9", "dev9")
+        _fresh(c, "AAAA", 2)
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("failed", "seat_lost")
+
+
+def test_the_original_seat_recovers_by_a_fresh_state_or_its_surviving_socket(tmp_path, monkeypatch):
+    async def during(s, c):
+        _fresh(c, "AAAA", 2)
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert rec["outcome"] == "recovered" and rec["trace"]["via"] == "state"
+
+    async def quiet(s, c):
+        import time as _t
+        c.last_rx = _t.monotonic() + 1.0        # a pong after the fault; the held state is pre-fault
+    rec = _run_one_fault(tmp_path, monkeypatch, quiet)
+    assert rec["outcome"] == "recovered" and rec["trace"]["via"] == "same_socket"

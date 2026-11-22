@@ -260,3 +260,78 @@ def test_lgf_bots_decide_alike_with_and_without_the_compiled_children(monkeypatc
             applied += bool(ra["leaf_greedy_finish_applied"])
             rnd.play(seat, a)
     assert decisions >= 80 and applied > 20 and len(built) > 100
+
+
+@pytest.mark.parametrize("unified", [False, True])
+@pytest.mark.parametrize("ranking", ["default", "ties", "action"])
+def test_action_ranking_reaches_reply_selection_with_forced_clones_and_batches(monkeypatch, unified, ranking):
+    from types import SimpleNamespace
+    import numpy as np
+    from shengji.train import unified_slots as us
+
+    source, seat, _ = next(
+        item for item in _follow_clones((707_001,), False)
+        if len(enumerate_legal(item[0], item[1], cap=6).actions) >= 3)
+    legal = [list(a) for a in enumerate_legal(source, seat, cap=6).actions]
+    heuristic = sorted(HeuristicBot().decide_play(source, seat))
+    target = next(a for a in reversed(legal) if a != heuristic)
+    if ranking != "action":
+        target = legal[0]
+    active = [copy.deepcopy(source) for _ in range(3)]
+    bot = SimpleNamespace(batch_size=1, predict=lambda rows: np.zeros((len(rows), 54)))
+    original_predict = bot.predict
+    ply = pts.greedy_reply_ply
+    if unified:
+        bot.unified_reply_model = SimpleNamespace(
+            leaf_reply_logits=lambda cache, planes, scalars: np.zeros((len(planes), 54)))
+        bot.unified_frame = SimpleNamespace(fast=False, cache=lambda model: None)
+        bot.unified_reply_rows = bot.unified_reply_served = 0
+        monkeypatch.setattr(us, "leaf_features_batch", lambda frame, clones: (
+            np.zeros((len(clones), 1)), np.zeros((len(clones), 1)), np.zeros((len(clones), 1))))
+        ply = us.readout_reply_ply(ply)
+    seen, expanded = [], []
+
+    def listing(clone, seat, cache):
+        actions = legal[:1] if clone is active[0] else legal
+        return actions, np.zeros((len(actions), 54))
+
+    def rank(index, actions, scoring, row):
+        seen.append(index)
+        assert actions == legal and row.shape == (54,)
+        return np.zeros(len(actions)) if ranking == "ties" else np.array([float(a == target) for a in actions])
+
+    def children(clone, seat, candidates):
+        expanded.append(candidates)
+        return _reference(clone, seat, candidates)
+
+    stats = pts.greedy_stats()
+    ply(bot, active, None, {}, stats, 1, 1, listing,
+        lambda leaves, seat, gate: (np.zeros(len(leaves)), 1),
+        rows_fn=lambda clones, seat: np.zeros((len(clones), 1)),
+        children_fn=children, rank_fn=None if ranking == "default" else rank)
+    assert seen == ([] if ranking == "default" else [1, 2])
+    assert expanded == ([] if target == heuristic else [[target, heuristic], [target, heuristic]])
+    assert list(active[0].trick.plays[-1].cards) == legal[0]
+    assert all(list(clone.trick.plays[-1].cards) == target for clone in active[1:])
+    assert stats["tree_forced_plays"] == 1 and stats["tree_policy_rows"] == 2
+    assert bot.predict is original_predict
+
+
+@pytest.mark.parametrize("scores", [[0], [[0, 1]], [0, float("nan")], [0, float("inf")]])
+def test_action_ranking_rejects_bad_scores_before_play(scores):
+    from types import SimpleNamespace
+    import numpy as np
+
+    source, seat, _ = next(
+        item for item in _follow_clones((707_001,), False)
+        if len(enumerate_legal(item[0], item[1], cap=6).actions) >= 2)
+    legal = [list(a) for a in enumerate_legal(source, seat, cap=6).actions[:2]]
+    before = _state(source)
+    bot = SimpleNamespace(batch_size=1, predict=lambda rows: np.zeros((len(rows), 54)))
+    with pytest.raises(ValueError, match="reply ranking"):
+        pts.greedy_reply_ply(bot, [source], None, {}, pts.greedy_stats(), 1, 1,
+            lambda clone, seat, cache: (legal, np.zeros((2, 54))),
+            lambda *args: pytest.fail("invalid ranking reached value scoring"),
+            rows_fn=lambda clones, seat: np.zeros((len(clones), 1)),
+            rank_fn=lambda *args: scores)
+    assert _state(source) == before

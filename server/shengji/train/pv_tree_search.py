@@ -685,7 +685,8 @@ _STANDARD_REPLY_CHILDREN = reply_children_fast
 
 
 def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn,
-                     rows_fn=None, guard=None, child_fn=child_position, children_fn=None):
+                     rows_fn=None, guard=None, child_fn=child_position, children_fn=None,
+                     rank_fn=None):
     """One reply ply of the greedy finish: every clone in ``active`` has the
     SAME seat to act (turn order inside one trick is fixed); that seat plays
     its highest-valued candidate in each clone (module docstring: the policy's
@@ -700,7 +701,9 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     each (clone, candidate) child (`child_position` or `child_position_fast`);
     ``children_fn(clone, seat, candidates)``, when given, builds and finishes
     all of one clone's children in one call (`reply_children_fast`: the same
-    children) in its place."""
+    children) in its place.  ``rank_fn(index, legal, scoring, row)``, when given,
+    returns one finite score per listed action, in listing order. The index
+    addresses ``active``, including forced clones; forced replies bypass it."""
     from .policy_prior import N_CARDS, flat_input, root_tensors
     seat = active[0].turn
     if any(clone.turn != seat for clone in active):
@@ -731,7 +734,13 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
             raise ValueError("policy requires finite rows x 54 log-odds")
         for row, (index, legal, scoring) in zip(logits, pending[start:start + bot.batch_size]):
             # the policy's top-R follows; a stable sort keeps enumeration order on ties
-            order = _top_replies(scoring, row, keep)
+            if rank_fn is None:
+                order = _top_replies(scoring, row, keep)
+            else:
+                scores = np.asarray(rank_fn(index, legal, scoring, row), dtype=np.float64)
+                if scores.shape != (len(legal),) or not np.isfinite(scores).all():
+                    raise ValueError("reply ranking requires one finite score per legal action")
+                order = np.argsort(-scores, kind="stable")[:keep]
             candidates = [list(legal[int(i)]) for i in order]
             follow = sorted(heuristic.decide_play(active[index], seat))
             if follow not in candidates:

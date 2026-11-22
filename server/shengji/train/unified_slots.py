@@ -227,6 +227,7 @@ class LeafFrame:
         self._fused = None
         self.value_memo: dict = {}
         self.reply_memo: dict = {}
+        self.reply_hidden_memo: dict = {}
         #: the reply ply's value chunks scored ahead, in the order `team_values` asks for them
         self.ahead: list | None = None
 
@@ -852,6 +853,13 @@ def readout_reply_ply(served_ply):
         if len(mine) != len(active):
             bot.unified_reply_served += len(active)
             return served_ply(bot, active, gate, cache, stats, keep, version, legal_fn, values_fn, rows_fn, *args, **kw)
+        scorer = getattr(bot, "unified_reply_action", None)
+        multi = [len(clone.trick.plays[0].cards) >= 2 for clone in active] if scorer is not None else []
+        if scorer is not None and not any(multi):
+            scorer = None
+        if scorer is not None and kw.get("rank_fn") is not None:
+            raise UnifiedSlotError("reply action ranking cannot replace another ranking hook")
+        hidden = {}
         index_of = {id(clone): i for i, clone in enumerate(active)}
         pending = []
 
@@ -872,6 +880,19 @@ def readout_reply_ply(served_ply):
             if len(take) != len(chunk):
                 raise UnifiedSlotError("the reply rows and the listed clones disagree")
             bot.unified_reply_rows += len(take)
+            if scorer is not None:
+                at_rows = np.asarray(take, np.int64)
+                if fast:
+                    fused = frame.fused(model)
+                    rows, hits = memo_rows(frame.reply_hidden_memo, [keys[i] for i in take],
+                                           lambda sub: model.leaf_hidden_fused(fused, planes[at_rows[sub]],
+                                                                               scalars[at_rows[sub]]))
+                    h = np.stack(rows)
+                    bot.unified_reply_memo += hits
+                else:
+                    h = model.leaf_hidden(frame.cache(model), planes[at_rows], scalars[at_rows])
+                hidden.update(zip(take, h))
+                return h @ model._t["reply.weight"] + model.r["reply.bias"]
             if fast:
                 at_rows = np.asarray(take, np.int64)
                 fused = frame.fused(model)
@@ -881,6 +902,12 @@ def readout_reply_ply(served_ply):
                 bot.unified_reply_memo += hits
                 return np.stack(rows) if rows else np.zeros((0, N_CARDS), np.float32)
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
+        if scorer is not None:
+            def rank(index, legal, scoring, row):
+                if not multi[index]:
+                    return scoring @ row
+                return scorer.scores(active[index], legal, row, hidden[index], frame.cache(model)[0], planes[index])
+            kw["rank_fn"] = rank
         served_predict = bot.predict
         if fast:
             callbacks = _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw)

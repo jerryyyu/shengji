@@ -8,6 +8,11 @@ unanswered across a reconnect goes once more when the first state on the
 new socket shows the same hand, turn and phase). ``test_online_soak.py``
 pins the constants below to ``ws.ts``.
 
+Each play or bury carries a ``_soak`` tag (decision id, socket generation,
+send sequence) that the server ignores; the run reads it where the play
+applies to name the send it came from. A resend keeps the decision id and
+the decision key of the first send.
+
 Every duration is divided by the run's time scale, as the server's are.
 """
 from __future__ import annotations
@@ -22,7 +27,8 @@ from typing import Any, Callable
 
 import websockets
 
-from localonly import require_local
+from audit import frame_key
+from localonly import require_local, ws_url
 
 # web/src/ws.ts, in milliseconds
 TABLE_PING_MS = 8000
@@ -37,26 +43,18 @@ ANSWERED = frozenset({"play", "bury", "declare", "pass_declare", "next_round", "
                       "table_chat", "table_allow_joiners"})
 
 
-def frame_key(hand_codes: list[str], trick: dict | None) -> tuple:
-    """One decision as a seat sees it: its hand and the trick so far."""
-    plays = tuple((p.get("seat"), tuple(sorted(_codes(p.get("cards"))))) for p in (trick or {}).get("plays", []))
-    return tuple(sorted(hand_codes)), plays
-
-
-def _codes(cards: Any) -> list[str]:
-    out = []
-    for c in cards or []:
-        out.append(c.get("code") if isinstance(c, dict) else c)
-    return [c for c in out if isinstance(c, str)]
-
-
 @dataclass
 class Sent:
+    """One play or bury on the wire. ``key`` is the decision as it stood at
+    the decision's first send, on every resend too."""
     kind: str
     card_ids: list[int]
     codes: list[str]
     key: tuple
     at: float
+    did: int = 0
+    gen: int = 0
+    seq: int = 0
     resend: bool = False
 
 
@@ -68,6 +66,8 @@ class Pending:
     hand_key: tuple
     turn: int | None
     gen: int
+    did: int = 0
+    key: tuple = ()
     resent: bool = False
 
 
@@ -82,15 +82,23 @@ class ClientRecord:
     rounds_seen: int = 0
     tables: int = 0
     down: list[list[float]] = field(default_factory=list)   # [start, end] with the socket not open
+    task_errors: list[str] = field(default_factory=list)
+    sent_types: dict[str, int] = field(default_factory=dict)
+    # (the latest message type sent before it, the error code) for each refusal
+    refused_after: dict[str, int] = field(default_factory=dict)
 
 
 class SoakClient:
     def __init__(self, name: str, device: str, port: int, scale: float, rng: random.Random,
                  brain: Callable[["SoakClient", dict], list[int] | None],
-                 on_lobby: Callable[["SoakClient"], Any]) -> None:
+                 on_lobby: Callable[["SoakClient"], Any], host: str = "127.0.0.1",
+                 client_ip: str | None = None) -> None:
         self.name = name
         self.device = device
-        self.url = require_local(f"ws://127.0.0.1:{port}/ws?device={device}")
+        self.url = require_local(ws_url(host, port, f"/ws?device={device}"))
+        # the address the server's per-address limits key this client by
+        # (accounts.client_ip reads Fly-Client-IP before the socket peer)
+        self.headers = {"Fly-Client-IP": client_ip} if client_ip else {}
         self.scale = scale
         self.rng = rng
         self.brain = brain
@@ -119,12 +127,27 @@ class SoakClient:
         self.offline_until = 0.0                # an app killed and not yet opened again
         self.stop = False
         self.dup_next = False
+        self.dup_sent_at: float | None = None
+        self.decisions = 0
+        self.last_sent: str | None = None
+        self.seq = 0
         self.rounds_here = 0
         self.leave_after = 3
         self.think_task: asyncio.Task | None = None
         self.lobby_task: asyncio.Task | None = None
 
     # time, scaled
+    def spawn(self, coro: Any) -> asyncio.Future:
+        """A side task whose exception lands in the record instead of the log."""
+        task = asyncio.ensure_future(coro)
+        task.add_done_callback(self._task_done)
+        return task
+
+    def _task_done(self, task: asyncio.Future) -> None:
+        if not task.cancelled() and task.exception() is not None:
+            e = task.exception()
+            self.rec.task_errors.append(f"{type(e).__name__}: {e}"[:300])
+
     def s(self, ms: float) -> float:
         return ms / 1000.0 / self.scale
 
@@ -177,7 +200,9 @@ class SoakClient:
         self._mark_down()
         try:
             ws = await asyncio.wait_for(websockets.connect(self.url, max_size=None, ping_interval=None,
-                                                           open_timeout=None), self.s(CONNECT_MS))
+                                                           open_timeout=None,
+                                                           additional_headers=self.headers or None),
+                                        self.s(CONNECT_MS))
         except (asyncio.TimeoutError, OSError, websockets.WebSocketException):
             return
         self.ws = ws
@@ -229,7 +254,7 @@ class SoakClient:
         self.nonce += 1
         self.awaiting = self.nonce
         self.pong_deadline = time.monotonic() + deadline
-        asyncio.ensure_future(self._send({"type": "ping", "nonce": self.nonce}))
+        self.spawn(self._send({"type": "ping", "nonce": self.nonce}))
 
     async def _send(self, msg: dict) -> bool:
         ws = self.ws
@@ -239,6 +264,10 @@ class SoakClient:
             await ws.send(json.dumps(msg))
         except Exception:   # noqa: BLE001 - a dead socket is the reader's to notice
             return False
+        t = msg.get("type")
+        if t != "ping":
+            self.rec.sent_types[t] = self.rec.sent_types.get(t, 0) + 1
+            self.last_sent = t
         if msg.get("type") in ANSWERED and self.answer_due is None:
             self.answer_due = time.monotonic() + self.s(ANSWER_MS)
         return True
@@ -280,6 +309,8 @@ class SoakClient:
         elif t == "error":
             code = msg.get("code") or "none"
             self.rec.errors[code] = self.rec.errors.get(code, 0) + 1
+            k = f"{self.last_sent}:{code}"
+            self.rec.refused_after[k] = self.rec.refused_after.get(k, 0) + 1
             self.pending = None
             # App.tsx: a room that is gone ends the table; a lost seat is asked
             # back once by the resume, then the table ends
@@ -299,7 +330,7 @@ class SoakClient:
 
     def _to_lobby(self) -> None:
         if self.lobby_task is None or self.lobby_task.done():
-            self.lobby_task = asyncio.ensure_future(self.on_lobby(self))
+            self.lobby_task = self.spawn(self.on_lobby(self))
 
     def _on_state(self, st: dict) -> None:
         self.reasked = False
@@ -309,7 +340,6 @@ class SoakClient:
         prev = self.state
         self.state = st
         self.state_at = time.monotonic()
-        hand = [c["code"] for c in st.get("hand", [])]
         hk = tuple(sorted(c["id"] for c in st.get("hand", [])))
         p = self.pending
         if p is not None:
@@ -320,10 +350,9 @@ class SoakClient:
                 again = (not p.resent and st.get("turn") == st.get("you") and not st.get("joining_you")
                          and st.get("phase") == p.kind and all(i in ids for i in p.card_ids))
                 if again:
-                    self.pending = Pending(p.kind, p.card_ids, p.codes, p.hand_key, p.turn, self.gen, True)
-                    self.rec.sent.append(Sent(p.kind, p.card_ids, p.codes, frame_key(hand, st.get("trick")),
-                                              time.monotonic(), resend=True))
-                    asyncio.ensure_future(self._send({"type": p.kind, "card_ids": p.card_ids}))
+                    self.pending = Pending(p.kind, p.card_ids, p.codes, p.hand_key, p.turn, self.gen,
+                                           p.did, p.key, True)
+                    self.spawn(self._send(self._play_msg(self.pending, resend=True)))
                 else:
                     self.pending = None
         phase = st.get("phase")
@@ -332,24 +361,24 @@ class SoakClient:
             self.rounds_here += 1
         if phase == "round_end":
             if self.rounds_here >= self.leave_after:
-                asyncio.ensure_future(self._send({"type": "table_leave"}))
+                self.spawn(self._send({"type": "table_leave"}))
                 self.rounds_here = -10**6       # one leave per sitting
             elif st.get("you") not in (st.get("ready") or []) and self.ready_round != self.rec.rounds_seen:
                 self.ready_round = self.rec.rounds_seen
-                asyncio.ensure_future(self._send({"type": "next_round"}))
+                self.spawn(self._send({"type": "next_round"}))
         elif phase == "game_over":
             if self.rounds_here >= 0:
-                asyncio.ensure_future(self._send({"type": "table_leave"}))
+                self.spawn(self._send({"type": "table_leave"}))
                 self.rounds_here = -10**6
         elif -10**6 <= self.rounds_here < -10**6 + 100 and phase not in ("round_end", "game_over"):
             # back in a seat this client already left (its left was lost with
             # the socket): the page would show the table again, so leave again
-            asyncio.ensure_future(self._send({"type": "table_leave"}))
+            self.spawn(self._send({"type": "table_leave"}))
             self.rec.errors["resumed_after_leave"] = self.rec.errors.get("resumed_after_leave", 0) + 1
             self.rounds_here = -2 * 10**6
         elif phase in ("play", "bury") and st.get("turn") == st.get("you") and self.pending is None:
             if self.think_task is None or self.think_task.done():
-                self.think_task = asyncio.ensure_future(self._think(st))
+                self.think_task = self.spawn(self._think(st))
 
     async def _think(self, st: dict) -> None:
         await asyncio.sleep(self.rng.uniform(0.3, 2.5) / self.scale)
@@ -368,12 +397,23 @@ class SoakClient:
         codes = [by_id[i] for i in ids]
         hand = [c["code"] for c in st.get("hand", [])]
         hk = tuple(sorted(by_id))
-        self.pending = Pending(kind, ids, codes, hk, st.get("turn"), self.gen)
-        self.rec.sent.append(Sent(kind, ids, codes, frame_key(hand, st.get("trick")), time.monotonic()))
-        await self._send({"type": kind, "card_ids": ids})
+        self.decisions += 1
+        self.pending = Pending(kind, ids, codes, hk, st.get("turn"), self.gen, self.decisions,
+                               frame_key(hand, st.get("trick")))
+        msg = self._play_msg(self.pending)
+        await self._send(msg)
         if self.dup_next:
             self.dup_next = False
-            await self._send({"type": kind, "card_ids": ids})
+            await self._send(msg)
+            self.dup_sent_at = time.monotonic()
+
+    def _play_msg(self, p: Pending, resend: bool = False) -> dict:
+        """The wire message for ``p`` on this socket, recorded as sent. The
+        decision id and key are the first send's."""
+        self.seq += 1
+        self.rec.sent.append(Sent(p.kind, p.card_ids, p.codes, p.key, time.monotonic(),
+                                  p.did, self.gen, self.seq, resend))
+        return {"type": p.kind, "card_ids": p.card_ids, "_soak": {"did": p.did, "gen": self.gen, "seq": self.seq}}
 
     def _on_state_retry(self, st: dict) -> None:
-        self.think_task = asyncio.ensure_future(self._think(st))
+        self.think_task = self.spawn(self._think(st))

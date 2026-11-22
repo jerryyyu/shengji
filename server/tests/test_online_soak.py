@@ -1,20 +1,26 @@
 """The online soak harness (scripts/online_soak): its loopback-only guard, its
-copy of the page's connection constants, and its fault proxy. The soak run
-itself is a script run by hand (``soak.py``), not a test."""
+copy of the page's connection constants, its fault proxy, and the checks
+behind its verdict, each on a constructed case. The soak run itself is a
+script run by hand (``soak.py``), not a test."""
 from __future__ import annotations
 
+import argparse
 import asyncio
 import re
+import socket
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "server" / "scripts" / "online_soak"))
 
+import audit  # noqa: E402
 import client  # noqa: E402
-from localonly import NotLocal, require_local, require_not_deployed  # noqa: E402
+import soak  # noqa: E402
+from localonly import NotLocal, require_local, require_not_deployed, ws_url  # noqa: E402
 from proxy import DOWN, UP, FaultProxy  # noqa: E402
 
 
@@ -45,8 +51,6 @@ def test_a_fly_machine_refuses_to_run(monkeypatch):
 
 
 def test_the_soak_cli_refuses_a_non_local_bind_before_starting():
-    sys.path.insert(0, str(ROOT / "server" / "scripts" / "online_soak"))
-    import soak
     with pytest.raises(NotLocal):
         soak.main(["--host", "0.0.0.0", "--minutes", "0.01"])
 
@@ -130,3 +134,274 @@ def test_a_cut_resets_the_connection_and_the_next_one_goes_through():
         assert proxy.connections == 2
         w2.close()
     _with_echo(test)
+
+
+# one loopback family end to end
+
+def test_the_soak_cli_refuses_localhost_whose_family_is_ambiguous():
+    with pytest.raises(NotLocal):
+        soak.main(["--host", "localhost", "--minutes", "0.01"])
+
+
+def test_a_proxy_refuses_to_listen_on_one_family_and_dial_the_other():
+    with pytest.raises(NotLocal):
+        FaultProxy(9, "::1", listen_host="127.0.0.1")
+    with pytest.raises(NotLocal):
+        FaultProxy(9, "127.0.0.1", listen_host="::1")
+    assert FaultProxy(9, "::1").listen_host == "::1"
+
+
+def test_a_client_dials_the_run_s_family():
+    assert ws_url("::1", 9, "/ws") == "ws://[::1]:9/ws"
+    assert ws_url("127.0.0.1", 9, "/ws") == "ws://127.0.0.1:9/ws"
+    c = client.SoakClient("a", "d", 9, 1.0, None, None, None, host="::1")
+    assert c.url.startswith("ws://[::1]:9/")
+
+
+def _ipv6_loopback() -> bool:
+    try:
+        with socket.socket(socket.AF_INET6) as s:
+            s.bind(("::1", 0))
+        return True
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(not _ipv6_loopback(), reason="no IPv6 loopback on this machine")
+def test_an_ipv6_run_passes_bytes_through_its_proxy():
+    async def run():
+        async def echo(reader, writer):
+            while data := await reader.read(4096):
+                writer.write(data)
+                await writer.drain()
+            writer.close()
+        server = await asyncio.start_server(echo, "::1", 0)
+        proxy = FaultProxy(server.sockets[0].getsockname()[1], "::1")
+        try:
+            port = await proxy.start()
+            r, w = await asyncio.open_connection("::1", port)
+            w.write(b"v6")
+            assert await asyncio.wait_for(r.read(2), 2) == b"v6"
+            w.close()
+        finally:
+            await proxy.close()
+            server.close()
+    asyncio.run(run())
+
+
+# per-client addresses for the server's per-address limits
+
+def test_each_client_names_its_own_address_and_the_server_keys_limits_by_it():
+    from shengji.api import accounts
+    a = client.SoakClient("a", "d1", 9, 1.0, None, None, None, client_ip=soak.client_ip(1))
+    b = client.SoakClient("b", "d2", 9, 1.0, None, None, None, client_ip=soak.client_ip(2))
+    assert a.headers["Fly-Client-IP"] != b.headers["Fly-Client-IP"]
+    peer = SimpleNamespace(host="127.0.0.1")
+    keys = {accounts.client_ip(SimpleNamespace(headers={k.lower(): v for k, v in c.headers.items()},
+                                               client=peer)) for c in (a, b)}
+    assert keys == {soak.client_ip(1), soak.client_ip(2)}
+    shared = client.SoakClient("c", "d3", 9, 1.0, None, None, None)
+    assert shared.headers == {}
+    assert accounts.client_ip(SimpleNamespace(headers={}, client=peer)) == "127.0.0.1"
+
+
+# the verdict: every fault accounted for, and a thin run is not a PASS
+
+def _bare_soak(tmp_path, **floors) -> "soak.Soak":
+    s = soak.Soak.__new__(soak.Soak)
+    s.args = argparse.Namespace(host="127.0.0.1", shared_client_ip=False, min_rooms=floors.get("rooms", 3),
+                                min_rounds=floors.get("rounds", 10), min_recoveries=floors.get("recoveries", 20),
+                                min_resolved_share=floors.get("share", 0.8))
+    s.scale, s.clients, s.tmp = 4.0, [], tmp_path
+    s.ledger, s.plays = audit.FaultLedger(), audit.PlayAudit()
+    s.strikes, s.stuck, s.double, s.socket_faults, s.writer_errors = [], [], [], [], []
+    s.writer_disconnects = []
+    s.task_exits, s.harness_errors, s.refused, s.rooms_seen = [], [], {}, set()
+    s.srv = SimpleNamespace(rooms={})
+    return s
+
+
+def test_one_dropped_fault_with_no_workload_is_not_a_pass(tmp_path):
+    s = _bare_soak(tmp_path)
+    s.ledger.open("drop", "Soak-1", 0.0)
+    s.ledger.censor_open("shutdown")
+    out = s.report(60.0)
+    assert out["fault_ledger"]["censored"] == 1 and out["fault_ledger"]["open"] == 0
+    assert out["verdict"]["status"] == "INCONCLUSIVE"
+    assert set(out["verdict"]["under_floor"]) == {"rooms", "rounds", "recoveries", "resolved_share"}
+
+
+def test_a_failed_fault_or_a_harness_error_fails_the_run_whatever_the_coverage(tmp_path):
+    s = _bare_soak(tmp_path, rooms=0, rounds=0, recoveries=0, share=0.0)
+    rec = s.ledger.open("stall", "Soak-1", 0.0)
+    audit.FaultLedger.close(rec, "failed", reason="deadline")
+    assert s.report(60.0)["verdict"]["failed"] == ["faults_failed"]
+    s = _bare_soak(tmp_path, rooms=0, rounds=0, recoveries=0, share=0.0)
+    s.harness_errors.append({"task": "chaos Soak-1", "error": "KeyError: 3"})
+    assert s.report(60.0)["verdict"]["status"] == "FAIL"
+    s = _bare_soak(tmp_path, rooms=0, rounds=0, recoveries=0, share=0.0)
+    s.clients = [SimpleNamespace(name="Soak-1", rec=client.ClientRecord(errors={"rate_limited": 3}))]
+    out = s.report(60.0)
+    assert out["unexpected_refusals"] == ["rate_limited"] and out["verdict"]["status"] == "FAIL"
+
+
+def test_a_covered_clean_run_passes(tmp_path):
+    s = _bare_soak(tmp_path, rooms=1, rounds=0, recoveries=1, share=0.5)
+    s.rooms_seen = {"R1"}
+    rec = s.ledger.open("drop", "Soak-1", 0.0)
+    audit.FaultLedger.close(rec, "recovered", secs=0.4)
+    assert s.report(60.0)["verdict"]["status"] == "PASS"
+
+
+def test_a_fault_closes_once():
+    led = audit.FaultLedger()
+    rec = led.open("drop", "a", 0.0)
+    audit.FaultLedger.close(rec, "recovered", secs=1.0)
+    audit.FaultLedger.close(rec, "failed")
+    led.censor_open()
+    assert led.summary()["recovered"] == 1 and led.summary()["failed"] == 0
+    with pytest.raises(ValueError):
+        audit.FaultLedger.close(led.open("x", "a", 0.0), "fine")
+
+
+# recovery needs a post-fault state for that seat
+
+_ST = {"room": "R1", "you": 2, "phase": "play", "turn": 2,
+       "hand": [{"id": 7, "code": "SA"}, {"id": 8, "code": "D3"}], "trick": None}
+
+
+def _recovered(**kw):
+    base = dict(fault_end=10.0, state_at=11.0, client_view=audit.state_view(_ST),
+                server_view=audit.state_view(_ST), ws_open=True, seat_connected=True, seat_bot=False)
+    return audit.recovered(**{**base, **kw})
+
+
+def test_a_surviving_socket_with_only_a_pre_fault_state_is_not_recovered():
+    # the only state is from 9.0, before the fault that ended at 10.0
+    assert _recovered(state_at=9.0) is None
+    # a pong at 12.0 on a surviving socket, but the server has moved on: stale
+    assert _recovered(state_at=9.0, rx_at=12.0, same_socket=True,
+                      server_view=audit.state_view({**_ST, "turn": 3})) is None
+    # a pong on a replaced socket proves nothing about the pre-fault state
+    assert _recovered(state_at=9.0, rx_at=12.0, same_socket=False) is None
+    # no frame through the surviving socket since the fault
+    assert _recovered(state_at=9.0, rx_at=9.5, same_socket=True) is None
+    assert _recovered() == "state"
+    # the surviving socket answered since the fault and the held state is the server's decision
+    assert _recovered(state_at=9.0, rx_at=12.0, same_socket=True) == "same_socket"
+
+
+def test_a_post_fault_state_that_is_not_the_server_s_decision_is_not_recovered():
+    later = {**_ST, "turn": 3}
+    assert _recovered(server_view=audit.state_view(later)) is None
+    assert _recovered(client_view=audit.state_view({**_ST, "you": 1})) is None
+    assert _recovered(seat_connected=False) is None
+    assert _recovered(ws_open=False) is None
+    assert _recovered(server_view=None) is None
+
+
+# a play is checked against the decision of its first send
+
+_T1 = {"plays": [{"seat": 1, "cards": ["H5"]}]}
+_T2 = {"plays": [{"seat": 1, "cards": ["C9"]}]}
+
+
+def _client_that_sent_at(trick):
+    c = client.SoakClient("Soak-1", "d1", 9, 1.0, None, None, None)
+    wire = []
+
+    async def send(msg):
+        wire.append(msg)
+        return True
+    c._send = send
+    c.gen, c.room, c.seat = 1, "R1", 2
+    c.state = {**_ST, "trick": trick}
+    p = client.Pending("play", [7], ["SA"], (7, 8), 2, 1, did=1, key=audit.frame_key(["SA", "D3"], trick))
+    c.pending = p
+    wire.append(c._play_msg(p))
+    return c, wire
+
+
+def test_a_resend_after_the_trick_changed_is_flagged_even_with_the_same_cards():
+    async def run():
+        c, wire = _client_that_sent_at(_T1)
+        c.gen = 2                                   # a new socket
+        c._on_state({**_ST, "trick": _T2})          # same hand ids and turn, a different trick
+        await asyncio.sleep(0)
+        return c, wire
+    c, wire = asyncio.run(run())
+    assert len(wire) == 2 and wire[0]["card_ids"] == wire[1]["card_ids"]
+    first, again = wire[0]["_soak"], wire[1]["_soak"]
+    assert first["did"] == again["did"] and (first["gen"], again["gen"]) == (1, 2)
+    assert c.rec.sent[1].resend and c.rec.sent[1].key == c.rec.sent[0].key
+    plays = audit.PlayAudit()
+    assert plays.check(c.name, c.rec.sent, again, audit.frame_key(["SA", "D3"], _T2)) == "stale_decision"
+
+
+def test_a_resend_applied_at_its_own_decision_is_right():
+    async def run():
+        c, wire = _client_that_sent_at(_T1)
+        c.gen = 2
+        c._on_state({**_ST, "trick": _T1})
+        await asyncio.sleep(0)
+        return c, wire
+    c, wire = asyncio.run(run())
+    plays = audit.PlayAudit()
+    assert plays.check(c.name, c.rec.sent, wire[1]["_soak"], audit.frame_key(["SA", "D3"], _T1)) is None
+    # the same decision cannot apply twice, an untagged or unsent play is wrong
+    assert plays.check(c.name, c.rec.sent, wire[0]["_soak"], audit.frame_key(["SA", "D3"], _T1)) == "applied_twice"
+    assert plays.check(c.name, c.rec.sent, None, ()) == "untagged"
+    assert plays.check(c.name, c.rec.sent, {"did": 1, "gen": 9, "seq": 1}, ()) == "never_sent"
+
+
+def test_sends_on_one_socket_apply_in_order():
+    S = client.Sent
+    sends = [S("play", [1], ["SA"], ("k1",), 0.0, did=1, gen=1, seq=1),
+             S("play", [2], ["SK"], ("k2",), 0.0, did=2, gen=1, seq=2)]
+    plays = audit.PlayAudit()
+    assert plays.check("a", sends, {"did": 2, "gen": 1, "seq": 2}, ("k2",)) is None
+    assert plays.check("a", sends, {"did": 1, "gen": 1, "seq": 1}, ("k1",)) == "out_of_order"
+
+
+# one owner, one human seat, across every room; connected seats on live sockets
+
+def _seat(name, device=None, **kw):
+    base = dict(name=name, device=device, is_bot=False, left_by_choice=False, removed=False, connected=True,
+                ws=object(), writer=SimpleNamespace(done=lambda: False), writer_exit=None, writer_error=None)
+    return SimpleNamespace(**{**base, **kw})
+
+
+def _bot():
+    return _seat("Bot", is_bot=True, connected=False, ws=None, writer=None)
+
+
+def test_a_device_seated_in_two_rooms_is_flagged(tmp_path):
+    s = _bare_soak(tmp_path)
+    s.srv.rooms = {"R1": SimpleNamespace(seats=[_seat("Soak-1", "dev1"), _bot(), _bot(), _bot()]),
+                   "R2": SimpleNamespace(seats=[_bot(), _seat("Soak-1", "dev1"), _bot(), _bot()])}
+    s._check_seats({})
+    assert s.double == [{"owner": "dev1", "seats": [("R1", 0), ("R2", 1)]}]
+
+
+def test_a_seat_its_owner_left_does_not_count_as_held(tmp_path):
+    s = _bare_soak(tmp_path)
+    s.srv.rooms = {"R1": SimpleNamespace(seats=[_seat("Soak-1", "dev1", left_by_choice=True), _bot(), _bot(), _bot()]),
+                   "R2": SimpleNamespace(seats=[_bot(), _seat("Soak-1", "dev1"), _bot(), _bot()])}
+    s._check_seats({})
+    assert s.double == []
+
+
+def test_a_connected_seat_without_a_live_writer_or_socket_is_flagged_when_it_holds(tmp_path):
+    s = _bare_soak(tmp_path)
+    dead = SimpleNamespace(done=lambda: True)
+    s.srv.rooms = {"R1": SimpleNamespace(seats=[_seat("Soak-1", writer=dead), _seat("Soak-2", ws=None),
+                                                _seat("Soak-3", writer_exit="error", writer_error="OSError: x"),
+                                                _seat("Soak-4", connected=False, ws=None, writer_exit="error",
+                                                      writer_error="WebSocketDisconnect: ")])}
+    seen: dict = {}
+    s._check_seats(seen)
+    assert s.socket_faults == [] and len(s.writer_errors) == 1
+    s._check_seats(seen)
+    assert {(f["seat"], f["fault"]) for f in s.socket_faults} == {
+        (0, "connected_without_writer"), (1, "connected_without_socket")}
+    assert len(s.writer_errors) == 1 and len(s.writer_disconnects) == 1

@@ -3,7 +3,8 @@ real WebSockets, each behind its own fault proxy.
 
     server/.venv/bin/python server/scripts/online_soak/soak.py --minutes 20
 
-One process: uvicorn serves ``shengji.api.server:app`` on 127.0.0.1 with a
+One process: uvicorn serves ``shengji.api.server:app`` on loopback (127.0.0.1
+or ::1, the same family for the server, the proxies and the clients) with a
 temp data and log dir, the server's timers divided by ``--scale``, and the
 clients and proxies run on the same event loop. The server source is not
 changed; the run wraps four of its functions to observe it (the action
@@ -11,15 +12,21 @@ handler, the move-clock strike, the room log and nothing else), and a
 client picks its cards from its own seat's legal plays in the server's
 round. Every address goes through ``localonly.require_local``.
 
-The report (JSON, and a summary on stdout) holds the plan's bar:
-stuck tables, wrong-decision plays, strikes for time away, recovery
-p50/p95/worst in unscaled seconds, double seats, task exits and the
-refusal codes seen.
+Each client gives the server its own address in ``Fly-Client-IP``, which
+``accounts.client_ip`` reads before the socket peer: behind one loopback
+peer, 22 clients would share one per-address budget (``limits.QUEUE_STARTS``,
+60 queue starts per 10 min), which no set of real players shares.
+
+The report (JSON, and a summary on stdout) holds the plan's bar and a
+verdict (``audit.verdict``): FAIL when a bar fails, INCONCLUSIVE when the
+run is under a coverage floor, else PASS; exit 0, 1 or 2. Every injected
+fault ends recovered, failed or censored in the fault ledger.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import collections
 import contextlib
 import json
 import os
@@ -35,7 +42,8 @@ SERVER = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(SERVER))
 
-from localonly import require_local, require_not_deployed  # noqa: E402
+import audit  # noqa: E402
+from localonly import loopback_family, require_local, require_not_deployed  # noqa: E402
 
 # the timers a scaled run divides (server.py and matchmaking.py module constants)
 SERVER_TIMERS = ("BOT_DELAY", "DEAL_DELAY", "DECLARE_GRACE", "DECLARE_EXTEND", "ROOM_TTL",
@@ -44,8 +52,9 @@ SERVER_TIMERS = ("BOT_DELAY", "DEAL_DELAY", "DECLARE_GRACE", "DECLARE_EXTEND", "
 MATCH_TIMERS = ("BOT_FILL_SECS", "START_NOW_SECS", "JOIN_COOLDOWN_SECS")
 PROGRESS = frozenset({"play", "bury", "trick", "round_start", "round_end", "declare", "trump"})
 EXPECTED_REFUSALS = frozenset({"stale_connection", "not_your_turn", "illegal_play", "no_room",
-                               "room_not_found", "rate_limited", "wrong_phase", "none",
-                               "resumed_after_leave"})
+                               "room_not_found", "wrong_phase", "none", "resumed_after_leave"})
+# the messages the server counts against limits.QUEUE_STARTS
+QUEUE_STARTS = ("queue_join", "queue_start_bots", "open_table_join")
 FAULTS = ("drop", "stall", "oneway_down", "oneway_up", "delay", "storm", "relaunch", "dup")
 # unscaled seconds a stall or one-way fault lasts: a blip, a lost pong, past
 # the server's 20 s, past the 60 s hold
@@ -53,6 +62,11 @@ STALL_SECS = (1.0, 4.0, 12.0, 25.0, 65.0)
 # real seconds between a lobby client's queue or code retries: the server's
 # join and lookup rate limits run on real time, not the scaled timers
 RETRY_SECS = 3.0
+# unscaled seconds after a fault's end by which the seat must be back, else
+# the fault failed
+RECOVERY_DEADLINE_SECS = 60.0
+# the share of limits.QUEUE_START_LIMIT one client may use in its window
+QUEUE_START_BUDGET = 0.8
 
 
 def pct(xs: list[float], q: float) -> float | None:
@@ -71,8 +85,9 @@ class Soak:
         os.environ["SHENGJI_DATA_DIR"] = str(self.tmp)
         os.environ["SHENGJI_LOG_DIR"] = str(self.tmp / "logs")
         os.environ.setdefault("SHENGJI_BOT", args.bot)
-        from shengji.api import matchmaking, server as srv
+        from shengji.api import limits, matchmaking, server as srv
         self.srv, self.mm = srv, matchmaking
+        self.mm_limits = limits.QUEUE_START_LIMIT
         for name in SERVER_TIMERS:
             setattr(srv, name, getattr(srv, name) / self.scale)
         for name in MATCH_TIMERS:
@@ -81,14 +96,16 @@ class Soak:
         self.by_seat: dict[tuple[str, int], object] = {}
         self.progress: dict[str, float] = {}
         self.stuck: list[dict] = []
-        self.wrong: list[dict] = []
-        self.applied = 0
+        self.plays = audit.PlayAudit()
         self.refused: dict[str, int] = {}
         self.strikes: list[dict] = []
         self.double: list[dict] = []
+        self.socket_faults: list[dict] = []
+        self.writer_errors: list[dict] = []
+        self.writer_disconnects: list[dict] = []
         self.task_exits: list[dict] = []
-        self.faults: dict[str, int] = {}
-        self.recovery: list[dict] = []
+        self.harness_errors: list[dict] = []
+        self.ledger = audit.FaultLedger()
         self.rooms_seen: set[str] = set()
         self._hook()
 
@@ -104,7 +121,6 @@ class Soak:
             kind = msg.get("type")
             if kind not in ("play", "bury") or room.round is None:
                 return await real_action(room, seat, msg)
-            rnd = room.round
             key = soak._server_key(room, seat)
             try:
                 await real_action(room, seat, msg)
@@ -112,18 +128,13 @@ class Soak:
                 code = getattr(e, "code", None) or type(e).__name__
                 soak.refused[code] = soak.refused.get(code, 0) + 1
                 raise
-            soak.applied += 1
             client = soak.by_seat.get((room.code, seat))
-            if client is None:
-                return
-            ids = list(msg.get("card_ids") or [])
-            # the latest send of exactly these cards decides which decision they were for
-            mine = [x for x in client.rec.sent if x.kind == kind and x.card_ids == ids]
-            if not mine or mine[-1].key != key:
-                soak.wrong.append({"room": room.code, "seat": seat, "kind": kind,
-                                   "round": room.game.round_no if room.game else None,
-                                   "matched_send": bool(mine), "resend": bool(mine and mine[-1].resend)})
-            del rnd
+            # the play's tag names its send; the decision that send was for
+            # is the one its first send saw
+            soak.plays.check(client.name if client else f"?{room.code}/{seat}",
+                             client.rec.sent if client else [], msg.get("_soak"), key,
+                             {"room": room.code, "seat": seat, "kind": kind,
+                              "round": room.game.round_no if room.game else None})
 
         def count_timeout(room, seat):
             sd = room.seats[seat]
@@ -150,10 +161,19 @@ class Soak:
         srv.Room.log_event = log_event
 
     def _server_key(self, room, seat: int) -> tuple:
-        from client import frame_key
         rnd = room.round
         trick = self.srv.trick_json(rnd.trick, rnd.ordering) if rnd.phase == "play" else None
-        return frame_key(list(rnd.hands[seat]), trick)
+        return audit.frame_key(list(rnd.hands[seat]), trick)
+
+    def _server_view(self, room, seat: int) -> tuple | None:
+        """What the seat's next state frame would show, as ``audit.state_view``
+        reads a frame."""
+        g, rnd = room.game, room.round
+        if g is None or rnd is None:
+            return None
+        phase = "game_over" if g.game_over else rnd.phase
+        return (room.code, seat, phase, rnd.turn,
+                audit.frame_key(list(rnd.hands[seat]), self.srv.trick_json(rnd.trick, rnd.ordering)))
 
     # the clients' card choice: a legal play of their own seat
     def brain(self, client, st: dict) -> list[int] | None:
@@ -190,8 +210,22 @@ class Soak:
         await asyncio.sleep(self.rng.uniform(0.5, 3.0) / self.scale)
         while not client.stop and client.room is None:
             if not client.queued:
-                await client._send({"type": "queue_join", "mode": client.mode, "name": client.name})
+                await self._queue_start(client, {"type": "queue_join", "mode": client.mode, "name": client.name})
             await asyncio.sleep(RETRY_SECS)
+
+    async def _queue_start(self, client, msg: dict) -> None:
+        """A queue start, held back while this client has used
+        ``QUEUE_START_BUDGET`` of the server's per-address queue starts in its
+        window (real time), so the run stays under the limit as a player who
+        queues by hand does."""
+        limit, window = self.mm_limits
+        sent = client.queue_starts
+        while sent and sent[0] <= time.monotonic() - window:
+            sent.popleft()
+        if len(sent) >= int(limit * QUEUE_START_BUDGET):
+            return
+        sent.append(time.monotonic())
+        await client._send(msg)
 
     async def casual_host(self, host, mates: list) -> None:
         """A casual table opened by ``host`` with its mates joining by code, then bots."""
@@ -206,7 +240,8 @@ class Soak:
             if seated >= 1 + len(mates) or time.monotonic() - host.table_since > 30 / self.scale:
                 await host._send({"type": "table_start_bots", **({"panel_seq": host.panel_seq}
                                                                  if host.panel_seq is not None else {})})
-                await asyncio.sleep(2.0 / self.scale)
+                # one Start per table, again only if it is still waiting after a retry gap
+                await asyncio.sleep(RETRY_SECS)
 
     def make_clients(self, port_for) -> None:
         from client import SoakClient
@@ -215,14 +250,17 @@ class Soak:
         def mk(mode: str):
             nonlocal n
             n += 1
+            ip = None if self.args.shared_client_ip else client_ip(n)
             c = SoakClient(f"Soak-{n}", f"soak{n:019d}", port_for(n), self.scale,
-                           random.Random(self.rng.random()), self.brain, self._lobby_for(mode))
+                           random.Random(self.rng.random()), self.brain, self._lobby_for(mode),
+                           host=self.args.host, client_ip=ip)
             c.mode = mode
             c.table_code = c.panel_seq = None
             c.table_humans = 0
             c.queued = False
             c.table_since = time.monotonic()
             c.leave_after = self.args.rounds_per_sitting
+            c.queue_starts = collections.deque()
             self.clients.append(c)
             return c
 
@@ -248,8 +286,8 @@ class Soak:
                 client.table_since = time.monotonic()
                 while not client.stop and client.room is None:
                     if not client.queued:
-                        await client._send({"type": "queue_join", "mode": "casual", "name": client.name,
-                                            "allow_joiners": False})
+                        await self._queue_start(client, {"type": "queue_join", "mode": "casual",
+                                                         "name": client.name, "allow_joiners": False})
                     await asyncio.sleep(RETRY_SECS)
             else:
                 while not client.stop and client.room is None:
@@ -292,7 +330,7 @@ class Soak:
                 continue
             kind = self.rng.choice(FAULTS)
             client.gen_at_fault = client.gen
-            self.faults[kind] = self.faults.get(kind, 0) + 1
+            rec = self.ledger.open(kind, client.name, time.monotonic())
             secs = self.rng.choice(STALL_SECS) / self.scale
             if kind == "drop":
                 proxy.cut()
@@ -316,44 +354,88 @@ class Soak:
                 client.pending = None
                 await asyncio.sleep(secs)
             elif kind == "dup":
+                # the fault is the client's next play sent twice; it ends when that goes out
+                client.dup_sent_at = None
                 client.dup_next = True
-                continue
-            end = time.monotonic()
+                while client.dup_sent_at is None and not client.stop and time.monotonic() < until:
+                    if self.srv.rooms.get(client.room or "") is None:
+                        break
+                    await asyncio.sleep(0.02)
+                if client.dup_sent_at is None:
+                    client.dup_next = False
+                    audit.FaultLedger.close(rec, "censored", reason="shutdown" if time.monotonic() >= until
+                                            or client.stop else "table_ended")
+                    continue
+            end = client.dup_sent_at if kind == "dup" else time.monotonic()
             client.rec.faults.append({"kind": kind, "secs": secs * self.scale})
-            took = await self._recovered(client, end, until, kind in ("drop", "storm", "relaunch"))
-            if took is not None:
-                self.recovery.append({"kind": kind, "secs": took * self.scale})
+            rec["trace"] = {}
+            outcome, took, reason = await self._recovered(client, end, until, kind in ("drop", "storm", "relaunch"),
+                                                          rec["trace"])
+            audit.FaultLedger.close(rec, outcome, secs=None if took is None else took * self.scale, reason=reason)
 
-    async def _recovered(self, client, end: float, until: float, cut: bool) -> float | None:
-        """Seconds from a fault's end until the server holds the seat on a live
-        socket and the client holds a state from after the fault (a replaced
-        socket's resume state, or a surviving socket's buffered frames)."""
+    async def _recovered(self, client, end: float, until: float, cut: bool,
+                         trace: dict | None = None) -> tuple[str, float | None, str | None]:
+        """The fault's outcome: ``recovered`` (with the seconds from its end)
+        once ``audit.recovered`` holds: the server holds the seat on a live
+        socket, the client's state is the server's decision for that seat, and
+        either that state arrived since the fault or the socket open when the
+        fault began survived it with a frame through since; ``failed`` past
+        ``RECOVERY_DEADLINE_SECS`` or when the client lost a seat whose room
+        goes on; else ``censored``. ``trace`` gets the unscaled seconds after
+        the end at which each condition first held, for reading a slow one."""
+        trace = {} if trace is None else trace
+        gen0 = client.gen_at_fault
         if not cut and client.gen == client.gen_at_fault and client.ws is not None and client.awaiting is None:
             # ws.ts probes a socket that may have stalled (back online, back in view)
             client.probe()
-        while time.monotonic() < until and not client.stop:
-            room = self.srv.rooms.get(client.room or "")
-            if room is None or client.seat is None:
-                return None        # the table ended meanwhile: nothing to recover
-            sd = room.seats[client.seat]
-            if client.gen != client.gen_at_fault:
-                fresh = client.state_at is not None and client.state_at >= end
-            else:
-                # the socket outlived the fault: something must have come through since
-                fresh = cut is False and client.last_rx >= end
-            if client.ws is not None and sd.connected and not sd.is_bot and fresh:
-                return time.monotonic() - end
+        room_code, seat = client.room, client.seat
+        deadline = end + RECOVERY_DEADLINE_SECS / self.scale
+        while not client.stop:
+            now = time.monotonic()
+            if now >= until:
+                return "censored", None, "shutdown"
+            room = self.srv.rooms.get(room_code or "")
+            if room is None:
+                return "censored", None, "table_ended"
+            if client.room != room_code or client.seat != seat or seat is None:
+                if client.rounds_here < 0:
+                    return "censored", None, "left_table"      # this client sent its Leave
+                return "failed", None, "seat_lost"
+            sd = room.seats[seat]
+            cview, sview = audit.state_view(client.state), self._server_view(room, seat)
+            for name, held in (("new_socket", client.gen != gen0), ("ws_open", client.ws is not None),
+                               ("rx_since_end", client.last_rx >= end),
+                               ("seat_connected", sd.connected and not sd.is_bot),
+                               ("state_since_end", client.state_at is not None and client.state_at >= end),
+                               ("state_is_server_s", cview is not None and cview == sview)):
+                if held and name not in trace:
+                    trace[name] = round((now - end) * self.scale, 2)
+            via = audit.recovered(fault_end=end, state_at=client.state_at, client_view=cview,
+                                  server_view=sview, ws_open=client.ws is not None,
+                                  seat_connected=sd.connected, seat_bot=sd.is_bot,
+                                  rx_at=client.last_rx, same_socket=client.gen == gen0)
+            if via is not None:
+                trace["via"] = via
+                return "recovered", now - end, None
+            if now >= deadline:
+                return "failed", None, "deadline"
             await asyncio.sleep(0.02)
-        return None
+        return "censored", None, "shutdown"
 
     async def monitor(self, until: float) -> None:
         srv = self.srv
         limit = (srv.MOVE_TIMER + srv.MOVE_TIMER_POLL) + 15.0 / self.scale
         flagged: set[str] = set()
+        seen: dict = {}
         while time.monotonic() < until:
             await asyncio.sleep(0.5)
             now = time.monotonic()
             for code, room in list(srv.rooms.items()):
+                for attr, how in room.task_exits.items():
+                    if how.startswith("error"):
+                        entry = {"room": code, "task": attr, "exit": how[:200]}
+                        if entry not in self.task_exits:
+                            self.task_exits.append(entry)
                 g, rnd = room.game, room.round
                 if g is None or rnd is None or g.game_over or rnd.phase in ("round_end", "deal"):
                     continue
@@ -362,15 +444,35 @@ class Soak:
                     flagged.add(code)
                     self.stuck.append({"room": code, "phase": rnd.phase, "gap_secs": round((now - last) * self.scale, 1),
                                        "humans_connected": sum(1 for s in room.seats if not s.is_bot and s.connected)})
-                for name in {s.name for s in room.seats if not s.is_bot}:
-                    held = [i for i, s in enumerate(room.seats) if not s.is_bot and s.name == name]
-                    if len(held) > 1:
-                        self.double.append({"room": code, "seats": held})
-                for attr, how in room.task_exits.items():
-                    if how.startswith("error"):
-                        entry = {"room": code, "task": attr, "exit": how[:200]}
-                        if entry not in self.task_exits:
-                            self.task_exits.append(entry)
+            self._check_seats(seen)
+
+    def _check_seats(self, seen: dict) -> None:
+        """One owner per human seat across every room; a connected seat on a
+        socket with a running writer. A socket fault counts once it holds on
+        two checks running (an attach or detach is not atomic across them)."""
+        holders = []
+        now_faults = set()
+        for code, room in list(self.srv.rooms.items()):
+            for i, sd in enumerate(room.seats):
+                holders.append((code, i, audit.seat_owner(sd)))
+                for what in audit.seat_socket_faults(sd):
+                    if what in ("writer_error", "writer_disconnect"):
+                        entry = {"room": code, "seat": i, "error": (sd.writer_error or "")[:200]}
+                        bucket = self.writer_errors if what == "writer_error" else self.writer_disconnects
+                        if entry not in bucket:
+                            bucket.append(entry)
+                    else:
+                        now_faults.add((code, i, what))
+        for c in audit.seat_conflicts(holders):
+            key = (c["owner"], tuple(c["seats"]))
+            if key not in seen.setdefault("double", set()):
+                seen["double"].add(key)
+                self.double.append(c)
+        for f in now_faults & seen.get("socket_prev", set()):
+            if f not in seen.setdefault("socket", set()):
+                seen["socket"].add(f)
+                self.socket_faults.append({"room": f[0], "seat": f[1], "fault": f[2]})
+        seen["socket_prev"] = now_faults
 
     # run
     async def run(self) -> dict:
@@ -378,6 +480,7 @@ class Soak:
         srv = self.srv
         from proxy import FaultProxy
         host = require_local(self.args.host)
+        loopback_family(host)
         cfg = uvicorn.Config(srv.app, host=host, port=0, log_level="warning",
                              ws_ping_interval=srv.WS_PING_INTERVAL, ws_ping_timeout=srv.WS_PING_TIMEOUT)
         server = uvicorn.Server(cfg)
@@ -388,7 +491,7 @@ class Soak:
         proxies = []
 
         async def proxy_port(_: int) -> int:
-            p = FaultProxy(port)
+            p = FaultProxy(port, host)
             proxies.append(p)
             return await p.start()
 
@@ -399,14 +502,21 @@ class Soak:
             self._wire_queue_frames(c)
         t0 = time.monotonic()
         until = t0 + self.args.minutes * 60
-        tasks = [asyncio.create_task(c.run(until)) for c in self.clients]
-        tasks += [asyncio.create_task(self.chaos(c, p, until - 5)) for c, p in zip(self.clients, proxies)]
-        tasks += [asyncio.create_task(self.casual_host(g[0], g[1:])) for g in self.casual_groups]
-        tasks.append(asyncio.create_task(self.monitor(until)))
-        tasks.append(asyncio.create_task(self._progress_line(t0, until)))
+        named = [(f"client {c.name}", c.run(until)) for c in self.clients]
+        named += [(f"chaos {c.name}", self.chaos(c, p, until - 5)) for c, p in zip(self.clients, proxies)]
+        named += [(f"casual_host {g[0].name}", self.casual_host(g[0], g[1:])) for g in self.casual_groups]
+        named += [("monitor", self.monitor(until)), ("progress", self._progress_line(t0, until))]
+        tasks = {asyncio.create_task(coro): name for name, coro in named}
         await asyncio.wait(tasks, timeout=self.args.minutes * 60 + 30)
-        for t in tasks:
+        for t, name in tasks.items():
+            if t.done() and not t.cancelled() and t.exception() is not None:
+                e = t.exception()
+                self.harness_errors.append({"task": name, "error": f"{type(e).__name__}: {e}"[:300]})
             t.cancel()
+        for c in self.clients:
+            for e in c.rec.task_errors:
+                self.harness_errors.append({"task": f"client {c.name} side task", "error": e})
+        self.ledger.censor_open("shutdown")
         for c in self.clients:
             await c.close()
         for p in proxies:
@@ -414,7 +524,18 @@ class Soak:
         server.should_exit = True
         with contextlib.suppress(Exception):
             await asyncio.wait_for(serving, 10)
-        return self.report(time.monotonic() - t0)
+        out = self.report(time.monotonic() - t0)
+        if serving.done() and not serving.cancelled() and serving.exception() is not None:
+            e = serving.exception()
+            out["harness_errors"] += 1
+            out["harness_error_list"].append({"task": "uvicorn", "error": f"{type(e).__name__}: {e}"[:300]})
+            out["verdict"] = audit.verdict(out, self.floors())
+        return out
+
+    def floors(self) -> audit.Floors:
+        a = self.args
+        return audit.Floors(rooms=a.min_rooms, rounds=a.min_rounds, recoveries=a.min_recoveries,
+                            resolved_share=a.min_resolved_share)
 
     async def _progress_line(self, t0: float, until: float) -> None:
         while time.monotonic() < until:
@@ -424,44 +545,60 @@ class Soak:
 
     def report(self, elapsed: float, brief: bool = False) -> dict:
         rec = [c.rec for c in self.clients]
-        recov = [r["secs"] for r in self.recovery]
+        pairs = self.ledger.recovery_secs()
+        recov = [x for _, x in pairs]
         by_kind: dict[str, list[float]] = {}
-        for r in self.recovery:
-            by_kind.setdefault(r["kind"], []).append(r["secs"])
-        refusals = {}
+        for k, x in pairs:
+            by_kind.setdefault(k, []).append(x)
+        refusals: dict[str, int] = {}
         for x in rec:
             for k, v in x.errors.items():
                 refusals[k] = refusals.get(k, 0) + v
         rounds = sum(1 for _ in self._round_ends())
         away = [s for s in self.strikes if s["time_away"]]
+        ledger = self.ledger.summary()
         out = {
             "elapsed_min": round(elapsed / 60, 1), "scale": self.scale, "clients": len(self.clients),
+            "host": self.args.host, "client_ips": "shared" if self.args.shared_client_ip else "one per client",
             "rooms": len(self.rooms_seen), "rounds_logged": rounds,
-            "faults": sum(self.faults.values()), "fault_kinds": dict(sorted(self.faults.items())),
-            "plays_applied": self.applied, "stuck_tables": len(self.stuck),
-            "wrong_decision_plays": len(self.wrong), "strikes_total": len(self.strikes),
+            "faults": ledger["total"], "fault_ledger": ledger,
+            "plays_applied": self.plays.applied, "stuck_tables": len(self.stuck),
+            "wrong_decision_plays": len(self.plays.wrong), "strikes_total": len(self.strikes),
             "strikes_time_away": len(away), "double_seats": len(self.double),
-            "task_exit_errors": len(self.task_exits),
+            "seat_socket_faults": len(self.socket_faults), "writer_errors": len(self.writer_errors),
+            "writer_disconnects": len(self.writer_disconnects),
+            "task_exit_errors": len(self.task_exits), "harness_errors": len(self.harness_errors),
             "recovery_s": {"n": len(recov), "p50": pct(recov, 0.5), "p95": pct(recov, 0.95),
                            "worst": max(recov) if recov else None,
                            "by_kind": {k: {"n": len(v), "p95": pct(v, 0.95), "worst": max(v)}
                                        for k, v in sorted(by_kind.items())}},
+            "recovered_via": via_counts(self.ledger.faults),
+            "queue_starts_max": max((sum(c.rec.sent_types.get(t, 0) for t in QUEUE_STARTS) for c in self.clients),
+                                    default=0),
             "client_refusals": refusals,
             "unexpected_refusals": sorted(k for k in refusals if k not in EXPECTED_REFUSALS),
         }
-        if not brief:
-            out.update({"stuck": self.stuck[:50], "wrong": self.wrong[:50], "strikes": self.strikes[:50],
-                        "double": self.double[:20], "task_exits": self.task_exits[:20],
-                        "server_refusals": self.refused, "tmp": str(self.tmp)})
-            out["bar"] = {
-                "stuck_tables_0": out["stuck_tables"] == 0,
-                "wrong_decision_0": out["wrong_decision_plays"] == 0,
-                "time_away_strikes_0": out["strikes_time_away"] == 0,
-                "recovery_p95_le_5s": (out["recovery_s"]["p95"] or 0) <= 5.0,
-                "recovery_worst_le_15s": (out["recovery_s"]["worst"] or 0) <= 15.0,
-                "double_seats_0": out["double_seats"] == 0,
-                "task_exits_0": out["task_exit_errors"] == 0,
-            }
+        firsts = [r["trace"]["state_since_end"] for r in self.ledger.faults
+                  if r["outcome"] == "recovered" and "state_since_end" in (r.get("trace") or {})]
+        out["first_post_fault_state_s"] = {"n": len(firsts), "p50": pct(firsts, 0.5), "p95": pct(firsts, 0.95),
+                                           "worst": max(firsts) if firsts else None}
+        if brief:
+            out.pop("fault_ledger")
+            out["fault_outcomes"] = {k: ledger[k] for k in ("recovered", "failed", "censored", "open")}
+            out.pop("recovery_s")
+            out["recovery_p95"] = pct(recov, 0.95)
+            return out
+        failed = [r for r in self.ledger.faults if r["outcome"] == "failed"]
+        slow = sorted((r for r in self.ledger.faults if r["outcome"] == "recovered"),
+                      key=lambda r: -r["secs"])[:20]
+        out.update({"stuck": self.stuck[:50], "wrong": self.plays.wrong[:50], "strikes": self.strikes[:50],
+                    "double": self.double[:20], "socket_fault_list": self.socket_faults[:20],
+                    "writer_error_list": self.writer_errors[:20], "task_exits": self.task_exits[:20],
+                    "harness_error_list": self.harness_errors[:20], "failed_faults": failed[:30],
+                    "slowest_recoveries": slow,
+                    "per_client": {c.name: {"mode": getattr(c, "mode", None), "sent": c.rec.sent_types,
+                                            "refused_after": c.rec.refused_after} for c in self.clients}, "server_refusals": self.refused, "tmp": str(self.tmp)})
+        out["verdict"] = audit.verdict(out, self.floors())
         return out
 
     def _round_ends(self):
@@ -486,18 +623,44 @@ def main(argv: list[str] | None = None) -> int:
                     help="unscaled seconds between one client's faults (uniform range)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--bot", default="heuristic", help="SHENGJI_BOT for the run's server")
-    ap.add_argument("--host", default="127.0.0.1", help="bind address: loopback only")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="loopback address for the server, the proxies and the clients: 127.0.0.1 or ::1")
+    ap.add_argument("--shared-client-ip", action="store_true",
+                    help="send no Fly-Client-IP, so every client shares the loopback peer's limits")
+    ap.add_argument("--min-rooms", type=int, default=3, help="floor: rooms seen, else INCONCLUSIVE")
+    ap.add_argument("--min-rounds", type=int, default=10, help="floor: rounds logged, else INCONCLUSIVE")
+    ap.add_argument("--min-recoveries", type=int, default=20, help="floor: recovered faults, else INCONCLUSIVE")
+    ap.add_argument("--min-resolved-share", type=float, default=0.8,
+                    help="floor: share of faults recovered or failed (not censored), else INCONCLUSIVE")
     ap.add_argument("--out", type=Path, default=None, help="report JSON path")
     args = ap.parse_args(argv)
     require_not_deployed()
-    require_local(args.host)
+    loopback_family(args.host)
     soak = Soak(args)
     report = asyncio.run(soak.run())
     text = json.dumps(report, indent=1, default=str)
     if args.out is not None:
         args.out.write_text(text + "\n", encoding="utf-8")
     print(text)
-    return 0 if all(report["bar"].values()) else 1
+    return EXIT[report["verdict"]["status"]]
+
+
+EXIT = {"PASS": 0, "FAIL": 1, "INCONCLUSIVE": 2}
+
+
+def via_counts(faults: list[dict]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for r in faults:
+        if r["outcome"] == "recovered":
+            via = (r.get("trace") or {}).get("via", "?")
+            out[via] = out.get(via, 0) + 1
+    return dict(sorted(out.items()))
+
+
+def client_ip(n: int) -> str:
+    """Client ``n``'s address for the server's per-address limits: one of
+    198.18.0.0/15, the range set aside for benchmarks, never a real peer."""
+    return f"198.18.{n // 256}.{n % 256}"
 
 
 if __name__ == "__main__":

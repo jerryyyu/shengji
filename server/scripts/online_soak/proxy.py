@@ -12,13 +12,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
-from localonly import require_local
+from localonly import require_local, require_same_family
 
 UP, DOWN = "up", "down"     # client -> server, server -> client
 
 
 class FaultProxy:
-    def __init__(self, upstream_port: int, upstream_host: str = "127.0.0.1") -> None:
+    def __init__(self, upstream_port: int, upstream_host: str = "127.0.0.1",
+                 listen_host: str | None = None) -> None:
+        self.listen_host = listen_host or upstream_host
+        require_same_family(self.listen_host, upstream_host)
         self.upstream = (require_local(upstream_host), upstream_port)
         self.port = 0
         self._server: asyncio.base_events.Server | None = None
@@ -30,7 +33,7 @@ class FaultProxy:
         self.connections = 0
 
     async def start(self) -> int:
-        self._server = await asyncio.start_server(self._accept, require_local("127.0.0.1"), 0)
+        self._server = await asyncio.start_server(self._accept, require_local(self.listen_host), 0)
         self.port = self._server.sockets[0].getsockname()[1]
         return self.port
 

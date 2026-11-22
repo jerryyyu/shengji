@@ -52,6 +52,7 @@ PAIRS = (
     Pair(OFFLINE_SERVER_TS, "DECLARE_EXTEND", SERVER_PY, "DECLARE_EXTEND"),
     Pair(OFFLINE_SERVER_TS, "CHAT_KEEP", SERVER_PY, "CHAT_KEEP"),
     Pair(OFFLINE_SERVER_TS, "CHAT_MAX_LEN", SERVER_PY, "CHAT_MAX_LEN"),
+    Pair(OFFLINE_SERVER_TS, "RETURN_MIN", SERVER_PY, "RETURN_MIN"),
 )
 
 # Inline literals with no named constant on the client side.

@@ -151,6 +151,11 @@ EMPTY_ROOM_POLL = 0.25     # how often a long empty-room wait re-checks for a hu
 # timeouts, or AWAY_PER_ROUND in one round, mark the seat away: the bot then
 # plays every decision for it until the player is back.
 MOVE_TIMER = 60.0
+# A seat back from a drop mid-decision has at least this long left for it:
+# its clock stood still while it was gone, and one that had nearly run out
+# before the drop gets enough for a decision but no more, so dropping and
+# coming back never buys a whole new clock (web/src/offline/server RETURN_MIN).
+RETURN_MIN = 15.0
 # A disconnected human keeps their seat this long before the bot plays for
 # them, in every room, timed or casual: stepping away (a backgrounded phone,
 # a dropped network) is never worse than sitting idle at the table. A Leave
@@ -775,6 +780,19 @@ def _sync_move_timer(room: Room) -> None:
             sd.turn_started = None
         elif fresh or sd.turn_started is None:
             sd.turn_started = now()
+
+
+def _resume_move_clock(room: Room, seat: Seat) -> None:
+    """A seat back from a drop while it owes a decision (caller holds the
+    lock): its clock takes up where it stood at the drop, so no time away
+    counts toward a timeout, with at least RETURN_MIN left. A decision that
+    changed while it was away starts a fresh clock in ``_sync_move_timer``."""
+    if (not room.move_timer or seat.connected or seat.left_at is None
+            or seat.turn_started is None):
+        return
+    used = max(0.0, seat.left_at - seat.turn_started)
+    left = min(MOVE_TIMER, max(RETURN_MIN, MOVE_TIMER - used))
+    seat.turn_started = now() - (MOVE_TIMER - left)
 
 
 def _timed(room: Room, seat: int) -> bool:
@@ -3959,6 +3977,7 @@ def _attach(room: Room, seat: Seat, ws: WebSocket) -> int:
     room.closing = False             # a human is back: the game goes on
     if seat.writer is not None:      # displace any older live socket
         seat.writer.cancel()
+    _resume_move_clock(room, seat)
     seat.gen += 1
     seat.ws, seat.connected = ws, True
     seat.left_at = None

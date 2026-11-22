@@ -406,10 +406,17 @@ def test_the_purge_takes_unrated_and_idle_device_accounts_only(device_on):
     idle = store.create_device_user("i" * 43, now=now - 400 * DAY)
     google = store.upsert_user({"sub": "g", "email": "g@example.com", "name": "G"},
                                now=now - 900 * DAY)
+    # Casual players: unrated and old, but signed in, or seen through the
+    # credential, within the last 30 days.
+    casual = store.create_device_user("k" * 43, now=now - 400 * DAY)
+    store.device_account("k" * 43, now=now - 1 * DAY)
+    seen = store.create_device_user("s" * 43, now=now - 60 * DAY)
     with closing(sqlite3.connect(store.path)) as db:
         db.execute("UPDATE users SET rated_rounds = 3 WHERE id IN (?, ?, ?)",
                    (rated["id"], idle["id"], google["id"]))
         db.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now - 10 * DAY, rated["id"]))
+        db.execute("UPDATE device_credentials SET last_seen_at = ? WHERE user_id = ?",
+                   (now - 29 * DAY, seen["id"]))
         db.commit()
     store.create_session(unrated["id"], now=now)
     store.set_block(fresh["id"], unrated["id"], True)
@@ -417,13 +424,16 @@ def test_the_purge_takes_unrated_and_idle_device_accounts_only(device_on):
     gone = store.purge_device_accounts(now=now)
     assert sorted(gone) == sorted([unrated["id"], idle["id"]])
     left = {r[0] for r in _rows(store.path, "SELECT id FROM users")}
-    assert left == {fresh["id"], rated["id"], google["id"]}
+    assert left == {fresh["id"], rated["id"], google["id"], casual["id"], seen["id"]}
     assert {r[0] for r in _rows(store.path, "SELECT user_id FROM device_credentials")} \
-        == {fresh["id"], rated["id"]}
+        == {fresh["id"], rated["id"], casual["id"], seen["id"]}
     assert _rows(store.path, "SELECT COUNT(*) FROM sessions") == [(0,)]
     assert _rows(store.path, "SELECT COUNT(*) FROM blocks") == [(0,)]
     assert accounts.is_deleted(unrated["id"]) and not accounts.is_deleted(fresh["id"])
     assert store.purge_device_accounts(now=now) == []
+    # Once the casual player stops for 30 days, the unrated account goes too.
+    later = store.purge_device_accounts(now=now + 30 * DAY)
+    assert casual["id"] in later and rated["id"] not in later
 
 
 def test_the_purge_runs_with_the_saved_games_sweep_only_when_on(device_on, monkeypatch):

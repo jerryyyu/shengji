@@ -105,8 +105,10 @@ IOS_APP_CLIENT = "ios-app"
 # endpoint answers 429 and the app plays on as a guest.
 DEVICE_CREATES_PER_HOUR = 5
 DEVICE_CREATES_PER_DAY = 20
-# A device account with no rated round this many days after creation is
-# purged, and so is one nobody has used for ``DEVICE_IDLE_DAYS``.
+# A device account is purged when it has no rated round and nobody has used
+# it (signed in with it, or used its credential) for ``DEVICE_UNRATED_DAYS``,
+# so a player who only plays casual games is kept while they keep playing;
+# any device account unused for ``DEVICE_IDLE_DAYS`` is purged too.
 DEVICE_UNRATED_DAYS = 30
 DEVICE_IDLE_DAYS = 365
 # Random draws before the name search walks the whole list.
@@ -935,8 +937,10 @@ class Store:
 
     def purge_device_accounts(self, now: float | None = None) -> list[int]:
         """Delete the device accounts (no provider) that have no rated round
-        ``DEVICE_UNRATED_DAYS`` after creation, or that nobody has used for
-        ``DEVICE_IDLE_DAYS``; their credentials, sessions, links and blocks
+        and have been unused for ``DEVICE_UNRATED_DAYS``, or that have been
+        unused for ``DEVICE_IDLE_DAYS``. Unused means no sign-in
+        (``users.last_login_at``) and no credential use
+        (``device_credentials.last_seen_at``) since then. Their credentials, sessions, links and blocks
         go by cascade, and so do games no other account links. A linked
         account is never touched. Returns the ids, which also join
         ``deleted_ids`` so a live socket holding one reads as signed out."""
@@ -947,8 +951,12 @@ class Store:
                 ids = [int(r["id"]) for r in conn.execute(
                     """SELECT id FROM users
                        WHERE google_sub IS NULL AND apple_sub IS NULL
-                         AND ((rated_rounds = 0 AND created_at < ?) OR last_login_at < ?)""",
-                    (t - DEVICE_UNRATED_DAYS * 86400, t - DEVICE_IDLE_DAYS * 86400))]
+                         AND last_login_at < :since
+                         AND NOT EXISTS (SELECT 1 FROM device_credentials d
+                                         WHERE d.user_id = users.id AND d.last_seen_at >= :since)
+                         AND (rated_rounds = 0 OR last_login_at < :idle)""",
+                    {"since": t - DEVICE_UNRATED_DAYS * 86400,
+                     "idle": t - DEVICE_IDLE_DAYS * 86400})]
                 for user_id in ids:
                     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
                 if ids:

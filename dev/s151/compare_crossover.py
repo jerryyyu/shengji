@@ -2,6 +2,7 @@
 import argparse
 from collections import Counter
 from contextlib import ExitStack
+from itertools import zip_longest
 import json
 import math
 from pathlib import Path
@@ -47,29 +48,39 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
         if configuration is None:
             configuration = host, config
         require((host, config) == configuration, f"{store}: configuration or host drift")
-        if manifests:
-            require(all(manifest[k] == manifests[0][k] for k in ("counts", "work_realized")),
-                    f"{store}: repeated work differs")
         stores.append(store)
         manifests.append(manifest)
 
-    events = Counter()
+    first_difference = None
+    work_keys = ("counts", "work_realized")
+    work_matches = all(all(m[k] == manifests[0][k] for k in work_keys) for m in manifests)
+    events = [Counter() for _ in stores]
     for shards in zip(*(m["shards"] for m in manifests), strict=True):
         with ExitStack() as stack:
             files = [stack.enter_context((p / shard["path"]).open()) for p, shard in zip(stores, shards)]
-            for lines in zip(*files, strict=True):
-                row = comparable_row(lines[0], manifests[0]["run_id"])
-                for j in range(1, len(lines)):
-                    require(row == comparable_row(lines[j], manifests[j]["run_id"]),
-                            f"{stores[j]}: record differs at {row['source_ref']}")
-                rec = row["allocation"].get("serving_decision", {})
-                events["greedy_deadline_fired"] += bool(rec.get("leaf_greedy_deadline_fired"))
-                if rec.get("exact_follow_abandoned"):
-                    events[f"exact_follow_abandoned:{rec['exact_follow_abandoned']}"] += 1
-                if rec.get("exact_lead_status"):
-                    events[f"exact_lead:{rec['exact_lead_status']}"] += 1
-    counts = manifests[0]["counts"]
-    events.update({k: v for k, v in counts.items() if "fallback" in k or k == "incomplete_work"})
+            for lines in zip_longest(*files):
+                rows = []
+                for j, line in enumerate(lines):
+                    row = comparable_row(line, manifests[j]["run_id"]) if line is not None else None
+                    rows.append(row)
+                    if row is None:
+                        continue
+                    rec = row["allocation"].get("serving_decision", {})
+                    events[j]["greedy_deadline_fired"] += bool(rec.get("leaf_greedy_deadline_fired"))
+                    if rec.get("exact_follow_abandoned"):
+                        events[j][f"exact_follow_abandoned:{rec['exact_follow_abandoned']}"] += 1
+                    if rec.get("exact_lead_status"):
+                        events[j][f"exact_lead:{rec['exact_lead_status']}"] += 1
+                if first_difference is None:
+                    for j, row in enumerate(rows[1:], 1):
+                        if row != rows[0]:
+                            first_difference = dict(reference=stores[0].parent.name,
+                                                    compared=stores[j].parent.name,
+                                                    source_refs=[r["source_ref"] if r else None
+                                                                 for r in (rows[0], row)])
+                            break
+    for manifest, event in zip(manifests, events):
+        event.update({k: v for k, v in manifest["counts"].items() if "fallback" in k or k == "incomplete_work"})
     pairs = [dict(base=times[i, "b"][0], candidate=times[i, "c"][0]) for i in sorted({i for i, _ in order})]
     base, candidate = ([pair[k] for pair in pairs] for k in ("base", "candidate"))
     for pair in pairs:
@@ -77,7 +88,10 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
     block = dict(seed=seed, pairs=pairs, base=sum(base), candidate=sum(candidate),
                  reduction_percent=percent(sum(base), sum(candidate)),
                  repeat_difference_percent=dict(base=abs(percent(*base)), candidate=abs(percent(*candidate))),
-                 events_per_invocation=dict(events))
+                 work_matches=work_matches, first_record_difference=first_difference,
+                 events_by_invocation={p.parent.name: dict(e) for p, e in zip(stores, events)})
+    if work_matches and first_difference is None:
+        block["events_per_invocation"] = dict(events[0])
     return block, previous_end, configuration
 
 
@@ -86,10 +100,11 @@ def verdict(blocks):
     candidate = sum(b["candidate"] for b in blocks)
     gain = percent(base, candidate)
     noise = max(max(b["repeat_difference_percent"].values()) for b in blocks)
-    passed = all(b["candidate"] < b["base"] for b in blocks) and gain > noise
+    matched = all(b["work_matches"] and b["first_record_difference"] is None for b in blocks)
+    passed = matched and all(b["candidate"] < b["base"] for b in blocks) and gain > noise
     return dict(blocks=blocks, pooled_seconds=dict(base=base, candidate=candidate),
                 pooled_symmetric_reduction_percent=gain, largest_repeat_difference_percent=noise,
-                observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
+                matched_work_and_decisions=matched, observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
 
 
 def compare(root):
@@ -109,6 +124,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     try:
-        print(json.dumps(compare(parser.parse_args().root), indent=2))
+        report = compare(parser.parse_args().root)
+        print(json.dumps(report, indent=2))
+        if not report["matched_work_and_decisions"]:
+            sys.exit("comparison inconclusive: gameplay or work differed")
     except (KeyError, OSError, TypeError, ValueError) as exc:
         sys.exit(f"comparison refused: {exc}")

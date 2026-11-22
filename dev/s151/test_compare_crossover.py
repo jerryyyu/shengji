@@ -1,11 +1,17 @@
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+
+from shengji.harvest import schema, trajectory
 
 import compare_crossover as crossover
 
 
 def block(base, candidate, noise):
-    return {"base": base, "candidate": candidate,
+    return {"base": base, "candidate": candidate, "work_matches": True, "first_record_difference": None,
             "repeat_difference_percent": {"base": noise, "candidate": 0}}
 
 
@@ -15,11 +21,73 @@ class CrossoverTest(unittest.TestCase):
         self.assertEqual(report["observed_noise_gate"], "PASS")
         self.assertAlmostEqual(report["pooled_symmetric_reduction_percent"], 400 / 198)
 
+    def test_work_drift_disqualifies_all_eight_pairs(self):
+        blocks = [block(100, 90, 1) for _ in range(4)]
+        blocks[0]["work_matches"] = False
+        report = crossover.verdict(blocks)
+        self.assertEqual(report["observed_noise_gate"], "INCONCLUSIVE")
+        self.assertEqual(report["pooled_seconds"], {"base": 400, "candidate": 360})
+
     def test_noisy_or_mixed_blocks(self):
         gain = crossover.percent(100, 98)
         for blocks in ([block(100, 98, gain)] * 4,
                        [block(100, 90, 1)] * 3 + [block(10, 11, 1)]):
             self.assertEqual(crossover.verdict(blocks)["observed_noise_gate"], "INCONCLUSIVE")
+
+    def test_deadline_drift_retains_all_timings_and_checks_later_shards(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            order = crossover.block_order(0)
+            times = {}
+            for i, (pair, arm) in enumerate(order):
+                run_id = f"{pair}-{arm}"
+                store = root / run_id / "store"
+                drift = i == 1
+                record = schema.finalize_record(dict(
+                    source="room-log", source_ref=run_id + ":decision", policy="human:abc",
+                    round_seed=7, deck=None, setup=dict(trump_rank="2", banker=0,
+                    declarations=[], declaration=None, trump_suit="S", trump_is_nt=False,
+                    buried=None), plays_prefix=[], seat=0, ply=0, trick=0, role="banker-team",
+                    legal_actions=[["SA"]], legal_actions_complete=True, legal_actions_count=1,
+                    ballot=[["SA"]], action=["SA"], allocation={"serving_decision":
+                    {"leaf_greedy_deadline_fired": drift}}, outcome=None))
+                config = dict(run_id=run_id, seed0=7, round_mix="first", capture_served_budget=True,
+                              served_runtime={})
+                for key in ("PV", "PV_PRIOR", "PV_UNIFIED", "PV_BELIEF"):
+                    config["served_runtime"][f"SHENGJI_{key}_CKPT"] = "model"
+                    config["served_runtime"][f"SHENGJI_{key}_SHA256"] = "hash"
+                identity = dict(git_sha=crossover.HEADS["bc".index(arm)], git_dirty=False, env={})
+                stats = [dict(trump_rank="2", banker=0, mirror=m, seed=7, attacker_points=0,
+                              counts={"rounds": 1}, work={"nodes": 1}) for m in range(2)]
+                side = trajectory.publish_shard(store, config, 0, 7, [record], stats)
+                manifest = trajectory.build_run_manifest(config, identity, rounds=2,
+                    sidecars={0: side}, merged=None, out_dir=store)
+                runtime = dict(workers=1, resume=False, merge=False, wall_secs=1,
+                    host="fixture", platform="fixture", logical_cpus=1, python="fixture",
+                    fast_engine=False, require_voids=True, clusters=dict(requested=1,
+                    generated=[0], reused=[], failed=[]), per_cluster={"0":
+                    dict(started_at=2*i+1, finished_at=2*i+2)})
+                for name, data in (("runtime", runtime), ("manifest", manifest),
+                                   ("run", dict(config=config, identity=identity, run_id=run_id))):
+                    (store / (name + ".json")).write_text(json.dumps(data))
+                times[pair, arm] = (10 if arm == "b" else 8, 1)
+            args = SimpleNamespace(host="fixture", rounds=2, workers=1)
+            def read_block():
+                return crossover.read_block(root, 7, order, times, args, 0, None)[0]
+            result = read_block()
+            self.assertTrue(result["work_matches"])
+            self.assertEqual(result["first_record_difference"]["compared"], "0-c")
+            self.assertEqual(result["events_by_invocation"]["0-c"]["greedy_deadline_fired"], 1)
+            self.assertEqual(len(result["pairs"]), 2)
+            report = crossover.verdict([result])
+            self.assertEqual(report["pooled_seconds"], {"base": 20, "candidate": 16})
+            self.assertEqual(report["observed_noise_gate"], "INCONCLUSIVE")
+            last = root / "1-b/store" / side["path"]
+            last.chmod(0o600)
+            with last.open("a") as out:
+                out.write("corrupt")
+            with self.assertRaisesRegex(ValueError, "byte size"):
+                read_block()
 
     def test_reordered_capture_refused_before_reading_stores(self):
         times = {key: (2, 1) for i in range(4) for key in crossover.block_order(i)}

@@ -43,7 +43,8 @@ this spec wins.
 
 **Section 2, Play bots folded into Play.**
 - A Ranked / Casual switch above Play, remembered per device. Guests see both, and ranked guests are a fixed
-  1000 and unsaved, as today.
+  1000 and unsaved, as today (in the iOS app, since 2026-11-22, the first online Play makes the device's own
+  account instead, rated and saved; see "One account in the iOS app").
 - Play joins a table of the chosen mode first, else opens your own table in that mode.
 - Casual Play never seats you at a ranked table.
 - A casual room with Allow joiners on and a person present is an open table.
@@ -88,7 +89,8 @@ of its own; the table keeps its landscape layout.
 the ⋯ menu. "Kitty 8 cards" moves out of ⋯.
 
 **Section 7, guest name.** One name control: the chip opens the same edit sheet on every tab. Me shows the
-guest's name and initial with "Guest · not ranked".
+guest's name and initial with "Guest · not ranked" (cut to "Guest" by the copy rule; the iOS app's own account
+reads "On this device only" there since 2026-11-22).
 
 **Section 9, timers.** One ring component with one rule, including a thin ring on other players' turns.
 **The ring shows the seconds left as a number** (Jerry). Your own ring runs the whole move time. The Your table
@@ -159,7 +161,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 2. Allow joiners is the opener's switch only (server and client); others see nothing (copy rule).
 3. Offline copy: plain "Offline" (cut the subtext); "Offline · you'll play the bots on this device" and "Ranked needs a connection" are dropped.
 4. Round end: the top stays minimal (result line + buttons in a row), and a collapsed Details holds the kitty (cards, points, multiplier) and the last trick played. Keep that detail. A guest at a ranked table reads "Sign in to be ranked ›" under the result line, the same words as a link that opens the one identity sheet, drawn inside the round-end dialog (Jerry 11-20 plain text; a link since 11-22, so guests at a table reach sign-in; the "Guest" box stays gone; an account, one signed in on this round end too, sees no line); a seat taken mid-round reads "Unranked · joined mid-round" in the same place, because each explains the missing number (Jerry 11-15).
-5. The guest line "Playing as a guest · Sign in to be ranked" stays.
+5. The guest line "Playing as a guest · Sign in to be ranked" stays on the website, and in the iOS app until its
+   first online Play makes the device's account (2026-11-22; with device accounts off on the server, it stays).
 
 ## Simplifications approved (Jerry 2026-11-14, "Yes for all the simplification paths")
 1. **One invite path.** One link kind, `?code=`, opens Play with the Join panel for that table, and so
@@ -203,7 +206,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      (`api/chat_filter.py`); an account's display name with a listed word is refused ("That name is not
      allowed.").
    - A signed-in player still edits their name inline in Me (`NameEditForm`, saved to the account); the
-     sheet is a guest's.
+     sheet is a guest's, and since 2026-11-22 also the iOS app's own account's until it signs in (see "One
+     account in the iOS app").
 5. **One toast and one line above the hand.** Every message that comes and goes is the one toast
    (`components/Toast.tsx`, shown through `showToast` in `toast.ts`): one at a time, the newest replacing the
    one showing, gone after 4 s. It has one spot per layout: at the top of the page off the table, and at the
@@ -341,7 +345,33 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   still being played at a table, its own or a continuation, cannot be continued. No new surface or string.
 - **A guest's Me: one row for who you are.** The row is the name with a chevron and opens the identity sheet
   (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
-  where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged.
+  where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged. The iOS app's own account
+  keeps that one name row in place of Edit name (2026-11-22).
+
+## One account in the iOS app (Jerry 2026-11-22: "it should only be for iOS when it's tied to a device"; "Web guests should stay the same")
+The website is unchanged. In the iOS app (`Capacitor.getPlatform() === "ios"`, with the Keychain plugin), the
+first online Play, Duo or Join makes the device's own account, with no Apple or Google identity, before it asks
+for the table (`deviceAccount.ts`): with a secret in the Keychain it signs in with it, otherwise it makes one
+(`POST /api/auth/device`) and keeps the secret there. Every launch with a secret signs in again. A refused
+secret (the account was deleted or purged) is cleared and that Play goes ahead as a guest; the server's switch
+off, too many attempts or no connection leave a guest exactly as today. The mock is `account_frames` in
+`docs/design/mocks/core.py`.
+- **Chip:** the name and the rating, with the guest chip's pencil; a tap opens the identity sheet.
+- **Play tab:** no guest line once the account exists; nothing else changes.
+- **Round end:** the rating on the result line, as an account sees it; no "Sign in to be ranked".
+- **Identity sheet:** the name (Done saves it on the account; a name another account shows is refused, "That
+  name is taken."), one status line "On this iPhone only", Sign in with Apple and Google, the Terms line, Done.
+- **Me:** the header's line "On this device only", Stats and Games, the settings, the name row (opens the
+  sheet), "Show me on the leaderboard", the help rows and Delete account; no Sign out, which would leave the
+  account with no way back in. Delete clears the Keychain.
+- **Leaderboard:** the signed-in board: the own row in rank order, or pinned with the "new" tag.
+- **Signing in with an identity that has an account:** the one `ConfirmSheet`, as a centred card over the
+  sheet: "Switch to Mei?", "This device's rating is replaced.", Cancel / Switch. Switch repeats the sign-in with
+  `confirm`; the other account wins, this device's games move to it, and its new device secret replaces the old
+  one in the Keychain. After the switch the chip reads that account's name and rating.
+- **Linked:** an account with Apple or Google is a signed-in account as before (Edit name, Sign out). Its
+  Sign out also sends and clears the device secret, so the next launch does not sign it back in.
+- **Reinstall:** the Keychain keeps the secret, so the same account comes back; no message.
 
 ## Polish checklist (UI review)
 A UI review ask walks this list after the copy rule and the flow-map row. This file, `COPY_CUTS.md` and the felt (the hand and the table, where reading a card beats a uniform press) win over any item here. Adapted from `jakubkrehel/make-interfaces-feel-better` at `6d9f2f1df10e8ce2ae1708598a73b0506fb98794` (MIT, copyright Jakub Krehel); its framework snippets, image outlines, RTL rules and shadow-for-border swap do not apply here.

@@ -8,6 +8,7 @@ import { auth, effectiveName } from "../auth";
 import { guestName } from "../guestName";
 import type { ConnStatus } from "../ws";
 import { conn, getResumeToken, getSavedName, getSavedRoom } from "../ws";
+import { beforeOnlineSetup } from "../deviceAccount";
 import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ChatMsg, ServerMsg } from "../protocol";
@@ -615,13 +616,13 @@ export class QueueStore {
    *  room that table has just become, if it started meanwhile, seats you
    *  under it. */
   join(code?: string, name?: string): void {
-    this.sendJoin(code, false, name);
+    beforeOnlineSetup(() => this.sendJoin(code, false, name));
   }
 
   /** Duo: your own table, as Play opens it, with the partner seat held for
    *  the friend who joins by its code. A formed pair queues as the pair. */
   joinDuo(): void {
-    this.sendJoin(undefined, true);
+    beforeOnlineSetup(() => this.sendJoin(undefined, true));
   }
 
   private sendJoin(code: string | undefined, duo: boolean, name?: string): void {

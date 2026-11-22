@@ -6,6 +6,8 @@
 
 import { useEffect, useState } from "react";
 import { forgetPrivateSession } from "./home/session";
+import { keychainAvailable, keychainGet, keychainRemove, keychainSet } from "./keychain";
+import { isNative } from "./native";
 import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
 import { conn } from "./ws";
 
@@ -112,6 +114,7 @@ export const NAME_MESSAGES: Record<string, string> = {
   reserved: "That name is reserved.",
   not_allowed: "That name is not allowed.",
   not_a_string: "Enter a name.",
+  taken: "That name is taken.",
 };
 
 const RESERVED = new Set(["bot", "system", "admin", "dealer", "moderator", "server"]);
@@ -164,16 +167,48 @@ export function effectiveName(user: AuthUser | null | undefined): string {
   return user.name_shown || firstName(user.name);
 }
 
-export async function loginWithGoogle(credential: string, nonce: string): Promise<AuthUser> {
-  const { status, body } = await api<AuthUser & { detail?: string }>("/api/auth/google", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential, nonce }),
-  });
+/** A sign-in from this app's device account whose Apple or Google identity
+ *  already has an account (409 `account_exists`): nothing changed, and the
+ *  same sign-in repeated with `confirm` gives way to that account. */
+export class AccountExists extends Error {
+  /** The other account's shown name. */
+  holder: string;
+
+  constructor(holder: string) {
+    super(`Switch to ${holder}?`);
+    this.holder = holder;
+  }
+}
+
+type SignInBody = AuthUser & { detail?: unknown; device_token?: string };
+
+/** A provider sign-in's answer: the account, after a merge's new device
+ *  credential is in the Keychain; a refusal, the conflict among them, throws. */
+async function signInAnswer(status: number, body: SignInBody | null): Promise<AuthUser> {
+  const detail = body?.detail as { code?: unknown; name?: unknown } | string | undefined;
+  if (status === 409 && typeof detail === "object" && detail?.code === "account_exists") {
+    throw new AccountExists(typeof detail.name === "string" && detail.name ? detail.name : "Player");
+  }
   if (status !== 200 || !body) {
-    throw new Error(body?.detail ?? `Sign-in failed (${status})`);
+    throw new Error(typeof detail === "string" ? detail : `Sign-in failed (${status})`);
+  }
+  if (typeof body.device_token === "string" && body.device_token && deviceAccountsApply()) {
+    try {
+      await keychainSet(body.device_token);
+    } catch {
+      /* the session cookie still holds the account; the next launch's re-auth is refused and the cookie carries on */
+    }
   }
   return toUser(body);
+}
+
+export async function loginWithGoogle(credential: string, nonce: string, confirm = false): Promise<AuthUser> {
+  const { status, body } = await api<SignInBody>("/api/auth/google", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(confirm ? { credential, nonce, confirm } : { credential, nonce }),
+  });
+  return signInAnswer(status, body);
 }
 
 /** What the app posts after Apple's native sheet: the identity token, the raw
@@ -188,8 +223,8 @@ export interface AppleLogin {
   familyName: string | null;
 }
 
-export async function loginWithApple(login: AppleLogin): Promise<AuthUser> {
-  const { status, body } = await api<AuthUser & { detail?: string }>("/api/auth/apple", {
+export async function loginWithApple(login: AppleLogin, confirm = false): Promise<AuthUser> {
+  const { status, body } = await api<SignInBody>("/api/auth/apple", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -198,21 +233,21 @@ export async function loginWithApple(login: AppleLogin): Promise<AuthUser> {
       authorization_code: login.authorizationCode,
       given_name: login.givenName,
       family_name: login.familyName,
+      ...(confirm ? { confirm } : {}),
     }),
   });
-  if (status !== 200 || !body) {
-    throw new Error(body?.detail ?? `Sign-in failed (${status})`);
-  }
-  return toUser(body);
+  return signInAnswer(status, body);
 }
 
 /** Revoke the session. Resolves only when the server confirmed it; a 5xx or
  *  a network failure throws, because the HttpOnly cookie is then still live
  *  and the page must not claim otherwise. */
-export async function logout(): Promise<void> {
+export async function logout(deviceToken: string | null = null): Promise<void> {
   let status: number;
   try {
-    ({ status } = await api("/api/auth/logout", { method: "POST" }));
+    ({ status } = await api("/api/auth/logout", deviceToken
+      ? { method: "POST", headers: { Authorization: `Device ${deviceToken}` } }
+      : { method: "POST" }));
   } catch {
     throw new Error("Sign-out failed: no connection. Try again.");
   }
@@ -254,6 +289,79 @@ export function newNonce(): string {
 export async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Device accounts: in the iOS app only, an account with no provider, made
+ *  at the first online Play, Duo or Join and held by a secret in the
+ *  Keychain, so a reinstall gets it back. The website never asks for one. */
+export function deviceAccountsApply(): boolean {
+  if (!isNative()) return false;
+  try {
+    const cap = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+    return cap?.getPlatform?.() === "ios";
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a device account can be made here: the app on iOS, with a shell
+ *  that carries the Keychain plugin (an older build plays as a guest). */
+export function deviceAccountsAvailable(): boolean {
+  return deviceAccountsApply() && keychainAvailable();
+}
+
+/** A signed-in account with no Apple or Google identity: one the app made.
+ *  Only such an account has no email, since both providers give one. */
+export function isUnlinkedDevice(user: AuthUser | null | undefined): boolean {
+  return !!user && deviceAccountsApply() && !user.email;
+}
+
+export const CLIENT_HEADER = "X-Shengji-Client";
+export const IOS_APP_CLIENT = "ios-app";
+
+/** `POST /api/auth/device`: with a token, sign in as the account holding
+ *  it; without, make a new account, whose token comes back this once.
+ *  Status 0 is no connection. 404 means the server has device accounts
+ *  off, and 429 too many attempts: either way the app plays as a guest. */
+export async function deviceAuth(token: string | null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
+  const headers: Record<string, string> = { [CLIENT_HEADER]: IOS_APP_CLIENT };
+  if (token) headers.Authorization = `Device ${token}`;
+  let got: { status: number; body: (Partial<AuthUser> & { user?: AuthUser; token?: string }) | null };
+  try {
+    got = await api("/api/auth/device", { method: "POST", headers });
+  } catch {
+    return { status: 0, user: null, token: null };
+  }
+  const user = got.status === 200 && got.body?.user ? toUser(got.body.user) : null;
+  const issued = got.status === 200 && typeof got.body?.token === "string" ? got.body.token : null;
+  return { status: user ? 200 : got.status === 200 ? 0 : got.status, user, token: issued };
+}
+
+/** At app launch: sign in with the Keychain's secret. A 401 means the
+ *  account is gone (deleted, or purged), so the secret goes too and the
+ *  next online Play makes a fresh one; any other failure keeps it for the
+ *  next launch. Null when there is no secret or no sign-in. */
+export async function reauthFromKeychain(): Promise<AuthUser | null> {
+  let token: string | null = null;
+  try {
+    token = await keychainGet();
+  } catch {
+    return null;
+  }
+  if (!token) return null;
+  const got = await deviceAuth(token);
+  if (got.status === 401) await forgetDeviceSecret();
+  return got.user;
+}
+
+/** Removes the Keychain's secret; a failure leaves it, and the server then
+ *  refuses it on the next launch. */
+export async function forgetDeviceSecret(): Promise<void> {
+  try {
+    await keychainRemove();
+  } catch {
+    /* refused by the Keychain: the next re-auth's 401 tries again */
+  }
 }
 
 let gisLoading: Promise<GoogleAccountsId> | null = null;
@@ -312,11 +420,13 @@ class AuthStore {
     this.started = true;
     try {
       const cfg = await fetchAuthConfig();
+      // the app's device account signs in again at every launch
+      const relaunched = deviceAccountsApply() ? await reauthFromKeychain() : null;
       if (!cfg.google_client_id) {
-        this.set({ status: "off", clientId: null, user: null });
+        this.set(relaunched ? { status: "in", clientId: null, user: relaunched } : { status: "off", clientId: null, user: null });
         return;
       }
-      const user = await fetchMe();
+      const user = relaunched ?? await fetchMe();
       this.set({ status: user ? "in" : "out", clientId: cfg.google_client_id, user });
     } catch {
       this.set({ status: "error", clientId: null, user: null });
@@ -340,7 +450,10 @@ class AuthStore {
    *  confirm the revocation; the caller shows the error and may retry. On
    *  success the socket is replaced so the seat stops carrying the account. */
   async signOut(): Promise<void> {
-    await logout();
+    // in the app the device secret goes too, or the next launch signs it back in
+    const device = deviceAccountsApply() ? await keychainGet().catch(() => null) : null;
+    await logout(device);
+    if (device) await forgetDeviceSecret();
     try {
       window.google?.accounts?.id?.disableAutoSelect();
     } catch {
@@ -356,6 +469,7 @@ class AuthStore {
   /** The server deleted the account and cleared its cookie: forget it here
    *  the way a confirmed sign-out does. */
   deleted(): void {
+    if (deviceAccountsApply()) void forgetDeviceSecret();
     try {
       window.google?.accounts?.id?.disableAutoSelect();
     } catch {

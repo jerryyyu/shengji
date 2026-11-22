@@ -681,5 +681,212 @@ Each row is one flow, click by click: the label above a frame is the tap that le
     print(f"wrote {out} {len(page.encode()):,} bytes")
 
 
+
+# One account in the iOS app (FLOWS.md "One account in the iOS app"): the approved frames, today | built.
+
+DEVICE = ("Gentle Tractor", "1,000", "G")
+DEVICE_BACK = ("Gentle Tractor", "962", "G")
+MEI = ("Mei", "1,042", "M")
+LOST = ("Quiet Ace", "1,000", "Q")
+
+
+def guest_line():
+    """Today's line under a guest's Play (queue/Ranked.tsx GuestLine)."""
+    return ('<p style="margin:0;text-align:center;color:#9aa3b2;font-size:13px">Playing as a guest · '
+            '<span style="color:#7fb0ff;font-weight:600">Sign in</span> to be ranked</p>')
+
+
+def play_tab_today(u=GUEST):
+    body = ART + who_chip(u) + seg("Ranked")
+    body += f'<div style="display:flex;gap:8px">{btn("Play", h=52)}{btn("Duo", "ghost", grow=False, h=52)}</div>'
+    body += guest_line() + presence(PRES) + code_row()
+    return phone(body, user=u[2])
+
+
+def lb_row(rank, name, rating, you=False, new=False):
+    top = rank is not None and rank <= 3
+    bg = "background:#2d3a2f;box-shadow:inset 3px 0 0 #f2c14e;" if you else ""
+    tag = ('<span style="flex:none;margin-left:6px;padding:0 4px;border:1px solid rgba(242,193,78,.45);border-radius:5px;'
+           'color:#f2c14e;font-size:11px;font-weight:600">new</span>') if new else ""
+    me = '<span style="flex:none;white-space:pre"> (you)</span>' if you else ""
+    return (f'<div style="display:flex;align-items:center;gap:12px;min-height:48px;padding:0 16px;font-size:17px;{bg}">'
+            f'<span style="width:26px;flex:none;text-align:right;color:{GOLD if top else "#9aa3b2"};font-size:15px;font-weight:600">{rank if rank is not None else "—"}</span>'
+            f'<span style="width:28px;height:28px;flex:none;border-radius:50%;background:#3a4150;color:{GOLD};font-size:13px;font-weight:700;'
+            f'display:inline-grid;place-items:center">{name[0].upper()}</span>'
+            f'<span style="flex:1;min-width:0;display:flex;align-items:center"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{name}</span>{me}{tag}</span>'
+            f'<span style="flex:none;min-width:46px;text-align:right;font-weight:600;color:#fff">{rating}</span></div>')
+
+
+def lb_group(rows):
+    out = "".join(f'<div style="{"border-top:1px solid #2b323e" if i else ""}">{r}</div>' for i, r in enumerate(rows))
+    return f'<div style="background:#242a35;border-radius:12px;overflow:hidden">{out}</div>'
+
+
+def period_seg(active="This week"):
+    out = "".join(f'<span style="flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:14px;font-weight:700;'
+                  f'{"background:#2f3a4d;color:#fff" if p == active else "color:#9aa3b2"}">{p}</span>' for p in ("This week", "All time"))
+    return f'<div style="display:flex;padding:3px;border-radius:12px;background:#11141a;border:1px solid #333b49">{out}</div>'
+
+
+LB_TOP = [(1, "Mei", "1,042"), (2, "Sheng Ji bot", "1,000"), (3, "Kai", "987"), (4, "Alice", "975"), (5, "Sam", "958"), (6, "Li", "931")]
+
+
+def leaderboard_page(me=None, listed_at=None, signin_row=False, user="G"):
+    """The Leaderboard tab as web/src/components/Leaderboard.tsx draws it: the period switch, the ranked rows,
+    then for a guest the 'Sign in to be ranked' row, or the viewer's own row pinned below when it is not listed."""
+    rows = []
+    for rk, nm, rt in LB_TOP:
+        if listed_at is not None and rk == listed_at:
+            rows.append(lb_row(rk, me[0], me[1], you=True))
+        rows.append(lb_row(rk + (1 if listed_at is not None and rk >= listed_at else 0), nm, rt))
+    body = period_seg() + lb_group(rows)
+    if signin_row:
+        body += '<div style="margin-top:4px">' + grp([chev("Sign in to be ranked")]) + '</div>'
+    elif me is not None and listed_at is None:
+        body += ('<div style="margin-top:auto;margin-bottom:96px;padding-top:12px">'
+                 + lb_group([lb_row(None, me[0], me[1], you=True, new=True)]) + '</div>')
+    return phone(body, active="Leaderboard", title="Leaderboard", user=user)
+
+
+def me_head(u, line):
+    return (f'<div style="display:flex;align-items:center;gap:12px"><span style="width:56px;height:56px;border-radius:28px;background:#2f3a4d;display:flex;'
+            f'align-items:center;justify-content:center;font-size:20px;font-weight:700">{u[2]}</span><div><div style="font-size:20px;font-weight:700">{u[0]}</div>'
+            f'<div style="font-size:13px;color:#9aa3b2">{line}</div></div></div>')
+
+
+def stats_block(tiles=(("58%", "rounds won"), ("+0.31", "levels / round"), ("7", "best streak"))):
+    segm = ('<div style="display:flex;padding:3px;border-radius:12px;background:#11141a;border:1px solid #333b49">'
+            '<span style="flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:14px;font-weight:700;background:#2f3a4d">Stats</span>'
+            '<span style="flex:1;text-align:center;padding:7px 0;font-size:14px;font-weight:700;color:#9aa3b2">Games</span></div>')
+    t = ('<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">' + "".join(
+        f'<div style="background:#242a35;border-radius:12px;padding:10px"><div style="font-size:20px;font-weight:800">{a}</div><div style="font-size:11px;color:#9aa3b2">{c}</div></div>'
+        for a, c in tiles) + '</div>')
+    return segm + t
+
+
+SETTINGS = ghead("Settings") + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("How to play")])
+DELETE = grp(['<span style="color:#f08a96">Delete account</span><span style="color:#9aa3b2">›</span>'])
+
+
+def me_device(u=DEVICE_BACK):
+    """Frame 5: an unlinked device account's Me."""
+    body = (me_head(u, "On this device only") + stats_block() + SETTINGS
+            + grp([chev(u[0]), sw("Show me on the leaderboard", True)]) + DELETE)
+    return phone(body, active="Me", title="Me", user=u[2])
+
+
+def me_linked(u=DEVICE_BACK):
+    body = (me_head(u, u[1]) + stats_block() + SETTINGS
+            + grp([sw("Show me on the leaderboard", True), chev("Edit name", u[0]), chev("Sign out")]) + DELETE)
+    return phone(body, active="Me", title="Me", user=u[2])
+
+
+def me_guest_today(u=GUEST):
+    body = me_head(u, "Guest · not ranked") + grp([chev(u[0])]) + SETTINGS
+    return phone(body, active="Me", title="Me", user=u[2])
+
+
+def me_fresh_signin_today():
+    u = ("Gentle Tractor", "1,000", "G")
+    body = (me_head(u, "1,000") + stats_block((("—", "rounds won"), ("—", "levels / round"), ("0", "best streak"))) + SETTINGS
+            + grp([sw("Show me on the leaderboard", True), chev("Edit name", u[0]), chev("Sign out")]) + DELETE)
+    return phone(body, active="Me", title="Me", user=u[2])
+
+
+def provider_btn(label, kind):
+    st = ("background:#fff;color:#111;border:1px solid #fff" if kind == "apple"
+          else "background:#fff;color:#1f1f1f;border:1px solid #dadce0")
+    mark = "" if kind == "apple" else '<b style="color:#4285f4;font-size:17px">G</b>'
+    return (f'<div style="height:44px;border-radius:10px;{st};display:flex;align-items:center;justify-content:center;gap:8px;'
+            f'font-size:16px;font-weight:600">{mark}{label}</div>')
+
+
+def name_sheet(name="Gentle Tractor", device_line=True):
+    """The one identity sheet (components/GuestChip.tsx IdentitySheet): name with the die, sign-in, terms, Done."""
+    field = ('<div style="height:48px;border-radius:12px;background:#11141a;border:1.5px solid #f2c14e;display:flex;align-items:center;'
+             f'justify-content:space-between;padding:0 8px 0 14px;font-size:17px"><span>{name}<span style="display:inline-block;width:2px;height:20px;'
+             'background:#f2c14e;margin-left:2px;vertical-align:middle"></span></span><span style="font-size:20px">🎲</span></div>')
+    status = '<div style="font-size:13px;color:#9aa3b2;text-align:center">On this iPhone only</div>' if device_line else ""
+    signin = ('<div style="display:flex;flex-direction:column;gap:8px">' + provider_btn("Sign in with Apple", "apple")
+              + provider_btn("Sign in with Google", "google") + '</div>')
+    terms = ('<div style="font-size:12px;color:#9aa3b2;text-align:center">By signing in you agree to the '
+             '<span style="color:#7fb0ff">Terms of use</span>.</div>')
+    return sheet("Your name", "", btn("Done", h=46), extra=field + status + signin + terms).replace(
+        '<div style="font-size:14px;color:#c3cad6;text-align:center"></div>', "")
+
+
+def phone_card(title, line, buttons):
+    """ConfirmSheet place='card': a centred card over a phone page."""
+    return (f'<div style="position:absolute;inset:0;background:rgba(8,10,14,.6);display:flex;align-items:flex-start;justify-content:center;padding-top:290px;z-index:2">'
+            f'<div style="width:320px;background:#1b1f27;border:1px solid #333b49;border-radius:18px;padding:18px 16px;display:flex;flex-direction:column;gap:10px;text-align:center">'
+            f'<div style="font-size:18px;font-weight:700">{title}</div><div style="font-size:14px;color:#c3cad6">{line}</div>'
+            f'<div style="display:flex;gap:10px;margin-top:4px">{buttons}</div></div></div>')
+
+
+def round_end(rating=True, signin=False, partner="Bot 2"):
+    """The round-end card at a ranked table: result line, the level change, the levels, the attackers' points, Details."""
+    res = f"You &amp; {partner} win the round" + (' · <span style="color:#e9ecf2">rating 1,012 (+12)</span>' if rating else "")
+    sign = ('<div style="font-size:14px;color:#9aa3b2">Sign in to be ranked ›</div>' if signin else "")
+    card_ = ('<div style="width:400px;background:#1b1f27;border:1px solid #333b49;border-radius:20px;padding:18px 16px;display:flex;flex-direction:column;'
+             'align-items:center;gap:6px;color:#e9ecf2;text-align:center">'
+             f'<div style="color:{B};font-weight:700;font-size:16px">{res}</div>{sign}'
+             f'<div style="color:{B};font-weight:800;font-size:22px">+1 level</div>'
+             f'<div style="font-weight:600">Now <span style="color:{B}">●</span> 3 &nbsp; <span style="color:{O}">●</span> 2</div>'
+             '<div style="color:#9aa3b2;font-size:13px">Attackers 45 of 80</div>'
+             '<div style="color:#c3cad6;font-size:14px">Details ›</div>'
+             f'<div style="display:flex;gap:10px;width:100%;margin-top:8px">{btn("Next round", "green", h=44)}{btn("Leave game", "danger", grow=False, h=44)}</div></div>')
+    ov = f'<div style="position:absolute;inset:0;background:rgba(8,10,14,.55);display:flex;align-items:center;justify-content:center">{card_}</div>'
+    return felt(top=pill(partner, B), left=pill("Bot 1", O), right=pill("Bot 3", O), overlay=ov)
+
+
+def account_frames():
+    """The frames: (number, label, note, today html or None, proposed html, w, h, platform)."""
+    del_sheet = sheet("Delete your account?", "Your rating and games are deleted.",
+                      btn("Cancel", "ghost", h=46) + btn("Delete", "dangerfill", h=46))
+    switch = phone_card("Switch to Mei?", "This device's rating is replaced.", btn("Cancel", "ghost", h=46) + btn("Switch", h=46))
+    IOS, WEB = "iOS app", "Website"
+    return [
+        (1, "First open", "Chip's second line was 'Guest'; 'Playing as a guest · Sign in to be ranked' is gone.",
+         play_tab_today(GUEST), play_tab(DEVICE), 390, 844, IOS),
+        (2, "Back again", "Was identical to a first visit; now the rating carries over (12 rounds).",
+         play_tab_today(GUEST), play_tab(DEVICE_BACK), 390, 844, IOS),
+        (3, "Round end", "'Sign in to be ranked ›' is gone; the rating sits on the result line, as signed-in players see it.",
+         round_end(rating=False, signin=True), round_end(), 844, 390, IOS),
+        (4, "Your name", "One new line, 'On this iPhone only'; the die now asks the server for a free name.",
+         phone(ART + who_chip(GUEST) + seg("Ranked"), user="G", overlay=name_sheet(device_line=False)),
+         phone(ART + who_chip(DEVICE_BACK) + seg("Ranked"), user="G", overlay=name_sheet()), 390, 844, IOS),
+        (5, "Me", "Header read 'Guest · not ranked'; Stats, Games, the leaderboard switch and Delete account are new; no Sign out.",
+         me_guest_today(GUEST), me_device(), 390, 844, IOS),
+        (6, "Leaderboard, not yet listed", "The 'Sign in to be ranked ›' row is gone; own row pinned with the existing 'new' tag (others see it at 20 rounds).",
+         leaderboard_page(signin_row=True), leaderboard_page(me=DEVICE_BACK[:2]), 390, 844, IOS),
+        (7, "Leaderboard, listed", "New: an account with no provider on the board after 20 rated rounds. No badge.",
+         leaderboard_page(signin_row=True), leaderboard_page(me=DEVICE_BACK[:2], listed_at=5), 390, 844, IOS),
+        (8, "Linked", "Today a sign-in starts a new account at 1,000 with no games; here name, rating, stats and games stay.",
+         me_fresh_signin_today(), me_linked(), 390, 844, IOS),
+        (9, "Provider already has an account", "New use of the existing confirm sheet; today the switch happens with no notice.",
+         None, phone(ART + who_chip(DEVICE_BACK) + seg("Ranked"), user="G", overlay=name_sheet() + switch), 390, 844, IOS),
+        (10, "After the switch", "No layout change; this device's games now sit under Mei's Me > Games.",
+         None, play_tab(MEI), 390, 844, IOS),
+        ("11a", "Reinstall", "After a delete and reinstall, the same name and rating come back from the iPhone's keychain. No message needed.",
+         None, play_tab(DEVICE_BACK), 390, 844, IOS),
+        ("11b", "Same player on the website", "Today's web guest Play tab, unchanged. To carry the account to the web, sign in with Apple or Google in the app first, then on the web.",
+         None, play_tab_today(GUEST), 390, 844, WEB),
+        (12, "Delete account", "The sheet a signed-in player gets today; new for a non-signed-in player. After: frame 1 with no account until the next Play.",
+         None, phone(me_head(DEVICE_BACK, "On this device only") + stats_block() + SETTINGS
+                     + grp([chev(DEVICE_BACK[0]), sw("Show me on the leaderboard", True)]) + DELETE,
+                     active="Me", title="Me", user="G", overlay=del_sheet), 390, 844, IOS),
+        (13, "Mixed table", "A web guest's round end, unchanged. The iOS device account at the same table is rated normally; the web guest still counts as a fixed 1000.",
+         None, round_end(rating=False, signin=True, partner="Gentle Tractor"), 844, 390, WEB),
+    ]
+
+
+def f_account():
+    steps = [shot(p, w, h, f"{n}. {lbl}", f"{plat}. {note}") for n, lbl, note, _t, p, w, h, plat in account_frames()]
+    return [("One account from the first tap (recommended path)", steps)]
+
+
+FLOWS.append(("account", "One account from the first tap", f_account))
+
+
 if __name__ == "__main__":
     build_core()

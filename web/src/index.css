@@ -5186,6 +5186,8 @@ body.keyboard-open .tabbar { display: none; }
 .guest-pill { gap: 7px; padding-right: 12px; font-size: var(--fs-14); }
 .guest-pill .account-pill-rating { flex: none; white-space: nowrap; font-size: var(--fs-12); font-weight: 500; }
 .guest-pill-edit { flex: none; color: var(--text-dim); font-size: var(--fs-13); }
+/* the app's own account keeps the guest chip's pencil beside its rating */
+.device-pill { padding-right: 12px; }
 
 .screen.home-page,
 .home-body > .screen.home-page {
@@ -5425,6 +5427,9 @@ button.grp-row:disabled { cursor: default; }
   text-align: center;
 }
 .identity-terms a { color: var(--gold); text-decoration: underline; }
+/* the app's own account: the sheet's one status line, under the name */
+.identity-status { margin: 0; font-size: var(--fs-13); color: var(--text-dim); text-align: center; text-wrap: balance; }
+.guest-name-sheet .field .grp-error { padding: 6px 4px 0; }
 .me-who { display: flex; align-items: center; gap: 14px; }
 .me-who-text { min-width: 0; }
 /* the name stays on one line and ends in an ellipsis, like a seat's */

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { auth, loadGis, loginWithApple, loginWithGoogle, newNonce, sha256Hex } from "../auth";
+import { AccountExists, auth, loadGis, loginWithApple, loginWithGoogle, newNonce, sha256Hex } from "../auth";
+import type { AppleLogin, AuthUser } from "../auth";
 import { isNative } from "../native";
 import {
   nativeAppleCredential, nativeAppleReady, nativeGoogleAvailable, nativeGoogleCredential, SignInCancelled,
 } from "../nativeAuth";
+import ConfirmSheet from "./ConfirmSheet";
 
 /** The "Sign in with Google" button. Rendered only when the server advertised
  *  a client id. On the website it is the official GIS button, whose script is
@@ -105,15 +107,47 @@ function AppleMark() {
   );
 }
 
+/** A sign-in from the app's own account whose identity already has an
+ *  account: the holder's name, and the same sign-in with `confirm`. */
+interface Conflict {
+  holder: string;
+  confirm: () => Promise<AuthUser>;
+}
+
 /** The app's sign-in: Google's native sheet hands back an ID token, which is
  *  posted to the same endpoint as the website's credential; Apple's sheet
  *  hands back an identity token and an authorization code for the Apple
  *  endpoint. An app build without the plugin gets a note instead of buttons
- *  that cannot work. */
+ *  that cannot work. When the app's own account signs in with an identity
+ *  that already has an account, the one confirm asks before that account
+ *  replaces this device's, and Switch repeats the sign-in with `confirm`. */
 function NativeGoogleSignIn({ clientId }: { clientId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apple, setApple] = useState(false);
+  const [conflict, setConflict] = useState<Conflict | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+
+  const ask = (e: unknown, confirm: () => Promise<AuthUser>): boolean => {
+    if (!(e instanceof AccountExists)) return false;
+    setSwitchError(null);
+    setConflict({ holder: e.holder, confirm });
+    return true;
+  };
+
+  const doSwitch = () => {
+    if (!conflict) return;
+    setSwitching(true);
+    setSwitchError(null);
+    conflict.confirm()
+      .then((user) => {
+        setConflict(null);
+        auth.signedIn(user);
+      })
+      .catch((e: Error) => setSwitchError(e.message))
+      .finally(() => setSwitching(false));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -141,7 +175,11 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     const nonce = newNonce();
     try {
       const credential = await nativeGoogleCredential(clientId, nonce);
-      auth.signedIn(await loginWithGoogle(credential, nonce));
+      try {
+        auth.signedIn(await loginWithGoogle(credential, nonce));
+      } catch (e) {
+        if (!ask(e, () => loginWithGoogle(credential, nonce, true))) throw e;
+      }
     } catch (e) {
       if (!(e instanceof SignInCancelled)) setError((e as Error).message);
     } finally {
@@ -155,13 +193,18 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     const nonce = newNonce();
     try {
       const cred = await nativeAppleCredential(await sha256Hex(nonce));
-      auth.signedIn(await loginWithApple({
+      const login: AppleLogin = {
         identityToken: cred.identityToken,
         nonce,
         authorizationCode: cred.authorizationCode,
         givenName: cred.givenName,
         familyName: cred.familyName,
-      }));
+      };
+      try {
+        auth.signedIn(await loginWithApple(login));
+      } catch (e) {
+        if (!ask(e, () => loginWithApple(login, true))) throw e;
+      }
     } catch (e) {
       if (!(e instanceof SignInCancelled)) setError((e as Error).message);
     } finally {
@@ -184,6 +227,12 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
         <span>Sign in with Google</span>
       </button>
       {error ? <div className="lobby-error">{error}</div> : null}
+      {conflict ? (
+        <ConfirmSheet title={`Switch to ${conflict.holder}?`} line="This device's rating is replaced."
+                      cancel="Cancel" confirm="Switch" place="card" busy={switching} error={switchError}
+                      className="switch-account-confirm" confirmClass="switch-account-yes"
+                      onConfirm={doSwitch} onCancel={() => { setConflict(null); setSwitchError(null); }} />
+      ) : null}
     </div>
   );
 }

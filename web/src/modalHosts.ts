@@ -1,4 +1,4 @@
-import { useLayoutEffect, useSyncExternalStore } from "react";
+import { useCallback, useLayoutEffect, useSyncExternalStore } from "react";
 import type { RefObject } from "react";
 
 /** The open modal dialogs a page-level sheet can rise above. A dialog opened
@@ -36,7 +36,14 @@ export function useModalHost(ref: RefObject<HTMLElement | null>): void {
   }, [ref]);
 }
 
-/** The newest open host dialog, or null when none is open. */
-export function useTopModalHost(): HTMLElement | null {
-  return useSyncExternalStore(subscribe, top, () => null);
+/** The newest open host dialog, or null when none is open. With `outside`,
+ *  a dialog inside an element matching that selector is passed over: a sheet
+ *  that opens its own confirm stays where it is, under it. */
+export function useTopModalHost(outside?: string): HTMLElement | null {
+  const snapshot = useCallback(() => {
+    if (!outside) return top();
+    const open = hosts.filter((h) => !h.closest(outside));
+    return open.length > 0 ? open[open.length - 1] : null;
+  }, [outside]);
+  return useSyncExternalStore(subscribe, snapshot, () => null);
 }

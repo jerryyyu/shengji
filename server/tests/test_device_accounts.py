@@ -418,7 +418,7 @@ def test_the_purge_takes_unrated_and_idle_device_accounts_only(device_on):
         db.execute("UPDATE device_credentials SET last_seen_at = ? WHERE user_id = ?",
                    (now - 29 * DAY, seen["id"]))
         db.commit()
-    store.create_session(unrated["id"], now=now)
+    store.create_session(unrated["id"], now=now - 31 * DAY)    # expired a day ago
     store.set_block(fresh["id"], unrated["id"], True)
 
     gone = store.purge_device_accounts(now=now)
@@ -434,6 +434,20 @@ def test_the_purge_takes_unrated_and_idle_device_accounts_only(device_on):
     # Once the casual player stops for 30 days, the unrated account goes too.
     later = store.purge_device_accounts(now=now + 30 * DAY)
     assert casual["id"] in later and rated["id"] not in later
+
+
+def test_the_purge_keeps_an_account_with_an_unexpired_session(device_on):
+    store = device_on.STORE
+    now = 1_000 * DAY
+    user = store.create_device_user("v" * 43, now=now - 31 * DAY)
+    store.create_session(user["id"], now=now - 31 * DAY)
+    with closing(sqlite3.connect(store.path)) as db:
+        db.execute("UPDATE sessions SET expires_at = ? WHERE user_id = ?", (now + DAY, user["id"]))
+        db.commit()
+    assert store.purge_device_accounts(now=now) == []
+    assert store.user(user["id"]) is not None
+    # Once that session has expired, the unrated, unused account goes.
+    assert store.purge_device_accounts(now=now + 2 * DAY) == [user["id"]]
 
 
 def test_the_purge_runs_with_the_saved_games_sweep_only_when_on(device_on, monkeypatch):

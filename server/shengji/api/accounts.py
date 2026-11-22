@@ -940,7 +940,9 @@ class Store:
         and have been unused for ``DEVICE_UNRATED_DAYS``, or that have been
         unused for ``DEVICE_IDLE_DAYS``. Unused means no sign-in
         (``users.last_login_at``) and no credential use
-        (``device_credentials.last_seen_at``) since then. Their credentials, sessions, links and blocks
+        (``device_credentials.last_seen_at``) since then. An account with an
+        unexpired session is never purged: it may be playing on that
+        session without signing in again. Their credentials, sessions, links and blocks
         go by cascade, and so do games no other account links. A linked
         account is never touched. Returns the ids, which also join
         ``deleted_ids`` so a live socket holding one reads as signed out."""
@@ -954,8 +956,10 @@ class Store:
                          AND last_login_at < :since
                          AND NOT EXISTS (SELECT 1 FROM device_credentials d
                                          WHERE d.user_id = users.id AND d.last_seen_at >= :since)
+                         AND NOT EXISTS (SELECT 1 FROM sessions s
+                                         WHERE s.user_id = users.id AND s.expires_at > :now)
                          AND (rated_rounds = 0 OR last_login_at < :idle)""",
-                    {"since": t - DEVICE_UNRATED_DAYS * 86400,
+                    {"now": t, "since": t - DEVICE_UNRATED_DAYS * 86400,
                      "idle": t - DEVICE_IDLE_DAYS * 86400})]
                 for user_id in ids:
                     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))

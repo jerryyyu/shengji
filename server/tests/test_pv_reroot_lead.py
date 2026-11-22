@@ -401,3 +401,82 @@ def test_on_past_its_cap_plays_the_served_pick_whole(
     assert rec["vp2_fallback"] == "deadline" and not rec["vp2_applied"] and not rec["vp2_changed"]
     assert cards == off_cards and rec["selected_index"] == off["selected_index"]
     assert bot._vp2["trace"] is None
+
+
+# -- terminal first tricks and forced-component selections ---------------------------------------
+
+def _stub_bot(v0, served_value_of, doomed=None):
+    """A bot with the attributes `pv_reroot.apply` reads; its evaluator prices a terminal leaf
+    (``leaf.value``) as the served evaluator does: one exact value per position."""
+    model = object()
+    evaluator = SimpleNamespace(score=lambda positions, seat: np.array([p.value for p in positions]))
+    bot = SimpleNamespace(unified_value_model=model, unified_reply_model=model, unified_prior_model=model,
+                          unified_frame=None, evaluator=evaluator, refusal_constraints=False,
+                          doomed_throw_reselect=doomed is not None, _doomed_throw=doomed,
+                          vp2_deepen_all=False)
+    admitted = [["S3"], ["S4"], ["S5"]]
+    bot._vp2 = R.new_state(True, None, None)
+    bot._vp2.update(actions=admitted, v0=np.asarray(v0, dtype=np.float64),
+                    leaves=[[served_value_of(w, a) for a in range(len(admitted))] for w in range(len(v0))])
+    return bot, admitted
+
+
+def _terminal(value, boundary=4):
+    return SimpleNamespace(phase="round_end", history=[object()] * boundary, trick=None, value=value)
+
+
+def test_a_first_trick_that_ends_the_round_is_priced_exactly_through_the_selection():
+    root = SimpleNamespace(history=[object()] * 3, trick=SimpleNamespace(plays=[]), hands=[[]] * 4)
+    rng = np.random.default_rng(2)
+    v0 = rng.normal(size=(16, 3)) + np.array([0.5, 0.4, 0.3])
+    bot, admitted = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a])))
+    winner = R.apply(bot, root, 0, admitted, v0.mean(axis=0), 2)
+    fields = bot._vp2["fields"]
+    # every column is the served pass's terminal value: no depth evidence, the served pick stands
+    assert winner == 2 and fields["vp2_applied"] and not fields["vp2_override"]
+    assert fields["vp2_terminal_leaves"] == 16 * 3 and fields["vp2_reroots"] == 0
+    assert np.allclose(fields["vp2_d_means"], 0.0) and fields["vp2_kept"] == [0, 1, 2]
+    # a terminal value that disagrees with the captured cell is a contract error
+    bad, _ = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a]) + (1.0 if (w, a) == (3, 1) else 0.0)))
+    from shengji.train.pv_search_policy import PVSearchPolicyError
+    with pytest.raises(PVSearchPolicyError) as err:
+        R.apply(bad, root, 0, admitted, v0.mean(axis=0), 2)
+    assert err.value.stage == "vp2_terminal_value"
+    # a terminal leaf one trick too deep is still a malformed horizon
+    deep, _ = _stub_bot(v0, lambda w, a: _terminal(float(v0[w, a]), boundary=5))
+    with pytest.raises(PVSearchPolicyError) as err:
+        R.apply(deep, root, 0, admitted, v0.mean(axis=0), 2)
+    assert err.value.stage == "vp2_leaf_horizon"
+
+
+#: the record `PolicyValueBot._reselect_doomed_throw` leaves when every admitted candidate is a
+#: doomed throw (its keys as written there): the first selection stands, its forced component plays
+FORCED = {"doomed_throw_reselect_applied": False, "doomed_throw_reselect_from": "S3 S3 S9",
+          "doomed_throw_reselect_to": "S3 S3", "doomed_throw_reselect_doomed_candidates": 3,
+          "doomed_throw_reselect_forced_excluded": 0, "doomed_throw_reselect_fallback_forced": True}
+
+
+@pytest.mark.parametrize("served", [0, 2])
+def test_a_forced_component_selection_keeps_its_served_play_against_a_depth_winner(monkeypatch, served):
+    from shengji.train.policy_value_search import PolicyValueBot
+    root = SimpleNamespace(history=[object()] * 3, trick=SimpleNamespace(plays=[]), hands=[[]] * 4)
+    w = 32
+    v0 = np.zeros((w, 3))
+    # candidate 1 wins deep by a wide, perfectly paired margin
+    deep = {0: np.zeros(w), 1: np.full(w, 0.5), 2: np.zeros(w)}
+    monkeypatch.setattr(R, "candidate_values",
+                        lambda bot, model, rnd, seat, leaves, refusals, gate, counters, shallow=None:
+                        deep[[i for i in range(3) if leaves[0] == ("leaf", i)][0]])
+    # control: without the forced-component record the depth winner switches the pick
+    bot, admitted = _stub_bot(v0, lambda w_, a: ("leaf", a))
+    assert R.apply(bot, root, 0, admitted, v0.mean(axis=0), served) == 1
+    assert bot._vp2["fields"]["vp2_override"]
+    # the forced-component record: the rule skips, the index and the served play are the served ones
+    bot, admitted = _stub_bot(v0, lambda w_, a: ("leaf", a), doomed=dict(FORCED))
+    winner = R.apply(bot, root, 0, admitted, v0.mean(axis=0), served)
+    fields = R.record(bot._vp2)
+    assert winner == served and fields["vp2_skipped"] == "forced-component"
+    assert not fields["vp2_applied"] and not fields["vp2_changed"] and fields["vp2_selected"] == served
+    # what the bot then plays is the forced component, exactly as with the rule off
+    played = PolicyValueBot._swap_doomed_throw(bot, root, 0, admitted[winner], [])
+    assert played == ["S3", "S3"]

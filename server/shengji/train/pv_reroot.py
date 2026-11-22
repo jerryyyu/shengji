@@ -39,6 +39,12 @@ whole; the serving budget's own check runs at every gate and raises as before.  
 at the decision's trick boundary, a missing unified readout or a leaf pass that does not match the
 admitted ballot is a contract error (`PVSearchPolicyError`), never a silent fallback.
 
+A served leaf whose first trick ended the round (an eight-card lead into the last trick) has no next
+trick: its ``Q2`` is its exact terminal value, equal to the served pass's, and its depth correction 0.
+A decision whose served selection fell back to a doomed throw's forced component
+(``doomed_throw_reselect_fallback_forced``) plays cards no ballot column prices; the rule skips it
+(``vp2_skipped == "forced-component"``) and the served play stands.
+
 The trunk at a re-rooted leaf sees the public refusals of the real round (the root's ledger); a
 refusal that happened only inside a sampled world's first trick is not among them.
 """
@@ -73,7 +79,8 @@ VP2_PARAMS = {"min_cards": VP2_MIN_CARDS, "keep_top": KEEP_TOP, "keep_se": KEEP_
 VP2_RECORD_FIELDS = ("vp2_eligible", "vp2_applied", "vp2_skipped", "vp2_fallback", "vp2_kept",
                      "vp2_served", "vp2_selected", "vp2_override", "vp2_changed", "vp2_delta",
                      "vp2_se", "vp2_z", "vp2_q2_means", "vp2_d_means", "vp2_reroots",
-                     "vp2_value_left", "vp2_reply_left", "vp2_allowance_seconds", "vp2_seconds")
+                     "vp2_value_left", "vp2_reply_left", "vp2_terminal_leaves",
+                     "vp2_allowance_seconds", "vp2_seconds")
 
 
 class Vp2Deadline(Exception):
@@ -179,9 +186,11 @@ def lead_proposals(model, q, hand, ordering, n: int = LEADS):
     return [leads[i] for i in order], weights / weights.sum()
 
 
-def candidate_values(bot, model, rnd, seat, leaves, refusals, gate, counters) -> np.ndarray:
+def candidate_values(bot, model, rnd, seat, leaves, refusals, gate, counters, shallow=None) -> np.ndarray:
     """``(W,)``: ``Q2`` of one candidate from its served leaf in each world (module docstring,
-    step 2), from the root seat's team."""
+    step 2), from the root seat's team.  A leaf whose first trick ended the round has no second
+    trick: its ``Q2`` is its exact terminal value through the served evaluator, which must equal
+    the served pass's value of that cell (``shallow[w]``, when given), so its depth correction is 0."""
     from ..ai.belief_numpy import decision_inputs
     from .pv_search_policy import PVSearchPolicyError
     from .pv_tree_search import greedy_stats
@@ -194,6 +203,14 @@ def candidate_values(bot, model, rnd, seat, leaves, refusals, gate, counters) ->
     stats = greedy_stats()
     for w, leaf in enumerate(leaves):
         gate()
+        if leaf.phase == "round_end" and len(leaf.history) == boundary:
+            exact = float(np.asarray(bot.evaluator.score([leaf], seat), dtype=np.float64)[0])
+            if not math.isfinite(exact) or (shallow is not None and exact != float(shallow[w])):
+                raise PVSearchPolicyError("vp2: a terminal leaf's value is not the served pass's",
+                                          stage="vp2_terminal_value")
+            out[w] = exact
+            counters["terminal"] += 1
+            continue
         if leaf.phase != "play" or len(leaf.history) != boundary \
                 or (leaf.trick is not None and leaf.trick.plays):
             raise PVSearchPolicyError("vp2: a served leaf is not at the decision's trick boundary",
@@ -265,6 +282,12 @@ def apply(bot, rnd, seat, admitted, means, winner: int, check_budget=None) -> in
 def _apply(bot, rnd, seat, admitted, means, winner, check_budget, state, fields):
     from .pv_search_policy import PVSearchPolicyError
     fields.update(vp2_served=int(winner), vp2_selected=int(winner))
+    doomed = getattr(bot, "_doomed_throw", None) if getattr(bot, "doomed_throw_reselect", False) else None
+    if doomed is not None and doomed.get("doomed_throw_reselect_fallback_forced"):
+        # every admitted candidate was a doomed throw: the served play is the selected throw's
+        # forced component, not ``admitted[winner]``, so no ballot column prices what is played
+        fields["vp2_skipped"] = "forced-component"
+        return winner
     if len(admitted) < 2:
         fields["vp2_skipped"] = "single"
         return winner
@@ -294,13 +317,13 @@ def _apply(bot, rnd, seat, admitted, means, winner, check_budget, state, fields)
 
     refusals = bot._refusals.observe(rnd) if getattr(bot, "refusal_constraints", False) else ()
     deepen = list(range(len(admitted))) if getattr(bot, "vp2_deepen_all", False) else kept
-    counters = {"reroots": 0, "value_left": 0, "reply_left": 0}
+    counters = {"reroots": 0, "value_left": 0, "reply_left": 0, "terminal": 0}
     columns, cpu, wall = {}, {}, {}
     try:
         for a in deepen:
             c0, w0 = time.thread_time(), time.perf_counter()
             columns[a] = candidate_values(bot, model, rnd, seat, [row[a] for row in state["leaves"]],
-                                          refusals, gate, counters)
+                                          refusals, gate, counters, shallow=v0[:, a])
             cpu[a], wall[a] = time.thread_time() - c0, time.perf_counter() - w0
         gate()
     except Vp2Deadline:
@@ -315,7 +338,7 @@ def _apply(bot, rnd, seat, admitted, means, winner, check_budget, state, fields)
                   vp2_q2_means=[float(v) for v in q2.mean(axis=0)],
                   vp2_d_means=[float(v) for v in (q2 - v0k).mean(axis=0)],
                   vp2_reroots=counters["reroots"], vp2_value_left=counters["value_left"],
-                  vp2_reply_left=counters["reply_left"])
+                  vp2_reply_left=counters["reply_left"], vp2_terminal_leaves=counters["terminal"])
     if test is not None:
         fields.update(vp2_delta=float(test["delta"]),
                       vp2_se=float(test["se"]) if math.isfinite(test["se"]) else None,

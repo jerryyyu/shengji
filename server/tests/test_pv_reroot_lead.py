@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 import r54_selfplay_positions as S
+from test_encoder_round_compat import REQUIRE_PACKAGE
 from test_release46_fly_config import fly_env
 from test_release50_fly_config import release50_packages  # noqa: F401
 from test_release53_fly_config import BURY3_NAME, local_env, release53_pair, served_bot  # noqa: F401
@@ -216,36 +217,45 @@ def test_the_env_switch(monkeypatch):
 
 # -- release 54, flag off: main's decisions ------------------------------------------------------
 
-def _pins():
-    return json.loads(S.PINNED.read_text())
+#: the platforms with a pinned fixture: a required package gate on any other host fails (it cannot
+#: witness identity there); without the gate the identity test skips there and says so
+PINNED_PLATFORMS = ("darwin-arm64", "linux-x86_64")
 
 
-def test_the_pins_are_release54_on_both_engines():
-    PINS = _pins()
-    assert set(PINS["engines"]) == {"compiled", "pure"}
-    assert PINS["name"] == BURY3_NAME
-    compiled, pure = PINS["engines"]["compiled"], PINS["engines"]["pure"]
+def _pins(platform_key=None):
+    return json.loads(S.pinned(platform_key).read_text())
+
+
+@pytest.mark.parametrize("platform_key", PINNED_PLATFORMS)
+def test_each_platform_pin_is_release54_and_self_consistent(platform_key):
+    path = S.pinned(platform_key)
+    if not path.exists():
+        if REQUIRE_PACKAGE:
+            pytest.fail(f"the {platform_key} pins are missing: {path}")
+        pytest.skip(f"{path.name} is not provisioned")
+    PINS = _pins(platform_key)
+    assert PINS["name"] == BURY3_NAME and PINS["pinned_on"] == platform_key
+    compiled = PINS["engines"]["compiled"]
     assert len(compiled) >= 200
     assert {key.split(":")[0] for key in compiled} == {str(seed) for seed in S.SEEDS}
     order = sorted(compiled, key=lambda key: tuple(map(int, key.split(":"))))
     assert list(compiled) == order
-    first = [k for k in order if k.startswith(f"{S.SEEDS[0]}:")]
-    assert list(pure) == first[:PURE_DECISIONS]
-    assert PINS["pinned_on"] == "darwin-arm64"
-    for key in pure:
-        assert pure[key]["projection"]["cards"] == compiled[key]["projection"]["cards"]
-    for pins in (compiled, pure):
+    for pins in PINS["engines"].values():
         for entry in pins.values():
             assert S.digest(entry["projection"]) == entry["digest"]
+    pure = PINS["engines"].get("pure")
+    if pure is not None:
+        first = [k for k in order if k.startswith(f"{S.SEEDS[0]}:")]
+        assert list(pure) == first[:PURE_DECISIONS]
+        for key in pure:
+            assert pure[key]["projection"]["cards"] == compiled[key]["projection"]["cards"]
 
 
-def test_the_portable_comparison_is_exact_on_everything_but_float_rounding():
+def test_the_comparison_names_the_first_departing_field():
     base = {"cards": ["D3"], "worlds": "w", "record": {"value_means": [0.25, -0.5], "selected_index": 1,
                                                        "admitted": [["D3"], ["SA"]], "work_complete": True}}
-    near = json.loads(json.dumps(base))
-    near["record"]["value_means"][0] += 1e-9
-    assert S.first_difference(near, base) is None
-    for path, edit in (("decision.record.value_means[1]", lambda d: d["record"]["value_means"].__setitem__(1, -0.49)),
+    assert S.first_difference(json.loads(json.dumps(base)), base) is None
+    for path, edit in (("decision.record.value_means[0]", lambda d: d["record"]["value_means"].__setitem__(0, 0.25 + 1e-15)),
                        ("decision.record.selected_index", lambda d: d["record"].__setitem__("selected_index", 0)),
                        ("decision.worlds", lambda d: d.__setitem__("worlds", "x")),
                        ("decision.cards[0]", lambda d: d["cards"].__setitem__(0, "D4")),
@@ -261,24 +271,27 @@ def test_the_portable_comparison_is_exact_on_everything_but_float_rounding():
 
 def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, monkeypatch,
                                             served_functions):
+    engine = "compiled" if COMPILED else "pure"
+    path = S.pinned()
+    pins = _pins()["engines"].get(engine) if path.exists() else None
+    if pins is None:
+        reason = f"no {engine} pins for {S.PLATFORM} ({path.name})"
+        if REQUIRE_PACKAGE:
+            pytest.fail(reason + ": a required package gate must witness identity on this host")
+        pytest.skip(reason)
     name, bot = served_bot(release50_packages, release53_pair, monkeypatch, env=fly_env(), seed=S.BOT_SEED)
     assert name == bot.policy_name == BURY3_NAME
     assert bot.value_prune_lead is False and "value_prune_lead" not in vars(bot)
     S.P.lift(bot)
-    pins = _pins()["engines"]["compiled" if COMPILED else "pure"]
-    assert S.PLATFORM == "darwin-arm64" or S.PLATFORM.startswith("linux"), S.PLATFORM
     seen = 0
-    for seed in (S.SEEDS if COMPILED else S.SEEDS[:1]):
-        limit = None if COMPILED else PURE_DECISIONS
-        for trick, pos, projection in S.deal_decisions(bot, seed, limit):
+    deals = sorted({int(key.split(":")[0]) for key in pins})
+    limit = max(sum(1 for k in pins if k.startswith(f"{seed}:")) for seed in deals)
+    for seed in deals:
+        for trick, pos, projection in S.deal_decisions(bot, seed, None if engine == "compiled" else limit):
             key = S.label(seed, trick, pos)
             assert not any(k.startswith("vp2_") for k in projection["record"]), key
             expected = pins[key]["projection"]
-            assert projection["cards"] == expected["cards"], key
-            if S.PLATFORM == _pins()["pinned_on"]:
-                assert S.digest(projection) == pins[key]["digest"], (key, S.first_difference(projection, expected))
-            else:
-                assert S.first_difference(projection, expected) is None, (key, S.first_difference(projection, expected))
+            assert S.digest(projection) == pins[key]["digest"], (key, S.first_difference(projection, expected))
             seen += 1
     assert seen == len(pins)
 

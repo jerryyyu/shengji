@@ -6,16 +6,12 @@ repo's ``fly.toml``), with its clocks lifted (`r50_flag_positions.lift`; the bel
 budget by `test_unified_serving.served_functions`), plays all four seats of the deals ``SEEDS`` from the deal through the last trick.  Every
 play decision is projected as `r50_flag_positions.decision` projects it (played cards, base-world
 digest, the record without the fields that measure the run) and digested exactly (`digest`).
-``fixtures/r54_flag_off_decisions.json`` holds, per engine, each decision's full projection and its
-digest, computed on the main tree named in it on ``pinned_on`` (`PLATFORM`).  A rule that is off must
-reproduce, on the same engine:
-
-* on the pinned platform, every digest exactly (`digest`);
-* on any other platform, every projection with every non-float value exact (cards, the base-world
-  digest, indices, admitted plays, counts, names, flags, the record's shape) and every float within
-  `FLOAT_TOL` (`first_difference`).  The unified model is float32 and its matrix products take the
-  host's BLAS, whose summation order differs between platforms; that rounding moves the values'
-  last bits, never a discrete outcome of the same code.
+``fixtures/r54_flag_off_decisions.<platform>.json`` (`pinned`) holds, per engine, each decision's full
+projection and its digest, computed on main 44f0c2f9's code on that platform (``pinned_on``): the
+unified model is float32 and its matrix products take the host's BLAS, so the same code's values
+differ in their last bits between platforms, and each platform is pinned on its own.  A rule that is
+off must reproduce every digest exactly on the platform and engine the fixture names;
+`first_difference` names the first departing field when one does not.
 """
 from __future__ import annotations
 
@@ -30,15 +26,13 @@ from pathlib import Path
 import r50_flag_positions as P
 
 FIXTURES = Path(__file__).parent / "fixtures"
-PINNED = FIXTURES / "r54_flag_off_decisions.json"
+PINS = "r54_flag_off_decisions.{platform}.json"
 #: four deals, about sixty play decisions each, leads and follows above and inside the
 #: exact stages' seven-card bound
 SEEDS = (2669920000, 2669920001, 2669920002, 2669920003)
 BOT_SEED = 54
 #: the platform the pins were computed on
 PLATFORM = f"{sys.platform}-{platform.machine()}"
-#: absolute and relative float tolerance off the pinned platform
-FLOAT_TOL = 1e-6
 
 
 def deal_decisions(bot, seed, limit=None):
@@ -70,13 +64,17 @@ def digest(projection) -> str:
     return hashlib.sha256(json.dumps(projection, sort_keys=True, default=list).encode()).hexdigest()
 
 
+def pinned(platform_key: str = None):
+    """The fixture path for ``platform_key`` (this host's `PLATFORM` by default)."""
+    return FIXTURES / PINS.format(platform=platform_key or PLATFORM)
+
+
 def first_difference(actual, expected, path="decision"):
-    """The path of the first value where ``actual`` departs from ``expected`` (non-float values
-    exactly, finite floats within `FLOAT_TOL`), or None."""
+    """The path of the first value where ``actual`` departs from ``expected`` (every value exactly;
+    NaN equals NaN), or None."""
     if isinstance(expected, float) and isinstance(actual, float):
-        if not (math.isfinite(actual) and math.isfinite(expected)):
-            return None if actual == expected or (math.isnan(actual) and math.isnan(expected)) else path
-        return None if math.isclose(actual, expected, rel_tol=FLOAT_TOL, abs_tol=FLOAT_TOL) else path
+        same = actual == expected or (math.isnan(actual) and math.isnan(expected))
+        return None if same else path
     if type(actual) is not type(expected):
         return f"{path} (type)"
     if isinstance(expected, dict):

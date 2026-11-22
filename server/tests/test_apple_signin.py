@@ -402,7 +402,7 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
         before_links = sorted(db.execute("SELECT * FROM game_players"))
         before_events = sorted(db.execute("SELECT * FROM rating_events"))
     store = accounts.Store(path)
-    assert store.schema_version() == len(accounts.SCHEMA) == 9
+    assert store.schema_version() == len(accounts.SCHEMA) == 10
     with closing(sqlite3.connect(path)) as db:
         after_users = db.execute(
             f"SELECT {accounts._USER_COLUMNS_V5} FROM users ORDER BY id").fetchall()
@@ -419,10 +419,8 @@ def test_a_v5_database_upgrades_to_v6_and_keeps_every_row(apple_on, tmp_path, rs
     for child in ("sessions", "game_players", "rating_events"):
         assert "REFERENCES users(id) ON DELETE CASCADE" in _sql(path, child)
     users_sql = _sql(path, "users")
-    assert "AUTOINCREMENT" in users_sql and "CHECK" in users_sql
-    # The schema refuses an account with neither identity.
-    with closing(sqlite3.connect(path)) as db, pytest.raises(sqlite3.IntegrityError):
-        db.execute("INSERT INTO users(created_at, last_login_at) VALUES (1, 1)")
+    # v10 drops v6's at-least-one-provider CHECK again (device accounts).
+    assert "AUTOINCREMENT" in users_sql and "CHECK" not in users_sql
     # Sessions still sign their users in, and the cascades follow the new table.
     assert store.session_user("x" * 10) is None
     assert store.user(1)["display_name"] == "Champ"

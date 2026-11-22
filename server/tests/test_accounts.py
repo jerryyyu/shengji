@@ -841,7 +841,8 @@ def test_a_v2_database_upgrades_to_v3_once_and_keeps_its_rows(accounts_on, tmp_p
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
     assert _columns(path, "users") == [
         "id", "google_sub", "email", "name", "picture", "created_at", "last_login_at",
-        "display_name", "rating", "rated_rounds", "leaderboard_visible", "apple_sub", "suspended_at"]
+        "display_name", "rating", "rated_rounds", "leaderboard_visible", "apple_sub", "suspended_at",
+        "last_seen_at"]
     # The sessions still follow their users, and the highest id is never
     # handed out again after its account is deleted.
     store.link_seat(_game(), 2, 0, 1)

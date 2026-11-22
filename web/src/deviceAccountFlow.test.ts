@@ -214,6 +214,55 @@ describe("a device sign-in and a provider sign-in, either answering late", () =>
   });
 });
 
+describe("switching accounts", () => {
+  const MEI = { name: "Mei Chen", email: "mei@x", picture: null, display_name: "Mei", name_shown: "Mei",
+                rounds_played: 40, linked: true };
+
+  it("signed in as A, a Play during a delayed switch to B waits for it and goes once, as B", async () => {
+    cookie = "account:a";
+    mods.conn.start();
+    await mods.auth.init();
+    await settle();
+    expect(mods.auth.state.status).toBe("in");
+    expect(live().map((w) => w.who)).toEqual(["account:a"]);
+    let answer!: (a: Answer) => void;
+    googleAnswers.push(new Promise<Answer>((r) => { answer = r; }));
+    const switching = mods.authModule.identityTurn(async () => {
+      mods.auth.signedIn(await mods.authModule.loginWithGoogle("jwt", "n1"));
+    });
+    await settle();
+    mods.queue.join();
+    await settle();
+    // nothing goes on A's socket while the switch is out
+    expect(joins()).toEqual([]);
+    answer({ status: 200, body: MEI, cookie: "account:mei" });
+    await switching;
+    await settle();
+    expect(joins()).toEqual([{ who: "account:mei", msg: { type: "queue_join", mode: "ranked" } }]);
+    expect(live().map((w) => w.who)).toEqual(["account:mei"]);
+  });
+
+  it("a switch that fails leaves the Play to go once, as A", async () => {
+    cookie = "account:a";
+    mods.conn.start();
+    await mods.auth.init();
+    await settle();
+    let answer!: (a: Answer) => void;
+    googleAnswers.push(new Promise<Answer>((r) => { answer = r; }));
+    const switching = mods.authModule.identityTurn(async () => {
+      mods.auth.signedIn(await mods.authModule.loginWithGoogle("jwt", "n1"));
+    }).catch(() => undefined);
+    await settle();
+    mods.queue.join();
+    await settle();
+    expect(joins()).toEqual([]);
+    answer({ status: 401, body: { detail: "Sign-in rejected (nonce)." } });
+    await switching;
+    await settle();
+    expect(joins()).toEqual([{ who: "account:a", msg: { type: "queue_join", mode: "ranked" } }]);
+  });
+});
+
 describe("past the 6 s bound", () => {
   afterEach(() => { vi.useRealTimers(); });
 

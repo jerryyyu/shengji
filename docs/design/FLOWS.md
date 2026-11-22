@@ -364,9 +364,10 @@ Keychain again at the next Play, and no other account is made while it is owed. 
 (the device's, Apple, Google, a launch's restore) takes turns through its request, cookie, state and socket, so the
 one asked for last is the one everything carries; credential writes, revocation and removal run on one queue. Past 6 s the tap is given
 up with nothing sent ("Couldn't open a table.", the line a lost Play already gets) while the sign-in finishes on
-its own; the next tap waits for it. A sign-out removes the secret before ending the session; a removal refused
-twice is marked for the next launch, which removes it before any sign-in with it, and if even the mark cannot be
-kept the sign-out is refused ("Sign-out failed. Try again."). The mock is `account_frames` in
+its own; the next tap waits for it. A sign-out in the app is done only once the secret is confirmed gone from the
+Keychain and the server has ended the session; otherwise it says "Sign-out failed. Try again.", the account
+stays signed in, and tapping again retries. A Play, Duo or Join waits behind any sign-in or sign-out under way, a
+switch between accounts included, and goes once as whoever that leaves signed in. The mock is `account_frames` in
 `docs/design/mocks/core.py`.
 `/api/auth/config` says whether device accounts are on (`device_accounts`) and `/api/me` whether an account is
 `linked`; with them off the app is today's guest, exactly.

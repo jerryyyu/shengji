@@ -371,10 +371,21 @@ export async function reauthFromKeychain(): Promise<AuthUser | null> {
 // is the one the cookie, this page and the socket all carry.
 let identityChain: Promise<unknown> = Promise.resolve();
 
+let turnsPending = 0;
+
 export function identityTurn<T>(op: () => Promise<T>): Promise<T> {
+  turnsPending += 1;
   const run = identityChain.then(op, op);
   identityChain = run.catch(() => undefined);
+  void identityChain.then(() => { turnsPending -= 1; });
   return run;
+}
+
+/** Whether a sign-in or sign-out is under way or waiting its turn: an
+ *  online action waits behind it rather than going on the socket it is
+ *  about to replace. */
+export function identityChanging(): boolean {
+  return turnsPending > 0;
 }
 
 // Every credential operation (a Keychain write or removal, and a sign-out's
@@ -394,29 +405,6 @@ function onCredentialQueue<T>(op: () => Promise<T>): Promise<T> {
 // Keychain is asked again before it is next used, and no new device account
 // is made while it is outstanding.
 let unsaved: string | null = null;
-
-// A secret a sign-out could not remove from the Keychain. The marker is not
-// the secret; it tells the next launch to remove the secret before any
-// sign-in with it.
-const FORGET_KEY = "shengji.deviceSecretForget";
-
-function markForget(on: boolean): boolean {
-  try {
-    if (on) localStorage.setItem(FORGET_KEY, "1");
-    else localStorage.removeItem(FORGET_KEY);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function forgetMarked(): boolean {
-  try {
-    return localStorage.getItem(FORGET_KEY) !== null;
-  } catch {
-    return false;
-  }
-}
 
 async function setTwice(token: string): Promise<boolean> {
   for (let i = 0; i < 2; i += 1) {
@@ -458,17 +446,11 @@ export function deviceSecretOutstanding(): boolean {
   return unsaved !== null;
 }
 
-/** Finishes Keychain work an earlier attempt left: a removal a sign-out
- *  could not make, then a secret the Keychain refused. False while either
- *  is still refused: the Keychain may hold a secret its owner signed out
- *  of, or lack the one this session's account needs, so it must not be
- *  used to sign in or to make another account. */
+/** Offers the Keychain a secret it refused earlier this session. False
+ *  while it is still refused: the Keychain lacks the secret this session's
+ *  account needs, so no sign-in reads it and no other account is made. */
 export function settleKeychain(): Promise<boolean> {
   return onCredentialQueue(async () => {
-    if (forgetMarked()) {
-      if (!(await removeTwice())) return false;
-      markForget(false);
-    }
     if (unsaved !== null) {
       if (!(await setTwice(unsaved))) return false;
       unsaved = null;
@@ -477,29 +459,30 @@ export function settleKeychain(): Promise<boolean> {
   });
 }
 
-/** A sign-out's credential work in the app, on the credential queue: read
- *  the secret (an unreadable Keychain may hold one, so that is a refusal),
- *  remove it here first, so nothing left behind can sign the account back
- *  in, then end the session, sending the secret so the server revokes it
- *  where device accounts are on. A removal refused twice is marked for the
- *  next launch; if even the mark cannot be kept, or the server does not
- *  confirm, sign-out is refused and the secret put back. */
+/** A sign-out's credential work in the app, on the credential queue. It
+ *  reports success only once the secret is confirmed gone from this device
+ *  and the server has ended the session; otherwise it throws "Sign-out
+ *  failed. Try again.", the account stays signed in, and tapping again
+ *  retries. The secret sent is the newest issued: one the Keychain refused
+ *  (held in memory) over whatever the Keychain still has. If the server
+ *  does not confirm after the removal, the secret goes back to the
+ *  Keychain, or, if it refuses, stays in memory for the retry. */
 async function revokeHere(): Promise<void> {
   const refused = new Error("Sign-out failed. Try again.");
-  let device: string | null;
-  try {
-    device = (await keychainGet()) ?? unsaved;
-  } catch {
-    throw refused;
+  let device: string | null = unsaved;
+  if (device === null) {
+    try {
+      device = await keychainGet();
+    } catch {
+      throw refused;
+    }
   }
-  const removed = await removeTwice();
-  if (!removed && !markForget(true)) throw refused;
+  if (!(await removeTwice())) throw refused;
   try {
     await logout(device);
-  } catch (e) {
-    if (!removed) markForget(false);
-    else if (device) await setTwice(device);
-    throw e;
+  } catch {
+    if (device) unsaved = (await setTwice(device)) ? null : device;
+    throw refused;
   }
   unsaved = null;
 }
@@ -706,6 +689,7 @@ class AuthStore {
   /** Test seam: forget everything, as a fresh page would. */
   reset(): void {
     identityChain = Promise.resolve();
+    turnsPending = 0;
     credentials = Promise.resolve();
     unsaved = null;
     this.initRun = null;

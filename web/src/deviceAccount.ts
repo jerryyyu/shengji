@@ -23,8 +23,8 @@
 
 import { useEffect, useState } from "react";
 import {
-  auth, deviceAccountsAvailable, deviceAuth, deviceSecretOutstanding, forgetDeviceSecret, identityTurn, keepDeviceSecret,
-  settleKeychain,
+  auth, deviceAccountsAvailable, deviceAuth, deviceSecretOutstanding, forgetDeviceSecret, identityChanging, identityTurn,
+  keepDeviceSecret, settleKeychain,
 } from "./auth";
 import { keychainGet } from "./keychain";
 import { deviceIdiom } from "./native";
@@ -111,7 +111,8 @@ export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean
   if (pending) return;
   const status = auth.state?.status;
   const settled = status === "in" || status === "error" || off;
-  if (settled && !identityOp && !auth.isReopening?.()) {
+  // a sign-in or sign-out under way (a provider switch included) goes first
+  if (settled && !identityOp && !identityChanging() && !auth.isReopening?.()) {
     // a secret the Keychain refused earlier this session is offered again
     if (deviceSecretOutstanding()) void settleKeychain();
     action();

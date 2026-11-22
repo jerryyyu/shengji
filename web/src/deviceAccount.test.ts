@@ -473,52 +473,90 @@ describe("the Keychain failing", () => {
     expect(deviceCalls()).toEqual([]);
   });
 
-  it("a removal refused twice whose mark cannot be kept either: sign-out is refused and nothing changes", async () => {
+  it("signed in as A with the switch off, removal refused twice: sign-out fails, A stays signed in, and a retry signs out for good", async () => {
     const keychain = shell();
-    keychain.value = "tok-mei";
+    keychain.value = "tok-a";
     keychain.failRemove = 2;
     auth.state = { status: "in", clientId: "cid", user: MEI };
+    // the switch is off: the server would end the session and leave the secret alone
     routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
     await expect(auth.signOut()).rejects.toThrow("Sign-out failed. Try again.");
-    setItem.mockRestore();
     expect(calls.filter((c) => c.url === "/api/auth/logout")).toEqual([]);
     expect(auth.state.status).toBe("in");
-    expect(keychain.value).toBe("tok-mei");
-  });
-
-  it("signed out with the switch off and a removal the Keychain refuses: the next launch removes it before any sign-in", async () => {
-    const keychain = shell();
-    keychain.value = "tok-mei";
-    keychain.failRemove = 2;
-    auth.state = { status: "in", clientId: "cid", user: MEI };
-    // the switch is off: the server ends the session and leaves the secret alone
-    routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
+    expect(keychain.value).toBe("tok-a");
+    // nothing in the page's storage stands for the sign-out
+    expect({ ...localStorage }).toEqual({});
+    // tapping again, the Keychain now removes it
     await auth.signOut();
     expect(auth.state.status).toBe("out");
-    expect(keychain.value).toBe("tok-mei");
-    // the switch is on again, and the secret would still sign Mei in
+    expect(keychain.value).toBeNull();
+    // relaunch with the page's storage gone and the switch on: A is not restored
+    localStorage.clear();
+    auth.reset();
     routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
     routes.set("POST /api/auth/device", { status: 200, body: { user: MEI } });
     routes.set("GET /api/me", { status: 401, body: {} });
-    // a launch (and then a Play) whose removal is refused again does not sign in with it
-    keychain.failRemove = 4;
-    auth.reset();
     await auth.init();
     expect(deviceCalls()).toEqual([]);
     expect(auth.state.status).toBe("out");
-    expect(keychain.value).toBe("tok-mei");
-    // nor does a Play
-    beforeOnlineSetup(() => {});
-    await flush();
-    expect(deviceCalls()).toEqual([]);
-    // the next launch removes it, and Mei is not restored
-    auth.reset();
-    resetDeviceAccountForTests();
-    await auth.init();
+  });
+
+  it("page storage that cannot be read changes nothing: sign-out rests on the Keychain alone", async () => {
+    const keychain = shell();
+    keychain.value = "tok-a";
+    auth.state = { status: "in", clientId: "cid", user: MEI };
+    routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("denied"); });
+    await auth.signOut();
+    getItem.mockRestore();
+    expect(auth.state.status).toBe("out");
     expect(keychain.value).toBeNull();
-    expect(deviceCalls()).toEqual([]);
+  });
+
+  it("logout 503 after the removal, with the Keychain refusing it back: still signed in, the secret held in memory, and a retry sends it", async () => {
+    const keychain = shell();
+    keychain.value = "tok-a";
+    auth.state = { status: "in", clientId: "cid", user: MEI };
+    routes.set("POST /api/auth/logout", [{ status: 503, body: {} }, { status: 200, body: { ok: true } }]);
+    keychain.failSet = 2;
+    await expect(auth.signOut()).rejects.toThrow("Sign-out failed. Try again.");
+    expect(auth.state.status).toBe("in");
+    expect(keychain.value).toBeNull();
+    expect(deviceSecretOutstanding()).toBe(true);
+    await auth.signOut();
+    const logouts = calls.filter((c) => c.url === "/api/auth/logout");
+    expect(logouts.map((c) => c.headers.Authorization)).toEqual(["Device tok-a", "Device tok-a"]);
     expect(auth.state.status).toBe("out");
+    expect(deviceSecretOutstanding()).toBe(false);
+  });
+
+  it("logout 503 after the removal, with the Keychain taking it back: still signed in and the Keychain has it again", async () => {
+    const keychain = shell();
+    keychain.value = "tok-a";
+    auth.state = { status: "in", clientId: "cid", user: MEI };
+    routes.set("POST /api/auth/logout", { status: 503, body: {} });
+    await expect(auth.signOut()).rejects.toThrow("Sign-out failed. Try again.");
+    expect(auth.state.status).toBe("in");
+    expect(keychain.value).toBe("tok-a");
+    expect(deviceSecretOutstanding()).toBe(false);
+  });
+
+  it("the newest secret is the one sent: a merge's held in memory over an older one in the Keychain, kept for the retry", async () => {
+    const keychain = shell();
+    keychain.value = "tok-old";
+    keychain.failSet = 2;
+    await keepDeviceSecret("tok-mei");
+    expect(keychain.value).toBe("tok-old");
+    auth.state = { status: "in", clientId: "cid", user: MEI };
+    routes.set("POST /api/auth/logout", [{ status: 503, body: {} }, { status: 200, body: { ok: true } }]);
+    keychain.failSet = 2;
+    await expect(auth.signOut()).rejects.toThrow("Sign-out failed. Try again.");
+    expect(deviceSecretOutstanding()).toBe(true);
+    await auth.signOut();
+    const logouts = calls.filter((c) => c.url === "/api/auth/logout");
+    expect(logouts.map((c) => c.headers.Authorization)).toEqual(["Device tok-mei", "Device tok-mei"]);
+    expect(auth.state.status).toBe("out");
+    expect(keychain.value).toBeNull();
   });
 
   it("sign-out with an unreadable Keychain is refused, not reported done", async () => {
@@ -537,7 +575,7 @@ describe("the Keychain failing", () => {
     expect(auth.state.status).toBe("out");
   });
 
-  it("sign-out whose Keychain delete fails still ends: the server removed the secret, so it cannot sign back in", async () => {
+  it("a removal refused once is tried again; once it is gone and the server confirms, sign-out is done", async () => {
     const keychain = shell();
     keychain.value = "tok-mei";
     keychain.failRemove = 1;
@@ -545,13 +583,6 @@ describe("the Keychain failing", () => {
     routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
     await auth.signOut();
     expect(calls.find((c) => c.url === "/api/auth/logout")!.headers).toEqual({ Authorization: "Device tok-mei" });
-    expect(auth.state.status).toBe("out");
-    // the leftover is refused at the next launch and cleared then
-    auth.reset();
-    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid" } });
-    routes.set("POST /api/auth/device", { status: 401, body: {} });
-    routes.set("GET /api/me", { status: 401, body: {} });
-    await auth.init();
     expect(auth.state.status).toBe("out");
     expect(keychain.value).toBeNull();
   });

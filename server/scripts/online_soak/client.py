@@ -84,6 +84,8 @@ class ClientRecord:
     down: list[list[float]] = field(default_factory=list)   # [start, end] with the socket not open
     task_errors: list[str] = field(default_factory=list)
     sent_types: dict[str, int] = field(default_factory=dict)
+    # (room, seat) of each table_leave that went out, in order
+    leaves: list[tuple[str | None, int | None]] = field(default_factory=list)
     # (the latest message type sent before it, the error code) for each refusal
     refused_after: dict[str, int] = field(default_factory=dict)
 
@@ -95,7 +97,8 @@ class SoakClient:
                  client_ip: str | None = None) -> None:
         self.name = name
         self.device = device
-        self.url = require_local(ws_url(host, port, f"/ws?device={device}"))
+        # ws.ts socketUrl(): the table heartbeat on, then the device key
+        self.url = require_local(ws_url(host, port, f"/ws?heartbeat=1&device={device}"))
         # the address the server's per-address limits key this client by
         # (accounts.client_ip reads Fly-Client-IP before the socket peer)
         self.headers = {"Fly-Client-IP": client_ip} if client_ip else {}
@@ -130,6 +133,9 @@ class SoakClient:
         self.dup_sent_at: float | None = None
         self.decisions = 0
         self.last_sent: str | None = None
+        self.state_gen: int | None = None        # the socket the latest state came on
+        self.socket_opened: dict[int, float] = {}
+        self.ready_sent: tuple[int, int] | None = None   # (round seen, socket) of the last Next
         self.seq = 0
         self.rounds_here = 0
         self.leave_after = 3
@@ -156,6 +162,9 @@ class SoakClient:
         return self.room is not None
 
     async def run(self, until: float) -> None:
+        # down from now until a socket opens: the interval spans every
+        # connect attempt, retry backoff and offline wait in between
+        self._mark_down()
         while not self.stop and time.monotonic() < until:
             await self._one_socket(until)
             if self.stop or time.monotonic() >= until:
@@ -197,7 +206,6 @@ class SoakClient:
         return total
 
     async def _one_socket(self, until: float) -> None:
-        self._mark_down()
         try:
             ws = await asyncio.wait_for(websockets.connect(self.url, max_size=None, ping_interval=None,
                                                            open_timeout=None,
@@ -209,6 +217,7 @@ class SoakClient:
         self.gen += 1
         self.rec.sockets += 1
         self.opened_at = time.monotonic()
+        self.socket_opened[self.gen] = self.opened_at
         self.backoff = self.s(500)
         self.heartbeat = False
         self.awaiting = None
@@ -227,11 +236,15 @@ class SoakClient:
                 if self._timers_say_dead():
                     break
         finally:
+            # lost or declared dead: down from here until the next socket opens
+            self._mark_down()
             reader.cancel()
             with contextlib.suppress(BaseException):
                 await reader
+            # ws.ts replace() drops the old socket without waiting for its
+            # closing handshake, which a half-open link never answers
             with contextlib.suppress(Exception):
-                await ws.close()
+                ws.transport.abort()
             self.ws = None
             self.rec.drops += 1
 
@@ -265,6 +278,8 @@ class SoakClient:
         except Exception:   # noqa: BLE001 - a dead socket is the reader's to notice
             return False
         t = msg.get("type")
+        if t == "table_leave":
+            self.rec.leaves.append((self.room, self.seat))
         if t != "ping":
             self.rec.sent_types[t] = self.rec.sent_types.get(t, 0) + 1
             self.last_sent = t
@@ -340,6 +355,7 @@ class SoakClient:
         prev = self.state
         self.state = st
         self.state_at = time.monotonic()
+        self.state_gen = self.gen
         hk = tuple(sorted(c["id"] for c in st.get("hand", [])))
         p = self.pending
         if p is not None:
@@ -363,7 +379,9 @@ class SoakClient:
             if self.rounds_here >= self.leave_after:
                 self.spawn(self._send({"type": "table_leave"}))
                 self.rounds_here = -10**6       # one leave per sitting
-            elif st.get("you") not in (st.get("ready") or []) and self.ready_round != self.rec.rounds_seen:
+            elif st.get("you") not in (st.get("ready") or []) and self.ready_sent != (self.rec.rounds_seen, self.gen):
+                # a person taps Next again when a resumed round end still shows it untapped
+                self.ready_sent = (self.rec.rounds_seen, self.gen)
                 self.ready_round = self.rec.rounds_seen
                 self.spawn(self._send({"type": "next_round"}))
         elif phase == "game_over":

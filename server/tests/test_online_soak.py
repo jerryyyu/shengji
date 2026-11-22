@@ -527,3 +527,158 @@ def test_the_original_seat_recovers_by_a_fresh_state_or_its_surviving_socket(tmp
         c.last_rx = _t.monotonic() + 1.0        # a pong after the fault; the held state is pre-fault
     rec = _run_one_fault(tmp_path, monkeypatch, quiet)
     assert rec["outcome"] == "recovered" and rec["trace"]["via"] == "same_socket"
+
+
+# a Leave excuses a loss only when it was sent for the original seat
+
+def test_a_leave_at_another_room_does_not_excuse_losing_the_original_seat(tmp_path, monkeypatch):
+    async def during(s, c):
+        c.room = c.seat = c.state = None        # AAAA/2 lost while AAAA goes on
+        s.srv.rooms["BBBB"] = _table("BBBB", 1, "dev1")
+        c.room, c.seat = "BBBB", 1
+        await c._send({"type": "table_leave"})  # a Leave, but for BBBB
+        c._forget_room()
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("failed", "seat_lost")
+
+
+def test_a_replacement_occupant_s_leave_does_not_speak_for_the_original_one(tmp_path, monkeypatch):
+    async def during(s, c):
+        s.srv.rooms["AAAA"].seats[2] = _seat("Soak-9", "dev9", left_by_choice=True)
+        c._forget_room()
+    rec = _run_one_fault(tmp_path, monkeypatch, during)
+    assert (rec["outcome"], rec["reason"]) == ("failed", "seat_lost")
+
+
+# the client's down time runs from the socket's loss to the next open socket
+
+def test_down_time_covers_the_retry_backoff_and_ends_at_the_reconnect(monkeypatch):
+    import time as _t
+
+    class WS:
+        def __init__(self, live):
+            self.live, self.transport = live, SimpleNamespace(abort=lambda: None)
+
+        async def send(self, raw):
+            return None
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self.live:
+                raise StopAsyncIteration
+            await asyncio.sleep(3600)
+
+    opened = []
+
+    async def connect(*a, **k):
+        opened.append(_t.monotonic())
+        return WS(live=len(opened) > 1)
+    monkeypatch.setattr(client.websockets, "connect", connect)
+
+    async def idle(c):
+        return None
+
+    async def run():
+        c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, idle)
+        c.backoff = 0.5
+        task = asyncio.create_task(c.run(_t.monotonic() + 10))
+        while c.rec.drops < 1:
+            await asyncio.sleep(0.005)
+        lost = _t.monotonic()
+        await asyncio.sleep(0.3)                    # a decision window wholly inside the backoff
+        inside = c.down_since(lost + 0.05)
+        while c.rec.sockets < 2:
+            await asyncio.sleep(0.005)
+        up = _t.monotonic()
+        await asyncio.sleep(0.2)                    # a decision window wholly after the reconnect
+        after = c.down_since(up + 0.01)
+        c.stop = True
+        await task
+        return inside, after
+    inside, after = asyncio.run(run())
+    assert inside >= 0.2
+    assert after == 0.0
+
+
+# the client keeps the page's socket URL and taps Next again on a resumed round end
+
+def test_the_client_socket_url_has_socketurl_s_parameters():
+    from urllib.parse import parse_qsl, urlsplit
+    found = re.search(r"function socketUrl\(\): string \{\s*return `\$\{wsUrl\(\)\}\?([^`]*)`", _ws_ts())
+    assert found, "socketUrl() changed shape in ws.ts: update online_soak/client.py"
+    page = [tuple(p.split("=", 1)) for p in found.group(1).split("&")]
+    c = client.SoakClient("a", "dev1", 9, 1.0, None, None, None)
+    mine = parse_qsl(urlsplit(c.url).query)
+    assert [k for k, _ in mine] == [k for k, _ in page]
+    for (k, v), (_, pv) in zip(mine, page):
+        assert v == (pv if not pv.startswith("${") else "dev1"), k
+
+
+def test_a_resumed_round_end_that_still_shows_next_untapped_sends_next_again():
+    async def run():
+        c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, None)
+        wire = []
+
+        async def send(msg):
+            wire.append(msg["type"])
+            return True
+        c._send = send
+        end = {**_frame("AAAA", 2), "phase": "round_end", "ready": []}
+        c.gen, c.room, c.seat = 1, "AAAA", 2
+        c._on_state(end)
+        await asyncio.sleep(0)
+        c._on_state({**end, "ready": [0]})          # the same socket: no second tap
+        await asyncio.sleep(0)
+        c.gen = 2                                   # the Next was lost with the socket
+        c._on_state(end)
+        await asyncio.sleep(0)
+        return wire
+    assert asyncio.run(run()) == ["next_round", "next_round"]
+
+
+# a strike is read against the server's record of the seat's presence
+
+def _strike_soak(tmp_path):
+    s = _bare_soak(tmp_path)
+    clock = SimpleNamespace(t=0.0)
+    s.srv = SimpleNamespace(rooms={}, now=lambda: clock.t, MOVE_TIMER=60.0, RETURN_MIN=15.0, MOVE_TIMER_POLL=0.5)
+    s.presence, s.decision_at, s.by_seat = {}, {}, {}
+    room = SimpleNamespace(code="AAAA", matched=True, seats=[_seat("Soak-1", "dev1", turn_started=None,
+                                                                      away=False) for _ in range(4)])
+    return s, clock, room
+
+
+def test_a_strike_on_a_seat_connected_the_whole_decision_is_not_time_away(tmp_path):
+    s, clock, room = _strike_soak(tmp_path)
+    before = [None] * 4
+    room.seats[3].turn_started = 0.0
+    s._decision_starts(room, before)
+    clock.t = 60.4
+    s._strike(room, 3)
+    assert s.strikes[0]["time_away"] is False and s.strikes[0]["connected_secs"] == pytest.approx(60.4)
+
+
+def test_a_strike_after_time_away_is_flagged_from_the_server_s_presence_record(tmp_path):
+    s, clock, room = _strike_soak(tmp_path)
+    room.seats[3].turn_started = 0.0
+    s._decision_starts(room, [None] * 4)
+    clock.t = 10.0
+    s._presence(room, "seat_disconnected", {"seat": 3})
+    clock.t = 30.0
+    s._presence(room, "seat_reconnected", {"seat": 3})
+    room.seats[3].turn_started = -20.0              # the server rebases the clock for the return
+    s._decision_starts(room, [None, None, None, -20.0])   # and its next sync changes nothing
+    assert s.decision_at[("AAAA", 3)][0] == 0.0     # the decision still started at 0
+    clock.t = 60.4                                  # struck with 40.4 s connected
+    s._strike(room, 3)
+    assert s.strikes[0]["time_away"] is True and s.strikes[0]["connected_secs"] == pytest.approx(40.4)
+    clock.t = 40.0                                  # struck 10 s after a return
+    s._strike(room, 3)
+    assert s.strikes[1]["time_away"] is True and s.strikes[1]["since_return_secs"] == pytest.approx(10.0)
+
+
+def test_a_state_on_a_socket_opened_after_the_last_cut_recovers():
+    assert _recovered(state_at=9.0, new_socket=True) == "new_socket"
+    assert _recovered(state_at=9.0, new_socket=True, server_view=audit.state_view({**_ST, "turn": 3})) is None

@@ -107,6 +107,8 @@ class Soak:
         self.harness_errors: list[dict] = []
         self.ledger = audit.FaultLedger()
         self.rooms_seen: set[str] = set()
+        self.presence: dict[tuple[str, int], list[tuple[float, str]]] = {}
+        self.decision_at: dict[tuple[str, int], tuple[float, bool]] = {}
         self._hook()
 
     # observation of the unmodified server
@@ -136,29 +138,68 @@ class Soak:
                              {"room": room.code, "seat": seat, "kind": kind,
                               "round": room.game.round_no if room.game else None})
 
+        real_sync = srv._sync_move_timer
+
         def count_timeout(room, seat):
-            sd = room.seats[seat]
-            if not sd.is_bot and not sd.away:
-                client = soak.by_seat.get((room.code, seat))
-                started = sd.turn_started
-                away = None
-                if client is not None and started is not None:
-                    # monotonic and the server clock tick together inside one run
-                    window = srv.now() - started
-                    away = client.down_since(time.monotonic() - window)
-                soak.strikes.append({"room": room.code, "seat": seat, "matched": room.matched,
-                                     "down_secs_in_decision": away,
-                                     "time_away": bool(away and away > 0.0)})
+            soak._strike(room, seat)
             return real_strike(room, seat)
 
         def log_event(room, kind, **data):
             if kind in PROGRESS:
                 soak.progress[room.code] = time.monotonic()
+            soak._presence(room, kind, data)
             return real_log(room, kind, **data)
+
+        def sync_move_timer(room):
+            before = [sd.turn_started if sd is not None else None for sd in room.seats]
+            real_sync(room)
+            soak._decision_starts(room, before)
 
         srv.handle_action = handle_action
         srv._count_timeout = count_timeout
         srv.Room.log_event = log_event
+        srv._sync_move_timer = sync_move_timer
+
+    # the server's own record of each seat's presence, for the strike check
+    def _presence(self, room, kind: str, data: dict) -> None:
+        way = {"seat_reconnected": "up", "seat_disconnected": "down", "seat_left": "down"}.get(kind)
+        if way is not None and isinstance(data.get("seat"), int):
+            self.presence.setdefault((room.code, data["seat"]), []).append((self.srv.now(), way))
+
+    def _decision_starts(self, room, before: list) -> None:
+        """A decision starts where the server starts its clock afresh; a
+        clock rebased for a returning seat keeps the decision's start."""
+        for i, sd in enumerate(room.seats):
+            if sd is None:
+                continue
+            key, after = (room.code, i), sd.turn_started
+            if after is None:
+                self.decision_at.pop(key, None)
+            elif after != before[i] or key not in self.decision_at:
+                self.decision_at[key] = (after, bool(sd.connected and not sd.is_bot))
+
+    def _strike(self, room, seat: int) -> None:
+        """A move-clock strike, read against the server's presence record:
+        time away when the seat was connected for less than MOVE_TIMER of the
+        decision, or less than RETURN_MIN since its last return. The client's
+        own down time in the window is kept beside it."""
+        srv, sd = self.srv, room.seats[seat]
+        if sd.is_bot or sd.away:
+            return
+        at = srv.now()
+        start, start_up = self.decision_at.get((room.code, seat), (sd.turn_started, True))
+        entry = {"room": room.code, "seat": seat, "matched": room.matched, "decision_secs": None,
+                 "time_away": False}
+        if start is not None:
+            entry.update(audit.strike_presence(
+                start=start, start_connected=start_up, events=self.presence.get((room.code, seat), []),
+                at=at, move_timer=srv.MOVE_TIMER, return_min=srv.RETURN_MIN, slack=srv.MOVE_TIMER_POLL + 0.05))
+            entry["decision_secs"] = at - start
+            client = self.by_seat.get((room.code, seat))
+            if client is not None:
+                # monotonic and the server clock tick together inside one run
+                entry["client_down_secs"] = client.down_since(time.monotonic() - (at - start))
+        self.strikes.append(entry)
 
     def _server_key(self, room, seat: int) -> tuple:
         rnd = room.round
@@ -335,9 +376,11 @@ class Soak:
             secs = self.rng.choice(STALL_SECS) / self.scale
             if kind == "drop":
                 proxy.cut()
+                origin["fresh_after"] = time.monotonic()
             elif kind == "storm":
                 for _ in range(4):
                     proxy.cut()
+                    origin["fresh_after"] = time.monotonic()
                     await asyncio.sleep(0.3 / self.scale)
             elif kind in ("stall", "oneway_down", "oneway_up"):
                 proxy.pause(*{"stall": (UP, DOWN), "oneway_down": (DOWN,), "oneway_up": (UP,)}[kind])
@@ -351,6 +394,7 @@ class Soak:
                 # the app killed and opened again: only the saved room and token survive
                 client.offline_until = time.monotonic() + secs
                 proxy.cut()
+                origin["fresh_after"] = time.monotonic()
                 client.state = None
                 client.pending = None
                 await asyncio.sleep(secs)
@@ -382,17 +426,25 @@ class Soak:
         sd = room.seats[client.seat] if room is not None and client.seat is not None else None
         return {"room": client.room, "seat": client.seat, "gen": client.gen,
                 "owner": (audit.seat_owner(sd) if sd is not None else None) or client.device,
-                "leaves": client.rec.sent_types.get("table_leave", 0)}
+                "leaves": len(client.rec.leaves), "fresh_after": time.monotonic()}
+
+    @staticmethod
+    def _left_origin(client, origin: dict) -> bool:
+        """Whether this client, the origin seat's owner, sent a Leave for that
+        room and seat since the fault began."""
+        return (origin["room"], origin["seat"]) in client.rec.leaves[origin["leaves"]:]
 
     async def _recovered(self, client, end: float, until: float, cut: bool,
                          trace: dict | None = None, origin: dict | None = None) -> tuple[str, float | None, str | None]:
         """The fault's outcome: ``recovered`` (with the seconds from its end)
         once ``audit.recovered`` holds: the server holds the seat on a live
         socket, the client's state is the server's decision for that seat, and
-        either that state arrived since the fault or the socket open when the
-        fault began survived it with a frame through since; ``failed`` past
+        either that state arrived since the fault, or on a socket opened after
+        the fault's last cut, or the socket open when the fault began survived
+        it with a frame through since; ``failed`` past
         ``RECOVERY_DEADLINE_SECS`` or when the client is off the original seat
-        (``origin``) while its room goes on, unless it sent a Leave; else
+        (``origin``) while its room goes on, unless it sent a Leave for that
+        room and seat; else
         ``censored``. A state from any other room or seat never recovers the
         original one. ``trace`` gets the unscaled seconds after the end at
         which each condition first held, for reading a slow one."""
@@ -414,7 +466,7 @@ class Soak:
             if seat is None:
                 return "failed", None, "seat_lost"
             sd = room.seats[seat]
-            left = client.rec.sent_types.get("table_leave", 0) > origin["leaves"] or sd.left_by_choice
+            left = self._left_origin(client, origin)
             if client.room != room_code or client.seat != seat or audit.seat_owner(sd) != origin["owner"]:
                 if left:
                     return "censored", None, "left_table"      # this client's own Leave
@@ -430,7 +482,10 @@ class Soak:
             via = audit.recovered(fault_end=end, state_at=client.state_at, client_view=cview,
                                   server_view=sview, ws_open=client.ws is not None,
                                   seat_connected=sd.connected, seat_bot=sd.is_bot,
-                                  rx_at=client.last_rx, same_socket=client.gen == gen0)
+                                  rx_at=client.last_rx, same_socket=client.gen == gen0,
+                                  new_socket=(client.state_gen is not None and client.state_gen != gen0
+                                              and client.socket_opened.get(client.state_gen, -1.0)
+                                              >= origin["fresh_after"]))
             if via is not None:
                 trace["via"] = via
                 return "recovered", now - end, None

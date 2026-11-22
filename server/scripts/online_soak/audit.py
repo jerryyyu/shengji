@@ -7,9 +7,14 @@ on a constructed case without a server.
   socket and the client holds a game state equal to the server's current
   decision for that seat, with the link shown working since the fault: a
   state received since, or (the same socket having survived) any frame
-  received since. The server sends no state while nothing changes and the
-  page has no resync, so on a quiet table a surviving socket's proof is its
-  pong; the equality check is what rules out a stale pre-fault state.
+  received since, or a state received on a socket opened after the fault's
+  last cut, or (the same socket having survived) any frame received since.
+  The server sends no state while nothing changes and the page has no
+  resync, so on a quiet table a surviving socket's proof is its pong; the
+  equality check is what rules out a stale pre-fault state.
+- ``strike_presence``: whether a move-clock strike was charged for time
+  away, from the server's own record of the seat's presence in that
+  decision.
 - ``PlayAudit``: an applied play is matched to the send it came from by the
   tag the client put on it (decision id, socket generation, send sequence),
   and is right only when the decision that tag names, as it stood at the
@@ -51,17 +56,21 @@ def state_view(st: dict | None) -> tuple | None:
 
 def recovered(*, fault_end: float, state_at: float | None, client_view: tuple | None,
               server_view: tuple | None, ws_open: bool, seat_connected: bool, seat_bot: bool,
-              rx_at: float | None = None, same_socket: bool = False) -> str | None:
+              rx_at: float | None = None, same_socket: bool = False,
+              new_socket: bool = False) -> str | None:
     """How a seat is back after a fault that ended at ``fault_end``
-    (``"state"`` or ``"same_socket"``), or None. The held state must show the
-    server's decision for that seat now; a newer pong alone is not enough,
-    and a pre-fault state counts only on the socket that survived the fault
-    with a frame through it since."""
+    (``"state"``, ``"new_socket"`` or ``"same_socket"``), or None. The held
+    state must show the server's decision for that seat now; a newer pong
+    alone is not enough. A pre-fault state counts when it came on a socket
+    opened after the fault's last cut (``new_socket``), or on the socket that
+    survived the fault with a frame through it since."""
     if not (ws_open and seat_connected and not seat_bot and server_view is not None
             and client_view == server_view):
         return None
     if state_at is not None and state_at >= fault_end:
         return "state"
+    if new_socket:
+        return "new_socket"
     if same_socket and rx_at is not None and rx_at >= fault_end:
         return "same_socket"
     return None
@@ -235,3 +244,36 @@ def verdict(out: dict, floors: Floors) -> dict:
     return {"status": status, "failed": failed, "under_floor": thin,
             "floors": {"rooms": floors.rooms, "rounds": floors.rounds, "recoveries": floors.recoveries,
                        "resolved_share": floors.resolved_share}}
+
+
+def connected_in(start: float, start_connected: bool, events: Iterable[tuple[float, str]],
+                 end: float) -> tuple[float, float | None]:
+    """Seconds a seat was connected in [start, end], and its last return in
+    that span, from its presence events (time, ``"up"`` or ``"down"``)."""
+    t, up, total, last_return = start, start_connected, 0.0, None
+    for at, kind in sorted(events):
+        if at <= start:
+            continue
+        if at >= end:
+            break
+        if up:
+            total += at - t
+        t = at
+        up = kind == "up"
+        if up:
+            last_return = at
+    if up:
+        total += end - t
+    return total, last_return
+
+
+def strike_presence(*, start: float, start_connected: bool, events: Iterable[tuple[float, str]],
+                    at: float, move_timer: float, return_min: float, slack: float) -> dict:
+    """A strike at ``at`` on a decision begun at ``start``: charged for time
+    away when the seat was connected for less than ``move_timer`` of it, or
+    for less than ``return_min`` since its last return (the server's own
+    guarantees; ``slack`` absorbs its poll)."""
+    connected, last_return = connected_in(start, start_connected, events, at)
+    since = None if last_return is None else at - last_return
+    away = connected < move_timer - slack or (since is not None and since < return_min - slack)
+    return {"connected_secs": connected, "since_return_secs": since, "time_away": away}

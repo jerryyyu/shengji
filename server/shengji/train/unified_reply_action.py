@@ -199,6 +199,8 @@ def install_reply_action(bot, scorer):
     if model.r["reply.weight"].shape[1] != scorer.hidden_width or \
             model.r["card_proj.weight"].shape[0] != scorer.card_width:
         raise ValueError("reply action scorer dimensions disagree with unified model")
+    bot.unified_reply_action_listings = 0
+    bot.unified_reply_action_candidates = 0
     bot.unified_reply_action = scorer
     bot.policy_name = f"{bot.policy_name}-uaction{scorer.package_sha256[:8]}"
     return bot

@@ -437,7 +437,8 @@ def test_action_scorer_flows_through_readout_to_real_reply_play(package, tmp_pat
     want.play(seat, expected)
     assert all(list(clone.trick.plays[-1].cards) == expected for clone in active[1:])
     assert all(clone.hands == want.hands and clone.turn == want.turn for clone in active[1:])
-    assert len(calls) == (2 if multi else 0)
+    assert bot.unified_reply_action_listings == len(calls) == (2 if multi else 0)
+    assert bot.unified_reply_action_candidates == len(calls) * len(legal)
     if fast and multi:
         assert sum(forwarded_rows) == 1
         assert bot.unified_reply_memo == 1

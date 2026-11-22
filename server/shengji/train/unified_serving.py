@@ -131,6 +131,10 @@ def active() -> bool:
 def _decide_play(self, rnd, seat):
     """The bot's own ``decide_play``; its decision record gains `RECORD_KEY` (`RECORD_FIELDS`)."""
     fields = {**RECORD_FIELDS, **FAST_RECORD_FIELDS} if self.unified_fast else RECORD_FIELDS
+    scorer = getattr(self, "unified_reply_action", None)
+    if scorer is not None:
+        fields = {**fields, "action_listings": "unified_reply_action_listings",
+                  "action_candidates": "unified_reply_action_candidates"}
     before = [getattr(self, attr) for attr in fields.values()]
     cards = type(self).decide_play(self, rnd, seat)
     record = getattr(self, "last_decision_record", None)
@@ -138,6 +142,8 @@ def _decide_play(self, rnd, seat):
         record[RECORD_KEY] = {"package": self.unified_sha256[:8],
                               **{name: getattr(self, attr) - was
                                  for (name, attr), was in zip(fields.items(), before)}}
+        if scorer is not None:
+            record[RECORD_KEY]["action_package"] = scorer.package_sha256
     return cards
 
 

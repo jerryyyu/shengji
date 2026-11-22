@@ -906,7 +906,10 @@ def readout_reply_ply(served_ply):
             def rank(index, legal, scoring, row):
                 if not multi[index]:
                     return scoring @ row
-                return scorer.scores(active[index], legal, row, hidden[index], frame.cache(model)[0], planes[index])
+                scores = scorer.scores(active[index], legal, row, hidden[index], frame.cache(model)[0], planes[index])
+                bot.unified_reply_action_listings += 1
+                bot.unified_reply_action_candidates += len(legal)
+                return scores
             kw["rank_fn"] = rank
         served_predict = bot.predict
         if fast:

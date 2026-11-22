@@ -8,8 +8,10 @@ import time
 
 import pytest
 
+from shengji.ai.env import deal_and_declare
 from shengji.ai.registry import make_bot
 from shengji.ai.smart import SmartBot
+from shengji.engine.game import Game
 from shengji.train import cwv_shortlist_screen as S
 from shengji.train.screen_deadline import DeadlineSession, RECIPE, latency_summary
 from tests.test_world_shortlist import play_state
@@ -149,6 +151,118 @@ def test_real_mc_success_preserves_action_rng_and_receipts():
             assert without_times(remote.last_decision_record) == without_times(direct.last_decision_record)
             assert remote.rollouts == direct.rollouts
             rnd.play(rnd.turn, expected)
+    finally:
+        session.close()
+
+
+class DeclareProbeBot(SmartBot):
+    def __init__(self, seed):
+        self.rng = random.Random(seed)
+        self.calls = 0
+        self.last_declare_record = None
+
+    def decide_declare(self, rnd, seat, final=False):
+        self.calls += 1
+        action = SmartBot().decide_declare(rnd, seat, final)
+        self.last_declare_record = {
+            "call": self.calls, "draw": self.rng.random(), "final": final,
+            "action": " ".join(action) if action else None,
+        }
+        rnd.hands[seat].clear()
+        return action
+
+    def decide_bury(self, rnd, seat):
+        self.last_bury_record = {"declare_calls": self.calls, "draw": self.rng.random()}
+        return super().decide_bury(rnd, seat)
+
+
+class DeclareProbePolicy(S.CwvTimedPolicy):
+    def __init__(self, bot):
+        super().__init__(bot)
+        self.detail = {}
+
+    def decide_declare(self, rnd, seat, final=False):
+        action = super().decide_declare(rnd, seat, final=final)
+        self.detail["call"] = self.bot.calls
+        self.declare_decisions[-1]["detail"] = self.detail
+        return action
+
+
+def declare_factory(config, side, seed):
+    return DeclareProbePolicy(DeclareProbeBot(seed))
+
+
+def test_batched_deal_matches_serial_and_restores_every_seat(monkeypatch):
+    monkeypatch.setattr(S, "_deadline_side", declare_factory)
+    config = cfg("identity", decision_deadline=RECIPE, trump_ranks=["A"])
+    deal = DeadlineSession.deal
+    checkpoints_after_deal = []
+
+    def batched_with_restart(session, rnd, policies):
+        dealt = deal(session, rnd, policies)
+        checkpoints_after_deal.append(
+            [(policy.calls, policy.rng.getstate()) for policy in policies])
+        session.close()
+        return dealt
+
+    monkeypatch.setattr(DeadlineSession, "deal", batched_with_restart)
+    batched = S.run_cluster(config, 0)
+    assert len(checkpoints_after_deal) == 2
+    assert all(calls == 26 for checkpoints in checkpoints_after_deal
+               for calls, _ in checkpoints)
+
+    def serial(session, rnd, policies):
+        def decide_declare(rnd, seat, **kwargs):
+            return policies[seat].decide_declare(rnd, seat, **kwargs)
+
+        deal_and_declare(rnd, decide_declare)
+        mirror = len(serial_seats)
+        serial_seats.append([(policy.calls, policy.rng.getstate()) for policy in policies])
+        assert serial_seats[mirror] == checkpoints_after_deal[mirror]
+        return rnd
+
+    serial_seats = []
+    monkeypatch.setattr(DeadlineSession, "deal", serial)
+    baseline = S.run_cluster(config, 0)
+    assert without_times(batched["records"]) == without_times(baseline["records"])
+    assert without_times(batched["decision_traces"]) == without_times(baseline["decision_traces"])
+    assert all(trace["declare_decisions"][-1]["final"]
+               for trace in batched["decision_traces"])
+    declarations = [receipt for trace in batched["decision_traces"]
+                    for receipt in trace["declare_decisions"]]
+    assert any(receipt["action"] for receipt in declarations)
+    assert all(receipt["detail"]["call"] == receipt["call"] for receipt in declarations)
+    buries = [receipt for trace in batched["decision_traces"]
+              for receipt in trace["bury_decisions"]]
+    assert len(buries) == 2 and all(receipt["declare_calls"] == 26 for receipt in buries)
+    assert all(not receipt["deadline"]["timed_out"] for trace in batched["decision_traces"]
+               for receipt in trace["decisions"])
+
+
+class BrokenDeclaration(DeclareProbeBot):
+    def decide_declare(self, rnd, seat, final=False):
+        if final:
+            raise ValueError("broken declaration")
+        return super().decide_declare(rnd, seat, final)
+
+
+def broken_declare_factory(seed):
+    return S.CwvTimedPolicy(BrokenDeclaration(seed))
+
+
+def test_batched_failure_commits_no_opening_checkpoint_or_receipts():
+    session = DeadlineSession(broken_declare_factory, 30)
+    try:
+        policies = [session.register(seed) for seed in range(4)]
+        rng_before = [policy.rng.getstate() for policy in policies]
+        rnd = Game(random.Random(17)).start_round()
+        with pytest.raises(RuntimeError, match="broken declaration"):
+            session.deal(rnd, policies)
+        assert session.process is None
+        assert rnd.phase == "deal" and not any(rnd.hands)
+        assert [policy.rng.getstate() for policy in policies] == rng_before
+        assert all(policy.calls == 0 and not hasattr(policy, "declare_decisions")
+                   for policy in policies)
     finally:
         session.close()
 

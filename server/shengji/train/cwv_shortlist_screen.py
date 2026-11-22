@@ -740,6 +740,7 @@ def run_cluster(config, cluster):
     if shadow is not None:
         _validate_shadow_config(config)
     mirror_state = {}
+    round_options = {"deal": session.deal} if session is not None and shadow is None else {}
 
     def build(side, seed):
         return (session.register(config, side, seed) if session
@@ -782,7 +783,7 @@ def run_cluster(config, cluster):
             mirror_state.update(identical=True, first_divergence=None)
             row = duel.play_screen_round(
                 base, cluster, seed, mirror, bot_factory=factory,
-                counter_fn=work_counters, game_factory=game_factory)
+                counter_fn=work_counters, game_factory=game_factory, **round_options)
             if shadow is not None:
                 arms = [wrapped for side, wrapped in created[first:] if side == "arm"]
                 report = {

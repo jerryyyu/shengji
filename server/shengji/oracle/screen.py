@@ -1278,7 +1278,7 @@ def _history_digest(history) -> str:
 
 
 def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
-                      bot_factory=None, counter_fn=None, game_factory=None
+                      bot_factory=None, counter_fn=None, game_factory=None, deal=None
                       ) -> tuple[dict, dict]:
     """One round: arm vs baseline on deal ``seed``; ``mirror`` swaps teams.
 
@@ -1298,7 +1298,9 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
     arm_team = 0 if mirror == 0 else 1
     started = time.perf_counter()
     try:
-        log = play_round((game_factory or Game)(random.Random(seed)), pol, record=True)
+        round_options = {} if deal is None else {"deal": deal}
+        log = play_round((game_factory or Game)(random.Random(seed)), pol,
+                         record=True, **round_options)
     except OracleScreenError as exc:
         raise OracleRoundRefused(cluster, seed, mirror, str(exc)) from exc
     wall = time.perf_counter() - started

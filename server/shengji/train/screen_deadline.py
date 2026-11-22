@@ -14,12 +14,14 @@ from __future__ import annotations
 from contextlib import contextmanager
 import math
 import multiprocessing as mp
+from multiprocessing.reduction import ForkingPickler
 import os
 import queue
 import threading
 import time
 import traceback
 
+from ..ai.env import deal_and_declare
 from ..ai.smart import SmartBot
 
 RECIPE = {"seconds": 300.0, "version": "spawn-total-play-v1",
@@ -98,6 +100,32 @@ def _phases(bot, send):
                 delattr(bot, name)
 
 
+def _clear_receipts(wrapped):
+    wrapped.decisions.clear()
+    wrapped.bury_decisions.clear()
+    vars(wrapped).pop("declare_decisions", None)
+
+
+def _deal(rnd, indices, bots):
+    receipts = {index: [] for index in indices}
+
+    def decide_declare(rnd, seat, final=False):
+        index = indices[seat]
+        wrapped = bots[index]
+        _clear_receipts(wrapped)
+        # A policy sees the same isolated round as an individual pipe request.
+        isolated = ForkingPickler.loads(ForkingPickler.dumps(rnd))
+        cards = wrapped.decide_declare(isolated, seat, final=final)
+        traces = vars(wrapped).get("declare_decisions", [])
+        # Freeze the action and receipt before the next call can reuse them.
+        cards, traces = ForkingPickler.loads(ForkingPickler.dumps((cards, traces)))
+        receipts[index].extend(traces)
+        return cards
+
+    deal_and_declare(rnd, decide_declare)
+    return rnd, [(_snapshot(bots[index]), receipts[index]) for index in indices]
+
+
 def _worker(conn, factory, specs, checkpoints, parent_pid):
     # Linux cloud: kill a blocked native search even if its supervisor crashes.
     # Normal close/finally and multiprocessing daemon cleanup also cover macOS.
@@ -128,12 +156,15 @@ def _worker(conn, factory, specs, checkpoints, parent_pid):
                     bots.clear()
                     conn.send((request, "result", (None, None, None)))
                     continue
+                if method == "deal":
+                    rnd, indices = args
+                    result = _deal(rnd, indices, bots)
+                    conn.send((request, "result", (result, None, None)))
+                    continue
                 if index not in bots:
                     bots[index] = factory(*spec)
                 wrapped = bots[index]
-                wrapped.decisions.clear()
-                wrapped.bury_decisions.clear()
-                vars(wrapped).pop("declare_decisions", None)   # created by its first record
+                _clear_receipts(wrapped)
                 if method == "register":
                     result = None
                 elif method == "decide_play":
@@ -209,6 +240,19 @@ class DeadlineSession:
         if self.process is not None:
             self.call(None, "reset", (), {}, deadline=time.monotonic() + STARTUP_SECONDS)
         self.specs, self.checkpoints = [], {}
+
+    def deal(self, rnd, policies):
+        """Run the opening and commit every seat's state after a complete reply."""
+        if any(type(policy) is not DeadlinePolicy or policy.session is not self
+               for policy in policies):
+            raise ValueError("batched deal requires this session's deadline policies")
+        indices = [policy.index for policy in policies]
+        result, _, _, _ = self.call(None, "deal", (rnd, indices), {})
+        dealt, updates = result
+        for policy, (checkpoint, traces) in zip(policies, updates, strict=True):
+            self.checkpoints[policy.index] = checkpoint
+            policy._record_declarations(traces)
+        return dealt
 
     def call(self, index, method, args, kwargs, *, deadline=None):
         self.sequence += 1
@@ -286,9 +330,12 @@ class DeadlinePolicy:
     def decide_declare(self, rnd, seat, final=False):
         result, traces, _, _ = self.session.call(self.index, "decide_declare", (rnd, seat),
                                                  {"final": final})
-        if traces:   # declare receipts (see TimedPolicy); the key exists only once one does
-            self.__dict__.setdefault("declare_decisions", []).extend(dict(t) for t in traces)
+        self._record_declarations(traces)
         return result
+
+    def _record_declarations(self, traces):
+        if traces:
+            self.__dict__.setdefault("declare_decisions", []).extend(dict(t) for t in traces)
 
     def decide_bury(self, rnd, seat):
         result, traces, _, _ = self.session.call(self.index, "decide_bury", (rnd, seat), {})

@@ -62,24 +62,35 @@ class FullGameCutoff(RuntimeError):
             f"level_idx={self.level_idx}); refusing to score cutoff")
 
 
-def play_round(game: Game, policies: list, record: bool = False) -> RoundLog:
+def play_round(game: Game, policies: list, record: bool = False, *, deal=None) -> RoundLog:
     """Drive one round to completion with the given 4 policies."""
-    prepare_round(game, policies)
+    prepare_round(game, policies, deal=deal)
     return play_prepared_round(game, policies, record=record)
 
 
-def prepare_round(game: Game, policies: list) -> Round:
-    """Run canonical deal/declare/bury once for a shared play-only comparison."""
-    rnd = game.start_round()
+def deal_and_declare(rnd: Round, decide_declare) -> None:
+    """Run the canonical deal and give each seat its final declare opportunity."""
     while rnd.phase == "deal":
         seat, _, _ = rnd.deal_next()
-        cards = policies[seat].decide_declare(rnd, seat)
+        cards = decide_declare(rnd, seat)
         if cards:
             rnd.declare(seat, cards)
     for seat in range(4):  # last chance with a lower bar, like the grace window
-        cards = policies[seat].decide_declare(rnd, seat, final=True)
+        cards = decide_declare(rnd, seat, final=True)
         if cards:
             rnd.declare(seat, cards)
+
+
+def prepare_round(game: Game, policies: list, *, deal=None) -> Round:
+    """Run canonical deal/declare/bury once for a shared play-only comparison."""
+    rnd = game.start_round()
+    if deal is None:
+        def decide_declare(rnd, seat, **kwargs):
+            return policies[seat].decide_declare(rnd, seat, **kwargs)
+
+        deal_and_declare(rnd, decide_declare)
+    else:
+        game.round = rnd = deal(rnd, policies)
     rnd.finalize_declare()
     assert rnd.banker is not None
     rnd.bury(rnd.banker, policies[rnd.banker].decide_bury(rnd, rnd.banker))

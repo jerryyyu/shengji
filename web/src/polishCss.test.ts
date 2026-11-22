@@ -63,7 +63,7 @@ describe("press feedback", () => {
   ];
   const DIM = [
     ".tabbar-item", ".topbar-tab", ".segmented-btn", ".howto-link", "button.tp-seat", ".tp-chat", ".tp-settings",
-    ".play-mode-opt", ".chat-quick-btn", "button.q-link", ".account-pill", ".last-trick-close",
+    ".play-mode-opt", ".chat-quick-btn", "button.q-link", ".account-pill", ".last-trick-close", ".rating-signin",
   ];
   const active = (sel: string) => rules.filter((r) => r.sels.some((s) => s.startsWith(`${sel}:active`)));
 
@@ -91,7 +91,7 @@ describe("tap targets", () => {
   // that shrinks the control is measured, not assumed.
   const EXTENDED = [
     ".last-trick-btn", ".reconnect-retry", ".play-mode-opt", ".tp-settings", ".btn.join-leave",
-    ".table-pill", ".last-trick-close", ".chat-quick-btn", ".account-pill", ".segmented-btn",
+    ".table-pill", ".last-trick-close", ".chat-quick-btn", ".account-pill", ".segmented-btn", ".rating-signin",
   ];
   // States drawn under 44px on purpose, each with its reason.
   const EXCEPTIONS: Record<string, string> = {

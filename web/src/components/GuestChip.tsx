@@ -1,4 +1,6 @@
 import { useEffect, useId } from "react";
+import { createPortal } from "react-dom";
+import { useTopModalHost } from "../modalHosts";
 import { useAuth } from "../auth";
 import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
@@ -28,12 +30,15 @@ export default function GuestChip({ compact = false }: { compact?: boolean }) {
  *  then the sign-in buttons (Google, and Apple where the app offers it) with
  *  the one line that signing in agrees to the Terms of use, then Done, which keeps the name for next time. App mounts it once, and the
  *  chip, Me's Edit name and every Sign in open it with `guestName.open()`;
- *  signing in closes it, and an account never sees it. */
+ *  signing in closes it, and an account never sees it. Over an open modal
+ *  dialog (a round end) it is drawn inside that dialog, the one place the
+ *  browser lets it be seen and tapped. */
 export function IdentitySheet() {
   const { name, editing } = useGuestName();
   const account = useAuth();
   const signedIn = account.status === "in";
   const id = useId();
+  const host = useTopModalHost();
   useEffect(() => {
     if (signedIn && editing) guestName.close();
   }, [signedIn, editing]);
@@ -45,7 +50,7 @@ export function IdentitySheet() {
   const signIn = account.status === "out" && account.clientId ? <GoogleSignIn clientId={account.clientId} />
     : account.status === "error" ? <SignInUnavailable />
     : null;
-  return (
+  const sheet = (
     <Sheet title="Your name" onClose={done} cancel={null} className="identity-sheet">
       <div className="q-sheet-pad guest-name-sheet">
         <div className="field">
@@ -84,4 +89,5 @@ export function IdentitySheet() {
       </div>
     </Sheet>
   );
+  return host ? createPortal(sheet, host) : sheet;
 }

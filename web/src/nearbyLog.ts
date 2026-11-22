@@ -51,8 +51,10 @@ export function nearbyLogText(): string {
   return snapshot.map(lineText).join("\n");
 }
 
+// The app's Capacitor bridge (native-bridge.js) returns the listener itself,
+// not a promise of it, so the result is wrapped before it is chained.
 interface LogSource {
-  addListener(event: "debugLog", fn: (ev: { text: string }) => void): Promise<unknown>;
+  addListener(event: "debugLog", fn: (ev: { text: string }) => void): unknown;
 }
 
 let nativeListening = false;
@@ -61,7 +63,16 @@ let nativeListening = false;
 export function listenNativeLog(p: LogSource): void {
   if (nativeListening) return;
   nativeListening = true;
-  void p.addListener("debugLog", (ev) => nearbyLog("native", ev.text)).catch(() => { nativeListening = false; });
+  try {
+    void Promise.resolve(p.addListener("debugLog", (ev) => nearbyLog("native", ev.text))).catch(() => { nativeListening = false; });
+  } catch {
+    nativeListening = false;
+  }
+}
+
+/** Tests: listen to the plugin's lines again on the next attach. */
+export function forgetNativeLogForTests(): void {
+  nativeListening = false;
 }
 
 /** Tests: start with an empty log. */

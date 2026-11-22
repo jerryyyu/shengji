@@ -1,0 +1,34 @@
+{
+  "seed": 2,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 35.958630066365004,
+      "kind": "bg",
+      "who": "J1",
+      "dur": 14.107301000040025,
+      "arg": 0
+    },
+    {
+      "t": 87.59926300100051,
+      "kind": "drop",
+      "who": "J1",
+      "dur": 0,
+      "arg": 2
+    },
+    {
+      "t": 117.10146770463325,
+      "kind": "drop",
+      "who": "J1",
+      "dur": 0,
+      "arg": 0
+    }
+  ],
+  "invariant": "pending move re-sent after a rebuild",
+  "page": "ws",
+  "gaps": "strict",
+  "gapOnly": "pending"
+}

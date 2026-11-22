@@ -465,9 +465,9 @@ export function offlineModel({ ready, starting, bots, nearby = null }: {
     status,
     seats: OFFLINE_SEATS,
     you: 0,
-    // the Bots row only, which you pick until Start; a table being opened to
-    // nearby phones has none (its bots are Standard)
-    rows: nearby?.on ? null : { code: null, ranked: false, opener: !starting, level: null, joiners: undefined, bots },
+    // the Bots row only, which you pick until Start; while the table is being
+    // opened to nearby phones it shows the level the nearby table takes
+    rows: { code: null, ranked: false, opener: !starting && !nearby?.on, level: null, joiners: undefined, bots },
     waitSwitch: null,
     nearbySwitch: nearby ? { label: nearby.label, on: nearby.on, disabled: nearby.on } : null,
     // nearby tables have no chat

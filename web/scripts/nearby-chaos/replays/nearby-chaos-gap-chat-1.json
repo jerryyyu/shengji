@@ -1,0 +1,20 @@
+{
+  "seed": 1,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 85.0084274255205,
+      "kind": "stallPhone",
+      "who": "J3",
+      "dur": 5.972324826288968,
+      "arg": 0
+    }
+  ],
+  "invariant": "quick reconnect adds no chat",
+  "page": "ws",
+  "gaps": "strict",
+  "gapOnly": "chat"
+}

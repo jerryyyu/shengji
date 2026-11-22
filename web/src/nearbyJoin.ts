@@ -6,7 +6,7 @@ import { JOIN_TIMEOUT_MS } from "./codeJoin";
 import { nearbyChoices, nearbyDefaultSeat } from "./joinSeats";
 import type { RoomSeats, ServerMsg } from "./protocol";
 import type { ConnStatus } from "./ws";
-import { conn } from "./ws";
+import { conn, STALE_CONNECT_MS } from "./ws";
 import { OFFLINE, setNearbySession, setOffline } from "./offlineMode";
 import { forgetNearbyAllowed, noteNearbyAllowed } from "./nearbySession";
 import type { LinkState } from "./offline/server/nearby/transport";
@@ -36,7 +36,8 @@ export interface NearbyJoin {
 /** What the nearby join needs of the page: its socket, the on-device
  *  server's module, offline mode and the app's return to the foreground. */
 export interface NearbyJoinDeps {
-  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby" | "reconnect">;
+  conn: Pick<typeof conn, "send" | "subscribe" | "subscribeStatus" | "useNearby" | "leaveNearby" | "leaveToLobby" | "reconnect"
+    | "nearbyLeaveOwed">;
   /** `greet` gives the hello a seated joiner's new link resumes with. */
   socketFor(code: string, onState: (state: LinkState, detail?: string) => void,
             greet: () => Record<string, unknown> | null): Promise<() => WebSocket>;
@@ -57,6 +58,24 @@ export interface NearbyJoinDeps {
  *  window the host has to come back in (the plugin's hostWindow), and a few
  *  seconds more, so a host back at the last moment still finds its joiners. */
 export const HOST_WINDOW_MS = 65_000;
+/** The host-left window counts this page's awake time in ticks this long. */
+const AWAKE_TICK_MS = 1000;
+
+/** `fn` once `ms` of this page's awake time have passed, counted in ticks:
+ *  a tick that comes late (the page frozen, or in the background) still
+ *  counts as one, so the time the page itself was stopped is left out.
+ *  Returns the call that cancels it. */
+export function afterAwake(fn: () => void, ms: number): () => void {
+  let left = Math.ceil(ms / AWAKE_TICK_MS);
+  let id = 0;
+  const tick = () => {
+    left -= 1;
+    if (left <= 0) fn();
+    else id = window.setTimeout(tick, AWAKE_TICK_MS);
+  };
+  id = window.setTimeout(tick, AWAKE_TICK_MS);
+  return () => window.clearTimeout(id);
+}
 /** A look that has neither found the table nor been told why by then ends
  *  as not found. It is held while the system's Local Network prompt is up
  *  (the plugin's "waiting" with "prompt"), and any other "waiting" starts
@@ -65,6 +84,14 @@ export const LOOK_LIMIT_MS = 30_000;
 /** After a Leave, the link waits this long at most for the host's answer
  *  before it closes. */
 export const LEAVE_LINK_MS = 3000;
+/** A Leave the host has not had yet (tapped while the link was down, or
+ *  its link gone before the answer) keeps the link this long at the most
+ *  for a new link to carry it: a resume's link up (8 s) and its answer
+ *  (up to 20 s on a link that carries), with room for one more try. */
+export const LEAVE_OWED_MS = 30_000;
+/** The socket's link-state detail for a refused resume (its SEAT_GONE),
+ *  spelled here so this module never loads the socket's. */
+const SEAT_GONE = "seat_gone";
 
 /** A seat token kept on the phone lets a restarted app take its seat back by
  *  the code: it lasts this long from its last write. */
@@ -138,12 +165,15 @@ export class NearbyJoinStore {
   private wasOffline = false;
   private retried = false;
   private denied = false;
-  private gone: number | null = null;
+  /** Cancels the host-left window while it runs. */
+  private gone: (() => void) | null = null;
   private attempt = 0;
   private lookTimer: number | null = null;
   private joinTimer: number | null = null;
   /** A Leave is waiting for the host's answer (the link's close). */
   private leaving: number | null = null;
+  /** That Leave's wait has been given LEAVE_OWED_MS for a new link once. */
+  private leaveRetried = false;
   /** The seat token. It is also kept on the phone by the table's code
    *  (keepSeatToken) until the table is over for this phone, and is never
    *  sent to the game server or written to the log. */
@@ -154,6 +184,8 @@ export class NearbyJoinStore {
   private keptAt = 0;
   /** The socket's latest status. */
   private status: ConnStatus = "closed";
+  /** When the socket's current attempt began (its latest "connecting"). */
+  private connectingAt = 0;
   /** Ends the network path watch, while the link is live. */
   private unwatch: (() => void) | null = null;
   /** The look's link factory, for the kept token's own link. */
@@ -254,7 +286,20 @@ export class NearbyJoinStore {
 
   private onLink(attempt: number, state: LinkState, detail?: string): void {
     if (attempt !== this.attempt) return;
-    if (this.seated) return;
+    if (this.claiming && !this.seated && detail === SEAT_GONE) {
+      // the socket turns a refused resume into this detail: for the kept
+      // token's resume it is the full outcome, and the token goes
+      this.claimEnd(true);
+      return;
+    }
+    if (this.seated) {
+      // the seat is gone: a Leave waiting for a link has nothing to leave
+      if (detail === SEAT_GONE) {
+        if (this.leaving === null) this.seatGone();
+        else this.cancel();
+      }
+      return;
+    }
     const step = this.view?.step;
     if (step !== "looking") return;
     // a denial is final for this attempt: no later not-found replaces its line
@@ -285,7 +330,7 @@ export class NearbyJoinStore {
 
   private endLink(): void {
     this.clearGone();
-    this.clearLeaving();
+    this.endLeaving();
     this.token = null;
     this.claiming = false;
     this.unwatch?.();
@@ -333,12 +378,16 @@ export class NearbyJoinStore {
   /** While the link is live: when the phone's network comes back and the
    *  seat is not connected, a fresh attempt starts at once rather than
    *  after the socket's backoff or on a link that went stale with the old
-   *  path. */
+   *  path. An attempt begun within STALE_CONNECT_MS is on the new path
+   *  already and is kept, as ws.ts keeps a fresh connect on a wake. */
   private watchPath(): void {
     const live = this.attempt;
     void this.deps.watchPath((up) => {
       nearbyLog("join", `path ${up ? "back" : "down"} (${this.status})`);
-      if (up && this.live && this.seated && this.status !== "open" && this.leaving === null) {
+      if (up && this.live && this.seated && this.status === "connecting" && Date.now() - this.connectingAt <= STALE_CONNECT_MS) {
+        nearbyLog("join", "the attempt under way is fresh: kept");
+      } else if (up && this.live && this.seated && this.status !== "open"
+                 && (this.leaving === null || this.deps.conn.nearbyLeaveOwed())) {
         nearbyLog("join", "reconnect now: the network is back");
         this.deps.conn.reconnect();
       }
@@ -346,6 +395,19 @@ export class NearbyJoinStore {
       if (this.live && this.unwatch === null && this.attempt >= live) this.unwatch = unwatch;
       else unwatch();
     }, () => {});
+  }
+
+  /** The host refused the seat's resume: the table no longer knows its
+   *  token. It is forgotten, and the code's join starts over with the
+   *  table's seats, so the player picks one. */
+  private seatGone(): void {
+    nearbyLog("join", "resume refused: the seat is gone; the seats again");
+    const code = this.seatedCode;
+    this.forgetTable();
+    this.token = null;
+    this.seated = false;
+    this.clearGone();
+    this.look(code);
   }
 
   /** Move the glowing seat to another open seat. */
@@ -426,11 +488,29 @@ export class NearbyJoinStore {
     this.forgetTable();
     this.clearGone();
     this.hostLeft = false;
+    // with the link down the Leave waits for the next link (ws.ts sends it
+    // as that link opens)
+    this.leaveRetried = this.status !== "open";
+    this.leaveBy(this.status === "open" ? LEAVE_LINK_MS : LEAVE_OWED_MS);
+    this.set(null);
+  }
+
+  /** The link closes `ms` from now unless the host's answer ends it first.
+   *  A Leave still unanswered by then on a link that looks open was lost
+   *  with a stuck link: a fresh one carries it, once. */
+  private leaveBy(ms: number): void {
+    this.clearLeaving();
     this.leaving = window.setTimeout(() => {
       this.leaving = null;
+      if (this.deps.conn.nearbyLeaveOwed() && !this.leaveRetried) {
+        this.leaveRetried = true;
+        nearbyLog("join", "leave: no answer from the host; a new link sends it");
+        this.leaveBy(LEAVE_OWED_MS);
+        this.deps.conn.reconnect();
+        return;
+      }
       this.cancel();
-    }, LEAVE_LINK_MS);
-    this.set(null);
+    }, ms);
   }
 
   private clearLeaving(): void {
@@ -438,18 +518,36 @@ export class NearbyJoinStore {
     this.leaving = null;
   }
 
+  /** The Leave's wait is over, whichever way. */
+  private endLeaving(): void {
+    this.clearLeaving();
+    this.leaveRetried = false;
+  }
+
   private clearGone(): void {
-    if (this.gone !== null) window.clearTimeout(this.gone);
+    this.gone?.();
     this.gone = null;
   }
 
   private onStatus(s: ConnStatus): void {
     this.status = s;
+    if (s === "connecting") this.connectingAt = Date.now();
     if (!this.live) return;
     if (this.leaving !== null) {
+      if (s === "open") return;
+      if (this.deps.conn.nearbyLeaveOwed()) {
+        // the link went before the host answered the Leave: the socket's
+        // reconnect resumes the seat only to carry the Leave, once more
+        if (s === "closed" && !this.leaveRetried) {
+          this.leaveRetried = true;
+          nearbyLog("join", "leave: the link went before the host answered; the next link sends it");
+          this.leaveBy(LEAVE_OWED_MS);
+        }
+        return;
+      }
       // the host answered the Leave by ending the link; the socket's
       // reconnect is dropped with the transport, outside this callback
-      if (s !== "open") window.setTimeout(() => { if (this.leaving !== null) this.cancel(); }, 0);
+      window.setTimeout(() => { if (this.leaving !== null) this.cancel(); }, 0);
       return;
     }
     if (s !== "open" && this.claiming && !this.seated) {
@@ -461,7 +559,8 @@ export class NearbyJoinStore {
       // a seated joiner's link dropped: the socket keeps looking, by token,
       // for as long as the host may take to come back
       if (this.seated && this.gone === null) {
-        this.gone = window.setTimeout(() => {
+        // the page's own time stopped (the background) is not the host's
+        this.gone = afterAwake(() => {
           this.gone = null;
           this.forgetTable();
           this.hostLeft = true;

@@ -162,9 +162,9 @@ describe("joining a nearby game in progress", () => {
     const back = await t.join("P2");
     expect(errors(back)).toEqual([]);
     expect(t.lastState(back)!.you).toBe(seat);
-    // the old token no longer holds that seat
+    // the old token no longer holds that seat: its resume is refused
     const old = await t.join("Old", { token: j.token });
-    expect(errors(old).map((f) => f.code)).toEqual(["room_full"]);
+    expect(errors(old).map((f) => f.code)).toEqual(["room_not_found"]);
   });
 });
 
@@ -217,7 +217,7 @@ describe("a seat left by choice", () => {
     expect(t.lastState(zed)!.you).toBe(seat);
     expect(zed.token).not.toBe(j.token);
     const old = await t.join("Old", { token: j.token });
-    expect(errors(old).map((f) => f.code)).toEqual(["room_full"]);
+    expect(errors(old).map((f) => f.code)).toEqual(["room_not_found"]);
     await playsIt(t, zed, seat);
   });
 
@@ -379,7 +379,11 @@ describe("a seat belongs to its token, never to an address", () => {
     const { t, alice, seat, peer } = await aliceAt();
     t.fake.drop(t.code, peer);
     await t.advance(1);
-    const forged = await t.join("Mal", { device: ADDR, token: "not-a-seat-token" });
+    // as a resume (no seat picked) it is refused outright
+    const resume = await t.join("Mal", { device: ADDR, token: "not-a-seat-token" });
+    expect(errors(resume).map((f) => f.code)).toEqual(["room_not_found"]);
+    // with a pick, even of the held seat, it is a newcomer elsewhere
+    const forged = await t.join("Mal", { device: ADDR, token: "not-a-seat-token", seat });
     expect(errors(forged)).toEqual([]);
     const took = t.lastState(forged)!.you as number;
     expect(took).not.toBe(seat);
@@ -388,7 +392,7 @@ describe("a seat belongs to its token, never to an address", () => {
     expect(forged.token).not.toBe(alice.token);
     // every other seat a person's now: a forged token gets nothing
     await t.join("M2", { device: ADDR });
-    const none = await t.join("M3", { device: ADDR, token: "forged-too" });
+    const none = await t.join("M3", { device: ADDR, token: "forged-too", seat });
     expect(errors(none).map((f) => f.code)).toEqual(["room_full"]);
     expect(t.room!.seats[seat].token).toBe(alice.token);
     expect(t.room!.seats[seat].name).toBe("Alice");

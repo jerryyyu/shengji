@@ -27,7 +27,7 @@ import {
   sortedHand,
 } from "../engine/round";
 import { SmartBot, viewFor } from "../bot";
-import { type Clock, realClock, sleep } from "./clock";
+import { type Clock, type PauseWatch, pausedAfter, pauseWatch, realClock, sleep } from "./clock";
 import { BOT_LEVELS, type BotLevel } from "../../queue/messages";
 import { type ActionEntry, BotGate, DEFAULT_BOT_LEVEL, type DecisionKind, type RemoteBot, requestFor } from "./pybot";
 import { DeckRng, randomSeed } from "./rng";
@@ -35,6 +35,7 @@ import { CANONICAL, LOBBY, RETIRED_MESSAGE, forQueue, forRoom, retired } from ".
 import { newNearbyCode } from "./nearby/codes";
 import { NEARBY_COPY } from "./nearby/copy";
 import { nearbyName } from "./nearby/names";
+import { LIMITS, utf8Bytes } from "./nearby/protocol";
 
 export const BOT_DELAY = 0.7;
 export const DEAL_DELAY = 0.2;
@@ -48,6 +49,11 @@ const KITTY_FIRST_ID = 100;
  *  connected person has this long for each bury, play and round-end Next;
  *  then the bot makes that one decision. */
 export const MOVE_TIMER = 60.0;
+/** A nearby player back on their link mid-decision has at least this long
+ *  left for it: their clock stood still while they were gone, and one that
+ *  had nearly run out before the drop gets enough for a decision, but no
+ *  more, so dropping and coming back never buys a whole new clock. */
+export const RETURN_MIN = 15.0;
 /** server.py AWAY_IN_A_ROW and AWAY_PER_ROUND: this many timeouts mark the
  *  seat away, and the bot plays every decision for it until its player is back. */
 export const AWAY_IN_A_ROW = 2;
@@ -56,10 +62,16 @@ export const AWAY_PER_ROUND = 3;
  *  before the bot plays for them (nearby rooms). */
 export const TAKEOVER_AFTER = MOVE_TIMER;
 /** A nearby lobby seat whose link dropped is kept this long for its owner
- *  to come back by token, then freed. */
-export const LOBBY_SEAT_HOLD = 12.0;
+ *  to come back by token, then freed: longer than a stuck link's recovery
+ *  (up to 8 s to call it stuck over peer-to-peer, 8 s for the new link, 7 s
+ *  for the host's answer to its hello), so a seat is never lost to one. */
+export const LOBBY_SEAT_HOLD = 30.0;
 /** server.py's casual-room watchdog period. */
 export const WATCHDOG_POLL = 5.0;
+/** A nearby seat's link that is back within this long was a blip: the
+ *  table's chat says "disconnected" only for a seat gone longer, and
+ *  "reconnected" only after it said "disconnected". */
+export const DISCONNECT_NOTICE = 3.0;
 /** matchmaking.py BOT_FILL_SECS: once a nearby table has a second person,
  *  bots take its open seats this long after, unless everyone is ready first. */
 export const NEARBY_BOT_FILL = 60.0;
@@ -121,6 +133,9 @@ export class Seat {
   leftByChoice = false;
   /** The watchdog's first cover of this absence has been announced. */
   botAnnounced = false;
+  /** The table's chat has said this seat disconnected, and not yet that it
+   *  is back. */
+  goneAnnounced = false;
   /** Clock time this seat's move clock started for the decision it owes;
    *  null when it owes none or no clock runs (server.py turn_started). */
   turnStarted: number | null = null;
@@ -166,7 +181,8 @@ export class LocalRoom {
   readonly code: string;
   startLevel: string;
   /** The table's Bots, fixed for its game: every release-bot request names it. */
-  readonly botLevel: BotLevel;
+  /** The table's Bots; a nearby lobby's host may change it before the game. */
+  botLevel: BotLevel;
   readonly decks: DeckRng;
   /** A table for nearby phones: it waits in a lobby for joiners until the
    *  host starts it, and a dropped seat is covered by a bot. */
@@ -338,6 +354,15 @@ function trickJson(t: Trick | null, ordering: Ordering | null): Json | null {
 function controller(seat: Seat): string {
   if (seat.isBot) return "bot";
   return seat.connected ? "human" : "bot_cover";
+}
+
+/** The chat_history frame a seat gets on attach. At a nearby table it
+ *  keeps only the newest lines that fit in one link frame
+ *  (LIMITS.frameBytes): a frame over it would never cross the link. */
+export function chatHistory(room: LocalRoom): Json {
+  const frame = { type: "chat_history", room: room.code, through_id: room.chatSeq, messages: [...room.chat] };
+  if (room.nearby) while (frame.messages.length && utf8Bytes(JSON.stringify(frame)) > LIMITS.frameBytes) frame.messages.shift();
+  return frame;
 }
 
 /** server.py _takeover_in: seconds before the bot plays for a dropped human. */
@@ -547,6 +572,7 @@ export function roomJson(room: LocalRoom, seat: number, now = 0): Json {
     allow_joiners: room.allowJoiners,
     players: room.slots().flatMap((s, i) =>
       s === null ? [] : [{ seat: i, name: s.name, is_bot: s.isBot, connected: s.connected || s.isBot }]),
+    ...(room.nearby ? { bot_level: room.botLevel } : {}),
     ...(room.lobby ? { nearby: nearbyJson(room, now) } : {}),
   };
 }
@@ -598,8 +624,13 @@ export class LocalServer {
   readonly autoplay: boolean;
   private seed: () => number;
 
+  /** The page's own pauses, told while a nearby host holds the watch. */
+  private pauses: PauseWatch;
+
   constructor(opts: LocalServerOptions = {}) {
     this.clock = opts.clock ?? realClock;
+    this.pauses = pauseWatch(this.clock);
+    this.pauses.on((from, to) => this.paused(from, to));
     this.seed = opts.seed ?? randomSeed;
     this.remote = opts.remote ? new BotGate(opts.remote, this.clock) : null;
     this.autoplay = opts.autoplay ?? false;
@@ -651,6 +682,35 @@ export class LocalServer {
     }
   }
 
+  /** A nearby seat back from a drop while it owes a decision: its clock
+   *  takes up where it stood at the drop (no time away counts, so no strike
+   *  comes of it), with at least RETURN_MIN left, and is checked again then. */
+  private resumeMoveClock(room: LocalRoom, seat: Seat): void {
+    if (!room.nearby || room.game === null || seat.connected || seat.leftAt === null || seat.turnStarted === null) return;
+    const now = this.clock.now();
+    const used = Math.max(0, seat.leftAt - seat.turnStarted);
+    const left = Math.min(MOVE_TIMER, Math.max(RETURN_MIN, MOVE_TIMER - used));
+    seat.turnStarted = now - (MOVE_TIMER - left);
+    this.moveCheckIn(room, left);
+  }
+
+  /** The host page was stopped from `from` to `to`: no one at a nearby
+   *  table could move, so every move clock, the declare window and a
+   *  dropped seat's wait for its bot leave that time out, and no one is
+   *  struck for the host's own pause. */
+  private paused(from: number, to: number): void {
+    for (const room of this.rooms.values()) {
+      if (!room.nearby || room.closed || !room.game) continue;
+      for (const sd of room.seats) {
+        // a dropped seat's clock already stopped at its drop: both ends move
+        if (!sd.connected && sd.leftAt !== null) sd.leftAt += pausedAfter(sd.leftAt, from, to);
+        if (sd.turnStarted !== null) sd.turnStarted += pausedAfter(sd.turnStarted, from, to);
+      }
+      if (room.declareUntil !== null && room.declareUntil > from) room.declareUntil += to - from;
+      this.broadcast(room);
+    }
+  }
+
   private moveCheckIn(room: LocalRoom, seconds: number): void {
     this.clock.setTimeout(() => this.moveTimerTick(room), Math.max(0, seconds));
   }
@@ -660,6 +720,8 @@ export class LocalServer {
    *  round end. */
   moveTimerTick(room: LocalRoom): void {
     if (room.closed || !room.game) return;
+    // a pause that ends now moves the clocks on before they are read
+    this.pauses.poll();
     this.syncMoveTimer(room);
     const game = room.game;
     const rnd = room.round;
@@ -761,6 +823,7 @@ export class LocalServer {
   }
 
   attach(room: LocalRoom, seat: Seat, writer: Writer): number {
+    this.resumeMoveClock(room, seat);
     seat.writer?.cancel();
     seat.gen += 1;
     seat.connected = true;
@@ -769,16 +832,15 @@ export class LocalServer {
     seat.leftByChoice = false;
     seat.botAnnounced = false;
     this.enqueue(seat, { type: "resume", token: seat.token, gen: seat.gen });
-    this.enqueue(seat, { type: "chat_history", room: room.code, through_id: room.chatSeq, messages: [...room.chat] });
+    this.enqueue(seat, chatHistory(room));
     return seat.gen;
   }
 
   detach(seat: Seat, room: LocalRoom | null, gen: number | null): void {
     if (gen !== null && gen !== seat.gen) return;
-    if (room && room.seatIndex(seat) >= 0) {
-      room.ready.delete(room.seatIndex(seat));
-      room.lobbyReady.delete(room.seatIndex(seat));
-    }
+    // a lobby seat keeps its Start while its link is down: the table does
+    // not start without a person who has not tapped it (startIfReady)
+    if (room && room.seatIndex(seat) >= 0) room.ready.delete(room.seatIndex(seat));
     seat.connected = false;
     seat.leftAt = this.clock.now();
     seat.writer?.cancel();
@@ -797,6 +859,7 @@ export class LocalServer {
     this.clock.setTimeout(() => {
       room.watching = false;
       if (room.closed || !room.game) return;
+      this.pauses.poll();
       const now = this.clock.now();
       const seat = this.currentActor(room);
       const sd = seat === null ? null : room.seats[seat];
@@ -1039,6 +1102,9 @@ export class LocalServer {
     for (;;) {
       await sleep(this.clock, DECLARE_POLL);
       if (room.closed || room.round !== rnd || rnd.phase !== "declare") return;
+      // the window moved on over a pause of the host page (paused())
+      this.pauses.poll();
+      if (room.declareUntil !== null && room.declareUntil > deadline) deadline = room.declareUntil;
       let respond = false;
       if (needsResponse || rnd.declaration !== lastDeclaration) {
         lastDeclaration = rnd.declaration;
@@ -1211,6 +1277,11 @@ export class LocalServer {
       const level = msg.level ?? msg.start_level;
       if (typeof level !== "string" || !(RANKS as readonly string[]).includes(level)) throw new IllegalPlay("Unknown starting level.");
       room.startLevel = level;
+    } else if (t === "table_bot_level") {
+      if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets the bots.");
+      const level = msg.level ?? msg.bot_level;
+      if (typeof level !== "string" || !(BOT_LEVELS as readonly string[]).includes(level)) throw new IllegalPlay("Bots is Standard or Advanced.");
+      room.botLevel = level as BotLevel;
     } else if (t === "table_move") {
       const to = msg.seat;
       const from = msg.from === undefined || msg.from === null ? seat : msg.from;
@@ -1225,12 +1296,14 @@ export class LocalServer {
     }
   }
 
-  /** A nearby lobby starts once every connected person has tapped Start;
-   *  the host alone starts at once, bots in the open seats. */
+  /** A nearby lobby starts once every seated person has tapped Start,
+   *  including one whose link is down within its LOBBY_SEAT_HOLD (their
+   *  Start is kept through the drop); the host alone starts at once, bots
+   *  in the open seats. */
   startIfReady(room: LocalRoom): boolean {
     const lobby = room.lobby;
     if (!lobby) return false;
-    const waiting = lobby.some((s, i) => s !== null && !s.isBot && s.connected && !room.lobbyReady.has(i));
+    const waiting = lobby.some((s, i) => s !== null && !s.isBot && !room.lobbyReady.has(i));
     if (waiting) return false;
     this.startNearby(room);
     return true;
@@ -1251,7 +1324,7 @@ export class LocalServer {
    *  is free again, so a phone that is gone never holds a place at the table. */
   lobbyDropped(room: LocalRoom, seat: Seat): void {
     const gen = seat.gen;
-    this.clock.setTimeout(() => {
+    this.pauses.after(() => {
       if (room.closed || !room.lobby || seat.connected || seat.gen !== gen) return;
       const i = room.lobby.indexOf(seat);
       if (i < 0 || i === room.host) return;
@@ -1266,6 +1339,35 @@ export class LocalServer {
     this.startIfReady(room);
     this.broadcast(room);
     this.kickBots(room);
+  }
+
+  /** A nearby joiner's seat its phone never showed it had (host.ts
+   *  confirmBy), with its link gone: given up as by that joiner's Leave. */
+  giveUpNearbySeat(room: LocalRoom, seat: Seat): void {
+    const idx = room.seatIndex(seat);
+    if (room.closed || idx < 0 || idx === room.host || seat.connected) return;
+    this.chatSystem(room, `${seat.name} left`);
+    if (room.lobby) {
+      room.lobby[idx] = null;
+      room.lobbyReady.delete(idx);
+      this.syncBotsTimer(room);
+      this.startIfReady(room);
+    } else seat.leftByChoice = true;
+    this.broadcast(room);
+    this.kickBots(room);
+  }
+
+  /** A nearby seat's link went: the chat says so once the seat has been
+   *  gone DISCONNECT_NOTICE, so a link that is back at once leaves the chat
+   *  as it was. */
+  noticeGone(room: LocalRoom, seat: Seat): void {
+    const gen = seat.gen;
+    this.clock.setTimeout(() => {
+      if (room.closed || seat.connected || seat.gen !== gen || seat.goneAnnounced || seat.leftByChoice) return;
+      if (room.seatIndex(seat) < 0) return;
+      seat.goneAnnounced = true;
+      this.chatSystem(room, `${seat.name} disconnected`);
+    }, DISCONNECT_NOTICE);
   }
 
   /** The lobby's bot timer follows who sits there: it runs from the moment
@@ -1421,6 +1523,14 @@ export class LocalConnection {
         let seat = room && typeof tok === "string" && tok
           ? room.humans().find((s) => s.token === tok)
           : undefined;
+        if (room && !seat && room.nearby && typeof tok === "string" && tok && (msg.seat === undefined || msg.seat === null)) {
+          // a seated phone's resume whose token the table no longer knows
+          // (its seat was taken over, or freed): it is refused, never seated
+          // in some other seat without the player's pick, and the phone
+          // goes back to the seat picker
+          this.sendDirect({ type: "error", code: "room_not_found", message: "Seat no longer exists." });
+          return;
+        }
         if (room && !seat && room.nearby && !room.lobby) {
           // a game in progress: a newcomer takes over a seat a bot plays, at
           // once, as the online by-code join does (server.py _join_room)
@@ -1454,7 +1564,8 @@ export class LocalConnection {
         this.room = room;
         this.me = seat;
         this.attach(room, seat);
-        server.chatSystem(room, `${seat.name} reconnected`);
+        if (!room.nearby || seat.goneAnnounced) server.chatSystem(room, `${seat.name} reconnected`);
+        seat.goneAnnounced = false;
         server.kickBots(room);
         server.broadcast(room);
       } else {
@@ -1570,6 +1681,7 @@ export class LocalConnection {
       server.endNearbyRoom(room, me);
     } else if (room.lobby) {
       room.lobby[idx] = null;
+      room.lobbyReady.delete(idx);
       server.syncBotsTimer(room);
       server.startIfReady(room);
       server.broadcast(room);
@@ -1593,8 +1705,8 @@ export class LocalConnection {
       // server.py's socket-closed path: the others are told, and the
       // round-end quorum no longer waits on this seat
       const server = this.server;
-      server.chatSystem(room, `${me.name} disconnected`);
       server.detach(me, room, this.myGen);
+      server.noticeGone(room, me);
       if (room.lobby) server.lobbyDropped(room, me);
       else if (room.humans().some((s) => s.connected) && !server.advanceAfterLeave(room)) server.broadcast(room);
     } else if (room && me) this.server.detach(me, room, this.myGen);

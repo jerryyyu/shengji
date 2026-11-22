@@ -1,0 +1,55 @@
+{
+  "seed": 819,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 30.661344164982438,
+      "kind": "stallPhone",
+      "who": "J1",
+      "dur": 6.682763034710661,
+      "arg": 0
+    },
+    {
+      "t": 48.90106155676767,
+      "kind": "loss",
+      "who": "J1",
+      "dur": 0,
+      "arg": 193
+    },
+    {
+      "t": 88.69294657558203,
+      "kind": "storm",
+      "who": "H",
+      "dur": 0,
+      "arg": 0
+    },
+    {
+      "t": 109.4900479069911,
+      "kind": "kill",
+      "who": "J1",
+      "dur": 24.984669310972095,
+      "arg": 0
+    },
+    {
+      "t": 127.49791722605005,
+      "kind": "bg",
+      "who": "H",
+      "dur": 24.353429791051894,
+      "arg": 0
+    },
+    {
+      "t": 139.33255145978183,
+      "kind": "bg",
+      "who": "J1",
+      "dur": 14.855254552094266,
+      "arg": 0
+    }
+  ],
+  "invariant": "back within the bound",
+  "page": "sim",
+  "gaps": "report",
+  "wholeApp": true
+}

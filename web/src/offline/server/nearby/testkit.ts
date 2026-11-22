@@ -2,13 +2,15 @@
 // NearbySockets over a FakeTransport, all on one VirtualClock, each seat
 // optionally played by the fixtures' HumanDriver. Used by the nearby tests
 // only; nothing in the page imports it.
-import { VirtualClock } from "../clock";
+import type { BotLevel } from "../../../queue/messages";
+import { type Clock, VirtualClock } from "../clock";
 import { HumanDriver } from "../driver";
+import type { RemoteBot } from "../pybot";
 import { LocalServer, type LocalRoom } from "../server";
 import { LocalSocket } from "../socket";
 import { NearbyHost } from "./host";
 import { NearbySocket } from "./socket";
-import { FakeTransport } from "./transport";
+import { FakeTransport, type HostHandlers, type NearbyTransport } from "./transport";
 
 export type Frame = Record<string, unknown> & { type: string };
 
@@ -23,6 +25,13 @@ export interface Player {
   left: boolean;
 }
 
+/** The host phone's own clock over the table's (the simulator's
+ *  DeviceClock): `post` runs the host page's work now, or once its JS is
+ *  back from a freeze. */
+export interface HostClock extends Clock {
+  post(fn: () => void): void;
+}
+
 export class NearbyTable {
   readonly clock = new VirtualClock();
   readonly server: LocalServer;
@@ -35,8 +44,13 @@ export class NearbyTable {
   /** Seconds a driven player takes to answer a frame. */
   think = 0.3;
 
-  constructor(seed: number, rounds = 1, delay = 0) {
-    this.server = new LocalServer({ clock: this.clock, seed: () => seed });
+  /** The host page's clock: the table's, or `hostClock`'s, which can freeze. */
+  readonly hostClock: HostClock | null;
+
+  constructor(seed: number, rounds = 1, delay = 0, remote: RemoteBot | null = null,
+              hostClock: ((vc: VirtualClock) => HostClock) | null = null) {
+    this.hostClock = hostClock?.(this.clock) ?? null;
+    this.server = new LocalServer({ clock: this.hostClock ?? this.clock, seed: () => seed, remote });
     this.fake = new FakeTransport(this.clock, delay);
     this.rounds = rounds;
   }
@@ -64,22 +78,37 @@ export class NearbyTable {
       if (p.driver) {
         for (const a of p.driver.react(msg)) {
           const sock = p.sock;
-          this.clock.setTimeout(() => sock.send(JSON.stringify(a)), this.think);
+          (p === this.host ? this.hostClock ?? this.clock : this.clock).setTimeout(() => sock.send(JSON.stringify(a)), this.think);
         }
       }
     };
   }
 
   /** The host page creates a nearby table and starts advertising it. */
-  async open(drive = false, name = "Host"): Promise<void> {
+  async open(drive = false, name = "Host", botLevel?: BotLevel): Promise<void> {
     const sock = new LocalSocket(this.server);
     this.host = { name, sock, frames: [], token: null, driver: null, seat: null, left: false };
     this.wire(this.host, drive);
-    sock.onopen = () => sock.send(JSON.stringify({ type: "create_room", nearby: true, name }));
+    sock.onopen = () => sock.send(JSON.stringify({ type: "create_room", nearby: true, name,
+                                                         ...(botLevel ? { bot_level: botLevel } : {}) }));
     await this.clock.run(() => this.host.frames.some((f) => f.type === "room"), 10_000);
     this.room = [...this.server.rooms.values()][0];
     this.nearbyHost = new NearbyHost(this.server, this.room);
-    await this.nearbyHost.start(this.fake);
+    await this.nearbyHost.start(this.hostClock ? this.hostTransport(this.hostClock) : this.fake);
+  }
+
+  /** The fake transport, with each link event to the host run in the host
+   *  page's JS (held while it is frozen). */
+  private hostTransport(hc: HostClock): NearbyTransport {
+    const fake = this.fake;
+    return {
+      host: (code, h) => {
+        const posted = Object.fromEntries(Object.entries(h).map(([k, fn]) =>
+          [k, typeof fn === "function" ? (...a: unknown[]) => hc.post(() => (fn as (...x: unknown[]) => void)(...a)) : fn]));
+        return fake.host(code, posted as unknown as HostHandlers);
+      },
+      join: fake.join.bind(fake),
+    };
   }
 
   /** A joiner types the code and joins (or resumes with `token`). */

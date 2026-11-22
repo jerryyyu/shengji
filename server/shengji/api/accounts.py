@@ -111,6 +111,10 @@ DEVICE_CREATES_PER_DAY = 20
 # any device account unused for ``DEVICE_IDLE_DAYS`` is purged too.
 DEVICE_UNRATED_DAYS = 30
 DEVICE_IDLE_DAYS = 365
+# A device account's session use is written to ``users.last_seen_at`` at most
+# this often; the purge adds it to its grace, so a throttled write never
+# makes a used account look unused.
+DEVICE_SEEN_EVERY = 3600
 # Random draws before the name search walks the whole list.
 NAME_DRAWS = 32
 _NAME_RNG = random.SystemRandom()
@@ -620,8 +624,8 @@ def _migrate_v10(conn: sqlite3.Connection) -> None:
     new ``users``), the old children and then the old ``users`` are dropped,
     the twins take the old names and the indexes are re-created. Column
     order, constraints, ``WITHOUT ROWID`` and the AUTOINCREMENT high-water
-    marks are kept. A re-run on a table with no CHECK only re-creates what is
-    missing."""
+    marks are kept. Then ``users.last_seen_at`` is added. A re-run on a table
+    with no CHECK only re-creates what is missing."""
     users_sql = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()["sql"]
     relaxed = _PROVIDER_CHECK_RE.sub("", users_sql)
@@ -653,6 +657,8 @@ def _migrate_v10(conn: sqlite3.Connection) -> None:
             _set_sequence(conn, table, seq)
     for statement in filter(None, (s.strip() for s in _DEVICE_CREDENTIALS_V10.split(";"))):
         conn.execute(statement)
+    # When a device account last used a session (``Store.session_account``).
+    _add_column_if_missing(conn, "users", "last_seen_at", "INTEGER NULL")
     problems = conn.execute("PRAGMA foreign_key_check").fetchall()
     if problems:
         raise sqlite3.IntegrityError(f"foreign key check failed after v10: {len(problems)} rows")
@@ -895,7 +901,12 @@ class Store:
         """Create a device account (no provider) holding ``token``'s
         credential, named with an unused generated name; returns the row.
         Only the token's SHA-256 is stored. Raises ``DisplayNameError("taken")``
-        when every generated name is in use."""
+        when every generated name is in use. ``create_device_account`` also
+        starts the first session in the same transaction."""
+        return self._create_device(token, now, rng, with_session=False)[0]
+
+    def _create_device(self, token: str, now: float | None, rng: random.Random | None,
+                       with_session: bool) -> tuple[dict, str | None]:
         t = int(now if now is not None else time.time())
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -911,39 +922,64 @@ class Store:
                     """INSERT INTO device_credentials(token_hash, user_id, created_at, last_seen_at)
                        VALUES (?, ?, ?, ?)""", (_hash_token(token), user_id, t, t))
                 row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+                session = self._insert_session(conn, user_id, t) if with_session else None
                 conn.execute("COMMIT")
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
-            return dict(row)
+            return dict(row), session
 
-    def device_account(self, token: str | None, now: float | None = None) -> dict | None:
-        """The account holding a device credential, suspended or not, else
-        None; a hit marks the credential seen and the account logged in."""
+    def create_device_account(self, token: str, now: float | None = None,
+                              rng: random.Random | None = None) -> tuple[dict, str]:
+        """A new device account and its first session token, in one
+        transaction."""
+        row, session = self._create_device(token, now, rng, with_session=True)
+        assert session is not None
+        return row, session
+
+    def device_sign_in(self, token: str | None,
+                       now: float | None = None) -> tuple[dict, str | None] | None:
+        """Sign in with a device credential, in one transaction: find the
+        account, mark the credential seen and the account logged in, and
+        start a session unless the account is suspended. Returns the row and
+        the session token (None for a suspended account), or None when no
+        account holds the credential, including one deleted a moment ago:
+        a delete either commits first (None) or waits for this to commit."""
         if not token or not re.fullmatch(r"[A-Za-z0-9_-]{20,200}", token):
             return None
         t = int(now if now is not None else time.time())
         digest = _hash_token(token)
         with closing(self._open()) as conn:
-            row = conn.execute(
-                """SELECT u.* FROM device_credentials d JOIN users u ON u.id = d.user_id
-                   WHERE d.token_hash = ?""", (digest,)).fetchone()
-            if row is None:
-                return None
-            conn.execute("UPDATE device_credentials SET last_seen_at = ? WHERE token_hash = ?",
-                         (t, digest))
-            conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (t, row["id"]))
-            return dict(conn.execute("SELECT * FROM users WHERE id = ?", (row["id"],)).fetchone())
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                row = conn.execute(
+                    """SELECT u.id FROM device_credentials d JOIN users u ON u.id = d.user_id
+                       WHERE d.token_hash = ?""", (digest,)).fetchone()
+                if row is None:
+                    conn.execute("COMMIT")
+                    return None
+                user_id = int(row["id"])
+                conn.execute("UPDATE device_credentials SET last_seen_at = ? WHERE token_hash = ?",
+                             (t, digest))
+                conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (t, user_id))
+                user = dict(conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone())
+                session = None if is_suspended(user) else self._insert_session(conn, user_id, t)
+                conn.execute("COMMIT")
+            except BaseException:
+                conn.execute("ROLLBACK")
+                raise
+            return user, session
 
     def purge_device_accounts(self, now: float | None = None) -> list[int]:
         """Delete the device accounts (no provider) that have no rated round
         and have been unused for ``DEVICE_UNRATED_DAYS``, or that have been
-        unused for ``DEVICE_IDLE_DAYS``. Unused means no sign-in
-        (``users.last_login_at``) and no credential use
-        (``device_credentials.last_seen_at``) since then. An account with an
-        unexpired session is never purged: it may be playing on that
-        session without signing in again. Their credentials, sessions, links and blocks
-        go by cascade, and so do games no other account links. A linked
+        unused for ``DEVICE_IDLE_DAYS``. An account's last use is the latest
+        of its sign-in (``users.last_login_at``), its session use
+        (``users.last_seen_at``, written at most every ``DEVICE_SEEN_EVERY``,
+        which the cutoffs allow for) and its credential use
+        (``device_credentials.last_seen_at``). An account with an unexpired
+        session is never purged. Credentials, sessions, links and blocks go
+        by cascade, and so do games no other account links. A linked
         account is never touched. Returns the ids, which also join
         ``deleted_ids`` so a live socket holding one reads as signed out."""
         t = int(now if now is not None else time.time())
@@ -951,16 +987,19 @@ class Store:
             conn.execute("BEGIN IMMEDIATE")
             try:
                 ids = [int(r["id"]) for r in conn.execute(
-                    """SELECT id FROM users
-                       WHERE google_sub IS NULL AND apple_sub IS NULL
-                         AND last_login_at < :since
-                         AND NOT EXISTS (SELECT 1 FROM device_credentials d
-                                         WHERE d.user_id = users.id AND d.last_seen_at >= :since)
-                         AND NOT EXISTS (SELECT 1 FROM sessions s
-                                         WHERE s.user_id = users.id AND s.expires_at > :now)
-                         AND (rated_rounds = 0 OR last_login_at < :idle)""",
-                    {"now": t, "since": t - DEVICE_UNRATED_DAYS * 86400,
-                     "idle": t - DEVICE_IDLE_DAYS * 86400})]
+                    """SELECT id FROM (
+                           SELECT id, rated_rounds,
+                                  MAX(last_login_at, COALESCE(last_seen_at, 0),
+                                      COALESCE((SELECT MAX(d.last_seen_at) FROM device_credentials d
+                                                WHERE d.user_id = users.id), 0)) AS used
+                           FROM users
+                           WHERE google_sub IS NULL AND apple_sub IS NULL
+                             AND NOT EXISTS (SELECT 1 FROM sessions s
+                                             WHERE s.user_id = users.id AND s.expires_at > :now))
+                       WHERE (rated_rounds = 0 AND used < :since) OR used < :idle""",
+                    {"now": t,
+                     "since": t - DEVICE_UNRATED_DAYS * 86400 - DEVICE_SEEN_EVERY,
+                     "idle": t - DEVICE_IDLE_DAYS * 86400 - DEVICE_SEEN_EVERY})]
                 for user_id in ids:
                     conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
                 if ids:
@@ -979,12 +1018,16 @@ class Store:
         """Mint a session token (returned once, never stored) and purge
         whatever sessions have expired."""
         t = int(now if now is not None else time.time())
-        token = secrets.token_urlsafe(32)
         with closing(self._open()) as conn:
-            conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (t,))
-            conn.execute(
-                "INSERT INTO sessions(token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
-                (_hash_token(token), user_id, t, t + SESSION_SECONDS))
+            return self._insert_session(conn, user_id, t)
+
+    @staticmethod
+    def _insert_session(conn: sqlite3.Connection, user_id: int, t: int) -> str:
+        token = secrets.token_urlsafe(32)
+        conn.execute("DELETE FROM sessions WHERE expires_at <= ?", (t,))
+        conn.execute(
+            "INSERT INTO sessions(token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (_hash_token(token), user_id, t, t + SESSION_SECONDS))
         return token
 
     def session_user(self, token: str | None, now: float | None = None) -> dict | None:
@@ -1004,7 +1047,15 @@ class Store:
                 """SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
                    WHERE s.token_hash = ? AND s.expires_at > ?""",
                 (_hash_token(token), t)).fetchone()
-            return dict(row) if row else None
+            if row is None:
+                return None
+            user = dict(row)
+            # A device account's use of a session is its activity for the
+            # purge; accounts with a provider are never written here.
+            if is_device_account(user) and (user.get("last_seen_at") or 0) <= t - DEVICE_SEEN_EVERY:
+                conn.execute("UPDATE users SET last_seen_at = ? WHERE id = ?", (t, user["id"]))
+                user["last_seen_at"] = t
+            return user
 
     def delete_session(self, token: str | None) -> None:
         if not token:
@@ -1877,22 +1928,22 @@ async def auth_device(request: Request, response: Response) -> dict:
     if token is not None:
         if not LIMITER.allow(ip):
             raise HTTPException(status_code=429, detail="Too many sign-in attempts; try again in a minute.")
-        user = await STORE.run(STORE.device_account, token)
-        if user is None:
+        signed_in = await STORE.run(STORE.device_sign_in, token)
+        if signed_in is None:
             raise HTTPException(status_code=401, detail="Device sign-in rejected (unknown).")
+        user, session = signed_in
         refuse_suspended(user)
-        session = await STORE.run(STORE.create_session, user["id"])
+        assert session is not None
         _set_session_cookie(response, request, session)
         return {"user": await account_payload(STORE, user)}
     if not DEVICE_HOURLY.allow(ip) or not DEVICE_DAILY.allow(ip):
         raise HTTPException(status_code=429, detail="Too many new accounts; play as a guest for now.")
     token = secrets.token_urlsafe(32)
     try:
-        user = await STORE.run(STORE.create_device_user, token)
+        user, session = await STORE.run(STORE.create_device_account, token)
     except DisplayNameError as exc:
         log.warning("device account not created: no free name")
         raise HTTPException(status_code=503, detail="No account available; play as a guest.") from exc
-    session = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, session)
     return {"token": token, "user": await account_payload(STORE, user)}
 

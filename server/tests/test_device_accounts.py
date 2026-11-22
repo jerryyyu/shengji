@@ -90,10 +90,17 @@ def _v9_database(path, accounts):
     return g["id"], a["id"], gone["id"]
 
 
+V9_USER_COLUMNS = ("id, google_sub, email, name, picture, created_at, last_login_at, "
+                   "display_name, rating, rated_rounds, leaderboard_visible, apple_sub, suspended_at")
+
+
 def _dump(path):
+    """Every row of every table, ``users`` on its v9 columns (v10 adds one)."""
     out = {}
     with closing(sqlite3.connect(path)) as db:
-        for table in ("users", "sessions", "game_players", "rating_events", "apple_tokens",
+        out["users_v9_columns"] = db.execute(
+            f"SELECT {V9_USER_COLUMNS} FROM users ORDER BY id").fetchall()
+        for table in ("sessions", "game_players", "rating_events", "apple_tokens",
                       "blocks", "games", "game_segments"):
             out[table] = sorted(db.execute(f"SELECT * FROM {table}").fetchall(), key=repr)
     return out
@@ -121,6 +128,7 @@ def test_a_v9_database_upgrades_to_v10_and_keeps_every_row(device_on, tmp_path):
     names = {r[0] for r in _rows(copy, "SELECT name FROM sqlite_master")}
     assert not {n for n in names if n.endswith("_v9") or n.endswith("_v10")}
     assert "device_credentials" in names
+    assert "last_seen_at" in [c[1] for c in _rows(copy, "PRAGMA table_info(users)")]
     users_sql = _rows(copy, "SELECT sql FROM sqlite_master WHERE name='users'")[0][0]
     assert "CHECK" not in users_sql and "AUTOINCREMENT" in users_sql
     for child in ("sessions", "game_players", "rating_events", "apple_tokens", "blocks"):
@@ -221,7 +229,7 @@ def test_create_then_auth_then_refresh(device_on, client):
 def test_auth_marks_the_credential_seen_and_the_account_used(device_on):
     store = device_on.STORE
     user = store.create_device_user("c" * 43, now=1_000)
-    row = store.device_account("c" * 43, now=5_000)
+    row, _session = store.device_sign_in("c" * 43, now=5_000)
     assert row["id"] == user["id"] and row["last_login_at"] == 5_000
     assert _rows(store.path, "SELECT created_at, last_seen_at FROM device_credentials") \
         == [(1_000, 5_000)]
@@ -409,7 +417,7 @@ def test_the_purge_takes_unrated_and_idle_device_accounts_only(device_on):
     # Casual players: unrated and old, but signed in, or seen through the
     # credential, within the last 30 days.
     casual = store.create_device_user("k" * 43, now=now - 400 * DAY)
-    store.device_account("k" * 43, now=now - 1 * DAY)
+    store.device_sign_in("k" * 43, now=now - 1 * DAY)
     seen = store.create_device_user("s" * 43, now=now - 60 * DAY)
     with closing(sqlite3.connect(store.path)) as db:
         db.execute("UPDATE users SET rated_rounds = 3 WHERE id IN (?, ?, ?)",
@@ -427,7 +435,9 @@ def test_the_purge_takes_unrated_and_idle_device_accounts_only(device_on):
     assert left == {fresh["id"], rated["id"], google["id"], casual["id"], seen["id"]}
     assert {r[0] for r in _rows(store.path, "SELECT user_id FROM device_credentials")} \
         == {fresh["id"], rated["id"], casual["id"], seen["id"]}
-    assert _rows(store.path, "SELECT COUNT(*) FROM sessions") == [(0,)]
+    # Only the casual player's sign-in session is left; the purged account's
+    # expired one went by cascade.
+    assert _rows(store.path, "SELECT user_id FROM sessions") == [(casual["id"],)]
     assert _rows(store.path, "SELECT COUNT(*) FROM blocks") == [(0,)]
     assert accounts.is_deleted(unrated["id"]) and not accounts.is_deleted(fresh["id"])
     assert store.purge_device_accounts(now=now) == []
@@ -448,6 +458,107 @@ def test_the_purge_keeps_an_account_with_an_unexpired_session(device_on):
     assert store.user(user["id"]) is not None
     # Once that session has expired, the unrated, unused account goes.
     assert store.purge_device_accounts(now=now + 2 * DAY) == [user["id"]]
+
+
+def test_session_use_keeps_a_casual_player_until_truly_idle(device_on):
+    accounts = device_on
+    store = accounts.STORE
+    d0 = 1_000 * DAY
+    user, session = store.create_device_account("p" * 43, now=d0)
+    # Day 29: the player plays on the session minted at sign-in.
+    assert store.session_account(session, now=d0 + 29 * DAY)["id"] == user["id"]
+    assert store.user(user["id"])["last_seen_at"] == d0 + 29 * DAY
+    # Day 31: the session has expired and the player has not signed in again,
+    # but the day-29 play keeps the account.
+    assert store.session_account(session, now=d0 + 31 * DAY) is None
+    assert store.purge_device_accounts(now=d0 + 31 * DAY) == []
+    # Unused for 30 days (plus the write throttle) after day 29: purged.
+    idle = d0 + 59 * DAY + accounts.DEVICE_SEEN_EVERY
+    assert store.purge_device_accounts(now=idle) == []
+    assert store.purge_device_accounts(now=idle + 1) == [user["id"]]
+
+
+def test_session_use_is_written_at_most_hourly_and_only_for_device_accounts(device_on):
+    accounts = device_on
+    store = accounts.STORE
+    t = 1_000 * DAY
+    user, session = store.create_device_account("h" * 43, now=t)
+    store.session_account(session, now=t + 10)
+    assert store.user(user["id"])["last_seen_at"] == t + 10
+    store.session_account(session, now=t + 10 + accounts.DEVICE_SEEN_EVERY - 1)
+    assert store.user(user["id"])["last_seen_at"] == t + 10          # throttled
+    store.session_account(session, now=t + 10 + accounts.DEVICE_SEEN_EVERY)
+    assert store.user(user["id"])["last_seen_at"] == t + 10 + accounts.DEVICE_SEEN_EVERY
+    google = store.upsert_user({"sub": "g", "email": "g@example.com", "name": "G"}, now=t)
+    store.session_account(store.create_session(google["id"], now=t), now=t + 10)
+    assert store.user(google["id"])["last_seen_at"] is None
+
+
+def test_http_and_socket_session_use_records_activity(device_on, client):
+    store = device_on.STORE
+    resp = _create(client)
+    cookie = {"cookie": _cookie(resp)}
+    with closing(sqlite3.connect(store.path)) as db:
+        db.execute("UPDATE users SET last_seen_at = 0")
+        db.commit()
+    assert client.get("/api/me", headers=cookie).status_code == 200
+    assert store.user(1)["last_seen_at"] > 0
+    with closing(sqlite3.connect(store.path)) as db:
+        db.execute("UPDATE users SET last_seen_at = 0")
+        db.commit()
+    with client.websocket_connect("/ws", headers=cookie) as ws:
+        ws.send_json({"type": "create_room"})
+        _drain(ws, "room")
+    assert store.user(1)["last_seen_at"] > 0
+
+
+# ------------------------------------------------- reauthentication is atomic
+def test_a_delete_during_reauthentication_waits_for_it(device_on, monkeypatch):
+    """A delete arriving while ``device_sign_in`` holds its transaction (here:
+    while it mints the session token) waits for the commit, then removes the
+    account and the new session together; the sign-in itself sees a whole
+    account, never an empty row or a foreign-key failure."""
+    import threading
+
+    accounts = device_on
+    store = accounts.STORE
+    user = store.create_device_user("d" * 43)
+    real = accounts.secrets.token_urlsafe
+    deleter: dict = {}
+
+    def delete():
+        try:
+            deleter["gone"] = store.delete_user(user["id"])
+        except Exception as exc:        # noqa: BLE001 - recorded for the assert
+            deleter["error"] = exc
+
+    def mint(n):
+        thread = threading.Thread(target=delete)
+        thread.start()
+        thread.join(0.3)
+        deleter["blocked"] = thread.is_alive()
+        deleter["thread"] = thread
+        return real(n)
+
+    monkeypatch.setattr(accounts.secrets, "token_urlsafe", mint)
+    row, session = store.device_sign_in("d" * 43)
+    monkeypatch.setattr(accounts.secrets, "token_urlsafe", real)
+    deleter["thread"].join(10)
+    assert deleter["blocked"] is True
+    assert row["id"] == user["id"] and session
+    assert deleter == {**deleter, "gone": True} and "error" not in deleter
+    assert store.user(user["id"]) is None
+    assert store.session_user(session) is None
+    assert _rows(store.path, "SELECT COUNT(*) FROM device_credentials") == [(0,)]
+
+
+def test_reauthenticating_a_vanished_account_is_a_clean_401(device_on, client):
+    accounts = device_on
+    token = _create(client).json()["token"]
+    assert accounts.STORE.delete_user(1) is True
+    resp = _create(client, authorization=f"Device {token}")
+    assert resp.status_code == 401 and "set-cookie" not in resp.headers
+    assert accounts.STORE.device_sign_in(token) is None
 
 
 def test_the_purge_runs_with_the_saved_games_sweep_only_when_on(device_on, monkeypatch):

@@ -31,7 +31,7 @@ reference on real and generated positions under both engines.
 
 from libc.stdint cimport int8_t, int16_t, int32_t, uint8_t, uint32_t, uint64_t
 from libc.stdlib cimport calloc, free, malloc
-from libc.string cimport memset
+from libc.string cimport memcpy, memset
 
 import threading
 import weakref
@@ -704,7 +704,8 @@ cdef class FastWorld:
 
     cdef int _subs(self, int seat, int hand) except -1:
         """Canonical sub-multisets of ``hand`` in the reference action order
-        (by size, then by the sorted code tuple)."""
+        (by size, then by the sorted code tuple). The masks are followed by
+        the exclusive end offset for each size, from zero to ``MAXSLOT``."""
         cdef int i, j, x, t, take, total, ncodes = 0, n = 0, len_a, len_b, cmp
         cdef int codes[MAXSLOT]
         cdef int cnt[MAXSLOT]
@@ -783,11 +784,16 @@ cdef class FastWorld:
             sizes[j + 1] = ts
             for t in range(ts):
                 keys[j + 1][t] = tmpk[t]
-        buf = <uint8_t*>malloc(n + 1)
+        buf = <uint8_t*>malloc(n + MAXSLOT + 1)
         if buf == NULL:
             raise MemoryError()
-        for i in range(n):
-            buf[i] = masks[i]
+        memcpy(buf, masks, n)
+        i = 0
+        for t in range(MAXSLOT + 1):
+            while i < n and sizes[i] <= t:
+                i += 1
+            # There are at most 255 nonempty subsets of eight physical slots.
+            buf[n + t] = i
         self.subs[seat][hand] = buf
         self.n_subs[seat][hand] = n
         return n
@@ -1697,6 +1703,8 @@ cdef class FastWorld:
             raise self.exc_type("acting seat has an empty hand")
         lead = self._ms(leader, plays[0])
         need = lead.size
+        if need == 0:
+            raise self.exc_type("active state has no enumerated legal action")
         if need > self._ms(turn, hand).size:
             raise self.exc_type("acting hand is shorter than the current lead")
         hs = hand & self.suitmask[turn][lead.eff]
@@ -1710,10 +1718,8 @@ cdef class FastWorld:
                 need_pairs = hsf.pair_count
             n = self._subs(turn, hs)
             subs = self.subs[turn][hs]
-            for i in range(n):
+            for i in range(subs[n + need - 1], subs[n + need]):
                 a = subs[i]
-                if _popc(a) != need:
-                    continue
                 if need_pairs or (k and hsf.trac_top[k] != NEG):
                     pf = self._ms(turn, a)
                     if pf.pair_count < need_pairs:
@@ -1726,12 +1732,11 @@ cdef class FastWorld:
         else:
             rest = hand & ~hs
             short = need - hsf.size
-            n = self._subs(turn, rest) if rest else 0
-            subs = self.subs[turn][rest] if rest else NULL
-            for i in range(n):
+            # The hand-size check ensures the off-suit holding fills the shortfall.
+            n = self._subs(turn, rest)
+            subs = self.subs[turn][rest]
+            for i in range(subs[n + short - 1], subs[n + short]):
                 a = subs[i]
-                if _popc(a) != short:
-                    continue
                 out_action[nmoves] = a | hs
                 out_played[nmoves] = a | hs
                 nmoves += 1

@@ -38,8 +38,8 @@ def test_cli_rejects_duplicate_or_unknown_trump_rank(tmp_path, monkeypatch, text
 def test_cli_rank_cycle_uses_real_game_factory_for_both_mirrors(tmp_path, monkeypatch):
     calls = []
 
-    def fake_play(base, cluster, seed, mirror, *, bot_factory, counter_fn, game_factory, deal):
-        assert callable(deal)
+    def fake_play(base, cluster, seed, mirror, *, bot_factory, counter_fn, game_factory, round_player):
+        assert callable(round_player)
         game = game_factory(random.Random(seed + mirror))
         game.start_round()
         if mirror == 0:

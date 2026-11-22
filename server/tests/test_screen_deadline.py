@@ -8,12 +8,12 @@ import time
 
 import pytest
 
-from shengji.ai.env import deal_and_declare
+from shengji.ai.env import play_round
 from shengji.ai.registry import make_bot
 from shengji.ai.smart import SmartBot
 from shengji.engine.game import Game
 from shengji.train import cwv_shortlist_screen as S
-from shengji.train.screen_deadline import DeadlineSession, RECIPE, latency_summary
+from shengji.train.screen_deadline import DeadlinePolicy, DeadlineSession, RECIPE, latency_summary
 from tests.test_world_shortlist import play_state
 from tests.test_cwv_shortlist_screen import cfg
 
@@ -197,6 +197,15 @@ def test_batched_deal_matches_serial_and_restores_every_seat(monkeypatch):
     config = cfg("identity", decision_deadline=RECIPE, trump_ranks=["A"])
     deal = DeadlineSession.deal
     checkpoints_after_deal = []
+    before_bury = []
+    decide_bury = DeadlinePolicy.decide_bury
+
+    def snapshot_before_bury(policy, rnd, seat):
+        before_bury.append((rnd.phase, seat, rnd.banker, rnd.declaration,
+                            rnd.trump_suit, rnd.trump_is_nt, [list(h) for h in rnd.hands]))
+        return decide_bury(policy, rnd, seat)
+
+    monkeypatch.setattr(DeadlinePolicy, "decide_bury", snapshot_before_bury)
 
     def batched_with_restart(session, rnd, policies):
         dealt = deal(session, rnd, policies)
@@ -211,19 +220,21 @@ def test_batched_deal_matches_serial_and_restores_every_seat(monkeypatch):
     assert all(calls == 26 for checkpoints in checkpoints_after_deal
                for calls, _ in checkpoints)
 
-    def serial(session, rnd, policies):
-        def decide_declare(rnd, seat, **kwargs):
-            return policies[seat].decide_declare(rnd, seat, **kwargs)
-
-        deal_and_declare(rnd, decide_declare)
-        mirror = len(serial_seats)
-        serial_seats.append([(policy.calls, policy.rng.getstate()) for policy in policies])
-        assert serial_seats[mirror] == checkpoints_after_deal[mirror]
-        return rnd
-
     serial_seats = []
-    monkeypatch.setattr(DeadlineSession, "deal", serial)
+
+    def serial(_session, game, policies, record=False):
+        def capture_before_bury(policy, rnd, seat):
+            serial_seats.append([(p.calls, p.rng.getstate()) for p in policies])
+            return snapshot_before_bury(policy, rnd, seat)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(DeadlinePolicy, "decide_bury", capture_before_bury)
+            return play_round(game, policies, record=record)
+
+    monkeypatch.setattr(DeadlineSession, "play_round", serial)
     baseline = S.run_cluster(config, 0)
+    assert serial_seats == checkpoints_after_deal
+    assert before_bury[:2] == before_bury[2:]
     assert without_times(batched["records"]) == without_times(baseline["records"])
     assert without_times(batched["decision_traces"]) == without_times(baseline["decision_traces"])
     assert all(trace["declare_decisions"][-1]["final"]

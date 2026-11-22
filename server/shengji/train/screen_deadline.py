@@ -21,7 +21,7 @@ import threading
 import time
 import traceback
 
-from ..ai.env import deal_and_declare
+from ..ai.env import play_prepared_round
 from ..ai.smart import SmartBot
 
 RECIPE = {"seconds": 300.0, "version": "spawn-total-play-v1",
@@ -122,7 +122,16 @@ def _deal(rnd, indices, bots):
         receipts[index].extend(traces)
         return cards
 
-    deal_and_declare(rnd, decide_declare)
+    # Follow the opening order in prepare_round, including the final grace calls.
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
+        cards = decide_declare(rnd, seat)
+        if cards:
+            rnd.declare(seat, cards)
+    for seat in range(4):
+        cards = decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
     return rnd, [(_snapshot(bots[index]), receipts[index]) for index in indices]
 
 
@@ -240,6 +249,14 @@ class DeadlineSession:
         if self.process is not None:
             self.call(None, "reset", (), {}, deadline=time.monotonic() + STARTUP_SECONDS)
         self.specs, self.checkpoints = [], {}
+
+    def play_round(self, game, policies, record=False):
+        """Batch the opening, then use the normal supervised moves and score the round."""
+        game.round = rnd = self.deal(game.start_round(), policies)
+        rnd.finalize_declare()
+        assert rnd.banker is not None
+        rnd.bury(rnd.banker, policies[rnd.banker].decide_bury(rnd, rnd.banker))
+        return play_prepared_round(game, policies, record=record)
 
     def deal(self, rnd, policies):
         """Run the opening and commit every seat's state after a complete reply."""

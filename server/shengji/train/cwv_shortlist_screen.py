@@ -740,7 +740,9 @@ def run_cluster(config, cluster):
     if shadow is not None:
         _validate_shadow_config(config)
     mirror_state = {}
-    round_options = {"deal": session.deal} if session is not None and shadow is None else {}
+    round_options = {}
+    if session is not None and shadow is None:
+        round_options["round_player"] = session.play_round
 
     def build(side, seed):
         return (session.register(config, side, seed) if session

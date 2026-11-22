@@ -3,8 +3,9 @@
 **Date**: 2026-11-21
 
 **Severity**: S3. No wrong data entered any training set or measurement, and
-no finished result was lost. A live training lane, two armed waiters and the
-Darkbloom provider were killed with SIGKILL. The lanes were restarted about
+no finished result was lost. A live training lane, the armed FT-RT3 waiter and the
+Darkbloom provider were killed with SIGKILL. (RT4's waiter had already stopped at
+06:26:08Z and was started for the first time during the recovery.) The lanes were restarted about
 four minutes later; the cost was a few minutes of cache work and a restart of
 the cache step.
 
@@ -30,7 +31,8 @@ happy case had just passed.
 Killed:
 - the ft500 driver (pid 1800), its `train.sh` (49838) and the cache workers
   it had just started;
-- the FT-RT3 CPU waiter (15153);
+- the FT-RT3 CPU waiter (15153). RT4's waiter (15246) was not running: its `DRV.status`
+  shows STOPPED at 06:26:08Z, about 16 h earlier;
 - the Darkbloom provider. Its watchdog relaunched it.
 - the subagent's own ssh session.
 
@@ -45,8 +47,8 @@ behind.
   (sha256 `fbf1315e…`). The cache step had just started; its shards are
   written via a temp file and `os.replace`, so the 21 on disk were whole and
   the restart keeps them.
-- **FT-RT3 and RT4:** both waiters were dead. Because they were dead, neither
-  could start on an unfinished ft500. The FT-RT3 waiter treats "predecessor
+- **FT-RT3 and RT4:** the FT-RT3 waiter was killed; RT4's had been stopped since
+  06:26Z. Because no waiter was alive, neither lane could start on an unfinished ft500. The FT-RT3 waiter treats "predecessor
   pid gone" as an end condition, so if it had survived it would have started
   on an ft500 with no package. RT4's waiter had not been running since
   06:26Z.
@@ -55,14 +57,14 @@ behind.
 
 ## Recovery (22:24Z)
 
-1. Confirmed that pids 49838, 1800, 1817, 15153 and 15246 were dead.
+1. Confirmed that pids 49838, 1800, 1817 and 15153 were dead (and 15246 was already gone).
 2. Cleared the stale lock and HOLD only after checking that each one's owner
    line named a dead pid. Copies of both are in `claude-gpu-work/incident-stale-*`.
    Logged in `claude-ft500/INCIDENT.log`.
 3. Relaunched the unchanged ft500 `driver.sh`, detached (pid 85647,
    `self=03c46d89…`, the same sha as the 05:53Z START). It passed CUT and COUNT
    and resumes at the cache step, keeping the shards already written.
-4. Re-armed the unchanged FT-RT3 waiter (`driver.sh`, `self=328c390a…`, pid
+4. Re-armed the unchanged FT-RT3 waiter, and armed RT4's for the first time since 06:26Z, (`driver.sh`, `self=328c390a…`, pid
    86074, `FXPID=85647`) and the RT4 waiter (`driver.r2.sh`, `self=8baa31bc…`,
    pid 86141, `FRPID=86074`). These are the same launchers as the 06:25Z
    STARTs.
@@ -87,9 +89,10 @@ kills from a `ps`, `pgrep` or `awk` match.
 
 - **Enforcer (Claude, partial):** the PreToolUse guard hook (Claude's user
   settings, outside the repo) now refuses `pkill`, `killall`, and any `kill`
-  whose targets are not literal pids. That covers variables, loops, `xargs` and
-  command substitution, including inside ssh remote commands. `kill -0` probes
-  are allowed.
+  whose targets are not strictly positive literal pids. That covers variables, loops,
+  `xargs` and command substitution, including inside ssh remote commands. `0`, negative
+  and `--` targets address process groups and are refused; `kill -0` probes are allowed.
+  Option parsing is conservative: forms it doesn't recognise, such as `-s TERM`, are refused.
 - **Limit:** the hook sees only commands typed into the Bash tool. A script
   file run by the tool, which is how this harness ran, is not inspected.
   Rehearsal harnesses therefore record the pids they spawn and kill only those.

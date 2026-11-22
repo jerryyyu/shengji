@@ -16,7 +16,7 @@ the rules these incidents produced; this folder keeps the reasoning.
 
 | id | date | severity | title | detected by |
 |---|---|---|---|---|
-| [INC-24](INC-20261121-24-rehearsal-cleanup-killed-every-ultra-process.md) | 11-21 | S3 | A rehearsal's cleanup killed every jeryyu process on the Ultra (ft500, both waiters, Darkbloom) | subagent's own report |
+| [INC-24](INC-20261121-24-rehearsal-cleanup-killed-every-ultra-process.md) | 11-21 | S3 | A rehearsal's cleanup killed every jeryyu process on the Ultra (ft500, the FT-RT3 waiter, Darkbloom) | subagent's own report |
 | [INC-23](INC-20261108-23-cleanup-deleted-pinned-ft1-checkpoint.md) | 11-08 | S3 | Home cleanup deleted the only known training checkpoint of the served prior (FT1) | X2 stage-two packet build |
 | [INC-22](INC-20260830-22-v2-capacity-artifact-altitude.md) | 08-30 | S3 | Value V2 capacity compared the wrong inference artifact | finite refusal-vocabulary hash |
 | [INC-21](INC-20260829-21-r4-confirmatory-before-signal.md) | 08-29 | S3 | R4 paid confirmatory costs before establishing BELIEF signal — the process failure behind the 2026-09-04 program reset (ledger `0088544f`) | critical-path audit |

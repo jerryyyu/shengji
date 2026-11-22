@@ -1,8 +1,8 @@
 // The whole-app soak's chaos picks and its page-side faults. A phone runs
 // about one fault a minute (ChaosPacer): faults keep 40-60 s apart, a round's
-// end starts 2 min of calm, and once a gap is over the next fault comes with
-// p = 0.3 at a phase trigger its frames or log reach (a deal card, the
-// declare window, its own bury, the last trick, a round's end, just after its
+// end with no gap running starts 30 s of calm, and once a gap is over the next
+// fault comes with p = 0.3 at a phase trigger its frames or log reach (a
+// deal card, the declare window, its own bury, the last trick, a round's end, just after its
 // own move, the lobby, Start, a join's handshake, a Leave, a game's end) or
 // from the background timer 0-20 s later. Kinds are weighted by the phone's
 // part at the table. The native kinds run in the
@@ -120,9 +120,10 @@ export const CHAOS_JITTER_MS = 20_000;
 /** The background timer comes up to this long after a gap is over, so a
  *  phase trigger gets the first chance at it. */
 export const BACKGROUND_LAG_MS = 20_000;
-/** The calm after a round's end: the next round's deal and first tricks
- *  play out with no fault. */
-export const ROUND_CALM_MS = 120_000;
+/** The calm after a round's end: the next round's deal plays out with no
+ *  fault. Shorter than CHAOS_GAP_MS, so a round's end never holds faults off
+ *  for longer than a fault's own gap does. */
+export const ROUND_CALM_MS = 30_000;
 
 /** When the soak's next fault may run: one fault per gap, whether a phase
  *  trigger or the background timer takes it. A pacer starts in a gap, so a
@@ -165,9 +166,13 @@ export class ChaosPacer {
     return Math.max(0, this.next - this.now()) + this.rand() * BACKGROUND_LAG_MS;
   }
 
-  /** A round ended: no fault for ROUND_CALM_MS. Returns when the calm ends. */
+  /** A round ended: with no gap or calm running, no fault for ROUND_CALM_MS;
+   *  one still running is left as it is, so round ends never push the next
+   *  fault later and the pace stays about one a minute however short the
+   *  rounds. Returns when the next fault may run. */
   roundEnded(): number {
-    this.next = Math.max(this.next, this.now() + ROUND_CALM_MS);
+    const t = this.now();
+    if (this.next <= t) this.next = t + ROUND_CALM_MS;
     return this.next;
   }
 }

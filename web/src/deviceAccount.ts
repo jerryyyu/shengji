@@ -17,12 +17,14 @@
 // many attempts (429), no connection, a refused secret (401, which also
 // clears it) or a Keychain that cannot be read leave the player a guest for
 // this action, and an existing secret is never replaced. A new account whose
-// secret the Keychain will not keep stays signed in on the cookie; the
-// secret is saved at the next launch, before the Keychain is read.
+// secret the Keychain will not keep stays signed in on the cookie, with the
+// secret held in memory for this session and offered to the Keychain again
+// before it is next used; no other account is made meanwhile.
 
 import { useEffect, useState } from "react";
 import {
-  auth, deviceAccountsAvailable, deviceAuth, forgetDeviceSecret, leaveDeviceSecretUnsaved, saveDeviceSecret, settleKeychain,
+  auth, deviceAccountsAvailable, deviceAuth, deviceSecretOutstanding, forgetDeviceSecret, identityTurn, keepDeviceSecret,
+  settleKeychain,
 } from "./auth";
 import { keychainGet } from "./keychain";
 import { deviceIdiom } from "./native";
@@ -41,20 +43,17 @@ let identityOp: Promise<SetupOutcome> | null = null;
 let inAction = false;
 
 /** What the last attempt came to; for tests and the log. */
-export type SetupOutcome = "signed_in" | "unsaved" | "restored" | "superseded" | "guest" | "off" | "read_failed" | "timed_out";
+export type SetupOutcome = "signed_in" | "unsaved" | "restored" | "guest" | "off" | "read_failed" | "timed_out";
 let lastOutcome: SetupOutcome | null = null;
 export function lastSetupOutcome(): SetupOutcome | null {
   return lastOutcome;
 }
 
-/** Whether a sign-in holds the session now; read fresh after each wait. */
-function signedInNow(): boolean {
-  return auth.state?.status === "in";
-}
-
-/** Signs this device in. */
+/** Signs this device in, inside its identity turn. */
 async function signInDevice(): Promise<SetupOutcome> {
-  // a removal or a save an earlier run could not finish comes first
+  // A removal or a save an earlier attempt could not finish comes first;
+  // while either is refused the Keychain is not used, and no account is
+  // made over a secret that may be there or is still owed to it.
   if (!(await settleKeychain())) return "read_failed";
   let token: string | null;
   try {
@@ -75,36 +74,24 @@ async function signInDevice(): Promise<SetupOutcome> {
     return "guest";
   }
   if (!got.user) return "guest";
-  // a sign-in that landed meanwhile holds the session now; it is not undone
-  if (signedInNow()) return "superseded";
-  let outcome: SetupOutcome = "signed_in";
-  if (got.token) {
-    const kept = await saveDeviceSecret(got.token);
-    // nothing is kept for an account a later sign-in has replaced
-    if (signedInNow()) return "superseded";
-    if (!kept) {
-      leaveDeviceSecretUnsaved(got.token);
-      outcome = "unsaved";
-    }
-  }
+  // a secret the Keychain refuses is held for this session; the cookie keeps the account
+  const outcome: SetupOutcome = got.token && !(await keepDeviceSecret(got.token)) ? "unsaved" : "signed_in";
   auth.signedIn(got.user);
-  await auth.settled();
   return outcome;
 }
 
-async function changeIdentity(): Promise<SetupOutcome> {
-  // a launch still restoring the account, or a socket reopening as it
-  await auth.settled();
-  const status = auth.state?.status;
-  if (status !== "out" && status !== "off") return status === "in" ? "restored" : "guest";
-  if (off) return "guest";
-  return signInDevice();
-}
-
-/** The one identity change at a time: a tap joins the one under way. */
+/** The one identity change at a time: a tap joins the one under way. It
+ *  runs in the sign-in turns every path shares, after any launch restore. */
 function identity(): Promise<SetupOutcome> {
   if (!identityOp) {
-    const op = changeIdentity().catch((): SetupOutcome => "guest");
+    const op = auth.settled()
+      .then(() => identityTurn(async (): Promise<SetupOutcome> => {
+        const status = auth.state?.status;
+        if (status !== "out" && status !== "off") return status === "in" ? "restored" : "guest";
+        if (off) return "guest";
+        return signInDevice();
+      }))
+      .catch((): SetupOutcome => "guest");
     identityOp = op;
     void op.then(() => { if (identityOp === op) identityOp = null; });
   }
@@ -125,6 +112,8 @@ export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean
   const status = auth.state?.status;
   const settled = status === "in" || status === "error" || off;
   if (settled && !identityOp && !auth.isReopening?.()) {
+    // a secret the Keychain refused earlier this session is offered again
+    if (deviceSecretOutstanding()) void settleKeychain();
     action();
     return;
   }
@@ -142,7 +131,8 @@ export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean
     gaveUp?.();
   }, INTENT_MS);
   pending = { cancel: end };
-  void identity().then((outcome) => {
+  // the action goes once the identity is settled and its socket has reopened
+  void identity().then(async (outcome) => { await auth.settled(); return outcome; }).then((outcome) => {
     if (done) return;
     end();
     lastOutcome = outcome;

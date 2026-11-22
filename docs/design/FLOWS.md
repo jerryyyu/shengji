@@ -359,10 +359,14 @@ replaces the socket before any Play goes, so a table is never asked for under th
 one attempt, and identity changes run one at a time; a further tap meanwhile does nothing, and a held Play
 whose mode, tab or table changed does not fire. A Keychain that cannot be read makes no account (that Play is a
 guest's). A new secret the Keychain will not keep, tried twice, leaves the account signed in on the cookie, with
-nothing deleted and no message; the next launch saves it before reading the Keychain. Past 6 s the tap is given
+nothing deleted and no message; the secret is held in memory only (never in the page's storage), offered to the
+Keychain again at the next Play, and no other account is made while it is owed. Every sign-in and sign-out path
+(the device's, Apple, Google, a launch's restore) takes turns through its request, cookie, state and socket, so the
+one asked for last is the one everything carries; credential writes, revocation and removal run on one queue. Past 6 s the tap is given
 up with nothing sent ("Couldn't open a table.", the line a lost Play already gets) while the sign-in finishes on
-its own; the next tap waits for it. A sign-out whose Keychain removal is refused is retried, then left to the
-next launch, which removes the secret before any sign-in with it. The mock is `account_frames` in
+its own; the next tap waits for it. A sign-out removes the secret before ending the session; a removal refused
+twice is marked for the next launch, which removes it before any sign-in with it, and if even the mark cannot be
+kept the sign-out is refused ("Sign-out failed. Try again."). The mock is `account_frames` in
 `docs/design/mocks/core.py`.
 `/api/auth/config` says whether device accounts are on (`device_accounts`) and `/api/me` whether an account is
 `linked`; with them off the app is today's guest, exactly.

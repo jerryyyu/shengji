@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { AccountExists, auth, loadGis, loginWithApple, loginWithGoogle, newNonce, sha256Hex } from "../auth";
+import {
+  AccountExists, auth, identityTurn, loadGis, loginWithApple, loginWithGoogle, newNonce, sha256Hex,
+} from "../auth";
 import type { AppleLogin, AuthUser } from "../auth";
 import { isNative } from "../native";
 import {
@@ -107,6 +109,13 @@ function AppleMark() {
   );
 }
 
+/** The app's sign-in, in the turn every sign-in path shares: the request,
+ *  the session cookie its answer sets, this page's state and the socket
+ *  replacement, before any other sign-in (the device's own) starts. */
+function signInTurn(login: () => Promise<AuthUser>): Promise<void> {
+  return identityTurn(async () => { auth.signedIn(await login()); });
+}
+
 /** A sign-in from the app's own account whose identity already has an
  *  account: the holder's name, and the same sign-in with `confirm`. */
 interface Conflict {
@@ -140,11 +149,8 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     if (!conflict) return;
     setSwitching(true);
     setSwitchError(null);
-    conflict.confirm()
-      .then((user) => {
-        setConflict(null);
-        auth.signedIn(user);
-      })
+    signInTurn(conflict.confirm)
+      .then(() => setConflict(null))
       .catch((e: Error) => setSwitchError(e.message))
       .finally(() => setSwitching(false));
   };
@@ -176,7 +182,7 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     try {
       const credential = await nativeGoogleCredential(clientId, nonce);
       try {
-        auth.signedIn(await loginWithGoogle(credential, nonce));
+        await signInTurn(() => loginWithGoogle(credential, nonce));
       } catch (e) {
         if (!ask(e, () => loginWithGoogle(credential, nonce, true))) throw e;
       }
@@ -201,7 +207,7 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
         familyName: cred.familyName,
       };
       try {
-        auth.signedIn(await loginWithApple(login));
+        await signInTurn(() => loginWithApple(login));
       } catch (e) {
         if (!ask(e, () => loginWithApple(login, true))) throw e;
       }

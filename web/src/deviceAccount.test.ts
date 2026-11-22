@@ -20,7 +20,8 @@ vi.mock("./ws", () => ({
 }));
 
 import {
-  AccountExists, auth, deviceAccountPending, deviceAccountsApply, isUnlinkedDevice, loginWithApple, loginWithGoogle, NAME_MESSAGES,
+  AccountExists, auth, deviceAccountPending, deviceAccountsApply, deviceSecretOutstanding, identityTurn, keepDeviceSecret,
+  reauthFromKeychain, isUnlinkedDevice, loginWithApple, loginWithGoogle, NAME_MESSAGES,
   NameRejected, updateDisplayName,
 } from "./auth";
 import { beforeOnlineSetup, lastSetupOutcome, resetDeviceAccountForTests } from "./deviceAccount";
@@ -383,7 +384,7 @@ describe("the Keychain failing", () => {
     expect(auth.state.status).toBe("in");
   });
 
-  it("a write refused twice keeps the account signed in on the cookie, deletes nothing, and saves it at the next launch", async () => {
+  it("a write refused twice keeps the account signed in on the cookie, deletes nothing, holds the secret in memory only, and saves it on a later Play", async () => {
     const keychain = shell();
     keychain.failSet = 2;
     routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
@@ -397,45 +398,93 @@ describe("the Keychain failing", () => {
     expect(auth.state.status).toBe("in");
     expect(action).toHaveBeenCalledTimes(1);
     expect(lastSetupOutcome()).toBe("unsaved");
-    // the next launch saves it before reading the Keychain, then signs in with it
-    auth.reset();
-    routes.set("GET /api/auth/config", { status: 200, body: { google_client_id: "cid", device_accounts: true } });
-    routes.set("POST /api/auth/device", { status: 200, body: { user: DEVICE_USER } });
-    await auth.init();
+    expect(deviceSecretOutstanding()).toBe(true);
+    // never in the page's storage
+    expect(Object.values({ ...localStorage }).join()).not.toContain("tok-new");
+    // the Keychain recovers: the next Play offers it again
+    beforeOnlineSetup(action);
+    await flush();
     expect(keychain.value).toBe("tok-new");
-    expect(deviceCalls()[1].headers.Authorization).toBe("Device tok-new");
-    expect(auth.state.status).toBe("in");
+    expect(deviceSecretOutstanding()).toBe(false);
   });
 
-  it("a provider sign-in during a storage failure deletes nothing, and its own secret is the one kept", async () => {
+  it("while a secret is still owed to the Keychain, no other account is made", async () => {
+    const keychain = shell();
+    keychain.failSet = 4;
+    await keepDeviceSecret("tok-owed");
+    expect(deviceSecretOutstanding()).toBe(true);
+    routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-second", user: DEVICE_USER } });
+    const action = vi.fn();
+    beforeOnlineSetup(action);
+    await flush();
+    expect(deviceCalls()).toEqual([]);
+    expect(lastSetupOutcome()).toBe("read_failed");
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(keychain.value).toBeNull();
+  });
+
+  it("a provider sign-in during a storage failure deletes nothing and waits its turn; its own secret is the one kept", async () => {
     const keychain = shell();
     let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    keychain.holdSet = gate;
+    keychain.holdSet = new Promise<void>((r) => { release = r; });
     keychain.failSet = 2;
     routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
     routes.set("POST /api/auth/google", { status: 200, body: { ...MEI, device_token: "tok-mei" } });
     const action = vi.fn();
     beforeOnlineSetup(action);
     await flush();
-    // while the Keychain holds the write, the player signs in with Google: a merge into Mei
-    const signing = loginWithGoogle("jwt", "n1").then((u) => auth.signedIn(u));
-    await signing;
-    expect(auth.state.user?.name_shown).toBe("Mei");
+    // while the Keychain holds the write, the player signs in with Google, as GoogleSignIn does
+    const signing = identityTurn(async () => { auth.signedIn(await loginWithGoogle("jwt", "n1")); });
     await flush();
-    keychain.failSet = 2;
+    // its request waits for the device's turn
+    expect(calls.filter((c) => c.url === "/api/auth/google")).toEqual([]);
     release();
+    await signing;
     await flush();
-    // the device sign-in finished after Mei's: it is not signed in over her
-    expect(lastSetupOutcome()).toBe("superseded");
-    expect(auth.state.user?.name_shown).toBe("Mei");
     opens();
     await flush();
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+    expect(calls.map((c) => c.url)).toEqual(["/api/auth/device", "/api/auth/google"]);
     expect(auth.state.user?.name_shown).toBe("Mei");
-    // the device secret's writes failed; Mei's came after them and stands
     expect(keychain.value).toBe("tok-mei");
-    expect(localStorage.getItem("shengji.deviceSecretUnsaved")).toBeNull();
+    expect(deviceSecretOutstanding()).toBe(false);
+  });
+
+  it("sign-in, then an immediate sign-out, with a slow Keychain write: the next launch does not restore the account", async () => {
+    const keychain = shell();
+    keychain.value = "tok-device";
+    let release!: () => void;
+    keychain.holdSet = new Promise<void>((r) => { release = r; });
+    auth.state = { status: "in", clientId: "cid", user: DEVICE_USER };
+    routes.set("POST /api/auth/google", { status: 200, body: { ...MEI, device_token: "tok-mei" } });
+    routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
+    const signing = identityTurn(async () => { auth.signedIn(await loginWithGoogle("jwt", "n1")); });
+    const out = auth.signOut();
+    await flush();
+    release();
+    await signing;
+    await out;
+    expect(auth.state.status).toBe("out");
+    // the sign-out came after the merge's write and sent the secret it left
+    expect(calls.find((c) => c.url === "/api/auth/logout")!.headers).toEqual({ Authorization: "Device tok-mei" });
+    expect(keychain.value).toBeNull();
+    routes.set("POST /api/auth/device", { status: 200, body: { user: MEI } });
+    expect(await reauthFromKeychain()).toBeNull();
+    expect(deviceCalls()).toEqual([]);
+  });
+
+  it("a removal refused twice whose mark cannot be kept either: sign-out is refused and nothing changes", async () => {
+    const keychain = shell();
+    keychain.value = "tok-mei";
+    keychain.failRemove = 2;
+    auth.state = { status: "in", clientId: "cid", user: MEI };
+    routes.set("POST /api/auth/logout", { status: 200, body: { ok: true } });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    await expect(auth.signOut()).rejects.toThrow("Sign-out failed. Try again.");
+    setItem.mockRestore();
+    expect(calls.filter((c) => c.url === "/api/auth/logout")).toEqual([]);
+    expect(auth.state.status).toBe("in");
+    expect(keychain.value).toBe("tok-mei");
   });
 
   it("signed out with the switch off and a removal the Keychain refuses: the next launch removes it before any sign-in", async () => {
@@ -453,7 +502,7 @@ describe("the Keychain failing", () => {
     routes.set("POST /api/auth/device", { status: 200, body: { user: MEI } });
     routes.set("GET /api/me", { status: 401, body: {} });
     // a launch (and then a Play) whose removal is refused again does not sign in with it
-    keychain.failRemove = 2;
+    keychain.failRemove = 4;
     auth.reset();
     await auth.init();
     expect(deviceCalls()).toEqual([]);

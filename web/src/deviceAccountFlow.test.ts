@@ -43,7 +43,9 @@ const DEVICE_USER = { name: "Gentle Tractor", email: "", picture: null, display_
 
 type Answer = { status: number; body?: unknown; cookie?: string | null };
 let deviceAnswers: (Answer | Promise<Answer>)[];
+let googleAnswers: (Answer | Promise<Answer>)[];
 let deviceCalls: Record<string, string>[];
+let googleCalls = 0;
 let keychain: { value: string | null; failGet: number; failSet: number };
 
 function mockFetch() {
@@ -57,6 +59,9 @@ function mockFetch() {
     else if (url === "/api/auth/device") {
       deviceCalls.push({ ...(init?.headers as Record<string, string>) });
       a = await (deviceAnswers.shift() ?? { status: 429, body: {} });
+    } else if (url === "/api/auth/google") {
+      googleCalls += 1;
+      a = await (googleAnswers.shift() ?? { status: 500, body: {} });
     } else if (url === "/api/me" && method === "DELETE") a = { status: 204, cookie: null };
     if (a.cookie !== undefined) cookie = a.cookie;
     return { status: a.status, json: async () => { if (a.body === undefined) throw new Error("no body"); return a.body; } } as Response;
@@ -87,11 +92,12 @@ const settle = async () => { for (let i = 0; i < 6; i += 1) await tick(); };
 
 async function load() {
   const { conn } = await import("./ws");
-  const { auth } = await import("./auth");
+  const authModule = await import("./auth");
+  const { auth } = authModule;
   const { queue } = await import("./queue/store");
   const { codes } = await import("./codeJoin");
   const device = await import("./deviceAccount");
-  return { conn, auth, queue, codes, device };
+  return { conn, auth, authModule, queue, codes, device };
 }
 
 let mods: Awaited<ReturnType<typeof load>>;
@@ -100,7 +106,9 @@ beforeEach(async () => {
   FakeWS.all = [];
   cookie = null;
   deviceAnswers = [];
+  googleAnswers = [];
   deviceCalls = [];
+  googleCalls = 0;
   keychain = { value: null, failGet: 0, failSet: 0 };
   localStorage.clear();
   (globalThis as unknown as { WebSocket: unknown }).WebSocket = FakeWS;
@@ -149,6 +157,60 @@ describe("restore after a reinstall", () => {
     mods.queue.join();
     await settle();
     expect(joins()).toEqual([{ who: "account:7", msg: { type: "queue_join", mode: "ranked" } }]);
+  });
+});
+
+describe("a device sign-in and a provider sign-in, either answering late", () => {
+  const MEI = { name: "Mei Chen", email: "mei@x", picture: null, display_name: "Mei", name_shown: "Mei",
+                rounds_played: 40, linked: true };
+  const signInWithGoogle = () => mods.authModule.identityTurn(async () => {
+    mods.auth.signedIn(await mods.authModule.loginWithGoogle("jwt", "n1"));
+  });
+
+  beforeEach(async () => {
+    mods.conn.start();
+    await mods.auth.init();
+    await settle();
+  });
+
+  it("Play, then Google while the device answer is out: Google goes after it, and Mei is the cookie, the page and the socket", async () => {
+    let device!: (a: Answer) => void;
+    deviceAnswers.push(new Promise<Answer>((r) => { device = r; }));
+    googleAnswers.push({ status: 200, body: MEI, cookie: "account:mei" });
+    mods.queue.join();
+    await settle();
+    const google = signInWithGoogle();
+    await settle();
+    // the provider request waits for the device's turn
+    expect(googleCalls).toBe(0);
+    device({ status: 200, body: { token: "tok-new", user: DEVICE_USER }, cookie: "account:9" });
+    await google;
+    await settle();
+    expect(googleCalls).toBe(1);
+    expect(cookie).toBe("account:mei");
+    expect(mods.auth.state.user?.name_shown).toBe("Mei");
+    expect(live().map((w) => w.who)).toEqual(["account:mei"]);
+    // the held Play goes once, on the identity asked for last
+    expect(joins()).toEqual([{ who: "account:mei", msg: { type: "queue_join", mode: "ranked" } }]);
+  });
+
+  it("Google, then Play while the Google answer is out: no device account is made, and the Play goes as Mei", async () => {
+    let answer!: (a: Answer) => void;
+    googleAnswers.push(new Promise<Answer>((r) => { answer = r; }));
+    deviceAnswers.push({ status: 200, body: { token: "tok-new", user: DEVICE_USER }, cookie: "account:9" });
+    const google = signInWithGoogle();
+    await settle();
+    mods.queue.join();
+    await settle();
+    expect(deviceCalls).toEqual([]);
+    answer({ status: 200, body: MEI, cookie: "account:mei" });
+    await google;
+    await settle();
+    expect(deviceCalls).toEqual([]);
+    expect(cookie).toBe("account:mei");
+    expect(mods.auth.state.user?.name_shown).toBe("Mei");
+    expect(joins()).toEqual([{ who: "account:mei", msg: { type: "queue_join", mode: "ranked" } }]);
+    expect(live().map((w) => w.who)).toEqual(["account:mei"]);
   });
 });
 
@@ -229,7 +291,7 @@ describe("the first online Play", () => {
     expect(mods.auth.state.status).toBe("out");
   });
 
-  it("a secret the Keychain will not keep: the account stays signed in on the cookie, nothing is deleted, and the next Play saves it", async () => {
+  it("a secret the Keychain will not keep: the account stays signed in on the cookie, nothing is deleted or stored in the page, and the next Play saves it", async () => {
     keychain.failSet = 2;
     deviceAnswers.push({ status: 200, body: { token: "tok-new", user: DEVICE_USER }, cookie: "account:9" });
     mods.queue.join();
@@ -238,14 +300,12 @@ describe("the first online Play", () => {
     expect(mods.auth.state.status).toBe("in");
     expect(joins()).toEqual([{ who: "account:9", msg: { type: "queue_join", mode: "ranked" } }]);
     expect(keychain.value).toBeNull();
+    expect(Object.values({ ...localStorage }).join()).not.toContain("tok-new");
     mods.queue.reset();
     mods.queue.join();
     await settle();
-    // a signed-in Play goes at once; the next launch saves the secret
+    // a signed-in Play goes at once, and offers the secret to the Keychain again
     expect(joins()).toHaveLength(2);
-    mods.auth.reset();
-    deviceAnswers.push({ status: 200, body: { user: DEVICE_USER }, cookie: "account:9" });
-    await mods.auth.init();
     expect(keychain.value).toBe("tok-new");
   });
 

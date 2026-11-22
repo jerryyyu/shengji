@@ -94,8 +94,8 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     // the plugin's own lines reach the page only in the device test or with the file
     expect(swift).toContain("guard NearbyBuild.debugBuild || Self.logFileBuild else { return }");
     // the page loads the soak's modules only from the soak rows, by a dynamic
-    // import, and shows its switches in the device test (`debug`), or with
-    // `chaos` once the hidden switch is on
+    // import, and shows its switches and the log rows in the device test
+    // (`debug`), or with `chaos` once the hidden switch is on
     const src = fileURLToPath(new URL("../../../", import.meta.url));
     const files = readdirSync(src, { recursive: true }).map(String)
       .filter((f) => /\.(ts|tsx)$/.test(f) && !/\.test\.tsx?$/.test(f) && !/(^|\/)nearbySoak[A-Za-z]*\.ts$/.test(f));
@@ -108,7 +108,11 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(debugPane).toMatch(/c\.debug === true \? \(p as DebugPlugin\) : null/);
     expect(debugPane).toMatch(/export function nearbySoakSwitchTap\(chaos: boolean[^\n]*\n  if \(!chaos\) return;/);
     const menu = readFileSync(join(src, "nearbyUi.tsx"), "utf8");
-    expect(menu).toMatch(/const soak = useNearbySoak\(gate\.logFile && \(debug \|\| \(gate\.chaos && hidden\)\)\);/);
+    expect(menu).toMatch(/const tools = debug \|\| \(gate\.chaos && hidden\);/);
+    expect(menu).toMatch(/const soak = useNearbySoak\(gate\.logFile && tools\);/);
+    // the log rows too: the Debug build's, or the Beta's behind the hidden switch
+    expect(menu.match(/\{tools && logFile \? \(/g)).toHaveLength(2);
+    expect(menu).toMatch(/\{debug \|\| \(tools && logFile\) \? \(/);
     expect(menu).toMatch(/\{soak \? \(/);
     for (const label of ["Autoplay", "Chaos", "Copy soak summary"]) expect(menu.split(`<span>${label}</span>`)).toHaveLength(2);
   });

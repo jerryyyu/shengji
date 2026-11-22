@@ -494,15 +494,26 @@ def readout_evaluator(evaluator, bot, model):
 
     class ReadoutEvaluator(base):
         def score_many(self, positions, seats, **kw):
-            frame = self.unified_bot.unified_frame
-            if frame is not None and frame.fast:
+            bot = self.unified_bot
+            frame = bot.unified_frame
+            if frame is None:
+                bot.unified_value_served += len(positions)
+                if (type(self) is ReadoutEvaluator and not kw
+                        and getattr(bot, "encode_prefix_cache", False)
+                        and getattr(bot, "encode_batch_fast", False)
+                        and getattr(bot, "encode_native", False)):
+                    from .pv_encode_prefix import score_bury_leaves
+                    values = score_bury_leaves(self, base, positions, seats)
+                    if values is not None:
+                        return values
+                return base.score_many(self, positions, seats, **kw)
+            if frame.fast:
                 return self._score_many_fast(frame, positions, seats, **kw)
-            mine, planes, scalars = ([], None, None) if frame is None else leaf_features_batch(frame, positions)
+            mine, planes, scalars = leaf_features_batch(frame, positions)
             covered = set(mine)
             rest = [i for i in range(len(positions)) if i not in covered]
-            if frame is not None:
-                # a framed decision's non-terminal positions the readout does not cover
-                self.unified_bot.unified_value_other += sum(positions[i].phase != "round_end" for i in rest)
+            # a framed decision's non-terminal positions the readout does not cover
+            self.unified_bot.unified_value_other += sum(positions[i].phase != "round_end" for i in rest)
             if not mine:
                 self.unified_bot.unified_value_served += len(rest)
                 return base.score_many(self, positions, seats, **kw)

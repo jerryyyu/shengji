@@ -233,6 +233,13 @@ export interface Bridge {
 
 interface Rule { dir: "in" | "out"; frame: string; left: number; until: number }
 
+/** A loss's frames are the next of their type within this long; any not
+ *  lost by then are kept. A link carries its frames in order, so a frame
+ *  is lost only with the link's trouble at that moment: a loss that waited
+ *  minutes for its type would strike a later, healthy link (a resume frame
+ *  lost long after, with its seat token). */
+export const LOSS_WINDOW_MS = 30_000;
+
 /** Frame loss at the page's bridge to the plugin, in one direction: a frame
  *  the page sends reads as sent, a frame the plugin delivers never reaches
  *  the page. The link itself stays up. */
@@ -267,9 +274,10 @@ export class BridgeFaults {
     return true;
   }
 
-  /** The next `count` frames of `frame` ("" any) going `dir` are lost. */
+  /** Up to `count` frames of `frame` ("" any) going `dir` are lost, the
+   *  next ones within LOSS_WINDOW_MS. */
   loss(dir: "in" | "out", frame: string, count: number): void {
-    this.rules.push({ dir, frame, left: count, until: Infinity });
+    this.rules.push({ dir, frame, left: count, until: this.now() + LOSS_WINDOW_MS });
   }
 
   /** Every frame going `dir` is lost for `ms`. */
@@ -292,6 +300,6 @@ export class BridgeFaults {
   /** Whether a one-way outage still runs. */
   active(): boolean {
     const t = this.now();
-    return this.rules.some((r) => r.until > t && r.until !== Infinity);
+    return this.rules.some((r) => r.left === Infinity && r.until > t);
   }
 }

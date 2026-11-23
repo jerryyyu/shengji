@@ -42,12 +42,12 @@ describe("the soak's link-health metrics", () => {
     expect(m.attempts).toEqual([2, 0]);
     expect(m.abandonedHellos).toBe(1);
     expect([m.ignored, m.resent, m.hostIgnored]).toEqual([1, 1, 1]);
-    expect(m.stuck).toEqual({ stall: 1, after: 0, blackhole: 0, none: 1 });
+    expect(m.stuck).toEqual({ stall: 1, after: 0, blackhole: 0, oneway: 0, none: 1 });
     expect(m.quiet).toEqual({ stall: 0, stalls: 1, blackhole: 1, blackholes: 1 });
     expect(m.migrations).toEqual([2500]);
     expect(s).toContain("freeze n=2 p50 28.7 p95 28.7 max 28.7 s, recovery n=1 p50 4.1 p95 4.1 max 4.1 s");
     expect(s).toContain("attempts/outage max 2 (hellos abandoned 1), moves ignored 1 re-sent 1 (host ignored 1)");
-    expect(s).toContain("STUCK in stall 1 / stall ended <1 s 0 / blackhole 0 / no fault 1");
+    expect(s).toContain("STUCK in stall 1 / stall ended <1 s 0 / blackhole 0 / oneway 0 / no fault here 1");
     expect(s).toContain("no STUCK in stalls >4 s 0/1 blackholes >4 s 1/1");
     expect(s).toContain("migration n=1 p50 2.5 p95 2.5 max 2.5 s, upload 1.0 KB/10 min, chaos not applied 0");
   });
@@ -62,7 +62,7 @@ describe("the soak's link-health metrics", () => {
       line(5000, "socket", "resume: accepted (state); open"),
       line(11000, "socket", "out bury"),
     ]) m.see(l);
-    expect(m.stuck).toEqual({ stall: 0, after: 1, blackhole: 0, none: 0 });
+    expect(m.stuck).toEqual({ stall: 0, after: 1, blackhole: 0, oneway: 0, none: 0 });
     expect([m.ignored, m.resent]).toEqual([1, 0]);
     expect(m.recoveries).toEqual([1900]);
     // a 3 s stall is not counted among the long ones
@@ -87,6 +87,96 @@ describe("the soak's link-health metrics", () => {
     expect(m.freezes).toEqual([40_000, 20_000]);
     expect(m.recoveries).toEqual([31_500]);
     expect(m.attempts).toEqual([2, 0]);
+  });
+
+  it("the driver's Leave is no outage: one open then ends at the Leave, and none opens until its rejoin by code", () => {
+    const m = new SoakMetrics();
+    for (const l of [
+      // a Leave on a healthy link: its left frame and the link's drop
+      line(0, "socket", "in state"),
+      line(1000, "soak", "flow: leave (chaos, play, link open)"),
+      line(1001, "socket", "out table_leave"),
+      // the link goes before the host has the Leave; a resumed link carries it
+      line(1005, "native", "drop host"),
+      line(1006, "join", "attempt (resume)"),
+      line(1008, "socket", "resume: accepted (state); open"),
+      line(1009, "socket", "out table_leave"),
+      line(1010, "socket", "in left"),
+      line(1100, "native", "drop host"),
+      line(60_000, "soak", "flow: rejoin by code (token kept)"),
+      line(60_100, "socket", "open"),
+      line(61_500, "soak", "flow: seated"),
+      line(62_000, "socket", "in state"),
+      // a Leave while the link is down: the outage counts up to the Leave
+      line(70_000, "socket", "out play"),
+      line(74_000, "socket", "STUCK: no pong after a move; making a new link"),
+      line(74_100, "join", "attempt (resume)"),
+      line(74_200, "socket", "resume: link up in 100 ms; hello sent (with token)"),
+      line(81_300, "join", "attempt (resume)"),
+      line(81_400, "socket", "resume: link up in 100 ms; hello sent (with token)"),
+      line(85_000, "soak", "flow: leave (chaos, play, link down)"),
+      line(88_500, "join", "attempt (resume)"),
+      line(88_600, "socket", "resume: link up in 100 ms; hello sent (with token)"),
+      line(110_000, "native", "drop host"),
+      line(150_000, "soak", "flow: rejoin by code (no token)"),
+      // the rejoin's own link trouble is an outage again
+      line(150_100, "socket", "in room_seats"),
+      line(154_000, "socket", "STUCK: no pong after a move; making a new link"),
+      line(156_000, "soak", "flow: seated"),
+    ]) m.see(l);
+    expect(m.freezes).toEqual([85_000 - 62_000, 156_000 - 150_100]);
+    expect(m.attempts).toEqual([2, 0]);
+    expect(m.abandonedHellos).toBe(1);
+    expect(m.recoveries).toEqual([]);
+    expect(m.ignored).toBe(1);
+  });
+
+  it("puts a STUCK under this phone's one-way loss on it, not on no fault", () => {
+    const m = new SoakMetrics();
+    for (const l of [
+      line(0, "socket", "in state"),
+      line(1000, "soak", "chaos: oneway in 9.0 s (phase play, role joiner, link wifi, by bg)"),
+      line(5000, "socket", "STUCK: no pong; making a new link"),
+      line(6000, "socket", "resume: accepted (state); open"),
+      line(9000, "socket", "STUCK: no pong; making a new link"),
+      line(9500, "soak", "chaos: oneway over: 7 lost"),
+      line(9600, "socket", "resume: accepted (state); open"),
+      line(10_300, "socket", "STUCK: no pong; making a new link"),
+      line(10_400, "socket", "resume: accepted (state); open"),
+      line(30_000, "socket", "STUCK: no pong; making a new link"),
+    ]) m.see(l);
+    expect(m.stuck).toEqual({ stall: 0, after: 0, blackhole: 0, oneway: 3, none: 1 });
+    expect(m.summary(31_000, 1)).toContain("blackhole 0 / oneway 3 / no fault here 1");
+  });
+
+  it("on the live soak: the driver's Leave and rejoin reach the metrics", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(0);
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.resetModules();
+    const log = await import("./nearbyLog");
+    const soak = await import("./nearbySoak");
+    try {
+      soak.setChaos(true);
+      await vi.advanceTimersByTimeAsync(1000);
+      log.nearbyLog("socket", "in state");
+      log.nearbyLog("soak", "flow: leave (chaos, play, link open)");
+      log.nearbyLog("socket", "in left");
+      log.nearbyLog("native", "drop host");
+      now += 60_000;
+      log.nearbyLog("soak", "flow: rejoin by code (token kept)");
+      log.nearbyLog("soak", "chaos: oneway out 6.0 s (phase play, role joiner, link wifi, by bg)");
+      log.nearbyLog("socket", "STUCK: no pong after a move; making a new link");
+      now += 2000;
+      log.nearbyLog("soak", "flow: seated");
+      soak.setChaos(false);
+      expect(soak.soakSummary()).toContain("freeze n=1 p50 2.0 p95 2.0 max 2.0 s");
+      expect(soak.soakSummary()).toContain("oneway 1 / no fault here 0");
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("measures chat_history at each resume, repeated state frames, and bytes per second dealing and in play", () => {

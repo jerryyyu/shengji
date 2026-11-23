@@ -4,7 +4,7 @@
 // binary offers nearby play (nearbyGate.ts).
 import type { NearbyJoin } from "../nearbyJoin";
 import { NEARBY_COPY } from "../offline/server/nearby/copy";
-import { nearbyChoices } from "../joinSeats";
+import { nearbyChoices, nearbyDefaultSeat } from "../joinSeats";
 import type { RoomMsg } from "../protocol";
 import { BOT_FILL_MS } from "./store";
 import { teamWord } from "./tableModel";
@@ -106,6 +106,9 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
     status,
     seats,
     you: j.seat ?? 0,
+    // the picker stays drawn around the seat it started on: a tap glows
+    // where it lands rather than turning the table
+    layout: peek ? nearbyDefaultSeat(peek) ?? undefined : undefined,
     rows: null, waitSwitch: null, chat: null,
     primary: retry
       ? { label: NEARBY_COPY.tryAgain, disabled: false, act: { type: "nearby_again" } }

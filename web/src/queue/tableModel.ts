@@ -138,6 +138,10 @@ export interface TableModel {
   status?: { text: string; warn?: boolean; link?: { label: string; act: PanelAction } };
   seats: ModelSeat[] | null;
   you: number;
+  /** The seat the columns are drawn around, when it is not `you`: a seat
+   *  picker's, which stays put while a tap moves `you`, so the tapped seat
+   *  glows where it was tapped. */
+  layout?: number;
   rows: TableRows | null;
   /** The leader's Wait for people on your own table. */
   waitSwitch: { on: boolean; disabled: boolean } | null;

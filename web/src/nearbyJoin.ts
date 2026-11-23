@@ -98,6 +98,12 @@ export const LEAVE_OWED_MS = 30_000;
  *  spelled here so this module never loads the socket's. */
 const SEAT_GONE = "seat_gone";
 
+/** Where the picker draws `seat` when it is drawn around `layout`, as the
+ *  log names it (TablePanel.tsx's TeamColumns). */
+function pickerPlace(seat: number, layout: number): string {
+  return ["left bottom", "right top", "left top", "right bottom"][(seat - layout + 4) % 4];
+}
+
 /** A seat token kept on the phone lets a restarted app take its seat back by
  *  the code: it lasts this long from its last write. */
 export const SEAT_KEEP_MS = 2 * 60 * 60 * 1000;
@@ -424,6 +430,7 @@ export class NearbyJoinStore {
     const v = this.view;
     if (!v || v.step !== "panel" || !v.peek) return;
     if (!nearbyChoices(v.peek).includes(seat)) return;
+    nearbyLog("join", `seat picker tap: shown ${pickerPlace(seat, nearbyDefaultSeat(v.peek) ?? 0)} → seat ${seat}`);
     this.set({ ...v, seat });
   }
 
@@ -436,7 +443,7 @@ export class NearbyJoinStore {
     if (!v || v.step !== "panel" || v.seat === null) return;
     const kept = keptSeatToken(v.code);
     if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat, ...(kept ? { token: kept } : {}) })) return;
-    nearbyLog("join", `join sent (${kept ? "with" : "no"} token)`);
+    nearbyLog("join", `join sent (${kept ? "with" : "no"} token), seat ${v.seat}`);
     this.set({ ...v, step: "joining" });
     this.joinTimer = window.setTimeout(() => {
       this.joinTimer = null;
@@ -662,6 +669,9 @@ export class NearbyJoinStore {
         this.forgetTable();
       } else if (Date.now() - this.keptAt > SEAT_REFRESH_MS) this.keepToken();
       if (!this.seated) {
+        // the seat asked for beside the seat given: a host that seats a
+        // phone elsewhere shows in the log
+        nearbyLog("join", `seated at seat ${m.you}`);
         this.claiming = false;
         this.seated = true;
         this.seatedCode = v!.code;

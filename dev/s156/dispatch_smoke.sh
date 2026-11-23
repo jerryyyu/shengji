@@ -3,6 +3,7 @@
 set -eu
 [ "$(hostname)" = Jerrys-Mac-mini.local ] || exit 6
 tools=/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/fl-pilot/tools
+[ -s "$tools/fleet_queue.json" ] || exit 6
 next=$(env -u FLEET_QUEUE python3 "$tools/fleet_queue.py" next ultra)
 case "$next" in
   'none queued'|sz2-m2-smoke:released|sz2-m2-smoke:released\ sha=????????) ;;

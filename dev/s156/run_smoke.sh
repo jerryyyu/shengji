@@ -5,8 +5,8 @@ for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 
 fleet=/Users/jeryyu/fleet
 packet=$fleet/codex-sz2-smoke-r1
 root=$packet/capture
-tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-4cc672bd
-head=4cc672bdd396deb3d61ab35ba8c39e8343d8d0a3
+tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-4a1cebcd
+head=4a1cebcdc71773d990c5d8dcfb620430266de449
 lib=$tree/server/scripts/lanes/lane_lib.sh
 parity=$fleet/claude-ut-all/scripts/r1_parity.py
 calib=$fleet/cloud-archive/codex-20261106/root/codex-g2-belief-cloud-v1/partitions/part-00of32

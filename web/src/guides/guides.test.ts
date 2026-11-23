@@ -62,6 +62,7 @@ describe("the committed guide pages", () => {
   });
 
   it("cover every guide in both languages, plus a hub each", () => {
+    expect(slugs.length).toBeGreaterThanOrEqual(6);
     for (const slug of slugs) {
       expect(built.has(`guides/${slug}/index.html`)).toBe(true);
       expect(built.has(`zh/guides/${slug}/index.html`)).toBe(true);

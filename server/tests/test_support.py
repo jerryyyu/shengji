@@ -320,6 +320,13 @@ def _guide_slugs() -> list[str]:
     return sorted(p.stem for p in content.glob("*.md"))
 
 
+def test_there_are_guides_in_both_languages():
+    slugs = _guide_slugs()
+    assert len(slugs) >= 6
+    zh = PUBLIC.parent / "content" / "guides" / "zh"
+    assert sorted(p.stem for p in zh.glob("*.md")) == slugs
+
+
 def _guide_routes():
     for slug in ["", *(f"/{s}" for s in _guide_slugs())]:
         for root in ("/guides", "/zh/guides"):

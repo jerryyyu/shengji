@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#14171e" />
+<meta name="color-scheme" content="dark" />
+<title>Scoring in Sheng Ji: points, the kitty multiplier and levelling up | Sheng Ji guides</title>
+<meta name="description" content="How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers." />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="canonical" href="https://playshengji.com/guides/scoring-and-levels" />
+<link rel="alternate" hreflang="en" href="https://playshengji.com/guides/scoring-and-levels" />
+<link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/scoring-and-levels" />
+<link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides/scoring-and-levels" />
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Sheng Ji 升级" />
+<meta property="og:url" content="https://playshengji.com/guides/scoring-and-levels" />
+<meta property="og:title" content="Scoring in Sheng Ji: points, the kitty multiplier and levelling up" />
+<meta property="og:description" content="How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers." />
+<meta property="og:image" content="https://playshengji.com/og/preview.jpg" />
+<meta property="og:locale" content="en_US" />
+<meta name="twitter:card" content="summary_large_image" />
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "Article",
+   "@id": "https://playshengji.com/guides/scoring-and-levels#article",
+   "headline": "Scoring in Sheng Ji: points, the kitty multiplier and levelling up",
+   "description": "How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers.",
+   "inLanguage": "en",
+   "url": "https://playshengji.com/guides/scoring-and-levels",
+   "mainEntityOfPage": "https://playshengji.com/guides/scoring-and-levels",
+   "image": "https://playshengji.com/og/preview.jpg",
+   "dateModified": "2026-11-23",
+   "datePublished": "2026-11-23",
+   "author": {
+    "@type": "Organization",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   },
+   "publisher": {
+    "@type": "Organization",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   },
+   "about": {
+    "@type": "Game",
+    "name": "Sheng Ji",
+    "alternateName": [
+     "升级",
+     "Tractor",
+     "拖拉机",
+     "八十分"
+    ]
+   },
+   "isPartOf": {
+    "@type": "WebSite",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   }
+  },
+  {
+   "@type": "BreadcrumbList",
+   "@id": "https://playshengji.com/guides/scoring-and-levels#breadcrumb",
+   "itemListElement": [
+    {
+     "@type": "ListItem",
+     "position": 1,
+     "name": "Home",
+     "item": "https://playshengji.com/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 2,
+     "name": "Guides",
+     "item": "https://playshengji.com/guides"
+    },
+    {
+     "@type": "ListItem",
+     "position": 3,
+     "name": "Scoring in Sheng Ji: points, the kitty multiplier and levelling up",
+     "item": "https://playshengji.com/guides/scoring-and-levels"
+    }
+   ]
+  }
+ ]
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #14171e; color: #e8ecf2; }
+  body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { box-sizing: border-box; max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { margin: 8px 0 4px; font-size: 30px; line-height: 1.2; color: #f2c14e; }
+  h2 { margin: 32px 0 8px; font-size: 20px; color: #f2c14e; }
+  h3 { margin: 18px 0 4px; font-size: 16px; }
+  p, li { color: #d3d8e0; }
+  .sub { margin: 0; color: #9aa3b2; }
+  a { color: #f2c14e; }
+  .play { display: inline-block; padding: 10px 20px; border-radius: 10px; background: #f2c14e; color: #14171e;
+          font-weight: 700; text-decoration: none; }
+  .lang { font-size: 14px; }
+  .note { margin-top: 40px; padding-top: 16px; border-top: 1px solid #3a4150; font-size: 14px; color: #9aa3b2; }
+  .crumbs { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; font-size: 14px; color: #9aa3b2; }
+  .crumbs li { color: #9aa3b2; }
+  .crumbs li + li::before { content: "/"; margin-right: 6px; }
+  .red { color: #ff7a8a; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8ecf2; }
+  .aside { margin: 16px 0; padding: 10px 14px; border-left: 3px solid #f2c14e; background: #1b2029; border-radius: 0 8px 8px 0; }
+  .table { overflow-x: auto; margin: 12px 0; }
+  table { border-collapse: collapse; min-width: 100%; font-size: 15px; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid #3a4150; text-align: left; vertical-align: top; color: #d3d8e0; }
+  th { color: #e8ecf2; font-weight: 700; }
+  .gv { margin: 18px 0; padding: 0; }
+  .gv-svg { display: block; width: 100%; max-width: var(--gv-w); height: auto; border-radius: 12px;
+            background: radial-gradient(ellipse at 50% 35%, #2a7049 0%, #1d5638 60%, #164530 100%); }
+  .gv figcaption { margin-top: 6px; font-size: 14px; color: #9aa3b2; }
+  .gv-anim .gv-p, .gv-anim .gv-win, .gv-anim .gv-back, .gv-anim .gv-stay, .gv-anim .gv-tl,
+  .gv-anim .gv-lv, .gv-anim .gv-chg { animation-duration: 9s; animation-iteration-count: infinite;
+                                      animation-timing-function: ease-out; animation-fill-mode: both; }
+  .gv-trick .gv-p0 { animation-name: gv-p0; } .gv-trick .gv-p1 { animation-name: gv-p1; }
+  .gv-trick .gv-p2 { animation-name: gv-p2; } .gv-trick .gv-p3 { animation-name: gv-p3; }
+  .gv-trick .gv-win { animation-name: gv-win; }
+  @keyframes gv-p0 { 0%, 3% { opacity: 0; transform: translateY(14px); } 8%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p1 { 0%, 14% { opacity: 0; transform: translateY(14px); } 19%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p2 { 0%, 25% { opacity: 0; transform: translateY(14px); } 30%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p3 { 0%, 36% { opacity: 0; transform: translateY(14px); } 41%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-win { 0%, 48% { opacity: 0; } 54%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  .gv-throw .gv-back { animation-name: gv-back; } .gv-throw .gv-stay { animation-name: gv-stay; }
+  .gv-throw .gv-tl { animation-name: gv-tl; }
+  @keyframes gv-back { 0%, 30% { transform: translate(var(--dx), var(--dy)); } 50%, 100% { transform: none; } }
+  @keyframes gv-stay { 0%, 30% { transform: translateX(var(--dx)); } 50%, 100% { transform: none; } }
+  @keyframes gv-tl { 0%, 28% { opacity: 0; } 34%, 100% { opacity: 1; } }
+  .gv-levels .gv-lv { animation-name: gv-lv; } .gv-levels .gv-chg { animation-name: gv-chg; }
+  @keyframes gv-lv { 0%, 20% { transform: translateX(var(--dx)); } 55%, 100% { transform: none; } }
+  @keyframes gv-chg { 0%, 52% { opacity: 0; } 60%, 100% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .gv-anim * { animation: none !important; } }
+  .cta { margin: 36px 0 8px; padding: 18px 16px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
+  .cta h2 { margin-top: 0; }
+  .cta p { margin: 8px 0 0; }
+  .related { padding-left: 20px; }
+  .hub { list-style: none; padding: 0; }
+  .hub li { margin: 0 0 18px; }
+  .hub a { font-size: 18px; font-weight: 700; }
+  .hub p { margin: 2px 0 0; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <a class="lang" href="/zh/guides/scoring-and-levels" hreflang="zh-Hans" lang="zh-Hans">中文</a>
+  <a class="play" href="/">Play now</a>
+</header>
+<nav aria-label="Breadcrumb"><ol class="crumbs"><li><a href="/">Home</a></li><li><a href="/guides">Guides</a></li><li>Scoring in Sheng Ji: points, the kitty multiplier and levelling up</li></ol></nav>
+<article>
+<h1>Scoring in Sheng Ji: points, the kitty multiplier and levelling up</h1>
+<p class="sub">How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers.</p>
+<p>Every hand ends with one number: the attackers' points. It decides who goes up, by how much, and who is banker next.</p>
+<h2 id="only-5s-10s-and-kings-score">Only 5s, 10s and Kings score</h2>
+<figure class="gv" style="--gv-w:389px"><svg class="gv-svg " viewBox="0 0 389 120" role="img" aria-labelledby="gv1" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"><title id="gv1">5 points each: 5 of spades, 5 of hearts, 5 of diamonds, 5 of clubs; 10 each: 10 of spades, 10 of hearts, 10 of diamonds, 10 of clubs; 10 each: King of spades, King of hearts, King of diamonds, King of clubs</title><g transform="translate(12 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♠</text></g></g><g transform="translate(31 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♥</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♥</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♥</text></g></g><g transform="translate(50 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(69 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="65.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">5 points each</text><g transform="translate(141 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♠</text></g></g><g transform="translate(160 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♥</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♥</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♥</text></g></g><g transform="translate(179 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(198 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="194.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">10 each</text><g transform="translate(270 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♠</text></g></g><g transform="translate(289 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♥</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♥</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♥</text></g></g><g transform="translate(308 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#cf2f44"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♦</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♦</text></g></g><g transform="translate(327 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">K</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="323.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">10 each</text></svg><figcaption>One deck's point cards. With two decks there are 8 of each: 40 + 80 + 80 = 200 points.</figcaption></figure>
+<p>Only the attackers collect. Each trick they win adds the points in it to their total, whoever played those cards. The defenders' tricks don't score. For the defenders, winning a trick just means the points in it are safe.</p>
+<p>So a 10 your partner drops on your winning ace is 10 points saved, and a King you're forced to play into an attacker's trick is 10 points for them.</p>
+<h2 id="the-kitty-counts-only-on-the-last-trick">The kitty counts only on the last trick</h2>
+<p>The 8 cards the banker buried sit out of play all hand. When the last trick is won by an attacker, the attackers also score the points buried there, multiplied by <strong>twice the number of cards led to that trick</strong>:</p>
+<figure class="gv" style="--gv-w:419px"><svg class="gv-svg " viewBox="0 0 419 120" role="img" aria-labelledby="gv2" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"><title id="gv2">Single lead: ×2: 5 of clubs; Pair: ×4: 5 of clubs, 5 of clubs; Tractor of two pairs: ×8: 5 of clubs, 5 of clubs, 6 of clubs, 6 of clubs</title><g transform="translate(41.5 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="66.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">Single lead: ×2</text><g transform="translate(143 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><g transform="translate(162 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="177.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">Pair: ×4</text><g transform="translate(267 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><g transform="translate(286 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">5</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><g transform="translate(305 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">6</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">6</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><g transform="translate(324 12)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">6</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">6</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="320.5" y="99" fill="#d3d8e0" font-size="12" text-anchor="middle">Tractor of two pairs: ×8</text></svg><figcaption>The multiplier counts the cards in the lead. A throw of a pair and a single, three cards, makes it ×6.</figcaption></figure>
+<p>If the defenders win the last trick, the kitty scores nothing, however many points are in it.</p>
+<p>A real hand: the banker buried <span class="red">♦5</span> and ♠K, 15 points. The attackers had 40 going into the last trick, which was led with a single trump. West won it with a <span class="red">♥2</span>, the trick held a 5, and the kitty added 15 × 2 = 30. Final score 75.</p>
+<p>Had that last trick been led with a pair and still won by the attackers, the kitty alone would have been worth 15 × 4 = 60, taking them past 100.</p>
+<figure class="gv" style="--gv-w:572px"><svg class="gv-svg gv-anim gv-trick" viewBox="0 0 572 154" role="img" aria-labelledby="gv3" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"><title id="gv3">East: 9 of clubs, 9 of clubs; South: 4 of spades, 8 of spades; West: little joker, little joker; North: 10 of clubs, 10 of clubs. West wins the trick.</title><g class="gv-p gv-p0"><text x="80.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">East</text><g transform="translate(46 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><g transform="translate(65 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">9</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><text x="80.5" y="124" fill="#9aa3b2" font-size="11" text-anchor="middle">leads a trump pair</text></g><g class="gv-p gv-p1"><text x="217.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">South</text><g transform="translate(183 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">4</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">4</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♠</text></g></g><g transform="translate(202 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">8</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="12" font-weight="800" text-anchor="middle">8</text><text x="8" y="24" font-size="11" text-anchor="middle">♠</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♠</text></g></g><text x="217.5" y="124" fill="#9aa3b2" font-size="11" text-anchor="middle">out of trump</text></g><g class="gv-p gv-p2"><text x="354.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">West</text><g class="gv-win"><rect x="314" y="26" width="81" height="82" rx="9" fill="#f2c14e" fill-opacity=".16" stroke="#f2c14e" stroke-width="2.5"/><text x="354.5" y="124" fill="#f2c14e" font-size="12" font-weight="700" text-anchor="middle">wins the trick</text></g><g transform="translate(320 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e" font-size="7.5" font-weight="800" text-anchor="middle"><text x="8.5" y="12">J</text><text x="8.5" y="20.2">O</text><text x="8.5" y="28.4">K</text><text x="8.5" y="36.599999999999994">E</text><text x="8.5" y="44.8">R</text></g><text x="37" y="63" fill="#23252e" font-size="17" text-anchor="middle">☆</text></g><g transform="translate(339 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e" font-size="7.5" font-weight="800" text-anchor="middle"><text x="8.5" y="12">J</text><text x="8.5" y="20.2">O</text><text x="8.5" y="28.4">K</text><text x="8.5" y="36.599999999999994">E</text><text x="8.5" y="44.8">R</text></g><text x="37" y="63" fill="#23252e" font-size="17" text-anchor="middle">☆</text></g></g><g class="gv-p gv-p3"><text x="491.5" y="20" fill="#d3d8e0" font-size="12" font-weight="600" text-anchor="middle">North</text><g transform="translate(457 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g><g transform="translate(476 32)"><rect width="50" height="70" rx="5.5" fill="#f7f6ee" stroke="#000" stroke-opacity=".22"/><g fill="#23252e"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text><g transform="rotate(180 25 35)"><text x="8" y="13" font-size="10.5" font-weight="800" text-anchor="middle" letter-spacing="-0.6">10</text><text x="8" y="24" font-size="11" text-anchor="middle">♣</text></g><text x="28" y="45" font-size="24" text-anchor="middle" opacity=".9">♣</text></g></g></g></svg><figcaption>With clubs trump and 2 as the level rank, a pair of little jokers wins the last trick. 25 buried points × 4 = 100 for the attackers.</figcaption></figure>
+<h2 id="how-many-levels-a-score-is-worth">How many levels a score is worth</h2>
+<p>The attackers need 80. From there, every 40 points either way is one level.</p>
+<div class="table"><table>
+<thead><tr><th>Attackers' points</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Defenders up 3</td></tr>
+<tr><td>5 to 35</td><td>Defenders up 2</td></tr>
+<tr><td>40 to 75</td><td>Defenders up 1</td></tr>
+<tr><td>80 to 115</td><td>Attackers take the deal, no level change</td></tr>
+<tr><td>120 to 155</td><td>Attackers take the deal and go up 1</td></tr>
+<tr><td>160 to 195</td><td>Attackers up 2</td></tr>
+<tr><td>200 to 235</td><td>Attackers up 3</td></tr>
+<tr><td>240 to 275</td><td>Attackers up 4, and so on</td></tr>
+</tbody>
+</table></div>
+<p>Scores over 200 happen because of the kitty. 150 in tricks plus 25 buried points under a pair lead is 150 + 100 = 250: up 4.</p>
+<p>The 75 in the real hand above is one level for the defenders. Five more points and it would have been a lost deal instead.</p>
+<h2 id="who-is-banker-next">Who is banker next</h2>
+<ul>
+<li>The defenders win: the banker's partner becomes banker. The hand is played at the defenders' level again, now one to three higher.</li>
+<li>The attackers win: the player after the banker becomes banker. That's an attacker, so the next hand is played at the attackers' level.</li>
+</ul>
+<p>The level that matters each hand is the banker's team's. Your own team's level only comes into play when you hold the deal.</p>
+<h2 id="getting-to-ace-and-winning-the-game">Getting to Ace and winning the game</h2>
+<p>Levels run 2, 3 … 10, J, Q, K, A. A team stops at A: a team on K that scores three levels goes to A, not past it.</p>
+<p>Reaching A doesn't win. You win the game by winning a hand at A as the defenders. That means taking the deal at A and holding the attackers under 80. If the attackers reach 80 on your A hand, the deal passes and you're defending your A again only after you win it back.</p>
+<figure class="gv" style="--gv-w:444px"><svg class="gv-svg gv-anim gv-levels" viewBox="0 0 444 114" role="img" aria-labelledby="gv4" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"><title id="gv4">Your team move from level K to level A (+1).</title><rect x="28" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="42" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">2</text><rect x="58" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="72" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">3</text><rect x="88" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="102" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">4</text><rect x="118" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="132" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">5</text><rect x="148" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="162" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">6</text><rect x="178" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="192" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">7</text><rect x="208" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="222" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">8</text><rect x="238" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="252" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">9</text><rect x="268" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="282" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle" letter-spacing="-0.5">10</text><rect x="298" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="312" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">J</text><rect x="328" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="342" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">Q</text><rect x="358" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="372" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">K</text><rect x="388" y="46" width="28" height="26" rx="5" fill="#252b37" stroke="#3a4150"/><text x="402" y="64" fill="#d3d8e0" font-size="12" font-weight="700" text-anchor="middle">A</text><g class="gv-lv" style="--dx:-30px"><g transform="translate(402 40)"><path d="M0 0 L-6 -8 L6 -8 Z" fill="#f2c14e"/><rect x="-38" y="-28" width="76" height="20" rx="10" fill="#f2c14e"/><text x="0" y="-14" fill="#14171e" font-size="11" font-weight="800" text-anchor="middle">Your team</text></g></g><rect x="358" y="46" width="28" height="26" rx="5" fill="none" stroke="#9aa3b2" stroke-dasharray="3 3"/><g class="gv-chg"><text x="402" y="92" fill="#f2c14e" font-size="14" font-weight="800" text-anchor="middle">+1</text></g></svg><figcaption>Up from K to A. One more defended hand at A wins the game.</figcaption></figure>
+<p>When a game ends the table keeps playing: both teams restart at the starting level and the room counts games won.</p>
+<h2 id="variants-you-ll-meet-elsewhere">Variants you'll meet elsewhere</h2>
+<p>Scoring is where house rules differ most. This site uses the table above and the cards-led multiplier. Elsewhere you may see a kitty multiplier based on the longest part of the last lead, so a pair and a single count ×4, not ×6. Some tables make 5, 10 and K levels nobody may skip. Others send a team back down after failing at A several times. <a href="/guides/names-and-variants">Names and variants</a> lists the common ones.</p>
+</article>
+<aside class="cta" data-cta="app">
+<h2>Practice this against the bots</h2>
+<p><a class="play" href="https://apps.apple.com/app/id6833598710">Get the iPhone and iPad app</a></p>
+<p><a href="/">or play in your browser</a></p>
+</aside>
+<h2>Related guides</h2>
+<ul class="related">
+<li><a href="/guides/burying-the-kitty">Burying the kitty in Sheng Ji: what to put down and why</a></li>
+<li><a href="/guides/how-to-play">How to play Sheng Ji (Tractor): one full hand, start to finish</a></li>
+<li><a href="/guides/names-and-variants">Sheng Ji, Tractor, 80 Points, Finding Friends: one game, four names</a></li>
+<li><a href="/rules">The full rules</a></li>
+</ul>
+<p class="sub">Updated 2026-11-23</p>
+<p class="note">Automated play is not allowed: AI agents and other automated clients must not join, queue for or play games on this site. Reading these pages is fine. See <a href="/llms.txt">llms.txt</a> and the <a href="/privacy">privacy page</a>.</p>
+</main>
+</body>
+</html>

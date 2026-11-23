@@ -27,9 +27,81 @@
     <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides" />
   </url>
   <url>
+    <loc>https://playshengji.com/guides/how-to-play</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/how-to-play" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/how-to-play" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/guides/names-and-variants</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/names-and-variants" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/names-and-variants" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/guides/declaring-trump</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/declaring-trump" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/declaring-trump" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/guides/burying-the-kitty</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/burying-the-kitty" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/burying-the-kitty" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/guides/pairs-tractors-throws</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/pairs-tractors-throws" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/pairs-tractors-throws" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/guides/scoring-and-levels</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/scoring-and-levels" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/scoring-and-levels" />
+  </url>
+  <url>
     <loc>https://playshengji.com/zh/guides</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides" />
     <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/how-to-play</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/how-to-play" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/how-to-play" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/names-and-variants</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/names-and-variants" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/names-and-variants" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/declaring-trump</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/declaring-trump" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/declaring-trump" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/burying-the-kitty</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/burying-the-kitty" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/burying-the-kitty" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/pairs-tractors-throws</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/pairs-tractors-throws" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/pairs-tractors-throws" />
+  </url>
+  <url>
+    <loc>https://playshengji.com/zh/guides/scoring-and-levels</loc>
+    <lastmod>2026-11-23</lastmod>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/guides/scoring-and-levels" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides/scoring-and-levels" />
   </url>
   <!-- /guides -->
 </urlset>

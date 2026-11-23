@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -16,6 +17,8 @@ def host(tmp_path):
     root = tmp_path / "reserved"
     root.mkdir()
     launch_log = tmp_path / "events"
+    config = tmp_path / "provider.toml"
+    config.write_text("fixture provider config\n")
     trainer = tmp_path / "trainer.py"
     trainer.write_text(
         "import os, pathlib, sys, time\n"
@@ -47,14 +50,30 @@ name, *args = sys.argv
 service = Path(name).name
 if service == "darkbloom":
     action = args[0]
+    log = d / "events"
+    events = log.read_text() if log.exists() else ""
+    restarted = "restart" in events
     if action in ("restart", "stop"):
         with (d / "events").open("a") as f:
             f.write(action + "\\n")
         if action == "restart" or not (d / "failed_stop").exists():
             (d / "state").write_text("running" if action == "restart" else "not running")
+        if action == "restart" and (d / "config_drift_after_restart").exists():
+            (d / "provider.toml").write_text("changed")
     else:
         state = (d / "state").read_text() if (d / "state").exists() else "running"
+        if not restarted and "train " in events and (d / "early_provider_restart").exists():
+            state = "running"
         print(f"Daemon: {state}\\nTraffic: eligible")
+        if (d / "wrong_initial_mode").exists() or (restarted and (d / "wrong_restored_mode").exists()):
+            print("Serving: Darkbloom network and local API")
+        else:
+            print("Serving: Darkbloom network only — this Mac has no local API")
+        models = ["gemma-4-26b-qat-4bit", "gpt-oss-20b", "qwen3.5-35b-a3b",
+                  "Qwen3.5-9B", "qwen3.6-35b-a3b-vl-mtp-mxfp8"]
+        if (d / "wrong_initial_filter").exists() or (restarted and (d / "wrong_restored_filter").exists()):
+            models[4] = models[3]
+        print("Enabled model filter: " + ", ".join(models))
 elif service == "launchctl":
     print("123 0 io.darkbloom.provider")
     log = d / "events"
@@ -105,6 +124,8 @@ d = Path({str(tmp_path)!r})
 w.SCRIPTS = d / "server/scripts"
 w.DARKBLOOM = d / "darkbloom"
 w.PAUSE = d / "keepalive.pause"
+w.PROVIDER_CONFIG = d / "provider.toml"
+w.PROVIDER_SHA256 = {hashlib.sha256(config.read_bytes()).hexdigest()!r}
 w.SYSCTL = d / "sysctl"
 w.LAUNCHCTL = d / "launchctl"
 w.PS = d / "ps"
@@ -127,7 +148,7 @@ def events(log):
     return [event.split()[0] for event in log.read_text().splitlines()]
 
 
-def test_restore_allows_slow_provider_restart(monkeypatch):
+def test_restore_allows_slow_provider_restart(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(WORKER.parent))
     import sz2_gpu_smoke as worker
 
@@ -141,12 +162,19 @@ def test_restore_allows_slow_provider_restart(monkeypatch):
             started = True
             return ""
         if args == (worker.DARKBLOOM, "status"):
-            return "Daemon: running\nTraffic: eligible" if started else "Daemon: not running"
+            if not started:
+                return "Daemon: not running"
+            return (f"Daemon: running\nTraffic: eligible\nServing: {worker.SERVING_MODE}\n"
+                    f"Enabled model filter: {', '.join(sorted(worker.MODEL_FILTER))}")
         assert args == (worker.LAUNCHCTL, "list")
         return "\n".join(worker.JOBS)
 
     monkeypatch.setattr(worker, "command", provider)
     monkeypatch.setattr(worker, "RESTORE_SECONDS", 0)
+    config = tmp_path / "provider.toml"
+    config.write_text("fixture provider config\n")
+    monkeypatch.setattr(worker, "PROVIDER_CONFIG", config)
+    monkeypatch.setattr(worker, "PROVIDER_SHA256", hashlib.sha256(config.read_bytes()).hexdigest())
     worker.restore_darkbloom()
     assert started
 
@@ -166,7 +194,7 @@ def test_smoke_runs_once_and_restores(host):
 
 
 @pytest.mark.parametrize(("fault", "diagnostic", "want"), [
-    ("failed_stop", "stop could not be verified", ["stop", "restart"]),
+    ("failed_stop", "Darkbloom is not confirmed stopped", ["stop", "restart"]),
     ("failed_trainer", "trainer exited 13", ["stop", "train", "restart"]),
     ("unreadable_swap", "unreadable swap", ["stop", "train", "restart"]),
     ("excess_swap", "memory guard exceeded", ["stop", "train", "restart"]),
@@ -254,3 +282,44 @@ def test_short_trainer_can_exit_before_footprint_is_available(host):
     result = invoke(host)
     assert result.returncode == 0, result.stderr
     assert events(log) == ["stop", "train", "restart"]
+
+
+@pytest.mark.parametrize(("fault", "diagnostic"), [
+    ("wrong_initial_mode", "serving mode differs"),
+    ("wrong_initial_filter", "model filter differs"),
+    ("provider.toml", "provider.toml SHA differs"),
+])
+def test_start_requires_reviewed_provider_identity(host, fault, diagnostic):
+    _, tmp, log = host
+    (tmp / fault).write_text("mismatch")
+    result = invoke(host)
+    assert result.returncode == 1
+    assert diagnostic in result.stderr
+    assert not log.exists()
+    assert not (tmp / "keepalive.pause").exists()
+
+
+@pytest.mark.parametrize(("fault", "diagnostic"), [
+    ("wrong_restored_mode", "serving mode differs"),
+    ("wrong_restored_filter", "model filter differs"),
+    ("config_drift_after_restart", "provider.toml SHA differs"),
+])
+def test_restart_requires_reviewed_provider_identity(host, fault, diagnostic):
+    _, tmp, log = host
+    (tmp / fault).touch()
+    result = invoke(host)
+    assert result.returncode == 1
+    assert diagnostic in result.stderr
+    assert events(log) == ["stop", "train", "restart"]
+    assert not (tmp / "keepalive.pause").exists()
+
+
+def test_trainer_stops_if_provider_reappears_during_smoke(host):
+    _, tmp, log = host
+    (tmp / "slow_trainer").touch()
+    (tmp / "early_provider_restart").touch()
+    result = invoke(host)
+    assert result.returncode == 1
+    assert "Darkbloom is not confirmed stopped" in result.stderr
+    assert events(log) == ["stop", "train", "restart"]
+    assert not (tmp / "keepalive.pause").exists()

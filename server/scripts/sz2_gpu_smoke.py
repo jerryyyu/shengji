@@ -1,6 +1,7 @@
 """Run one SZ2 smoke under an admitted host supervisor."""
 import argparse
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,12 @@ import time
 SCRIPTS = Path(__file__).resolve().parent
 DARKBLOOM = Path.home() / ".darkbloom/bin/darkbloom"
 PAUSE = Path.home() / "darkbloom-dash/keepalive.pause"
+PROVIDER_CONFIG = Path.home() / ".config/darkbloom/provider.toml"
+PROVIDER_SHA256 = "72f6b444134b379709afe8c08b816d4e974d538669183702b96f5e4c90e0b2fe"
+SERVING_MODE = "Darkbloom network only — this Mac has no local API"
+MODEL_FILTER = {
+    "gemma-4-26b-qat-4bit", "gpt-oss-20b", "qwen3.5-35b-a3b", "Qwen3.5-9B", "qwen3.6-35b-a3b-vl-mtp-mxfp8",
+}
 SYSCTL = "/usr/sbin/sysctl"
 LAUNCHCTL = "/bin/launchctl"
 PS = "/bin/ps"
@@ -30,13 +37,35 @@ def command(*argv, timeout=5):
                           stdin=subprocess.DEVNULL, timeout=timeout).stdout
 
 
+def verify_darkbloom_identity(status):
+    fields = {}
+    for label in ("Serving", "Enabled model filter"):
+        values = [line[len(label) + 1:].strip() for line in status.splitlines()
+                  if line.startswith(f"{label}:")]
+        if len(values) != 1:
+            raise RuntimeError(f"Darkbloom status must have exactly one {label} field")
+        fields[label] = values[0]
+    if fields["Serving"] != SERVING_MODE:
+        raise RuntimeError("Darkbloom serving mode differs from the reviewed mode")
+    model_ids = [model.strip() for model in fields["Enabled model filter"].split(",")]
+    if len(model_ids) != len(MODEL_FILTER) or set(model_ids) != MODEL_FILTER:
+        raise RuntimeError("Darkbloom model filter differs from the reviewed filter")
+    with PROVIDER_CONFIG.open("rb") as config:
+        digest = hashlib.file_digest(config, "sha256").hexdigest()
+    if digest != PROVIDER_SHA256:
+        raise RuntimeError(f"Darkbloom provider.toml SHA differs from the reviewed SHA: {digest}")
+
+
 def darkbloom_ready():
     status = command(DARKBLOOM, "status")
     if not all(re.search(rf"^{line}(?:[ \t]|$)", status, re.MULTILINE)
                for line in ("Daemon: running", "Traffic: eligible")):
         return False
     jobs = {line.split()[-1] for line in command(LAUNCHCTL, "list").splitlines() if line.strip()}
-    return JOBS <= jobs
+    if not JOBS <= jobs:
+        return False
+    verify_darkbloom_identity(status)
+    return True
 
 
 def restore_darkbloom():
@@ -48,7 +77,8 @@ def restore_darkbloom():
     while True:
         try:
             if darkbloom_ready():
-                print("Darkbloom running and eligible", flush=True)
+                print("Darkbloom running and eligible with reviewed serving mode and model filter "
+                      f"provider_sha256={PROVIDER_SHA256}", flush=True)
                 return
         except (OSError, subprocess.SubprocessError):
             pass
@@ -59,7 +89,7 @@ def restore_darkbloom():
 
 
 @contextmanager
-def darkbloom_paused(check_signal):
+def darkbloom_stopped(check_signal):
     pause = PAUSE
     with pause.open("x", encoding="utf-8") as lease:
         identity = os.fstat(lease.fileno())
@@ -72,6 +102,13 @@ def darkbloom_paused(check_signal):
             except FileNotFoundError:
                 return False
 
+        def verify_stopped():
+            if not still_owned():
+                raise RuntimeError(f"Darkbloom pause ownership changed: {pause}")
+            if not re.search(r"^Daemon: not running(?:[ \t]|$)",
+                             command(DARKBLOOM, "status"), re.MULTILINE):
+                raise RuntimeError("Darkbloom is not confirmed stopped")
+
         try:
             lease.write(token)
             lease.flush()
@@ -82,11 +119,10 @@ def darkbloom_paused(check_signal):
                 raise RuntimeError(f"Darkbloom pause ownership changed: {pause}")
             stopping = True
             command(DARKBLOOM, "stop", "--timeout", "180", timeout=190)
-            if not re.search(r"^Daemon: not running(?:[ \t]|$)",
-                             command(DARKBLOOM, "status"), re.MULTILINE):
-                raise RuntimeError("Darkbloom stop could not be verified")
+            verify_stopped()
+            print("Darkbloom stopped with keepalive suspended", flush=True)
             check_signal()
-            yield
+            yield verify_stopped
         finally:
             if not still_owned():
                 raise RuntimeError(f"Darkbloom pause ownership changed: {pause}")
@@ -125,7 +161,7 @@ def footprint_mib(pid):
     return float(magnitude) * {"KB": 1 / 1024, "MB": 1, "GB": 1024}[unit]
 
 
-def monitor(child, baseline, check_signal):
+def monitor(child, baseline, check_signal, verify_stopped):
     started = time.monotonic()
     next_footprint = started
     previous_footprint = None
@@ -133,6 +169,7 @@ def monitor(child, baseline, check_signal):
     try:
         while True:
             check_signal()
+            verify_stopped()
             swap, pressure = memory_sample()
             rc = child.poll()
             rss = "-"
@@ -197,14 +234,15 @@ def smoke(root, check_signal):
         raise RuntimeError("memory pressure too high to start smoke")
     check_signal()
     output.mkdir()
-    with darkbloom_paused(check_signal):
+    with darkbloom_stopped(check_signal) as verify_stopped:
         baseline, pressure = memory_sample()
         if pressure >= 4:
             raise RuntimeError("memory pressure too high to start smoke")
+        verify_stopped()
         check_signal()
         child = subprocess.Popen(argv, cwd=SCRIPTS.parent, env={**os.environ, "OMP_NUM_THREADS": "4"},
                                  stdin=subprocess.DEVNULL)
-        monitor(child, baseline, check_signal)
+        monitor(child, baseline, check_signal, verify_stopped)
     check_signal()
 
 

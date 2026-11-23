@@ -1100,6 +1100,15 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
         materialized.append((len(clone.trick.plays), clone.trick.running_points))
         return real_materialize(clone, *args)
 
+    packed = []
+    pack_fourth = search._reply_fast.pack_fourth_replies
+
+    def pack_groups(groups, group_index, first, stop, *args):
+        packed.append((first, stop))
+        return pack_fourth(groups, group_index, first, stop, *args)
+
+    monkeypatch.setattr(search._reply_fast, "pack_fourth_replies", pack_groups)
+
     def features(frame, items):
         result = real_features(frame, items)
         direct.extend(result[3])
@@ -1147,7 +1156,10 @@ def test_projected_reply_ranks_the_same_candidates_in_the_same_value_batches(tmp
         with monkeypatch.context() as patch:
             patch.setattr(us, "_projected_reply_callbacks", lambda *a: None)
             assert run(group) == got
-    assert len(direct) > (30 if width in (2, 4) else 60)
+    if pos == 3:
+        assert sum(stop - first for first, stop in packed) > 60
+    else:
+        assert len(direct) > (30 if width in (2, 4) else 60)
 
 
 def test_projected_reply_heuristic_memo_keeps_seats_caches_and_candidate_rows_distinct():

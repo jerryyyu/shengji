@@ -227,3 +227,46 @@ def pack_reply_rows(items, n_delta):
         mv[i, 3] = won
         mv[i, 4] = won
     return counts, meta
+
+
+def pack_fourth_replies(groups, Py_ssize_t group_index, Py_ssize_t start,
+                        Py_ssize_t stop, int delta, dict points, beats):
+    """Write a contiguous candidate slice, including slices crossing parent groups."""
+    cdef Py_ssize_t n = stop - start, offset, begin, end, i, row = 0
+    cdef long slot, winner, pts, relative, incumbent
+    cdef const unsigned char[::1] parent
+    if n <= 0 or start < 0 or not 1 <= delta <= 4 or group_index < 0:
+        raise ValueError("invalid fourth reply slice")
+    counts = np.empty((n, COUNT_WIDTH), dtype=np.uint8)
+    meta = np.empty((n, 5), dtype=np.int64)
+    cdef unsigned char[:, ::1] cv = counts
+    cdef long long[:, ::1] mv = meta
+    while row < n:
+        if group_index >= len(groups):
+            raise ValueError("missing reply group")
+        (offset, source, candidates, lead, ordering, lookup, prior_points,
+         relative, incumbent, suit, top) = groups[group_index]
+        begin = start + row - offset
+        end = min(stop - offset, len(candidates))
+        parent = source
+        if begin < 0 or begin >= end or parent is None or parent.shape[0] != COUNT_WIDTH:
+            raise ValueError("invalid reply group")
+        for i in range(begin, end):
+            cards = candidates[i]
+            winner = relative if suit is not None and beats(cards, lead, suit, top, ordering)[0] else incumbent
+            pts = prior_points
+            memcpy(&cv[row, 0], &parent[0], COUNT_WIDTH)
+            for card in cards:
+                slot = lookup[card]
+                if not 0 <= slot < HAND_WIDTH or cv[row, slot] == 0 or cv[row, slot + PLAY_OFFSET] == 255:
+                    raise ValueError("invalid reply count delta")
+                cv[row, slot] -= 1
+                cv[row, slot + PLAY_OFFSET] += 1
+                pts += points[card]
+            mv[row, 0] = delta
+            mv[row, 1] = 4
+            mv[row, 2] = pts
+            mv[row, 3] = mv[row, 4] = winner
+            row += 1
+        group_index += 1
+    return counts, meta

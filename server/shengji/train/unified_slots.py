@@ -824,6 +824,18 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
     if not eligible or (pos == 3 and len(eligible) != len(active)):
         return None
 
+    # The fourth seat always finishes the trick. Its candidates can share
+    # their parent and enter the scorer as contiguous row indices.
+    pack_fourth = getattr(search._reply_fast, "pack_fourth_replies", None) if pos == 3 else None
+    groups, ends = [], []
+
+    def fourth_features(frame, indices):
+        from bisect import bisect_right
+        first = indices[0]
+        counts, meta = pack_fourth(groups, bisect_right(ends, first), first,
+                                   first + len(indices), 4 - frame.pos, pts, legal.beats)
+        return _feature_rows(list(range(len(indices))), counts, meta, native=True)
+
     def children(clone, seat, candidates):
         if id(clone) not in eligible:
             return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
@@ -845,6 +857,13 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
             return result
         incumbent, suit, top = actual
         rel = (seat - frame.seat) % 4
+        if pack_fourth is not None:
+            start = ends[-1] if ends else 0
+            end = start + len(candidates)
+            groups.append((start, parent, candidates, lead, clone.ordering, plane_maps[rel],
+                           prior_points, rel, (incumbent - frame.seat) % 4, suit, top))
+            ends.append(end)
+            return range(start, end)
         lookup = plane_maps[rel].__getitem__
         result = []
         for cards in candidates:
@@ -857,6 +876,8 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
     def values(items, seat, gate=None):
         evaluator = bot.evaluator
         features = _direct_reply_features if pos == 3 else _projected_reply_features
+        if pack_fourth is not None:
+            features = fourth_features
         rows = evaluator.readout_ahead(frame, items, bot.batch_size, gate, features)
         if any(len(part) != len(mine) for part, mine, *_ in rows):
             frame.ahead = rows

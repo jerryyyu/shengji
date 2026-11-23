@@ -2193,16 +2193,15 @@ async def run_deal(room: Room) -> None:
                 # provisional, so the frames before the window opens (the
                 # last card, the bots' last declarations) already count down
                 room.declare_until = asyncio.get_running_loop().time() + DECLARE_GRACE
-            # the card shows at once; the bots' declarations on it follow
+            # The card shows at once. The bots decide on it inside its
+            # gap; the next frame carries what they declared, so the deal
+            # sends one frame per card whatever the bots do.
             await broadcast(room)
             published = loop.time()
-            declaration = rnd.declaration
         await _bot_declares(room, [seat])
         async with room.lock:
             if room.round is not rnd:
                 return
-            if rnd.declaration is not declaration:
-                await broadcast(room)
 
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:

@@ -13,11 +13,9 @@ JOINT = FLEET / "codex-sz2-joint-v1/capture"
 WORKERS = 3
 
 
-def cache_partition(joint, arm, worker, output, recipe_path, recipe_sha):
-    from shengji.train import unified_readout
-
-    if arm not in ("S", "M") or worker not in range(WORKERS):
-        raise ValueError("invalid joint arm or cache partition")
+def arm_inputs(joint, arm, output, recipe_path, recipe_sha):
+    if arm not in ("S", "M"):
+        raise ValueError("invalid joint arm")
     status = (joint / "launcher.status").read_text().splitlines()
     if status and re.fullmatch(r"LANE UNLOCKED sz2-joint-v1 \S+ /\S+", status[-1]):
         status.pop()
@@ -37,6 +35,15 @@ def cache_partition(joint, arm, worker, output, recipe_path, recipe_sha):
         raise ValueError("FT500k recipe changed")
     recipe = json.loads(raw)
     cache = output / arm / f"{witness[2]}-{recipe_sha}"
+    return checkpoint, cache, recipe
+
+
+def cache_partition(joint, arm, worker, output, recipe_path, recipe_sha):
+    from shengji.train import unified_readout
+
+    if worker not in range(WORKERS):
+        raise ValueError("invalid cache partition")
+    checkpoint, cache, recipe = arm_inputs(joint, arm, output, recipe_path, recipe_sha)
     cache.mkdir(parents=True, exist_ok=True)
     args = ["cache", "--ckpt", str(checkpoint), "--data", *recipe["data"], "--out", str(cache),
             "--seed", str(recipe["seed"]), "--device", "cpu", "--threads", "8",

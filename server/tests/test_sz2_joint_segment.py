@@ -122,6 +122,28 @@ def test_joint_checkpoint_produces_weighted_cpu_cache_for_polish(cache_worker, c
     assert run(0) == 0 and shard_path.stat().st_mtime_ns == written
     with np.load(shard_path) as shard:
         assert (shard["leaf_w"][:, 1] == 2).all()
-    assert ur.main(["polish", "--ckpt", str(checkpoint), "--cache", str(cache), "--out", str(tmp_path / "polish"),
-                    "--epochs", "1", "--threads", "1", "--batch", "32"]) == 0
-    assert (tmp_path / "polish/best.pt").is_file()
+    from sz2_polish_arm import polish_arm
+
+    def polish():
+        return polish_arm(tmp_path, "S", output, tmp_path / "polish", recipe, recipe_sha)
+
+    done = cache / "DONE.2"
+    done.rename(cache / "held")
+    with pytest.raises(FileNotFoundError):
+        polish()
+    (cache / "held").rename(done)
+    shard_path.rename(cache / "held")
+    with pytest.raises(ValueError, match="incomplete dense cache"):
+        polish()
+    (cache / "held").rename(shard_path)
+    with (cache / "worker-1.lock").open("rb") as peer:
+        fcntl.flock(peer, fcntl.LOCK_EX)
+        with pytest.raises(BlockingIOError):
+            polish()
+    assert not (tmp_path / "polish").exists()
+    assert polish() == 0
+    out = tmp_path / "polish/S" / cache.name
+    selected = torch.load(out / "best.pt", weights_only=False)["calib"]["polish_epoch"]
+    assert (out / "selected.pt").samefile(out / "best.pt" if selected else checkpoint)
+    with pytest.raises(FileExistsError):
+        polish()

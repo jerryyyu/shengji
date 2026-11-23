@@ -29,8 +29,9 @@ each seat's own play, declare and bury events (a round where a seat changes
 hands or an event has no controller flag is excluded and counted), and the
 level line uses rounds where exactly one team is bot-controlled throughout and
 the other has a human-controlled seat.  A round whose bots played the Standard
-level (``round_start.bot_level``, a casual table's Bots) is not the served
-bot's play and is excluded and counted.  Output names seats and teams only,
+level (``round_start.bot_level``, a casual table's Bots, or a ranked game's
+first round's ``bot_levels`` record) is not the served bot's play and is
+excluded and counted.  Output names seats and teams only,
 never players.
 
 The engine is imported inside the run so the module imports with the standard
@@ -170,6 +171,8 @@ def load_prod(paths, since=None, until=None):
                     recs.append(cur)
                 elif cur is None:
                     continue
+                elif e == "bot_levels":
+                    cur["levels"] = o
                 elif e == "trump":
                     cur["trump"] = o
                 elif e == "bury":
@@ -192,7 +195,7 @@ def load_prod(paths, since=None, until=None):
                 notes["duplicate rounds"] += 1
                 continue
             seen.add(key)
-            if st.get("bot_level") == "standard":
+            if st.get("bot_level") == "standard" or rec.get("levels", {}).get("level") == "standard":
                 notes["rounds excluded: standard bots"] += 1
                 continue
             if "end" not in rec or "trump" not in rec or "bury" not in rec:

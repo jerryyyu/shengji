@@ -30,7 +30,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, blocks, chat_filter, limits, matchmaking, nearby_logs, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, blocks, chat_filter, limits, matchmaking, nearby_logs, ranked_bots, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -427,8 +427,13 @@ class Room:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Bots (``matchmaking.BOT_LEVELS``): the casual opener's choice, set
     # before the game and fixed for it; at "standard" ``__post_init__`` builds
-    # the relaxed bot for every bot seat. A matched (ranked) room refuses it.
+    # the relaxed bot for every bot seat. A matched (ranked) room refuses it
+    # and stays "advanced" in every frame: its opposing bots' level follows
+    # its people's ratings, server-only, in ``bot_levels``.
     bot_level: str = "advanced"
+    # A ranked room's seats whose bots play Standard (``ranked_bots``), set
+    # when its game starts and at each new game; None in a casual room.
+    bot_levels: Any = field(default=None, repr=False)
     # None builds the served policy (SHENGJI_BOT), or its relaxed wrap, in
     # `__post_init__` with this room's own seed, so rooms do not share one
     # sampler stream
@@ -1483,6 +1488,7 @@ async def advance_if_all_ready(room: Room) -> bool:
             if sd is not None and not sd.is_bot and sd.connected):
         return False
     room.ready.clear()
+    new_game = game.result is not None and game.result.point_scored
     game.start_round()
     room.index_round()
     _round_timeouts_reset(room)
@@ -1491,6 +1497,10 @@ async def advance_if_all_ready(room: Room) -> bool:
     for sd in room.seats:
         if sd is not None:
             sd.joined_round = None
+    if new_game:
+        # the levels restarted: the bots' level is chosen again, from this
+        # round's ordered rating read (``run_deal`` settles it)
+        ranked_bots.begin_game(room)
     _log_round_start(room)
     saved_games.round_started(room)
     ratings.round_started(room)
@@ -1508,13 +1518,18 @@ def _log_round_start(room: Room) -> int | None:
     # Room logs never carry account ids (test_no_log_record_carries_the_account);
     # seats map to accounts through the game_players links instead.
     # ``bot_policy`` names what plays the bot seats, so a relaxed room's
-    # rounds (``bot_level`` "standard") stay out of the served bot's tallies.
+    # rounds (``bot_level`` "standard") stay out of the served bot's tallies;
+    # a ranked room with Standard opponents logs them as "standard" too, and
+    # names those seats (``standard_seats``); a game's first round logs its
+    # choice in a ``bot_levels`` record once it is read. The log is server-only.
+    standard = ranked_bots.standard(room)
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
                    bot_policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
-                   bot_level=room.bot_level,
-                   ranked=ratings.ranked(room))
+                   bot_level="standard" if standard else room.bot_level,
+                   ranked=ratings.ranked(room),
+                   **({"standard_seats": sorted(standard)} if standard else {}))
 
 
 def _log_seat(room: Room, kind: str, seat: Seat, reason: str, **fields: Any) -> None:
@@ -1608,12 +1623,18 @@ class _BotTurnSnapshot:
     play_cursor: tuple[int, int] | None
     # copied from the closing room's heuristic bot, not the served bot
     closing_bot: bool = False
+    # the level the seat's bot played at (``ranked_bots.level_of``): a
+    # commit after it changed is stale
+    level: str = "advanced"
 
 
 @dataclass(frozen=True)
 class _BotTurnDecision:
     snapshot: _BotTurnSnapshot
     cards: list[str]
+    # the level the search actually played at (``ranked_bots.played_level``
+    # of the bot it called); declaring and burying are always the served bot's
+    level: str = "advanced"
 
 
 @dataclass(frozen=True)
@@ -1660,17 +1681,22 @@ def _snapshot_bot_turn(room: Room, seat: int, mode: str
             or not _turn_eligible(room, seat, mode)):
         return None
     bot = _acting_bot(room)
+    # a closing room's heuristic bot has no level
+    level = ranked_bots.level_of(room, seat) if bot is room.bot else "advanced"
+    bot_copy = copy.deepcopy(bot)
+    ranked_bots.pin(bot_copy, seat, level)
     return _BotTurnSnapshot(
         game_token=game,
         round_token=rnd,
         round_copy=copy.deepcopy(rnd),
-        bot_copy=copy.deepcopy(bot),
+        bot_copy=bot_copy,
         seat=seat,
         phase=rnd.phase,
         mode=mode,
         owner_left_at=room.seats[seat].left_at,
         play_cursor=(len(rnd.history), len(rnd.trick.plays)) if rnd.phase == "play" else None,
         closing_bot=bot is not room.bot,
+        level=level,
     )
 
 
@@ -1682,7 +1708,8 @@ def _compute_bot_turn(snapshot: _BotTurnSnapshot) -> _BotTurnDecision:
         cards = bot.decide_play(rnd, seat)
     else:
         raise IllegalPlay(f"Bot cannot act during {snapshot.phase}.")
-    return _BotTurnDecision(snapshot=snapshot, cards=list(cards))
+    level = ranked_bots.played_level(bot) if snapshot.phase == "play" else snapshot.level
+    return _BotTurnDecision(snapshot=snapshot, cards=list(cards), level=level)
 
 
 async def _compute_bot_turn_off_loop(
@@ -1773,6 +1800,18 @@ async def _paced_bot_step(room: Room, seat: int, *,
     )
 
 
+def _level_changed(room: Room, decision: _BotTurnDecision) -> bool:
+    """The level the search played at is not the seat's level now (a ranked
+    table's Standard seat became a person's partner during the search, or a
+    seat check started or ended): the decision is discarded and the turn
+    searched again at the live level."""
+    snapshot = decision.snapshot
+    if snapshot.closing_bot:
+        return False
+    return (snapshot.level != ranked_bots.level_of(room, snapshot.seat)
+            or (snapshot.phase == "play" and decision.level != snapshot.level))
+
+
 def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
     """Commit only if snapshot ownership and the live turn are unchanged.
 
@@ -1794,8 +1833,10 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
                 (len(room.round.history), len(room.round.trick.plays)))
             or not _turn_eligible(
                 room, snapshot.seat, snapshot.mode,
-                owner_left_at=snapshot.owner_left_at)):
+                owner_left_at=snapshot.owner_left_at)
+            or _level_changed(room, decision)):
         return False
+    ranked_bots.unpin(snapshot.bot_copy)
     if snapshot.closing_bot:
         room.closing_bot = snapshot.bot_copy
     else:
@@ -1920,6 +1961,8 @@ async def pump_bots(room: Room) -> None:
             acted = _commit_bot_turn(room, prepared)
             _log_bot_timing(room, prepared, acted=acted)
             if not acted:
+                if _level_changed(room, prepared.decision):
+                    continue
                 return
             await broadcast(room)
 
@@ -2207,6 +2250,9 @@ async def run_deal(room: Room) -> None:
             if room.round is not rnd:
                 return
 
+    # a ranked game's bot level, read while the cards were dealt; card play
+    # starts only after the declare window this task closes
+    await ranked_bots.settle_game(room, make_relaxed_bot)
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
         if room.round is not rnd or rnd.phase != "declare":
@@ -2317,6 +2363,7 @@ def _start_game(room: Room) -> None:
                   for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
     if ratings.ranked(room):
         room.start_level = RANKS[0]      # every rated game starts at the same level
+        ranked_bots.begin_game(room)
     if not room.matched:
         # An open table names its people by queue id, so the queue never
         # offers a seat here to someone already sitting at it.
@@ -2829,7 +2876,10 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             # owns it: a sign-in reconnect brings one, a
             # sign-out reconnect (or a guest's by-name
             # re-entry) brings none and clears it.
+            held_by = me.user_id
             me.user_id = account_id()
+            ranked_bots.seat_changed(target, target.seats.index(me), held_by,
+                                     lambda: kick_bots(target))
             if (me.user_id is not None or left_seat is not None) and me.name != name:
                 _rename_seat(target, me, name)
             saved_games.seat_changed(target, target.seats.index(me))
@@ -2906,6 +2956,7 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             # says WHICH seat far better than "a bot's seat".
             took_from = me.name
             took_over_human = not me.is_bot
+            held_by = None if me.is_bot else me.user_id
             me.bot_announced = False
             _player_moved(target, pick)
             me.timeouts_in_round = 0
@@ -2921,6 +2972,8 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             # offer never brings them back to this seat
             me.queue_id = qid
             saved_games.seat_changed(target, pick)
+            ranked_bots.seat_changed(target, pick, held_by,
+                                     lambda: kick_bots(target))
             target.log_event("seat_claimed", seat=pick,
                              name=name, bot=False)
             claimed_from_bot = True
@@ -3887,6 +3940,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     old = room.seats[seat]
     at_round_end = room.round.phase == "round_end"
     took = old.name
+    before = None if old.is_bot else old.user_id
     if old.is_bot:
         me = old
         me.bot_name = old.name
@@ -3917,6 +3971,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     del room.pending_joins[seat]
     pj.conn.joining = None
     saved_games.seat_changed(room, seat)
+    ranked_bots.seat_changed(room, seat, before, lambda: kick_bots(room))
     room.log_event("seat_claimed", seat=seat, name=pj.name, bot=False)
     gen = _attach(room, me, pj.conn.ws)
     pj.conn.adopted = (room, me, gen)

@@ -8,7 +8,10 @@ other room, Play bots and the casual queue's included, is unranked and
 writes no rating at all.
 
 Only signed-in human seats are rated. Bots never move: every bot seat counts
-as ``BOT_RATING``, the anchor of the served release, and a guest seat (a
+as ``BOT_RATING``, the anchor of the served release, or as the lower
+``STANDARD_BOT_RATING`` when it played Standard (``ranked_bots``: the
+opposing pair of a table whose people all rate 1000 or less; which seats
+did is read when the round starts), and a guest seat (a
 person with no account, in a queue-matched room)
 counts the same and is never rated itself, so solo games against bots, games
 with a partner and mixed tables share one scale. A round with a guest rates
@@ -24,7 +27,8 @@ round.
 One rated round, for each rated account on team ``t``:
 
 * team strength ``R_t`` is the mean of the two seats' ratings (a bot or guest
-  seat is ``BOT_RATING``), plus a banker advantage for the banker's team:
+  seat is ``BOT_RATING``, a Standard bot ``STANDARD_BOT_RATING``; a partner
+  bot is always Advanced, so it counts ``BOT_RATING``), plus a banker advantage for the banker's team:
   ``BANKER_ADVANTAGE_DECLARED`` when the round started with no banker and the
   deal went to a declarer (a new game's first round), otherwise
   ``BANKER_ADVANTAGE_PRESET`` (the banker carried from the previous round's
@@ -87,6 +91,13 @@ START_RATING = accounts.START_RATING
 BOT_RATING = 1000.0
 # A guest has no rating; in a ranked room their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
+# A bot seat playing Standard at a ranked table (``ranked_bots``). The offset
+# is the measured margin of the served release's team over a Standard pair
+# (S142: +0.470 levels/round, mean round score 0.5815 over 800 mirrored
+# rounds) solved for in this module's own model: the Elo gap at which the
+# mean ``expected_score`` over those rounds, with each round's banker
+# advantage, equals that mean score (58.8, rounded to 59).
+STANDARD_BOT_RATING = BOT_RATING - 59.0
 # Holding the deal (the kitty, the first lead and the defence threshold of
 # 80) is worth this much team strength: each value is the banker team's mean
 # round score between equal teams in self-play, as an Elo offset. A banker who
@@ -188,6 +199,9 @@ class RoundRecord:
     standing: Future | Mapping[int, tuple[float, int]] | None = None
     # the round started with no banker, so a declarer took the deal
     banker_declared: bool = False
+    # each seat's rating when no rated account held it at the round's start:
+    # ``GUEST_RATING``, or ``STANDARD_BOT_RATING`` for a Standard bot
+    seat_anchors: list[float] | None = None
 
 
 def read_standing(store: accounts.Store, user_ids: list[int]) -> dict[int, tuple[float, int]]:
@@ -224,7 +238,8 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
 
     Team strengths and the provisional test use each participant's numbers
     from the round's start; a seat whose start account is not rated in this
-    round counts ``GUEST_RATING``, as a bot or guest seat does."""
+    round counts ``GUEST_RATING``, as a bot or guest seat does, and a bot
+    that played Standard counts ``STANDARD_BOT_RATING``."""
     t = int(now if now is not None else time.time())
     frozen = _frozen(rec.standing)
     with closing(store._open()) as conn:
@@ -239,8 +254,9 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                     users[uid] = row
             at_start = {uid: frozen.get(uid, (float(row["rating"]), int(row["rated_rounds"])))
                         for uid, row in users.items()}
-            seat_ratings = [at_start[u][0] if u in at_start else GUEST_RATING
-                            for u in (rec.start_accounts.get(s) for s in range(4))]
+            anchors = rec.seat_anchors or [GUEST_RATING] * 4
+            seat_ratings = [at_start[u][0] if u in at_start else anchors[s]
+                            for s, u in ((s, rec.start_accounts.get(s)) for s in range(4))]
             strengths = team_strengths(seat_ratings, rec.banker_team, rec.banker_declared)
             provisional = {uid for uid, (_, n) in at_start.items() if is_provisional(n)}
             out: dict[int, dict] = {}
@@ -448,6 +464,9 @@ class RoomRatings:
     present: dict[int, int] = field(default_factory=dict)
     # seat -> ACCOUNT, BOT, GUEST or ABSENT when the round started
     kinds: list[str] = field(default_factory=list)
+    # seat -> the rating it counts when no rated account holds it, read when
+    # the round started (``RoundRecord.seat_anchors``)
+    anchors: list[float] = field(default_factory=list)
     # the round started with no banker (``round_start`` banker null), so the
     # deal goes to whoever declares; a carried or resumed banker is preset
     banker_declared: bool = False
@@ -522,6 +541,11 @@ def round_started(room: Any) -> None:
     tracker.kinds = []
     tracker.standing = None
     tracker.banker_declared = room.round is not None and room.round.banker is None
+    # the seats playing Standard (``ranked_bots.SeatLevels``), server-only
+    levels = getattr(room, "bot_levels", None)
+    standard = levels.standard if levels is not None else ()
+    tracker.anchors = [STANDARD_BOT_RATING if seat.is_bot and s in standard else GUEST_RATING
+                       for s, seat in enumerate(room.seats)]
     for s, seat in enumerate(room.seats):
         uid = _signed_in(seat)
         if uid is not None and seat.connected:
@@ -636,7 +660,8 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
         seat_names=[seat.name for seat in room.seats],
         seat_bots=[bool(seat.is_bot) for seat in room.seats],
         participants=parts, standing=tracker.standing,
-        banker_declared=tracker.banker_declared)
+        banker_declared=tracker.banker_declared,
+        seat_anchors=list(tracker.anchors) or None)
 
 
 def _record_outcome(room: Any, tracker: RoomRatings, rec: RoundRecord,

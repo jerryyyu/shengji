@@ -1,4 +1,5 @@
 """Bounded execution body called by the admitted Stage B launcher."""
+import argparse
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import hashlib
 import json
@@ -6,10 +7,25 @@ import multiprocessing
 import os
 from pathlib import Path
 import re
+import signal
 from threading import Thread
 
 from shengji.eval.served_config import process_env
 from seed_worker import arm_environment, DEALS, FIRST_SEED, write_seed
+
+
+SEED_WALL_SECONDS = 900
+
+
+def _bounded_seed(write, seed, slots, env, seconds):
+    # A native call can hold the GIL. The kernel must be able to end the worker directly.
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGALRM})
+    signal.alarm(seconds)
+    try:
+        return write(seed, slots, env)
+    finally:
+        signal.alarm(0)
 
 
 def _watch_supervisor():
@@ -73,7 +89,7 @@ def run_reserved(root, directories, dispatch_sha256, *, workers):
         identity["arm_name"] = env["SHENGJI_BOT"]
 
         def submit_seed(pool, seed):
-            return pool.submit(write_seed, seed, slots, env)
+            return pool.submit(_bounded_seed, write_seed, seed, slots, env, SEED_WALL_SECONDS)
 
         with process_env(env), (root / "progress").open("x") as progress, ProcessPoolExecutor(
                 max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
@@ -96,3 +112,17 @@ def _terminal(root, record):
     tmp = root / "terminal.tmp"
     tmp.write_text(json.dumps(record, sort_keys=True) + "\n")
     tmp.rename(root / "terminal.json")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--package-dir", type=Path, action="append", required=True)
+    parser.add_argument("--dispatch-sha256", required=True)
+    parser.add_argument("--workers", type=int, required=True)
+    args = parser.parse_args(argv)
+    run_reserved(args.root, args.package_dir, args.dispatch_sha256, workers=args.workers)
+
+
+if __name__ == "__main__":
+    main()

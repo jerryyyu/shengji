@@ -25,7 +25,8 @@ def bundle(monkeypatch, tmp_path, slots):
     monkeypatch.setattr(supervisor, "arm_environment",
                         lambda _: {"SHENGJI_BOT": "fixture", "FIXTURE": json.dumps(slots)})
     monkeypatch.setattr(supervisor, "write_seed", _write_fixture)
-    supervisor.run_reserved(root, [], "d" * 64, workers=2)
+    supervisor.main(["--root", str(root), "--package-dir", str(tmp_path),
+                     "--workers", "2", "--dispatch-sha256", "d" * 64])
     source = Path(reader.__file__).resolve()
     spec = dict(schema="s158b-handoff-v1", root=str(root), reader="codex",
                 reader_path=str(source), reader_sha256=reader._digest(source.read_bytes()),

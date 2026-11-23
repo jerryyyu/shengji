@@ -785,7 +785,7 @@ DELETE = grp(['<span style="color:#f08a96">Delete account</span><span style="col
 def me_device(u=DEVICE_BACK):
     """Frame 5: an unlinked device account's Me."""
     body = (me_head(u, "On this iPhone only") + stats_block() + SETTINGS
-            + grp([chev(u[0]), sw("Show me on the leaderboard", True)]) + DELETE)
+            + grp([chev(u[0]), chev("Sign in"), sw("Show me on the leaderboard", True)]) + DELETE)
     return phone(body, active="Me", title="Me", user=u[2])
 
 
@@ -869,7 +869,7 @@ def account_frames():
         (4, "Your name", "One new line, 'On this iPhone only'; the die now asks the server for a free name.",
          phone(ART + who_chip(GUEST) + seg("Ranked"), user="G", overlay=name_sheet(device_line=False)),
          phone(ART + who_chip(DEVICE_BACK) + seg("Ranked"), user="G", overlay=name_sheet()), 390, 844, IOS),
-        (5, "Me", "Header read 'Guest · not ranked'; Stats, Games, the leaderboard switch and Delete account are new; no Sign out.",
+        (5, "Me", "Header read 'Guest · not ranked'; Stats, Games, the leaderboard switch, Sign in and Delete account are new; no Sign out.",
          me_guest_today(GUEST), me_device(), 390, 844, IOS),
         (6, "Leaderboard, not yet listed", "The 'Sign in to be ranked ›' row is gone; own row pinned with the existing 'new' tag (others see it at 20 rounds).",
          leaderboard_page(signin_row=True), leaderboard_page(me=DEVICE_BACK[:2]), 390, 844, IOS),
@@ -887,7 +887,7 @@ def account_frames():
          None, play_tab_today(GUEST), 390, 844, WEB),
         (12, "Delete account", "The sheet a signed-in player gets today; new for a non-signed-in player. After: frame 1 with no account until the next Play.",
          None, phone(me_head(DEVICE_BACK, "On this iPhone only") + stats_block() + SETTINGS
-                     + grp([chev(DEVICE_BACK[0]), sw("Show me on the leaderboard", True)]) + DELETE,
+                     + grp([chev(DEVICE_BACK[0]), chev("Sign in"), sw("Show me on the leaderboard", True)]) + DELETE,
                      active="Me", title="Me", user="G", overlay=del_sheet), 390, 844, IOS),
         (13, "Mixed table", "A web guest's round end, unchanged. The iOS device account at the same table is rated normally; the web guest still counts as a fixed 1000.",
          None, round_end(rating=False, signin=True, partner="Gentle Tractor"), 844, 390, WEB),

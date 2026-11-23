@@ -203,14 +203,18 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
       .catch((e: Error) => setError(e.message))
       .finally(() => setSigningOut(false));
   };
-  // the app's own account: its name row opens the identity sheet, and it has
-  // no Sign out, which would leave it with no way back in
+  // the app's own account: its name row and its Sign in row open the identity
+  // sheet, and it has no Sign out, which would leave it with no way back in;
+  // the Sign in row needs the sign-in config, without which the sheet has no
+  // sign-in buttons to show
   const device = isUnlinkedDevice(user);
+  const canSignIn = !!useAuth().clientId;
   return (
     <>
       <SettingsGroup />
       <ul className="grp me-account">
         {device ? <Row label={effectiveName(user)} chevron className="me-identity" onClick={() => guestName.open("me_row")} /> : null}
+        {device && canSignIn ? <Row label="Sign in" chevron className="me-signin" onClick={() => guestName.open("me_signin")} /> : null}
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
                   disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}

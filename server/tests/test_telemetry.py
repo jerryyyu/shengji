@@ -276,7 +276,7 @@ def test_platform_is_stamped_from_its_enum_and_anything_else_dropped():
 
 
 def test_signin_open_keeps_its_entry_point_and_drops_any_other():
-    for where in ("play_line", "chip", "me_row", "leaderboard_row", "round_end", "lapsed", "report"):
+    for where in ("play_line", "chip", "me_row", "me_signin", "leaderboard_row", "round_end", "lapsed", "report"):
         assert telemetry.clean_event({"e": "tap", "id": "signin_open", "from": where}) == {
             "e": "tap", "id": "signin_open", "from": where}
     assert telemetry.clean_event({"e": "tap", "id": "signin_open", "from": "jerry@example.com"}) == {

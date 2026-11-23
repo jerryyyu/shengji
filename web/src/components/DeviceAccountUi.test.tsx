@@ -216,12 +216,62 @@ describe("Me", () => {
     expect([...host.querySelectorAll(".segmented-btn")].map((b) => b.textContent)).toEqual(["Stats", "Games"]);
     expect(host.querySelectorAll(".me-tile")).toHaveLength(3);
     const labels = rowLabels();
-    expect(labels.slice(labels.indexOf("How to play") + 1)).toEqual(["Gentle Tractor", "Show me on the leaderboard",
+    expect(labels.slice(labels.indexOf("How to play") + 1)).toEqual(["Gentle Tractor", "Sign in", "Show me on the leaderboard",
       "Privacy policy", "Terms of use", "Support", "Delete account"]);
     expect(labels).not.toContain("Sign out");
     expect(labels).not.toContain("Edit name");
     act(() => rowNamed("Gentle Tractor").click());
     expect(sheet()).not.toBeNull();
+  });
+
+  it("Sign in opens the same identity sheet at its sign-in buttons, with no keyboard", async () => {
+    iosShell(true);
+    const opens = vi.spyOn(telemetry, "signinOpen");
+    await render(<MePage section="stats" />);
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    const focused = vi.spyOn(HTMLInputElement.prototype, "focus");
+    act(() => rowNamed("Sign in").click());
+    await settle();
+    const s = sheet()!;
+    expect(document.querySelectorAll(".identity-sheet")).toHaveLength(1);
+    expect(s.querySelector("[data-testid='google-signin']")).not.toBeNull();
+    expect(focused).not.toHaveBeenCalled();
+    focused.mockRestore();
+    expect(scrolled).toHaveBeenCalledTimes(1);
+    expect(scrolled.mock.instances[0]).toBe(s.querySelector(".identity-signin"));
+    expect(opens).toHaveBeenCalledWith("me_signin");
+    opens.mockRestore();
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("the name row still opens the sheet at the name field", async () => {
+    iosShell(true);
+    await render(<MePage section="stats" />);
+    const focused = vi.spyOn(HTMLInputElement.prototype, "focus");
+    act(() => rowNamed("Gentle Tractor").click());
+    await settle();
+    expect(focused.mock.instances).toContain(sheet()!.querySelector("input"));
+    focused.mockRestore();
+  });
+
+  it("no Sign in row without the sign-in config (the sheet would have no buttons)", async () => {
+    iosShell();
+    authState.current = { status: "in", clientId: null, user: DEVICE };
+    await render(<MePage section="stats" />);
+    expect(rowLabels()).toContain("Gentle Tractor");
+    expect(rowLabels()).not.toContain("Sign in");
+  });
+
+  it("on the website: no Sign in row for a web guest or a signed-in account", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render(<MePage section="stats" />);
+    expect(rowLabels()).not.toContain("Sign in");
+    act(() => root.unmount());
+    host.remove();
+    authState.current = { status: "in", clientId: "cid", user: { ...DEVICE, email: "g@x", linked: true } };
+    await render(<MePage section="stats" />);
+    expect(rowLabels()).not.toContain("Sign in");
   });
 
   it("Delete account deletes after the confirm and forgets the account", async () => {
@@ -242,6 +292,7 @@ describe("Me", () => {
     await render(<MePage section="stats" />);
     expect(rowLabels()).toContain("Sign out");
     expect(rowLabels()).toContain("Edit name");
+    expect(rowLabels()).not.toContain("Sign in");
     expect(host.querySelector(".me-sub")?.textContent).not.toBe("On this iPhone only");
   });
 });

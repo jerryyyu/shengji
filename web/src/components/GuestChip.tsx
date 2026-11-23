@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTopModalHost } from "../modalHosts";
 import { auth, checkDisplayName, deviceAccountPending, effectiveName, isUnlinkedDevice, updateDisplayName, useAuth } from "../auth";
@@ -55,14 +55,20 @@ export function IdentitySheet() {
 }
 
 /** The sign-in buttons for whoever may still sign in, and the line under them. */
-function SignInBlock({ account, done }: { account: AuthState; done: () => void }) {
+function SignInBlock({ account, done, toSignIn = false }: {
+  account: AuthState; done: () => void; toSignIn?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (toSignIn) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [toSignIn]);
   const open = (account.status === "out" || account.status === "in") && account.clientId;
   const signIn = open ? <GoogleSignIn clientId={account.clientId!} />
     : account.status === "error" ? <SignInUnavailable />
     : null;
   return (
     <>
-      {signIn ? <div className="identity-signin">{signIn}</div> : null}
+      {signIn ? <div className="identity-signin" ref={ref}>{signIn}</div> : null}
       {open ? (
         <p className="identity-terms">
           By signing in you agree to the{" "}
@@ -73,8 +79,8 @@ function SignInBlock({ account, done }: { account: AuthState; done: () => void }
   );
 }
 
-function NameField({ name, onChange, onDone, error }: {
-  name: string; onChange: (name: string) => void; onDone: () => void; error?: string | null;
+function NameField({ name, onChange, onDone, error, focus = true }: {
+  name: string; onChange: (name: string) => void; onDone: () => void; error?: string | null; focus?: boolean;
 }) {
   const id = useId();
   return (
@@ -93,7 +99,7 @@ function NameField({ name, onChange, onDone, error }: {
           autoCapitalize="words"
           spellCheck={false}
           enterKeyHint="done"
-          autoFocus
+          autoFocus={focus}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) onDone();
@@ -133,6 +139,7 @@ function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const where = useOnThisDeviceLine();
+  const { toSignIn } = useGuestName();
   const close = () => guestName.close();
   const done = () => {
     if (saving) return;
@@ -158,9 +165,10 @@ function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) 
   return (
     <Sheet title="Your name" onClose={close} cancel={null} className="identity-sheet">
       <div className="q-sheet-pad guest-name-sheet">
-        <NameField name={name} onChange={(n) => { setName(n); setError(null); }} onDone={done} error={error} />
+        <NameField name={name} onChange={(n) => { setName(n); setError(null); }} onDone={done} error={error}
+                   focus={!toSignIn} />
         <p className="identity-status">{where}</p>
-        <SignInBlock account={account} done={close} />
+        <SignInBlock account={account} done={close} toSignIn={toSignIn} />
         <button type="button" className="btn gold" aria-busy={saving || undefined} onClick={done}>Done</button>
       </div>
     </Sheet>

@@ -28,10 +28,13 @@ function writeChosenMark(chosen: boolean): void {
 export interface GuestNameView {
   name: string;
   editing: boolean;
+  /** The sheet was opened by a Sign in row: its sign-in buttons come first
+   *  in view, with no keyboard over them. */
+  toSignIn: boolean;
 }
 
 class GuestNameStore {
-  private view: GuestNameView = { name: "", editing: false };
+  private view: GuestNameView = { name: "", editing: false, toSignIn: false };
   private listeners = new Set<() => void>();
   private loaded = false;
   // the name in view was typed by the guest since it loaded or was filled
@@ -51,7 +54,7 @@ class GuestNameStore {
     this.loaded = true;
     let saved = "";
     try { saved = getSavedName(); } catch { /* storage refused: start empty */ }
-    this.view = { name: saved, editing: false };
+    this.view = { name: saved, editing: false, toSignIn: false };
     this.typed = false;
   }
 
@@ -93,18 +96,18 @@ class GuestNameStore {
   /** Open the identity sheet; `from` names the entry point for telemetry. */
   open(from?: SigninFrom): void {
     if (from) telemetry.signinOpen(from);
-    this.set({ editing: true });
+    this.set({ editing: true, toSignIn: from === "me_signin" });
   }
 
   close(): void {
-    this.set({ editing: false });
+    this.set({ editing: false, toSignIn: false });
   }
 
   /** Test seam: forget everything, as a fresh page would. */
   reset(): void {
     this.loaded = false;
     this.typed = false;
-    this.view = { name: "", editing: false };
+    this.view = { name: "", editing: false, toSignIn: false };
   }
 }
 

@@ -387,7 +387,8 @@ switch between accounts included, and goes once as whoever that leaves signed in
   name is taken."), one status line "On this iPhone only" ("On this iPad only" on an iPad, by the shell's device
   idiom), Sign in with Apple and Google, the Terms line, Done.
 - **Me:** the header's line, the sheet's same "On this iPhone only" (or iPad), Stats and Games, the settings, the name row (opens the
-  sheet), "Show me on the leaderboard", the help rows and Delete account; no Sign out, which would leave the
+  sheet), a "Sign in" row under it (the same sheet, at Sign in with Apple and Google, no keyboard; only when
+  sign-in is configured), "Show me on the leaderboard", the help rows and Delete account; no Sign out, which would leave the
   account with no way back in. Delete clears the Keychain.
 - **Leaderboard:** the signed-in board: the own row in rank order, or pinned with the "new" tag.
 - **Signing in with an identity that has an account:** the one `ConfirmSheet`, as a centred card over the

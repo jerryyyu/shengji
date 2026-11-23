@@ -78,7 +78,7 @@ describe("the identity sheet's entry points", () => {
   const EXPECTED: Record<string, string[]> = {
     "components/AccountChip.tsx": ["chip"],
     "components/GuestChip.tsx": ["chip"],
-    "components/MePage.tsx": ["me_row", "me_row"],
+    "components/MePage.tsx": ["me_row", "me_signin", "me_row"],
     "components/Leaderboard.tsx": ["leaderboard_row"],
     "components/RoundEndModal.tsx": ["round_end"],
     "components/GamesStatus.tsx": ["lapsed"],

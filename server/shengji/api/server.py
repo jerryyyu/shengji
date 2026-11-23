@@ -2167,12 +2167,14 @@ async def run_deal(room: Room) -> None:
     rnd = room.round
     assert rnd is not None
     room.declare_until = None
+    loop = asyncio.get_event_loop()
     while True:
         async with room.lock:
             if room.round is not rnd:
                 return
             if rnd.phase != "deal":
                 break
+            dealt = loop.time()
             seat, idx, code = rnd.deal_next()
             room.ids[seat][idx] = code
             if rnd.phase == "declare":
@@ -2184,9 +2186,11 @@ async def run_deal(room: Room) -> None:
             if room.round is not rnd:
                 return
             await broadcast(room)
-        await asyncio.sleep(0.0 if room.closing else DEAL_DELAY)
+        # A bot's declare search counts toward the card's pace, as on the
+        # offline server: the deal keeps its rhythm at every declare chance.
+        await asyncio.sleep(0.0 if room.closing
+                            else max(0.0, DEAL_DELAY - (loop.time() - dealt)))
 
-    loop = asyncio.get_event_loop()
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
         if room.round is not rnd or rnd.phase != "declare":

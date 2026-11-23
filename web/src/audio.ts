@@ -269,6 +269,19 @@ function isTrump(code: string, trump: Trump): boolean {
   return (s === "S" || s === "H" || s === "D" || s === "C") && code.startsWith(s);
 }
 
+/** Fetch and decode, while the cards are still coming, every clip a
+ *  declaration this deal can announce: the trump-rank card of each suit, a
+ *  pair and no-trump. A clip is otherwise first fetched when its declaration
+ *  lands, so the first call of a rank is heard a network round trip late. */
+function prefetchDeclareClips(state: GameState): void {
+  if (muted) return;
+  const { banker, levels } = state;
+  const ranks = banker === null ? new Set(levels) : new Set([levels[banker % 2]]);
+  const names: string[] = [VOICE_CLIPS.pair, VOICE_CLIPS.nt];
+  for (const rank of ranks) for (const suit of "SHDC") names.push(`${suit}${rank}`);
+  for (const name of names) void loadClip(name);
+}
+
 /** Reset diff trackers (call when leaving a room / before a fresh join). */
 export function resetAnnouncer(): void {
   lastDecl = null;
@@ -282,6 +295,7 @@ export function resetAnnouncer(): void {
  * bot states never repeat a clip.
  */
 export function announceState(state: GameState, seedOnly = false): void {
+  if (state.phase === "deal") prefetchDeclareClips(state);
   // Declarations: single card => [code]; suited pair => ["pair", code];
   // joker pair => ["nt"].
   const d = state.current_declaration;

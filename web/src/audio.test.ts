@@ -219,3 +219,44 @@ describe("audio unlock", () => {
     expect(FakeAudioContext.last?.state).toBe("running");
   });
 });
+
+describe("declaration clips", () => {
+  const dealState = (over: Record<string, unknown> = {}) => ({
+    phase: "deal", banker: null, levels: ["2", "2"], current_declaration: null,
+    trump: null, trick: null, ...over,
+  }) as unknown as import("./protocol").GameState;
+
+  async function withFetch() {
+    const audio = await freshModule();
+    const urls: string[] = [];
+    Object.assign(globalThis, {
+      fetch: async (url: string) => {
+        urls.push(url);
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+    });
+    (FakeAudioContext.prototype as unknown as { decodeAudioData: () => Promise<object> })
+      .decodeAudioData = async () => ({ duration: 0 });
+    return { audio, names: () => urls.map((u) => u.replace(/^\/sounds\/|\.mp3\?.*$/g, "")) };
+  }
+
+  it("are fetched during the deal, before any declaration needs them", async () => {
+    const { audio, names } = await withFetch();
+    audio.announceState(dealState(), true);
+    expect(names().sort()).toEqual(["C2", "D2", "H2", "S2", "nt", "pair"]);
+    // every later frame of the deal reuses them
+    audio.announceState(dealState());
+    expect(names()).toHaveLength(6);
+  });
+
+  it("follow the banker's level, and stay unfetched while muted", async () => {
+    const { audio, names } = await withFetch();
+    audio.announceState(dealState({ banker: 1, levels: ["5", "10"] }), true);
+    expect(names().sort()).toEqual(["C10", "D10", "H10", "S10", "nt", "pair"]);
+
+    const muted = await withFetch();
+    muted.audio.setMuted(true);
+    muted.audio.announceState(dealState(), true);
+    expect(muted.names()).toEqual([]);
+  });
+});

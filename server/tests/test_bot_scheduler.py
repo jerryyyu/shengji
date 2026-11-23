@@ -244,6 +244,61 @@ def test_run_deal_reaches_bury_with_declare_path(monkeypatch, value_declare):
     assert any(kind == "declare_decision" for kind, _ in room.records) == value_declare
 
 
+def test_a_bot_declare_search_counts_toward_the_card_pace(monkeypatch):
+    """A gated declare search runs inside the card's DEAL_DELAY, not on top of
+    it, so the deal keeps its rhythm at the cards a bot may declare on."""
+    search_seconds = 0.08
+
+    def gated_at(rnd):
+        return sum(len(hand) for hand in rnd.hands) % 25 == 0
+
+    class SearchingBot(HeuristicBot):
+        value_declare = True
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, gated_at(rnd)
+
+        def decide_declare(self, rnd, seat, final=False):
+            if gated_at(rnd):
+                import time
+                time.sleep(search_seconds)
+            return None
+
+    room = _declare_room()
+    room.game.start_round()
+    room.ids = [{}, {}, {}, {}]
+    room.bot = SearchingBot()
+    sleeps = []
+    real_sleep = asyncio.sleep
+
+    class Asyncio:
+        def __getattr__(self, name):
+            return getattr(asyncio, name)
+
+        async def sleep(self, seconds):
+            rnd = room.round
+            sleeps.append((sum(len(hand) for hand in rnd.hands), rnd.phase, seconds))
+            await real_sleep(0)
+
+    async def broadcast(_):
+        pass
+
+    monkeypatch.setattr(srv, "asyncio", Asyncio())
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    asyncio.run(srv.run_deal(room))
+    assert room.round.phase == "bury"
+    deal = sleeps[:100]          # one pause per dealt card, then the grace polls
+    assert [dealt for dealt, _, _ in deal] == list(range(1, 101))
+    searched = {dealt: seconds for dealt, _, seconds in deal if dealt % 25 == 0}
+    assert len(searched) == 4
+    for seconds in searched.values():
+        assert seconds <= srv.DEAL_DELAY - search_seconds + 0.02
+    for dealt, _, seconds in deal:
+        if dealt % 25:
+            assert srv.DEAL_DELAY - 0.02 < seconds <= srv.DEAL_DELAY
+
+
 def test_run_deal_retries_stale_final_response_before_finalizing(monkeypatch):
     room = _declare_room()
     calls = []

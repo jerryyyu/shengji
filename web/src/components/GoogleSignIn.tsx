@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
-  AccountExists, auth, identityTurn, loadGis, loginWithApple, loginWithGoogle, newNonce, sha256Hex,
+  AccountExists, auth, identityTurn, isUnlinkedDevice, loadGis, loginWithApple, loginWithGoogle, newNonce, sha256Hex,
 } from "../auth";
 import type { AppleLogin, AuthUser } from "../auth";
 import { isNative } from "../native";
 import {
   nativeAppleCredential, nativeAppleReady, nativeGoogleAvailable, nativeGoogleCredential, SignInCancelled,
 } from "../nativeAuth";
+import { telemetry, type DeviceStep, type Provider } from "../telemetry";
 import ConfirmSheet from "./ConfirmSheet";
 
 /** The "Sign in with Google" button. Rendered only when the server advertised
@@ -48,8 +49,14 @@ function WebGoogleSignIn({ clientId }: { clientId: string }) {
           itp_support: true,
           callback: ({ credential }) => {
             loginWithGoogle(credential, nonce)
-              .then((user) => auth.signedIn(user))
-              .catch((e: Error) => setError(e.message));
+              .then((user) => {
+                telemetry.signin("done", "google");
+                auth.signedIn(user);
+              })
+              .catch((e: Error) => {
+                telemetry.signin("error", "google");
+                setError(e.message);
+              });
           },
         });
         slot.current.replaceChildren();
@@ -111,15 +118,31 @@ function AppleMark() {
 
 /** The app's sign-in, in the turn every sign-in path shares: the request,
  *  the session cookie its answer sets, this page's state and the socket
- *  replacement, before any other sign-in (the device's own) starts. */
-function signInTurn(login: () => Promise<AuthUser>): Promise<void> {
-  return identityTurn(async () => { auth.signedIn(await login()); });
+ *  replacement, before any other sign-in (the device's own) starts. Its
+ *  telemetry (`done`, and `device` when the app's own account linked or gave
+ *  way) is sent before the socket is replaced, so it goes on the old one. */
+function signInTurn(login: () => Promise<AuthUser>, provider: Provider, device?: DeviceStep): Promise<void> {
+  return identityTurn(async () => {
+    const user = await login();
+    telemetry.signin("done", provider);
+    if (device) telemetry.deviceAccount(device);
+    auth.signedIn(user);
+  });
+}
+
+/** How a provider sign-in that did not finish is counted: a dismissed sheet,
+ *  the switch confirm, or a refusal. */
+function signInFailed(e: unknown, provider: Provider): void {
+  if (e instanceof SignInCancelled) telemetry.signin("closed", provider);
+  else if (e instanceof AccountExists) telemetry.deviceAccount("conflict_shown");
+  else telemetry.signin("error", provider);
 }
 
 /** A sign-in from the app's own account whose identity already has an
  *  account: the holder's name, and the same sign-in with `confirm`. */
 interface Conflict {
   holder: string;
+  provider: Provider;
   confirm: () => Promise<AuthUser>;
 }
 
@@ -138,10 +161,11 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
 
-  const ask = (e: unknown, confirm: () => Promise<AuthUser>): boolean => {
+  const ask = (e: unknown, provider: Provider, confirm: () => Promise<AuthUser>): boolean => {
     if (!(e instanceof AccountExists)) return false;
+    signInFailed(e, provider);
     setSwitchError(null);
-    setConflict({ holder: e.holder, confirm });
+    setConflict({ holder: e.holder, provider, confirm });
     return true;
   };
 
@@ -149,9 +173,12 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     if (!conflict) return;
     setSwitching(true);
     setSwitchError(null);
-    signInTurn(conflict.confirm)
+    signInTurn(conflict.confirm, conflict.provider, "switched")
       .then(() => setConflict(null))
-      .catch((e: Error) => setSwitchError(e.message))
+      .catch((e: Error) => {
+        signInFailed(e, conflict.provider);
+        setSwitchError(e.message);
+      })
       .finally(() => setSwitching(false));
   };
 
@@ -179,14 +206,17 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     setBusy(true);
     setError(null);
     const nonce = newNonce();
+    telemetry.signin("provider_tap", "google");
+    const linking = isUnlinkedDevice(auth.state?.user) ? "linked" : undefined;
     try {
       const credential = await nativeGoogleCredential(clientId, nonce);
       try {
-        await signInTurn(() => loginWithGoogle(credential, nonce));
+        await signInTurn(() => loginWithGoogle(credential, nonce), "google", linking);
       } catch (e) {
-        if (!ask(e, () => loginWithGoogle(credential, nonce, true))) throw e;
+        if (!ask(e, "google", () => loginWithGoogle(credential, nonce, true))) throw e;
       }
     } catch (e) {
+      signInFailed(e, "google");
       if (!(e instanceof SignInCancelled)) setError((e as Error).message);
     } finally {
       setBusy(false);
@@ -197,6 +227,8 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     setBusy(true);
     setError(null);
     const nonce = newNonce();
+    telemetry.signin("provider_tap", "apple");
+    const linking = isUnlinkedDevice(auth.state?.user) ? "linked" : undefined;
     try {
       const cred = await nativeAppleCredential(await sha256Hex(nonce));
       const login: AppleLogin = {
@@ -207,11 +239,12 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
         familyName: cred.familyName,
       };
       try {
-        await signInTurn(() => loginWithApple(login));
+        await signInTurn(() => loginWithApple(login), "apple", linking);
       } catch (e) {
-        if (!ask(e, () => loginWithApple(login, true))) throw e;
+        if (!ask(e, "apple", () => loginWithApple(login, true))) throw e;
       }
     } catch (e) {
+      signInFailed(e, "apple");
       if (!(e instanceof SignInCancelled)) setError((e as Error).message);
     } finally {
       setBusy(false);

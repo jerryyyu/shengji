@@ -3,8 +3,9 @@
 // account is gone, deleted or signed out; nothing of it on the website.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { reconnect, status, listeners } = vi.hoisted(() => ({
+const { reconnect, send, status, listeners } = vi.hoisted(() => ({
   reconnect: vi.fn(),
+  send: vi.fn((_m: unknown) => true),
   status: { current: "open" as string },
   listeners: new Set<(s: string) => void>(),
 }));
@@ -13,6 +14,7 @@ vi.mock("./ws", () => ({
   saveName: (name: string) => localStorage.setItem("shengji.name", name),
   conn: {
     reconnect,
+    send,
     subscribeStatus: (fn: (s: string) => void) => {
       listeners.add(fn);
       fn(status.current);
@@ -28,6 +30,7 @@ import {
 } from "./auth";
 import { beforeOnlineSetup, lastSetupOutcome, resetDeviceAccountForTests } from "./deviceAccount";
 import { guestName, NAME_CHOSEN_KEY } from "./guestName";
+import { telemetry } from "./telemetry";
 
 type Route = { status: number; body?: unknown };
 let routes: Map<string, Route | Route[]>;
@@ -97,6 +100,8 @@ beforeEach(() => {
   routes = new Map();
   calls = [];
   reconnect.mockClear();
+  send.mockClear();
+  telemetry.reset();
   status.current = "open";
   listeners.clear();
   auth.reset();
@@ -825,5 +830,68 @@ describe("names", () => {
     const err = await updateDisplayName("Mei").catch((e) => e);
     expect(err).toBeInstanceOf(NameRejected);
     expect(err.message).toBe("That name is taken.");
+  });
+});
+
+describe("device account telemetry", () => {
+  type Batch = { events: { e: string; step?: string }[] };
+  const steps = () => send.mock.calls.flatMap((c) => (c[0] as Batch).events)
+    .filter((e) => e.e === "device_account").map((e) => e.step);
+
+  it("a new account is counted on the guest's socket, before the sign-in replaces it", async () => {
+    shell();
+    routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
+    beforeOnlineSetup(vi.fn());
+    await flush();
+    expect(steps()).toEqual(["created"]);
+    const sentAt = send.mock.invocationCallOrder[send.mock.calls.length - 1];
+    expect(sentAt).toBeLessThan(reconnect.mock.invocationCallOrder[0]);
+    expect(JSON.stringify(send.mock.calls)).not.toMatch(/tok-new|Gentle/);
+  });
+
+  it("a Keychain secret signing in again is restored, at a tap and at launch", async () => {
+    const keychain = shell();
+    keychain.value = "tok-old";
+    routes.set("POST /api/auth/device", { status: 200, body: { user: DEVICE_USER } });
+    beforeOnlineSetup(vi.fn());
+    await flush();
+    expect(steps()).toEqual(["restored"]);
+    send.mockClear();
+    auth.reset();
+    resetDeviceAccountForTests();
+    await auth.init();
+    expect(steps()).toEqual(["restored"]);
+    expect(JSON.stringify(send.mock.calls)).not.toContain("tok-old");
+  });
+
+  it("the device left a guest (off, a refused secret, no connection) is fell_back_guest", async () => {
+    const keychain = shell();
+    keychain.value = "tok-gone";
+    routes.set("POST /api/auth/device", [{ status: 401, body: {} }, { status: 404, body: {} }]);
+    beforeOnlineSetup(vi.fn());
+    await flush();
+    beforeOnlineSetup(vi.fn());
+    await flush();
+    telemetry.flush();
+    expect(steps()).toEqual(["fell_back_guest", "fell_back_guest"]);
+    expect(JSON.stringify(send.mock.calls)).not.toContain("tok-gone");
+  });
+
+  it("what the old socket refuses at an identity change is dropped, never sent on the new one", () => {
+    telemetry.screenView("me");
+    telemetry.signinOpen("me_row");
+    telemetry.signin("done", "google");
+    send.mockImplementationOnce(() => false);
+    auth.signedIn(MEI);
+    expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.invocationCallOrder[0]).toBeLessThan(reconnect.mock.invocationCallOrder[0]);
+    expect(telemetry.pending()).toEqual([]);
+    // the replacement socket takes its first batch
+    telemetry.screenView("play");
+    telemetry.flush();
+    expect(send).toHaveBeenCalledTimes(2);
+    const after = (send.mock.calls[1][0] as Batch).events;
+    expect(after).toEqual([{ e: "screen", t: expect.any(Number), name: "play" }]);
   });
 });

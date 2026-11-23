@@ -81,7 +81,7 @@ export function RatingLine({ result, ranked, guest }: { result: RoundResult; ran
   return (
     <p className="rating-unranked">
       {canOpen ? (
-        <button type="button" className="rating-signin" onClick={() => guestName.open()}>Sign in to be ranked</button>
+        <button type="button" className="rating-signin" onClick={() => guestName.open("round_end")}>Sign in to be ranked</button>
       ) : "Sign in to be ranked"}
     </p>
   );

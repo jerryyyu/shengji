@@ -20,6 +20,22 @@ export type TapId =
   | "menu_leave" | "chip_leave" | "leave_confirm" | "leave_keep" | "howto_open"
   | "signin_open" | "coach_on" | "coach_off" | "invite_share" | "copy_code";
 
+/** Where the identity sheet (the name, and Sign in) was opened. */
+export type SigninFrom =
+  | "play_line" | "chip" | "me_row" | "leaderboard_row" | "round_end" | "lapsed" | "report";
+
+/** A provider sign-in: its button tapped, the account confirmed, a refusal,
+ *  or the provider's sheet dismissed. */
+export type SigninStep = "provider_tap" | "done" | "error" | "closed";
+export type Provider = "google" | "apple";
+
+/** The iOS app's own account: made, signed in again from the Keychain, the
+ *  device left a guest, an identity linked onto it, the "Switch to …?"
+ *  confirm shown, or the device's account given way to the identity's. */
+export type DeviceStep = "created" | "restored" | "fell_back_guest" | "linked" | "conflict_shown" | "switched";
+
+export type Platform = "ios_app" | "pwa" | "web";
+
 export type LeadKind = "single" | "pair" | "tractor" | "throw";
 
 export interface TurnDone {
@@ -39,7 +55,9 @@ export interface TurnDone {
 type Event =
   | { e: "screen"; t: number; name: Screen; prev?: Screen; ms_on_prev?: number }
   | ({ e: "turn_done"; t: number } & TurnDone)
-  | { e: "tap"; t: number; id: TapId }
+  | { e: "tap"; t: number; id: TapId; from?: SigninFrom }
+  | { e: "signin"; t: number; step: SigninStep; provider?: Provider }
+  | { e: "device_account"; t: number; step: DeviceStep }
   | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number };
 
 export const FLUSH_MS = 10_000;
@@ -81,6 +99,20 @@ export function formFactor(): "phone" | "phone-land" | "wide" {
   }
 }
 
+/** ios_app (the Capacitor shell on iOS), pwa (the site opened from a
+ *  home-screen icon) or web (a browser tab). */
+export function platform(): Platform {
+  try {
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor;
+    if (cap?.isNativePlatform?.() === true && cap.getPlatform?.() === "ios") return "ios_app";
+    const standalone = window.matchMedia?.("(display-mode: standalone)")?.matches === true
+      || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    return standalone ? "pwa" : "web";
+  } catch {
+    return "web";
+  }
+}
+
 export class Telemetry {
   private buf: Event[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -117,6 +149,15 @@ export class Telemetry {
     this.screenAt = 0;
   }
 
+  /** The identity behind the socket is changing: what was buffered goes on
+   *  the old socket if it takes it, and whatever it refuses is dropped with
+   *  the screen timing, so nothing of the identity before is sent under the
+   *  next one's sid and account kind. */
+  handover(): void {
+    this.flush();
+    this.reset();
+  }
+
   private push(ev: Event): void {
     if (!this.enabled) return;
     try {
@@ -141,7 +182,8 @@ export class Telemetry {
     try {
       while (this.buf.length > 0) {
         const batch: Event[] = [];
-        const base = { type: "client_event", v: 1, form: formFactor(), first_visit: this.firstVisit };
+        const base = { type: "client_event", v: 1, form: formFactor(), platform: platform(),
+                       first_visit: this.firstVisit };
         let size = JSON.stringify({ ...base, events: [] }).length;
         while (batch.length < FLUSH_AT && batch.length < this.buf.length) {
           const add = JSON.stringify(this.buf[batch.length]).length + 1;
@@ -176,6 +218,21 @@ export class Telemetry {
 
   tap(id: TapId): void {
     this.push({ e: "tap", t: now(), id });
+  }
+
+  /** The identity sheet opened, and from where. */
+  signinOpen(from: SigninFrom): void {
+    this.push({ e: "tap", t: now(), id: "signin_open", from });
+  }
+
+  /** A step of a provider sign-in. */
+  signin(step: SigninStep, provider?: Provider): void {
+    this.push(provider ? { e: "signin", t: now(), step, provider } : { e: "signin", t: now(), step });
+  }
+
+  /** A step of the iOS app's own account. */
+  deviceAccount(step: DeviceStep): void {
+    this.push({ e: "device_account", t: now(), step });
   }
 
   notice(code: string, where: Screen | "toast" | "other" = this.screen ?? "other"): void {

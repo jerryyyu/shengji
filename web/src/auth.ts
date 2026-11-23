@@ -9,6 +9,7 @@ import { forgetPrivateSession } from "./home/session";
 import { keychainAvailable, keychainGet, keychainRemove, keychainSet } from "./keychain";
 import { isNative } from "./native";
 import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
+import { telemetry } from "./telemetry";
 import { conn } from "./ws";
 
 export interface AuthUser {
@@ -368,6 +369,7 @@ export async function reauthFromKeychain(): Promise<AuthUser | null> {
   if (!token) return null;
   const got = await deviceAuth(token);
   if (got.status === 401) await forgetDeviceSecret();
+  telemetry.deviceAccount(got.user ? "restored" : "fell_back_guest");
   return got.user;
 }
 
@@ -613,6 +615,9 @@ class AuthStore {
    *  the app, `settled` waits for the replacement to open, so a Play is
    *  never sent on the socket of the identity before. */
   private replaceSocket(): void {
+    // what was buffered (a sign-in's own steps among it) goes on the socket
+    // of the identity it happened under, or nowhere
+    telemetry.handover();
     if (deviceAccountsApply()) {
       const next = nextOpen();
       this.reopen = next;

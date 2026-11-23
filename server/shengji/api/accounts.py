@@ -49,7 +49,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
-from . import chat_filter, device_names
+from . import chat_filter, device_names, telemetry
 
 log = logging.getLogger(__name__)
 
@@ -846,11 +846,19 @@ class Store:
         accounts on), a new account whose default name another account
         already shows is given a numbered display name (``_numbered_name``);
         an existing account is never renamed."""
+        return self.upsert_user_outcome(claims, now, unique_name)[0]
+
+    def upsert_user_outcome(self, claims: Mapping[str, Any], now: float | None = None,
+                            unique_name: bool | None = None) -> tuple[dict, bool]:
+        """``upsert_user`` and whether it made the account, read inside the
+        same write transaction, so of two concurrent first sign-ins for one
+        identity exactly one reports it."""
         t = int(now if now is not None else time.time())
         sub, email, name, picture = _google_profile(claims)
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                created = conn.execute("SELECT 1 FROM users WHERE google_sub = ?", (sub,)).fetchone() is None
                 display = self._new_account_name(conn, "google_sub", sub, name, unique_name)
                 conn.execute(
                     """INSERT INTO users(google_sub, email, name, picture, created_at,
@@ -867,7 +875,7 @@ class Store:
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
-            return dict(row)
+            return dict(row), created
 
     def upsert_apple_user(self, sub: str, email: str | None, name: str | None,
                           now: float | None = None, unique_name: bool | None = None) -> dict:
@@ -875,10 +883,19 @@ class Store:
         sends the name only on the first authorization and may omit the email
         later, so a missing value keeps the stored one. ``unique_name`` as
         for ``upsert_user``."""
+        return self.upsert_apple_user_outcome(sub, email, name, now, unique_name)[0]
+
+    def upsert_apple_user_outcome(self, sub: str, email: str | None, name: str | None,
+                                  now: float | None = None,
+                                  unique_name: bool | None = None) -> tuple[dict, bool]:
+        """``upsert_apple_user`` and whether it made the account, read inside
+        the same write transaction (as ``upsert_user_outcome``)."""
         t = int(now if now is not None else time.time())
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
+                created = conn.execute("SELECT 1 FROM users WHERE apple_sub = ?",
+                                       (str(sub),)).fetchone() is None
                 display = self._new_account_name(conn, "apple_sub", str(sub), name, unique_name)
                 conn.execute(
                     """INSERT INTO users(apple_sub, email, name, picture, created_at,
@@ -895,7 +912,7 @@ class Store:
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
-            return dict(row)
+            return dict(row), created
 
     def _new_account_name(self, conn: sqlite3.Connection, column: str, sub: str,
                           name: str | None, unique_name: bool | None) -> str | None:
@@ -1979,13 +1996,15 @@ async def auth_google(body: GoogleLogin, request: Request, response: Response) -
     linked = await link_device_session(
         request, "google", sub, {"email": email, "name": name, "picture": picture}, body.confirm)
     device_token = None
+    new = False
     if linked is not None:
         user, token, device_token = linked
     else:
-        user = await STORE.run(STORE.upsert_user, claims)
+        user, new = await STORE.run(STORE.upsert_user_outcome, claims)
         refuse_suspended(user)
         token = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, token)
+    telemetry.signin_count("google", new)
     return sign_in_payload(await account_payload(STORE, user), device_token)
 
 

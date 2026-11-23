@@ -1,15 +1,30 @@
 """UI telemetry: allow-listed client flow events in their own sink.
 
 The client batches ``{"type": "client_event", "v": 1, "form": …,
-"first_visit": …, "events": [{"e": …, "t": …, …}]}``. Every event is
+"platform": …, "first_visit": …, "events": [{"e": …, "t": …, …}]}``. Every event is
 checked against ``SCHEMA``: an unknown event name, an unknown field, or a
 value outside its enum or integer bound drops that field or event. Nothing
 free-form survives: no names, chat, room codes or card codes.
 
 Each socket gets a random ``sid`` minted here and kept only on the socket
 object, so no table maps it to an account, device or address. The server
-stamps ``sid``, ``who`` (guest or account), ``form``, ``build`` and
-``first_visit`` onto each kept event.
+stamps ``sid``, ``who``, ``form``, ``platform``, ``build`` and
+``first_visit`` onto each kept event. ``who`` is the socket's own kind as
+the server read it at the handshake: ``guest``, ``device`` (an account with
+no Google or Apple identity, the iOS app's own) or ``linked`` (an account
+with one); never the account itself.
+
+A batch holding any event sent at a sign-in or identity change
+(``signin``, ``device_account`` or the ``signin_open`` tap) is an identity
+batch: every row of it keeps ``ts`` only to the hour and drops ``t``, and it
+goes to its own day file, ``ui-id-YYYYMMDD.jsonl``, whose rows all carry
+hours (its modification time is set back to the hour too). Neither a
+neighbouring row's exact second nor a row's place among exact-second rows
+can then date the sign-in to an account's last sign-in.
+
+A successful sign-in is also counted server-side (``signin_count``): its
+provider and whether it made the account, with no ``sid`` and no ``ts``, in
+the identity file, so it joins no socket's events.
 
 Records go to ``$SHENGJI_TELEMETRY_DIR/ui-YYYYMMDD.jsonl`` (UTC date). The
 sink is off when the variable is unset, and refuses any directory inside
@@ -41,7 +56,7 @@ MAX_MS = 24 * 3600 * 1000
 DAY = 86400.0
 RETENTION_DAYS = 90
 MAX_PRUNE_PER_PASS = 64
-_DAY_FILE = re.compile(r"ui-(\d{8})\.jsonl")
+_DAY_FILE = re.compile(r"ui-(?:id-)?(\d{8})\.jsonl")
 
 log = logging.getLogger(__name__)
 # (directory, UTC day) of the last pass that finished; one pass a day per sink.
@@ -79,6 +94,25 @@ WHERE = SCREENS | {"toast", "other"}
 # purpose (a sign-in or sign-out, or Retry).
 DISCONNECT_CAUSES = frozenset({"closed", "no_pong", "replaced"})
 FORMS = frozenset({"phone", "phone-land", "wide"})
+# The iOS app, an installed home-screen web app, or a browser tab.
+PLATFORMS = frozenset({"ios_app", "pwa", "web"})
+WHO = frozenset({"guest", "device", "linked"})
+PROVIDERS = frozenset({"google", "apple"})
+# Where the identity sheet was opened: the Play tab's guest line, the chip,
+# Me's name row, the Leaderboard's Sign in row, a round end's rating line,
+# the saved games' signed-out prompt, or a player's Report row.
+SIGNIN_FROM = frozenset({"play_line", "chip", "me_row", "leaderboard_row", "round_end",
+                         "lapsed", "report"})
+# A provider sign-in: its button tapped (the app's native buttons; the
+# website's Google button is Google's own frame), the account confirmed, a
+# refusal, or the provider's sheet dismissed.
+SIGNIN_STEPS = frozenset({"provider_tap", "done", "error", "closed"})
+# The iOS app's own account: made, signed in again from the Keychain, the
+# device left a guest (device accounts off, a refused or unreadable secret,
+# no connection), a provider identity linked onto it, the "Switch to …?"
+# confirm shown, or the device's account given way to the identity's.
+DEVICE_STEPS = frozenset({"created", "restored", "fell_back_guest", "linked",
+                          "conflict_shown", "switched"})
 QUEUE_EVENTS = frozenset({"join", "leave", "start", "start_failed"})
 
 
@@ -105,14 +139,17 @@ SCHEMA: dict[str, dict[str, Any]] = {
                   "sel_changes": _int(0, 1000), "disabled_play_taps": _int(0, 1000),
                   "refused": _int(0, 100), "coach": _bool, "nth_turn": _int(1, 30),
                   "by": _enum(frozenset({"you", "timer", "bot"}))},
-    "tap": {"id": _enum(TAPS)},
+    "tap": {"id": _enum(TAPS), "from": _enum(SIGNIN_FROM)},
+    "signin": {"step": _enum(SIGNIN_STEPS), "provider": _enum(PROVIDERS)},
+    "device_account": {"step": _enum(DEVICE_STEPS)},
     "notice": {"code": _enum(NOTICE_CODES), "where": _enum(WHERE),
                # the connection notices: why the page dropped its socket, and
                # for how long it had none
                "cause": _enum(DISCONNECT_CAUSES), "ms": _int(0, MAX_MS)},
 }
 # The field without which an event says nothing; missing or invalid drops it.
-REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code"}
+REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
+            "signin": "step", "device_account": "step"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {
@@ -210,7 +247,7 @@ def clean_event(raw: Any) -> dict[str, Any] | None:
 
 def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], dict[str, Any]]:
     """The kept events of one ``client_event`` message and its stamps
-    (``form``, ``first_visit``); nothing for a malformed or oversize one."""
+    (``form``, ``platform``, ``first_visit``); nothing for a malformed or oversize one."""
     if not isinstance(msg, dict) or msg.get("v") != 1:
         return [], {}
     size = raw_bytes if raw_bytes is not None else len(
@@ -225,6 +262,9 @@ def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], d
     form = _enum(FORMS)(msg.get("form"))
     if form is not None:
         stamps["form"] = form
+    platform = _enum(PLATFORMS)(msg.get("platform"))
+    if platform is not None:
+        stamps["platform"] = platform
     first = _bool(msg.get("first_visit"))
     if first is not None:
         stamps["first_visit"] = first
@@ -277,41 +317,66 @@ def _prune_once_a_day(directory: Path, now: float, day: str) -> None:
         _pruned = (directory, day)
 
 
-def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
-    """Append records to today's file; False when the sink is off or the
-    write failed. Telemetry never breaks the game."""
+def write(records: list[dict[str, Any]], now: float | None = None,
+          identity: bool = False) -> bool:
+    """Append records to today's file (the identity file with ``identity``);
+    False when the sink is off or the write failed. Telemetry never breaks
+    the game."""
     if not records:
         return False
-    directory = telemetry_dir()
-    if directory is None:
+    sink = telemetry_dir()
+    if sink is None:
         return False
     now = time.time() if now is None else now
     day = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d")
     try:
-        directory.mkdir(parents=True, exist_ok=True)
-        _prune_once_a_day(directory, now, day)
-        with open(directory / f"ui-{day}.jsonl", "a", encoding="utf-8") as f:
+        sink.mkdir(parents=True, exist_ok=True)
+        _prune_once_a_day(sink, now, day)
+        path = sink / (f"ui-id-{day}.jsonl" if identity else f"ui-{day}.jsonl")
+        with open(path, "a", encoding="utf-8") as f:
             for rec in records:
                 f.write(json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n")
+        if identity:
+            hour = int(now) - int(now) % 3600
+            os.utime(path, (hour, hour))
         return True
     except Exception:          # noqa: BLE001
         return False
 
 
-def receive(conn: Any, msg: Any, signed_in: bool) -> int:
-    """Handle one ``client_event`` message from ``conn``; returns how many
-    events were written."""
+def _identity_moment(ev: dict[str, Any]) -> bool:
+    """An event sent at a sign-in or an identity change: its time could be
+    matched to an account's last sign-in."""
+    return ev["e"] in ("signin", "device_account") or (ev["e"] == "tap" and ev.get("id") == "signin_open")
+
+
+def _stamped(ev: dict[str, Any], ts: int, identity: bool) -> dict[str, Any]:
+    """The event with its ``ts``. In an identity batch every row gets the
+    hour and loses ``t``: the batch shares one receipt second, so any exact
+    row, or any offset, would date the sign-in beside it."""
+    if not identity:
+        return {**ev, "ts": ts}
+    return {**{k: v for k, v in ev.items() if k != "t"}, "ts": ts - ts % 3600}
+
+
+def receive(conn: Any, msg: Any, kind: str) -> int:
+    """Handle one ``client_event`` message from ``conn``; ``kind`` is the
+    socket's ``who`` (anything else reads as guest). Returns how many events
+    were written."""
     try:
+        kind = kind if kind in WHO else "guest"
         events, stamps = clean_message(msg)
         if not events:
             return 0
         st = state_for(conn)
+        # classified before the quota cut: a dropped identity event still
+        # marks the rows kept with it, so they cannot date the sign-in
+        identity = any(_identity_moment(ev) for ev in events)
         events = events[:st.take(len(events))]
         ts = round(time.time())
-        records = [{**ev, **stamps, "sid": st.sid,
-                    "who": "account" if signed_in else "guest",
-                    "build": build_id(), "ts": ts} for ev in events]
-        return len(records) if write(records) else 0
+        records = [{**_stamped(ev, ts, identity), **stamps, "sid": st.sid,
+                    "who": kind, "build": build_id()} for ev in events]
+        return len(records) if write(records, identity=identity) else 0
     except Exception:          # noqa: BLE001
         return 0
 
@@ -338,5 +403,20 @@ def queue_event(conn: Any, event: str, **fields: Any) -> bool:
         rec["build"] = build_id()
         rec["ts"] = round(time.time())
         return write([rec])
+    except Exception:          # noqa: BLE001
+        return False
+
+
+def signin_count(provider: str, new: bool) -> bool:
+    """One successful provider sign-in: the provider and whether it made the
+    account. Written with no ``sid`` and no ``ts`` (the day file is its
+    time) to the identity file, among rows kept to the hour, so neither a
+    socket's events nor an account's last sign-in time can be joined to it."""
+    try:
+        provider = _enum(PROVIDERS)(provider)
+        if provider is None or type(new) is not bool:
+            return False
+        return write([{"e": "signin_count", "provider": provider, "new": new, "build": build_id()}],
+                     identity=True)
     except Exception:          # noqa: BLE001
         return False

@@ -222,7 +222,8 @@ def test_the_volume_paths_derive_the_screened_name(monkeypatch):
     assert moved == ["r09a10415", "1b1a47f5dd8b"]
 
 
-def test_unset_the_registry_and_the_served_bot_are_untouched(release50_packages):
+@pytest.mark.parametrize("first_import", ["shengji.ai.registry", "shengji.train.pv_search_policy"])
+def test_unset_the_registry_and_the_served_bot_are_untouched(release50_packages, first_import):
     """A fresh process with fly.toml's env: no unified name, the serving modules never imported,
     the served functions unwrapped, and no instance override on the served bot."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("SHENGJI_PV_")}
@@ -233,10 +234,17 @@ def test_unset_the_registry_and_the_served_bot_are_untouched(release50_packages)
     if os.environ.get("SHENGJI_FAST") != "1":
         env.pop("SHENGJI_FAST", None)
     code = (
-        "import os, sys\n"
+        "import cProfile, importlib, os, pstats, sys\n"
+        "profile = cProfile.Profile()\n"
+        "profile.enable()\n"
         "if os.environ.get('SHENGJI_FAST') == '1':\n"
         "    from shengji.engine import fast\n"
         "    assert fast.activate()\n"
+        f"importlib.import_module({first_import!r})\n"
+        "profile.disable()\n"
+        "stats = pstats.Stats(profile).stats\n"
+        "assert sum(v[1] for (path, _, name), v in stats.items() if name == 'pv_env_recipe' "
+        "and path.endswith('/pv_search_policy.py')) == 1\n"
         "from shengji.ai import registry\n"
         "from shengji.train import pv_encode_prefix, pv_tree_search\n"
         "names = [n for n in registry.REGISTRY if n.startswith('pv-search-')]\n"

@@ -7,7 +7,9 @@ import { describe, expect, it } from "vitest";
 import { LONG_LIVED_MS, NEARBY_RETRY_MS } from "./ws";
 import { LIMITS } from "./offline/server/nearby/protocol";
 import { HOST_WINDOW_MS } from "./nearbyJoin";
-import { HOST_WINDOW_S, LONG_LIVED_S, NEARBY_RETRY_S } from "../scripts/nearby-chaos/pageModel";
+import { readFileSync } from "node:fs";
+import { JOIN_TIMEOUT_MS } from "./codeJoin";
+import { HOST_WINDOW_S, JOIN_TIMEOUT_S, KeptToken, LONG_LIVED_S, NEARBY_RETRY_S } from "../scripts/nearby-chaos/pageModel";
 import { runGame, type Fault } from "../scripts/nearby-chaos/sim";
 
 async function seed1(stall: number) {
@@ -68,20 +70,76 @@ describe("the simulator's page model", () => {
   });
 });
 
-describe("the simulator's page keeps its seat's token across a join by code", () => {
-  it("seed 30050: a Leave that never happened, then a join by code, resumes the held seat", async () => {
-    // The Leave lands while the page has no open link, so it does nothing;
-    // the join by code 18 s later comes just after a radio drop, with the
-    // old link still counted connected. nearbyJoin.ts join() sends the
-    // token kept by the table's code, so the host supersedes that link and
-    // the phone holds one seat, not a second beside it.
-    const schedule: Fault[] = [
-      { t: 117.35114528611302, kind: "bg", who: "J1", dur: 18.32670703716576, arg: 0 },
-      { t: 127.57815427868627, kind: "leave", who: "J1", dur: 18.255617702845484, arg: 0 },
-      { t: 144.4391956354957, kind: "radio", who: "J1", dur: 3.883676666766405, arg: 0 },
-    ];
-    const r = await runGame({ seed: 30050, bugs: [], seconds: 240, bound: 15, hostile: false, verbose: false, page: "sim", schedule });
+describe("the simulator's page keeps its seat's token as nearbyJoin.ts does", () => {
+  it("copies nearbyJoin.ts's join timeout", () => {
+    expect(JOIN_TIMEOUT_S * 1000).toBe(JOIN_TIMEOUT_MS);
+  });
+
+  it("seed 30050: a join by code and a full table's claim each take the held seat back", async () => {
+    // The Leave lands while the page has no open link, so it does nothing.
+    // The join by code just after a radio drop finds the table full (Allow
+    // joiners off): the one claim by the kept token goes out, the host
+    // supersedes the seat's old link (still counted connected), and the
+    // phone holds seat 3 alone; it never binds a newcomer's seat.
+    const replay = JSON.parse(readFileSync(new URL("../scripts/nearby-chaos/replays/nearby-chaos-30050-join-by-code-keeps-token.json", import.meta.url), "utf8")) as { schedule: Fault[] };
+    expect(replay.schedule.map((f) => f.kind)).toEqual(["bg", "leave", "allow", "radio", "midjoin"]);
+    const r = await runGame({ seed: 30050, bugs: [], seconds: 240, bound: 15, hostile: false, verbose: false, page: "sim", schedule: replay.schedule });
     expect(r.violation).toBeNull();
-    expect(r.trace.some((l) => / H js\/host: resume from p3: seat 3 bound/.test(l))).toBe(true);
+    const at = (l: string) => Number(l.trim().split(" ")[0]);
+    const claim = r.trace.find((l) => / J1 page: table full: resume sent by the kept token/.test(l));
+    expect(claim, "the full peek's one claim").toBeDefined();
+    expect(r.trace.some((l) => / J1 page: gives up/.test(l)), "no give-up on the full peek").toBe(false);
+    expect(r.trace.some((l) => / H js\/host: resume from p\d+: seat 3 bound/.test(l) && at(l) >= at(claim!))).toBe(true);
+    expect(r.trace.filter((l) => / H js\/host: join from /.test(l)).map(at), "only the first join is a newcomer's").toHaveLength(1);
   }, 60_000);
+});
+
+describe("KeptToken: the store's kept token transitions", () => {
+  const seatedWith = (token: string) => {
+    const k = new KeptToken();
+    k.look();
+    k.resume(token, false);
+    return k;
+  };
+
+  it("a full peek makes one claim per look, and only with a token kept", () => {
+    const none = new KeptToken();
+    expect(none.fullPeek()).toBe("full");
+    const k = seatedWith("t1");
+    expect(k.fullPeek()).toBe("claim");
+    expect(k.fullPeek(), "one claim per look").toBe("full");
+    k.look();
+    expect(k.fullPeek(), "a new look may claim again").toBe("claim");
+  });
+
+  it("an unanswered claim keeps the token; a refused one forgets it", () => {
+    const a = seatedWith("t1");
+    a.fullPeek();
+    a.claimEnd(false);
+    expect(a.token).toBe("t1");
+    const b = seatedWith("t1");
+    b.fullPeek();
+    b.claimEnd(true);
+    expect(b.token).toBeNull();
+  });
+
+  it("game over forgets the token, and a late resume does not keep one again", () => {
+    const k = seatedWith("t1");
+    k.state(false);
+    expect(k.token).toBe("t1");
+    k.state(true);
+    expect(k.token).toBeNull();
+    k.resume("t2", false);
+    expect(k.token, "a resume after game over").toBeNull();
+    k.look();
+    k.resume("t3", false);
+    expect(k.token, "a new look's game keeps its token").toBe("t3");
+  });
+
+  it("a Leave forgets the token, and a resume during it does not keep one again", () => {
+    const k = seatedWith("t1");
+    k.forget();
+    k.resume("t2", true);
+    expect(k.token).toBeNull();
+  });
 });

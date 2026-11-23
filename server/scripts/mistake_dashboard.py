@@ -330,6 +330,13 @@ def _read_jsonl(path):
         return [json.loads(line) for line in fh if line.strip()]
 
 
+def _sjorg_score(result):
+    change = result.get("levelChange") or {}
+    delta = change.get("delta", 0)
+    return (result.get("totalAttackPoints", result.get("attackPoints")),
+            int(result.get("kittyBonus") or 0), change.get("team") if delta else None, delta)
+
+
 def load_sjorg(game_dirs, our_seats=(0, 2), since=None, until=None):
     """Complete rounds from shengji.org team-game directories (seat A frames, checked against B)."""
     rounds, notes = [], collections.Counter()
@@ -359,8 +366,12 @@ def load_sjorg(game_dirs, our_seats=(0, 2), since=None, until=None):
             label += 1
             b = by_b.get(d["deal_key"])
             if b is not None:
-                if any(d[k] != b[k] for k in ("tricks", "kitty_bottom", "trump", "banker", "level")):
-                    notes["rounds where seat logs disagree"] += 1
+                if b["round_result"]:
+                    disagreement = any(d[k] != b[k] for k in ("tricks", "trump", "banker", "level"))
+                    if (disagreement or collections.Counter(d["kitty_bottom"]) != collections.Counter(b["kitty_bottom"])
+                            or _sjorg_score(d["round_result"]) != _sjorg_score(b["round_result"])):
+                        notes["rounds excluded: conflicting seat terminals"] += 1
+                        continue
                 if len(b["bids"]) > len(d["bids"]):
                     d["bids"] = b["bids"]
                 for k, v in b["failed"].items():

@@ -315,6 +315,8 @@ def _run_identity(args) -> dict:
     run = {k: getattr(args, k) for k in keys}
     if getattr(args, "device", "cpu") != "cpu":
         run["device"] = args.device          # absent means cpu: a CPU run keeps the identity it always had
+    if getattr(args, "report_buffer", None) is not None:
+        run["report_buffer"] = args.report_buffer
     return json.loads(json.dumps(run, default=str))
 
 
@@ -392,6 +394,9 @@ def _train(args, out: Path, status: str) -> int:
         g["lr"] = g["base_lr"]
     opt = torch.optim.AdamW(groups, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
+    report_buffer = getattr(args, "report_buffer", None)
+    if report_buffer is not None and not 0 < report_buffer < n_buffers:
+        raise UnifiedReadoutError("--report-buffer must be an interior buffer boundary")
     total = args.epochs * n_buffers
 
     def lr_scale(step):
@@ -457,9 +462,21 @@ def _train(args, out: Path, status: str) -> int:
     last_save = time.time()
     while state["epoch"] < args.epochs:
         epoch, t0, sums, cur, steps = state["epoch"], time.time(), np.zeros(len(SUM_KEYS)), state["buffer"], 0
+        if report_buffer is not None and cur:
+            sums[:] = state["epoch_sums"]
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur:
                 state["buffer"] = cur = gi
+                if report_buffer is not None:
+                    state["epoch_sums"] = sums.tolist()
+                    if gi == report_buffer:
+                        totals = dict(zip(SUM_KEYS, sums))
+                        report = {"epoch": epoch + 1, "completed_buffers": gi, "rows": int(totals["rows"]),
+                                  "leaves": int(totals["leaves"]), "train": means(sums)}
+                        path = out / f"epoch-{epoch + 1}-buffer-{gi}.json"
+                        tmp = path.with_suffix(".tmp")
+                        tmp.write_text(json.dumps(report, allow_nan=False) + "\n")
+                        os.replace(tmp, path)
                 if time.time() - last_save > args.save_every:
                     save()
                     last_save = time.time()
@@ -912,6 +929,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--max-train-rows", type=int, default=None)
     t.add_argument("--max-steps", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=180000)
+    t.add_argument("--report-buffer", type=int, help="write cumulative epoch losses at this interior buffer boundary")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
     t.add_argument("--device", choices=("cpu", "mps"), default="cpu", help="where the model runs; batches are built on the CPU")

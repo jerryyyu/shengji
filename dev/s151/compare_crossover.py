@@ -112,6 +112,14 @@ def compare(root):
     times = read_times(root, [s for s in SEEDS for _ in range(2)])
     orders = [block_order(i) for i in range(len(SEEDS))]
     require(list(times) == [key for order in orders for key in order], "timing sequence differs from crossover plan")
+    for index, ((pair, arm), durations) in enumerate(times.items()):
+        path = root / f"{pair}-{arm}" / "capture.json"
+        receipt = read(path)
+        timing = receipt["timing"]
+        require(receipt["index"] == index and receipt["head"] == HEADS["bc".index(arm)]
+                and len(timing) == 5 and timing[:2] == [pair, arm]
+                and (timing[2], timing[4]) == durations,
+                f"{path}: invocation or wall time differs from assembled timings")
     blocks = []
     previous_end, configuration = 0, None
     for seed, order in zip(SEEDS, orders, strict=True):

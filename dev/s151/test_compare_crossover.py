@@ -97,6 +97,30 @@ class CrossoverTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "sequence"):
                 crossover.compare(None)
 
+    def test_assembled_outer_wall_must_match_timer_before_store_access(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            rows = []
+            for block in range(len(crossover.SEEDS)):
+                for pair, arm in crossover.block_order(block):
+                    row = [pair, arm, 100, 135, 95]
+                    dest = root / f"{pair}-{arm}"
+                    dest.mkdir()
+                    (dest / "capture.json").write_text(json.dumps(dict(
+                        index=len(rows), head=crossover.HEADS["bc".index(arm)], timing=row)))
+                    rows.append(row)
+            summary = root / "timings.json"
+            summary.write_text(json.dumps(rows))
+            with patch.object(crossover, "read_block", side_effect=RuntimeError("store reached")):
+                with self.assertRaisesRegex(RuntimeError, "store reached"):
+                    crossover.compare(root)
+                for row in rows:
+                    if row[1] == "b":
+                        row[2] += 10
+                summary.write_text(json.dumps(rows))
+                with self.assertRaisesRegex(ValueError, "wall time differs"):
+                    crossover.compare(root)
+
     def test_chronological_order_and_pair_numbers(self):
         self.assertEqual(crossover.block_order(0), [(0, "b"), (0, "c"), (1, "c"), (1, "b")])
         self.assertEqual(crossover.block_order(1), [(2, "c"), (2, "b"), (3, "b"), (3, "c")])

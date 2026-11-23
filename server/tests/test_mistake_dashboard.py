@@ -12,6 +12,7 @@ human seat for part of the round, as production logs record it.
 
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -83,6 +84,29 @@ def test_sjorg_rounds_match_the_pilot_report_table(sjorg):
             ref=ours.get("bid_refusals", 0), ours=row["level_delta"])
         assert got == {k: v for k, v in exp.items() if k != "label"}, exp["label"]
     assert seen == set(REPORT_ROUNDS)
+
+
+@pytest.mark.parametrize("field", ["totalAttackPoints", "levelChange", "kittyBonus"])
+def test_conflicting_second_seat_result_excludes_only_its_deal(tmp_path, field):
+    game = tmp_path / "g1"
+    shutil.copytree(SJORG[0], game)
+    log = "frames_live_stripped.jsonl"
+    frames = [json.loads(line) for line in (game / "A" / log).read_text().splitlines()]
+    first = next(f["state"]["dealStartedAt"] for f in frames if f["state"].get("roundResult"))
+    for f in frames:
+        state = f["state"]
+        result = state.get("roundResult")
+        if state["dealStartedAt"] == first and result:
+            if field == "levelChange":
+                result[field]["delta"] += 1
+            else:
+                result[field] += 5
+    (game / "B" / log).write_text("".join(json.dumps(f) + "\n" for f in frames))
+    got = md.run("sjorg", [str(game)])
+    expected = [r for r in md.run("sjorg", SJORG[:1])["per_round"] if r["deal_key"] != first]
+    assert got["per_round"] == expected
+    assert got["levels"]["rounds"] == len(expected)
+    assert got["checks"]["rounds excluded: conflicting seat terminals"] == 1
 
 
 def test_sjorg_totals_and_the_site_bots_side(sjorg):

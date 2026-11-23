@@ -186,7 +186,6 @@
   flex-direction: column;
   gap: 8px;
   padding-left: 12px;
-  border-left: 2px solid rgba(79, 178, 122, 0.35);
 }
 .tp-chat {
   appearance: none;

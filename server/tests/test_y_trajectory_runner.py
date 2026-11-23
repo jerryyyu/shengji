@@ -56,8 +56,9 @@ def test_recipe_refuses_budget_width_and_model_path_drift(tmp_path, old, new):
         runner.recipe_environment(changed, tmp_path)
 
 
-@pytest.mark.parametrize("capture", [False, True])
-def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, tmp_path, capture):
+@pytest.mark.parametrize(("capture", "workers"), [(False, 1), (True, 1), (True, 2)],
+                         ids=["False", "True", "split-tail"])
+def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, tmp_path, capture, workers):
     import json
     import os
     import subprocess
@@ -78,8 +79,10 @@ def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, 
     output = tmp_path / "store"
     registry = _seed_windows(output)
     registry.write_text(json.dumps({"schema": "shengji-seed-windows-v1", "windows": []}))
-    options = (["--rounds", "2", "--workers", "1", "--seed", "4300000",
+    options = (["--rounds", "2", "--workers", str(workers), "--seed", "4300000",
                 "--out", str(output), "--cap", "256"] if capture else ["--inspect"])
+    if workers > 1:
+        options.append("--split-tail-mirrors")
     result = subprocess.run([
         sys.executable, str(_PATH), "--fly", str(fly), "--models", str(models),
         "--seed-registry", str(registry), *options,
@@ -98,6 +101,9 @@ def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, 
         from shengji.train.cwv_data import bridge_record, search_means_points
         manifest = json.loads((output / "manifest.json").read_text())
         assert manifest["config"]["policy"] == env["SHENGJI_BOT"]
+        if workers > 1:
+            runtime = json.loads((output / "runtime.json").read_text())
+            assert runtime["split_tail_mirrors"] and runtime["per_cluster"]["0"]["worker_wall_secs"] > 0
         shard = output / manifest["shards"][0]["path"]
         records = [json.loads(line) for line in shard.read_text().splitlines()]
         plays = [row for row in records if row["decision_kind"] == "play"]

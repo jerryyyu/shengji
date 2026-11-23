@@ -2024,14 +2024,20 @@ class ClusterResult:
         LIVE_RESULTS.add(self)
 
 
-def _cluster_task(args) -> ClusterResult:
+def _cluster_task(args, mirror: int | None = None) -> ClusterResult:
     """The unit of work, timed by itself: ``timing.wall_secs`` is this
     cluster's OWN duration, whichever process runs it and whenever it was
     scheduled; ``started_at`` / ``finished_at`` are wall-clock stamps."""
     config, cluster, seed = args
     started_at = time.time()
     started = time.perf_counter()
-    records, stats = play_trajectory_cluster(config, cluster, seed)
+    if mirror is None:
+        records, stats = play_trajectory_cluster(config, cluster, seed)
+    else:
+        _fault_injection(cluster)
+        records, round_stats = play_trajectory_round(config, cluster, seed, mirror)
+        records.sort(key=_record_order)
+        stats = [round_stats]
     timing = {"started_at": round(started_at, 3),
               "finished_at": round(time.time(), 3),
               "wall_secs": round(time.perf_counter() - started, 4)}
@@ -2176,7 +2182,7 @@ def verify_shard(out_dir: Path, config: dict, cluster: int, seed: int
 
 
 def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
-                 workers: int = 1, resume: bool = False,
+                 workers: int = 1, resume: bool = False, split_tail_mirrors: bool = False,
                  progress: Callable[[dict], None] | None = None
                  ) -> tuple[dict[int, dict], list[tuple[int, str]], dict]:
     """Play the clusters that need playing and publish each shard as soon as
@@ -2229,12 +2235,35 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
         }
         note(cluster, sidecars[cluster], False)
 
-    def consume(cluster: int, future) -> None:
+    partials: dict[int, ClusterResult] = {}
+    failed_clusters: set[int] = set()
+
+    def consume(cluster: int, mirror: int | None, future) -> None:
         try:
             result = future.result()
-        except Exception as exc:  # noqa: BLE001 - drained, then re-raised as one
-            failures.append((cluster, f"{type(exc).__name__}: {exc}"))
+        except Exception as exc:  # noqa: BLE001 - drain the pool and report once per cluster
+            if cluster not in failed_clusters:
+                failures.append((cluster, f"{type(exc).__name__}: {exc}"))
+                failed_clusters.add(cluster)
+            partials.pop(cluster, None)
             return
+        if mirror is not None:
+            if cluster in failed_clusters:
+                return
+            other = partials.pop(cluster, None)
+            if other is None:
+                partials[cluster] = result
+                return
+            first, second = (result, other) if mirror == 0 else (other, result)
+            first.records.extend(second.records)
+            first.stats.extend(second.stats)
+            start = min(first.timing["started_at"], second.timing["started_at"])
+            end = max(first.timing["finished_at"], second.timing["finished_at"])
+            first.timing = {"started_at": start, "finished_at": end,
+                            "wall_secs": round(end - start, 4),
+                            "worker_wall_secs": round(first.timing["wall_secs"]
+                                                      + second.timing["wall_secs"], 4)}
+            result = first
         publish(cluster, result)
 
     if workers == 1:
@@ -2248,9 +2277,11 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
             del result
     elif todo:
         ctx = multiprocessing.get_context("spawn")
-        max_workers = min(workers, len(todo))
+        max_workers = min(workers, len(todo) * (2 if split_tail_mirrors else 1))
         window = INFLIGHT_PER_WORKER * max_workers
-        queue = list(todo)
+        split_at = max(0, len(todo) - workers) if split_tail_mirrors else len(todo)
+        jobs = ((cluster, mirror) for i, cluster in enumerate(todo)
+                for mirror in ((None,) if i < split_at else (0, 1)))
         # Future -> cluster for the clusters in flight only.  Each Future is
         # popped as it completes, so its result is reclaimed once published;
         # submitting everything up front and keeping the whole mapping
@@ -2259,9 +2290,13 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
         in_flight: dict = {}
         with ProcessPoolExecutor(max_workers=max_workers, mp_context=ctx) as pool:
             def fill() -> None:
-                while queue and len(in_flight) < window:
-                    c = queue.pop(0)
-                    in_flight[pool.submit(_cluster_task, (config, c, seed0 + c))] = c
+                while len(in_flight) < window:
+                    job = next(jobs, None)
+                    if job is None:
+                        break
+                    cluster, mirror = job
+                    future = pool.submit(_cluster_task, (config, cluster, seed0 + cluster), mirror)
+                    in_flight[future] = job
 
             fill()
             while in_flight:
@@ -2270,7 +2305,8 @@ def run_clusters(config: dict, *, rounds: int, seed0: int, out_dir: Path,
                 del finished
                 while completed:
                     future = completed.pop(0)
-                    consume(in_flight.pop(future), future)
+                    cluster, mirror = in_flight.pop(future)
+                    consume(cluster, mirror, future)
                     del future                   # the last reference to the result
                 fill()
     failures.sort()
@@ -2593,7 +2629,7 @@ def _open_run(out_dir: Path, config: dict, ident: dict, *, resume: bool) -> bool
 
 
 def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
-             workers: int = 1, policy: str = DEFAULT_POLICY,
+             workers: int = 1, policy: str = DEFAULT_POLICY, split_tail_mirrors: bool = False,
              explore_rate: float = DEFAULT_EXPLORE_RATE,
              explore_k: int = DEFAULT_EXPLORE_K,
              select_worlds: int | None = None, report_worlds: int | None = None,
@@ -2666,10 +2702,12 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
     started = time.perf_counter()
     sidecars, failures, receipt = run_clusters(
         config, rounds=rounds, seed0=seed0, out_dir=out, workers=workers,
-        resume=resumed, progress=progress)
+        resume=resumed, progress=progress, split_tail_mirrors=split_tail_mirrors)
     runtime = runtime_receipt(argv=argv, workers=workers, resume=resumed,
                               merge=merge, wall_secs=time.perf_counter() - started,
                               receipt=receipt)
+    if split_tail_mirrors:
+        runtime["split_tail_mirrors"] = True
     runtime["seed_window"] = seed_window_runtime
     _atomic_write_text(out / "runtime.json",
                        json.dumps(runtime, indent=2, sort_keys=True) + "\n")
@@ -2696,6 +2734,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed", type=int, required=True,
                         help="seed0; cluster c deals from seed0 + c")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--split-tail-mirrors", action="store_true",
+                        help="schedule the final worker wave as independent mirror rounds")
     parser.add_argument("--out", required=True, type=Path,
                         help="output directory (shard store)")
     parser.add_argument("--policy", default=DEFAULT_POLICY,
@@ -2768,7 +2808,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         manifest = generate(
             rounds=args.rounds, seed0=args.seed, out_dir=args.out,
-            workers=args.workers, policy=args.policy,
+            workers=args.workers, policy=args.policy, split_tail_mirrors=args.split_tail_mirrors,
             explore_rate=args.explore_rate, explore_k=args.explore_k,
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
             cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,

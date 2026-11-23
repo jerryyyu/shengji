@@ -771,14 +771,15 @@ def test_exploration_pool_is_the_full_legal_set(explore_run):
 
 # W3 ------------------------------ worker failure keeps shards; resume completes
 
+@pytest.mark.parametrize("split_tail", [False, True])
 def test_worker_failure_keeps_shards_and_resume_completes_identically(
-        clean4, tmp_path, monkeypatch):
+        clean4, tmp_path, monkeypatch, split_tail):
     out = tmp_path / "interrupted"
     monkeypatch.setenv(trajectory.FAIL_CLUSTERS_ENV, "1")
     with pytest.raises(trajectory.TrajectoryError,
                        match="cluster 1: TrajectoryError: injected"):
         trajectory.generate(rounds=4, seed0=SEED0, out_dir=out, workers=2, merge=True,
-                            seed_windows=_seed_windows(out),
+                            seed_windows=_seed_windows(out), split_tail_mirrors=split_tail,
                             **WORK, **PLAIN)
     # the cluster that finished is published and verifies; the failed one is absent
     config = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN)
@@ -792,11 +793,12 @@ def test_worker_failure_keeps_shards_and_resume_completes_identically(
     assert (out / "shards" / "cluster-000000.jsonl").read_bytes() == clean4["shards"][0]
     # resume: cluster 0 reused, cluster 1 regenerated; bytes as the clean run
     monkeypatch.delenv(trajectory.FAIL_CLUSTERS_ENV)
-    resumed = _generate(out, rounds=4, resume=True, **PLAIN)
+    resumed = _generate(out, rounds=4, resume=True, workers=2, split_tail_mirrors=split_tail, **PLAIN)
     runtime = json.loads((out / "runtime.json").read_text())
     assert runtime["resume"] is True
     assert runtime["clusters"] == {"requested": 2, "reused": [0], "generated": [1],
                                    "failed": []}
+    assert ("worker_wall_secs" in runtime["per_cluster"]["1"]) == split_tail
     assert resumed["shards"] == clean4["shards"]
     assert resumed["sidecars"] == clean4["sidecars"]
     assert resumed["bytes"] == clean4["bytes"]
@@ -878,6 +880,19 @@ def test_parent_does_not_retain_published_results(retention_run):
     assert retention_run["w2"]["shards"] == retention_run["w1"]["shards"]
     assert retention_run["w2"]["sidecars"] == retention_run["w1"]["sidecars"]
     assert retention_run["w2"]["manifest_bytes"] == retention_run["w1"]["manifest_bytes"]
+
+
+def test_split_tail_keeps_cluster_shards_and_only_splits_the_final_wave(retention_run, tmp_path):
+    out = tmp_path / "split"
+    trajectory.generate(out_dir=out, workers=2, split_tail_mirrors=True, merge=False,
+                        seed_windows=_seed_windows(out), **RETENTION)
+    split = _read_dir(out)
+    for key in ("shards", "sidecars", "manifest_bytes"):
+        assert split[key] == retention_run["w2"][key]
+    timing = json.loads((out / "runtime.json").read_text())["per_cluster"]
+    assert {c for c, t in timing.items() if "worker_wall_secs" in t} == {"4", "5"}
+    for c in ("4", "5"):
+        assert timing[c]["worker_wall_secs"] >= sum(timing[c]["round_wall_secs"]) - 0.001
 
 
 def test_per_cluster_wall_secs_is_the_clusters_own_duration(retention_run):

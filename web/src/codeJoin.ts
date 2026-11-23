@@ -15,6 +15,7 @@ import { queue } from "./queue/store";
 import { showToast } from "./toast";
 import type { ConnStatus } from "./ws";
 import { conn, getResumeToken, getSavedRoom } from "./ws";
+import { beforeOnlineSetup } from "./deviceAccount";
 
 /** Where a code came from: the Play box or a link. */
 export type CodeFrom = "play" | "link";
@@ -212,6 +213,14 @@ export class CodeStore {
   /** The panel's Join, under `name`: a room's chosen seat, or a queued
    *  table by its code. */
   join(name: string): void {
+    const j = this.view;
+    if (!j || j.step !== "panel") return;
+    // held back for the device's sign-in, it joins only the panel still showing
+    beforeOnlineSetup(() => this.joinNow(name),
+                      () => this.view?.code === j.code && this.view.step === "panel");
+  }
+
+  private joinNow(name: string): void {
     const j = this.view;
     if (!j || j.step !== "panel" || j.full || !j.peek) return;
     if (j.peek.table) {

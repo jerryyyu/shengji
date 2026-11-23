@@ -1908,10 +1908,12 @@ def public_user(row: Mapping[str, Any], rounds_played: int = 0) -> dict:
     """The ``/api/me`` payload: the Google profile, the chosen display name
     (null when none), ``name_shown``, the effective name, and
     ``rounds_played`` (``Store.rounds_played``), which tells the client
-    whether the account is still new."""
+    whether the account is still new, and ``linked``: whether it has a
+    Google or Apple identity (a device account has neither until it links)."""
     return {"name": row.get("name") or "", "email": row.get("email") or "",
             "picture": row.get("picture"), "display_name": row.get("display_name"),
-            "name_shown": effective_name(row), "rounds_played": int(rounds_played)}
+            "name_shown": effective_name(row), "rounds_played": int(rounds_played),
+            "linked": not is_device_account(row)}
 
 
 async def account_payload(store: "Store", row: Mapping[str, Any]) -> dict:
@@ -1935,7 +1937,10 @@ def _clear_session_cookie(response: Response, request: Request) -> None:
 
 @router.get("/auth/config")
 async def auth_config() -> dict:
-    return {"google_client_id": client_id()}
+    """Whether Google sign-in exists (its public client id, or null) and
+    whether device accounts are on, so the app can draw its first Play tab
+    as the account it will make."""
+    return {"google_client_id": client_id(), "device_accounts": device_accounts_enabled()}
 
 
 @router.post("/auth/google")

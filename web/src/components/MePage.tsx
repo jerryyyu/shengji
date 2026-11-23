@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { auth, deleteAccount, effectiveName, useAuth } from "../auth";
+import { auth, deleteAccount, effectiveName, isUnlinkedDevice, useAuth } from "../auth";
+import { useOnThisDeviceLine } from "../deviceAccount";
 import type { AuthUser } from "../auth";
 import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
@@ -53,10 +54,14 @@ function Row({ label, value, chevron, onClick, className = "", children }: {
   return <li><div className={`grp-row ${className}`}><span className="grp-label">{label}</span>{end}</div>{children}</li>;
 }
 
-/** Name, rating, all-time rank and this week's change. */
+/** Name, rating, all-time rank and this week's change; for the app's own
+ *  account with no Apple or Google sign-in, the one line that it lives on
+ *  this iPhone (or iPad) only. */
 function Identity({ user, stats }: { user: AuthUser; stats: Stats | null }) {
+  const where = useOnThisDeviceLine();
   let sub: ReactNode = " ";
-  if (stats) {
+  if (isUnlinkedDevice(user)) sub = where;
+  else if (stats) {
     sub = (
       <>
         {stats.rating.toLocaleString()}
@@ -190,10 +195,14 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
       .catch((e: Error) => setError(e.message))
       .finally(() => setSigningOut(false));
   };
+  // the app's own account: its name row opens the identity sheet, and it has
+  // no Sign out, which would leave it with no way back in
+  const device = isUnlinkedDevice(user);
   return (
     <>
       <SettingsGroup />
       <ul className="grp me-account">
+        {device ? <Row label={effectiveName(user)} chevron className="me-identity" onClick={() => guestName.open()} /> : null}
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
                   disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}
@@ -204,15 +213,19 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
           </button>
           {saveError ? <p className="grp-error" id="me-visible-error" role="alert">{saveError}</p> : null}
         </li>
-        <Row label="Edit name" value={effectiveName(user)} chevron className="me-edit"
-             onClick={() => setEditing((v) => !v)}>
-          {editing ? <div className="grp-inset"><NameEditForm user={user} onDone={() => setEditing(false)} /></div> : null}
-        </Row>
+        {device ? null : (
+          <Row label="Edit name" value={effectiveName(user)} chevron className="me-edit"
+               onClick={() => setEditing((v) => !v)}>
+            {editing ? <div className="grp-inset"><NameEditForm user={user} onDone={() => setEditing(false)} /></div> : null}
+          </Row>
+        )}
       </ul>
       <InfoRows />
-      <ul className="grp">
-        <Row label={signingOut ? "Signing out…" : "Sign out"} className="me-signout" onClick={signOut} />
-      </ul>
+      {device ? null : (
+        <ul className="grp">
+          <Row label={signingOut ? "Signing out…" : "Sign out"} className="me-signout" onClick={signOut} />
+        </ul>
+      )}
       {error ? <div className="lobby-error" role="alert">{error}</div> : null}
       <DeleteAccount />
     </>

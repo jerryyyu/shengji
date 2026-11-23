@@ -875,3 +875,26 @@ def test_the_account_lifecycle_keeps_its_invariants(linking):
     # The sequences reached every path, so a pass is not vacuous.
     assert min(totals.values()) > SEQUENCES // 20, totals
     print(f"U2: {SEQUENCES} sequences, {totals}")
+
+
+def test_me_says_whether_the_account_is_linked(client, keypair, linking):  # noqa: F811
+    """``/api/me`` and every sign-in carry ``linked``: false for a device
+    account, true once it links in place, true for a provider account."""
+    _token, cookie, user = _device(client)
+    assert user["linked"] is False
+    client.cookies.clear()
+    assert client.get("/api/me", headers={"cookie": cookie}).json()["linked"] is False
+    linked = _google(client, keypair, cookie=cookie, sub="g-new")
+    assert linked.status_code == 200
+    assert linked.json()["linked"] is True
+    client.cookies.clear()
+    assert client.get("/api/me", headers={"cookie": _cookie(linked)}).json()["linked"] is True
+    other = _google(client, keypair, sub="g-other")
+    assert other.json()["linked"] is True
+
+
+def test_auth_config_reports_the_device_account_switch(client, accounts_on, monkeypatch):  # noqa: F811
+    monkeypatch.delenv("SHENGJI_DEVICE_ACCOUNTS", raising=False)
+    assert client.get("/api/auth/config").json()["device_accounts"] is False
+    monkeypatch.setenv("SHENGJI_DEVICE_ACCOUNTS", "1")
+    assert client.get("/api/auth/config").json()["device_accounts"] is True

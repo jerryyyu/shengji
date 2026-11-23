@@ -66,14 +66,25 @@ async function call(name: string, method: string, opts?: Record<string, unknown>
   }
 }
 
+let idiom: Promise<string | null> | null = null;
 let phone: Promise<boolean> | null = null;
+
+/** The device idiom the app's shell reports ("phone", "pad"), or null in a
+ *  browser or a shell that does not say. */
+export function deviceIdiom(): Promise<string | null> {
+  if (!isNative()) return Promise.resolve(null);
+  idiom ??= call("ShengjiShell", "idiom").then((r) => {
+    const value = (r as { idiom?: unknown } | undefined)?.idiom;
+    return typeof value === "string" ? value : null;
+  });
+  return idiom;
+}
 
 /** True only in the app on an iPhone. The shell reports the device idiom,
  *  because a viewport width cannot tell an iPad in Split View from a phone. */
 export function isPhone(): Promise<boolean> {
   if (!isNative()) return Promise.resolve(false);
-  phone ??= call("ShengjiShell", "idiom").then(
-    (r) => (r as { idiom?: string } | undefined)?.idiom === "phone");
+  phone ??= deviceIdiom().then((i) => i === "phone");
   return phone;
 }
 
@@ -298,6 +309,7 @@ export function nearbyPluginProxy(): unknown {
 /** Test hook: forget cached plugin lookups and state. */
 export function resetNativeForTests(): void {
   plugins.clear();
+  idiom = null;
   phone = null;
   lastLock = null;
   selectionPrimed = false;

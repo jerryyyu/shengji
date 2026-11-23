@@ -220,7 +220,7 @@ def test_a_valid_token_creates_the_user_and_a_session(apple_on, rsa_key, client)
                  given_name="Ann", family_name="Lee")
     assert resp.status_code == 200
     assert resp.json() == {"name": "Ann Lee", "email": "x7k2@privaterelay.appleid.com",
-                           "picture": None, "display_name": None, "name_shown": "Ann", "rounds_played": 0}
+                           "picture": None, "display_name": None, "name_shown": "Ann", "rounds_played": 0, "linked": True}
     cookie = resp.headers["set-cookie"]
     low = cookie.lower()
     assert cookie.startswith("sj_session=") and "httponly" in low and "samesite=lax" in low
@@ -484,7 +484,7 @@ def test_google_sign_in_is_unchanged_after_the_migration(apple_on, tmp_path, mon
     assert resp.json() == {"name": "Jerry Yu", "email": "jerry@example.com",
                            "picture": "https://img.example/jy.png",
                            "display_name": "Champ", "name_shown": "Champ",
-                           "rounds_played": 1}   # its v5 saved game's one round
+                           "rounds_played": 1, "linked": True}   # its v5 saved game's one round
     assert accounts.STORE.user(1)["google_sub"] == "g-1"
 
 

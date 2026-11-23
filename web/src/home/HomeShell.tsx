@@ -116,7 +116,7 @@ export function TopBar({ active }: { active: Tab }) {
   const user = account.status === "in" ? account.user : null;
   let end: ReactNode = null;
   if (user) {
-    end = <AccountChip user={user} />;
+    end = <AccountChip user={user} compact />;
   } else if (account.status !== "loading") {
     end = <GuestChip compact />;
   }

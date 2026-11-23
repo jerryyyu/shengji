@@ -8,6 +8,7 @@ import { auth, effectiveName } from "../auth";
 import { guestName } from "../guestName";
 import type { ConnStatus } from "../ws";
 import { conn, getResumeToken, getSavedName, getSavedRoom } from "../ws";
+import { beforeOnlineSetup } from "../deviceAccount";
 import { decideIntent, intentToJoin } from "../intent";
 import { haptic } from "../native";
 import type { ChatMsg, ServerMsg } from "../protocol";
@@ -615,13 +616,25 @@ export class QueueStore {
    *  room that table has just become, if it started meanwhile, seats you
    *  under it. */
   join(code?: string, name?: string): void {
-    this.sendJoin(code, false, name);
+    beforeOnlineSetup(() => this.sendJoin(code, false, name), this.sameIntent(), () => this.notTaken());
   }
 
   /** Duo: your own table, as Play opens it, with the partner seat held for
    *  the friend who joins by its code. A formed pair queues as the pair. */
   joinDuo(): void {
-    this.sendJoin(undefined, true);
+    beforeOnlineSetup(() => this.sendJoin(undefined, true), this.sameIntent(), () => this.notTaken());
+  }
+
+  /** A Play given up while the device signed in: the line a lost Play gets. */
+  private notTaken(): void {
+    this.notify("Couldn't open a table.", "Press Play to try again.");
+  }
+
+  /** Whether a Play held back for the device's sign-in still means what it
+   *  did when tapped: the same mode, and no search or table since. */
+  private sameIntent(): () => boolean {
+    const mode = this.view.playMode;
+    return () => this.view.playMode === mode && !this.view.queued && this.view.pending === null;
   }
 
   private sendJoin(code: string | undefined, duo: boolean, name?: string): void {

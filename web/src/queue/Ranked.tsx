@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "../auth";
+import { deviceAccountPending, useAuth } from "../auth";
 import { guestName } from "../guestName";
 import LeaveSheet from "../components/LeaveSheet";
 import type { RoomMsg } from "../protocol";
@@ -220,7 +220,7 @@ export function RankedSection({ online, room = null }: {
       <section className={`play-section${guest ? " play-guest" : ""}`} aria-label="Play">
         {modes}
         {body}
-        {guest ? <GuestLine online={online} /> : null}
+        {guest && !deviceAccountPending(account) ? <GuestLine online={online} /> : null}
       </section>
     </>
   );

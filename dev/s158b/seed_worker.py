@@ -1,6 +1,7 @@
 """One reserved S158 Stage B seed. The supervisor owns admission and concurrency."""
 import argparse
 from contextlib import ExitStack
+import hashlib
 import json
 from pathlib import Path
 import random
@@ -86,13 +87,15 @@ def write_seed(seed, root, env):
         payload = json.dumps(dict(identity, status="fault", error=type(exc).__name__, detail=str(exc)))
         _publish(directory, payload)
         raise
-    _publish(directory, payload)
+    return seed, _publish(directory, payload)
 
 
 def _publish(directory, payload):
     temporary = directory / "result.tmp"
-    temporary.write_text(payload + "\n")
+    raw = (payload + "\n").encode("utf-8")
+    temporary.write_bytes(raw)
     temporary.rename(directory / "result.json")
+    return hashlib.sha256(raw).hexdigest()
 
 
 if __name__ == "__main__":

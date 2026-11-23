@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -29,8 +30,9 @@ def test_worker_publishes_complete_fixture_once(monkeypatch, tmp_path):
     monkeypatch.setattr(worker.releases, "_build", lambda env, full, seed: ("fixture", bots[seed % 10]))
     monkeypatch.setattr(worker, "FIRST_SEED", 100)
     seed = 100
-    worker.write_seed(seed, tmp_path, ENV)
+    seal = worker.write_seed(seed, tmp_path, ENV)
     path = tmp_path / str(seed) / "result.json"
+    assert seal == (seed, hashlib.sha256(path.read_bytes()).hexdigest())
     rec = json.loads(path.read_text())
     assert rec["status"] == "complete" and rec["seed"] == seed
     assert len(rec["declares"]) == 4 and rec["world_counts"] == {"64": 5}

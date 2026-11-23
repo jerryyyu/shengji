@@ -546,10 +546,14 @@ export function nearbyClaimable(room: LocalRoom, now: number): number[] {
  *  does not list; in a game the seats it does not list are the ones a
  *  newcomer may take over (nearbyClaimable), so the joiner's seat picker
  *  offers exactly those. */
-export function nearbyPeekJson(room: LocalRoom, now = 0): Json {
+export function nearbyPeekJson(room: LocalRoom, now = 0, token: string | null = null): Json {
   const slots = room.slots();
   const claimable = room.lobby === null ? new Set(nearbyClaimable(room, now)) : new Set<number>();
+  // a peek with a token: the seat that token resumes, for that asker alone;
+  // null when the table does not know it. Never the token, nor anyone else's.
+  const held = token ? slots.findIndex((s) => s !== null && !s.isBot && s.token === token) : -1;
   return {
+    ...(token ? { held_seat: held >= 0 ? held : null } : {}),
     type: "room_seats",
     room: room.code,
     in_game: room.lobby === null,

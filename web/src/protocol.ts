@@ -61,7 +61,9 @@ export type ClientMsg =
    * the queue's own shapes are in QueueClientMsg. */
   /** Who is sitting where at a room's or a queued table's code, without
    *  joining (room_seats; a refusal echoes the code as `peek`). */
-  | { type: "table_peek"; code: string }
+  /** `token`: a nearby joiner's kept token for the table, so the host's
+   *  answer names the seat it holds (RoomSeats.held_seat); nearby only. */
+  | { type: "table_peek"; code: string; token?: string }
   /** Leave the table: a room's seat (the server replies {type:"left"}), a
    *  pending invite Join, or the queue. */
   | { type: "table_leave" }
@@ -379,6 +381,10 @@ export interface RoomSeats {
   ranked?: boolean;
   /** A ranked table with no seat to take. */
   full?: boolean;
+  /** A nearby table's answer to a peek that carried a kept token: the seat
+   *  that token resumes, or null when the table does not know it. Absent
+   *  from an older host, and from a peek with no token. */
+  held_seat?: number | null;
 }
 
 /** The peek's answer for a queued table's code (PROTOCOL.md "room_seats"):

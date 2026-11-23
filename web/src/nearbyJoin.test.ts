@@ -409,7 +409,9 @@ describe("the seat token kept on the phone", () => {
     expect(keptSeatToken("K7Q2M")).toBe("tok-9");
     const again = await atPanel();
     again.store.join();
-    expect(joinSent(again)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-9" });
+    // the fake peek is an older host's (no held_seat): the glow goes as the choice
+    expect(joinSent(again)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-9", chosen: true });
+    expect(again.sent[0]).toEqual({ type: "table_peek", code: "K7Q2M", token: "tok-9" });
     expect(h.store.seated).toBe(true);
   });
 

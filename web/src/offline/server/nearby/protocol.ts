@@ -80,7 +80,9 @@ export interface NearbyHello {
   name: string;
   token: string | null;
   /** Only look: the host answers with the table's seats and seats nobody,
-   *  so the joiner can pick a seat before taking one. */
+   *  so the joiner can pick a seat before taking one. A peek's `token` is
+   *  the joiner's kept token for the table: the answer to that link alone
+   *  names the seat it holds (`held_seat`), and seats nobody. */
   peek?: boolean;
   /** The seat a newcomer asks for; the host gives the first free one when
    *  it is taken. */

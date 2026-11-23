@@ -35,6 +35,9 @@ export interface NearbyJoin {
    *  table still holds it for the phone: the picker starts on it, so Join
    *  with no tap resumes the seat that glows. */
   held?: number | null;
+  /** The host named the kept token's seat (or none) in its peek answer, so
+   *  `held` is the host's; otherwise it is read from the kept seat. */
+  hostHeld?: boolean;
   /** The player tapped the glowing seat there: Join asks the host to move
    *  a seat this phone holds by its kept token to it, rather than resume. */
   chosen?: boolean;
@@ -145,6 +148,10 @@ function keptSeats(): KeptSeats {
     }
   }
   return out;
+}
+
+function isSeatNo(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 4;
 }
 
 function isKeptAt(v: unknown): v is KeptAt {
@@ -339,7 +346,14 @@ export class NearbyJoinStore {
     if (!v) return;
     this.set({ ...v, step: "looking", peek: null });
     this.armLook(this.attempt);
-    this.deps.conn.send({ type: "table_peek", code: v.code });
+    this.peek(v.code);
+  }
+
+  /** The table's seats, asked with the kept token for it when there is
+   *  one, so the host names the seat that token holds. */
+  private peek(code: string): void {
+    const kept = keptSeatToken(code);
+    this.deps.conn.send({ type: "table_peek", code, ...(kept ? { token: kept } : {}) });
   }
 
   private onLink(attempt: number, state: LinkState, detail?: string): void {
@@ -486,10 +500,10 @@ export class NearbyJoinStore {
     const v = this.view;
     if (!v || v.step !== "panel" || v.seat === null) return;
     const kept = keptSeatToken(v.code);
-    // with the kept token's seat known, every Join names its seat as the
-    // choice: the host resumes the token's seat when it is that seat, and
-    // moves the phone to it otherwise, so the phone lands where it glows
-    const chosen = kept !== null && (v.chosen === true || keptSeatAt(v.code) !== null);
+    // unless the host named the token's seat, every Join with a token names
+    // its seat as the choice: the host resumes the token's seat when it is
+    // that seat and moves the phone to it otherwise, so it lands where it glows
+    const chosen = kept !== null && (v.chosen === true || v.hostHeld !== true);
     if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat,
                                ...(kept ? { token: kept } : {}), ...(chosen ? { chosen: true } : {}) })) return;
     nearbyLog("join", `join sent (${kept ? "with" : "no"} token), seat ${v.seat}${chosen ? " chosen" : ""}`);
@@ -679,7 +693,7 @@ export class NearbyJoinStore {
       }
     } else if (this.view?.step === "looking") {
       this.set({ ...this.view, linked: true });
-      this.deps.conn.send({ type: "table_peek", code: this.view.code });
+      this.peek(this.view.code);
     }
   }
 
@@ -715,10 +729,14 @@ export class NearbyJoinStore {
         this.set({ ...this.view!, peek: m });
         return;
       }
-      const held = heldSeat(m, keptSeatToken(v.code) ? keptSeatAt(v.code) : null);
+      // the host's word on the kept token's seat; an older host gives none,
+      // and the seat kept with the token stands in
+      const hostHeld = m.held_seat !== undefined;
+      const held = hostHeld ? (isSeatNo(m.held_seat) ? m.held_seat : null)
+        : heldSeat(m, keptSeatToken(v.code) ? keptSeatAt(v.code) : null);
       const seat = nearbyStartSeat(m, held);
-      nearbyLog("join", `seat picker open: glow seat ${String(seat)} (${held !== null ? "held" : startSource(m)})`);
-      this.set({ ...v, step: "panel", peek: m, seat, held, chosen: false });
+      nearbyLog("join", `seat picker open: glow seat ${String(seat)} (${held === null ? startSource(m) : hostHeld ? "held" : "kept"})`);
+      this.set({ ...v, step: "panel", peek: m, seat, held, hostHeld, chosen: false });
     } else if ((m.type === "room" || m.type === "state") && (v?.step === "joining" || this.seated)) {
       this.clearGone();
       const name = typeof m.you === "number" ? m.players?.find((p) => p.seat === m.you)?.name : undefined;

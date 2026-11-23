@@ -324,15 +324,15 @@ def write(records: list[dict[str, Any]], now: float | None = None,
     the game."""
     if not records:
         return False
-    directory = telemetry_dir()
-    if directory is None:
+    sink = telemetry_dir()
+    if sink is None:
         return False
     now = time.time() if now is None else now
     day = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y%m%d")
     try:
-        directory.mkdir(parents=True, exist_ok=True)
-        _prune_once_a_day(directory, now, day)
-        path = directory / (f"ui-id-{day}.jsonl" if identity else f"ui-{day}.jsonl")
+        sink.mkdir(parents=True, exist_ok=True)
+        _prune_once_a_day(sink, now, day)
+        path = sink / (f"ui-id-{day}.jsonl" if identity else f"ui-{day}.jsonl")
         with open(path, "a", encoding="utf-8") as f:
             for rec in records:
                 f.write(json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n")

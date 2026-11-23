@@ -5,9 +5,10 @@
 // SDK's declaration only when the SDK's own resource bundle carries it, so this
 // copies ios/sdk-privacy/SocialLogin/PrivacyInfo.xcprivacy into the plugin's
 // Swift target and declares it as a SwiftPM resource. Swift sources are not
-// touched. It runs on every `npm install` / `npm ci` (postinstall) and is
-// idempotent. It fails on any other plugin version, so an update has to
-// re-check whether the new release ships its own manifest.
+// touched. npm runs it before every iOS sync (the `preios:sync*` scripts), never
+// on install: the production image runs `npm ci` before the repo's scripts are
+// copied in. It is idempotent. It fails on any other plugin version, so an
+// update has to re-check whether the new release ships its own manifest.
 //
 // Usage: node scripts/patch_social_login_privacy.mjs [plugin dir]
 

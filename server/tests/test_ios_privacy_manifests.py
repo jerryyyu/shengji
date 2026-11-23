@@ -2,10 +2,12 @@
 
 ``@capgo/capacitor-social-login`` calls ``UserDefaults.standard`` but ships no
 ``PrivacyInfo.xcprivacy``. Apple counts an SDK's required-reason declaration only
-from the SDK's own bundle, so ``npm install`` copies a repo-owned manifest into
-the plugin's Swift target and declares it as a SwiftPM resource. These tests check
-the manifest, that postinstall runs the patch, and that the patch gives a stand-in
-plugin the resource exactly once and refuses an unexpected version.
+from the SDK's own bundle, so every iOS sync first copies a repo-owned manifest
+into the plugin's Swift target and declares it as a SwiftPM resource. Install runs
+no repo script: the production image runs ``npm ci`` with only the package files
+present. These tests check the manifest, that each sync script runs the patch and
+install does not, and that the patch gives a stand-in plugin the resource exactly
+once and refuses an unexpected version.
 """
 
 import json
@@ -16,7 +18,11 @@ from pathlib import Path
 
 import pytest
 
-WEB = Path(__file__).resolve().parents[2] / "web"
+ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "web"
+PATCH_CMD = "node scripts/patch_social_login_privacy.mjs"
+# The scripts npm runs on a bare `npm ci` of the root package.
+INSTALL_LIFECYCLE = ("preinstall", "install", "postinstall", "prepublish", "preprepare", "prepare", "postprepare")
 MANIFEST = WEB / "ios" / "sdk-privacy" / "SocialLogin" / "PrivacyInfo.xcprivacy"
 PATCH = WEB / "scripts" / "patch_social_login_privacy.mjs"
 APP_MANIFEST = WEB / "ios" / "App" / "App" / "PrivacyInfo.xcprivacy"
@@ -58,10 +64,29 @@ def test_app_manifest_keeps_its_userdefaults_entry():
     assert _reasons(APP_MANIFEST)["NSPrivacyAccessedAPICategoryUserDefaults"] == ["CA92.1"]
 
 
-def test_postinstall_runs_the_patch_on_the_pinned_version():
-    package = json.loads((WEB / "package.json").read_text())
-    assert package["scripts"]["postinstall"] == "node scripts/patch_social_login_privacy.mjs"
-    assert package["dependencies"]["@capgo/capacitor-social-login"] == "8.7.5"
+def _scripts() -> dict[str, str]:
+    return json.loads((WEB / "package.json").read_text())["scripts"]
+
+
+def test_every_ios_sync_script_runs_the_patch_first():
+    scripts = _scripts()
+    syncs = [name for name in scripts if name.startswith("ios:sync")]
+    assert "ios:sync" in syncs
+    for name in syncs:
+        assert scripts.get(f"pre{name}") == PATCH_CMD or scripts[name].startswith(f"{PATCH_CMD} && "), name
+    assert json.loads((WEB / "package.json").read_text())["dependencies"]["@capgo/capacitor-social-login"] == "8.7.5"
+
+
+def test_install_runs_no_repo_script():
+    scripts = _scripts()
+    assert [hook for hook in INSTALL_LIFECYCLE if hook in scripts] == []
+
+
+def test_production_image_installs_from_the_package_files_alone():
+    lines = [line.strip() for line in (ROOT / "Dockerfile").read_text().splitlines()]
+    install = lines.index("RUN npm ci")
+    copies = [line for line in lines[:install] if line.startswith(("COPY", "ADD"))]
+    assert copies == ["COPY web/package.json web/package-lock.json ./"]
 
 
 def _plugin(tmp_path: Path, version: str = "8.7.5") -> Path:

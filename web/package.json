@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "postinstall": "node scripts/patch_social_login_privacy.mjs",
+    "preios:sync": "node scripts/patch_social_login_privacy.mjs",
+    "preios:sync:appstore": "node scripts/patch_social_login_privacy.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

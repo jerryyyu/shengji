@@ -90,7 +90,8 @@ keeps the table and its code; a partner's leave holds its seat again, an
 opener's makes the partner the opener. A ranked table starts at ``RANKS[0]``;
 a casual table's opener sets its level (``table_start_level``) and its
 bots' level (``table_bot_level``: Standard, ``server.RELAXED_BOT``, by
-default, or Advanced, the served bot; a ranked table is always Advanced).
+default, or Advanced, the served bot; a ranked table has no setting: its
+opposing bots' level follows its people's ratings, ``ranked_bots``).
 
 Every table has chat from the moment you sit (``table_chat``): validated
 as room chat is, rate-limited, held in memory only. A lone entry's lines

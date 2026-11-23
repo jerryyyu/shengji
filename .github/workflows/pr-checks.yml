@@ -233,6 +233,7 @@ jobs:
           tests/test_hybrid_duel_quality.py
           tests/test_room_bot_seed.py
           tests/test_relaxed_bots.py
+          tests/test_ranked_bots.py
           tests/test_structured_bury.py
           tests/test_mc_benchmark_normalization.py
           tests/test_release46_fly_config.py
@@ -267,6 +268,7 @@ jobs:
           tests/test_stage1_seal_plan.py
           tests/test_mistake_dashboard.py
           tests/test_relaxed_bots.py
+          tests/test_ranked_bots.py
           tests/test_prepared_panel_runner.py
           tests/test_llm_benchmark_rollouts.py
           tests/test_production_llm_panel_readout.py

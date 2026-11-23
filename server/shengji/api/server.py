@@ -30,7 +30,7 @@ from ..engine.game import Game
 from ..engine.legal import IllegalPlay
 from ..engine import combos
 from ..engine.round import Round, actual_play_after
-from . import accounts, blocks, chat_filter, limits, matchmaking, nearby_logs, ratings, reports, saved_games, support, tables, telemetry
+from . import accounts, blocks, chat_filter, limits, matchmaking, nearby_logs, ranked_bots, ratings, reports, saved_games, support, tables, telemetry
 from .model_serving import run_model_search
 
 
@@ -427,8 +427,13 @@ class Room:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     # Bots (``matchmaking.BOT_LEVELS``): the casual opener's choice, set
     # before the game and fixed for it; at "standard" ``__post_init__`` builds
-    # the relaxed bot for every bot seat. A matched (ranked) room refuses it.
+    # the relaxed bot for every bot seat. A matched (ranked) room refuses it
+    # and stays "advanced" in every frame: its opposing bots' level follows
+    # its people's ratings, server-only, in ``bot_levels``.
     bot_level: str = "advanced"
+    # A ranked room's seats whose bots play Standard (``ranked_bots``), set
+    # when its game starts and at each new game; None in a casual room.
+    bot_levels: Any = field(default=None, repr=False)
     # None builds the served policy (SHENGJI_BOT), or its relaxed wrap, in
     # `__post_init__` with this room's own seed, so rooms do not share one
     # sampler stream
@@ -1483,6 +1488,7 @@ async def advance_if_all_ready(room: Room) -> bool:
             if sd is not None and not sd.is_bot and sd.connected):
         return False
     room.ready.clear()
+    new_game = game.result is not None and game.result.point_scored
     game.start_round()
     room.index_round()
     _round_timeouts_reset(room)
@@ -1491,6 +1497,9 @@ async def advance_if_all_ready(room: Room) -> bool:
     for sd in room.seats:
         if sd is not None:
             sd.joined_round = None
+    if new_game:
+        # the levels restarted: a ranked table's bots meet the ratings of now
+        ranked_bots.choose(room, make_relaxed_bot)
     _log_round_start(room)
     saved_games.round_started(room)
     ratings.round_started(room)
@@ -1508,13 +1517,17 @@ def _log_round_start(room: Room) -> int | None:
     # Room logs never carry account ids (test_no_log_record_carries_the_account);
     # seats map to accounts through the game_players links instead.
     # ``bot_policy`` names what plays the bot seats, so a relaxed room's
-    # rounds (``bot_level`` "standard") stay out of the served bot's tallies.
+    # rounds (``bot_level`` "standard") stay out of the served bot's tallies;
+    # a ranked room with Standard opponents logs them as "standard" too, and
+    # names those seats (``standard_seats``). The log is server-only.
+    standard = ranked_bots.standard(room)
     return room.log_event("round_start", deck=rnd.deck, banker=rnd.banker,
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
                    bot_policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
-                   bot_level=room.bot_level,
-                   ranked=ratings.ranked(room))
+                   bot_level="standard" if standard else room.bot_level,
+                   ranked=ratings.ranked(room),
+                   **({"standard_seats": sorted(standard)} if standard else {}))
 
 
 def _log_seat(room: Room, kind: str, seat: Seat, reason: str, **fields: Any) -> None:
@@ -2317,6 +2330,7 @@ def _start_game(room: Room) -> None:
                   for i, sd in enumerate([*room.seats, *[None] * (4 - len(room.seats))])]
     if ratings.ranked(room):
         room.start_level = RANKS[0]      # every rated game starts at the same level
+        ranked_bots.choose(room, make_relaxed_bot)
     if not room.matched:
         # An open table names its people by queue id, so the queue never
         # offers a seat here to someone already sitting at it.
@@ -2921,6 +2935,7 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
             # offer never brings them back to this seat
             me.queue_id = qid
             saved_games.seat_changed(target, pick)
+            ranked_bots.seat_taken(target, pick)
             target.log_event("seat_claimed", seat=pick,
                              name=name, bot=False)
             claimed_from_bot = True
@@ -3917,6 +3932,7 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     del room.pending_joins[seat]
     pj.conn.joining = None
     saved_games.seat_changed(room, seat)
+    ranked_bots.seat_taken(room, seat)
     room.log_event("seat_claimed", seat=seat, name=pj.name, bot=False)
     gen = _attach(room, me, pj.conn.ws)
     pj.conn.adopted = (room, me, gen)

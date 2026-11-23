@@ -26,6 +26,7 @@ import {
   auth, deviceAccountsAvailable, deviceAuth, deviceSecretOutstanding, forgetDeviceSecret, identityChanging, identityTurn,
   keepDeviceSecret, settleKeychain,
 } from "./auth";
+import { chosenGuestName } from "./guestName";
 import { keychainGet } from "./keychain";
 import { deviceIdiom } from "./native";
 
@@ -62,7 +63,8 @@ async function signInDevice(): Promise<SetupOutcome> {
     // an unreadable Keychain may hold a secret: never make a second account over it
     return "read_failed";
   }
-  const got = await deviceAuth(token);
+  // a new account starts under the name the guest chose, when the server allows it
+  const got = await deviceAuth(token, token ? null : chosenGuestName());
   if (got.status === 404 || got.status === 403) {
     off = true;
     auth.noDeviceAccounts?.();

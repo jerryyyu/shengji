@@ -329,15 +329,22 @@ export const CLIENT_HEADER = "X-Shengji-Client";
 export const IOS_APP_CLIENT = "ios-app";
 
 /** `POST /api/auth/device`: with a token, sign in as the account holding
- *  it; without, make a new account, whose token comes back this once.
- *  Status 0 is no connection. 404 means the server has device accounts
- *  off, and 429 too many attempts: either way the app plays as a guest. */
-export async function deviceAuth(token: string | null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
+ *  it; without, make a new account, whose token comes back this once, asking
+ *  for `name` (the guest's chosen name) when given; the server keeps it only
+ *  when it passes the display-name checks and is free. Status 0 is no
+ *  connection. 404 means the server has device accounts off, and 429 too
+ *  many attempts: either way the app plays as a guest. */
+export async function deviceAuth(token: string | null, name: string | null = null): Promise<{ status: number; user: AuthUser | null; token: string | null }> {
   const headers: Record<string, string> = { [CLIENT_HEADER]: IOS_APP_CLIENT };
   if (token) headers.Authorization = `Device ${token}`;
+  const init: RequestInit = { method: "POST", headers };
+  if (!token && name) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify({ name });
+  }
   let got: { status: number; body: (Partial<AuthUser> & { user?: AuthUser; token?: string }) | null };
   try {
-    got = await api("/api/auth/device", { method: "POST", headers });
+    got = await api("/api/auth/device", init);
   } catch {
     return { status: 0, user: null, token: null };
   }

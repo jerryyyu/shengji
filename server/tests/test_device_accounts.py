@@ -314,6 +314,181 @@ def test_a_filtered_name_is_never_drawn(device_on, monkeypatch):
     assert _rows(device_on.STORE.path, "SELECT display_name FROM users") == [("Lucky King",)]
 
 
+def _create_named(client, name, **headers):
+    return client.post("/api/auth/device", headers={**APP, **headers}, json={"name": name})
+
+
+def test_a_new_account_keeps_a_free_valid_guest_name(device_on, client):
+    resp = _create_named(client, "  Mei   Lin ")
+    assert resp.status_code == 200
+    user = resp.json()["user"]
+    assert user["display_name"] == user["name_shown"] == "Mei Lin"
+    assert _rows(device_on.STORE.path, "SELECT name, display_name FROM users") == [("Mei Lin", "Mei Lin")]
+
+
+@pytest.mark.parametrize("wanted", [
+    "MEI LIN",                  # shown by another account, in another case
+    "Bot",                      # reserved
+    "Bot 3",                    # bot-like
+    "Big shit",                 # refused by the chat filter
+    "x" * 21,                   # longer than DISPLAY_NAME_MAX
+    "Mei\nLin",                 # a line break
+    "Mei\x00Lin",               # a control character
+    "   ",                      # empty once trimmed
+    42,                         # not a string
+    None,
+])
+def test_an_unusable_guest_name_falls_back_to_a_generated_one(device_on, client, wanted):
+    from shengji.api import chat_filter, device_names
+
+    assert chat_filter.contains("Big shit")
+    store = device_on.STORE
+    other = store.upsert_user({"sub": "g", "email": "g@example.com", "name": "G"})
+    store.set_display_name(other["id"], "Mei Lin")
+    resp = _create_named(client, wanted)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"token", "user"}
+    assert body["user"]["display_name"] in set(device_names.all_names())
+
+
+@pytest.mark.parametrize("body", [b"", b"not json", b"[1, 2]", b'{"other": 1}',
+                                  b'{"name": "' + b"y" * 5000 + b'"}'])
+def test_no_usable_body_gives_a_generated_name(device_on, client, body):
+    from shengji.api import device_names
+
+    resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                       content=body)
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def test_a_body_that_is_not_utf8_or_nests_deep_gives_a_generated_name(device_on, client):
+    from shengji.api import device_names
+
+    deep = b'{"name": ' + b"[" * 2000 + b"]" * 2000 + b"}"
+    assert len(deep) <= device_on.DEVICE_BODY_MAX
+    for body in (b'{"name": "Mei \xff Lin"}', b"\xfe\xff\x00{", deep):
+        resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                           content=body)
+        assert resp.status_code == 200
+        assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def test_a_recursion_error_while_parsing_gives_a_generated_name(device_on, client, monkeypatch):
+    """However deep a parser recurses before giving up, the body is no name."""
+    import json
+    import types
+
+    from shengji.api import device_names
+
+    def too_deep(*_a, **_k):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    stub = types.SimpleNamespace(**{k: getattr(json, k) for k in dir(json) if not k.startswith("__")})
+    stub.loads = too_deep
+    monkeypatch.setattr(device_on, "json", stub)
+    resp = _create_named(client, "Mei Lin")
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def _streamed(chunk: bytes, headers=()):
+    """A request whose body arrives in endless ``chunk``s, counting reads."""
+    from starlette.requests import Request
+
+    sent = {"n": 0}
+
+    async def receive():
+        sent["n"] += 1
+        return {"type": "http.request", "body": chunk, "more_body": True}
+
+    return Request({"type": "http", "method": "POST", "headers": list(headers)}, receive), sent
+
+
+def test_a_streamed_body_over_the_cap_stops_at_the_cap(device_on):
+    """With no Content-Length, the read stops at the first chunk past the cap."""
+    import asyncio
+
+    chunk = b"x" * 1000
+    request, sent = _streamed(chunk)
+    assert asyncio.run(device_on._wanted_device_name(request)) is None
+    assert sent["n"] == device_on.DEVICE_BODY_MAX // len(chunk) + 1
+
+
+def test_a_declared_length_over_the_cap_is_never_read(device_on):
+    import asyncio
+
+    request, sent = _streamed(b"x", headers=[(b"content-length", b"4097")])
+    assert asyncio.run(device_on._wanted_device_name(request)) is None
+    assert sent["n"] == 0
+
+
+def test_an_oversize_streamed_body_gives_a_generated_name(device_on, client):
+    from shengji.api import device_names
+
+    def body():
+        yield b'{"name": "'
+        for _ in range(10):
+            yield b"y" * 1000
+        yield b'"}'
+
+    resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                       content=body())
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def test_a_body_at_the_cap_keeps_its_name(device_on, client):
+    head, tail = b'{"name": "Mei Lin"', b"}"
+    body = head + b" " * (device_on.DEVICE_BODY_MAX - len(head) - len(tail)) + tail
+    assert len(body) == device_on.DEVICE_BODY_MAX
+    resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                       content=body)
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] == "Mei Lin"
+
+
+def test_no_name_gives_the_generated_name(device_on, client):
+    from shengji.api import device_names
+
+    resp = _create(client)
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def test_a_restore_never_renames_the_account(device_on, client):
+    first = _create_named(client, "Mei Lin").json()
+    token = first["token"]
+    again = _create_named(client, "Someone Else", authorization=f"Device {token}")
+    assert again.status_code == 200
+    assert again.json() == {"user": first["user"]}
+    assert _rows(device_on.STORE.path, "SELECT display_name FROM users") == [("Mei Lin",)]
+
+
+def test_the_kept_name_is_checked_in_the_insert_transaction(device_on):
+    store = device_on.STORE
+    a = store.create_device_user("a" * 43, wanted="Mei Lin")
+    b = store.create_device_user("b" * 43, wanted="mei lin")
+    assert a["display_name"] == "Mei Lin"
+    assert b["display_name"] != "mei lin" and b["display_name"].casefold() != "mei lin"
+
+
+def test_a_blocklisted_guest_name_falls_back(device_on, monkeypatch):
+    monkeypatch.setattr(device_on, "DISPLAY_NAME_BLOCKLIST", lambda name: "Mei" in name)
+    row = device_on.STORE.create_device_user("c" * 43, wanted="Mei Lin")
+    assert "Mei" not in row["display_name"]
+
+
+def test_the_kept_name_is_not_logged(device_on, client, caplog):
+    import logging
+
+    with caplog.at_level(logging.DEBUG):
+        assert _create_named(client, "Secret Name").status_code == 200
+        assert _create_named(client, "Big shit").status_code == 200
+    assert "Secret Name" not in caplog.text and "shit" not in caplog.text
+
+
 # --------------------------------------------------------- edited-name rule
 def test_an_edit_into_a_taken_name_is_refused(device_on, client):
     accounts = device_on

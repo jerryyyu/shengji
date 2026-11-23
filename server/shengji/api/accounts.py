@@ -206,6 +206,19 @@ def _free_device_name(taken: Collection[str], rng: random.Random) -> str:
     raise DisplayNameError("taken")
 
 
+def _kept_device_name(wanted: Any, taken: Collection[str]) -> str | None:
+    """The stored form of ``wanted`` (the guest name the app played under)
+    when it passes ``validate_display_name`` and no account in ``taken``
+    (casefolded) shows it; None otherwise, and the caller draws a name."""
+    if wanted is None:
+        return None
+    try:
+        name = validate_display_name(wanted)
+    except DisplayNameError:
+        return None
+    return None if name.casefold() in taken else name
+
+
 def _numbered_name(base: str, taken: Collection[str], rng: random.Random | None = None) -> str:
     """``base`` with the smallest number from 2 up whose result is not in
     ``taken`` (casefolded) and passes ``validate_display_name``, the base
@@ -962,21 +975,25 @@ class Store:
 
     # -- device accounts
     def create_device_user(self, token: str, now: float | None = None,
-                           rng: random.Random | None = None) -> dict:
+                           rng: random.Random | None = None, wanted: Any = None) -> dict:
         """Create a device account (no provider) holding ``token``'s
-        credential, named with an unused generated name; returns the row.
-        Only the token's SHA-256 is stored. Raises ``DisplayNameError("taken")``
-        when every generated name is in use. ``create_device_account`` also
-        starts the first session in the same transaction."""
-        return self._create_device(token, now, rng, with_session=False)[0]
+        credential; returns the row. It is named ``wanted`` (the guest name
+        the app played under) when that passes ``validate_display_name`` and
+        no account shows it, case-insensitively, checked in the insert's
+        transaction; otherwise an unused generated name. Only the token's
+        SHA-256 is stored. Raises ``DisplayNameError("taken")`` when no name
+        is usable. ``create_device_account`` also starts the first session in
+        the same transaction."""
+        return self._create_device(token, now, rng, wanted, with_session=False)[0]
 
     def _create_device(self, token: str, now: float | None, rng: random.Random | None,
-                       with_session: bool) -> tuple[dict, str | None]:
+                       wanted: Any, with_session: bool) -> tuple[dict, str | None]:
         t = int(now if now is not None else time.time())
         with closing(self._open()) as conn:
             conn.execute("BEGIN IMMEDIATE")
             try:
-                name = _free_device_name(self._shown_names(conn), rng or _NAME_RNG)
+                taken = self._shown_names(conn)
+                name = _kept_device_name(wanted, taken) or _free_device_name(taken, rng or _NAME_RNG)
                 cur = conn.execute(
                     """INSERT INTO users(google_sub, apple_sub, email, name, picture, created_at,
                                          last_login_at, display_name, rating)
@@ -995,10 +1012,11 @@ class Store:
             return dict(row), session
 
     def create_device_account(self, token: str, now: float | None = None,
-                              rng: random.Random | None = None) -> tuple[dict, str]:
+                              rng: random.Random | None = None,
+                              wanted: Any = None) -> tuple[dict, str]:
         """A new device account and its first session token, in one
-        transaction."""
-        row, session = self._create_device(token, now, rng, with_session=True)
+        transaction; ``wanted`` as for ``create_device_user``."""
+        row, session = self._create_device(token, now, rng, wanted, with_session=True)
         assert session is not None
         return row, session
 
@@ -2195,6 +2213,11 @@ DEVICE_HOURLY = RateLimiter(DEVICE_CREATES_PER_HOUR, 3600.0)
 DEVICE_DAILY = RateLimiter(DEVICE_CREATES_PER_DAY, 86400.0)
 
 
+# The largest device-creation body read for its ``name``; a larger one is
+# read as no name.
+DEVICE_BODY_MAX = 4096
+
+
 def _device_token(request: Request) -> str | None:
     """The token of an ``Authorization: Device <token>`` header; None when
     the header is absent. Any other scheme, or an empty token, is a 401."""
@@ -2208,16 +2231,61 @@ def _device_token(request: Request) -> str | None:
     return token
 
 
+async def _device_body(request: Request) -> bytes | None:
+    """The device-creation body, or None when it is over ``DEVICE_BODY_MAX``
+    bytes or cannot be read. A declared length over the cap is refused
+    unread, and a streamed body stops at the first chunk past the cap, as
+    ``nearby_logs._read_capped`` does, so an oversize body is never held."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > DEVICE_BODY_MAX:
+                return None
+        except ValueError:
+            pass
+    chunks: list[bytes] = []
+    size = 0
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > DEVICE_BODY_MAX:
+                return None
+            chunks.append(chunk)
+    except Exception:                   # noqa: BLE001 - a broken body is no name
+        return None
+    return b"".join(chunks)
+
+
+async def _wanted_device_name(request: Request) -> Any:
+    """The ``name`` of a device-creation body, or None: no body, one over
+    ``DEVICE_BODY_MAX`` bytes, one that is not UTF-8 JSON, nested too deep
+    to parse, or not a JSON object all read as no name, never as an error."""
+    raw = await _device_body(request)
+    if not raw:
+        return None
+    try:
+        body = json.loads(raw)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None
+    return body.get("name") if isinstance(body, dict) else None
+
+
 @router.post("/auth/device")
 async def auth_device(request: Request, response: Response) -> dict:
     """The iOS app's account, with no provider.
 
-    With no ``Authorization`` header: create a device account with a
-    server-assigned unique name, start a session (the ``sj_session``
+    With no ``Authorization`` header: create a device account, start a
+    session (the ``sj_session``
     cookie, as every sign-in does) and return ``{"token", "user"}``. The
     256-bit token is returned this once; the server keeps only its SHA-256.
     With ``Authorization: Device <token>``: start a session for the account
     holding that credential and return ``{"user"}``.
+
+    A new account is named the body's ``name`` (JSON ``{"name": ...}``, the
+    guest name the app played under) when it passes the display-name checks
+    and no account shows it; otherwise, or with no usable body, a
+    server-assigned unique name. A refused name is never an error, and the
+    answer says only the name given. A sign-in ignores the body.
 
     404 unless ``SHENGJI_DEVICE_ACCOUNTS=1``. 403 unless the request
     declares the iOS app (``X-Shengji-Client: ios-app``), a soft gate: the
@@ -2244,9 +2312,10 @@ async def auth_device(request: Request, response: Response) -> dict:
         return {"user": await account_payload(STORE, user)}
     if not DEVICE_HOURLY.allow(ip) or not DEVICE_DAILY.allow(ip):
         raise HTTPException(status_code=429, detail="Too many new accounts; play as a guest for now.")
+    wanted = await _wanted_device_name(request)
     token = secrets.token_urlsafe(32)
     try:
-        user, session = await STORE.run(STORE.create_device_account, token)
+        user, session = await STORE.run(STORE.create_device_account, token, None, None, wanted)
     except DisplayNameError as exc:
         log.warning("device account not created: no free name")
         raise HTTPException(status_code=503, detail="No account available; play as a guest.") from exc

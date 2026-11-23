@@ -329,6 +329,87 @@ def test_an_mps_cache_refuses_a_cpu_worker_through_main(data, cpu_root, tmp_path
     assert sorted(p.name for p in cache.iterdir()) == [ur.CACHE_DEVICE]
 
 
+@pytest.mark.parametrize("rounds", ["0", "-1"])
+def test_cache_refuses_nonpositive_encode_batches(data, cpu_root, tmp_path, rounds):
+    cache = tmp_path / "cache"
+    with pytest.raises(ur.UnifiedReadoutError, match="--encode-rounds-per-batch must be positive"):
+        ur.main(_cache_argv(data, cpu_root, cache, "--encode-rounds-per-batch", rounds))
+    assert not cache.exists()
+
+
+def test_cache_refuses_mixed_encode_batches(data, cpu_root, tmp_path):
+    cache = _cache_copy(cpu_root, tmp_path)
+    before = _shard_bytes(cache)
+    custom = ["--encode-rounds-per-batch", "4"]
+    with pytest.raises(ur.UnifiedReadoutError, match="use --encode-rounds-per-batch 32"):
+        ur.main(_cache_argv(data, cpu_root, cache, *custom))
+    (cache / ur.CACHE_ENCODE).unlink()
+    with pytest.raises(ur.UnifiedReadoutError, match="existing shards have the default encode batch size"):
+        ur.main(_cache_argv(data, cpu_root, cache, *custom))
+    assert _shard_bytes(cache) == before
+    assert not (cache / ur.CACHE_ENCODE).exists()
+
+
+def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root, tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from sz2_cache_arm import cache_partition
+
+    clusters = [synthetic_cluster(s) for s in range(1000, 1012)]
+    data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
+                       calib=0.5, task_clusters=1)
+    joint = tmp_path / "joint"
+    train = joint / "M" / "train"
+    train.mkdir(parents=True)
+    checkpoint = train / "best.pt"
+    shutil.copyfile(cpu_root[0] / "train" / "best.pt", checkpoint)
+    sha = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    (joint / "launcher.status").write_text("LANE DONE sz2-joint-v1 t joint arms complete rc=0\n")
+    (train / "status.log").write_text(f"t UTR DONE best={checkpoint} sha256={sha}\n")
+    weights = [f"{data}=policy:2,reply:2"]
+    recipe = tmp_path / "recipe.json"
+    recipe.write_text(json.dumps({"seed": 1, "data": [str(data)], "store_map": [],
+                                  "exclude_seed_window": [], "corpus_weight": weights}))
+    recipe_sha = hashlib.sha256(recipe.read_bytes()).hexdigest()
+    output = tmp_path / "cache"
+    legacy = output / "M" / f"{sha}-{recipe_sha}"
+    baseline_args = _cache_argv(data, cpu_root, legacy, "--group-chunks", "24", "--corpus-weight", weights[0])
+
+    batches = []
+    forward = ur.us.trunk_forward
+
+    def count_rounds(model, batch):
+        batches.append(len(batch["tok_int"]))
+        return forward(model, batch)
+
+    monkeypatch.setattr(ur.us, "trunk_forward", count_rounds)
+    assert ur.main(baseline_args) == 0
+    assert len(batches) == 2 and min(batches) > 4
+    full = batches.copy()
+    before = _shard_bytes(legacy)
+    batches.clear()
+
+    assert cache_partition(joint, "M", 0, output, recipe, recipe_sha) == 0
+    cache = legacy.with_name(f"{legacy.name}-encode4")
+    expected = [min(4, total - start) for total in full for start in range(0, total, 4)]
+    assert batches == expected
+    assert _shard_bytes(legacy) == before
+    assert set(_shard_bytes(cache)) == set(before)
+    for name in before:
+        with np.load(legacy / name) as want, np.load(cache / name) as got:
+            assert got.files == want.files
+            for key in want.files:
+                if key in ("S", "c"):
+                    np.testing.assert_allclose(got[key], want[key], rtol=1e-3, atol=5e-4)
+                else:
+                    np.testing.assert_array_equal(got[key], want[key])
+
+    batches.clear()
+    assert cache_partition(joint, "M", 0, output, recipe, recipe_sha) == 0
+    assert not batches
+    with pytest.raises(ur.UnifiedReadoutError, match="use --encode-rounds-per-batch 4"):
+        ur.main(_cache_argv(data, cpu_root, cache))
+
+
 BENCH = Path(__file__).resolve().parents[1] / "scripts" / "bench_unified_readout_device.py"
 
 

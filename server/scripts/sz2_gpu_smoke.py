@@ -186,7 +186,8 @@ def footprint_mib(pid):
     return float(magnitude) * {"KB": 1 / 1024, "MB": 1, "GB": 1024}[unit]
 
 
-def monitor(child, baseline, check_signal, verify_stopped):
+def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, swap_limit=8192,
+            footprint_limit=65536):
     started = time.monotonic()
     next_footprint = started
     previous_footprint = None
@@ -206,7 +207,7 @@ def monitor(child, baseline, check_signal, verify_stopped):
                         raise
             print(f"smoke pid={child.pid} elapsed_s={time.monotonic() - started:.1f} "
                   f"rss_kib={rss} swap_mib={swap:g} baseline_mib={baseline:g} pressure={pressure}", flush=True)
-            if pressure >= 4 or swap - baseline >= 8192:
+            if pressure >= pressure_limit or swap - baseline >= swap_limit:
                 raise RuntimeError("memory guard exceeded")
             if child.poll() is None and time.monotonic() >= next_footprint:
                 footprint = footprint_mib(child.pid)
@@ -227,8 +228,8 @@ def monitor(child, baseline, check_signal, verify_stopped):
                     previous_footprint = sampled, footprint
                     print(f"smoke pid={child.pid} footprint_mib={footprint:g} "
                           f"footprint_slope_mib_per_min={slope}", flush=True)
-                    if footprint > 65536:
-                        raise RuntimeError("trainer footprint exceeds 65536 MiB")
+                    if footprint > footprint_limit:
+                        raise RuntimeError(f"trainer footprint exceeds {footprint_limit} MiB")
             rc = child.poll()
             if rc is not None:
                 return rc

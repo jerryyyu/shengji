@@ -147,3 +147,96 @@ def test_joint_checkpoint_produces_weighted_cpu_cache_for_polish(cache_worker, c
     assert (out / "selected.pt").samefile(out / "best.pt" if selected else checkpoint)
     with pytest.raises(FileExistsError):
         polish()
+
+    from shengji.ai.belief_numpy import load_belief_numpy
+    from sz2_export_arm import TEMPERATURE, export_arm
+
+    def export():
+        return export_arm(tmp_path, "S", tmp_path / "polish", tmp_path / "export", recipe, recipe_sha,
+                          data, 132)
+
+    assert export() == 0
+    exported = tmp_path / "export/S" / cache.name
+    parity = json.loads((exported / "parity.json").read_text())
+    assert parity["rows"] == 132
+    assert parity["parity"] == "OK"
+    assert set(parity["max_abs_diff"]) == {"belief", "value", "reply"}
+    assert parity["best_epoch"] == selected
+    assert parity["selected_checkpoint_sha256"] == hashlib.sha256((out / "selected.pt").read_bytes()).hexdigest()
+    assert parity["package"] == hashlib.sha256((exported / "cand.npz").read_bytes()).hexdigest()
+    belief = load_belief_numpy(exported / "cand-belief.npz", sha256=parity["belief_sha256"])
+    assert belief.metadata["source_unified_package"] == parity["package"]
+    assert belief.metadata["temperature"] == TEMPERATURE
+    with pytest.raises(FileExistsError):
+        export()
+
+
+def test_parity_refuses_one_nan_reply_after_a_finite_row(segment, cpu_root, data, tmp_path, monkeypatch, capsys):
+    from shengji.ai.unified_readout_numpy import UnifiedReadoutNumpy
+    from sz2_export_arm import TEMPERATURE
+    from sz2_export_parity import main
+
+    checkpoint = cpu_root[0] / "train/best.pt"
+    package = tmp_path / "candidate.npz"
+    assert ur.main(["export", "--ckpt", str(checkpoint), "--out", str(package),
+                    "--temperature", str(TEMPERATURE)]) == 0
+    capsys.readouterr()
+    reply_logits = UnifiedReadoutNumpy.leaf_reply_logits
+    rows_checked = 0
+
+    def reply_with_nan_on_second_row(self, *args):
+        nonlocal rows_checked
+        rows_checked += 1
+        logits = reply_logits(self, *args)
+        if rows_checked == 2:
+            logits.flat[0] = float("nan")
+        return logits
+
+    monkeypatch.setattr(UnifiedReadoutNumpy, "leaf_reply_logits", reply_with_nan_on_second_row)
+    assert main([str(checkpoint), str(package), str(data), "150"]) == 3
+    result = capsys.readouterr()
+    assert rows_checked == 2
+    assert result.out == ""
+    assert "non-finite reply parity error" in result.err
+
+
+def test_export_checks_the_hardlinked_polish_winner(segment, tmp_path):
+    from sz2_export_arm import selected_checkpoint
+
+    joint = tmp_path / "joint.pt"
+    joint.write_bytes(b"joint")
+    polished = tmp_path / "best.pt"
+    polished.write_bytes(b"polished")
+    selected = tmp_path / "selected.pt"
+    terminal = tmp_path / "status.log"
+    joint_sha = hashlib.sha256(joint.read_bytes()).hexdigest()
+    polished_sha = hashlib.sha256(polished.read_bytes()).hexdigest()
+    terminal.write_text(f"t POLISH DONE best_epoch=0 calib {{}} sha256={polished_sha}\n")
+    selected.hardlink_to(joint)
+    assert selected_checkpoint(tmp_path, joint, joint_sha) == (selected, joint_sha, 0)
+    terminal.write_text(f"t POLISH DONE best_epoch=1 calib {{}} sha256={polished_sha}\n")
+    with pytest.raises(ValueError, match="does not match the polish winner"):
+        selected_checkpoint(tmp_path, joint, joint_sha)
+    selected.unlink()
+    selected.hardlink_to(polished)
+    assert selected_checkpoint(tmp_path, joint, joint_sha) == (selected, polished_sha, 1)
+    polished.write_bytes(b"changed")
+    with pytest.raises(ValueError, match="differs from the polish terminal"):
+        selected_checkpoint(tmp_path, joint, joint_sha)
+
+
+@pytest.mark.parametrize("override", [
+    {"rows": 123},
+    {"parity": "FAIL"},
+    {"package": "other digest"},
+    {"max_abs_diff": {"belief": 0.0, "value": 0.002, "reply": 0.0}},
+    {"max_abs_diff": {"belief": 0.0, "value": float("nan"), "reply": 0.0}},
+    {"max_abs_diff": {"belief": 0.0, "reply": 0.0}},
+])
+def test_export_rejects_incomplete_or_invalid_parity(segment, override):
+    from sz2_export_arm import check_parity
+
+    report = {"rows": 124, "package": "digest", "parity": "OK",
+              "max_abs_diff": {"belief": 1e-5, "value": 2e-5, "reply": 3e-5}}
+    with pytest.raises(ValueError, match="parity"):
+        check_parity({**report, **override}, "digest", 124)

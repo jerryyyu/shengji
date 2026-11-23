@@ -3,7 +3,6 @@ import argparse
 import fcntl
 import hashlib
 import json
-from pathlib import Path
 import re
 import sys
 
@@ -11,6 +10,7 @@ from sz2_joint_segment import FLEET, RECIPE, RECIPE_SHA
 
 JOINT = FLEET / "codex-sz2-joint-v1/capture"
 WORKERS = 3
+MEDIUM_ENCODE_ROUNDS = 4
 
 
 def arm_inputs(joint, arm, output, recipe_path, recipe_sha):
@@ -34,7 +34,10 @@ def arm_inputs(joint, arm, output, recipe_path, recipe_sha):
     if hashlib.sha256(raw).hexdigest() != recipe_sha:
         raise ValueError("FT500k recipe changed")
     recipe = json.loads(raw)
-    cache = output / arm / f"{witness[2]}-{recipe_sha}"
+    identity = f"{witness[2]}-{recipe_sha}"
+    if arm == "M":
+        identity += f"-encode{MEDIUM_ENCODE_ROUNDS}"
+    cache = output / arm / identity
     return checkpoint, cache, recipe
 
 
@@ -49,6 +52,8 @@ def cache_partition(joint, arm, worker, output, recipe_path, recipe_sha):
             "--seed", str(recipe["seed"]), "--device", "cpu", "--threads", "8",
             "--worker", str(worker), "--workers", str(WORKERS), "--group-chunks", "24",
             "--calib-rows", "180000"]
+    if arm == "M":
+        args.extend(["--encode-rounds-per-batch", str(MEDIUM_ENCODE_ROUNDS)])
     for key in ("store_map", "corpus_weight"):
         for value in recipe[key]:
             args.extend(["--" + key.replace("_", "-"), value])

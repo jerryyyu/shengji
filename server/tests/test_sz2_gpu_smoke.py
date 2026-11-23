@@ -394,3 +394,51 @@ def test_full_segment_protocol(host, phase, trainer_rc, prepare_rc, expected, ac
     result = subprocess.run([*command, "--phase", phase], capture_output=True, text=True, timeout=10)
     assert result.returncode == expected, result.stderr
     assert (events(log) if log.exists() else []) == actions
+
+
+@pytest.mark.parametrize("failed", [None, "M 0", "M 1", "M 2", "polish", "export", "disk"])
+def test_serial_post_training_stops_on_first_incomplete_stage(tmp_path, monkeypatch, failed):
+    import types
+
+    monkeypatch.syspath_prepend(str(WORKER.parent))
+    import sz2_post_arm as post
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for stage in ("cache", "polish", "export"):
+        (scripts / f"sz2_{stage}_arm.py").write_text(
+            "import os, sys\nfrom pathlib import Path\n"
+            f"step = ' '.join(sys.argv[1:]) if '{stage}' == 'cache' else '{stage}'\n"
+            "with Path('calls').open('a') as stream:\n"
+            "    print(step, os.environ['OMP_NUM_THREADS'], file=stream)\n"
+            f"sys.exit(17 if step == {failed!r} else 0)\n"
+        )
+    monkeypatch.setattr(post.host, "SCRIPTS", scripts)
+    monkeypatch.setattr(post, "FLEET", tmp_path)
+    monkeypatch.setattr(post.host, "command", lambda *args: "")
+    monkeypatch.setattr(post.host, "darkbloom_ready", lambda status: True)
+    monkeypatch.setattr(post.host, "memory_sample", lambda: (0, 1))
+    monkeypatch.setitem(sys.modules, "small_capacity", types.SimpleNamespace(provider_sample=lambda pid=42: 42))
+
+    def monitor(child, baseline, check, verify, **limits):
+        verify()
+        assert limits == dict(pressure_limit=2, swap_limit=1024, footprint_limit=24576)
+        return child.wait(timeout=10)
+
+    monkeypatch.setattr(post.host, "monitor", monitor)
+    if failed == "disk":
+        small = tmp_path / "codex-sz2-cache-v1/S/identity"
+        small.mkdir(parents=True)
+        (small / "train-0000.npz").touch()
+        with pytest.raises(ValueError, match="offloaded"):
+            post.run("M")
+        assert not (tmp_path / "calls").exists()
+        return
+    calls = ["M 0 8", "M 1 8", "M 2 8", "polish 16", "export 2"]
+    if failed:
+        with pytest.raises(RuntimeError, match="rc=17"):
+            post.run("M")
+        calls = calls[:next(i for i, line in enumerate(calls) if line.startswith(failed)) + 1]
+    else:
+        post.run("M")
+    assert (tmp_path / "calls").read_text().splitlines() == calls

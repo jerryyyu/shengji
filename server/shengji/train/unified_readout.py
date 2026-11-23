@@ -692,7 +692,11 @@ def export(args) -> int:
 BODY_PREFIXES = ("stem.", "ln.", "up.", "down.", "out_ln.", "value.", "reply.")
 
 
-def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> dict[str, np.ndarray]:
+CACHE_DEFAULT_ENCODE_ROUNDS = 32
+
+
+def cache_arrays(model, part, *, rounds_per_batch: int = CACHE_DEFAULT_ENCODE_ROUNDS,
+                 device="cpu") -> dict[str, np.ndarray]:
     """One part's rows as the polish reads them: the frozen per-decision projections (float16) and
     every leaf (row index, planes, scalars, outcome target, reply)."""
     import torch
@@ -700,6 +704,7 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> di
     dp, dc = model.config["readout"]["dp"], model.config["readout"]["dc"]
     out = {"S": np.zeros((n, N_CARDS, dp), np.float16), "c": np.zeros((n, dc), np.float16)}
     leaves = {k: [] for k in ("row", "planes", "scalars", "target", "reply", "reply_hand", "has_reply")}
+    leaf_offsets = []
     if "row_w" in part:
         leaves["w"] = []                                 # (L, 2): the value and reply corpus weights
     with torch.no_grad():
@@ -717,10 +722,21 @@ def cache_arrays(model, part, *, rounds_per_batch: int = 32, device="cpu") -> di
             leaves["reply"].append(b["leaf_reply"].astype(np.uint8))
             leaves["reply_hand"].append(b["leaf_reply_hand"])
             leaves["has_reply"].append(b["leaf_has_reply"])
+            if rounds_per_batch != CACHE_DEFAULT_ENCODE_ROUNDS:
+                leaf_offsets.append(b["leaf_k"])
             if "w" in leaves:
                 leaves["w"].append(b["row_w"][b["leaf_row"]][:, [CORPUS_HEADS.index("value"), CORPUS_HEADS.index("reply")]]
                                    .astype(np.float32))
-    out.update({"leaf_" + k: np.concatenate(v) for k, v in leaves.items()})
+    order = None
+    if leaf_offsets:
+        # Preserve the logical batch's leaf order so encode sizing keeps polish minibatches fixed.
+        leaf_rows = np.concatenate(leaves["row"])
+        round_ids = part["row_round"]
+        logical_batch = np.searchsorted(np.unique(round_ids), round_ids[leaf_rows]) // CACHE_DEFAULT_ENCODE_ROUNDS
+        order = np.lexsort((leaf_rows, np.concatenate(leaf_offsets), logical_batch))
+    for key, pieces in leaves.items():
+        values = np.concatenate(pieces)
+        out[f"leaf_{key}"] = values if order is None else values[order]
     return out
 
 
@@ -731,54 +747,71 @@ def _cache_has_output(out: Path) -> bool:
     return any(out.glob("calib-*.npz")) or any(out.glob("train-*.npz")) or any(out.glob("DONE.*"))
 
 
-def bind_cache_device(out: Path, device: str) -> None:
-    """Bind the cache directory ``out`` to the device that produces its shards, before any shard is made or kept.
-
-    ``OUT/cache_device.json`` names the producer's device.  It is created once, atomically, by the first worker;
-    every later worker (and every resume) must name the same device.  A directory that already holds shards but
-    no such file was written before devices existed, by the CPU: it binds to ``cpu``, so a CPU run keeps its
-    shards and any other device refuses.  Shard files are never read or rewritten here."""
-    marker = out / CACHE_DEVICE
+def _cache_marker(out: Path, name: str, payload: dict) -> dict:
+    """Atomically bind a cache producer setting before any worker writes shards."""
+    marker = out / name
     if not marker.exists():
-        if device != "cpu" and _cache_has_output(out):
-            raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
-                                      f"--device {device} would mix producers")
-        tmp = out / f"{CACHE_DEVICE}.{os.getpid()}.tmp"
-        tmp.write_text(json.dumps({"device": device}))
+        tmp = out / f"{name}.{os.getpid()}.tmp"
+        tmp.write_text(json.dumps(payload))
         try:
-            os.link(tmp, marker)                     # fails when another worker bound the directory first
+            os.link(tmp, marker)
         except FileExistsError:
             pass
-        except OSError:                              # a filesystem without hard links
+        except OSError:
             try:
                 fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
                 with os.fdopen(fd, "w") as fh:
-                    fh.write(json.dumps({"device": device}))
+                    fh.write(json.dumps(payload))
             except FileExistsError:
                 pass
         finally:
             tmp.unlink()
-    for _ in range(50):                              # a worker that lost the race may read before the winner writes
+    for _ in range(50):                              # the fallback writer may have opened the file without writing yet
         text = marker.read_text()
         if text:
             break
         time.sleep(0.1)
-    was = json.loads(text).get("device")
+    return json.loads(text)
+
+
+def bind_cache_device(out: Path, device: str) -> None:
+    """A cache without a device record uses the legacy CPU producer."""
+    marker = out / CACHE_DEVICE
+    if device != "cpu" and not marker.exists() and _cache_has_output(out) and not marker.exists():
+        raise UnifiedReadoutError(f"cache {out}: its shards carry no device and so are CPU output; "
+                                  f"--device {device} would mix producers")
+    was = _cache_marker(out, CACHE_DEVICE, {"device": device}).get("device")
     if was != device:
         raise UnifiedReadoutError(f"cache {out}: its shards were made with --device {was}, not --device {device}")
+
+
+CACHE_ENCODE = "cache_encode.json"
+
+
+def bind_cache_encode_rounds(out: Path, rounds: int) -> None:
+    """A cache without an encode record uses the default batch size."""
+    marker = out / CACHE_ENCODE
+    if rounds != CACHE_DEFAULT_ENCODE_ROUNDS and not marker.exists() and _cache_has_output(out) and not marker.exists():
+        raise UnifiedReadoutError(f"cache {out}: existing shards have the default encode batch size")
+    was = _cache_marker(out, CACHE_ENCODE, {"rounds_per_batch": rounds}).get("rounds_per_batch")
+    if was != rounds:
+        raise UnifiedReadoutError(f"cache {out}: shards use --encode-rounds-per-batch {was}, not {rounds}")
 
 
 def cache(args) -> int:
     """Write the polish cache of a checkpoint: ``OUT/calib-0000.npz`` (the trainer's calibration rows) and
     ``OUT/train-NNNN.npz`` (consecutive groups of ``--group-chunks`` train chunks; ``--worker I --workers N``
-    takes every N-th group).  A shard that exists is kept when the directory's producer device
-    (``bind_cache_device``) is this run's; a run on another device refuses before it writes anything."""
+    takes every N-th group). Existing shards are reused only when the cache producer's device and
+    encode batch size match this run."""
     import torch
+    if args.encode_rounds_per_batch <= 0:
+        raise UnifiedReadoutError("--encode-rounds-per-batch must be positive")
     torch.set_num_threads(args.threads)
     device = _device(args.device)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     bind_cache_device(out, args.device)
+    bind_cache_encode_rounds(out, args.encode_rounds_per_batch)
     model, _ = load_checkpoint(args.ckpt)
     if device.type != "cpu":
         model.to(device)
@@ -787,7 +820,7 @@ def cache(args) -> int:
 
     def write(name, part):
         tmp = out / (name + ".tmp.npz")
-        np.savez(tmp, **cache_arrays(model, part, device=device))
+        np.savez(tmp, **cache_arrays(model, part, rounds_per_batch=args.encode_rounds_per_batch, device=device))
         os.replace(tmp, out / (name + ".npz"))
     if args.worker == 0 and not (out / "calib-0000.npz").exists():
         write("calib-0000", us.load_calib(args.data, verified, index, max_rows=args.calib_rows, seed=args.seed,
@@ -1104,6 +1137,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--calib-rows", type=int, default=180000)
     c.add_argument("--seed", type=int, default=1)
     c.add_argument("--group-chunks", type=int, default=24)
+    c.add_argument("--encode-rounds-per-batch", type=int, default=CACHE_DEFAULT_ENCODE_ROUNDS,
+                   help="maximum rounds per trunk forward for cache training and calibration shards")
     c.add_argument("--max-groups", type=int, default=None, help="only the first groups (smoke)")
     c.add_argument("--worker", type=int, default=0)
     c.add_argument("--workers", type=int, default=1)

@@ -221,8 +221,11 @@ const spreadS = (xs: number[]): string =>
  *    fault that ran on this phone (a stall's or blackhole's end, a
  *    one-shot fault's own line, when the outage began within 5 s of it) to
  *    then;
- *  - per outage, the resume attempts made and the hellos sent with no
- *    answer on their link;
+ *  - per outage, the resume attempts made; and each resume hello left with
+ *    no answer on its link: one still out when a new attempt, a drop, a
+ *    STUCK, its own give-up, a later hello or a seat won by the code
+ *    replaces it, the one out at the driver's Leave included (a Leave does
+ *    not answer it), while an accepted resume answers it;
  *  - a move is ignored when its link goes before its answer, and re-sent
  *    when the same kind goes out within 5 s of the resume after it;
  *  - each STUCK by its fault on this phone: a stall running, a stall ended
@@ -261,7 +264,9 @@ export class SoakMetrics {
   uploaded = 0;
   notApplied = 0;
   private lastHeard: number | null = null;
-  private outage: { from: number; at: number; attempts: number; hellos: number } | null = null;
+  private outage: { from: number; at: number; attempts: number } | null = null;
+  /** A resume hello is out with no answer yet. */
+  private helloOut = false;
   private cleared: number | null = null;
   private moveOut: string | null = null;
   private owed: { kind: string; by: number } | null = null;
@@ -300,9 +305,16 @@ export class SoakMetrics {
     const on = from === "soak" ? /^chaos: oneway on, (?:in|out) for ([\d.]+) s$/.exec(text) : null;
     if (on) this.onewayUntil = t + Number(on[1]) * 1000;
     if (from === "soak" && text.startsWith("chaos: oneway over") && this.onewayUntil !== null) this.onewayUntil = Math.min(this.onewayUntil, t);
-    if ((from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)")) this.down(t);
+    const linkGone = (from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)");
+    if (linkGone || (from === "socket" && /^resume: no answer/.test(text)) || (from === "soak" && text === "flow: seated")) this.helloGone();
+    if (from === "socket" && text.startsWith("resume: accepted")) this.helloOut = false;
+    if (linkGone) this.down(t);
     if (from === "join" && text === "attempt (resume)" && this.outage) this.outage.attempts += 1;
-    if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text) && this.outage) this.outage.hellos += 1;
+    if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text)) {
+      this.helloGone();
+      // a hello on the Leave's own way out is the Leave's, not the outage's
+      this.helloOut = this.outage !== null && !this.leaving;
+    }
     if ((from === "socket" && text.startsWith("resume: accepted")) || (from === "soak" && text === "flow: seated")) this.back(t);
     if (text.startsWith("STUCK")) this.stuckAt(t);
     if (from === "host" && text.startsWith("IGNORED ")) this.hostIgnored += 1;
@@ -320,7 +332,7 @@ export class SoakMetrics {
     if (this.outage !== null || this.leaving) return;
     // a fault's clear long before this outage did not cause it
     if (this.cleared !== null && t - this.cleared > 5000) this.cleared = null;
-    this.outage = { from: this.lastHeard ?? t, at: t, attempts: 0, hellos: 0 };
+    this.outage = { from: this.lastHeard ?? t, at: t, attempts: 0 };
     if (this.moveOut !== null) {
       this.ignored += 1;
       this.resend = this.moveOut;
@@ -334,7 +346,6 @@ export class SoakMetrics {
     this.outage = null;
     this.freezes.push(t - o.from);
     this.attempts.push(o.attempts);
-    this.abandonedHellos += Math.max(0, o.hellos - 1);
     if (this.cleared !== null) this.recoveries.push(t - this.cleared);
     this.cleared = null;
     this.lastHeard = t;
@@ -353,9 +364,15 @@ export class SoakMetrics {
     this.outage = null;
     this.freezes.push(t - o.from);
     this.attempts.push(o.attempts);
-    this.abandonedHellos += Math.max(0, o.hellos - 1);
     this.cleared = null;
     this.resend = null;
+  }
+
+  /** The hello out, if any, is left with no answer. */
+  private helloGone(): void {
+    if (!this.helloOut) return;
+    this.helloOut = false;
+    this.abandonedHellos += 1;
   }
 
   /** The driver's rejoin by code after its Leave: from now an outage is

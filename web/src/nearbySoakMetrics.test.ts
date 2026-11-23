@@ -126,9 +126,32 @@ describe("the soak's link-health metrics", () => {
     ]) m.see(l);
     expect(m.freezes).toEqual([85_000 - 62_000, 156_000 - 150_100]);
     expect(m.attempts).toEqual([2, 0]);
-    expect(m.abandonedHellos).toBe(1);
+    // 74.2 s's hello, replaced at 81.3 s; 81.4 s's, out through the Leave and replaced at 88.5 s
+    expect(m.abandonedHellos).toBe(2);
     expect(m.recoveries).toEqual([]);
     expect(m.ignored).toBe(1);
+  });
+
+  it("a hello out at the Leave and answered after it is not abandoned", () => {
+    const m = new SoakMetrics();
+    for (const l of [
+      line(62_000, "socket", "in state"),
+      line(74_000, "socket", "STUCK: no pong after a move; making a new link"),
+      line(74_100, "join", "attempt (resume)"),
+      line(74_200, "socket", "resume: link up in 100 ms; hello sent (with token)"),
+      line(81_300, "join", "attempt (resume)"),
+      line(81_400, "socket", "resume: link up in 100 ms; hello sent (with token)"),
+      line(85_000, "soak", "flow: leave (chaos, play, link down)"),
+      // the host answers 81.4 s's hello; that link carries the Leave
+      line(86_000, "socket", "resume: accepted (state); open"),
+      line(86_001, "socket", "out table_leave"),
+      line(86_050, "socket", "in left"),
+      line(87_000, "native", "drop host"),
+      line(150_000, "soak", "flow: rejoin by code (no token)"),
+      line(151_000, "soak", "flow: seated"),
+    ]) m.see(l);
+    expect(m.abandonedHellos).toBe(1);
+    expect(m.freezes).toEqual([85_000 - 62_000]);
   });
 
   it("puts a STUCK under this phone's one-way loss on it, not on no fault", () => {

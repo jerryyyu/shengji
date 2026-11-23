@@ -155,6 +155,7 @@ jobs:
           tests/test_engine_parity.py
           tests/test_pybot_inputs.py
           tests/test_ios_flavor_guard.py
+          tests/test_ios_privacy_manifests.py
           tests/test_saved_games_api.py
           tests/test_saved_games_resume.py
           tests/test_support.py

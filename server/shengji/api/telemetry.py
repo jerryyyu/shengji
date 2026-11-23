@@ -369,9 +369,11 @@ def receive(conn: Any, msg: Any, kind: str) -> int:
         if not events:
             return 0
         st = state_for(conn)
+        # classified before the quota cut: a dropped identity event still
+        # marks the rows kept with it, so they cannot date the sign-in
+        identity = any(_identity_moment(ev) for ev in events)
         events = events[:st.take(len(events))]
         ts = round(time.time())
-        identity = any(_identity_moment(ev) for ev in events)
         records = [{**_stamped(ev, ts, identity), **stamps, "sid": st.sid,
                     "who": kind, "build": build_id()} for ev in events]
         return len(records) if write(records, identity=identity) else 0

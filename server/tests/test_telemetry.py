@@ -393,6 +393,23 @@ def test_an_identity_batch_is_kept_to_the_hour_whole_and_apart(sink, monkeypatch
     assert int((sink / f"ui-id-{day}.jsonl").stat().st_mtime) == hour
 
 
+def test_a_quota_cut_identity_event_still_marks_the_rows_kept(sink, monkeypatch):
+    now = 1_790_000_000.4
+    monkeypatch.setattr(telemetry.time, "time", lambda: now)
+    sock = _Sock()
+    st = telemetry.state_for(sock)
+    st.take(telemetry.MAX_EVENTS_PER_HOUR - 1)                    # one slot left this hour
+    telemetry.receive(sock, {"v": 1, "events": [
+        {"e": "screen", "t": 800, "name": "me"},
+        {"e": "signin", "t": 950, "step": "done", "provider": "google"},
+    ]}, "guest")
+    hour = 1_790_000_000 - 1_790_000_000 % 3600
+    day = "20260921"
+    assert not (sink / f"ui-{day}.jsonl").exists()
+    ident = _records_of(sink / f"ui-id-{day}.jsonl")
+    assert [(r["e"], r["ts"], r.get("t")) for r in ident] == [("screen", hour, None)]
+
+
 def test_an_identity_batch_over_the_socket_keeps_no_second(client, sink):  # noqa: F811
     with client.websocket_connect("/ws") as ws:
         ws.send_json({"type": "client_event", "v": 1, "events": [

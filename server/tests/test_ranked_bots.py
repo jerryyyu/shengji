@@ -23,6 +23,7 @@ from shengji.ai.heuristic import HeuristicBot
 from shengji.api import ranked_bots, ratings
 from tests.test_accounts import _claims, accounts_on, keypair  # noqa: F401
 from tests.test_ratings import Table, _events, _force_outcome, _set, _user, env  # noqa: F401
+from tests.test_matchmaking import DEVICE_A, _guest_match, _wait_until, wsenv  # noqa: F401
 from tests.test_server_ws import _drain, client  # noqa: F401
 
 
@@ -253,22 +254,23 @@ def test_the_queue_game_of_a_new_account_meets_standard_and_logs_it(env, monkeyp
         with client.websocket_connect("/ws", headers=headers) as a:
             code, _ = _ranked_solo(srv, a)
             room = srv.rooms[code]
+            _settled(room)
             assert ranked_bots.standard(room) == {1, 3}
             assert room.bot_level == "advanced"
             assert room.ratings.anchors == [ratings.GUEST_RATING, ratings.STANDARD_BOT_RATING,
                                             ratings.GUEST_RATING, ratings.STANDARD_BOT_RATING]
         records = [json.loads(line) for line in (srv.LOG_DIR / f"{code}.jsonl").open()]
-        start = next(r for r in records if r["e"] == "round_start")
-        assert start["bot_level"] == "standard" and start["standard_seats"] == [1, 3]
-        assert start["bot_policy"] == "fake-relaxed" and start["ranked"] is True
+        chosen = next(r for r in records if r["e"] == "bot_levels")
+        assert chosen["level"] == "standard" and chosen["standard_seats"] == [1, 3]
         uid2, headers2 = _user(store, "strong", "Strong")
         _set(store, uid2, 1001.0)
         with client.websocket_connect("/ws", headers=headers2) as b:
             code2, _ = _ranked_solo(srv, b)
+            _settled(srv.rooms[code2])
             assert ranked_bots.standard(srv.rooms[code2]) == frozenset()
         records = [json.loads(line) for line in (srv.LOG_DIR / f"{code2}.jsonl").open()]
-        start = next(r for r in records if r["e"] == "round_start")
-        assert start["bot_level"] == "advanced" and "standard_seats" not in start
+        chosen = next(r for r in records if r["e"] == "bot_levels")
+        assert chosen["level"] == "advanced" and chosen["standard_seats"] == []
     finally:
         srv.MATCHMAKER.reset()
 
@@ -284,51 +286,221 @@ def test_a_guest_in_the_ranked_queue_meets_standard(env):  # noqa: F811
             started = _drain(g, "match_started")
             room = srv.rooms[started["room"]]
             assert room.matched and room.seats[0].user_id is None
+            _settled(room)
             assert ranked_bots.standard(room) == {1, 3}
     finally:
         srv.MATCHMAKER.reset()
 
 
-def _next_round(srv, room):
-    async def go():
-        room.ready = {s for s, sd in enumerate(room.seats) if not sd.is_bot}
+def _settled(room, timeout=10.0):
+    """Wait (the server's loop runs in the test client's thread) until the
+    game's level has been read."""
+    _wait_until(lambda: room.bot_levels is not None and _quiet(room), timeout)
+
+
+def _quiet(room):
+    levels = room.bot_levels
+    return not getattr(levels, "pending_game", False) and not getattr(levels, "checks", 0)
+
+
+def _bot_levels_records(srv, room):
+    path = srv.LOG_DIR / f"{room.code}.jsonl"
+    return [r for r in map(json.loads, path.open()) if r["e"] == "bot_levels"]
+
+
+async def _advance_and_settle(srv, room):
+    room.ready = {s for s, sd in enumerate(room.seats) if not sd.is_bot}
+    async with room.lock:
         assert await srv.advance_if_all_ready(room)
-        room.deal_task.cancel()
-        try:
-            await room.deal_task
-        except BaseException:   # noqa: BLE001 - the cancelled deal
-            pass
-    asyncio.run(go())
+    for _ in range(1000):
+        if _quiet(room):
+            break
+        await asyncio.sleep(0.01)
+    room.deal_task.cancel()
+    try:
+        await room.deal_task
+    except BaseException:   # noqa: BLE001 - the cancelled deal
+        pass
 
 
-def test_the_level_is_fixed_for_the_game_and_chosen_again_at_a_new_game(env, monkeypatch):  # noqa: F811
+def _play_out(srv, room, level_idx=None):
+    """Deal the round in play and play it out with the room's bots."""
+    if level_idx is not None:
+        room.game.level_idx = level_idx
+    rnd = room.round
+    while rnd.phase == "deal":
+        seat, idx, card = rnd.deal_next()
+        room.ids[seat][idx] = card
+    rnd.finalize_declare()
+    if rnd.banker is None:
+        rnd.banker = 0
+    while rnd.phase in ("bury", "play"):
+        assert srv.bot_step(room, rnd.banker if rnd.phase == "bury" else rnd.turn)
+    return room.game.result
+
+
+def test_a_new_game_reads_the_ratings_after_the_last_round_is_settled(env, monkeypatch):  # noqa: F811
+    """The round that scores the point is written late; the next game's
+    level and anchors still come from the rating after that write."""
+    import threading
     from shengji.engine.game import A_INDEX
 
     srv, store, _ = env
-    uid, _ = _user(store, "mover")
+    uid, _ = _user(store, "settle")
     _force_outcome(monkeypatch, 30)               # the bankers (team 0) go up 2
-    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table = Table(srv, [uid, "bot", "bot", "bot"], code="SETL")
     room = table.room
-    ranked_bots.choose(room, srv.make_relaxed_bot)
-    assert ranked_bots.standard(room) == {1, 3}
-    table.play_round(banker=0)
-    assert store.user(uid)["rating"] > 1000       # the rating moved mid-game
-    _set(store, uid, 1300.0)
-    _next_round(srv, room)                        # same game: no re-choice
-    assert ranked_bots.standard(room) == {1, 3}
-    assert room.ratings.anchors[1] == ratings.STANDARD_BOT_RATING
-    room.game.level_idx = [A_INDEX, A_INDEX]      # this round wins the game
-    while room.round.phase == "deal":
-        seat, idx, card = room.round.deal_next()
-        room.ids[seat][idx] = card
-    room.round.finalize_declare()
-    room.round.banker = room.round.banker if room.round.banker is not None else 0
-    table.finish()
-    assert room.game.result.point_scored
-    _next_round(srv, room)                        # a new game: chosen again, at 1300
+    release = threading.Event()
+    real = ratings.apply_round
+
+    def late(store_, rec, now=None):
+        release.wait(5)
+        return real(store_, rec, now)
+    monkeypatch.setattr(ratings, "apply_round", late)
+
+    async def scenario():
+        room.game.start_round()
+        room.index_round()
+        room.saved_game = None
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({uid: 1000.0}))
+        ratings.start(room)
+        assert ranked_bots.standard(room) == {1, 3}     # 1000 at the start
+        result = _play_out(srv, room, [A_INDEX, A_INDEX])
+        assert result.point_scored and result.winner_team == 0
+        asyncio.get_running_loop().call_later(0.2, release.set)   # the write lands later
+        await _advance_and_settle(srv, room)
+    asyncio.run(scenario())
+    ratings.flush()
+    assert store.user(uid)["rating"] > 1000
     assert ranked_bots.standard(room) == frozenset()
     assert not isinstance(room.bot, ranked_bots.RankedBots)
     assert room.ratings.anchors == [ratings.GUEST_RATING] * 4
+    assert [r["level"] for r in _bot_levels_records(srv, room)] == ["advanced"]
+
+
+def test_the_level_is_fixed_for_the_game(env, monkeypatch):  # noqa: F811
+    srv, store, _ = env
+    uid, _ = _user(store, "mover")
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"], code="FIXD")
+    room = table.room
+
+    async def scenario():
+        room.game.start_round()
+        room.index_round()
+        room.saved_game = None
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({uid: 1000.0}))
+        ratings.start(room)
+        assert ranked_bots.standard(room) == {1, 3}
+        result = _play_out(srv, room)
+        assert not result.point_scored
+        await asyncio.wrap_future(ratings._EXECUTOR.submit(lambda: None))
+        _set(store, uid, 1300.0)                  # the rating moved mid-game
+        await _advance_and_settle(srv, room)
+    asyncio.run(scenario())
+    assert ranked_bots.standard(room) == {1, 3}
+    assert room.ratings.anchors[1] == ratings.STANDARD_BOT_RATING
+
+
+def test_a_1200_partner_joining_a_998_host_through_the_queue_promotes(wsenv, monkeypatch):  # noqa: F811
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    host, host_headers = _user(store, "host", "Host")
+    joiner, joiner_headers = _user(store, "joiner", "Joiner")
+    _set(store, host, 998.0)
+    _set(store, joiner, 1200.0)
+    with client.websocket_connect("/ws", headers=host_headers) as h, \
+            client.websocket_connect("/ws", headers=joiner_headers) as a:
+        h.send_json({"type": "queue_join"})
+        _drain(h, "queue_state")
+        h.send_json({"type": "table_start_bots"})
+        code = _drain(h, "match_started")["room"]
+        room = srv.rooms[code]
+        _settled(room)
+        assert ranked_bots.standard(room) == {1, 3}
+        room.seats[0].away = True                 # the bot plays the host's seat too
+        client.portal.call(srv.kick_bots, room)
+        _wait_until(lambda: room.round is not None and room.round.phase == "play")
+        clock.advance(60)                         # past the rating window
+        a.send_json({"type": "queue_join"})
+        offer = _drain(a, "queue_state")["offer"]
+        assert offer["room"] == code and offer["pick"] == 2
+        a.send_json({"type": "open_table_join", "room": code, "seat": 2})
+        assert _drain(a, "match_started")["joining"] is True
+        _wait_until(lambda: room.seats[2].user_id == joiner)
+        _settled(room)
+        assert ranked_bots.standard(room) == frozenset()
+        assert ranked_bots.level_of(room, 1) == ranked_bots.level_of(room, 3) == "advanced"
+
+
+def test_a_guest_seat_resumed_as_a_1200_account_promotes(wsenv, monkeypatch):  # noqa: F811
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    code, token = _guest_match(client)
+    room = srv.rooms[code]
+    _settled(room)
+    assert ranked_bots.standard(room) == {1, 3}
+    uid, headers = _user(store, "signer", "Acct Person")
+    _set(store, uid, 1200.0)
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        a.send_json({"type": "table_join", "expect": "room", "code": code, "token": token})
+        _drain(a, "state")
+        assert room.seats[0].user_id == uid
+        _settled(room)
+        assert ranked_bots.standard(room) == frozenset()
+
+
+def test_a_reconnect_by_the_same_account_keeps_standard(env, monkeypatch):  # noqa: F811
+    from shengji.api import server as srv
+
+    room = _room(srv, [7, "bot", "bot", "bot"])
+    ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({7: 1000.0}))
+    ranked_bots.seat_changed(room, 0, 7)
+    assert ranked_bots.standard(room) == {1, 3} and _quiet(room)
+
+
+@pytest.mark.parametrize("acting, taken", [(1, 3), (3, 1)])
+def test_a_handover_between_search_and_commit_replays_the_turn_at_advanced(tmp_path, acting, taken):
+    """A Standard search finished, then a guest took the other Standard seat:
+    the acting seat is the guest's Advanced partner now, so the Standard card
+    is discarded and the next committed card is the served bot's."""
+    import random
+
+    from shengji.ai import env as play_env
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+
+    async def scenario():
+        game = Game(random.Random(11))
+        play_env.prepare_round(game, [HeuristicBot()] * 4)
+        rnd = game.round
+        room = srv.Room(code="HAND", game=game, log_dir=tmp_path, bot=HeuristicBot(), matched=True,
+                        seats=[srv.Seat(str(s), is_bot=True) for s in range(4)])
+        room.seats[0].is_bot, room.seats[0].connected = False, True
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({}))
+        room.seats[0].is_bot = True
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        while rnd.turn != acting:
+            prepared = await srv._paced_bot_step(room, rnd.turn, minimum_turn_seconds=0)
+            assert srv._commit_bot_turn(room, prepared)
+        FakeRelaxed.played = []
+        prepared = await srv._paced_bot_step(room, acting, minimum_turn_seconds=0)
+        assert FakeRelaxed.played == [acting]
+        guest = room.seats[taken]
+        guest.is_bot, guest.name, guest.connected = False, "Guest", True
+        if hasattr(ranked_bots, "seat_changed"):
+            ranked_bots.seat_changed(room, taken)
+        else:
+            ranked_bots.seat_taken(room, taken)
+        assert ranked_bots.standard(room) == frozenset()
+        guest.is_bot = True                       # its bot plays on for the test
+        assert not srv._commit_bot_turn(room, prepared)
+        assert rnd.turn == acting
+        again = await srv._paced_bot_step(room, acting, minimum_turn_seconds=0)
+        assert srv._commit_bot_turn(room, again)
+        assert FakeRelaxed.played == [acting]     # the committed card was not Standard's
+    asyncio.run(scenario())
 
 
 def test_a_newcomer_on_the_standard_team_makes_it_advanced():

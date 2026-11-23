@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import copy
 import errno
 import json
@@ -2089,87 +2088,6 @@ def _spawn_room_task(room: "Room", attr: str, coro) -> asyncio.Task:
 
 
 # ---------------------------------------------------------------- deal task
-@dataclass
-class _DeclareSearch:
-    """A gated bot declaration searched off the room lock, and what it must
-    still find when it commits: the same game, round, phase, declaration,
-    hands and seat owner, with the acting bot it was copied from."""
-    seat: int
-    final: bool
-    game: Any
-    rnd: Any
-    phase: str
-    declaration: Any
-    hands: tuple
-    owner: Any
-    bot: Any
-    bot_copy: Any
-    round_copy: Any
-
-
-def _declare_search(room: Room, view: Any, s: int, final: bool) -> "_DeclareSearch | None":
-    """Caller holds the lock. The search a gated declaration of seat ``s``
-    needs on ``view`` (the live round, or a private copy one card ahead), or
-    None when the bot's own cheap gate does not admit one."""
-    bot = _acting_bot(room)
-    value_declare = getattr(bot, "value_declare", False)
-    gate = getattr(bot, "declare_gate", None)
-    # Most dealt cards cannot trigger value evaluation. Keep those calls
-    # inline before copying or queueing behind another room's model search.
-    # Unknown bot implementations stay on the safe off-loop path; only the
-    # bot's own gate can certify a cheap call.
-    if not (value_declare and (not callable(gate) or gate(view, s, final)[1])):
-        return None
-    rnd = room.round
-    return _DeclareSearch(
-        seat=s, final=final, game=room.game, rnd=rnd, phase=view.phase,
-        declaration=rnd.declaration, hands=tuple(tuple(hand) for hand in view.hands),
-        owner=room.seats[s], bot=bot, bot_copy=copy.deepcopy(bot),
-        round_copy=view if view is not rnd else copy.deepcopy(rnd))
-
-
-def _run_declare_search(room: Room, job: _DeclareSearch):
-    """The search, as an awaitable. The shared admission wrapper retains its
-    permit through cancellation and drains the thread before returning: no
-    orphan declaration workers. PVSearchBot retains its own cooperative
-    serving budget and heuristic fallback."""
-    def emit(kind, **fields):
-        room.log_event("model_search", seat=job.seat, mode="bot", phase="declare",
-                       policy=getattr(job.bot_copy, "policy_name", "W32"),
-                       event=kind, **fields)
-
-    return run_model_search(
-        lambda: asyncio.to_thread(job.bot_copy.decide_declare, job.round_copy, job.seat,
-                                  final=job.final), emit)
-
-
-def _declare_search_current(room: Room, job: _DeclareSearch) -> bool:
-    """Caller holds the lock: the position the search decided is still the
-    room's, so its declaration may commit."""
-    rnd, s = room.round, job.seat
-    return (room.game is job.game and rnd is job.rnd and rnd is not None
-            and _acting_bot(room) is job.bot and rnd.phase == job.phase
-            and rnd.declaration is job.declaration
-            and tuple(tuple(hand) for hand in rnd.hands) == job.hands
-            and s < len(room.seats) and room.seats[s] is job.owner and job.owner.is_bot)
-
-
-def _commit_declare_search(room: Room, job: _DeclareSearch, cards) -> bool:
-    """Caller holds the lock and checked `_declare_search_current`. Commits
-    the searched declaration and keeps the bot copy that made it."""
-    if cards:
-        try:
-            job.rnd.declare(job.seat, cards)
-            room.log_event("declare", seat=job.seat, cards=cards, bot=True)
-        except IllegalPlay:
-            return False
-    _keep_acting_bot(room, job.bot, job.bot_copy)
-    record = getattr(job.bot_copy, "last_declare_record", None)
-    if record is not None:
-        room.log_event("declare_decision", seat=job.seat, record=record, bot=True)
-    return True
-
-
 async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bool:
     """Declare without holding the room lock during optional model search.
 
@@ -2187,9 +2105,16 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                 return False
             if s >= len(room.seats) or not room.seats[s].is_bot:
                 continue
-            job = _declare_search(room, rnd, s, final)
-            if job is None:
-                cards = _acting_bot(room).decide_declare(rnd, s, final=final)
+            bot = _acting_bot(room)
+            value_declare = getattr(bot, "value_declare", False)
+            gate = getattr(bot, "declare_gate", None)
+            # Most dealt cards cannot trigger value evaluation. Keep those
+            # calls inline before copying or queueing behind another room's
+            # model search. Unknown bot implementations stay on the safe
+            # off-loop path; only the bot's own gate can certify a cheap call.
+            gated = value_declare and (not callable(gate) or gate(rnd, s, final)[1])
+            if not gated:
+                cards = bot.decide_declare(rnd, s, final=final)
                 if cards:
                     try:
                         rnd.declare(s, cards)
@@ -2197,95 +2122,88 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                     except IllegalPlay:
                         pass
                 continue
-        cards = await _run_declare_search(room, job)
+            game, owner = room.game, room.seats[s]
+            phase, declaration = rnd.phase, rnd.declaration
+            hands = tuple(tuple(hand) for hand in rnd.hands)
+            round_copy, bot_copy = copy.deepcopy(rnd), copy.deepcopy(bot)
+
+        def emit(kind, **fields):
+            room.log_event("model_search", seat=s, mode="bot", phase="declare",
+                           policy=getattr(bot_copy, "policy_name", "W32"),
+                           event=kind, **fields)
+
+        # The shared admission wrapper retains its permit through cancellation
+        # and drains the thread before returning: no orphan declaration workers.
+        # PVSearchBot retains its own cooperative serving budget and heuristic
+        # fallback; this wiring does not select a new deployment budget.
+        cards = await run_model_search(
+            lambda: asyncio.to_thread(bot_copy.decide_declare, round_copy, s,
+                                      final=final), emit)
         async with room.lock:
-            if not (_declare_search_current(room, job)
-                    and _commit_declare_search(room, job, cards)):
+            if (room.game is not game or room.round is not rnd
+                    or _acting_bot(room) is not bot or rnd.phase != phase
+                    or rnd.declaration is not declaration
+                    or tuple(tuple(hand) for hand in rnd.hands) != hands
+                    or s >= len(room.seats) or room.seats[s] is not owner
+                    or not owner.is_bot):
                 complete = False
+                continue
+            if cards:
+                try:
+                    rnd.declare(s, cards)
+                    room.log_event("declare", seat=s, cards=cards, bot=True)
+                except IllegalPlay:
+                    complete = False
+                    continue
+            _keep_acting_bot(room, bot, bot_copy)
+            record = getattr(bot_copy, "last_declare_record", None)
+            if record is not None:
+                room.log_event("declare_decision", seat=s, record=record, bot=True)
     return complete
 
 
-async def _drain_search(task: "asyncio.Task | None") -> None:
-    """Cancel a speculative search and wait for its worker to finish."""
-    if task is not None:
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await task
-
-
 async def run_deal(room: Room) -> None:
-    """Stream the deal card by card, then run the declare grace window.
-
-    Each card publishes DEAL_DELAY after the previous frame. A bot's gated
-    declaration on the next card is searched during that gap, on a private
-    copy one card ahead, and commits when its card is dealt, only if the
-    position it decided is still the room's: a human's declaration or pass
-    in the gap is ordered before it, and the bot decides again then. A
-    search that overruns the gap publishes its card when it ends; the next
-    frame keeps its full gap after that one."""
+    """Stream the deal card by card, then run the declare grace window."""
     rnd = room.round
     assert rnd is not None
     room.declare_until = None
     loop = asyncio.get_event_loop()
     published = None
-    ahead = None            # (job, task): the next card's speculative search
-    try:
-        while True:
-            if room.closing:
-                await asyncio.sleep(0.0)
-            elif published is not None:
-                wait = published + DEAL_DELAY - loop.time()
-                if wait > 0:
-                    await asyncio.sleep(wait)
-            async with room.lock:
-                if room.round is not rnd:
-                    return
-                if rnd.phase != "deal":
-                    break
-                job = task = None
-                if ahead is not None:
-                    job, task = ahead
-                    ahead = None
-                seat, idx, code = rnd.deal_next()
-                room.ids[seat][idx] = code
-                if rnd.phase == "declare":
-                    # provisional, so the frames before the window opens (the
-                    # last card, the bots' last declarations) already count down
-                    room.declare_until = asyncio.get_running_loop().time() + DECLARE_GRACE
-                usable = job is not None and job.seat == seat and _declare_search_current(room, job)
-            if job is not None and not usable:
-                await _drain_search(task)
-                job = None
-            if job is not None:
-                cards = await task
-                async with room.lock:
-                    committed = (_declare_search_current(room, job)
-                                 and _commit_declare_search(room, job, cards))
-                if not committed:
-                    await _bot_declares(room, [seat])
-            else:
-                await _bot_declares(room, [seat])
-            async with room.lock:
-                if room.round is not rnd:
-                    return
-                await broadcast(room)
-                published = loop.time()
-                if (not room.closing and rnd.phase == "deal"
-                        and getattr(_acting_bot(room), "value_declare", False)):
-                    view = copy.deepcopy(rnd)
-                    nxt = view.deal_next()[0]
-                    if nxt < len(room.seats) and room.seats[nxt].is_bot:
-                        job = _declare_search(room, view, nxt, False)
-                        if job is not None:
-                            ahead = (job, asyncio.ensure_future(_run_declare_search(room, job)))
-    finally:
-        if ahead is not None:
-            await _drain_search(ahead[1])
 
-    if not room.closing and published is not None:
-        wait = published + DEAL_DELAY - loop.time()
-        if wait > 0:
-            await asyncio.sleep(wait)
+    async def pace() -> None:
+        # The next frame is due DEAL_DELAY after the last one; a bot's
+        # declare search for the card just shown runs inside that gap.
+        if room.closing:
+            await asyncio.sleep(0.0)
+        elif published is not None:
+            wait = published + DEAL_DELAY - loop.time()
+            if wait > 0:
+                await asyncio.sleep(wait)
+
+    while True:
+        await pace()
+        async with room.lock:
+            if room.round is not rnd:
+                return
+            if rnd.phase != "deal":
+                break
+            seat, idx, code = rnd.deal_next()
+            room.ids[seat][idx] = code
+            if rnd.phase == "declare":
+                # provisional, so the frames before the window opens (the
+                # last card, the bots' last declarations) already count down
+                room.declare_until = asyncio.get_running_loop().time() + DECLARE_GRACE
+            # the card shows at once; the bots' declarations on it follow
+            await broadcast(room)
+            published = loop.time()
+            declaration = rnd.declaration
+        await _bot_declares(room, [seat])
+        async with room.lock:
+            if room.round is not rnd:
+                return
+            if rnd.declaration is not declaration:
+                await broadcast(room)
+
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
         if room.round is not rnd or rnd.phase != "declare":

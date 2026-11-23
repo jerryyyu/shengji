@@ -1,6 +1,6 @@
 """Per-release model manifests (`shengji.releases`, ``server/releases/r<N>.json``).
 
-* ``fly.toml``'s served env is release 54's manifest env, key for key: editing one
+* ``fly.toml``'s served env is release 55's manifest env, key for key: editing one
   without the other fails here.
 * The schema refuses a manifest whose null value, null prior or non-belief worlds
   carry no ``why``, that names an unknown package, or whose hashes disagree with
@@ -16,7 +16,9 @@
   53's adds the unified pair (``test_release53_fly_config``'s pinned paths).  Release 53's
   play stages name the unified package, witnessed through its actual value, root-prior
   and reply forwards, with the same model IDs in their records; release 54 is release 53
-  with the 3 s bury budget, witnessed the same way.
+  with the 3 s bury budget, witnessed the same way; release 55 is release 54 with RT4's
+  unified and belief pair (``test_release55_fly_config``'s pinned paths), witnessed the same
+  way.
 """
 import copy
 import os
@@ -30,6 +32,7 @@ from test_encoder_round_compat import pinned_production_package  # noqa: F401
 from test_release48_fly_config import pinned_release48_belief_package  # noqa: F401
 from test_release50_fly_config import release50_packages  # noqa: F401
 from test_release53_fly_config import release53_pair  # noqa: F401
+from test_release55_fly_config import release55_pair  # noqa: F401
 from test_unified_serving import served_functions  # noqa: F401
 
 FLY_TOML = Path(__file__).parents[2] / "fly.toml"
@@ -41,8 +44,8 @@ def r49():
     return releases.load(49)
 
 
-def test_fly_toml_env_is_release54_manifest_env():
-    manifest = releases.load(54)
+def test_fly_toml_env_is_release55_manifest_env():
+    manifest = releases.load(55)
     assert releases.fly_env(FLY_TOML) == manifest["env"]
     assert manifest["bot_name"] == manifest["env"]["SHENGJI_BOT"]
 
@@ -60,8 +63,8 @@ def test_telemetry_sink_stays_in_server_config_but_out_of_bot_manifest(tmp_path,
     fly = _edited_fly(tmp_path, "SHENGJI_TELEMETRY_DIR = '/data/telemetry'",
                       f"SHENGJI_TELEMETRY_DIR = '{directory}'")
     assert served_config.fly_env(fly)["SHENGJI_TELEMETRY_DIR"] == directory
-    assert releases.fly_env(fly) == releases.load(54)["env"]
-    edited = copy.deepcopy(releases.load(54))
+    assert releases.fly_env(fly) == releases.load(55)["env"]
+    edited = copy.deepcopy(releases.load(55))
     edited["env"]["SHENGJI_TELEMETRY_DIR"] = directory
     with pytest.raises(releases.ManifestError, match="enters no bot"):
         releases.validate(edited)
@@ -84,7 +87,7 @@ def test_fly_toml_check_fails_when_either_side_is_edited(tmp_path):
         releases.NON_BOT_KEYS)
 
 
-@pytest.mark.parametrize("release", [49, 50, 51, 52, 53, 54])
+@pytest.mark.parametrize("release", [49, 50, 51, 52, 53, 54, 55])
 def test_manifests_validate_and_name_their_packages(release):
     manifest = releases.load(release)
     assert manifest["release"] == release
@@ -177,6 +180,24 @@ def test_release54_is_release53_with_the_bury_budget_at_3s():
     for stage in releases.STAGES:
         drop = lambda row: {k: v for k, v in row.items() if k != "why"}
         assert drop(a["stages"][stage]) == drop(b["stages"][stage])
+
+
+def test_release55_is_release54_with_the_rt4_pairs():
+    a, b = releases.load(54), releases.load(55)
+    changed = {k for k in set(a["env"]) | set(b["env"]) if a["env"].get(k) != b["env"].get(k)}
+    assert changed == {"SHENGJI_BOT", "SHENGJI_PV_BELIEF_CKPT", "SHENGJI_PV_BELIEF_SHA256",
+                       "SHENGJI_PV_UNIFIED_CKPT", "SHENGJI_PV_UNIFIED_SHA256"}
+    names = {"ut-all-97c07be8": "ut-rt4-e2951d35", "ut-all-belief-1b1fd2de": "ut-rt4-belief-35e225cf"}
+    assert set(a["packages"]) - set(names) == set(b["packages"]) - set(names.values())
+    for old, new in names.items():
+        assert a["packages"][old]["env_path"] == b["packages"][new]["env_path"]
+        assert a["packages"][old]["env_sha256"] == b["packages"][new]["env_sha256"]
+    for stage in releases.STAGES:
+        swap = lambda row: {k: names.get(v, v) if isinstance(v, str) and not k == "why" else v
+                            for k, v in row.items() if k != "why"}
+        renamed = {k: (v.replace("ut-all-belief-1b1fd2de", "ut-rt4-belief-35e225cf") if k == "worlds" and v else v)
+                   for k, v in swap(a["stages"][stage]).items()}
+        assert renamed == {k: v for k, v in b["stages"][stage].items() if k != "why"}
 
 
 def _refused(manifest, match):
@@ -297,26 +318,28 @@ def test_release50_package_wiring_matches_its_manifest(release50_packages, relea
     _check_wiring(manifest, paths)
 
 
-@pytest.mark.parametrize("release", [53, 54])
-def test_release53_wiring_matches_its_manifest(release50_packages, release53_pair, served_functions,
-                                               release):
+@pytest.mark.parametrize("release", [53, 54, 55])
+def test_release53_wiring_matches_its_manifest(release50_packages, release53_pair, release55_pair,
+                                               served_functions, release):
     manifest = releases.load(release)
+    unified, belief, pair = (("ut-rt4-e2951d35", "ut-rt4-belief-35e225cf", release55_pair)
+                             if release == 55 else
+                             ("ut-all-97c07be8", "ut-all-belief-1b1fd2de", release53_pair))
     paths = {"g3a-e04-f4f4127e": release50_packages["value"],
              "p0-ft1-1fa201b2": release50_packages["prior"],
-             "ut-all-97c07be8": release53_pair["unified"],
-             "ut-all-belief-1b1fd2de": release53_pair["belief"]}
+             unified: pair["unified"], belief: pair["belief"]}
     if PACKAGE_DIR:
         paths.update(releases.package_paths(manifest, PACKAGE_DIR))
     report = releases.wiring(manifest, paths)
     assert report["bot_name"] == manifest["bot_name"]
     assert releases.wiring_mismatches(manifest, report) == [], report
     for stage in ("lead", "follow", "endgame"):
-        assert report["stages"][stage]["value"] == ["ut-all-97c07be8"]
-        assert report["stages"][stage]["prior"] == ["ut-all-97c07be8"]
+        assert report["stages"][stage]["value"] == [unified]
+        assert report["stages"][stage]["prior"] == [unified]
         counts = report["stages"][stage]["counts"]
-        assert counts["unified_value ut-all-97c07be8"] > 0
-        assert counts["unified_root ut-all-97c07be8"] > 0
-    assert report["stages"]["lead"]["counts"]["unified_reply ut-all-97c07be8"] > 0
+        assert counts[f"unified_value {unified}"] > 0
+        assert counts[f"unified_root {unified}"] > 0
+    assert report["stages"]["lead"]["counts"][f"unified_reply {unified}"] > 0
     exact = report["stages"]["endgame"]["exact"]
     assert any(row["exact_lead_status"] is not None for row in exact)
     assert any(row["exact_follow_attempted"] for row in exact)

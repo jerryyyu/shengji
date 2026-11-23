@@ -240,6 +240,7 @@ jobs:
           tests/test_release51_fly_config.py
           tests/test_release52_fly_config.py
           tests/test_release53_fly_config.py
+          tests/test_release55_fly_config.py
           tests/test_expert_label_producer.py
           tests/test_expert_label_check.py
           tests/test_check_comment_provenance.py
@@ -377,6 +378,26 @@ jobs:
           mkdir -p /tmp/shengji-packages
           curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz "$PACKAGE_URL"
           echo "$PACKAGE_SHA256  /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz" | sha256sum -c -
+      - name: Fetch the pinned release-55 unified package ut-rt4-e2951d35
+        if: matrix.kind == 'compiled'
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/ut-rt4-e2951d35.npz
+          PACKAGE_SHA256: e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/ut-rt4-e2951d35.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/ut-rt4-e2951d35.npz" | sha256sum -c -
+      - name: Fetch the pinned release-55 belief package ut-rt4-belief-35e225cf
+        if: matrix.kind == 'compiled'
+        env:
+          PACKAGE_URL: https://github.com/jerryyyu/shengji/releases/download/serving-packages/ut-rt4-belief-35e225cf.npz
+          PACKAGE_SHA256: 35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/shengji-packages
+          curl -sSL --fail --retry 6 --retry-all-errors --retry-max-time 120 -o /tmp/shengji-packages/ut-rt4-belief-35e225cf.npz "$PACKAGE_URL"
+          echo "$PACKAGE_SHA256  /tmp/shengji-packages/ut-rt4-belief-35e225cf.npz" | sha256sum -c -
       - name: Fetch the pinned relaxed-bots scorer package sf-s136-516617b8
         if: matrix.kind == 'compiled'
         env:
@@ -402,6 +423,8 @@ jobs:
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
           SHENGJI_PV_UNIFIED_PACKAGE_PATH: /tmp/shengji-packages/ut-all-97c07be8.npz
           SHENGJI_PV_UNIFIED_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz
+          SHENGJI_PV_RT4_UNIFIED_PACKAGE_PATH: /tmp/shengji-packages/ut-rt4-e2951d35.npz
+          SHENGJI_PV_RT4_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/ut-rt4-belief-35e225cf.npz
           SHENGJI_RELAXED_SF_PACKAGE_PATH: /tmp/shengji-packages/sf-s136-516617b8.npz
         run: >-
           python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
@@ -423,6 +446,7 @@ jobs:
           tests/test_release51_fly_config.py
           tests/test_release52_fly_config.py
           tests/test_release53_fly_config.py
+          tests/test_release55_fly_config.py
           tests/test_unified_serving.py
           tests/test_expert_label_producer.py
           tests/test_pv_latency_switches_release46.py
@@ -439,7 +463,7 @@ jobs:
           tests/test_lead_capture_collector.py
           tests/test_pv_point_leaks.py
       # The release manifests' wiring witness on the same pinned packages: the stage tables
-      # of releases 49 to 53 must be what their served bots do (fails, never skips, here).
+      # of releases 49 to 55 must be what their served bots do (fails, never skips, here).
       # It syncs the RL group, so it runs after the steps above.
       - name: Check release manifests and served capture on pinned packages
         if: matrix.kind == 'compiled'
@@ -453,6 +477,8 @@ jobs:
           SHENGJI_PV50_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/b1a-028131a0.npz
           SHENGJI_PV_UNIFIED_PACKAGE_PATH: /tmp/shengji-packages/ut-all-97c07be8.npz
           SHENGJI_PV_UNIFIED_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/ut-all-belief-1b1fd2de.npz
+          SHENGJI_PV_RT4_UNIFIED_PACKAGE_PATH: /tmp/shengji-packages/ut-rt4-e2951d35.npz
+          SHENGJI_PV_RT4_BELIEF_PACKAGE_PATH: /tmp/shengji-packages/ut-rt4-belief-35e225cf.npz
         run: >-
           python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 --
           uv run --frozen --group rl python scripts/test_checkout.py --engine compiled -- -q -p no:cacheprovider

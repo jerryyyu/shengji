@@ -72,6 +72,57 @@ budget and `bury_belief_fallbacks` on Fly.
 **Release note: what a player will notice.** Nothing on most hands; on a slow moment the bot may take up to a second
 longer to bury instead of falling back to its simple bury.
 
+## Release 55 (prepared, not deployed)
+
+**Release 55** is release 54 with the RT4 unified model: the unified readout package and the belief package become
+RT4's, and every other `fly.toml` line is release 54's (`server/releases/r55.json`;
+`test_release55_is_release54_with_the_rt4_pairs`, `test_release55_fly_config.py`). The registry derives the name
+from the two pairs: the play digest (`r09a10415` → `reac0a771`), the bury digest (`3a676f3c01ea` → `e191a6461fa8`)
+and the three unified tokens (`97c07be8` → `e2951d35`) move. Jerry's word: in session 2026-11-22, "Yup let's ship
+the better model", conditional on the winner's confirmation against release 54 and the release gates.
+
+Served name (byte for byte the RT4 name S159 duelled):
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-reac0a771-bury-hybrid-bwv-bbw-e191a6461fa8-sc8-usharee2951d35-uvaluee2951d35-ureplye2951d35-ufast
+```
+
+**Packages.** Two new `serving-packages` assets (uploaded 2026-11-23, re-downloaded and sha-checked), to be put on
+the volume under the same names before the deploy. Keep release 54's pair on the volume for the rollback.
+
+| package | path on the volume | sha256 |
+|---|---|---|
+| unified readout (RT4) | `/data/models/ut-rt4-e2951d35.npz` | `e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883` |
+| belief (RT4's trunk and belief head) | `/data/models/ut-rt4-belief-35e225cf.npz` | `35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3` |
+| unified readout (release 54, kept for the rollback) | `/data/models/ut-all-97c07be8.npz` | `97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af` |
+| belief (release 54, kept for the rollback) | `/data/models/ut-all-belief-1b1fd2de.npz` | `1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4` |
+
+Local copies: `~/model-vault/rt4-r55/`.
+
+**Evidence.** S159, RT4 against release 54 as served, paired seat-swapped duels on the M5 Ultra on 7,840 fresh deals
+(seeds [2664000000, 2664007840), served tree `9e49366a`): **+0.0612 [+0.0510, +0.0712]**, one-sided 95% lower bound
++0.0527 (bar: mean ≥ +0.005 and lower bound > 0, met); reader VALID; duel-host latency ratio RT4 / release 54 1.012
+([#1525 issuecomment-7088914757](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7088914757)). The
+online construction check on `9e49366a` built an Advanced room with this name
+([#1525 issuecomment-7087872391](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7087872391)).
+**Strength on Fly and with human partners is not measured.**
+
+**Fly timing: not run.** The method is UT-fly-fast's (Release 53 record, Latency): on the production machine at 0
+rooms, k = 1, release 54 as served (A) against the release tree with the RT4 pair (B) on identical states; bar mean
+ratio B/A ≤ 1.10, B fallbacks ≤ A's, projected server RSS ≤ 1536 MB, validity. It is a Fly-side action and needs
+Jerry's word.
+
+**Source.** `main` after `9e49366a` (the S159 tree) adds #1707 (vp2, off by default, decision-identical when off:
+`test_flag_off_release54_decides_as_main`) and the device-accounts server parts #1714 and #1719, behind
+`SHENGJI_DEVICE_ACCOUNTS` (off), whose accounts migration to schema v10 runs at boot whatever the switch. A deploy
+from `main` carries that migration; a deploy of the S159 tree with this `fly.toml` does not.
+
+**Rollback.** To release 54, only on Jerry's rollback decision and at 0 rooms: the image serving before the
+release-55 deploy (read with `fly releases -a shengji --image` just before it; Fly v130 on server `9e49366a` when
+this was written) with release 54's `fly.toml` (main `26b14c91`, sha256
+`d25d6775b70878445fda6bf0d7be10d3c418768cb403d7b7f39d2bd4ad9320ce`); the config-only form restores the four lines
+and the name in the release-55 comment of `fly.toml`. Release 54's pair stays on the volume.
+
 ## Rollback
 
 ### To release 53 (the rollback target)
@@ -1311,6 +1362,24 @@ Release 53 adds two packages and five `fly.toml` lines; its commands, in step or
 Release 54 changes one `fly.toml` value and the name, and no package: step 2's upload is skipped, step 1 runs
 `test_release_manifests.py` with `r54.json` (release 53 with exactly the budget and name lines changed), and in step 7
 `bury_budget_seconds` is `"3"`.
+
+Release 55 changes four `fly.toml` lines and the name, and adds two packages (Release 55, above):
+
+- Step 1 adds `test_release55_fly_config.py` and release 55's manifest and wiring witness in
+  `test_release_manifests.py`, on the two new `serving-packages` assets (fetched as
+  `SHENGJI_PV_RT4_UNIFIED_PACKAGE_PATH` and `SHENGJI_PV_RT4_BELIEF_PACKAGE_PATH`).
+- Step 2 puts both files on the volume:
+  `put ~/model-vault/rt4-r55/ut-rt4-e2951d35.npz /data/models/ut-rt4-e2951d35.npz` and
+  `put ~/model-vault/rt4-r55/ut-rt4-belief-35e225cf.npz /data/models/ut-rt4-belief-35e225cf.npz` in
+  `fly ssh sftp shell -a shengji`, then
+  `fly ssh console -a shengji -C "sha256sum /data/models/ut-rt4-e2951d35.npz /data/models/ut-rt4-belief-35e225cf.npz /data/models/ut-all-97c07be8.npz /data/models/ut-all-belief-1b1fd2de.npz"`
+  must print the four hashes (release 54's pair stays for the rollback).
+- Step 3 maps the two RT4 volume paths with `--map` beside G3 A, FT1 and JS-M1 and writes `smoke55.jsonl`; every
+  play record's `unified` entry must name package `e2951d35` with `shared` 1, `missed` 0, `value_left` 0 and
+  `reply_left` 0.
+- Step 7: `bot` is the release-55 name; value `f4f4127e…`, prior `0d17fd03…`, `bury_budget_seconds "3"`.
+- Step 8 reads `/data/models/ut-rt4-belief-35e225cf.npz` with
+  `35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3`; it must print `True compiled 35e225cf`.
 
 **Before the deploy**
 

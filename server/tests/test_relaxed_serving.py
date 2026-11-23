@@ -1,4 +1,4 @@
-"""The relaxed level on the pinned production packages: release 54's served bot (``fly.toml``) wrapped
+"""The relaxed level on the pinned production packages: the served bot (``fly.toml``) wrapped
 with the pinned S136 scorer package (``server.RELAXED_SF_PACKAGE``, sha256 ``server.RELAXED_SF_SHA256``,
 an asset of the ``serving-packages`` release).
 
@@ -17,7 +17,8 @@ import pytest
 
 from test_encoder_round_compat import REQUIRE_PACKAGE
 from test_release50_fly_config import release50_packages  # noqa: F401
-from test_release53_fly_config import BURY3_NAME, release53_pair, served_bot  # noqa: F401
+from test_release53_fly_config import served_bot
+from test_release55_fly_config import RELEASE55, release55_pair  # noqa: F401
 from test_release46_fly_config import fly_env as served_env
 from test_unified_serving import served_functions  # noqa: F401
 
@@ -51,13 +52,13 @@ def _play_state(bot, seed):
     return game
 
 
-def test_a_relaxed_room_on_release54_plays_the_scorer_through_the_server_path(
-        release50_packages, release53_pair, relaxed_package, tmp_path, monkeypatch, served_functions):
+def test_a_relaxed_room_on_the_served_release_plays_the_scorer_through_the_server_path(
+        release50_packages, release55_pair, relaxed_package, tmp_path, monkeypatch, served_functions):
     from shengji.api import server
     from shengji.train import relaxed_play as rp
 
-    name, served = served_bot(release50_packages, release53_pair, monkeypatch, env=served_env())
-    assert name == served.policy_name == BURY3_NAME == os.environ["SHENGJI_BOT"]
+    name, served = served_bot(release50_packages, release55_pair, monkeypatch, env=served_env())
+    assert name == served.policy_name == RELEASE55 == os.environ["SHENGJI_BOT"]
     monkeypatch.setattr(server, "RELAXED_SF_PACKAGE", str(relaxed_package))
     relaxed_name = f"{name}-{server.RELAXED_BOT}"
 

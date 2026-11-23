@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from test_release50_fly_config import release50_packages  # noqa: F401
-from test_release53_fly_config import release53_pair  # noqa: F401
+from test_release55_fly_config import release55_pair  # noqa: F401
 
 
 _PATH = Path(__file__).resolve().parents[1] / "scripts" / "y_trajectory.py"
@@ -21,8 +21,8 @@ def test_recipe_keeps_served_budgets_and_latency_switches(tmp_path):
     assert env["SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"] == "3"
     assert env["SHENGJI_PV_LEAF_GREEDY_DEADLINE"] == "2"
     assert env["SHENGJI_PV_ENCODE_NATIVE"] == "1"
-    assert env["SHENGJI_PV_BELIEF_CKPT"] == str(tmp_path / "ut-all-belief-1b1fd2de.npz")
-    assert env["SHENGJI_PV_UNIFIED_CKPT"] == str(tmp_path / "ut-all-97c07be8.npz")
+    assert env["SHENGJI_PV_BELIEF_CKPT"] == str(tmp_path / "ut-rt4-belief-35e225cf.npz")
+    assert env["SHENGJI_PV_UNIFIED_CKPT"] == str(tmp_path / "ut-rt4-e2951d35.npz")
     assert "SHENGJI_DATA_DIR" not in env
     assert not any(key.startswith("SHENGJI_CWV_") for key in env)
 
@@ -57,7 +57,7 @@ def test_recipe_refuses_budget_width_and_model_path_drift(tmp_path, old, new):
 
 
 @pytest.mark.parametrize("capture", [False, True])
-def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, tmp_path, capture):
+def test_runner_constructs_exact_served_bot(release50_packages, release55_pair, tmp_path, capture):
     import json
     import os
     import subprocess
@@ -70,8 +70,8 @@ def test_runner_constructs_exact_served_bot(release50_packages, release53_pair, 
     models.mkdir()
     packages = {"SHENGJI_PV_CKPT": release50_packages["value"],
                 "SHENGJI_PV_PRIOR_CKPT": release50_packages["prior"],
-                "SHENGJI_PV_BELIEF_CKPT": release53_pair["belief"],
-                "SHENGJI_PV_UNIFIED_CKPT": release53_pair["unified"]}
+                "SHENGJI_PV_BELIEF_CKPT": release55_pair["belief"],
+                "SHENGJI_PV_UNIFIED_CKPT": release55_pair["unified"]}
     for key, package in packages.items():
         (models / Path(env[key]).name).symlink_to(package)
     from test_harvest_trajectory import _seed_windows
@@ -122,7 +122,7 @@ def test_runner_refuses_legal_capture_cap_drift(tmp_path):
                      "--seed-registry", str(tmp_path / "absent.json"), "--cap", "1"])
 
 
-def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_packages, release53_pair, tmp_path,
+def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_packages, release55_pair, tmp_path,
                                                                   monkeypatch):
     import json
     import subprocess
@@ -139,7 +139,7 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     models = tmp_path/'models'
     models.mkdir()
     packages = {'SHENGJI_PV_CKPT': release50_packages['value'], 'SHENGJI_PV_PRIOR_CKPT': release50_packages['prior'],
-                'SHENGJI_PV_BELIEF_CKPT': release53_pair['belief'], 'SHENGJI_PV_UNIFIED_CKPT': release53_pair['unified']}
+                'SHENGJI_PV_BELIEF_CKPT': release55_pair['belief'], 'SHENGJI_PV_UNIFIED_CKPT': release55_pair['unified']}
     for key, package in packages.items():
         (models/Path(env[key]).name).symlink_to(package)
     registry = tmp_path/'seeds.json'

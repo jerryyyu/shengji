@@ -42,7 +42,7 @@ from test_pv_admission_rules import names, production_package  # noqa: F401
 from test_pv_search_serving import package  # noqa: F401
 from test_pv_value_declare import NT_CASE, drive, state_at
 from test_release46_fly_config import without_combo
-from test_release53_fly_config import BURY3_NAME
+from test_release55_fly_config import RELEASE55
 
 FLAG = "SHENGJI_PV_VALUE_DECLARE_SERVED_BURY"
 HEURISTIC = HeuristicBot()
@@ -60,10 +60,9 @@ def fly_env():
     import tomllib
     from pathlib import Path
     env = tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
-    # production is release 53 with the 3 s bury (release 45 + the combo + the changes of
-    # releases 48 to 53 and the bury budget); the release-45 base is the documented rollback, the env without the lines
+    # production is release 55 (release 45 + the combo + the changes of releases 48 to 55); the release-45 base is the documented rollback, the env without the lines
     # above it and with the release-36 value package restored
-    assert env["SHENGJI_BOT"] == BURY3_NAME
+    assert env["SHENGJI_BOT"] == RELEASE55
     return without_combo(env)
 
 

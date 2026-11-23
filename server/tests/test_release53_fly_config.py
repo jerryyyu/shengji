@@ -27,7 +27,8 @@ import pytest
 from shengji import releases
 from test_encoder_round_compat import REQUIRE_PACKAGE
 from test_release46_fly_config import (BURY3, RELEASE52_BELIEF, RELEASE52_NAME, RELEASE53_ADDED_KEYS,
-                                       fly_env as served_env, release52_env, undo_bury3)
+                                       RELEASE55_PAIRS, fly_env as served_env, release52_env,
+                                       release54_env, undo_bury3)
 from test_release48_fly_config import apply_to_process
 from test_release50_fly_config import (PRIOR_SHA, PRIOR_VOLUME_PATH, VALUE_SHA, VALUE_VOLUME_PATH,
                                        release50_packages)  # noqa: F401
@@ -58,7 +59,8 @@ def release53_env(env: dict) -> dict:
 
 
 def production_env() -> dict:
-    """Release 53's ``fly.toml`` ``[env]``: the repo's with the bury-3 rollback applied."""
+    """Release 53's ``fly.toml`` ``[env]``: the repo's with the release-55 and bury-3
+    rollbacks applied."""
     return release53_env(served_env())
 
 
@@ -92,7 +94,8 @@ def local_env(packages, pair, env=None) -> dict:
     env = production_env() if env is None else env
     out = {**env, "SHENGJI_PV_CKPT": str(packages["value"]),
            "SHENGJI_PV_PRIOR_CKPT": str(packages["prior"])}
-    if env.get("SHENGJI_PV_BELIEF_SHA256") == UNIFIED_BELIEF_SHA:
+    if env.get("SHENGJI_PV_BELIEF_SHA256") in (UNIFIED_BELIEF_SHA,
+                                              RELEASE55_PAIRS["SHENGJI_PV_BELIEF_SHA256"]):
         out["SHENGJI_PV_BELIEF_CKPT"] = str(pair["belief"])
     else:
         out["SHENGJI_PV_BELIEF_CKPT"] = str(packages["belief"])
@@ -229,9 +232,9 @@ def test_rollback_to_release52_restores_b1a_and_drops_the_unified_lines(
 
 
 def test_fly_toml_is_release53_with_the_3s_bury():
-    """Production is release 53 with one line changed, the bury budget at 3 s; the budget enters
+    """Release 54 is release 53 with one line changed, the bury budget at 3 s; the budget enters
     the bury identity, so only the name's bury digest moves."""
-    env = served_env()
+    env = release54_env(served_env())
     assert env["SHENGJI_BOT"] == BURY3_NAME
     assert {k: env[k] for k in BURY3} == BURY3
     r53 = release53_env(env)
@@ -245,7 +248,8 @@ def test_fly_toml_is_release53_with_the_3s_bury():
 
 def test_served_bot_buries_on_the_3s_budget(release50_packages, release53_pair, monkeypatch,
                                             served_functions):
-    name, bot = served_bot(release50_packages, release53_pair, monkeypatch, env=served_env())
+    name, bot = served_bot(release50_packages, release53_pair, monkeypatch,
+                           env=release54_env(served_env()))
     assert name == bot.policy_name == BURY3_NAME
     assert bot.serving_budget_seconds == 3.0 and bot.bury_serving_budget_seconds == 3.0
     assert bot.bury_recipe_identity["serving_budget_seconds"] == 3.0

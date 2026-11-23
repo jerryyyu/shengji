@@ -8,8 +8,9 @@ the lines in ``RELEASE48_ADDED_KEYS``, release 49 adds ``RELEASE49_ADDED_KEYS``,
 release 50 adds ``RELEASE50_ADDED_KEYS`` and changes the value and belief pairs, and
 release 51 turns the lead confirmation off, release 52 adds ``RELEASE52_ADDED_KEYS``, and
 release 53 adds ``RELEASE53_ADDED_KEYS`` and changes the belief pair, and production raises
-the bury budget to 3 s (``BURY3``; ``undo_release50`` undoes all five), so release
-46's env is the repo's ``fly.toml`` environment with the six changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
+the bury budget to 3 s (``BURY3``), and release 55 swaps the unified and belief pairs for RT4's
+(``RELEASE55_PAIRS``; ``undo_release50`` undoes all six), so release
+46's env is the repo's ``fly.toml`` environment with the seven changes undone (``release46_env``, the documented rollback).  The bot is built from it exactly as the server builds it
 (``pv_env_recipe`` ->
 ``pv_registry_entries`` -> the factory) on the hash-pinned production and belief
 packages, so the registry name, every combo knob, the bound belief model and the
@@ -118,9 +119,46 @@ BURY3 = {BURY_BUDGET_KEY: "3"}
 RELEASE53_BURY = {BURY_BUDGET_KEY: "2"}
 
 
+#: the four lines release 55 changes in release 54's env (besides the name): the unified and
+#: belief pairs, the all-data unified model's (releases 53 and 54) for RT4's
+RELEASE54_PAIRS = {"SHENGJI_PV_BELIEF_CKPT": "/data/models/ut-all-belief-1b1fd2de.npz",
+                   "SHENGJI_PV_BELIEF_SHA256":
+                       "1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4",
+                   "SHENGJI_PV_UNIFIED_CKPT": "/data/models/ut-all-97c07be8.npz",
+                   "SHENGJI_PV_UNIFIED_SHA256":
+                       "97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af"}
+RELEASE55_PAIRS = {"SHENGJI_PV_BELIEF_CKPT": "/data/models/ut-rt4-belief-35e225cf.npz",
+                   "SHENGJI_PV_BELIEF_SHA256":
+                       "35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3",
+                   "SHENGJI_PV_UNIFIED_CKPT": "/data/models/ut-rt4-e2951d35.npz",
+                   "SHENGJI_PV_UNIFIED_SHA256":
+                       "e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883"}
+#: release 54's served name, restored by release 55's rollback
+RELEASE54_NAME = ("pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-"
+                  "dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-"
+                  "hybrid-bwv-bbw-3a676f3c01ea-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast")
+
+
+def undo_release55(env: dict) -> dict:
+    """``env`` with release 55's rollback applied (the release-54 unified and belief pairs
+    restored); the name is left to the caller.  An env of release 54 or earlier is returned
+    as is."""
+    if env.get("SHENGJI_PV_UNIFIED_SHA256") != RELEASE55_PAIRS["SHENGJI_PV_UNIFIED_SHA256"]:
+        return dict(env)
+    return {**env, **RELEASE54_PAIRS}
+
+
+def release54_env(env: dict) -> dict:
+    """Production's env with release 55's rollback applied and the release-54 name restored:
+    release 54's ``fly.toml`` ``[env]``."""
+    return {**undo_release55(env), "SHENGJI_BOT": RELEASE54_NAME}
+
+
 def undo_bury3(env: dict) -> dict:
-    """``env`` with the bury-3 rollback applied (the bury budget back at 2 s); the name is
-    left to the caller.  An env of release 53 or earlier is returned as is."""
+    """``env`` with the rollbacks of release 55 and bury 3 applied (the bury budget back at
+    2 s); the name is left to the caller.  An env of release 53 or earlier is returned as
+    is."""
+    env = undo_release55(env)
     if env.get(BURY_BUDGET_KEY) != BURY3[BURY_BUDGET_KEY]:
         return dict(env)
     return {**env, **RELEASE53_BURY}
@@ -192,8 +230,8 @@ BELIEF_PACKAGE = os.environ.get("SHENGJI_PV_BELIEF_PACKAGE_PATH")
 
 
 def fly_env() -> dict:
-    """The repo's ``fly.toml`` ``[env]`` as written (production's: release 53 with the 3 s
-    bury budget)."""
+    """The repo's ``fly.toml`` ``[env]`` as written (production's: release 55, release 54
+    with RT4's unified and belief pairs)."""
     return tomllib.loads((Path(__file__).parents[2] / "fly.toml").read_text())["env"]
 
 

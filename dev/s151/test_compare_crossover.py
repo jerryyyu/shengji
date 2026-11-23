@@ -28,6 +28,13 @@ class CrossoverTest(unittest.TestCase):
         self.assertEqual(report["observed_noise_gate"], "INCONCLUSIVE")
         self.assertEqual(report["pooled_seconds"], {"base": 400, "candidate": 360})
 
+    def test_play_timing_uses_fallback_clock_and_counts_missing_separately(self):
+        counts = crossover.Counter()
+        for rec in (None, {"schema": "pv-search-fallback-v1", "elapsed_seconds": 3.1}):
+            crossover.count_play_time(counts, {"decision_kind": "play", "allocation": {"serving_decision": rec}}, 3)
+        crossover.count_play_time(counts, {"decision_kind": "bury", "allocation": {}}, 3)
+        self.assertEqual(counts, dict(timed=1, at_or_over_budget=1, missing=1))
+
     def test_noisy_or_mixed_blocks(self):
         gain = crossover.percent(100, 98)
         for blocks in ([block(100, 98, gain)] * 4,
@@ -50,9 +57,9 @@ class CrossoverTest(unittest.TestCase):
                     buried=None), plays_prefix=[], seat=0, ply=0, trick=0, role="banker-team",
                     legal_actions=[["SA"]], legal_actions_complete=True, legal_actions_count=1,
                     ballot=[["SA"]], action=["SA"], allocation={"serving_decision":
-                    {"leaf_greedy_deadline_fired": drift}}, outcome=None))
+                    {"leaf_greedy_deadline_fired": drift, "seconds": 3.0 if drift else 2.999}}, outcome=None))
                 config = dict(run_id=run_id, seed0=7, round_mix="first", capture_served_budget=True,
-                              served_runtime={})
+                              served_runtime={"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
                 for key in ("PV", "PV_PRIOR", "PV_UNIFIED", "PV_BELIEF"):
                     config["served_runtime"][f"SHENGJI_{key}_CKPT"] = "model"
                     config["served_runtime"][f"SHENGJI_{key}_SHA256"] = "hash"
@@ -78,6 +85,9 @@ class CrossoverTest(unittest.TestCase):
             self.assertTrue(result["work_matches"])
             self.assertEqual(result["first_record_difference"]["compared"], "0-c")
             self.assertEqual(result["events_by_invocation"]["0-c"]["greedy_deadline_fired"], 1)
+            self.assertEqual(result["play_compute_by_invocation"]["0-c"],
+                             dict(timed=1, at_or_over_budget=1, missing=0))
+            self.assertEqual(result["play_compute_by_invocation"]["0-b"]["at_or_over_budget"], 0)
             self.assertEqual(len(result["pairs"]), 2)
             report = crossover.verdict([result])
             self.assertEqual(report["pooled_seconds"], {"base": 20, "candidate": 16})

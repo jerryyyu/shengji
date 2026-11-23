@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 import sys
 
-from compare_generator import comparable_config, comparable_row, read, read_store, read_times, require
+from compare_generator import comparable_config, normalize_row, read, read_store, read_times, require
 
 SEEDS = (4301400, 4301504, 4301608, 4301712)
 HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "2fb1cc3f0a9d3cec3f4c4d8dcd407671af4a1d89")
@@ -33,6 +33,21 @@ def cluster_interval(store, clusters):
     return min(a for a, _ in intervals), max(b for _, b in intervals)
 
 
+def count_play_time(counts, row, budget):
+    if row["decision_kind"] != "play":
+        return
+    rec = row["allocation"].get("serving_decision") or {}
+    key = "elapsed_seconds" if rec.get("schema") == "pv-search-fallback-v1" else "seconds"
+    elapsed = rec.get(key)
+    if elapsed is None:
+        counts["missing"] += 1
+        return
+    require(type(elapsed) in (float, int) and math.isfinite(elapsed) and elapsed >= 0,
+            "invalid play duration")
+    counts["timed"] += 1
+    counts["at_or_over_budget"] += elapsed >= budget
+
+
 def read_block(root, seed, order, times, args, previous_end, configuration):
     stores = []
     manifests = []
@@ -55,17 +70,23 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
     work_keys = ("counts", "work_realized")
     work_matches = all(all(m[k] == manifests[0][k] for k in work_keys) for m in manifests)
     events = [Counter() for _ in stores]
+    play_times = [Counter(timed=0, at_or_over_budget=0, missing=0) for _ in stores]
+    budgets = [float(m["config"]["served_runtime"]["SHENGJI_PV_SERVING_BUDGET_SECONDS"]) for m in manifests]
+    require(all(math.isfinite(b) and b > 0 for b in budgets), "invalid served play budget")
     for shards in zip(*(m["shards"] for m in manifests), strict=True):
         with ExitStack() as stack:
             files = [stack.enter_context((p / shard["path"]).open()) for p, shard in zip(stores, shards)]
             for lines in zip_longest(*files):
                 rows = []
                 for j, line in enumerate(lines):
-                    row = comparable_row(line, manifests[j]["run_id"]) if line is not None else None
+                    row = json.loads(line) if line is not None else None
+                    if row is not None:
+                        count_play_time(play_times[j], row, budgets[j])
+                        row = normalize_row(row, manifests[j]["run_id"])
                     rows.append(row)
                     if row is None:
                         continue
-                    rec = row["allocation"].get("serving_decision", {})
+                    rec = row["allocation"].get("serving_decision") or {}
                     events[j]["greedy_deadline_fired"] += bool(rec.get("leaf_greedy_deadline_fired"))
                     if rec.get("exact_follow_abandoned"):
                         events[j][f"exact_follow_abandoned:{rec['exact_follow_abandoned']}"] += 1
@@ -89,6 +110,7 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
                  reduction_percent=percent(sum(base), sum(candidate)),
                  repeat_difference_percent=dict(base=abs(percent(*base)), candidate=abs(percent(*candidate))),
                  work_matches=work_matches, first_record_difference=first_difference,
+                 play_compute_by_invocation={p.parent.name: dict(t) for p, t in zip(stores, play_times)},
                  events_by_invocation={p.parent.name: dict(e) for p, e in zip(stores, events)})
     if work_matches and first_difference is None:
         block["events_per_invocation"] = dict(events[0])

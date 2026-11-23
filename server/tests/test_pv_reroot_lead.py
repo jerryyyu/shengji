@@ -1,8 +1,7 @@
 """The value-pruned, re-rooted two-trick lead lookahead (`train.pv_reroot`, ``vp2``), OFF BY DEFAULT.
 
-Flag off: release 54 as served decides every play decision of the fixed self-play deals of
-`r54_selfplay_positions` as main did (its pinned per-engine digests), and the rule is absent from the
-name, the payload and the record.  Flag on: the keep set, the switch and the re-rooted leaf pricing,
+Flag off: release 54 plays the pinned self-play decisions of `r54_selfplay_positions`, with
+the rule absent from the name, payload and record. Flag on: the keep set, the switch and the re-rooted leaf pricing,
 unit by unit and through the real release-54 bot (the served pass it reads is the flag-off pass; the
 decision the bot plays is the one an offline reader derives from the bot's own deepened columns).
 
@@ -257,22 +256,61 @@ def test_each_platform_pin_is_release54_and_self_consistent(platform_key):
             assert pure[key]["projection"]["cards"] == compiled[key]["projection"]["cards"]
 
 
-def test_the_comparison_names_the_first_departing_field():
-    base = {"cards": ["D3"], "worlds": "w", "record": {"value_means": [0.25, -0.5], "selected_index": 1,
-                                                       "admitted": [["D3"], ["SA"]], "work_complete": True}}
-    assert S.first_difference(json.loads(json.dumps(base)), base) is None
-    for path, edit in (("decision.record.value_means[0]", lambda d: d["record"]["value_means"].__setitem__(0, 0.25 + 1e-15)),
+@pytest.mark.parametrize("compiled", [False, True])
+def test_the_comparison_names_the_first_departing_field(compiled):
+    base = {
+        "cards": ["D3"],
+        "worlds": "w",
+        "record": {
+            "selected_index": 1,
+            "admitted": [["D3"], ["SA"]],
+            "work_complete": True,
+            "decision_margin": 0.25,
+        },
+    }
+    assert S.first_difference(json.loads(json.dumps(base)), base, compiled=compiled) is None
+    for path, edit in (("decision.record.decision_margin", lambda d: d["record"].__setitem__("decision_margin", 0.25 + 1e-15)),
                        ("decision.record.selected_index", lambda d: d["record"].__setitem__("selected_index", 0)),
                        ("decision.worlds", lambda d: d.__setitem__("worlds", "x")),
                        ("decision.cards[0]", lambda d: d["cards"].__setitem__(0, "D4")),
                        ("decision.record.admitted[1][0]", lambda d: d["record"]["admitted"][1].__setitem__(0, "SK")),
                        ("decision.record.work_complete", lambda d: d["record"].__setitem__("work_complete", False))):
-        changed = json.loads(json.dumps(base))
+        changed = copy.deepcopy(base)
         edit(changed)
-        assert S.first_difference(changed, base) == path
-    extra = json.loads(json.dumps(base))
+        assert S.first_difference(changed, base, compiled=compiled) == path
+    extra = copy.deepcopy(base)
     extra["record"]["vp2_eligible"] = False
-    assert S.first_difference(extra, base).startswith("decision.record (keys")
+    assert S.first_difference(extra, base, compiled=compiled).startswith("decision.record (keys")
+
+
+def test_compiled_pins_agree_across_platforms_within_the_measured_bounds():
+    darwin, linux = (_pins(platform_key)["engines"]["compiled"] for platform_key in PINNED_PLATFORMS)
+    assert darwin.keys() == linux.keys()
+    for key in darwin:
+        difference = S.first_difference(linux[key]["projection"], darwin[key]["projection"], compiled=True)
+        assert difference is None, (key, difference)
+
+
+@pytest.mark.parametrize(("field", "bound"), [
+    ("value_means", 1e-6),
+    ("exact_lead_base_value_means", 1e-6),
+    ("singleton_probe_margin", 1e-6),
+    ("policy_log_odds_listing", 4e-5),
+    ("policy_log_odds_admitted", 4e-5),
+])
+def test_only_compiled_comparison_allows_bounded_field_drift(field, bound):
+    def projection(value):
+        return {"record": {field: value if field == "singleton_probe_margin" else [value]}}
+
+    base = projection(0.0)
+    small = projection(bound)
+    assert S.first_difference(small, base, compiled=True) is None
+    assert S.first_difference(small, base).startswith(f"decision.record.{field}")
+    difference = S.first_difference(projection(bound * 1.01), base, compiled=True)
+    assert difference.startswith(f"decision.record.{field}")
+    assert f"absolute tolerance {bound:g}" in difference
+    assert S.first_difference(projection(float("nan")), base, compiled=True)
+    assert S.first_difference(projection(0), base, compiled=True).endswith("(type)")
 
 
 def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, monkeypatch,
@@ -297,7 +335,11 @@ def test_flag_off_release54_decides_as_main(release50_packages, release53_pair, 
             key = S.label(seed, trick, pos)
             assert not any(k.startswith("vp2_") for k in projection["record"]), key
             expected = pins[key]["projection"]
-            assert S.digest(projection) == pins[key]["digest"], (key, S.first_difference(projection, expected))
+            actual_digest = S.digest(projection)
+            if actual_digest != pins[key]["digest"]:
+                actual = json.loads(json.dumps(projection, default=list))
+                difference = S.first_difference(actual, expected, compiled=COMPILED)
+                assert COMPILED and difference is None, (key, actual_digest, difference)
             seen += 1
     assert seen == len(pins)
 

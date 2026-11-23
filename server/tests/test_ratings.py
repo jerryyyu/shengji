@@ -668,6 +668,29 @@ def test_a_leaver_scores_the_real_result_capped_at_a_draw(env, monkeypatch, leav
     [event] = _events(store)
     assert event["abandoned"] == 1 and event["won"] == 0
     assert event["actual"] == pytest.approx(actual)
+    # a leave never gains rating, even where the capped score beats the expectation
+    assert event["delta"] <= 0.0
+    assert event["rating_after"] <= event["rating_before"]
+
+
+def test_an_attacker_who_leaves_a_winning_round_gains_nothing(env, monkeypatch):
+    # The attackers expect less than a draw against the banker's advantage, so a
+    # win capped at 0.5 would still beat the expectation; the leaver gains nothing.
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "leaver")
+    _force_outcome(monkeypatch, 210)
+    table = Table(srv, ["bot", uid, "bot", "bot"])
+    table.start_round(banker=0)
+    ratings.seat_left(table.room, 1)
+    table.room.seats[1].connected = False
+    table.finish()
+    [event] = _events(store)
+    assert event["expected"] < ratings.LEAVER_SCORE_CAP
+    assert event["actual"] == pytest.approx(ratings.LEAVER_SCORE_CAP)
+    assert event["delta"] == 0.0
+    assert event["rating_after"] == event["rating_before"]
 
 
 def test_a_bot_takeover_after_a_disconnect_is_an_abandon(env, monkeypatch):

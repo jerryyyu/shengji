@@ -257,13 +257,18 @@ def test_the_sitemap_lists_every_public_page(tmp_path):
     root = ET.fromstring(_public_client(tmp_path).get("/sitemap.xml").content)
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [e.text for e in root.findall("s:url/s:loc", ns)]
-    assert locs == ["https://playshengji.com/" + p for p in ("", "rules", "rules/zh", "privacy", "terms")]
+    base = ["https://playshengji.com/" + p for p in ("", "rules", "rules/zh", "privacy", "terms")]
+    guides = [f"https://playshengji.com{root}{slug}" for root in ("/guides", "/zh/guides")
+              for slug in ["", *(f"/{s}" for s in _guide_slugs())]]
+    assert locs[:len(base)] == base
+    assert sorted(locs[len(base):]) == sorted(guides)
 
 
 def test_llms_txt_states_the_automated_play_clause(tmp_path):
     text = _public_client(tmp_path).get("/llms.txt").text
     assert AGENT_CLAUSE in text
     assert "https://playshengji.com/rules" in text and "https://playshengji.com/rules/zh" in text
+    assert "https://playshengji.com/guides" in text and "https://playshengji.com/zh/guides" in text
 
 
 @pytest.mark.parametrize("page, lang, other", [
@@ -308,6 +313,63 @@ def test_the_app_page_json_ld_parses():
     [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
     data = json.loads(block)
     assert "VideoGame" in data["@type"] and data["url"] == "https://playshengji.com/"
+
+
+def _guide_slugs() -> list[str]:
+    content = PUBLIC.parent / "content" / "guides" / "en"
+    return sorted(p.stem for p in content.glob("*.md"))
+
+
+def _guide_routes():
+    for slug in ["", *(f"/{s}" for s in _guide_slugs())]:
+        for root in ("/guides", "/zh/guides"):
+            yield root + slug
+
+
+@pytest.mark.parametrize("path", list(_guide_routes()))
+def test_guide_pages_are_served_static_with_their_canonical(tmp_path, path):
+    c = _public_client(tmp_path)
+    for variant in (path, path + "/"):
+        r = c.get(variant, follow_redirects=False)
+        assert r.status_code == 200, variant
+        assert r.headers["content-type"].startswith("text/html")
+        assert r.headers["cache-control"] == "no-cache"
+        assert r.text.startswith("<!doctype html>")
+        assert f'<link rel="canonical" href="https://playshengji.com{path}" />' in r.text
+        # the page itself, never the app's index.html
+        assert "<title>Sheng Ji</title>" not in r.text and 'id="root"' not in r.text
+
+
+def test_guide_pages_have_their_own_routes(tmp_path):
+    """Served by routes of their own, not by the static mount: with no mount
+    at all every guide still answers, so no later catch-all can take them."""
+    shutil.copytree(PUBLIC, tmp_path, dirs_exist_ok=True)
+    from shengji.api import support
+
+    assert set(support.guide_pages(tmp_path)) == set(_guide_routes())
+    app = FastAPI()
+    support.register_support(app, tmp_path)
+    c = TestClient(app)
+    for path in _guide_routes():
+        assert c.get(path, follow_redirects=False).status_code == 200, path
+
+
+def test_an_unknown_guide_is_a_404_not_the_app(tmp_path):
+    c = _public_client(tmp_path)
+    for path in ("/guides/no-such-guide", "/zh/guides/no-such-guide", "/guides/../rules/zh/x"):
+        r = c.get(path, follow_redirects=False)
+        assert r.status_code == 404, path
+        assert "<title>Sheng Ji</title>" not in r.text
+
+
+def test_guide_routes_need_a_build(tmp_path):
+    from shengji.api import support
+
+    assert support.guide_pages(tmp_path / "missing") == {}
+    (tmp_path / "guides" / "Bad_Slug").mkdir(parents=True)
+    (tmp_path / "guides" / "Bad_Slug" / "index.html").write_text("x")
+    (tmp_path / "guides" / "index.html").write_text("x")
+    assert support.guide_pages(tmp_path) == {"/guides": "guides/index.html"}
 
 
 def test_the_rules_routes_take_no_request_input(tmp_path):

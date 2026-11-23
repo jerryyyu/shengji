@@ -10,7 +10,9 @@ success to its sender and is not stored.
 ``index.html``, its canonical link and og:url naming that path, so a deep
 link or a reload lands on the page; the web app picks the screen from the
 path. ``GET /rules`` and ``GET /rules/zh`` answer
-with the static rules pages, which need no script.
+with the static rules pages, which need no script, and ``GET /guides``,
+``/guides/<slug>``, ``/zh/guides`` and ``/zh/guides/<slug>`` with the static
+guide pages built from web/content/guides/.
 
 ``GET /.well-known/apple-app-site-association`` (and the same file at the
 root) tells iOS which links open the app instead of Safari: the invite link
@@ -162,6 +164,26 @@ SITE_ORIGIN = "https://playshengji.com"
 # The info pages the web app draws from its path (web/src/support/route.ts).
 INFO_PAGES = ("support", "privacy", "terms")
 RULES_PAGES = {"/rules": "rules/index.html", "/rules/zh": "rules/zh/index.html"}
+# The guides (web/scripts/build_guides.ts): a hub and one page per guide in each
+# language, each its own index.html under these directories of the build.
+GUIDE_DIRS = {"/guides": "guides", "/zh/guides": "zh/guides"}
+GUIDE_SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def guide_pages(dist: Path) -> dict[str, str]:
+    """Each guide page in the build, as ``{url path: file under dist}``. The
+    slugs come from the build's directory names, read once at startup, so a
+    request can only ever name a page that was built."""
+    pages: dict[str, str] = {}
+    for url, rel in GUIDE_DIRS.items():
+        root = dist / rel
+        if not (root / "index.html").is_file():
+            continue
+        pages[url] = f"{rel}/index.html"
+        for child in sorted(root.iterdir()):
+            if GUIDE_SLUG_RE.match(child.name) and (child / "index.html").is_file():
+                pages[f"{url}/{child.name}"] = f"{rel}/{child.name}/index.html"
+    return pages
 
 
 # The iOS app's bundle identifier (appId in web/capacitor.config.ts).
@@ -239,7 +261,7 @@ def register_support(app, dist: Path) -> None:
         handler = _app_page(dist / "index.html", f"/{name}")
         for path in (f"/{name}", f"/{name}/"):
             pages.add_api_route(path, handler, methods=["GET", "HEAD"], include_in_schema=False)
-    for path, rel in RULES_PAGES.items():
+    for path, rel in {**RULES_PAGES, **guide_pages(dist)}.items():
         for variant in (path, path + "/"):
             pages.add_api_route(variant, _static_page(dist / rel), methods=["GET", "HEAD"],
                                 include_in_schema=False)

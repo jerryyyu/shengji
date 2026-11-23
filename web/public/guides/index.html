@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#14171e" />
+<meta name="color-scheme" content="dark" />
+<title>Sheng Ji guides: how to play Tractor, step by step</title>
+<meta name="description" content="Guides to Sheng Ji (升级, Tractor): a first hand, declaring trump, burying the kitty, pairs and tractors, scoring and the names of the game." />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="canonical" href="https://playshengji.com/guides" />
+<link rel="alternate" hreflang="en" href="https://playshengji.com/guides" />
+<link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/zh/guides" />
+<link rel="alternate" hreflang="x-default" href="https://playshengji.com/guides" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Sheng Ji 升级" />
+<meta property="og:url" content="https://playshengji.com/guides" />
+<meta property="og:title" content="Sheng Ji guides" />
+<meta property="og:description" content="Guides to Sheng Ji (升级, Tractor): a first hand, declaring trump, burying the kitty, pairs and tractors, scoring and the names of the game." />
+<meta property="og:image" content="https://playshengji.com/og/preview.jpg" />
+<meta property="og:locale" content="en_US" />
+<meta name="twitter:card" content="summary_large_image" />
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "CollectionPage",
+   "@id": "https://playshengji.com/guides#page",
+   "name": "Sheng Ji guides",
+   "description": "Guides to Sheng Ji (升级, Tractor): a first hand, declaring trump, burying the kitty, pairs and tractors, scoring and the names of the game.",
+   "inLanguage": "en",
+   "url": "https://playshengji.com/guides",
+   "isPartOf": {
+    "@type": "WebSite",
+    "name": "Sheng Ji 升级",
+    "url": "https://playshengji.com/"
+   },
+   "mainEntity": {
+    "@type": "ItemList",
+    "itemListElement": []
+   }
+  },
+  {
+   "@type": "BreadcrumbList",
+   "@id": "https://playshengji.com/guides#breadcrumb",
+   "itemListElement": [
+    {
+     "@type": "ListItem",
+     "position": 1,
+     "name": "Home",
+     "item": "https://playshengji.com/"
+    },
+    {
+     "@type": "ListItem",
+     "position": 2,
+     "name": "Guides",
+     "item": "https://playshengji.com/guides"
+    }
+   ]
+  }
+ ]
+}
+</script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; background: #14171e; color: #e8ecf2; }
+  body { font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { box-sizing: border-box; max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { margin: 8px 0 4px; font-size: 30px; line-height: 1.2; color: #f2c14e; }
+  h2 { margin: 32px 0 8px; font-size: 20px; color: #f2c14e; }
+  h3 { margin: 18px 0 4px; font-size: 16px; }
+  p, li { color: #d3d8e0; }
+  .sub { margin: 0; color: #9aa3b2; }
+  a { color: #f2c14e; }
+  .play { display: inline-block; padding: 10px 20px; border-radius: 10px; background: #f2c14e; color: #14171e;
+          font-weight: 700; text-decoration: none; }
+  .lang { font-size: 14px; }
+  .note { margin-top: 40px; padding-top: 16px; border-top: 1px solid #3a4150; font-size: 14px; color: #9aa3b2; }
+  .crumbs { margin: 16px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; font-size: 14px; color: #9aa3b2; }
+  .crumbs li { color: #9aa3b2; }
+  .crumbs li + li::before { content: "/"; margin-right: 6px; }
+  .red { color: #ff7a8a; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e8ecf2; }
+  .aside { margin: 16px 0; padding: 10px 14px; border-left: 3px solid #f2c14e; background: #1b2029; border-radius: 0 8px 8px 0; }
+  .table { overflow-x: auto; margin: 12px 0; }
+  table { border-collapse: collapse; min-width: 100%; font-size: 15px; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid #3a4150; text-align: left; vertical-align: top; color: #d3d8e0; }
+  th { color: #e8ecf2; font-weight: 700; }
+  .gv { margin: 18px 0; padding: 0; }
+  .gv-svg { display: block; width: 100%; max-width: var(--gv-w); height: auto; border-radius: 12px;
+            background: radial-gradient(ellipse at 50% 35%, #2a7049 0%, #1d5638 60%, #164530 100%); }
+  .gv figcaption { margin-top: 6px; font-size: 14px; color: #9aa3b2; }
+  .gv-anim .gv-p, .gv-anim .gv-win, .gv-anim .gv-back, .gv-anim .gv-stay, .gv-anim .gv-tl,
+  .gv-anim .gv-lv, .gv-anim .gv-chg { animation-duration: 9s; animation-iteration-count: infinite;
+                                      animation-timing-function: ease-out; animation-fill-mode: both; }
+  .gv-trick .gv-p0 { animation-name: gv-p0; } .gv-trick .gv-p1 { animation-name: gv-p1; }
+  .gv-trick .gv-p2 { animation-name: gv-p2; } .gv-trick .gv-p3 { animation-name: gv-p3; }
+  .gv-trick .gv-win { animation-name: gv-win; }
+  @keyframes gv-p0 { 0%, 3% { opacity: 0; transform: translateY(14px); } 8%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p1 { 0%, 14% { opacity: 0; transform: translateY(14px); } 19%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p2 { 0%, 25% { opacity: 0; transform: translateY(14px); } 30%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-p3 { 0%, 36% { opacity: 0; transform: translateY(14px); } 41%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+  @keyframes gv-win { 0%, 48% { opacity: 0; } 54%, 92% { opacity: 1; } 100% { opacity: 0; } }
+  .gv-throw .gv-back { animation-name: gv-back; } .gv-throw .gv-stay { animation-name: gv-stay; }
+  .gv-throw .gv-tl { animation-name: gv-tl; }
+  @keyframes gv-back { 0%, 30% { transform: translate(var(--dx), var(--dy)); } 50%, 100% { transform: none; } }
+  @keyframes gv-stay { 0%, 30% { transform: translateX(var(--dx)); } 50%, 100% { transform: none; } }
+  @keyframes gv-tl { 0%, 28% { opacity: 0; } 34%, 100% { opacity: 1; } }
+  .gv-levels .gv-lv { animation-name: gv-lv; } .gv-levels .gv-chg { animation-name: gv-chg; }
+  @keyframes gv-lv { 0%, 20% { transform: translateX(var(--dx)); } 55%, 100% { transform: none; } }
+  @keyframes gv-chg { 0%, 52% { opacity: 0; } 60%, 100% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .gv-anim * { animation: none !important; } }
+  .cta { margin: 36px 0 8px; padding: 18px 16px; border: 1px solid #3a4150; border-radius: 14px; background: #1b2029; }
+  .cta h2 { margin-top: 0; }
+  .cta p { margin: 8px 0 0; }
+  .related { padding-left: 20px; }
+  .hub { list-style: none; padding: 0; }
+  .hub li { margin: 0 0 18px; }
+  .hub a { font-size: 18px; font-weight: 700; }
+  .hub p { margin: 2px 0 0; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <a class="lang" href="/zh/guides" hreflang="zh-Hans" lang="zh-Hans">中文</a>
+  <a class="play" href="/">Play now</a>
+</header>
+<nav aria-label="Breadcrumb"><ol class="crumbs"><li><a href="/">Home</a></li><li>Guides</li></ol></nav>
+<h1>Sheng Ji guides</h1>
+<p class="sub">How to play Sheng Ji (升级, Tractor), and how to play it well. Each guide covers one part of the game, with real hands.</p>
+<ul class="hub">
+
+</ul>
+<p>For the rules on one page, see <a href="/rules">the rules</a>.</p>
+<p class="note">Automated play is not allowed: AI agents and other automated clients must not join, queue for or play games on this site. Reading these pages is fine. See <a href="/llms.txt">llms.txt</a> and the <a href="/privacy">privacy page</a>.</p>
+</main>
+</body>
+</html>

@@ -22,7 +22,7 @@ export type TapId =
 
 /** Where the identity sheet (the name, and Sign in) was opened. */
 export type SigninFrom =
-  | "play_line" | "chip" | "me_row" | "leaderboard_row" | "round_end" | "lapsed" | "report";
+  | "play_line" | "chip" | "me_row" | "me_signin" | "leaderboard_row" | "round_end" | "lapsed" | "report";
 
 /** A provider sign-in: its button tapped, the account confirmed, a refusal,
  *  or the provider's sheet dismissed. */

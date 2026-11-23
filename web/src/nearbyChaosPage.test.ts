@@ -75,22 +75,43 @@ describe("the simulator's page keeps its seat's token as nearbyJoin.ts does", ()
     expect(JOIN_TIMEOUT_S * 1000).toBe(JOIN_TIMEOUT_MS);
   });
 
-  it("seed 30050: a join by code and a full table's claim each take the held seat back", async () => {
-    // The Leave lands while the page has no open link, so it does nothing.
-    // The join by code just after a radio drop finds the table full (Allow
-    // joiners off): the one claim by the kept token goes out, the host
-    // supersedes the seat's old link (still counted connected), and the
-    // phone holds seat 3 alone; it never binds a newcomer's seat.
-    const replay = JSON.parse(readFileSync(new URL("../scripts/nearby-chaos/replays/nearby-chaos-30050-join-by-code-keeps-token.json", import.meta.url), "utf8")) as { schedule: Fault[] };
-    expect(replay.schedule.map((f) => f.kind)).toEqual(["bg", "leave", "allow", "radio", "midjoin"]);
-    const r = await runGame({ seed: 30050, bugs: [], seconds: 240, bound: 15, hostile: false, verbose: false, page: "sim", schedule: replay.schedule });
+  const replay = (name: string) =>
+    (JSON.parse(readFileSync(new URL(`../scripts/nearby-chaos/replays/${name}`, import.meta.url), "utf8")) as { schedule: Fault[] }).schedule;
+  const at = (l: string) => Number(l.trim().split(" ")[0]);
+  const run = (schedule: Fault[]) => runGame({ seed: 30050, bugs: [], seconds: 240, bound: 15, hostile: false, verbose: false, page: "sim", schedule });
+
+  it("seed 30050, an open seat: the panel's Join carries the kept token and takes the held seat back", async () => {
+    // The Leave lands while the page has no open link, so it does nothing;
+    // the join by code just after a radio drop, with the old link still
+    // counted connected, sends the kept token: the host supersedes that
+    // link and the phone holds seat 3 alone.
+    const schedule = replay("nearby-chaos-30050-join-by-code-keeps-token.json");
+    expect(schedule.map((f) => f.kind)).toEqual(["bg", "leave", "radio"]);
+    const r = await run(schedule);
     expect(r.violation).toBeNull();
-    const at = (l: string) => Number(l.trim().split(" ")[0]);
+    expect(r.trace.some((l) => / H js\/host: resume from p3: seat 3 bound/.test(l))).toBe(true);
+    expect(r.trace.filter((l) => / H js\/host: join from /.test(l)), "only the first join is a newcomer's").toHaveLength(1);
+  }, 60_000);
+
+  it("seed 30050, a full table: the claim's lost link ends it, kept, with no redial until the next look", async () => {
+    // Allow joiners is off, so the join by code finds the table full and
+    // makes its one claim by the kept token; the radio goes 18 ms later and
+    // the claim's link closes unanswered. nearbyJoin.ts ends the claim
+    // there (Full, the token kept) and makes no link of its own; the
+    // person's join by code at 162 s takes seat 3 back by that token.
+    const schedule = replay("nearby-chaos-30050-full-table-claim.json");
+    expect(schedule.map((f) => f.kind)).toEqual(["bg", "leave", "allow", "radio", "radio", "midjoin"]);
+    const r = await run(schedule);
+    expect(r.violation).toBeNull();
     const claim = r.trace.find((l) => / J1 page: table full: resume sent by the kept token/.test(l));
     expect(claim, "the full peek's one claim").toBeDefined();
-    expect(r.trace.some((l) => / J1 page: gives up/.test(l)), "no give-up on the full peek").toBe(false);
-    expect(r.trace.some((l) => / H js\/host: resume from p\d+: seat 3 bound/.test(l) && at(l) >= at(claim!))).toBe(true);
-    expect(r.trace.filter((l) => / H js\/host: join from /.test(l)).map(at), "only the first join is a newcomer's").toHaveLength(1);
+    const ended = r.trace.find((l) => / J1 page: resume by the kept token unanswered/.test(l));
+    expect(ended, "the claim ends on its link's close").toBeDefined();
+    const look = r.trace.find((l) => / fault midjoin J1/.test(l))!;
+    const attempts = r.trace.filter((l) => / js\/join: attempt /.test(l) && at(l) > at(ended!) && at(l) < at(look));
+    expect(attempts, "no link between the claim's end and the next look").toEqual([]);
+    expect(r.trace.some((l) => / H js\/host: resume from p\d+: seat 3 bound/.test(l) && at(l) >= at(look))).toBe(true);
+    expect(r.trace.filter((l) => / H js\/host: join from /.test(l)), "only the first join is a newcomer's").toHaveLength(1);
   }, 60_000);
 });
 

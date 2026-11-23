@@ -706,11 +706,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         this.status = "closed";
         this.sock = null;
         for (const s of this.d.sent) if (s.sock === no && s.state === "pending") s.state = "closed";
-        // nearbyJoin.ts onStatus: a claim's link that drops unanswered puts
-        // the page back to looking; its next link looks at the seats again
+        // nearbyJoin.ts onStatus: the claim's link closing unanswered ends
+        // the claim (Full, the token kept), with no new link until the next
+        // look
         if (this.claiming && !this.seated) {
-          this.claiming = false;
-          this.claimRun += 1;
+          this.claimEnd(false);
+          return;
         }
         this.armGone();
         if (this.leaving) {

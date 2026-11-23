@@ -536,8 +536,15 @@ def analyse_round(r, eng):
                     if len(lead) == 1:
                         hand = list(rnd.hands[seat])
                         insuit = [c for c in hand if o.eff_suit(c) == o.eff_suit(lead[0])]
-                        could = max(pts([c]) for c in (insuit or hand))
-                        row["left_pts"] = max(0, could - pts(cards))
+                        alternatives = []
+                        for card in sorted(set(insuit or hand)):
+                            gain = pts([card]) - pts(cards)
+                            if gain > 0:
+                                winner = _cur_winner([*tr.plays, eng["TrickPlay"](seat, [card])], o, eng)
+                                alternatives.append(dict(card=card, extra_trick_points=gain, winner=winner,
+                                                         splits_pair=hand.count(card) == 2))
+                        row["alternatives"] = alternatives
+                        row["left_pts"] = max((a["extra_trick_points"] for a in alternatives), default=0)
                     ev["last_seat"].append(row)
         rnd.play(seat, list(cards))
     ev["unmatched_fails"] = len(set(r["failed"]) - matched_fails)
@@ -589,6 +596,7 @@ def summarise(rounds, source, exact=None):
             if ld["hidden"] and ld["opp_won"]:
                 c["hidden_void_lost"] += 1
                 c["hidden_void_lost_pts"] += ld["pts"]
+        row["missed_feeds"] = []
         for ls in ev["last_seat"]:
             c = rs[side[ls["seat"]]]
             c["last_seat_partner_winning"] += 1
@@ -596,6 +604,9 @@ def summarise(rounds, source, exact=None):
             if "left_pts" in ls:
                 c["single_lead_last_seat_partner_winning"] += 1
                 if ls["left_pts"] > 0:
+                    row["missed_feeds"].append(dict(trick=ls["trick"], seat=ls["seat"], played=ls["cards"][0],
+                                                    winner=ls["seat"] if ls["overtook"] else (ls["seat"] + 2) % 4,
+                                                    alternatives=ls["alternatives"]))
                     c["no_feeds"] += 1
                     c["no_feed_pts"] += ls["left_pts"]
         bs = side[r["banker"]]

@@ -12,6 +12,8 @@ Reading, summarising and linking to the public pages below is fine. If someone w
 
 - [Rules (English)](https://playshengji.com/rules): how to play, scoring and an FAQ
 - [规则（中文）](https://playshengji.com/rules/zh): the same rules in Chinese
+- [Guides](https://playshengji.com/guides): how to play a hand, declare trump, bury the kitty, follow pairs and tractors, and score
+- [攻略（中文）](https://playshengji.com/zh/guides): the same guides in Chinese
 - [Play](https://playshengji.com/): the game itself (a JavaScript app)
 - [Privacy](https://playshengji.com/privacy): what the game stores and why
 - [Terms of use](https://playshengji.com/terms): the rules for using the game, chat included

@@ -419,6 +419,10 @@ def train(args) -> int:
 
 
 def _train(args, out: Path, status: str) -> int:
+    report_buffer = getattr(args, "report_buffer", None)
+    pause_at_report = getattr(args, "pause_at_report", False)
+    if pause_at_report and report_buffer is None:
+        raise UnifiedReadoutError("--pause-at-report requires --report-buffer")
     import torch
     torch.set_num_threads(args.threads)
     torch.manual_seed(args.seed)
@@ -478,7 +482,6 @@ def _train(args, out: Path, status: str) -> int:
         g["lr"] = g["base_lr"]
     opt = torch.optim.AdamW(groups, weight_decay=args.weight_decay)
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
-    report_buffer = getattr(args, "report_buffer", None)
     if report_buffer is not None and not 0 < report_buffer < n_buffers:
         raise UnifiedReadoutError("--report-buffer must be an interior buffer boundary")
     total = args.epochs * n_buffers
@@ -542,6 +545,34 @@ def _train(args, out: Path, status: str) -> int:
         torch.save({"schema": CKPT_SCHEMA, "model": weights(), "config": model.config, "epoch": epoch,
                     "calib": cm, "init_calib": state.get("init_calib"), "run": _run_identity(args)}, out / "best.pt")
 
+    def write_report(epoch, buffer, sums):
+        totals = dict(zip(SUM_KEYS, sums))
+        report = {"epoch": epoch + 1, "completed_buffers": buffer, "rows": int(totals["rows"]),
+                  "leaves": int(totals["leaves"]), "train": means(sums)}
+        path = out / f"epoch-{epoch + 1}-buffer-{buffer}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(report, allow_nan=False) + "\n")
+        os.replace(tmp, path)
+
+    def stopped():
+        _status(status, f"STOPPED at epoch {state['epoch'] + 1} buffer {state['buffer']}/{n_buffers} "
+                        "(STOP file or --max-seconds); checkpoint saved")
+        return 3
+
+    def pause():
+        write_report(0, report_buffer, state["epoch_sums"])
+        if (out / "STOP").exists():
+            return stopped()
+        _status(status, f"{LANE} PAUSED at epoch 1 buffer {report_buffer}/{n_buffers} "
+                        "(report boundary); checkpoint saved")
+        return 7
+
+    if pause_at_report:
+        if state["epoch"] or state["buffer"] > report_buffer:
+            raise UnifiedReadoutError("resume: the checkpoint is past the requested report boundary")
+        if state["buffer"] == report_buffer:
+            return pause()
+
     last_save = time.time()
     while state["epoch"] < args.epochs:
         epoch, t0, sums, cur, steps = state["epoch"], time.time(), np.zeros(len(SUM_KEYS)), state["buffer"], 0
@@ -549,17 +580,16 @@ def _train(args, out: Path, status: str) -> int:
             sums[:] = state["epoch_sums"]
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur:
+                if pause_at_report and gi > report_buffer:
+                    raise UnifiedReadoutError("the stream skipped the requested report boundary")
                 state["buffer"] = cur = gi
                 if report_buffer is not None:
                     state["epoch_sums"] = sums.tolist()
                     if gi == report_buffer:
-                        totals = dict(zip(SUM_KEYS, sums))
-                        report = {"epoch": epoch + 1, "completed_buffers": gi, "rows": int(totals["rows"]),
-                                  "leaves": int(totals["leaves"]), "train": means(sums)}
-                        path = out / f"epoch-{epoch + 1}-buffer-{gi}.json"
-                        tmp = path.with_suffix(".tmp")
-                        tmp.write_text(json.dumps(report, allow_nan=False) + "\n")
-                        os.replace(tmp, path)
+                        if pause_at_report:
+                            save()
+                            return pause()
+                        write_report(epoch, gi, sums)
                 if time.time() - last_save > args.save_every:
                     save()
                     last_save = time.time()
@@ -567,12 +597,13 @@ def _train(args, out: Path, status: str) -> int:
                                     f" ({time.time() - t0:.0f}s)")
                 if (out / "STOP").exists() or (args.max_seconds and time.time() - started > args.max_seconds):
                     save()
-                    _status(status, f"STOPPED at epoch {epoch + 1} buffer {gi}/{n_buffers} (STOP file or --max-seconds); checkpoint saved")
-                    return 3
+                    return stopped()
             sums += step_on(b, epoch * n_buffers + gi)
             steps += 1
             if args.max_steps and steps >= args.max_steps:
                 break
+        if pause_at_report:
+            raise UnifiedReadoutError("training ended before the requested report boundary")
         cm = evaluate(model, calib, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
@@ -1014,6 +1045,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--max-steps", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=180000)
     t.add_argument("--report-buffer", type=int, help="write cumulative epoch losses at this interior buffer boundary")
+    t.add_argument("--pause-at-report", action="store_true",
+                   help="checkpoint and exit 7 at the first epoch's report boundary; omit to continue")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
     t.add_argument("--corpus-weight", action="append", default=[],

@@ -384,14 +384,19 @@ def test_the_polish_bench_wall_interval_covers_the_load_it_reports(cpu_root, mon
     assert out["recipe"] == bench.POLISH_RECIPE
 
 
-def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path, device):
     clusters = [synthetic_cluster(s) for s in range(1000, 1012)]
     data = extract_dir(write_store(tmp_path / "store", clusters), tmp_path / "data",
                        calib=0.25, task_clusters=1)
     common = ["train", "--data", str(data), "--scratch-arch", SCRATCH, "--threads", "1",
               "--loader-threads", "1", "--rounds-per-batch", "1", "--buffer-chunks", "1",
-              "--report-buffer", "2", "--save-every", "999999"]
+              "--epochs", "2", "--save-every", "999999", "--device", device]
     baseline, split = tmp_path / "baseline", tmp_path / "split"
+    invalid = tmp_path / "invalid"
+    assert ur.main(common + ["--out", str(invalid), "--pause-at-report"]) == 1
+    assert "--pause-at-report requires --report-buffer" in (invalid / "status.log").read_text()
+    common.extend(["--report-buffer", "2"])
     assert ur.main(common + ["--out", str(baseline)]) == 0
     split.mkdir()
     stop = split / "STOP"
@@ -400,12 +405,47 @@ def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
     report = "epoch-1-buffer-2.json"
     assert not (split / report).exists()
     stop.unlink()
-    assert ur.main(common + ["--out", str(split)]) == 0
+    resume = common + ["--out", str(split)]
+    pause = resume + ["--pause-at-report"]
+    assert ur.main(pause) == 7
     actual = json.loads((split / report).read_text())
     assert actual["epoch"] == 1 and actual["completed_buffers"] == 2
     assert actual["rows"] > 0 and actual["leaves"] > 0
     assert actual["train"]["leaf_value"] > 0 and actual["train"]["policy"] > 0
-    assert actual == json.loads((baseline / report).read_text())
+    checkpoint = split / "checkpoint.pt"
+    saved = torch.load(checkpoint, weights_only=False)
+    assert (saved["state"]["epoch"], saved["state"]["buffer"]) == (0, 2)
+    assert not (split / "epoch-2-buffer-2.json").exists()
+    assert not (split / "best.pt").exists()
+    assert "UTR PAUSED at epoch 1 buffer 2/" in (split / "status.log").read_text()
+
+    checkpoint_bytes = checkpoint.read_bytes()
+    (split / report).unlink()
+    stop.touch()
+    assert ur.main(pause) == 3
+    stop.unlink()
+    assert ur.main(pause) == 7
+    assert checkpoint.read_bytes() == checkpoint_bytes
+    assert json.loads((split / report).read_text()) == actual
+    assert ur.main(resume) == 0
+
+    # MPS reductions vary in their last bits between runs with the same recipe.
+    loss_tol = 0 if device == "cpu" else MPS_REL_TOL["train"]
+    for name in ("epoch-1-buffer-2.json", "epoch-2-buffer-2.json"):
+        got = json.loads((split / name).read_text())
+        want = json.loads((baseline / name).read_text())
+        _close(got.pop("train"), want.pop("train"), loss_tol)
+        assert got == want
+    expected = torch.load(baseline / "checkpoint.pt", weights_only=False)
+    finished = torch.load(checkpoint, weights_only=False)
+    assert finished["run"] == expected["run"]
+    assert finished["state"]["epoch"] == expected["state"]["epoch"] == 2
+    assert finished["opt"]["param_groups"] == expected["opt"]["param_groups"]
+    steps = {key: row["step"].item() for key, row in finished["opt"]["state"].items()}
+    assert steps == {key: row["step"].item() for key, row in expected["opt"]["state"].items()}
+    if device == "cpu":
+        for key in ("model", "opt"):
+            torch.testing.assert_close(finished[key], expected[key], rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("medium_device", ["cpu", "mps"])

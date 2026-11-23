@@ -150,3 +150,16 @@ def test_resume_preserves_attempts_and_passes_runner_flag(tmp_path, monkeypatch)
     spec['resume'] = False
     with pytest.raises(launch.Refused, match='existing output'):
         launch._admit(spec)
+
+
+def test_split_tail_requires_an_explicit_boolean(tmp_path, monkeypatch):
+    spec = admission_spec(tmp_path, monkeypatch)
+    spec.update(python=sys.executable, fly_path='fly', models_path='models', seed_registry='registry', seed=100)
+    assert '--split-tail-mirrors' not in launch.command(spec)
+    for value in (False, True):
+        spec['split_tail_mirrors'] = value
+        launch._admit(spec)
+        assert ('--split-tail-mirrors' in launch.command(spec)) == value
+    spec['split_tail_mirrors'] = 'false'
+    with pytest.raises(launch.Refused, match='split_tail_mirrors'):
+        launch._admit(spec)

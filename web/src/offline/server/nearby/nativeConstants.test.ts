@@ -1,9 +1,8 @@
 // @vitest-environment node
 /// <reference types="node" />
 // The page and the native plugin agree on the nearby constants, and the
-// app's Info.plist, once it carries the nearby keys, names the same Bonjour
-// type (without it iOS refuses to browse or advertise, with no prompt). The
-// plist keys are not in the app yet; the check binds as soon as they land.
+// App Store Info.plist names the same Bonjour type (without it iOS refuses to
+// browse or advertise, with no prompt).
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -50,20 +49,28 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     expect(HOST_WINDOW_MS).toBeLessThanOrEqual(hostMs + 10_000);
   });
 
-  it("the plugin cannot run unreviewed and is not registered in a shipped build", () => {
-    expect(swift).toMatch(/static let reviewed = false/);
+  it("the plugin runs as reviewed only in the App Store binary, and is registered only with SHENGJI_NEARBY", () => {
+    expect(swift.match(/static let reviewed = /g)).toHaveLength(2);
+    expect(swift).toMatch(/#if SHENGJI_NEARBY && !SHENGJI_NEARBY_BETA && !DEBUG\s+static let reviewed = true\s+#else\s+static let reviewed = false\s+#endif/);
     expect(swift).toMatch(/#else\s+static let debugBuild = false/);
     expect(shell).toMatch(/#if SHENGJI_NEARBY\s+(?:\/\/[^\n]*\s+)?bridge\?\.registerPluginInstance\(ShengjiNearbyPlugin\(\)\)\s+#endif/);
+  });
+
+  it("the offline autoplay is a test tool: Debug and the Beta only", () => {
+    expect(shell.match(/-offline-autoplay"/g)).toHaveLength(1);
+    expect(shell).toMatch(/#if DEBUG \|\| SHENGJI_NEARBY_BETA\n\s+if ProcessInfo\.processInfo\.arguments\.contains\("-offline-autoplay"\) \{[\s\S]*?\n\s+\}\n\s+#endif/);
   });
 
   it("the device-test switches turn on only from the xcodebuild command line, in Debug", () => {
     const project = read("../../../../ios/App/App.xcodeproj/project.pbxproj");
     const xcconfig = read("../../../../ios/debug.xcconfig");
-    // the project file names nearby only in the Beta configuration's one line; the device
-    // test's DEV and SPIKE switches come from the command line alone
+    // the project file names nearby only in the Release (App Store) line and the Beta
+    // configuration's one line; the device test's DEV and SPIKE switches come from the
+    // command line alone
     expect(xcconfig).not.toMatch(/SHENGJI_NEARBY/);
     expect(project).not.toMatch(/SHENGJI_NEARBY_(?:DEV|SPIKE)/);
-    expect(project.match(/SHENGJI_NEARBY/g)).toHaveLength(2);
+    expect(project.match(/SHENGJI_NEARBY/g)).toHaveLength(3);
+    expect(project).toMatch(/SWIFT_ACTIVE_COMPILATION_CONDITIONS = SHENGJI_NEARBY;/);
     expect(project).toMatch(/SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SHENGJI_NEARBY SHENGJI_NEARBY_BETA";/);
     expect(swift.match(/static let debugBuild = true/g)).toHaveLength(1);
     expect(swift).toMatch(/#if DEBUG && \(SHENGJI_NEARBY_SPIKE \|\| SHENGJI_NEARBY_DEV\)\s+static let debugBuild = true\s+#else\s+static let debugBuild = false\s+#endif/);
@@ -117,14 +124,11 @@ describe("nearby constants across the page, the plugin and Info.plist", () => {
     for (const label of ["Autoplay", "Chaos", "Copy soak summary"]) expect(menu.split(`<span>${label}</span>`)).toHaveLength(2);
   });
 
-  it("Info.plist, when it has NSBonjourServices, lists the nearby type", () => {
-    const services = plistArray("NSBonjourServices");
-    if (services === null) {
-      // not yet: the keys wait for the nearby release's review
-      expect(plist).not.toContain("NSLocalNetworkUsageDescription");
-      return;
-    }
-    expect(services).toContain(NEARBY_SERVICE_TYPE);
-    expect(plist).toContain("<key>NSLocalNetworkUsageDescription</key>");
+  it("the App Store Info.plist asks for the local network and lists the nearby type", () => {
+    expect(plistArray("NSBonjourServices")).toEqual([NEARBY_SERVICE_TYPE]);
+    expect(plist).toMatch(/<key>NSLocalNetworkUsageDescription<\/key>\s*<string>[^<]{20,}<\/string>/);
+    const beta = read("../../../../ios/App/App/Info-Beta.plist");
+    const usage = (p: string) => p.match(/<key>NSLocalNetworkUsageDescription<\/key>\s*<string>([^<]*)<\/string>/)?.[1];
+    expect(usage(plist)).toBe(usage(beta));
   });
 });

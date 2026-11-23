@@ -1,8 +1,9 @@
 // Whether this page offers nearby play, decided at run time. The live site
-// and the bundled page carry the same code; nearby play shows only where the
-// app binary registers the ShengjiNearby plugin and its `capabilities()`
-// enable it (flag.ts). Until that answer is in, and wherever it is no (a
-// browser, an App Store binary, a binary whose plugin is not enabled),
+// and the bundled page carry the same nearby code (the App Store's bundled
+// page leaves out only the test tools, testTools.ts); nearby play shows only
+// where the app binary registers the ShengjiNearby plugin and its
+// `capabilities()` enable it (flag.ts). Until that answer is in, and
+// wherever it is no (a browser, a binary whose plugin is not enabled),
 // nothing nearby renders and none of its modules load: the one plugin call
 // is `capabilities()`, made only where the plugin is registered. Once it is
 // yes, the nearby UI (nearbyUi.tsx) is imported, and components draw its

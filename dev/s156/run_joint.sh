@@ -5,8 +5,8 @@ for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 
 fleet=/Users/jeryyu/fleet
 packet=$fleet/codex-sz2-joint-v1
 root=$packet/capture
-tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-joint-a8898dbe
-head=a8898dbeb6d3dacc54c1227a7304e30b385620d5
+tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-joint-afaa8941
+head=afaa89412b0f880f9b8bf3cc3771643f9b66694a
 lib=$tree/server/scripts/lanes/lane_lib.sh
 worker=$tree/server/scripts/sz2_gpu_smoke.py
 LANE_NAME=sz2-joint-v1

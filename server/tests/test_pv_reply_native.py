@@ -260,3 +260,13 @@ def test_lgf_bots_decide_alike_with_and_without_the_compiled_children(monkeypatc
             applied += bool(ra["leaf_greedy_finish_applied"])
             rnd.play(seat, a)
     assert decisions >= 80 and applied > 20 and len(built) > 100
+
+
+def test_group_winners_preserves_first_maximum_and_forced_seats():
+    import numpy as np
+
+    kernel = pytest.importorskip("shengji.train._reply_fast")
+    scores = np.array([-1., 3., 3., -4., -2., 9.])
+    scores.flags.writeable = False
+    assert kernel.group_winners(scores, [0, 3, 0, 2, 1, 0]) == [0, 1, 0, 1, 0, 0]
+    assert kernel.group_winners(scores[:4], [3, 2, 1]) == [1, 0, 0]

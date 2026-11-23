@@ -741,7 +741,8 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     stats["tree_forced_plays"] += len(active) - len(rows)
     # every (clone, candidate): apply it, let the heuristic finish the trick,
     # read the value head from the ACTING seat's team
-    leaves, owners = [], []
+    leaves = []
+    widths = [0] * len(active)
     for index, (candidates, _follow) in enumerate(plans):
         if len(candidates) == 1:
             continue
@@ -752,22 +753,28 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
         if children_fn is not None:
             children = children_fn(active[index], seat, candidates)
             leaves.extend(children)
-            owners.extend((index, k) for k in range(len(children)))
+            widths[index] = len(children)
             continue
-        for k, candidate in enumerate(candidates):
+        widths[index] = len(candidates)
+        for candidate in candidates:
             child = child_fn(active[index], seat, candidate)
             finish_current_trick(child)
             leaves.append(child)
-            owners.append((index, k))
     best = [0] * len(active)
     if leaves:
         values, batches = values_fn(leaves, seat, gate)
         stats["tree_value_batches"] += batches
         stats["tree_reply_evaluations"] += len(leaves)
-        top = {}
-        for (index, k), value in zip(owners, values):
-            if index not in top or value > top[index]:     # first maximum: policy order
-                top[index], best[index] = value, k
+        rank = getattr(_reply_fast, "group_winners", None)
+        if (rank is not None and type(values) is np.ndarray and values.dtype == np.float64
+                and values.ndim == 1 and values.flags.c_contiguous and values.flags.aligned):
+            best = rank(values, widths)
+        else:
+            scores = iter(values)
+            for index, width in enumerate(widths):
+                for k, value in enumerate(islice(scores, width)):
+                    if k == 0 or value > top:
+                        top, best[index] = value, k
     for index, clone in enumerate(active):
         candidates, follow = plans[index]
         choice = candidates[best[index]]

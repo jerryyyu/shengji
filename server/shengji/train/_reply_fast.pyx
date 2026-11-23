@@ -23,6 +23,25 @@ from cpython.long cimport PyLong_AsLong, PyLong_AsLongLong
 from libc.string cimport memcpy
 
 
+def group_winners(const double[::1] scores, list widths):
+    """First maximum within each parent's contiguous run of evaluated children."""
+    cdef Py_ssize_t index, k, width, best, offset = 0
+    cdef Py_ssize_t size = scores.shape[0]
+    cdef list result = [0] * len(widths)
+    for index in range(len(widths)):
+        width = widths[index]
+        if width < 0:
+            raise ValueError("negative reply group width")
+        width = min(width, size - offset)
+        best = 0
+        for k in range(1, width):
+            if scores[offset + k] > scores[offset + best]:
+                best = k
+        result[index] = best
+        offset += width
+    return result
+
+
 def reply_children(object clone, object seat, list candidates, object round_cls,
                    object trick_cls, object trickplay_cls, object decide):
     cdef dict base = clone.__dict__

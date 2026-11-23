@@ -1,4 +1,4 @@
-from copy import deepcopy
+from synthetic_slots import clean_slot
 
 import pytest
 
@@ -9,18 +9,7 @@ import readout
 def slots(monkeypatch):
     monkeypatch.setattr(readout, "FIRST_SEED", 100)
     monkeypatch.setattr(readout, "DEALS", 2)
-    row = dict(seat=1, attacker=True, admitted=[["SA"], ["SK"]], served=0, arm=1,
-               full=1, full_censored=False, worlds=64, abandoned=None, stage_seconds=2.,
-               completed_worlds=12, skipped_worlds=1, pi_attacker_points=[0, 5], play_index=0)
-    rec = dict(schema="s158b-seed-v1", status="complete", seed=100, release=55,
-               arm_name="fixture", rank="2", banker=0, decisions=60, world_counts={"64": 60},
-               belief_fallbacks=0, bury_fallback=None, declares=[dict(seat=1, evaluated=True,
-               fallback_reason=None, arm="shared", worlds=64, completed=64)],
-               attacker_points=100, kitty_bonus=0, level_change=0, winner_team=1, eligible=[row])
-    second = deepcopy(rec)
-    second.update(seed=101, rank="3")
-    second["eligible"][0].update(seat=2, attacker=False, pi_attacker_points=[5, 0])
-    return {100: rec, 101: second}
+    return {100 + i: clean_slot(i) for i in range(2)}
 
 
 def test_both_teams_regret_and_inclusive_time_bar(slots):

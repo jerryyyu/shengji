@@ -16,12 +16,15 @@ HEAD = "e" * 40
 JOINT_DONE = "LANE DONE sz2-joint-v1 t joint arms complete rc=0"
 JOINT_REFUSED = "LANE DONE sz2-joint-v1 t FAIL-OFFLINE at buffer 400 rc=0"
 PRODUCER = """
+import hashlib
 import os
 from pathlib import Path
 import sys
 
 fleet = Path.home() / "fleet"
 arm = sys.argv[1]
+config = Path.home() / ".config/darkbloom/provider.toml"
+assert sys.argv[2:] == ["--provider-sha256", hashlib.sha256(config.read_bytes()).hexdigest()]
 assert (fleet / ".claude-host.lock/owner").read_text().split()[1] == f"sz2-post-{arm}-v1"
 with (fleet / "calls").open("a") as calls:
     print(arm, file=calls)
@@ -33,6 +36,9 @@ sys.exit(int(os.environ.get("FIXTURE_EXIT", "0")))
 def fleet(tmp_path):
     home = tmp_path / "host"
     fleet = home / "fleet"
+    config = home / ".config/darkbloom/provider.toml"
+    config.parent.mkdir(parents=True)
+    config.write_text('model = "fixture"\n')
     tree = home / "Projects/shengji-wt" / f"codex-sz2-post-{HEAD[:8]}"
     scripts = tree / "server/scripts"
     (scripts / "lanes").mkdir(parents=True)
@@ -168,3 +174,26 @@ def test_nonzero_post_worker_aborts_and_keeps_capture(fleet):
     assert status[-1].startswith("LANE UNLOCKED sz2-post-S-v1 ")
     assert (root / "calls").read_text().splitlines() == ["S"]
     assert not (root / ".claude-host.lock").exists()
+
+
+def test_provider_drift_after_release_refuses_preflight_and_worker(fleet):
+    root, _, launch, release = fleet
+    preflight = launch("S", "--preflight")
+    assert preflight.returncode == 0
+    capture = release("S")
+    release_file = capture.parent / "launcher.RELEASE"
+    released = release_file.read_text()
+    assert released == preflight.stdout
+    assert launch("S", "--preflight").returncode == 0
+
+    config = root.parent / ".config/darkbloom/provider.toml"
+    config.write_text('model = "drifted"\n')
+    current = launch("S", "--identity")
+    assert current.returncode == 0 and current.stdout != released
+    assert launch("S", "--preflight").returncode == 6
+    assert launch("S").returncode == 6
+    assert not capture.exists()
+    assert not (root / "calls").exists()
+    assert not (root / ".claude-host.lock").exists()
+    assert release_file.read_text() == released
+    assert config.read_text() == 'model = "drifted"\n'

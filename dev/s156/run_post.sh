@@ -22,14 +22,17 @@ clean_tree() {
 }
 clean_tree || exit 6
 . "$lib" || exit 6
+provider_config=$HOME/.config/darkbloom/provider.toml
+provider_sha=$(lane_sha "$provider_config") || exit 6
 LANE_NAME=$name
 LANE_HOSTNAME=Jerrys-Mac-Studio.local
 LANE_RELEASE=$packet/launcher.RELEASE
 LANE_LOCK=$fleet/.claude-host.lock
 LANE_HOLDS="$packet/launcher.HOLD $fleet/codex-sz2-joint-v1/launcher.HOLD $fleet/claude_ut_gen2.HOLD"
 LANE_PY=/Users/jeryyu/Projects/shengji/server/.venv/bin/python
-LANE_FILES=("$packet/source" "$packet/run_post.sh" "$packet/dispatch_post.sh" "$lib" "$base/sz2_post_arm.py" "$base/sz2_export_arm.py" "$base/sz2_export_parity.py" "$base/sz2_gpu_smoke.py" "$base/sz2_cache_arm.py" "$base/sz2_polish_arm.py" "$base/sz2_joint_segment.py" "$tree/server/shengji/train/unified_readout.py")
-LANE_PINS="b194fa7cb62ba8c3be7eb15e6ce9b813d32faff97cef7442969a381a3f424f88  $probe/small_capacity.py"
+LANE_FILES=("$provider_config" "$packet/source" "$packet/run_post.sh" "$packet/dispatch_post.sh" "$lib" "$base/sz2_post_arm.py" "$base/sz2_export_arm.py" "$base/sz2_export_parity.py" "$base/sz2_gpu_smoke.py" "$base/sz2_cache_arm.py" "$base/sz2_polish_arm.py" "$base/sz2_joint_segment.py" "$tree/server/shengji/train/unified_readout.py")
+LANE_PINS="$provider_sha  $provider_config
+b194fa7cb62ba8c3be7eb15e6ce9b813d32faff97cef7442969a381a3f424f88  $probe/small_capacity.py"
 LANE_GATES="$fleet/codex-sz2-joint-v1/capture/launcher.status ^LANE DONE sz2-joint-v1 [^ ]+ joint arms complete rc=0$"
 if [ "$arm" = M ]; then
   LANE_GATES="$LANE_GATES
@@ -51,13 +54,21 @@ preflight() {
     if compgen -G "$fleet/codex-sz2-cache-v1/S/*/*.npz" >/dev/null; then return 6; fi
   fi
   joint_id=$(cat "$fleet/codex-sz2-joint-v1/launcher.RELEASE") &&
-    [ "${joint_id%% *}" = 3cb0b58c2ea079b2c2653c5f8687ebf5fa1773bd9f82ecac115c938753fdcb04 ] &&
+    [ "${joint_id%% *}" = 8e50cdcd8a33787b2104eccf69a3db768a0fc214da2baa59f0d0d514f12fb15b ] &&
     clean_tree && ! lane_hold_present && lane_check_pins && lane_gate && lane_disk_check &&
     [ ! -e "$root" ] && [ ! -L "$root" ]
 }
 case "${2:-}" in
   --identity) lane_check_pins && lane_identity "${LANE_FILES[@]}"; exit $? ;;
-  --preflight) [ ! -e "$LANE_LOCK" ] && preflight && lane_identity "${LANE_FILES[@]}"; exit $? ;;
+  --preflight)
+    [ ! -e "$LANE_LOCK" ] && preflight || exit 6
+    if [ -e "$LANE_RELEASE" ] || [ -L "$LANE_RELEASE" ]; then
+      lane_arm || exit 6
+      echo "$LANE_ARMED_ID"
+    else
+      lane_identity "${LANE_FILES[@]}"
+    fi
+    exit $? ;;
   "") ;;
   *) exit 2 ;;
 esac
@@ -70,7 +81,7 @@ LANE_STATUS=$root/launcher.status
 LANE_LOG=$root/launcher.log
 lane_say START "pid=$$ serial cache, polish and selected checkpoint export"
 LANE_MIN_FREE_GIB=150
-lane_supervise "$LANE_PY" -B "$base/sz2_post_arm.py" "$arm"
+lane_supervise "$LANE_PY" -B "$base/sz2_post_arm.py" "$arm" --provider-sha256 "$provider_sha"
 rc=$?
 [ "$rc" = 0 ] || lane_abort "$rc" "post-training worker failed"
 lane_done 'selected package parity verified'

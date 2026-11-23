@@ -38,7 +38,14 @@ def command(*argv, timeout=5):
                           stdin=subprocess.DEVNULL, timeout=timeout).stdout
 
 
-def verify_darkbloom_identity(status):
+def provider_digest(expected_sha=None):
+    digest = PROVIDER_SHA256 if expected_sha is None else expected_sha
+    if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ValueError("--provider-sha256 requires 64 lowercase hexadecimal digits")
+    return digest
+
+
+def verify_darkbloom_identity(status, expected_sha=None):
     fields = {}
     for label in ("Serving", "Enabled model filter"):
         values = [line[len(label) + 1:].strip() for line in status.splitlines()
@@ -53,18 +60,19 @@ def verify_darkbloom_identity(status):
         raise RuntimeError("Darkbloom model filter differs from the reviewed filter")
     with PROVIDER_CONFIG.open("rb") as config:
         digest = hashlib.file_digest(config, "sha256").hexdigest()
-    if digest != PROVIDER_SHA256:
+    if digest != provider_digest(expected_sha):
         raise RuntimeError(f"Darkbloom provider.toml SHA differs from the reviewed SHA: {digest}")
 
 
-def darkbloom_ready(status):
+def darkbloom_ready(status, expected_sha=None):
+    expected_sha = provider_digest(expected_sha)
     if not all(re.search(rf"^{line}(?:[ \t]|$)", status, re.MULTILINE)
                for line in ("Daemon: running", "Traffic: eligible")):
         return False
     jobs = {line.split()[-1] for line in command(LAUNCHCTL, "list").splitlines() if line.strip()}
     if not JOBS <= jobs:
         return False
-    verify_darkbloom_identity(status)
+    verify_darkbloom_identity(status, expected_sha)
     return True
 
 
@@ -72,7 +80,8 @@ class RestoreUnverified(RuntimeError):
     pass
 
 
-def restore_darkbloom():
+def restore_darkbloom(expected_sha=None):
+    expected_sha = provider_digest(expected_sha)
     try:
         command(DARKBLOOM, "restart", "--timeout", str(DRAIN_SECONDS), timeout=DRAIN_SECONDS + 30)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -83,9 +92,9 @@ def restore_darkbloom():
         detail = "provider is not ready"
         try:
             status = command(DARKBLOOM, "status")
-            if darkbloom_ready(status):
+            if darkbloom_ready(status, expected_sha):
                 print("Darkbloom running and eligible with reviewed serving mode and model filter "
-                      f"provider_sha256={PROVIDER_SHA256}", flush=True)
+                      f"provider_sha256={expected_sha}", flush=True)
                 return
         except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
             detail = str(exc)
@@ -99,7 +108,8 @@ def restore_darkbloom():
 
 
 @contextmanager
-def darkbloom_stopped(check_signal):
+def darkbloom_stopped(check_signal, expected_sha=None):
+    expected_sha = provider_digest(expected_sha)
     pause = PAUSE
     with pause.open("x", encoding="utf-8") as lease:
         identity = os.fstat(lease.fileno())
@@ -122,7 +132,7 @@ def darkbloom_stopped(check_signal):
         try:
             lease.write(token)
             lease.flush()
-            if not darkbloom_ready(command(DARKBLOOM, "status")):
+            if not darkbloom_ready(command(DARKBLOOM, "status"), expected_sha):
                 raise RuntimeError("Darkbloom initial state is not ready")
             check_signal()
             if not still_owned():
@@ -153,7 +163,7 @@ def darkbloom_stopped(check_signal):
                 raise RuntimeError(f"Darkbloom pause ownership changed: {pause}")
             try:
                 if stopping:
-                    restore_darkbloom()
+                    restore_darkbloom(expected_sha)
             finally:
                 if still_owned():
                     pause.unlink()
@@ -244,7 +254,8 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
                 child.wait(timeout=5)
 
 
-def run_segment(root, phase, check_signal):
+def run_segment(root, phase, check_signal, expected_sha=None):
+    expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
     output = root / "smoke"
     if phase == "smoke" and os.path.lexists(output):
@@ -265,7 +276,7 @@ def run_segment(root, phase, check_signal):
     if phase == "smoke":
         output.mkdir()
     gpu = phase != "small"
-    provider = darkbloom_stopped(check_signal) if gpu else nullcontext(check_signal)
+    provider = darkbloom_stopped(check_signal, expected_sha) if gpu else nullcontext(check_signal)
     with provider as verify_stopped:
         baseline, pressure = memory_sample()
         if pressure >= 4:
@@ -289,6 +300,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("--phase", choices=("smoke", "small", "medium-prefix", "medium-finish"), default="smoke")
+    parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
     args = parser.parse_args()
     received = None
 
@@ -303,7 +315,7 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, mark_signal)
     try:
-        return run_segment(args.root, args.phase, check_signal)
+        return run_segment(args.root, args.phase, check_signal, args.provider_sha256)
     except RestoreUnverified as exc:
         print(exc, file=sys.stderr, flush=True)
         return 9

@@ -81,8 +81,9 @@ if service == "darkbloom":
                 raise SystemExit(64)
         if action == "restart" or not (d / "failed_stop").exists():
             (d / "state").write_text("running" if action == "restart" else "not running")
-        if action == "restart" and (d / "config_drift_after_restart").exists():
-            (d / "provider.toml").write_text("changed")
+        drift = d / "config_drift_after_restart"
+        if action == "restart" and drift.exists():
+            (d / "provider.toml").write_bytes(drift.read_bytes() or b"changed")
     else:
         state = (d / "state").read_text() if (d / "state").exists() else "running"
         if not restarted and "train " in events and (d / "early_provider_restart").exists():
@@ -167,9 +168,9 @@ sys.exit(w.main())
     return [sys.executable, "-B", "-c", bootstrap, str(root)], tmp_path, launch_log
 
 
-def invoke(host):
+def invoke(host, *extra):
     command, _, _ = host
-    return subprocess.run(command, capture_output=True, text=True, timeout=10)
+    return subprocess.run([*command, *extra], capture_output=True, text=True, timeout=10)
 
 
 def events(log):
@@ -342,6 +343,47 @@ def test_restart_requires_reviewed_provider_identity(host, fault, diagnostic):
     assert not (tmp / "keepalive.pause").exists()
 
 
+@pytest.mark.parametrize("restore_drift", [False, True])
+def test_full_segment_verifies_explicit_config_at_both_ends(host, restore_drift):
+    _, tmp, log = host
+    config = tmp / "provider.toml"
+    if restore_drift:
+        (tmp / "config_drift_after_restart").write_bytes(config.read_bytes())
+    config.write_text("alternate reviewed provider config\n")
+    digest = hashlib.sha256(config.read_bytes()).hexdigest()
+    (tmp / "phase").write_text("medium-prefix")
+    (tmp / "trainer_rc").write_text("7")
+
+    result = invoke(host, "--phase", "medium-prefix", "--provider-sha256", digest)
+
+    assert events(log) == ["stop", "train", "restart"]
+    assert not (tmp / "keepalive.pause").exists()
+    if restore_drift:
+        assert result.returncode == 9, result.stderr
+        assert "provider.toml SHA differs" in result.stderr
+    else:
+        assert result.returncode == 7, result.stderr
+        assert f"provider_sha256={digest}" in result.stdout
+
+
+@pytest.mark.parametrize(("digest", "diagnostic"), [
+    ("0" * 64, "provider.toml SHA differs"),
+    ("0" * 63, "requires 64 lowercase hexadecimal digits"),
+    ("A" * 64, "requires 64 lowercase hexadecimal digits"),
+])
+def test_full_segment_refuses_wrong_or_malformed_explicit_config(host, digest, diagnostic):
+    _, tmp, log = host
+    (tmp / "phase").write_text("medium-prefix")
+    (tmp / "trainer_rc").write_text("7")
+
+    result = invoke(host, "--phase", "medium-prefix", "--provider-sha256", digest)
+
+    assert result.returncode == 1
+    assert diagnostic in result.stderr
+    assert not log.exists()
+    assert not (tmp / "keepalive.pause").exists()
+
+
 def test_trainer_stops_if_provider_reappears_during_smoke(host):
     _, tmp, log = host
     (tmp / "slow_trainer").touch()
@@ -416,7 +458,13 @@ def test_serial_post_training_stops_on_first_incomplete_stage(tmp_path, monkeypa
     monkeypatch.setattr(post.host, "SCRIPTS", scripts)
     monkeypatch.setattr(post, "FLEET", tmp_path)
     monkeypatch.setattr(post.host, "command", lambda *args: "")
-    monkeypatch.setattr(post.host, "darkbloom_ready", lambda status: True)
+    digests = []
+
+    def ready(status, expected_sha=None):
+        digests.append(expected_sha)
+        return True
+
+    monkeypatch.setattr(post.host, "darkbloom_ready", ready)
     monkeypatch.setattr(post.host, "memory_sample", lambda: (0, 1))
     monkeypatch.setitem(sys.modules, "small_capacity", types.SimpleNamespace(provider_sample=lambda pid=42: 42))
 
@@ -431,14 +479,16 @@ def test_serial_post_training_stops_on_first_incomplete_stage(tmp_path, monkeypa
         small.mkdir(parents=True)
         (small / "train-0000.npz").touch()
         with pytest.raises(ValueError, match="offloaded"):
-            post.run("M")
+            post.run("M", expected_sha="a" * 64)
         assert not (tmp_path / "calls").exists()
+        assert not digests
         return
     calls = ["M 0 8", "M 1 8", "M 2 8", "polish 16", "export 2"]
     if failed:
         with pytest.raises(RuntimeError, match="rc=17"):
-            post.run("M")
+            post.run("M", expected_sha="a" * 64)
         calls = calls[:next(i for i, line in enumerate(calls) if line.startswith(failed)) + 1]
     else:
-        post.run("M")
+        post.run("M", expected_sha="a" * 64)
     assert (tmp_path / "calls").read_text().splitlines() == calls
+    assert digests == ["a" * 64] * (1 if failed else 2)

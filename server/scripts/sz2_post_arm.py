@@ -8,12 +8,13 @@ import sz2_gpu_smoke as host
 from sz2_cache_arm import FLEET, WORKERS
 
 
-def run(arm):
+def run(arm, expected_sha=None):
     from small_capacity import provider_sample
 
+    expected_sha = host.provider_digest(expected_sha)
     if arm == "M" and any((FLEET / "codex-sz2-cache-v1/S").glob("*/*.npz")):
         raise ValueError("S cache must be offloaded before M cache")
-    if not host.darkbloom_ready(host.command(host.DARKBLOOM, "status")):
+    if not host.darkbloom_ready(host.command(host.DARKBLOOM, "status"), expected_sha):
         raise ValueError("Darkbloom must be eligible at entry")
     pid = provider_sample()
     baseline, pressure = host.memory_sample()
@@ -35,11 +36,13 @@ def run(arm):
         if rc:
             raise RuntimeError(f"{script} {' '.join(args)} rc={rc}")
     provider_sample(pid)
-    if not host.darkbloom_ready(host.command(host.DARKBLOOM, "status")):
+    if not host.darkbloom_ready(host.command(host.DARKBLOOM, "status"), expected_sha):
         raise ValueError("Darkbloom ineligible after export")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("arm", choices=("S", "M"))
-    run(parser.parse_args().arm)
+    parser.add_argument("--provider-sha256", required=True)
+    args = parser.parse_args()
+    run(args.arm, args.provider_sha256)

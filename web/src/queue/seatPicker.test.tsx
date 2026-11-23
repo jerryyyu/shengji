@@ -5,7 +5,8 @@
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NearbyJoinStore, type NearbyJoinDeps } from "../nearbyJoin";
+import { keepSeatToken, NearbyJoinStore, type NearbyJoinDeps } from "../nearbyJoin";
+import { NearbySocket } from "../offline/server/nearby/socket";
 import { nearbyLogLines } from "../nearbyLog";
 import type { RoomSeats } from "../protocol";
 import type { ConnStatus } from "../ws";
@@ -142,5 +143,31 @@ describe("the nearby seat picker", () => {
     const lines = nearbyLogLines().map((l) => l.text);
     expect(lines).toContain("join sent (no token), seat 1");
     expect(lines).toContain("seated at seat 1");
+  });
+
+  it("with a kept token, a tapped seat is sent as chosen; Join on the glow alone resumes", async () => {
+    keepSeatToken("K7Q2M", "tok-old");
+    const peek = { type: "room_seats", room: "K7Q2M", in_game: true, full: false, seats: [person(0, "Jerry"), person(2, "Mei")] } as RoomSeats;
+    const h = await picker(peek);
+    h.store.join();
+    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 1, token: "tok-old" });
+    act(() => root.unmount());
+    root = createRoot(host);
+    const h2 = await picker(peek);
+    // drawn around seat 1: seat 3 above it
+    tap(grid()[0][0]);
+    tap(host.querySelector(".tp-primary")!);
+    const sent = h2.sent.at(-1)!;
+    expect(sent).toMatchObject({ type: "table_join", seat: 3, token: "tok-old", chosen: true });
+    expect(nearbyLogLines().map((l) => l.text)).toContain(`join sent (with token), seat ${String(sent.seat)} chosen`);
+    // the hello carries the pick to the host
+    expect(JSON.parse(NearbySocket.outbound(JSON.stringify(sent))!)).toMatchObject({ type: "nearby_hello", token: "tok-old", chosen: true });
+  });
+
+  it("with no kept token a tap needs no chosen: the seat alone seats a newcomer", async () => {
+    const h = await picker({ type: "room_seats", room: "K7Q2M", in_game: false, full: false, seats: [person(0, "Jerry")] } as RoomSeats);
+    tap(grid()[1][0]);
+    tap(host.querySelector(".tp-primary")!);
+    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 3 });
   });
 });

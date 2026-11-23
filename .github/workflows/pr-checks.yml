@@ -454,6 +454,7 @@ jobs:
           tests/test_expert_label_check.py
           tests/test_check_comment_provenance.py
           tests/test_lane_lib.py
+          tests/test_sz2_gpu_smoke.py
           tests/test_ci_path_classifier.py
           tests/test_receipt_summary.py
           tests/test_mistake_dashboard.py
@@ -939,6 +940,8 @@ jobs:
             tests/test_unified_seq.py \
             tests/test_unified_slots.py \
             tests/test_unified_readout.py \
+            tests/test_unified_readout_device.py \
+            tests/test_sz2_joint_segment.py \
             tests/test_s134_v1_read.py \
             tests/test_pv_value_matrix.py \
             tests/test_pv_native_release48.py \

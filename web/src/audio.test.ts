@@ -219,3 +219,75 @@ describe("audio unlock", () => {
     expect(FakeAudioContext.last?.state).toBe("running");
   });
 });
+
+describe("declaration clips", () => {
+  const dealState = (over: Record<string, unknown> = {}) => ({
+    phase: "deal", banker: null, levels: ["2", "2"], current_declaration: null,
+    trump: null, trick: null, ...over,
+  }) as unknown as import("./protocol").GameState;
+
+  async function withFetch() {
+    const audio = await freshModule();
+    const urls: string[] = [];
+    const net = { online: true };
+    Object.assign(globalThis, {
+      fetch: async (url: string) => {
+        urls.push(url);
+        if (!net.online) throw new TypeError("Load failed");
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(0) };
+      },
+    });
+    const started: number[] = [];
+    const proto = FakeAudioContext.prototype as unknown as Record<string, unknown>;
+    proto.decodeAudioData = async () => ({ duration: 0 });
+    proto.createBufferSource = () => {
+      const src = {
+        buffer: null, onended: null as null | (() => void),
+        connect() {},
+        start() { started.push(1); setTimeout(() => src.onended?.(), 0); },
+      };
+      return src;
+    };
+    proto.destination = {};
+    return { audio, net, started, names: () => urls.map((u) => u.replace(/^\/sounds\/|\.mp3\?.*$/g, "")) };
+  }
+
+  it("are fetched during the deal, before any declaration needs them", async () => {
+    const { audio, names } = await withFetch();
+    audio.announceState(dealState(), true);
+    expect(names().sort()).toEqual(["C2", "D2", "H2", "S2", "nt", "pair"]);
+    // every later frame of the deal reuses them
+    audio.announceState(dealState());
+    expect(names()).toHaveLength(6);
+  });
+
+  it("follow the banker's level, and stay unfetched while muted", async () => {
+    const { audio, names } = await withFetch();
+    audio.announceState(dealState({ banker: 1, levels: ["5", "10"] }), true);
+    expect(names().sort()).toEqual(["C10", "D10", "H10", "S10", "nt", "pair"]);
+
+    const muted = await withFetch();
+    muted.audio.setMuted(true);
+    muted.audio.announceState(dealState(), true);
+    expect(muted.names()).toEqual([]);
+  });
+
+  it("retry a failed prefetch once when its declaration is played", async () => {
+    const { audio, net, started, names } = await withFetch();
+    FakeAudioContext.allowResume = true;
+    net.online = false;
+    audio.announceState(dealState(), true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(names()).toHaveLength(6);
+    // the rest of the deal does not refetch the failed clips
+    audio.announceState(dealState());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(names()).toHaveLength(6);
+
+    net.online = true;
+    audio.announceState(dealState({ current_declaration: { seat: 1, cards: ["S2"] } }));
+    for (let i = 0; i < 20 && started.length === 0; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(names().slice(6)).toEqual(["S2"]);
+    expect(started).toHaveLength(1);
+  });
+});

@@ -1021,10 +1021,12 @@ export class LocalServer {
         if (res?.ok) gate!.drop(res.token, "invalid");
         cards = room.bot.declare(viewFor(rnd, s), final);
       }
+      let declared = false;
       if (cards) {
         try {
           declare(rnd, s, cards);
           room.logAction(["declare", s, [...cards]]);
+          declared = true;
         } catch (e) {
           if (token) gate!.drop(token, "invalid");
           token = null;
@@ -1033,6 +1035,8 @@ export class LocalServer {
       }
       // no declaration is a decision too: its bot copy is kept like any other
       if (token) gate!.commit(token);
+      // every declaration reaches the table as it commits, as on the game server
+      if (declared) this.broadcast(room);
     }
     return complete;
   }
@@ -1056,7 +1060,9 @@ export class LocalServer {
           room.logAction(["declare", s, [...cards]]);
         } catch (e) {
           if (!(e instanceof IllegalPlay)) throw e;
+          continue;
         }
+        this.broadcast(room);
       }
     }
     return true;
@@ -1073,7 +1079,6 @@ export class LocalServer {
     for (;;) {
       if (room.closed || room.round !== rnd) return;
       if (rnd.phase !== "deal") break;
-      const dealt = this.clock.now();
       const [seat, idx, code] = dealNext(rnd);
       room.ids[seat].set(idx, code);
       if ((rnd.phase as string) === "declare") {
@@ -1082,15 +1087,17 @@ export class LocalServer {
         room.declareUntil = this.clock.now() + DECLARE_GRACE;
       }
       room.logDeal(rnd.dealPos);
+      // The card shows at once, as the game server deals; the bots decide
+      // on it inside its gap, each declaration publishing as it commits.
+      this.broadcast(room);
+      const shown = this.clock.now();
       const declared = this.declares(room, [seat], false);
       if (declared instanceof Promise) {
         await declared;
         if (room.closed || room.round !== rnd) return;
       }
       if (room.round !== rnd) return;
-      this.broadcast(room);
-      // a remote declaration's time counts toward the deal's pace
-      await sleep(this.clock, declared instanceof Promise ? Math.max(0, DEAL_DELAY - (this.clock.now() - dealt)) : DEAL_DELAY);
+      await sleep(this.clock, Math.max(0, DEAL_DELAY - (this.clock.now() - shown)));
     }
 
     const first = this.declares(room, [0, 1, 2, 3], true);

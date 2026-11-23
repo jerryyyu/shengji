@@ -2121,6 +2121,9 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                         room.log_event("declare", seat=s, cards=cards, bot=True)
                     except IllegalPlay:
                         pass
+                    else:
+                        # every declaration reaches the table as it commits
+                        await broadcast(room)
                 continue
             game, owner = room.game, room.seats[s]
             phase, declaration = rnd.phase, rnd.declaration
@@ -2159,6 +2162,8 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
             record = getattr(bot_copy, "last_declare_record", None)
             if record is not None:
                 room.log_event("declare_decision", seat=s, record=record, bot=True)
+            if cards:
+                await broadcast(room)
     return complete
 
 
@@ -2167,7 +2172,21 @@ async def run_deal(room: Room) -> None:
     rnd = room.round
     assert rnd is not None
     room.declare_until = None
+    loop = asyncio.get_event_loop()
+    published = None
+
+    async def pace() -> None:
+        # The next frame is due DEAL_DELAY after the last one; a bot's
+        # declare search for the card just shown runs inside that gap.
+        if room.closing:
+            await asyncio.sleep(0.0)
+        elif published is not None:
+            wait = published + DEAL_DELAY - loop.time()
+            if wait > 0:
+                await asyncio.sleep(wait)
+
     while True:
+        await pace()
         async with room.lock:
             if room.round is not rnd:
                 return
@@ -2179,14 +2198,15 @@ async def run_deal(room: Room) -> None:
                 # provisional, so the frames before the window opens (the
                 # last card, the bots' last declarations) already count down
                 room.declare_until = asyncio.get_running_loop().time() + DECLARE_GRACE
+            # The card shows at once; the bots decide on it inside its gap,
+            # and each declaration they make publishes as it commits.
+            await broadcast(room)
+            published = loop.time()
         await _bot_declares(room, [seat])
         async with room.lock:
             if room.round is not rnd:
                 return
-            await broadcast(room)
-        await asyncio.sleep(0.0 if room.closing else DEAL_DELAY)
 
-    loop = asyncio.get_event_loop()
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
         if room.round is not rnd or rnd.phase != "declare":

@@ -107,7 +107,8 @@ describe("the simulator's page keeps its seat's token as nearbyJoin.ts does", ()
     const back = r.trace.find((l) => / H js\/host: resume from p\d+: seat 3 bound/.test(l) && at(l) >= at(claim!));
     expect(back, "the claim resumes seat 3").toBeDefined();
     expect(at(back!)).toBeLessThan(at(look));
-    expect(at(back!)).toBeCloseTo(150.761, 2);
+    // the claim's own resume answers it: one browse and one link, under a second
+    expect(at(back!) - at(claim!)).toBeLessThan(1);
     expect(r.trace.some((l) => / J1 page: (gives up|resume by the kept token)/.test(l)), "the claim neither ends nor gives up").toBe(false);
     expect(r.trace.filter((l) => / H js\/host: join from /.test(l)), "only the first join is a newcomer's").toHaveLength(1);
   }, 60_000);

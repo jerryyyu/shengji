@@ -244,6 +244,335 @@ def test_run_deal_reaches_bury_with_declare_path(monkeypatch, value_declare):
     assert any(kind == "declare_decision" for kind, _ in room.records) == value_declare
 
 
+def _paced_deal(monkeypatch, searches, *, during_search=None, human=None):
+    """Run the real deal on a virtual clock; ``searches`` maps a dealt-card
+    count to the seconds a gated bot declare search takes there;
+    ``during_search`` runs inside each search, on the live round: when it returns true the search returns a
+    declaration (the copy's first option). Returns each card frame's gap
+    after the one before it (by dealt-card count), the pause before the
+    final declare pass, each bot declare decision's (dealt count, declarer
+    it saw), and the room."""
+    clock = [0.0]
+
+    def dealt(rnd):
+        return sum(len(hand) for hand in rnd.hands)
+
+    class SearchingBot(HeuristicBot):
+        value_declare = True
+
+        def declare_gate(self, rnd, seat, final=False):
+            # the search starts when the gate admits it (the copy keeps this)
+            self.admitted_at = clock[0]
+            return None, not final and dealt(rnd) in searches
+
+        def decide_declare(self, rnd, seat, final=False):
+            if not final:
+                decisions.append((dealt(rnd), rnd.declaration and rnd.declaration["seat"]))
+                if during_search is not None and during_search(room.round):
+                    return rnd.declare_options(seat)[0] if rnd.declare_options(seat) else None
+                # it ends `searches[n]` after it started, however the deal's
+                # own pause advanced the clock meanwhile
+                end = self.admitted_at + searches.get(dealt(rnd), 0.0)
+                clock[0] = max(clock[0], end)
+            return None
+
+    room = _declare_room()
+    room.game.start_round()
+    room.ids = [{}, {}, {}, {}]
+    room.bot = SearchingBot()
+    if human is not None:
+        room.seats[human] = srv.Seat(name="Human", is_bot=False)
+    decisions = []
+    frames = []
+    final_at = []
+    real_sleep = asyncio.sleep
+    real_declares = srv._bot_declares
+
+    class Asyncio:
+        def __getattr__(self, name):
+            return getattr(asyncio, name)
+
+        def get_event_loop(self):
+            return SimpleNamespace(time=lambda: clock[0])
+
+        async def sleep(self, seconds):
+            clock[0] += seconds
+            await real_sleep(0)
+
+    async def broadcast(r):
+        if r.round.phase in ("deal", "declare"):
+            frames.append((dealt(r.round), clock[0]))
+
+    async def declares(r, seats, final=False):
+        if final and not final_at:
+            final_at.append(clock[0])
+        return await real_declares(r, seats, final=final)
+
+    monkeypatch.setattr(srv, "asyncio", Asyncio())
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "_bot_declares", declares)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    asyncio.run(srv.run_deal(room))
+    assert room.round.phase == "bury"
+    # each card's own frame: a declaration in its gap may publish again
+    deal = [frame for i, frame in enumerate(frames) if i == 0 or frame[0] != frames[i - 1][0]][:100]
+    assert [n for n, _ in deal] == list(range(1, 101))
+    gaps = {n: round(t - deal[i - 1][1], 6) for i, (n, t) in enumerate(deal) if i}
+    return gaps, final_at[0] - deal[-1][1], decisions, room
+
+
+def test_a_short_declare_search_runs_inside_the_card_gap(monkeypatch):
+    """A search shorter than DEAL_DELAY leaves every published frame exactly
+    DEAL_DELAY after the one before it: no stall, no bunched pair."""
+    gaps, before_final, _, _ = _paced_deal(monkeypatch, {3: 0.1, 40: 0.15})
+    assert set(gaps.values()) == {srv.DEAL_DELAY}
+    # the last card keeps its full gap before the final declare pass
+    assert before_final == pytest.approx(srv.DEAL_DELAY)
+
+
+def test_a_slow_declare_search_delays_one_frame_and_the_pace_resumes(monkeypatch):
+    """Card 50 shows on time; its search overruns the gap, so card 51 shows
+    as soon as the search ends, and the frames after it keep DEAL_DELAY, with
+    no catch-up bunching."""
+    gaps, _, _, _ = _paced_deal(monkeypatch, {50: 0.3})
+    assert gaps[50] == pytest.approx(srv.DEAL_DELAY)
+    assert gaps[51] == pytest.approx(0.3)
+    assert all(gap == pytest.approx(srv.DEAL_DELAY) for n, gap in gaps.items() if n != 51)
+
+
+def test_a_human_declaration_during_a_bot_search_is_ordered_first(monkeypatch):
+    """The card shows, then the bots search it. A human declaration made while
+    a bot searches lands first: the bot's now stale declaration is dropped,
+    and its next decision sees the human's."""
+    class Every(dict):
+        def __contains__(self, n):
+            return True
+
+        def get(self, n, default=None):
+            return 0.05
+
+    declared_at = []
+
+    def during_search(live):
+        if not declared_at and live.declaration is None and live.declare_options(0):
+            live.declare(0, live.declare_options(0)[0])
+            declared_at.append(sum(len(hand) for hand in live.hands))
+            return True
+        return False
+
+    gaps, _, decisions, room = _paced_deal(monkeypatch, Every(), during_search=during_search, human=0)
+    assert declared_at
+    assert [d for k, d in room.records if k == "declare" and d.get("bot")] == []
+    assert room.round.declaration["seat"] == 0
+    later = [seen for n, seen in decisions if n > declared_at[0]]
+    assert later and all(seen == 0 for seen in later)
+    assert set(gaps.values()) == {srv.DEAL_DELAY}
+
+
+def _blocking_deal_room(at_card):
+    """A deal whose bot search on card ``at_card`` blocks until released and
+    then returns a declaration; returns (room, entered, release, frames,
+    decided), ``decided`` holding the round of every declare decision."""
+    entered, release = threading.Event(), threading.Event()
+    decided = []
+
+    def dealt(rnd):
+        return sum(len(hand) for hand in rnd.hands)
+
+    class BlockingBot(HeuristicBot):
+        value_declare = True
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, not final and dealt(rnd) == at_card
+
+        def decide_declare(self, rnd, seat, final=False):
+            decided.append(room.round)
+            if not final and dealt(rnd) == at_card:
+                entered.set()
+                assert release.wait(5)
+                return ["C2"]
+            return None
+
+    room = _declare_room()
+    room.game.start_round()
+    room.ids = [{}, {}, {}, {}]
+    room.bot = BlockingBot()
+    frames = []
+    return room, entered, release, frames, decided
+
+
+def _patch_deal(monkeypatch, frames):
+    async def broadcast(r):
+        frames.append((r.round, sum(len(hand) for hand in r.round.hands)))
+
+    monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.001)
+
+
+def test_cancelling_the_deal_during_a_bot_search_stops_it(monkeypatch):
+    """Cancelled while a bot searches a card whose seat has just changed
+    hands, the deal stops at once: no further frame, no declaration."""
+    room, entered, release, frames, _ = _blocking_deal_room(2)
+    _patch_deal(monkeypatch, frames)
+
+    async def scenario():
+        task = asyncio.create_task(srv.run_deal(room))
+        assert await asyncio.to_thread(entered.wait, 5)
+        async with room.lock:
+            for s in range(4):
+                room.seats[s] = srv.Seat(name=f"Bot {s}", is_bot=True)
+        await asyncio.sleep(0.05)
+        shown = len(frames)
+        task.cancel()
+        asyncio.get_running_loop().call_later(0.05, release.set)
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        await asyncio.sleep(0.05)
+        assert len(frames) == shown        # no card after the cancellation
+        assert room.round.declaration is None
+
+    asyncio.run(scenario())
+
+
+def test_a_replaced_round_sees_nothing_of_the_old_deal(monkeypatch):
+    """A round replaced while the old deal's bot searches gets no decision,
+    declaration, card or frame from the old deal."""
+    room, entered, release, frames, decided = _blocking_deal_room(2)
+    _patch_deal(monkeypatch, frames)
+
+    async def scenario():
+        task = asyncio.create_task(srv.run_deal(room))
+        assert await asyncio.to_thread(entered.wait, 5)
+        await asyncio.sleep(0.05)
+        old = room.round
+        async with room.lock:
+            replacement = room.game.start_round()
+            room.ids = [{}, {}, {}, {}]
+        assert room.round is replacement and replacement is not old
+        records = len(room.records)
+        release.set()
+        await task
+        await asyncio.sleep(0.05)
+        # the old deal neither dealt, declared nor published in the new round
+        assert sum(len(hand) for hand in replacement.hands) == 0
+        assert replacement.declaration is None
+        assert [k for k, _ in room.records[records:] if k in ("declare", "declare_decision")] == []
+        assert all(rnd is old for rnd, _ in frames)
+        assert all(rnd is old for rnd in decided)
+
+    asyncio.run(scenario())
+
+
+def _seated_deal(monkeypatch, bot, arrange=None):
+    """Run the real deal with a connected human at seat 0 and ``bot`` in the
+    other seats; returns the state frames sent to the human, and every time
+    a new card was about to be dealt while the human's last frame did not
+    show the live declaration and the human's real declare options."""
+    room = _declare_room()
+    rnd = room.game.start_round()
+    if arrange is not None:
+        arrange(rnd)
+    room.index_round()
+    room.seats[0] = srv.Seat(name="Human", is_bot=False)
+    room.seats[0].connected = True
+    room.bot = bot
+    sent = []
+    stale = []
+
+    def enqueue(seat, payload):
+        if seat is room.seats[0] and payload.get("type") == "state":
+            sent.append(payload)
+
+    def shown_matches_live():
+        if not sent:
+            return True
+        last, live = sent[-1], rnd.declaration
+        decl = last["current_declaration"]
+        options = [room.ids_for_codes(0, option) for option in rnd.declare_options(0)]
+        return ((decl is None) == (live is None)
+                and (live is None or (decl["seat"], len(decl["cards"])) == (live["seat"], len(live["cards"])))
+                and sorted(map(sorted, last["declare_options"])) == sorted(map(sorted, options)))
+
+    real_deal_next = rnd.deal_next
+
+    def deal_next():
+        if not shown_matches_live():
+            stale.append(sum(len(hand) for hand in rnd.hands))
+        return real_deal_next()
+
+    rnd.deal_next = deal_next
+    monkeypatch.setattr(srv, "enqueue", enqueue)
+    monkeypatch.setattr(srv, "_send_table_frame", lambda *a: None)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.0)
+    monkeypatch.setattr(srv, "DECLARE_GRACE", 0.01)
+    monkeypatch.setattr(srv, "DECLARE_EXTEND", 0.01)
+    asyncio.run(srv.run_deal(room))
+    assert room.round.phase == "bury"
+    return sent, stale
+
+
+def _declarations_shown(sent):
+    seen = []
+    for frame in sent:
+        decl = frame["current_declaration"]
+        key = None if decl is None else (decl["seat"], tuple(sorted(decl["cards"])))
+        if not seen or seen[-1] != key:
+            seen.append(key)
+    return [key for key in seen if key is not None]
+
+
+@pytest.mark.parametrize("gated", [False, True])
+def test_a_bot_declaration_reaches_the_seated_player_before_the_next_card(monkeypatch, gated):
+    """The human's last frame always shows the live declaration and its real
+    options before the deal moves on, so an advertised option is valid."""
+    class DeclaringBot(HeuristicBot):
+        value_declare = gated
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, True
+
+        def decide_declare(self, rnd, seat, final=False):
+            options = rnd.declare_options(seat)
+            return options[0] if options and not final and rnd.declaration is None else None
+
+    sent, stale = _seated_deal(monkeypatch, DeclaringBot())
+    assert _declarations_shown(sent), "the bot declared"
+    assert stale == []
+
+
+def test_a_final_pass_overcall_follows_the_last_card_declaration_to_the_player(monkeypatch):
+    """Seat 3 declares a single on the last card; seat 1 overcalls with a
+    pair in the final pass. The human receives both, in order."""
+    def arrange(rnd):
+        rank = rnd.trump_rank
+        deck = rnd.deck
+        twos = [i for i, c in enumerate(deck) if c[1:] == rank and c[0] in "SHDC"]
+        # no stray trump-rank single lets anyone else's options change
+        filler = [i for i, c in enumerate(deck) if c[1:] != rank and c not in ("BJ", "LJ")]
+        for i in twos:
+            j = filler.pop()
+            deck[i], deck[j] = deck[j], deck[i]
+        for pos, code in ((99, f"D{rank}"), (1, f"S{rank}"), (5, f"S{rank}")):
+            j = next(i for i, c in enumerate(deck) if c == code and i not in (1, 5, 99))
+            deck[pos], deck[j] = deck[j], deck[pos]
+
+    class ScriptedBot(HeuristicBot):
+        def decide_declare(self, rnd, seat, final=False):
+            rank = rnd.trump_rank
+            dealt = sum(len(hand) for hand in rnd.hands)
+            if seat == 3 and not final and dealt == 100:
+                return [f"D{rank}"]
+            if seat == 1 and final and rnd.declaration and rnd.declaration["seat"] == 3:
+                return [f"S{rank}", f"S{rank}"]
+            return None
+
+    sent, _ = _seated_deal(monkeypatch, ScriptedBot(), arrange)
+    shown = _declarations_shown(sent)
+    assert [(seat, len(cards)) for seat, cards in shown] == [(3, 1), (1, 2)]
+
+
 def test_run_deal_retries_stale_final_response_before_finalizing(monkeypatch):
     room = _declare_room()
     calls = []

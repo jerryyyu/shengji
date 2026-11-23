@@ -34,11 +34,13 @@
       "arg": 0
     },
     {
-      "t": 150.04,
+      "t": 145,
       "kind": "radio",
       "who": "J1",
       "dur": 11,
-      "arg": 0
+      "arg": 0,
+      "after": "J1 page: table full: resume sent by the kept token",
+      "offset": 0.018
     },
     {
       "t": 162,

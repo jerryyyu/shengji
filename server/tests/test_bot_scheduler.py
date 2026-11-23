@@ -244,59 +244,124 @@ def test_run_deal_reaches_bury_with_declare_path(monkeypatch, value_declare):
     assert any(kind == "declare_decision" for kind, _ in room.records) == value_declare
 
 
-def test_a_bot_declare_search_counts_toward_the_card_pace(monkeypatch):
-    """A gated declare search runs inside the card's DEAL_DELAY, not on top of
-    it, so the deal keeps its rhythm at the cards a bot may declare on."""
-    search_seconds = 0.08
+def _paced_deal(monkeypatch, searches, *, in_gap=None, human=None):
+    """Run the real deal on a virtual clock; ``searches`` maps a dealt-card
+    count to the seconds a gated bot declare search takes there; ``in_gap``
+    runs in each pause between cards. Returns each deal frame's gap after the
+    one before it (by dealt-card count), the pause before the final declare
+    pass, and each bot declare decision's (dealt count, declarer it saw)."""
+    clock = [0.0]
 
-    def gated_at(rnd):
-        return sum(len(hand) for hand in rnd.hands) % 25 == 0
+    def dealt(rnd):
+        return sum(len(hand) for hand in rnd.hands)
 
     class SearchingBot(HeuristicBot):
         value_declare = True
 
         def declare_gate(self, rnd, seat, final=False):
-            return None, gated_at(rnd)
+            # the search starts when the gate admits it (the copy keeps this)
+            self.admitted_at = clock[0]
+            return None, not final and dealt(rnd) in searches
 
         def decide_declare(self, rnd, seat, final=False):
-            if gated_at(rnd):
-                import time
-                time.sleep(search_seconds)
+            if not final:
+                decisions.append((dealt(rnd), rnd.declaration and rnd.declaration["seat"]))
+                # it ends `searches[n]` after it started, however the deal's
+                # own pause advanced the clock meanwhile
+                end = self.admitted_at + searches.get(dealt(rnd), 0.0)
+                clock[0] = max(clock[0], end)
             return None
 
     room = _declare_room()
     room.game.start_round()
     room.ids = [{}, {}, {}, {}]
     room.bot = SearchingBot()
-    sleeps = []
+    if human is not None:
+        room.seats[human] = srv.Seat(name="Human", is_bot=False)
+    decisions = []
+    frames = []
+    final_at = []
     real_sleep = asyncio.sleep
+    real_declares = srv._bot_declares
 
     class Asyncio:
         def __getattr__(self, name):
             return getattr(asyncio, name)
 
+        def get_event_loop(self):
+            return SimpleNamespace(time=lambda: clock[0])
+
         async def sleep(self, seconds):
-            rnd = room.round
-            sleeps.append((sum(len(hand) for hand in rnd.hands), rnd.phase, seconds))
+            if in_gap is not None and room.round.phase == "deal":
+                in_gap(room.round)
+            clock[0] += seconds
             await real_sleep(0)
 
-    async def broadcast(_):
-        pass
+    async def broadcast(r):
+        if r.round.phase in ("deal", "declare"):
+            frames.append((dealt(r.round), clock[0]))
+
+    async def declares(r, seats, final=False):
+        if final and not final_at:
+            final_at.append(clock[0])
+        return await real_declares(r, seats, final=final)
 
     monkeypatch.setattr(srv, "asyncio", Asyncio())
     monkeypatch.setattr(srv, "broadcast", broadcast)
+    monkeypatch.setattr(srv, "_bot_declares", declares)
     monkeypatch.setattr(srv, "kick_bots", lambda _: None)
     asyncio.run(srv.run_deal(room))
     assert room.round.phase == "bury"
-    deal = sleeps[:100]          # one pause per dealt card, then the grace polls
-    assert [dealt for dealt, _, _ in deal] == list(range(1, 101))
-    searched = {dealt: seconds for dealt, _, seconds in deal if dealt % 25 == 0}
-    assert len(searched) == 4
-    for seconds in searched.values():
-        assert seconds <= srv.DEAL_DELAY - search_seconds + 0.02
-    for dealt, _, seconds in deal:
-        if dealt % 25:
-            assert srv.DEAL_DELAY - 0.02 < seconds <= srv.DEAL_DELAY
+    deal = frames[:100]
+    assert [n for n, _ in deal] == list(range(1, 101))
+    gaps = {n: round(t - deal[i - 1][1], 6) for i, (n, t) in enumerate(deal) if i}
+    return gaps, final_at[0] - deal[-1][1], decisions
+
+
+def test_a_short_declare_search_runs_inside_the_card_gap(monkeypatch):
+    """A search shorter than DEAL_DELAY leaves every published frame exactly
+    DEAL_DELAY after the one before it: no stall, no bunched pair."""
+    gaps, before_final, _ = _paced_deal(monkeypatch, {3: 0.1, 40: 0.15})
+    assert set(gaps.values()) == {srv.DEAL_DELAY}
+    # the last card keeps its full gap before the final declare pass
+    assert before_final == pytest.approx(srv.DEAL_DELAY)
+
+
+def test_a_slow_declare_search_delays_one_frame_and_the_pace_resumes(monkeypatch):
+    """A search longer than DEAL_DELAY publishes its card as soon as it ends;
+    the next frames keep DEAL_DELAY after it, with no catch-up bunching."""
+    gaps, _, _ = _paced_deal(monkeypatch, {50: 0.3})
+    assert gaps[50] == pytest.approx(0.3)
+    assert all(gap == pytest.approx(srv.DEAL_DELAY) for n, gap in gaps.items() if n != 50)
+
+
+def test_a_human_declaration_in_the_gap_is_ordered_before_the_bots_next(monkeypatch):
+    """The next card's bot search starts in the gap; a human declaration made
+    there invalidates it, and the bot decides that card again after it."""
+    class Every(dict):
+        def __contains__(self, n):
+            return True
+
+        def get(self, n, default=None):
+            return 0.05
+
+    declared_at = []
+
+    def in_gap(rnd):
+        if not declared_at and rnd.declaration is None and rnd.declare_options(0):
+            rnd.declare(0, rnd.declare_options(0)[0])
+            declared_at.append(sum(len(hand) for hand in rnd.hands))
+
+    gaps, _, decisions = _paced_deal(monkeypatch, Every(), in_gap=in_gap, human=0)
+    assert declared_at
+    after = [(n, seen) for n, seen in decisions if n > declared_at[0]]
+    first = after[0][0]
+    # the card after the declaration was searched before it, then again after
+    assert [seen for n, seen in after if n == first] == [None, 0]
+    assert all(seen == 0 for n, seen in after if n > first)
+    # only that card waits for its second search; the pace then resumes
+    assert gaps[first] == pytest.approx(srv.DEAL_DELAY + 0.05)
+    assert all(gap == pytest.approx(srv.DEAL_DELAY) for n, gap in gaps.items() if n != first)
 
 
 def test_run_deal_retries_stale_final_response_before_finalizing(monkeypatch):

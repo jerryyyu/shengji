@@ -21,6 +21,8 @@ const VOICE_CLIPS = {
 
 let ctx: AudioContext | null = null;
 const clipCache = new Map<string, Promise<AudioBuffer | null>>();
+/** Clips whose speculative fetch failed: a demand play may fetch them again. */
+const retryable = new Set<string>();
 const queue: string[][] = [];
 let pumping = false;
 let muted = localStorage.getItem(MUTE_KEY) === "1"; // default: unmuted
@@ -171,15 +173,35 @@ export function subscribeMuted(cb: (m: boolean) => void): () => void {
 // cached audio from an older voice.
 const SOUNDS_VERSION = 9;
 
-function loadClip(name: string): Promise<AudioBuffer | null> {
-  let p = clipCache.get(name);
-  if (!p) {
-    p = fetch(`/sounds/${name}.mp3?v=${SOUNDS_VERSION}`)
-      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
-      .then((ab) => ensureCtx().decodeAudioData(ab))
-      .catch(() => null); // 404 / decode failure: silently skip
-    clipCache.set(name, p);
+/** A clip, fetched and decoded once. A failed speculative fetch (the deal's
+ *  prefetch, perhaps offline) is not final: the next demand play retries it
+ *  once, while later prefetches leave it alone. A failed demand fetch stays
+ *  failed (a missing clip is skipped). */
+function loadClip(name: string, speculative = false): Promise<AudioBuffer | null> {
+  const cached = clipCache.get(name);
+  if (cached) {
+    if (speculative) return cached;
+    // a demand play awaiting a prefetch that then fails gets its retry too,
+    // and a second play waiting meanwhile shares that retry
+    return cached.then((buf) => {
+      if (buf !== null) return buf;
+      if (retryable.delete(name)) return fetchClip(name, false);
+      const latest = clipCache.get(name);
+      return latest !== undefined && latest !== cached ? latest : null;
+    });
   }
+  return fetchClip(name, speculative);
+}
+
+function fetchClip(name: string, speculative: boolean): Promise<AudioBuffer | null> {
+  const p = fetch(`/sounds/${name}.mp3?v=${SOUNDS_VERSION}`)
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
+    .then((ab) => ensureCtx().decodeAudioData(ab))
+    .catch(() => {
+      if (speculative) retryable.add(name);
+      return null; // 404 / decode failure: silently skip
+    });
+  clipCache.set(name, p);
   return p;
 }
 
@@ -279,7 +301,7 @@ function prefetchDeclareClips(state: GameState): void {
   const ranks = banker === null ? new Set(levels) : new Set([levels[banker % 2]]);
   const names: string[] = [VOICE_CLIPS.pair, VOICE_CLIPS.nt];
   for (const rank of ranks) for (const suit of "SHDC") names.push(`${suit}${rank}`);
-  for (const name of names) void loadClip(name);
+  for (const name of names) void loadClip(name, true);
 }
 
 /** Reset diff trackers (call when leaving a room / before a fresh join). */

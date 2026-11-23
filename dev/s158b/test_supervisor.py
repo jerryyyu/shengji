@@ -1,3 +1,4 @@
+from concurrent.futures.process import BrokenProcessPool
 import hashlib
 import json
 import os
@@ -72,6 +73,38 @@ def test_setup_fault_without_seed_is_terminal(tmp_path, monkeypatch):
         supervisor.run_reserved(root, [], "a" * 64, workers=1)
     assert json.loads((root / "terminal.json").read_text())["status"] == "FAULT"
     assert not list((root / "slots").iterdir())
+
+def _hang_after_first_seed(seed, slots, env):
+    if seed == 100:
+        return _fixture_seed(seed, slots, env)
+    (slots / str(seed)).mkdir()
+    (slots / str(seed) / "pid").write_text(str(os.getpid()))
+    time.sleep(30)
+    return seed, _publish(slots / str(seed), "{}")
+
+
+def test_admitted_cli_faults_hung_seed_and_preserves_completed_slot(tmp_path, fixture_worker, monkeypatch):
+    root = tmp_path / "run"
+    monkeypatch.setattr(supervisor, "write_seed", _hang_after_first_seed)
+    monkeypatch.setattr(supervisor, "SEED_WALL_SECONDS", 1)
+    args = ["--root", str(root), "--package-dir", str(tmp_path), "--workers", "1",
+            "--dispatch-sha256", "c" * 64]
+    started = time.monotonic()
+    with pytest.raises(BrokenProcessPool):
+        supervisor.main(args)
+    assert time.monotonic() - started < 15
+    assert not _alive(int((root / "slots/101/pid").read_text()))
+    assert (root / "terminal.json").is_file()
+    terminal = json.loads((root / "terminal.json").read_bytes())
+    assert terminal["status"] == "FAULT" and terminal["dispatch_sha256"] == "c" * 64
+    assert (root / "progress").read_text().split() == [
+        "100", hashlib.sha256((root / "slots/100/result.json").read_bytes()).hexdigest()]
+    assert not (root / "slot-seals.json").exists()
+    assert not (root / "slots/101/result.json").exists()
+    assert not (root / "slots/102").exists()
+    with pytest.raises(FileExistsError):
+        supervisor.main(args)
+
 
 def _slow_seed(seed, slots, env):
     directory = slots / str(seed)

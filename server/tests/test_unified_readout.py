@@ -432,7 +432,9 @@ def test_accumulated_rounds_preserve_weighted_gradient_and_batch_totals(world):
     torch.manual_seed(12)
     whole = ur.build(ARCH, READOUT)
     split = copy.deepcopy(whole)
-    expected = ur._backward_batch(whole, b, "cpu", args)
+    loss = ur.losses(whole, ur.us.to_device(b, "cpu"))
+    ur.objective(loss, args).backward()
+    expected = [float(loss[k].detach()) for k in ur.SUM_KEYS]
     args.microbatch_rounds = 2
     actual = ur._backward_batch(split, b, "cpu", args)
     np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)

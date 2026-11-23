@@ -279,11 +279,6 @@ def _backward_batch(model, b, device, args):
     """Accumulate one logical batch's gradient before the caller clips and steps."""
     limit = getattr(args, "microbatch_rounds", None)
     rounds = len(b["banker"])
-    if limit is None or limit >= rounds:
-        loss = losses(model, us.to_device(b, device))
-        objective(loss, args).backward()
-        return np.asarray([float(loss[k].detach()) for k in SUM_KEYS])
-
     totals = dict(belief_n=float(b["Y"].sum(dtype=np.float64)), rows=len(b["rr"]),
                   leaves=len(b["leaf_row"]), replies=int(b["leaf_has_reply"].sum()))
     stats = np.zeros(len(SUM_KEYS))
@@ -538,10 +533,17 @@ def _train(args, out: Path, status: str) -> int:
             opt.param_groups[1]["lr"] = 0.0
         for k, v in leaf_batch(b).items():
             b["leaf_" + k] = v
-        opt.zero_grad()
-        stats = _backward_batch(model, b, device, args)
+        if getattr(args, "microbatch_rounds", None) is None:
+            loss = losses(model, us.to_device(b, device))
+            opt.zero_grad()
+            objective(loss, args).backward()
+        else:
+            opt.zero_grad()
+            stats = _backward_batch(model, b, device, args)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
+        if getattr(args, "microbatch_rounds", None) is None:
+            return np.asarray([float(loss[k].detach()) for k in SUM_KEYS])
         return stats
 
     ck = out / "checkpoint.pt"

@@ -109,6 +109,22 @@ def test_conflicting_second_seat_result_excludes_only_its_deal(tmp_path, field):
     assert got["checks"]["rounds excluded: conflicting seat terminals"] == 1
 
 
+def test_feed_witnesses_show_legal_card_points_winner_and_pair_cost(sjorg):
+    by_deal = {r["deal_key"]: r["missed_feeds"] for r in sjorg["per_round"]}
+    assert by_deal[1794605870898] == [
+        dict(trick=8, seat=0, played="DJ", winner=2, alternatives=[
+            dict(card="DK", extra_trick_points=10, winner=2, splits_pair=True)])]
+    assert by_deal[1794613607145] == [
+        dict(trick=12, seat=2, played="CJ", winner=2, alternatives=[
+            dict(card="DK", extra_trick_points=10, winner=2, splits_pair=False)])]
+    for row in sjorg["per_round"]:
+        for side, seats in (("ours", (0, 2)), ("theirs", (1, 3))):
+            choices = [w["alternatives"] for w in row["missed_feeds"] if w["seat"] in seats]
+            assert len(choices) == row["classes"][side].get("no_feeds", 0)
+            points = sum(max(a["extra_trick_points"] for a in options) for options in choices)
+            assert points == row["classes"][side].get("no_feed_pts", 0)
+
+
 def test_sjorg_totals_and_the_site_bots_side(sjorg):
     ours, theirs = sjorg["totals"]["ours"], sjorg["totals"]["theirs"]
     assert (ours["throws"], ours["throws_risky"], ours["throws_failed"]) == (18, 6, 6)

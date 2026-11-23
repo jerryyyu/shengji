@@ -1,0 +1,20 @@
+--- ut_h2h_read.py
++++ sz2_a_read.py
+@@ -45,6 +45,8 @@
+     if rc.get("reader_sha256") != sha(__file__):
+         refuse(f"the recipe names reader {rc.get('reader_sha256')}, this is {sha(__file__)}")
+     ra = rc["arms"][arm]
++    if arm != "SZ2-A" or (ra.get("seed0"), ra.get("deals")) != (2665000000, 1000):
++        refuse("only the SZ2-A decision window can enter this reader")
+     root, status, n = ra["out_root"], ra["status"], ra["deals"]
+     lines = [l for l in Path(status).read_text().splitlines() if l.strip()]
+     if any(re.match(r"UTD (ABORT|PAUSED|WARNING|REFUSING|FAILED) ", l) for l in lines):
+@@ -110,6 +112,8 @@
+         by[key] = r
+         if not (seed0 <= r["seed"] < seed0 + deals) or r["mirror"] not in (0, 1) or r["arm"] != "identity":
+             reasons.append(f"row {key} out of range / arm")
++        elif type(r["mirror"]) is not int or type(r.get("ex_team")) is not int or r["ex_team"] != r["mirror"]:
++            reasons.append(f"row {key} challenger team differs from the seat assignment")
+         elif (r["round_kind"], r["trump_rank"], r["planned_banker"]) != R.plan(r["seed"] - seed0):
+             reasons.append(f"row {key} round plan")
+     expected = {(seed0 + i, m) for i in range(deals) for m in (0, 1)}

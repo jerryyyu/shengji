@@ -36,7 +36,7 @@ If the defenders win the last trick, the kitty scores nothing, however many poin
 
 A real hand: the banker buried ♦5 and ♠K, 15 points. The attackers had 40 going into the last trick, which was led with a single trump. West won it with a ♥2, the trick held a 5, and the kitty added 15 × 2 = 30. Final score 75.
 
-Had that last trick been led with a pair and still won by the attackers, the kitty alone would have been worth 15 × 4 = 60, taking them past 100.
+Had that last trick been led with a pair and still won by the attackers, the kitty alone would have been worth 15 × 4 = 60, taking them from 40 to at least 100.
 
 ```cards
 kind: trick

@@ -72,7 +72,7 @@ Being out of the suit frees you. Then any trump play of the same shape wins: a t
 
 ## A throw is several plays at once
 
-A throw is any lead of one suit that isn't a single, a pair or a tractor. ♠A♠A♠K is a pair and a single together. It stands only if nobody else at the table could beat any part of it with that suit.
+A throw is a lead of one suit that combines separate units: two or more singles, or a pair with singles, or several pairs that aren't in a row. ♠A♠A♠K is a pair and a single together. It stands only if nobody else at the table could beat any unit of it with that suit. A single, a pair or a tractor on its own is one unit, never a throw: it stands even when someone can beat it, and they simply win the trick.
 
 That one always stands. Only an ace beats ♠K, and you hold both aces.
 

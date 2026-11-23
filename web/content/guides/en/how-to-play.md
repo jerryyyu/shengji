@@ -62,7 +62,7 @@ The attackers keep the points in the tricks they win. The defenders' tricks don'
 
 ## Ruff when you're out of a suit
 
-On trick 4, East led ♠A and ♠K together. Leading several cards of one suit at once is a throw, and it's legal only when nobody else holds anything in that suit to beat any part of it. One ♠A was already gone, so nobody could beat the ♠K, and the throw stood.
+On trick 4, East led ♠A and ♠K together. That's two singles in one lead, and a lead that combines separate units like this is a throw. A throw stands only if every unit in it is unbeatable: if anyone holds a card of that suit that beats any one part, it fails. A plain pair or tractor is different. It's one unit, so it stands even when someone can beat it, as East's ♥A♥A beat North's ♥J♥J on the third trick. Here one ♠A was already gone, so nobody could beat the ♠K, and the throw stood.
 
 North had no spades left and ruffed with two trumps:
 

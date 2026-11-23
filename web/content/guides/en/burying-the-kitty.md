@@ -52,7 +52,7 @@ What's left to bury is usually low single cards in your short side suits.
 
 ## A real hand: 33 cards, four buries
 
-Here's North's hand after picking up the kitty. Clubs are trump and 2 is the level rank. North had 13 trumps including the big joker:
+Here's North's hand after picking up the kitty. Clubs are trump and 2 is the level rank. North had 13 trumps, the big joker among them:
 
 ```cards
 cards: S3 SK SA | H4 H6 H7 H7 H9 H9 HJ HJ HK | D3 D5 D7 D7 D10 DJ DQ DA
@@ -64,7 +64,7 @@ caption: The side suits. Lifted: the 8 cards North actually buried, ♠K and ♦
 ```cards
 cards: C3 C3 C4 C5 C8 CQ CK CA D2 D2 S2 C2 BJ
 labels: Trumps (13)
-caption: Thirteen trumps and the big joker. An average 25-card hand holds about 8.
+caption: Thirteen trumps, the big joker among them. An average 25-card hand holds about 8.
 ```
 
 North buried ♠3 ♠K ♥4 ♥6 ♦3 ♦5 ♦J ♦Q, 15 points, and kept the ♠A alone to lead on the first trick. The hand ended with the attackers taking the last trick with a single, scoring the kitty at 15 × 2 = 30, for 75 in all. The defenders won, but by 5 points.

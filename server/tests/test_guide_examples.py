@@ -6,13 +6,15 @@ Two kinds of check. Every card diagram that shows a combination, a trick, a
 throw or a declaration carries its trump suit and level rank, and the engine
 recomputes what the diagram claims. The worked hands in the prose come from
 seeded deals played by SmartBot in all four seats (the same per-card declare
-calls the server makes); the tests replay those deals and assert the numbers
-the guides quote. A change to SmartBot that moves them means the guides'
-numbers need rechecking.
+calls the server makes). The numbers the guides publish, the tables and the
+quoted figures, are read out of the English and Chinese sources and compared
+with those replays and with the engine's scoring, so editing a published
+number, or a SmartBot change that moves one, fails here.
 """
 
 from __future__ import annotations
 
+import functools
 import random
 import re
 from collections import Counter
@@ -20,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from shengji.engine.cards import Ordering, card_rank, make_deck, total_points
+from shengji.engine.cards import RANKS, Ordering, card_rank, make_deck, total_points
 from shengji.engine.combos import decompose
 from shengji.engine.game import Game
 from shengji.engine.legal import IllegalPlay, beats, uniform_suit, validate_follow, validate_lead
@@ -232,20 +234,6 @@ def test_the_walkthrough_hand():
     assert len(trumps) == 13 and "BJ" in trumps
 
 
-def test_the_bury_replays():
-    """burying-the-kitty's table: the same deal, only the bury changed."""
-    rows = {
-        "S3 SK H4 H6 D3 D5 DJ DQ": (15, 75),
-        "S3 H4 H6 D3 DJ DQ D7 D7": (0, 105),
-        "D3 D5 D7 D7 D10 DJ DQ DA": (15, 125),
-        "S3 SK SA H4 H6 D3 DJ DQ": (10, 75),
-    }
-    for bury, (buried, score) in rows.items():
-        hand = _bot_round(121, bury.split())
-        assert total_points(hand["rnd"].buried) == buried
-        assert hand["rnd"].attacker_points == score, bury
-
-
 def test_the_overcall_hand():
     """declaring-trump: partner shows ♠2 at card 67, you overcall ♥2♥2 at 85."""
     hand = _bot_round(108)
@@ -280,6 +268,279 @@ def test_the_real_throw_stood():
 
 
 H2 = Ordering("H", "2")
+
+
+# The numbers the guides publish, read out of the sources in both languages
+# and compared with the engine: editing a published number fails here.
+
+SUIT_SIGN = {"♠": "S", "♥": "H", "♦": "D", "♣": "C"}
+
+
+def _source(lang: str, slug: str) -> str:
+    return (GUIDES / lang / f"{slug}.md").read_text(encoding="utf-8")
+
+
+def _cards_in(text: str) -> list[str]:
+    return [SUIT_SIGN[s] + r for s, r in re.findall(r"([♠♥♦♣])(10|[2-9JQKA])", text)]
+
+
+def _table(text: str, header: str) -> list[list[str]]:
+    """The body rows of the first pipe table whose header row matches."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("|") and re.search(header, line):
+            rows = []
+            for row in lines[i + 2:]:
+                if not row.startswith("|"):
+                    break
+                rows.append([c.strip() for c in row.strip().strip("|").split("|")])
+            return rows
+    raise AssertionError(f"no table with header {header!r}")
+
+
+def _int(cell: str) -> int:
+    return int(re.search(r"\d+", cell).group())
+
+
+@functools.cache
+def _hand(seed: int, bury: tuple[str, ...] | None = None) -> dict:
+    return _bot_round(seed, list(bury) if bury else None)
+
+
+def _finish(points: int, level: str = "5") -> tuple[int, int]:
+    """(winning team relative to the banker: 0 defenders / 1 attackers, levels)."""
+    game = Game(start_level=level)
+    rnd = Round(level, 0)
+    rnd.phase, rnd.attacker_points = "round_end", points
+    game.round, game.banker = rnd, 0
+    result = game.finish_round()
+    return result.winner_team, result.level_change
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_the_published_bury_replay_table(lang):
+    walk = _hand(121)
+    banker_cards = walk["dealt"][2] + walk["kitty"]
+    rows = _table(_source(lang, "burying-the-kitty"), r"Void made|做出绝门")
+    assert len(rows) == 4
+    void_word = {"none": None, "没有": None, "spades": "S", "黑桃": "S", "diamonds": "D", "方块": "D"}
+    for bury_cell, points_cell, void_cell, score_cell in rows:
+        bury = _cards_in(bury_cell)
+        if not bury:
+            suit = "D" if re.search(r"diamonds|方块", bury_cell) else None
+            assert suit, bury_cell
+            bury = [c for c in banker_cards if c[0] == suit and card_rank(c) != "2"]
+        assert len(bury) == 8, bury_cell
+        hand = _hand(121, tuple(bury))
+        kept = Counter(banker_cards) - Counter(bury)
+        voids = [s for s in "SHD" if not any(c[0] == s and card_rank(c) != "2" for c in kept.elements())]
+        assert voids == ([void_word[void_cell]] if void_word[void_cell] else []), (lang, bury_cell)
+        assert _int(points_cell) == total_points(bury), (lang, bury_cell)
+        assert _int(score_cell) == hand["rnd"].attacker_points, (lang, bury_cell)
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_the_published_kitty_risk_table(lang):
+    text = _source(lang, "burying-the-kitty")
+    rows = _table(text, r"Buried 15 is worth|底里 15 分变成")
+    cards_led = {"A single": 1, "A pair": 2, "A tractor of two pairs": 4, "单张": 1, "对子": 2, "两连对": 4}
+    assert [cards_led[r[0]] for r in rows] == [1, 2, 4]
+    for lead, worth in rows:
+        assert _int(worth) == 15 * KITTY_MULTIPLIER * cards_led[lead], (lang, lead)
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_the_published_scoring_table(lang):
+    rows = _table(_source(lang, "scoring-and-levels"), r"Attackers' points|闲家得分")
+    assert len(rows) == 8
+    expected_low = 0
+    for points_cell, result in rows:
+        bounds = [int(n) for n in re.findall(r"\d+", points_cell)]
+        assert bounds[0] == expected_low, (lang, points_cell)
+        expected_low = bounds[-1] + 5
+        attackers = bool(re.match(r"Attackers|闲家", result))
+        gain = re.search(r"up (\d+)|升 (\d+) 级", result)
+        levels = int(next(g for g in gain.groups() if g)) if gain else 0
+        if not gain:
+            assert re.search(r"no level change|不升级", result), result
+        for points in bounds:
+            assert _finish(points) == (int(attackers), levels), (lang, points_cell, points)
+
+
+def _walk_facts() -> dict[str, tuple[int, ...]]:
+    walk = _hand(121)
+    rnd, tricks = walk["rnd"], walk["tricks"]
+    before_last = _attacker_points_before(walk, len(tricks) - 1)
+    buried = total_points(rnd.buried)
+    last_points = tricks[-1].points
+    _, change = _finish(rnd.attacker_points, "2")
+    trumps = [c for c in walk["dealt"][2] + walk["kitty"] if rnd.ordering.is_trump(c)]
+    side = Counter(rnd.ordering.eff_suit(c) for c in walk["dealt"][2] + walk["kitty"])
+    overcall = _hand(108)
+    deal = Round("2", None, random.Random(108))
+    while deal._deal_pos < 85:
+        deal.deal_next()
+
+    def count(cards, suit):
+        return sum(1 for c in cards if c in ("LJ", "BJ") or card_rank(c) == "2" or c[0] == suit)
+
+    d0, d2 = overcall["dealt"][0], overcall["dealt"][2]
+    ordering = Ordering("C", "2")
+    return {
+        "show": (walk["shows"][0][0] + 1,),
+        "buried": (buried,),
+        "trick3": (tricks[2].points,),
+        "trick5": (tricks[4].points,),
+        "ruffs": (tricks[3].points + tricks[4].points,),
+        "before_last": (before_last,),
+        "kitty_single": (buried, KITTY_MULTIPLIER, rnd.kitty_bonus),
+        "kitty_pair": (buried, 2 * KITTY_MULTIPLIER, buried * 2 * KITTY_MULTIPLIER),
+        "pair_total": (before_last, before_last + buried * 2 * KITTY_MULTIPLIER),
+        "last_points": (last_points,),
+        "final": (rnd.attacker_points,),
+        "short": (80 - rnd.attacker_points,),
+        "no_bonus": (rnd.attacker_points - rnd.kitty_bonus,),
+        "new_level": (2 + change,),
+        "change": (change,),
+        "trumps": (len(trumps),),
+        "side": (side["S"], side["H"], side["D"]),
+        "suit_trumps": (sum(ordering.is_trump(c) for c in make_deck()),),
+        "nt_trumps": (sum(Ordering(None, "2").is_trump(c) for c in make_deck()),),
+        "average": (round(25 * 36 / 108),),
+        "nt_average": (round(25 * 12 / 108),),
+        "overcall_shows": (overcall["shows"][0][0] + 1, overcall["shows"][1][0] + 1),
+        "at_85": (count(deal.hands[0], "S"), count(deal.hands[0], "H")),
+        "dealt_counts": (count(d0, "S"), count(d0, "H"), count(d2, "S"), count(d2, "H")),
+        "team_loss": (count(d0, "S") + count(d2, "S") - count(d0, "H") - count(d2, "H"),),
+        "real_throw": (overcall["tricks"][0].points,),
+    }
+
+
+# (guide, english pattern, chinese pattern, fact). Each pattern must match the
+# source at least once, and every match's numbers must equal the fact.
+CLAIMS = [
+    ("how-to-play", r"as the (\d+)th card dealt", r"摸到第 (\d+) 张牌时拿到", "show"),
+    ("how-to-play", r"That is (\d+) of the 108 cards", r"108 张里有 (\d+) 张主", "suit_trumps"),
+    ("how-to-play", r"North buried ♦5 and ♠K, (\d+) points", r"北家扣了 ♦5 和 ♠K，(\d+) 分", "buried"),
+    ("how-to-play", r"the ♥K's (\d+) points went", r"♥K 的 (\d+) 分就让闲家拿走了", "trick3"),
+    ("how-to-play", r"That's (\d+) points the attackers didn't get", r"这一轮 (\d+) 分，闲家一分没拿到", "trick5"),
+    ("how-to-play", r"the attackers had (\d+), well short", r"进最后一轮之前，闲家只有 (\d+) 分", "before_last"),
+    ("how-to-play", r"the kitty: (\d+) points, doubled", r"底里 (\d+) 分，最后一轮首家出的是单张", "buried"),
+    ("how-to-play", r"The (\d+) in the trick", r"这一轮本身的 (\d+) 分", "last_points"),
+    ("how-to-play", r"plus (\d+) from the kitty took the attackers from (\d+) to (\d+)",
+     r"底里的 (\d+) 分，闲家从 (\d+) 分变成 (\d+) 分", None),
+    ("how-to-play", r"At (\d+) the attackers fell (\d+) short", r"(\d+) 分，差 (\d+) 分不到 80", None),
+    ("how-to-play", r"North–South's level, (\d+)", r"打南北的级：(\d+)", "new_level"),
+    ("how-to-play", r"North's (\d+) buried points", r"北家扣的 (\d+) 分差点", "buried"),
+    ("how-to-play", r"the attackers had (\d+)\.", r"不算抠底，闲家只有 (\d+) 分", "no_bonus"),
+    ("how-to-play", r"Ruffs moved (\d+) points", r"两轮的毙牌，就保住了 (\d+) 分", "ruffs"),
+    ("burying-the-kitty", r"North had (\d+) trumps", r"北家有 (\d+) 张主", "trumps"),
+    ("burying-the-kitty", r"labels: Trumps \((\d+)\)", r"labels: 主牌（(\d+) 张）", "trumps"),
+    ("burying-the-kitty", r"Spades \((\d+)\) \| Hearts \((\d+)\) \| Diamonds \((\d+)\)",
+     r"黑桃（(\d+) 张） \| 红桃（(\d+) 张） \| 方块（(\d+) 张）", "side"),
+    ("burying-the-kitty", r"♦J ♦Q, (\d+) points, and kept", r"♦J ♦Q，(\d+) 分，留一张", "buried"),
+    ("burying-the-kitty", r"scoring the kitty at (\d+) × (\d+) = (\d+)", r"抠底 (\d+) × (\d+) = (\d+) 分", "kitty_single"),
+    ("burying-the-kitty", r"for (\d+) in all", r"一共 (\d+) 分", "final"),
+    ("burying-the-kitty", r"but by (\d+) points", r"只赢了 (\d+) 分", "short"),
+    ("burying-the-kitty", r"it buried (\d+) points in the hand above", r"它扣了 (\d+) 分", "buried"),
+    ("burying-the-kitty", r"holds about (\d+)\.", r"平均只有 (\d+) 张左右的主", "average"),
+    ("scoring-and-levels", r"buried ♦5 and ♠K, (\d+) points", r"庄家扣了 ♦5 和 ♠K，(\d+) 分", "buried"),
+    ("scoring-and-levels", r"The attackers had (\d+) going into", r"进最后一轮前闲家有 (\d+) 分", "before_last"),
+    ("scoring-and-levels", r"the trick held a (\d+)", r"这一轮里有 (\d+) 分", "last_points"),
+    ("scoring-and-levels", r"the kitty added (\d+) × (\d+) = (\d+)", r"底里再加 (\d+) × (\d+) = (\d+) 分", "kitty_single"),
+    ("scoring-and-levels", r"Final score (\d+)", r"最后 (\d+) 分", "final"),
+    ("scoring-and-levels", r"worth (\d+) × (\d+) = (\d+)", r"光底牌就是 (\d+) × (\d+) = (\d+) 分", "kitty_pair"),
+    ("scoring-and-levels", r"taking them from (\d+) to at least (\d+)", r"闲家从 (\d+) 分至少到 (\d+) 分", "pair_total"),
+    ("scoring-and-levels", r"The (\d+) in the real hand above", r"上面那局的 (\d+) 分", "final"),
+    ("scoring-and-levels", r"is one level for the defenders()", r"是庄家方升 (\d+) 级", None),
+    ("scoring-and-levels", r"Five more points()", r"再多 (\d+) 分", None),
+    ("declaring-trump", r"as the (\d+)th card\. At card (\d+)", r"摸到第 (\d+) 张时亮了 ♠2。第 (\d+) 张", "overcall_shows"),
+    ("declaring-trump", r"spades as trump gave you (\d+) .*?Hearts gave you (\d+)",
+     r"按黑桃数有 (\d+) 张（.*?按红桃数只有 (\d+) 张", "at_85"),
+    ("declaring-trump", r"you held (\d+) trumps counted as spades and (\d+) as hearts; your partner, (\d+) and (\d+)",
+     r"你按黑桃数有 (\d+) 张主，按红桃 (\d+) 张；对家是 (\d+) 张和 (\d+) 张", "dealt_counts"),
+    ("declaring-trump", r"cost the team (\d+) trumps", r"一共少了 (\d+) 张主", "team_loss"),
+    ("declaring-trump", r"has (\d+) trumps", r"有花色的主一共 (\d+) 张", "suit_trumps"),
+    ("declaring-trump", r"holds about (\d+) on average", r"平均 (\d+) 张左右", "average"),
+    ("declaring-trump", r"(\d+) in the deck, about (\d+) a hand", r"一共 (\d+) 张，每家 (\d+) 张左右", None),
+    ("pairs-tractors-throws", r"The throw stood and took (\d+) points", r"甩牌成立，一手拿了 (\d+) 分", "real_throw"),
+]
+
+
+def _expected(fact: str | None, pattern: str, facts: dict) -> tuple[int, ...] | None:
+    if fact is not None:
+        return facts[fact]
+    special = {
+        "plus (\\d+) from the kitty": (facts["kitty_single"][2],) + facts["pair_total"][:1] + facts["final"],
+        "底里的 (\\d+) 分，闲家从": (facts["kitty_single"][2],) + facts["pair_total"][:1] + facts["final"],
+        "At (\\d+) the attackers fell": facts["final"] + facts["short"],
+        "(\\d+) 分，差 (\\d+) 分不到 80": facts["final"] + facts["short"],
+        "是庄家方升 (\\d+) 级": facts["change"],
+        "再多 (\\d+) 分": facts["short"],
+        "(\\d+) in the deck, about": facts["nt_trumps"] + facts["nt_average"],
+        "一共 (\\d+) 张，每家": facts["nt_trumps"] + facts["nt_average"],
+    }
+    for key, value in special.items():
+        if pattern.startswith(key) or key in pattern:
+            return value
+    return None  # an English phrase with no number, checked by presence only
+
+
+@pytest.mark.parametrize("slug, en, zh, fact", CLAIMS)
+def test_each_published_number_matches_the_engine(slug, en, zh, fact):
+    facts = _walk_facts()
+    for lang, pattern in (("en", en), ("zh", zh)):
+        text = _source(lang, slug)
+        matches = list(re.finditer(pattern, text, re.S))
+        assert matches, f"{lang}/{slug}.md no longer says {pattern!r}: update the claim with the text"
+        want = _expected(fact, pattern, facts)
+        for m in matches:
+            got = tuple(int(g) for g in m.groups() if g)
+            if want is not None:
+                assert got == want, (lang, slug, m.group(0), want)
+            else:
+                assert got == (), (lang, slug, m.group(0))
+
+
+def test_the_published_levels_diagrams():
+    walk = _hand(121)
+    _, change = _finish(walk["rnd"].attacker_points, "2")
+    for lang in ("en", "zh"):
+        body = re.search(r"kind: levels\nfrom: (\w+)\nto: (\w+)", _source(lang, "how-to-play"))
+        assert body.groups() == ("2", str(2 + change))
+        body = re.search(r"kind: levels\nfrom: (\w+)\nto: (\w+)", _source(lang, "names-and-variants"))
+        _, gain = _finish(20, body.group(1))
+        assert body.group(2) == RANKS[RANKS.index(body.group(1)) + gain]
+
+
+def test_the_published_other_numbers():
+    for lang in ("en", "zh"):
+        scoring = _source(lang, "scoring-and-levels")
+        m = re.search(r"(\d+) \+ (\d+) \+ (\d+) = (\d+)", scoring)
+        deck = make_deck()
+        fives, tens, kings = (sum(total_points([c]) for c in deck if card_rank(c) == r) for r in ("5", "10", "K"))
+        assert tuple(map(int, m.groups())) == (fives, tens, kings, 200)
+        m = re.search(r"(\d+) in tricks plus (\d+) buried points under a pair lead is (\d+) \+ (\d+) = (\d+): up (\d+)"
+                      r"|牌面上拿 (\d+) 分，底里 (\d+) 分、最后一轮首家出对子，就是 (\d+) \+ (\d+) = (\d+) 分：升 (\d+) 级",
+                      scoring)
+        tricks, buried, a, b, total, up = (int(g) for g in m.groups() if g)
+        assert (a, b, total) == (tricks, buried * 2 * KITTY_MULTIPLIER, tricks + buried * 2 * KITTY_MULTIPLIER)
+        assert _finish(total)[1] == up
+        m = re.search(r"(\d+) buried points × (\d+) = (\d+)|底里 (\d+) 分 × (\d+) = (\d+)", scoring)
+        buried, mult, total = (int(g) for g in m.groups() if g)
+        assert (mult, total) == (2 * KITTY_MULTIPLIER, buried * mult)
+        from shengji.engine.rules_profile import SHENGJIORG, kitty_multiplier
+        m = re.search(r"×(\d+)[,，]? (?:not|而不是) ×(\d+)", scoring)
+        lead = ["SA", "SA", "SK"]
+        o = Ordering("H", "2")
+        assert tuple(map(int, m.groups())) == (kitty_multiplier(lead, o, SHENGJIORG), kitty_multiplier(lead, o, ""))
+        names = _source(lang, "names-and-variants")
+        m = re.search(r"(\d+) (?:points|分)。?\.? ?(?:Four suits make|四门一共) (\d+)", names)
+        assert tuple(map(int, m.groups())) == (total_points("S5 S5 S10 S10 SK SK".split()), 200)
+        declaring = _source(lang, "declaring-trump")
+        m = re.search(r"(?:until|发完后) (\d+) (?:seconds|秒).*?(?:at least|至少再留) (\d+)", declaring, re.S)
+        from shengji.api.server import DECLARE_EXTEND, DECLARE_GRACE
+        assert tuple(map(int, m.groups())) == (int(DECLARE_GRACE), int(DECLARE_EXTEND))
 
 
 def test_pairs_need_identical_cards():

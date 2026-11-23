@@ -256,8 +256,10 @@ As of 2026-11-04; runs are on the scaling page (`docs/scaling_log/`), the search
 - **The 500k-round retrain of the unified model confirmed against the served release.** RT4 (warm from the
   all-data model, one pass over RT2's mix plus every UT-GEN2 self-play row of the 500k-round cut) confirmed +0.0612
   [+0.0510, +0.0712] vs release 54 as served (S159; release 55). The step bundles more rows, newer generators and a
-  second warm-start pass, so it does not isolate the data amount. On the same corpus, RT4 read +0.0355 [+0.008,
-  +0.064] against FT-200k, where FT-500k (RT2 fine-tuned on all 500k rounds) read +0.008 [−0.0185, +0.0345].
+  second warm-start pass, so it does not isolate the data amount. Using the same 500k-round UT-GEN2 cut, with
+  different initialization and replay, two separate duels against FT-200k read: RT4 (warm from the all-data model,
+  replaying RT2's 39.76M rows) +0.0355 [+0.008, +0.064]; FT-500k (RT2 fine-tuned on the 28.77M cut rows alone) +0.008
+  [−0.0185, +0.0345].
 - Release 29's served read (+0.049) is below its card-play read (+0.086) with no measured cause; the deploy gate is
   the served design. Corpus seeds are decks and are excluded from screens per model.
 

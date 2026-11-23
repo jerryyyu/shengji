@@ -20,6 +20,9 @@ import { normalizeCode } from "../codes";
 import { WIDE } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
 import { offlineGame, offlineOffered, useOfflineTable } from "./offlineGame";
+import { isNative } from "../native";
+import { telemetry } from "../telemetry";
+import { APP_STORE_BADGE, APP_STORE_BADGE_ALT, APP_STORE_URL } from "../appStore";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -268,8 +271,23 @@ export default function Lobby({ status, room = null }: LobbyProps) {
             </>
           )}
         </p>
+        {/* the website's way to the iOS app: Apple's badge as Apple draws it,
+            under the controls and gone while a table panel is the page */}
+        {isNative() || panelUp ? null : <AppStoreBadge />}
         </div>
       </div>
     </div>
+  );
+}
+
+function AppStoreBadge() {
+  const tapped = () => {
+    telemetry.tap("app_store_badge");
+    telemetry.flush();
+  };
+  return (
+    <a className="app-store-badge" href={APP_STORE_URL} onClick={tapped}>
+      <img src={APP_STORE_BADGE} alt={APP_STORE_BADGE_ALT} width={120} height={40} />
+    </a>
   );
 }

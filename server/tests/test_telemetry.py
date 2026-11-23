@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,19 @@ def test_unknown_fields_and_free_text_are_dropped():
 ])
 def test_events_outside_the_allow_list_are_dropped(raw):
     assert telemetry.clean_event(raw) is None
+
+
+def test_the_app_store_badge_tap_is_kept_and_carries_only_its_id():
+    ev = telemetry.clean_event({"e": "tap", "t": 900, "id": "app_store_badge",
+                                "href": "https://apps.apple.com/app/id6833598710", "from": "badge"})
+    assert ev == {"e": "tap", "t": 900, "id": "app_store_badge"}
+
+
+def test_every_client_tap_id_is_on_the_server_allow_list():
+    src = (Path(__file__).resolve().parents[2] / "web/src/telemetry.ts").read_text()
+    union = re.search(r"export type TapId =(.*?);", src, re.DOTALL)
+    assert union is not None
+    assert set(re.findall(r'"([a-z_]+)"', union.group(1))) == set(telemetry.TAPS)
 
 
 def test_bounded_ints_refuse_bools_and_out_of_range():

@@ -4206,6 +4206,18 @@ button.games-row { cursor: pointer; }
    or two and a picture made of the table's own cards and chips. */
 
 .howto-entry { margin: 0; font-size: 13px; color: var(--text-dim); }
+/* Apple's App Store badge, drawn at its own 40px height with Apple's clear
+   space (a quarter of its height) on every side; the link is 44px tall. */
+.app-store-badge {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin: 8px 0;
+  padding: 0 10px;
+}
+.app-store-badge img { display: block; height: 40px; width: auto; }
 .howto-link {
   appearance: none;
   background: none;

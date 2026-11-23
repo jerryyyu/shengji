@@ -79,7 +79,7 @@ describe("press feedback", () => {
 
 describe("tap targets", () => {
   // controls drawn at 44px or more
-  const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".tp-invite", ".q-link", ".leave-sheet-actions button"];
+  const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".tp-invite", ".q-link", ".leave-sheet-actions button", ".app-store-badge"];
   it.each(DRAWN)("%s is drawn at least 44px tall", (sel) => {
     const h = bodies(sel).flatMap((b) => [...b.matchAll(/(?:^|[ ;])(?:min-)?height: (\d+)px/g)].map((m) => Number(m[1])));
     expect(h.length).toBeGreaterThan(0);

@@ -354,3 +354,19 @@ def test_the_sign_in_count_takes_only_its_enum_and_a_bool(sink):
     assert not telemetry.signin_count("facebook", True)
     assert not telemetry.signin_count("apple", 1)
     assert [r["provider"] for r in _records(sink)] == ["google"]
+
+
+def test_identity_moments_are_kept_to_the_hour_and_other_events_to_the_second(sink, monkeypatch):
+    monkeypatch.setattr(telemetry.time, "time", lambda: 1_790_000_000.4)   # 17:33:20 UTC
+    telemetry.receive(_Sock(), {"v": 1, "events": [
+        {"e": "tap", "t": 900, "id": "signin_open", "from": "chip"},
+        {"e": "signin", "t": 950, "step": "done", "provider": "google"},
+        {"e": "device_account", "t": 990, "step": "created"},
+        {"e": "tap", "t": 1000, "id": "play"},
+        {"e": "screen", "t": 1100, "name": "table"},
+    ]}, "guest")
+    rows = _records(sink)
+    hour = 1_790_000_000 - 1_790_000_000 % 3600
+    assert [(r["e"], r["ts"], "t" in r) for r in rows] == [
+        ("tap", hour, False), ("signin", hour, False), ("device_account", hour, False),
+        ("tap", 1_790_000_000, True), ("screen", 1_790_000_000, True)]

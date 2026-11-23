@@ -14,6 +14,11 @@ the server read it at the handshake: ``guest``, ``device`` (an account with
 no Google or Apple identity, the iOS app's own) or ``linked`` (an account
 with one); never the account itself.
 
+The events sent at a sign-in or identity change (``signin``,
+``device_account`` and the ``signin_open`` tap) keep their ``ts`` only to
+the hour and drop ``t``, so they cannot be matched to an account's last
+sign-in.
+
 A successful sign-in is also counted server-side (``signin_count``): its
 provider and whether it made the account, with no ``sid`` and no ``ts``, so
 it joins no socket's events.
@@ -330,6 +335,20 @@ def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
         return False
 
 
+def _identity_moment(ev: dict[str, Any]) -> bool:
+    """An event sent at a sign-in or an identity change: its time could be
+    matched to an account's last sign-in, so it is kept to the hour."""
+    return ev["e"] in ("signin", "device_account") or (ev["e"] == "tap" and ev.get("id") == "signin_open")
+
+
+def _stamped(ev: dict[str, Any], ts: int) -> dict[str, Any]:
+    """The event with its ``ts``; an identity moment gets the hour and loses
+    ``t``, whose offset beside another event's exact ``ts`` would restore it."""
+    if not _identity_moment(ev):
+        return {**ev, "ts": ts}
+    return {**{k: v for k, v in ev.items() if k != "t"}, "ts": ts - ts % 3600}
+
+
 def receive(conn: Any, msg: Any, kind: str) -> int:
     """Handle one ``client_event`` message from ``conn``; ``kind`` is the
     socket's ``who`` (anything else reads as guest). Returns how many events
@@ -342,9 +361,8 @@ def receive(conn: Any, msg: Any, kind: str) -> int:
         st = state_for(conn)
         events = events[:st.take(len(events))]
         ts = round(time.time())
-        records = [{**ev, **stamps, "sid": st.sid,
-                    "who": kind,
-                    "build": build_id(), "ts": ts} for ev in events]
+        records = [{**_stamped(ev, ts), **stamps, "sid": st.sid,
+                    "who": kind, "build": build_id()} for ev in events]
         return len(records) if write(records) else 0
     except Exception:          # noqa: BLE001
         return 0

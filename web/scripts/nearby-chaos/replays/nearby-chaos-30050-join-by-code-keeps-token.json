@@ -1,0 +1,33 @@
+{
+  "seed": 30050,
+  "bugs": [],
+  "seconds": 240,
+  "bound": 15,
+  "hostile": false,
+  "schedule": [
+    {
+      "t": 117.35114528611302,
+      "kind": "bg",
+      "who": "J1",
+      "dur": 18.32670703716576,
+      "arg": 0
+    },
+    {
+      "t": 127.57815427868627,
+      "kind": "leave",
+      "who": "J1",
+      "dur": 18.255617702845484,
+      "arg": 0
+    },
+    {
+      "t": 144.4391956354957,
+      "kind": "radio",
+      "who": "J1",
+      "dur": 3.883676666766405,
+      "arg": 0
+    }
+  ],
+  "invariant": "one seat per phone",
+  "page": "sim",
+  "gaps": "off"
+}

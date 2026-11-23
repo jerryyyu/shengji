@@ -16,7 +16,7 @@ import { subscribeNearbyLog, nearbyLogLines, clearNearbyLog } from "../../src/ne
 import { SmartBot, viewFor } from "../../src/offline/bot";
 import type { RoundState } from "../../src/offline/engine/round";
 import { Radio, Rng, type Phone, type SimLink } from "./radio";
-import { HOST_WINDOW_S, LONG_LIVED_S, NEARBY_RETRY_S, type PageModel } from "./pageModel";
+import { HOST_WINDOW_S, JOIN_TIMEOUT_S, KeptToken, LONG_LIVED_S, NEARBY_RETRY_S, type PageModel } from "./pageModel";
 import { frameTriggers, TRIGGER_PHASES, type TriggerPhase } from "../../src/nearbySoakChaos";
 
 type Frame = Record<string, unknown> & { type: string };
@@ -555,6 +555,13 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     status: "closed" | "connecting" | "open" = "closed";
     seated = false;
     token: string | null = null;
+    /** The seat token kept on the phone by the table's code (pageModel.ts). */
+    readonly kept = new KeptToken();
+    /** nearbyJoin.ts claiming: that claim is out on its own link, the
+     *  resume by the kept token as its hello. */
+    claiming = false;
+    /** Bumped at each claim and its end, so only the latest timer acts. */
+    claimRun = 0;
     /** The bound seat of the current socket, from its resume frame. */
     boundSeat: number | null = null;
     leaving = false;
@@ -641,6 +648,9 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       this.leaving = false;
       this.seated = false;
       this.token = null;
+      this.kept.look();
+      this.claiming = false;
+      this.claimRun += 1;
       this.misses = 0;
       this.d.inPlay = true;
       if (!this.unwatch) {
@@ -653,8 +663,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       }
       this.open();
     }
+    // nearbyJoin.ts greeting(): the seat's resume while seated, or the full
+    // table's claim by the kept token
     private greet = (): Record<string, unknown> | null =>
-      this.seated ? { type: "table_join", code, name: this.d.name, ...(this.token ? { token: this.token } : {}) } : null;
+      this.claiming && !this.seated && this.kept.token
+        ? { type: "table_join", code, name: this.d.name, token: this.kept.token, seat: null }
+        : this.seated ? { type: "table_join", code, name: this.d.name, ...(this.token ? { token: this.token } : {}) } : null;
     open(): void {
       if (this.done) return;
       const no = ++this.sockNo;
@@ -678,7 +692,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         this.tries = 0;
         this.misses = 0;
         if (gapMode !== "off" && this.seated) this.checkPending(no);
-        if (!this.seated) sock.send(JSON.stringify({ ...PEEK, code }));
+        if (!this.seated && !this.claiming) sock.send(JSON.stringify({ ...PEEK, code }));
       };
       sock.onmessage = (ev) => {
         if (this.sock !== sock) return;
@@ -692,6 +706,13 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         this.status = "closed";
         this.sock = null;
         for (const s of this.d.sent) if (s.sock === no && s.state === "pending") s.state = "closed";
+        // nearbyJoin.ts onStatus: the claim's link closing unanswered ends
+        // the claim (Full, the token kept), with no new link until the next
+        // look
+        if (this.claiming && !this.seated) {
+          this.claimEnd(false);
+          return;
+        }
         this.armGone();
         if (this.leaving) {
           this.finishLeave();
@@ -743,6 +764,12 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     }
     onLinkState(no: number, s: string, detail?: string): void {
       if (no !== this.sockNo) return;
+      // nearbyJoin.ts onLink: the host refused the claim's resume, so the
+      // table does not hold that seat
+      if (this.claiming && !this.seated && detail === SEAT_GONE) {
+        this.claimEnd(true);
+        return;
+      }
       if (this.seated) {
         // nearbyJoin.ts onLink: a refused resume (the table no longer knows
         // the token) forgets it, and the code's join starts over with the
@@ -751,6 +778,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           if (this.leaving) this.finishLeave();
           else {
             log(this.d.id, "page: resume refused: the seat is gone; the seats again");
+            this.kept.forget();
             this.goneRun += 1;
             this.goneArmed = false;
             this.look();
@@ -772,6 +800,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       if (f.type === "resume") {
         const same = this.token === f.token;
         this.token = f.token as string;
+        this.kept.resume(this.token, this.leaving);
         d.tokens.add(this.token);
         const r = room!;
         const at = r.lobby ? r.lobby.findIndex((s) => s?.token === this.token) : r.seats.findIndex((s) => s.token === this.token);
@@ -791,6 +820,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       }
       if (f.type === "room_seats" && !this.seated) {
         if (f.full) {
+          if (this.kept.fullPeek() === "claim") {
+            this.claim();
+            return;
+          }
           log(d.id, "page: table full");
           this.giveUp(true);
           return;
@@ -798,15 +831,20 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         const taken = new Set((f.seats as { seat: number }[]).map((s) => s.seat));
         const open = [0, 1, 2, 3].filter((s) => !taken.has(s));
         const seat = open.length ? driverRng.pick(open) : null;
-        // nearbyJoin.ts join(): the panel's Join carries the token the
-        // table's resume frame gave this page since its look (its kept
-        // token), so a seat answered on a link that went before its state
-        // is taken back, not held beside a second one
+        // nearbyJoin.ts join(): the panel's Join carries the token kept for
+        // this table, so a seat answered on a link that went before its
+        // state, or one still held when the page joins by code again, is
+        // taken back, not held beside a second one
         this.clock.setTimeout(() => {
+          const kept = this.kept.token;
           if (this.sock && this.status === "open" && !this.seated) {
-            this.sock.send(JSON.stringify({ type: "table_join", code, name: d.name, seat, ...(this.token ? { token: this.token } : {}) }));
+            this.sock.send(JSON.stringify({ type: "table_join", code, name: d.name, seat, ...(kept ? { token: kept } : {}) }));
           }
         }, driverRng.range(0.3, 1.2));
+        return;
+      }
+      if (f.type === "error" && this.claiming && !this.seated) {
+        this.claimEnd(true);
         return;
       }
       if (f.type === "error") {
@@ -820,6 +858,11 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         return;
       }
       if (f.type !== "room" && f.type !== "state") return;
+      if (f.type === "state") this.kept.state((f.round_result as { game_over?: boolean } | null | undefined)?.game_over === true);
+      if (this.claiming) {
+        this.claiming = false;
+        this.claimRun += 1;
+      }
       this.seated = true;
       if (typeof f.you === "number" && this.boundSeat !== null && f.you !== this.boundSeat) {
         fail("no hidden cards", `${d.id}'s socket ${no} bound to seat ${this.boundSeat} got a frame for seat ${String(f.you)}`);
@@ -956,6 +999,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       emitPhase("leave");
       this.leaving = true;
       this.d.inPlay = false;
+      this.kept.forget();
       if (wholeApp && this.token && room && !room.lobby) leaves.push({ d: this.d, token: this.token, at: vc.now(), offline: false, back: vc.now() });
       this.sock.send(JSON.stringify({ type: "table_leave" }));
       const sock = this.sock;
@@ -970,6 +1014,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       emitPhase("leave");
       this.leaving = true;
       this.d.inPlay = false;
+      this.kept.forget();
       if (this.token) offlineLeft.add(this.token);
       if (this.token && room && !room.lobby) leaves.push({ d: this.d, token: this.token, at: vc.now(), offline: true, back: vc.now() + back });
       this.sock?.send(JSON.stringify({ type: "table_leave" }));
@@ -1009,6 +1054,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       this.done = true;
       this.seated = false;
       this.token = null;
+      this.kept.forget();
       const s = this.sock;
       this.sock = null;
       this.status = "closed";
@@ -1016,6 +1062,34 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         s.onclose = null;
         s.close();
       }
+    }
+    /** nearbyJoin.ts claim(): every seat is taken and this phone keeps a
+     *  token for the table, so one resume by it goes out on a new link. */
+    claim(): void {
+      log(this.d.id, "page: table full: resume sent by the kept token");
+      this.claiming = true;
+      const run = ++this.claimRun;
+      this.clock.setTimeout(() => { if (run === this.claimRun && this.claiming && !this.seated) this.claimEnd(false); }, JOIN_TIMEOUT_S);
+      const old = this.sock;
+      this.sock = null;
+      if (old) {
+        old.onopen = null;
+        old.onmessage = null;
+        old.onclose = null;
+        old.close();
+      }
+      this.retry += 1;
+      this.open();
+    }
+    /** nearbyJoin.ts claimEnd(): the claim did not seat the phone, which is
+     *  the full outcome. Only a refusal forgets the token; a claim nobody
+     *  answered keeps it. */
+    claimEnd(refused: boolean): void {
+      log(this.d.id, `page: resume by the kept token ${refused ? "refused" : "unanswered"}`);
+      this.claiming = false;
+      this.claimRun += 1;
+      this.kept.claimEnd(refused);
+      this.giveUp(true);
     }
     giveUp(full: boolean): void {
       log(this.d.id, `page: gives up (${full ? "table full" : "host left"})`);
@@ -1028,6 +1102,8 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       }
       this.done = true;
       this.d.inPlay = false;
+      // the host's end forgets the table; a full table keeps its token
+      if (!full) this.kept.forget();
       const s = this.sock;
       this.sock = null;
       this.status = "closed";

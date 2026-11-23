@@ -408,8 +408,11 @@ def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path):
     assert actual == json.loads((baseline / report).read_text())
 
 
-def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
-    # Equal weights with distinct checkpoint bytes give an exact zero-delta control.
+@pytest.mark.parametrize("medium_device", ["cpu", "mps"])
+def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path, medium_device):
+    if medium_device == "mps" and not torch.backends.mps.is_available():
+        pytest.skip("MPS unavailable")
+    # The same weights in distinct checkpoints isolate device and reporting differences.
     original = cpu_root[0] / "train" / "best.pt"
     saved = torch.load(original, weights_only=False, map_location="cpu")
     saved["fixture_arm"] = "medium"
@@ -421,7 +424,9 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
         out = tmp_path / arm
         assert ur.main(["train", "--data", str(data), "--out", str(out), "--init-readout-ckpt", str(init),
                         "--threads", "1", "--loader-threads", "1", "--rounds-per-batch", "1",
-                        "--buffer-chunks", "1", "--report-buffer", "1"]) == 0
+                        "--buffer-chunks", "1", "--report-buffer", "1",
+                        "--device", "cpu" if arm == "small" else medium_device,
+                        "--corpus-weight", f"{data}=policy:2,reply:2"]) == 0
         gate.extend([f"--{arm}", str(out), f"--{arm}-init-sha", hashlib.sha256(init.read_bytes()).hexdigest()])
 
     def decision(expected_rc, expected_text):
@@ -440,7 +445,9 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
         decision(0, "CONTINUE")
     settings = tmp_path / "medium" / "run.json"
     original_settings = settings.read_text()
-    settings.write_text(json.dumps({**json.loads(original_settings), "seed": 9}))
+    recipe = json.loads(original_settings)
+    assert recipe["corpus_weight"] == [f"{data}=policy:2,reply:2"]
+    settings.write_text(json.dumps({**recipe, "corpus_weight": [f"{data}=policy:1,reply:2"]}))
     decision(2, "training settings")
     settings.write_text(original_settings)
     report["rows"] += 1

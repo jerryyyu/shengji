@@ -85,7 +85,8 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
   const seats = peek ? [0, 1, 2, 3].map((at): ModelSeat => {
     const sd = peek.seats.find((s) => s.seat === at);
     const ours = (at - (j.seat ?? 0) + 4) % 2 === 0;
-    if (at === j.seat) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
+    if (at === j.seat) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}`,
+                                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     if (!sd) {
       return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`,
                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };

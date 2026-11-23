@@ -164,6 +164,18 @@ describe("the nearby seat picker", () => {
     expect(JSON.parse(NearbySocket.outbound(JSON.stringify(sent))!)).toMatchObject({ type: "nearby_hello", token: "tok-old", chosen: true });
   });
 
+  it("with a kept token, tapping the glowing seat itself is sent as chosen", async () => {
+    keepSeatToken("K7Q2M", "tok-old");
+    const peek = { type: "room_seats", room: "K7Q2M", in_game: true, full: false, seats: [person(0, "Jerry"), person(2, "Mei")] } as RoomSeats;
+    const h = await picker(peek);
+    // drawn around seat 1, the glow: it sits below seat 3
+    const glow = grid()[0][1];
+    expect(glow.getAttribute("aria-label")?.split(",")[0]).toBe("You");
+    tap(glow);
+    tap(host.querySelector(".tp-primary")!);
+    expect(h.sent.at(-1)).toMatchObject({ type: "table_join", seat: 1, token: "tok-old", chosen: true });
+  });
+
   it("with no kept token a tap needs no chosen: the seat alone seats a newcomer", async () => {
     const h = await picker({ type: "room_seats", room: "K7Q2M", in_game: false, full: false, seats: [person(0, "Jerry")] } as RoomSeats);
     tap(grid()[1][0]);

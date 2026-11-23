@@ -233,6 +233,27 @@ def test_the_offline_levels_are_the_servers():
     assert f"{relaxed_play.CASUAL_SHA256}  {relaxed_play.CASUAL_PACKAGE}" in manifest
 
 
+def test_the_manifest_pins_the_weights_fly_toml_serves():
+    """MANIFEST.sha256 pins every weight file fly.toml names under /data/models/ at
+    fly.toml's own sha256, and no other release weight, so the payload bundles the
+    served release's packages and drops a replaced release's."""
+    import tomllib
+    with open(PYBOT.parents[2] / "fly.toml", "rb") as f:
+        env = {str(k): str(v) for k, v in tomllib.load(f)["env"].items()}
+    served = {}
+    for key, value in env.items():
+        if key.endswith("_CKPT") and value.startswith(offline_bot.MODEL_PREFIX):
+            served[Path(value).name] = env.get(key[:-len("_CKPT")] + "_SHA256")
+    # the shortlist checkpoint is the CWV prior file, pinned by the prior's sha256
+    shortlist = Path(env["SHENGJI_CWV_SHORTLIST_CKPT"]).name
+    served[shortlist] = served.get(shortlist) or env["SHENGJI_CWV_PRIOR_SHA256"]
+    assert all(served.values())
+    pinned = dict(reversed(line.split("  ", 1)) for line in
+                  (PYBOT / "MANIFEST.sha256").read_text().splitlines() if line.endswith(".npz"))
+    pinned.pop(relaxed_play.CASUAL_PACKAGE)
+    assert pinned == served
+
+
 def test_a_missing_scorer_package_plays_the_served_bot_as_the_server_does(tmp_path):
     served = make_bot("mc", seed=BOT_SEED)
     bot, error = offline_bot.standard_bot(served, str(tmp_path / relaxed_play.CASUAL_PACKAGE), BOT_SEED)

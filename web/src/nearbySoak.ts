@@ -205,6 +205,43 @@ export class LinkSplit {
 }
 
 type Line = Pick<LogLine, "t" | "from" | "text">;
+
+/** What a log line does to the seat's resume hello out, for the abandoned
+ *  count: every line socket.ts, nearbyJoin.ts and the plugin write about a
+ *  resume's hello or the link it rides, and null for any other line.
+ *  - sent: "resume: link up in N ms; hello sent (with|no token)";
+ *  - answered: the host's answer reached the page: "resume: in <type>",
+ *    "resume: accepted (<type>); open", "resume: refused (<code>); the seat
+ *    is gone", the join's "resume refused: …" and "resume by the kept token
+ *    refused";
+ *  - kept: "resume: no answer in N s, but the link carries; kept", the
+ *    same hello still out on a link that answers pings;
+ *  - abandoned: the hello's link replaced or gone with no answer: the
+ *    socket's give-ups ("resume: no answer …; a fresh attempt", "resume: no
+ *    link after N s; a fresh attempt"), a STUCK, the plugin's "drop host",
+ *    the join's "attempt (resume)", "send failed: …" (the link closes) and
+ *    "resume by the kept token unanswered", and the driver's "flow:
+ *    seated" (a seat won by the code). The plugin's "drop host (not
+ *    ready)" is a link that never came up, so never carried a hello. */
+export function helloEvent(l: Pick<LogLine, "from" | "text">): "sent" | "answered" | "kept" | "abandoned" | null {
+  const { from, text } = l;
+  if (from === "socket") {
+    if (/^resume: link up in \d+ ms; hello sent/.test(text)) return "sent";
+    if (/^resume: (in |accepted |refused )/.test(text)) return "answered";
+    if (/^resume: no answer .*; kept$/.test(text)) return "kept";
+    if (/^resume: no (answer|link) .*; a fresh attempt$/.test(text)) return "abandoned";
+    if (text.startsWith("STUCK")) return "abandoned";
+    return null;
+  }
+  if (from === "native") return text === "drop host" ? "abandoned" : null;
+  if (from === "join") {
+    if (text.startsWith("resume refused") || text === "resume by the kept token refused") return "answered";
+    if (text === "attempt (resume)" || text === "resume by the kept token unanswered" || text.startsWith("send failed")) return "abandoned";
+    return null;
+  }
+  if (from === "soak") return text === "flow: seated" ? "abandoned" : null;
+  return null;
+}
 const SOCKET_MOVES = /^out (play|bury|declare|pass_declare)$/;
 const sec = (ms: number): string => (ms / 1000).toFixed(1);
 const spreadS = (xs: number[]): string =>
@@ -225,7 +262,9 @@ const spreadS = (xs: number[]): string =>
  *    no answer on its link: one still out when a new attempt, a drop, a
  *    STUCK, its own give-up, a later hello or a seat won by the code
  *    replaces it, the one out at the driver's Leave included (a Leave does
- *    not answer it), while an accepted resume answers it;
+ *    not answer it), while any frame of the host's answer (an accepted
+ *    resume, a refusal) answers it and a link kept because it carries
+ *    leaves it out (helloEvent);
  *  - a move is ignored when its link goes before its answer, and re-sent
  *    when the same kind goes out within 5 s of the resume after it;
  *  - each STUCK by its fault on this phone: a stall running, a stall ended
@@ -305,16 +344,13 @@ export class SoakMetrics {
     const on = from === "soak" ? /^chaos: oneway on, (?:in|out) for ([\d.]+) s$/.exec(text) : null;
     if (on) this.onewayUntil = t + Number(on[1]) * 1000;
     if (from === "soak" && text.startsWith("chaos: oneway over") && this.onewayUntil !== null) this.onewayUntil = Math.min(this.onewayUntil, t);
-    const linkGone = (from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)");
-    if (linkGone || (from === "socket" && /^resume: no answer/.test(text)) || (from === "soak" && text === "flow: seated")) this.helloGone();
-    if (from === "socket" && text.startsWith("resume: accepted")) this.helloOut = false;
-    if (linkGone) this.down(t);
+    const hello = helloEvent(l);
+    if (hello === "answered") this.helloOut = false;
+    else if (hello === "abandoned" || hello === "sent") this.helloGone();
+    if ((from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)")) this.down(t);
     if (from === "join" && text === "attempt (resume)" && this.outage) this.outage.attempts += 1;
-    if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text)) {
-      this.helloGone();
-      // a hello on the Leave's own way out is the Leave's, not the outage's
-      this.helloOut = this.outage !== null && !this.leaving;
-    }
+    // a hello on the Leave's own way out is the Leave's, not the outage's
+    if (hello === "sent") this.helloOut = this.outage !== null && !this.leaving;
     if ((from === "socket" && text.startsWith("resume: accepted")) || (from === "soak" && text === "flow: seated")) this.back(t);
     if (text.startsWith("STUCK")) this.stuckAt(t);
     if (from === "host" && text.startsWith("IGNORED ")) this.hostIgnored += 1;

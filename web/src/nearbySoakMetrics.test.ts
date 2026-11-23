@@ -4,7 +4,7 @@
 // the table frames' sizes, and the live soak's page-suspended lag spans and
 // bot-fallback count.
 import { describe, expect, it, vi } from "vitest";
-import { LinkSplit, SoakMetrics } from "./nearbySoak";
+import { helloEvent, LinkSplit, SoakMetrics } from "./nearbySoak";
 import { Coverage } from "./nearbySoakCoverage";
 
 const line = (t: number, from: string, text: string) => ({ t, from, text });
@@ -152,6 +152,78 @@ describe("the soak's link-health metrics", () => {
     ]) m.see(l);
     expect(m.abandonedHellos).toBe(1);
     expect(m.freezes).toEqual([85_000 - 62_000]);
+  });
+
+  it("a hello kept on a link that carries, then accepted, is not abandoned", () => {
+    const m = new SoakMetrics();
+    for (const l of [
+      line(0, "socket", "in state"),
+      line(5000, "socket", "STUCK: no pong; making a new link"),
+      line(5010, "join", "attempt (resume)"),
+      line(5100, "socket", "resume: link up in 90 ms; hello sent (with token)"),
+      line(10_100, "socket", "resume: no answer in 5 s, but the link carries; kept"),
+      line(13_000, "socket", "resume: in resume"),
+      line(13_001, "socket", "resume: in state"),
+      line(13_002, "socket", "resume: accepted (state); open"),
+      line(13_003, "join", "resume: connected"),
+    ]) m.see(l);
+    expect(m.abandonedHellos).toBe(0);
+    expect(m.freezes).toEqual([13_002]);
+  });
+
+  it("a hello the host refused is answered: the seat picker's new attempt abandons nothing", () => {
+    const m = new SoakMetrics();
+    for (const l of [
+      line(0, "socket", "in state"),
+      line(5000, "socket", "STUCK: no pong; making a new link"),
+      line(5010, "join", "attempt (resume)"),
+      line(5100, "socket", "resume: link up in 90 ms; hello sent (no token)"),
+      line(5120, "socket", "resume: in error"),
+      line(5121, "socket", "resume: refused (room_full); the seat is gone"),
+      line(5122, "join", "resume refused: the seat is gone; the seats again"),
+      line(5130, "join", "attempt (first look)"),
+      line(5200, "socket", "open"),
+      line(5300, "socket", "in room_seats"),
+      line(6000, "join", "join sent (no token), seat 2"),
+      line(6100, "socket", "in state, 100 ms after the move"),
+      line(6101, "soak", "flow: seated"),
+    ]) m.see(l);
+    expect(m.abandonedHellos).toBe(0);
+  });
+
+  it("classifies every line the producers write about a resume's hello", () => {
+    const cases: [string, string, ReturnType<typeof helloEvent>][] = [
+      ["socket", "resume: link up in 91 ms; hello sent (with token)", "sent"],
+      ["socket", "resume: link up in 91 ms; hello sent (no token)", "sent"],
+      ["socket", "resume: in resume", "answered"],
+      ["socket", "resume: in error", "answered"],
+      ["socket", "resume: accepted (state); open", "answered"],
+      ["socket", "resume: accepted (error); open", "answered"],
+      ["socket", "resume: refused (room_not_found); the seat is gone", "answered"],
+      ["join", "resume refused: the seat is gone; the seats again", "answered"],
+      ["join", "resume by the kept token refused", "answered"],
+      ["socket", "resume: no answer in 5 s, but the link carries; kept", "kept"],
+      ["socket", "resume: no answer in 20 s; a fresh attempt", "abandoned"],
+      ["socket", "resume: no answer and no pong; a fresh attempt", "abandoned"],
+      ["socket", "resume: no answer and no pong in 7 s; a fresh attempt", "abandoned"],
+      ["socket", "resume: no link after 8 s; a fresh attempt", "abandoned"],
+      ["socket", "STUCK: no pong; making a new link", "abandoned"],
+      ["native", "drop host", "abandoned"],
+      ["join", "attempt (resume)", "abandoned"],
+      ["join", "resume by the kept token unanswered", "abandoned"],
+      ["join", "send failed: Error: no such peer", "abandoned"],
+      ["native", "drop host (not ready)", null],
+      ["socket", "STUCK: the host is silent; making a new link", "abandoned"],
+      ["socket", "STUCK: no pong after a move; making a new link", "abandoned"],
+      ["soak", "flow: seated", "abandoned"],
+      ["socket", "resume: the unanswered play sent again", null],
+      ["socket", "slow: no pong; giving it 4.8 s more", null],
+      ["socket", "open", null],
+      ["join", "resume: connected", null],
+      ["join", "attempt (first look)", null],
+      ["join", "table full: resume sent by the kept token", null],
+    ];
+    for (const [from, text, want] of cases) expect([text, helloEvent({ from, text })]).toEqual([text, want]);
   });
 
   it("puts a STUCK under this phone's one-way loss on it, not on no fault", () => {

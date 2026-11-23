@@ -37,6 +37,11 @@ def test_worker_publishes_complete_fixture_once(monkeypatch, tmp_path):
     assert rec["bury_fallback"] is None and rec["belief_fallbacks"] == 0
     assert rec["decisions"] == 5 and len(rec["eligible"]) == 1
     assert rec["attacker_points"] == rnd.attacker_points
+    import readout
+    monkeypatch.setattr(readout, "FIRST_SEED", seed)
+    monkeypatch.setattr(readout, "DEALS", 1)
+    verdict = readout.analyze({seed: rec}, arm_name=ENV["SHENGJI_BOT"])
+    assert verdict["verdict"] == "FAIL" and verdict["eligible"] == 1
     with pytest.raises(FileExistsError):
         worker.write_seed(seed, tmp_path, ENV)
 

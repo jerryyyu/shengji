@@ -275,6 +275,41 @@ def objective(L, args):
             + args.value_weight * m["leaf_value"] + args.reply_weight * m["reply"])
 
 
+def _backward_batch(model, b, device, args):
+    """Accumulate one logical batch's gradient before the caller clips and steps."""
+    limit = getattr(args, "microbatch_rounds", None)
+    rounds = len(b["banker"])
+    if limit is None or limit >= rounds:
+        loss = losses(model, us.to_device(b, device))
+        objective(loss, args).backward()
+        return np.asarray([float(loss[k].detach()) for k in SUM_KEYS])
+
+    totals = dict(belief_n=float(b["Y"].sum(dtype=np.float64)), rows=len(b["rr"]),
+                  leaves=len(b["leaf_row"]), replies=int(b["leaf_has_reply"].sum()))
+    stats = np.zeros(len(SUM_KEYS))
+    round_fields = {"tok_int", "tok_f", "tok_cards", "tok_att", "card_feat", "banker"}
+    leaf_rounds = b["rr"][b["leaf_row"]]
+    for start in range(0, rounds, limit):
+        end = min(rounds, start + limit)
+        rows = np.flatnonzero((b["rr"] >= start) & (b["rr"] < end))
+        leaves = np.flatnonzero((leaf_rounds >= start) & (leaf_rounds < end))
+        micro = {}
+        for key, value in b.items():
+            if key in round_fields:
+                micro[key] = value[start:end]
+            elif key.startswith("leaf_"):
+                micro[key] = value[leaves]
+            else:
+                micro[key] = value[rows]
+        micro["rr"] -= start
+        micro["leaf_row"] = np.searchsorted(rows, micro["leaf_row"])
+        loss = losses(model, us.to_device(micro, device))
+        objective({**loss, **totals}, args).backward()
+        stats += [float(loss[k].detach()) for k in SUM_KEYS]
+        del loss
+    return stats
+
+
 #: the heads a corpus weight names, in the column order of ``row_w``
 CORPUS_HEADS = ("belief", "q", "policy", "value", "reply")
 
@@ -393,6 +428,8 @@ def _run_identity(args) -> dict:
             "head_warmup_buffers", "weight_decay", "belief_weight", "q_weight", "policy_weight", "value_weight",
             "reply_weight", "seed", "buffer_chunks", "rounds_per_batch", "max_train_rows", "calib_rows",
             "exclude_seed_window")
+    if getattr(args, "microbatch_rounds", None) is not None:
+        keys += ("microbatch_rounds",)
     if getattr(args, "corpus_weight", None):
         keys += ("corpus_weight",)
     run = {k: getattr(args, k) for k in keys}
@@ -419,6 +456,8 @@ def train(args) -> int:
 
 
 def _train(args, out: Path, status: str) -> int:
+    if getattr(args, "microbatch_rounds", None) is not None and args.microbatch_rounds < 1:
+        raise UnifiedReadoutError("--microbatch-rounds must be positive")
     report_buffer = getattr(args, "report_buffer", None)
     pause_at_report = getattr(args, "pause_at_report", False)
     if pause_at_report and report_buffer is None:
@@ -499,12 +538,11 @@ def _train(args, out: Path, status: str) -> int:
             opt.param_groups[1]["lr"] = 0.0
         for k, v in leaf_batch(b).items():
             b["leaf_" + k] = v
-        L = losses(model, us.to_device(b, device))
         opt.zero_grad()
-        objective(L, args).backward()
+        stats = _backward_batch(model, b, device, args)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
-        return np.asarray([float(L[k].detach()) for k in SUM_KEYS])
+        return stats
 
     ck = out / "checkpoint.pt"
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
@@ -1040,6 +1078,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--threads", type=int, default=12)
     t.add_argument("--loader-threads", type=int, default=3)
     t.add_argument("--buffer-chunks", type=int, default=24)
+    t.add_argument("--microbatch-rounds", type=int, help="maximum rounds per backward pass within a logical batch")
     t.add_argument("--rounds-per-batch", type=int, default=16)
     t.add_argument("--max-train-rows", type=int, default=None)
     t.add_argument("--max-steps", type=int, default=None)

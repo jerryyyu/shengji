@@ -415,3 +415,40 @@ def test_the_cache_carries_leaf_weights_and_the_polish_uses_them(world, tmp_path
         f.rename(tmp_path / "c1" / f"train-9{f.name[6:]}")     # mixed shards refuse
     with pytest.raises(ur.UnifiedReadoutError, match="mixes"):
         ur.main(pol + ["--cache", str(tmp_path / "c1"), "--out", str(tmp_path / "p2")])
+
+
+def test_accumulated_rounds_preserve_weighted_gradient_and_batch_totals(world):
+    from types import SimpleNamespace
+    from tests.test_unified_seq import _loaded
+
+    part, _ = _loaded(world)
+    rids = np.unique(part["row_round"])[:3]
+    rows = np.concatenate([np.flatnonzero(part["row_round"] == r)[:5 + i] for i, r in enumerate(rids)])
+    assert len(rids) == 3
+    part["row_w"] = np.ones((len(part["X"]), 5), np.float32)
+    part["row_w"][rows[::2], 3:] = 0.25
+    b = ur.make_batch(part, rids, rows)
+    args = SimpleNamespace(belief_weight=1., q_weight=1., policy_weight=.2, value_weight=1., reply_weight=.2)
+    torch.manual_seed(12)
+    whole = ur.build(ARCH, READOUT)
+    split = copy.deepcopy(whole)
+    expected = ur._backward_batch(whole, b, "cpu", args)
+    args.microbatch_rounds = 2
+    actual = ur._backward_batch(split, b, "cpu", args)
+    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-6)
+    for p, q in zip(whole.parameters(), split.parameters()):
+        torch.testing.assert_close(p.grad, q.grad, rtol=2e-4, atol=2e-6)
+
+
+@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="requires MPS")
+def test_microbatch_cli_preserves_optimizer_step_count_on_mps(world, tmp_path):
+    from tests.test_unified_seq import extract_dir
+    data = extract_dir(world["store"], tmp_path / "batch-data", calib=0.5)
+    init = _readout_ckpt(tmp_path)
+    for tag, extra in (("whole", []), ("micro", ["--microbatch-rounds", "1"])):
+        _train_run([data], init, tmp_path / tag, "--device", "mps", *extra)
+    def steps(tag):
+        saved = torch.load(tmp_path / tag / "checkpoint.pt", weights_only=False)
+        return [int(p["step"]) for p in saved["opt"]["state"].values()]
+    assert steps("micro") == steps("whole") and min(steps("whole")) > 0
+    assert json.loads((tmp_path / "micro/run.json").read_text())["microbatch_rounds"] == 1

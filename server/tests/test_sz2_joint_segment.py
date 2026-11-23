@@ -48,6 +48,7 @@ def test_joint_commands_gate_the_real_medium_resume(segment, data, cpu_root, tmp
         rc, cmd = segment.prepare(phase, out, fleet, recipe, hashes, 1, weights["calib"]["belief_ll"])
         assert rc == 0
         if phase == "smoke":
+            assert cmd[cmd.index("--microbatch-rounds") + 1] == "4"
             assert "--report-buffer" not in cmd and cmd[cmd.index("--max-train-rows")+1] == "120000"
         assert ur.main(cmd[4:]) == expected
 

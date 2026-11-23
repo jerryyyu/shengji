@@ -80,7 +80,7 @@ def prepare(phase, root, fleet, recipe, hashes, boundary, init_belief_ll):
     args = train_args(recipe, init, out, "cpu" if arm == "S" else "mps", None if phase == "smoke" else boundary,
                       phase == "medium-prefix")
     if phase == "smoke":
-        args.extend(["--max-train-rows", "120000"])
+        args.extend(["--max-train-rows", "120000", "--microbatch-rounds", "4"])
     args.extend(["--expect-init-belief-ll", str(init_belief_ll)])
     return 0, [sys.executable, "-B", "-m", "shengji.train.unified_readout", *args]
 

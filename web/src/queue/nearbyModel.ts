@@ -4,7 +4,7 @@
 // binary offers nearby play (nearbyGate.ts).
 import type { NearbyJoin } from "../nearbyJoin";
 import { NEARBY_COPY } from "../offline/server/nearby/copy";
-import { nearbyChoices, nearbyDefaultSeat } from "../joinSeats";
+import { nearbyChoices, nearbyStartSeat } from "../joinSeats";
 import type { RoomMsg } from "../protocol";
 import { BOT_FILL_MS } from "./store";
 import { teamWord } from "./tableModel";
@@ -82,6 +82,8 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
 export function fromNearbyJoin(j: NearbyJoin): TableModel {
   const peek = j.peek;
   const choices = new Set(peek ? nearbyChoices(peek) : []);
+  // the seat this phone holds is a pick too: a tap back to it after another
+  if (j.held !== undefined && j.held !== null) choices.add(j.held);
   const seats = peek ? [0, 1, 2, 3].map((at): ModelSeat => {
     const sd = peek.seats.find((s) => s.seat === at);
     const ours = (at - (j.seat ?? 0) + 4) % 2 === 0;
@@ -91,7 +93,8 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
       return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`,
                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     }
-    return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}` };
+    return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}`,
+             ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
   }) : null;
   const status = j.step === "looking" ? { text: j.linked ? NEARBY_COPY.connecting : NEARBY_COPY.browsing }
     : j.step === "notFound" ? { text: NEARBY_COPY.notFound, warn: true }
@@ -109,7 +112,7 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
     you: j.seat ?? 0,
     // the picker stays drawn around the seat it started on: a tap glows
     // where it lands rather than turning the table
-    layout: peek ? nearbyDefaultSeat(peek) ?? undefined : undefined,
+    layout: peek ? nearbyStartSeat(peek, j.held ?? null) ?? undefined : undefined,
     rows: null, waitSwitch: null, chat: null,
     primary: retry
       ? { label: NEARBY_COPY.tryAgain, disabled: false, act: { type: "nearby_again" } }

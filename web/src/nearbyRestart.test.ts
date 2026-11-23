@@ -104,11 +104,12 @@ it("a restarted app takes the same seat and hand back by its kept token", async 
   await t.advance(1);
   // the app again, from its launch: the code box's join with the code
   const after = await seatedPhone(t);
-  // the seat picker offered only the bots' seats (Mei's is held for her);
-  // the join's kept token took hers back instead
+  // the seat picker started on Mei's held seat, the one the kept token
+  // takes back, so the seat that glowed is the seat Join gave
   const join = after.sent.find((m) => m.type === "table_join")!;
   expect(typeof join.token).toBe("string");
-  expect(join.seat).not.toBe(seat);
+  expect(join.seat).toBe(seat);
+  expect(nearbyLogLines().map((l) => l.text)).toContain(`seat picker open: glow seat ${seat} (held)`);
   expect(after.state()!.you).toBe(seat);
   expect(handOf(after.state())).toEqual(hand);
   expect(t.room!.seats[seat].name).toBe("Mei");

@@ -19,8 +19,14 @@ def host(tmp_path):
     trainer = tmp_path / "trainer.py"
     trainer.write_text(
         "import os, pathlib, sys, time\n"
+        "root = pathlib.Path(sys.argv[1]).parent\n"
         "with pathlib.Path(sys.argv[1]).open('a') as f:\n"
         "    f.write(f'train {os.getpid()}\\n')\n"
+        "if (root / 'sample_footprint').exists():\n"
+        "    for _ in range(500):\n"
+        "        count = root / 'footprint_count'\n"
+        "        if count.exists() and count.read_text() == '2': break\n"
+        "        time.sleep(0.01)\n"
         "if pathlib.Path(sys.argv[2]).exists(): time.sleep(120)\n"
         "sys.exit(13 if pathlib.Path(sys.argv[3]).exists() else 0)\n"
     )
@@ -68,6 +74,25 @@ elif service == "sysctl":
 else:
     print("123")
 """)
+    footprint = tmp_path / "footprint"
+    footprint.write_text(f"#!{sys.executable}\n" + """
+from pathlib import Path
+import sys
+import time
+d = Path(__file__).parent
+assert sys.argv[1] == "-p"
+pid = sys.argv[2]
+if (d / "footprint_unavailable").exists():
+    raise SystemExit(1)
+if (d / "footprint_timeout").exists():
+    time.sleep(5)
+counter = d / "footprint_count"
+n = int(counter.read_text()) if counter.exists() else 0
+value = "65 GB" if (d / "footprint_high").exists() else ("1488 KB" if n == 0 else "32 MB")
+print(f"python [{pid}]: 64-bit    Footprint: {value} (16384 bytes per page)")
+counter.write_text(str(n + 1))
+""")
+    footprint.chmod(0o755)
     fake.chmod(0o755)
     for name in ("darkbloom", "launchctl", "sysctl", "ps"):
         (tmp_path / name).symlink_to(fake)
@@ -83,6 +108,9 @@ w.PAUSE = d / "keepalive.pause"
 w.SYSCTL = d / "sysctl"
 w.LAUNCHCTL = d / "launchctl"
 w.PS = d / "ps"
+w.FOOTPRINT = d / "footprint"
+w.FOOTPRINT_INTERVAL = 0.01
+w.FOOTPRINT_TIMEOUT = 0.2
 w.POLL_SECONDS = 0.05
 w.RESTORE_SECONDS = 0.2
 sys.exit(w.main())
@@ -166,3 +194,39 @@ def test_unverified_restore_fails_and_releases_owned_pause(host):
     assert "restoration could not be verified" in result.stderr
     assert events(log) == ["stop", "train", "restart"]
     assert not (tmp / "keepalive.pause").exists()
+
+
+def test_valid_footprint_samples_log_mib_and_slope(host):
+    _, tmp, log = host
+    (tmp / "sample_footprint").touch()
+    result = invoke(host)
+    assert result.returncode == 0, result.stderr
+    assert "footprint_mib=1.45312 footprint_slope_mib_per_min=-" in result.stdout
+    assert "footprint_mib=32 footprint_slope_mib_per_min=" in result.stdout
+    assert events(log) == ["stop", "train", "restart"]
+
+
+@pytest.mark.parametrize(("fault", "diagnostic"), [
+    ("footprint_high", "footprint exceeds 65536 MiB"),
+    ("footprint_unavailable", "footprint unavailable for three consecutive samples"),
+    ("footprint_timeout", "footprint unavailable for three consecutive samples"),
+])
+def test_bad_live_footprint_stops_trainer_and_restores(host, fault, diagnostic):
+    _, tmp, log = host
+    (tmp / "slow_trainer").touch()
+    (tmp / fault).touch()
+    result = invoke(host)
+    assert result.returncode == 1, (result.stdout, result.stderr)
+    assert diagnostic in result.stderr
+    if fault != "footprint_high":
+        assert result.stdout.count("footprint_mib=NA") == 3
+    assert events(log) == ["stop", "train", "restart"]
+    assert not (tmp / "keepalive.pause").exists()
+
+
+def test_short_trainer_can_exit_before_footprint_is_available(host):
+    _, tmp, log = host
+    (tmp / "footprint_unavailable").touch()
+    result = invoke(host)
+    assert result.returncode == 0, result.stderr
+    assert events(log) == ["stop", "train", "restart"]

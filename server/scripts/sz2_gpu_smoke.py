@@ -16,7 +16,10 @@ PAUSE = Path.home() / "darkbloom-dash/keepalive.pause"
 SYSCTL = "/usr/sbin/sysctl"
 LAUNCHCTL = "/bin/launchctl"
 PS = "/bin/ps"
+FOOTPRINT = "/usr/bin/footprint"
 POLL_SECONDS = 10
+FOOTPRINT_INTERVAL = 60
+FOOTPRINT_TIMEOUT = 10
 RESTORE_SECONDS = 360
 STOP_GRACE = 25
 JOBS = {"io.darkbloom.provider", "io.darkbloom.watchdog"}
@@ -110,8 +113,23 @@ def memory_sample():
     return swap_mib, pressure
 
 
+def footprint_mib(pid):
+    try:
+        output = command(FOOTPRINT, "-p", str(pid), timeout=FOOTPRINT_TIMEOUT)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"\bFootprint:[ \t]+(\d+(?:\.\d+)?)[ \t]+([KMG]B)\b", output)
+    if match is None:
+        return None
+    magnitude, unit = match.groups()
+    return float(magnitude) * {"KB": 1 / 1024, "MB": 1, "GB": 1024}[unit]
+
+
 def monitor(child, baseline, check_signal):
     started = time.monotonic()
+    next_footprint = started
+    previous_footprint = None
+    unavailable = 0
     try:
         while True:
             check_signal()
@@ -128,6 +146,27 @@ def monitor(child, baseline, check_signal):
                   f"rss_kib={rss} swap_mib={swap:g} baseline_mib={baseline:g} pressure={pressure}", flush=True)
             if pressure >= 4 or swap - baseline >= 8192:
                 raise RuntimeError("memory guard exceeded")
+            if child.poll() is None and time.monotonic() >= next_footprint:
+                footprint = footprint_mib(child.pid)
+                sampled = time.monotonic()
+                next_footprint = sampled + FOOTPRINT_INTERVAL
+                if footprint is None:
+                    if child.poll() is None:
+                        unavailable += 1
+                        print(f"smoke pid={child.pid} footprint_mib=NA consecutive={unavailable}", flush=True)
+                        if unavailable >= 3:
+                            raise RuntimeError("trainer footprint unavailable for three consecutive samples")
+                else:
+                    unavailable = 0
+                    slope = "-"
+                    if previous_footprint is not None:
+                        when, value = previous_footprint
+                        slope = f"{60 * (footprint - value) / (sampled - when):.1f}"
+                    previous_footprint = sampled, footprint
+                    print(f"smoke pid={child.pid} footprint_mib={footprint:g} "
+                          f"footprint_slope_mib_per_min={slope}", flush=True)
+                    if footprint > 65536:
+                        raise RuntimeError("trainer footprint exceeds 65536 MiB")
             rc = child.poll()
             if rc is not None:
                 if rc:

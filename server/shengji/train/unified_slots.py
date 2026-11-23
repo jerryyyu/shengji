@@ -572,20 +572,29 @@ def readout_evaluator(evaluator, bot, model):
             out = []
             for first in range(0, len(leaves), window):
                 parts, todo = [], {}
+                plane_parts, scalar_parts = [], []
                 for start in range(first, min(first + window, len(leaves)), chunk):
                     if gate is not None:
                         gate()
                     part = leaves[start:start + chunk]
                     mine, planes, scalars, keys = features(frame, part)
-                    new = 0
+                    missing = []
                     for i, key in enumerate(keys):
                         if key not in memo and key not in todo:
-                            todo[key] = (len(parts), i)
-                            new += 1
-                    parts.append([part, mine, planes, scalars, keys, new])
+                            todo[key] = None
+                            missing.append(i)
+                    if missing:
+                        if len(missing) == len(planes):
+                            plane_parts.append(planes)
+                            scalar_parts.append(scalars)
+                        else:
+                            indices = np.asarray(missing, dtype=np.intp)
+                            plane_parts.append(planes[indices])
+                            scalar_parts.append(scalars[indices])
+                    parts.append([part, mine, planes, scalars, keys, len(missing)])
                 if todo:
-                    planes = np.stack([parts[p][2][i] for p, i in todo.values()])
-                    scalars = np.stack([parts[p][3][i] for p, i in todo.values()])
+                    planes = np.concatenate(plane_parts)
+                    scalars = np.concatenate(scalar_parts)
                     rows = m.leaf_value_probs_fused(frame.fused(m), planes, scalars) @ self.support
                     for key, row in zip(todo, rows):
                         memo[key] = row

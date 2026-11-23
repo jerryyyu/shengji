@@ -5730,7 +5730,8 @@ button[role="switch"]:active .ios-switch {
 }
 .tp-team-label { font-size: var(--fs-10); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .tp-team-label.ours { color: var(--team0); }
-.tp-team-label.theirs { color: var(--team1); text-align: right; }
+.tp-team-label.theirs { color: var(--team1); }
+.tp-team-label + .tp-team-label { text-align: right; }
 .tp-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .tp-seat {
   appearance: none; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 52px;

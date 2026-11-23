@@ -31,6 +31,9 @@ export interface NearbyJoin {
    *  way, so the panel's line says it is connecting rather than looking. */
   linked?: boolean;
   seat: number | null;
+  /** The player tapped the glowing seat there: Join asks the host to move
+   *  a seat this phone holds by its kept token to it, rather than resume. */
+  chosen?: boolean;
 }
 
 /** What the nearby join needs of the page: its socket, the on-device
@@ -97,6 +100,12 @@ export const LEAVE_OWED_MS = 30_000;
 /** The socket's link-state detail for a refused resume (its SEAT_GONE),
  *  spelled here so this module never loads the socket's. */
 const SEAT_GONE = "seat_gone";
+
+/** Where the picker draws `seat` when it is drawn around `layout`, as the
+ *  log names it (TablePanel.tsx's TeamColumns). */
+function pickerPlace(seat: number, layout: number): string {
+  return ["left bottom", "right top", "left top", "right bottom"][(seat - layout + 4) % 4];
+}
 
 /** A seat token kept on the phone lets a restarted app take its seat back by
  *  the code: it lasts this long from its last write. */
@@ -424,7 +433,8 @@ export class NearbyJoinStore {
     const v = this.view;
     if (!v || v.step !== "panel" || !v.peek) return;
     if (!nearbyChoices(v.peek).includes(seat)) return;
-    this.set({ ...v, seat });
+    nearbyLog("join", `seat picker tap: shown ${pickerPlace(seat, nearbyDefaultSeat(v.peek) ?? 0)} → seat ${seat}`);
+    this.set({ ...v, seat, chosen: true });
   }
 
   /** The panel's Join: the picked seat, with the seat token kept for this
@@ -435,8 +445,10 @@ export class NearbyJoinStore {
     const v = this.view;
     if (!v || v.step !== "panel" || v.seat === null) return;
     const kept = keptSeatToken(v.code);
-    if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat, ...(kept ? { token: kept } : {}) })) return;
-    nearbyLog("join", `join sent (${kept ? "with" : "no"} token)`);
+    const chosen = kept !== null && v.chosen === true;
+    if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat,
+                               ...(kept ? { token: kept } : {}), ...(chosen ? { chosen: true } : {}) })) return;
+    nearbyLog("join", `join sent (${kept ? "with" : "no"} token), seat ${v.seat}${chosen ? " chosen" : ""}`);
     this.set({ ...v, step: "joining" });
     this.joinTimer = window.setTimeout(() => {
       this.joinTimer = null;
@@ -654,7 +666,7 @@ export class NearbyJoinStore {
         this.set({ ...this.view!, peek: m });
         return;
       }
-      this.set({ ...v, step: "panel", peek: m, seat: nearbyDefaultSeat(m) });
+      this.set({ ...v, step: "panel", peek: m, seat: nearbyDefaultSeat(m), chosen: false });
     } else if ((m.type === "room" || m.type === "state") && (v?.step === "joining" || this.seated)) {
       this.clearGone();
       if (m.type === "state" && m.round_result?.game_over && !this.over) {
@@ -662,6 +674,9 @@ export class NearbyJoinStore {
         this.forgetTable();
       } else if (Date.now() - this.keptAt > SEAT_REFRESH_MS) this.keepToken();
       if (!this.seated) {
+        // the seat asked for beside the seat given: a host that seats a
+        // phone elsewhere shows in the log
+        nearbyLog("join", `seated at seat ${m.you}`);
         this.claiming = false;
         this.seated = true;
         this.seatedCode = v!.code;

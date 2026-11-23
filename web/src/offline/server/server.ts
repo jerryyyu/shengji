@@ -1531,6 +1531,7 @@ export class LocalConnection {
           this.sendDirect({ type: "error", code: "room_not_found", message: "Seat no longer exists." });
           return;
         }
+        if (room && seat && room.nearby && msg.chosen === true && this.moveChosen(room, seat, msg)) return;
         if (room && !seat && room.nearby && !room.lobby) {
           // a game in progress: a newcomer takes over a seat a bot plays, at
           // once, as the online by-code join does (server.py _join_room)
@@ -1611,6 +1612,31 @@ export class LocalConnection {
     } catch (e) {
       server.enqueue(me, { type: "error", message: e instanceof IllegalPlay ? e.message : "Invalid request." });
     }
+  }
+
+  /** A held seat's phone back by its token with another seat picked: the
+   *  player moves to that seat when it is free, and the one held is given
+   *  up, so the player sits in one seat. Before the start the lobby seat
+   *  moves (as a seat move); in a game the held seat is left by choice for
+   *  its bot and the picked one is taken over. False (the seat is resumed
+   *  in place) when the pick is the held seat, or not free. */
+  private moveChosen(room: LocalRoom, held: Seat, msg: Json): boolean {
+    const want = msg.seat;
+    const from = room.seatIndex(held);
+    if (typeof want !== "number" || !Number.isInteger(want) || want < 0 || want > 3 || want === from || held.connected) return false;
+    if (room.lobby) {
+      if (room.lobby[want] !== null) return false;
+      room.lobby[want] = held;
+      room.lobby[from] = null;
+      room.lobbyReady.delete(from);
+      return false;
+    }
+    if (!nearbyClaimable(room, this.server.clock.now()).includes(want)) return false;
+    // the held seat cannot be taken back by the old token, and its bot plays it
+    held.token = randomToken();
+    held.leftByChoice = true;
+    this.takeOver(room, msg);
+    return true;
   }
 
   /** A newcomer at a nearby game in progress takes the seat it picked

@@ -85,6 +85,9 @@ export interface NearbyHello {
   /** The seat a newcomer asks for; the host gives the first free one when
    *  it is taken. */
   seat?: number | null;
+  /** With a token: the player picked `seat`, so a seat the token holds
+   *  moves there when it is free, rather than being resumed in place. */
+  chosen?: boolean;
 }
 
 const isInt = (v: unknown, lo: number, hi: number): v is number =>
@@ -131,7 +134,7 @@ export function cleanHello(msg: Json): NearbyHello | null {
   if (tok !== null && tok !== undefined && (typeof tok !== "string" || tok.length > LIMITS.token)) return null;
   const seat = isInt(msg.seat, 0, 3) ? msg.seat : null;
   return { type: "nearby_hello", nearby_v: msg.nearby_v, name, token: typeof tok === "string" && tok ? tok : null,
-           peek: msg.peek === true, seat };
+           peek: msg.peek === true, seat, ...(msg.chosen === true ? { chosen: true } : {}) };
 }
 
 export function utf8Bytes(text: string): number {

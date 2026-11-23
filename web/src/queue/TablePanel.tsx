@@ -65,17 +65,24 @@ function Seat({ s, team }: { s: SeatItem; team: 0 | 1 }) {
   return <div className={className} role="group" aria-label={s.label}><SeatBody s={s} /></div>;
 }
 
-/** The seats at every width: your team on the left, partner above you,
- *  the other team on the right; the gap between the columns divides them. */
-function TeamColumns({ seats, you }: { seats: SeatItem[]; you: number }) {
-  const ours = [(you + 2) % 4, you].map((at) => seats[at]);
-  const theirs = [(you + 1) % 4, (you + 3) % 4].map((at) => seats[at]);
+/** The seats at every width, drawn around `layout` (else `you`): its team
+ *  on the left with its partner above it, the other team on the right; the
+ *  gap between the columns divides them. Us and the team colours follow
+ *  `you`, so a seat picker's tap on the right column makes that column Us
+ *  while every seat stays where it was. */
+function TeamColumns({ seats, you, layout = you }: { seats: SeatItem[]; you: number; layout?: number }) {
+  const left = [(layout + 2) % 4, layout].map((at) => seats[at]);
+  const right = [(layout + 1) % 4, (layout + 3) % 4].map((at) => seats[at]);
+  const usLeft = (you - layout + 4) % 2 === 0;
+  const label = (us: boolean) => (
+    <span className={`tp-team-label ${us ? "ours" : "theirs"}`} aria-hidden="true">{us ? "Us" : "Them"}</span>
+  );
   return (
     <div className="tp-teams">
-      <span className="tp-team-label ours" aria-hidden="true">Us</span>
-      <span className="tp-team-label theirs" aria-hidden="true">Them</span>
-      <div className="tp-col">{ours.map((s) => <Seat key={s.at} s={s} team={0} />)}</div>
-      <div className="tp-col">{theirs.map((s) => <Seat key={s.at} s={s} team={1} />)}</div>
+      {label(usLeft)}
+      {label(!usLeft)}
+      <div className="tp-col">{left.map((s) => <Seat key={s.at} s={s} team={usLeft ? 0 : 1} />)}</div>
+      <div className="tp-col">{right.map((s) => <Seat key={s.at} s={s} team={usLeft ? 1 : 0} />)}</div>
     </div>
   );
 }
@@ -149,7 +156,7 @@ function PanelView({ m, guarded, sheet, act }: {
           ) : null}
         </p>
       ) : null}
-      {seats ? <TeamColumns seats={seats} you={m.you} /> : null}
+      {seats ? <TeamColumns seats={seats} you={m.you} layout={m.layout} /> : null}
       {m.rows ? <TableRows rows={m.rows} act={act} /> : null}
       {m.waitSwitch ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
       {m.nearbySwitch ? (

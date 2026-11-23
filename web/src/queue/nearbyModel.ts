@@ -4,7 +4,7 @@
 // binary offers nearby play (nearbyGate.ts).
 import type { NearbyJoin } from "../nearbyJoin";
 import { NEARBY_COPY } from "../offline/server/nearby/copy";
-import { nearbyChoices } from "../joinSeats";
+import { nearbyChoices, nearbyDefaultSeat } from "../joinSeats";
 import type { RoomMsg } from "../protocol";
 import { BOT_FILL_MS } from "./store";
 import { teamWord } from "./tableModel";
@@ -85,7 +85,8 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
   const seats = peek ? [0, 1, 2, 3].map((at): ModelSeat => {
     const sd = peek.seats.find((s) => s.seat === at);
     const ours = (at - (j.seat ?? 0) + 4) % 2 === 0;
-    if (at === j.seat) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
+    if (at === j.seat) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}`,
+                                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     if (!sd) {
       return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`,
                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
@@ -106,6 +107,9 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
     status,
     seats,
     you: j.seat ?? 0,
+    // the picker stays drawn around the seat it started on: a tap glows
+    // where it lands rather than turning the table
+    layout: peek ? nearbyDefaultSeat(peek) ?? undefined : undefined,
     rows: null, waitSwitch: null, chat: null,
     primary: retry
       ? { label: NEARBY_COPY.tryAgain, disabled: false, act: { type: "nearby_again" } }

@@ -417,7 +417,7 @@ export class NearbyHost {
     // older link ended above) before any later frame of the link is read,
     // and the resume and state frames go out after that
     peer.conn.receive(JSON.stringify({ type: "table_join", code: this.room.code, name: hello.name, token,
-                                       seat: hello.seat ?? null }));
+                                       seat: hello.seat ?? null, ...(hello.chosen ? { chosen: true } : {}) }));
     const room = peer.conn.currentRoom;
     // a newcomer's seat (no token, or one the table did not know) waits for
     // its phone to show it has the answer

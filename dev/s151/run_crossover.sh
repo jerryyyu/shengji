@@ -36,12 +36,10 @@ check_slot() {
   local path terminal actual count=0
   local utc='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
   local rt4_done="^DUEL DONE $utc rc=0$"
-  local state_prefix="^($utc )?[^[:space:]]+ "
-  local s156_done="${state_prefix}DONE [^[:space:]]+( .*)?$"
-  local s156_housekeeping="${state_prefix}(UNLOCKED|WARNING)( |$)"
-  local failed='(^|[[:space:]])(ABORT|REFUSING:?|PAUSED|FAILED)([[:space:]]|$)'
-  local nonzero_rc='(^|[[:space:]])rc=(0[^[:space:]]+|[^0[:space:]][^[:space:]]*)?([[:space:]]|$)'
-  while IFS=$'\t' read -r path terminal; do
+  local sha='[0-9a-f]{64}'
+  local s159_done="^S159 DONE claude-s159-confirm $utc arm=S159C read_sha256=$sha gate_sha256=$sha stage2=(PASS|FAIL) sums_sha256=$sha identity=$sha mode=confirm rc=0$"
+  local housekeeping="^S159 (UNLOCKED|WARNING) claude-s159-confirm $utc "
+  while IFS=$'\t' read -r path terminal || [ -n "$path$terminal" ]; do
     case $count in
       0)
         [ "$path" = "$fleet/claude-ut-retrain4/DUEL.status" ] &&
@@ -49,10 +47,9 @@ check_slot() {
         actual=$(tail -n 1 "$path") || return 1
         ;;
       1)
-        [[ "$path" = "$fleet/"* && "$path" != "$fleet/claude-ut-retrain4/"* ]] &&
-          [[ "$terminal" =~ $s156_done && ! "$terminal" =~ $failed &&
-             ! "$terminal" =~ $nonzero_rc ]] || return 1
-        actual=$(LANE_HOUSEKEEPING_RE=$s156_housekeeping lane_last_state "$path") || return 1
+        [ "$path" = "$fleet/claude-s159-rt4/confirm.status" ] &&
+          [[ "$terminal" =~ $s159_done ]] || return 1
+        actual=$(LANE_HOUSEKEEPING_RE=$housekeeping lane_last_state "$path") || return 1
         ;;
       *) return 1 ;;
     esac

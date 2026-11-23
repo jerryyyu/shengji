@@ -58,11 +58,12 @@ def count_play_time(counts, row, budget):
     elapsed = rec.get(key)
     if elapsed is None:
         counts["missing"] += 1
-        return
+        return "missing"
     require(type(elapsed) in (float, int) and math.isfinite(elapsed) and elapsed >= 0,
             "invalid play duration")
     counts["timed"] += 1
     counts["at_or_over_budget"] += elapsed >= budget
+    return "at_or_over_budget" if elapsed >= budget else "within_budget"
 
 
 def read_block(root, seed, order, times, args, previous_end, configuration):
@@ -84,6 +85,7 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
         manifests.append(manifest)
 
     first_difference = None
+    first_budget_difference = None
     work_keys = ("counts", "work_realized")
     work_matches = all(all(m[k] == manifests[0][k] for k in work_keys) for m in manifests)
     events = [Counter() for _ in stores]
@@ -95,10 +97,12 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
             files = [stack.enter_context((p / shard["path"]).open()) for p, shard in zip(stores, shards)]
             for lines in zip_longest(*files):
                 rows = []
+                budget_states = []
                 for j, line in enumerate(lines):
                     row = json.loads(line) if line is not None else None
+                    state = count_play_time(play_times[j], row, budgets[j]) if row is not None else None
+                    budget_states.append(state)
                     if row is not None:
-                        count_play_time(play_times[j], row, budgets[j])
                         row = normalize_row(row, manifests[j]["run_id"])
                     rows.append(row)
                     if row is None:
@@ -109,6 +113,10 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
                         events[j][f"exact_follow_abandoned:{rec['exact_follow_abandoned']}"] += 1
                     if rec.get("exact_lead_status"):
                         events[j][f"exact_lead:{rec['exact_lead_status']}"] += 1
+                if first_budget_difference is None and any(s != budget_states[0] for s in budget_states):
+                    first_budget_difference = {
+                        p.parent.name: {"state": state, "source_ref": r["source_ref"] if r else None}
+                        for p, state, r in zip(stores, budget_states, rows)}
                 if first_difference is None:
                     for j, row in enumerate(rows[1:], 1):
                         if row != rows[0]:
@@ -127,6 +135,7 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
                  reduction_percent=percent(sum(base), sum(candidate)),
                  repeat_difference_percent=dict(base=abs(percent(*base)), candidate=abs(percent(*candidate))),
                  work_matches=work_matches, first_record_difference=first_difference,
+                 first_budget_difference=first_budget_difference,
                  play_compute_by_invocation={p.parent.name: dict(t) for p, t in zip(stores, play_times)},
                  events_by_invocation={p.parent.name: dict(e) for p, e in zip(stores, events)})
     if work_matches and first_difference is None:
@@ -140,10 +149,13 @@ def verdict(blocks):
     gain = percent(base, candidate)
     noise = max(max(b["repeat_difference_percent"].values()) for b in blocks)
     matched = all(b["work_matches"] and b["first_record_difference"] is None for b in blocks)
-    passed = matched and all(b["candidate"] < b["base"] for b in blocks) and gain > noise
+    budgets_match = all(b["first_budget_difference"] is None and
+                        all(t["missing"] == 0 for t in b["play_compute_by_invocation"].values())
+                        for b in blocks)
+    passed = matched and budgets_match and all(b["candidate"] < b["base"] for b in blocks) and gain > noise
     return dict(blocks=blocks, pooled_seconds=dict(base=base, candidate=candidate),
                 pooled_symmetric_reduction_percent=gain, largest_repeat_difference_percent=noise,
-                matched_work_and_decisions=matched, observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
+                complete_matching_play_budget_evidence=budgets_match, matched_work_and_decisions=matched, observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
 
 
 def compare(root):
@@ -174,6 +186,8 @@ if __name__ == "__main__":
     try:
         report = compare(parser.parse_args().root)
         print(json.dumps(report, indent=2))
+        if not report["complete_matching_play_budget_evidence"]:
+            sys.exit("comparison inconclusive: play clock missing or budget crossing differed")
         if not report["matched_work_and_decisions"]:
             sys.exit("comparison inconclusive: gameplay or work differed")
     except (KeyError, OSError, TypeError, ValueError) as exc:

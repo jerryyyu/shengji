@@ -12,6 +12,7 @@ import compare_crossover as crossover
 
 def block(base, candidate, noise):
     return {"base": base, "candidate": candidate, "work_matches": True, "first_record_difference": None,
+            "first_budget_difference": None, "play_compute_by_invocation": {"0-b": {"missing": 0}},
             "repeat_difference_percent": {"base": noise, "candidate": 0}}
 
 
@@ -44,6 +45,11 @@ class CrossoverTest(unittest.TestCase):
         crossover.count_play_time(counts, {"decision_kind": "bury", "allocation": {}}, 3)
         self.assertEqual(counts, dict(timed=1, at_or_over_budget=1, missing=1))
 
+    def test_missing_clock_in_all_arms_prevents_pass(self):
+        b = block(100, 90, 1)
+        b["play_compute_by_invocation"]["0-b"]["missing"] = 1
+        self.assertEqual(crossover.verdict([b])["observed_noise_gate"], "INCONCLUSIVE")
+
     def test_noisy_or_mixed_blocks(self):
         gain = crossover.percent(100, 98)
         for blocks in ([block(100, 98, gain)] * 4,
@@ -51,6 +57,12 @@ class CrossoverTest(unittest.TestCase):
             self.assertEqual(crossover.verdict(blocks)["observed_noise_gate"], "INCONCLUSIVE")
 
     def test_deadline_drift_retains_all_timings_and_checks_later_shards(self):
+        self.check_deadline_drift(greedy_drift=True)
+
+    def test_elapsed_only_crossing_refuses_faster_candidate(self):
+        self.check_deadline_drift(greedy_drift=False)
+
+    def check_deadline_drift(self, greedy_drift):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             order = crossover.block_order(0)
@@ -66,7 +78,7 @@ class CrossoverTest(unittest.TestCase):
                     buried=None), plays_prefix=[], seat=0, ply=0, trick=0, role="banker-team",
                     legal_actions=[["SA"]], legal_actions_complete=True, legal_actions_count=1,
                     ballot=[["SA"]], action=["SA"], allocation={"serving_decision":
-                    {"leaf_greedy_deadline_fired": drift, "seconds": 3.0 if drift else 2.999}}, outcome=None))
+                    {"leaf_greedy_deadline_fired": drift and greedy_drift, "seconds": 3.0 if drift else 2.999}}, outcome=None))
                 config = dict(run_id=run_id, seed0=7, round_mix="first", capture_served_budget=True,
                               served_runtime={"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
                 for key in ("PV", "PV_PRIOR", "PV_UNIFIED", "PV_BELIEF"):
@@ -92,8 +104,12 @@ class CrossoverTest(unittest.TestCase):
                 return crossover.read_block(root, 7, order, times, args, 0, None)[0]
             result = read_block()
             self.assertTrue(result["work_matches"])
-            self.assertEqual(result["first_record_difference"]["compared"], "0-c")
-            self.assertEqual(result["events_by_invocation"]["0-c"]["greedy_deadline_fired"], 1)
+            if greedy_drift:
+                self.assertEqual(result["first_record_difference"]["compared"], "0-c")
+            else:
+                self.assertIsNone(result["first_record_difference"])
+            self.assertEqual(result["first_budget_difference"]["0-c"]["state"], "at_or_over_budget")
+            self.assertEqual(result["events_by_invocation"]["0-c"]["greedy_deadline_fired"], int(greedy_drift))
             self.assertEqual(result["play_compute_by_invocation"]["0-c"],
                              dict(timed=1, at_or_over_budget=1, missing=0))
             self.assertEqual(result["play_compute_by_invocation"]["0-b"]["at_or_over_budget"], 0)

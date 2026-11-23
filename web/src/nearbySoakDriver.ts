@@ -226,6 +226,8 @@ export class SoakDriver {
         const now = j.view();
         if (!now || now.step !== "panel") return;
         this.d.log(`flow: join seat ${String(now.seat)}`);
+        // the seat's tap, then Join, as a person picks the glowing seat
+        if (now.seat !== null) j.pick(now.seat);
         j.join();
       });
     } else if (v.step === "notFound" || v.step === "wifiOff") later(3000 + this.d.rand() * 5000, () => { this.d.log("flow: join try again"); j.again(); });

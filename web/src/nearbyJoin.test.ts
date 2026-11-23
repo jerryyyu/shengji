@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JOIN_TIMEOUT_MS } from "./codeJoin";
 import {
-  ATTEMPT_MAX_MS, HOST_WINDOW_MS, keepSeatToken, keptSeatToken, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, SEAT_KEEP_MAX, SEAT_KEEP_MS,
+  ATTEMPT_MAX_MS, HOST_WINDOW_MS, keepSeatToken, keptSeatAt, keptSeatToken, LEAVE_LINK_MS, LOOK_LIMIT_MS, NearbyJoinStore, SEAT_KEEP_MAX, SEAT_KEEP_MS,
   SEATS_KEY, type NearbyJoinDeps,
 } from "./nearbyJoin";
 import { nearbyLogLines } from "./nearbyLog";
@@ -409,7 +409,9 @@ describe("the seat token kept on the phone", () => {
     expect(keptSeatToken("K7Q2M")).toBe("tok-9");
     const again = await atPanel();
     again.store.join();
-    expect(joinSent(again)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-9" });
+    // the fake peek is an older host's (no held_seat): the glow goes as the choice
+    expect(joinSent(again)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-9", chosen: true });
+    expect(again.sent[0]).toEqual({ type: "table_peek", code: "K7Q2M", token: "tok-9" });
     expect(h.store.seated).toBe(true);
   });
 
@@ -483,6 +485,23 @@ describe("the seat token kept on the phone", () => {
     expect(h.store.seated).toBe(true);
     expect(keptSeatToken("K7Q2M")).toBe("fresh");
     expect(h.sent.filter((m) => m.type === "table_join")).toHaveLength(1);
+  });
+
+  it("the kept token back in a resume keeps where it sits until a frame says otherwise; a new token does not", async () => {
+    keepSeatToken("K7Q2M", "tok-9", { seat: 2, name: "Mei" });
+    const h = await atPanel();
+    h.store.join();
+    h.msg({ type: "resume", token: "tok-9", gen: 1 });
+    // the link drops before any room frame
+    h.status("closed");
+    expect(keptSeatToken("K7Q2M")).toBe("tok-9");
+    expect(keptSeatAt("K7Q2M")).toEqual({ seat: 2, name: "Mei" });
+    const g = await atPanel();
+    g.store.join();
+    g.msg({ type: "resume", token: "tok-new", gen: 1 });
+    expect(keptSeatAt("K7Q2M")).toBeNull();
+    g.msg({ type: "room", room: "K7Q2M", you: 3, players: [{ seat: 3, name: "Mei" }] });
+    expect(keptSeatAt("K7Q2M")).toEqual({ seat: 3, name: "Mei" });
   });
 
   it("one per table, the newest few tables only", async () => {

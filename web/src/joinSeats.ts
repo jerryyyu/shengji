@@ -102,3 +102,10 @@ export function nearbyDefaultSeat(peek: Pick<RoomSeats, "seats">): number | null
   const host = [...peek.seats].sort((a, b) => a.seat - b.seat)[0]?.seat ?? 0;
   return open.includes((host + 2) % 4) ? (host + 2) % 4 : open[0] ?? null;
 }
+
+/** The seat the picker starts on: the seat this phone holds at the table
+ *  (`held`) when there is one, so Join with no tap resumes the seat that
+ *  glows; else nearbyDefaultSeat. */
+export function nearbyStartSeat(peek: Pick<RoomSeats, "seats">, held: number | null): number | null {
+  return held ?? nearbyDefaultSeat(peek);
+}

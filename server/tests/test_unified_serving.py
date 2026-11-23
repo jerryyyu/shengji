@@ -963,6 +963,34 @@ def test_fourth_reply_packing_matches_python_with_repeated_parent_rows(monkeypat
     assert second[54] == 1
 
 
+@pytest.mark.parametrize("indices", [[], [0, 2], [0, 2, 1, 3], [2, 1, 2], [3, 0]])
+def test_filtered_fourth_replies_encode_requested_rows(indices):
+    from types import SimpleNamespace
+    from shengji.train import unified_slots as us
+
+    frame = SimpleNamespace(pos=2)
+    parents = [np.ones(9 * 54, np.uint8), np.full(9 * 54, 2, np.uint8)]
+    lookup = {"S5": 0, "SK": 1}
+    points = {"S5": 5, "SK": 10}
+    candidates = [["S5"], ["SK"]]
+    groups = [(i * 2, parent, candidates, ["S5"], None, lookup, 10 * i, 3, i, "S", 5)
+              for i, parent in enumerate(parents)]
+    direct = [(parent, (slot,), 10 * i + points[card], 3 if slot else i)
+              for i, parent in enumerate(parents) for card, slot in lookup.items()]
+    def beats(cards, *_):
+        return cards == ["SK"], 12
+
+    got = us._grouped_fourth_features(frame, indices, groups, [2, 4],
+                                      lambda *_: pytest.fail("non-contiguous batch packed as a range"), points, beats)
+    if not indices:
+        assert got[0] == got[3] == [] and got[1].shape == (0, 486) and got[2].shape == (0, 12)
+        return
+    expected = us._direct_reply_features(frame, [direct[i] for i in indices])
+    assert got[0] == expected[0] and got[3] == expected[3]
+    np.testing.assert_array_equal(got[1], expected[1])
+    np.testing.assert_array_equal(got[2], expected[2])
+
+
 def test_fourth_reply_packing_refuses_malformed_rows():
     from shengji.train import pv_tree_search as search
 

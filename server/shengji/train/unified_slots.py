@@ -771,6 +771,40 @@ def _projectable_reply_clone(clone, pos, search, fast):
                     for i, play in enumerate(trick.plays)))
 
 
+def _fourth_reply_descriptor(group, index, points, beats):
+    start, parent, candidates, lead, ordering, slots, prior, seat, incumbent, suit, top = group
+    cards = candidates[index - start]
+    won = suit is not None and beats(cards, lead, suit, top, ordering)[0]
+    moved = tuple(map(slots.__getitem__, cards))
+    return parent, moved, prior + sum(map(points.__getitem__, cards)), seat if won else incumbent
+
+
+def _grouped_fourth_features(frame, indices, groups, ends, pack, points, beats):
+    from bisect import bisect_right
+    if len(indices) == 0:
+        from ..ai.unified_readout_numpy import N_PLANES, N_SCALARS
+        return [], np.empty((0, N_PLANES * N_CARDS), np.uint8), np.empty((0, N_SCALARS), np.float32), []
+    first = indices[0]
+    if first < 0:
+        raise ValueError("invalid fourth reply index")
+    ordered = range(first, first + len(indices))
+    if isinstance(indices, range):
+        contiguous = indices == ordered
+    else:
+        contiguous = list(indices) == list(ordered)
+    if contiguous:
+        counts, meta = pack(groups, bisect_right(ends, first), first, ordered.stop,
+                            4 - frame.pos, points, beats)
+        return _feature_rows(list(range(len(indices))), counts, meta, native=True)
+    direct = []
+    for index in indices:
+        if not 0 <= index < ends[-1]:
+            raise ValueError("invalid fourth reply index")
+        group = groups[bisect_right(ends, index)]
+        direct.append(_fourth_reply_descriptor(group, index, points, beats))
+    return _direct_reply_features(frame, direct)
+
+
 def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, args, kw):
     """Rank covered continuations by their card moves when the standard finish permits it."""
     from functools import partial
@@ -829,13 +863,6 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
     pack_fourth = getattr(search._reply_fast, "pack_fourth_replies", None) if pos == 3 else None
     groups, ends = [], []
 
-    def fourth_features(frame, indices):
-        from bisect import bisect_right
-        first = indices[0]
-        counts, meta = pack_fourth(groups, bisect_right(ends, first), first,
-                                   first + len(indices), 4 - frame.pos, pts, legal.beats)
-        return _feature_rows(list(range(len(indices))), counts, meta, native=True)
-
     def children(clone, seat, candidates):
         if id(clone) not in eligible:
             return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
@@ -857,27 +884,22 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
             return result
         incumbent, suit, top = actual
         rel = (seat - frame.seat) % 4
+        start = ends[-1] if ends else 0
+        group = (start, parent, candidates, lead, clone.ordering, plane_maps[rel],
+                 prior_points, rel, (incumbent - frame.seat) % 4, suit, top)
+        indices = range(start, start + len(candidates))
         if pack_fourth is not None:
-            start = ends[-1] if ends else 0
-            end = start + len(candidates)
-            groups.append((start, parent, candidates, lead, clone.ordering, plane_maps[rel],
-                           prior_points, rel, (incumbent - frame.seat) % 4, suit, top))
-            ends.append(end)
-            return range(start, end)
-        lookup = plane_maps[rel].__getitem__
-        result = []
-        for cards in candidates:
-            won = suit is not None and legal.beats(cards, lead, suit, top, clone.ordering)[0]
-            winner = rel if won else (incumbent - frame.seat) % 4
-            points = prior_points + sum(map(pts.__getitem__, cards))
-            result.append((parent, tuple(map(lookup, cards)), points, winner))
-        return result
+            groups.append(group)
+            ends.append(indices.stop)
+            return indices
+        return [_fourth_reply_descriptor(group, i, pts, legal.beats) for i in indices]
 
     def values(items, seat, gate=None):
         evaluator = bot.evaluator
         features = _direct_reply_features if pos == 3 else _projected_reply_features
         if pack_fourth is not None:
-            features = fourth_features
+            def features(frame, indices):
+                return _grouped_fourth_features(frame, indices, groups, ends, pack_fourth, pts, legal.beats)
         rows = evaluator.readout_ahead(frame, items, bot.batch_size, gate, features)
         if any(len(part) != len(mine) for part, mine, *_ in rows):
             frame.ahead = rows

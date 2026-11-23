@@ -2,7 +2,7 @@
 // its page faults: frame loss at the bridge and the frozen main thread.
 import { describe, expect, it } from "vitest";
 import {
-  BridgeFaults, busyWait, CHAOS_GAP_MS, CHAOS_JITTER_MS, ChaosPacer, frameTriggers, lineTriggers, ROUND_CALM_MS, type Bridge,
+  BridgeFaults, busyWait, CHAOS_GAP_MS, LOSS_WINDOW_MS, CHAOS_JITTER_MS, ChaosPacer, frameTriggers, lineTriggers, ROUND_CALM_MS, type Bridge,
 } from "./nearbySoakChaos";
 
 type Frame = Record<string, unknown> & { type: string };
@@ -76,6 +76,27 @@ describe("the page faults", () => {
     expect(got).toEqual(["drop host", '{"type":"state"}']);
     expect(f.lost).toEqual({ in: 1, out: 1 });
     expect(new BridgeFaults().install({})).toBe(false);
+  });
+
+  it("a loss not used up within its window lapses: a frame of its type long after goes through", () => {
+    let t = 0;
+    const got: string[] = [];
+    const b: Bridge = { nativePromise: () => Promise.resolve("sent"), fromNative: (r) => { got.push(String(r.data?.text)); } };
+    const f = new BridgeFaults("ShengjiNearby", () => t);
+    f.install(b);
+    f.loss("in", "resume", 4);
+    t = 1000;
+    b.fromNative!({ methodName: "addListener", data: { peer: "host", text: '{"type":"resume","token":"a"}' } });
+    t = 1000 + LOSS_WINDOW_MS;
+    b.fromNative!({ methodName: "addListener", data: { peer: "host", text: '{"type":"resume","token":"b"}' } });
+    expect(got).toEqual(['{"type":"resume","token":"b"}']);
+    expect(f.lost).toEqual({ in: 1, out: 0 });
+    // a one-way loss runs; a frame-count loss is not one
+    expect(f.active()).toBe(false);
+    f.loss("out", "play", 1);
+    expect(f.active()).toBe(false);
+    f.oneway("out", 5000);
+    expect(f.active()).toBe(true);
   });
 
   it("freezes the main thread for the time asked, capped at 50 s", () => {

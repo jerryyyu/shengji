@@ -205,6 +205,43 @@ export class LinkSplit {
 }
 
 type Line = Pick<LogLine, "t" | "from" | "text">;
+
+/** What a log line does to the seat's resume hello out, for the abandoned
+ *  count: every line socket.ts, nearbyJoin.ts and the plugin write about a
+ *  resume's hello or the link it rides, and null for any other line.
+ *  - sent: "resume: link up in N ms; hello sent (with|no token)";
+ *  - answered: the host's answer reached the page: "resume: in <type>",
+ *    "resume: accepted (<type>); open", "resume: refused (<code>); the seat
+ *    is gone", the join's "resume refused: …" and "resume by the kept token
+ *    refused";
+ *  - kept: "resume: no answer in N s, but the link carries; kept", the
+ *    same hello still out on a link that answers pings;
+ *  - abandoned: the hello's link replaced or gone with no answer: the
+ *    socket's give-ups ("resume: no answer …; a fresh attempt", "resume: no
+ *    link after N s; a fresh attempt"), a STUCK, the plugin's "drop host",
+ *    the join's "attempt (resume)", "send failed: …" (the link closes) and
+ *    "resume by the kept token unanswered", and the driver's "flow:
+ *    seated" (a seat won by the code). The plugin's "drop host (not
+ *    ready)" is a link that never came up, so never carried a hello. */
+export function helloEvent(l: Pick<LogLine, "from" | "text">): "sent" | "answered" | "kept" | "abandoned" | null {
+  const { from, text } = l;
+  if (from === "socket") {
+    if (/^resume: link up in \d+ ms; hello sent/.test(text)) return "sent";
+    if (/^resume: (in |accepted |refused )/.test(text)) return "answered";
+    if (/^resume: no answer .*; kept$/.test(text)) return "kept";
+    if (/^resume: no (answer|link) .*; a fresh attempt$/.test(text)) return "abandoned";
+    if (text.startsWith("STUCK")) return "abandoned";
+    return null;
+  }
+  if (from === "native") return text === "drop host" ? "abandoned" : null;
+  if (from === "join") {
+    if (text.startsWith("resume refused") || text === "resume by the kept token refused") return "answered";
+    if (text === "attempt (resume)" || text === "resume by the kept token unanswered" || text.startsWith("send failed")) return "abandoned";
+    return null;
+  }
+  if (from === "soak") return text === "flow: seated" ? "abandoned" : null;
+  return null;
+}
 const SOCKET_MOVES = /^out (play|bury|declare|pass_declare)$/;
 const sec = (ms: number): string => (ms / 1000).toFixed(1);
 const spreadS = (xs: number[]): string =>
@@ -214,17 +251,27 @@ const spreadS = (xs: number[]): string =>
  *  frames (all times page milliseconds):
  *  - an outage runs from a joiner's link going (its drop, a STUCK, or a
  *    resume attempt) to "resume: accepted" or the driver's "flow: seated"
- *    (a seat won again by the code); its freeze is from the last
+ *    (a seat won again by the code), and the driver's own Leave ends one
+ *    then, with no outage from the Leave to its rejoin by code (the
+ *    driver's chosen absence, not the link's); its freeze is from the last
  *    frame heard before it to then, its recovery from the clear of the
  *    fault that ran on this phone (a stall's or blackhole's end, a
  *    one-shot fault's own line, when the outage began within 5 s of it) to
  *    then;
- *  - per outage, the resume attempts made and the hellos sent with no
- *    answer on their link;
+ *  - per outage, the resume attempts made; and each resume hello left with
+ *    no answer on its link: one still out when a new attempt, a drop, a
+ *    STUCK, its own give-up, a later hello or a seat won by the code
+ *    replaces it, the one out at the driver's Leave included (a Leave does
+ *    not answer it), while any frame of the host's answer (an accepted
+ *    resume, a refusal) answers it and a link kept because it carries
+ *    leaves it out (helloEvent);
  *  - a move is ignored when its link goes before its answer, and re-sent
  *    when the same kind goes out within 5 s of the resume after it;
- *  - each STUCK by its fault: a stall running, a stall ended within 1 s, a
- *    blackhole running or ended within 1 s, or none;
+ *  - each STUCK by its fault on this phone: a stall running, a stall ended
+ *    within 1 s, a blackhole running or ended within 1 s, a one-way loss
+ *    the bridge put in place running or ended within 1 s (its end from its
+ *    deadline, not the timer that logs it), or none (the host's own faults are not in
+ *    this phone's log, so "none" includes them);
  *  - stalls and blackholes over 4 s with no STUCK from their start to 1 s
  *    after their end;
  *  - the bytes of each chat_history (one per resume), state frames repeated
@@ -233,6 +280,12 @@ const spreadS = (xs: number[]): string =>
  *  - migration: from the move off peer-to-peer to the next Wi-Fi link up;
  *  - the log's upload bytes, and chaos picks the plugin said do not apply. */
 export class SoakMetrics {
+  /** The soak's own lines the metrics read. */
+  static reads(text: string): boolean {
+    return text === "flow: seated" || text.startsWith("flow: leave (") || text.startsWith("flow: rejoin by code") ||
+      text.startsWith("chaos: oneway on") || text.startsWith("chaos: oneway over");
+  }
+
   freezes: number[] = [];
   recoveries: number[] = [];
   attempts: number[] = [];
@@ -240,7 +293,7 @@ export class SoakMetrics {
   ignored = 0;
   resent = 0;
   hostIgnored = 0;
-  stuck = { stall: 0, after: 0, blackhole: 0, none: 0 };
+  stuck = { stall: 0, after: 0, blackhole: 0, oneway: 0, none: 0 };
   quiet = { stall: 0, stalls: 0, blackhole: 0, blackholes: 0 };
   chatHistory: number[] = [];
   dupStates = 0;
@@ -250,13 +303,23 @@ export class SoakMetrics {
   uploaded = 0;
   notApplied = 0;
   private lastHeard: number | null = null;
-  private outage: { from: number; at: number; attempts: number; hellos: number } | null = null;
+  private outage: { from: number; at: number; attempts: number } | null = null;
+  /** A resume hello is out with no answer yet. */
+  private helloOut = false;
   private cleared: number | null = null;
   private moveOut: string | null = null;
   private owed: { kind: string; by: number } | null = null;
   private resend: string | null = null;
   private fault: { kind: "stall" | "blackhole"; from: number; long: boolean; stuck: boolean } | null = null;
   private ended: { kind: "stall" | "blackhole"; at: number; long: boolean; stuck: boolean } | null = null;
+  /** When the one-way loss last put in place ends: its deadline from its
+   *  own line (log time, which runs on while the page's timers are held),
+   *  or its over line if that came first. */
+  private onewayUntil: number | null = null;
+  /** The driver's Leave until its rejoin by code: no outage opens. A link
+   *  resumed only to carry the Leave, or a seat shown on the way out, is
+   *  still the Leave. */
+  private leaving = false;
   private lastState = "";
   private phase: { kind: "dealing" | "play" | null; since: number } = { kind: null, since: 0 };
   private movingSince: number | null = null;
@@ -276,9 +339,18 @@ export class SoakMetrics {
         this.moveOut = out[1];
       }
     }
+    if (from === "soak" && text.startsWith("flow: leave (")) this.left(t);
+    if (from === "soak" && text.startsWith("flow: rejoin by code")) this.rejoined(t);
+    const on = from === "soak" ? /^chaos: oneway on, (?:in|out) for ([\d.]+) s$/.exec(text) : null;
+    if (on) this.onewayUntil = t + Number(on[1]) * 1000;
+    if (from === "soak" && text.startsWith("chaos: oneway over") && this.onewayUntil !== null) this.onewayUntil = Math.min(this.onewayUntil, t);
+    const hello = helloEvent(l);
+    if (hello === "answered") this.helloOut = false;
+    else if (hello === "abandoned" || hello === "sent") this.helloGone();
     if ((from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)")) this.down(t);
     if (from === "join" && text === "attempt (resume)" && this.outage) this.outage.attempts += 1;
-    if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text) && this.outage) this.outage.hellos += 1;
+    // a hello on the Leave's own way out is the Leave's, not the outage's
+    if (hello === "sent") this.helloOut = this.outage !== null && !this.leaving;
     if ((from === "socket" && text.startsWith("resume: accepted")) || (from === "soak" && text === "flow: seated")) this.back(t);
     if (text.startsWith("STUCK")) this.stuckAt(t);
     if (from === "host" && text.startsWith("IGNORED ")) this.hostIgnored += 1;
@@ -293,10 +365,10 @@ export class SoakMetrics {
   }
 
   private down(t: number): void {
-    if (this.outage !== null) return;
+    if (this.outage !== null || this.leaving) return;
     // a fault's clear long before this outage did not cause it
     if (this.cleared !== null && t - this.cleared > 5000) this.cleared = null;
-    this.outage = { from: this.lastHeard ?? t, at: t, attempts: 0, hellos: 0 };
+    this.outage = { from: this.lastHeard ?? t, at: t, attempts: 0 };
     if (this.moveOut !== null) {
       this.ignored += 1;
       this.resend = this.moveOut;
@@ -310,12 +382,41 @@ export class SoakMetrics {
     this.outage = null;
     this.freezes.push(t - o.from);
     this.attempts.push(o.attempts);
-    this.abandonedHellos += Math.max(0, o.hellos - 1);
     if (this.cleared !== null) this.recoveries.push(t - this.cleared);
     this.cleared = null;
     this.lastHeard = t;
     if (this.resend !== null) this.owed = { kind: this.resend, by: t + 5000 };
     this.resend = null;
+  }
+
+  /** The driver's Leave: an outage open now ends here, its freeze up to the
+   *  Leave and no recovery (its fault never cleared on this link); the
+   *  move it held was not the link's to lose. */
+  private left(t: number): void {
+    this.leaving = true;
+    this.moveOut = null;
+    const o = this.outage;
+    if (o === null) return;
+    this.outage = null;
+    this.freezes.push(t - o.from);
+    this.attempts.push(o.attempts);
+    this.cleared = null;
+    this.resend = null;
+  }
+
+  /** The hello out, if any, is left with no answer. */
+  private helloGone(): void {
+    if (!this.helloOut) return;
+    this.helloOut = false;
+    this.abandonedHellos += 1;
+  }
+
+  /** The driver's rejoin by code after its Leave: from now an outage is
+   *  the link's again, its freeze counted from no earlier than this. */
+  private rejoined(t: number): void {
+    if (!this.leaving) return;
+    this.leaving = false;
+    if (this.outage === null) this.lastHeard = t;
   }
 
   private stuckAt(t: number): void {
@@ -325,6 +426,8 @@ export class SoakMetrics {
     } else if (this.ended && t - this.ended.at <= 1000) {
       this.ended.stuck = true;
       this.stuck[this.ended.kind === "stall" ? "after" : "blackhole"] += 1;
+    } else if (this.onewayUntil !== null && t - this.onewayUntil <= 1000) {
+      this.stuck.oneway += 1;
     } else this.stuck.none += 1;
   }
 
@@ -387,7 +490,7 @@ export class SoakMetrics {
     return `freeze ${spreadS(this.freezes)}, recovery ${spreadS(this.recoveries)}, ` +
       `attempts/outage max ${Math.max(0, ...this.attempts)} (hellos abandoned ${this.abandonedHellos}), ` +
       `moves ignored ${this.ignored} re-sent ${this.resent} (host ignored ${this.hostIgnored}), ` +
-      `STUCK in stall ${this.stuck.stall} / stall ended <1 s ${this.stuck.after} / blackhole ${this.stuck.blackhole} / no fault ${this.stuck.none}, ` +
+      `STUCK in stall ${this.stuck.stall} / stall ended <1 s ${this.stuck.after} / blackhole ${this.stuck.blackhole} / oneway ${this.stuck.oneway} / no fault here ${this.stuck.none}, ` +
       `no STUCK in stalls >4 s ${this.quiet.stall}/${this.quiet.stalls} blackholes >4 s ${this.quiet.blackhole}/${this.quiet.blackholes}, ` +
       `chat_history n=${this.chatHistory.length} max ${kb(Math.max(0, ...this.chatHistory))}, dup states ${this.dupStates}, ` +
       `B/s dealing ${rate("dealing")} play ${rate("play")}, migration ${spreadS(this.migrations)}, ` +
@@ -502,8 +605,9 @@ function readLog(): void {
   if (!l) return;
   coverage.see(l);
   for (const t of lineTriggers(l)) trigger(t, t === "after_move" ? Math.random() * 300 : 0);
-  // a seat won by the code ends an open outage; the soak's other lines are its own
-  if (l.from === "soak" && l.text === "flow: seated") metrics.see(l);
+  // the driver's seat won by the code, its Leave and rejoin, and its one-way
+  // loss shape the outages; the soak's other lines are its own
+  if (l.from === "soak" && SoakMetrics.reads(l.text)) metrics.see(l);
   if (l.from === "soak") return;
   links.see(l);
   metrics.see(l);
@@ -759,6 +863,8 @@ function pageChaos(pick: ChaosPick, role: ChaosRole): void {
       if (pick.kind === "loss") bridge.loss(pick.dir!, pick.frame ?? "", pick.count ?? 1);
       else {
         bridge.oneway(pick.dir!, pick.seconds * 1000);
+        // the metrics' one-way attribution starts here, once the bridge has it
+        nearbyLog("soak", `chaos: oneway on, ${pick.dir} for ${pick.seconds.toFixed(1)} s`);
         const before = { ...bridge.lost };
         window.setTimeout(() => nearbyLog("soak", `chaos: oneway over: ${bridge.lost[pick.dir!] - before[pick.dir!]} lost`), pick.seconds * 1000);
       }

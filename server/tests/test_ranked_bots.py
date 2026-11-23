@@ -560,3 +560,117 @@ def test_the_partner_counts_the_advanced_anchor_beside_standard_opponents():
     strengths = ratings.team_strengths(rec_anchors, banker_team=0)
     assert strengths == (ratings.BOT_RATING + ratings.BANKER_ADVANTAGE_PRESET,
                          ratings.STANDARD_BOT_RATING)
+
+
+# ------------------------------------------- an account signs in at the deal
+@pytest.mark.parametrize("rating, standard", [(998.0, {1, 3}), (1000.0, {1, 3}), (1001.0, set())])
+def test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account(
+        wsenv, monkeypatch, rating, standard):  # noqa: F811
+    """The guest's seat changes account while the game's level is pending:
+    the level is read for the account now seated, on both sides of 1000."""
+    srv, store, client, clock = wsenv
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.03)          # an opening deal of ~3 s
+    code, token = _guest_match(client)
+    room = srv.rooms[code]
+    assert room.bot_levels.pending_game and room.round.phase == "deal"
+    uid, headers = _user(store, "signer", "Acct Person")
+    _set(store, uid, rating)
+    with client.websocket_connect(f"/ws?device={DEVICE_A}", headers=headers) as a:
+        a.send_json({"type": "table_join", "expect": "room", "code": code, "token": token})
+        _drain(a, "state")
+        assert room.seats[0].user_id == uid
+        assert room.bot_levels.pending_game              # still the opening deal
+        _settled(room)
+        assert ranked_bots.standard(room) == standard
+        anchor = ratings.STANDARD_BOT_RATING if standard else ratings.GUEST_RATING
+        assert room.ratings.anchors == [ratings.GUEST_RATING, anchor, ratings.GUEST_RATING, anchor]
+
+
+def test_a_seat_that_changes_during_the_settling_read_is_read_again(env, monkeypatch):  # noqa: F811
+    from shengji.api import server as srv
+
+    _, store, _ = env
+    low, _ = _user(store, "low")
+    high, _ = _user(store, "high")
+    _set(store, low, 990.0)
+    _set(store, high, 1200.0)
+    table = Table(srv, [None, "bot", "bot", "bot"], code="RETR")
+    room = table.room
+    reads = []
+    real = ranked_bots._ordered_read
+
+    def read(uids):
+        reads.append(list(uids))
+        if len(reads) == 1:
+            room.seats[0].user_id = high          # the seat changed hands during the read
+        return real(uids)
+    monkeypatch.setattr(ranked_bots, "_ordered_read", read)
+
+    async def scenario():
+        room.game.start_round()
+        room.index_round()
+        room.saved_game = None
+        ranked_bots.begin_game(room)
+        ratings.start(room)
+        room.seats[0].user_id = low               # signed in after the round's read
+        await ranked_bots.settle_game(room, srv.make_relaxed_bot)
+    asyncio.run(scenario())
+    assert reads == [[low], [high]]
+    assert ranked_bots.standard(room) == frozenset()
+
+
+# ------------------------------------------ the policy the search played
+@pytest.mark.parametrize("partner_rating, commits", [(1000.0, True), (1200.0, False)])
+def test_a_search_plays_the_level_of_its_snapshot_through_a_pending_check(
+        env, tmp_path, partner_rating, commits):  # noqa: F811
+    """Seat 3 snapshots at Standard; a partner joins and its rating read is
+    pending while the search runs; the read ends before the commit. The
+    search played Standard (its snapshot's level), so it commits only when
+    the seat is Standard again, and the committed card's level is the live one."""
+    import random
+
+    from shengji.ai import env as play_env
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+
+    _, store, _ = env
+    partner, _ = _user(store, "partner")
+    _set(store, partner, partner_rating)
+
+    async def scenario():
+        game = Game(random.Random(11))
+        play_env.prepare_round(game, [HeuristicBot()] * 4)
+        rnd = game.round
+        room = srv.Room(code="PINS", game=game, log_dir=tmp_path, bot=HeuristicBot(), matched=True,
+                        seats=[srv.Seat(str(s), is_bot=True) for s in range(4)])
+        room.seats[0].is_bot, room.seats[0].connected = False, True
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({}))
+        room.seats[0].is_bot = True
+        room.ids = [dict(enumerate(hand)) for hand in rnd.hands]
+        room._kitty_given = True
+        while rnd.turn != 3:
+            prepared = await srv._paced_bot_step(room, rnd.turn, minimum_turn_seconds=0)
+            assert srv._commit_bot_turn(room, prepared)
+        FakeRelaxed.played = []
+        snapshot = srv._snapshot_bot_turn(room, 3, "bot")
+        assert snapshot.level == "standard"
+        joiner = room.seats[2]
+        joiner.is_bot, joiner.user_id, joiner.connected = False, partner, True
+        ranked_bots.seat_changed(room, 2, None)
+        assert room.bot_levels.checks == 1 and ranked_bots.level_of(room, 3) == "advanced"
+        decision = srv._compute_bot_turn(snapshot)        # while the read is pending
+        await asyncio.gather(*list(ranked_bots._TASKS))
+        live = ranked_bots.level_of(room, 3)
+        assert live == ("standard" if commits else "advanced")
+        joiner.is_bot = True                              # its bot plays on for the test
+        played = list(FakeRelaxed.played)
+        acted = srv._commit_bot_turn(room, srv._PreparedBotTurn(decision, 0.0, 0.0, 0.0))
+        assert acted is commits
+        if not acted:
+            again = await srv._paced_bot_step(room, 3, minimum_turn_seconds=0)
+            assert srv._commit_bot_turn(room, again)
+            decision = again.decision
+        assert played == [3] and decision.level == live
+        assert room.bot._pinned is None
+        assert FakeRelaxed.played == [3]                  # a re-search played Advanced
+    asyncio.run(scenario())

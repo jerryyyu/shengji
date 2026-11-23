@@ -17,7 +17,9 @@ round's own ordered rating snapshot (``RoomRatings.standing``: queued on the
 ratings worker behind every earlier rating write, so a round just settled is
 in it), awaited off the event loop once the round's cards are dealt and
 before its declare window closes (``settle_game``), so before any card is
-played; until then the bots are Advanced. A rating that changes
+played; until then the bots are Advanced. An account seated after that read
+(a guest who signs in during the deal) gets an ordered read of its own, and
+the choice applies only to the seats' holders it was read for. A rating that changes
 during the game never changes the level.
 
 Inside a game the level only rises. A person who takes a Standard seat
@@ -27,7 +29,9 @@ new person or a different account at a seat of the people's team
 another account) has their rating read the same ordered way; while it is
 read the Standard seats play Advanced, and if it is above ``STANDARD_UP_TO``
 the table stays Advanced for the rest of the game. A reconnect by the same
-account changes nothing. The rated anchors of a round in play are the ones
+account changes nothing. A search plays the level its snapshot was taken
+at (``pin``), and a decision whose level is not the seat's level at commit
+is searched again. The rated anchors of a round in play are the ones
 read when it started.
 
 Invisible: ``room.bot_level`` stays "advanced" at a ranked table, so no frame
@@ -60,6 +64,9 @@ class SeatLevels:
     pending_game: bool = False
     # seat checks in flight (``seat_changed``): Standard seats play Advanced
     checks: int = 0
+    # seat changes recorded while the game's level is pending: a read made
+    # before one is not applied (``settle_game``)
+    changes: int = 0
 
     def plays_standard(self, seat: int) -> bool:
         return seat in self.standard and not self.checks and not self.pending_game
@@ -106,6 +113,9 @@ class RankedBots:
         self.relaxed = relaxed
         self.levels = levels
         self._last_relaxed = False
+        # (seat, plays Standard) bound by ``pin`` on a search's copy: that
+        # search plays the level its snapshot was taken at
+        self._pinned: tuple[int, bool] | None = None
 
     @property
     def served(self) -> Any:
@@ -122,7 +132,7 @@ class RankedBots:
         return getattr(bot, "last_decision_record", None)
 
     def __getattr__(self, name: str) -> Any:
-        if name in ("relaxed", "levels", "_last_relaxed") or name.startswith("__"):
+        if name in ("relaxed", "levels", "_last_relaxed", "_pinned") or name.startswith("__"):
             raise AttributeError(name)
         return getattr(self.served, name)
 
@@ -132,6 +142,7 @@ class RankedBots:
         new.relaxed = copy.deepcopy(self.relaxed, memo)
         new.levels = self.levels
         new._last_relaxed = self._last_relaxed
+        new._pinned = self._pinned
         return new
 
     def observe_public(self, rnd: Any) -> None:
@@ -146,10 +157,31 @@ class RankedBots:
         return self.served.decide_bury(rnd, seat)
 
     def decide_play(self, rnd: Any, seat: int) -> Any:
-        self._last_relaxed = self.levels.plays_standard(seat)
+        if self._pinned is not None and self._pinned[0] == seat:
+            self._last_relaxed = self._pinned[1]
+        else:
+            self._last_relaxed = self.levels.plays_standard(seat)
         if self._last_relaxed:
             return self.relaxed.decide_play(rnd, seat)
         return self.served.decide_play(rnd, seat)
+
+
+def pin(bot: Any, seat: int, level: str) -> None:
+    """Bind a search's bot copy to ``level`` for ``seat``: what it plays does
+    not follow a level change during the search."""
+    if isinstance(bot, RankedBots):
+        bot._pinned = (seat, level == "standard")
+
+
+def unpin(bot: Any) -> None:
+    if isinstance(bot, RankedBots):
+        bot._pinned = None
+
+
+def played_level(bot: Any) -> str:
+    """The level of the card play ``bot`` last decided: "standard" only when
+    a ``RankedBots`` handed it to the relaxed bot."""
+    return "standard" if isinstance(bot, RankedBots) and bot._last_relaxed else "advanced"
 
 
 def served_bot(bot: Any) -> Any:
@@ -192,15 +224,34 @@ def begin_game(room: Any) -> None:
     room.bot_levels.pending_game = True
 
 
+def _identities(room: Any, levels: SeatLevels) -> tuple:
+    """Who holds each seat, and how many seat changes were recorded."""
+    return (tuple((sd.is_bot, sd.user_id) for sd in room.seats), levels.changes)
+
+
+def _seated_accounts(room: Any) -> list[int]:
+    return sorted({sd.user_id for sd in room.seats
+                   if not sd.is_bot and sd.user_id is not None
+                   and not accounts.is_deleted(sd.user_id)})
+
+
 async def settle_game(room: Any, build_relaxed: Callable[[Any, int], Any]) -> None:
-    """Choose a pending game's level from the round's ordered rating read
-    (``RoomRatings.standing``), awaited off the loop; the round's rated
-    anchors follow it. Called by the round's deal before its declare window
-    closes, so before any card is played; the caller does not hold the lock."""
+    """Choose a pending game's level, awaited off the loop: from the round's
+    ordered rating read (``RoomRatings.standing``), and for an account seated
+    since that read (a guest who signed in during the deal) from an ordered
+    read of its own. The result applies only if the round and every seat's
+    holder are still those the reads were made for (one retry, then
+    Advanced); the round's rated anchors follow it. Called by the round's
+    deal before its declare window closes, so before any card is played; the
+    caller does not hold the lock."""
     levels = getattr(room, "bot_levels", None)
     if levels is None or not levels.pending_game:
         return
     rnd, tracker = room.round, room.ratings
+
+    def current() -> bool:
+        return room.round is rnd and room.ratings is tracker and levels.pending_game
+
     future = tracker.standing if tracker is not None else None
     standing: dict | None = {}
     if future is not None:
@@ -209,26 +260,48 @@ async def settle_game(room: Any, build_relaxed: Callable[[Any, int], Any]) -> No
         except Exception:       # noqa: BLE001 - an unread rating plays Advanced
             log.warning("ordered rating read failed; the table plays Advanced")
             standing = None
+    present = set(tracker.present.values()) if tracker is not None else set()
+    for _ in range(2):
+        async with room.lock:
+            if not current():
+                return
+            seen = _identities(room, levels)
+            missing = [uid for uid in _seated_accounts(room)
+                       if standing is not None and (uid not in present or uid not in standing)]
+        extra: dict = {}
+        if missing:
+            try:
+                extra = dict(await _ordered_read(missing))
+            except Exception:   # noqa: BLE001 - an unread rating plays Advanced
+                log.warning("ordered rating read failed; the table plays Advanced")
+                standing = None
+        async with room.lock:
+            if not current():
+                return
+            if _identities(room, levels) != seen:
+                continue        # a seat changed hands during the read
+            _apply_game(room, levels, tracker, standing, present, extra, build_relaxed)
+            return
     async with room.lock:
-        if room.round is not rnd or room.ratings is not tracker or not levels.pending_game:
-            return
-        levels.pending_game = False
-        if standing is None:
-            return
-        present = tracker.present if tracker is not None else {}
+        if current():
+            _apply_game(room, levels, tracker, None, present, {}, build_relaxed)
 
+
+def _apply_game(room: Any, levels: SeatLevels, tracker: Any, standing: dict | None,
+                present: set, extra: dict, build_relaxed: Callable[[Any, int], Any]) -> None:
+    levels.pending_game = False
+    if standing is not None:
         def rating_of(uid: int) -> float | None:
-            # only the accounts at the table when the round started are read
-            if uid not in present.values() or uid not in standing:
-                return None
-            return standing[uid][0]
+            if uid in present and uid in standing:
+                return standing[uid][0]
+            return extra[uid][0] if uid in extra else None
         choose(room, build_relaxed, rating_of)
-        chosen = set(levels.standard)
-        if tracker is not None:
-            tracker.anchors = [ratings.STANDARD_BOT_RATING if s in chosen and seat.is_bot
-                               else ratings.GUEST_RATING for s, seat in enumerate(room.seats)]
-        room.log_event("bot_levels", level="standard" if chosen else "advanced",
-                       standard_seats=sorted(chosen))
+    chosen = set(levels.standard)
+    if tracker is not None:
+        tracker.anchors = [ratings.STANDARD_BOT_RATING if s in chosen and seat.is_bot
+                           else ratings.GUEST_RATING for s, seat in enumerate(room.seats)]
+    room.log_event("bot_levels", level="standard" if chosen else "advanced",
+                   standard_seats=sorted(chosen))
 
 
 def level_of(room: Any, seat: int) -> str:
@@ -237,15 +310,17 @@ def level_of(room: Any, seat: int) -> str:
     return "standard" if levels is not None and levels.plays_standard(seat) else "advanced"
 
 
-def _ordered_rating(user_id: int) -> "asyncio.Future":
+def _ordered_read(user_ids: list[int]) -> "asyncio.Future":
+    """The accounts' ``(rating, rated_rounds)``, read on the ratings worker
+    behind every rating write queued before it."""
     store = accounts.STORE
-    return asyncio.wrap_future(ratings._EXECUTOR.submit(ratings.read_standing, store, [user_id]))
+    return asyncio.wrap_future(ratings._EXECUTOR.submit(ratings.read_standing, store, list(user_ids)))
 
 
 async def _check(room: Any, levels: SeatLevels, user_id: int, on_change: Callable[[], None]) -> None:
     rating: float | None = None
     try:
-        standing = await _ordered_rating(user_id)
+        standing = await _ordered_read([user_id])
         if user_id in standing:
             rating = standing[user_id][0]
     except Exception:           # noqa: BLE001 - an unread rating plays Advanced
@@ -267,7 +342,12 @@ def seat_changed(room: Any, seat: int, before: Any = None,
     an ordered read, while the Standard seats play Advanced. ``on_change``
     runs (under the lock) when a check ends."""
     levels = getattr(room, "bot_levels", None)
-    if levels is None or not levels.standard:
+    if levels is None:
+        return
+    if levels.pending_game:
+        levels.changes += 1     # ``settle_game`` reads the seat as it is now
+        return
+    if not levels.standard:
         return
     sd = room.seats[seat]
     uid = None if sd.user_id is None or accounts.is_deleted(sd.user_id) else sd.user_id

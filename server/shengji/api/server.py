@@ -1632,6 +1632,9 @@ class _BotTurnSnapshot:
 class _BotTurnDecision:
     snapshot: _BotTurnSnapshot
     cards: list[str]
+    # the level the search actually played at (``ranked_bots.played_level``
+    # of the bot it called); declaring and burying are always the served bot's
+    level: str = "advanced"
 
 
 @dataclass(frozen=True)
@@ -1678,18 +1681,22 @@ def _snapshot_bot_turn(room: Room, seat: int, mode: str
             or not _turn_eligible(room, seat, mode)):
         return None
     bot = _acting_bot(room)
+    # a closing room's heuristic bot has no level
+    level = ranked_bots.level_of(room, seat) if bot is room.bot else "advanced"
+    bot_copy = copy.deepcopy(bot)
+    ranked_bots.pin(bot_copy, seat, level)
     return _BotTurnSnapshot(
         game_token=game,
         round_token=rnd,
         round_copy=copy.deepcopy(rnd),
-        bot_copy=copy.deepcopy(bot),
+        bot_copy=bot_copy,
         seat=seat,
         phase=rnd.phase,
         mode=mode,
         owner_left_at=room.seats[seat].left_at,
         play_cursor=(len(rnd.history), len(rnd.trick.plays)) if rnd.phase == "play" else None,
         closing_bot=bot is not room.bot,
-        level=ranked_bots.level_of(room, seat),
+        level=level,
     )
 
 
@@ -1701,7 +1708,8 @@ def _compute_bot_turn(snapshot: _BotTurnSnapshot) -> _BotTurnDecision:
         cards = bot.decide_play(rnd, seat)
     else:
         raise IllegalPlay(f"Bot cannot act during {snapshot.phase}.")
-    return _BotTurnDecision(snapshot=snapshot, cards=list(cards))
+    level = ranked_bots.played_level(bot) if snapshot.phase == "play" else snapshot.level
+    return _BotTurnDecision(snapshot=snapshot, cards=list(cards), level=level)
 
 
 async def _compute_bot_turn_off_loop(
@@ -1792,11 +1800,16 @@ async def _paced_bot_step(room: Room, seat: int, *,
     )
 
 
-def _level_changed(room: Room, snapshot: _BotTurnSnapshot) -> bool:
-    """The seat's bot level changed while its decision was searched (a
-    ranked table's Standard seat became a person's partner): the decision
-    is discarded and the turn searched again at the new level."""
-    return snapshot.level != ranked_bots.level_of(room, snapshot.seat)
+def _level_changed(room: Room, decision: _BotTurnDecision) -> bool:
+    """The level the search played at is not the seat's level now (a ranked
+    table's Standard seat became a person's partner during the search, or a
+    seat check started or ended): the decision is discarded and the turn
+    searched again at the live level."""
+    snapshot = decision.snapshot
+    if snapshot.closing_bot:
+        return False
+    return (snapshot.level != ranked_bots.level_of(room, snapshot.seat)
+            or (snapshot.phase == "play" and decision.level != snapshot.level))
 
 
 def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
@@ -1821,8 +1834,9 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             or not _turn_eligible(
                 room, snapshot.seat, snapshot.mode,
                 owner_left_at=snapshot.owner_left_at)
-            or _level_changed(room, snapshot)):
+            or _level_changed(room, decision)):
         return False
+    ranked_bots.unpin(snapshot.bot_copy)
     if snapshot.closing_bot:
         room.closing_bot = snapshot.bot_copy
     else:
@@ -1947,7 +1961,7 @@ async def pump_bots(room: Room) -> None:
             acted = _commit_bot_turn(room, prepared)
             _log_bot_timing(room, prepared, acted=acted)
             if not acted:
-                if _level_changed(room, prepared.decision.snapshot):
+                if _level_changed(room, prepared.decision):
                     continue
                 return
             await broadcast(room)

@@ -15,14 +15,16 @@ SECONDS = 600
 
 
 def provider_sample(expected_pid=None):
-    rows = []
-    for line in worker.command(worker.PS, "-axo", "pid=,rss=,comm=").splitlines():
-        fields = line.split(None, 2)
-        if len(fields) == 3 and fields[2] == str(PROVIDER):
-            rows.append((int(fields[0]), int(fields[1])))
-    if len(rows) != 1 or rows[0][1] <= 0 or (expected_pid is not None and rows[0][0] != expected_pid):
+    jobs = [row.split() for row in worker.command(worker.LAUNCHCTL, "list").splitlines()]
+    pids = [int(row[0]) for row in jobs if len(row) == 3 and row[2] == "io.darkbloom.provider"
+            and row[0].isdigit()]
+    if len(pids) != 1 or (expected_pid is not None and pids[0] != expected_pid):
         raise ValueError("resident Darkbloom process missing, ambiguous or replaced")
-    pid, rss = rows[0]
+    pid = pids[0]
+    fields = worker.command(worker.PS, "-p", str(pid), "-o", "rss=,comm=").strip().split(None, 1)
+    if len(fields) != 2 or fields[1] != str(PROVIDER) or int(fields[0]) <= 0:
+        raise ValueError("unexpected Darkbloom process image or RSS")
+    rss = int(fields[0])
     print(f"provider_pid={pid} provider_rss_kib={rss}", flush=True)
     return pid
 

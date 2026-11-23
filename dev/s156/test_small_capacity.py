@@ -51,9 +51,11 @@ sys.exit(3)
     def command(*args):
         if args == (worker.DARKBLOOM, "status"):
             return "eligible"
-        if args == (worker.PS, "-axo", "pid=,rss=,comm="):
+        if args == (worker.LAUNCHCTL, "list"):
             pid = 999 if mode == "restart" and (tmp_path / "S").exists() else 123
-            return f"{pid} 256 {packet.PROVIDER}"
+            return f"{pid} 0 io.darkbloom.provider\n456 0 io.darkbloom.watchdog"
+        if args == (worker.PS, "-p", "123", "-o", "rss=,comm="):
+            return f"256 {packet.PROVIDER}"
         assert args[:3] == (worker.PS, "-o", "rss=")
         return "256"
     monkeypatch.setattr(worker, "command", command)

@@ -5,6 +5,8 @@
 // never leaves the phone; a refused frame is always written here, so a frame
 // dropped at the boundary is never silent while the pane is up.
 
+import { TEST_TOOLS } from "./testTools";
+
 export const LOG_KEEP = 500;
 
 export interface LogLine {
@@ -24,7 +26,8 @@ const now = (): number => (typeof performance !== "undefined" ? performance.now(
 export function nearbyLog(from: string, text: string): void {
   const line = { t: Math.round(now()), from, text };
   lines.push(line);
-  if (file) toFile(line);
+  // the file's writer is a test tool: not in the App Store's bundled page
+  if (TEST_TOOLS && file) toFile(line);
   if (lines.length > LOG_KEEP) lines.splice(0, lines.length - LOG_KEEP);
   snapshot = lines.slice();
   listeners.forEach((l) => l());

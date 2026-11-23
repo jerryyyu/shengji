@@ -4,6 +4,10 @@
 // siteOrigin.test.ts, until the app ships on this origin.
 export const SITE_ORIGIN = "https://playshengji.com";
 
+/** The iOS app's App Store page; the website lists it under Support and in the
+ *  guides, the app does not. */
+export { APP_STORE_URL } from "./appStore.ts";
+
 /** The canonical address of a path on the site: no query, no trailing slash
  *  except the root's. */
 export function canonicalUrl(pathname: string): string {

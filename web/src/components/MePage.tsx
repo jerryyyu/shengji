@@ -7,6 +7,7 @@ import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
 import { followInfoLink } from "../support/route";
 import { isNative } from "../native";
+import { APP_STORE_URL } from "../appStore";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { WIDE, openTab } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
@@ -143,9 +144,7 @@ function DeleteAccount() {
   );
 }
 
-/** The iOS app's App Store page; the website lists it under Support, the app does not. */
-export const APP_STORE_URL = "https://apps.apple.com/app/id6833598710";
-
+/** The website lists the app's App Store page under Support; the app does not. */
 function InfoRows() {
   return (
     <ul className="grp">

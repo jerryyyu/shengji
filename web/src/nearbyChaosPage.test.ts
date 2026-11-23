@@ -67,3 +67,21 @@ describe("the simulator's page model", () => {
     expect(r.violation).toBeNull();
   });
 });
+
+describe("the simulator's page keeps its seat's token across a join by code", () => {
+  it("seed 30050: a Leave that never happened, then a join by code, resumes the held seat", async () => {
+    // The Leave lands while the page has no open link, so it does nothing;
+    // the join by code 18 s later comes just after a radio drop, with the
+    // old link still counted connected. nearbyJoin.ts join() sends the
+    // token kept by the table's code, so the host supersedes that link and
+    // the phone holds one seat, not a second beside it.
+    const schedule: Fault[] = [
+      { t: 117.35114528611302, kind: "bg", who: "J1", dur: 18.32670703716576, arg: 0 },
+      { t: 127.57815427868627, kind: "leave", who: "J1", dur: 18.255617702845484, arg: 0 },
+      { t: 144.4391956354957, kind: "radio", who: "J1", dur: 3.883676666766405, arg: 0 },
+    ];
+    const r = await runGame({ seed: 30050, bugs: [], seconds: 240, bound: 15, hostile: false, verbose: false, page: "sim", schedule });
+    expect(r.violation).toBeNull();
+    expect(r.trace.some((l) => / H js\/host: resume from p3: seat 3 bound/.test(l))).toBe(true);
+  }, 60_000);
+});

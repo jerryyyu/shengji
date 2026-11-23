@@ -555,6 +555,10 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     status: "closed" | "connecting" | "open" = "closed";
     seated = false;
     token: string | null = null;
+    /** nearbyJoin.ts keptSeatToken: the seat's token kept on the phone by
+     *  the table's code. A join by code does not forget it; a Leave, a
+     *  refused resume and the table's end do (forgetTable). */
+    kept: string | null = null;
     /** The bound seat of the current socket, from its resume frame. */
     boundSeat: number | null = null;
     leaving = false;
@@ -751,6 +755,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
           if (this.leaving) this.finishLeave();
           else {
             log(this.d.id, "page: resume refused: the seat is gone; the seats again");
+            this.kept = null;
             this.goneRun += 1;
             this.goneArmed = false;
             this.look();
@@ -772,6 +777,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       if (f.type === "resume") {
         const same = this.token === f.token;
         this.token = f.token as string;
+        this.kept = this.token;
         d.tokens.add(this.token);
         const r = room!;
         const at = r.lobby ? r.lobby.findIndex((s) => s?.token === this.token) : r.seats.findIndex((s) => s.token === this.token);
@@ -798,13 +804,14 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         const taken = new Set((f.seats as { seat: number }[]).map((s) => s.seat));
         const open = [0, 1, 2, 3].filter((s) => !taken.has(s));
         const seat = open.length ? driverRng.pick(open) : null;
-        // nearbyJoin.ts join(): the panel's Join carries the token the
-        // table's resume frame gave this page since its look (its kept
-        // token), so a seat answered on a link that went before its state
-        // is taken back, not held beside a second one
+        // nearbyJoin.ts join(): the panel's Join carries the token kept for
+        // this table, so a seat answered on a link that went before its
+        // state, or one still held when the page joins by code again, is
+        // taken back, not held beside a second one
         this.clock.setTimeout(() => {
+          const kept = this.token ?? this.kept;
           if (this.sock && this.status === "open" && !this.seated) {
-            this.sock.send(JSON.stringify({ type: "table_join", code, name: d.name, seat, ...(this.token ? { token: this.token } : {}) }));
+            this.sock.send(JSON.stringify({ type: "table_join", code, name: d.name, seat, ...(kept ? { token: kept } : {}) }));
           }
         }, driverRng.range(0.3, 1.2));
         return;
@@ -956,6 +963,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       emitPhase("leave");
       this.leaving = true;
       this.d.inPlay = false;
+      this.kept = null;
       if (wholeApp && this.token && room && !room.lobby) leaves.push({ d: this.d, token: this.token, at: vc.now(), offline: false, back: vc.now() });
       this.sock.send(JSON.stringify({ type: "table_leave" }));
       const sock = this.sock;
@@ -970,6 +978,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       emitPhase("leave");
       this.leaving = true;
       this.d.inPlay = false;
+      this.kept = null;
       if (this.token) offlineLeft.add(this.token);
       if (this.token && room && !room.lobby) leaves.push({ d: this.d, token: this.token, at: vc.now(), offline: true, back: vc.now() + back });
       this.sock?.send(JSON.stringify({ type: "table_leave" }));
@@ -1009,6 +1018,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       this.done = true;
       this.seated = false;
       this.token = null;
+      this.kept = null;
       const s = this.sock;
       this.sock = null;
       this.status = "closed";
@@ -1028,6 +1038,7 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
       }
       this.done = true;
       this.d.inPlay = false;
+      this.kept = null;
       const s = this.sock;
       this.sock = null;
       this.status = "closed";

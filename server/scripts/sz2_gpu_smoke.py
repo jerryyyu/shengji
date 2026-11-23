@@ -41,7 +41,7 @@ def darkbloom_ready():
 
 def restore_darkbloom():
     try:
-        command(DARKBLOOM, "restart", timeout=45)
+        command(DARKBLOOM, "restart", timeout=240)
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"Darkbloom restart command failed: {exc}", file=sys.stderr, flush=True)
     deadline = time.monotonic() + RESTORE_SECONDS

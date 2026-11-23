@@ -127,6 +127,30 @@ def events(log):
     return [event.split()[0] for event in log.read_text().splitlines()]
 
 
+def test_restore_allows_slow_provider_restart(monkeypatch):
+    monkeypatch.syspath_prepend(str(WORKER.parent))
+    import sz2_gpu_smoke as worker
+
+    started = False
+
+    def provider(*args, timeout=5):
+        nonlocal started
+        if args == (worker.DARKBLOOM, "restart"):
+            if timeout < 148:
+                raise subprocess.TimeoutExpired(args, timeout)
+            started = True
+            return ""
+        if args == (worker.DARKBLOOM, "status"):
+            return "Daemon: running\nTraffic: eligible" if started else "Daemon: not running"
+        assert args == (worker.LAUNCHCTL, "list")
+        return "\n".join(worker.JOBS)
+
+    monkeypatch.setattr(worker, "command", provider)
+    monkeypatch.setattr(worker, "RESTORE_SECONDS", 0)
+    worker.restore_darkbloom()
+    assert started
+
+
 def test_smoke_runs_once_and_restores(host):
     _, tmp, log = host
     result = invoke(host)

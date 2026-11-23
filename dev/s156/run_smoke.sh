@@ -3,14 +3,14 @@
 set -u
 for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 6; done
 fleet=/Users/jeryyu/fleet
-packet=$fleet/codex-sz2-smoke-r1
+packet=$fleet/codex-sz2-smoke-r2
 root=$packet/capture
 tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-24c2e10a
 head=24c2e10a868414af6b1e985fa33c87255b8c7559
 lib=$tree/server/scripts/lanes/lane_lib.sh
 parity=$fleet/claude-ut-all/scripts/r1_parity.py
 calib=$fleet/cloud-archive/codex-20261106/root/codex-g2-belief-cloud-v1/partitions/part-00of32
-LANE_NAME=sz2-m2-smoke
+LANE_NAME=sz2-m2-smoke-r2
 LANE_HOSTNAME=Jerrys-Mac-Studio.local
 LANE_RELEASE=$packet/launcher.RELEASE
 LANE_LOCK=$fleet/.claude-host.lock
@@ -29,6 +29,7 @@ $fleet/claude-ut-retrain4/RT4.status ^RT4 DONE 2026-11-22T22:30:21Z rc=0$
 $fleet/claude-ut-retrain4/DRV.status ^DRV DONE 2026-11-22T22:32:56Z duels rc=4$
 $fleet/claude-ut-retrain4/R4F.status ^UTD DONE 2026-11-22T23:40:37Z .* rc=0$
 $fleet/s151-generator-crossover/capture/launcher.status ^LANE DONE s151-generator-crossover .* rc=0$"
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.6 PYTORCH_MPS_LOW_WATERMARK_RATIO=0.5
 export PYTHONPATH=$tree/server OMP_NUM_THREADS=2 PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
 [ "$(hostname)" = "$LANE_HOSTNAME" ] && [ "$0" = "$packet/run_smoke.sh" ] || exit 6
 clean_tree() {

@@ -18,12 +18,18 @@ import pytest
 
 import r54_selfplay_positions as S
 from test_encoder_round_compat import REQUIRE_PACKAGE
-from test_release46_fly_config import fly_env
+from test_release46_fly_config import fly_env as served_fly_env, release54_env
 from test_release50_fly_config import release50_packages  # noqa: F401
 from test_release53_fly_config import BURY3_NAME, local_env, release53_pair, served_bot  # noqa: F401
 from test_unified_serving import served_functions  # noqa: F401
 
 from shengji.train import pv_reroot as R
+
+
+def fly_env() -> dict:
+    """Release 54's ``fly.toml`` ``[env]``, the release the pinned positions were played by."""
+    return release54_env(served_fly_env())
+
 
 COMPILED = os.environ.get("SHENGJI_FAST") == "1"
 #: the pure engine replays the first decisions of the first deal (its decisions are many times

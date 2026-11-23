@@ -202,7 +202,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      ID, return URL and server audience.
    - Terms of use is a page like Privacy (`support/TermsPage.tsx`, the real path `/terms`): Me lists
      "Terms of use" between Privacy policy and Support, and the sheet's line links it, keeping the typed
-     name and closing the sheet. Chat lines and guest names are masked by the server's word filter
+     name and closing the sheet. On the website Me ends that group with "On iPhone", a plain link to the
+     app's App Store page (a row, not a new surface); the app does not list it. Chat lines and guest names are masked by the server's word filter
      (`api/chat_filter.py`); an account's display name with a listed word is refused ("That name is not
      allowed.").
    - A signed-in player still edits their name inline in Me (`NameEditForm`, saved to the account); the

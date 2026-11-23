@@ -6,6 +6,7 @@ import type { AuthUser } from "../auth";
 import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
 import { followInfoLink } from "../support/route";
+import { isNative } from "../native";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { WIDE, openTab } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
@@ -142,6 +143,9 @@ function DeleteAccount() {
   );
 }
 
+/** The iOS app's App Store page; the website lists it under Support, the app does not. */
+export const APP_STORE_URL = "https://apps.apple.com/app/id6833598710";
+
 function InfoRows() {
   return (
     <ul className="grp">
@@ -154,6 +158,11 @@ function InfoRows() {
       <li><a className="grp-row" href="/support" onClick={(e) => followInfoLink(e, "support")}>
         <span className="grp-label">Support</span><span className="grp-value chev" />
       </a></li>
+      {isNative() ? null : (
+        <li><a className="grp-row me-app-store" href={APP_STORE_URL}>
+          <span className="grp-label">On iPhone</span><span className="grp-value chev" />
+        </a></li>
+      )}
     </ul>
   );
 }

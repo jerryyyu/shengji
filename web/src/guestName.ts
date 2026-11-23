@@ -8,6 +8,7 @@
 
 import { useSyncExternalStore } from "react";
 import { NAME_ADJECTIVES, NAME_NOUNS } from "./randomName";
+import { telemetry, type SigninFrom } from "./telemetry";
 import { getSavedName, saveName } from "./ws";
 
 /** What a guest's identity line says, where an account shows its rating. */
@@ -89,7 +90,9 @@ class GuestNameStore {
     if (this.typed) writeChosenMark(true);
   }
 
-  open(): void {
+  /** Open the identity sheet; `from` names the entry point for telemetry. */
+  open(from?: SigninFrom): void {
+    if (from) telemetry.signinOpen(from);
     this.set({ editing: true });
   }
 

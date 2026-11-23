@@ -24,7 +24,7 @@ export default function AccountChip({ user, compact = false }: { user: AuthUser;
   const ratingText = rating !== null ? `, rating ${rating}` : "";
   return (
     <button type="button" className={`account-pill${device ? " device-pill" : ""}`}
-            onClick={device ? () => guestName.open() : () => openTab("me", "stats")}
+            onClick={device ? () => guestName.open("chip") : () => openTab("me", "stats")}
             aria-label={`${name}${ratingText}, ${device ? "edit name" : "open profile"}`}>
       <Avatar user={user} />
       <span className="account-pill-name">{name}</span>

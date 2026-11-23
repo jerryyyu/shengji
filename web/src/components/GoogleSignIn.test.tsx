@@ -17,6 +17,7 @@ vi.mock("../auth", async (importOriginal) => {
 });
 
 import GoogleSignIn from "./GoogleSignIn";
+import { telemetry } from "../telemetry";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -212,5 +213,44 @@ describe("Sign in with Apple", () => {
     expect(initialize).toHaveBeenCalled();
     expect(host.querySelector(".google-signin-native")).not.toBeNull();
     expect(host.querySelector("[data-testid='apple-signin']")).toBeNull();
+  });
+});
+
+describe("sign-in telemetry", () => {
+  beforeEach(() => telemetry.reset());
+  afterEach(() => telemetry.reset());
+  const steps = () => telemetry.pending().filter((e) => e.e === "signin").map((e) => `${(e as { step: string }).step}:${(e as { provider?: string }).provider}`);
+
+  it("the app's buttons send the tap, then closed, error or done, and none of the sign-in's values", async () => {
+    const login = vi.fn()
+      .mockRejectedValueOnce(Object.assign(new Error("cancel"), { code: "USER_CANCELLED" }))
+      .mockResolvedValue({ provider: "google", result: { idToken: "jwt.tok" } });
+    fakeShell({ initialize: vi.fn(() => Promise.resolve()), login, logout: vi.fn() });
+    const user = { name: "Jerry Yu", email: "j@example.com", picture: null, display_name: null, name_shown: "Jerry" };
+    loginWithGoogle.mockRejectedValueOnce(new Error("Sign-in rejected (bad_audience).")).mockResolvedValueOnce(user);
+    await render();
+    const button = host.querySelector<HTMLButtonElement>(".google-signin-native")!;
+    await act(async () => button.click());
+    await act(async () => button.click());
+    await act(async () => button.click());
+    expect(signedIn).toHaveBeenCalledWith(user);
+    expect(steps()).toEqual([
+      "provider_tap:google", "closed:google", "provider_tap:google", "error:google", "provider_tap:google", "done:google"]);
+    const nonces = login.mock.calls.map((c) => (c[0] as { options: { nonce: string } }).options.nonce);
+    const text = JSON.stringify(telemetry.pending());
+    for (const secret of ["jwt.tok", "j@example.com", "Jerry", "bad_audience", ...nonces]) expect(text).not.toContain(secret);
+  });
+
+  it("the website's button sends done or error when Google hands back a credential", async () => {
+    const user = { name: "Jerry Yu", email: "j@example.com", picture: null, display_name: null, name_shown: "Jerry" };
+    loginWithGoogle.mockResolvedValueOnce(user).mockRejectedValueOnce(new Error("Sign-in rejected (nonce)."));
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const { callback } = gis.initialize.mock.calls[0][0] as { callback: (r: { credential: string }) => void };
+    await act(async () => { callback({ credential: "eyJ.web.tok" }); await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { callback({ credential: "eyJ.web.tok" }); await new Promise((r) => setTimeout(r, 0)); });
+    expect(steps()).toEqual(["done:google", "error:google"]);
+    const text = JSON.stringify(telemetry.pending());
+    for (const secret of ["eyJ", "j@example.com", "Jerry", "nonce"]) expect(text).not.toContain(secret);
   });
 });

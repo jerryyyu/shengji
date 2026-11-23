@@ -33,7 +33,7 @@ function GuestLine({ online }: { online: boolean }) {
         <>
           {" · "}
           <button type="button" className="play-guest-signin" disabled={!online}
-                  onClick={() => guestName.open()}>Sign in</button>
+                  onClick={() => guestName.open("play_line")}>Sign in</button>
           {" to be ranked"}
         </>
       ) : null}

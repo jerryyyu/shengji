@@ -211,7 +211,7 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
     <>
       <SettingsGroup />
       <ul className="grp me-account">
-        {device ? <Row label={effectiveName(user)} chevron className="me-identity" onClick={() => guestName.open()} /> : null}
+        {device ? <Row label={effectiveName(user)} chevron className="me-identity" onClick={() => guestName.open("me_row")} /> : null}
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
                   disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}
@@ -265,7 +265,7 @@ function GuestMe() {
             </div>
           </div>
           <ul className="grp me-account">
-            <Row label={shown} chevron className="me-identity" onClick={() => guestName.open()} />
+            <Row label={shown} chevron className="me-identity" onClick={() => guestName.open("me_row")} />
           </ul>
         </>
       )}

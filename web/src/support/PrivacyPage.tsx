@@ -129,10 +129,13 @@ export default function PrivacyPage() {
             To find where the app is confusing or slow, it sends our server short usage events: which
             screen you opened and how long you stayed on the one before, which of a fixed set of
             buttons you tapped, how long a turn took and how often you changed your selection, which
-            notices you saw, and when you joined or left the queue and how long you waited. Each event
-            also says whether you were signed in (not who), whether the screen is a phone, a phone on
-            its side or wide, whether this is the first visit on this device, the app version, and a
-            random id that lasts for one connection.
+            notices you saw, the steps of a sign-in (which button, and whether it went through), and
+            when you joined or left the queue and how long you waited. Each event also says whether you
+            were a guest, signed in only on this device, or signed in with Apple or Google (not who),
+            whether you were in the iPhone app, a browser or the site added to your home screen, whether
+            the screen is a phone, a phone on its side or wide, whether this is the first visit on this
+            device, the app version, and a random id that lasts for one connection. Each sign-in is also
+            counted, by Apple or Google and whether it made a new account, with no id at all.
           </p>
           <p>
             The events hold no name, account id, email, IP address, device key, room code, cards,

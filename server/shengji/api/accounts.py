@@ -49,7 +49,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket
 from pydantic import BaseModel
 
-from . import chat_filter, device_names
+from . import chat_filter, device_names, telemetry
 
 log = logging.getLogger(__name__)
 
@@ -928,6 +928,13 @@ class Store:
             row = conn.execute("SELECT refresh_token FROM apple_tokens WHERE user_id = ?",
                                (user_id,)).fetchone()
             return str(row["refresh_token"]) if row else None
+
+    def has_identity(self, column: str, sub: str) -> bool:
+        """Whether an account holds this provider identity already."""
+        if column not in ("google_sub", "apple_sub"):
+            raise ValueError(column)
+        with closing(self._open()) as conn:
+            return conn.execute(f"SELECT 1 FROM users WHERE {column} = ?", (str(sub),)).fetchone() is not None
 
     def user(self, user_id: int) -> dict | None:
         with closing(self._open()) as conn:
@@ -1979,13 +1986,16 @@ async def auth_google(body: GoogleLogin, request: Request, response: Response) -
     linked = await link_device_session(
         request, "google", sub, {"email": email, "name": name, "picture": picture}, body.confirm)
     device_token = None
+    new = False
     if linked is not None:
         user, token, device_token = linked
     else:
+        new = not await STORE.run(STORE.has_identity, "google_sub", sub)
         user = await STORE.run(STORE.upsert_user, claims)
         refuse_suspended(user)
         token = await STORE.run(STORE.create_session, user["id"])
     _set_session_cookie(response, request, token)
+    telemetry.signin_count("google", new)
     return sign_in_payload(await account_payload(STORE, user), device_token)
 
 

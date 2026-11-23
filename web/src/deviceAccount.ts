@@ -28,6 +28,7 @@ import {
 } from "./auth";
 import { chosenGuestName } from "./guestName";
 import { keychainGet } from "./keychain";
+import { telemetry } from "./telemetry";
 import { deviceIdiom } from "./native";
 
 /** How long a Play, Duo or Join waits for the device's sign-in. */
@@ -52,6 +53,12 @@ export function lastSetupOutcome(): SetupOutcome | null {
 
 /** Signs this device in, inside its identity turn. */
 async function signInDevice(): Promise<SetupOutcome> {
+  const outcome = await signInDeviceOnce();
+  if (outcome === "read_failed" || outcome === "off" || outcome === "guest") telemetry.deviceAccount("fell_back_guest");
+  return outcome;
+}
+
+async function signInDeviceOnce(): Promise<SetupOutcome> {
   // A removal or a save an earlier attempt could not finish comes first;
   // while either is refused the Keychain is not used, and no account is
   // made over a secret that may be there or is still owed to it.
@@ -78,6 +85,8 @@ async function signInDevice(): Promise<SetupOutcome> {
   if (!got.user) return "guest";
   // a secret the Keychain refuses is held for this session; the cookie keeps the account
   const outcome: SetupOutcome = got.token && !(await keepDeviceSecret(got.token)) ? "unsaved" : "signed_in";
+  // sent before the sign-in replaces the socket, so it goes on the guest's
+  telemetry.deviceAccount(token ? "restored" : "created");
   auth.signedIn(got.user);
   return outcome;
 }

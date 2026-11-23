@@ -53,7 +53,7 @@ function SignInToRank() {
   return (
     <ul className="grp lb-rated">
       <li>
-        <button type="button" className="grp-row lb-signin" onClick={() => guestName.open()}>
+        <button type="button" className="grp-row lb-signin" onClick={() => guestName.open("leaderboard_row")}>
           <span className="grp-label">Sign in to be ranked</span>
           <span className="grp-value chev" />
         </button>

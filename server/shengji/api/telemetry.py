@@ -1,15 +1,22 @@
 """UI telemetry: allow-listed client flow events in their own sink.
 
 The client batches ``{"type": "client_event", "v": 1, "form": …,
-"first_visit": …, "events": [{"e": …, "t": …, …}]}``. Every event is
+"platform": …, "first_visit": …, "events": [{"e": …, "t": …, …}]}``. Every event is
 checked against ``SCHEMA``: an unknown event name, an unknown field, or a
 value outside its enum or integer bound drops that field or event. Nothing
 free-form survives: no names, chat, room codes or card codes.
 
 Each socket gets a random ``sid`` minted here and kept only on the socket
 object, so no table maps it to an account, device or address. The server
-stamps ``sid``, ``who`` (guest or account), ``form``, ``build`` and
-``first_visit`` onto each kept event.
+stamps ``sid``, ``who``, ``form``, ``platform``, ``build`` and
+``first_visit`` onto each kept event. ``who`` is the socket's own kind as
+the server read it at the handshake: ``guest``, ``device`` (an account with
+no Google or Apple identity, the iOS app's own) or ``linked`` (an account
+with one); never the account itself.
+
+A successful sign-in is also counted server-side (``signin_count``): its
+provider and whether it made the account, with no ``sid`` and no ``ts``, so
+it joins no socket's events.
 
 Records go to ``$SHENGJI_TELEMETRY_DIR/ui-YYYYMMDD.jsonl`` (UTC date). The
 sink is off when the variable is unset, and refuses any directory inside
@@ -79,6 +86,25 @@ WHERE = SCREENS | {"toast", "other"}
 # purpose (a sign-in or sign-out, or Retry).
 DISCONNECT_CAUSES = frozenset({"closed", "no_pong", "replaced"})
 FORMS = frozenset({"phone", "phone-land", "wide"})
+# The iOS app, an installed home-screen web app, or a browser tab.
+PLATFORMS = frozenset({"ios_app", "pwa", "web"})
+WHO = frozenset({"guest", "device", "linked"})
+PROVIDERS = frozenset({"google", "apple"})
+# Where the identity sheet was opened: the Play tab's guest line, the chip,
+# Me's name row, the Leaderboard's Sign in row, a round end's rating line,
+# the saved games' signed-out prompt, or a player's Report row.
+SIGNIN_FROM = frozenset({"play_line", "chip", "me_row", "leaderboard_row", "round_end",
+                         "lapsed", "report"})
+# A provider sign-in: its button tapped (the app's native buttons; the
+# website's Google button is Google's own frame), the account confirmed, a
+# refusal, or the provider's sheet dismissed.
+SIGNIN_STEPS = frozenset({"provider_tap", "done", "error", "closed"})
+# The iOS app's own account: made, signed in again from the Keychain, the
+# device left a guest (device accounts off, a refused or unreadable secret,
+# no connection), a provider identity linked onto it, the "Switch to …?"
+# confirm shown, or the device's account given way to the identity's.
+DEVICE_STEPS = frozenset({"created", "restored", "fell_back_guest", "linked",
+                          "conflict_shown", "switched"})
 QUEUE_EVENTS = frozenset({"join", "leave", "start", "start_failed"})
 
 
@@ -105,14 +131,17 @@ SCHEMA: dict[str, dict[str, Any]] = {
                   "sel_changes": _int(0, 1000), "disabled_play_taps": _int(0, 1000),
                   "refused": _int(0, 100), "coach": _bool, "nth_turn": _int(1, 30),
                   "by": _enum(frozenset({"you", "timer", "bot"}))},
-    "tap": {"id": _enum(TAPS)},
+    "tap": {"id": _enum(TAPS), "from": _enum(SIGNIN_FROM)},
+    "signin": {"step": _enum(SIGNIN_STEPS), "provider": _enum(PROVIDERS)},
+    "device_account": {"step": _enum(DEVICE_STEPS)},
     "notice": {"code": _enum(NOTICE_CODES), "where": _enum(WHERE),
                # the connection notices: why the page dropped its socket, and
                # for how long it had none
                "cause": _enum(DISCONNECT_CAUSES), "ms": _int(0, MAX_MS)},
 }
 # The field without which an event says nothing; missing or invalid drops it.
-REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code"}
+REQUIRED = {"screen": "name", "turn_done": "phase", "tap": "id", "notice": "code",
+            "signin": "step", "device_account": "step"}
 
 # Server-side queue events (``queue_event``): field -> check.
 QUEUE_FIELDS: dict[str, Any] = {
@@ -210,7 +239,7 @@ def clean_event(raw: Any) -> dict[str, Any] | None:
 
 def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], dict[str, Any]]:
     """The kept events of one ``client_event`` message and its stamps
-    (``form``, ``first_visit``); nothing for a malformed or oversize one."""
+    (``form``, ``platform``, ``first_visit``); nothing for a malformed or oversize one."""
     if not isinstance(msg, dict) or msg.get("v") != 1:
         return [], {}
     size = raw_bytes if raw_bytes is not None else len(
@@ -225,6 +254,9 @@ def clean_message(msg: Any, raw_bytes: int | None = None) -> tuple[list[dict], d
     form = _enum(FORMS)(msg.get("form"))
     if form is not None:
         stamps["form"] = form
+    platform = _enum(PLATFORMS)(msg.get("platform"))
+    if platform is not None:
+        stamps["platform"] = platform
     first = _bool(msg.get("first_visit"))
     if first is not None:
         stamps["first_visit"] = first
@@ -298,10 +330,12 @@ def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
         return False
 
 
-def receive(conn: Any, msg: Any, signed_in: bool) -> int:
-    """Handle one ``client_event`` message from ``conn``; returns how many
-    events were written."""
+def receive(conn: Any, msg: Any, kind: str) -> int:
+    """Handle one ``client_event`` message from ``conn``; ``kind`` is the
+    socket's ``who`` (anything else reads as guest). Returns how many events
+    were written."""
     try:
+        kind = kind if kind in WHO else "guest"
         events, stamps = clean_message(msg)
         if not events:
             return 0
@@ -309,7 +343,7 @@ def receive(conn: Any, msg: Any, signed_in: bool) -> int:
         events = events[:st.take(len(events))]
         ts = round(time.time())
         records = [{**ev, **stamps, "sid": st.sid,
-                    "who": "account" if signed_in else "guest",
+                    "who": kind,
                     "build": build_id(), "ts": ts} for ev in events]
         return len(records) if write(records) else 0
     except Exception:          # noqa: BLE001
@@ -338,5 +372,19 @@ def queue_event(conn: Any, event: str, **fields: Any) -> bool:
         rec["build"] = build_id()
         rec["ts"] = round(time.time())
         return write([rec])
+    except Exception:          # noqa: BLE001
+        return False
+
+
+def signin_count(provider: str, new: bool) -> bool:
+    """One successful provider sign-in: the provider and whether it made the
+    account. Written with no ``sid`` and no ``ts`` (the day file is its
+    time), so neither a socket's events nor an account's last sign-in time
+    can be joined to it."""
+    try:
+        provider = _enum(PROVIDERS)(provider)
+        if provider is None or type(new) is not bool:
+            return False
+        return write([{"e": "signin_count", "provider": provider, "new": new, "build": build_id()}])
     except Exception:          # noqa: BLE001
         return False

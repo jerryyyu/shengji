@@ -20,7 +20,7 @@ export default function GuestChip({ compact = false }: { compact?: boolean }) {
   const pending = deviceAccountPending(useAuth());
   const shown = name.trim() || "Guest";
   return (
-    <button type="button" className="account-pill guest-pill" onClick={() => guestName.open()}
+    <button type="button" className="account-pill guest-pill" onClick={() => guestName.open("chip")}
             aria-label={`${shown}${pending ? "" : ", guest"}, edit name`}>
       <span className="avatar avatar-sm" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>
       <span className="account-pill-name">{shown}</span>

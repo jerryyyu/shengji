@@ -18,7 +18,8 @@ const { authState, signOut, deleted, updated, signedIn, loginWithGoogle } = vi.h
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
 vi.mock("../auth", async (importOriginal) => {
   const real = await importOriginal<typeof import("../auth")>();
-  return { ...real, loginWithGoogle, useAuth: () => authState.current, auth: { signOut, deleted, updated, signedIn } };
+  return { ...real, loginWithGoogle, useAuth: () => authState.current,
+           auth: { signOut, deleted, updated, signedIn, get state() { return authState.current; } } };
 });
 
 import { AccountExists } from "../auth";
@@ -30,6 +31,7 @@ import { forgetHomeSession } from "../home/session";
 import { guestName } from "../guestName";
 import { resetNativeForTests } from "../native";
 import { resetNativeAuthForTests } from "../nativeAuth";
+import { telemetry } from "../telemetry";
 
 const DEVICE = { name: "Gentle Tractor", email: "", picture: null, display_name: "Gentle Tractor",
                  name_shown: "Gentle Tractor", rounds_played: 12, linked: false };
@@ -315,6 +317,29 @@ describe("the linking conflict", () => {
     expect(document.querySelector(".switch-account-confirm")).toBeNull();
     expect(loginWithGoogle).toHaveBeenCalledTimes(1);
     expect(signedIn).not.toHaveBeenCalled();
+  });
+
+  it("telemetry: the confirm shown, then the switch, enums only", async () => {
+    const mei = { name: "Mei Chen", email: "mei@x", picture: null, display_name: "Mei", name_shown: "Mei" };
+    loginWithGoogle.mockRejectedValueOnce(new AccountExists("Mei")).mockResolvedValueOnce(mei);
+    telemetry.reset();
+    await openAndSignIn();
+    await act(async () => { document.querySelector<HTMLButtonElement>(".switch-account-yes")!.click(); });
+    await settle();
+    const seen = telemetry.pending().filter((e) => e.e === "signin" || e.e === "device_account")
+      .map((e) => `${e.e}:${(e as { step: string }).step}`);
+    expect(seen).toEqual(["signin:provider_tap", "device_account:conflict_shown", "signin:done", "device_account:switched"]);
+    expect(JSON.stringify(telemetry.pending())).not.toMatch(/Mei|mei@x|jwt\.tok|Gentle/);
+    telemetry.reset();
+  });
+
+  it("telemetry: a new identity linked onto the device's account", async () => {
+    loginWithGoogle.mockResolvedValueOnce({ ...DEVICE, linked: true });
+    telemetry.reset();
+    await openAndSignIn();
+    const seen = telemetry.pending().filter((e) => e.e === "device_account").map((e) => (e as { step: string }).step);
+    expect(seen).toEqual(["linked"]);
+    telemetry.reset();
   });
 
   it("a refused Switch says why inside the confirm", async () => {

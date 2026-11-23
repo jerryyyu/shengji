@@ -82,7 +82,7 @@ export default function OpponentActions({ room, seat, name, onClose }: {
             </button>
             {mustSignIn ? (
               <button type="button" className="opp-actions-row danger"
-                      onClick={() => { onClose(); guestName.open(); }}>
+                      onClick={() => { onClose(); guestName.open("report"); }}>
                 Sign in to report
               </button>
             ) : (

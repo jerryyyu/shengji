@@ -2982,6 +2982,8 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
     user = await accounts.websocket_user(ws)
     user_id = user["id"] if user else None
     default_name = accounts.effective_name(user) if user else ""
+    # the handshake account's kind for telemetry's ``who``; never its id
+    account_kind = "device" if user and accounts.is_device_account(user) else "linked"
     device = device_key(ws.query_params.get("device"))
     guest_id = guest_queue_id(device) if user_id is None and device is not None else None
     conn = matchmaking.Conn(ws, user_id, default_name,
@@ -3065,7 +3067,7 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
                 continue
             if t == "client_event":
                 # UI flow events: allow-listed, to their own sink, never a room log
-                telemetry.receive(conn, msg, signed_in=account_id() is not None)
+                telemetry.receive(conn, msg, "guest" if account_id() is None else account_kind)
                 continue
             if room is None or me is None:
                 if t == "leave_room" and conn.joining is not None:

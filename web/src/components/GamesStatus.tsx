@@ -34,7 +34,7 @@ export function SignInPrompt() {
   return (
     <GamesNotice title="Sign in to see your saved games.">
       {account.status === "out" && account.clientId ? (
-        <button type="button" className="btn gold big games-cta" onClick={() => guestName.open()}>Sign in</button>
+        <button type="button" className="btn gold big games-cta" onClick={() => guestName.open("lapsed")}>Sign in</button>
       ) : null}
     </GamesNotice>
   );

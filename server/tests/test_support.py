@@ -170,6 +170,35 @@ def test_the_pages_serve_the_app_on_a_deep_link_or_reload(tmp_path, path):
     assert r.headers["cache-control"] == "no-cache"
 
 
+@pytest.mark.parametrize("path, page", [("/privacy", "privacy"), ("/terms/", "terms"),
+                                        ("/support", "support")])
+def test_each_page_names_itself_as_canonical(tmp_path, path, page):
+    """The real index.html, served for an info page, points its canonical link and
+    og:url at that page, not at the root; the root keeps its own."""
+    shutil.copy(PUBLIC.parent / "index.html", tmp_path / "index.html")
+    from shengji.api.server import WebFiles
+    from shengji.api import support
+
+    app = FastAPI()
+    support.register_support(app, tmp_path)
+    app.mount("/", WebFiles(directory=tmp_path, html=True), name="web")
+    c = TestClient(app)
+    url = f"{support.SITE_ORIGIN}/{page}"
+    html = c.get(path).text
+    assert f'<link rel="canonical" href="{url}" />' in html
+    assert f'<meta property="og:url" content="{url}" />' in html
+    assert f'href="{support.SITE_ORIGIN}/"' not in html.split("<script", 1)[0]
+    root = c.get("/").text
+    assert f'<link rel="canonical" href="{support.SITE_ORIGIN}/" />' in root
+
+
+def test_the_server_origin_matches_the_web_constant():
+    from shengji.api import support
+
+    src = (PUBLIC.parent / "src" / "siteOrigin.ts").read_text(encoding="utf-8")
+    assert f'export const SITE_ORIGIN = "{support.SITE_ORIGIN}";' in src
+
+
 def test_the_pages_are_404_without_a_build(tmp_path):
     from shengji.api import support
 
@@ -218,7 +247,7 @@ def test_robots_points_to_the_sitemap_and_keeps_crawlers_off_the_api(tmp_path):
     text = _public_client(tmp_path).get("/robots.txt").text
     directives = [line for line in text.splitlines() if line and not line.startswith("#")]
     assert directives == ["User-agent: *", "Allow: /", "Disallow: /api/", "Disallow: /ws",
-                          "Sitemap: https://shengji.fly.dev/sitemap.xml"]
+                          "Sitemap: https://playshengji.com/sitemap.xml"]
     assert AGENT_CLAUSE in text
 
 
@@ -228,13 +257,13 @@ def test_the_sitemap_lists_every_public_page(tmp_path):
     root = ET.fromstring(_public_client(tmp_path).get("/sitemap.xml").content)
     ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     locs = [e.text for e in root.findall("s:url/s:loc", ns)]
-    assert locs == ["https://shengji.fly.dev/" + p for p in ("", "rules", "rules/zh", "privacy", "terms")]
+    assert locs == ["https://playshengji.com/" + p for p in ("", "rules", "rules/zh", "privacy", "terms")]
 
 
 def test_llms_txt_states_the_automated_play_clause(tmp_path):
     text = _public_client(tmp_path).get("/llms.txt").text
     assert AGENT_CLAUSE in text
-    assert "https://shengji.fly.dev/rules" in text and "https://shengji.fly.dev/rules/zh" in text
+    assert "https://playshengji.com/rules" in text and "https://playshengji.com/rules/zh" in text
 
 
 @pytest.mark.parametrize("page, lang, other", [
@@ -245,11 +274,11 @@ def test_rules_pages_carry_canonical_hreflang_and_valid_json_ld(page, lang, othe
     import re
 
     html = (PUBLIC / page).read_text(encoding="utf-8")
-    url = "https://shengji.fly.dev/" + page.removesuffix("/index.html")
+    url = "https://playshengji.com/" + page.removesuffix("/index.html")
     assert f'<html lang="{lang}">' in html
     assert f'<link rel="canonical" href="{url}" />' in html
-    assert 'hreflang="en" href="https://shengji.fly.dev/rules"' in html
-    assert 'hreflang="zh-Hans" href="https://shengji.fly.dev/rules/zh"' in html
+    assert 'hreflang="en" href="https://playshengji.com/rules"' in html
+    assert 'hreflang="zh-Hans" href="https://playshengji.com/rules/zh"' in html
     assert f'href="{other}"' in html and 'href="/"' in html
     [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
     graph = json.loads(block)["@graph"]
@@ -264,7 +293,7 @@ def test_the_app_page_json_ld_parses():
     html = (PUBLIC.parent / "index.html").read_text(encoding="utf-8")
     [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
     data = json.loads(block)
-    assert "VideoGame" in data["@type"] and data["url"] == "https://shengji.fly.dev/"
+    assert "VideoGame" in data["@type"] and data["url"] == "https://playshengji.com/"
 
 
 def test_the_rules_routes_take_no_request_input(tmp_path):

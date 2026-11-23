@@ -11,7 +11,24 @@ import sys
 from compare_generator import comparable_config, normalize_row, read, read_store, read_times, require
 
 SEEDS = (4301400, 4301504, 4301608, 4301712)
-HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "2fb1cc3f0a9d3cec3f4c4d8dcd407671af4a1d89")
+HEADS = ("8c4c0f1982f5c015d4bf288b93722db5b32140e0",) * 2
+
+
+def validate_arm(arm, command, runtime, *, workers=26, clusters=104):
+    split = arm == "c"
+    require(arm in ("b", "c") and isinstance(command, list)
+            and command.count("--split-tail-mirrors") == int(split)
+            and runtime.get("split_tail_mirrors", False) is split, "scheduler mode mismatch")
+    tasks = runtime["per_cluster"]
+    require(runtime["workers"] == workers and set(tasks) == {str(i) for i in range(clusters)},
+            "scheduler workload mismatch")
+    expected = {str(i) for i in range(max(0, clusters - workers), clusters)} if split else set()
+    actual = {k for k, v in tasks.items() if "worker_wall_secs" in v}
+    require(actual == expected, "split cluster set mismatch")
+    for k in actual:
+        seconds = tasks[k]["worker_wall_secs"]
+        require(type(seconds) in (int, float) and math.isfinite(seconds) and seconds > 0,
+                "invalid split worker duration")
 
 
 def percent(a, b):
@@ -137,6 +154,7 @@ def compare(root):
     for index, ((pair, arm), durations) in enumerate(times.items()):
         path = root / f"{pair}-{arm}" / "capture.json"
         receipt = read(path)
+        validate_arm(arm, receipt["command"], read(path.parent / "store/runtime.json"))
         timing = receipt["timing"]
         require(receipt["index"] == index and receipt["head"] == HEADS["bc".index(arm)]
                 and len(timing) == 5 and timing[:2] == [pair, arm]

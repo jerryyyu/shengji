@@ -16,6 +16,15 @@ def block(base, candidate, noise):
 
 
 class CrossoverTest(unittest.TestCase):
+    def test_tail_worker_evidence(self):
+        command = ["--split-tail-mirrors"]
+        for tasks in ({"0": {}, "1": {}}, {"0": {"worker_wall_secs": 1}, "1": {}},
+                      {"0": {}, "1": {"worker_wall_secs": float("nan")}},
+                      {"0": {}, "1": {"worker_wall_secs": True}}):
+            with self.subTest(tasks=tasks), self.assertRaises(ValueError):
+                crossover.validate_arm("c", command, dict(workers=1, split_tail_mirrors=True,
+                                       per_cluster=tasks), workers=1, clusters=2)
+
     def test_small_gain_above_noise(self):
         report = crossover.verdict([block(100, 98, 1)] * 4)
         self.assertEqual(report["observed_noise_gate"], "PASS")
@@ -115,9 +124,13 @@ class CrossoverTest(unittest.TestCase):
                 for pair, arm in crossover.block_order(block):
                     row = [pair, arm, 100, 135, 95]
                     dest = root / f"{pair}-{arm}"
-                    dest.mkdir()
+                    (dest / "store").mkdir(parents=True)
+                    (dest / "store/runtime.json").write_text(json.dumps(dict(
+                        workers=26, split_tail_mirrors=arm == "c", per_cluster={
+                            str(i): {"worker_wall_secs": 1} if i >= 78 and arm == "c" else {}
+                            for i in range(104)})))
                     (dest / "capture.json").write_text(json.dumps(dict(
-                        index=len(rows), head=crossover.HEADS["bc".index(arm)], timing=row)))
+                        command=["--split-tail-mirrors"] if arm == "c" else [], index=len(rows), head=crossover.HEADS["bc".index(arm)], timing=row)))
                     rows.append(row)
             summary = root / "timings.json"
             summary.write_text(json.dumps(rows))

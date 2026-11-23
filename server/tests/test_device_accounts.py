@@ -363,6 +363,92 @@ def test_no_usable_body_gives_a_generated_name(device_on, client, body):
     assert resp.json()["user"]["display_name"] in set(device_names.all_names())
 
 
+def test_a_body_that_is_not_utf8_or_nests_deep_gives_a_generated_name(device_on, client):
+    from shengji.api import device_names
+
+    deep = b'{"name": ' + b"[" * 2000 + b"]" * 2000 + b"}"
+    assert len(deep) <= device_on.DEVICE_BODY_MAX
+    for body in (b'{"name": "Mei \xff Lin"}', b"\xfe\xff\x00{", deep):
+        resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                           content=body)
+        assert resp.status_code == 200
+        assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def test_a_recursion_error_while_parsing_gives_a_generated_name(device_on, client, monkeypatch):
+    """However deep a parser recurses before giving up, the body is no name."""
+    import json
+    import types
+
+    from shengji.api import device_names
+
+    def too_deep(*_a, **_k):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    stub = types.SimpleNamespace(**{k: getattr(json, k) for k in dir(json) if not k.startswith("__")})
+    stub.loads = too_deep
+    monkeypatch.setattr(device_on, "json", stub)
+    resp = _create_named(client, "Mei Lin")
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def _streamed(chunk: bytes, headers=()):
+    """A request whose body arrives in endless ``chunk``s, counting reads."""
+    from starlette.requests import Request
+
+    sent = {"n": 0}
+
+    async def receive():
+        sent["n"] += 1
+        return {"type": "http.request", "body": chunk, "more_body": True}
+
+    return Request({"type": "http", "method": "POST", "headers": list(headers)}, receive), sent
+
+
+def test_a_streamed_body_over_the_cap_stops_at_the_cap(device_on):
+    """With no Content-Length, the read stops at the first chunk past the cap."""
+    import asyncio
+
+    chunk = b"x" * 1000
+    request, sent = _streamed(chunk)
+    assert asyncio.run(device_on._wanted_device_name(request)) is None
+    assert sent["n"] == device_on.DEVICE_BODY_MAX // len(chunk) + 1
+
+
+def test_a_declared_length_over_the_cap_is_never_read(device_on):
+    import asyncio
+
+    request, sent = _streamed(b"x", headers=[(b"content-length", b"4097")])
+    assert asyncio.run(device_on._wanted_device_name(request)) is None
+    assert sent["n"] == 0
+
+
+def test_an_oversize_streamed_body_gives_a_generated_name(device_on, client):
+    from shengji.api import device_names
+
+    def body():
+        yield b'{"name": "'
+        for _ in range(10):
+            yield b"y" * 1000
+        yield b'"}'
+
+    resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                       content=body())
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] in set(device_names.all_names())
+
+
+def test_a_body_at_the_cap_keeps_its_name(device_on, client):
+    head, tail = b'{"name": "Mei Lin"', b"}"
+    body = head + b" " * (device_on.DEVICE_BODY_MAX - len(head) - len(tail)) + tail
+    assert len(body) == device_on.DEVICE_BODY_MAX
+    resp = client.post("/api/auth/device", headers={**APP, "content-type": "application/json"},
+                       content=body)
+    assert resp.status_code == 200
+    assert resp.json()["user"]["display_name"] == "Mei Lin"
+
+
 def test_no_name_gives_the_generated_name(device_on, client):
     from shengji.api import device_names
 

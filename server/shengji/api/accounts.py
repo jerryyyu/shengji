@@ -2231,19 +2231,41 @@ def _device_token(request: Request) -> str | None:
     return token
 
 
-async def _wanted_device_name(request: Request) -> Any:
-    """The ``name`` of a device-creation body, or None: no body, one over
-    ``DEVICE_BODY_MAX`` bytes, or one that is not a JSON object all read as
-    no name, never as an error."""
+async def _device_body(request: Request) -> bytes | None:
+    """The device-creation body, or None when it is over ``DEVICE_BODY_MAX``
+    bytes or cannot be read. A declared length over the cap is refused
+    unread, and a streamed body stops at the first chunk past the cap, as
+    ``nearby_logs._read_capped`` does, so an oversize body is never held."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > DEVICE_BODY_MAX:
+                return None
+        except ValueError:
+            pass
+    chunks: list[bytes] = []
+    size = 0
     try:
-        raw = await request.body()
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > DEVICE_BODY_MAX:
+                return None
+            chunks.append(chunk)
     except Exception:                   # noqa: BLE001 - a broken body is no name
         return None
-    if not raw or len(raw) > DEVICE_BODY_MAX:
+    return b"".join(chunks)
+
+
+async def _wanted_device_name(request: Request) -> Any:
+    """The ``name`` of a device-creation body, or None: no body, one over
+    ``DEVICE_BODY_MAX`` bytes, one that is not UTF-8 JSON, nested too deep
+    to parse, or not a JSON object all read as no name, never as an error."""
+    raw = await _device_body(request)
+    if not raw:
         return None
     try:
         body = json.loads(raw)
-    except ValueError:
+    except (UnicodeDecodeError, ValueError, RecursionError):
         return None
     return body.get("name") if isinstance(body, dict) else None
 

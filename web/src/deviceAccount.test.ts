@@ -27,6 +27,7 @@ import {
   NameRejected, updateDisplayName,
 } from "./auth";
 import { beforeOnlineSetup, lastSetupOutcome, resetDeviceAccountForTests } from "./deviceAccount";
+import { guestName, NAME_CHOSEN_KEY } from "./guestName";
 
 type Route = { status: number; body?: unknown };
 let routes: Map<string, Route | Route[]>;
@@ -92,6 +93,7 @@ const opens = () => { status.current = "open"; for (const fn of [...listeners]) 
 
 beforeEach(() => {
   localStorage.clear();
+  guestName.reset();
   routes = new Map();
   calls = [];
   reconnect.mockClear();
@@ -176,34 +178,61 @@ describe("the first online Play in the app", () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 
-  it("a new account asks for the name the guest chose", async () => {
-    shell();
-    localStorage.setItem("shengji.name", "  Mei Lin ");
+  /** The body of the creation request a first online Play sends after
+   *  `prepare` has set up the guest's name. */
+  const creationBody = async (prepare: () => void): Promise<unknown> => {
+    const keychain = shell();
+    keychain.value = null;
     routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
+    localStorage.clear();
+    guestName.reset();
+    prepare();
+    auth.state = { status: "out", clientId: "cid", user: null };
+    resetDeviceAccountForTests();
+    calls = [];
     beforeOnlineSetup(vi.fn());
     await flush();
+    opens();
+    await flush();
     const [call] = deviceCalls();
-    expect(call.headers).toEqual({ "X-Shengji-Client": "ios-app", "Content-Type": "application/json" });
-    expect(call.body).toEqual({ name: "Mei Lin" });
+    expect(call.headers).toEqual(call.body === undefined
+      ? { "X-Shengji-Client": "ios-app" }
+      : { "X-Shengji-Client": "ios-app", "Content-Type": "application/json" });
+    return call.body;
+  };
+  /** What the name sheet does: the guest types `name`, then taps Done. */
+  const typeAndKeep = (name: string) => {
+    guestName.setName(name);
+    guestName.keep(guestName.name);
+  };
+
+  it("a new account asks for the name the guest typed, even one the random fill could give", async () => {
+    expect(await creationBody(() => typeAndKeep("Lucky Tractor"))).toEqual({ name: "Lucky Tractor" });
+    expect(localStorage.getItem(NAME_CHOSEN_KEY)).toBe("1");
+    expect(await creationBody(() => typeAndKeep("  Mei Lin "))).toEqual({ name: "Mei Lin" });
   });
 
-  it("with no chosen name, or only a random fill, the new account asks for none", async () => {
-    const keychain = shell();
+  it("a random fill asks for no name, also when it replaces a typed one", async () => {
+    expect(await creationBody(() => guestName.fill("Lucky Tractor"))).toBeUndefined();
+    expect(localStorage.getItem(NAME_CHOSEN_KEY)).toBe("0");
+    expect(await creationBody(() => {
+      typeAndKeep("Mei Lin");
+      guestName.setName("");
+      guestName.fill("Quiet Spades");
+    })).toBeUndefined();
+    // a later keep of the filled name, as Play does, leaves it unchosen
+    expect(await creationBody(() => {
+      guestName.fill("Quiet Spades");
+      guestName.keep(guestName.name);
+    })).toBeUndefined();
+  });
+
+  it("a name saved with no mark is sent unless the random fill could have given it", async () => {
+    expect(await creationBody(() => localStorage.setItem("shengji.name", "  Mei Lin "))).toEqual({ name: "Mei Lin" });
     for (const saved of [null, "   ", "Lucky Spades"]) {
-      keychain.value = null;
-      routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
-      localStorage.clear();
-      if (saved !== null) localStorage.setItem("shengji.name", saved);
-      auth.state = { status: "out", clientId: "cid", user: null };
-      resetDeviceAccountForTests();
-      calls = [];
-      beforeOnlineSetup(vi.fn());
-      await flush();
-      opens();
-      await flush();
-      const [call] = deviceCalls();
-      expect(call.headers).toEqual({ "X-Shengji-Client": "ios-app" });
-      expect(call.body).toBeUndefined();
+      expect(await creationBody(() => {
+        if (saved !== null) localStorage.setItem("shengji.name", saved);
+      })).toBeUndefined();
     }
   });
 

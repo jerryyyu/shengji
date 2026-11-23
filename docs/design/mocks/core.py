@@ -256,7 +256,7 @@ def table_rows(mode="Ranked", opener=True, code="4N5Z", settings_open=False):
                     '<span style="flex:1;text-align:right;color:#9aa3b2;font-weight:400">Level 2 · Standard</span>'
                     f'<span style="color:#9aa3b2;display:inline-block;{turn}">›</span></div>')
         if settings_open:
-            rows.append('<div style="display:flex;flex-direction:column;gap:8px;padding-left:12px;border-left:2px solid rgba(79,178,122,.35)">'
+            rows.append('<div style="display:flex;flex-direction:column;gap:8px;padding-left:12px">'
                         + "".join(settings) + '</div>')
     else:
         rows += settings

@@ -972,7 +972,7 @@ def readout_reply_ply(served_ply):
                                        lambda sub: model.leaf_reply_logits_fused(fused, planes[at_rows[sub]],
                                                                                  scalars[at_rows[sub]]))
                 bot.unified_reply_memo += hits
-                return np.stack(rows) if rows else np.zeros((0, N_CARDS), np.float32)
+                return np.asarray(rows) if rows else np.zeros((0, N_CARDS), np.float32)
             return model.leaf_reply_logits(frame.cache(model), planes[take], scalars[take])
         served_predict = bot.predict
         if fast:

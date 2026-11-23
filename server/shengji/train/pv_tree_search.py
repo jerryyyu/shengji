@@ -725,7 +725,11 @@ def greedy_reply_ply(bot, active, gate, cache, stats, keep, version, legal_fn, v
     for start in range(0, len(rows), bot.batch_size):
         if gate is not None:
             gate()
-        chunk = np.stack(rows[start:start + bot.batch_size]).astype(np.float32)
+        part = rows[start:start + bot.batch_size]
+        if type(part) is np.ndarray and part.ndim == 2 and part.flags.c_contiguous:
+            chunk = part.astype(np.float32, copy=True)
+        else:
+            chunk = np.stack(part).astype(np.float32)
         logits = np.asarray(bot.predict(chunk), dtype=np.float64)
         if logits.shape != (len(chunk), N_CARDS) or not np.isfinite(logits).all():
             raise ValueError("policy requires finite rows x 54 log-odds")

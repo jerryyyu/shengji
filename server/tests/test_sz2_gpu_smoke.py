@@ -68,6 +68,10 @@ if service == "darkbloom":
                     count = 0 if mode == "zero" else 1
                     print(f"Error: Drain did not complete: {count} unfinished request(s), coordinator acknowledgement false.", file=sys.stderr)
                     raise SystemExit(13 if mode == "other" else 64)
+        if action == "restart":
+            assert args == ["restart", "--timeout", "600"]
+            if (d / "still_draining").exists():
+                raise SystemExit(64)
         if action == "restart" or not (d / "failed_stop").exists():
             (d / "state").write_text("running" if action == "restart" else "not running")
         if action == "restart" and (d / "config_drift_after_restart").exists():
@@ -76,6 +80,11 @@ if service == "darkbloom":
         state = (d / "state").read_text() if (d / "state").exists() else "running"
         if not restarted and "train " in events and (d / "early_provider_restart").exists():
             state = "running"
+        if restarted and (d / "still_draining").exists():
+            print("Daemon: running")
+            print("Traffic: draining")
+            print("Model switch: draining; 1 unfinished request(s)")
+            raise SystemExit(0)
         print(f"Daemon: {state}\\nTraffic: eligible")
         if (d / "wrong_initial_mode").exists() or (restarted and (d / "wrong_restored_mode").exists()):
             print("Serving: Darkbloom network and local API")
@@ -168,8 +177,8 @@ def test_restore_allows_slow_provider_restart(monkeypatch, tmp_path):
 
     def provider(*args, timeout=5):
         nonlocal started
-        if args == (worker.DARKBLOOM, "restart"):
-            if timeout < 148:
+        if args == (worker.DARKBLOOM, "restart", "--timeout", "600"):
+            if timeout < 630:
                 raise subprocess.TimeoutExpired(args, timeout)
             started = True
             return ""
@@ -254,7 +263,7 @@ def test_unverified_restore_fails_and_releases_owned_pause(host):
     _, tmp, log = host
     (tmp / "missing_after_restart").touch()
     result = invoke(host)
-    assert result.returncode == 1
+    assert result.returncode == 9
     assert "restoration could not be verified" in result.stderr
     assert events(log) == ["stop", "train", "restart"]
     assert not (tmp / "keepalive.pause").exists()
@@ -320,7 +329,7 @@ def test_restart_requires_reviewed_provider_identity(host, fault, diagnostic):
     _, tmp, log = host
     (tmp / fault).touch()
     result = invoke(host)
-    assert result.returncode == 1
+    assert result.returncode == 9
     assert diagnostic in result.stderr
     assert events(log) == ["stop", "train", "restart"]
     assert not (tmp / "keepalive.pause").exists()
@@ -349,4 +358,15 @@ def test_only_an_unfinished_drain_can_get_a_second_graceful_stop(host, mode, ret
     result = invoke(host)
     assert result.returncode == returncode, result.stderr
     assert events(log) == want
+    assert not (tmp / "keepalive.pause").exists()
+
+def test_persistent_drain_reports_live_state_for_operator(host):
+    _, tmp, log = host
+    (tmp / "drain").write_text("persistent")
+    (tmp / "still_draining").touch()
+    result = invoke(host)
+    assert result.returncode == 9
+    for expected in ("Daemon: running", "Traffic: draining", "Model switch: draining", "operator action needed"):
+        assert expected in result.stderr
+    assert events(log) == ["stop", "stop", "restart"]
     assert not (tmp / "keepalive.pause").exists()

@@ -57,8 +57,7 @@ def verify_darkbloom_identity(status):
         raise RuntimeError(f"Darkbloom provider.toml SHA differs from the reviewed SHA: {digest}")
 
 
-def darkbloom_ready():
-    status = command(DARKBLOOM, "status")
+def darkbloom_ready(status):
     if not all(re.search(rf"^{line}(?:[ \t]|$)", status, re.MULTILINE)
                for line in ("Daemon: running", "Traffic: eligible")):
         return False
@@ -69,23 +68,33 @@ def darkbloom_ready():
     return True
 
 
+class RestoreUnverified(RuntimeError):
+    pass
+
+
 def restore_darkbloom():
     try:
-        command(DARKBLOOM, "restart", timeout=240)
+        command(DARKBLOOM, "restart", "--timeout", str(DRAIN_SECONDS), timeout=DRAIN_SECONDS + 30)
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"Darkbloom restart command failed: {exc}", file=sys.stderr, flush=True)
     deadline = time.monotonic() + RESTORE_SECONDS
     while True:
+        status = ""
+        detail = "provider is not ready"
         try:
-            if darkbloom_ready():
+            status = command(DARKBLOOM, "status")
+            if darkbloom_ready(status):
                 print("Darkbloom running and eligible with reviewed serving mode and model filter "
                       f"provider_sha256={PROVIDER_SHA256}", flush=True)
                 return
-        except (OSError, subprocess.SubprocessError):
-            pass
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            detail = str(exc)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise RuntimeError("Darkbloom restoration could not be verified")
+            for line in status.splitlines():
+                if line.startswith(("Daemon:", "Traffic:", "Model switch:")):
+                    print(line, file=sys.stderr, flush=True)
+            raise RestoreUnverified(f"Darkbloom restoration could not be verified: {detail}; operator action needed")
         time.sleep(min(POLL_SECONDS, remaining))
 
 
@@ -113,7 +122,7 @@ def darkbloom_stopped(check_signal):
         try:
             lease.write(token)
             lease.flush()
-            if not darkbloom_ready():
+            if not darkbloom_ready(command(DARKBLOOM, "status")):
                 raise RuntimeError("Darkbloom initial state is not ready")
             check_signal()
             if not still_owned():
@@ -280,6 +289,9 @@ def main():
         signal.signal(signum, mark_signal)
     try:
         smoke(args.root, check_signal)
+    except RestoreUnverified as exc:
+        print(exc, file=sys.stderr, flush=True)
+        return 9
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f"SZ2 smoke failed: {exc}", file=sys.stderr, flush=True)
         return 1

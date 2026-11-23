@@ -2,22 +2,22 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://shengji.fly.dev/</loc>
+    <loc>https://playshengji.com/</loc>
   </url>
   <url>
-    <loc>https://shengji.fly.dev/rules</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://shengji.fly.dev/rules" />
-    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://shengji.fly.dev/rules/zh" />
+    <loc>https://playshengji.com/rules</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/rules" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/rules/zh" />
   </url>
   <url>
-    <loc>https://shengji.fly.dev/rules/zh</loc>
-    <xhtml:link rel="alternate" hreflang="en" href="https://shengji.fly.dev/rules" />
-    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://shengji.fly.dev/rules/zh" />
+    <loc>https://playshengji.com/rules/zh</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://playshengji.com/rules" />
+    <xhtml:link rel="alternate" hreflang="zh-Hans" href="https://playshengji.com/rules/zh" />
   </url>
   <url>
-    <loc>https://shengji.fly.dev/privacy</loc>
+    <loc>https://playshengji.com/privacy</loc>
   </url>
   <url>
-    <loc>https://shengji.fly.dev/terms</loc>
+    <loc>https://playshengji.com/terms</loc>
   </url>
 </urlset>

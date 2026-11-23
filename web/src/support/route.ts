@@ -3,6 +3,7 @@
 // with the app, so a deep link or a reload lands on the page. Inside the app a
 // link moves with pushState, so a game in progress keeps its socket.
 import { useEffect, useState } from "react";
+import { syncCanonical } from "../siteOrigin";
 
 export type InfoPage = "support" | "privacy" | "terms";
 
@@ -72,5 +73,8 @@ export function useInfoRoute(): InfoPage | null {
       window.removeEventListener("popstate", on);
     };
   }, []);
+  useEffect(() => {
+    syncCanonical(page ? `/${page}` : "/");
+  }, [page]);
   return page;
 }

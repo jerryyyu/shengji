@@ -7,8 +7,9 @@ answer is ``{"ok": true}`` or an error code. A filled honeypot field reads as
 success to its sender and is not stored.
 
 ``GET /support``, ``GET /privacy`` and ``GET /terms`` answer with the built page's
-``index.html`` so a deep link or a reload lands on the page; the web app
-picks the screen from the path. ``GET /rules`` and ``GET /rules/zh`` answer
+``index.html``, its canonical link and og:url naming that path, so a deep
+link or a reload lands on the page; the web app picks the screen from the
+path. ``GET /rules`` and ``GET /rules/zh`` answer
 with the static rules pages, which need no script.
 
 ``GET /.well-known/apple-app-site-association`` (and the same file at the
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from . import accounts
@@ -155,6 +156,11 @@ async def post_support(body: SupportPost, request: Request) -> dict:
 # Static rules pages built from web/public/rules/: each URL answers with its
 # own index.html, with or without the trailing slash, so the canonical
 # address (no slash) is a 200 rather than the static mount's redirect.
+# The canonical origin search engines and link previews are pointed at; the
+# app's own host and its invite links stay on shengji.fly.dev (web/src/siteOrigin.ts).
+SITE_ORIGIN = "https://playshengji.com"
+# The info pages the web app draws from its path (web/src/support/route.ts).
+INFO_PAGES = ("support", "privacy", "terms")
 RULES_PAGES = {"/rules": "rules/index.html", "/rules/zh": "rules/zh/index.html"}
 
 
@@ -197,6 +203,24 @@ def _html(file: Path) -> FileResponse:
                         headers={"Cache-Control": "no-cache"})
 
 
+def _app_page(file: Path, canonical_path: str):
+    """The app's page for a fixed path, its canonical link and og:url naming
+    that path rather than the root, so the page is not read as a copy of it."""
+
+    def handler() -> HTMLResponse:
+        if not file.is_file():
+            raise HTTPException(status_code=404, detail="Not found.")
+        html = file.read_text(encoding="utf-8")
+        url = SITE_ORIGIN + canonical_path
+        html = html.replace(f'<link rel="canonical" href="{SITE_ORIGIN}/" />',
+                            f'<link rel="canonical" href="{url}" />', 1)
+        html = html.replace(f'<meta property="og:url" content="{SITE_ORIGIN}/" />',
+                            f'<meta property="og:url" content="{url}" />', 1)
+        return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+    return handler
+
+
 def _static_page(file: Path):
     """A handler with no parameters, so no request value can choose the file."""
 
@@ -210,12 +234,11 @@ def register_support(app, dist: Path) -> None:
     """The API route and the page routes; call before the static mount,
     whose catch-all would otherwise answer ``/support`` with a 404."""
 
-    def page() -> FileResponse:
-        return _html(dist / "index.html")
-
     pages = APIRouter()
-    for path in ("/support", "/support/", "/privacy", "/privacy/", "/terms", "/terms/"):
-        pages.add_api_route(path, page, methods=["GET", "HEAD"], include_in_schema=False)
+    for name in INFO_PAGES:
+        handler = _app_page(dist / "index.html", f"/{name}")
+        for path in (f"/{name}", f"/{name}/"):
+            pages.add_api_route(path, handler, methods=["GET", "HEAD"], include_in_schema=False)
     for path, rel in RULES_PAGES.items():
         for variant in (path, path + "/"):
             pages.add_api_route(variant, _static_page(dist / rel), methods=["GET", "HEAD"],

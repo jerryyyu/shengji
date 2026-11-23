@@ -1,6 +1,11 @@
 import hashlib
 import json
 import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
 
 import pytest
 
@@ -67,3 +72,53 @@ def test_setup_fault_without_seed_is_terminal(tmp_path, monkeypatch):
         supervisor.run_reserved(root, [], "a" * 64, workers=1)
     assert json.loads((root / "terminal.json").read_text())["status"] == "FAULT"
     assert not list((root / "slots").iterdir())
+
+def _slow_seed(seed, slots, env):
+    directory = slots / str(seed)
+    directory.mkdir()
+    (directory / str(os.getpid())).touch()
+    time.sleep(30)
+    return seed, _publish(directory, "{}")
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def test_workers_exit_when_only_the_supervisor_is_killed(tmp_path):
+    root = tmp_path / "slow"
+    parent = subprocess.Popen([sys.executable, __file__, str(root)], start_new_session=True)
+    try:
+        deadline = time.monotonic() + 15
+        while True:
+            pids = [int(p.name) for p in (root / "slots").glob("*/*") if p.name.isdigit()]
+            if len(set(pids)) == 2:
+                break
+            assert parent.poll() is None and time.monotonic() < deadline
+            time.sleep(.05)
+        parent.kill()
+        parent.wait(timeout=5)
+        deadline = time.monotonic() + 5
+        while any(_alive(pid) for pid in pids) and time.monotonic() < deadline:
+            time.sleep(.05)
+        assert not any(_alive(pid) for pid in pids)
+        assert not list((root / "slots").glob("*/result.json"))
+        assert not (root / "terminal.json").exists()
+    finally:
+        # This process group contains only the synthetic fixture and its children.
+        try:
+            os.killpg(parent.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        parent.wait(timeout=5)
+
+
+if __name__ == "__main__":
+    supervisor.arm_environment = lambda _: {"SHENGJI_BOT": "fixture"}
+    supervisor.write_seed = _slow_seed
+    supervisor.FIRST_SEED, supervisor.DEALS = 100, 4
+    supervisor.run_reserved(Path(sys.argv[1]), [], "a" * 64, workers=2)

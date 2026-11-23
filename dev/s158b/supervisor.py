@@ -3,11 +3,26 @@ from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import hashlib
 import json
 import multiprocessing
+import os
 from pathlib import Path
 import re
+from threading import Thread
 
 from shengji.eval.served_config import process_env
 from seed_worker import arm_environment, DEALS, FIRST_SEED, write_seed
+
+
+def _watch_supervisor():
+    parent = multiprocessing.parent_process()
+    if not parent.is_alive():
+        os._exit(1)
+
+    def exit_on_parent_death():
+        # The spawn parent's sentinel becomes readable even after an unhandled SIGKILL.
+        parent.join()
+        os._exit(1)
+
+    Thread(target=exit_on_parent_death, daemon=True).start()
 
 
 def _collect(pool, submit_seed, seeds, workers, progress):
@@ -61,7 +76,8 @@ def run_reserved(root, directories, dispatch_sha256, *, workers):
             return pool.submit(write_seed, seed, slots, env)
 
         with process_env(env), (root / "progress").open("x") as progress, ProcessPoolExecutor(
-                max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+                max_workers=workers, mp_context=multiprocessing.get_context("spawn"),
+                initializer=_watch_supervisor) as pool:
             seals = _collect(pool, submit_seed, range(FIRST_SEED, FIRST_SEED + DEALS),
                              workers, progress)
         if len(seals) != DEALS:

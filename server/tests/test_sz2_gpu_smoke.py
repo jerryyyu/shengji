@@ -379,7 +379,8 @@ def test_persistent_drain_reports_live_state_for_operator(host):
     assert not (tmp / "keepalive.pause").exists()
 
 @pytest.mark.parametrize("phase,trainer_rc,prepare_rc,expected,actions", [
-    ("small", 0, 0, 0, ["train"]),
+    ("small", 0, 0, 0, ["stop", "train", "restart"]),
+    ("small", 3, 0, 3, ["stop", "train", "restart"]),
     ("medium-prefix", 7, 0, 7, ["stop", "train", "restart"]),
     ("medium-prefix", 0, 0, 1, ["stop", "train", "restart"]),
     ("medium-finish", 3, 0, 3, ["stop", "train", "restart"]),

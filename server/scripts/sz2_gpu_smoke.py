@@ -1,6 +1,6 @@
 """Run one SZ2 training segment under an admitted host supervisor."""
 import argparse
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -263,15 +263,13 @@ def run_segment(root, phase, check_signal):
     check_signal()
     if phase == "smoke":
         output.mkdir()
-    gpu = phase != "small"
-    provider = darkbloom_stopped(check_signal) if gpu else nullcontext(check_signal)
-    with provider as verify_stopped:
+    with darkbloom_stopped(check_signal) as verify_stopped:
         baseline, pressure = memory_sample()
         if pressure >= 4:
             raise RuntimeError("memory pressure too high to start trainer")
         verify_stopped()
         check_signal()
-        child = subprocess.Popen(argv, cwd=SCRIPTS.parent, env={**os.environ, "OMP_NUM_THREADS": "4" if gpu else "16"},
+        child = subprocess.Popen(argv, cwd=SCRIPTS.parent, env={**os.environ, "OMP_NUM_THREADS": "16" if phase == "small" else "4"},
                                  stdin=subprocess.DEVNULL)
         rc = monitor(child, baseline, check_signal, verify_stopped)
     check_signal()

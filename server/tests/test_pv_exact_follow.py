@@ -702,3 +702,85 @@ def test_budget_callback_cancels_before_exact_result():
     with pytest.raises(RuntimeError, match="cancel"):
         rerank_follow(rnd, 1, exhaustive_legal_actions(rnd, 1),
                       [([list(h) for h in rnd.hands], [])], check_budget=cancel)
+
+
+def eight_card_last_seat():
+    return _round([["CA"], ["DA"], ["HA"], ["S" + rank for rank in "2345689"] + ["S10"]],
+                  plays=[(0, ["C" + rank for rank in "2345689"]),
+                         (1, ["D" + rank for rank in "2345689"]),
+                         (2, ["H" + rank for rank in "2345689"])])
+
+
+def test_anytime_eight_search_publishes_complete_rows_and_commits():
+    rnd = eight_card_last_seat()
+    worlds = [(rnd.hands, [])] * 64
+    policy = pv.PVSearchBot(predict, evaluator=ZeroEvaluator(), version=2,
+        config=pv.PVSearchConfig(checkpoint_sha256='f' * 64, worlds=64,
+                                 candidates=8, cap=4000, exact_follow=True, exact_follow_max_cards=7,
+                                 exact_follow_solver="compact-level", exact_follow_anytime_eight=True),
+        checkpoint='/dev/null', seed=7)
+    policy._worlds = lambda *args: (worlds, 64)
+    policy.scores = lambda r, s, actions, w: np.zeros((len(w), len(actions)))
+    policy._value_means = lambda r, s, actions, w, check: (np.arange(len(actions)), 1)
+    seat = rnd.turn
+    anchor = exhaustive_legal_actions(rnd, seat, max_hand_cards=8)[0]
+    played = policy._search(rnd, seat, anchor, time.perf_counter())
+    rec = policy.last_decision_record
+    from shengji.train.search_screen import exact_follow_summary, trace_fields
+    summary = exact_follow_summary([{"decision_traces": [{"side": "arm", "decisions": [trace_fields(rec)]}]}])
+    assert summary["sides"]["arm"]["complete"] == 1
+    assert rec["exact_follow_abandoned"] is None
+    retained = rec["exact_follow_retained"]
+    assert len(retained) == len(rec["admitted"]) - round(0.2 * len(rec["admitted"]))
+    solved = [worlds[i] for i in rec["exact_follow_completed"]]
+    actions = [rec["admitted"][i] for i in retained]
+    ref = rerank_follow(rnd, seat, actions, solved, baseline_index=len(retained)-1,
+                        max_hand_cards=8, solver="compact-level")
+    assert played == actions[ref.winner] == rec["admitted"][rec["admitted_indices"].index(rec["selected_index"])]
+    rnd.play(seat, played)
+
+
+@pytest.mark.parametrize("count", [11, 12])
+def test_anytime_eight_discards_interrupted_worlds(monkeypatch, count):
+    from shengji.train import pv_exact_follow as exact
+    now = [0.]
+    def score(rnd, seat, actions, w, cards, nodes, guard, solver, attacker):
+        now[0] += 0.26 if w == 1 else (2. if w == count + 1 else 0.01)
+        guard()
+        return [1., 2.], 1
+    monkeypatch.setattr(exact, "_world_scores", score)
+    result = exact.rerank_eight_card_follow(
+        eight_card_last_seat(), 3, [["a"], ["b"]], range(64), baseline_index=0,
+        value_means=[0, 1], max_nodes=100, clock=lambda: now[0])
+    assert result.skipped == (1,)
+    assert result.completed == (0, *range(2, count + 1))
+    assert result.abandoned == (count < 12)
+    assert result.winner == int(count >= 12)
+
+
+def test_anytime_eight_env_registry_reaches_factory(pinned_production_package):
+    env = follow_env(pinned_production_package, exact_cards=7)
+    baseline, = pv.pv_registry_entries(**pv.pv_env_recipe(env))
+    env["SHENGJI_PV_EXACT_FOLLOW_ANYTIME_EIGHT"] = "1"
+    name, factory = next(iter(pv.pv_registry_entries(**pv.pv_env_recipe(env)).items()))
+    bot = factory(seed=7)
+    assert name != baseline and "-xf8any" in name
+    assert bot.exact_follow_anytime_eight and bot.exact_follow_max_cards == 7
+    env["SHENGJI_PV_WORLDS"] = "12"
+    with pytest.raises(pv.PVSearchPolicyError, match="all 64 worlds"):
+        pv.pv_env_recipe(env)
+
+
+def test_anytime_eight_hard_deadline_invalidates_completed_worlds(monkeypatch):
+    from shengji.train import pv_exact_follow as exact
+
+    def score(rnd, seat, actions, w, cards, nodes, guard, solver, attacker):
+        if w == 13:
+            raise pv.PVSearchBudgetExceeded("decision deadline")
+        return [0., 1.], 1
+
+    monkeypatch.setattr(exact, "_world_scores", score)
+    with pytest.raises(pv.PVSearchBudgetExceeded):
+        exact.rerank_eight_card_follow(eight_card_last_seat(), 3, [["a"], ["b"]],
+                                      range(64), baseline_index=0, value_means=[0, 1],
+                                      max_nodes=100)

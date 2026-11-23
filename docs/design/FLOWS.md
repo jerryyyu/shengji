@@ -373,6 +373,8 @@ switch between accounts included, and goes once as whoever that leaves signed in
 `/api/auth/config` says whether device accounts are on (`device_accounts`) and `/api/me` whether an account is
 `linked`; with them off the app is today's guest, exactly.
 - **Before the first Play:** the guest chip with the name alone (no "Guest", no rating) and no guest line.
+  The account that Play makes keeps the name the guest chose when it passes the display-name checks and no
+  account shows it; a random fill, or a name refused or taken, gets a server-drawn name instead, with no message.
 - **Chip:** the name and the rating, with the guest chip's pencil; a tap opens the identity sheet.
 - **Play tab:** no guest line; nothing else changes.
 - **Round end:** the rating on the result line, as an account sees it; no "Sign in to be ranked".

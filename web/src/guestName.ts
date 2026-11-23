@@ -4,6 +4,7 @@
 // called the same thing on every page load until they choose a name.
 
 import { useSyncExternalStore } from "react";
+import { NAME_ADJECTIVES, NAME_NOUNS } from "./randomName";
 import { getSavedName, saveName } from "./ws";
 
 /** What a guest's identity line says, where an account shows its rating. */
@@ -82,4 +83,20 @@ export const guestName = new GuestNameStore();
 
 export function useGuestName(): GuestNameView {
   return useSyncExternalStore(guestName.subscribe, guestName.getSnapshot, guestName.getSnapshot);
+}
+
+/** Whether `name` is one the random fill (or its dice) could have given. */
+function isRandomName(name: string): boolean {
+  const [adjective, noun, ...rest] = name.split(" ");
+  return rest.length === 0 && (NAME_ADJECTIVES as readonly string[]).includes(adjective)
+    && (NAME_NOUNS as readonly string[]).includes(noun ?? "");
+}
+
+/** The name this guest chose, for a new device account to keep: the one
+ *  kept in storage, or null when there is none, storage is refused, or it
+ *  is one the random fill could have given (the server draws its own). */
+export function chosenGuestName(): string | null {
+  let saved = "";
+  try { saved = getSavedName().trim(); } catch { return null; }
+  return saved && !isRandomName(saved) ? saved : null;
 }

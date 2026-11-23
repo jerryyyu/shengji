@@ -9,6 +9,8 @@ const { reconnect, status, listeners } = vi.hoisted(() => ({
   listeners: new Set<(s: string) => void>(),
 }));
 vi.mock("./ws", () => ({
+  getSavedName: () => localStorage.getItem("shengji.name") ?? "",
+  saveName: (name: string) => localStorage.setItem("shengji.name", name),
   conn: {
     reconnect,
     subscribeStatus: (fn: (s: string) => void) => {
@@ -172,6 +174,49 @@ describe("the first online Play in the app", () => {
     for (const fn of [...listeners]) fn("open");
     await flush();
     expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("a new account asks for the name the guest chose", async () => {
+    shell();
+    localStorage.setItem("shengji.name", "  Mei Lin ");
+    routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
+    beforeOnlineSetup(vi.fn());
+    await flush();
+    const [call] = deviceCalls();
+    expect(call.headers).toEqual({ "X-Shengji-Client": "ios-app", "Content-Type": "application/json" });
+    expect(call.body).toEqual({ name: "Mei Lin" });
+  });
+
+  it("with no chosen name, or only a random fill, the new account asks for none", async () => {
+    const keychain = shell();
+    for (const saved of [null, "   ", "Lucky Spades"]) {
+      keychain.value = null;
+      routes.set("POST /api/auth/device", { status: 200, body: { token: "tok-new", user: DEVICE_USER } });
+      localStorage.clear();
+      if (saved !== null) localStorage.setItem("shengji.name", saved);
+      auth.state = { status: "out", clientId: "cid", user: null };
+      resetDeviceAccountForTests();
+      calls = [];
+      beforeOnlineSetup(vi.fn());
+      await flush();
+      opens();
+      await flush();
+      const [call] = deviceCalls();
+      expect(call.headers).toEqual({ "X-Shengji-Client": "ios-app" });
+      expect(call.body).toBeUndefined();
+    }
+  });
+
+  it("a sign-in with the Keychain's secret never sends a name", async () => {
+    const keychain = shell();
+    keychain.value = "tok-old";
+    localStorage.setItem("shengji.name", "Mei Lin");
+    routes.set("POST /api/auth/device", { status: 200, body: { user: DEVICE_USER } });
+    beforeOnlineSetup(vi.fn());
+    await flush();
+    const [call] = deviceCalls();
+    expect(call.body).toBeUndefined();
+    expect(call.headers).toEqual({ "X-Shengji-Client": "ios-app", Authorization: "Device tok-old" });
   });
 
   it("with a secret, signs in with it and keeps it", async () => {

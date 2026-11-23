@@ -4,7 +4,7 @@ set -eu
 [ "$(hostname)" = Jerrys-Mac-mini.local ] || exit 6
 tools=/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/fl-pilot/tools
 [ -s "$tools/fleet_queue.json" ] || exit 6
-packet=/Users/jeryyu/fleet/codex-sz2-smoke-r3
+packet=/Users/jeryyu/fleet/codex-sz2-smoke-r3-final
 run="env -i HOME=/Users/jeryyu PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash $packet/run_smoke.sh"
 local_sha=$(shasum -a 256 < "$0" | cut -d' ' -f1)
 remote_sha=$(ssh -o BatchMode=yes ultra "shasum -a 256 < $packet/dispatch_smoke.sh")

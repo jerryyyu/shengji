@@ -128,7 +128,7 @@ PRES = f"2 tables · {hl('1 ranked')}, 1 casual · 3 playing"
 PRES_C = f"2 tables · 1 ranked, {hl('1 casual')} · 3 playing"
 
 
-def play_tab(u=GUEST, mode="Ranked", pres=PRES, panel=None, offline=False, overlay=""):
+def play_tab(u=GUEST, mode="Ranked", pres=PRES, panel=None, offline=False, overlay="", web=False):
     # with a table up, the art has scrolled away, as on today's Play tab
     body = (who_chip(u) if panel else ART + who_chip(u)) + seg(mode, offline)
     if panel:
@@ -136,7 +136,17 @@ def play_tab(u=GUEST, mode="Ranked", pres=PRES, panel=None, offline=False, overl
     else:
         duo = btn("Duo", "off" if offline else "ghost", grow=False, h=52)
         body += f'<div style="display:flex;gap:8px">{btn("Play", h=52)}{duo}</div>' + presence(pres, grey=offline) + code_row(dim=offline)
+        if web:
+            body += app_store_badge()
     return phone(body, user=u[2], overlay=overlay)
+
+
+def app_store_badge():
+    """Apple's own badge file (web/public/badges), drawn as the website's Play tab draws it: 40px tall, centred."""
+    import base64
+    svg = (HERE.parents[2] / "web/public/badges/app-store-en.svg").read_bytes()
+    return ('<div style="display:flex;justify-content:center;padding:8px 0"><img alt="Download on the App Store" '
+            f'style="height:40px" src="data:image/svg+xml;base64,{base64.b64encode(svg).decode()}"></div>')
 
 
 def you(tick=False, picked=False):
@@ -198,6 +208,8 @@ def f1_first_open():
             shot(signed, 390, 844, "First open, signed in", "The same page; the chip shows the rating."),
             shot(casual, 390, 844, "Tap Casual", "Remembered on this device; the casual count lights up."),
             shot(none, 390, 844, "Nobody online", "One short line."),
+            shot(play_tab(GUEST, web=True), 390, 844, "On the website",
+                 "Apple's App Store badge under How to play, linking to the app's page; the app shows no badge."),
             shot(desk, 1280, 800, "Desktop / iPad", "Three tabs in the top bar; the phone's one column, centred, with a small preview."),
         ]),
     ]

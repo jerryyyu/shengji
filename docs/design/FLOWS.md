@@ -203,7 +203,12 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
    - Terms of use is a page like Privacy (`support/TermsPage.tsx`, the real path `/terms`): Me lists
      "Terms of use" between Privacy policy and Support, and the sheet's line links it, keeping the typed
      name and closing the sheet. On the website Me ends that group with "On iPhone", a plain link to the
-     app's App Store page (a row, not a new surface); the app does not list it. Chat lines and guest names are masked by the server's word filter
+     app's App Store page (a row, not a new surface); the app does not list it. The website's Play tab
+     ends, under How to play, with Apple's black "Download on the App Store" badge (Apple's artwork from
+     its Marketing Tools, unmodified, 40px tall with its clear space, alt text its only copy; Jerry
+     2026-11-23: "adding App Store link on site"), a plain link to the same page and gone while a table
+     panel is the page; the /rules and /rules/zh footers carry the same link beside Play now (the Chinese page
+     with Apple's Chinese badge). The app shows none of them. A tap is the `app_store_badge` tap event. Chat lines and guest names are masked by the server's word filter
      (`api/chat_filter.py`); an account's display name with a listed word is refused ("That name is not
      allowed.").
    - A signed-in player still edits their name inline in Me (`NameEditForm`, saved to the account); the

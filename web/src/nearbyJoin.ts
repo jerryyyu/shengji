@@ -121,8 +121,12 @@ export const SEATS_KEY = "shengji.nearbySeats";
  *  long game does not outlast it. */
 const SEAT_REFRESH_MS = 10 * 60 * 1000;
 
-/** `seat`: the seat the token was last seen seated in, when known. */
-type KeptSeats = Record<string, { token: string; at: number; seat?: number }>;
+/** Where a kept token was last seen seated: the seat, and the name the
+ *  table gave it there, from the table's frames. */
+export interface KeptAt { seat: number; name: string }
+
+/** `at`: where the token was last seen seated, when known. */
+type KeptSeats = Record<string, { token: string; at: number; where?: KeptAt }>;
 
 /** The kept tokens still within SEAT_KEEP_MS, by table code. A nearby code
  *  is drawn at random for each new table and kept by that table alone, so
@@ -135,16 +139,18 @@ function keptSeats(): KeptSeats {
   const now = Date.now();
   const out: KeptSeats = {};
   for (const [code, v] of Object.entries(raw as Record<string, unknown>)) {
-    const e = v as { token?: unknown; at?: unknown; seat?: unknown } | null;
+    const e = v as { token?: unknown; at?: unknown; where?: unknown } | null;
     if (e && typeof e.token === "string" && e.token && typeof e.at === "number" && now - e.at < SEAT_KEEP_MS && e.at <= now) {
-      out[code] = { token: e.token, at: e.at, ...(isSeat(e.seat) ? { seat: e.seat } : {}) };
+      out[code] = { token: e.token, at: e.at, ...(isKeptAt(e.where) ? { where: { seat: e.where.seat, name: e.where.name } } : {}) };
     }
   }
   return out;
 }
 
-function isSeat(v: unknown): v is number {
-  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 4;
+function isKeptAt(v: unknown): v is KeptAt {
+  if (v === null || typeof v !== "object") return false;
+  const { seat, name } = v as { seat?: unknown; name?: unknown };
+  return typeof seat === "number" && Number.isInteger(seat) && seat >= 0 && seat < 4 && typeof name === "string" && name !== "";
 }
 
 function writeSeats(seats: KeptSeats): void {
@@ -159,16 +165,16 @@ export function keptSeatToken(code: string): string | null {
   return keptSeats()[code]?.token ?? null;
 }
 
-/** The seat the kept token for the table `code` was last seated in, if known. */
-export function keptSeatNumber(code: string): number | null {
-  return keptSeats()[code]?.seat ?? null;
+/** Where the kept token for the table `code` was last seated, if known. */
+export function keptSeatAt(code: string): KeptAt | null {
+  return keptSeats()[code]?.where ?? null;
 }
 
 /** Keep `token` as the seat at the table `code`, in place of any other;
- *  `seat`, where it sits, when known. */
-export function keepSeatToken(code: string, token: string, seat: number | null = null): void {
+ *  `where`, where it sits, when known. */
+export function keepSeatToken(code: string, token: string, where: KeptAt | null = null): void {
   const seats = keptSeats();
-  seats[code] = { token, at: Date.now(), ...(isSeat(seat) ? { seat } : {}) };
+  seats[code] = { token, at: Date.now(), ...(isKeptAt(where) ? { where: { seat: where.seat, name: where.name } } : {}) };
   const codes = Object.keys(seats).sort((a, b) => seats[b].at - seats[a].at);
   for (const old of codes.slice(SEAT_KEEP_MAX)) delete seats[old];
   writeSeats(seats);
@@ -181,14 +187,15 @@ export function forgetSeatToken(code: string): void {
   writeSeats(seats);
 }
 
-/** The seat `kept` (the kept token's seat) when the table still holds it
- *  for this phone: listed as a person away, or not listed (open to it). A
- *  seat someone is connected in is not this phone's any more. */
-function heldSeat(peek: RoomSeats, kept: number | null): number | null {
+/** The kept token's seat when the peek shows it still this phone's: open,
+ *  or a person under the name the table gave this phone there, connected
+ *  or not (the host supersedes this phone's old link by the token). A bot,
+ *  or a person of another name, took the seat over: the token is stale. */
+function heldSeat(peek: RoomSeats, kept: KeptAt | null): number | null {
   if (kept === null) return null;
-  const sd = peek.seats.find((s) => s.seat === kept);
-  if (!sd) return nearbyChoices(peek).includes(kept) ? kept : null;
-  return !sd.connected && !sd.is_bot ? kept : null;
+  const sd = peek.seats.find((s) => s.seat === kept.seat);
+  if (!sd) return nearbyChoices(peek).includes(kept.seat) ? kept.seat : null;
+  return !sd.is_bot && sd.name === kept.name ? kept.seat : null;
 }
 
 /** Why the picker starts where it does when no seat is held, for the log. */
@@ -227,8 +234,8 @@ export class NearbyJoinStore {
    *  (keepSeatToken) until the table is over for this phone, and is never
    *  sent to the game server or written to the log. */
   private token: string | null = null;
-  /** The seat the token is seated in, from the table's frames. */
-  private seatNo: number | null = null;
+  /** Where the token is seated, from the table's frames. */
+  private where: KeptAt | null = null;
   /** The game at the table is over: its token is no longer kept. */
   private over = false;
   /** Date.now() of the kept token's last write. */
@@ -383,7 +390,7 @@ export class NearbyJoinStore {
     this.clearGone();
     this.endLeaving();
     this.token = null;
-    this.seatNo = null;
+    this.where = null;
     this.claiming = false;
     this.unwatch?.();
     this.unwatch = null;
@@ -404,7 +411,7 @@ export class NearbyJoinStore {
   private keepToken(): void {
     const code = this.tableCode();
     if (!code || !this.token || this.over || this.leaving !== null) return;
-    keepSeatToken(code, this.token, this.seatNo);
+    keepSeatToken(code, this.token, this.where);
     this.keptAt = Date.now();
   }
 
@@ -479,7 +486,10 @@ export class NearbyJoinStore {
     const v = this.view;
     if (!v || v.step !== "panel" || v.seat === null) return;
     const kept = keptSeatToken(v.code);
-    const chosen = kept !== null && v.chosen === true;
+    // with the kept token's seat known, every Join names its seat as the
+    // choice: the host resumes the token's seat when it is that seat, and
+    // moves the phone to it otherwise, so the phone lands where it glows
+    const chosen = kept !== null && (v.chosen === true || keptSeatAt(v.code) !== null);
     if (!this.deps.conn.send({ type: "table_join", code: v.code, name: this.name, seat: v.seat,
                                ...(kept ? { token: kept } : {}), ...(chosen ? { chosen: true } : {}) })) return;
     nearbyLog("join", `join sent (${kept ? "with" : "no"} token), seat ${v.seat}${chosen ? " chosen" : ""}`);
@@ -682,9 +692,13 @@ export class NearbyJoinStore {
     if (m.type === "resume") {
       if (m.token) {
         // a token the table did not know comes back as a new seat's: it
-        // replaces the kept one, its seat known once a frame names it
+        // replaces the kept one, its seat known once a frame names it; the
+        // kept token itself back keeps where it sits
+        const code = this.tableCode();
+        if (m.token !== this.token) {
+          this.where = code !== null && m.token === keptSeatToken(code) ? keptSeatAt(code) : null;
+        }
         this.token = m.token;
-        this.seatNo = null;
         this.keepToken();
       }
       return;
@@ -701,14 +715,15 @@ export class NearbyJoinStore {
         this.set({ ...this.view!, peek: m });
         return;
       }
-      const held = heldSeat(m, keptSeatToken(v.code) ? keptSeatNumber(v.code) : null);
+      const held = heldSeat(m, keptSeatToken(v.code) ? keptSeatAt(v.code) : null);
       const seat = nearbyStartSeat(m, held);
       nearbyLog("join", `seat picker open: glow seat ${String(seat)} (${held !== null ? "held" : startSource(m)})`);
       this.set({ ...v, step: "panel", peek: m, seat, held, chosen: false });
     } else if ((m.type === "room" || m.type === "state") && (v?.step === "joining" || this.seated)) {
       this.clearGone();
-      const moved = typeof m.you === "number" && m.you !== this.seatNo;
-      if (moved) this.seatNo = m.you;
+      const name = typeof m.you === "number" ? m.players?.find((p) => p.seat === m.you)?.name : undefined;
+      const moved = name !== undefined && (m.you !== this.where?.seat || name !== this.where?.name);
+      if (moved) this.where = { seat: m.you, name };
       if (m.type === "state" && m.round_result?.game_over && !this.over) {
         this.over = true;
         this.forgetTable();

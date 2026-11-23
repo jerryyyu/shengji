@@ -5,7 +5,7 @@
 import { act, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { keepSeatToken, keptSeatNumber, keptSeatToken, NearbyJoinStore, type NearbyJoinDeps } from "../nearbyJoin";
+import { keepSeatToken, keptSeatAt, keptSeatToken, NearbyJoinStore, type NearbyJoinDeps } from "../nearbyJoin";
 import { NearbySocket } from "../offline/server/nearby/socket";
 import { nearbyLogLines } from "../nearbyLog";
 import type { RoomSeats } from "../protocol";
@@ -218,12 +218,12 @@ describe("the glow at a table this phone holds a seat at", () => {
     h.store.pick(2);
     h.store.join();
     h.msg({ type: "resume", token: "tok-2", gen: 1 });
-    h.msg({ type: "room", room: "K7Q2M", you: 2, host: 0, players: [] });
+    h.msg({ type: "room", room: "K7Q2M", you: 2, host: 0, players: [{ seat: 0, name: "Jerry" }, { seat: 2, name: "Mei" }] });
     expect(keptSeatToken("K7Q2M")).toBe("tok-2");
-    expect(keptSeatNumber("K7Q2M")).toBe(2);
+    expect(keptSeatAt("K7Q2M")).toEqual({ seat: 2, name: "Mei" });
   }
 
-  it("glows the held seat, and Join with no tap resumes it there", async () => {
+  it("glows the held seat, and Join with no tap names it and resumes it there", async () => {
     await satAtTwo();
     const h = await picker();
     expect(h.store.view).toMatchObject({ step: "panel", seat: 2, held: 2 });
@@ -231,8 +231,8 @@ describe("the glow at a table this phone holds a seat at", () => {
     expect(glowing()[0].getAttribute("aria-label")?.split(",")[0]).toBe("You");
     expect(lines()).toContain("seat picker open: glow seat 2 (held)");
     tap(host.querySelector(".tp-primary")!);
-    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-2" });
-    h.msg({ type: "state", room: "K7Q2M", you: 2 });
+    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-2", chosen: true });
+    h.msg({ type: "state", room: "K7Q2M", you: 2, players: [{ seat: 2, name: "Mei" }] });
     expect(h.store.seated).toBe(true);
     expect(lines().at(-1)).toBe("seated at seat 2");
   });
@@ -245,9 +245,9 @@ describe("the glow at a table this phone holds a seat at", () => {
     tap(host.querySelector(".tp-primary")!);
     expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 1, token: "tok-2", chosen: true });
     h.msg({ type: "resume", token: "tok-1", gen: 2 });
-    h.msg({ type: "state", room: "K7Q2M", you: 1 });
+    h.msg({ type: "state", room: "K7Q2M", you: 1, players: [{ seat: 1, name: "Mei" }] });
     expect(lines().at(-1)).toBe("seated at seat 1");
-    expect(keptSeatNumber("K7Q2M")).toBe(1);
+    expect(keptSeatAt("K7Q2M")).toEqual({ seat: 1, name: "Mei" });
   });
 
   it("a tap away and back to the held seat glows it again and still lands there", async () => {
@@ -273,10 +273,22 @@ describe("the glow at a table this phone holds a seat at", () => {
     expect(lines().at(-1)).toBe("seated at seat 1");
   });
 
-  it("a kept seat someone is connected in is not held: the glow is the first free seat", async () => {
-    keepSeatToken("K7Q2M", "tok-2", 0);
+  it("a kept seat a bot or another person took over is not held: the glow is the first free seat, and Join names it", async () => {
+    keepSeatToken("K7Q2M", "tok-2", { seat: 2, name: "Ann" });
     const h = await picker();
     expect(h.store.view).toMatchObject({ seat: 1, held: null });
+    tap(host.querySelector(".tp-primary")!);
+    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 1, token: "tok-2", chosen: true });
+  });
+
+  it("the kept seat listed connected under this phone's name is held: the host supersedes the old link", async () => {
+    keepSeatToken("K7Q2M", "tok-2", { seat: 2, name: "Mei" });
+    const h = joinStore();
+    h.store.open("K7Q2M", "Mei");
+    await vi.advanceTimersByTimeAsync(0);
+    h.status("open");
+    h.msg({ type: "room_seats", room: "K7Q2M", in_game: true, full: false, seats: [person(0, "Jerry"), person(2, "Mei")] });
+    expect(h.store.view).toMatchObject({ seat: 2, held: 2 });
   });
 });
 

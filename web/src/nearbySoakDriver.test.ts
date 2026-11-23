@@ -188,7 +188,7 @@ describe("the driver's join on the real join store", () => {
   afterEach(() => { localStorage.clear(); store?.cancel(); });
 
   it("taps the glowing seat as a person does, then Join, and lands on that seat", async () => {
-    keepSeatToken("ABCDEF", "tok-2", 2);
+    keepSeatToken("ABCDEF", "tok-2", { seat: 2, name: "P1" });
     const real = realJoin();
     store = real.store;
     const r = rig({}, "joiner", { join: real.port });
@@ -206,7 +206,7 @@ describe("the driver's join on the real join store", () => {
     const lines = nearbyLogLines().map((l) => l.text);
     expect(lines.some((l) => /^seat picker tap: .* → seat 2$/.test(l))).toBe(true);
     expect(real.sent.at(-1)).toMatchObject({ type: "table_join", code: "ABCDEF", seat: 2, token: "tok-2" });
-    real.msg({ type: "state", room: "ABCDEF", you: 2 });
+    real.msg({ type: "state", room: "ABCDEF", you: 2, players: [{ seat: 2, name: "P1" }] });
     expect(real.store.seated).toBe(true);
     expect(nearbyLogLines().at(-1)?.text).toBe("seated at seat 2");
   });

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { NearbyJoinStore, SEAT_KEEP_MS, SEATS_KEY, type NearbyJoinDeps } from "./nearbyJoin";
 import { nearbyLogLines } from "./nearbyLog";
 import { NearbySocket } from "./offline/server/nearby/socket";
+import { LOBBY_SEAT_HOLD } from "./offline/server/server";
 import { NearbyTable, type Frame } from "./offline/server/nearby/testkit";
 import type { ConnStatus } from "./ws";
 
@@ -118,6 +119,52 @@ it("a restarted app takes the same seat and hand back by its kept token", async 
   const kept = JSON.parse(localStorage.getItem(SEATS_KEY)!) as Record<string, { token: string }>;
   const token = kept[t.code].token;
   expect(nearbyLogLines().some((l) => l.text.includes(token))).toBe(false);
+});
+
+it("a restarted app whose old link still looks connected glows its own seat, and Join lands there", async () => {
+  const t = await started();
+  const before = await seatedPhone(t);
+  const seat = before.state()!.you as number;
+  // the old link is never closed: the peek lists the seat as connected
+  const after = phone(t);
+  after.store.open(t.code, "Mei");
+  await t.settle(() => after.store.view?.step === "panel");
+  expect(after.store.view?.seat).toBe(seat);
+  after.store.join();
+  await t.settle(() => after.store.seated && after.state() !== undefined);
+  expect(after.sent.find((m) => m.type === "table_join")!.seat).toBe(seat);
+  expect(after.state()!.you).toBe(seat);
+  expect(t.room!.seats[seat].name).toBe("Mei");
+});
+
+it("a kept seat another phone took over, now away, is not glowed as held: Join lands where it glows", async () => {
+  const t = new NearbyTable(21, 1);
+  await t.open();
+  const before = phone(t);
+  before.store.open(t.code, "Mei");
+  await t.settle(() => before.store.view?.step === "panel");
+  before.store.join();
+  await t.settle(() => before.store.seated);
+  const seat = t.room!.lobby!.findIndex((s) => s?.name === "Mei");
+  expect(seat).toBeGreaterThan(0);
+  before.kill();
+  await t.advance(LOBBY_SEAT_HOLD + 5);
+  expect(t.room!.lobby![seat], "the hold is over and the seat open").toBeNull();
+  const zed = await t.join("Zed", { seat });
+  expect(zed.seat).toBe(seat);
+  t.fake.drop(t.code, t.fake.peersOf(t.code).at(-1)!);
+  await t.advance(5);
+  expect(t.room!.lobby![seat]?.connected, "Zed's seat is held for Zed").toBe(false);
+  // Mei's app again, its token kept for the seat Zed now holds
+  const after = phone(t);
+  after.store.open(t.code, "Mei");
+  await t.settle(() => after.store.view?.step === "panel");
+  const glow = after.store.view!.seat!;
+  expect(glow).not.toBe(seat);
+  after.store.join();
+  await t.settle(() => after.store.seated);
+  expect(t.room!.lobby![glow]?.name).toBe("Mei");
+  expect(t.room!.lobby![seat]?.name).toBe("Zed");
 });
 
 it("after a Leave, the app's next join is a newcomer's", async () => {

@@ -9,7 +9,7 @@ with Mandarin voice announcements.
 
 ## The production bot
 
-**Live: release 55** (since 2026-11-22, Fly {{FLY_VERSION}}; [DEPLOY.md](DEPLOY.md#current-production) has the record
+**Live: release 55** (since 2026-11-22, Fly v132; [DEPLOY.md](DEPLOY.md#current-production) has the record
 and rollback). It is release 54 with the RT4 unified model, retrained on RT2's data mix plus 500k rounds of the
 unified model's own self-play (UT-GEN2), and nothing else changed. It measured +0.0612 levels/round
 [+0.0510, +0.0712] against release 54 as served over 7,840 fresh paired deals (S159, M5 Ultra). New duels and

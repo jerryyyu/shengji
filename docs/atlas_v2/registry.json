@@ -759,7 +759,7 @@
   {
    "release": 54,
    "status": "superseded",
-   "since": "2026-11-19 18:14 ET \u2192 2026-11-22 {{DEPLOY_ET}} ET",
+   "since": "2026-11-19 18:14 ET \u2192 2026-11-22 21:08 ET",
    "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-3a676f3c01ea-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast",
    "head": "unchanged from release 53: the all-data unified model 97c07be8; G3 Stage A f4f4127e for declare, bury and terminal leaves",
    "package": "unchanged from release 53: unified ut-all-97c07be8.npz, belief ut-all-belief-1b1fd2de.npz, value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
@@ -779,13 +779,13 @@
     "no strength measurement; release 53's bury (unified belief worlds) was not re-timed and bury time on Fly is not measured",
     "comparator for duels and screens 2026-11-19 to 2026-11-22: release 54 as served, from its deploy; the RT3-FT screen (rt3fs) and the S159 confirmation of RT4 (rt4c) keep release 54",
     "rollback: Fly v117's image with main 31163ba8's fly.toml (sha256 cad28bfd...), or the config-only rollback in fly.toml's comment (bury budget '2' and the release-53 name)",
-    "later deploys before release 55 kept its bot; the image serving it just before release 55 was Fly {{ROLLBACK_FLY_VERSION}}, registry.fly.io/shengji:{{ROLLBACK_IMAGE}}, the release-55 rollback with main 26b14c91's fly.toml (sha256 d25d6775...)"
+    "later deploys before release 55 kept its bot; the image serving it just before release 55 was Fly v131, registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0, the release-55 rollback with main 26b14c91's fly.toml (sha256 d25d6775...)"
    ]
   },
   {
    "release": 55,
    "status": "production",
-   "since": "2026-11-22 {{DEPLOY_ET}} ET",
+   "since": "2026-11-22 21:08 ET",
    "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-reac0a771-bury-hybrid-bwv-bbw-e191a6461fa8-sc8-usharee2951d35-uvaluee2951d35-ureplye2951d35-ufast",
    "head": "the RT4 unified model e2951d35 (belief, root prior, leaf value, reply ranking from one trunk); G3 Stage A f4f4127e for declare, bury and terminal leaves; FT1 1fa201b2 bound for fallbacks",
    "package": "new: unified readout ut-rt4-e2951d35.npz (sha256 e2951d35\u2026), belief ut-rt4-belief-35e225cf.npz (sha256 35e225cf\u2026) in place of release 54's pair (kept on the volume for the rollback); unchanged: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, JS-M1 js-m1-0d17fd03.npz",
@@ -836,10 +836,10 @@
     }
    ],
    "caveats": [
-    "deployed 2026-11-22 {{DEPLOY_ET}} ET as Fly {{FLY_VERSION}}, from tree 9e49366a with #1731's fly.toml (not main's merge commit, so main's accounts v10 migration is not in it)",
+    "deployed 2026-11-22 21:08 ET as Fly v132, from tree 9e49366a with #1731's fly.toml (not main's merge commit, so main's accounts v10 migration is not in it)",
     "strength measured on the M5 Ultra duel host, not on Fly or with human partners; no 3,920-deal screen vs release 54 ran (R4H and R4F read against release 53's unified model and FT-200k); Fly latency measured for one game at a time only",
     "comparator for NEW duels and screens: release 55 as served, from its deploy",
-    "rollback: Fly {{ROLLBACK_FLY_VERSION}}'s image registry.fly.io/shengji:{{ROLLBACK_IMAGE}} with main 26b14c91's fly.toml (sha256 d25d6775...), or the config-only rollback in fly.toml's release-55 comment (release 54's four lines and name); release 54's pair stays on the volume"
+    "rollback: Fly v131's image registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0 with main 26b14c91's fly.toml (sha256 d25d6775...), or the config-only rollback in fly.toml's release-55 comment (release 54's four lines and name); release 54's pair stays on the volume"
    ]
   }
  ],
@@ -5216,7 +5216,7 @@
    "lo": 0.051,
    "hi": 0.0712,
    "takeaway": "CONFIRMED +0.0612 [+0.0510, +0.0712], LB95 +0.0527, latency 1.012x; shipped as release 55.",
-   "note": "Read once with the strict r2 reader, VALID (read sha fd01adf3...; gate sha 9555078d...; seal sums 31d8b85c...). n 7840, mean 0.0612, CI95 [0.0510, 0.0712], LB80 0.0570, LB95 0.0527; latency ratio RT4 / release 54 1.012 (Ultra). Terminal 'S159 DONE claude-s159-confirm 2026-11-23T01:08:50Z ... stage2=PASS'. No 3,920-deal screen vs release 54 preceded it: RT4 came from the DEV duels rt4h (vs release 53's unified model) and rt4f (vs FT-200k). Lane ultra:/Users/jeryyu/fleet/claude-s159-rt4/; #1525 issuecomment-7088914757. Shipped as release 55 (Fly {{FLY_VERSION}}, 2026-11-22 {{DEPLOY_ET}} ET) on Jerry's word."
+   "note": "Read once with the strict r2 reader, VALID (read sha fd01adf3...; gate sha 9555078d...; seal sums 31d8b85c...). n 7840, mean 0.0612, CI95 [0.0510, 0.0712], LB80 0.0570, LB95 0.0527; latency ratio RT4 / release 54 1.012 (Ultra). Terminal 'S159 DONE claude-s159-confirm 2026-11-23T01:08:50Z ... stage2=PASS'. No 3,920-deal screen vs release 54 preceded it: RT4 came from the DEV duels rt4h (vs release 53's unified model) and rt4f (vs FT-200k). Lane ultra:/Users/jeryyu/fleet/claude-s159-rt4/; #1525 issuecomment-7088914757. Shipped as release 55 (Fly v132, 2026-11-22 21:08 ET) on Jerry's word."
   }
  ],
  "context_screens": [
@@ -5604,7 +5604,7 @@
    "recipe": "The all-data model's architecture (4.9M parameters), warm from it: one joint pass over RT2's 39.76M-row mix plus every UT-GEN2 row of the 500k-round cut, on MPS to buffer 2365 and finished on CPU from that checkpoint, then the head polish (best epoch 8) on a seeded sample of at most 50M rows. Base package e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883, belief package 35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3.",
    "val_ce": null,
    "regret": null,
-   "status": "Offline gates PASS (value -0.032, reply recall +0.021). R4H vs release 53's unified model +0.0689 [+0.0546, +0.0834] (rt4h); R4F vs FT-200k +0.0355 [+0.008, +0.064] (rt4f); S159 vs release 54 as served +0.0612 [+0.0510, +0.0712] (rt4c, CONFIRMED). Fly timing 0.993x release 54. Served from release 55 (2026-11-22, Fly {{FLY_VERSION}})."
+   "status": "Offline gates PASS (value -0.032, reply recall +0.021). R4H vs release 53's unified model +0.0689 [+0.0546, +0.0834] (rt4h); R4F vs FT-200k +0.0355 [+0.008, +0.064] (rt4f); S159 vs release 54 as served +0.0612 [+0.0510, +0.0712] (rt4c, CONFIRMED). Fly timing 0.993x release 54. Served from release 55 (2026-11-22, Fly v132)."
   },
   {
    "name": "Unified scaling sweep S-6M / F-S / F-M / F-L (not served)",
@@ -5875,7 +5875,7 @@
  "screen_comparator": {
   "release": 55,
   "status": "confirmed",
-  "note": "New screens compare against release 55 as served (from its deploy, 2026-11-22 {{DEPLOY_ET}} ET; Jerry, in session 2026-11-22: 'Yup let's ship the better model', on RT4's confirmation). Before that release 54 (from its deploy, 2026-11-19 23:14Z; it differs from release 53, served from 16:52Z that day, only in the bury budget), release 52 (Jerry, in session 2026-11-09, with release 52's deploy, #1347), release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 55 as served (from its deploy, 2026-11-22 21:08 ET; Jerry, in session 2026-11-22: 'Yup let's ship the better model', on RT4's confirmation). Before that release 54 (from its deploy, 2026-11-19 23:14Z; it differs from release 53, served from 16:52Z that day, only in the bury budget), release 52 (Jerry, in session 2026-11-09, with release 52's deploy, #1347), release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  },
  "era": {
   "start": "2026-11-16",

@@ -37,12 +37,12 @@ record is under "Rollback".
 
 | field | value |
 |---|---|
-| deployed | 2026-11-22 {{DEPLOY_ET}} EST |
-| Fly version | {{FLY_VERSION}} (rollback: {{ROLLBACK_FLY_VERSION}} for release 54) |
-| image | `registry.fly.io/shengji:{{R55_IMAGE}}` |
+| deployed | 2026-11-22 21:08 EST |
+| Fly version | v132 (rollback: v131 for release 54) |
+| image | `registry.fly.io/shengji:deployment-01M832J41Z89AQ5ZHXDP5M9F2D` |
 | source | the S159 tree `9e49366a` (release 54's served server) with #1731's `fly.toml`; not main's merge commit (Source, below) |
 | evidence | S159 (read 2026-11-23), a fresh-seed confirmation against release 54 as served; the R4H and R4F DEV duels; the offline gates; the Fly timing gate; the pre-deploy smoke (below) |
-| deploy record | `fly releases -a shengji --image`: {{FLY_VERSION}} complete with the image above. `/healthz` after the deploy: ok, rooms 0, `bot` the release-55 name below, `budget_seconds "3"`, `bury_budget_seconds "3"`, value `f4f4127e…`, prior `0d17fd03…`. Deploy working files: `~/shengji-archive/2026-11-23-r55-deploy/` |
+| deploy record | `fly releases -a shengji --image`: v132 complete with the image above. `/healthz` after the deploy: ok, rooms 0, `bot` the release-55 name below, `budget_seconds "3"`, `bury_budget_seconds "3"`, value `f4f4127e…`, prior `0d17fd03…`. Deploy working files: `~/shengji-archive/2026-11-23-r55-deploy/` |
 | comparator | release 55 as served for new duels and screens from the deploy[^cmp]; S159 and the RT3-FT screen keep release 54 |
 
 Served name (byte for byte the RT4 name S159 duelled):
@@ -116,8 +116,8 @@ M5 Ultra it gained +0.0612 levels per round [+0.0510, +0.0712] against release 5
 
 ### To release 54 (the rollback target)
 
-Release 54 as served before release 55: Fly {{ROLLBACK_FLY_VERSION}}, image
-`registry.fly.io/shengji:{{ROLLBACK_IMAGE}}`, with release 54's `fly.toml` from main `26b14c91` (sha256
+Release 54 as served before release 55: Fly v131, image
+`registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0`, with release 54's `fly.toml` from main `26b14c91` (sha256
 `d25d6775b70878445fda6bf0d7be10d3c418768cb403d7b7f39d2bd4ad9320ce`, the file S159 pinned). Release 55's `fly.toml`
 comment gives the config-only rollback: the four release-54 lines (the unified and belief paths and hashes) and the
 release-54 name. For the image and configuration as served, only on Jerry's rollback decision and at 0 rooms:
@@ -127,7 +127,7 @@ rollback_dir=$(mktemp -d "$HOME/shengji-archive/r54-rollback.XXXXXX")
 git show 26b14c91:fly.toml > "$rollback_dir/fly.toml"
 shasum -a 256 "$rollback_dir/fly.toml"   # must print d25d6775…4ad9320ce
 flyctl deploy --app shengji --ha=false --config "$rollback_dir/fly.toml" \
-  --image registry.fly.io/shengji:{{ROLLBACK_IMAGE}}
+  --image registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0
 ```
 
 Release 54's pair (`ut-all-97c07be8.npz`, `ut-all-belief-1b1fd2de.npz`) stays on the volume. Afterward `/healthz`
@@ -1597,7 +1597,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
-| 55 | 2026-11-22 {{DEPLOY_ET}} EST | the RT4 unified model (the 500k-round UT-GEN2 point, warm from release 53's) in release 54's four unified slots, every other line release 54's; S159 vs release 54 as served on the M5 Ultra +0.0612 [+0.0510, +0.0712] (7,840 fresh deals, one-sided 95% lower bound +0.0527); Fly timing 0.993× release 54, one game | new unified `e2951d35…`, belief `35e225cf…` | #1731 | {{FLY_VERSION}}, `{{R55_IMAGE}}`, tree `9e49366a` + #1731's `fly.toml` |
+| 55 | 2026-11-22 21:08 EST | the RT4 unified model (the 500k-round UT-GEN2 point, warm from release 53's) in release 54's four unified slots, every other line release 54's; S159 vs release 54 as served on the M5 Ultra +0.0612 [+0.0510, +0.0712] (7,840 fresh deals, one-sided 95% lower bound +0.0527); Fly timing 0.993× release 54, one game | new unified `e2951d35…`, belief `35e225cf…` | #1731 | v132, `deployment-01M832J41Z89AQ5ZHXDP5M9F2D`, tree `9e49366a` + #1731's `fly.toml` |
 | 54 | 2026-11-19 18:14 EST | release 53 with the bury budget at 3 s (bury digest `1b1a47f5dd8b` → `3a676f3c01ea`); no strength measurement (#1605: 0 of 240 Mac buries reached 2 s); shipped with #1599 (ranked continue, accounts schema v9) and #1607 (leaner fast readout, decision-identical) | flag | #1605 | v118, `deployment-01M7V1C3XTFQR123SFKPJX02XM`, main `7c0fc4da` |
 | 53 | 2026-11-19 11:52 EST | the all-data unified model on release 52: one trunk forward for the belief proposal and root prior (`ushare`), the readout for own-trick leaf values (`uvalue`) and greedy-finish replies (`ureply`), fast path on (`ufast`); duels vs release 52 on the M5 Ultra: UT-alldata-screen +0.0573 [+0.0422, +0.0728], UT-alldata-confirm +0.0521 [+0.0410, +0.0633] (7,840 fresh deals); Fly: UT-fly-fast 0.992× release 52, one game | new unified `97c07be8…`, belief `1b1fd2de…` | #1596 (+ #1598) | v117, `deployment-01M7TBGQMBT3DMWE58QDXEMRS7`, main `31163ba8` |
 | 52 | 2026-11-09 17:25 EST | combo51 on release 51: exact lead keeps the baseline on ties (`elt`), minimax first trick (`elm`), 1.6 s cap (`els1600`), history-legal throws in the play worlds (`wht`), event-complete refusals (`rcec`); duels vs release 51 on the M5 Ultra: combo51 +0.0418 [+0.0332, +0.0506] SCREEN_PASS, combo51C +0.0438 [+0.0381, +0.0497] CONFIRMED (7,840 fresh deals); Fly: single-game timing only, strength not measured | flags | #1347 | v64, `deployment-01M716JX8M23QWSN0RTM7T20HR`, head `99338c7e` |
@@ -1717,7 +1717,7 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Duels and screens move to release 55 as served at its deploy (2026-11-22 {{DEPLOY_ET}} EST). Before that release 54
+[^cmp]: Duels and screens move to release 55 as served at its deploy (2026-11-22 21:08 EST). Before that release 54
     as served from its deploy (2026-11-19 23:14Z); release 53, served from
     16:52Z that day, differs from it only in the bury budget. Before that release 52 as served from its deploy (2026-11-09), as release 52's reviewed record set out; before that release 51 (2026-11-06, lcc off on both sides, per Jerry's 2026-11-06 word). Jerry, in
     session 2026-11-04 ("Yes move comparator"): release 50 as served. Before that, release 49 (Y; Jerry, in session 2026-11-01), release 48

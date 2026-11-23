@@ -45,7 +45,7 @@ beat the served bot on fresh mirrored whole games with one learned model that ke
 data, with production's latency tail bounded. The standing goal is +0.05 levels/round over the served release
 (Jerry 2026-10-15; board #1075).
 
-- **Production:** release 55, deployed 2026-11-22 {{DEPLOY_ET}} EST (Fly {{FLY_VERSION}}; Jerry, in session 2026-11-22,
+- **Production:** release 55, deployed 2026-11-22 21:08 EST (Fly v132; Jerry, in session 2026-11-22,
   "Yup let's ship the better model"): release 54 with the RT4 unified model (the 500k-round point of S150, warm from
   the all-data model) in its four unified slots, every other line release 54's. The fresh-seed confirmation S159
   measured +0.0612 [+0.0510, +0.0712] against release 54 as served (CONFIRMED, 7,840 paired deals, one-sided 95% lower

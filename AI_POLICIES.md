@@ -2,7 +2,7 @@
 
 Last reconciled: **2026-11-22**.
 
-**Production is release 55** (live 2026-11-22 {{DEPLOY_ET}} EST, Fly {{FLY_VERSION}}; ladder row 24; Jerry, in session
+**Production is release 55** (live 2026-11-22 21:08 EST, Fly v132; ladder row 24; Jerry, in session
 2026-11-22: "Yup let's ship the better model"): release 54 with the RT4 unified model, the 500k-round point of the
 UT-GEN2 scaling curve, in the four unified slots of the play search. The S159 confirmation measured +0.0612
 [+0.0510, +0.0712] against release 54 as served on 7,840 fresh paired deals on the M5 Ultra. Release 54 (row 23;

@@ -1503,8 +1503,16 @@ class NumpyPriorPredict:
         # worker sends the bot state over IPC per move).  Pickle as the hash-pinned
         # (path, sha256) pair: unpickling reloads through `load_prior_checked`'s
         # per-process cache, so the model is identical and the hash is re-checked
-        # in any process that has not seen it.
+        # in any process that has not seen it.  A float32 view (`value_f32_serving`) reloads as one.
+        if getattr(self._prior_net, "compute_f32", False):
+            return (_numpy_prior_predict_f32, (self.path, self.sha256))
         return (NumpyPriorPredict, (self.path, self.sha256))
+
+
+def _numpy_prior_predict_f32(path: str, sha256: str) -> NumpyPriorPredict:
+    predict = NumpyPriorPredict(path, sha256)
+    predict._prior_net = predict._prior_net.as_float32()
+    return predict
 
 
 @dataclass(frozen=True)

@@ -204,6 +204,12 @@ def build_served_bot(env: Mapping[str, str], *, seed: int = 13, expected_name: s
                 entries = unified_registry_entries(checkpoint=checkpoint, **recipe)
                 registry.REGISTRY.update(entries)
                 registered.update(entries)
+            # the float32 twins, exactly when the server's import-time registration adds them
+            if env.get("SHENGJI_PV_VALUE_F32", "") not in ("", "0"):
+                from ..train.value_f32_serving import value_f32_registry_entries
+                entries = value_f32_registry_entries({n: registry.REGISTRY[n] for n in registered}, env)
+                registry.REGISTRY.update(entries)
+                registered.update(entries)
         if name not in registered:
             raise ServedConfigError(f"SHENGJI_BOT {name!r} is not registered by this env: "
                                     "the server would not boot with it")

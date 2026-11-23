@@ -689,6 +689,10 @@ def _register_pv_search_from_env() -> None:
     if os.environ.get("SHENGJI_PV_UNIFIED_CKPT") or os.environ.get("SHENGJI_PV_UNIFIED_SHA256"):
         from ..train.unified_serving import unified_registry_entries
         REGISTRY.update(unified_registry_entries(checkpoint=checkpoint, **recipe))
+    # the float32 twins of every pv-search name: registered only when SHENGJI_PV_VALUE_F32=1
+    if os.environ.get("SHENGJI_PV_VALUE_F32", "") not in ("", "0"):
+        from ..train.value_f32_serving import value_f32_registry_entries
+        REGISTRY.update(value_f32_registry_entries(dict(REGISTRY)))
 
 
 def register_exploit_policies(checkpoint: str, *, sha256: str, **recipe) -> list[str]:

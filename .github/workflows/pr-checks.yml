@@ -243,6 +243,7 @@ jobs:
           tests/test_release52_fly_config.py
           tests/test_release53_fly_config.py
           tests/test_release55_fly_config.py
+          tests/test_value_f32_serving.py
           tests/test_expert_label_producer.py
           tests/test_expert_label_check.py
           tests/test_check_comment_provenance.py
@@ -450,6 +451,7 @@ jobs:
           tests/test_release52_fly_config.py
           tests/test_release53_fly_config.py
           tests/test_release55_fly_config.py
+          tests/test_value_f32_serving.py
           tests/test_unified_serving.py
           tests/test_expert_label_producer.py
           tests/test_pv_latency_switches_release46.py
@@ -816,6 +818,7 @@ jobs:
             tests/test_unified_readout.py \
             tests/test_unified_readout_device.py \
             tests/test_unified_serving.py \
+            tests/test_value_f32_serving.py \
             tests/test_search_free_play.py \
             tests/test_relaxed_play.py \
             tests/test_s134_v1_read.py \

@@ -203,7 +203,14 @@ def _gelu_exact(x: np.ndarray) -> np.ndarray:
 
 
 class CWVNumpyMLP:
-    """Validated immutable exported MLP; safe to share across deep copies."""
+    """Validated immutable exported MLP; safe to share across deep copies.
+
+    The forward runs in float64 on float64 copies of the float32 package arrays.  A view from
+    `as_float32` runs the residual trunk and its heads in float32 on the package's own arrays
+    (logits are cast to float64 before the softmax): the same weights, float32 rounding apart."""
+
+    #: True only on an `as_float32` view; the class default keeps older pickles float64
+    compute_f32 = False
 
     def __init__(self, config: CWVNumpyConfig, weights: Mapping[str, np.ndarray], *,
                  metadata: Mapping[str, Any] | None = None,
@@ -255,7 +262,24 @@ class CWVNumpyMLP:
         clone.metadata = json.loads(json.dumps(self.metadata, sort_keys=True))
         clone.original_checkpoint_sha256 = self.original_checkpoint_sha256
         clone.package_sha256 = getattr(self, "package_sha256", None)
+        if self.compute_f32:
+            clone.compute_f32 = True
         return clone
+
+    def as_float32(self) -> "CWVNumpyMLP":
+        """A float32-forward view sharing this model's immutable weights; this model is unchanged.
+        Residual trunks only: the plain and grid trunks' exact GELU is a float64 routine."""
+        if self.config.trunk_block != "residual":
+            raise CWVNumpyError("the float32 forward covers the residual trunk only")
+        view = self.__deepcopy__({})
+        view.compute_f32 = True
+        return view
+
+    def _compute(self):
+        """(weights, dtype) the forward runs in."""
+        if self.compute_f32:
+            return self._weights, np.float32
+        return self._math_weights, np.float64
 
     # Pickle support: the screen's deadline worker sends the bot state (``vars(bot)``)
     # over IPC per move, and the server's turn snapshot deep-copies it.  Mapping proxies
@@ -287,11 +311,11 @@ class CWVNumpyMLP:
     def policy_head(self): return self.config.policy_head
 
     def _trunk(self, x: np.ndarray) -> np.ndarray:
-        """Trunk features of a flat float64 ``(B, public | world | perspective)`` batch."""
+        """Trunk features of a flat ``(B, public | world | perspective)`` batch in the compute dtype."""
         # Keep storage compact, but promote operands explicitly.  Besides
         # making the numerical contract clear, this avoids platform BLAS
         # surprises for mixed float64/float32 matmul.
-        w = self._math_weights
+        w, _ = self._compute()
         with np.errstate(all="ignore"):
             if self.config.trunk_block == "plain":
                 h = _gelu_exact(x @ w["trunk0_weight"].T + w["trunk0_bias"])
@@ -364,8 +388,8 @@ class CWVNumpyMLP:
             raise CWVNumpyError("policy batch contains nonfinite values")
         if x.shape[0] == 0:
             return np.empty((0, N_CARDS), dtype=np.float64)
-        h = self._trunk(x.astype(np.float64))
-        w = self._math_weights
+        w, dtype = self._compute()
+        h = self._trunk(x.astype(dtype))
         with np.errstate(all="ignore"):
             for i in range(self.config.policy_tower_layers):
                 # value_model.ResidualTrunkBlock: h + down(relu(up(norm(h))))
@@ -390,10 +414,11 @@ class CWVNumpyMLP:
             raise CWVNumpyError("model batch contains nonfinite values")
         if p.shape[0] == 0:
             return np.empty((0, OUTCOME_CLASSES), dtype=np.float64)
-        x = np.concatenate((p, w.reshape(p.shape[0], -1), q), axis=1).astype(np.float64)
+        weights, dtype = self._compute()
+        x = np.concatenate((p, w.reshape(p.shape[0], -1), q), axis=1).astype(dtype)
         h = self._trunk(x)
         with np.errstate(all="ignore"):
-            logits = h @ self._math_weights["head_weight"].T + self._math_weights["head_bias"]
+            logits = (h @ weights["head_weight"].T + weights["head_bias"]).astype(np.float64, copy=False)
         if not np.all(np.isfinite(logits)):
             raise CWVNumpyError("model produced nonfinite logits")
         shifted = logits - np.max(logits, axis=1, keepdims=True)

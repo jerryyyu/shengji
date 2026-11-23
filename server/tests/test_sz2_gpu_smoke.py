@@ -31,13 +31,20 @@ def host(tmp_path):
         "        if count.exists() and count.read_text() == '2': break\n"
         "        time.sleep(0.01)\n"
         "if pathlib.Path(sys.argv[2]).exists(): time.sleep(120)\n"
+        "if (root / 'trainer_rc').exists():\n"
+        "    assert os.environ['OMP_NUM_THREADS'] == ('16' if (root / 'phase').read_text() == 'small' else '4')\n"
+        "    sys.exit(int((root / 'trainer_rc').read_text()))\n"
         "sys.exit(13 if pathlib.Path(sys.argv[3]).exists() else 0)\n"
     )
     argv = [sys.executable, str(trainer), str(launch_log), str(tmp_path / "slow_trainer"),
             str(tmp_path / "failed_trainer")]
     (scripts / "sz2_joint_segment.py").write_text(
         "import sys\n"
-        "assert sys.argv[1:3] == ['smoke', '--root']\n"
+        "from pathlib import Path\n"
+        f"d = Path({str(tmp_path)!r})\n"
+        "phase = (d / 'phase').read_text() if (d / 'phase').exists() else 'smoke'\n"
+        "assert sys.argv[1:3] == [phase, '--root']\n"
+        "if (d / 'prepare_rc').exists(): sys.exit(int((d / 'prepare_rc').read_text()))\n"
         f"assert sys.argv[-1] == {str(root)!r}\n"
         f"print({json.dumps(argv)!r})\n"
     )
@@ -370,3 +377,20 @@ def test_persistent_drain_reports_live_state_for_operator(host):
         assert expected in result.stderr
     assert events(log) == ["stop", "stop", "restart"]
     assert not (tmp / "keepalive.pause").exists()
+
+@pytest.mark.parametrize("phase,trainer_rc,prepare_rc,expected,actions", [
+    ("small", 0, 0, 0, ["train"]),
+    ("medium-prefix", 7, 0, 7, ["stop", "train", "restart"]),
+    ("medium-prefix", 0, 0, 1, ["stop", "train", "restart"]),
+    ("medium-finish", 3, 0, 3, ["stop", "train", "restart"]),
+    ("medium-finish", 0, 8, 8, []),
+])
+def test_full_segment_protocol(host, phase, trainer_rc, prepare_rc, expected, actions):
+    command, directory, log = host
+    (directory / "phase").write_text(phase)
+    (directory / "trainer_rc").write_text(str(trainer_rc))
+    if prepare_rc:
+        (directory / "prepare_rc").write_text(str(prepare_rc))
+    result = subprocess.run([*command, "--phase", phase], capture_output=True, text=True, timeout=10)
+    assert result.returncode == expected, result.stderr
+    assert (events(log) if log.exists() else []) == actions

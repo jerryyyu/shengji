@@ -1,6 +1,6 @@
-"""Run one SZ2 smoke under an admitted host supervisor."""
+"""Run one SZ2 training segment under an admitted host supervisor."""
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import os
@@ -231,9 +231,7 @@ def monitor(child, baseline, check_signal, verify_stopped):
                         raise RuntimeError("trainer footprint exceeds 65536 MiB")
             rc = child.poll()
             if rc is not None:
-                if rc:
-                    raise RuntimeError(f"smoke trainer exited {rc}")
-                return
+                return rc
             time.sleep(POLL_SECONDS)
     finally:
         if child.poll() is None:
@@ -245,35 +243,51 @@ def monitor(child, baseline, check_signal, verify_stopped):
                 child.wait(timeout=5)
 
 
-def smoke(root, check_signal):
+def run_segment(root, phase, check_signal):
     root = root.resolve(strict=True)
     output = root / "smoke"
-    if os.path.lexists(output):
+    if phase == "smoke" and os.path.lexists(output):
         raise RuntimeError(f"smoke output already exists: {output}")
-    argv = json.loads(command(sys.executable, "-B", SCRIPTS / "sz2_joint_segment.py", "smoke", "--root",
-                              root, timeout=60))
+    try:
+        argv = json.loads(command(sys.executable, "-B", SCRIPTS / "sz2_joint_segment.py", phase,
+                                  "--root", root, timeout=60))
+    except subprocess.CalledProcessError as exc:
+        if phase == "medium-finish" and exc.returncode == 8:
+            return 8
+        raise
     if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
-        raise ValueError("invalid smoke trainer argv")
+        raise ValueError("invalid trainer argv")
     _, pressure = memory_sample()
     if pressure >= 4:
-        raise RuntimeError("memory pressure too high to start smoke")
+        raise RuntimeError("memory pressure too high to start trainer")
     check_signal()
-    output.mkdir()
-    with darkbloom_stopped(check_signal) as verify_stopped:
+    if phase == "smoke":
+        output.mkdir()
+    gpu = phase != "small"
+    provider = darkbloom_stopped(check_signal) if gpu else nullcontext(check_signal)
+    with provider as verify_stopped:
         baseline, pressure = memory_sample()
         if pressure >= 4:
-            raise RuntimeError("memory pressure too high to start smoke")
+            raise RuntimeError("memory pressure too high to start trainer")
         verify_stopped()
         check_signal()
-        child = subprocess.Popen(argv, cwd=SCRIPTS.parent, env={**os.environ, "OMP_NUM_THREADS": "4"},
+        child = subprocess.Popen(argv, cwd=SCRIPTS.parent, env={**os.environ, "OMP_NUM_THREADS": "4" if gpu else "16"},
                                  stdin=subprocess.DEVNULL)
-        monitor(child, baseline, check_signal, verify_stopped)
+        rc = monitor(child, baseline, check_signal, verify_stopped)
     check_signal()
+    if phase != "smoke" and rc == 3:
+        return 3
+    if phase == "medium-prefix" and rc == 7:
+        return 7
+    if rc or phase == "medium-prefix":
+        raise RuntimeError(f"{phase} trainer exited {rc}")
+    return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
+    parser.add_argument("--phase", choices=("smoke", "small", "medium-prefix", "medium-finish"), default="smoke")
     args = parser.parse_args()
     received = None
 
@@ -288,14 +302,13 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, mark_signal)
     try:
-        smoke(args.root, check_signal)
+        return run_segment(args.root, args.phase, check_signal)
     except RestoreUnverified as exc:
         print(exc, file=sys.stderr, flush=True)
         return 9
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f"SZ2 smoke failed: {exc}", file=sys.stderr, flush=True)
         return 1
-    return 0
 
 
 if __name__ == "__main__":

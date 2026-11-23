@@ -4106,6 +4106,7 @@ class PVSearchBot(PolicyValueBot):
                 "exact_follow_applied": False,
                 "exact_follow_abandoned": stage.reason,
                 "exact_follow_seconds": time.perf_counter() - stage_started,
+                "exact_follow_baseline_index": winner,
             }
             if stage.abandoned:
                 exact_follow_record["exact_follow_error"] = stage.error
@@ -4120,7 +4121,10 @@ class PVSearchBot(PolicyValueBot):
                     exact_follow_record.update(exact_follow_abandoned="soft_budget",
                                                exact_follow_error="InsufficientCompletedWorlds")
                 else:
-                    exact_follow_record.update(exact_follow_scores=list(result.scores),
+                    scores = [None] * len(admitted)
+                    for index, score in zip(result.retained, result.scores, strict=True):
+                        scores[index] = score
+                    exact_follow_record.update(exact_follow_scores=scores,
                                                exact_follow_worlds=len(result.completed),
                                                exact_follow_nodes=result.nodes,
                                                exact_follow_applied=result.winner != winner)

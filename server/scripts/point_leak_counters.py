@@ -119,7 +119,10 @@ def round_events(path: Path, t0: float):
 def exact_scores_of(decision):
     if not decision.get("exact_follow_attempted") or decision.get("exact_follow_abandoned"):
         return None
-    return decision.get("exact_follow_scores")
+    scores = decision.get("exact_follow_scores")
+    if scores is not None and None in scores:
+        raise ValueError("counterfactual point-leak analysis requires a score for every admitted play")
+    return scores
 
 
 def collect(logs: Path, rooms, t0):

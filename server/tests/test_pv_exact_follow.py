@@ -732,10 +732,24 @@ def test_anytime_eight_search_publishes_complete_rows_and_commits():
     assert rec["exact_follow_abandoned"] is None
     retained = rec["exact_follow_retained"]
     assert len(retained) == len(rec["admitted"]) - round(0.2 * len(rec["admitted"]))
+    assert len(retained) < len(rec["admitted"])
+    assert retained != tuple(range(len(retained)))
     solved = [worlds[i] for i in rec["exact_follow_completed"]]
     actions = [rec["admitted"][i] for i in retained]
     ref = rerank_follow(rnd, seat, actions, solved, baseline_index=len(retained)-1,
                         max_hand_cards=8, solver="compact-level")
+    from shengji.api.debug_play import play_analysis
+    policy.evaluator.identity = lambda: {}
+    rows, _ = play_analysis(policy, played, is_attacker=rnd.is_attacker(seat), elapsed=0.1)
+    by_play = dict(zip(map(tuple, actions), ref.scores, strict=True))
+    expected = [by_play.get(tuple(play)) for play in rec["admitted"]]
+    assert [row.get("exact_score") for row in rows] == expected
+    trace = trace_fields(rec)
+    assert trace["exact_follow_scores"] == expected
+    assert trace["exact_follow_baseline_index"] == len(rec["admitted"]) - 1
+    trace["exact_follow_retained"] = list(range(len(retained)))
+    assert not exact_follow_summary([{"decision_traces": [
+        {"side": "arm", "decisions": [trace]}]}])["valid"]
     assert played == actions[ref.winner] == rec["admitted"][rec["admitted_indices"].index(rec["selected_index"])]
     rnd.play(seat, played)
 

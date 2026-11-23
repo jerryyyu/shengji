@@ -194,3 +194,9 @@ def test_served_bot_exact_follow_reranks_from_the_rule(release50_packages, monke
     assert scores[winner] == max(scores)
     if scores[baseline] == max(scores):
         assert winner == baseline
+
+
+def test_counter_refuses_pruned_exact_ballot():
+    with pytest.raises(ValueError, match="every admitted play"):
+        counters().exact_scores_of({"exact_follow_attempted": True,
+                                    "exact_follow_scores": [None, -1., 2.]})

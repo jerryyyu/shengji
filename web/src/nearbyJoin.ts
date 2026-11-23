@@ -1,6 +1,6 @@
 // A nearby code's join, the joiner's side of nearby play: loaded only where
 // the app binary offers nearby play (nearbyGate.ts), so nothing here runs on
-// the web or in an App Store binary. The online code join is codeJoin.ts.
+// the web. The online code join is codeJoin.ts.
 import { useSyncExternalStore } from "react";
 import { JOIN_TIMEOUT_MS } from "./codeJoin";
 import { nearbyChoices, nearbyDefaultSeat } from "./joinSeats";

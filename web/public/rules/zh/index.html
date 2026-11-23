@@ -69,6 +69,8 @@
   .play { display: inline-block; padding: 10px 20px; border-radius: 10px; background: #f2c14e; color: #14171e;
           font-weight: 700; text-decoration: none; }
   .lang { font-size: 14px; }
+  .app-store { display: inline-block; margin: 0 10px; padding: 10px; vertical-align: middle; }
+  .app-store img { display: block; height: 40px; width: auto; }
   .note { margin-top: 40px; padding-top: 16px; border-top: 1px solid #3a4150; font-size: 14px; color: #9aa3b2; }
 </style>
 </head>
@@ -101,7 +103,7 @@
 
 <h2>亮主</h2>
 <p>发牌过程中，任何人都可以亮出一张级牌，把它的花色定为主。更强的亮主可以反掉较弱的：一对级牌大于单张级牌，一对小王大于一对级牌，一对大王又大于一对小王。
-亮的是一对王就表示无主。如果没人亮主，就翻底牌，以底牌中第一张不是王的牌的花色为主。每盘的第一局，第一个亮主的人当庄家。</p>
+亮的是一对王就表示无主。如果没人亮主，就翻底牌，以底牌中第一张不是王的牌的花色为主。每盘的第一局由最后亮主的人坐庄：有人反主，就以最后一次、也是最强的那次为准；没人亮主，就由发牌时拿到第一张牌的人坐庄。</p>
 
 <h2>庄家与底牌</h2>
 <p>庄家拿起 8 张底牌，再任选 8 张扣下。第一轮由庄家先出。庄家和他的对家是守方（庄家方），另一队是攻方（闲家）。</p>
@@ -141,7 +143,8 @@
 
 <p class="note">本站禁止自动化对局：AI 代理和其他自动化程序不得加入、排队或进行游戏。阅读这些页面不受限制。详见
 <a href="/llms.txt">llms.txt</a> 和<a href="/privacy">隐私页面</a>。</p>
-<p><a class="play" href="/">开始游戏</a></p>
+<p><a class="play" href="/">开始游戏</a><a class="app-store" href="https://apps.apple.com/app/id6833598710"><img
+  src="/badges/app-store-zh.svg" alt="在 App Store 下载" height="40" /></a></p>
 </main>
 </body>
 </html>

@@ -46,6 +46,7 @@ import { queue } from "../queue/store";
 import { codes } from "../codeJoin";
 import { guestName } from "../guestName";
 import { clearToast, currentToast } from "../toast";
+import { telemetry } from "../telemetry";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -614,6 +615,64 @@ describe("help and policy links", () => {
       expect(host.querySelector(".info-links")).toBeNull();
       expect(host.querySelector("a[href='/privacy'], a[href='/support']")).toBeNull();
     }
+  });
+});
+
+describe("the App Store badge", () => {
+  const badge = () => host.querySelector<HTMLAnchorElement>("a.app-store-badge");
+
+  it("the website shows Apple's badge under the controls, linked to the app's page", async () => {
+    for (const current of [{ status: "out", clientId: "cid", user: null },
+                           { status: "in", clientId: "cid", user: JERRY },
+                           { status: "off", clientId: null, user: null }] as AuthState[]) {
+      authState.current = current;
+      if (host) { act(() => root.unmount()); host.remove(); }
+      await render();
+      const a = badge();
+      expect(a).not.toBeNull();
+      expect(a!.getAttribute("href")).toBe("https://apps.apple.com/app/id6833598710");
+      // the site opens its links in the same tab
+      expect(a!.hasAttribute("target")).toBe(false);
+      const img = a!.querySelector("img")!;
+      expect(img.getAttribute("src")).toBe("/badges/app-store-en.svg");
+      expect(img.getAttribute("alt")).toBe("Download on the App Store");
+      // the alt text is its only copy, and it sits after How to play
+      expect(a!.textContent).toBe("");
+      expect(host.querySelector(".howto-entry")!.compareDocumentPosition(a!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it("the app does not show it", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    (window as unknown as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }),
+    };
+    try {
+      await render();
+      expect(host.querySelector(".howto-entry")).not.toBeNull();
+      expect(badge()).toBeNull();
+    } finally {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    }
+  });
+
+  it("a tap is counted as one enum tap and nothing else", async () => {
+    authState.current = { status: "out", clientId: "cid", user: null };
+    await render();
+    telemetry.reset();       // earlier tests' events stay out of this batch
+    sent.length = 0;
+    const stay = (e: Event) => e.preventDefault();
+    host.addEventListener("click", stay);
+    try {
+      act(() => badge()!.click());
+    } finally {
+      host.removeEventListener("click", stay);
+    }
+    const batches = sent.filter((m) => (m as { type?: string }).type === "client_event") as { events: Record<string, unknown>[] }[];
+    const taps = batches.flatMap((b) => b.events).filter((e) => e.e === "tap");
+    expect(taps.map((e) => e.id)).toEqual(["app_store_badge"]);
+    expect(Object.keys(taps[0]).sort()).toEqual(["e", "id", "t"]);
   });
 });
 

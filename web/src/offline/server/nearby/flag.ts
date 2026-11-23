@@ -1,8 +1,8 @@
 // The nearby feature flag, decided at run time by the app binary alone: the
-// plugin's `capabilities()` says the binary was reviewed with nearby play, is
-// the Beta build (TestFlight internal testing only), or is a Debug build for
-// the device test. The live site carries the nearby code, but it never runs
-// in a browser or in an App Store binary, which reports none of the three.
+// plugin's `capabilities()` says the binary is the App Store build with
+// nearby play (`reviewed`), is the Beta build (TestFlight internal testing
+// only), or is a Debug build for the device test. The live site carries the
+// nearby code, but it never runs in a browser, which has no plugin.
 
 let forced: boolean | null = null;
 

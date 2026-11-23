@@ -86,5 +86,11 @@
 	</dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Sheng Ji uses the local network to host and join offline tables with people near you. Game data goes only to the phones at your table.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_shengji-nearby._tcp</string>
+	</array>
 </dict>
 </plist>

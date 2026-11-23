@@ -5,15 +5,17 @@
 import { nativeRemoteBot } from "./pybot";
 import { LocalServer, type LocalConnection } from "./server";
 import { retired } from "./tables";
+import { TEST_TOOLS } from "../../testTools";
 
 let shared: LocalServer | null = null;
 
 /** The page's one offline server: a reconnect finds its room again. In the
  *  app, creating it starts the release bot in the background (pybot.ts). The
  *  app sets `__shengjiOfflineAutoplay` only when launched with
- *  -offline-autoplay (a device check of the bots, run from Xcode). */
+ *  -offline-autoplay (a device check of the bots, run from Xcode), and never
+ *  in an App Store binary or its bundled page (testTools.ts). */
 export function localServer(): LocalServer {
-  const autoplay = (globalThis as { __shengjiOfflineAutoplay?: unknown }).__shengjiOfflineAutoplay === true;
+  const autoplay = TEST_TOOLS && (globalThis as { __shengjiOfflineAutoplay?: unknown }).__shengjiOfflineAutoplay === true;
   shared ??= new LocalServer({ remote: nativeRemoteBot(), autoplay });
   return shared;
 }

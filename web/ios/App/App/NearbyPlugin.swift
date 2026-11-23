@@ -246,8 +246,15 @@ enum ScreenAwake {
 /// Which binaries may run the nearby transport. It is untested on devices,
 /// so every method but `capabilities` refuses unless one of these is true.
 enum NearbyBuild {
-    // TODO-review: true only in the binary App Review sees with nearby play.
+    // The App Store binary: Release defines SHENGJI_NEARBY alone, and
+    // flavor_guard.sh refuses a Release build with any other nearby flag, so
+    // it has none of the Beta's or the device test's tools. A Beta or Debug
+    // binary is never `reviewed`.
+    #if SHENGJI_NEARBY && !SHENGJI_NEARBY_BETA && !DEBUG
+    static let reviewed = true
+    #else
     static let reviewed = false
+    #endif
     // A Debug-only switch: SHENGJI_NEARBY_SPIKE and SHENGJI_NEARBY_DEV are
     // defined only on an xcodebuild command line, never by a configuration in
     // the project, and a Release build is always false here.

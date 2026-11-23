@@ -149,6 +149,15 @@ export class Telemetry {
     this.screenAt = 0;
   }
 
+  /** The identity behind the socket is changing: what was buffered goes on
+   *  the old socket if it takes it, and whatever it refuses is dropped with
+   *  the screen timing, so nothing of the identity before is sent under the
+   *  next one's sid and account kind. */
+  handover(): void {
+    this.flush();
+    this.reset();
+  }
+
   private push(ev: Event): void {
     if (!this.enabled) return;
     try {

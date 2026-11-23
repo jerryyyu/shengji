@@ -324,8 +324,7 @@ async def auth_apple(body: AppleLogin, request: Request, response: Response) -> 
     if linked is not None:
         user, token, device_token = linked
     else:
-        new = not await store.run(store.has_identity, "apple_sub", str(claims["sub"]))
-        user = await store.run(store.upsert_apple_user, claims["sub"], email, name)
+        user, new = await store.run(store.upsert_apple_user_outcome, claims["sub"], email, name)
         accounts.refuse_suspended(user)
         token = None
     code = body.authorization_code

@@ -876,4 +876,22 @@ describe("device account telemetry", () => {
     expect(steps()).toEqual(["fell_back_guest", "fell_back_guest"]);
     expect(JSON.stringify(send.mock.calls)).not.toContain("tok-gone");
   });
+
+  it("what the old socket refuses at an identity change is dropped, never sent on the new one", () => {
+    telemetry.screenView("me");
+    telemetry.signinOpen("me_row");
+    telemetry.signin("done", "google");
+    send.mockImplementationOnce(() => false);
+    auth.signedIn(MEI);
+    expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.invocationCallOrder[0]).toBeLessThan(reconnect.mock.invocationCallOrder[0]);
+    expect(telemetry.pending()).toEqual([]);
+    // the replacement socket takes its first batch
+    telemetry.screenView("play");
+    telemetry.flush();
+    expect(send).toHaveBeenCalledTimes(2);
+    const after = (send.mock.calls[1][0] as Batch).events;
+    expect(after).toEqual([{ e: "screen", t: expect.any(Number), name: "play" }]);
+  });
 });

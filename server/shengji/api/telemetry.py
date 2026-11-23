@@ -14,14 +14,17 @@ the server read it at the handshake: ``guest``, ``device`` (an account with
 no Google or Apple identity, the iOS app's own) or ``linked`` (an account
 with one); never the account itself.
 
-The events sent at a sign-in or identity change (``signin``,
-``device_account`` and the ``signin_open`` tap) keep their ``ts`` only to
-the hour and drop ``t``, so they cannot be matched to an account's last
-sign-in.
+A batch holding any event sent at a sign-in or identity change
+(``signin``, ``device_account`` or the ``signin_open`` tap) is an identity
+batch: every row of it keeps ``ts`` only to the hour and drops ``t``, and it
+goes to its own day file, ``ui-id-YYYYMMDD.jsonl``, whose rows all carry
+hours (its modification time is set back to the hour too). Neither a
+neighbouring row's exact second nor a row's place among exact-second rows
+can then date the sign-in to an account's last sign-in.
 
 A successful sign-in is also counted server-side (``signin_count``): its
-provider and whether it made the account, with no ``sid`` and no ``ts``, so
-it joins no socket's events.
+provider and whether it made the account, with no ``sid`` and no ``ts``, in
+the identity file, so it joins no socket's events.
 
 Records go to ``$SHENGJI_TELEMETRY_DIR/ui-YYYYMMDD.jsonl`` (UTC date). The
 sink is off when the variable is unset, and refuses any directory inside
@@ -53,7 +56,7 @@ MAX_MS = 24 * 3600 * 1000
 DAY = 86400.0
 RETENTION_DAYS = 90
 MAX_PRUNE_PER_PASS = 64
-_DAY_FILE = re.compile(r"ui-(\d{8})\.jsonl")
+_DAY_FILE = re.compile(r"ui-(?:id-)?(\d{8})\.jsonl")
 
 log = logging.getLogger(__name__)
 # (directory, UTC day) of the last pass that finished; one pass a day per sink.
@@ -314,9 +317,11 @@ def _prune_once_a_day(directory: Path, now: float, day: str) -> None:
         _pruned = (directory, day)
 
 
-def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
-    """Append records to today's file; False when the sink is off or the
-    write failed. Telemetry never breaks the game."""
+def write(records: list[dict[str, Any]], now: float | None = None,
+          identity: bool = False) -> bool:
+    """Append records to today's file (the identity file with ``identity``);
+    False when the sink is off or the write failed. Telemetry never breaks
+    the game."""
     if not records:
         return False
     directory = telemetry_dir()
@@ -327,9 +332,13 @@ def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
     try:
         directory.mkdir(parents=True, exist_ok=True)
         _prune_once_a_day(directory, now, day)
-        with open(directory / f"ui-{day}.jsonl", "a", encoding="utf-8") as f:
+        path = directory / (f"ui-id-{day}.jsonl" if identity else f"ui-{day}.jsonl")
+        with open(path, "a", encoding="utf-8") as f:
             for rec in records:
                 f.write(json.dumps(rec, separators=(",", ":"), sort_keys=True) + "\n")
+        if identity:
+            hour = int(now) - int(now) % 3600
+            os.utime(path, (hour, hour))
         return True
     except Exception:          # noqa: BLE001
         return False
@@ -337,14 +346,15 @@ def write(records: list[dict[str, Any]], now: float | None = None) -> bool:
 
 def _identity_moment(ev: dict[str, Any]) -> bool:
     """An event sent at a sign-in or an identity change: its time could be
-    matched to an account's last sign-in, so it is kept to the hour."""
+    matched to an account's last sign-in."""
     return ev["e"] in ("signin", "device_account") or (ev["e"] == "tap" and ev.get("id") == "signin_open")
 
 
-def _stamped(ev: dict[str, Any], ts: int) -> dict[str, Any]:
-    """The event with its ``ts``; an identity moment gets the hour and loses
-    ``t``, whose offset beside another event's exact ``ts`` would restore it."""
-    if not _identity_moment(ev):
+def _stamped(ev: dict[str, Any], ts: int, identity: bool) -> dict[str, Any]:
+    """The event with its ``ts``. In an identity batch every row gets the
+    hour and loses ``t``: the batch shares one receipt second, so any exact
+    row, or any offset, would date the sign-in beside it."""
+    if not identity:
         return {**ev, "ts": ts}
     return {**{k: v for k, v in ev.items() if k != "t"}, "ts": ts - ts % 3600}
 
@@ -361,9 +371,10 @@ def receive(conn: Any, msg: Any, kind: str) -> int:
         st = state_for(conn)
         events = events[:st.take(len(events))]
         ts = round(time.time())
-        records = [{**_stamped(ev, ts), **stamps, "sid": st.sid,
+        identity = any(_identity_moment(ev) for ev in events)
+        records = [{**_stamped(ev, ts, identity), **stamps, "sid": st.sid,
                     "who": kind, "build": build_id()} for ev in events]
-        return len(records) if write(records) else 0
+        return len(records) if write(records, identity=identity) else 0
     except Exception:          # noqa: BLE001
         return 0
 
@@ -397,12 +408,13 @@ def queue_event(conn: Any, event: str, **fields: Any) -> bool:
 def signin_count(provider: str, new: bool) -> bool:
     """One successful provider sign-in: the provider and whether it made the
     account. Written with no ``sid`` and no ``ts`` (the day file is its
-    time), so neither a socket's events nor an account's last sign-in time
-    can be joined to it."""
+    time) to the identity file, among rows kept to the hour, so neither a
+    socket's events nor an account's last sign-in time can be joined to it."""
     try:
         provider = _enum(PROVIDERS)(provider)
         if provider is None or type(new) is not bool:
             return False
-        return write([{"e": "signin_count", "provider": provider, "new": new, "build": build_id()}])
+        return write([{"e": "signin_count", "provider": provider, "new": new, "build": build_id()}],
+                     identity=True)
     except Exception:          # noqa: BLE001
         return False

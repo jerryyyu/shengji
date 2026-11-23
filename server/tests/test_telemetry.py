@@ -20,6 +20,10 @@ def sink(tmp_path, monkeypatch):
     return out
 
 
+def _records_of(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
 def _records(directory: Path) -> list[dict]:
     rows: list[dict] = []
     for f in sorted(directory.glob("ui-*.jsonl")):
@@ -301,7 +305,7 @@ def _who_over_the_socket(client, sink, cookie=None):
                       "events": [{"e": "tap", "id": "play"}]})
         ws.send_json({"type": "ping", "nonce": 1})
         _drain(ws, "pong")
-    rec = _records(sink)[-1]
+    rec = [r for r in _records(sink) if r["e"] == "tap"][-1]
     assert rec["platform"] == "ios_app"
     return rec["who"]
 
@@ -356,17 +360,85 @@ def test_the_sign_in_count_takes_only_its_enum_and_a_bool(sink):
     assert [r["provider"] for r in _records(sink)] == ["google"]
 
 
-def test_identity_moments_are_kept_to_the_hour_and_other_events_to_the_second(sink, monkeypatch):
-    monkeypatch.setattr(telemetry.time, "time", lambda: 1_790_000_000.4)   # 17:33:20 UTC
-    telemetry.receive(_Sock(), {"v": 1, "events": [
+def test_an_identity_batch_is_kept_to_the_hour_whole_and_apart(sink, monkeypatch):
+    now = 1_790_000_000.4                                          # 14:13:20 UTC
+    monkeypatch.setattr(telemetry.time, "time", lambda: now)
+    sock = _Sock()
+    telemetry.receive(sock, {"v": 1, "events": [
+        {"e": "screen", "t": 800, "name": "me"},
         {"e": "tap", "t": 900, "id": "signin_open", "from": "chip"},
         {"e": "signin", "t": 950, "step": "done", "provider": "google"},
-        {"e": "device_account", "t": 990, "step": "created"},
         {"e": "tap", "t": 1000, "id": "play"},
-        {"e": "screen", "t": 1100, "name": "table"},
     ]}, "guest")
-    rows = _records(sink)
+    for one in ({"e": "device_account", "t": 990, "step": "created"},
+                {"e": "tap", "t": 1, "id": "signin_open", "from": "me_row"}):
+        telemetry.receive(sock, {"v": 1, "events": [{"e": "screen", "t": 5, "name": "play"}, one]}, "guest")
+    telemetry.receive(sock, {"v": 1, "events": [{"e": "screen", "t": 1100, "name": "table"}]}, "guest")
+    telemetry.signin_count("google", True)
     hour = 1_790_000_000 - 1_790_000_000 % 3600
-    assert [(r["e"], r["ts"], "t" in r) for r in rows] == [
-        ("tap", hour, False), ("signin", hour, False), ("device_account", hour, False),
-        ("tap", 1_790_000_000, True), ("screen", 1_790_000_000, True)]
+    day = "20260921"
+    plain = _records_of(sink / f"ui-{day}.jsonl")
+    ident = _records_of(sink / f"ui-id-{day}.jsonl")
+    # the batch with no identity event keeps its second and offsets, alone in the day file
+    assert [(r["e"], r["ts"], r.get("t")) for r in plain] == [("screen", 1_790_000_000, 1100)]
+    # every row of an identity batch, the screens and the play tap with it too,
+    # carries the hour and no offset; nothing in the identity file has a second
+    assert [(r["e"], r.get("id") or r.get("name") or r.get("step")) for r in ident] == [
+        ("screen", "me"), ("tap", "signin_open"), ("signin", "done"), ("tap", "play"),
+        ("screen", "play"), ("device_account", "created"), ("screen", "play"), ("tap", "signin_open"),
+        ("signin_count", None)]
+    for r in ident:
+        assert "t" not in r
+        assert r.get("ts", hour) == hour
+    assert int((sink / f"ui-id-{day}.jsonl").stat().st_mtime) == hour
+
+
+def test_an_identity_batch_over_the_socket_keeps_no_second(client, sink):  # noqa: F811
+    with client.websocket_connect("/ws") as ws:
+        ws.send_json({"type": "client_event", "v": 1, "events": [
+            {"e": "screen", "t": 10, "name": "name_sheet"},
+            {"e": "signin", "t": 20, "step": "provider_tap", "provider": "apple"}]})
+        ws.send_json({"type": "client_event", "v": 1, "events": [{"e": "tap", "t": 30, "id": "play"}]})
+        ws.send_json({"type": "ping", "nonce": 1})
+        _drain(ws, "pong")
+    (ident_file,) = sink.glob("ui-id-*.jsonl")
+    ident = _records_of(ident_file)
+    assert [r["e"] for r in ident] == ["screen", "signin"]
+    assert all("t" not in r and r["ts"] % 3600 == 0 for r in ident)
+    (plain_file,) = sink.glob("ui-2*.jsonl")
+    assert [(r["e"], r["t"]) for r in _records_of(plain_file)] == [("tap", 30)]
+
+
+@pytest.mark.parametrize("provider", ["google", "apple"])
+def test_two_simultaneous_first_sign_ins_make_one_new_account(tmp_path, provider):
+    import threading
+
+    from shengji.api import accounts
+    from tests.test_accounts import _claims
+    store = accounts.Store(tmp_path / "accounts.sqlite3")
+    store.schema_version()
+    start = threading.Barrier(2)
+    results: list[tuple[dict, bool]] = []
+
+    def sign_in() -> None:
+        start.wait()
+        if provider == "google":
+            got = store.upsert_user_outcome(_claims(sub="g-race"), unique_name=False)
+        else:
+            got = store.upsert_apple_user_outcome("apple-race", None, "Race", unique_name=False)
+        results.append(got)
+
+    threads = [threading.Thread(target=sign_in) for _ in range(2)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert sorted(new for _user, new in results) == [False, True]
+    assert len({user["id"] for user, _new in results}) == 1
+    # the plain upserts still return the row alone, and an existing account is not new
+    if provider == "google":
+        assert store.upsert_user(_claims(sub="g-race"))["id"] == results[0][0]["id"]
+        assert store.upsert_user_outcome(_claims(sub="g-race"))[1] is False
+    else:
+        assert store.upsert_apple_user("apple-race", None, None)["id"] == results[0][0]["id"]
+        assert store.upsert_apple_user_outcome("apple-race", None, None)[1] is False

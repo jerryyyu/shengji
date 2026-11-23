@@ -616,8 +616,8 @@ class AuthStore {
    *  never sent on the socket of the identity before. */
   private replaceSocket(): void {
     // what was buffered (a sign-in's own steps among it) goes on the socket
-    // of the identity it happened under
-    telemetry.flush();
+    // of the identity it happened under, or nowhere
+    telemetry.handover();
     if (deviceAccountsApply()) {
       const next = nextOpen();
       this.reopen = next;

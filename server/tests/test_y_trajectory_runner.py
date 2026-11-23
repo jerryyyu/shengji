@@ -183,10 +183,14 @@ def test_launcher_hold_then_guarded_resume_preserves_completed_shard(release50_p
     assert not (out/'manifest.json').exists()
     kept = {p.name: p.read_bytes() for p in (out/'shards').glob('cluster-000000.*')}
     assert len(kept) == 2
-    spec.update(resume=True, run_id=json.loads((out/'run.json').read_text())['run_id'])
+    spec.update(resume=True, run_id=json.loads((out/'run.json').read_text())['run_id'],
+                workers=2, split_tail_mirrors=True)
     monkeypatch.setattr(launcher.time, 'sleep', real_sleep)
     hold.unlink()
     assert released_run() == 0
+    runtime = json.loads((out/'runtime.json').read_text())
+    assert runtime['split_tail_mirrors'] and runtime['clusters']['reused'] == [0]
+    assert runtime['per_cluster']['1']['worker_wall_secs'] > 0
     assert terminal0.read_bytes() == old_terminal
     assert all((out/'shards'/name).read_bytes() == data for name, data in kept.items())
     assert json.loads(Path(str(out)+'.terminal.1.json').read_text())['status'] == 'completed'

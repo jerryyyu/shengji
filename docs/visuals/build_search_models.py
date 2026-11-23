@@ -4,8 +4,8 @@
 Edit the data blocks below, then run this script; `--check` exits 1 when either
 committed SVG differs from what the data blocks generate. Stdlib only.
 
-Every number comes from the README's search and model text (release 54) and the
-unified package's stored config (`ut-all-97c07be8.npz`). The
+Every number comes from the README's search and model text (release 55) and the
+unified package's stored config (`ut-rt4-e2951d35.npz`). The
 heatmap shades, world tiles, bar heights and tree shape are illustrative,
 drawn from a fixed seed. Palette, fonts and helpers follow
 build_decision_diagram.py: one dark palette on a rounded dark panel, the same
@@ -28,7 +28,7 @@ SEED = 52
 # Search figure data.
 
 SEARCH_TITLE = "How the search works"
-SEARCH_SUBTITLE = ("One card-play decision in release 54, left to right. Shades, tiles, bars and the tree "
+SEARCH_SUBTITLE = ("One card-play decision in release 55, left to right. Shades, tiles, bars and the tree "
                    "are illustrative; every number is the served setting.")
 
 # Each panel: (colour token, kicker, headline, body lines, rule chips).
@@ -117,7 +117,7 @@ BURY = ("BURY", ["bwv", "bbw"],
          "Budget 3 s per bury."])
 
 SEARCH_ARIA = (
-    "How the search works in release 54, as a five-stage pipeline. 1, belief sampling: the unified model's "
+    "How the search works in release 55, as a five-stage pipeline. 1, belief sampling: the unified model's "
     "belief head reads the public "
     "history and gives each hidden card's holder probabilities, masked to the holders the public facts allow; "
     "64 worlds are kept, drawn worlds are rejected by the history tests whl, whd, wht, rc and rcec, which apply "
@@ -142,12 +142,12 @@ SEARCH_ARIA = (
 # Models figure data.
 
 MODELS_TITLE = "The models"
-MODELS_SUBTITLE = ("Release 54's networks: one unified transformer plays the cards; G3 Stage A and FT1 stay for "
+MODELS_SUBTITLE = ("Release 55's networks: one unified transformer plays the cards; G3 Stage A and FT1 stay for "
                    "the declaration, the bury and fallbacks.")
 
 # Each block: (label, kind, side lines, side input); kind is "in", "op", "join" or "stack".
 MODELS = [
-    ("belief", "UNIFIED", "all-data unified · 97c07be8", "transformer · 4.9M parameters", [
+    ("belief", "UNIFIED", "RT4 unified · e2951d35", "transformer · 4.9M parameters", [
         ("history tokens", "in", ["the round's earlier plays"], None),
         ("causal encoder × 4", "op", ["width 192, 4 heads"], None),
         ("cross-attend × 4, self × 1", "op", [], "54 card queries"),
@@ -156,9 +156,9 @@ MODELS = [
         ("readout × 3 blocks", "stack", ["per leaf: 9 count planes", "+ 12 trick scalars"], None),
         ("four outputs", "op", ["belief 54 × 4 · prior 54;", "leaf value 204 · reply 54"], None),
      ],
-     ["One joint pass over 22.1M rows of Y,",
-      "x1a-teacher and R50 self-play, warm",
-      "from round 1, then a true-world polish."],
+     ["Warm from the all-data model; one pass",
+      "over RT2's 39.8M-row mix + 500k rounds",
+      "of UT-GEN2 self-play, then a polish."],
      ["worlds (bw, bbw); candidates;", "leaf values; lgf replies"]),
     ("value", "VALUE", "G3 Stage A · f4f4127e", "residual MLP · 620k parameters", [
         ("833 inputs", "in", ["561 public + 5 × 54 deal", "counts + 2 perspective"], None),
@@ -190,14 +190,15 @@ MODELS_FOOT_2 = ("Fast path (ufast): a fused stem and a per-decision row memo ·
                  "p95 0.829 s with one game running (DEPLOY.md, Latency)")
 
 MODELS_ARIA = (
-    "The models, three cards. Unified, the all-data unified model 97c07be8, a transformer with 4.9M "
+    "The models, three cards. Unified, the RT4 unified model e2951d35, a transformer with 4.9M "
     "parameters: history tokens go through a causal 4-layer encoder of width 192 with 4 heads; 54 card "
     "queries cross-attend to it through 4 layers, then one card self-attention layer; a public-feature MLP "
     "of width 256 over 1,111 features is added, giving 54 card states from one trunk forward per decision; "
     "a 3-block readout reads those states with each leaf's 9 count planes and 12 trick scalars; four "
     "outputs: belief, 54 by 4 holder odds; the root prior, 54 card log-odds; the leaf value, 204 outcome "
-    "classes; and the reply ranking, 54 log-odds. Trained in one joint pass over 22.1M rows of Y, "
-    "x1a-teacher and release-50 self-play, warm from round 1, then a true-world polish; used for the play "
+    "classes; and the reply ranking, 54 log-odds. Warm-started from the all-data unified model 97c07be8 and "
+    "trained in one joint pass over RT2's 39.8M-row mix plus 500k rounds of UT-GEN2 self-play, then a "
+    "polish; used for the play "
     "and bury worlds, the candidates, the leaf values and the greedy-finish replies. Value, G3 Stage A "
     "f4f4127e, a residual MLP with 620k parameters: 833 inputs, 561 public features plus 5 by 54 deal "
     "counts plus 2 for perspective, a stem to width 165, 4 residual blocks of LayerNorm, a 330-wide ReLU "

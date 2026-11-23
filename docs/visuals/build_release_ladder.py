@@ -40,7 +40,7 @@ INSTRUMENTS = [
 ]
 
 # (tick label, step, CI low, CI high, instrument, comparator); step None = not measured.
-# Source: AI_POLICIES.md ladder rows 2-23.
+# Source: AI_POLICIES.md ladder rows 2-24.
 STEPS = [
     ("R22", 0.139, 0.065, 0.217, OTHER, "MC-LCB"),
     ("R25/27", 0.021, 0.004, 0.039, OTHER, "release-24 package"),
@@ -63,6 +63,7 @@ STEPS = [
     ("R52", 0.0438, 0.0381, 0.0497, DUEL, "R51"),
     ("R53", 0.0521, 0.0410, 0.0633, DUEL, "R52"),
     ("R54", None, None, None, NONE, "R53"),
+    ("R55", 0.0612, 0.0510, 0.0712, DUEL, "R54"),
 ]
 
 # Callouts: tick label -> (lines, label position in step units, label index value, anchor).
@@ -79,7 +80,8 @@ CALLOUTS = {
     "R51": (["R51 {step} on cloud;", "the Ultra read, +0.008,", "disagrees"], 16.4, 0.62, "middle"),
     "R52": (["{name} {step}", "search rules"], 17.2, 0.96, "start"),
     "R53": (["{name} {step}", "unified model"], 18.9, 0.66, "middle"),
-    "R54": (["R54 not measured", "(bury 3 s)"], 20.3, 1.08, "end"),
+    "R54": (["R54 not measured", "(bury 3 s)"], 19.6, 1.10, "end"),
+    "R55": (["{name} {step}", "500k-round retrain"], 21.1, 0.80, "end"),
 }
 
 Y_TICKS = [0.0, 0.2, 0.4, 0.6, 0.8]
@@ -136,7 +138,7 @@ def aria() -> str:
         "first-round deals; release 46 +0.23, belief plus exact endgame; release 50 +0.06, new value, prior and "
         "belief, trained on 200k rounds; release 51 −0.01 on cloud, where the Ultra read, +0.008, disagrees; "
         "release 52 +0.04, search rules; release 53 +0.05, the unified model; release 54 not measured, the "
-        "bury budget raised to 3 s. " + " ".join(FOOTER)
+        "bury budget raised to 3 s; release 55 +0.06, the 500k-round retrain. " + " ".join(FOOTER)
     )
 
 

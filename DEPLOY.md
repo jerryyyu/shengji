@@ -27,11 +27,120 @@ Sign in with Apple (`POST /api/auth/apple`, iOS app only) needs no configuration
 
 ## Current production
 
-**Release 54**: release 53 with the bury budget at 3 s (`SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS` `'2'` → `'3'`;
+**Release 55**: release 54 with the RT4 unified model. The unified readout package and the belief package become
+RT4's, and every other `fly.toml` line is release 54's (`server/releases/r55.json`;
+`test_release55_is_release54_with_the_rt4_pairs`, `test_release55_fly_config.py`). The registry derives the name
+from the two pairs: the play digest (`r09a10415` → `reac0a771`), the bury digest (`3a676f3c01ea` → `e191a6461fa8`)
+and the three unified tokens (`97c07be8` → `e2951d35`) move. Jerry's word: in session 2026-11-22, "Yup let's ship
+the better model", conditional on the winner's confirmation against release 54 and the release gates. Release 54's
+record is under "Rollback".
+
+| field | value |
+|---|---|
+| deployed | 2026-11-22 21:08 EST |
+| Fly version | v132 (rollback: v131 for release 54) |
+| image | `registry.fly.io/shengji:deployment-01M832J41Z89AQ5ZHXDP5M9F2D` |
+| source | the S159 tree `9e49366a` (release 54's served server) with #1731's `fly.toml`; not main's merge commit (Source, below) |
+| evidence | S159 (read 2026-11-23), a fresh-seed confirmation against release 54 as served; the R4H and R4F DEV duels; the offline gates; the Fly timing gate; the pre-deploy smoke (below) |
+| deploy record | `fly releases -a shengji --image`: v132 complete with the image above. `/healthz` after the deploy: ok, rooms 0, `bot` the release-55 name below, `budget_seconds "3"`, `bury_budget_seconds "3"`, value `f4f4127e…`, prior `0d17fd03…`. Deploy working files: `~/shengji-archive/2026-11-23-r55-deploy/` |
+| comparator | release 55 as served for new duels and screens from the deploy[^cmp]; S159 and the RT3-FT screen keep release 54 |
+
+Served name (byte for byte the RT4 name S159 duelled):
+
+```
+pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-reac0a771-bury-hybrid-bwv-bbw-e191a6461fa8-sc8-usharee2951d35-uvaluee2951d35-ureplye2951d35-ufast
+```
+
+**The model.** RT4 is the 500k-round point of the UT-GEN2 scaling curve (RL_PLAN S150): warm-started from release
+53's unified model (`97c07be8`), one joint pass over RT2's 39.76M-row mix plus every UT-GEN2 row of the 500k-round
+cut, run on MPS to buffer 2365 and finished on CPU from that checkpoint, then the head polish (best epoch 8) on a
+seeded sample of at most 50M rows. Offline gates against the served models: value −0.032 (PASS), reply recall +0.021
+(PASS).
+
+**Packages.** Two new `serving-packages` assets (uploaded 2026-11-23, re-downloaded and sha-checked), put on the
+volume under these names; release 54's pair stays on the volume for the rollback.
+
+| package | path on the volume | sha256 |
+|---|---|---|
+| unified readout (RT4) | `/data/models/ut-rt4-e2951d35.npz` | `e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883` |
+| belief (RT4's trunk and belief head) | `/data/models/ut-rt4-belief-35e225cf.npz` | `35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3` |
+| unified readout (release 54, kept for the rollback) | `/data/models/ut-all-97c07be8.npz` | `97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af` |
+| belief (release 54, kept for the rollback) | `/data/models/ut-all-belief-1b1fd2de.npz` | `1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4` |
+
+Local copies: `~/model-vault/rt4-r55/`.
+
+**Evidence.** Paired seat-swapped duels on the M5 Ultra, each judged alone:
+
+- **S159** (confirmation, read 2026-11-23), RT4 against release 54 as served on 7,840 fresh deals (seeds [2664000000, 2664007840),
+  served tree `9e49366a`): **+0.0612 [+0.0510, +0.0712]**, one-sided 95% lower bound +0.0527, 80% lower bound
+  +0.0570 (bar: mean ≥ +0.005 and 95% lower bound > 0, met: STAGE2 PASS); reader VALID; duel-host latency ratio
+  RT4 / release 54 1.012. Terminal `S159 DONE claude-s159-confirm 2026-11-23T01:08:50Z … stage2=PASS`; read sha
+  `fd01adf3…`, gate sha `9555078d…`, seal sums `31d8b85c…`; lane `ultra:/Users/jeryyu/fleet/claude-s159-rt4/`
+  ([#1525 issuecomment-7088914757](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7088914757)).
+- **R4H** (DEV, the shared scaling block), RT4 against release 53's unified model on the plain readout with the 2 s
+  bury, not a served release: +0.0689 [+0.0546, +0.0834] over 3,920 deals; on deals 0–999 +0.0585, one-sided 80%
+  lower bound +0.047, CANDIDATE (archive `readouts/rt4/`).
+- **R4F** (DEV), RT4 against FT-200k (RT3-FT), not a release: +0.0355 [+0.008, +0.064] over 1,000 deals, BEATS
+  (archive `readouts/rt4/`).
+
+No 3,920-deal screen against release 54 ran: RT4 went from the two DEV duels to the confirmation. The online
+construction check on `9e49366a` built an Advanced room with this name
+([#1525 issuecomment-7087872391](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7087872391)).
+**Strength on Fly and with human partners is not measured.**
+
+**Latency (Fly timing gate).** UT-fly-fast's method (Release 53 record, Latency) on the production machine
+(performance-1x, 2 GB) at 0 rooms, one game (k = 1): release 54 as served (A) against the release tree with the RT4
+pair (B), on identical states, 364 play decisions over 6 rounds. Mean decision ratio B/A **0.993** (CI 0.977–1.010),
+p95 0.576 vs 0.567 s; 0 fallbacks on either side; projected server RSS 151 MB (452 MB on the conservative
+projection) against the 1,536 MB bar. Bar mean ratio ≤ 1.10, B fallbacks ≤ A's, RSS ≤ 1,536 MB and validity: PASS.
+Archive `~/shengji-archive/2026-11-23-r55-fly-timing/`. Two or more concurrent games on Fly are not measured.
+
+**Pre-deploy smoke (release tree, Mac mini, compiled engine).** `smoke_release45_bury.py --fly-toml ../fly.toml
+--rounds 10 --full-round` with the sha-verified local packages: validator PASS; 672 plays, all belief-drawn, 0 belief
+and 0 budget fallbacks; every play record's `unified` entry names package `e2951d35` (672 of 672); 10 buries on
+belief worlds, 0 bury-belief fallbacks. M4 timings, not Fly's. Archive `~/shengji-archive/2026-11-23-r55-smoke/`.
+
+**Source.** `main` after `9e49366a` (the S159 tree) adds #1707 (vp2, off by default, decision-identical when off:
+`test_flag_off_release54_decides_as_main`) and the device-accounts server parts #1714 and #1719, behind
+`SHENGJI_DEVICE_ACCOUNTS` (off), whose accounts migration to schema v10 runs at boot whatever the switch. Release 55
+deploys the S159 tree with #1731's `fly.toml`, so it does not carry that migration.
+
+**Watch list.** Release 53's rows (Rollback, Release 53 record, Watch list) and release 54's bury seconds against the
+3 s budget; every first-room `unified` entry names package `e2951d35` with `shared` 1 and `missed`, `value_left` and
+`reply_left` 0; belief fallbacks on `35e225cf`.
+
+**Release note: what a player will notice.** The bots play their cards with a stronger model: head to head on the
+M5 Ultra it gained +0.0612 levels per round [+0.0510, +0.0712] against release 54. Pace and the table are unchanged.
+
+## Rollback
+
+### To release 54 (the rollback target)
+
+Release 54 as served before release 55: Fly v131, image
+`registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0`, with release 54's `fly.toml` from main `26b14c91` (sha256
+`d25d6775b70878445fda6bf0d7be10d3c418768cb403d7b7f39d2bd4ad9320ce`, the file S159 pinned). Release 55's `fly.toml`
+comment gives the config-only rollback: the four release-54 lines (the unified and belief paths and hashes) and the
+release-54 name. For the image and configuration as served, only on Jerry's rollback decision and at 0 rooms:
+
+```bash
+rollback_dir=$(mktemp -d "$HOME/shengji-archive/r54-rollback.XXXXXX")
+git show 26b14c91:fly.toml > "$rollback_dir/fly.toml"
+shasum -a 256 "$rollback_dir/fly.toml"   # must print d25d6775…4ad9320ce
+flyctl deploy --app shengji --ha=false --config "$rollback_dir/fly.toml" \
+  --image registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0
+```
+
+Release 54's pair (`ut-all-97c07be8.npz`, `ut-all-belief-1b1fd2de.npz`) stays on the volume. Afterward `/healthz`
+must show the release-54 name (play digest `r09a10415`, bury suffix `3a676f3c01ea`, `-ushare97c07be8`).
+
+#### Release 54 record
+
+Release 54 is release 53 with the bury budget at 3 s (`SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS` `'2'` → `'3'`;
 Jerry, in session 2026-11-19: "Bury can be 3s"). The budget is part of the bury identity, so only the bury digest of
 the served name moves (`1b1a47f5dd8b` → `3a676f3c01ea`); the packages, the play digest, the stage table and every
 other line are release 53's (`server/releases/r54.json`; `test_release54_is_release53_with_the_bury_budget_at_3s`).
-Release 53's record is under "Rollback".
+Production from 2026-11-19 18:14 EST (Fly v118) until release 55's deploy on 2026-11-22; later deploys before
+release 55 kept its bot.
 
 | field | value |
 |---|---|
@@ -41,7 +150,7 @@ Release 53's record is under "Rollback".
 | source | main `7c0fc4da`: #1605 (the bury budget, merged `39745e45`) with #1599 and #1607 (below) |
 | evidence | no strength measurement: a budget change whose bury timing on the Mac mini (#1605) never reached the 2 s deadline (below) |
 | deploy record | `fly releases -a shengji --image`: v118 complete at 23:14:44Z with the image above. `/healthz` from the hourly tick at 00:13Z on 2026-11-20 ([#1263 issuecomment-7026007317](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7026007317)) and read again for this record: ok, rooms 0, `bot` the release-54 name below, `bury_budget_seconds "3"`, `budget_seconds "3"`, value `f4f4127e…`, prior `0d17fd03…`. The in-machine check and the first-room reader are not recorded on a canonical surface |
-| comparator | release 54 as served for new duels and screens from the deploy[^cmp]; it differs from release 53 only in the bury budget |
+| comparator | release 54 as served from its deploy until release 55's[^cmp]; it differs from release 53 only in the bury budget. S159 and the RT3-FT screen keep it |
 
 Served name:
 
@@ -72,60 +181,7 @@ budget and `bury_belief_fallbacks` on Fly.
 **Release note: what a player will notice.** Nothing on most hands; on a slow moment the bot may take up to a second
 longer to bury instead of falling back to its simple bury.
 
-## Release 55 (prepared, not deployed)
-
-**Release 55** is release 54 with the RT4 unified model: the unified readout package and the belief package become
-RT4's, and every other `fly.toml` line is release 54's (`server/releases/r55.json`;
-`test_release55_is_release54_with_the_rt4_pairs`, `test_release55_fly_config.py`). The registry derives the name
-from the two pairs: the play digest (`r09a10415` → `reac0a771`), the bury digest (`3a676f3c01ea` → `e191a6461fa8`)
-and the three unified tokens (`97c07be8` → `e2951d35`) move. Jerry's word: in session 2026-11-22, "Yup let's ship
-the better model", conditional on the winner's confirmation against release 54 and the release gates.
-
-Served name (byte for byte the RT4 name S159 duelled):
-
-```
-pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-reac0a771-bury-hybrid-bwv-bbw-e191a6461fa8-sc8-usharee2951d35-uvaluee2951d35-ureplye2951d35-ufast
-```
-
-**Packages.** Two new `serving-packages` assets (uploaded 2026-11-23, re-downloaded and sha-checked), to be put on
-the volume under the same names before the deploy. Keep release 54's pair on the volume for the rollback.
-
-| package | path on the volume | sha256 |
-|---|---|---|
-| unified readout (RT4) | `/data/models/ut-rt4-e2951d35.npz` | `e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883` |
-| belief (RT4's trunk and belief head) | `/data/models/ut-rt4-belief-35e225cf.npz` | `35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3` |
-| unified readout (release 54, kept for the rollback) | `/data/models/ut-all-97c07be8.npz` | `97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af` |
-| belief (release 54, kept for the rollback) | `/data/models/ut-all-belief-1b1fd2de.npz` | `1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4` |
-
-Local copies: `~/model-vault/rt4-r55/`.
-
-**Evidence.** S159, RT4 against release 54 as served, paired seat-swapped duels on the M5 Ultra on 7,840 fresh deals
-(seeds [2664000000, 2664007840), served tree `9e49366a`): **+0.0612 [+0.0510, +0.0712]**, one-sided 95% lower bound
-+0.0527 (bar: mean ≥ +0.005 and lower bound > 0, met); reader VALID; duel-host latency ratio RT4 / release 54 1.012
-([#1525 issuecomment-7088914757](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7088914757)). The
-online construction check on `9e49366a` built an Advanced room with this name
-([#1525 issuecomment-7087872391](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7087872391)).
-**Strength on Fly and with human partners is not measured.**
-
-**Fly timing: not run.** The method is UT-fly-fast's (Release 53 record, Latency): on the production machine at 0
-rooms, k = 1, release 54 as served (A) against the release tree with the RT4 pair (B) on identical states; bar mean
-ratio B/A ≤ 1.10, B fallbacks ≤ A's, projected server RSS ≤ 1536 MB, validity. It is a Fly-side action and needs
-Jerry's word.
-
-**Source.** `main` after `9e49366a` (the S159 tree) adds #1707 (vp2, off by default, decision-identical when off:
-`test_flag_off_release54_decides_as_main`) and the device-accounts server parts #1714 and #1719, behind
-`SHENGJI_DEVICE_ACCOUNTS` (off), whose accounts migration to schema v10 runs at boot whatever the switch. A deploy
-from `main` carries that migration; a deploy of the S159 tree with this `fly.toml` does not.
-
-**Rollback.** To release 54, only on Jerry's rollback decision and at 0 rooms: the image serving before the
-release-55 deploy (read with `fly releases -a shengji --image` just before it; Fly v130 on server `9e49366a` when
-this was written) with release 54's `fly.toml` (main `26b14c91`, sha256
-`d25d6775b70878445fda6bf0d7be10d3c418768cb403d7b7f39d2bd4ad9320ce`); the config-only form restores the four lines
-and the name in the release-55 comment of `fly.toml`. Release 54's pair stays on the volume.
-
-## Rollback
-
-### To release 53 (the rollback target)
+### To release 53
 
 Release 53 as served before release 54: Fly v117, image `registry.fly.io/shengji:deployment-01M7TBGQMBT3DMWE58QDXEMRS7`,
 main `31163ba8`, whose `fly.toml` (sha256 `cad28bfdd538a0d6cebb8138999cf54b21d997ba243296df4611b92ec49103ea`)
@@ -1363,7 +1419,7 @@ Release 54 changes one `fly.toml` value and the name, and no package: step 2's u
 `test_release_manifests.py` with `r54.json` (release 53 with exactly the budget and name lines changed), and in step 7
 `bury_budget_seconds` is `"3"`.
 
-Release 55 changes four `fly.toml` lines and the name, and adds two packages (Release 55, above):
+Release 55 changes four `fly.toml` lines and the name, and adds two packages (Current production):
 
 - Step 1 adds `test_release55_fly_config.py` and release 55's manifest and wiring witness in
   `test_release_manifests.py`, on the two new `serving-packages` assets (fetched as
@@ -1541,6 +1597,7 @@ for releases 39–46, [docs_archive/deploy-releases-28-38.md](docs_archive/deplo
 
 | release | deployed (ET) | what changed | bot or package | PR | image (Fly) |
 |---:|---|---|---|---|---|
+| 55 | 2026-11-22 21:08 EST | the RT4 unified model (the 500k-round UT-GEN2 point, warm from release 53's) in release 54's four unified slots, every other line release 54's; S159 vs release 54 as served on the M5 Ultra +0.0612 [+0.0510, +0.0712] (7,840 fresh deals, one-sided 95% lower bound +0.0527); Fly timing 0.993× release 54, one game | new unified `e2951d35…`, belief `35e225cf…` | #1731 | v132, `deployment-01M832J41Z89AQ5ZHXDP5M9F2D`, tree `9e49366a` + #1731's `fly.toml` |
 | 54 | 2026-11-19 18:14 EST | release 53 with the bury budget at 3 s (bury digest `1b1a47f5dd8b` → `3a676f3c01ea`); no strength measurement (#1605: 0 of 240 Mac buries reached 2 s); shipped with #1599 (ranked continue, accounts schema v9) and #1607 (leaner fast readout, decision-identical) | flag | #1605 | v118, `deployment-01M7V1C3XTFQR123SFKPJX02XM`, main `7c0fc4da` |
 | 53 | 2026-11-19 11:52 EST | the all-data unified model on release 52: one trunk forward for the belief proposal and root prior (`ushare`), the readout for own-trick leaf values (`uvalue`) and greedy-finish replies (`ureply`), fast path on (`ufast`); duels vs release 52 on the M5 Ultra: UT-alldata-screen +0.0573 [+0.0422, +0.0728], UT-alldata-confirm +0.0521 [+0.0410, +0.0633] (7,840 fresh deals); Fly: UT-fly-fast 0.992× release 52, one game | new unified `97c07be8…`, belief `1b1fd2de…` | #1596 (+ #1598) | v117, `deployment-01M7TBGQMBT3DMWE58QDXEMRS7`, main `31163ba8` |
 | 52 | 2026-11-09 17:25 EST | combo51 on release 51: exact lead keeps the baseline on ties (`elt`), minimax first trick (`elm`), 1.6 s cap (`els1600`), history-legal throws in the play worlds (`wht`), event-complete refusals (`rcec`); duels vs release 51 on the M5 Ultra: combo51 +0.0418 [+0.0332, +0.0506] SCREEN_PASS, combo51C +0.0438 [+0.0381, +0.0497] CONFIRMED (7,840 fresh deals); Fly: single-game timing only, strength not measured | flags | #1347 | v64, `deployment-01M716JX8M23QWSN0RTM7T20HR`, head `99338c7e` |
@@ -1660,7 +1717,8 @@ Policy cost, not the rules engine, sets CPU capacity.
 - Load-test the chosen policy and room mix before advertising capacity. Memory per room is small; more than one
   process would need external state and room-affinity routing.
 
-[^cmp]: Duels and screens move to release 54 as served at its deploy (2026-11-19 23:14Z); release 53, served from
+[^cmp]: Duels and screens move to release 55 as served at its deploy (2026-11-22 21:08 EST). Before that release 54
+    as served from its deploy (2026-11-19 23:14Z); release 53, served from
     16:52Z that day, differs from it only in the bury budget. Before that release 52 as served from its deploy (2026-11-09), as release 52's reviewed record set out; before that release 51 (2026-11-06, lcc off on both sides, per Jerry's 2026-11-06 word). Jerry, in
     session 2026-11-04 ("Yes move comparator"): release 50 as served. Before that, release 49 (Y; Jerry, in session 2026-11-01), release 48
     (Jerry, in session 2026-10-24: "Yes screens should compare vs our prod policy of r48"), release 46

@@ -758,8 +758,8 @@
   },
   {
    "release": 54,
-   "status": "production",
-   "since": "2026-11-19 18:14 ET",
+   "status": "superseded",
+   "since": "2026-11-19 18:14 ET \u2192 2026-11-22 21:08 ET",
    "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-r09a10415-bury-hybrid-bwv-bbw-3a676f3c01ea-sc8-ushare97c07be8-uvalue97c07be8-ureply97c07be8-ufast",
    "head": "unchanged from release 53: the all-data unified model 97c07be8; G3 Stage A f4f4127e for declare, bury and terminal leaves",
    "package": "unchanged from release 53: unified ut-all-97c07be8.npz, belief ut-all-belief-1b1fd2de.npz, value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, JS-M1 js-m1-0d17fd03.npz; nothing uploaded",
@@ -777,8 +777,69 @@
    "caveats": [
     "deployed 2026-11-19 23:14Z (18:14 ET) as Fly v118, image deployment-01M7V1C3XTFQR123SFKPJX02XM, from main 7c0fc4da",
     "no strength measurement; release 53's bury (unified belief worlds) was not re-timed and bury time on Fly is not measured",
-    "comparator for NEW duels and screens: release 54 as served, from its deploy",
-    "rollback: Fly v117's image with main 31163ba8's fly.toml (sha256 cad28bfd...), or the config-only rollback in fly.toml's comment (bury budget '2' and the release-53 name)"
+    "comparator for duels and screens 2026-11-19 to 2026-11-22: release 54 as served, from its deploy; the RT3-FT screen (rt3fs) and the S159 confirmation of RT4 (rt4c) keep release 54",
+    "rollback: Fly v117's image with main 31163ba8's fly.toml (sha256 cad28bfd...), or the config-only rollback in fly.toml's comment (bury budget '2' and the release-53 name)",
+    "later deploys before release 55 kept its bot; the image serving it just before release 55 was Fly v131, registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0, the release-55 rollback with main 26b14c91's fly.toml (sha256 d25d6775...)"
+   ]
+  },
+  {
+   "release": 55,
+   "status": "production",
+   "since": "2026-11-22 21:08 ET",
+   "bot": "pv-search-f4f4127e-prior-1fa201b2-w64-k8-div-rc-rcec-whl-whd-wht-bw-tb-ele-elt-elm-la-dtr-dtrx-vd-vdef-lgf-lgfx-lgfd2000-ed7-els1600-xf7-xfcompactlevel-reac0a771-bury-hybrid-bwv-bbw-e191a6461fa8-sc8-usharee2951d35-uvaluee2951d35-ureplye2951d35-ufast",
+   "head": "the RT4 unified model e2951d35 (belief, root prior, leaf value, reply ranking from one trunk); G3 Stage A f4f4127e for declare, bury and terminal leaves; FT1 1fa201b2 bound for fallbacks",
+   "package": "new: unified readout ut-rt4-e2951d35.npz (sha256 e2951d35\u2026), belief ut-rt4-belief-35e225cf.npz (sha256 35e225cf\u2026) in place of release 54's pair (kept on the volume for the rollback); unchanged: value g3a-e04-f4f4127e.npz, prior p0-ft1-1fa201b2.npz, JS-M1 js-m1-0d17fd03.npz",
+   "oneline": "Release 54 with the RT4 unified model (the 500k-round retrain) in its four unified slots. Vs release 54 as served head to head: S159 confirmation +0.0612.",
+   "recipe": "release 54 exactly (search, rules, budgets: 3 s play, 3 s bury; fast readout) with the unified and belief pairs swapped for RT4's: four fly.toml lines (SHENGJI_PV_UNIFIED_CKPT/SHA256, SHENGJI_PV_BELIEF_CKPT/SHA256) and the derived name (play digest r09a10415 -> reac0a771, bury suffix 3a676f3c01ea -> e191a6461fa8, unified tokens 97c07be8 -> e2951d35) (server/releases/r55.json, #1731). RT4: warm from release 53's unified model, one joint pass over RT2's 39.76M-row mix plus every UT-GEN2 row of the 500k-round cut (on MPS to buffer 2365, finished on CPU), then the head polish. Deployed from tree 9e49366a with #1731's fly.toml. Jerry, in session 2026-11-22: 'Yup let's ship the better model', conditional on the confirmation and the release gates.",
+   "evidence": [
+    {
+     "what": "S159 confirmation: RT4 vs release 54 as served, 7,840 fresh seat-swapped deal pairs (M5 Ultra), CONFIRMED (STAGE2 PASS), LB95 +0.0527, LB80 +0.0570; latency ratio 1.012",
+     "point": 0.0612,
+     "lo": 0.051,
+     "hi": 0.0712,
+     "ref": "rt4c"
+    },
+    {
+     "what": "R4H DEV duel: RT4 vs release 53's unified model (plain readout, 2 s bury), not a served release, 3,920 deals on the scaling block; CANDIDATE on deals 0-999 (+0.0585, LB80 +0.047)",
+     "point": 0.0689,
+     "lo": 0.0546,
+     "hi": 0.0834,
+     "ref": "rt4h"
+    },
+    {
+     "what": "R4F DEV duel: RT4 vs FT-200k (RT3-FT), not a release, 1,000 deals; BEATS",
+     "point": 0.0355,
+     "lo": 0.008,
+     "hi": 0.064,
+     "ref": "rt4f"
+    },
+    {
+     "what": "offline gates vs the served models: value -0.032, reply recall +0.021",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-09-13/readouts/rt4/"
+    },
+    {
+     "what": "Fly timing on the production machine (performance-1x 2 GB, 0 rooms, one game): mean decision ratio RT4 / release 54 0.993 (CI 0.977-1.010), 0 fallbacks on either side, projected server RSS 151 MB (conservative 452) vs the 1,536 MB bar",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-11-23-r55-fly-timing/"
+    },
+    {
+     "what": "server-path smoke on the release tree (Mac mini, compiled): 10 rounds, 672 plays, 0 fallbacks, every play record's unified entry on package e2951d35",
+     "point": null,
+     "lo": null,
+     "hi": null,
+     "ref": "~/shengji-archive/2026-11-23-r55-smoke/"
+    }
+   ],
+   "caveats": [
+    "deployed 2026-11-22 21:08 ET as Fly v132, from tree 9e49366a with #1731's fly.toml (not main's merge commit, so main's accounts v10 migration is not in it)",
+    "strength measured on the M5 Ultra duel host, not on Fly or with human partners; no 3,920-deal screen vs release 54 ran (R4H and R4F read against release 53's unified model and FT-200k); Fly latency measured for one game at a time only",
+    "comparator for NEW duels and screens: release 55 as served, from its deploy",
+    "rollback: Fly v131's image registry.fly.io/shengji:deployment-01M81SQ0G1ZH3EAFWFRQA305R0 with main 26b14c91's fly.toml (sha256 d25d6775...), or the config-only rollback in fly.toml's release-55 comment (release 54's four lines and name); release 54's pair stays on the volume"
    ]
   }
  ],
@@ -5101,7 +5162,7 @@
    "date": "2026-11-22",
    "id": "rt4h",
    "title": "RT4 retrain vs the winner (scaling block)",
-   "candidate": "RT4: the 1M-round retrain (joint pass on MPS to buffer 2365, finished on CPU, then polish; unified package e2951d35eeabd167, belief 35e225cf3afd460d), the search unchanged; tree 063bf470 (plain readout, 2 s bury) on both sides; M5 Ultra",
+   "candidate": "RT4: the 500k-round retrain (joint pass on MPS to buffer 2365, finished on CPU, then polish; unified package e2951d35eeabd167, belief 35e225cf3afd460d), the search unchanged; tree 063bf470 (plain readout, 2 s bury) on both sides; M5 Ultra",
    "comparator": "the winner (release 53's all-data unified model 97c07be8614ed5c4 + belief 1b1fd2deb43b109b in release 52's search, plain readout), head to head",
    "vs": 53,
    "vs_group": "release 53's unified model (the winner, plain readout), head to head: a 3,920-deal seat-swapped DEV duel on the shared scaling block, not a common-control screen",
@@ -5123,7 +5184,7 @@
    "date": "2026-11-22",
    "id": "rt4f",
    "title": "RT4 retrain vs RT3-FT (DEV)",
-   "candidate": "RT4: the 1M-round retrain (joint pass on MPS to buffer 2365, finished on CPU, then polish; unified package e2951d35eeabd167, belief 35e225cf3afd460d), the search unchanged; tree 063bf470 (plain readout, 2 s bury) on both sides; M5 Ultra",
+   "candidate": "RT4: the 500k-round retrain (joint pass on MPS to buffer 2365, finished on CPU, then polish; unified package e2951d35eeabd167, belief 35e225cf3afd460d), the search unchanged; tree 063bf470 (plain readout, 2 s bury) on both sides; M5 Ultra",
    "comparator": "RT3-FT (unified package 0ab200ee2cec39d4 + belief af11dea78a9dcdac, plain readout, 2 s bury), NOT a release; head to head",
    "vs": 53,
    "vs_group": "RT3-FT (RT2 fine-tuned on the 200k-round cut, plain readout), NOT release 53: a 1,000-deal seat-swapped DEV duel, not a common-control screen",
@@ -5135,6 +5196,27 @@
    "takeaway": "RT4 +0.0355 vs RT3-FT [+0.008, +0.064], LB80 +0.0235: RT4-OVER-FT (bar +0.015, LB80 > 0).",
    "note": "Read once 11-22 23:40Z with ut_h2h_read.r2.py 721a7d70 (r2 strict validators h2h_strict_r2 ea872b37), VALID (0 play/bury/belief fallbacks, 0 declare abandons). R4F n 1000, mean 0.0355, CI95 [0.008, 0.064], LB80 0.0235, LB95 0.012; points +1.2525 [0.25, 2.28]; reader verdict BEATS. Mean decision seconds 0.0949 (ratio RT4/RT3-FT 0.995). Comparator is RT3-FT, not a release. Training: train best.pt 2d6ab6eb, polish best.pt 3027a7c5 (best_epoch=8); offline gates PASS (value -0.0321, bar 0.002; reply +0.0214, bar -0.01; latency ratio_median 0.669, bar 1.2); parity OK; offline vs RT2: value NLL delta +0.0022 (flagged, bar 0.002), reply recall@4 delta -0.0067 (not flagged, bar -0.01). Predeclaration sha256 6ce9421a63510621efa7c03558a40eb555df44b5d8bb8980294b9d42bc2bdb65; recipe c05374f2. Played by duels.r4.sh 294d7d00 (Codex source PASS #1525 issuecomment-7084272268) through the r2 strict readers (reader repair PASS #1525 issuecomment-7083871245) after the clearance freeze 04684a76 (PASS #1525 issuecomment-7087083644); R4F was first refused by a name collision with the r4f switch log (renamed R4F_switch.status; recovery PASS #1525 issuecomment-7087631088) and replayed alone. DUEL DONE 2026-11-22T23:40:38Z rc=0. Archive readouts/rt4/ (SHA256SUMS sha256 23b74e045f889cbc7eee097f19d2860729545d811bf9faa7546fc995b8ed25a4).",
    "named_comparator": "RT3-FT (RT2 fine-tuned on 200k rounds, plain readout)"
+  },
+  {
+   "status": "sealed",
+   "box": "ultra",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "id": "rt4c",
+   "date": "2026-11-23",
+   "title": "RT4 vs release 54 as served (confirmation)",
+   "candidate": "RT4: the 500k-round retrain (unified package e2951d35eeabd167, belief 35e225cf3afd460d) in release 54's exact served configuration (fast readout, 3 s bury), only the two packages swapped; served tree 9e49366a; M5 Ultra",
+   "comparator": "release 54 as served (unified model 97c07be8614ed5c4 + belief 1b1fd2deb43b109b, bury 3 s, fast readout), head to head",
+   "vs": 54,
+   "vs_group": "release 54 as served, head to head: the fresh-seed confirmation (two-stage duel bar, confirmation stage), not a common-control screen",
+   "instrument": "7,840 seat-swapped deal pairs [2664000000, 2664007840) (#1716), candidate vs release 54 head to head; served budgets; one look; host M5 Ultra; CONFIRMED iff mean >= +0.005 AND one-sided 95% lower bound > 0",
+   "seeds": "2664000000 (ultra)",
+   "point": 0.0612,
+   "lo": 0.051,
+   "hi": 0.0712,
+   "takeaway": "CONFIRMED +0.0612 [+0.0510, +0.0712], LB95 +0.0527, latency 1.012x; shipped as release 55.",
+   "note": "Read once with the strict r2 reader, VALID (read sha fd01adf3...; gate sha 9555078d...; seal sums 31d8b85c...). n 7840, mean 0.0612, CI95 [0.0510, 0.0712], LB80 0.0570, LB95 0.0527; latency ratio RT4 / release 54 1.012 (Ultra). Terminal 'S159 DONE claude-s159-confirm 2026-11-23T01:08:50Z ... stage2=PASS'. No 3,920-deal screen vs release 54 preceded it: RT4 came from the DEV duels rt4h (vs release 53's unified model) and rt4f (vs FT-200k). Lane ultra:/Users/jeryyu/fleet/claude-s159-rt4/; #1525 issuecomment-7088914757. Shipped as release 55 (Fly v132, 2026-11-22 21:08 ET) on Jerry's word."
   }
  ],
  "context_screens": [
@@ -5513,7 +5595,16 @@
    "recipe": "One transformer (4.9M parameters; B1a-size trunk d 192, 4 + 4 layers) serving belief, root prior, reply prior and per-world value: one joint pass over 22.1M rows (Y 10.3M, x1a teacher X4 5.6M, R50 4.5M, x1a teacher X2 1.7M), warm from round 1, then R1's true-world head polish (best epoch 8). Base package 97c07be8614ed5c42e47882ff2ad4e68ffb6f174d071f14469f1d0a96f5490af, belief package 1b1fd2deb43b109bd4577af6ffdb98977ad90525de8914c6cbae20e0d5ac77f4; branch claude/ut-inside1 1a7a4413.",
    "val_ce": null,
    "regret": null,
-   "status": "Offline gates PASS (value mixture NLL vs the served MLP -0.0285 [-0.0392, -0.0177]; reply recall@4 vs FT1 +0.0130); belief calib LL 0.99855 vs B1a 0.98782. In release 52's search, all four slots: DEV +0.0385 (utadb), screen +0.0573 (utads), confirmation +0.0521 [+0.0410, +0.0633] (utadc, CONFIRMED). Ultra latency 1.057x; Fly 1.126x on the production machine (bar 1.10x, FAIL); with the fast path (#1592) re-timed on Fly 0.992x [0.981, 1.004] (UT-fly-fast) and served that way. Rounds 1-2 on Y data only (packages 6c6c8bd3, 2785ef9e) failed in play (utv1, utv2). #1263 issuecomment-6966630821; archives readouts/UT-alldata-base/, UT-alldata-confirm/. Served from release 53 (2026-11-19, Fly v117) with the fast path; release 54 keeps it."
+   "status": "Offline gates PASS (value mixture NLL vs the served MLP -0.0285 [-0.0392, -0.0177]; reply recall@4 vs FT1 +0.0130); belief calib LL 0.99855 vs B1a 0.98782. In release 52's search, all four slots: DEV +0.0385 (utadb), screen +0.0573 (utads), confirmation +0.0521 [+0.0410, +0.0633] (utadc, CONFIRMED). Ultra latency 1.057x; Fly 1.126x on the production machine (bar 1.10x, FAIL); with the fast path (#1592) re-timed on Fly 0.992x [0.981, 1.004] (UT-fly-fast) and served that way. Rounds 1-2 on Y data only (packages 6c6c8bd3, 2785ef9e) failed in play (utv1, utv2). #1263 issuecomment-6966630821; archives readouts/UT-alldata-base/, UT-alldata-confirm/. Served from release 53 (2026-11-19, Fly v117) with the fast path; release 54 keeps it. Release 55 replaced it with RT4, warm-started from it."
+  },
+  {
+   "name": "RT4 unified retrain, the 500k-round point (served in release 55)",
+   "ck": "e2951d35 + belief 35e225cf",
+   "date": "2026-11-22",
+   "recipe": "The all-data model's architecture (4.9M parameters), warm from it: one joint pass over RT2's 39.76M-row mix plus every UT-GEN2 row of the 500k-round cut, on MPS to buffer 2365 and finished on CPU from that checkpoint, then the head polish (best epoch 8) on a seeded sample of at most 50M rows. Base package e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883, belief package 35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3.",
+   "val_ce": null,
+   "regret": null,
+   "status": "Offline gates PASS (value -0.032, reply recall +0.021). R4H vs release 53's unified model +0.0689 [+0.0546, +0.0834] (rt4h); R4F vs FT-200k +0.0355 [+0.008, +0.064] (rt4f); S159 vs release 54 as served +0.0612 [+0.0510, +0.0712] (rt4c, CONFIRMED). Fly timing 0.993x release 54. Served from release 55 (2026-11-22, Fly v132)."
   },
   {
    "name": "Unified scaling sweep S-6M / F-S / F-M / F-L (not served)",
@@ -5782,9 +5873,9 @@
  "models_note": "The gen-4 runs are ONE experiment, not four models: the same corpus (all 20 stores, 336,000 deals) and the same evaluation, with a small number of ingredients changed per run. The numbers are the plan's order, not the order they ran \u2014 Jerry reordered execution to 1 -> 4 -> 3 -> 2 on 2026-09-21 so the objective was tested before depth. Run 1 is the baseline: gen-3-warm's recipe (residual trunk d4, JS-M1 warm start) on the bigger corpus with HARD targets, the played action as the policy label. Run 4 changes exactly one thing against it, the objective: SOFT targets, the search's own per-candidate values. Runs 2 and 3 are ALSO soft, so the reference for them is RUN 4, not run 1: run 2 changes capacity (residual trunk at depth 6 instead of 4) and run 3 changes architecture AND warm start together (a grid trunk, depth 3 and 44 channels, started from JS-G1 instead of JS-M1). So run 1 vs run 4 isolates the objective, run 4 vs run 2 isolates depth, and run 4 vs run 3 moves two things at once \u2014 which is why run 3's read is not attributable to a single ingredient.",
  "head_ladder_note": "Policy head ALONE: each head plays every card decision by argmax of its summed card log-odds over the capped legal set, no value net, no rollouts, heuristic declare/bury, 8,000 mirrored deals (seed0 20000, the 09-18 ladder's harness). 'vs SmartBot' is the ladder; 'vs production head' is a PAIRED duel of two heads on the same deals, the release-30 head (8ecd4fea) scored by the identical rule (its self-duel reads exactly 0). Standard for every exported model from 2026-09-30. These measure the admission head alone; the served search (which the value head decides) is what the screens read. A better head alone is not a better served bot: PBF1 reads +0.238 vs the production head (paired vs SMV3 +0.031 [+0.015,+0.048]) yet served v39a reads -0.0525 [-0.0878,-0.0171] vs release 36.",
  "screen_comparator": {
-  "release": 54,
+  "release": 55,
   "status": "confirmed",
-  "note": "New screens compare against release 54 as served (from its deploy, 2026-11-19 23:14Z; it differs from release 53, served from 16:52Z that day, only in the bury budget). Before that release 52 (Jerry, in session 2026-11-09, with release 52's deploy, #1347), release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
+  "note": "New screens compare against release 55 as served (from its deploy, 2026-11-22 21:08 ET; Jerry, in session 2026-11-22: 'Yup let's ship the better model', on RT4's confirmation). Before that release 54 (from its deploy, 2026-11-19 23:14Z; it differs from release 53, served from 16:52Z that day, only in the bury budget), release 52 (Jerry, in session 2026-11-09, with release 52's deploy, #1347), release 51 (lcc off on both sides; Jerry, in session 2026-11-06, with release 51's deploy, #1312), release 50 (Jerry, in session 2026-11-04: 'Yes move comparator'), release 49 (Jerry, in session 2026-11-01: 'yes and update docs'), release 48 (Jerry, in session 2026-10-24: 'Yes screens should compare vs our prod policy of r48'), and release 46 (Jerry 2026-10-16, #707 issuecomment-6223485189). Confirmations keep their parent's comparator; earlier rows keep their declared comparator."
  },
  "era": {
   "start": "2026-11-16",

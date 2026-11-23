@@ -1,16 +1,17 @@
 # AI policy ledger
 
-Last reconciled: **2026-11-19**.
+Last reconciled: **2026-11-22**.
 
-**Production is release 54** (live 2026-11-19 18:14 EST, Fly v118; ladder row 23): release 53 with the bury budget
-at 3 s instead of 2 s (#1605), a configuration change with no strength measurement. Release 53 (row 22; live
-2026-11-19 11:52 EST, Fly v117; Jerry, in session 2026-11-18: "awesome lets ship it") is its rollback: release 52
-with the all-data unified model filling the belief, root-prior, leaf-value and reply slots of the play search, on
-the fast readout path. Release 52 (row 21: the combo51 search rules `elt`, `elm`, `els1600`, `wht` and `rcec` on
-release 51) is the one below (`DEPLOY.md`). **New duels and screens compare against release 54 as served** (from
-its deploy, 2026-11-19; before that release 52, 2026-11-09, release 51, 2026-11-06, lcc off on both sides, release
-50, 2026-11-04, release 49, 2026-11-01, release 48, 2026-10-24, release 46, 2026-10-16, and release 45,
-2026-10-13). Confirmations keep their parent's comparator; screens already read keep their declared comparator.
+**Production is release 55** (live 2026-11-22 21:08 EST, Fly v132; ladder row 24; Jerry, in session
+2026-11-22: "Yup let's ship the better model"): release 54 with the RT4 unified model, the 500k-round point of the
+UT-GEN2 scaling curve, in the four unified slots of the play search. The S159 confirmation measured +0.0612
+[+0.0510, +0.0712] against release 54 as served on 7,840 fresh paired deals on the M5 Ultra. Release 54 (row 23;
+live 2026-11-19 18:14 EST, Fly v118: release 53 with the bury budget at 3 s) is its rollback, and release 53 (row 22:
+release 52 with the all-data unified model) is the one below (`DEPLOY.md`). **New duels and screens compare against
+release 55 as served** (from its deploy, 2026-11-22; before that release 54, 2026-11-19, release 52, 2026-11-09,
+release 51, 2026-11-06, lcc off on both sides, release 50, 2026-11-04, release 49, 2026-11-01, release 48,
+2026-10-24, release 46, 2026-10-16, and release 45, 2026-10-13). Confirmations keep their parent's comparator;
+screens already read keep their declared comparator.
 
 This file holds the callable-policy contract and the scientific conclusions that constrain policy work; it is not a
 run log or a copy of the registry. History lives in Git and `docs_archive/`; do not append dated status blocks. The
@@ -20,7 +21,7 @@ long-form text this file carried until 2026-10-16 is verbatim in
 
 ## Production contract
 
-Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48, and the entries marked 50 are release 50's changes on deploy. Release 51 turns the lead-confirmation row off. Release 52 changes the ≤ 7-card lead (it keeps the baseline unless the exact pass is strictly better, `elt`; solves its own first trick by minimax, `elm`; stops at 1.6 s, `els1600`), keeps every earlier accepted throw legal in the play worlds (`wht`) and records refusals after every committed play (`rcec`). Release 53 fills four learned slots of card play from the all-data unified model (`ushare`, `uvalue`, `ureply`, fast path `ufast`; marked 53 below) with the search and its rules unchanged, and release 54 raises the bury budget to 3 s; `DEPLOY.md` "Current production" and its Release 53 record have the detail. Rule tokens (and the release that added
+Release 49 is the `pv-search` policy/value search, W64/K8, no playouts; the two rows marked 49 are what it adds to release 48, and the entries marked 50 are release 50's changes on deploy. Release 51 turns the lead-confirmation row off. Release 52 changes the ≤ 7-card lead (it keeps the baseline unless the exact pass is strictly better, `elt`; solves its own first trick by minimax, `elm`; stops at 1.6 s, `els1600`), keeps every earlier accepted throw legal in the play worlds (`wht`) and records refusals after every committed play (`rcec`). Release 53 fills four learned slots of card play from the all-data unified model (`ushare`, `uvalue`, `ureply`, fast path `ufast`; marked 53 below) with the search and its rules unchanged, release 54 raises the bury budget to 3 s, and release 55 swaps both unified packages for RT4's with every rule and budget unchanged; `DEPLOY.md` "Current production" and its Release 53 record have the detail. Rule tokens (and the release that added
 each) are in parentheses; rules are off by default in source and on in production (#676).
 
 | phase | stage | budget and fallback |
@@ -42,7 +43,9 @@ Release 50: value `g3a-e04-f4f4127e` (G3 Stage A, EMA export of epoch 4) at ever
 `server/releases/r50.json`. Release 53: the unified readout `ut-all-97c07be8` (`SHENGJI_PV_UNIFIED_*`, read through the
 fast path `SHENGJI_PV_UNIFIED_FAST`) and its belief package `ut-all-belief-1b1fd2de` (stored temperature 1.019) in
 place of B1a; G3 Stage A still scores the declaration, the bury and terminal leaves, and FT1 stays bound for any reply
-the readout leaves (`server/releases/r53.json`; release 54 `r54.json`). **Latency switches** (48): prefix-cached and batched encoding and a streamed greedy finish, no name token; on completed decisions the cards played are the switch-off ones. **Logging:** the belief log is on
+the readout leaves (`server/releases/r53.json`; release 54 `r54.json`). Release 55: the unified readout
+`ut-rt4-e2951d35` and its belief package `ut-rt4-belief-35e225cf` in place of release 53's pair, nothing else
+changed (`server/releases/r55.json`). **Latency switches** (48): prefix-cached and batched encoding and a streamed greedy finish, no name token; on completed decisions the cards played are the switch-off ones. **Logging:** the belief log is on
 by default (#1068): each play record carries `belief_seed` and a marginal snapshot; no decision depends on it.
 
 Served name, package SHA256s, `fly.toml`, deploy record and rollback: `DEPLOY.md` "Current production" and the
@@ -81,11 +84,12 @@ packet required it.
 
 ## The ladder: every production change and what it measured
 
-Newest first; rows 7–23 (release 29 up) are the README's "Served results by release" plot plus the correctness
+Newest first; rows 7–24 (release 29 up) are the README's "Served results by release" plot plus the correctness
 fixes. Row numbers are stable; other documents cite them.
 
 | row | rel. | change (token) | vs | result [95% CI] | status | reading | vs Sol, actor-only [95% CI] | vs PT-Sol [95% CI] | pointer |
 |---:|---:|---|---|---|---|---|---|---|---|
+| 24 | 55 | the RT4 unified model in the four unified slots (readout `e2951d35`, belief `35e225cf`; tokens `ushare`/`uvalue`/`ureply` `e2951d35`, `ufast`) | 54 | S159 **+0.0612 [+0.0510, +0.0712]** (one-sided 95% lower bound +0.0527, 80% +0.0570) | CONFIRMED (STAGE2 PASS) | Paired seat-swapped duels of RT4 in release 54's exact served configuration against release 54 as served, on the M5 Ultra, 7,840 fresh deals [2664000000, 2664007840), served tree `9e49366a`; reader VALID; duel-host latency ratio 1.012. RT4 is the 500k-round point of the UT-GEN2 curve: warm from release 53's unified model, one joint pass over RT2's 39.76M-row mix plus every UT-GEN2 row of the 500k-round cut (on MPS to buffer 2365, finished on CPU), then the head polish. No 3,920-deal screen against release 54 ran; RT4 reached the confirmation through two DEV duels with other comparators: R4H against release 53's unified model on the plain readout, +0.0689 [+0.0546, +0.0834] over 3,920 deals (deals 0–999 +0.0585, one-sided 80% lower bound +0.047, CANDIDATE), and R4F against FT-200k (RT3-FT), +0.0355 [+0.008, +0.064] over 1,000 deals (BEATS). Offline gates against the served models: value −0.032 and reply recall +0.021, both PASS. Strength not measured on Fly or with human partners. Latency: Fly timing on the production machine (performance-1x, 2 GB), one game, RT4 vs release 54: mean decision ratio 0.993 (CI 0.977–1.010), 0 fallbacks on either side, projected server RSS 151 MB against the 1,536 MB bar, PASS; 2 or more concurrent games on Fly not measured. Pre-deploy smoke: 10 rounds, 672 plays, 0 fallbacks. | — | — | S159 [#1525 issuecomment-7088914757](https://github.com/jerryyyu/shengji/issues/1525#issuecomment-7088914757), lane `ultra:/Users/jeryyu/fleet/claude-s159-rt4/`; archives `readouts/rt4/`, `2026-11-23-r55-fly-timing/`, `2026-11-23-r55-smoke/`; #1731; `DEPLOY.md` "Current production" |
 | 23 | 54 | bury budget 3 s (`SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS` 2 → 3; bury digest `3a676f3c01ea`) | 53 | not measured | configuration change; no strength claim | The budget is part of the bury identity, so the served name changes; the packages, the play search and the stage table are release 53's. On a Mac mini (#1605), release 52's bury never reached the 2 s deadline (0 of 240 positions, max 1.27 s with 16 extra CPU spinners) and 0 of 240 decisions changed between 2 s and 3 s; release 53's bury and Fly bury time were not timed. The 3 s budget is headroom for a slower or throttled CPU. | — | — | #1605; `DEPLOY.md` "Current production" |
 | 22 | 53 | the all-data unified model in four play slots (`ushare`, `uvalue`, `ureply`, `ufast`; belief `1b1fd2de`, readout `97c07be8`) | 52 | UT-alldata-screen **+0.0573 [+0.0422, +0.0728]** (one-sided 80% lower bound +0.0508); UT-alldata-confirm **+0.0521 [+0.0410, +0.0633]** (one-sided 95% lower bound +0.0429) | SCREEN_PASS, CONFIRMED | Paired seat-swapped duels of the unified bot (without the fast path) against release 52 as served, at the 3 s play and 2 s bury budgets, on the M5 Ultra, each judged alone: 3,920 and 7,840 fresh deals. 0 play and bury fallbacks, 0 declare abandons. One model, a 4.9M-parameter transformer trained in one joint pass over 22.1M rows, replaces B1a, FT1 at the root and G3 A on own-trick leaves; the declaration and the bury keep G3 A. Launch checks (UT-launch, descriptive, 1,000 deals each): full-round registry parity PASS; VR (value and reply readouts only, B1a and FT1 kept) +0.0475 [+0.018, +0.0775]; MIX (one unified bot with a release-52 partner) +0.030 [−0.0005, +0.059]; OOD margin difference vs SmartBot +0.0325 [−0.0005, +0.066]. Red-team open risks: failed throws 5.3% vs 4.1% of leads, rank-2 rounds gaining about half as much. Strength not measured on Fly or with human partners. Latency: UT-fly-fast on the production machine, one game, the fast path vs release 52: mean ratio 0.992× [0.981, 1.004], p95 0.829 vs 0.849 s, 0 fallbacks; without the fast path 1.126×. 2 or more concurrent games on Fly not measured. | — | — | archives `readouts/{UT-alldata-screen,UT-alldata-confirm,UT-launch,UT-fly-fast,UT-redteam}/`; #1596 |
 | 21 | 52 | combo51: exact lead keeps the baseline on ties (`elt`), minimax first trick (`elm`), 1.6 s cap (`els1600`); history-legal throws in the play worlds (`wht`); event-complete refusals (`rcec`) | 51 | combo51 **+0.0418 [+0.0332, +0.0506]** (one-sided 80% lower bound +0.0381); combo51C **+0.0438 [+0.0381, +0.0497]** | SCREEN_PASS, CONFIRMED | Paired seat-swapped duels of release 51 + the five lines against release 51 as served (lcc off on both sides), at the 3 s play and 2 s bury budgets, on the M5 Ultra, each judged alone: combo51 3,920 fresh deals, combo51C 7,840 fresh deals. 0 play, belief and bury fallbacks, 0 declare abandons. Strength not measured on Fly. Latency: on the duel host the exact-lead stage abandons 1.6% of starts, all at the 1.6 s cap (lead decision p99 0.858 vs 0.367 s); on Fly one game at a time (run 2, k=1) decision p95 0.855 vs 0.835 s, 0 fallbacks, 16 exact leads started and 0 abandoned; 2- and 4-concurrent-game Fly latency not measured (the run's k=2 cell ended on the harness memory floor). | — | — | combo51 #1313 issuecomment-6683910756; combo51C #1315 issuecomment-6687062999; archives `readouts/{combo51,combo51C}/`, `2026-11-09-combo51-fly-run2/` |
@@ -198,7 +202,7 @@ If this summary and `server/shengji/ai/registry.py` differ, the registry is auth
 | `mc-cwv-<ckpt8>-w<W>`, `mc-cwv-prior-<ckpt8>-w<W>` | One-ply search whose ENTIRE evaluator is the complete-world value net (`ai/cwv_policy.py`): production's ballot and sampler, every (candidate, world) afterstate over W worlds scored in one batch, argmax of the mean. The `prior` twin is the no-learning control (the training receipt's stratified prior as the value, in its own utility scale: PT0 integer levels for the `baselines` prior, exact terminals converted to match). Registered by `register_cwv_policies` or `SHENGJI_CWV_CKPT`; the checkpoint id is in the name, and a checkpoint whose encoder identity differs from `value_afterstate`'s is refused. | Dev screen only (`scripts/cwv_duel.py`, budget ladder 1x/3x/10x of production's wall). No strength claim; no production authority. |
 | `mc-s0-report-lcb-x3`, `-x10` | MC-LCB with selection and report doses scaled together (N=90/R=900, N=300/R=3000): its own compute curve, the bar a learned arm must beat at each budget. | Reference arms only. |
 | `mc-shortlist-<ckpt8>-w<W>` (`CWVShortlistBot`) | Every legal action ranked by the complete-world model over W worlds; K4 or K8 alternatives plus the incumbent go to full N30/R300 MC, so unlike `mc-cwv-*` the model does not replace the final evaluator. Registered by `register_cwv_shortlist_policies` or `SHENGJI_CWV_SHORTLIST_CKPT` so `make_bot` and `harvest/trajectory.py --policy` reach it; the entry point refuses anything that is not a `CWVShortlistBot` (`mc-cwv-<ckpt8>-w32` is the one-ply bot). | Production 22–28 (W32 play, hybrid bury, bounded heuristic fallback); since 29 a registered rollback (its keys stay in `fly.toml`). |
-| `pv-search-<ckpt8>-w<W>-k<K>[-<rule tokens>]-r<recipe8>[-bury-hybrid-<id>]` (`PVSearchBot`, `PVSearchBuryBot`; `train/pv_search_policy.py`) | The policy/value search and its bury on the same package; registered by `register_pv_search_policies` when `SHENGJI_PV_CKPT` and `SHENGJI_PV_SHA256` are set, name derived from the environment. | PRODUCTION since 29; release 54 is the [production contract](#production-contract). Since release 53 a unified package (`SHENGJI_PV_UNIFIED_*`, `train/unified_serving.py`) adds `-ushare…-uvalue…-ureply…` and `-ufast` to the name. |
+| `pv-search-<ckpt8>-w<W>-k<K>[-<rule tokens>]-r<recipe8>[-bury-hybrid-<id>]` (`PVSearchBot`, `PVSearchBuryBot`; `train/pv_search_policy.py`) | The policy/value search and its bury on the same package; registered by `register_pv_search_policies` when `SHENGJI_PV_CKPT` and `SHENGJI_PV_SHA256` are set, name derived from the environment. | PRODUCTION since 29; release 55 is the [production contract](#production-contract). Since release 53 a unified package (`SHENGJI_PV_UNIFIED_*`, `train/unified_serving.py`) adds `-ushare…-uvalue…-ureply…` and `-ufast` to the name. |
 
 Local: `SHENGJI_BOT=smart uv run shengji-server`. In code, always pass a deterministic seed:
 `make_bot("mc-strong", seed=1234)` (from `shengji.ai.registry`).
@@ -249,6 +253,13 @@ As of 2026-11-04; runs are on the scaling page (`docs/scaling_log/`), the search
   +0.0521 [+0.0410, +0.0633] vs release 52 as served (release 53). Its offline gates (reply
   recall@4 +0.0130 over FT1, value mixture NLL −0.0285 against the served value net) passed while its belief
   calibration log-loss was worse than B1a's (0.9985 vs 0.9878); the duel decided, not the offline numbers.
+- **The 500k-round retrain of the unified model confirmed against the served release.** RT4 (warm from the
+  all-data model, one pass over RT2's mix plus every UT-GEN2 self-play row of the 500k-round cut) confirmed +0.0612
+  [+0.0510, +0.0712] vs release 54 as served (S159; release 55). The step bundles more rows, newer generators and a
+  second warm-start pass, so it does not isolate the data amount. Using the same 500k-round UT-GEN2 cut, with
+  different initialization and replay, two separate duels against FT-200k read: RT4 (warm from the all-data model,
+  replaying RT2's 39.76M rows) +0.0355 [+0.008, +0.064]; FT-500k (RT2 fine-tuned on the 28.77M cut rows alone) +0.008
+  [−0.0185, +0.0345].
 - Release 29's served read (+0.049) is below its card-play read (+0.086) with no measured cause; the deploy gate is
   the served design. Corpus seeds are decks and are excluded from screens per model.
 

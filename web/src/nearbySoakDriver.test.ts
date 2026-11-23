@@ -2,8 +2,10 @@
 // personas' draws and decisions, and the driver's flows (a join by code, the
 // lobby, play, a round's end, a leaver's Leave and rejoin, a twitch's double
 // send) and its watchdog.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { SmartBot } from "./offline/bot";
+import { keepSeatToken, NearbyJoinStore, type NearbyJoinDeps } from "./nearbyJoin";
+import { nearbyLogLines } from "./nearbyLog";
 import { freshMemory } from "./nearbySoak";
 import {
   DEFAULT_MIX, declareMove, leavePlan, lobbyMove, moveDelay, pickPersonas, twitchPlan, MOVE_CLOCK_MS, type Personas,
@@ -99,7 +101,7 @@ describe("the personas", () => {
 });
 
 /** A fake page for the driver: a clock, the join store, the sent messages. */
-function rig(personas: Partial<Personas> = {}, startRole: "host" | "joiner" = "joiner", opts: { wasHost?: boolean } = {}) {
+function rig(personas: Partial<Personas> = {}, startRole: "host" | "joiner" = "joiner", opts: { wasHost?: boolean; join?: JoinPort } = {}) {
   let role = startRole;
   const page = { code: "ABCDEF" as string | null, wasHost: opts.wasHost ?? false };
   let now = 0;
@@ -123,7 +125,7 @@ function rig(personas: Partial<Personas> = {}, startRole: "host" | "joiner" = "j
     send: (m) => { sent.push(m); return true; },
     open: () => true,
     role: () => role,
-    join,
+    join: opts.join ?? join,
     code: () => page.code,
     host: () => { calls.push("host"); return true; },
     wasHost: () => page.wasHost,
@@ -153,6 +155,63 @@ function rig(personas: Partial<Personas> = {}, startRole: "host" | "joiner" = "j
   const setRole = (r: "host" | "joiner") => { role = r; };
   return { d, j, sent, log, calls, advance, setRole, page };
 }
+
+/** The real join store on a fake socket, as the driver's JoinPort. */
+function realJoin() {
+  const sent: Frame[] = [];
+  let onMsg: (m: Frame) => void = () => {};
+  let onStatus: (s: "open" | "closed" | "connecting") => void = () => {};
+  const deps: NearbyJoinDeps = {
+    conn: {
+      send: ((m: Frame) => { sent.push(m); return true; }) as never,
+      subscribe: ((fn: (m: Frame) => void) => { onMsg = fn; return () => {}; }) as never,
+      subscribeStatus: ((fn: typeof onStatus) => { onStatus = fn; return () => {}; }) as never,
+      useNearby: () => {}, leaveNearby: () => {}, leaveToLobby: () => {}, reconnect: () => {},
+      nearbyLeaveOwed: () => false,
+    },
+    socketFor: async () => () => ({}) as WebSocket,
+    watchPath: async () => () => {},
+    offline: () => true, setOffline: () => {}, setSession: () => {},
+    allowed: () => {}, refused: () => {}, onVisible: () => {},
+  };
+  const store = new NearbyJoinStore(deps);
+  const port: JoinPort = {
+    view: () => store.view, seated: () => store.seated, hostLeft: () => store.hostLeft,
+    open: (code, name) => store.open(code, name), pick: (seat) => store.pick(seat), join: () => store.join(),
+    again: () => store.again(), cancel: () => store.cancel(), leave: () => store.leave(), forgetToken: () => {},
+  };
+  return { store, port, sent, msg: (m: Frame) => onMsg(m), status: (s: "open") => onStatus(s) };
+}
+
+describe("the driver's join on the real join store", () => {
+  let store: NearbyJoinStore | null = null;
+  afterEach(() => { localStorage.clear(); store?.cancel(); });
+
+  it("taps the glowing seat as a person does, then Join, and lands on that seat", async () => {
+    keepSeatToken("ABCDEF", "tok-2", { seat: 2, name: "P1" });
+    const real = realJoin();
+    store = real.store;
+    const r = rig({}, "joiner", { join: real.port });
+    r.d.start();
+    r.advance(5000);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    real.status("open");
+    const person = (seat: number, name: string, connected: boolean) =>
+      ({ seat, name, is_bot: false, connected, team: seat % 2, claimable: false, controller: "human", reserved_secs: null });
+    real.msg({ type: "room_seats", room: "ABCDEF", in_game: true, full: false, held_seat: 2,
+              seats: [person(0, "Host", true), person(2, "P1", false)] });
+    expect(real.store.view).toMatchObject({ step: "panel", seat: 2 });
+    r.d.joinChanged();
+    r.advance(2000);
+    expect(r.log).toContain("flow: join seat 2");
+    const lines = nearbyLogLines().map((l) => l.text);
+    expect(lines.some((l) => /^seat picker tap: .* → seat 2$/.test(l))).toBe(true);
+    expect(real.sent.at(-1)).toMatchObject({ type: "table_join", code: "ABCDEF", seat: 2, token: "tok-2" });
+    real.msg({ type: "state", room: "ABCDEF", you: 2, players: [{ seat: 2, name: "P1" }] });
+    expect(real.store.seated).toBe(true);
+    expect(nearbyLogLines().at(-1)?.text).toBe("seated at seat 2");
+  });
+});
 
 describe("the driver", () => {
   it("joins by code from the home screen, picks the panel's seat, starts in the lobby and plays its turn", async () => {

@@ -60,9 +60,35 @@ function buildId(): Plugin {
 // no served or shipped build contains it.
 const NEARBY_SPIKE = process.env.SHENGJI_NEARBY_SPIKE === "1";
 
+// The page the App Store archive bundles is built with VITE_SHENGJI_APP_STORE=1
+// (`npm run ios:sync:appstore`): testTools.ts folds TEST_TOOLS to false, and
+// nearbyUi.tsx takes nearbyDebugAppStore.ts in place of nearbyDebug.tsx, so
+// no soak, log-file, upload or hidden-switch module is in the bundle at all.
+// flavor_guard.sh refuses an App Store archive whose bundled page has them.
+const APP_STORE = process.env.VITE_SHENGJI_APP_STORE === "1";
+// The App Store page never takes a device-test flag: with one (the spike's
+// test page, say) the build stops rather than ship its entry or bundle.
+const MIXED = Object.keys(process.env).filter((k) => /SHENGJI_NEARBY_/.test(k) && process.env[k]);
+if (APP_STORE && MIXED.length > 0) {
+  throw new Error(`VITE_SHENGJI_APP_STORE=1 with ${MIXED.join(", ")}: the App Store page has no device-test tools`);
+}
+
+function appStoreBundle(): Plugin {
+  return {
+    name: "shengji-app-store-bundle",
+    apply: "build",
+    enforce: "pre",
+    resolveId(source, importer) {
+      if (!APP_STORE || source !== "./nearbyDebug" || !importer) return null;
+      if (!/[\\/]src[\\/]nearbyUi\.tsx$/.test(importer)) return null;
+      return this.resolve("./nearbyDebugAppStore", importer, { skipSelf: true });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), precompressAssets(), buildId()],
+  plugins: [appStoreBundle(), react(), precompressAssets(), buildId()],
   ...(NEARBY_SPIKE
     ? { build: { rollupOptions: { input: { main: "index.html", spike: "nearby-spike.html" } } } }
     : {}),

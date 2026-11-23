@@ -1,7 +1,7 @@
 // The nearby UI, one module that nearbyGate.ts imports only once the app
 // binary offers nearby play. Components outside it reach nearby play only
 // through what this exports, so the main bundle holds none of its code or
-// copy, and nothing here runs on the web or in an App Store binary.
+// copy, and nothing here runs on the web.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { GameState } from "./protocol";
 import { conn, type ConnStatus } from "./ws";
@@ -12,16 +12,16 @@ import { nearbyAllowedBefore, openNearbySettings } from "./nearbySession";
 import { NEARBY_LINK_LABEL, nearbyLinkState } from "./nearbyLink";
 import { isNearbyCode } from "./offline/server/nearby/codes";
 import { NEARBY_COPY } from "./offline/server/nearby/copy";
-import {
-  clearNearbyLogFile, copyNearbyLog, nearbySoakSwitchOn, nearbySoakSwitchTap, subscribeNearbySoakSwitch,
+import NearbyDebugPaneFull, {
+  clearNearbyLogFile, copyNearbyLog, startNearbyLogFile as startNearbyLogFileFull, nearbySoakSwitchOn, nearbySoakSwitchTap, subscribeNearbySoakSwitch,
   uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive, useNearbyLogFile, useNearbySoak, useNearbySoakSwitch,
 } from "./nearbyDebug";
 import { tapHandlers } from "./tap";
+import { TEST_TOOLS } from "./testTools";
 import { NearbyJoinPanel as JoinPanel, NearbyRoomPanel as RoomPanel } from "./queue/TablePanel";
 import { fromNearbyJoin, nearbyRoomModel } from "./queue/nearbyModel";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
-export { default as NearbyDebugPane, startNearbyLogFile } from "./nearbyDebug";
 export { nearbyJoin } from "./nearbyJoin";
 export { nearbyHost, openNearbySettings } from "./nearbySession";
 export { isNearbyCode, NEARBY_CODE_LEN } from "./offline/server/nearby/codes";
@@ -71,24 +71,33 @@ export function NearbyLinkDot({ state }: { state: GameState }) {
 /** A tap on the ⋯ menu's table code: the hidden switch's counter, where the
  *  plugin reports `chaos` (nearbyDebug.tsx); a no-op anywhere else. */
 export function nearbyMenuTitleTap(): void {
-  nearbySoakSwitchTap(nearbyGate().chaos);
+  if (TEST_TOOLS) nearbySoakSwitchTap(nearbyGate().chaos);
 }
 
 /** The hidden switch as the ⋯ menu's code marks it: on only where the
  *  plugin reports `chaos`, so a switch kept from another build marks nothing. */
-export const nearbySoakMarker = {
-  subscribe: subscribeNearbySoakSwitch,
-  getSnapshot: (): boolean => nearbyGate().chaos && nearbySoakSwitchOn(),
-};
+export const nearbySoakMarker: { subscribe: (fn: () => void) => () => void; getSnapshot: () => boolean } = TEST_TOOLS
+  ? { subscribe: subscribeNearbySoakSwitch, getSnapshot: (): boolean => nearbyGate().chaos && nearbySoakSwitchOn() }
+  : { subscribe: () => () => {}, getSnapshot: () => false };
+
+/** The device test's log pane and the Beta's running-soak pill
+ *  (nearbyDebug.tsx); nothing in the App Store's bundled page (testTools.ts). */
+export const NearbyDebugPane: typeof NearbyDebugPaneFull = TEST_TOOLS ? NearbyDebugPaneFull : () => null;
+
+/** The log file and its upload, where the plugin reports `logFile`; nothing
+ *  in the App Store's bundled page. */
+export const startNearbyLogFile: () => void = TEST_TOOLS ? startNearbyLogFileFull : () => {};
 
 /** The ⋯ menu's soak rows at a nearby table. In a Debug build for the
  *  device test (`debug`), and in the Beta (`chaos`) only while the hidden
  *  switch is on: with the log file (`logFile`), Copy log, Clear log file and
  *  Upload log now, and the soak's Autoplay, Chaos and summary. The
  *  peer-to-peer keepalive is the Debug build's alone. The log file and its
- *  upload run wherever `logFile` is, rows or not (nearbyGate.ts). A
- *  reviewed App Store binary reports none and draws none of them. */
-export function NearbyMenuRows({ close }: { close: () => void }) {
+ *  upload run wherever `logFile` is, rows or not (nearbyGate.ts). The App
+ *  Store binary reports none, and its bundled page has none (testTools.ts). */
+export const NearbyMenuRows: (props: { close: () => void }) => ReactNode = TEST_TOOLS ? TestToolRows : () => null;
+
+function TestToolRows({ close }: { close: () => void }) {
   const gate = nearbyGate();
   const debug = useNearbyDebug(gate.debug);
   const logFile = useNearbyLogFile(gate.logFile);

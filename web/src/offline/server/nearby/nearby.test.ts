@@ -440,8 +440,11 @@ describe("what a joiner's socket sends", () => {
     for (const t of ["ping", "presence", "queue_join", "queue_status", "client_event", "table_chat", "create_room", "table_start_now", "table_start_bots"]) {
       expect(NearbySocket.outbound(JSON.stringify({ type: t, text: "hi" }))).toBeNull();
     }
-    // a peek carries no name or token; a Start carries only its on/off
+    // a peek carries no name, and its kept token only to ask for its held
+    // seat; a Start carries only its on/off
     expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: "K7Q2M", name: "Ann", token: "tok" }))!))
+      .toEqual({ type: "nearby_hello", nearby_v: NEARBY_V, name: "", token: "tok", peek: true, seat: null });
+    expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_peek", code: "K7Q2M" }))!))
       .toEqual({ type: "nearby_hello", nearby_v: NEARBY_V, name: "", token: null, peek: true, seat: null });
     expect(JSON.parse(NearbySocket.outbound(JSON.stringify({ type: "table_start", on: false, seq: 3 }))!))
       .toEqual({ type: "table_start", on: false });

@@ -606,7 +606,8 @@ export class NearbySocket {
         type: "nearby_hello",
         nearby_v: NEARBY_V,
         name: !peek && typeof msg.name === "string" ? msg.name.slice(0, LIMITS.name) : "",
-        token: !peek && typeof msg.token === "string" && msg.token ? msg.token.slice(0, LIMITS.token) : null,
+        // a peek's token asks the host only which seat it holds (held_seat)
+        token: typeof msg.token === "string" && msg.token ? msg.token.slice(0, LIMITS.token) : null,
         peek,
         seat: !peek && typeof seat === "number" && Number.isInteger(seat) && seat >= 0 && seat < 4 ? seat : null,
         ...(!peek && msg.chosen === true ? { chosen: true } : {}),

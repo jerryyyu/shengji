@@ -385,7 +385,7 @@ export class NearbyHost {
     if (hello.peek) {
       // the seat picker: the seats, and the link stays unseated until its
       // pick, for one PEEK_SECONDS from its first look
-      const seats = nearbyPeekJson(this.room, this.clock.now());
+      const seats = nearbyPeekJson(this.room, this.clock.now(), hello.token);
       this.link?.send(id, JSON.stringify(seats));
       if (seats.full) {
         // no seat for a newcomer: the look ends here

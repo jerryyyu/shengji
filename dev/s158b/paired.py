@@ -92,6 +92,8 @@ def paired_play(bot, rnd, seat):
         seat=seat, attacker=bool(rnd.is_attacker(seat)), admitted=admitted,
         served=baseline, arm=arm, full=full, full_censored=full is None,
         worlds=len(worlds), abandoned=abandon, stage_seconds=rec["exact_follow_seconds"],
+        completed_worlds=rec.get("exact_follow_completed_count"),
+        skipped_worlds=rec.get("exact_follow_skipped_count"),
         pi_attacker_points=_pi_points(rnd, seat, admitted))
 
 
@@ -99,9 +101,19 @@ def play_deal(rnd, bots):
     """Consume one prepared round. Any fault propagates before a deal result is returned."""
     rows = []
     decisions = 0
+    world_counts = {}
+    belief_fallbacks = 0
     while rnd.phase == "play":
         seat = rnd.turn
         cards, row = paired_play(bots[seat], rnd, seat)
+        rec = bots[seat].last_decision_record
+        worlds = rec["worlds"]
+        world_counts[worlds] = world_counts.get(worlds, 0) + 1
+        if bots[seat].belief_worlds:
+            fallback = rec["belief_fallback_any"]
+            if type(fallback) is not int or fallback not in (0, 1):
+                raise ValueError("malformed belief fallback count")
+            belief_fallbacks += fallback
         if row is not None:
             rows.append(dict(row, play_index=decisions))
         rnd.play(seat, list(cards))
@@ -109,4 +121,5 @@ def play_deal(rnd, bots):
         decisions += 1
     if not decisions or rnd.phase != "round_end":
         raise ValueError("incomplete deal")
-    return dict(decisions=decisions, eligible=rows, attacker_points=rnd.attacker_points)
+    return dict(decisions=decisions, eligible=rows, attacker_points=rnd.attacker_points,
+                world_counts=world_counts, belief_fallbacks=belief_fallbacks)

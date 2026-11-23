@@ -75,3 +75,37 @@ def test_a_different_arm_pick_does_not_steer_the_deal(monkeypatch):
     row, = result["eligible"]
     assert row["arm"] != row["served"]
     assert sorted(rnd.history[0].plays[-1].cards) == sorted(row["admitted"][row["served"]])
+
+
+def test_full_solver_gets_the_value_pass_world_object_and_order(monkeypatch):
+    bot = bot_for_fixture()
+    seen = {}
+    value_pass = bot._value_means
+    rerank = paired.rerank_follow
+
+    def remember(rnd, seat, actions, worlds, check):
+        seen.update(worlds=worlds, actions=[list(a) for a in actions])
+        return value_pass(rnd, seat, actions, worlds, check)
+
+    def verify(rnd, seat, actions, worlds, **kwargs):
+        assert worlds is seen["worlds"] and actions == seen["actions"]
+        seen["verified"] = True
+        return rerank(rnd, seat, actions, worlds, **kwargs)
+
+    bot._value_means = remember
+    monkeypatch.setattr(paired, "rerank_follow", verify)
+    rnd = eight_card_last_seat()
+    paired.paired_play(bot, rnd, rnd.turn)
+    assert seen["verified"]
+
+
+def test_reference_refusal_is_a_fault(monkeypatch):
+    from shengji.train.pv_exact_follow import ExactFollowRefusal
+
+    def refuse(*args, **kwargs):
+        raise ExactFollowRefusal("reference node cap")
+
+    monkeypatch.setattr(paired, "rerank_follow", refuse)
+    rnd = eight_card_last_seat()
+    with pytest.raises(ExactFollowRefusal, match="reference node cap"):
+        paired.paired_play(bot_for_fixture(), rnd, rnd.turn)

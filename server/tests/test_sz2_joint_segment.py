@@ -240,3 +240,94 @@ def test_export_rejects_incomplete_or_invalid_parity(segment, override):
               "max_abs_diff": {"belief": 1e-5, "value": 2e-5, "reply": 3e-5}}
     with pytest.raises(ValueError, match="parity"):
         check_parity({**report, **override}, "digest", 124)
+
+
+def test_duel_consumes_both_completed_exports_and_refuses_swapped_packages(segment, cpu_root, data,
+                                                                        tmp_path, monkeypatch):
+    import sz2_duel_exports as duel
+    from sz2_cache_arm import arm_inputs
+    from sz2_export_arm import export_arm, file_sha
+
+    joint, polish, exports = (tmp_path / phase for phase in ("joint", "polish", "export"))
+    joint.mkdir()
+    (joint / "launcher.status").write_text("LANE DONE sz2-joint-v1 t joint arms complete rc=0\n")
+    recipe = tmp_path / "recipe.json"
+    recipe.write_text("{}")
+    recipe_sha = file_sha(recipe)
+    directories = {}
+    receipts = {}
+    for arm, checkpoint in (("S", "train/best.pt"), ("M", "polish/best.pt")):
+        train = joint / arm / "train"
+        train.mkdir(parents=True)
+        best = train / "best.pt"
+        best.hardlink_to(cpu_root[0] / checkpoint)
+        sha = file_sha(best)
+        (train / "status.log").write_text(f"t UTR DONE best={best} sha256={sha}\n")
+        _, directory, _ = arm_inputs(joint, arm, exports, recipe, recipe_sha)
+        stage = polish / arm / directory.name
+        stage.mkdir(parents=True)
+        (stage / "selected.pt").hardlink_to(best)
+        (stage / "status.log").write_text(f"t POLISH DONE best_epoch=0 calib {{}} sha256={sha}\n")
+        assert export_arm(joint, arm, polish, exports, recipe, recipe_sha, data, 132) == 0
+        directories[arm] = directory
+        receipts[arm] = json.loads((directory / "parity.json").read_text())
+
+        name = f"sz2-post-{arm}-v1"
+        finished = tmp_path / f"codex-{name}/capture/launcher.status"
+        finished.parent.mkdir(parents=True)
+        terminal = f"LANE DONE {name} t selected package parity verified rc=0\n"
+        if arm == "M":
+            terminal += f"LANE UNLOCKED {name} t {tmp_path / '.claude-host.lock'}\n"
+        finished.write_text(terminal)
+
+    for name, value in {
+        "FLEET": tmp_path, "JOINT": joint, "EXPORT": exports, "POLISH": polish, "RECIPE": recipe,
+        "RECIPE_SHA": recipe_sha, "PARITY_ROWS": 132, "FT500": directories["S"],
+        "FT500_PACKAGE_SHA": receipts["S"]["package"], "FT500_BELIEF_SHA": receipts["S"]["belief_sha256"],
+    }.items():
+        monkeypatch.setattr(duel, name, value)
+
+    result = duel.verified_exports()
+    assert result["FT500"] == result["S"]
+    for arm in ("S", "M"):
+        assert result[arm] == (str(directories[arm] / "cand.npz"), receipts[arm]["package"],
+                               str(directories[arm] / "cand-belief.npz"), receipts[arm]["belief_sha256"])
+
+    small = directories["S"]
+    parity = small / "parity.json"
+    parity.write_text(json.dumps(receipts["M"]))
+    with pytest.raises(ValueError, match="S parity receipt does not match the selected checkpoint"):
+        duel.verified_exports()
+    parity.write_text(json.dumps(receipts["S"]))
+
+    belief = small / "cand-belief.npz"
+    belief.write_bytes((directories["M"] / "cand-belief.npz").read_bytes())
+    with pytest.raises(ValueError, match="sha256"):
+        duel.verified_exports()
+    parity.write_text(json.dumps({**receipts["S"], "belief_sha256": receipts["M"]["belief_sha256"]}))
+    with pytest.raises(ValueError, match="belief package does not match the unified package"):
+        duel.verified_exports()
+
+
+@pytest.mark.parametrize("later", [
+    "LANE START sz2-post-M-v1 t a fresh attempt",
+    "LANE ABORT sz2-post-M-v1 t rc=7 reason=post-training worker failed",
+    "LANE UNLOCKED sz2-post-S-v1 t /fixture/lock",
+])
+def test_duel_refuses_stale_failed_or_wrong_post_terminal_before_artifacts(segment, tmp_path, monkeypatch, later):
+    import sz2_duel_exports as duel
+
+    monkeypatch.setattr(duel, "FLEET", tmp_path)
+    for arm in ("S", "M"):
+        name = f"sz2-post-{arm}-v1"
+        status = tmp_path / f"codex-{name}/capture/launcher.status"
+        status.parent.mkdir(parents=True)
+        status.write_text(f"LANE DONE {name} t selected package parity verified rc=0\n"
+                          + (later + "\n" if arm == "M" else ""))
+
+    def unexpected_artifact_read(*args):
+        raise AssertionError("an unresolved post lane must not read the exports")
+
+    monkeypatch.setattr(duel, "arm_inputs", unexpected_artifact_read)
+    with pytest.raises(ValueError, match="M post lane did not complete successfully"):
+        duel.verified_exports()

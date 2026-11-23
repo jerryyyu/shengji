@@ -8,6 +8,8 @@ published only after every candidate in every world completed.
 
 from __future__ import annotations
 
+import math
+import time
 from dataclasses import dataclass
 from collections import Counter
 
@@ -88,6 +90,76 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
         winner = baseline_index
     return ExactFollowResult(winner=winner, scores=means, worlds=len(worlds), nodes=nodes,
                              world_scores=(tuple(world_rows) if retain_world_scores else None))
+
+
+@dataclass(frozen=True)
+class AnytimeFollowResult:
+    winner: int
+    retained: tuple[int, ...]
+    completed: tuple[int, ...]
+    skipped: tuple[int, ...]
+    abandoned: bool
+    scores: tuple[float, ...]
+    nodes: int
+
+
+def rerank_eight_card_follow(rnd, seat, admitted, worlds, *, baseline_index,
+                            value_means, max_nodes, check_budget=None, clock=time.process_time):
+    """Apply the frozen eight-card rule to one finalized 64-world value ballot."""
+    start = clock()
+    if (rnd.phase != "play" or rnd.turn != seat or not rnd.trick or not rnd.trick.plays
+            or max(map(len, rnd.hands)) != 8 or len(worlds) != 64 or len(admitted) < 2
+            or not 0 <= baseline_index < len(admitted) or len(value_means) != len(admitted)
+            or not all(math.isfinite(x) for x in value_means)):
+        raise ExactFollowRefusal("expected an eight-card follow with a finalized 64-world ballot")
+
+    class StageDeadline(Exception):
+        pass
+
+    class WorldDeadline(Exception):
+        pass
+
+    def guard():
+        if check_budget is not None:
+            check_budget()
+        now = clock()
+        if now > start + 1.95:
+            raise StageDeadline
+        if now > world_start + 0.25:
+            raise WorldDeadline
+
+    by_value = sorted((i for i in range(len(admitted)) if i != baseline_index),
+                      key=lambda i: (value_means[i], -i))
+    dropped = set(by_value[:round(0.2 * len(admitted))])
+    retained = tuple(i for i in range(len(admitted)) if i not in dropped)
+    actions = [admitted[i] for i in retained]
+    totals = dict.fromkeys(retained, 0.0)
+    completed, skipped = [], []
+    nodes = 0
+    attacker = bool(rnd.is_attacker(seat))
+    for w, world in enumerate(worlds):
+        world_start = clock()
+        try:
+            row, solved_nodes = _world_scores(rnd, seat, actions, world, 8, max_nodes, guard,
+                                   "compact-level", attacker)
+            guard()
+        except WorldDeadline:
+            skipped.append(w)
+            continue
+        except StageDeadline:
+            break
+        for i, value in zip(retained, row, strict=True):
+            totals[i] += value
+        nodes += solved_nodes
+        completed.append(w)
+    abandoned = len(completed) < 12
+    best = max(retained, key=totals.__getitem__)
+    winner = baseline_index if abandoned or totals[best] <= totals[baseline_index] else best
+    if check_budget is not None:
+        check_budget()
+    scores = () if abandoned else tuple(totals[i] / len(completed) for i in retained)
+    return AnytimeFollowResult(winner, retained, tuple(completed), tuple(skipped),
+                              abandoned, scores, nodes)
 
 
 def rerank_follow_points(primary: ExactFollowResult, rnd, seat: int, admitted,

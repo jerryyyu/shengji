@@ -70,7 +70,7 @@ def trace_fields(rec, skip=()):
                 out[f"{k}__len"] = len(v)
             if (len(v) <= TRACE_LIST_MAX and k not in out
                     and (all(isinstance(x, (int, float)) for x in v)
-                         or (k == 'exact_follow_points_scores'
+                         or (k in ('exact_follow_scores', 'exact_follow_points_scores')
                              and all(x is None or
                                      (type(x) in (int, float) and math.isfinite(x))
                                      for x in v))
@@ -423,7 +423,15 @@ def exact_follow_summary(shards):
                          and type(nodes) is int and nodes >= 0
                          and row.get('exact_follow_error') is None)
                 if scores_present:
-                    valid = valid and finite_score_list(scores) and len(scores) > 1
+                    retained = row.get('exact_follow_retained')
+                    if retained is None:
+                        valid = valid and finite_score_list(scores) and len(scores) > 1
+                    else:
+                        valid = (valid and isinstance(scores, list) and isinstance(retained, list)
+                                 and len(retained) >= 2 and all(type(i) is int for i in retained)
+                                 and retained == [i for i, v in enumerate(scores) if v is not None]
+                                 and finite_score_list([v for v in scores if v is not None])
+                                 and len(scores) == row.get('admitted__len', len(scores)))
                     if score_len_present:
                         valid = valid and type(score_len) is int and score_len == len(scores)
                 else:

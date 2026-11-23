@@ -453,6 +453,7 @@ def train(args) -> int:
 def _train(args, out: Path, status: str) -> int:
     if getattr(args, "microbatch_rounds", None) is not None and args.microbatch_rounds < 1:
         raise UnifiedReadoutError("--microbatch-rounds must be positive")
+    calib_rounds = min(getattr(args, "microbatch_rounds", None) or 32, 32)
     report_buffer = getattr(args, "report_buffer", None)
     pause_at_report = getattr(args, "pause_at_report", False)
     if pause_at_report and report_buffer is None:
@@ -561,7 +562,7 @@ def _train(args, out: Path, status: str) -> int:
         _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}"
                         + ("" if device.type == "cpu" else f" device={args.device}"))
     else:
-        state["init_calib"] = evaluate(model, calib, device=device)
+        state["init_calib"] = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         _status(status, f"{LANE} START params={sum(p.numel() for p in model.parameters())} "
                         f"readout_params={sum(p.numel() for p in model.readout.parameters())} rows={stream.rows} "
                         f"chunks={len(entries)} buffers={n_buffers} init={init['sha256']}"
@@ -644,7 +645,7 @@ def _train(args, out: Path, status: str) -> int:
                 break
         if pause_at_report:
             raise UnifiedReadoutError("training ended before the requested report boundary")
-        cm = evaluate(model, calib, device=device)
+        cm = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
                         f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s)")

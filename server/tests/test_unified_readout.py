@@ -443,14 +443,36 @@ def test_accumulated_rounds_preserve_weighted_gradient_and_batch_totals(world):
 
 
 @pytest.mark.skipif(not torch.backends.mps.is_available(), reason="requires MPS")
-def test_microbatch_cli_preserves_optimizer_step_count_on_mps(world, tmp_path):
+def test_microbatch_cli_preserves_optimizer_step_count_on_mps(world, tmp_path, monkeypatch):
     from tests.test_unified_seq import extract_dir
     data = extract_dir(world["store"], tmp_path / "batch-data", calib=0.5)
     init = _readout_ckpt(tmp_path)
+    calls = []
+    evaluate = ur.evaluate
+
+    def record(*args, **kwargs):
+        calls.append(kwargs["rounds_per_batch"])
+        return evaluate(*args, **kwargs)
+
+    monkeypatch.setattr(ur, "evaluate", record)
     for tag, extra in (("whole", []), ("micro", ["--microbatch-rounds", "1"])):
+        calls.clear()
         _train_run([data], init, tmp_path / tag, "--device", "mps", *extra)
+        assert len(calls) >= 2 and set(calls) == ({1} if extra else {32})
     def steps(tag):
         saved = torch.load(tmp_path / tag / "checkpoint.pt", weights_only=False)
         return [int(p["step"]) for p in saved["opt"]["state"].values()]
     assert steps("micro") == steps("whole") and min(steps("whole")) > 0
     assert json.loads((tmp_path / "micro/run.json").read_text())["microbatch_rounds"] == 1
+
+def test_four_round_calibration_matches_full_calibration(world):
+    from tests.test_unified_seq import _loaded
+    part, _ = _loaded(world)
+    assert len(np.unique(part["row_round"])) > 4
+    torch.manual_seed(12)
+    model = ur.build(ARCH, READOUT)
+    ref = ur.evaluate(model, part, rounds_per_batch=32)
+    actual = ur.evaluate(model, part, rounds_per_batch=4)
+    assert actual.keys() == ref.keys()
+    for key in ref:
+        assert actual[key] == pytest.approx(ref[key], abs=5e-6), key

@@ -45,14 +45,16 @@ One rated round, for each rated account on team ``t``:
 Partners share ``R_t``, ``E``, ``S`` and ``K``, so they move by the same
 amount, except when one of them is capped: a partner who abandons the round,
 or who carries the leaver cap into it, scores at most ``LEAVER_SCORE_CAP``
-(below), so after a win that partner gains less than the other.
+(below) and never gains rating, so after a win that partner gains less than
+the other, or nothing.
 
 Abandoning: a signed-in player who leaves a round in play (``leave_room``),
 or whose seat the bot takes over after a disconnect and who has not
 returned by the round's end, is rated on that round's real result (a bot
 finished their hand) with the score capped at ``LEAVER_SCORE_CAP``: a loss
-counts as it happened, a win counts no better than a draw. Leaving can then
-never earn more than playing on, and costs no more than the real result.
+counts as it happened, a win counts no better than a draw, and the rating
+change is never positive. Leaving can then never earn more than playing on,
+never earns rating at all, and costs no more than the real result.
 Later rounds they are absent from are not rated at all.
 
 A newcomer who takes a seat at an open table mid-round and leaves (or
@@ -277,6 +279,8 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 k = k_factor(at_start[p.user_id][1], bool(provisional - {p.user_id}))
                 before = float(row["rating"])
                 delta = k * (actual - exp)
+                if p.abandoned or p.capped:
+                    delta = min(delta, 0.0)
                 after = before + delta
                 partner = (p.seat + 2) % 4
                 opponents = ((p.seat + 1) % 4, (p.seat + 3) % 4)

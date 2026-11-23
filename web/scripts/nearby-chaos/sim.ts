@@ -798,8 +798,14 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
         const taken = new Set((f.seats as { seat: number }[]).map((s) => s.seat));
         const open = [0, 1, 2, 3].filter((s) => !taken.has(s));
         const seat = open.length ? driverRng.pick(open) : null;
+        // nearbyJoin.ts join(): the panel's Join carries the token the
+        // table's resume frame gave this page since its look (its kept
+        // token), so a seat answered on a link that went before its state
+        // is taken back, not held beside a second one
         this.clock.setTimeout(() => {
-          if (this.sock && this.status === "open" && !this.seated) this.sock.send(JSON.stringify({ type: "table_join", code, name: d.name, seat }));
+          if (this.sock && this.status === "open" && !this.seated) {
+            this.sock.send(JSON.stringify({ type: "table_join", code, name: d.name, seat, ...(this.token ? { token: this.token } : {}) }));
+          }
         }, driverRng.range(0.3, 1.2));
         return;
       }

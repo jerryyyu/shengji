@@ -107,4 +107,31 @@ describe("a newcomer that has its seat", () => {
     expect(t.room!.lobby![seat]?.name).toBe("Zed");
     expect(nearbyLogText()).not.toMatch(/given up/);
   }, 60_000);
+
+  // the page is seated only by a room or state frame, so a link that goes
+  // between the seat's answer and its state leaves the page on the seat
+  // picker; its Join carries the token the answer gave (nearbyJoin.ts
+  // join()), and the host's older, half-open link of that seat ends
+  for (const game of [false, true]) {
+    it(`${game ? "mid-game" : "in the lobby"}: back on a new link before its state, with the answer's token, it holds one seat`, async () => {
+      const t = new NearbyTable(9, 1, 0.05);
+      await t.open(true);
+      if (game) {
+        t.send(t.host, { type: "table_start_bots" });
+        await t.settle(() => t.lastState(t.host) !== undefined, 100_000);
+      }
+      const [first, second] = game ? nearbyClaimable(t.room!, t.clock.now()) : [2, 3];
+      const zed = await t.join("Zed", { device: "zed-phone", seat: first });
+      const token = zed.token;
+      expect(token).not.toBeNull();
+      const oldPeer = t.fake.peersOf(t.code).at(-1)!;
+      t.fake.lose(oldPeer);
+      await t.join("Zed", { device: "zed-phone", seat: second, token, player: zed });
+      expect(zed.token).toBe(token);
+      expect(t.fake.peersOf(t.code)).not.toContain(oldPeer);
+      const seats = t.room!.lobby ?? t.room!.seats;
+      const held = seats.flatMap((s, i) => (s && !s.isBot && s.connected && s.token === token ? [i] : []));
+      expect(held).toEqual([first]);
+    }, 60_000);
+  }
 });

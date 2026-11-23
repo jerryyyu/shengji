@@ -553,8 +553,8 @@ export function nearbyPeekJson(room: LocalRoom, now = 0, token: string | null = 
   // null when the table does not know it. Never the token, nor anyone else's.
   const held = token ? slots.findIndex((s) => s !== null && !s.isBot && s.token === token) : -1;
   return {
-    ...(token ? { held_seat: held >= 0 ? held : null } : {}),
     type: "room_seats",
+    ...(token ? { held_seat: held >= 0 ? held : null } : {}),
     room: room.code,
     in_game: room.lobby === null,
     seats: slots.flatMap((s, i) => s === null || claimable.has(i) || (room.lobby !== null && s.isBot) ? [] : [{

@@ -198,7 +198,8 @@ describe("the driver's join on the real join store", () => {
     real.status("open");
     const person = (seat: number, name: string, connected: boolean) =>
       ({ seat, name, is_bot: false, connected, team: seat % 2, claimable: false, controller: "human", reserved_secs: null });
-    real.msg({ type: "room_seats", room: "ABCDEF", in_game: true, full: false, seats: [person(0, "Host", true), person(2, "P1", false)] });
+    real.msg({ type: "room_seats", room: "ABCDEF", in_game: true, full: false, held_seat: 2,
+              seats: [person(0, "Host", true), person(2, "P1", false)] });
     expect(real.store.view).toMatchObject({ step: "panel", seat: 2 });
     r.d.joinChanged();
     r.advance(2000);

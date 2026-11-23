@@ -194,15 +194,13 @@ export function forgetSeatToken(code: string): void {
   writeSeats(seats);
 }
 
-/** The kept token's seat when the peek shows it still this phone's: open,
- *  or a person under the name the table gave this phone there, connected
- *  or not (the host supersedes this phone's old link by the token). A bot,
- *  or a person of another name, took the seat over: the token is stale. */
+/** With no word from the host on the kept token: its seat when the peek
+ *  shows it open, so the glow is a seat Join can land on whether or not
+ *  the token is still known there. A seat the peek lists is someone's, and
+ *  a name cannot tell whose. */
 function heldSeat(peek: RoomSeats, kept: KeptAt | null): number | null {
   if (kept === null) return null;
-  const sd = peek.seats.find((s) => s.seat === kept.seat);
-  if (!sd) return nearbyChoices(peek).includes(kept.seat) ? kept.seat : null;
-  return !sd.is_bot && sd.name === kept.name ? kept.seat : null;
+  return nearbyChoices(peek).includes(kept.seat) ? kept.seat : null;
 }
 
 /** Why the picker starts where it does when no seat is held, for the log. */

@@ -191,12 +191,14 @@ describe("the glow at a table this phone holds a seat at", () => {
   const peek = { type: "room_seats", room: "K7Q2M", in_game: true, full: false,
                  seats: [person(0, "Jerry"), person(2, "Mei", false)] } as RoomSeats;
 
-  async function picker() {
+  /** The picker on the host's answer; `held`, its held_seat for the peek's
+   *  token (undefined: an older host's answer, with none). */
+  async function picker(held?: number | null) {
     const h = joinStore();
     h.store.open("K7Q2M", "Mei");
     await vi.advanceTimersByTimeAsync(0);
     h.status("open");
-    h.msg(peek as unknown as Msg);
+    h.msg({ ...peek, ...(held !== undefined ? { held_seat: held } : {}) } as unknown as Msg);
     function View() {
       const j = useSyncExternalStore(h.store.subscribe, h.store.getSnapshot);
       return j ? (
@@ -225,15 +227,15 @@ describe("the glow at a table this phone holds a seat at", () => {
     expect(keptSeatAt("K7Q2M")).toEqual({ seat: 2, name: "Mei" });
   }
 
-  it("glows the held seat, and Join with no tap names it and resumes it there", async () => {
+  it("glows the seat the host says the token holds, and Join with no tap resumes it there", async () => {
     await satAtTwo();
-    const h = await picker();
+    const h = await picker(2);
     expect(h.store.view).toMatchObject({ step: "panel", seat: 2, held: 2 });
     expect(glowing()).toHaveLength(1);
     expect(glowing()[0].getAttribute("aria-label")?.split(",")[0]).toBe("You");
-    expect(lines()).toContain("seat picker open: glow seat 2 (kept)");
+    expect(lines()).toContain("seat picker open: glow seat 2 (held)");
     tap(host.querySelector(".tp-primary")!);
-    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-2", chosen: true });
+    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 2, token: "tok-2" });
     h.msg({ type: "state", room: "K7Q2M", you: 2, players: [{ seat: 2, name: "Mei" }] });
     expect(h.store.seated).toBe(true);
     expect(lines().at(-1)).toBe("seated at seat 2");
@@ -241,7 +243,7 @@ describe("the glow at a table this phone holds a seat at", () => {
 
   it("a tap on seat 1 is chosen and seats the phone at 1, which the kept seat then follows", async () => {
     await satAtTwo();
-    const h = await picker();
+    const h = await picker(2);
     h.store.pick(1);
     expect(h.store.view?.seat).toBe(1);
     tap(host.querySelector(".tp-primary")!);
@@ -254,7 +256,7 @@ describe("the glow at a table this phone holds a seat at", () => {
 
   it("a tap away and back to the held seat glows it again and still lands there", async () => {
     await satAtTwo();
-    const h = await picker();
+    const h = await picker(2);
     act(() => h.store.pick(3));
     // the held seat is drawn as Mei's, and is a pick
     const back = grid().flat().find((el) => el.getAttribute("aria-label")?.startsWith("Mei"))!;
@@ -283,14 +285,20 @@ describe("the glow at a table this phone holds a seat at", () => {
     expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 1, token: "tok-2", chosen: true });
   });
 
-  it("the kept seat listed connected under this phone's name is held: the host supersedes the old link", async () => {
-    keepSeatToken("K7Q2M", "tok-2", { seat: 2, name: "Mei" });
-    const h = joinStore();
-    h.store.open("K7Q2M", "Mei");
-    await vi.advanceTimersByTimeAsync(0);
-    h.status("open");
-    h.msg({ type: "room_seats", room: "K7Q2M", in_game: true, full: false, seats: [person(0, "Jerry"), person(2, "Mei")] });
-    expect(h.store.view).toMatchObject({ seat: 2, held: 2 });
+  it("an older host's answer: a kept seat it lists is not glowed, whatever its name; the glow is open and goes as the choice", async () => {
+    await satAtTwo();
+    const h = await picker();
+    expect(h.store.view).toMatchObject({ seat: 1, held: null });
+    expect(lines()).toContain("seat picker open: glow seat 1 (first free)");
+    tap(host.querySelector(".tp-primary")!);
+    expect(h.sent.at(-1)).toEqual({ type: "table_join", code: "K7Q2M", name: "Mei", seat: 1, token: "tok-2", chosen: true });
+  });
+
+  it("an older host's answer: the kept seat glows when the peek shows it open", async () => {
+    keepSeatToken("K7Q2M", "tok-2", { seat: 3, name: "Mei" });
+    const h = await picker();
+    expect(h.store.view).toMatchObject({ seat: 3, held: 3 });
+    expect(lines()).toContain("seat picker open: glow seat 3 (kept)");
   });
 });
 

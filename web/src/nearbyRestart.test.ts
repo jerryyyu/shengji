@@ -228,16 +228,41 @@ it("a token kept with no seat (an older build's), its old link still up: the hos
   expect(p.state()!.you).toBe(seat);
 });
 
-it("an older host gives no held seat: the seat kept with the token glows, and the Join sent as the choice lands there", async () => {
+it("an older host, its seat away under a second phone of the same name: the glow is an open seat, and room.you is the glow", async () => {
+  const t = new NearbyTable(21, 1);
+  await t.open();
+  const before = phone(t);
+  before.store.open(t.code, "Mei");
+  await t.settle(() => before.store.view?.step === "panel");
+  before.store.join();
+  await t.settle(() => before.store.seated);
+  const seat = t.room!.lobby!.findIndex((s) => s?.name === "Mei");
+  before.kill();
+  await t.advance(LOBBY_SEAT_HOLD + 5);
+  const other = await t.join("Mei", { seat });
+  t.fake.drop(t.code, t.fake.peersOf(t.code).at(-1)!);
+  await t.advance(5);
+  expect(t.room!.lobby![seat]).toMatchObject({ name: "Mei", connected: false });
+  const { p, glow } = await joinUntapped(t, { oldHost: true });
+  expect(lastPeek(p).held_seat).toBeUndefined();
+  expect((lastPeek(p).seats as { seat: number }[]).some((s) => s.seat === glow), "the glow is an open seat").toBe(false);
+  expect(p.sent.find((m) => m.type === "table_join")!.chosen).toBe(true);
+  const room = [...p.frames].reverse().find((f) => f.type === "room")!;
+  expect(room.you).toBe(glow);
+  expect(t.room!.lobby![seat]?.token).toBe(other.token);
+});
+
+it("an older host, a valid kept token: the glow is an open seat, and the Join sent as the choice lands there", async () => {
   const t = await started();
   const before = await seatedPhone(t);
   const seat = before.state()!.you as number;
+  before.kill();
+  await t.advance(1);
   const { p, glow } = await joinUntapped(t, { oldHost: true });
-  expect(lastPeek(p).held_seat).toBeUndefined();
-  expect(glow).toBe(seat);
-  expect(nearbyLogLines().map((l) => l.text)).toContain(`seat picker open: glow seat ${seat} (kept)`);
+  expect(glow).not.toBe(seat);
   expect(p.sent.find((m) => m.type === "table_join")!.chosen).toBe(true);
-  expect(p.state()!.you).toBe(seat);
+  expect([...p.frames].reverse().find((f) => f.type === "room" || f.type === "state")!.you).toBe(glow);
+  expect(p.state()!.you).toBe(glow);
 });
 
 it("an older host and a token with no seat kept: Join sent as the choice lands on the glow, not the old seat", async () => {

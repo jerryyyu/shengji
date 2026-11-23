@@ -5,8 +5,8 @@ for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 
 fleet=/Users/jeryyu/fleet
 packet=$fleet/codex-sz2-joint-v1
 root=$packet/capture
-tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-joint-afaa8941
-head=afaa89412b0f880f9b8bf3cc3771643f9b66694a
+tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-joint-1f7c1aa3
+head=1f7c1aa3fc89c056e627b22f02a634c8e87cd143
 lib=$tree/server/scripts/lanes/lane_lib.sh
 worker=$tree/server/scripts/sz2_gpu_smoke.py
 LANE_NAME=sz2-joint-v1
@@ -39,6 +39,10 @@ clean_tree() {
 clean_tree || exit 6
 . "$lib" || exit 6
 . "$packet/joint_phases.sh" || exit 6
+provider_config=$HOME/.config/darkbloom/provider.toml
+provider_sha=$(lane_sha "$provider_config") || exit 6
+LANE_FILES+=("$provider_config")
+LANE_PINS="$provider_sha  $provider_config"
 preflight() {
   clean_tree && ! lane_hold_present && lane_check_pins && lane_gate && lane_disk_check &&
     [ ! -e "$root" ] && [ ! -L "$root" ] &&
@@ -46,7 +50,9 @@ preflight() {
 }
 case "${1:-}" in
   --preflight)
-    [ ! -e "$LANE_LOCK" ] && preflight && lane_identity "${LANE_FILES[@]}" || exit 6
+    [ ! -e "$LANE_LOCK" ] && preflight || exit 6
+    if [ -e "$LANE_RELEASE" ] || [ -L "$LANE_RELEASE" ]; then lane_admit preflight || exit 6; fi
+    lane_identity "${LANE_FILES[@]}" || exit 6
     exit 0 ;;
   "") ;;
   *) exit 2 ;;

@@ -9,7 +9,7 @@ joint_phase() {
     clean_tree && lane_admit "before-$phase" && lane_gate || lane_abort 6 "phase admission failed: $LANE_MSG"
     [ ! -e "$train/STOP" ] && [ ! -L "$train/STOP" ] || lane_pause "$phase operator STOP"
     lane_say PHASE "$phase after buffer $cursor"
-    lane_supervise "$LANE_PY" -B "$worker" "$root" --phase "$phase"
+    lane_supervise "$LANE_PY" -B "$worker" "$root" --phase "$phase" --provider-sha256 "$provider_sha"
     rc=$?
     case "$rc" in
       8) [ "$phase" = medium-finish ] || lane_abort 8 "unexpected gate refusal in $phase"

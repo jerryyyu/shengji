@@ -464,6 +464,115 @@ def test_a_replaced_round_sees_nothing_of_the_old_deal(monkeypatch):
     asyncio.run(scenario())
 
 
+def _seated_deal(monkeypatch, bot, arrange=None):
+    """Run the real deal with a connected human at seat 0 and ``bot`` in the
+    other seats; returns the state frames sent to the human, and every time
+    a new card was about to be dealt while the human's last frame did not
+    show the live declaration and the human's real declare options."""
+    room = _declare_room()
+    rnd = room.game.start_round()
+    if arrange is not None:
+        arrange(rnd)
+    room.index_round()
+    room.seats[0] = srv.Seat(name="Human", is_bot=False)
+    room.seats[0].connected = True
+    room.bot = bot
+    sent = []
+    stale = []
+
+    def enqueue(seat, payload):
+        if seat is room.seats[0] and payload.get("type") == "state":
+            sent.append(payload)
+
+    def shown_matches_live():
+        if not sent:
+            return True
+        last, live = sent[-1], rnd.declaration
+        decl = last["current_declaration"]
+        options = [room.ids_for_codes(0, option) for option in rnd.declare_options(0)]
+        return ((decl is None) == (live is None)
+                and (live is None or (decl["seat"], len(decl["cards"])) == (live["seat"], len(live["cards"])))
+                and sorted(map(sorted, last["declare_options"])) == sorted(map(sorted, options)))
+
+    real_deal_next = rnd.deal_next
+
+    def deal_next():
+        if not shown_matches_live():
+            stale.append(sum(len(hand) for hand in rnd.hands))
+        return real_deal_next()
+
+    rnd.deal_next = deal_next
+    monkeypatch.setattr(srv, "enqueue", enqueue)
+    monkeypatch.setattr(srv, "_send_table_frame", lambda *a: None)
+    monkeypatch.setattr(srv, "kick_bots", lambda _: None)
+    monkeypatch.setattr(srv, "DEAL_DELAY", 0.0)
+    monkeypatch.setattr(srv, "DECLARE_GRACE", 0.01)
+    monkeypatch.setattr(srv, "DECLARE_EXTEND", 0.01)
+    asyncio.run(srv.run_deal(room))
+    assert room.round.phase == "bury"
+    return sent, stale
+
+
+def _declarations_shown(sent):
+    seen = []
+    for frame in sent:
+        decl = frame["current_declaration"]
+        key = None if decl is None else (decl["seat"], tuple(sorted(decl["cards"])))
+        if not seen or seen[-1] != key:
+            seen.append(key)
+    return [key for key in seen if key is not None]
+
+
+@pytest.mark.parametrize("gated", [False, True])
+def test_a_bot_declaration_reaches_the_seated_player_before_the_next_card(monkeypatch, gated):
+    """The human's last frame always shows the live declaration and its real
+    options before the deal moves on, so an advertised option is valid."""
+    class DeclaringBot(HeuristicBot):
+        value_declare = gated
+
+        def declare_gate(self, rnd, seat, final=False):
+            return None, True
+
+        def decide_declare(self, rnd, seat, final=False):
+            options = rnd.declare_options(seat)
+            return options[0] if options and not final and rnd.declaration is None else None
+
+    sent, stale = _seated_deal(monkeypatch, DeclaringBot())
+    assert _declarations_shown(sent), "the bot declared"
+    assert stale == []
+
+
+def test_a_final_pass_overcall_follows_the_last_card_declaration_to_the_player(monkeypatch):
+    """Seat 3 declares a single on the last card; seat 1 overcalls with a
+    pair in the final pass. The human receives both, in order."""
+    def arrange(rnd):
+        rank = rnd.trump_rank
+        deck = rnd.deck
+        twos = [i for i, c in enumerate(deck) if c[1:] == rank and c[0] in "SHDC"]
+        # no stray trump-rank single lets anyone else's options change
+        filler = [i for i, c in enumerate(deck) if c[1:] != rank and c not in ("BJ", "LJ")]
+        for i in twos:
+            j = filler.pop()
+            deck[i], deck[j] = deck[j], deck[i]
+        for pos, code in ((99, f"D{rank}"), (1, f"S{rank}"), (5, f"S{rank}")):
+            j = next(i for i, c in enumerate(deck) if c == code and i not in (1, 5, 99))
+            deck[pos], deck[j] = deck[j], deck[pos]
+
+    class ScriptedBot(HeuristicBot):
+        def decide_declare(self, rnd, seat, final=False):
+            rank = rnd.trump_rank
+            dealt = sum(len(hand) for hand in rnd.hands)
+            if seat == 3 and not final and dealt == 100:
+                return [f"D{rank}"]
+            if seat == 1 and final and rnd.declaration and rnd.declaration["seat"] == 3:
+                return [f"S{rank}", f"S{rank}"]
+            return None
+
+    sent, _ = _seated_deal(monkeypatch, ScriptedBot(), arrange)
+    shown = _declarations_shown(sent)
+    assert [(seat, len(cards)) for seat, cards in shown] == [(3, 1), (1, 2)]
+
+
 def test_run_deal_retries_stale_final_response_before_finalizing(monkeypatch):
     room = _declare_room()
     calls = []

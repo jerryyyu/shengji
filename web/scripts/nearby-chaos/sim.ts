@@ -49,6 +49,10 @@ export interface Fault {
    *  s later (nearbySoakChaos.ts TRIGGER_PHASES). */
   phase?: TriggerPhase;
   offset?: number;
+  /** Event-anchored: the fault runs `offset` s after the first trace line
+   *  from `t` on that contains this text, so a replay's fault keeps its
+   *  place in the story when the game's own timing moves. */
+  after?: string;
 }
 
 export interface GameOpts {
@@ -315,9 +319,17 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   const freezes: number[] = [];
   let violation: Violation | null = null;
   let current = "-";
+  // event-anchored faults wait here for their trace line
+  const anchored: Fault[] = [];
   const log = (who: string, text: string) => {
     const line = `${vc.now().toFixed(3)} ${who} ${text}`;
     trace.push(line);
+    for (let i = anchored.length - 1; i >= 0; i--) {
+      const f = anchored[i];
+      if (!line.includes(f.after!)) continue;
+      anchored.splice(i, 1);
+      vc.setTimeout(() => runFault(f), f.offset ?? 0);
+    }
     if (trace.length > 4000) trace.splice(0, 1000);
     if (opts.verbose) console.log(line);
   };
@@ -1378,7 +1390,8 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
   };
   for (const f of schedule) {
     vc.setTimeout(() => {
-      if (f.phase) armed.push(f);
+      if (f.after !== undefined) anchored.push(f);
+      else if (f.phase) armed.push(f);
       else runFault(f);
     }, f.t);
   }

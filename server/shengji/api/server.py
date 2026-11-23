@@ -2121,6 +2121,9 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
                         room.log_event("declare", seat=s, cards=cards, bot=True)
                     except IllegalPlay:
                         pass
+                    else:
+                        # every declaration reaches the table as it commits
+                        await broadcast(room)
                 continue
             game, owner = room.game, room.seats[s]
             phase, declaration = rnd.phase, rnd.declaration
@@ -2159,6 +2162,8 @@ async def _bot_declares(room: Room, seats: list[int], final: bool = False) -> bo
             record = getattr(bot_copy, "last_declare_record", None)
             if record is not None:
                 room.log_event("declare_decision", seat=s, record=record, bot=True)
+            if cards:
+                await broadcast(room)
     return complete
 
 
@@ -2193,9 +2198,8 @@ async def run_deal(room: Room) -> None:
                 # provisional, so the frames before the window opens (the
                 # last card, the bots' last declarations) already count down
                 room.declare_until = asyncio.get_running_loop().time() + DECLARE_GRACE
-            # The card shows at once. The bots decide on it inside its
-            # gap; the next frame carries what they declared, so the deal
-            # sends one frame per card whatever the bots do.
+            # The card shows at once; the bots decide on it inside its gap,
+            # and each declaration they make publishes as it commits.
             await broadcast(room)
             published = loop.time()
         await _bot_declares(room, [seat])

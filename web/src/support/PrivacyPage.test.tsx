@@ -15,13 +15,28 @@ describe("the privacy page", () => {
     root = createRoot(host);
     act(() => root.render(<PrivacyPage />));
     const headings = [...host.querySelectorAll("h2")].map((h) => h.textContent);
-    expect(headings).toEqual(["Playing as a guest", "Game records", "Table chat",
+    expect(headings).toEqual(["Playing as a guest", "Accounts in the iOS app", "Game records", "Table chat",
                               "Signing in with Google or Apple", "Saved games", "Ratings and the leaderboard",
                               "Usage events", "Reporting a player", "Blocking a player", "Support messages",
                               "IP addresses and server logs", "Where it is kept", "Deleting your account",
                               "Children", "Automated play", "Contact"]);
     const text = host.textContent ?? "";
-    expect(text).toContain("Last updated 2026-11-17");
+    expect(text).toContain("Last updated 2026-11-22");
+    expect(text).toContain("From version 1.0.1, the iOS app makes you an account");
+    expect(text).toContain("It is not synced to iCloud");
+    expect(text).toContain("deleted after 30 days unused");
+    expect(text).toContain("12 months unused");
+    expect(text).toContain("Deleting the app does not delete the account");
+    expect(text).toContain("the first time it sets you up to play online");
+    expect(text).toContain("Games played offline make none");
+    expect(text).toContain("console logs (below) may record it when you connect");
+    expect(text).not.toContain("never writes it down");
+    expect(text).toContain("for queues and seats and to recognise a returning guest");
+    expect(text).not.toContain("only while you are seated");
+    expect(text).not.toContain("everything tied to it");
+    expect(text).toContain("the same way as Delete account (below)");
+    expect(text).toContain("top-rated players who leave “Show me on the leaderboard” on in Me");
+    expect(text).toContain("Support messages and player reports are kept");
     expect(text).toContain("Fly.io");
     expect(text).toContain("hash");
     expect(text).toContain("Show me on the leaderboard");

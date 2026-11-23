@@ -3,14 +3,14 @@
 set -u
 for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 6; done
 fleet=/Users/jeryyu/fleet
-packet=$fleet/codex-sz2-smoke-r3-final
+packet=$fleet/codex-sz2-smoke-r4
 root=$packet/capture
-tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-11abfc10
-head=11abfc1018b0a1aa4462d55c455ef30981adf97a
+tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-76405319
+head=764053195ebfa89cc505382a0d1ddd5e1c201914
 lib=$tree/server/scripts/lanes/lane_lib.sh
 parity=$fleet/claude-ut-all/scripts/r1_parity.py
 calib=$fleet/cloud-archive/codex-20261106/root/codex-g2-belief-cloud-v1/partitions/part-00of32
-LANE_NAME=sz2-m2-smoke-r3
+LANE_NAME=sz2-m2-smoke-r4
 LANE_HOSTNAME=Jerrys-Mac-Studio.local
 LANE_RELEASE=$packet/launcher.RELEASE
 LANE_LOCK=$fleet/.claude-host.lock
@@ -21,7 +21,7 @@ LANE_PINS="48343058aabc5b60cbabfb7a7d831399937157f6eb0c0abe9ac53b98efb17eba  $pa
 LANE_DISK_DIR=$fleet
 LANE_MIN_FREE_GIB=350
 LANE_MAX_SECONDS=3600
-LANE_STOP_GRACE=900
+LANE_STOP_GRACE=1320
 LANE_WAIT_CEILING=2
 LANE_POLL=1
 LANE_GATES="$fleet/s157-stepA-ultra/status.txt ^[^ ]+ RUN DONE 64 seeds rc 0$

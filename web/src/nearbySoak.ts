@@ -227,7 +227,8 @@ const spreadS = (xs: number[]): string =>
  *    when the same kind goes out within 5 s of the resume after it;
  *  - each STUCK by its fault on this phone: a stall running, a stall ended
  *    within 1 s, a blackhole running or ended within 1 s, a one-way loss
- *    running or ended within 1 s, or none (the host's own faults are not in
+ *    the bridge put in place running or ended within 1 s (its end from its
+ *    deadline, not the timer that logs it), or none (the host's own faults are not in
  *    this phone's log, so "none" includes them);
  *  - stalls and blackholes over 4 s with no STUCK from their start to 1 s
  *    after their end;
@@ -240,7 +241,7 @@ export class SoakMetrics {
   /** The soak's own lines the metrics read. */
   static reads(text: string): boolean {
     return text === "flow: seated" || text.startsWith("flow: leave (") || text.startsWith("flow: rejoin by code") ||
-      text.startsWith("chaos: oneway ");
+      text.startsWith("chaos: oneway on") || text.startsWith("chaos: oneway over");
   }
 
   freezes: number[] = [];
@@ -267,8 +268,10 @@ export class SoakMetrics {
   private resend: string | null = null;
   private fault: { kind: "stall" | "blackhole"; from: number; long: boolean; stuck: boolean } | null = null;
   private ended: { kind: "stall" | "blackhole"; at: number; long: boolean; stuck: boolean } | null = null;
-  /** The one-way loss running (since), or the clock time the last one ended. */
-  private oneway: { since: number | null; ended: number | null } = { since: null, ended: null };
+  /** When the one-way loss last put in place ends: its deadline from its
+   *  own line (log time, which runs on while the page's timers are held),
+   *  or its over line if that came first. */
+  private onewayUntil: number | null = null;
   /** The driver's Leave until its rejoin by code: no outage opens. A link
    *  resumed only to carry the Leave, or a seat shown on the way out, is
    *  still the Leave. */
@@ -294,8 +297,9 @@ export class SoakMetrics {
     }
     if (from === "soak" && text.startsWith("flow: leave (")) this.left(t);
     if (from === "soak" && text.startsWith("flow: rejoin by code")) this.rejoined(t);
-    if (from === "soak" && /^chaos: oneway (in|out) /.test(text)) this.oneway = { since: t, ended: null };
-    if (from === "soak" && text.startsWith("chaos: oneway over")) this.oneway = { since: null, ended: t };
+    const on = from === "soak" ? /^chaos: oneway on, (?:in|out) for ([\d.]+) s$/.exec(text) : null;
+    if (on) this.onewayUntil = t + Number(on[1]) * 1000;
+    if (from === "soak" && text.startsWith("chaos: oneway over") && this.onewayUntil !== null) this.onewayUntil = Math.min(this.onewayUntil, t);
     if ((from === "native" && text === "drop host") || text.startsWith("STUCK") || (from === "join" && text === "attempt (resume)")) this.down(t);
     if (from === "join" && text === "attempt (resume)" && this.outage) this.outage.attempts += 1;
     if (from === "socket" && /^resume: link up in \d+ ms; hello sent/.test(text) && this.outage) this.outage.hellos += 1;
@@ -369,7 +373,7 @@ export class SoakMetrics {
     } else if (this.ended && t - this.ended.at <= 1000) {
       this.ended.stuck = true;
       this.stuck[this.ended.kind === "stall" ? "after" : "blackhole"] += 1;
-    } else if (this.oneway.since !== null || (this.oneway.ended !== null && t - this.oneway.ended <= 1000)) {
+    } else if (this.onewayUntil !== null && t - this.onewayUntil <= 1000) {
       this.stuck.oneway += 1;
     } else this.stuck.none += 1;
   }
@@ -806,6 +810,8 @@ function pageChaos(pick: ChaosPick, role: ChaosRole): void {
       if (pick.kind === "loss") bridge.loss(pick.dir!, pick.frame ?? "", pick.count ?? 1);
       else {
         bridge.oneway(pick.dir!, pick.seconds * 1000);
+        // the metrics' one-way attribution starts here, once the bridge has it
+        nearbyLog("soak", `chaos: oneway on, ${pick.dir} for ${pick.seconds.toFixed(1)} s`);
         const before = { ...bridge.lost };
         window.setTimeout(() => nearbyLog("soak", `chaos: oneway over: ${bridge.lost[pick.dir!] - before[pick.dir!]} lost`), pick.seconds * 1000);
       }

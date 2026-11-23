@@ -136,6 +136,7 @@ describe("the soak's link-health metrics", () => {
     for (const l of [
       line(0, "socket", "in state"),
       line(1000, "soak", "chaos: oneway in 9.0 s (phase play, role joiner, link wifi, by bg)"),
+      line(1001, "soak", "chaos: oneway on, in for 9.0 s"),
       line(5000, "socket", "STUCK: no pong; making a new link"),
       line(6000, "socket", "resume: accepted (state); open"),
       line(9000, "socket", "STUCK: no pong; making a new link"),
@@ -166,7 +167,7 @@ describe("the soak's link-health metrics", () => {
       log.nearbyLog("native", "drop host");
       now += 60_000;
       log.nearbyLog("soak", "flow: rejoin by code (token kept)");
-      log.nearbyLog("soak", "chaos: oneway out 6.0 s (phase play, role joiner, link wifi, by bg)");
+      log.nearbyLog("soak", "chaos: oneway on, out for 6.0 s");
       log.nearbyLog("socket", "STUCK: no pong after a move; making a new link");
       now += 2000;
       log.nearbyLog("soak", "flow: seated");
@@ -176,6 +177,57 @@ describe("the soak's link-health metrics", () => {
     } finally {
       clock.mockRestore();
       vi.useRealTimers();
+    }
+  });
+
+  const liveSoak = async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    vi.setSystemTime(0);
+    const at = { now: 0 };
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => at.now);
+    vi.resetModules();
+    const log = await import("./nearbyLog");
+    const soak = await import("./nearbySoak");
+    soak.setChaos(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    const stuckAfter = (ms: number) => {
+      at.now += ms;
+      log.nearbyLog("socket", "STUCK: no pong; making a new link");
+      return /oneway (\d+) \/ no fault here (\d+)/.exec(soak.soakSummary())!.slice(1).map(Number);
+    };
+    const done = () => {
+      soak.setChaos(false);
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+      clock.mockRestore();
+      vi.useRealTimers();
+    };
+    return { soak, stuckAfter, done };
+  };
+
+  it("through runChaos: a one-way loss with no bridge to take it does not apply, and a STUCK after it is no fault", async () => {
+    const { soak, stuckAfter, done } = await liveSoak();
+    try {
+      delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+      soak.runChaos({ kind: "oneway", seconds: 6, dir: "out" }, "bg");
+      expect(soak.soakSummary()).toContain("chaos not applied 1");
+      expect(stuckAfter(1000)).toEqual([0, 1]);
+      expect(stuckAfter(60_000)).toEqual([0, 2]);
+    } finally {
+      done();
+    }
+  });
+
+  it("through runChaos: a one-way loss the bridge took ends at its deadline, though the timer that logs its end is held", async () => {
+    const { soak, stuckAfter, done } = await liveSoak();
+    try {
+      (window as unknown as { Capacitor?: unknown }).Capacitor = { nativePromise: () => Promise.resolve(undefined), fromNative: () => {} };
+      soak.runChaos({ kind: "oneway", seconds: 6, dir: "out" }, "bg");
+      // the page's timers advance no further: the end line never comes
+      expect(stuckAfter(3000)).toEqual([1, 0]);
+      expect(stuckAfter(3900)).toEqual([2, 0]);
+      expect(stuckAfter(60_000)).toEqual([2, 1]);
+    } finally {
+      done();
     }
   });
 

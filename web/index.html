@@ -7,15 +7,17 @@
     <!-- The table is always dark, independently of the OS appearance. -->
     <meta name="theme-color" content="#14171e" />
     <meta name="color-scheme" content="dark" />
-    <title>Sheng Ji 升级</title>
-    <meta name="description" content="Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends." />
+    <title>Sheng Ji 升级 – Tractor card game, web and iPhone</title>
+    <!-- Safari's Smart App Banner; inside the app's own WebView it does not show. -->
+    <meta name="apple-itunes-app" content="app-id=6833598710" />
+    <meta name="description" content="Play Sheng Ji (升级, Tractor, 80 Points) in your browser or the iPhone app: strong bots, friends online, or Play Nearby with phones in the same room." />
     <!-- Link previews. Crawlers do not resolve relative URLs, so these are absolute;
          the clip and poster are built by web/scripts/og-preview/encode_scene.sh. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Sheng Ji 升级" />
     <meta property="og:url" content="https://shengji.fly.dev/" />
     <meta property="og:title" content="Sheng Ji 升级" />
-    <meta property="og:description" content="Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends." />
+    <meta property="og:description" content="Play Sheng Ji (升级, Tractor, 80 Points) in your browser or the iPhone app: strong bots, friends online, or Play Nearby with phones in the same room." />
     <meta property="og:image" content="https://shengji.fly.dev/og/preview.jpg" />
     <meta property="og:image:secure_url" content="https://shengji.fly.dev/og/preview.jpg" />
     <meta property="og:image:type" content="image/jpeg" />
@@ -29,7 +31,7 @@
     <meta property="og:video:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Sheng Ji 升级" />
-    <meta name="twitter:description" content="Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends." />
+    <meta name="twitter:description" content="Play Sheng Ji (升级, Tractor, 80 Points) in your browser or the iPhone app: strong bots, friends online, or Play Nearby with phones in the same room." />
     <meta name="twitter:image" content="https://shengji.fly.dev/og/preview.jpg" />
     <meta name="twitter:image:alt" content="Four cards on a green card table: the ace of spades led and the big joker glowing gold as it wins the trick." />
     <!-- Structured data for search engines; the browser ignores this script type. -->
@@ -38,14 +40,16 @@
         "@context": "https://schema.org",
         "@type": ["VideoGame", "SoftwareApplication"],
         "name": "Sheng Ji 升级",
-        "alternateName": ["Sheng Ji", "升级", "Tractor", "拖拉机"],
+        "alternateName": ["Sheng Ji", "升级", "Tractor", "拖拉机", "80 Points", "八十分"],
         "url": "https://shengji.fly.dev/",
-        "description": "Play Sheng Ji (升级, Tractor) in your browser against strong bots, or with friends.",
+        "description": "Play Sheng Ji (升级, Tractor, 80 Points) in your browser or the iPhone app: strong bots, friends online, or Play Nearby with phones in the same room.",
         "image": "https://shengji.fly.dev/og/preview.jpg",
         "genre": ["Card game", "Trick-taking game"],
         "applicationCategory": "GameApplication",
-        "operatingSystem": "Web browser",
-        "gamePlatform": "Web browser",
+        "operatingSystem": ["Web browser", "iOS"],
+        "gamePlatform": ["Web browser", "iPhone", "iPad"],
+        "installUrl": "https://apps.apple.com/app/id6833598710",
+        "sameAs": ["https://apps.apple.com/app/id6833598710"],
         "playMode": ["MultiPlayer", "SinglePlayer"],
         "numberOfPlayers": {"@type": "QuantitativeValue", "value": 4},
         "inLanguage": "en",

@@ -24,8 +24,9 @@ def export(root, parity_reader, calib, expected_rows=124):
     if last[1:] != ["UTR", "DONE", f"best={ckpt}", f"sha256={ck_sha}"]:
         raise ValueError("missing exact checkpoint terminal")
     settings = json.loads((train / "run.json").read_text())
-    if settings["device"] != "mps" or settings["max_train_rows"] != 120000:
-        raise ValueError("wrong smoke device or training cap")
+    if (settings["device"] != "mps" or settings["max_train_rows"] != 120000
+            or settings["rounds_per_batch"] != 16 or settings["microbatch_rounds"] != 4):
+        raise ValueError("wrong smoke device, training cap or batch geometry")
     out = root / "packages"
     out.mkdir()
     value, belief = out / "value.npz", out / "belief.npz"

@@ -3,20 +3,20 @@
 set -u
 for setting in ${!LANE_@}; do echo "inherited lane setting: $setting" >&2; exit 6; done
 fleet=/Users/jeryyu/fleet
-packet=$fleet/codex-sz2-smoke-r2
+packet=$fleet/codex-sz2-smoke-r3
 root=$packet/capture
-tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-24c2e10a
-head=24c2e10a868414af6b1e985fa33c87255b8c7559
+tree=/Users/jeryyu/Projects/shengji-wt/codex-sz2-smoke-e20d3dc7
+head=e20d3dc729ceb5605c730ed8a6c38fb73c1221da
 lib=$tree/server/scripts/lanes/lane_lib.sh
 parity=$fleet/claude-ut-all/scripts/r1_parity.py
 calib=$fleet/cloud-archive/codex-20261106/root/codex-g2-belief-cloud-v1/partitions/part-00of32
-LANE_NAME=sz2-m2-smoke-r2
+LANE_NAME=sz2-m2-smoke-r3
 LANE_HOSTNAME=Jerrys-Mac-Studio.local
 LANE_RELEASE=$packet/launcher.RELEASE
 LANE_LOCK=$fleet/.claude-host.lock
 LANE_HOLDS="$packet/launcher.HOLD $fleet/claude_ut_gen2.HOLD"
 LANE_PY=/Users/jeryyu/Projects/shengji/server/.venv/bin/python
-LANE_FILES=("$packet/run_smoke.sh" "$packet/export_smoke.py" "$packet/dispatch_smoke.sh" "$lib" "$tree/server/scripts/sz2_gpu_smoke.py" "$tree/server/scripts/sz2_joint_segment.py" "$tree/server/scripts/sz2_offline_gate.py")
+LANE_FILES=("$packet/run_smoke.sh" "$packet/export_smoke.py" "$packet/dispatch_smoke.sh" "$lib" "$tree/server/shengji/train/unified_readout.py" "$tree/server/scripts/sz2_gpu_smoke.py" "$tree/server/scripts/sz2_joint_segment.py" "$tree/server/scripts/sz2_offline_gate.py")
 LANE_PINS="48343058aabc5b60cbabfb7a7d831399937157f6eb0c0abe9ac53b98efb17eba  $parity"
 LANE_DISK_DIR=$fleet
 LANE_MIN_FREE_GIB=350

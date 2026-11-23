@@ -55,8 +55,8 @@ export default function PrivacyPage() {
         <Section title="Accounts in the iOS app">
           <p>
             From version 1.0.1, the iOS app makes you an account the first time it sets you up to
-            play online, with no sign-in. Games played offline make none. Our server gives it a random name, such as “Lucky Tractor”, which you can change
-            in Me. Other players see that name at the table, on the leaderboard and in the game
+            play online, with no sign-in. Games played offline make none. It keeps the name you chose as a guest when no one else uses it and it passes our name checks;
+            otherwise our server gives it a random name, such as “Lucky Tractor”. You can change it in Me. Other players see that name at the table, on the leaderboard and in the game
             records.
           </p>
           <p>

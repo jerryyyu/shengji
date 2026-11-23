@@ -56,6 +56,18 @@ if service == "darkbloom":
     if action in ("restart", "stop"):
         with (d / "events").open("a") as f:
             f.write(action + "\\n")
+        if action == "stop":
+            assert args == ["stop", "--timeout", "600"]
+            drain = d / "drain"
+            if drain.exists():
+                mode = drain.read_text()
+                if mode == "interrupt":
+                    import os, signal
+                    os.kill(os.getppid(), signal.SIGTERM)
+                if mode != "once" or "stop" not in events:
+                    count = 0 if mode == "zero" else 1
+                    print(f"Error: Drain did not complete: {count} unfinished request(s), coordinator acknowledgement false.", file=sys.stderr)
+                    raise SystemExit(13 if mode == "other" else 64)
         if action == "restart" or not (d / "failed_stop").exists():
             (d / "state").write_text("running" if action == "restart" else "not running")
         if action == "restart" and (d / "config_drift_after_restart").exists():
@@ -322,4 +334,19 @@ def test_trainer_stops_if_provider_reappears_during_smoke(host):
     assert result.returncode == 1
     assert "Darkbloom is not confirmed stopped" in result.stderr
     assert events(log) == ["stop", "train", "restart"]
+    assert not (tmp / "keepalive.pause").exists()
+
+@pytest.mark.parametrize(("mode", "returncode", "want"), [
+    ("once", 0, ["stop", "stop", "train", "restart"]),
+    ("persistent", 1, ["stop", "stop", "restart"]),
+    ("zero", 1, ["stop", "restart"]),
+    ("other", 1, ["stop", "restart"]),
+    ("interrupt", 1, ["stop", "restart"]),
+])
+def test_only_an_unfinished_drain_can_get_a_second_graceful_stop(host, mode, returncode, want):
+    _, tmp, log = host
+    (tmp / "drain").write_text(mode)
+    result = invoke(host)
+    assert result.returncode == returncode, result.stderr
+    assert events(log) == want
     assert not (tmp / "keepalive.pause").exists()

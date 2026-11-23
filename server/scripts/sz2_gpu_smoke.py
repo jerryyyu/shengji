@@ -28,6 +28,7 @@ POLL_SECONDS = 10
 FOOTPRINT_INTERVAL = 60
 FOOTPRINT_TIMEOUT = 10
 RESTORE_SECONDS = 360
+DRAIN_SECONDS = 600
 STOP_GRACE = 25
 JOBS = {"io.darkbloom.provider", "io.darkbloom.watchdog"}
 
@@ -118,7 +119,22 @@ def darkbloom_stopped(check_signal):
             if not still_owned():
                 raise RuntimeError(f"Darkbloom pause ownership changed: {pause}")
             stopping = True
-            command(DARKBLOOM, "stop", "--timeout", "180", timeout=190)
+            for attempt in range(2):
+                stop = subprocess.run([DARKBLOOM, "stop", "--timeout", str(DRAIN_SECONDS)],
+                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                      stdin=subprocess.DEVNULL, timeout=DRAIN_SECONDS + 10)
+                if stop.stdout:
+                    print(stop.stdout.rstrip(), flush=True)
+                if stop.returncode == 0:
+                    break
+                unfinished = re.search(r"^Error: Drain did not complete: [1-9][0-9]* unfinished request\(s\),"
+                                       r" coordinator acknowledgement (?:true|false)\.", stop.stdout, re.MULTILINE)
+                if attempt or stop.returncode != 64 or unfinished is None:
+                    stop.check_returncode()
+                check_signal()
+                if not still_owned():
+                    raise RuntimeError(f"Darkbloom pause ownership changed: {pause}")
+                print("Darkbloom still draining accepted work; one graceful stop remains", flush=True)
             verify_stopped()
             print("Darkbloom stopped with keepalive suspended", flush=True)
             check_signal()

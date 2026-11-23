@@ -93,6 +93,25 @@ describe("the simulator's page keeps its seat's token as nearbyJoin.ts does", ()
     expect(r.trace.filter((l) => / H js\/host: join from /.test(l)), "only the first join is a newcomer's").toHaveLength(1);
   }, 60_000);
 
+  it("seed 30050, a full table: the claim by the kept token takes the held seat back", async () => {
+    // The full-table fixture with no outage after the claim: the host reads
+    // the claim's hello, supersedes the seat's old link, and resumes seat 3
+    // by the token the claim carries, before the join by code at 162 s.
+    const schedule = replay("nearby-chaos-30050-full-table-claim-answered.json");
+    expect(schedule.map((f) => f.kind)).toEqual(["bg", "leave", "allow", "radio", "midjoin"]);
+    const r = await run(schedule);
+    expect(r.violation).toBeNull();
+    const claim = r.trace.find((l) => / J1 page: table full: resume sent by the kept token/.test(l));
+    expect(claim, "the full peek's one claim").toBeDefined();
+    const look = r.trace.find((l) => / fault midjoin J1/.test(l))!;
+    const back = r.trace.find((l) => / H js\/host: resume from p\d+: seat 3 bound/.test(l) && at(l) >= at(claim!));
+    expect(back, "the claim resumes seat 3").toBeDefined();
+    expect(at(back!)).toBeLessThan(at(look));
+    expect(at(back!)).toBeCloseTo(150.761, 2);
+    expect(r.trace.some((l) => / J1 page: (gives up|resume by the kept token)/.test(l)), "the claim neither ends nor gives up").toBe(false);
+    expect(r.trace.filter((l) => / H js\/host: join from /.test(l)), "only the first join is a newcomer's").toHaveLength(1);
+  }, 60_000);
+
   it("seed 30050, a full table: the claim's lost link ends it, kept, with no redial until the next look", async () => {
     // Allow joiners is off, so the join by code finds the table full and
     // makes its one claim by the kept token; the radio goes 18 ms later and

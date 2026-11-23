@@ -49,10 +49,10 @@ SAMPLERS = {
     "mcbot-split": "ai.mcbot.MCBot._sample_hands",
 }
 BELIEF_PREFIX = "belief:"
-#: ``fly.toml`` ``[env]`` keys that enter no bot: credentials, where the server writes, and
-#: the W32 test-room switch that older release configs still set
+#: ``fly.toml`` ``[env]`` keys that enter no bot: credentials, where the server writes, the
+#: device-account switch, and the W32 test-room switch that older release configs still set
 NON_BOT_KEYS = ("GOOGLE_CLIENT_ID", "SHENGJI_LOG_DIR", "SHENGJI_DATA_DIR",
-                "SHENGJI_W32_TEST_ROOMS", "SHENGJI_TELEMETRY_DIR")
+                "SHENGJI_W32_TEST_ROOMS", "SHENGJI_TELEMETRY_DIR", "SHENGJI_DEVICE_ACCOUNTS")
 #: env keys the wiring build leaves to the process: the engine is chosen at import
 PROCESS_KEYS = ("SHENGJI_FAST",)
 VOLUME_PREFIX = "/data/models/"

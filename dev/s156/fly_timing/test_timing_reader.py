@@ -63,7 +63,7 @@ def test_cli_consumes_complete_capture(tmp_path, capture):
     assert parsed["verdict"] == "PASS"
     assert parsed["paired_plays"] == 306
     assert parsed["wall_ratio_B_over_A"] == 1.0
-    assert parsed["memory"]["projected_server_mib"] == 148
+    assert parsed["memory"]["projected_server_mib"] == 229
 
 
 @pytest.mark.parametrize(("where", "mutate", "reason"), [
@@ -104,10 +104,13 @@ def test_latency_gate_uses_unrounded_ratio(tmp_path, capture):
 
 def test_fallback_and_peak_memory_gates_include_worker_terminal(tmp_path, capture):
     capture["decisions"][1]["B"].update(belief_fallback_any=1)
-    capture["events"][-1]["worker_final"]["B"]["status"]["VmHWM"] = 1500 * 1024
+    final = capture["events"][-1]["worker_final"]
+    final["A"]["status"]["VmHWM"] = 1200 * 1024
+    final["B"]["status"]["VmHWM"] = 1500 * 1024
     seal = write(tmp_path, capture)
     decision = reader.decide(tmp_path, seal)
     assert decision["verdict"] == "FAIL"
+    assert decision["memory"]["projected_server_mib"] == 1648
     assert decision["gates"] == {"latency": True, "play_fallbacks": True,
                                  "belief_fallbacks": False, "memory": False}
 

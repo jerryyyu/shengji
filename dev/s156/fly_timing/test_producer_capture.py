@@ -13,6 +13,8 @@ import read_timing
 import supervise
 import timing
 
+from shengji.engine.round import HAND_SIZE, Round
+
 
 def test_six_paired_rounds_produce_a_readable_seal(tmp_path, monkeypatch):
     machine = "abc123"
@@ -24,6 +26,16 @@ def test_six_paired_rounds_produce_a_readable_seal(tmp_path, monkeypatch):
     memory_kib = {server_pid: 150 * 1024, 101: 80 * 1024, 102: 100 * 1024}
     round_seeds = {"A": [], "B": []}
     calls = []
+    declarations = []
+    expected_declarations = []
+    applied_declarations = []
+    declare = Round.declare
+
+    def record_declare(self, seat, cards):
+        applied_declarations.append((seat, cards))
+        return declare(self, seat, cards)
+
+    monkeypatch.setattr(Round, "declare", record_declare)
 
     def proc_status(pid):
         return {"VmHWM": memory_kib[pid]}
@@ -48,11 +60,19 @@ def test_six_paired_rounds_produce_a_readable_seal(tmp_path, monkeypatch):
             if phase == "new_round":
                 round_seeds[self.side].append(message["seed"])
                 return {"ok": True}
+            rnd = pickle.loads(message["round"])
             if phase == "declare":
-                return {"cards": None}
+                seat = message["seat"]
+                options = rnd.declare_options(seat)
+                cards = None
+                if options and (self.side == "A" or message["final"]):
+                    cards = options[0]
+                    if self.side == "A":
+                        expected_declarations.append((seat, cards))
+                declarations.append((self.side, seat, message["final"], message["round"], cards))
+                return {"cards": cards}
 
             calls.append((self.side, hashlib.sha256(message["round"]).digest()))
-            rnd = pickle.loads(message["round"])
             hand = rnd.hands[message["seat"]]
             if phase == "bury":
                 cards = hand[:8]
@@ -132,7 +152,15 @@ def test_six_paired_rounds_produce_a_readable_seal(tmp_path, monkeypatch):
     assert result["seeds"] == seeds == round_seeds["A"] == round_seeds["B"]
     assert result["paired_plays"] == len(seeds) * 100
     assert result["wall_ratio_B_over_A"] == pytest.approx(1.05)
-    assert result["memory"]["projected_server_mib"] == 170
+    assert result["memory"]["projected_server_mib"] == 250
+    assert len(declarations) == 2 * len(seeds) * (4 * HAND_SIZE + 4)
+    pairs = list(zip(declarations[::2], declarations[1::2], strict=True))
+    for index, (first, second) in enumerate(pairs):
+        assert (first[0], second[0]) == ("A", "B")
+        assert first[1:-1] == second[1:-1]
+        assert first[2] == (index % (4 * HAND_SIZE + 4) >= 4 * HAND_SIZE)
+    assert any(first[-1] != second[-1] for first, second in pairs)
+    assert applied_declarations == expected_declarations
     assert len(calls) == 2 * (result["paired_plays"] + len(seeds))
     for index, ((first, first_input), (second, second_input)) in enumerate(zip(calls[::2], calls[1::2])):
         assert (first, second) == (("A", "B") if index % 2 == 0 else ("B", "A"))

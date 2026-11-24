@@ -173,8 +173,8 @@ def check_memory(samples, decisions, terminal):
             memory(final["status"]["VmHWM"], f"{side} final HWM"),
             *(memory(row[side]["status"]["VmHWM"], f"{side} HWM") for row in decisions),
         )
-    projected = server + worker["B"] - worker["A"]
-    require(projected > 0, "invalid projected server memory")
+    # The reference server is idle, so the full B worker peak bounds the extra serving memory.
+    projected = server + worker["B"]
     return {
         "server_hwm_mib": server / 1024,
         "worker_hwm_mib": {side: value / 1024 for side, value in worker.items()},

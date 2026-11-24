@@ -439,6 +439,17 @@ def run_main():
         sys.path.insert(0, APP)
         from shengji.engine.game import Game
 
+        def paired_declare(rnd, seat, *, final):
+            guard()
+            message = {"op": "declare", "round": pickle.dumps(rnd), "seat": seat, "final": final}
+            cards = A.call(message)["cards"]
+            B.call(message)
+            if cards:
+                try:
+                    rnd.declare(seat, cards)
+                except Exception:  # noqa: BLE001
+                    pass
+
         index = 0
         for seed in SEEDS:
             guard()
@@ -448,20 +459,9 @@ def run_main():
                 w.call({"op": "new_round", "seed": seed})
             while rnd.phase == "deal":
                 seat, _, _ = rnd.deal_next()
-                cards = A.call({"op": "declare", "round": pickle.dumps(rnd), "seat": seat, "final": False})["cards"]
-                if cards:
-                    try:
-                        rnd.declare(seat, cards)
-                    except Exception:  # noqa: BLE001
-                        pass
+                paired_declare(rnd, seat, final=False)
             for seat in range(4):
-                guard()
-                cards = A.call({"op": "declare", "round": pickle.dumps(rnd), "seat": seat, "final": True})["cards"]
-                if cards:
-                    try:
-                        rnd.declare(seat, cards)
-                    except Exception:  # noqa: BLE001
-                        pass
+                paired_declare(rnd, seat, final=True)
             rnd.finalize_declare()
             event("round_start", seed=seed, banker=rnd.banker, trump=getattr(rnd, "trump_suit", None))
             while rnd.phase in ("bury", "play"):

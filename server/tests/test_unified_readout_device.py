@@ -497,3 +497,35 @@ def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path):
     decision(2, "INVALID")
     gate[-1] = "0" * 64
     decision(2, "expected warm start")
+
+
+@pytest.mark.parametrize("same_target", [False, True])
+def test_mixpolish_checkpoint_reproduces_selected_calibration(cpu_root, tmp_path, same_target):
+    root, _ = cpu_root
+    source = root / "train" / "best.pt"
+    model, _ = ur.load_checkpoint(source)
+    cache = root / "cache"
+    with np.load(sorted(cache.glob("train-*.npz"))[0]) as z:
+        row = z["leaf_row"][:1]
+        planes, scalars = z["leaf_planes"][:1], z["leaf_scalars"][:1]
+        shard = dict(S=z["S"][row], c=z["c"][row], planes=planes[:, None],
+                     scalars=scalars[:, None], tplanes=planes, tscalars=scalars,
+                     target=np.zeros(1, dtype=np.int16))
+    with torch.no_grad():
+        logits, _, _ = ur.mix_forward(model.readout, shard, np.array([0]))
+    favorite = logits[0, 0].argmax().item()
+    alternative = logits[0, 0].argmin().item()
+    shard["target"][:] = alternative
+    np.savez(tmp_path / "train-0.npz", **shard)
+    shard["target"][:] = alternative if same_target else favorite
+    calib = tmp_path / "calib-0.npz"
+    np.savez(calib, **shard)
+
+    out = tmp_path / "result"
+    assert ur.main(["mixpolish", "--ckpt", str(source), "--cache", str(cache),
+                    "--mix", str(tmp_path), "--out", str(out), "--epochs", "1",
+                    "--true-weight", "0", "--reply-weight", "0", "--threads", "1"]) == 0
+    selected, saved = ur.load_checkpoint(out / "best.pt")
+    assert saved["calib"]["mixpolish_epoch"] == (1 if same_target else 0)
+    observed = ur.mix_eval(selected.readout, [calib])
+    assert observed["mixture_nll"] == pytest.approx(saved["calib"]["mixpolish"]["mixture_nll"])

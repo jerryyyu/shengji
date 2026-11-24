@@ -494,6 +494,18 @@ def test_update_durations_merges_by_maximum(tmp_path):
     assert merged == {"pure": {"server/tests/test_ci_selection_planner.py": 5.0}}
 
 
+def test_update_durations_takes_the_median_across_runs(tmp_path):
+    module = "server/tests/test_ci_selection_planner.py"
+    runs = []
+    for n, records in enumerate(((2.0, 9.0), (4.0,), (100.0,))):
+        run = tmp_path / f"run{n}"
+        run.mkdir()
+        for k, seconds in enumerate(records):
+            (run / f"{k}.json").write_text(json.dumps({"engine": "pure", "modules": {module: seconds}}))
+        runs.append(update_durations.read_records([run]))
+    assert update_durations.median_of_runs(runs) == {"pure": {module: 9.0}}
+
+
 # the session controls -------------------------------------------------------
 
 @pytest.fixture

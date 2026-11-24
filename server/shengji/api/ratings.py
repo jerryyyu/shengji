@@ -313,13 +313,15 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 if u in at_start:
                     seat_ratings.append(at_start[u][0])
                     continue
+                # read inside this transaction: an account deleted since the
+                # round-start read counts its anchor, not that read's rating
                 held = rec.seat_accounts.get(s)
-                own = frozen.get(held) if held is not None else None
-                if held is not None and own is None:
-                    row = conn.execute("SELECT rating FROM users WHERE id = ?",
-                                       (held,)).fetchone()
-                    own = (float(row["rating"]), 0) if row is not None else None
-                seat_ratings.append(own[0] if own is not None else anchors[s])
+                row = (conn.execute("SELECT rating FROM users WHERE id = ?", (held,)).fetchone()
+                       if held is not None else None)
+                if row is None:
+                    seat_ratings.append(anchors[s])
+                else:
+                    seat_ratings.append(frozen.get(held, (float(row["rating"]), 0))[0])
             strengths = team_strengths(seat_ratings, rec.banker_team, rec.banker_declared)
             provisional = {uid for uid, (_, n) in at_start.items() if is_provisional(n)}
             out: dict[int, dict] = {}

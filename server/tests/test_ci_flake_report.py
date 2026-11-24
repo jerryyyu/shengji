@@ -213,3 +213,23 @@ def test_a_run_whose_jobs_never_load_is_skipped_with_a_note(api, monkeypatch):
     _, jobs, _ = _sections(text.split("## Runs skipped", 1)[0])
     assert "45102283018" not in jobs        # nothing from the unread run is compared
     assert "## Runs skipped" not in _run(api)
+
+
+def test_a_failure_with_an_unreadable_later_run_is_not_called_never_rerun(monkeypatch):
+    """A later run of the same sha, branch and workflow whose jobs cannot be
+    read may have rerun the job, so the failure is not "never ran again"; a
+    recovery that was seen still counts."""
+    monkeypatch.setattr(report.time, "sleep", lambda _: None)
+    other = "tests/test_z.py::test_w"
+    api = _synthetic([(1, "claude/a", "PR checks", [(11, "server (pure, 1)", "failure"),
+                                                    (12, "server (pure, 2)", "failure")]),
+                      (2, "claude/a", "PR checks", [(21, "server (pure, 2)", "success")]),
+                      (3, "claude/a", "PR checks", [(31, "server (pure, 1)", "success")])],
+                     {"11": FAILED_LOG, "12": f"[1.1] FAILED {other} - E\n", "21": f"{other} PASSED\n"})
+    text = _run(_failing(api, "runs/3/attempts/", report.API_TRIES))
+    body, skipped = text.split("## Runs skipped: their jobs could not be read", 1)
+    flakes, _, unrerun = _sections(body)
+    assert NODE not in unrerun
+    assert other in flakes                  # the recovery run 2 shows is kept
+    row = next(line for line in skipped.splitlines() if NODE in line)
+    assert _cells(row)[:5] == ["server (pure, 1)", "PR checks", "claude/a", SHA[:8], "1#1"]

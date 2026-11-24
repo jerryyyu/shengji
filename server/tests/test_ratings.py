@@ -797,11 +797,8 @@ def test_an_unrated_seat_whose_account_is_gone_counts_a_guest(env, monkeypatch):
     table.room.seats[2].connected = False
     table.start_round(banker=0)
     assert table.room.ratings.anchors[2] == ratings.GUEST_RATING
-    with closing(sqlite3.connect(store.path)) as db:
-        db.execute("PRAGMA foreign_keys = OFF")
-        db.execute("DELETE FROM users WHERE id = ?", (partner,))
-        db.commit()
-    table.room.ratings.standing = None
+    assert table.room.ratings.standing.result(timeout=10)[partner] == (1300.0, 0)   # read at the start
+    assert store.delete_user(partner)
     table.finish()
     [event] = _events(store)
     assert event["expected"] == pytest.approx(_e((1000 + 800) / 2 + 40, ADV))

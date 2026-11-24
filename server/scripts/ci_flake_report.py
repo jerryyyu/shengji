@@ -12,7 +12,9 @@ the failed tests listed, because a ``-q`` log cannot show that the test ran.
 A ``gh api`` call that fails is tried ``API_TRIES`` times with a growing
 pause; a run whose jobs still cannot be read is left out of the comparison
 and listed in the report as skipped, so one transient failure does not end
-the report.
+the report. A failure with no observed recovery whose group has a later run
+that could not be read is not called "never ran again": it is listed with the
+skipped runs instead.
 
 Failures on a sha that never ran again cannot be classified; they are counted
 in a separate section so a test that fails on one commit and passes on the next
@@ -88,6 +90,8 @@ class Flake:
     jobs: list = field(default_factory=list)  # recovered jobs, with failed tests not shown to rerun
     unrerun: dict = field(default_factory=lambda: defaultdict(list))  # test -> occurrences
     skipped: list = field(default_factory=list)  # runs whose jobs could not be read
+    # failures with no observed recovery and a later run that could not be read
+    incomplete: list = field(default_factory=list)
 
 
 def runs_since(api: Api, repo: str, since: datetime, workflow: str | None) -> list[dict]:
@@ -158,10 +162,13 @@ def collect(api: Api, repo: str, runs: list[dict]) -> Flake:
         if not any(r.get("conclusion") == "failure" or int(r.get("run_attempt") or 1) > 1 for r in group):
             continue
         jobs = []
+        created = {run["id"]: run["created_at"] for run in group}
+        unread = []
         for run in group:
             try:
                 jobs += jobs_of(api, repo, run)
             except subprocess.CalledProcessError as exc:
+                unread.append(run)
                 report.skipped.append({"run": run["id"], "sha": sha, "branch": branch,
                                        "workflow": workflow, "error": _gh_error(exc)})
         jobs.sort(key=lambda j: (j.started, j.run_id, j.attempt))
@@ -185,6 +192,9 @@ def collect(api: Api, repo: str, runs: list[dict]) -> Flake:
                 if unproven or not tests:
                     report.jobs.append({**seen, "tests": unproven})
             elif not later:
+                if any(r["id"] != job.run_id and r["created_at"] >= created[job.run_id] for r in unread):
+                    report.incomplete.append({**seen, "tests": tests})
+                    continue
                 for test in tests:
                     report.unrerun[test].append(seen)
     return report
@@ -229,6 +239,15 @@ def markdown(report: Flake, *, days: int, runs: int, now: datetime, unrerun_rows
         for seen in report.skipped:
             lines.append(f"| {seen['run']} | {seen['workflow']} | {seen['branch']} | {seen['sha'][:8]} | "
                          f"{seen['error']} |")
+        if report.incomplete:
+            lines += ["", "Failed jobs with no recovery seen whose group has a later skipped run "
+                      "(not classified: that run may have rerun them):", "",
+                      "| job | workflow | branch | sha | run | when | failed tests |",
+                      "|---|---|---|---|---|---|---|"]
+            for seen in sorted(report.incomplete, key=lambda s: (s["when"], s["job"])):
+                tests = ", ".join(f"`{t}`" for t in seen["tests"]) or "none named"
+                lines.append(f"| {seen['job']} | {seen['workflow']} | {seen['branch']} | {seen['sha'][:8]} | "
+                             f"{seen['run']}#{seen['attempt']} | {seen['when'][:16]} | {tests} |")
     return "\n".join(lines) + "\n"
 
 

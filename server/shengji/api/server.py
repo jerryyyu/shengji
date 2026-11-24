@@ -240,8 +240,8 @@ class SecurityHeaders:
 WWW_HOST = "www.playshengji.com"
 WWW_EXEMPT_PATHS = frozenset((*support.AASA_PATHS, "/healthz"))
 WWW_REDIRECT_METHODS = frozenset(("GET", "HEAD"))
-# Without Fetch Metadata a page load is told by its Accept; these prefixes and
-# any final segment with a file extension are files, never pages.
+# These prefixes and any final segment with a file extension are files: never
+# moved, however they are asked for, so no cached 301 can catch a later fetch.
 WWW_FILE_PREFIXES = ("/api/", "/assets/", "/sounds/")
 
 
@@ -251,14 +251,14 @@ def _www_is_file(path: str) -> bool:
 
 
 def _www_moves(scope) -> bool:
-    """Whether this request is a top-level page load on ``WWW_HOST``: with
-    Fetch Metadata, ``Sec-Fetch-Mode: navigate`` (and ``Sec-Fetch-Dest:
-    document`` when sent); without it, an ``Accept`` naming ``text/html`` on a
-    path that is not a file."""
+    """Whether this request is a top-level page load on ``WWW_HOST`` of a
+    path that is not a file: with Fetch Metadata, ``Sec-Fetch-Mode:
+    navigate`` (and ``Sec-Fetch-Dest: document`` when sent); without it, an
+    ``Accept`` naming ``text/html``."""
     if scope["type"] != "http" or scope.get("method") not in WWW_REDIRECT_METHODS:
         return False
     path = scope["path"]
-    if path in WWW_EXEMPT_PATHS or path == "/api" or path.startswith("/api/"):
+    if path in WWW_EXEMPT_PATHS or _www_is_file(path):
         return False
     headers = {}
     for k, v in scope.get("headers", []):
@@ -271,7 +271,7 @@ def _www_moves(scope) -> bool:
         return mode.strip().lower() == "navigate" and (
             dest is None or dest.strip().lower() == "document")
     accept = headers.get(b"accept", "").lower()
-    return "text/html" in accept and not _www_is_file(path)
+    return "text/html" in accept
 
 
 class WwwRedirect:

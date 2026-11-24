@@ -547,9 +547,10 @@ def test_a_www_tab_plays_its_sounds_in_place(www_site, fetch):
 
 
 @pytest.mark.parametrize("path", ["/assets/index-abc.js", "/assets/index-abc.css",
-                                  "/manifest.webmanifest", SOUND])
+                                  "/manifest.webmanifest", SOUND, "/sounds/bi.mp3"])
 def test_a_www_file_is_never_moved_even_when_it_asks_for_html(www_site, path):
-    for load in (HTML_ONLY, {**NAV, "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script"},
+    for load in (NAV, {"sec-fetch-mode": "navigate"}, HTML_ONLY,
+                 {**NAV, "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script"},
                  {**NAV, "sec-fetch-dest": "iframe"}):
         r = www_site.get(path, headers={**load, **WWW}, follow_redirects=True)
         assert r.history == [] and r.status_code == 200, (path, load)

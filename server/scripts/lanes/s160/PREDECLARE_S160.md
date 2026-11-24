@@ -24,9 +24,9 @@ The arms are the RT2 attribution kit (claude-rt2-attrib, PREDECLARE.md sha256 in
 ## Arms (1,000 paired seat-swapped rank-mixed deals each, round plan r2, 24 workers, the harness's play cap)
 | arm | exploiter | defender | seeds | pilot (validity only) |
 |---|---|---|---|---|
-| B4 | SPLIT: R54 unified 97c07be8 + RT4 belief 35e225cf (belief-only swap) | R54 FULL 97c07be8 + 1b1fd2de | [2666000000, 2666001000) | [2666003000, +20) |
-| U4 | SPLIT: RT4 unified e2951d35 + R54 belief 1b1fd2de (heads-only swap) | R54 FULL | [2666001000, 2666002000) | [2666003020, +20) |
-| D4 | FULL: RT4 e2951d35 + 35e225cf | FULL: RT2 47175c99 + bed32f87 | [2666002000, 2666003000) | [2666003040, +20) |
+| B4 | SPLIT: R54 unified 97c07be8 + RT4 belief 35e225cf (belief-only swap) | R54 FULL 97c07be8 + 1b1fd2de | [2667000000, 2667001000) | [2667003000, +20) |
+| U4 | SPLIT: RT4 unified e2951d35 + R54 belief 1b1fd2de (heads-only swap) | R54 FULL | [2667001000, 2667002000) | [2667003020, +20) |
+| D4 | FULL: RT4 e2951d35 + 35e225cf | FULL: RT2 47175c99 + bed32f87 | [2667002000, 2667003000) | [2667003040, +20) |
 
 Order B4, U4, D4. If the host or time runs out, D4 is dropped and that is reported. "R54" here is release 54's package
 pair under this harness (2 s bury, no fast readout), the same defender bytes as R4H and RT2-attrib; it is not release 54 as
@@ -59,8 +59,9 @@ Claim limits: a strength attribution on the M5 Ultra under the R4H harness. It i
 not separate value from policy from reply inside the heads, and the heads arm also carries RT4's trunk.
 
 ## Seeds and exposure
-Registry entry rt4-attrib-dev-2666000000, [2666000000, 2666004000): arms above, pilots [2666003000, 2666003060), timing seeds
-[2666003060, 2666003090), the rest spare. Before any deal, clear/ holds the clearance of the block, by S159's clearance
+Registry entry rt4-attrib-dev-2667000000, [2667000000, 2667004000) (chosen clear of every registered window and of the
+SZ3 plan's duel window [2666000000, 2666001000)): arms above, pilots [2667003000, 2667003060), timing seeds
+[2667003060, 2667003090), the rest spare. Before any deal, clear/ holds the clearance of the block, by S159's clearance
 scripts with the block changed: seed_windows.py clear vs every checkpoint of RT4's, R54's, RT2's and RT3-FT's lineages and the
 R52 served checkpoints; the exact deal-key scan of every extract dir those lineages trained on; the accepted Y / S17 / M17 /
 s58live / live-deck indexes; every registered screen window's deals; the numeric interval table.

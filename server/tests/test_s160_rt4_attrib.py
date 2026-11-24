@@ -17,7 +17,7 @@ import pytest
 SERVER = Path(__file__).resolve().parents[1]
 LANE = SERVER / "scripts" / "lanes" / "s160"
 LIB = SERVER / "scripts" / "lanes" / "lane_lib.sh"
-ENTRY = SERVER / "runs" / "seed_windows.d" / "rt4-attrib-dev-2666000000.json"
+ENTRY = SERVER / "runs" / "seed_windows.d" / "rt4-attrib-dev-2667000000.json"
 BASH = "/bin/bash"
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell launcher")

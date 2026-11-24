@@ -14,12 +14,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-BLOCK = ("rt4-attrib-dev-2666000000", 2666000000, 4000)
+BLOCK = ("rt4-attrib-dev-2667000000", 2667000000, 4000)
 # arm: exploiter (package, belief, mode), defender (package, belief, mode), seed0, pilot_seed0, timing_seed0
 ARMS = {
-    "B4": (("R54", "RT4", "root"), ("R54", "R54", "shared"), 2666000000, 2666003000, 2666003060),
-    "U4": (("RT4", "R54", "root"), ("R54", "R54", "shared"), 2666001000, 2666003020, 2666003070),
-    "D4": (("RT4", "RT4", "shared"), ("RT2", "RT2", "shared"), 2666002000, 2666003040, 2666003080),
+    "B4": (("R54", "RT4", "root"), ("R54", "R54", "shared"), 2667000000, 2667003000, 2667003060),
+    "U4": (("RT4", "R54", "root"), ("R54", "R54", "shared"), 2667001000, 2667003020, 2667003070),
+    "D4": (("RT4", "RT4", "shared"), ("RT2", "RT2", "shared"), 2667002000, 2667003040, 2667003080),
 }
 DEALS, PILOT_DEALS, TIMING_DEALS = 1000, 20, 6
 PKG = {   # model: (unified file, unified sha256, belief file, belief sha256) under inputs/

@@ -232,30 +232,38 @@ class SecurityHeaders:
 
 # An invite link carries the host it was shared from, and the app's
 # associated domains name only the apex and shengji.fly.dev, so a page on www
-# moves to the apex. Apple's CDN fetches the association file and Fly checks
-# /healthz on whatever host they use; those answer in place.
+# moves to the apex. Only a page load moves: a 301 turns a POST into a GET, so
+# the API answers in place for a tab already open on www. Apple's CDN fetches
+# the association file and Fly checks /healthz on whatever host they use;
+# those answer in place too.
 WWW_HOST = "www.playshengji.com"
 WWW_EXEMPT_PATHS = frozenset((*support.AASA_PATHS, "/healthz"))
+WWW_REDIRECT_METHODS = frozenset(("GET", "HEAD"))
+
+
+def _www_moves(scope) -> bool:
+    """Whether this request is a page load on ``WWW_HOST`` that moves."""
+    if scope["type"] != "http" or scope.get("method") not in WWW_REDIRECT_METHODS:
+        return False
+    path = scope["path"]
+    if path in WWW_EXEMPT_PATHS or path == "/api" or path.startswith("/api/"):
+        return False
+    for k, v in scope.get("headers", []):
+        if k == b"host":
+            return v.decode("latin-1").split(":", 1)[0].lower().rstrip(".") == WWW_HOST
+    return False
 
 
 class WwwRedirect:
-    """Pure ASGI: an HTTP request to ``WWW_HOST`` gets a 301 to the same path
-    and query on ``support.SITE_ORIGIN``. WebSockets and every other host pass
-    through."""
+    """Pure ASGI: a GET or HEAD page load on ``WWW_HOST`` gets a 301 to the
+    same path and query on ``support.SITE_ORIGIN``. The API, WebSockets and
+    every other host pass through."""
 
     def __init__(self, inner):
         self.inner = inner
 
     async def __call__(self, scope, receive, send_):
-        if scope["type"] != "http" or scope["path"] in WWW_EXEMPT_PATHS:
-            await self.inner(scope, receive, send_)
-            return
-        host = b""
-        for k, v in scope.get("headers", []):
-            if k == b"host":
-                host = v
-                break
-        if host.decode("latin-1").split(":", 1)[0].lower().rstrip(".") != WWW_HOST:
+        if not _www_moves(scope):
             await self.inner(scope, receive, send_)
             return
         target = support.SITE_ORIGIN.encode() + (scope.get("raw_path") or scope["path"].encode())

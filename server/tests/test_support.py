@@ -426,7 +426,7 @@ def test_the_bundle_id_matches_the_capacitor_app_id():
 ])
 @pytest.mark.parametrize("host", ["www.playshengji.com", "WWW.PlayShengji.com:443"])
 def test_www_moves_to_the_apex_with_its_path_and_query(client, path, location, host):
-    for method in ("GET", "HEAD", "POST"):
+    for method in ("GET", "HEAD"):
         r = client.request(method, path, headers={"host": host}, follow_redirects=False)
         assert r.status_code == 301, (method, path)
         assert r.headers["location"] == location
@@ -449,3 +449,42 @@ def test_www_answers_the_app_site_association_and_healthz_in_place(client, monke
         r = client.get(path, headers=www, follow_redirects=False)
         assert r.status_code == 200, path
         assert r.json()["applinks"]["details"][0]["appIDs"] == [f"{FAKE_TEAM}.com.jerryyu.shengji"]
+
+
+WWW = {"host": "www.playshengji.com"}
+
+
+def test_a_www_invite_reaches_the_apex_with_its_code(client):
+    """Followed end to end through the app: one 301, then the apex answers
+    the invite exactly as it answers it directly."""
+    r = client.get("/?code=ABCD", headers=WWW, follow_redirects=True)
+    assert [h.status_code for h in r.history] == [301]
+    assert str(r.url) == "https://playshengji.com/?code=ABCD"
+    assert r.request.headers["host"] == "playshengji.com"
+    direct = client.get("/?code=ABCD", headers={"host": "playshengji.com"})
+    assert r.status_code == direct.status_code and r.content == direct.content
+
+
+def test_an_open_www_tab_still_submits_a_support_message(client, support_on):
+    r = _post(client, VALID, headers=WWW, follow_redirects=True)
+    assert r.history == [] and r.request.headers["host"] == "www.playshengji.com"
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    [rec] = _stored(support_on)
+    assert rec["message"] == VALID["message"]
+
+
+def test_the_api_answers_in_place_on_www(client):
+    direct = client.get("/api/auth/config")
+    assert direct.status_code == 200
+    r = client.get("/api/auth/config", headers=WWW, follow_redirects=True)
+    assert r.history == [] and r.status_code == 200 and r.json() == direct.json()
+    for method in ("GET", "HEAD", "POST"):
+        for path in ("/api", "/api/", "/api/no-such-route"):
+            r = client.request(method, path, headers=WWW, follow_redirects=False)
+            assert r.status_code != 301 and "location" not in r.headers, (method, path)
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+def test_only_a_page_load_moves_off_www(client, method):
+    r = client.request(method, "/?code=ABCD", headers=WWW, follow_redirects=False)
+    assert r.status_code != 301 and "location" not in r.headers

@@ -432,9 +432,10 @@ describe("phone table geometry", () => {
     });
   }
 
-  it("shrinks the hand's cards above 25, briefly animated", () => {
+  it("shrinks the hand's cards above 25, with no layout transition", () => {
     expect(rule(block, ".table-screen:has(.hand.small-cards)")["--hand-cw"]).toBe("clamp(37px, calc(var(--safe-w) * 0.07), 56px)");
-    expect(rule(block, ".hand .card").transition).toContain("width 150ms");
+    // the hand's glide (Hand.tsx) eases the size change by a transform
+    expect(block).not.toMatch(/transition:[^;]*\b(width|flex-basis)\b/);
   });
 });
 

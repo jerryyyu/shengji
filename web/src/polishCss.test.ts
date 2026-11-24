@@ -55,7 +55,7 @@ describe("transitions", () => {
 describe("live numbers", () => {
   const LIVE = [
     ".off-tag.counting", ".card-count", ".chat-badge", ".tp-chat-badge", ".play-presence",
-    ".bury-points", ".table-pill", ".account-pill-rating", ".tp",
+    ".bury-points", ".table-pill", ".account-pill-rating", ".tp", ".me-spark-chip",
   ];
   it.each(LIVE)("%s keeps fixed-width digits", (sel) => {
     expect(bodies(sel).some((b) => b.includes("font-variant-numeric: tabular-nums"))).toBe(true);
@@ -130,10 +130,21 @@ describe("controls", () => {
   });
 });
 
+describe("the rating chart", () => {
+  it("scrubs on a horizontal drag and leaves a vertical one to scroll the page", () => {
+    expect(bodies(".me-spark").some((b) => b.includes("touch-action: pan-y"))).toBe(true);
+  });
+  it("draws no motion to remove under Reduce Motion: the guide and dot jump", () => {
+    for (const sel of [".me-spark", ".me-spark-guide", ".me-spark-dot", ".me-spark-chip", ".me-spark.scrubbing .me-spark-dot"]) {
+      expect(bodies(sel).join(";")).not.toMatch(/transition|animation/);
+    }
+  });
+});
+
 describe("tap targets", () => {
   // controls drawn at 44px or more
   const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".tp-invite", ".q-link", ".leave-sheet-actions button", ".app-store-badge",
-    ".play-tab .howto-link"];
+    ".play-tab .howto-link", ".me-spark"];
   it.each(DRAWN)("%s is drawn at least 44px tall", (sel) => {
     const h = bodies(sel).flatMap(drawnHeights);
     expect(h.length).toBeGreaterThan(0);

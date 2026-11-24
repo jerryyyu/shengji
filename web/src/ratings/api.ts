@@ -50,6 +50,8 @@ export interface MyStats {
   games_won: number;
   week_delta: number;
   history: number[];
+  /** each history point's unix time, the same length; absent from an older server */
+  history_at?: number[];
   recent_games: RecentGame[];
   visible: boolean;
 }

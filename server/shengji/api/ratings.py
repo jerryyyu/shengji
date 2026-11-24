@@ -133,7 +133,7 @@ ACCOUNT, BOT, GUEST, ABSENT = "account", "bot", "guest", "absent"
 
 WEEK_SECONDS = 7 * 86400
 LEADERBOARD_SIZE = 20
-HISTORY_POINTS = 60
+HISTORY_POINTS = 200
 RECENT_GAMES = 10
 BOT_ANCHOR_NAME = "Sheng Ji bot"
 
@@ -432,11 +432,18 @@ def stats(store: accounts.Store, user_id: int, now: float | None = None) -> dict
     for e in events:
         streak = streak + 1 if e["won"] else 0
         best = max(best, streak)
+    # ``history`` is the rating before the first of the last HISTORY_POINTS
+    # rounds, then the rating after each; ``history_at`` is the same length,
+    # each point's unix time: a round's own time, and for the starting point
+    # the round before it (or, with none, the first round's own time)
     history: list[int] = []
+    history_at: list[int] = []
     if events:
         tail = events[-HISTORY_POINTS:]
+        before = events[-len(tail) - 1] if len(events) > len(tail) else tail[0]
         history = [int(round(tail[0]["rating_before"]))]
         history += [int(round(e["rating_after"])) for e in tail]
+        history_at = [int(before["created_at"])] + [int(e["created_at"]) for e in tail]
     games: dict[str, dict] = {}
     for e in events:
         g = games.setdefault(e["game_id"], {"started_at": e["created_at"], "rounds": 0,
@@ -472,6 +479,7 @@ def stats(store: accounts.Store, user_id: int, now: float | None = None) -> dict
         "games_won": sum(e["game_won"] for e in events),
         "week_delta": int(round(week_delta)),
         "history": history,
+        "history_at": history_at,
         "recent_games": recent,
         "visible": bool(user["leaderboard_visible"]),
     }

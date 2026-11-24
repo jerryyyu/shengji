@@ -47,7 +47,7 @@ from localonly import loopback_family, require_local, require_not_deployed  # no
 
 # the timers a scaled run divides (server.py and matchmaking.py module constants)
 SERVER_TIMERS = ("BOT_DELAY", "DEAL_DELAY", "DECLARE_GRACE", "DECLARE_EXTEND", "ROOM_TTL",
-                 "EMPTY_ROOM_BOT_DELAY", "MOVE_TIMER", "RETURN_MIN", "TAKEOVER_AFTER",
+                 "EMPTY_ROOM_BOT_DELAY", "MOVE_TIMER", "RETURN_MIN", "TAKEOVER_AFTER", "AWAY_PAUSE_MAX",
                  "READY_KEEP_SECONDS", "WS_PING_INTERVAL", "WS_PING_TIMEOUT", "MOVE_TIMER_POLL")
 MATCH_TIMERS = ("BOT_FILL_SECS", "START_NOW_SECS", "JOIN_COOLDOWN_SECS")
 PROGRESS = frozenset({"play", "bury", "trick", "round_start", "round_end", "declare", "trump"})
@@ -57,7 +57,7 @@ EXPECTED_REFUSALS = frozenset({"stale_connection", "not_your_turn", "illegal_pla
 QUEUE_STARTS = ("queue_join", "queue_start_bots", "open_table_join")
 FAULTS = ("drop", "stall", "oneway_down", "oneway_up", "delay", "storm", "relaunch", "dup")
 # unscaled seconds a stall or one-way fault lasts: a blip, a lost pong, past
-# the server's 20 s, past the 60 s hold
+# the server's 20 s and the 20 s clock pause, past the 30 s hold
 STALL_SECS = (1.0, 4.0, 12.0, 25.0, 65.0)
 # real seconds between a lobby client's queue or code retries: the server's
 # join and lookup rate limits run on real time, not the scaled timers
@@ -183,10 +183,12 @@ class Soak:
                 self.decision_at[key] = (after, bool(sd.connected and not sd.is_bot))
 
     def _strike(self, room, seat: int) -> None:
-        """A move-clock strike, read against the server's presence record:
-        time away when the seat was connected for less than MOVE_TIMER of the
-        decision, or less than RETURN_MIN since its last return. The client's
-        own down time in the window is kept beside it."""
+        """A move-clock strike, read against the server's presence record
+        (``audit.strike_presence``): time away when the clock it ran out held
+        less than MOVE_TIMER (connected time, plus each absence's part past
+        AWAY_PAUSE_MAX), or less than RETURN_MIN since a return from an
+        absence within AWAY_PAUSE_MAX. The client's own down time in the
+        window is kept beside it."""
         srv, sd = self.srv, room.seats[seat]
         if sd.is_bot or sd.away:
             return
@@ -197,7 +199,8 @@ class Soak:
         if start is not None:
             entry.update(audit.strike_presence(
                 start=start, start_connected=start_up, events=self.presence.get((room.code, seat), []),
-                at=at, move_timer=srv.MOVE_TIMER, return_min=srv.RETURN_MIN, slack=srv.MOVE_TIMER_POLL + 0.05))
+                at=at, move_timer=srv.MOVE_TIMER, return_min=srv.RETURN_MIN, slack=srv.MOVE_TIMER_POLL + 0.05,
+                away_pause=srv.AWAY_PAUSE_MAX))
             entry["decision_secs"] = at - start
             client = self.by_seat.get((room.code, seat))
             if client is not None:

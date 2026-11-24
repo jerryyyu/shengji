@@ -45,6 +45,7 @@ PAIRS = (
     Pair("web/src/queue/tableText.ts", "OFFER_SECS", MATCHMAKING_PY, "OFFER_SECS"),
     Pair("web/src/queue/store.ts", "BOT_FILL_MS", MATCHMAKING_PY, "BOT_FILL_SECS", ts_scale=1 / 1000),
     Pair("web/src/components/Table.tsx", "DECLARE_WINDOW_SECS", SERVER_PY, "DECLARE_GRACE"),
+    Pair("web/src/components/ConnectionPill.tsx", "LOST_AFTER_MS", SERVER_PY, "TAKEOVER_AFTER", ts_scale=1 / 1000),
     Pair("web/src/auth.ts", "DISPLAY_NAME_MAX", ACCOUNTS_PY, "DISPLAY_NAME_MAX"),
     Pair(OFFLINE_SERVER_TS, "BOT_DELAY", SERVER_PY, "BOT_DELAY"),
     Pair(OFFLINE_SERVER_TS, "DEAL_DELAY", SERVER_PY, "DEAL_DELAY"),

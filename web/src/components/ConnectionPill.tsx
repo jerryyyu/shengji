@@ -9,8 +9,9 @@ import { useT } from "../i18n";
 
 /** A short blip reconnects on its own; Retry joins the pill only after this. */
 export const RETRY_AFTER_MS = 10_000;
-/** Long enough that a tunnel or a lift does not trigger the full screen. */
-export const LOST_AFTER_MS = 60_000;
+/** server.py TAKEOVER_AFTER: the full screen comes when the server hands a
+ *  dropped seat to the bot, not after. */
+export const LOST_AFTER_MS = 30_000;
 
 export type ConnPhase = "open" | "waiting" | "retry" | "lost";
 

@@ -248,11 +248,14 @@ def verdict(out: dict, floors: Floors) -> dict:
                        "resolved_share": floors.resolved_share, "faults": floors.faults}}
 
 
-def connected_in(start: float, start_connected: bool, events: Iterable[tuple[float, str]],
-                 end: float) -> tuple[float, float | None]:
-    """Seconds a seat was connected in [start, end], and its last return in
-    that span, from its presence events (time, ``"up"`` or ``"down"``)."""
-    t, up, total, last_return = start, start_connected, 0.0, None
+def presence_in(start: float, start_connected: bool, events: Iterable[tuple[float, str]],
+                end: float) -> tuple[float, list[float], float | None, float | None]:
+    """A seat's presence in [start, end] from its events (time, ``"up"`` or
+    ``"down"``): seconds connected, the length of each absence (one still
+    open at ``end`` runs to it), its last return in that span and the length
+    of the absence that return ended."""
+    t, up, total, last_return, last_gap = start, start_connected, 0.0, None, None
+    gaps: list[float] = []
     for at, kind in sorted(events):
         if at <= start:
             continue
@@ -260,22 +263,32 @@ def connected_in(start: float, start_connected: bool, events: Iterable[tuple[flo
             break
         if up:
             total += at - t
+        elif kind == "up":
+            gaps.append(at - t)
+            last_return, last_gap = at, at - t
         t = at
         up = kind == "up"
-        if up:
-            last_return = at
     if up:
         total += end - t
-    return total, last_return
+    else:
+        gaps.append(end - t)
+    return total, gaps, last_return, last_gap
 
 
 def strike_presence(*, start: float, start_connected: bool, events: Iterable[tuple[float, str]],
-                    at: float, move_timer: float, return_min: float, slack: float) -> dict:
+                    at: float, move_timer: float, return_min: float, slack: float,
+                    away_pause: float) -> dict:
     """A strike at ``at`` on a decision begun at ``start``: charged for time
-    away when the seat was connected for less than ``move_timer`` of it, or
-    for less than ``return_min`` since its last return (the server's own
-    guarantees; ``slack`` absorbs its poll)."""
-    connected, last_return = connected_in(start, start_connected, events, at)
+    away when the clock it ran out had less than ``move_timer`` in it, or
+    when it came less than ``return_min`` after a return from an absence of
+    at most ``away_pause`` (the server's own guarantees; ``slack`` absorbs
+    its poll). The clock holds the connected time and, of each absence, the
+    part past ``away_pause``, which ran on the clock; a return after a longer
+    absence has no ``return_min`` floor."""
+    connected, gaps, last_return, last_gap = presence_in(start, start_connected, events, at)
+    charged = connected + sum(max(0.0, g - away_pause) for g in gaps)
     since = None if last_return is None else at - last_return
-    away = connected < move_timer - slack or (since is not None and since < return_min - slack)
-    return {"connected_secs": connected, "since_return_secs": since, "time_away": away}
+    floored = since is not None and last_gap is not None and last_gap <= away_pause
+    away = charged < move_timer - slack or (floored and since < return_min - slack)
+    return {"connected_secs": connected, "charged_secs": charged, "since_return_secs": since,
+            "time_away": away}

@@ -349,8 +349,13 @@ def _apply_game(room: Any, levels: SeatLevels, tracker: Any, standing: dict | No
         choose(room, build_relaxed, rating_of, build_beginner)
     chosen = set(levels.standard)
     if tracker is not None:
-        tracker.anchors = [ratings.seat_anchor(seat, levels.level if s in chosen else "advanced")
-                           for s, seat in enumerate(room.seats)]
+        # only the seats that were bots when the round started (``round_started``)
+        # take the chosen level's anchor; a person's opening anchor stands,
+        # whoever holds the seat now
+        opening = list(tracker.anchors) or [ratings.seat_anchor(seat) for seat in room.seats]
+        kinds = list(tracker.kinds) or [ratings.BOT if seat.is_bot else None for seat in room.seats]
+        tracker.anchors = [ratings.BOT_ANCHORS[levels.level if s in chosen else "advanced"]
+                           if kinds[s] == ratings.BOT else opening[s] for s in range(len(room.seats))]
     room.log_event("bot_levels", level=levels.level if chosen else "advanced",
                    standard_seats=sorted(chosen))
 

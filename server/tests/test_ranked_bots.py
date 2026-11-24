@@ -844,7 +844,8 @@ def test_an_800_player_against_beginners_counts_partner_1059_and_opponents_1000(
 def test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account(
         wsenv, monkeypatch, rating, standard):  # noqa: F811
     """The guest's seat changes account while the game's level is pending:
-    the level is read for the account now seated, on both sides of 1000."""
+    the level is read for the account now seated, on both sides of 1000,
+    and the seat keeps the guest anchor it opened the round with."""
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "DEAL_DELAY", 0.03)          # an opening deal of ~3 s
     code, token = _guest_match(client)
@@ -860,7 +861,41 @@ def test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account(
         _settled(room)
         assert ranked_bots.standard(room) == standard
         anchor = ratings.STANDARD_BOT_RATING if standard else ratings.ADVANCED_BOT_RATING
-        assert room.ratings.anchors == [ratings.BOT_RATING, anchor, ratings.ADVANCED_BOT_RATING, anchor]
+        assert room.ratings.anchors == [ratings.GUEST_RATING, anchor, ratings.ADVANCED_BOT_RATING, anchor]
+
+
+def test_a_guest_who_signs_in_during_the_deal_is_rated_beside_as_the_guest_it_opened_as(
+        env, monkeypatch):  # noqa: F811
+    """A guest opens the round, signs in as a 700 account during the deal:
+    the level is read for the account (Beginner, its package missing here,
+    so Advanced), and the partner's stored expected score counts the seat
+    as the 800 guest it opened as and the bots at 1059."""
+    from shengji.api import server as srv
+
+    _, store, _ = env
+    partner, _ = _user(store, "partner", rating=800.0)    # a new account
+    signer, _ = _user(store, "signer", rating=700.0)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [None, "bot", partner, "bot"], code="SIGN")
+    table.start_round(banker=0)
+    room = table.room
+    assert room.ratings.kinds[0] == ratings.GUEST
+    assert room.ratings.anchors == [800.0, 1059.0, ratings.BOT_RATING, 1059.0]
+    ranked_bots.begin_game(room)
+    room.seats[0].user_id = signer                        # signed in during the deal
+
+    def unavailable(served, seed):
+        return served
+    asyncio.run(ranked_bots.settle_game(room, unavailable, unavailable))
+    assert ranked_bots.standard(room) == frozenset()
+    assert room.ratings.anchors == [800.0, 1059.0, ratings.BOT_RATING, 1059.0]
+    table.finish()
+    ratings.flush()
+    event, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", partner)
+    team = (800.0 + 800.0) / 2 + ratings.BANKER_ADVANTAGE_PRESET
+    assert event["expected"] == pytest.approx(ratings.expected_score(team, 1059.0))
+    assert event["expected"] == pytest.approx(0.220859, abs=1e-6)
+    assert _events(store, "SELECT * FROM rating_events WHERE user_id = ?", signer) == []
 
 
 def test_a_seat_that_changes_during_the_settling_read_is_read_again(env, monkeypatch):  # noqa: F811

@@ -52,6 +52,7 @@ progress, and keep every material node resumable.
   whole-goal blocker only after checking every useful path; preserve pauses
   and launch holds. Use `RL_PLAN.md` "Fleet handover and review latency" for
   successor preparation, review handoffs and passive waits.
+- A server, room or Nearby change that touches a transition in `docs/dev/LIFECYCLE_CHECKLIST.md` is reviewed against it.
 - Return all load-bearing findings in one review: exact defect, shortest
   acceptable fix or evidence, owner, and what remains unblocked. Separate
   execution safety, scientific claim limits and nonblocking documentation.

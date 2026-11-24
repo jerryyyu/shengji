@@ -228,6 +228,8 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
      highest first: why Play is disabled (a refused tap, or a play that does not follow), else the phase's
      help (declaring, burying), else the newcomer coach's cue. The phase's help and the cue are teaching and
      show only while the coach shows (the Coach switch on, or a newcomer on auto); the reason shows always.
+     The coach points and never chooses: no card is selected for you, and no card in the hand is dimmed, legal
+     or not; an idle cue pulses the cards that follow the lead (Jerry's no-dimming rule, 11-12).
      The banker's bury hand is one plain hand: kitty cards carry no mark (Jerry 11-14). The status line in the button row ("Waiting
      for Li", "Dealing cards…") is gone: the seat on turn glows and says "their turn", and the hand fills
      as it is dealt.

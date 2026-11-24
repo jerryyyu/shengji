@@ -152,7 +152,7 @@ export function coachFor(hand: readonly HandCard[], lead: readonly string[] | nu
   const word = SUIT_WORD[eff];
   const inSuit = hand.filter((c) => effOf(c.code, trump) === eff).map((c) => c.id);
   if (inSuit.length >= need) {
-    return { text: `Your turn: tap ${need} ${word} ${need === 1 ? "card" : "cards"} (lit up), then Play`, follow: new Set(inSuit) };
+    return { text: `Your turn: tap ${need} ${word} ${need === 1 ? "card" : "cards"}, then Play`, follow: new Set(inSuit) };
   }
   if (inSuit.length > 0) {
     return {

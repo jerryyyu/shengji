@@ -35,7 +35,8 @@ interface HandProps {
   onToggle: (id: number) => void;
   /** Filled with card positions for the trick area's play flights. */
   rects?: RefObject<HandRects>;
-  /** When set, the cards that can make the play: the others are dimmed. */
+  /** When set, the cards that can make the play: they pulse with an idle
+   *  coach cue. No card is ever dimmed, these or the others. */
   lit?: Set<number> | null;
 }
 
@@ -45,8 +46,8 @@ interface SlotProps {
   selected: boolean;
   /** Under a finger that is down: the card lifts until the finger lifts. */
   pressed: boolean;
-  /** "lit": one of the cards that can make the play; "dim": not one. */
-  mark: "" | "lit" | "dim";
+  /** "lit": one of the cards that can make the play. */
+  mark: "" | "lit";
   onToggle: ((id: number) => void) | undefined;
 }
 
@@ -286,7 +287,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
       {hand.map((c) => (
         <HandSlot key={c.id} id={c.id} code={c.code} selected={selected.has(c.id)}
                   pressed={selectable && pressed === c.id}
-                  mark={lit === null ? "" : lit.has(c.id) ? "lit" : "dim"}
+                  mark={lit?.has(c.id) ? "lit" : ""}
                   onToggle={selectable ? onToggle : undefined} />
       ))}
     </div>

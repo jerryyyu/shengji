@@ -364,6 +364,9 @@ def play_session(seed: int, rounds: int, config: dict) -> list[dict]:
     server._compute_bot_turn_off_loop = _inline_bot_turn
     # each session is one fresh client on a fresh server
     server.limits.reset()
+    # the lobby's presence line reads process-wide matchmaker state on the
+    # wall clock; a fresh server has sent none, so none reaches this socket
+    server.MATCHMAKER.reset()
     loop = VirtualTimeLoop()
     try:
         return loop.run_until_complete(_session(seed, rounds, config))

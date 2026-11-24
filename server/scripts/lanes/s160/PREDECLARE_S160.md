@@ -50,8 +50,11 @@ the same decisions as the FULL side. Re-dealing it would reproduce identical byt
 ## Read
 Validity first, per arm, by kit/ut_mix_read.py unchanged (completion, names, fault ceilings, worlds delivered, zero served
 belief fallbacks, declaration shape, bury belief-world fallbacks, the unified prior and readout rules per side mode, outcome
-consistency; the validity.py guards). Every arm's 20-deal pilot passes the same checks (kit/mix_pilot_check.py) before the arm
-is dealt. A DEV_INVALID arm read stops the chain with every file kept; s160_attrib.py runs once, after U4's read and before D4 is dealt,
+consistency; the validity.py guards). Every arm's 20-deal pilot passes the same checks before the arm is dealt.
+s160_guard.py adds what the pinned reader does not check: before any outcome, the two mirrors of every deal must put the
+exploiter on opposite teams (pilot and arm); every saved pilot check, seal, read and attribution is re-verified against its
+recipe, checker, seal digest and inputs before reuse; each raw read and the attribution run under a noclobber attempt claim,
+and a claimed attempt without a fully verified result stops the chain. A DEV_INVALID arm read stops the chain with every file kept; s160_attrib.py runs once, after U4's read and before D4 is dealt,
 and refuses unless B4 and U4 are VALID reads of this recipe by this reader. D4 is not an input to the label; its own read
 reports it.
 
@@ -68,7 +71,9 @@ s58live / live-deck indexes; every registered screen window's deals; the numeric
 
 ## Host
 M5 Ultra, CPU only, 24 workers, the shared mkdir host lock /Users/jeryyu/fleet/.claude-host.lock held by the launcher from the
-first pilot through the last read (one bounded wait of 12 h). Darkbloom and catan are not touched; no other lane's HOLD is
+first pilot through the last read. Admission is direct, into the assigned idle slot: dispatch_s160.sh (on the Mini) hands
+over only when `fleet_queue.py next ultra` is this lane released at this identity, and the launcher refuses a held lock
+(ABORT rc=5) instead of waiting. Darkbloom and catan are not touched; no other lane's HOLD is
 created. HOLD file: /Users/jeryyu/fleet/claude_s160.HOLD. Token: /Users/jeryyu/fleet/claude_s160.RELEASE = the launcher identity
 (`s160.sh identity`). Nothing is deleted.
 

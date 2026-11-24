@@ -133,7 +133,8 @@ def _stage(tmp_path: Path, *, local_host: bool) -> Path:
     z = tmp_path / "lane"
     (z / "lanes").mkdir(parents=True)
     (z / "clear").mkdir()
-    for f in ("s160.sh", "s160.cfg", "s160_run.sh", "make_recipe_s160.py", "s160_attrib.py", "PREDECLARE_S160.md"):
+    for f in ("s160.sh", "s160.cfg", "s160_run.sh", "make_recipe_s160.py", "s160_attrib.py", "s160_guard.py", "dispatch_s160.sh",
+              "PREDECLARE_S160.md"):
         shutil.copy2(LANE / f, z / f)
     shutil.copy2(LIB, z / "lanes" / "lane_lib.sh")
     (z / "recipe.json").write_text("{}\n")
@@ -172,7 +173,7 @@ def test_identity_is_the_manifest_of_the_lane_files(tmp_path):
     p = _run(z, "identity")
     assert p.returncode == 0 and re.fullmatch(r"[0-9a-f]{64}\n", p.stdout), p.stderr
     names = ("s160.sh", "lanes/lane_lib.sh", "s160.cfg", "PREDECLARE_S160.md", "make_recipe_s160.py", "s160_run.sh", "s160_attrib.py",
-             "recipe.json", "clear/CLEARED")
+             "s160_guard.py", "dispatch_s160.sh", "recipe.json", "clear/CLEARED")
     manifest = "".join(f"{_sha(z / n)}  {Path(n).name}\n" for n in names)
     assert p.stdout.strip() == hashlib.sha256(manifest.encode()).hexdigest()
     (z / "recipe.json").write_text('{"changed": 1}\n')
@@ -186,7 +187,8 @@ def test_unknown_mode_refuses(tmp_path):
 
 def test_run_refuses_without_a_release(tmp_path):
     z = _stage(tmp_path, local_host=True)
-    p = _run(z, "run")
+    ident = _run(z, "identity").stdout.strip()
+    p = subprocess.run([BASH, str(z / "s160.sh"), "run", ident], capture_output=True, text=True, timeout=60)
     assert p.returncode == 6, p.stderr
     status = (z / "run.status").read_text()
     assert re.search(r"(?m)^S160 ABORT claude-s160-run \S+ rc=6 reason=.*RELEASE", status), status
@@ -197,7 +199,8 @@ def test_run_refuses_on_another_host(tmp_path):
     z = _stage(tmp_path, local_host=False)
     if socket.gethostname() == "Jerrys-Mac-Studio.local":
         pytest.skip("this is the lane host")
-    p = _run(z, "run")
+    ident = _run(z, "identity").stdout.strip()
+    p = subprocess.run([BASH, str(z / "s160.sh"), "run", ident], capture_output=True, text=True, timeout=60)
     assert p.returncode == 6
     assert re.search(r"(?m)^S160 ABORT claude-s160-run \S+ rc=6 reason=.*hostname", (z / "run.status").read_text())
 
@@ -224,3 +227,149 @@ def test_lane_scripts_pass_the_lane_checker():
     p = subprocess.run([sys.executable, str(SERVER / "scripts" / "check_lane_scripts.py"), "--strict", str(LANE)],
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
+
+
+GD = _load("s160_guard", LANE / "s160_guard.py")
+SEALED = ("duel.jsonl", "duel.jsonl.resume.json", "duel.time", "manifest.json", "run.log")
+
+
+def _row(seed, mirror, team):
+    return dict(seed=seed, mirror=mirror, arm="identity", ex_team=team, ex_levels=1 if team else -1)
+
+
+def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4"):
+    """A lane with one sealed output laid out exactly as s160_run.sh seals it, and a recipe naming it."""
+    lane = tmp_path / "glane"
+    reader = lane / "kit" / "ut_mix_read.py"
+    reader.parent.mkdir(parents=True)
+    reader.write_text("raise SystemExit('the pinned reader must not be reached')\n")
+    seed0, deals = (2667003000, 20) if kind == "pilot" else (2667000000, 1000)
+    ra = dict(seed0=2667000000, deals=1000, pilot_seed0=2667003000, out_root=str(lane / "out" / arm), status=str(lane / f"{arm}.status"))
+    recipe = lane / "recipe.json"
+    recipe.write_text(json.dumps(dict(schema="utd-mix-recipe-r1", lane="S160", tree=str(tmp_path), tree_head="h" * 40,
+                                      reader=str(reader), reader_sha256=_sha(reader), arms={arm: ra})))
+    mode = f"pilot{arm}" if kind == "pilot" else arm
+    out = lane / mode if kind == "pilot" else lane / "out" / arm
+    status = lane / f"{mode}.status"
+    out.mkdir(parents=True)
+    rows = [_row(seed0 + i, m, teams[m]) for i in range(deals) for m in (0, 1)]
+    (out / "duel.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    for f in ("duel.jsonl.resume.json", "duel.time", "run.log"):
+        (out / f).write_text(f"{f}\n")
+    rsha = _sha(recipe)
+    (out / "manifest.json").write_text(json.dumps(dict(schema="utd-manifest-r1", mode=mode, arm=arm, recipe_sha256=rsha, seed0=seed0,
+                                                       deals=deals, tree_head="h" * 40, rc=0)))
+    (out / "SHA256SUMS").write_text("".join(f"{_sha(out / f)}  ./{f}\n" for f in SEALED))
+    ts = "2026-11-24T00:00:00Z"
+    status.write_text(f"UTD START {ts} mode={mode} arm={arm} pid=1 seed0={seed0} deals={deals} workers=24 recipe={rsha}\n"
+                      f"UTD LOCKED {ts} after 0s (co-run)\nUTD NAMES {ts} ok\nUTD PRODUCER {ts} load=x\n"
+                      f"UTD DONE {ts} recipe={rsha} rows={2 * deals} sums={_sha(out / 'SHA256SUMS')} rc=0\nUTD UNLOCKED {ts} (lock not held by this run)\n")
+    return lane, recipe, out, status
+
+
+def test_mirror_teams_refuses_the_same_team_twice():
+    assert GD.mirror_teams([_row(5, 0, 0), _row(5, 1, 1)], 5, 1) == []
+    assert GD.mirror_teams([_row(5, 0, 1), _row(5, 1, 0)], 5, 1) == []
+    assert GD.mirror_teams([_row(5, 0, 0), _row(5, 1, 0)], 5, 1)
+    assert GD.mirror_teams([_row(5, 0, 0)], 5, 1)
+
+
+def test_pilot_check_refuses_a_same_team_mirror_pair_before_the_reader(tmp_path):
+    _, recipe, _, _ = _guard_lane(tmp_path, teams=(0, 0))
+    code, res = GD.pilot_check(str(recipe), "B4")
+    assert code == 3 and res["validity"] == "DEV_INVALID" and res["failing"][0][0] == "mirror_teams"
+
+
+def test_read_refuses_a_same_team_mirror_pair_with_no_outcome(tmp_path):
+    lane, recipe, _, _ = _guard_lane(tmp_path, teams=(0, 0), kind="duel")
+    out = lane / "readout" / "B4.read.json"
+    assert GD.main(["read", str(recipe), "B4", str(out)]) == 3 and not out.exists()
+
+
+def test_seal_is_bound_to_the_done_digest_and_the_output_set(tmp_path):
+    _, recipe, out, status = _guard_lane(tmp_path)
+    assert GD.seal(str(recipe), "B4", "pilot")["sums_sha256"] == _sha(out / "SHA256SUMS")
+    (out / "extra.txt").write_text("x\n")                    # an unlisted file in the output
+    with pytest.raises(GD.Refusal):
+        GD.seal(str(recipe), "B4", "pilot")
+    (out / "extra.txt").unlink()
+    (out / "SHA256SUMS").write_text((out / "SHA256SUMS").read_text() + f"{_sha(out / 'run.log')}  ./extra.txt\n")
+    with pytest.raises(GD.Refusal):                           # a re-written sums file no longer hashes to the DONE line
+        GD.seal(str(recipe), "B4", "pilot")
+
+
+def test_a_two_field_pilot_verdict_is_not_a_saved_pilot_check(tmp_path):
+    lane, recipe, _, _ = _guard_lane(tmp_path)
+    chk = lane / "pilotB4.check.json"
+    chk.write_text(json.dumps(dict(validity="VALID", failing=[])))
+    with pytest.raises(GD.Refusal):
+        GD.verify_pilot(str(recipe), "B4", str(chk))
+    good = dict(schema="s160-pilot-check-r1", arm="B4", recipe_sha256=_sha(recipe), checker_sha256=_sha(LANE / "s160_guard.py"),
+                reader_sha256=json.loads(recipe.read_text())["reader_sha256"], seal=GD.seal(str(recipe), "B4", "pilot"),
+                validity="VALID", failing=[], mirror_teams="ok")
+    chk.write_text(json.dumps(good))
+    GD.verify_pilot(str(recipe), "B4", str(chk))
+    chk.write_text(json.dumps(dict(good, arm="U4")))
+    with pytest.raises(GD.Refusal):
+        GD.verify_pilot(str(recipe), "B4", str(chk))
+
+
+def test_a_saved_attribution_is_bound_to_the_accepted_reads(tmp_path, monkeypatch):
+    ro = tmp_path / "readout"
+    ro.mkdir()
+    recipe = tmp_path / "recipe.json"
+    recipe.write_text("{}\n")
+    for arm in ("B4", "U4"):
+        (ro / f"{arm}.read.json").write_text(json.dumps({"arm": arm}))
+    monkeypatch.setattr(GD, "verify_read", lambda *a: None)
+    at = LANE / "s160_attrib.py"
+    d = dict(schema="s160-attrib-r1", attrib_sha256=_sha(at), recipe_sha256=_sha(recipe), label="NEITHER-CARRIES",
+             reads={arm: _sha(ro / f"{arm}.read.json") for arm in ("B4", "U4")})
+    (ro / "ATTRIB.json").write_text(json.dumps(d))
+    GD.verify_attrib(str(recipe), str(ro / "ATTRIB.json"), at)
+    (ro / "ATTRIB.json").write_text(json.dumps(dict(d, reads=dict(d["reads"], U4="0" * 64))))
+    with pytest.raises(GD.Refusal):
+        GD.verify_attrib(str(recipe), str(ro / "ATTRIB.json"), at)
+
+
+@pytest.mark.parametrize("files", [("B4.read.out",), ("B4.read.claim",), ("B4.read.claim", "B4.read.out", "B4.read.err"),
+                                   ("ATTRIB.claim",), ("ATTRIB.err",)])
+def test_a_partial_read_attempt_stops_the_chain(tmp_path, files):
+    z = _stage(tmp_path, local_host=True)
+    (z / "readout").mkdir()
+    for f in files:
+        (z / "readout" / f).write_text("partial\n")
+    assert _run(z, "check").returncode == 0
+    status = (z / "check.status").read_text()
+    assert re.search(r"(?m)^S160 NOTE claude-s160-check \S+ saved results: .*(without an attempt claim|no fully verified result)", status), status
+
+
+def _release(z: Path, tmp_path: Path) -> str:
+    ident = _run(z, "identity").stdout.strip()
+    (tmp_path / "claude_s160.RELEASE").write_text(ident + "\n")
+    return ident
+
+
+def test_run_refuses_a_held_lock_instead_of_waiting(tmp_path):
+    z = _stage(tmp_path, local_host=True)
+    ident = _release(z, tmp_path)
+    (tmp_path / "host.lock").mkdir()
+    (tmp_path / "host.lock" / "owner").write_text("999 another-lane t\n")
+    p = subprocess.run([BASH, str(z / "s160.sh"), "run", ident], capture_output=True, text=True, timeout=60)
+    assert p.returncode == 5, p.stderr
+    assert re.search(r"(?m)^S160 ABORT claude-s160-run \S+ rc=5 reason=host lock held .*direct admission", (z / "run.status").read_text())
+    assert (tmp_path / "host.lock" / "owner").read_text() == "999 another-lane t\n"
+
+
+def test_run_needs_its_identity_as_the_argument(tmp_path):
+    z = _stage(tmp_path, local_host=True)
+    _release(z, tmp_path)
+    p = subprocess.run([BASH, str(z / "s160.sh"), "run"], capture_output=True, text=True, timeout=60)
+    assert p.returncode == 6 and not (z / "run.status").exists()
+
+
+def test_dispatch_hands_over_only_to_the_queued_identity():
+    text = (LANE / "dispatch_s160.sh").read_text()
+    assert 'next=$(env -u FLEET_QUEUE python3 "$tools/fleet_queue.py" next ultra)' in text
+    assert '[ "$next" = "$name:released sha=${identity:0:8}" ]' in text
+    assert "name=s160-rt4attrib-v1" in text and "run $identity" in text

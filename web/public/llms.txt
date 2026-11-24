@@ -28,6 +28,8 @@ Reading, summarising and linking to the public pages below is fine. If someone w
 - [Burying the kitty in Sheng Ji: what to put down and why](https://playshengji.com/guides/burying-the-kitty): How the banker should choose the 8 cards to bury, with a real 33-card hand, the point risk of the last trick, and the choices that make a void.
 - [Pairs, tractors and throws in Sheng Ji](https://playshengji.com/guides/pairs-tractors-throws): What counts as a pair, a tractor or a throw, how you must follow each one, and what happens when a throw fails.
 - [Scoring in Sheng Ji: points, the kitty multiplier and levelling up](https://playshengji.com/guides/scoring-and-levels): How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers.
+- [Sheng Ji score calculator: who levels up, by how many, and who deals next](https://playshengji.com/guides/score-calculator): Enter the attackers' points, the kitty and the last lead, and see the result of a Sheng Ji (Tractor) hand: the winning team, the levels gained, the next banker and whether the game is won.
+- [Sheng Ji by the numbers: pairs, tractors, jokers and the kitty](https://playshengji.com/guides/sheng-ji-by-the-numbers): How often a Sheng Ji (Tractor) hand holds a pair, a tractor or both big jokers, what the kitty is worth, and how long a game runs, each with its sample and how it was counted.
 
 ## 攻略（中文）
 
@@ -37,6 +39,8 @@ Reading, summarising and linking to the public pages below is fine. If someone w
 - [埋底怎么埋：该埋什么、为什么](https://playshengji.com/zh/guides/burying-the-kitty): 庄家拿底后怎么挑 8 张埋下去：用一手真实的 33 张牌，讲抠底的风险、做绝门和该留的牌。
 - [对子、拖拉机和甩牌：怎么出、怎么跟、甩失败怎么办](https://playshengji.com/zh/guides/pairs-tractors-throws): 什么算对子、什么算拖拉机、什么算甩牌，跟牌时必须怎么跟，甩牌失败会怎样。
 - [升级怎么算分：分牌、抠底翻倍和升几级](https://playshengji.com/zh/guides/scoring-and-levels): 分怎么数，抠底怎么翻倍，闲家多少分对应升降几级，用实际的数一步步算给你看。
+- [升级算分器：谁升级、升几级、下局谁坐庄](https://playshengji.com/zh/guides/score-calculator): 填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。
+- [升级的数字：对子、拖拉机、大小王和底牌的概率](https://playshengji.com/zh/guides/sheng-ji-by-the-numbers): 升级（拖拉机）一手牌有多大机会拿到对子、拖拉机或一对大王，底牌平均几分，一盘要打多少局。每个数都写明样本和算法。
 
 <!-- /guides -->
 

@@ -81,7 +81,7 @@ LIB=$WORK/lane_lib.sh
 [ -f "$LIB" ] && [ ! -L "$LIB" ] || refuse "the staged lane library is absent"
 unset LANE_GATES LANE_GATE_PROCEED LANE_YIELD_DIR LANE_YIELD_GLOB LANE_GATE_FAIL_RE
 unset LANE_HOUSEKEEPING_RE LANE_TERMINAL_RE LANE_PINS LANE_PIN_HOOK LANE_ARMED_ID
-. "$LIB"
+. "$WORK/lane_lib.sh"
 
 LANE_FILES=("$SCRIPT" "$LIB" "$WORK/recipe.json" "$WORK/sz2r_capacity.json"
   "$WORK/sz2r_dispatch.py" "$WORK/sz2r_sequence.py" "$WORK/sz2r_run.py" "$WORK/sz2r_handoff.py"

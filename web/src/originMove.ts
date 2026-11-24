@@ -3,11 +3,14 @@
 // origin, so the first page on the new origin starts with none of them. On
 // that launch the shell (ios/App/App/OriginMove.swift) copies the old
 // origin's cookies, the session among them, and hands this page the old
-// origin's localStorage as `window.__shengjiOriginMove`. Before any other
-// module reads storage (main.tsx imports this one first), each key the new
-// origin does not have yet is written, once per install: a mark keeps a later
-// page from writing back a key that was since removed. A browser never has
-// the handoff, so the website is unchanged.
+// origin's localStorage as `window.__shengjiOriginMove` (set only in a page
+// at the new origin). Before any other module reads storage (main.tsx imports
+// this one first), each key the new origin does not have yet is written, once
+// per install: a mark keeps a later page from writing back a key that was
+// since removed. Once the mark is kept the page drops the handoff and tells
+// the shell (the `shengjiOriginMove` message), which retires its script and
+// stops offering the move; until then every launch offers it again. A browser
+// never has the handoff, so the website is unchanged.
 //
 // The shell also says whether the old origin was signed in. If the copied
 // session still leaves the app signed out once sign-in has settled, the
@@ -24,20 +27,32 @@ interface MoveWindow {
   __shengjiOriginMove?: Handoff;
   location: { origin: string };
   localStorage: Storage;
+  webkit?: { messageHandlers?: { shengjiOriginMove?: { postMessage(body: unknown): void } } };
+}
+
+/** Tell the shell this origin has kept the handoff, so it is never offered again. */
+function confirmImport(win: MoveWindow): void {
+  delete win.__shengjiOriginMove;
+  try { win.webkit?.messageHandlers?.shengjiOriginMove?.postMessage("imported"); } catch { /* offered again next launch */ }
 }
 
 /** The old origin was signed in, and this page took the handoff. */
 let movedSession = false;
 
-/** Write the shell's handoff into this origin's storage, once per install.
- *  Returns how many keys it wrote. */
+/** Write the shell's handoff into this origin's storage, once per install,
+ *  and confirm it to the shell once the mark is kept. A handoff offered
+ *  again after a confirmed write (the shell never heard it) writes nothing
+ *  and is confirmed again. Returns how many keys it wrote. */
 export function applyOriginMove(win: MoveWindow): number {
   const handoff = win.__shengjiOriginMove;
   if (!handoff || typeof handoff !== "object" || handoff.origin !== win.location.origin) return 0;
   let storage: Storage;
   try {
     storage = win.localStorage;
-    if (storage.getItem(MOVED_MARK) !== null) return 0;
+    if (storage.getItem(MOVED_MARK) !== null) {
+      confirmImport(win);
+      return 0;
+    }
   } catch {
     return 0; // storage refused: nothing to write into
   }
@@ -52,7 +67,12 @@ export function applyOriginMove(win: MoveWindow): number {
       wrote += 1;
     } catch { /* storage full or refused: the rest still go */ }
   }
-  try { storage.setItem(MOVED_MARK, "1"); } catch { /* a later page tries again, keys present stay */ }
+  try {
+    storage.setItem(MOVED_MARK, "1");
+  } catch {
+    return wrote; // not confirmed: the next launch offers it again, keys present stay
+  }
+  confirmImport(win);
   return wrote;
 }
 

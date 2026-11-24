@@ -14,7 +14,18 @@
 // handler: every tick is a timer, a visibility event or a menu tap.
 import { flushNearbyLogFile, nearbyLog, onNearbyLogFileReset, readNearbyLogFile, type LogFileReset } from "./nearbyLog";
 
-export const UPLOAD_URL = "https://playshengji.com/api/nearby-log";
+/** The endpoint's path. A page the server sent posts to its own origin; the
+ *  app's bundled page (capacitor://localhost) has no server of its own and
+ *  posts to the release host, which accepts that origin's preflight. */
+export const UPLOAD_PATH = "/api/nearby-log";
+export const RELEASE_UPLOAD_URL = `https://playshengji.com${UPLOAD_PATH}`;
+
+/** Where this page's chunks go: same-origin for a hosted page, the release
+ *  host for the bundled one. */
+export function uploadUrl(loc: { protocol: string } | undefined =
+  typeof location !== "undefined" ? location : undefined): string {
+  return loc && loc.protocol === "https:" ? UPLOAD_PATH : RELEASE_UPLOAD_URL;
+}
 export const CHUNK_MAX = 1_000_000;
 export const TICK_MAX = 5_000_000;
 export const TICK_MS = 10 * 60 * 1000;
@@ -129,7 +140,7 @@ async function post(body: string, offset: number): Promise<Sent> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const r = await fetch(UPLOAD_URL, {
+    const r = await fetch(uploadUrl(), {
       method: "POST",
       headers: {
         "Content-Type": "text/plain; charset=utf-8",

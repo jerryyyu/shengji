@@ -401,9 +401,10 @@ switch between accounts included, and goes once as whoever that leaves signed in
   Sign out also sends and clears the device secret, so the next launch does not sign it back in.
 - **Reinstall:** the Keychain keeps the secret, so the same account comes back; no message.
 - **The app's own domain (build 11, Jerry 2026-11-24 "a gentle re-sign-in"):** the app loads playshengji.com;
-  shengji.fly.dev keeps serving older builds, and invite links on either host open the app. On the first launch
-  the shell copies the old origin's cookies (the session among them) and hands the page its localStorage, written
-  where a key is unset (`OriginMove.swift`, `originMove.ts`), so the name, settings and seats stay; no message.
+  shengji.fly.dev keeps serving older builds, and invite links on either host open the app. At launch, until a
+  page at the new origin confirms the import, the shell copies the old origin's cookies (the session among them)
+  and hands that page its localStorage, written where a key is unset (`OriginMove.swift`, `originMove.ts`), so
+  the name, settings and seats stay; no message. After the confirmation nothing is copied again.
   If the old origin was signed in and the app still settles signed out, the one identity sheet opens once at
   Sign in; no new surface or copy.
 

@@ -31,6 +31,7 @@ class ShellViewController: CAPBridgeViewController {
     private var statusTapObserver: NSObjectProtocol?
     private var inviteLinkObserver: NSObjectProtocol?
     private var originMove: OriginMoveRunner?
+    private var movingBeforeStart = false
     private var inviteAfterMove: URL?
 
     var inGame = false {
@@ -78,7 +79,7 @@ class ShellViewController: CAPBridgeViewController {
                   let link = (note.object as? [String: Any])?["url"] as? URL,
                   let server = self.bridge?.config.serverURL,
                   let target = InviteLink.target(for: link, server: server) else { return }
-            if self.originMove != nil {
+            if self.movingBeforeStart {
                 self.inviteAfterMove = target
             } else {
                 _ = self.webView?.load(URLRequest(url: target))
@@ -86,24 +87,25 @@ class ShellViewController: CAPBridgeViewController {
         }
     }
 
-    /// Capacitor's viewDidLoad loads the start page; on the launch that moves
-    /// this install to the app's own domain it runs once the move is done.
+    /// Capacitor's viewDidLoad loads the start page; on a launch that still
+    /// has some of the move to the app's own domain to do, it runs once this
+    /// launch's attempt is over (done, failed or timed out). The runner stays
+    /// to hear the page confirm the import.
     override open func viewDidLoad() {
+        let ledger = OriginMoveLedger(flags: UserDefaults.standard)
         guard let webView = webView, let server = bridge?.config.serverURL, OriginMove.applies(to: server),
-              !UserDefaults.standard.bool(forKey: OriginMove.doneKey) else {
+              ledger.pending else {
             super.viewDidLoad()
             return
         }
-        let runner = OriginMoveRunner(webView: webView, server: server)
+        let runner = OriginMoveRunner(webView: webView, server: server, ledger: ledger)
         originMove = runner
-        runner.run { [weak self] in
-            UserDefaults.standard.set(true, forKey: OriginMove.doneKey)
-            self?.loadAfterMove()
-        }
+        movingBeforeStart = true
+        runner.run { [weak self] in self?.loadAfterMove() }
     }
 
     private func loadAfterMove() {
-        originMove = nil
+        movingBeforeStart = false
         super.viewDidLoad()
         if let target = inviteAfterMove {
             inviteAfterMove = nil
@@ -140,42 +142,55 @@ class ShellViewController: CAPBridgeViewController {
     }
 }
 
-/// The one-time move (OriginMove), on the bridge's own data store: the old
-/// host's cookies are copied onto the server's host, then a page with the old
-/// host's origin is made from a string (no network) in a hidden WebView to read
-/// its localStorage, and what was read is handed to the first page as a
-/// document-start script. `run`'s completion is called once, on the main
-/// queue, after the move or after `timeout` seconds, whichever is first; a
-/// part that fails moves nothing and never stops the launch.
-final class OriginMoveRunner: NSObject, WKNavigationDelegate {
+/// One launch's attempt at the move (OriginMove), on the bridge's own data
+/// store. Cookies not yet copied are copied onto the server's host and marked
+/// copied once every copy is set. A storage import not yet confirmed reads the
+/// old host's localStorage in a hidden WebView, from a page with that origin
+/// made from a string (no network), and hands it to pages at the new origin
+/// as a document-start script; the import is marked done only when such a
+/// page confirms it kept the handoff, and then the script and the snapshot are
+/// dropped. `run`'s completion (the start page may load) is called once, on
+/// the main queue, when the read is in place or fails, or after `timeout`
+/// seconds; whatever is not done by then is offered again next launch.
+final class OriginMoveRunner: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private let webView: WKWebView
     private let host: String
+    private var attempt: OriginMoveAttempt
     private let timeout: TimeInterval
     private var reader: WKWebView?
+    private var handoff: WKUserScript?
     private var hadSession = false
     private var done: (() -> Void)?
 
-    init(webView: WKWebView, server: URL, timeout: TimeInterval = 3) {
+    init(webView: WKWebView, server: URL, ledger: OriginMoveLedger, timeout: TimeInterval = 3) {
         self.webView = webView
         self.host = server.host?.lowercased() ?? ""
+        self.attempt = OriginMoveAttempt(ledger: ledger)
         self.timeout = timeout
     }
 
     func run(_ completion: @escaping () -> Void) {
         done = completion
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
-            self?.finish(entries: [:])
+            self?.release()
         }
         let cookies = webView.configuration.websiteDataStore.httpCookieStore
         cookies.getAllCookies { [weak self] all in
-            guard let self = self, self.done != nil else { return }
+            guard let self = self else { return }
             self.hadSession = OriginMove.hadSession(all)
             let group = DispatchGroup()
-            for cookie in OriginMove.movedCookies(all, to: self.host) {
-                group.enter()
-                cookies.setCookie(cookie) { group.leave() }
+            if !self.attempt.ledger.cookiesCopied {
+                for cookie in OriginMove.movedCookies(all, to: self.host) {
+                    group.enter()
+                    cookies.setCookie(cookie) { group.leave() }
+                }
             }
-            group.notify(queue: .main) { self.readStorage() }
+            group.notify(queue: .main) {
+                switch self.attempt.cookiesSet() {
+                case .readStorage: self.readStorage()
+                case .release: self.release()
+                }
+            }
         }
     }
 
@@ -191,30 +206,61 @@ final class OriginMoveRunner: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        webView.evaluateJavaScript(OriginMove.readStorageScript) { [weak self] result, _ in
-            self?.finish(entries: OriginMove.storageEntries(result))
+        webView.evaluateJavaScript(OriginMove.readStorageScript) { [weak self] result, error in
+            guard let self = self else { return }
+            // a failed read hands nothing over: the next launch reads again
+            if self.attempt.read(succeeded: error == nil && result is String) {
+                self.offer(OriginMove.storageEntries(result))
+            }
+            self.release()
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        finish(entries: [:])
+        release()
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        finish(entries: [:])
+        release()
     }
 
-    private func finish(entries: [String: String]) {
-        guard let completion = done else { return }
-        done = nil
+    /// Hand the read to pages at the new origin (a read that lands after the
+    /// timeout is not offered: the next launch reads again).
+    private func offer(_ entries: [String: String]) {
+        guard let source = OriginMove.handoffScript(origin: "https://\(host)", entries: entries, session: hadSession)
+        else { return }
+        let script = WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        handoff = script
+        let controller = webView.configuration.userContentController
+        controller.add(self, name: OriginMove.confirmHandler)
+        controller.addUserScript(script)
+    }
+
+    /// The page kept the handoff: never offer it again, and drop the script
+    /// and its snapshot so no later page in this launch gets it.
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        let origin = message.frameInfo.securityOrigin
+        let valid = message.name == OriginMove.confirmHandler
+            && OriginMove.confirms(body: message.body, isMainFrame: message.frameInfo.isMainFrame,
+                                   scheme: origin.protocol, host: origin.host, port: origin.port)
+        guard attempt.confirmed(valid) else { return }
+        userContentController.removeScriptMessageHandler(forName: OriginMove.confirmHandler)
+        if let script = handoff {
+            let others = userContentController.userScripts.filter { $0 !== script }
+            userContentController.removeAllUserScripts()
+            others.forEach(userContentController.addUserScript)
+        }
+        handoff = nil
+    }
+
+    /// This launch's attempt is over: the start page may load.
+    private func release() {
+        attempt.release()
         reader?.navigationDelegate = nil
         reader?.stopLoading()
         reader = nil
-        if hadSession || !entries.isEmpty,
-           let source = OriginMove.handoffScript(origin: "https://\(host)", entries: entries, session: hadSession) {
-            webView.configuration.userContentController.addUserScript(WKUserScript(
-                source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        }
+        guard let completion = done else { return }
+        done = nil
         completion()
     }
 }

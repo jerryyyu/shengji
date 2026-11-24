@@ -16,7 +16,12 @@ function memoryStorage(initial: Record<string, string> = {}): Storage {
 }
 
 function page(handoff: unknown, storage: Storage = memoryStorage(), origin = ORIGIN) {
-  return { __shengjiOriginMove: handoff as never, location: { origin }, localStorage: storage };
+  const confirms: unknown[] = [];
+  const shell = { postMessage: (body: unknown) => { confirms.push(body); } };
+  return {
+    __shengjiOriginMove: handoff as never, location: { origin }, localStorage: storage,
+    webkit: { messageHandlers: { shengjiOriginMove: shell } }, confirms,
+  };
 }
 
 afterEach(() => { resetOriginMoveForTests(); });
@@ -77,6 +82,58 @@ describe("applyOriginMove", () => {
     expect(full.getItem("small")).toBe("y");
     const refused = { ...memoryStorage(), getItem: vi.fn(() => { throw new Error("SecurityError"); }) };
     expect(applyOriginMove(page({ origin: ORIGIN, entries: { a: "1" } }, refused as Storage))).toBe(0);
+  });
+});
+
+describe("confirming the import to the shell", () => {
+  it("confirms once the mark is kept and drops the handoff from the page", () => {
+    const p = page({ origin: ORIGIN, entries: { "shengji.room": "AB12" } });
+    applyOriginMove(p);
+    expect(p.confirms).toEqual(["imported"]);
+    expect(p.__shengjiOriginMove).toBeUndefined();
+  });
+
+  it("a launch killed after the write but before the shell heard it: the next offer writes nothing and confirms", () => {
+    const storage = memoryStorage();
+    const first = page({ origin: ORIGIN, entries: { "shengji.room": "AB12" }, session: true }, storage);
+    first.webkit.messageHandlers.shengjiOriginMove.postMessage = () => { throw new Error("process gone"); };
+    applyOriginMove(first);
+    resetOriginMoveForTests();
+    storage.removeItem("shengji.room");            // the player left the seat since
+    const again = page({ origin: ORIGIN, entries: { "shengji.room": "AB12" }, session: true }, storage);
+    expect(applyOriginMove(again)).toBe(0);
+    expect(storage.getItem("shengji.room")).toBeNull();
+    expect(again.confirms).toEqual(["imported"]);
+    expect(takeMovedSignIn("out")).toBe(false);    // a sign-out since then sticks
+  });
+
+  it("does not confirm when the mark cannot be kept, so the next launch offers it again", () => {
+    const storage = memoryStorage();
+    const setItem = storage.setItem.bind(storage);
+    storage.setItem = (k, v) => { if (k === MOVED_MARK) throw new Error("QuotaExceededError"); setItem(k, v); };
+    const p = page({ origin: ORIGIN, entries: { a: "1" } }, storage);
+    applyOriginMove(p);
+    expect(p.confirms).toEqual([]);
+  });
+
+  it("never confirms on another origin or without a handoff", () => {
+    const off = page({ origin: ORIGIN, entries: { a: "1" } }, memoryStorage(), "https://shengji.fly.dev");
+    applyOriginMove(off);
+    const none = page(undefined);
+    applyOriginMove(none);
+    expect(off.confirms).toEqual([]);
+    expect(none.confirms).toEqual([]);
+  });
+
+  it("a first launch offline, then online in a later launch: imported then, once", () => {
+    const storage = memoryStorage();
+    const handoff = { origin: ORIGIN, entries: { "shengji.name": "Mei" } };
+    const offline = page(handoff, memoryStorage(), "capacitor://localhost");
+    expect(applyOriginMove(offline)).toBe(0);
+    expect(offline.confirms).toEqual([]);          // nothing confirmed: the shell offers it again
+    const online = page(handoff, storage);
+    expect(applyOriginMove(online)).toBe(1);
+    expect(online.confirms).toEqual(["imported"]);
   });
 });
 

@@ -2,6 +2,7 @@
 //   swiftc -o /tmp/origin_move_check web/ios/App/App/OriginMove.swift \
 //     web/ios/App/AppChecks/OriginMove/main.swift && /tmp/origin_move_check
 import Foundation
+import JavaScriptCore
 
 var failures = 0
 
@@ -80,23 +81,124 @@ check(OriginMove.storageEntries("not json").isEmpty, "garbage is nothing")
 check(OriginMove.storageEntries(nil).isEmpty, "no result is nothing")
 check(OriginMove.storageEntries(7).isEmpty, "a number is nothing")
 
-// the handoff is one assignment of valid JSON, quotes and newlines escaped
-if let s = OriginMove.handoffScript(origin: "https://playshengji.com",
-                                    entries: ["k\"</script>": "v\n\u{2028}"], session: true) {
-    let prefix = "window.__shengjiOriginMove = ", suffix = ";"
-    check(s.hasPrefix(prefix) && s.hasSuffix(suffix), "one assignment: \(s)")
-    let json = String(s.dropFirst(prefix.count).dropLast(suffix.count))
-    let back = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any]
-    check(back?["origin"] as? String == "https://playshengji.com", "origin round-trips")
-    check(back?["session"] as? Bool == true, "session round-trips")
-    check((back?["entries"] as? [String: String]) == ["k\"</script>": "v\n\u{2028}"], "entries round-trip")
-    check(!json.contains("\n"), "no raw newline in the script")
+// the handoff script, run as a page would run it: what a document at `origin` sees
+func handoffSeen(by origin: String, _ script: String) -> [String: Any]? {
+    let js = JSContext()!
+    js.evaluateScript("var window = this; var location = { origin: \(String(reflecting: origin)) };")
+    js.evaluateScript(script)
+    check(js.exception == nil, "the script runs: \(js.exception?.toString() ?? "")")
+    let v = js.evaluateScript("JSON.stringify(window.__shengjiOriginMove === undefined ? null : window.__shengjiOriginMove)")
+    guard let text = v?.toString(), let obj = try? JSONSerialization.jsonObject(with: Data(text.utf8)) else { return nil }
+    return obj as? [String: Any]
+}
+
+let tricky = ["k\"</script>": "v\n\u{2028}", "shengji.room": "AB12"]
+if let s = OriginMove.handoffScript(origin: "https://playshengji.com", entries: tricky, session: true) {
+    check(!s.contains("\n"), "no raw newline in the script")
+    let seen = handoffSeen(by: "https://playshengji.com", s)
+    check(seen?["origin"] as? String == "https://playshengji.com", "origin round-trips")
+    check(seen?["session"] as? Bool == true, "session round-trips")
+    check((seen?["entries"] as? [String: String]) == tricky, "entries round-trip")
+    // a top-level page at any other origin never gets the snapshot
+    for other in ["https://shengji.fly.dev", "capacitor://localhost", "https://playshengji.com.evil.example",
+                  "https://evil.example", "http://playshengji.com", "https://playshengji.com:8443", "null"] {
+        check(handoffSeen(by: other, s) == nil, "no payload at \(other)")
+    }
 } else {
     check(false, "the handoff script was not made")
 }
-check(OriginMove.handoffScript(origin: "https://playshengji.com", entries: [:], session: false) ==
-      "window.__shengjiOriginMove = {\"entries\":{},\"origin\":\"https:\\/\\/playshengji.com\",\"session\":false};",
-      "the empty handoff")
+if let empty = OriginMove.handoffScript(origin: "https://playshengji.com", entries: [:], session: false) {
+    let seen = handoffSeen(by: "https://playshengji.com", empty)
+    check((seen?["entries"] as? [String: String]) == [:] && seen?["session"] as? Bool == false, "the empty handoff")
+}
+
+// the page's confirmation
+check(OriginMove.confirms(body: "imported", isMainFrame: true, scheme: "https", host: "playshengji.com", port: 0),
+      "the new origin's main frame confirms")
+check(OriginMove.confirms(body: "imported", isMainFrame: true, scheme: "https", host: "PlayShengJi.com", port: 443),
+      "port 443 and case are the same origin")
+check(!OriginMove.confirms(body: "imported", isMainFrame: false, scheme: "https", host: "playshengji.com", port: 0),
+      "a subframe does not confirm")
+check(!OriginMove.confirms(body: "imported", isMainFrame: true, scheme: "https", host: "shengji.fly.dev", port: 0),
+      "the old origin does not confirm")
+check(!OriginMove.confirms(body: "imported", isMainFrame: true, scheme: "capacitor", host: "localhost", port: 0),
+      "the offline page does not confirm")
+check(!OriginMove.confirms(body: "imported", isMainFrame: true, scheme: "https", host: "playshengji.com", port: 8443),
+      "another port does not confirm")
+check(!OriginMove.confirms(body: "yes", isMainFrame: true, scheme: "https", host: "playshengji.com", port: 0),
+      "another body does not confirm")
+
+// the ledger across launches
+final class Flags: OriginMoveFlags {
+    var values: [String: Bool] = [:]
+    func bool(forKey key: String) -> Bool { values[key] ?? false }
+    func set(_ value: Bool, forKey key: String) { values[key] = value }
+}
+let flags = Flags()
+let ledger = OriginMoveLedger(flags: flags)
+check(ledger.pending && !ledger.cookiesCopied && !ledger.imported, "a fresh install has the whole move to do")
+// launch 1 is killed before the cookie copies finish: nothing is marked
+check(ledger.pending && !ledger.cookiesCopied, "a killed first launch leaves the cookies to copy")
+// launch 2 starts offline: the cookies copy, the offline page never confirms, the app exits
+ledger.markCookiesCopied()
+check(ledger.pending && ledger.cookiesCopied && !ledger.imported, "an offline launch leaves the import to do")
+// launch 3 is online: the page confirms
+ledger.markImported()
+check(!ledger.pending, "a confirmed import ends the move")
+// launch 4 and on: nothing is offered, so a sign-out or a cleared seat stays
+check(!OriginMoveLedger(flags: flags).pending, "a later launch offers nothing")
+check(OriginMove.cookiesKey != OriginMove.importedKey, "two flags")
+// one attempt per launch, driven as the runner drives it
+func launch(_ flags: Flags, _ steps: (inout OriginMoveAttempt) -> Void) -> OriginMoveAttempt {
+    var a = OriginMoveAttempt(ledger: OriginMoveLedger(flags: flags))
+    steps(&a)
+    return a
+}
+// first launch offline, then the app is closed: cookies copied, the read offered,
+// the offline page never confirms; nothing else is marked
+let f2 = Flags()
+_ = launch(f2) { a in
+    check(a.cookiesSet() == .readStorage, "after the cookies the storage is read")
+    check(a.read(succeeded: true), "a good read is offered")
+    a.release()
+    check(!a.confirmed(false), "the offline page's message is no confirmation")
+}
+check(OriginMoveLedger(flags: f2).pending && OriginMoveLedger(flags: f2).cookiesCopied, "offline: the import is offered again")
+// the next launch online recovers: the page confirms
+_ = launch(f2) { a in
+    check(a.cookiesSet() == .readStorage, "the retry reads again")
+    check(a.read(succeeded: true), "and offers again")
+    a.release()
+    check(a.confirmed(true), "the new origin's page confirms")
+    check(!a.confirmed(true), "a second confirmation retires nothing more")
+}
+check(!OriginMoveLedger(flags: f2).pending, "recovered: nothing left")
+_ = launch(f2) { a in check(a.cookiesSet() == .release, "a later launch reads nothing") }
+// a launch whose read fails, or lands after the timeout, offers nothing and marks nothing
+let f3 = Flags()
+_ = launch(f3) { a in
+    _ = a.cookiesSet()
+    check(!a.read(succeeded: false), "a failed read is not offered")
+    a.release()
+}
+_ = launch(f3) { a in
+    _ = a.cookiesSet()
+    a.release()                                   // the timeout came first
+    check(!a.read(succeeded: true), "a read after the timeout is not offered")
+    check(!a.confirmed(true), "nothing offered, nothing confirmed")
+}
+check(OriginMoveLedger(flags: f3).pending && !OriginMoveLedger(flags: f3).imported, "failed reads leave the import to do")
+// a launch terminated before the cookie copies finished marks nothing
+let f4 = Flags()
+_ = launch(f4) { a in a.release() }
+check(!OriginMoveLedger(flags: f4).cookiesCopied, "a killed launch copies the cookies next time")
+
+let us = UserDefaults(suiteName: "origin-move-check")!
+us.removePersistentDomain(forName: "origin-move-check")
+let real = OriginMoveLedger(flags: us)
+real.markCookiesCopied()
+check(real.cookiesCopied && !real.imported && us.bool(forKey: OriginMove.cookiesKey), "UserDefaults keeps the flags")
+us.removePersistentDomain(forName: "origin-move-check")
 
 if failures > 0 {
     print("\(failures) failed")

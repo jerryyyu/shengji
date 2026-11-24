@@ -57,7 +57,7 @@ describe("the canonical origin", () => {
   it("is the origin the app loads, with both hosts' invite links opening it", () => {
     expect(read("capacitor.config.ts")).toContain(`process.env.CAP_SERVER_URL || "${SITE_ORIGIN}"`);
     expect(read("src/components/offlineGame.ts")).toContain(`ONLINE_URL = "${SITE_ORIGIN}/"`);
-    expect(read("src/nearbyLogUpload.ts")).toContain(`UPLOAD_URL = "${SITE_ORIGIN}/api/nearby-log"`);
+    expect(read("src/nearbyLogUpload.ts")).toContain("RELEASE_UPLOAD_URL = `https://playshengji.com${UPLOAD_PATH}`");
     const domains = [...read("ios/App/App/App.entitlements").matchAll(/<string>applinks:([^<]+)<\/string>/g)]
       .map((m) => m[1]);
     expect(domains).toEqual(["playshengji.com", "shengji.fly.dev"]);

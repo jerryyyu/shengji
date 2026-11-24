@@ -90,6 +90,7 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | table_declutter | hand edit | VS between the team columns | cut (the gap divides them) |
 | table_declutter | hand edit | 'Open seat' on each open seat | + (the seat's label keeps 'Open seat, your team') |
 | table_declutter | hand edit | Invite link (a button beside the code) | Invite (the code is the one control) |
+| coach_cue | hand edit | Your turn: tap 2 ♣ cards, then Play (the coach line beside the Your turn button) | Tap 2 ♣ cards, then Play (the button already says Your turn; Jerry 2026-11-24) |
 
 ## Kept, and why
 

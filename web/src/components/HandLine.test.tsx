@@ -18,7 +18,7 @@ afterEach(() => {
   host.remove();
 });
 
-const ALL: HandLineParts = { reason: "Follow ♥: play 2 cards", help: "Pick 8 cards to hide", coach: "Your turn: tap 2 hearts, then Play" };
+const ALL: HandLineParts = { reason: "Follow ♥: play 2 cards", help: "Pick 8 cards to hide", coach: "Tap 2 hearts, then Play" };
 
 describe("the one line above your hand", () => {
   it("says why Play waits first, then the phase's help, then the coach's cue", () => {

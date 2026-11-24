@@ -147,16 +147,16 @@ export function coachFor(hand: readonly HandCard[], lead: readonly string[] | nu
   const need = lead.length;
   const eff = leadSuit(lead, trump);
   if (eff === null || trump === null) {
-    return { text: `Your turn: tap ${cards(need)}, then Play`, follow: null };
+    return { text: `Tap ${cards(need)}, then Play`, follow: null };
   }
   const word = SUIT_WORD[eff];
   const inSuit = hand.filter((c) => effOf(c.code, trump) === eff).map((c) => c.id);
   if (inSuit.length >= need) {
-    return { text: `Your turn: tap ${need} ${word} ${need === 1 ? "card" : "cards"}, then Play`, follow: new Set(inSuit) };
+    return { text: `Tap ${need} ${word} ${need === 1 ? "card" : "cards"}, then Play`, follow: new Set(inSuit) };
   }
   if (inSuit.length > 0) {
     return {
-      text: `Your turn: tap your ${inSuit.length} ${word} and ${cards(need - inSuit.length)} more, then Play`,
+      text: `Tap your ${inSuit.length} ${word} and ${cards(need - inSuit.length)} more, then Play`,
       follow: null,
     };
   }

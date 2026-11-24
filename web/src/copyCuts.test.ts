@@ -43,6 +43,7 @@ const CUT = [
   "A bot plays your seat until then",
   "· away",
   "Leave the room?",
+  "Your turn: tap",
 ];
 
 const SRC = fileURLToPath(new URL(".", import.meta.url));

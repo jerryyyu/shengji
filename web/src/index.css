@@ -3937,10 +3937,23 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .chat-msg.mine .chat-name { color: #8fd18f; }
-.chat-input { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(255,255,255,0.12); }
+.chat-input { display: flex; gap: var(--ctl-gap); padding: 8px; border-top: 1px solid rgba(255,255,255,0.12); }
+/* The field is a dark well and Send the raised neutral, as on the Play tab. */
 .chat-input input {
-  flex: 1; min-width: 0; padding: 7px 9px; border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.06); color: #eee;
+  flex: 1; min-width: 0; min-height: var(--ctl-h-sm); padding: 0 14px; border-radius: var(--ctl-r);
+  border: 1px solid var(--ctl-well-edge); background: var(--ctl-well); color: var(--text);
+}
+.chat-input input:focus { border-color: var(--team0); outline: none; }
+.chat-input .btn {
+  flex: none; min-height: var(--ctl-h-sm); padding: 0 16px; border-radius: var(--ctl-r);
+  border-color: var(--ctl-raised-edge); background: var(--ctl-raised);
+  font-size: var(--fs-17); font-weight: 700;
+}
+.chat-input .btn:disabled {
+  opacity: 1;
+  border-color: var(--ctl-well-edge);
+  background: var(--ctl-off);
+  color: var(--ctl-off-text);
 }
 
 /* System lines in chat (joins / leaves / seat claims) */
@@ -6490,17 +6503,17 @@ dialog.leave-sheet-backdrop {
   top: 10px;
   left: 12px;
   z-index: 6;
-  padding: 4px 12px;
-  min-height: 30px;
-  font-size: var(--fs-12);
+  padding: 0 12px;
+  min-height: 32px;
+  border-radius: calc(var(--ctl-r) - 4px);
+  font-size: var(--fs-13);
   background: rgba(8, 20, 14, 0.72);
 }
 
 :where(.phone-landscape) .last-trick-btn {
   top: calc(var(--header-h, 32px) + 12px);
   left: calc(var(--safe-l, 0px) + 8px);
-  min-height: 28px;
-  padding: 2px 10px;
+  padding: 0 10px;
 }
 
 /* the connection pill holds the felt's top-left corner while it shows:
@@ -6513,13 +6526,13 @@ dialog.leave-sheet-backdrop {
   top: calc(var(--header-h, 32px) + 12px + 42px);
 }
 
-/* a finger's 44px around the drawn 28-30px control, which stays small in
+/* a finger's 44px around the drawn 32px control, which stays small in
    the felt's corner */
 @media (pointer: coarse) {
   .last-trick-btn::after {
     content: "";
     position: absolute;
-    inset: -8px -4px;
+    inset: -6px -4px;
   }
 }
 

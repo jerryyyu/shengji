@@ -234,6 +234,42 @@ describe("controls", () => {
     expect(bodies(".segmented-btn").join(";")).toContain("border-radius: calc(var(--ctl-r) - 4px);");
   });
 
+  // The chat's field and Send, and a table setting's select, are 44 tall at
+  // radius 14: the field and the select are dark wells, Send the raised
+  // neutral. Only the keyboard-up tight chat row draws them smaller.
+  const SMALL: Record<string, "well" | "raised"> = { ".chat-input input": "well", ".chat-input .btn": "raised", ".tp-set select": "well" };
+  const TIGHT = /^\.chat-panel\.chat-tight /;
+  it.each(Object.keys(SMALL))("%s is var(--ctl-h-sm) tall with var(--ctl-r) corners, in its look", (sel) => {
+    const own = bodies(sel).join(";");
+    expect(own).toContain("min-height: var(--ctl-h-sm);");
+    expect(own).toContain("border-radius: var(--ctl-r);");
+    if (SMALL[sel] === "well") {
+      expect(own).toContain("border: 1px solid var(--ctl-well-edge);");
+      expect(own).toMatch(/background(?:-color)?: var\(--ctl-well\);/);
+    } else {
+      expect(own).toContain("border-color: var(--ctl-raised-edge);");
+      expect(own).toContain("background: var(--ctl-raised);");
+    }
+    const others = rules.filter((r) => r.sels.some((x) => (x === sel || x.startsWith(`${sel}:`) || x.endsWith(` ${sel}`)) && !TIGHT.test(x)));
+    for (const r of others) {
+      expect(r.body, r.sels.join(", ")).not.toMatch(/(?:^|[ ;])(?:min-)?height: \d/);
+      expect(r.body, r.sels.join(", ")).not.toMatch(/(?:^|[ ;])border-radius: \d/);
+    }
+  });
+
+  it("the chat's quick phrases stay pills", () => {
+    expect(bodies(".chat-quick-btn").join(";")).toContain("border-radius: 18px;");
+  });
+
+  it("the felt's Last trick is drawn 32 tall at radius 10 and 13px, in every table layout but the tablet's 44", () => {
+    const own = bodies(".last-trick-btn").join(";");
+    expect(own).toContain("min-height: 32px;");
+    expect(own).toContain("border-radius: calc(var(--ctl-r) - 4px);");
+    expect(own).toContain("font-size: var(--fs-13);");
+    const drawn = rules.flatMap((r) => r.sels.filter((x) => x === ".last-trick-btn" || x.endsWith(" .last-trick-btn")).flatMap(() => drawnHeights(r.body)));
+    expect([...new Set(drawn)].sort()).toEqual([32, 44]);
+  });
+
   it("the mode switch's track is a 44px well: a 36px segment, 3px padding and the border", () => {
     const opt = bodies(".play-mode-opt").flatMap(drawnHeights);
     const track = bodies(".play-mode").join(";");

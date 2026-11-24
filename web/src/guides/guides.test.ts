@@ -145,6 +145,29 @@ describe("the guide visuals", () => {
     for (const [p, html] of guidePages) expect(html, p).toContain(GUIDE_CSS);
   });
 
+  it("draw Play now and the app link in the app's one gold, at its 52px action size", () => {
+    const play = /\.play \{([^}]*)\}/.exec(GUIDE_CSS)![1].replace(/\s+/g, " ");
+    const face = "linear-gradient(180deg, #8a6a22, #6b5219)";
+    expect(play).toContain(`background: ${face};`);
+    expect(play).toContain("border: 1.5px solid #f2c14e;");
+    expect(play).toContain("color: #fff3cf;");
+    expect(play).toContain("min-height: 52px;");
+    expect(play).toContain("border-radius: 14px;");
+    expect(play).toContain("font-size: 17px; font-weight: 700;");
+    // the app's shared gold rule draws the same face and label
+    const app = readFileSync(join(WEB, "src", "index.css"), "utf8");
+    expect(app).toContain(`background: ${face};`);
+    expect(app).toContain("color: #fff3cf;");
+    const lum = (hex: string) => {
+      const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (a: string, b: string) => (lum(a) + 0.05) / (lum(b) + 0.05);
+    // the label holds AA on the face's lighter end
+    expect(ratio("#fff3cf", "#8a6a22")).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("refuse an unknown card code or diagram kind", () => {
     expect(() => renderBlock("cards: SK S1", "en", inline)).toThrow(DiagramError);
     expect(() => renderBlock("kind: movie\ncards: SK", "en", inline)).toThrow(DiagramError);

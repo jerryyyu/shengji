@@ -2235,6 +2235,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-variant-numeric: tabular-nums;
 }
 
+/* a landscape browser with its bars showing (about 326px tall): the
+   ladder tightens and a won game's crown is the one at the lane's end */
+@media (max-height: 340px) {
+  .modal.round-end { gap: 6px; }
+  .modal.round-end .lane-cell { height: 20px; }
+  .modal.round-end.game-won > .game-won-crown { display: none; }
+}
+
 /* round end: the result in one line, then Next round and Leave in one row */
 .result-headline.result-line,
 .result-games {

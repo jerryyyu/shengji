@@ -1661,6 +1661,87 @@ def test_a_round_played_out_moves_the_rating_by_at_least_the_minimum(
     assert event["rating_after"] == pytest.approx(event["rating_before"] + event["delta"])
 
 
+def test_bounded_delta_caps_a_loss_and_leaves_wins_and_leaves_alone():
+    from shengji.api import ratings as r
+
+    assert r.MAX_LOSS == 12.0
+    assert r.bounded_delta(-26.1, won=False, leaver=False) == pytest.approx(-12.0)
+    assert r.bounded_delta(-12.0, won=False, leaver=False) == pytest.approx(-12.0)
+    assert r.bounded_delta(-7.5, won=False, leaver=False) == pytest.approx(-7.5)
+    assert r.bounded_delta(-1.0, won=False, leaver=False) == pytest.approx(-3.0)
+    assert r.bounded_delta(+0.4, won=False, leaver=False) == pytest.approx(-3.0)
+    assert r.bounded_delta(26.1, won=True, leaver=False) == pytest.approx(26.1)
+    assert r.bounded_delta(1.0, won=True, leaver=False) == pytest.approx(3.0)
+    assert r.MAX_LEAVE_LOSS == 15.0
+    assert r.bounded_delta(-26.1, won=False, leaver=True) == pytest.approx(-15.0)
+    assert r.bounded_delta(-13.0, won=False, leaver=True) == pytest.approx(-13.0)
+    assert r.bounded_delta(-1.0, won=False, leaver=True) == pytest.approx(-1.0)
+    assert r.bounded_delta(5.0, won=True, leaver=True) == 0.0
+
+
+def test_a_heavy_loss_played_out_costs_exactly_the_cap(env, monkeypatch):
+    """A 1300 player on the attackers, beaten by three levels (0 points):
+    team 1150 against the preset banker's 1040, ``E`` 0.652, raw -26.1; the
+    loss is held at ``MAX_LOSS``."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "strong")
+    _set(store, uid, 1300.0, rounds=50)
+    _force_outcome(monkeypatch, 0)
+    table = Table(srv, ["bot", uid, "bot", "bot"])
+    table.start_round(banker=0)
+    table.finish()
+    [event] = _events(store)
+    assert event["won"] == 0 and event["levels"] == -3
+    raw = event["k"] * (event["actual"] - event["expected"])
+    assert raw == pytest.approx(-26.1, abs=0.1)
+    assert event["delta"] == pytest.approx(-ratings.MAX_LOSS)
+    assert event["rating_after"] == pytest.approx(1300.0 - 12.0)
+
+
+def test_a_leavers_heavy_loss_is_capped_above_the_played_out_cap(env, monkeypatch):
+    """The same round left mid-play: raw -26.1 is held at ``MAX_LEAVE_LOSS``
+    (15), more than the 12 a played-out loss costs."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "leaver")
+    _set(store, uid, 1300.0, rounds=50)
+    _force_outcome(monkeypatch, 0)
+    table = Table(srv, ["bot", uid, "bot", "bot"])
+    table.start_round(banker=0)
+    ratings.seat_left(table.room, 1)
+    table.room.seats[1].connected = False
+    table.finish()
+    [event] = _events(store)
+    assert event["abandoned"] == 1
+    raw = event["k"] * (event["actual"] - event["expected"])
+    assert raw == pytest.approx(-26.1, abs=0.1)
+    assert event["delta"] == pytest.approx(-ratings.MAX_LEAVE_LOSS)
+    assert event["delta"] < -ratings.MAX_LOSS
+
+
+def test_a_big_win_is_not_capped(env, monkeypatch):
+    """A 700 player banking with bots wins by three levels: team 890 against
+    1000, ``E`` 0.348, gain +26.1 in full."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "weak")
+    _set(store, uid, 700.0, rounds=50)
+    _force_outcome(monkeypatch, 0)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    table.finish()
+    [event] = _events(store)
+    assert event["won"] == 1
+    raw = event["k"] * (event["actual"] - event["expected"])
+    assert event["delta"] == pytest.approx(raw)
+    assert event["delta"] > ratings.MAX_LOSS
+    assert event["delta"] == pytest.approx(26.1, abs=0.1)
+
+
 def test_a_leave_is_exempt_from_the_minimum_move(env, monkeypatch):
     from shengji.api import ratings
 

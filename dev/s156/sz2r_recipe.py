@@ -84,7 +84,7 @@ def build():
     return dict(arm="SZ2-R", tree=str(TREE), head=HEAD, adapter=str(kit / "rt3fs_adapter.py"),
                 environment=env, defender_name=defense, exploiter_name=attack,
                 defender_words=words[0], exploiter_words=words[1], round_plan="r2",
-                seed0=2666000000, deals=3920, minimum_mean=0.005, minimum_lb80_exclusive=0)
+                seed0=2668000000, deals=3920, minimum_mean=0.005, minimum_lb80_exclusive=0)
 
 
 if __name__ == "__main__":

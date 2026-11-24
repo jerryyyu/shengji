@@ -67,10 +67,13 @@ CLOCK_SKEW_SECONDS = 10
 RATE_LIMIT = 10
 RATE_WINDOW = 60.0
 LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-# A new account's rating; ``ratings.START_RATING`` reads it from here. The
-# ``users.rating`` column default predates the 1000 scale, so every insert
-# sets the rating itself.
-START_RATING = 1000.0
+# A new account's rating; ``ratings.START_RATING`` reads it from here. It sits
+# below the bots' 1000 so a new player meets Standard opponents and climbs
+# visibly from the start. Guests and bots stay at 1000. The ``users.rating``
+# column default predates the 1000 scale, so every insert sets the rating.
+START_RATING = 800.0
+# The scale the v5 migration moved to (bots and guests are anchored here).
+RATING_SCALE = 1000.0
 # The schema v5 scale move: every stored absolute rating drops by this much.
 RATING_SCALE_SHIFT = 500.0
 # A chosen display name: 1..20 characters after trimming and collapsing
@@ -444,7 +447,7 @@ def _migrate_v5(conn: sqlite3.Connection) -> None:
     if done:
         return
     conn.execute("CREATE TABLE rating_scale (start_rating REAL NOT NULL)")
-    conn.execute("INSERT INTO rating_scale(start_rating) VALUES (?)", (START_RATING,))
+    conn.execute("INSERT INTO rating_scale(start_rating) VALUES (?)", (RATING_SCALE,))
     conn.execute("UPDATE users SET rating = rating - ?", (RATING_SCALE_SHIFT,))
     conn.execute(
         """UPDATE rating_events SET rating_before = rating_before - ?,

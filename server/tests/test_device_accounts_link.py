@@ -101,7 +101,7 @@ def test_a_device_account_at_a_ranked_table_rates_as_an_account(linking, client,
     events = _rows(linking.STORE, "SELECT user_id, delta, rating_before FROM rating_events")
     assert len(events) == 1 and events[0][0] == uid and events[0][2] == ratings.START_RATING
     row = linking.STORE.user(uid)
-    assert row["rated_rounds"] == 1 and row["rating"] == pytest.approx(1000 + events[0][1])
+    assert row["rated_rounds"] == 1 and row["rating"] == pytest.approx(ratings.START_RATING + events[0][1])
     assert user["name_shown"] == row["display_name"]
     _check_rating_ledger(linking.STORE)
 

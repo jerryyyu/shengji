@@ -90,3 +90,60 @@ describe("small labels follow the reader's text size", () => {
     expect(decls(".howto-ticks")).toContain("height: 1.4em");
   });
 });
+
+describe("the panel's controls hold AA without dimming", () => {
+  const playLines = readFileSync(new URL("./queue/playLines.css", import.meta.url), "utf8");
+  const ruleIn = (src: string, selector: string): string => {
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    for (let m = re.exec(src); m; m = re.exec(src)) {
+      if (m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ") === selector) return m[2];
+    }
+    throw new Error(`no rule ${selector}`);
+  };
+  const color = (body: string) => /(?:^|;)\s*color:\s*(#[0-9a-fA-F]{6})/.exec(body)?.[1] ?? "";
+  // the gold face's lighter end, where its text is hardest to read
+  const GOLD_TOP = "#8a6a22";
+
+  it("the gold panel button's text and its ring's seconds are at least 4.5:1 on the gold", () => {
+    const button = color(decls(".tp-primary"));
+    expect(contrast(button, GOLD_TOP)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(color(decls(".tp-primary .timer-ring-secs")), GOLD_TOP)).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("the mode a seated player cannot switch to is drawn whole, in AA text, with a lock", () => {
+    const held = ruleIn(playLines, ".play-section .play-mode-opt:disabled:not(.on)");
+    expect(held).toContain("opacity: 1");
+    expect(held).toContain("color: var(--text-dim)");
+    expect(contrast(token("text-dim"), token("panel"))).toBeGreaterThanOrEqual(AA);
+    expect(ruleIn(playLines, ".play-section .play-mode-opt:disabled:not(.on)::before")).toMatch(/mask: url\(/);
+  });
+
+  it("Bury is drawn at full opacity with light text on opaque filled and empty parts", () => {
+    expect(decls(".btn.primary.bury-btn:disabled")).toContain("opacity: 1");
+    const bury = decls(".btn.primary.bury-btn, .btn.primary.bury-btn:hover:not(:disabled)");
+    const text = color(bury);
+    // both stops are opaque colours, so the face is what is drawn whatever the felt under it
+    const stops = /linear-gradient\(90deg, (#[0-9a-fA-F]{6}) var\(--bury-fill, 0%\), (#[0-9a-fA-F]{6}) var\(--bury-fill, 0%\)\)/.exec(bury);
+    expect(stops, "two opaque hex stops at --bury-fill").not.toBeNull();
+    const [, filled, empty] = stops!;
+    // a full face (8 of 8) is all `filled`; a partial one has the text over both
+    expect(contrast(text, filled)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(text, empty)).toBeGreaterThanOrEqual(AA);
+  });
+});
+
+describe("the leaderboard's marks hold AA on their rows", () => {
+  it("the week's movement colours and the medal discs' digits", () => {
+    const grp = /--grp:\s*(#[0-9a-fA-F]{6})/.exec(css)![1];
+    for (const dir of ["up", "down", "flat"]) {
+      const c = /color:\s*(#[0-9a-fA-F]{6})/.exec(decls(`.lb-move.${dir}`))![1];
+      expect(contrast(c, grp), dir).toBeGreaterThanOrEqual(AA);
+      expect(contrast(c, "#2d3a2f"), `${dir} on your own row`).toBeGreaterThanOrEqual(AA);
+    }
+    for (const n of [2, 3]) {
+      const disc = /background:\s*(#[0-9a-fA-F]{6})/.exec(decls(`.lb-rank.medal-${n}`))![1];
+      expect(contrast("#14171e", disc)).toBeGreaterThanOrEqual(AA);
+    }
+    expect(contrast("#14171e", token("gold"))).toBeGreaterThanOrEqual(AA);
+  });
+});

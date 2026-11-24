@@ -41,6 +41,7 @@ const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) 
 
 const { default: Table, SENDING_AFTER_MS } = await import("./Table");
 const { default: Hand } = await import("./Hand");
+const { telemetry } = await import("../telemetry");
 
 function player(seat: number, over: Partial<StatePlayer> = {}): StatePlayer {
   return { seat, name: seat ? `Bot ${seat}` : "You", is_bot: seat !== 0, connected: true,
@@ -68,8 +69,11 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   haptics.length = 0;
-  sent.length = 0;
   link.status = "open";
+  // telemetry rides the stand-in connection: start each test with its
+  // buffer sent, so a batch from earlier tests never lands in this one's `sent`
+  telemetry.flush();
+  sent.length = 0;
   // these tests are about the table, not the newcomer coach
   localStorage.setItem("shengji.coach", "off");
   host = document.createElement("div");
@@ -139,6 +143,52 @@ describe("phone turn cue and haptics", () => {
     haptics.length = 0;
     render(state({ phase: "round_end", turn: null, round_result: result(1) }));
     expect(haptics).toEqual([]);
+  });
+
+  it("plays the game's own pattern when your team wins the whole game, and the round's for a round", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    const result = (winner_team: 0 | 1, point_scored: boolean): GameState["round_result"] => ({
+      attacker_points: 40, kitty_points: 0, kitty_cards: [], winner_team, level_change: 2, next_banker: 1,
+      new_levels: ["A", "K"], games_won: [point_scored ? 1 : 0, 0], point_scored, game_over: point_scored });
+    render(state({ phase: "play", turn: 1 }));
+    haptics.length = 0;
+    render(state({ phase: "round_end", turn: null, round_result: result(0, true) }));
+    expect(haptics).toEqual(["game"]);
+    // the other team's game: nothing
+    render(state({ phase: "play", turn: 1 }));
+    haptics.length = 0;
+    render(state({ phase: "round_end", turn: null, round_result: result(1, true) }));
+    expect(haptics).toEqual([]);
+    // an ordinary won round keeps the round's success
+    render(state({ phase: "play", turn: 1 }));
+    render(state({ phase: "round_end", turn: null, round_result: result(0, false) }));
+    expect(haptics).toEqual(["won"]);
+  });
+
+  it("flashes a won game's crown only when the result arrives live; a table opened onto it draws it still", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    const won: GameState["round_result"] = {
+      attacker_points: 40, kitty_points: 0, kitty_cards: [], winner_team: 0, level_change: 2, next_banker: 1,
+      new_levels: ["2", "2"], games_won: [1, 0], point_scored: true, game_over: true };
+    // a reconnect: the first state the table sees is the finished game
+    render(state({ phase: "round_end", turn: null, round_result: won }));
+    expect(host.querySelector(".game-won-crown")!.className).toBe("game-won-crown");
+    expect(haptics).toEqual([]);
+    act(() => root.unmount());
+    root = createRoot(host);
+    // live: play, then the result
+    render(state({ phase: "play", turn: 1 }));
+    render(state({ phase: "round_end", turn: null, round_result: won }));
+    expect(host.querySelector(".game-won-crown")!.className).toBe("game-won-crown flash");
+    expect(haptics).toEqual(["game"]);
   });
 
   it("labels the trick's cards for VoiceOver and the hand as one group", () => {
@@ -908,5 +958,31 @@ describe("Play waits on an off-suit follow", () => {
       expect(done).toHaveBeenCalledTimes(1);
       expect(done.mock.calls[0][0]).toMatchObject({ disabled_play_taps: 1 });
     } finally { done.mockRestore(); notice.mockRestore(); }
+  });
+});
+
+describe("Bury shows its count as a fill", () => {
+  const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  const label = () => (primary().querySelector(".play-text") ?? primary()).textContent;
+  const burying = (over: Partial<GameState> = {}) => state({
+    phase: "bury", turn: 0, hand: cards(33), banker: 0,
+    players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });
+
+  it("Bury fills with the count, 0 to 8, and is never dimmed while short", () => {
+    render(burying());
+    expect(label()).toBe("Bury (0/8)");
+    expect(primary().classList.contains("bury-btn")).toBe(true);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
+    for (let i = 0; i < 3; i++) pick(i);
+    expect(label()).toBe("Bury (3/8)");
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("37.5%");
+    expect(primary().disabled).toBe(true);
+    for (let i = 3; i < 8; i++) pick(i);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("100%");
+    expect(primary().disabled).toBe(false);
+    // unpicking empties it again
+    for (let i = 0; i < 8; i++) pick(i);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
   });
 });

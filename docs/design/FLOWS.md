@@ -34,7 +34,10 @@ this spec wins.
 - The created room's lobby controls are retired (Jerry 2026-11-14): Add bot, Remove bot, Remove player, the
   host's seat swap, the room's Start taps and Start now, and the room's Starting level after creation. An
   out-of-date page that sends one is refused as out of date. A refused start returns the creator to Play.
-- **Allow joiners defaults to ON** for created rooms (a reversal of 11-13).
+- **Allow joiners defaults to ON** for created rooms (a reversal of 11-13), and on every table Play opens.
+  **Wait for people defaults to OFF**, so the bots' ring runs (Jerry 2026-11-24 confirmed both defaults). Both
+  are set by the server (`matchmaking.py`: `allow_joiners: bool = True`, a new table's `wait_players` false),
+  and the client reads them from its frames.
 - **Chat:** every table has chat from the moment you sit. A chat row in the panel opens the table's chat
   sheet, quick phrases first, and the same log carries into the game. Play tables before the game need a new
   queue chat message.
@@ -76,6 +79,10 @@ so the bot covers the seat at once instead of after a dropped seat's 60 s and a 
 **Section 5, tabs.** The same three tabs (Play / Leaderboard / Me) on phone, iPad and desktop. Stats and
 Games become a switch inside Me. The Leaderboard is the phone's column at every width, centred and capped like
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
+It opens on This week, or on All time when nobody has played a ranked round this week yet, until the viewer
+picks a period (Jerry 2026-11-24: "default to global when it's empty"; no extra Play button). On This week each
+row ends in the week's movement (▲18 green, ▼6 red, a dash for none; figures only, read as "up 18 this week"),
+and the top three's ranks sit on gold, silver and bronze discs on both periods (Jerry 2026-11-24).
 A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
 two columns from 900px, a sideways phone excepted), Support, Privacy or Terms of use. Real surfaces keep theirs: the table panel, sheets and dialogs,
 grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).
@@ -138,13 +145,17 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 
 ## Every table has a code (Jerry 2026-11-14: "for Play → your own table on ranked, i think we can also show the room code and the create room settings similar to what we do for casual rooms")
 - When Play opens your own table (ranked or casual), it gets a code with Invite link and the same table settings a created room has (the Allow joiners switch; Starting level for the opener). This reverses section 1's "no code for Play tables yet". Since 2026-11-22 (Jerry, the "Your table" declutter, option B: "table settings sounds good - B lets do it") the code and its Invite are one control in the panel: the code on the left, a share mark and "Invite" on the right, one tap shares the link (or copies it, then reads "Link copied"); the ⋯ menu keeps "Invite link". A nearby table's code stays the code alone.
-- **"Your table" declutter (Jerry 2026-11-22, option B), on every panel kind built on `TablePanel.tsx`.** Two or more settings fold into one "Table settings" row (`TableRows`, in place in the panel: no new surface, closed until tapped, its chevron turning down while open). The row shows its current values at its end, dimmed, as a select shows its value ("Level 2 · Standard"; on the same line, not a sub-line under it). Open, it holds Starting level, Bots, then Allow joiners (selects, then the switch): the opener's controls, or the values read-only for everyone else. A panel with one setting shows that row itself (Bots offline and at a nearby table, Allow joiners at a ranked table). Wait for people stays its own row beside the ring it drives; Chat, Start and Leave are unchanged. The queue's panels (Join, own, shared) carry no mode tag, because the Ranked / Casual switch above them says it; the offline panels and a code's Join panel keep theirs. The VS between the team columns is gone (the gap divides them), and an open seat is its dashed box with one "+" (its label still reads "Open seat, your team"); a dropped player's seat in a Join panel keeps "Alice (away)".
+- **"Your table" declutter (Jerry 2026-11-22, option B), on every panel kind built on `TablePanel.tsx`.** Two or more settings fold into one "Table settings" row (`TableRows`, in place in the panel: no new surface, closed until tapped, its chevron turning down while open). The row shows its current values at its end, dimmed, as a select shows its value ("Level 2 · Standard"; on the same line, not a sub-line under it). Open, it holds Starting level, Bots, Allow joiners, then Wait for people (selects, then the switches): the opener's controls, or the values read-only for everyone else. Since 2026-11-24 (Jerry, App Screens Review item 10: "OK as proposed") every switch folds the same way on Ranked and Casual: Wait for people joins the fold (it was its own row beside the ring), so a ranked opener's Allow joiners and Wait for people are one Table settings row with no values at its end. A panel with one setting shows that row itself (Bots offline and at a nearby table). The Chat row ends in the list chevron, so it reads as a row that opens, not a text field; Start and Leave are unchanged. The queue's panels (Join, own, shared) carry no mode tag, because the Ranked / Casual switch above them says it; the offline panels and a code's Join panel keep theirs. The VS between the team columns is gone (the gap divides them), and an open seat is its dashed box with one "+" (its label still reads "Open seat, your team"); a dropped player's seat in a Join panel keeps "Alice (away)".
 - A table is a table: "Create room" is no longer a separate path, because Play gives you a table with a code. Keep "Create room" only if Jerry wants it.
 - Ranked tables: Starting level is fixed at 2 for rating fairness (Claude's assumption; confirm with Jerry).
 - Server: a lone queue entry's own table must become a real table with a code. Today a lone entry has no server table (matchmaking.py, table created at 2 entries), so this is a follow-up to the room-table-server PR.
 
 ## Final decisions (Jerry 2026-11-14)
 - **Game over:** keep games endless. When a team wins a game, the round end says so ("You & Alice win the game"), with Next game / Leave; the HUD shows the games score (e.g. "Games 1–0") after the first game won; delete the unreachable game-over card (`RoundEndModal.tsx:131-150`).
+  Since 2026-11-24 (Jerry, App Screens Review item 14) a game your team wins is felt apart from a won round: the
+  success tap, then a medium impact (`haptic("game")`, off with the Haptics setting), and the round end's crown
+  arrives once with a short flash when the result comes in live (a table opened onto a finished game, as on a
+  reconnect, draws it still, and so does Reduce Motion). No new text.
 - **Join panel:** drop the leave-cost line entirely. The cost appears only in the Leave sheet.
 - **Create room:** dropped entirely. Every table Play opens has a code with Invite link and Allow joiners; the Create room row and flow are removed.
 - **Ranked tables:** start at level 2, fixed, with no starting-level row. Casual tables keep the opener's Starting level.
@@ -355,6 +366,14 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
   where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged. The iOS app's own account
   keeps that one name row in place of Edit name (2026-11-22).
+  Since 2026-11-24 (Jerry, App Screens Review item 13) the header itself is that row: the avatar, the name and
+  "Guest" with the chevron at its end, one tap target that opens the same sheet, so the name shows once (the
+  separate name row under it is gone). Under it the three stat tiles a ranked round fills ("rounds won",
+  "levels / round", "best streak"), each a dash for now; no new words.
+- **Me's rating history (Jerry 2026-11-24, item 5):** above the stat tiles on Stats, a sparkline of the
+  rating after each recent round (the stats call's `history`): one gold line, a faint fill, the latest point
+  marked. No axis or visible text; its accessible name reads "Rating over your last N rounds, from A to B".
+  Fewer than two rounds draw nothing.
 
 ## One account in the iOS app (Jerry 2026-11-22: "it should only be for iOS when it's tied to a device"; "Web guests should stay the same")
 The website is unchanged. In the iOS app (`Capacitor.getPlatform() === "ios"`, with the Keychain plugin), the

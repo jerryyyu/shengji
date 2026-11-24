@@ -190,6 +190,21 @@ textarea:focus-visible {
 }
 }
 
+/* Bury: never dimmed. Gold edge and light text at full contrast, and the
+   button fills from the left as cards are picked, so its own face reads 3 of
+   8. Both stops are opaque, so the felt never shows through the face. */
+.btn.primary.bury-btn,
+.btn.primary.bury-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  background: linear-gradient(90deg, #6b5520 var(--bury-fill, 0%), #0b1a12 var(--bury-fill, 0%));
+  color: #ffe9b0;
+  font-weight: 700;
+}
+
+.btn.primary.bury-btn:disabled {
+  opacity: 1;
+}
+
 .btn.gold {
   background: linear-gradient(180deg, #8a6d2a, #6b531d);
   border-color: var(--gold);
@@ -2021,6 +2036,22 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.8));
 }
 
+/* a won game's crown arrives once, with the game's haptic, only when the
+   result comes in live; it then stays */
+.game-won-crown.flash {
+  animation: crown-flash var(--dur-count) var(--ease-back) both;
+}
+
+@keyframes crown-flash {
+  0% { opacity: 0; transform: scale(0.4) rotate(-12deg); }
+  60% { opacity: 1; transform: scale(1.25) rotate(4deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-won-crown.flash { animation: none; }
+}
+
 .result-games {
   font-size: var(--fs-14);
   font-weight: 700;
@@ -2436,7 +2467,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-s);
     min-width: 0;
     height: var(--header-h);
-    padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
+    padding: 0 6px;            /* the team dot or crown sits in the label: the name gets the room */
     border: 0;
     border-radius: 999px;
     background: var(--pill-bg);
@@ -2521,6 +2552,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     filter: none;
   }
 
+  /* a seat's crown stays at the label's start, a size down and tucked to the
+     name, so a short name such as "Bot Wei" fits whole beside it */
+  .opponent .banker-crown {
+    flex-shrink: 0;
+    font-size: var(--fs-11);
+    margin-right: -2px;
+  }
+
   .level-chip.level-up {
     animation: none;
   }
@@ -2578,15 +2617,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* The top seat's label shares the header row. Its stretch runs from a gap
      past the level strip (the strip's measured width, --hud-strip-w, from
      the safe edge) to a gap before Chat. It is centred over its slot when
-     the stretch allows; otherwise it takes up to 96px of the stretch off
-     centre (136px with a countdown, which stays whole), and the name ends
-     in an ellipsis. */
-  .opponent.pos-top:has(.off-tag.counting) { --top-cap: 136px; }
+     the stretch allows; otherwise it takes up to 150px of the stretch off
+     centre, and the name ends in an ellipsis. */
+
   .opponent.pos-top {
     --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
     --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w));
     --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
-      min(var(--top-cap, 96px), calc(var(--top-to) - var(--top-from)))));
+      min(var(--top-cap, 150px), calc(var(--top-to) - var(--top-from)))));
     top: calc(6px + var(--safe-t));
     left: clamp(calc(var(--top-from) + var(--top-w) / 2), calc(var(--view-w) / 2), calc(var(--top-to) - var(--top-w) / 2));
     height: var(--header-h);
@@ -2598,7 +2636,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opponent .opp-name {
     min-width: 0;
     max-width: 100%;
-    gap: var(--space-xs);
+    gap: 3px;
   }
 
   /* A side seat's label stands at its edge of the felt, a gap in from the
@@ -5399,7 +5437,19 @@ button.grp-row:disabled { cursor: default; }
 
 .lb-list .lb-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; font-size: var(--fs-17); }
 .lb-rank { width: 26px; flex: none; text-align: right; color: #9aa3b2; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lb-rank.top { color: var(--gold); }
+/* the top three's ranks on filled discs: gold, silver, bronze, dark digits */
+.lb-rank.top {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 999px;
+  color: #14171e; font-weight: 800; text-align: center;
+}
+.lb-rank.medal-1 { background: var(--gold); }
+.lb-rank.medal-2 { background: #c9d1dc; }
+.lb-rank.medal-3 { background: #d08a4e; }
+/* This week's movement at the row's end: up green, down red, a dash for none */
+.lb-move { flex: none; min-width: 36px; text-align: right; font-size: var(--fs-13); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lb-move.up { color: #5ccf8a; }
+.lb-move.down { color: #ff8a8a; }
+.lb-move.flat { color: #9aa3b2; }
 .lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
 .lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-you { flex: none; white-space: pre; }
@@ -5441,6 +5491,13 @@ button.grp-row:disabled { cursor: default; }
 .identity-status { margin: 0; font-size: var(--fs-13); color: var(--text-dim); text-align: center; text-wrap: balance; }
 .guest-name-sheet .field .grp-error { padding: 6px 4px 0; }
 .me-who { display: flex; align-items: center; gap: 14px; }
+/* a guest's header is their one identity row: the whole of it opens the name sheet */
+button.me-who {
+  appearance: none; width: 100%; min-height: 44px; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+button.me-who .me-who-text { flex: 1; display: flex; flex-direction: column; }
+button.me-who .grp-value.chev { flex: none; }
 .me-who-text { min-width: 0; }
 /* the name stays on one line and ends in an ellipsis, like a seat's */
 .me-name {
@@ -5450,6 +5507,14 @@ button.grp-row:disabled { cursor: default; }
 .me-sub { margin-top: 2px; font-size: var(--fs-15); color: #9aa3b2; font-variant-numeric: tabular-nums; }
 .me-sub b { font-weight: 600; }
 .me-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+/* a guest's tiles before any ranked round: the labels, each with a dash */
+.me-tiles-empty .me-tile b { color: #9aa3b2; }
+/* Me's rating history: one gold line, a faint fill, the latest point */
+.me-spark { position: relative; height: 56px; margin: 0 0 2px; padding: 0; }
+.me-spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.me-spark-fill { fill: rgba(242, 193, 78, 0.16); stroke: none; }
+.me-spark-line { fill: none; stroke: var(--gold); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.me-spark-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--gold); }
 .me-tile { padding: 10px 8px 9px; border-radius: 12px; background: var(--grp); text-align: center; }
 .me-tile b { display: block; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; letter-spacing: -0.3px; color: #fff; font-variant-numeric: tabular-nums; }
 .me-tile span { font-size: var(--fs-12); color: #9aa3b2; }
@@ -5788,12 +5853,14 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp-acts { display: flex; gap: 8px; }
 .tp-primary {
   appearance: none; flex: 1; min-width: 0; min-height: 52px; padding: 0 12px; border-radius: 14px;
-  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
   font: inherit; font-size: var(--fs-17); font-weight: 700; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* the offer's clock on Join */
 .tp-primary .timer-ring { --size: 32px; --band: 2.5px; margin: -6px 10px -6px 0; vertical-align: middle; }
+/* its seconds in the button's light ink: gold on the gold face fell under 4.5:1 */
+.tp-primary .timer-ring-secs { color: #fff3cf; }
 /* Join never squeezes its ring over its word: in a narrow column (a sideways
    phone) Keep looking takes the next line instead; on one line Join keeps
    most of the room */
@@ -5978,7 +6045,7 @@ dialog.leave-sheet-backdrop {
 }
 /* a confirm that is not a way out (move, take a seat) is the panel's gold */
 .leave-sheet-actions .leave-sheet-leave.confirm-sheet-go {
-  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
 }
 .leave-sheet-actions button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
 .leave-sheet-error { margin: 0; font-size: 14px; line-height: 1.4; color: #f0a0aa; text-align: center; }

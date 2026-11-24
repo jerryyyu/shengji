@@ -86,10 +86,25 @@ async function render(section: "stats" | "games" = "stats") {
 }
 const rowLabels = () => [...host.querySelectorAll(".grp-row .grp-label")].map((e) => e.textContent);
 const rowNamed = (label: string) =>
-  [...host.querySelectorAll<HTMLElement>(".grp-row")].find((r) => r.querySelector(".grp-label")?.textContent === label)!;
+  [...host.querySelectorAll<HTMLElement>(".grp-row, button.me-who")]
+    .find((r) => (r.querySelector(".grp-label") ?? r.querySelector(".me-name"))?.textContent === label)!;
 
 describe("signed in", () => {
   beforeEach(() => { authState.current = { status: "in", clientId: "cid", user: JERRY }; });
+
+  it("draws the rating history as a sparkline under the switch, named for screen readers, with no visible text", async () => {
+    await render();
+    const spark = host.querySelector(".me-spark")!;
+    expect(spark.getAttribute("role")).toBe("img");
+    expect(spark.getAttribute("aria-label")).toBe("Rating over your last 1 round, from 1,491 to 1,532");
+    expect(spark.textContent).toBe("");
+    // rising: the line ends at the top right, where the latest point is marked
+    expect(spark.querySelector(".me-spark-line")!.getAttribute("d")).toBe("M0.0 50.0 L300.0 6.0");
+    const dot = spark.querySelector<HTMLElement>(".me-spark-dot")!;
+    expect([dot.style.left, dot.style.top]).toEqual(["100%", `${(6 / 56) * 100}%`]);
+    // it sits above the tiles, in the Stats section only
+    expect(spark.nextElementSibling?.className).toBe("me-tiles");
+  });
 
   it("Stats: the identity header, three tiles, the counts and the settings; no recent-games rows", async () => {
     await render();
@@ -251,7 +266,7 @@ describe("signed in", () => {
 describe("a guest", () => {
   beforeEach(() => { nameGuest("Gentle Tractor"); });
 
-  it("sees their name and initial, one row with the name, the settings and the help rows", async () => {
+  it("sees their name and initial as the one identity row, empty stat tiles, the settings and the help rows", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
     expect(host.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
@@ -260,8 +275,15 @@ describe("a guest", () => {
     // no sign-in buttons on the page: the name row opens the sheet that has them
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(host.querySelector(".signin-card")).toBeNull();
-    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
-    expect(rowNamed("Gentle Tractor").querySelector(".grp-value.chev")).not.toBeNull();
+    // the header is the identity row: the name is shown once, and the header carries the chevron
+    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
+    expect([...host.querySelectorAll(".me-page *")].filter((e) => e.children.length === 0 && e.textContent === "Gentle Tractor"))
+      .toHaveLength(1);
+    const who = host.querySelector<HTMLButtonElement>("button.me-who")!;
+    expect(who.querySelector(".grp-value.chev")).not.toBeNull();
+    // the three tiles a ranked round fills, each a dash until then
+    expect([...host.querySelectorAll(".me-tiles-empty .me-tile")].map((t) => t.textContent))
+      .toEqual(["—rounds won", "—levels / round", "—best streak"]);
     expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/terms", "/support", "https://apps.apple.com/app/id6833598710"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
@@ -313,7 +335,7 @@ describe("a guest", () => {
   it("with the server unreachable the name row's sheet shows sign-in unavailable with one line saying why", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
+    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
     act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     const btn = sheet.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
@@ -326,7 +348,7 @@ describe("a guest", () => {
   it("with sign-in off the name row's sheet is the name only", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Gentle Tractor", "Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
+    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
     act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     expect(sheet.querySelector(".identity-signin")).toBeNull();

@@ -61,6 +61,12 @@ export function clearToast(): void {
   emit();
 }
 
+/** Take an error toast down now; a notice (`info`) stays its time. An error
+ *  belongs to the page it came from, so a tab change ends it. */
+export function clearErrorToast(): void {
+  if (current !== null && !current.info) clearToast();
+}
+
 export function currentToast(): ToastMsg | null {
   return current;
 }

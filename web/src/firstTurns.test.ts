@@ -116,14 +116,14 @@ describe("what the coach says", () => {
 
   it("lights exactly the led suit when it can make the whole play", () => {
     const c = coachFor(aup6, ["C9", "C9"], hearts2);
-    expect(c.text).toBe("Your turn: tap 2 ♣ cards, then Play");
+    expect(c.text).toBe("Tap 2 ♣ cards, then Play");
     expect([...c.follow!]).toEqual([4, 5]);
   });
 
   it("counts trump by its effective suit: a trump-rank card leads trump", () => {
     // H642: clubs trump at 2, Bot 1 led S2; the club ace follows it
     const c = coachFor(hand(["SA", "CA", "D4"]), ["S2"], { suit: "C", rank: "2", declarer: 1 });
-    expect(c.text).toBe("Your turn: tap 1 trump card, then Play");
+    expect(c.text).toBe("Tap 1 trump card, then Play");
     expect([...c.follow!]).toEqual([2]);
   });
 
@@ -135,7 +135,7 @@ describe("what the coach says", () => {
 
   it("lights nothing when the suit runs short, and says how many more", () => {
     const c = coachFor(hand(["C6", "S3", "D4"]), ["C9", "C9"], hearts2);
-    expect(c).toEqual({ text: "Your turn: tap your 1 ♣ and 1 card more, then Play", follow: null });
+    expect(c).toEqual({ text: "Tap your 1 ♣ and 1 card more, then Play", follow: null });
   });
 
   it("frees every card when the suit is gone", () => {
@@ -144,6 +144,6 @@ describe("what the coach says", () => {
   });
 
   it("falls back to the count when trump is unknown", () => {
-    expect(coachFor(aup6, ["C9"], null)).toEqual({ text: "Your turn: tap 1 card, then Play", follow: null });
+    expect(coachFor(aup6, ["C9"], null)).toEqual({ text: "Tap 1 card, then Play", follow: null });
   });
 });

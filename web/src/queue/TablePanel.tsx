@@ -157,8 +157,8 @@ function PanelView({ m, guarded, sheet, act }: {
         </p>
       ) : null}
       {seats ? <TeamColumns seats={seats} you={m.you} layout={m.layout} /> : null}
-      {m.rows ? <TableRows rows={m.rows} act={act} /> : null}
-      {m.waitSwitch ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
+      {m.rows ? <TableRows rows={m.rows} wait={m.waitSwitch ?? undefined} act={act} /> : null}
+      {m.waitSwitch && !m.rows ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
       {m.nearbySwitch ? (
         <SwitchRow label={m.nearbySwitch.label} on={m.nearbySwitch.on} disabled={m.nearbySwitch.disabled}
                    onToggle={() => act({ type: "nearby_toggle" })} />
@@ -378,6 +378,7 @@ export function ChatRow({ messages, you, onSend }: {
         <span className="tp-chat-label" aria-hidden="true">Chat</span>
         <span className="tp-chat-last" aria-hidden="true">{last ? `${shortName(last.name)}: ${last.text}` : ""}</span>
         {unread ? <span className="tp-chat-badge" aria-hidden="true">{unread}</span> : null}
+        <Chevron />
       </button>
       {open ? (
         <Sheet title="Chat" cancel={null} className="chat-sheet" onClose={() => setOpen(false)}>
@@ -473,14 +474,14 @@ function Chevron() {
 /** Every table's rows, labels only: the code with its Invite, then the
  *  settings. Starting level and Bots on a casual table (the opener picks
  *  them, others read them; a ranked table starts at 2 with Advanced bots and
- *  has neither row), and the opener's Allow joiners switch when ``joiners``
- *  is set. Two or more settings fold into one Table settings row, closed
- *  until tapped, its values beside the label as a select shows its value;
- *  one setting (Bots offline and at a nearby table, Allow joiners at a
- *  ranked table) is its own row. A nearby table's code has no Invite
- *  (``invite`` false). */
-function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, act }: {
-  rows: Rows; act: (a: PanelAction) => void;
+ *  has neither row), the opener's Allow joiners switch when ``joiners`` is
+ *  set, and the leader's Wait for people when ``wait`` is set. Two or more
+ *  settings fold into one Table settings row, closed until tapped, its
+ *  values beside the label as a select shows its value; one setting (Bots
+ *  offline and at a nearby table) is its own row. A nearby table's code has
+ *  no Invite (``invite`` false). */
+function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, wait, act }: {
+  rows: Rows; wait?: { on: boolean; disabled: boolean }; act: (a: PanelAction) => void;
 }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
@@ -498,6 +499,7 @@ function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots 
     settings.push(<SwitchRow key="joiners" label="Allow joiners" on={joiners}
                              onToggle={() => act({ type: "allow_joiners", on: !joiners })} />);
   }
+  if (wait) settings.push(<WaitSwitch key="wait" {...wait} act={act} />);
   const values = [hasLevel ? `Level ${level}` : null, bots !== undefined ? BOT_LEVEL_NAMES[bots] : null]
     .filter((v): v is string => v !== null);
   return (

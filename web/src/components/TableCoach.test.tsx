@@ -102,7 +102,7 @@ describe("newcomer coach", () => {
 
   it("tells a newcomer what to tap on their first follow and lights the clubs", () => {
     render(firstFollow());
-    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards, then Play");
+    expect(cue()?.textContent).toBe("Tap 2 ♣ cards, then Play");
     expect(lit()).toEqual([4, 5]);
     expect(dim()).toBe(0);
   });
@@ -269,7 +269,7 @@ describe("newcomer coach", () => {
     it("coaches a new account's first plays, and the switch reads on", () => {
       signIn(NEWCOMER_ROUNDS - 1);
       render(firstFollow());
-      expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards, then Play");
+      expect(cue()?.textContent).toBe("Tap 2 ♣ cards, then Play");
       openMenu();
       expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
       act(() => root.unmount());
@@ -327,7 +327,7 @@ describe("newcomer coach", () => {
     localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
     localStorage.setItem(COACH_KEY, "on");
     render(firstFollow());
-    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards, then Play");
+    expect(cue()?.textContent).toBe("Tap 2 ♣ cards, then Play");
     expect(lit()).toEqual([4, 5]);
   });
 

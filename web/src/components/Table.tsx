@@ -229,7 +229,8 @@ function isYourTurnCue(state: GameState): boolean {
 
 /** Haptic ticks on the moments that matter (no-ops outside the iOS app):
  *  your turn arriving, a declare option appearing and your team taking the
- *  round. Each fires on the transition, never on a repeat state; a won trick
+ *  round, or the whole game (a heavier pattern of its own). Each fires on the
+ *  transition, never on a repeat state; a won trick
  *  is shown, not felt, since it comes about 25 times a round. */
 function useTableHaptics(state: GameState) {
   const turn = isYourTurnCue(state);
@@ -245,11 +246,12 @@ function useTableHaptics(state: GameState) {
   // transition from no result to one, not a change of identity
   const wonRound = state.round_result !== null && myTeam !== null && state.round_result.winner_team === myTeam;
   const hadResult = state.round_result !== null;
+  const wonGame = wonRound && state.round_result?.point_scored === true;
   const prevResult = useRef(hadResult);
   useEffect(() => {
-    if (hadResult && !prevResult.current && wonRound) haptic("won");
+    if (hadResult && !prevResult.current && wonRound) haptic(wonGame ? "game" : "won");
     prevResult.current = hadResult;
-  }, [hadResult, wonRound]);
+  }, [hadResult, wonRound, wonGame]);
 }
 
 /** The joins still outstanding at each room, once told, so a remount of the
@@ -297,6 +299,11 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
 }
 
 export default function Table({ state }: { state: GameState }) {
+  // A result seen arriving (after a state without one) is live and may
+  // celebrate; a table opened onto a finished round (a reconnect, a resume)
+  // draws it settled.
+  const sawNoResult = useRef(state.round_result === null);
+  if (state.round_result === null) sawNoResult.current = true;
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -624,8 +631,10 @@ export default function Table({ state }: { state: GameState }) {
     actionBar = (
       <>
       <TimerRing left={clock} total={MOVE_SECS} />
+      {/* drawn at full contrast, its fill the count's share of 8 */}
       <button
-        className="btn primary"
+        className="btn primary bury-btn"
+        style={{ "--bury-fill": `${(Math.min(selectedIds.length, 8) / 8) * 100}%` } as CSSProperties}
         disabled={selectedIds.length !== 8 || pending !== null || !online}
         aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
@@ -735,7 +744,7 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} />
+        <RoundEndModal state={state} result={state.round_result} clock={clock} live={sawNoResult.current} />
       ) : null}
 
       {xrayOpen ? (

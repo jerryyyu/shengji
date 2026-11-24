@@ -45,6 +45,9 @@ interface RoundEndModalProps {
   result: RoundResult;
   /** Seconds left on your move timer for Next (ranked tables), else null. */
   clock?: number | null;
+  /** The result arrived while the table was open: a won game's crown may
+   *  flash. False when the table opened onto it, which draws it settled. */
+  live?: boolean;
 }
 
 /** "You & Bot 2 win the round"; the members take a plural verb. A team
@@ -131,7 +134,7 @@ function kittyBonusText(state: GameState, result: RoundResult): string | null {
   return `${teamSubject(attack, state)} won the last trick: ${times}+${result.kitty_points}`;
 }
 
-export default function RoundEndModal({ state, result, clock = null }: RoundEndModalProps) {
+export default function RoundEndModal({ state, result, clock = null, live = false }: RoundEndModalProps) {
   const titleId = useId();
   useScreen("round_end");
   const [open, setOpen] = useState(false);
@@ -166,7 +169,7 @@ export default function RoundEndModal({ state, result, clock = null }: RoundEndM
   return (
     <ResultDialog titleId={titleId}>
       <div className={`panel modal round-end${gameWon ? " game-won" : ""}${open ? " details-open" : ""}`}>
-        {gameWon ? <div className="game-won-crown" aria-hidden="true">👑</div> : null}
+        {gameWon ? <div className={`game-won-crown${live ? " flash" : ""}`} aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
           {lostTeam !== null
             ? <TeamTitle team={lostTeam} state={state} what={what} verb="lose" />

@@ -12,7 +12,7 @@
 import { scrollActiveTabToTop } from "./home/session";
 
 export type ScreenKind = "lobby" | "game";
-export type HapticKind = "select" | "turn" | "clock" | "declare" | "won" | "error" | "refresh" | "tab" | "sheet";
+export type HapticKind = "select" | "turn" | "clock" | "declare" | "won" | "game" | "error" | "refresh" | "tab" | "sheet";
 
 interface PluginProxy {
   [method: string]: ((opts?: Record<string, unknown>) => Promise<unknown>) | undefined;
@@ -107,7 +107,8 @@ export async function lockFor(screen: ScreenKind): Promise<void> {
 /** The kind of haptic each event plays (UIKit feedback generators). A round
  *  is about 25 turns, so only rare or decisive moments get one: your turn
  *  arriving (light), five seconds left on your move timer (light), a declare chance (medium, it is racing), your team
- *  winning the round (success) and a refused action (error). A card select
+ *  winning the round (success), your team winning the whole game (success,
+ *  then a medium impact: `GAME_WON_FOLLOW`) and a refused action (error). A card select
  *  is a selection tick; your own play and a won trick are silent. A pull to
  *  refresh ticks lightly as it passes the point where letting go reloads,
  *  a swipe that lands on the next home tab ticks lightly too, and so does a
@@ -121,7 +122,8 @@ export function hapticCall(kind: HapticKind): { method: string; opts?: Record<st
     case "tab":
     case "sheet": return { method: "impact", opts: { style: "LIGHT" } };
     case "declare": return { method: "impact", opts: { style: "MEDIUM" } };
-    case "won": return { method: "notification", opts: { type: "SUCCESS" } };
+    case "won":
+    case "game": return { method: "notification", opts: { type: "SUCCESS" } };
     case "error": return { method: "notification", opts: { type: "ERROR" } };
   }
 }
@@ -160,6 +162,10 @@ export function subscribeHaptics(cb: (on: boolean) => void): () => void {
   return () => { hapticsListeners.delete(cb); };
 }
 
+/** A won game's second beat, after its success tap: heavier and distinct
+ *  from a won round's, which is the success tap alone. */
+export const GAME_WON_FOLLOW = { method: "impact", opts: { style: "MEDIUM" }, afterMs: 180 } as const;
+
 let selectionPrimed = false;
 
 export function haptic(kind: HapticKind): void {
@@ -173,6 +179,11 @@ export function haptic(kind: HapticKind): void {
     return;
   }
   void call("Haptics", method, opts);
+  if (kind === "game") {
+    window.setTimeout(() => {
+      if (hapticsOn) void call("Haptics", GAME_WON_FOLLOW.method, GAME_WON_FOLLOW.opts);
+    }, GAME_WON_FOLLOW.afterMs);
+  }
 }
 
 let lastBackGesture: boolean | null = null;

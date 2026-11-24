@@ -7,7 +7,7 @@ import { deltaText, fetchStats, setVisibility, signed } from "../ratings/api";
 import type { Loaded, MyStats as Stats } from "../ratings/api";
 import { followInfoLink } from "../support/route";
 import { isNative } from "../native";
-import { APP_STORE_URL } from "../appStore";
+import { appStoreUrl } from "../appStore";
 import { Avatar, Segmented } from "../home/HomeShell";
 import { WIDE, openTab } from "../home/route";
 import { useMediaQuery } from "../phoneLayout";
@@ -158,7 +158,7 @@ function InfoRows() {
         <span className="grp-label">{t("me.info.support")}</span><span className="grp-value chev" />
       </a></li>
       {isNative() ? null : (
-        <li><a className="grp-row me-app-store" href={APP_STORE_URL}>
+        <li><a className="grp-row me-app-store" href={appStoreUrl("me-tab-web")}>
           <span className="grp-label">{t("me.info.appStore")}</span><span className="grp-value chev" />
         </a></li>
       )}

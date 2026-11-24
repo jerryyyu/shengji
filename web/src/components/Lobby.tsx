@@ -22,7 +22,7 @@ import { useMediaQuery } from "../phoneLayout";
 import { offlineGame, offlineOffered, useOfflineTable } from "./offlineGame";
 import { isNative } from "../native";
 import { telemetry } from "../telemetry";
-import { APP_STORE_BADGE, APP_STORE_URL } from "../appStore";
+import { APP_STORE_BADGE, appStoreUrl } from "../appStore";
 import { isZh, useT } from "../i18n";
 
 /** Apple's zh-cn badge, beside the English one under public/badges/. */
@@ -294,7 +294,7 @@ function AppStoreBadge() {
     telemetry.flush();
   };
   return (
-    <a className="app-store-badge" href={APP_STORE_URL} onClick={tapped}>
+    <a className="app-store-badge" href={appStoreUrl("play-tab-web")} onClick={tapped}>
       <img src={isZh() ? APP_STORE_BADGE_ZH : APP_STORE_BADGE} alt={t("home.appStoreAlt")} width={120} height={40} />
     </a>
   );

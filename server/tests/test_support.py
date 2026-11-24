@@ -292,16 +292,16 @@ def test_rules_pages_carry_canonical_hreflang_and_valid_json_ld(page, lang, othe
     assert "<script src" not in html and 'type="module"' not in html
 
 
-@pytest.mark.parametrize("page, badge, alt", [
-    ("rules/index.html", "/badges/app-store-en.svg", "Download on the App Store"),
-    ("rules/zh/index.html", "/badges/app-store-zh.svg", "在 App Store 下载"),
+@pytest.mark.parametrize("page, badge, alt, ct", [
+    ("rules/index.html", "/badges/app-store-en.svg", "Download on the App Store", "rules-en"),
+    ("rules/zh/index.html", "/badges/app-store-zh.svg", "在 App Store 下载", "rules-zh"),
 ])
-def test_rules_pages_end_with_apples_app_store_badge(page, badge, alt):
+def test_rules_pages_end_with_apples_app_store_badge(page, badge, alt, ct):
     import re
 
     html = (PUBLIC / page).read_text(encoding="utf-8")
     [link] = re.findall(r'<a class="app-store" href="([^"]+)"><img\s+src="([^"]+)" alt="([^"]+)"', html)
-    assert link == ("https://apps.apple.com/app/id6833598710", badge, alt)
+    assert link == (f"https://apps.apple.com/app/id6833598710?ct={ct}", badge, alt)
     svg = (PUBLIC / badge.lstrip("/")).read_text(encoding="utf-8")
     assert svg.startswith("<svg") and "Download_on_the_App_Store_Badge" in svg
 

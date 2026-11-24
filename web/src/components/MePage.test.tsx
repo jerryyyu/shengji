@@ -286,7 +286,7 @@ describe("a guest", () => {
     // the three tiles a ranked round fills, each a dash until then
     expect([...host.querySelectorAll(".me-tiles-empty .me-tile")].map((t) => t.textContent))
       .toEqual(["—rounds won", "—levels / round", "—best streak"]);
-    expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/terms", "/support", "https://apps.apple.com/app/id6833598710"]);
+    expect([...host.querySelectorAll("a.grp-row")].map((a) => a.getAttribute("href"))).toEqual(["/privacy", "/terms", "/support", "https://apps.apple.com/app/id6833598710?ct=me-tab-web"]);
     expect(calls.some((c) => c.url === "/api/me/stats")).toBe(false);
     expect(host.querySelector(".segmented")).toBeNull();
   });

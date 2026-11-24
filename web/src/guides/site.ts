@@ -4,7 +4,8 @@
 // header, footer and look are the /rules pages'. scripts/build_guides.ts
 // writes the files; --check and guides.test.ts compare them with the sources.
 
-import { APP_STORE_URL, SITE_ORIGIN } from "../siteOrigin.ts";
+import { appStoreUrl } from "../appStore.ts";
+import { SITE_ORIGIN } from "../siteOrigin.ts";
 import { esc, resetIds, type Lang } from "./cards.ts";
 import { GuideError, parseFrontMatter, plain, render, type FrontMatter, type Heading } from "./markdown.ts";
 
@@ -210,11 +211,11 @@ function breadcrumbLd(lang: Lang, url: string, title?: string): unknown {
   return { "@type": "BreadcrumbList", "@id": `${url}#breadcrumb`, itemListElement: items };
 }
 
-function cta(lang: Lang): string {
+function cta(lang: Lang, slug: string): string {
   const t = T[lang];
   return `<aside class="cta" data-cta="app">
 <h2>${t.ctaTitle}</h2>
-<p><a class="play" href="${APP_STORE_URL}">${t.ctaApp}</a></p>
+<p><a class="play" href="${esc(appStoreUrl(`guides-${lang}-${slug}`))}">${t.ctaApp}</a></p>
 <p><a href="/">${t.ctaWeb}</a></p>
 </aside>`;
 }
@@ -279,7 +280,7 @@ ${crumbs(lang, title)}
 <p class="sub">${esc(description)}</p>
 ${guide.html}
 </article>
-${cta(lang)}
+${cta(lang, meta.slug)}
 <h2>${t.related}</h2>
 <ul class="related">
 ${related.join("\n")}

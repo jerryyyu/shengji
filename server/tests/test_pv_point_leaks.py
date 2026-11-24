@@ -135,6 +135,20 @@ def test_logged_ballots_reproduce_the_counter(label):
     assert picks == case["expected_index"]
 
 
+def test_partner_points_count_is_independent_of_the_order_of_equal_point_plays():
+    from shengji.harvest.legal import iter_follow_actions
+
+    rnd, case = position("A")
+    seat = case["seat"]
+    actions = list(iter_follow_actions(rnd.hands[seat], rnd.trick.plays[0].cards, rnd.ordering))
+    assert pv.last_seat_trick_outcome(rnd, seat, ["SK"])[0] == seat
+    assert pv.last_seat_trick_outcome(rnd, seat, ["S10"])[0] == (seat + 2) % 4
+    admitted = [["D4"], ["S10"], ["SK"]]
+    module = counters()
+    assert module.ballot_leak_flags(rnd, seat, iter(actions), admitted) == ["P4", None, None]
+    assert module.ballot_leak_flags(rnd, seat, reversed(actions), admitted) == ["P4", None, None]
+
+
 def test_withheld_partner_points_go_to_the_partner():
     rnd, case = position("A")
     bot = selector(150)

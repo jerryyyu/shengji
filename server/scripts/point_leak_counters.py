@@ -12,7 +12,7 @@ and both.  Each re-selected last-seat play is then flagged:
 * P2: an opponent holds the trick, no legal play wins it, the play carries
   points and a zero-point legal play exists;
 * P4: the partner holds the trick, the play does not win it, and it carries
-  fewer points than the most-points legal play, which would not win either.
+  fewer points than a maximum-points legal play that also leaves the partner winning.
 
 Limits: the arms re-use the logged search (worlds, admission, value means, exact
 scores), so a rule's effect on later decisions is not modelled.  The ``xfpt``
@@ -35,7 +35,7 @@ from pathlib import Path
 
 from shengji.engine.cards import total_points
 from shengji.engine.combos import decompose
-from shengji.harvest.legal import enumerate_legal
+from shengji.harvest.legal import iter_follow_actions
 from shengji.rl.replay_log import rebuild_round
 from shengji.train.pv_search_policy import (last_seat_points_pick, last_seat_signed_points,
                                             last_seat_trick_outcome)
@@ -65,31 +65,44 @@ def arm_pick(means, signed, exact_scores, *, xfpt, margin):
     return best
 
 
-def leak_flags(rnd, seat, legal, action):
-    """The P2/P3/P4 flags of ``seat`` completing the trick with ``action``."""
-    outcome = {tuple(sorted(a)): last_seat_trick_outcome(rnd, seat, a) for a in legal}
-    team = rnd.is_attacker(seat)
-    incumbent = _incumbent(rnd)
-    partner_holds = rnd.is_attacker(incumbent) == team
+def ballot_leak_flags(rnd, seat, legal, admitted):
+    """Classify each admitted action using witnesses from the whole legal ballot."""
+    admitted_keys = {tuple(sorted(action)) for action in admitted}
+    admitted_wins = {}
+    any_win = False
+    zero_available = False
+    max_points = -1
+    max_nonwinning_points = -1
+    for action in legal:
+        wins = last_seat_trick_outcome(rnd, seat, action)[0] == seat
+        points = total_points(action)
+        any_win = any_win or wins
+        zero_available = zero_available or points == 0
+        max_points = max(max_points, points)
+        if not wins:
+            max_nonwinning_points = max(max_nonwinning_points, points)
+        key = tuple(sorted(action))
+        if key in admitted_keys:
+            admitted_wins[key] = wins
+
+    if admitted_keys != admitted_wins.keys():
+        raise ValueError("logged admitted action missing from the legal follow ballot")
+    partner_holds = rnd.is_attacker(_incumbent(rnd)) == rnd.is_attacker(seat)
     before = total_points(c for p in rnd.trick.plays for c in p.cards)
-
-    def wins(a):
-        return outcome[tuple(sorted(a))][0] == seat
-
-    mine = total_points(action)
-    winners = [a for a in legal if wins(a)]
-    out = set()
-    if not partner_holds:
-        if not wins(action) and winners and before + mine > 0:
-            out.add("P3")
-        elif not wins(action) and not winners and mine > 0 \
-                and any(total_points(a) == 0 for a in legal):
-            out.add("P2")
-    else:
-        most = max(legal, key=total_points)
-        if not wins(action) and mine < total_points(most) and not wins(most):
-            out.add("P4")
-    return out
+    flags = []
+    for action in admitted:
+        points = total_points(action)
+        flag = None
+        if not admitted_wins[tuple(sorted(action))]:
+            if partner_holds:
+                if points < max_points and max_nonwinning_points == max_points:
+                    flag = "P4"
+            elif any_win and before + points > 0:
+                flag = "P3"
+            elif not any_win and points > 0 and zero_available:
+                flag = "P2"
+        flags.append(flag)
+    return flags
 
 
 def _incumbent(rnd):
@@ -157,22 +170,17 @@ def collect(logs: Path, rooms, t0):
                 if event.get("bot") and position == 3 and decision \
                         and decision.get("schema") == DECISION_SCHEMA \
                         and None not in decision.get("value_means", [None]):
-                    legal = enumerate_legal(rnd, seat, cap=4000, must_include=[cards]).actions
+                    legal = iter_follow_actions(rnd.hands[seat], rnd.trick.plays[0].cards, rnd.ordering)
                     admitted = [list(a) for a in decision["admitted"]]
                     played = next(i for i, a in enumerate(admitted) if sorted(a) == sorted(cards))
                     rows.append(dict(
                         key=f"{room}/r{number}/t{len(rnd.history) + 1}/s{seat}",
-                        rnd=_snapshot(rnd), seat=seat, legal=legal, admitted=admitted,
+                        flags=ballot_leak_flags(rnd, seat, legal, admitted),
                         means=list(decision["value_means"]), played=played,
                         exact=exact_scores_of(decision),
                         signed=[last_seat_signed_points(rnd, seat, a) for a in admitted]))
                 rnd.play(seat, cards)
     return rows, totals
-
-
-def _snapshot(rnd):
-    import copy
-    return copy.deepcopy(rnd)
 
 
 def run(rows, totals, arms):
@@ -191,7 +199,8 @@ def run(rows, totals, arms):
             served = arm_pick(r["means"], r["signed"], r["exact"], xfpt=False, margin=None)
             served_mismatch += served != r["played"]
             changed += pick != r["played"]
-            for flag in leak_flags(r["rnd"], r["seat"], r["legal"], r["admitted"][pick]):
+            flag = r["flags"][pick]
+            if flag is not None:
                 counts[flag] += 1
                 events[flag].append(r["key"])
         result["arms"][name] = {

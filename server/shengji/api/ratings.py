@@ -43,7 +43,8 @@ One rated round, for each rated account on team ``t``:
 * ``delta = K * (S - E)`` with one ``K`` for every rated account.
 * a round played out moves the rating by at least ``MIN_MOVE`` either way:
   a win gains at least that much and a loss costs at least that much; a
-  loss costs at most ``MAX_LOSS``. A win has no upper cap.
+  loss costs at most ``MAX_LOSS``. A win has no upper cap. A leave is never
+  positive and costs at most ``MAX_LEAVE_LOSS``.
 
 Partners share ``R_t``, ``E``, ``S`` and ``K``, so they move by the same
 amount, except when one of them is capped: a partner who abandons the round,
@@ -120,9 +121,11 @@ MAX_SCORED_LEVELS = 3
 # much: a win never shows +0 or less, a loss never shows less than this.
 # A leave is exempt (it is never positive; see ``LEAVER_SCORE_CAP``).
 MIN_MOVE = 3.0
-# A round played out costs at most this much. A leave is exempt (no cap), so
-# leaving is never cheaper than losing the round at the table.
+# A round played out costs at most this much.
 MAX_LOSS = 12.0
+# A leave costs at most this much; it is above MAX_LOSS so leaving a lost round
+# is never cheaper than playing it out.
+MAX_LEAVE_LOSS = 15.0
 
 # What a seat held when the round started: a connected signed-in account, a
 # bot, a guest (a person with no account), or an account not at the table.
@@ -169,10 +172,11 @@ def k_factor(rated_rounds: int = 0, provisional_opponent: bool = False) -> float
 
 def bounded_delta(raw: float, won: bool, leaver: bool) -> float:
     """A round's rating change from its raw ``K * (S - E)``: a leaver's is
-    never positive and has no loss cap; a round played out moves at least
-    ``MIN_MOVE`` either way and a loss costs at most ``MAX_LOSS``."""
+    never positive and costs at most ``MAX_LEAVE_LOSS``; a round played out
+    moves at least ``MIN_MOVE`` either way and a loss costs at most
+    ``MAX_LOSS``."""
     if leaver:
-        return min(raw, 0.0)
+        return max(min(raw, 0.0), -MAX_LEAVE_LOSS)
     if won:
         return max(raw, MIN_MOVE)
     return max(min(raw, -MIN_MOVE), -MAX_LOSS)

@@ -6,8 +6,8 @@ partner bot always plays Advanced, so people on both teams meet Advanced
 everywhere; the level is chosen when the game starts and at a new game's
 first round, never because a rating moved mid-game; a newcomer who takes a
 Standard seat makes that team Advanced; a rated round against Standard
-opponents uses ``ratings.STANDARD_BOT_RATING`` and gains less than the same
-result against Advanced; casual tables are unchanged; no frame differs
+opponents uses ``ratings.STANDARD_BOT_RATING``, the same anchor as Advanced,
+so it is rated exactly as the same result against Advanced; casual tables are unchanged; no frame differs
 between a Standard and an Advanced ranked table.
 """
 from __future__ import annotations
@@ -518,18 +518,14 @@ def test_a_newcomer_on_the_standard_team_makes_it_advanced():
 
 
 # ------------------------------------------------------------- rating
-def test_standard_anchor_is_the_measured_offset():
-    assert ratings.STANDARD_BOT_RATING == ratings.BOT_RATING - 59.0
-    # S142's R54 team scored 0.5815 a round against Standard: about 57 Elo
-    # by the plain logit, 58.8 with the banker advantage in the expectation
-    plain = 400 * math.log10(0.5815 / (1 - 0.5815))
-    assert 55 < plain < 59
+def test_standard_bots_are_rated_at_the_advanced_anchor():
+    assert ratings.STANDARD_BOT_RATING == ratings.BOT_RATING
 
 
 @pytest.mark.parametrize("attacker_points, won", [(30, True), (200, False)])
-def test_a_round_against_standard_is_rated_at_its_anchor_and_gains_less(
+def test_a_round_against_standard_is_rated_as_the_same_round_against_advanced(
         env, monkeypatch, attacker_points, won):  # noqa: F811
-    """The same result gains less (or loses more) against Standard."""
+    """The same result moves the rating by the same amount against Standard."""
     srv, store, _ = env
     a, _ = _user(store, "vsstd")
     b, _ = _user(store, "vsadv")
@@ -543,15 +539,9 @@ def test_a_round_against_standard_is_rated_at_its_anchor_and_gains_less(
     e_std, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", a)
     e_adv, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", b)
     assert e_adv["expected"] == pytest.approx(0.557312, abs=1e-6)
-    team, opp = 1000.0 + ratings.BANKER_ADVANTAGE_PRESET, ratings.STANDARD_BOT_RATING
-    assert e_std["expected"] == pytest.approx(ratings.expected_score(team, opp))
-    assert e_std["expected"] > e_adv["expected"]
+    assert e_std["expected"] == pytest.approx(e_adv["expected"])
     assert e_std["actual"] == e_adv["actual"] and bool(e_std["won"]) is won
-    assert e_std["delta"] < e_adv["delta"]
-    if won:
-        assert 0 < e_std["delta"]
-    else:
-        assert e_adv["delta"] < 0
+    assert e_std["delta"] == pytest.approx(e_adv["delta"])
 
 
 def test_the_partner_counts_the_advanced_anchor_beside_standard_opponents():

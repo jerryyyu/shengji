@@ -93,13 +93,13 @@ START_RATING = accounts.START_RATING
 BOT_RATING = 1000.0
 # A guest has no rating; in a ranked room their seat counts like a bot's.
 GUEST_RATING = BOT_RATING
-# A bot seat playing Standard at a ranked table (``ranked_bots``). The offset
-# is the measured margin of the served release's team over a Standard pair
-# (S142: +0.470 levels/round, mean round score 0.5815 over 800 mirrored
-# rounds) solved for in this module's own model: the Elo gap at which the
-# mean ``expected_score`` over those rounds, with each round's banker
-# advantage, equals that mean score (58.8, rounded to 59).
-STANDARD_BOT_RATING = BOT_RATING - 59.0
+# A bot seat playing Standard at a ranked table (``ranked_bots``) is rated
+# at the same anchor as Advanced: wins and losses against Standard
+# opponents count as much as against Advanced, so a player below the line is
+# not held back while they play the easier bots. The measured strength gap
+# (S142: +0.470 levels/round, about 59 Elo in this model) is deliberately
+# not applied.
+STANDARD_BOT_RATING = BOT_RATING
 # Holding the deal (the kitty, the first lead and the defence threshold of
 # 80) is worth this much team strength: each value is the banker team's mean
 # round score between equal teams in self-play, as an Elo offset. A banker who

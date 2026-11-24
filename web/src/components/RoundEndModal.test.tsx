@@ -6,6 +6,7 @@ import RoundEndModal from "./RoundEndModal";
 import { auth } from "../auth";
 import { guestName } from "../guestName";
 import { IdentitySheet } from "./GuestChip";
+import serverFrames from "./round-end-levels.fixture.json";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); return true; } } }));
@@ -703,6 +704,72 @@ describe("the ladder: a rank lane per team and the attackers' points", () => {
     renderModal(makeResult({ new_levels: ["3", "2"], level_change: 1 }), state, null, { live: true });
     expect(host.querySelector(".rank-lane.team0 .lane-cell.now")!.classList.contains("fill")).toBe(true);
     renderModal(makeResult({ new_levels: ["3", "2"], level_change: 1 }), state, null, { live: false });
+    expect(host.querySelector(".lane-cell.fill")).toBeNull();
+  });
+});
+
+describe("the levels before the round, as the server sends them", () => {
+  it("a reconnect straight onto the result draws the old rank from old_levels, with no state before it", () => {
+    // they attack at K and take 125: they go up one, to A. The climb ran into A, so only
+    // the server's old_levels can say they started at K; no earlier state was seen.
+    renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 125, new_levels: ["5", "A"],
+                             old_levels: ["5", "K"], next_banker: 1 }),
+                { ...state, trump: { suit: "H", rank: "5", declarer: 0 } }, null, { before: null, live: false });
+    expect(lane(1)).toEqual({ was: "K", now: "A" });
+    expect(lane(0)).toEqual({ was: null, now: "5" });
+  });
+
+  it("a reconnect onto a won game draws the other team's level from old_levels", () => {
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0], new_levels: ["2", "2"], old_levels: ["A", "Q"] }),
+                aceDefence, null, { before: null });
+    expect(lane(0)).toEqual({ was: "A", now: "👑" });
+    expect(lane(1)).toEqual({ was: null, now: "Q" });
+  });
+
+  it("old_levels wins over the table's own record; without it the record and the result still serve", () => {
+    renderModal(makeResult({ winner_team: 0, level_change: 1, new_levels: ["4", "2"], old_levels: ["3", "2"] }),
+                state, null, { before: ["7", "9"] });
+    expect(lane(0)).toEqual({ was: "3", now: "4" });
+    // an older server: no old_levels
+    renderModal(makeResult({ winner_team: 0, level_change: 1, new_levels: ["4", "2"] }), state, null, { before: ["3", "2"] });
+    expect(lane(0)).toEqual({ was: "3", now: "4" });
+  });
+});
+
+describe("the round end from the frames state_for sends (round-end-levels.fixture.json)", () => {
+  type Frame = Pick<GameState, "you" | "banker" | "levels" | "games_won"> & { round_result: RoundResult };
+  const frames = serverFrames as unknown as Record<"round" | "takeover" | "won_game", Frame>;
+  /** A reconnect straight onto the result: no state before it, nothing live. */
+  function reconnectOnto(frame: Frame, withOldLevels: boolean) {
+    const result = { ...frame.round_result };
+    if (!withOldLevels) delete result.old_levels;
+    renderModal(result, { ...state, you: frame.you, banker: frame.banker, levels: frame.levels, games_won: frame.games_won,
+                          round_result: result }, null, { before: null, live: false });
+  }
+
+  it("the server sends old_levels on every round end it scores", () => {
+    expect(Object.values(frames).map((f) => f.round_result.old_levels)).toEqual([["J", "9"], ["5", "K"], ["A", "Q"]]);
+  });
+
+  it("with old_levels the card draws every old rank, settled", () => {
+    reconnectOnto(frames.round, true);
+    expect([lane(0), lane(1)]).toEqual([{ was: "J", now: "Q" }, { was: null, now: "9" }]);
+    reconnectOnto(frames.takeover, true);
+    expect([lane(0), lane(1)]).toEqual([{ was: null, now: "5" }, { was: "K", now: "A" }]);
+    reconnectOnto(frames.won_game, true);
+    expect([lane(0), lane(1)]).toEqual([{ was: "A", now: "👑" }, { was: null, now: "Q" }]);
+    expect(host.querySelector(".lane-cell.fill")).toBeNull();
+  });
+
+  it("without it (an older server) the card draws only what the result implies, and never a wrong old rank", () => {
+    reconnectOnto(frames.round, false);
+    expect([lane(0), lane(1)]).toEqual([{ was: "J", now: "Q" }, { was: null, now: "9" }]);
+    // the climb ran into A: where it started is unknown, so no outline
+    reconnectOnto(frames.takeover, false);
+    expect([lane(0), lane(1)]).toEqual([{ was: null, now: "5" }, { was: null, now: "A" }]);
+    // a won game: the winners held A; the other team's level went with the restart
+    reconnectOnto(frames.won_game, false);
+    expect([lane(0), lane(1)]).toEqual([{ was: "A", now: "👑" }, { was: null, now: null }]);
     expect(host.querySelector(".lane-cell.fill")).toBeNull();
   });
 });

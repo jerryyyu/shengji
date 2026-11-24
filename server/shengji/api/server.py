@@ -507,6 +507,9 @@ class Room:
     # Ranked and may start before everyone tapped Start.
     host: int = 0
     game: Game | None = None
+    # The levels the finished round was played at, with its round number:
+    # the result holds only the new ones, and a won game restarts both.
+    round_levels: tuple[int, tuple[str, str]] | None = None
     # Rank both teams start at. Chosen by the creator; applied when the game
     # starts, so it is visible in the lobby before anyone commits to a seat.
     start_level: str = RANKS[0]
@@ -1123,6 +1126,10 @@ def state_for(room: Room, seat: int) -> dict[str, Any]:
             "level_change": result.level_change,
             "next_banker": result.next_banker,
             "new_levels": list(result.new_levels),
+            # the levels the round was played at, so a reconnect onto the
+            # result still shows the climb; older clients ignore it
+            **({"old_levels": list(room.round_levels[1])}
+               if room.round_levels and room.round_levels[0] == game.round_no else {}),
             "game_over": result.game_over,
             "games_won": list(result.games_won),
             "point_scored": result.point_scored,
@@ -1693,6 +1700,16 @@ def _log_play_refused(room: Room, seat: int, msg: dict, error: IllegalPlay) -> N
                    reason=str(error))
 
 
+def _finish_round(room: Room) -> None:
+    """Score the finished round, noting the levels it was played at first."""
+    game = room.game
+    assert game is not None
+    played_at = game.levels
+    game.finish_round()
+    room.round_levels = (game.round_no, played_at)
+    _log_round_end(room)
+
+
 def _log_round_end(room: Room) -> None:
     r = room.game.result if room.game else None
     if r is None:
@@ -1735,8 +1752,7 @@ def bot_step(room: Room, seat: int) -> bool:
         else:
             return False
         if rnd.phase == "round_end" and game.result is None:
-            game.finish_round()
-            _log_round_end(room)
+            _finish_round(room)
         return True
     except IllegalPlay as e:  # bot bug — shouldn't happen; skip safely
         rnd.message = f"Bot error at seat {seat}: {e}"
@@ -2011,8 +2027,7 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             # timeout that makes the seat away must be rated as away.
             _count_timeout(room, seat)
         if rnd.phase == "round_end" and room.game.result is None:
-            room.game.finish_round()
-            _log_round_end(room)
+            _finish_round(room)
     except IllegalPlay as exc:
         rnd.message = f"Bot error at seat {seat}: {exc}"
         return False
@@ -2631,8 +2646,7 @@ async def handle_action(room: Room, seat: int, msg: dict) -> None:
 
     rnd = room.round
     if rnd and rnd.phase == "round_end" and room.game and room.game.result is None:
-        room.game.finish_round()
-        _log_round_end(room)
+        _finish_round(room)
 
 
 async def _start_created_room(room: Room, me: Seat) -> None:

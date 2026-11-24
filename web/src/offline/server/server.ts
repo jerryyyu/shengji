@@ -158,6 +158,13 @@ export interface RoomOptions {
   botLevel?: BotLevel;
 }
 
+/** Score the finished round, noting the levels it was played at first (server.py _finish_round). */
+function finishRoundOf(room: LocalRoom, game: GameState): void {
+  const playedAt = gameLevels(game);
+  finishRound(game);
+  room.roundLevels = { roundNo: game.roundNo, levels: playedAt };
+}
+
 export class LocalRoom {
   seats: Seat[] = [];
   host = 0;
@@ -165,6 +172,9 @@ export class LocalRoom {
    *  reach a table on the device, so it changes nothing else. */
   allowJoiners = true;
   game: GameState | null = null;
+  /** The levels the finished round was played at, with its round number
+   *  (server.py Room.round_levels): the result holds only the new ones. */
+  roundLevels: { roundNo: number; levels: [string, string] } | null = null;
   ready = new Set<number>();
   chatSeq = 0;
   chat: ChatEntry[] = [];
@@ -503,6 +513,7 @@ export function stateFor(room: LocalRoom, seat: number, now = 0): Json {
           level_change: result.levelChange,
           next_banker: result.nextBanker,
           new_levels: result.newLevels,
+          ...(room.roundLevels && room.roundLevels.roundNo === game.roundNo ? { old_levels: room.roundLevels.levels } : {}),
           game_over: result.gameOver,
           games_won: result.gamesWon,
           point_scored: result.pointScored,
@@ -955,7 +966,7 @@ export class LocalServer {
           this.countTimeout(room, seat);
         }
         // the play just made may have ended the round
-        if ((rnd.phase as string) === "round_end" && game.result === null) finishRound(game);
+        if ((rnd.phase as string) === "round_end" && game.result === null) finishRoundOf(room, game);
       } catch (e) {
         if (token) this.remote!.drop(token, "invalid");
         if (!(e instanceof IllegalPlay)) throw e;
@@ -1265,7 +1276,7 @@ export class LocalServer {
     }
 
     rnd = room.round;
-    if (rnd && rnd.phase === "round_end" && room.game && room.game.result === null) finishRound(room.game);
+    if (rnd && rnd.phase === "round_end" && room.game && room.game.result === null) finishRoundOf(room, room.game);
   }
 
   /** A nearby lobby's controls (tables.py LOBBY), before its game. */

@@ -5,7 +5,7 @@
 // offers its bots on the device; a browser's offers Retry alone.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 class FakeWS {
   static OPEN = 1;
@@ -461,4 +461,42 @@ it("a reconnect whose owed Leave another page answered resumes no other tab's sa
   expect(mine.sent).toEqual([]);                         // no join BBBB
   expect(ws.getSavedRoom()).toBe("BBBB");
   other.conn.stop();
+});
+
+it("the round end fills in only for a result the socket that showed play delivered; a reconnect's open draws nothing live", async () => {
+  const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+  const saved = { showModal: proto.showModal, close: proto.close };
+  proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+  proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+  onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+  const { ws } = await mount();
+  ws.saveName("Me");
+  // we bank at 5 (seat 0); they attack and climb one, to A; an older server sends no old_levels
+  const banked = { ...playing, banker: 0, players: [0, 1, 2, 3].map((s) => ({ ...player(s), is_banker: s === 0 })),
+                   trump: { suit: "H", rank: "5", declarer: 0 } };
+  const at = (theirs: string) => ({ ...banked, levels: ["5", theirs] });
+  const result = { ...banked, levels: ["5", "A"], phase: "round_end", turn: null, trick: null,
+                   round_result: { attacker_points: 125, kitty_points: 0, kitty_cards: [], winner_team: 1, level_change: 1,
+                                   next_banker: 1, new_levels: ["5", "A"], games_won: [0, 0], point_scored: false, game_over: false } };
+  const theirs = () => {
+    const lane = host.querySelector(".rank-lane.team1")!;
+    return { was: lane.querySelector(".lane-cell.was")?.textContent ?? null, fill: lane.querySelector(".lane-cell.fill") !== null };
+  };
+  act(() => latest().open());
+  act(() => latest().deliver({ type: "resume", room: "ABCD", token: "tok-1" }));
+  ws.saveRoom("ABCD");
+
+  // one socket: play at K, then the result
+  act(() => latest().deliver(at("K")));
+  act(() => latest().deliver(result));
+  expect(theirs()).toEqual({ was: "K", fill: true });
+
+  // the next round's play at Q, then the socket drops; the new socket opens (the table
+  // renders again on that status) and its first frame, 150 ms later, is the result
+  act(() => latest().deliver(at("Q")));
+  act(() => latest().close());
+  recover();
+  act(() => { vi.advanceTimersByTime(150); });
+  act(() => latest().deliver(result));
+  expect(theirs()).toEqual({ was: null, fill: false });
 });

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { effectiveName, useAuth } from "../auth";
 import type { AuthUser } from "../auth";
@@ -7,6 +7,7 @@ import { useMediaQuery } from "../phoneLayout";
 import { WIDE, openTab } from "./route";
 import { scrollActiveTabToTop } from "./session";
 import { useTabSwipe } from "./useTabSwipe";
+import { clearErrorToast } from "../toast";
 import type { MeSection, Tab } from "./route";
 import { useGuestName } from "../guestName";
 import YourTablePill from "../queue/YourTablePill";
@@ -158,6 +159,16 @@ function useTabFade(body: { current: HTMLElement | null }, key: string): void {
   }, [body, key]);
 }
 
+/** An error toast is about the tab it came from: a tab change takes it down. */
+function useTabClearsError(active: Tab): void {
+  const last = useRef(active);
+  useEffect(() => {
+    if (last.current === active) return;
+    last.current = active;
+    clearErrorToast();
+  }, [active]);
+}
+
 /** The home screen's frame: the active tab's page with the tabs above it
  *  (wide) or below it (a phone, where a sideways swipe on the page moves to
  *  the tab beside it). A game, a replay and How to play are drawn without it.
@@ -170,6 +181,7 @@ export default function HomeShell({ active, section, seatedAt = null, children }
   const body = useRef<HTMLDivElement | null>(null);
   useTabSwipe(body, active, !wide);
   useTabFade(body, `${active}/${section ?? ""}`);
+  useTabClearsError(active);
   return (
     <SeatedAtContext.Provider value={seatedAt}>
       <div className={`home ${wide ? "home-wide" : "home-narrow"}`}>

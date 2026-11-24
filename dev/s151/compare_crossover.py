@@ -11,7 +11,7 @@ import sys
 from compare_generator import comparable_config, normalize_row, read, read_store, read_times, require
 
 SEEDS = (4301400, 4301504, 4301608, 4301712)
-HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "2fb1cc3f0a9d3cec3f4c4d8dcd407671af4a1d89")
+HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "af44bd2f9069b164c3c23fbdefadf015571d7043")
 
 
 def percent(a, b):
@@ -45,7 +45,9 @@ def count_play_time(counts, row, budget):
     require(type(elapsed) in (float, int) and math.isfinite(elapsed) and elapsed >= 0,
             "invalid play duration")
     counts["timed"] += 1
-    counts["at_or_over_budget"] += elapsed >= budget
+    at_or_over = elapsed >= budget
+    counts["at_or_over_budget"] += at_or_over
+    return at_or_over
 
 
 def read_block(root, seed, order, times, args, previous_end, configuration):
@@ -81,8 +83,14 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
                 for j, line in enumerate(lines):
                     row = json.loads(line) if line is not None else None
                     if row is not None:
-                        count_play_time(play_times[j], row, budgets[j])
+                        at_or_over = count_play_time(play_times[j], row, budgets[j])
                         row = normalize_row(row, manifests[j]["run_id"])
+                        if row["decision_kind"] == "play":
+                            # Compare deadline outcomes for the same play across all invocations.
+                            row["at_or_over_budget"] = at_or_over
+                            record = row["allocation"].get("serving_decision") or {}
+                            if record.get("schema") == "pv-search-fallback-v1":
+                                record.pop("elapsed_seconds", None)
                     rows.append(row)
                     if row is None:
                         continue
@@ -109,6 +117,7 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
     block = dict(seed=seed, pairs=pairs, base=sum(base), candidate=sum(candidate),
                  reduction_percent=percent(sum(base), sum(candidate)),
                  repeat_difference_percent=dict(base=abs(percent(*base)), candidate=abs(percent(*candidate))),
+                 complete_play_clocks=all(t["timed"] and not t["missing"] for t in play_times),
                  work_matches=work_matches, first_record_difference=first_difference,
                  play_compute_by_invocation={p.parent.name: dict(t) for p, t in zip(stores, play_times)},
                  events_by_invocation={p.parent.name: dict(e) for p, e in zip(stores, events)})
@@ -123,10 +132,11 @@ def verdict(blocks):
     gain = percent(base, candidate)
     noise = max(max(b["repeat_difference_percent"].values()) for b in blocks)
     matched = all(b["work_matches"] and b["first_record_difference"] is None for b in blocks)
-    passed = matched and all(b["candidate"] < b["base"] for b in blocks) and gain > noise
+    clocks_complete = all(b["complete_play_clocks"] for b in blocks)
+    passed = matched and clocks_complete and all(b["candidate"] < b["base"] for b in blocks) and gain > noise
     return dict(blocks=blocks, pooled_seconds=dict(base=base, candidate=candidate),
                 pooled_symmetric_reduction_percent=gain, largest_repeat_difference_percent=noise,
-                matched_work_and_decisions=matched, observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
+                complete_play_clocks=clocks_complete, matched_work_and_decisions=matched, observed_noise_gate="PASS" if passed else "INCONCLUSIVE")
 
 
 def compare(root):
@@ -156,7 +166,7 @@ if __name__ == "__main__":
     try:
         report = compare(parser.parse_args().root)
         print(json.dumps(report, indent=2))
-        if not report["matched_work_and_decisions"]:
-            sys.exit("comparison inconclusive: gameplay or work differed")
+        if report["observed_noise_gate"] != "PASS":
+            sys.exit("comparison inconclusive: see block timings, work, decisions and play clocks")
     except (KeyError, OSError, TypeError, ValueError) as exc:
         sys.exit(f"comparison refused: {exc}")

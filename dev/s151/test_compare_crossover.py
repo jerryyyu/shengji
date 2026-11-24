@@ -11,7 +11,7 @@ import compare_crossover as crossover
 
 
 def block(base, candidate, noise):
-    return {"base": base, "candidate": candidate, "work_matches": True, "first_record_difference": None,
+    return {"base": base, "candidate": candidate, "work_matches": True, "complete_play_clocks": True, "first_record_difference": None,
             "repeat_difference_percent": {"base": noise, "candidate": 0}}
 
 
@@ -42,6 +42,15 @@ class CrossoverTest(unittest.TestCase):
             self.assertEqual(crossover.verdict(blocks)["observed_noise_gate"], "INCONCLUSIVE")
 
     def test_deadline_drift_retains_all_timings_and_checks_later_shards(self):
+        self.check_clock_rows("play", 2.999, 3.0, "INCONCLUSIVE")
+
+    def test_fallback_clock_jitter_leaves_the_work_and_deadline_matched(self):
+        self.check_clock_rows("pv-search-fallback-v1", 3.01, 3.02, "PASS")
+
+    def test_missing_clocks_in_every_arm_cannot_pass(self):
+        self.check_clock_rows("play", None, None, "INCONCLUSIVE")
+
+    def check_clock_rows(self, record_schema, baseline, candidate, expected):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             order = crossover.block_order(0)
@@ -57,7 +66,9 @@ class CrossoverTest(unittest.TestCase):
                     buried=None), plays_prefix=[], seat=0, ply=0, trick=0, role="banker-team",
                     legal_actions=[["SA"]], legal_actions_complete=True, legal_actions_count=1,
                     ballot=[["SA"]], action=["SA"], allocation={"serving_decision":
-                    {"leaf_greedy_deadline_fired": drift, "seconds": 3.0 if drift else 2.999}}, outcome=None))
+                    {"schema": record_schema, "leaf_greedy_deadline_fired": False,
+                     ("elapsed_seconds" if record_schema == "pv-search-fallback-v1" else "seconds"):
+                         candidate if drift else baseline}}, outcome=None))
                 config = dict(run_id=run_id, seed0=7, round_mix="first", capture_served_budget=True,
                               served_runtime={"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
                 for key in ("PV", "PV_PRIOR", "PV_UNIFIED", "PV_BELIEF"):
@@ -83,15 +94,17 @@ class CrossoverTest(unittest.TestCase):
                 return crossover.read_block(root, 7, order, times, args, 0, None)[0]
             result = read_block()
             self.assertTrue(result["work_matches"])
-            self.assertEqual(result["first_record_difference"]["compared"], "0-c")
-            self.assertEqual(result["events_by_invocation"]["0-c"]["greedy_deadline_fired"], 1)
-            self.assertEqual(result["play_compute_by_invocation"]["0-c"],
-                             dict(timed=1, at_or_over_budget=1, missing=0))
-            self.assertEqual(result["play_compute_by_invocation"]["0-b"]["at_or_over_budget"], 0)
+            if baseline == 2.999:
+                self.assertEqual(result["first_record_difference"]["compared"], "0-c")
+                self.assertEqual(result["play_compute_by_invocation"]["0-c"]["at_or_over_budget"], 1)
+                self.assertEqual(result["play_compute_by_invocation"]["0-b"]["at_or_over_budget"], 0)
+            else:
+                self.assertIsNone(result["first_record_difference"])
+            self.assertEqual(result["complete_play_clocks"], baseline is not None)
             self.assertEqual(len(result["pairs"]), 2)
             report = crossover.verdict([result])
             self.assertEqual(report["pooled_seconds"], {"base": 20, "candidate": 16})
-            self.assertEqual(report["observed_noise_gate"], "INCONCLUSIVE")
+            self.assertEqual(report["observed_noise_gate"], expected)
             last = root / "1-b/store" / side["path"]
             last.chmod(0o600)
             with last.open("a") as out:

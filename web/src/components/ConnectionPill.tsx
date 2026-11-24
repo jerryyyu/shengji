@@ -163,7 +163,7 @@ function ConnectionLost({ inGame, onRetry, ended = null }: { inGame: boolean; on
       <div className="conn-lost-mark" aria-hidden="true">!</div>
       <h1 className="conn-lost-title" id={titleId}>{ended ?? t("roundend.connNone")}</h1>
       {inGame ? <p className="conn-lost-body" id={bodyId}>{t("roundend.connSeatHeldBody")}</p> : null}
-      <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>{ended ? t("roundend.connLeave") : t("roundend.connRetry")}</button>
+      <button ref={retryRef} type="button" className={`btn ${ended ? "secondary" : "gold"} conn-lost-retry`} onClick={onRetry}>{ended ? t("roundend.connLeave") : t("roundend.connRetry")}</button>
       {offlineOffered() && !ended ? (
         <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
           {t("roundend.connPlayOffline")}

@@ -140,7 +140,10 @@ describe("controls", () => {
   ];
   // The main actions drawn in the shared gold, and the .primary ones among
   // them, which the green .btn.primary must not reach.
-  const MAIN_PRIMARY = [".round-end-actions > .btn.primary", ".howto-buttons > .btn.primary", ".btn.primary.name-edit-save"];
+  const MAIN_PRIMARY = [
+    ".round-end-actions > .btn.primary", ".howto-buttons > .btn.primary", ".btn.primary.name-edit-save",
+    ".action-bar .btn.primary:where(:not(.bury-btn))",
+  ];
   const MAIN = [".btn.gold", ...MAIN_PRIMARY];
   const GOLD_FACE = "background: linear-gradient(180deg, #8a6a22, #6b5219);";
 
@@ -191,6 +194,34 @@ describe("controls", () => {
     expect(bodies(".round-end-actions > .dialog-leave-btn").join(";")).toContain("background: var(--ctl-raised);");
     expect(bodies(".leave-sheet-actions .leave-sheet-stay").join(";")).toContain("background: var(--ctl-raised);");
     expect(bodies(".leave-sheet-actions .leave-sheet-leave.confirm-sheet-go").join(";")).toContain("border: 1.5px solid var(--gold);");
+  });
+
+  it("the table's action bar: 44 tall (the table is short), radius 14, 17 bold, on every layout's rule", () => {
+    const bar = rules.filter((r) => r.sels.includes(".action-bar .btn"));
+    expect(bar.length).toBeGreaterThan(0);
+    expect(bar.some((r) => r.body.includes("min-height: var(--ctl-h-sm);") && r.body.includes("font-weight: 700;"))).toBe(true);
+    for (const r of bar) {
+      expect(r.body).toMatch(/min-height: var\(--ctl-h(-sm)?\);/);
+      expect(r.body).toContain("border-radius: var(--ctl-r);");
+    }
+    // nothing that ends at an action-bar button brings a literal size of its own
+    const endsAtButton = (s: string) => s.includes(".action-bar") && /^\.btn\b/.test(s.split(" ").at(-1)!) && !s.includes("::");
+    for (const r of rules.filter((x) => x.sels.some(endsAtButton))) {
+      expect(r.body, r.sels.join(", ")).not.toMatch(/(?:^|[ ;])(?:min-)?height: \d/);
+      expect(r.body, r.sels.join(", ")).not.toMatch(/(?:^|[ ;])border-radius: \d/);
+    }
+  });
+
+  it("Pass and Clear, Done and an ended game's Leave are the raised neutral; Your turn is raised with a gold label", () => {
+    const neutral = rules.find((r) => r.sels.includes(".btn.secondary"));
+    expect(neutral?.sels).toEqual([".btn.secondary", ".action-bar .btn:where(:not(.primary, .gold))"]);
+    expect(neutral?.body).toContain("background: var(--ctl-raised);");
+    const turn = bodies(".phase-play .action-bar .btn.primary.your-turn:disabled").join(";");
+    expect(turn).toContain("background: var(--ctl-raised);");
+    expect(turn).toContain("color: var(--gold);");
+    expect(turn).not.toContain("border-color: var(--gold)");
+    // the coach's line beside it is neutral, not gold
+    expect(bodies(".hand-line.coach").join(";")).not.toMatch(/(?:^|[ ;])(border-)?color: var\(--gold\)/);
   });
 
   it("the Me and Leaderboard switch is the mode switch's 44px well: a 36px segment, 3px padding and the border", () => {

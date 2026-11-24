@@ -132,7 +132,7 @@ function GuestSheet({ account }: { account: AuthState }) {
       <div className="q-sheet-pad guest-name-sheet">
         <NameField name={name} onChange={(n) => guestName.setName(n)} onDone={done} />
         <SignInBlock account={account} done={done} />
-        <button type="button" className="btn gold" onClick={done}>{t("common.done")}</button>
+        <button type="button" className="btn secondary" onClick={done}>{t("common.done")}</button>
       </div>
     </Sheet>
   );
@@ -176,7 +176,7 @@ function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) 
                    focus={!toSignIn} />
         <p className="identity-status">{where}</p>
         <SignInBlock account={account} done={close} toSignIn={toSignIn} />
-        <button type="button" className="btn gold" aria-busy={saving || undefined} onClick={done}>{t("common.done")}</button>
+        <button type="button" className="btn secondary" aria-busy={saving || undefined} onClick={done}>{t("common.done")}</button>
       </div>
     </Sheet>
   );

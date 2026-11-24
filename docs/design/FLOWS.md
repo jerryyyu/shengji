@@ -65,12 +65,12 @@ The host role passes on, and a ranked leave keeps "at best a draw".
   - the "never offered that table again" bar stays;
   - copy: "Stay until this round ends, or wait 1 minute to play again."
 
-**Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 60 s, and a
+**Section 4, connection.** One "Reconnecting…" pill, Retry after 10 s, a full-screen state after 30 s (when the bot takes a dropped seat), and a
 bad code shown inline under the code box. One wording. The same pill, in the same place, says "A bot holds your
 seat · I'm back" once the socket is open again while a bot still plays your seat (simplification 4, below).
 The pill shows at a table or in a game. On the Play tab with no table the presence line is the one status:
 "Connecting…" until the socket opens, then the counts, or "Offline" once the app's Play plays on this device
-(a browser stays on "Connecting…"); the 60 s full screen still comes (Jerry 11-15).
+(a browser stays on "Connecting…"); the 30 s full screen still comes (Jerry 11-15).
 Leave game while the socket is down, or one whose socket closes before the server's answer, goes to Play at once;
 the next socket takes this page's own seat back by its token and leaves it (`ws.ts`, no new send site, up to three
 sockets, also after a reload or relaunch within 90 s),

@@ -91,7 +91,7 @@ const recover = () => {
   act(() => latest().open());
 };
 
-it("at the table a drop shows the pill, Retry at 10 s, the full screen at 60 s, and a reconnect resumes the seat and clears it", async () => {
+it("at the table a drop shows the pill, Retry at 10 s, the full screen at 30 s, and a reconnect resumes the seat and clears it", async () => {
   const { ws, RETRY_AFTER_MS, LOST_AFTER_MS } = await mount();
   ws.saveName("Me");
   act(() => latest().open());
@@ -128,7 +128,10 @@ it("at the table a drop shows the pill, Retry at 10 s, the full screen at 60 s, 
   expect(host.querySelector(".conn-lost-bots")?.textContent).toBe("Play offline with the bots");
   expect(host.querySelector(".conn-lost-retry")?.textContent).toBe("Retry");
 
-  // back online: the saved seat is asked for by its token, and every surface clears
+  // back online: the saved seat is asked for by its token, and every surface
+  // clears; the full screen can land as a connect attempt is cut, so the
+  // next live attempt is the one that opens
+  for (let i = 0; i < 100 && latest().onopen === null; i++) act(() => { vi.advanceTimersByTime(100); });
   const back = latest();
   act(() => back.open());
   expect(back.sent).toEqual([expect.objectContaining({ type: "table_join", code: "ABCD", expect: "room", token: "tok-1" })]);

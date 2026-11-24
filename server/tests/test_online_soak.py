@@ -679,7 +679,8 @@ def test_a_resumed_round_end_that_still_shows_next_untapped_sends_next_again():
 def _strike_soak(tmp_path):
     s = _bare_soak(tmp_path)
     clock = SimpleNamespace(t=0.0)
-    s.srv = SimpleNamespace(rooms={}, now=lambda: clock.t, MOVE_TIMER=60.0, RETURN_MIN=15.0, MOVE_TIMER_POLL=0.5)
+    s.srv = SimpleNamespace(rooms={}, now=lambda: clock.t, MOVE_TIMER=60.0, RETURN_MIN=15.0, MOVE_TIMER_POLL=0.5,
+                              AWAY_PAUSE_MAX=20.0)
     s.presence, s.decision_at, s.by_seat = {}, {}, {}
     room = SimpleNamespace(code="AAAA", matched=True, seats=[_seat("Soak-1", "dev1", turn_started=None,
                                                                       away=False) for _ in range(4)])
@@ -713,6 +714,44 @@ def test_a_strike_after_time_away_is_flagged_from_the_server_s_presence_record(t
     clock.t = 40.0                                  # struck 10 s after a return
     s._strike(room, 3)
     assert s.strikes[1]["time_away"] is True and s.strikes[1]["since_return_secs"] == pytest.approx(10.0)
+
+
+def test_a_strike_after_a_return_past_the_away_pause_is_not_time_away(tmp_path):
+    """Away 25 s, past the 20 s pause: 5 s of it ran on the clock, and the
+    return has no RETURN_MIN floor, so a strike once the clock is out is the
+    player's own."""
+    s, clock, room = _strike_soak(tmp_path)
+    room.seats[3].turn_started = 0.0
+    s._decision_starts(room, [None] * 4)
+    clock.t = 55.0                                  # 5 s left at the drop
+    s._presence(room, "seat_disconnected", {"seat": 3})
+    clock.t = 80.0                                  # back 25 s later, 0 s left
+    s._presence(room, "seat_reconnected", {"seat": 3})
+    clock.t = 80.6
+    s._strike(room, 3)
+    first = s.strikes[0]
+    assert first["time_away"] is False
+    assert first["connected_secs"] == pytest.approx(55.6)
+    assert first["charged_secs"] == pytest.approx(60.6)
+    assert first["since_return_secs"] == pytest.approx(0.6)
+
+
+def test_a_strike_before_a_run_down_clock_is_out_is_still_time_away(tmp_path):
+    """Back after 25 s with 45 s left: a strike 30 s later came early."""
+    s, clock, room = _strike_soak(tmp_path)
+    room.seats[3].turn_started = 0.0
+    s._decision_starts(room, [None] * 4)
+    clock.t = 10.0
+    s._presence(room, "seat_disconnected", {"seat": 3})
+    clock.t = 35.0
+    s._presence(room, "seat_reconnected", {"seat": 3})
+    clock.t = 65.0
+    s._strike(room, 3)
+    assert s.strikes[0]["time_away"] is True
+    assert s.strikes[0]["charged_secs"] == pytest.approx(45.0)
+    clock.t = 80.4                                  # the run-down clock's own end
+    s._strike(room, 3)
+    assert s.strikes[1]["time_away"] is False
 
 
 def test_a_state_on_a_socket_opened_after_the_last_cut_recovers():

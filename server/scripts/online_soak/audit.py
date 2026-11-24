@@ -228,6 +228,10 @@ def verdict(out: dict, floors: Floors) -> dict:
         ("task_exit_errors", out.get("task_exit_errors", 0) == 0),
         ("harness_errors", out.get("harness_errors", 0) == 0),
         ("unexpected_refusals", not out.get("unexpected_refusals")),
+        ("ghost_seats", out.get("ghost_seats", 0) == 0),
+        ("stale_socket_applied", out.get("stale_socket_applied", 0) == 0),
+        ("leaver_rating_gain", (out.get("ratings") or {}).get("abandoned_positive_delta", 0) == 0),
+        ("duplicate_rating_rows", (out.get("ratings") or {}).get("duplicate_rows", 0) == 0),
     ):
         if not ok:
             failed.append(name)

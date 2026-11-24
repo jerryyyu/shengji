@@ -94,7 +94,7 @@ class SoakClient:
     def __init__(self, name: str, device: str, port: int, scale: float, rng: random.Random,
                  brain: Callable[["SoakClient", dict], list[int] | None],
                  on_lobby: Callable[["SoakClient"], Any], host: str = "127.0.0.1",
-                 client_ip: str | None = None) -> None:
+                 client_ip: str | None = None, session: str | None = None) -> None:
         self.name = name
         self.device = device
         # ws.ts socketUrl(): the table heartbeat on, then the device key
@@ -102,6 +102,11 @@ class SoakClient:
         # the address the server's per-address limits key this client by
         # (accounts.client_ip reads Fly-Client-IP before the socket peer)
         self.headers = {"Fly-Client-IP": client_ip} if client_ip else {}
+        # a signed-in player: the server reads the account from the
+        # handshake's session cookie (accounts.websocket_user)
+        self.account = session is not None
+        if session is not None:
+            self.headers["Cookie"] = f"sj_session={session}"
         self.scale = scale
         self.rng = rng
         self.brain = brain
@@ -141,6 +146,22 @@ class SoakClient:
         self.leave_after = 3
         self.think_task: asyncio.Task | None = None
         self.lobby_task: asyncio.Task | None = None
+        # every resume token this client was given, oldest first
+        self.tokens: list[str] = []
+        # a suspended app: no timers, no moves, until this monotonic time
+        self.frozen_until = 0.0
+        # extra seconds (scaled) the next decision takes
+        self.think_extra = 0.0
+        # ws.ts sendTableLeave with no open socket: (room, seat, token) owed
+        # to the next socket, which resumes that seat and leaves it
+        self.owed_leave: tuple[str, int | None, str | None] | None = None
+        # reading nothing from the socket that delivers an owed Leave until its left
+        self.leaving_gen: int | None = None
+        # ws.ts replace(): drop the socket for a new one without closing it
+        self.replace_now = False
+        self.keep_old = False
+        self.lingering: list[tuple[int, Any]] = []
+        self.last_error: str | None = None
 
     # time, scaled
     def spawn(self, coro: Any) -> asyncio.Future:
@@ -224,15 +245,30 @@ class SoakClient:
         self.answer_due = self.ping_due = self.pong_deadline = None
         self.last_rx = time.monotonic()
         self._mark_up()
-        if self.room is not None:
+        if self.owed_leave is not None:
+            room, seat, token = self.owed_leave
+            self.owed_leave = None
+            self.leaving_gen = self.gen
+            await self._send({"type": "table_join", "code": room, "name": self.name, "expect": "room",
+                              **({"token": token} if token else {})})
+            await self._send({"type": "table_leave"})
+            self.rec.leaves.append((room, seat))
+        elif self.room is not None:
             await self._send({"type": "table_join", "code": self.room, "name": self.name, "expect": "room",
                               **({"token": self.token} if self.token else {})})
         else:
             self._to_lobby()
         reader = asyncio.create_task(self._read(ws))
+        keep = False
         try:
             while not self.stop and time.monotonic() < until and not reader.done():
                 await asyncio.sleep(0.02)
+                if self.replace_now:
+                    self.replace_now = False
+                    keep, self.keep_old = self.keep_old, False
+                    break
+                if time.monotonic() < self.frozen_until:
+                    continue
                 if self._timers_say_dead():
                     break
         finally:
@@ -241,10 +277,14 @@ class SoakClient:
             reader.cancel()
             with contextlib.suppress(BaseException):
                 await reader
-            # ws.ts replace() drops the old socket without waiting for its
-            # closing handshake, which a half-open link never answers
-            with contextlib.suppress(Exception):
-                ws.transport.abort()
+            if keep:
+                # still open at the server, read by no one: a duplicate socket
+                self.lingering.append((self.gen, ws))
+            else:
+                # ws.ts replace() drops the old socket without waiting for its
+                # closing handshake, which a half-open link never answers
+                with contextlib.suppress(Exception):
+                    ws.transport.abort()
             self.ws = None
             self.rec.drops += 1
 
@@ -278,7 +318,7 @@ class SoakClient:
         except Exception:   # noqa: BLE001 - a dead socket is the reader's to notice
             return False
         t = msg.get("type")
-        if t == "table_leave":
+        if t == "table_leave" and self.room is not None:
             self.rec.leaves.append((self.room, self.seat))
         if t != "ping":
             self.rec.sent_types[t] = self.rec.sent_types.get(t, 0) + 1
@@ -299,6 +339,10 @@ class SoakClient:
 
     async def _on(self, msg: dict) -> None:
         t = msg.get("type")
+        if self.leaving_gen is not None and self.leaving_gen == self.gen and t in ("room", "state", "resume"):
+            return      # ws.ts sendLeave: nothing read from the seat being left
+        if t == "left" and self.leaving_gen == self.gen:
+            self.leaving_gen = None
         if t == "heartbeat_ready":
             self.heartbeat = True
             self.ping_due = time.monotonic() + self.s(TABLE_PING_MS)
@@ -311,6 +355,8 @@ class SoakClient:
             return
         if t == "resume":
             self.token = msg.get("token")
+            if self.token and (not self.tokens or self.tokens[-1] != self.token):
+                self.tokens.append(self.token)
         elif t == "room":
             self.room = msg.get("room")
             self.seat = msg.get("you")
@@ -329,7 +375,12 @@ class SoakClient:
             self.pending = None
             # App.tsx: a room that is gone ends the table; a lost seat is asked
             # back once by the resume, then the table ends
-            if self.room is not None and (code == "room_not_found" or (code == "no_room" and self.reasked)):
+            self.last_error = code
+            if self.room is not None and code == "ranked_queue_only":
+                # App.tsx: a ranked seat this socket cannot resume goes for Play
+                self._forget_room()
+                self._to_lobby()
+            elif self.room is not None and (code == "room_not_found" or (code == "no_room" and self.reasked)):
                 self._forget_room()
                 self._to_lobby()
             elif self.room is not None and code == "no_room":
@@ -399,7 +450,10 @@ class SoakClient:
                 self.think_task = self.spawn(self._think(st))
 
     async def _think(self, st: dict) -> None:
-        await asyncio.sleep(self.rng.uniform(0.3, 2.5) / self.scale)
+        extra, self.think_extra = self.think_extra, 0.0
+        await asyncio.sleep(self.rng.uniform(0.3, 2.5) / self.scale + extra)
+        while time.monotonic() < self.frozen_until and not self.stop:
+            await asyncio.sleep(0.02)
         cur = self.state
         if cur is not st or self.pending is not None or self.ws is None:
             if cur is not None and cur is not st and cur.get("turn") == cur.get("you") \
@@ -424,6 +478,15 @@ class SoakClient:
             self.dup_next = False
             await self._send(msg)
             self.dup_sent_at = time.monotonic()
+
+    def leave_offline(self) -> None:
+        """ws.ts sendTableLeave on a socket that is not open: the page goes to
+        the lobby now and the next socket delivers the Leave."""
+        if self.room is None:
+            return
+        self.owed_leave = (self.room, self.seat, self.token)
+        self._forget_room()
+        self._to_lobby()
 
     def _play_msg(self, p: Pending, resend: bool = False) -> dict:
         """The wire message for ``p`` on this socket, recorded as sent. The

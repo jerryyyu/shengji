@@ -797,3 +797,68 @@ def test_recovery_after_the_last_cut_uses_the_current_socket(tmp_path, monkeypat
     assert result[0] == outcome
     if outcome == "recovered":
         assert trace["via"] == "new_socket"
+
+
+# the leave, duplicate-socket, stale-token and account additions
+
+def test_a_ghost_seat_a_stale_socket_play_or_a_leaver_s_gain_fails_the_run(tmp_path):
+    for field, value in (("ghosts", [{"room": "AAAA", "seat": 1}]),
+                         ("stale_applied", [{"room": "AAAA", "seat": 1, "kind": "play"}])):
+        s = _bare_soak(tmp_path, rooms=0, rounds=0, recoveries=0, share=0.0)
+        setattr(s, field, value)
+        assert s.report(60.0)["verdict"]["status"] == "FAIL"
+    out = {"ratings": {"abandoned_positive_delta": 1, "duplicate_rows": 0}}
+    assert "leaver_rating_gain" in audit.verdict(out, audit.Floors(0, 0, 0, 0.0, 0))["failed"]
+    out = {"ratings": {"abandoned_positive_delta": 0, "duplicate_rows": 2}}
+    assert "duplicate_rating_rows" in audit.verdict(out, audit.Floors(0, 0, 0, 0.0, 0))["failed"]
+
+
+def test_a_leave_s_seat_to_bot_time_is_not_a_recovery_time(tmp_path):
+    s = _bare_soak(tmp_path, rooms=0, rounds=0, recoveries=0, share=0.0)
+    audit.FaultLedger.close(s.ledger.open("leave_mid", "Soak-1", 0.0), "recovered", secs=40.0, reason="seat_to_bot")
+    audit.FaultLedger.close(s.ledger.open("drop", "Soak-1", 0.0), "recovered", secs=0.2)
+    out = s.report(60.0)
+    assert out["recovery_s"]["n"] == 1 and out["recovery_s"]["worst"] == 0.2
+
+
+def test_an_offline_leave_goes_to_the_lobby_now_and_the_next_socket_delivers_it():
+    async def run():
+        lobby = []
+
+        async def on_lobby(c):
+            lobby.append(c.room)
+        c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, on_lobby)
+        c.room, c.seat, c.token, c.gen = "AAAA", 2, "tok", 1
+        c.leave_offline()
+        await asyncio.sleep(0)
+        assert c.room is None and c.owed_leave == ("AAAA", 2, "tok") and lobby == [None]
+        # the socket delivering it reads nothing from the seat it leaves
+        c.gen = c.leaving_gen = 2
+        await c._on({"type": "room", "room": "AAAA", "you": 2})
+        await c._on({**_frame("AAAA", 2)})
+        assert c.room is None and c.state is None
+        await c._on({"type": "left"})
+        assert c.leaving_gen is None
+    asyncio.run(run())
+
+
+def test_a_ranked_resume_refused_goes_for_play():
+    async def run():
+        c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, lambda c: asyncio.sleep(0))
+        c.room, c.seat, c.token = "AAAA", 2, "stale"
+        await c._on({"type": "error", "code": "ranked_queue_only"})
+        assert c.room is None and c.last_error == "ranked_queue_only"
+    asyncio.run(run())
+
+
+def test_an_account_client_sends_its_session_cookie():
+    c = client.SoakClient("Soak-1", "dev1", 9, 1.0, None, None, None, session="abc")
+    assert c.account and c.headers["Cookie"] == "sj_session=abc"
+    assert not client.SoakClient("Soak-2", "dev2", 9, 1.0, None, None, None).account
+
+
+def test_every_fault_kind_has_a_branch_in_chaos():
+    import inspect
+    src = inspect.getsource(soak.Soak.chaos)
+    for kind in soak.FAULTS:
+        assert f'"{kind}"' in src or kind in soak.LEAVE_KINDS, kind

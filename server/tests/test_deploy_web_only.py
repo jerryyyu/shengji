@@ -399,3 +399,74 @@ def test_missing_rollback_inputs_refuse_before_push_or_deploy(repo, tmp_path, en
     assert "deploy --ha=false" not in log
     if missing == "existing-snapshot":
         assert (tmp_path / "receipt.json.rollback.fly.toml").read_text() == "do not overwrite\n"
+
+
+def _lazy_site(tmp_path, chunk_has_marker=True):
+    """After the deploy the entry bundle lacks the marker; it imports a lazy chunk
+    (relative, root-relative and preload-map forms) and names a chunk on another
+    origin that carries the marker."""
+    site = _site(tmp_path, after_marker=False)
+    (site / "after/assets/index-new2.js").write_text(
+        'const a=()=>import("./held_seat-ab12.js");'
+        '__vite__mapDeps(["assets/Panel-cd34.js","/assets/held_seat-ab12.js"]);'
+        'import("https://cdn.example.com/assets/foreign-ef56.js");'
+        'import("//cdn.example.com/assets/foreign2-ef56.js");')
+    (site / "after/assets/held_seat-ab12.js").write_text(
+        "chunk PHONE_MARKER" if chunk_has_marker else "chunk")
+    (site / "after/assets/Panel-cd34.js").write_text("panel")
+    # The stub curl ignores the host; a fetch of a foreign chunk would read this.
+    (site / "after/assets/foreign-ef56.js").write_text("foreign PHONE_MARKER")
+    (site / "after/assets/foreign2-ef56.js").write_text("foreign PHONE_MARKER")
+    return site
+
+
+def _logging_curl_env(tmp_path, env, site):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    log = tmp_path / "curl.log"
+    (bin_dir / "curl").write_text(
+        FAKE_CURL.replace('url="${@: -1}"', f'url="${{@: -1}}"; echo "$url" >> "{log}"'))
+    (bin_dir / "curl").chmod(0o755)
+    return dict(env, FAKE_SITE=str(site), PATH=str(bin_dir) + os.pathsep + env["PATH"]), log
+
+
+def _marker_served(tmp_path, env, site, marker="PHONE_MARKER"):
+    shutil.copytree(site / "after", site, dirs_exist_ok=True)
+    e, log = _logging_curl_env(tmp_path, env, site)
+    r = subprocess.run(
+        [BASH, "-c", f'source "{SCRIPT}"; URL=https://shengji.fly.dev; MARKER="$1"; marker_served',
+         "_", marker], text=True, capture_output=True, env=e)
+    return r, log.read_text().split()
+
+
+def test_marker_in_a_lazily_imported_chunk_counts_as_served(tmp_path, env):
+    r, fetched = _marker_served(tmp_path, env, _lazy_site(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert "https://shengji.fly.dev/assets/held_seat-ab12.js" in fetched
+
+
+def test_marker_absent_from_bundle_and_chunks_is_not_served(tmp_path, env):
+    r, fetched = _marker_served(tmp_path, env, _lazy_site(tmp_path, chunk_has_marker=False))
+    assert r.returncode == 1
+    assert fetched.count("https://shengji.fly.dev/assets/held_seat-ab12.js") == 1
+    assert "https://shengji.fly.dev/assets/Panel-cd34.js" in fetched
+    assert not [url for url in fetched if "foreign" in url or "cdn.example.com" in url]
+
+
+def test_imported_chunks_lists_same_origin_refs_once(env):
+    body = ('import("./a-1.js");import("./a-1.js");"assets/b-2.js";"/assets/c-3.js";'
+            '"https://shengji.fly.dev/assets/d-4.js";"https://cdn.example.com/assets/x-9.js";'
+            '"//cdn.example.com/assets/y-9.js";"https://cdn.example.com/static/assets/z-9.js";'
+            '"http://shengji.fly.dev/assets/w-9.js";"./style-5.css"')
+    r = subprocess.run([BASH, "-c", f'source "{SCRIPT}"; imported_chunks https://shengji.fly.dev'],
+                       input=body, text=True, capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["/assets/a-1.js", "/assets/b-2.js", "/assets/c-3.js", "/assets/d-4.js"]
+
+
+def test_real_mode_accepts_a_marker_only_in_a_lazy_chunk(repo, tmp_path, env):
+    site = _lazy_site(tmp_path)
+    r, data, _ = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 0, r.stderr
+    assert data["status"] == "deployed"
+    assert data["marker_found"] is True

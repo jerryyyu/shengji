@@ -11,7 +11,8 @@
 # and web/ is identical to the web ref; refuse on a dirty worktree; read /healthz and
 # refuse unless rooms == 0; push the branch; fly deploy --ha=false; re-read /healthz and
 # refuse (printing the rollback command, never running it) if the bot identity changed;
-# require exactly one started machine and the marker text in the served JS bundle.
+# require exactly one started machine and the marker text in a served JS bundle or a
+# chunk it imports.
 # --dry-run runs every step except the push and fly deploy.
 # A JSON receipt records the tree, served and web shas, /healthz and the Fly version
 # before and after, and the outcome.
@@ -219,10 +220,45 @@ served_bundles() {
   curl -fsS --max-time 20 "$URL/" | grep -o -E '/assets/[A-Za-z0-9._-]+\.js' | sort -u
 }
 
+# imported_chunks URL < BODY: the same-origin /assets/*.js chunks a bundle body
+# references ("./x.js", "assets/x.js", "/assets/x.js" or an absolute URL on URL's
+# origin), one per line; a reference on another origin is never listed.
+imported_chunks() {
+  python3 -c '
+import re, sys
+from urllib.parse import urlsplit
+origin = urlsplit(sys.argv[1])
+body = sys.stdin.read()
+name = r"([A-Za-z0-9._-]+\.js)\b"
+found = set()
+for m in re.finditer(r"((?:https?:)?//[^/\x22\x27`\s]+)/assets/" + name, body):
+    ref = urlsplit(m.group(1) if m.group(1).startswith("http") else origin.scheme + ":" + m.group(1))
+    if (ref.scheme, ref.netloc) == (origin.scheme, origin.netloc):
+        found.add(m.group(2))
+for m in re.finditer(r"(?<![\w.:/-])/?assets/" + name, body):
+    found.add(m.group(1))
+for m in re.finditer(r"(?<![\w./-])\./" + name, body):
+    found.add(m.group(1))
+for chunk in sorted(found):
+    print("/assets/" + chunk)
+' "$1"
+}
+
+# marker_served: the marker is in an entry bundle of the served index.html or in a
+# chunk one of those bundles imports (lazily loaded routes and panels).
 marker_served() {
-  local bundle body
-  for bundle in $(served_bundles); do
+  local bundle body chunk entries chunks=
+  entries=" $(served_bundles | tr '\n' ' ') " || return 1
+  for bundle in $entries; do
     body=$(curl -fsS --max-time 30 "$URL$bundle") || continue
+    case "$body" in
+      *"$MARKER"*) return 0 ;;
+    esac
+    chunks="$chunks $(printf '%s' "$body" | imported_chunks "$URL")"
+  done
+  for chunk in $(printf '%s\n' $chunks | sort -u); do
+    case "$entries" in *" $chunk "*) continue ;; esac
+    body=$(curl -fsS --max-time 30 "$URL$chunk") || continue
     case "$body" in
       *"$MARKER"*) return 0 ;;
     esac

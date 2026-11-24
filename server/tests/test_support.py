@@ -379,6 +379,91 @@ def test_guide_routes_need_a_build(tmp_path):
     assert support.guide_pages(tmp_path) == {"/guides": "guides/index.html"}
 
 
+def _site_client(tmp_path, base_url):
+    """The real ``web/public`` files and the real app page, as Vite builds them."""
+    shutil.copytree(PUBLIC, tmp_path, dirs_exist_ok=True)
+    shutil.copy(PUBLIC.parent / "index.html", tmp_path / "index.html")
+    from shengji.api.server import WebFiles
+    from shengji.api import support
+
+    app = FastAPI()
+    support.register_support(app, tmp_path)
+    app.mount("/", WebFiles(directory=tmp_path, html=True), name="web")
+    return TestClient(app, base_url=base_url)
+
+
+def _html_pages():
+    """Every HTML page the site serves, with its canonical path."""
+    yield "/", "/"
+    yield "/?code=ABCD", "/"
+    for name in ("privacy", "terms", "support"):
+        yield f"/{name}", f"/{name}"
+    for path in ("/rules", "/rules/zh", *_guide_routes()):
+        yield path, path
+
+
+@pytest.mark.parametrize("host", ["https://shengji.fly.dev", "https://playshengji.com"])
+def test_every_page_on_either_host_names_its_playshengji_canonical(tmp_path, host):
+    """shengji.fly.dev serves the same pages for builds up to 1.0.1, so each
+    page names its playshengji.com address as canonical; no page is moved,
+    and none is marked noindex, which would contradict that canonical."""
+    import re
+
+    c = _site_client(tmp_path, host)
+    for path, canonical in _html_pages():
+        r = c.get(path, headers=NAV, follow_redirects=False)
+        assert r.status_code == 200, path
+        assert "x-robots-tag" not in r.headers, path
+        assert re.findall(r'<link rel="canonical" href="([^"]+)"', r.text) == [
+            "https://playshengji.com" + canonical], path
+        assert '<meta name="robots"' not in r.text, path
+
+
+def test_the_sitemap_gives_each_language_pair_an_x_default(tmp_path):
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(_public_client(tmp_path).get("/sitemap.xml").content)
+    ns = {"s": "http://www.sitemaps.org/schemas/sitemap/0.9", "x": "http://www.w3.org/1999/xhtml"}
+    paired = [u for u in root.findall("s:url", ns) if u.findall("x:link", ns)]
+    assert len(paired) == 2 + 2 * (1 + len(_guide_slugs()))
+    for url in paired:
+        loc = url.find("s:loc", ns).text
+        alts = {a.get("hreflang"): a.get("href") for a in url.findall("x:link", ns)}
+        assert set(alts) == {"en", "zh-Hans", "x-default"}, loc
+        assert alts["x-default"] == alts["en"] and loc in (alts["en"], alts["zh-Hans"])
+
+
+def test_llms_txt_lists_every_guide_in_both_languages(tmp_path):
+    text = _public_client(tmp_path).get("/llms.txt").text
+    for slug in _guide_slugs():
+        for root in ("/guides", "/zh/guides"):
+            [line] = [ln for ln in text.splitlines() if f"(https://playshengji.com{root}/{slug})" in ln]
+            assert line.startswith("- [") and len(line.split("): ", 1)[1]) >= 20, line
+
+
+@pytest.mark.parametrize("page", ["rules/index.html", "rules/zh/index.html"])
+def test_rules_articles_name_an_author(page):
+    import re
+
+    html = (PUBLIC / page).read_text(encoding="utf-8")
+    [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    article = json.loads(block)["@graph"][0]
+    assert article["author"] == {"@type": "Organization", "name": "Sheng Ji 升级",
+                                 "url": "https://playshengji.com/"}
+
+
+def test_the_app_page_json_ld_offers_the_free_app_on_the_app_store():
+    import re
+
+    html = (PUBLIC.parent / "index.html").read_text(encoding="utf-8")
+    [block] = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    data = json.loads(block)
+    assert set(data["@type"]) == {"VideoGame", "SoftwareApplication"}
+    assert data["installUrl"] == "https://apps.apple.com/app/id6833598710"
+    assert data["offers"] == {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
+    assert data["isAccessibleForFree"] is True
+
+
 def test_the_rules_routes_take_no_request_input(tmp_path):
     r = _public_client(tmp_path).get("/rules?file=../../etc/passwd")
     assert r.status_code == 200 and r.text.startswith("<!doctype html>")

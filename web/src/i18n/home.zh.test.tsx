@@ -108,7 +108,7 @@ describe("the Play tab in Chinese", () => {
     expect(host.querySelector(".name-reroll")?.getAttribute("aria-label")).toBe("随机昵称");
     expect(host.querySelector(".identity-terms")?.textContent).toBe("登录即表示你同意使用条款。");
     expect(host.querySelector(".identity-terms a")?.textContent).toBe("使用条款");
-    expect(texts(".guest-name-sheet .btn.gold")).toEqual(["完成"]);
+    expect(texts(".guest-name-sheet .btn.secondary")).toEqual(["完成"]);
   });
 
   it("a connection on its way reads 连接中…", async () => {

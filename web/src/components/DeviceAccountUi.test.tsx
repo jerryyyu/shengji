@@ -152,7 +152,7 @@ describe("the identity sheet", () => {
     expect(s.querySelectorAll(".identity-status")).toHaveLength(1);
     expect(s.querySelector("[data-testid='google-signin']")).not.toBeNull();
     expect(s.querySelector(".identity-terms")?.textContent).toBe("By signing in you agree to the Terms of use.");
-    expect(s.querySelector(".btn.gold")?.textContent).toBe("Done");
+    expect(s.querySelector(".btn.secondary")?.textContent).toBe("Done");
   });
 
   it("Done saves the edited name on the account and closes", async () => {
@@ -165,7 +165,7 @@ describe("the identity sheet", () => {
       set.call(input, "Brave Kite");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => { sheet()!.querySelector<HTMLButtonElement>(".btn.gold")!.click(); });
+    await act(async () => { sheet()!.querySelector<HTMLButtonElement>(".btn.secondary")!.click(); });
     await settle();
     expect(calls.filter((c) => c.method === "PATCH")).toEqual([{ url: "/api/me", method: "PATCH", body: { display_name: "Brave Kite" } }]);
     expect(updated).toHaveBeenCalledWith(expect.objectContaining({ name_shown: "Brave Kite" }));
@@ -183,7 +183,7 @@ describe("the identity sheet", () => {
       set.call(input, "Mei");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await act(async () => { sheet()!.querySelector<HTMLButtonElement>(".btn.gold")!.click(); });
+    await act(async () => { sheet()!.querySelector<HTMLButtonElement>(".btn.secondary")!.click(); });
     await settle();
     expect(sheet()?.querySelector("[role='alert']")?.textContent).toBe("That name is taken.");
     expect(updated).not.toHaveBeenCalled();

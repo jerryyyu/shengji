@@ -61,12 +61,12 @@ for (const device of ["phone-port", "phone-port-se", "phone-land", "ipad", "desk
       await keyboard(page, true, mode);
       await sleep(250);
       await rep.check(`lobby-${device}: name field and Done above the keyboard (${mode})`,
-        [await onShow(page, "input[placeholder*='Jerry']", "name field"), await onShow(page, ".btn.gold:has-text('Done')", "Done")], page);
+        [await onShow(page, "input[placeholder*='Jerry']", "name field"), await onShow(page, ".btn.secondary:has-text('Done')", "Done")], page);
       await shot(page, `lobby_${device}_name_kb_${mode}`);
       await page.fill("input[placeholder*='Jerry']", "Maximilian Featherst");
       await sleep(200);
       await rep.check(`lobby-${device}: a long name fits its sheet (${mode})`, await textCuts(page), page);
-      await page.click(".btn.gold:has-text('Done')");
+      await page.click(".btn.secondary:has-text('Done')");
       await keyboard(page, false, mode);
       await sleep(400);
       await rep.check(`lobby-${device}: long name on the Play tab (${mode})`, await textCuts(page), page);
@@ -301,7 +301,7 @@ if (want("table")) {
     // back under another name: the seat is found by the device, not the name
     await a.click(".guest-pill");
     await a.fill("input[placeholder*='Jerry']", "Maximilian Two");
-    await a.click(".btn.gold:has-text('Done')");
+    await a.click(".btn.secondary:has-text('Done')");
     await sleep(500);
     await a.fill(".room-input", code);
     await a.keyboard.press("Enter");

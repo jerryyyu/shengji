@@ -208,8 +208,8 @@ textarea:focus-visible {
 .btn.primary.bury-btn,
 .btn.primary.bury-btn:hover:not(:disabled) {
   border-color: var(--gold);
-  background: linear-gradient(90deg, #6b5520 var(--bury-fill, 0%), #0b1a12 var(--bury-fill, 0%));
-  color: #ffe9b0;
+  background: linear-gradient(90deg, #8a6a22 var(--bury-fill, 0%), #242a35 var(--bury-fill, 0%));
+  color: #fff3cf;
   font-weight: 700;
 }
 
@@ -219,11 +219,13 @@ textarea:focus-visible {
 
 /* Primary: a screen's main action, in the Play tab's one gold. Its light ink
    holds 4.5:1 on the face's lighter end. The main actions drawn as .primary
-   (Next round, How to play's Next, the name's Save) take it here too. */
+   (Next round, How to play's Next, the name's Save, the table's Play) take it
+   here too; Bury fills with the same gold above. */
 .btn.gold,
 .round-end-actions > .btn.primary,
 .howto-buttons > .btn.primary,
-.btn.primary.name-edit-save {
+.btn.primary.name-edit-save,
+.action-bar .btn.primary:where(:not(.bury-btn)) {
   background: linear-gradient(180deg, #8a6a22, #6b5219);
   border-color: var(--gold);
   color: #fff3cf;
@@ -234,13 +236,23 @@ textarea:focus-visible {
 .btn.gold:hover:not(:disabled),
 .round-end-actions > .btn.primary:hover:not(:disabled),
 .howto-buttons > .btn.primary:hover:not(:disabled),
-.btn.primary.name-edit-save:hover:not(:disabled) {
+.btn.primary.name-edit-save:hover:not(:disabled),
+.action-bar .btn.primary:where(:not(.bury-btn)):hover:not(:disabled) {
   background: linear-gradient(180deg, #7a5d1e, #5c4615);
 }
 }
 
 .btn.subtle {
   background: transparent;
+}
+
+/* Secondary: the raised neutral, for an action beside the main one (Pass,
+   Clear) and a lone dismissal (Done, Leave once the game is over). */
+.btn.secondary,
+.action-bar .btn:where(:not(.primary, .gold)) {
+  border-color: var(--ctl-raised-edge);
+  background: var(--ctl-raised);
+  color: var(--text);
 }
 
 .btn.danger {
@@ -1695,8 +1707,8 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 /* a newcomer's first turns: the coach line in gold; an idle turn pulses it
    and the cards that follow the lead. No card is dimmed, legal or not. */
 .hand-line.coach {
-  border-color: var(--gold);
-  color: var(--gold);
+  border-color: var(--ctl-raised-edge);
+  color: var(--text);
 }
 
 .hand-line.coach.nudge {
@@ -3021,8 +3033,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .phase-play .action-bar .btn.primary.your-turn:disabled {
     opacity: 1;
-    border-color: var(--gold);
-    background: rgba(8, 20, 14, 0.85);
+    border-color: var(--ctl-raised-edge);
+    background: var(--ctl-raised);
     color: var(--gold);
     font-weight: 700;
   }
@@ -3098,10 +3110,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     margin-left: 8px;
   }
 
+  /* the table is short: its actions are the switch's 44 */
   .action-bar .btn {
-    min-height: 44px; /* touch target */
-    padding: 6px 16px;
-    font-size: var(--fs-14);
+    min-height: var(--ctl-h-sm);
+    padding: 0 16px;
+    border-radius: var(--ctl-r);
+    font-size: var(--fs-17);
+    font-weight: 700;
+    letter-spacing: 0.01em;
   }
 
   /* a disabled Clear is not information */
@@ -3599,9 +3615,9 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .action-bar .btn {
-    min-height: 48px;
+    min-height: var(--ctl-h);
     padding: calc(9 * var(--u)) calc(18 * var(--u));
-    border-radius: calc(10 * var(--u));
+    border-radius: var(--ctl-r);
     font-size: max(var(--fs-14), calc(14 * var(--u)));
   }
 

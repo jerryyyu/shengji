@@ -282,7 +282,7 @@ describe("the bars", () => {
 
 describe("one name control", () => {
   const sheets = () => document.querySelectorAll(".guest-name-sheet");
-  const done = () => act(() => document.querySelector<HTMLButtonElement>(".guest-name-sheet .btn.gold")!.click());
+  const done = () => act(() => document.querySelector<HTMLButtonElement>(".guest-name-sheet .btn.secondary")!.click());
   const type = async (name: string) => {
     const input = document.querySelector<HTMLInputElement>(".guest-name-sheet input")!;
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;

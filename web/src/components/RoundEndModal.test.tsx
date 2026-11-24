@@ -633,6 +633,21 @@ describe("the ladder: a rank lane per team and the attackers' points", () => {
     expect(lane(1)).toEqual({ was: "K", now: "A" });
   });
 
+  it("a remembered level must replay to the result: a climb of one cannot reach A from Q", () => {
+    const capped = makeResult({ winner_team: 1, level_change: 1, attacker_points: 125, new_levels: ["5", "A"], next_banker: 1 });
+    const bank5 = { ...state, trump: { suit: "H", rank: "5", declarer: 0 } };
+    renderModal(capped, bank5, null, { before: ["5", "Q"] });
+    expect(lane(1)).toEqual({ was: null, now: "A" });
+    renderModal(capped, bank5, null, { before: ["5", "K"] });
+    expect(lane(1)).toEqual({ was: "K", now: "A" });
+    // a climb of two runs into A from Q or from K: either replays
+    renderModal(makeResult({ ...capped, level_change: 2, attacker_points: 165 }), bank5, null, { before: ["5", "Q"] });
+    expect(lane(1)).toEqual({ was: "Q", now: "A" });
+    // a won game was held at A
+    renderModal(makeResult({ point_scored: true, games_won: [1, 0] }), aceDefence, null, { before: ["K", "Q"] });
+    expect(lane(1)).toEqual({ was: null, now: null });
+  });
+
   it("ignores a remembered level that disagrees with the result (a round missed while away)", () => {
     renderModal(makeResult({ winner_team: 0, level_change: 1, new_levels: ["4", "2"] }),
                 { ...state, trump: { suit: "H", rank: "3", declarer: 0 } }, null, { before: ["7", "2"] });

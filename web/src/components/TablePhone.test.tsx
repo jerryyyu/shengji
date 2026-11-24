@@ -191,6 +191,46 @@ describe("phone turn cue and haptics", () => {
     expect(haptics).toEqual(["game"]);
   });
 
+  it("the round end's lanes fill in only for a result that follows play on the same socket; a reconnect draws them settled", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    // we bank at 5; they attack at K, take 125 and climb one, to A
+    const trump = { suit: "H", rank: "5", declarer: 0 };
+    const banked = { banker: 0, trump, players: [player(0, { is_banker: true }), player(1), player(2), player(3)] };
+    const climb = (): GameState["round_result"] => ({
+      attacker_points: 125, kitty_points: 0, kitty_cards: [], winner_team: 1, level_change: 1, next_banker: 1,
+      new_levels: ["5", "A"], games_won: [0, 0], point_scored: false, game_over: false });
+    const theirs = () => {
+      const lane = host.querySelector(".rank-lane.team1")!;
+      return { was: lane.querySelector(".lane-cell.was")?.textContent ?? null,
+               now: lane.querySelector(".lane-cell.now")?.textContent ?? null,
+               fill: lane.querySelector(".lane-cell.fill") !== null };
+    };
+    const reconnect = () => { link.status = "closed"; link.status = "open"; };
+    // live: play at K on this socket, then the result
+    render(state({ ...banked, levels: ["5", "K"] }));
+    render(state({ ...banked, levels: ["5", "A"], phase: "round_end", turn: null, round_result: climb() }));
+    expect(theirs()).toEqual({ was: "K", now: "A", fill: true });
+    // a reconnect onto the same result: settled, no fill
+    reconnect();
+    render(state({ ...banked, levels: ["5", "A"], phase: "round_end", turn: null, round_result: climb(), attacker_points: 1 }));
+    // the result alone cannot say where a climb that ran into A started
+    expect(theirs()).toEqual({ was: null, now: "A", fill: false });
+    act(() => root.unmount());
+    root = createRoot(host);
+    // play at Q on one socket, a reconnect, then the result: the Q kept from the old socket is not read
+    render(state({ ...banked, levels: ["5", "Q"] }));
+    reconnect();
+    render(state({ ...banked, levels: ["5", "A"], phase: "round_end", turn: null, round_result: climb() }));
+    // the result alone cannot say where a climb that ran into A started
+    expect(theirs()).toEqual({ was: null, now: "A", fill: false });
+    act(() => root.unmount());
+    root = createRoot(host);
+  });
+
   it("labels the trick's cards for VoiceOver and the hand as one group", () => {
     render(state({ turn: 0, hand: cards(3), trick: { leader: 1, plays: [{ seat: 1, cards: ["H3", "BJ"] }] } }));
     const played = [...host.querySelectorAll<HTMLElement>(".trick-cards .card")];

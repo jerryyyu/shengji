@@ -148,7 +148,15 @@ function levelsBefore(state: GameState, result: RoundResult, before: [string, st
   }
   if (before) {
     const seen: [number | null, number | null] = [rankIdx(before[0]), rankIdx(before[1])];
-    if (seen.every((v, i) => v !== null && (known[i] === null || known[i] === v))) return seen;
+    // the record must replay to this result: the winners' climb stops at A,
+    // a won game was held at A, and the other team kept its level
+    const replays = (v: number, team: 0 | 1, now: number | null): boolean => {
+      if (result.point_scored) return team !== result.winner_team || v === ACE;
+      if (now === null) return false;
+      return team === result.winner_team ? Math.min(ACE, v + result.level_change) === now : v === now;
+    };
+    if (seen.every((v, i) => v !== null && (known[i] === null || known[i] === v)
+                             && replays(v, i as 0 | 1, rankIdx(result.new_levels[i])))) return seen;
   }
   return known;
 }

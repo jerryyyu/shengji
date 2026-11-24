@@ -18,8 +18,9 @@ def packet(tmp_path):
     return fixture_packet(tmp_path, Path(kit))
 
 
-def test_saved_synthetic_duel_reaches_the_actual_decision_cli(packet):
+def test_saved_synthetic_duel_reaches_the_actual_decision_cli(packet, monkeypatch):
     sys.path.insert(0, str(REPO / "server/scripts"))
+    import sz2_a_capture as capture
     import sz2_a_recipe as recipes
 
     lane = packet.root.parent
@@ -44,11 +45,39 @@ def test_saved_synthetic_duel_reaches_the_actual_decision_cli(packet):
     ]
     packet.root = Path(packet.arm["out_root"])
     packet.status = Path(packet.arm["status"])
-    packet.root.mkdir()
+    digest = packet.write_recipe()
+    monkeypatch.setattr(capture, "LANE", lane)
+
+    def command(*args, expected=digest):
+        monkeypatch.setattr(sys, "argv", ["capture", "--recipe", str(packet.recipe_path),
+                                          "--recipe-sha256", expected, *args])
+        capture.main()
+
+    start = ("reserve", "--supervisor-pid", "1", "--workers", "2")
+    with pytest.raises(ValueError, match="independent SHA"):
+        command(*start, expected="0" * 64)
+    assert not packet.status.exists()
+    command(*start)
+    with pytest.raises(ValueError, match="occupied"):
+        command(*start)
     assert set(packet.recipe["arms"]) == {ARM}
     with pytest.raises(ValueError, match="already exists"):
         recipes.decision_recipe(reference, side, lane)
-    packet.seal()
+    with packet.status.open("a") as out:
+        for kind, detail in [("LOCKED", "after 0s"), ("NAMES", "ok"), ("PRODUCER", "fixture")]:
+            out.write(capture.event(kind, detail))
+    with pytest.raises(ValueError, match="producer exited"):
+        command("seal", "--producer-rc", "9")
+    packet.write_producer_outputs(b"partial")
+    with pytest.raises(ValueError, match="incomplete mirror rows"):
+        command("seal", "--producer-rc", "0")
+    assert (packet.root / "duel.jsonl").read_bytes() == b"partial"
+    assert not (packet.root / "manifest.json").exists()
+    packet.write_producer_outputs()
+    command("seal", "--producer-rc", "0")
+    with packet.status.open("a") as out:
+        out.write(capture.event("UNLOCKED", "fixture"))
+
     read = packet.read()
     assert read.returncode == 0, read.stderr
     result = json.loads(packet.result.read_text())
@@ -99,3 +128,26 @@ def test_reader_checks_decision_window_before_reading_status(packet, arm, seed, 
     assert read.returncode != 0
     assert "only the SZ2-A decision window can enter this reader" in read.stderr
     assert not packet.result.exists()
+
+
+@pytest.mark.parametrize("occupied", ["resume", "status", "symlink"])
+def test_reserve_preserves_existing_capture(packet, occupied, monkeypatch):
+    monkeypatch.syspath_prepend(str(REPO / "server/scripts"))
+    import sz2_a_capture as capture
+
+    lane = packet.root.parent
+    root, status = lane / "out" / ARM, lane / f"{ARM}.status"
+    packet.arm.update(out_root=str(root), status=str(status))
+    if occupied == "resume":
+        root.mkdir()
+        witness = root / "duel.jsonl.resume.json"
+    elif occupied == "status":
+        witness = status
+    else:
+        root.symlink_to(lane, target_is_directory=True)
+        witness = lane / "existing"
+    witness.write_bytes(b"preserved")
+    with pytest.raises(ValueError, match="occupied|symlink"):
+        capture.reserve(packet.recipe, packet.write_recipe(), lane, 1, 1)
+    assert witness.read_bytes() == b"preserved"
+    assert status.exists() == (occupied == "status")

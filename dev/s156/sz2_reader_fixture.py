@@ -93,8 +93,7 @@ class FixturePacket:
         write_json(self.recipe_path, self.recipe)
         return sha(self.recipe_path)
 
-    def seal(self, rows=None):
-        recipe_sha = self.write_recipe()
+    def write_producer_outputs(self, rows=None):
         if rows is None:
             rows = (make_row(self.reader, i, mirror) for i in range(DEALS) for mirror in (0, 1))
         raw = self.root / "duel.jsonl"
@@ -104,13 +103,17 @@ class FixturePacket:
             with raw.open("w") as out:
                 for row in rows:
                     out.write(json.dumps(row) + "\n")
+        for name in ("duel.jsonl.resume.json", "duel.time", "run.log"):
+            (self.root / name).write_text("fixture\n")
+
+    def seal(self, rows=None):
+        recipe_sha = self.write_recipe()
+        self.write_producer_outputs(rows)
         seed, deals = self.arm["seed0"], self.arm["deals"]
         write_json(self.root / "manifest.json", {
             "schema": "utd-manifest-r1", "mode": ARM, "arm": ARM, "recipe_sha256": recipe_sha,
             "seed0": seed, "deals": deals, "tree_head": self.recipe["tree_head"], "rc": 0,
         })
-        for name in ("duel.jsonl.resume.json", "duel.time", "run.log"):
-            (self.root / name).write_text("fixture\n")
         sums = self.root / "SHA256SUMS"
         sums.write_text("".join(f"{sha(self.root / name)}  ./{name}\n" for name in self.reader.R.SEALED))
         status = [

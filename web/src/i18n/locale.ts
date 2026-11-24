@@ -116,15 +116,22 @@ export function languageChoice(): LanguageChoice {
 }
 
 /** Sets the choice: this origin's storage, and in the app the native store
- *  too, so the other launch path reads it. Follow system clears both. */
+ *  too, so the other launch path reads it. Follow system clears this
+ *  origin's override and is stored natively as "system". */
 export function setLanguageChoice(next: LanguageChoice): void {
   choice = next;
   storeLocal(next);
   apply();
-  const write = nativeStore(next === "system" ? "remove" : "set");
+  writeNative(next);
+}
+
+/** Stores a choice in the native store. Follow system is stored too, as
+ *  "system": an empty store means no choice has reached it yet (a build-10
+ *  install), which must not read as Follow system. */
+function writeNative(c: LanguageChoice): void {
+  const write = nativeStore("set");
   if (!write) return;
-  saving = write(next === "system" ? { key: LANGUAGE_KEY } : { key: LANGUAGE_KEY, value: next })
-    .then(() => undefined, () => undefined);
+  saving = write({ key: LANGUAGE_KEY, value: c }).then(() => undefined, () => undefined);
 }
 
 let saving: Promise<void> = Promise.resolve();
@@ -150,9 +157,16 @@ export function loadLanguage(waitMs = NATIVE_READ_MS): Promise<void> | null {
   return Promise.race([read({ key: LANGUAGE_KEY }), late])
     .then((r) => {
       if (r === "late") return;
-      choice = parseChoice((r as { value?: unknown } | undefined)?.value);
-      storeLocal(choice);
-      apply();
+      const stored = (r as { value?: unknown } | undefined)?.value;
+      if (stored === "en" || stored === "zh-Hans" || stored === "system") {
+        choice = stored;
+        storeLocal(choice);
+        apply();
+        return;
+      }
+      // nothing stored natively yet: this origin's own choice (a build-10
+      // install keeps one per origin) stands and becomes the app's
+      if (choice !== "system") writeNative(choice);
     }, () => undefined)
     .finally(() => clearTimeout(timer));
 }

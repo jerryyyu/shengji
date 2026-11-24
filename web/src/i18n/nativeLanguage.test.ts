@@ -1,8 +1,9 @@
 // The app's two launch paths, the hosted page and the bundled offline page,
 // are two origins with two localStorages. An explicit Language choice lives
 // in the native store (Capacitor Preferences) too, and each path reads it
-// before its first render; Follow system clears it. A browser keeps the
-// choice per origin.
+// before its first render; Follow system is stored there as "system". An
+// empty native store (a build-10 install) is no choice at all: the origin's
+// own choice stands and moves into it. A browser keeps the choice per origin.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type LocaleModule = typeof import("./locale");
@@ -135,7 +136,7 @@ describe("the app's language choice across its two origins", () => {
     expect(offline.locale()).toBe("en");
     offline.setLanguageChoice("system");
     await offline.languageSaved();
-    expect(native.has(KEY)).toBe(false);
+    expect(native.get(KEY)).toBe("system");
     expect(offline.locale()).toBe("zh-Hans");
 
     const back = await open("https://shengji.fly.dev");
@@ -144,6 +145,66 @@ describe("the app's language choice across its two origins", () => {
     expect(back.languageChoice()).toBe("system");
     expect(back.locale()).toBe("zh-Hans");
     expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("a build-10 install: the hosted 中文 survives an empty native store and moves into it", async () => {
+    await open("https://shengji.fly.dev");
+    localStorage.setItem(KEY, "zh-Hans");          // chosen under build 10, per origin
+    const hosted = await open("https://shengji.fly.dev");
+    expect(native.has(KEY)).toBe(false);
+    await hosted.loadLanguage();
+    expect(hosted.languageChoice()).toBe("zh-Hans");
+    expect(hosted.locale()).toBe("zh-Hans");
+    expect(localStorage.getItem(KEY)).toBe("zh-Hans");
+    await hosted.languageSaved();
+    expect(native.get(KEY)).toBe("zh-Hans");
+
+    const offline = await open("capacitor://localhost");
+    await offline.loadLanguage();
+    expect(offline.locale()).toBe("zh-Hans");
+  });
+
+  it("a build-10 install that opens offline first still keeps the hosted 中文", async () => {
+    await open("https://shengji.fly.dev");
+    localStorage.setItem(KEY, "zh-Hans");          // chosen under build 10, per origin
+    const offline = await open("capacitor://localhost");
+    await offline.loadLanguage();
+    await offline.languageSaved();
+    expect(offline.locale()).toBe("en");          // nothing chosen here, nothing stored natively
+    expect(native.has(KEY)).toBe(false);
+
+    const hosted = await open("https://shengji.fly.dev");
+    await hosted.loadLanguage();
+    expect(hosted.locale()).toBe("zh-Hans");
+    await hosted.languageSaved();
+    expect(native.get(KEY)).toBe("zh-Hans");
+
+    const again = await open("capacitor://localhost");
+    await again.loadLanguage();
+    expect(again.locale()).toBe("zh-Hans");
+  });
+
+  it("an explicit Follow system after the migration clears the 中文 on both origins", async () => {
+    deviceLanguages(["en-US"]);
+    await open("https://shengji.fly.dev");
+    localStorage.setItem(KEY, "zh-Hans");
+    const hosted = await open("https://shengji.fly.dev");
+    await hosted.loadLanguage();
+    await hosted.languageSaved();
+    expect(native.get(KEY)).toBe("zh-Hans");
+    hosted.setLanguageChoice("system");
+    await hosted.languageSaved();
+    expect(native.get(KEY)).toBe("system");
+    expect(localStorage.getItem(KEY)).toBeNull();
+
+    const offline = await open("capacitor://localhost");
+    await offline.loadLanguage();
+    expect(offline.languageChoice()).toBe("system");
+    expect(offline.locale()).toBe("en");
+    const back = await open("https://shengji.fly.dev");
+    await back.loadLanguage();
+    expect(back.languageChoice()).toBe("system");
+    expect(back.locale()).toBe("en");
   });
 
   it("a shell built without the plugin keeps the choice per origin", async () => {

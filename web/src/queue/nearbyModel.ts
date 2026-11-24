@@ -2,7 +2,7 @@
 // nearby code's Join panel (`fromNearbyJoin`) and the offline table's Nearby
 // switch (`nearbySwitch`). Part of the nearby UI, loaded only where the app
 // binary offers nearby play (nearbyGate.ts).
-import { t } from "../i18n";
+import { displayName, t } from "../i18n";
 import type { NearbyJoin } from "../nearbyJoin";
 import { NEARBY_COPY } from "../offline/server/nearby/copy";
 import { nearbyChoices, nearbyStartSeat } from "../joinSeats";
@@ -96,7 +96,8 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
       return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours),
                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     }
-    return { at, look: "person", name: shortName(sd.name), sub: "", label: seatLabel("queue.seat.named", ours, { name: sd.name }),
+    const shown = displayName(sd.name, sd.is_bot);
+    return { at, look: "person", name: shortName(shown), sub: "", label: seatLabel("queue.seat.named", ours, { name: shown }),
              ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
   }) : null;
   const status = j.step === "looking" ? { text: j.linked ? NEARBY_COPY.connecting : NEARBY_COPY.browsing }

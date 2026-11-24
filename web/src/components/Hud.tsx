@@ -12,7 +12,7 @@ import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
 import { showToast } from "../toast";
 import { useNearbyUi } from "../nearbyGate";
-import { t, useT } from "../i18n";
+import { displayName, t, useT } from "../i18n";
 
 function TrumpChip({ state }: { state: GameState }) {
   const t = useT();
@@ -59,9 +59,10 @@ function useTableToasts(state: GameState) {
     if (!notice) { told.notice = ""; return; }
     if (told.notice === noticeKey) return;
     told.notice = noticeKey;
+    const thrower = state.players.find((p) => p.seat === notice.seat);
     const name = notice.seat === state.you
       ? t("common.you")
-      : state.players.find((p) => p.seat === notice.seat)?.name ?? t("table.aPlayer");
+      : thrower ? displayName(thrower.name, thrower.is_bot) : t("table.aPlayer");
     showToast(t("table.throwFailed", {
       name, tried: notice.attempted.map(shortLabel).join(" "), forced: notice.forced.map(shortLabel).join(" "),
     }), { info: true });

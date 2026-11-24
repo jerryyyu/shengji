@@ -10,10 +10,10 @@ import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
 import { attackingTeam, myTeam, pointsOf, teamWord } from "../tableCopy";
-import RoundEndLastTrick, { seatName } from "./RoundEndLastTrick";
+import RoundEndLastTrick from "./RoundEndLastTrick";
 import { useAuth } from "../auth";
 import { guestName } from "../guestName";
-import { t, useT } from "../i18n";
+import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
@@ -69,7 +69,7 @@ function teamTitle(team: 0 | 1, state: GameState, outcome: Outcome): string {
   if (seated.length === 0) {
     return t(`roundend.${teamSubject(team, state) === "We" ? "we" : "they"}${outcome}` as MessageKey);
   }
-  const names = seated.filter((p) => p.seat !== state.you).map((p) => seatName(p.name));
+  const names = seated.filter((p) => p.seat !== state.you).map((p) => displayName(p.name, p.is_bot));
   const listed = names.length === 0 ? "" : names.reduce((a, b) => t("roundend.pair", { first: a, second: b }));
   if (seated[0].seat === state.you) {
     return names.length === 0
@@ -217,9 +217,9 @@ function PointsBar({ team, points }: { team: 0 | 1 | null; points: number }) {
 /** "Next banker: Bot 1.", or "Next banker: you." */
 function nextBankerLine(state: GameState, result: RoundResult): string {
   if (result.next_banker === state.you) return t("roundend.nextBankerYou");
-  const name = state.players.find((p) => p.seat === result.next_banker)?.name;
+  const p = state.players.find((x) => x.seat === result.next_banker);
   return t("roundend.nextBanker", {
-    name: name === undefined ? t("roundend.seat", { n: result.next_banker }) : seatName(name),
+    name: p === undefined ? t("roundend.seat", { n: result.next_banker }) : displayName(p.name, p.is_bot),
   });
 }
 

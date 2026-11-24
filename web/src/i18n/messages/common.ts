@@ -7,6 +7,7 @@ export const common = defineMessages({
   "common.tryAgain": { en: "Try again", zh: "再试一次" },
   "common.leave": { en: "Leave", zh: "离开" },
   "common.you": { en: "You", zh: "我" },
+  "common.botN": { en: "Bot {n}", zh: "机器人 {n}" },
   "common.guest": { en: "Guest", zh: "游客" },
   "common.us": { en: "Us", zh: "我方" },
   "common.them": { en: "Them", zh: "对方" },

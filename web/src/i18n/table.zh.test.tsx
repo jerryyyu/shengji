@@ -91,7 +91,7 @@ describe("the table in zh-Hans", () => {
     render(<Table state={state({
       phase: "declare", turn: null, banker: null, current_declaration: { seat: 1, cards: ["S2", "S2"] },
     })} />);
-    expect(host.querySelector(".declare-tag")?.textContent).toBe("Bot 1 亮一对♠2");
+    expect(host.querySelector(".declare-tag")?.textContent).toBe("机器人 1 亮一对♠2");
   });
 
   it("buries: the count on the button, the help and the points", () => {
@@ -150,14 +150,14 @@ describe("the table in zh-Hans", () => {
 
   it("words the engine's messages, the follow hint and the round-end lines", () => {
     const players = [0, 1, 2, 3].map((s) => player(s));
-    expect(formatTableMessage("Seat 1 declared H2 (pair)", players, 0)).toBe("Bot 1 亮一对♥2");
+    expect(formatTableMessage("Seat 1 declared H2 (pair)", players, 0)).toBe("机器人 1 亮一对♥2");
     expect(formatTableMessage("Seat 0 declared NT", players, 0)).toBe("我亮无主");
     expect(formatTableMessage("No declaration — trump flipped from the kitty: C", players, 0)).toBe("没人亮主，翻底定主：♣");
     expect(followHint(["SK", "SK"], { suit: "H", rank: "2", declarer: 1 })).toBe("跟♠：出 2 张牌");
     expect(followHint(["BJ"], { suit: "H", rank: "2", declarer: 1 })).toBe("跟主牌：出 1 张牌");
     const s = state();
-    expect(teamMembers(0, s)).toBe("我和 Bot 2");
-    expect(teamMembers(1, s)).toBe("Bot 1 和 Bot 3");
+    expect(teamMembers(0, s)).toBe("我和机器人 2");
+    expect(teamMembers(1, s)).toBe("机器人 1 和机器人 3");
     expect(nextBankerText(s, { next_banker: 0 } as never)).toBe("下局庄家：我");
     expect(spokenLabel("C10")).toBe("梅花 10");
     expect(spokenLabel("LJ")).toBe("小王");

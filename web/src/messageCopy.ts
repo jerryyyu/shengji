@@ -1,6 +1,7 @@
 import type { StatePlayer } from "./protocol";
 import { SUIT_SYMBOL } from "./components/Card";
-import { t } from "./i18n";
+import { displayName, t } from "./i18n";
+import type { MessageKey } from "./i18n";
 
 /** Readable copy for the engine's table messages. The engine words them in
  *  its own notation ("Seat 1 declared H2 (pair)", "... flipped from the
@@ -18,7 +19,8 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
   const declared = DECLARED.exec(message);
   if (declared) {
     const seat = Number(declared[1]);
-    const name = seat === you ? t("common.you") : players.find((p) => p.seat === seat)?.name ?? t("table.seatN", { n: seat });
+    const p = players.find((x) => x.seat === seat);
+    const name = seat === you ? t("common.you") : p ? displayName(p.name, p.is_bot) : t("table.seatN", { n: seat });
     const pair = declared[4] !== undefined;
     if (declared[2] === "NT") return t(pair ? "table.declaredNtPair" : "table.declaredNt", { name });
     const code = `${SUIT_SYMBOL[declared[2]]}${declared[3]}`;
@@ -30,4 +32,26 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
   }
   if (message === "No declaration — played without trump: NT") return t("table.playedNt");
   return message;
+}
+
+/** The chat's system lines (joins, leaves, seat claims) as the server and
+ *  the offline server word them, each in the current language with any bot
+ *  named as the table names it. A line of another form passes through. */
+const SYSTEM_LINES: [RegExp, MessageKey][] = [
+  [/^bot is playing for (.+) \(disconnected\)$/, "table.sysBotPlaying"],
+  [/^(.+?) reconnected — taking over from the bot$/, "table.sysReconnectedFromBot"],
+  [/^(.+?) reconnected$/, "table.sysReconnected"],
+  [/^(.+?) took over for (.+) \(offline\)$/, "table.sysTookOver"],
+  [/^(.+?) took (.+)'s seat$/, "table.sysTookSeat"],
+  [/^(.+?) joined$/, "table.sysJoined"],
+  [/^(.+?) left$/, "table.sysLeft"],
+  [/^(.+?) disconnected$/, "table.sysDisconnected"],
+];
+
+export function formatSystemLine(text: string): string {
+  for (const [re, key] of SYSTEM_LINES) {
+    const m = re.exec(text);
+    if (m) return t(key, { name: displayName(m[1]), took: m[2] === undefined ? "" : displayName(m[2]) });
+  }
+  return text;
 }

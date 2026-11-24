@@ -28,7 +28,7 @@ import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subs
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
 import { bankerText, buryHelp, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
-import { t, useT } from "../i18n";
+import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
@@ -147,9 +147,10 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
   const botControlled = player.is_bot || player.controller === "bot_cover";
   const hasPassed = state.phase === "declare" && state.passed.includes(player.seat);
   const backs = Math.min(player.cards_left, 5);
+  const shownName = displayName(player.name, player.is_bot);
   return (
     <div className={`opponent pos-${pos} team${player.team}${onTurn ? " on-turn" : ""}${player.connected || player.is_bot ? "" : " disconnected"}`}
-         data-name-len={nameWidthClass(player.name)}
+         data-name-len={nameWidthClass(shownName)}
          onClick={() => {
            if (longPressed.current) { longPressed.current = false; return; }
            setFullName((v) => !v);
@@ -170,16 +171,16 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
          onPointerUp={endPress}
          onPointerLeave={endPress}
          onPointerCancel={endPress}>
-      {fullName ? <span className="opp-fullname" role="tooltip">{player.name}</span> : null}
+      {fullName ? <span className="opp-fullname" role="tooltip">{shownName}</span> : null}
       {/* the long press has no screen-reader or keyboard path, so a person's
           seat also carries an unseen button that opens the same options */}
       {canAct ? (
         <button type="button" className="sr-only opp-options" ref={optionsButton}
-                aria-label={t("table.playerOptions", { name: player.name })} aria-haspopup="dialog" aria-expanded={actions}
+                aria-label={t("table.playerOptions", { name: shownName })} aria-haspopup="dialog" aria-expanded={actions}
                 onClick={(event) => { event.stopPropagation(); openedByButton.current = true; setActions(true); }} />
       ) : null}
       {actions && canAct ? (
-        <OpponentActions room={state.room} seat={player.seat} name={player.name}
+        <OpponentActions room={state.room} seat={player.seat} name={shownName}
                          onClose={() => {
                            setActions(false);
                            // focus goes back to the seat's button only when it opened the options
@@ -196,7 +197,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
           <span className="banker-crown" role="img" aria-label={bankerText(player, state.you)}>👑</span>
         ) : null}
         {/* a seat whose owner left is the bot's now: "Bot (Alice left)" is its name */}
-        <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : player.name}</span>
+        <span className={`opp-name-text${player.left ? " left-tag" : ""}`}>{player.left ? status : shownName}</span>
         {/* always drawn, so the label's width never changes with the turn */}
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         <TimerRing left={moveClock} total={MOVE_SECS} thin />

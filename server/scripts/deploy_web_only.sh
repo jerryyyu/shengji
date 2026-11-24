@@ -220,28 +220,28 @@ served_bundles() {
   curl -fsS --max-time 20 "$URL/" | grep -o -E '/assets/[A-Za-z0-9._-]+\.js' | sort -u
 }
 
-# imported_chunks URL < BODY: the same-origin /assets/*.js chunks a bundle body
-# references ("./x.js", "assets/x.js", "/assets/x.js" or an absolute URL on URL's
-# origin), one per line; a reference on another origin is never listed.
+# imported_chunks URL ENTRY < BODY: the chunks a bundle body names, one per line.
+# Only a complete quoted string literal counts, resolved relative to the entry
+# bundle's URL ENTRY (a path under URL); it is kept only when it lands on URL's
+# origin at exactly /assets/<name>.js, so a query string, a fragment, a source map,
+# another origin or a substring of a longer string never names a chunk.
 imported_chunks() {
   python3 -c '
 import re, sys
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 origin = urlsplit(sys.argv[1])
+entry = urljoin(sys.argv[1], sys.argv[2])
 body = sys.stdin.read()
-name = r"([A-Za-z0-9._-]+\.js)\b"
 found = set()
-for m in re.finditer(r"((?:https?:)?//[^/\x22\x27`\s]+)/assets/" + name, body):
-    ref = urlsplit(m.group(1) if m.group(1).startswith("http") else origin.scheme + ":" + m.group(1))
-    if (ref.scheme, ref.netloc) == (origin.scheme, origin.netloc):
-        found.add(m.group(2))
-for m in re.finditer(r"(?<![\w.:/-])/?assets/" + name, body):
-    found.add(m.group(1))
-for m in re.finditer(r"(?<![\w./-])\./" + name, body):
-    found.add(m.group(1))
+for m in re.finditer(r"([\x22\x27`])([^\x22\x27`\\\s]+)\1", body):
+    ref = urlsplit(urljoin(entry, m.group(2)))
+    if (ref.scheme, ref.netloc) != (origin.scheme, origin.netloc) or ref.query or ref.fragment:
+        continue
+    if re.fullmatch(r"/assets/[A-Za-z0-9._-]+\.js", ref.path):
+        found.add(ref.path)
 for chunk in sorted(found):
-    print("/assets/" + chunk)
-' "$1"
+    print(chunk)
+' "$1" "$2"
 }
 
 # marker_served: the marker is in an entry bundle of the served index.html or in a
@@ -254,7 +254,7 @@ marker_served() {
     case "$body" in
       *"$MARKER"*) return 0 ;;
     esac
-    chunks="$chunks $(printf '%s' "$body" | imported_chunks "$URL")"
+    chunks="$chunks $(printf '%s' "$body" | imported_chunks "$URL" "$bundle")"
   done
   for chunk in $(printf '%s\n' $chunks | sort -u); do
     case "$entries" in *" $chunk "*) continue ;; esac

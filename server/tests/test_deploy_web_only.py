@@ -402,13 +402,13 @@ def test_missing_rollback_inputs_refuse_before_push_or_deploy(repo, tmp_path, en
 
 
 def _lazy_site(tmp_path, chunk_has_marker=True):
-    """After the deploy the entry bundle lacks the marker; it imports a lazy chunk
-    (relative, root-relative and preload-map forms) and names a chunk on another
+    """After the deploy the entry bundle lacks the marker; it imports lazy chunks
+    (entry-relative and root-relative quoted forms) and names a chunk on another
     origin that carries the marker."""
     site = _site(tmp_path, after_marker=False)
     (site / "after/assets/index-new2.js").write_text(
         'const a=()=>import("./held_seat-ab12.js");'
-        '__vite__mapDeps(["assets/Panel-cd34.js","/assets/held_seat-ab12.js"]);'
+        'const b=()=>import("./Panel-cd34.js");__vite__mapDeps(["/assets/held_seat-ab12.js"]);'
         'import("https://cdn.example.com/assets/foreign-ef56.js");'
         'import("//cdn.example.com/assets/foreign2-ef56.js");')
     (site / "after/assets/held_seat-ab12.js").write_text(
@@ -453,15 +453,55 @@ def test_marker_absent_from_bundle_and_chunks_is_not_served(tmp_path, env):
     assert not [url for url in fetched if "foreign" in url or "cdn.example.com" in url]
 
 
+def _imported_chunks(env, body, entry="/assets/index-new2.js"):
+    r = subprocess.run([BASH, "-c", f'source "{SCRIPT}"; imported_chunks https://shengji.fly.dev "$1"',
+                        "_", entry], input=body, text=True, capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.split()
+
+
 def test_imported_chunks_lists_same_origin_refs_once(env):
-    body = ('import("./a-1.js");import("./a-1.js");"assets/b-2.js";"/assets/c-3.js";'
+    body = ('import("./a-1.js");import(\'./a-1.js\');`/assets/c-3.js`;'
             '"https://shengji.fly.dev/assets/d-4.js";"https://cdn.example.com/assets/x-9.js";'
             '"//cdn.example.com/assets/y-9.js";"https://cdn.example.com/static/assets/z-9.js";'
-            '"http://shengji.fly.dev/assets/w-9.js";"./style-5.css"')
-    r = subprocess.run([BASH, "-c", f'source "{SCRIPT}"; imported_chunks https://shengji.fly.dev'],
-                       input=body, text=True, capture_output=True, env=env)
-    assert r.returncode == 0, r.stderr
-    assert r.stdout.split() == ["/assets/a-1.js", "/assets/b-2.js", "/assets/c-3.js", "/assets/d-4.js"]
+            '"http://shengji.fly.dev/assets/w-9.js";"./style-5.css";"../assets/e-5.js"')
+    assert _imported_chunks(env, body) == ["/assets/a-1.js", "/assets/c-3.js", "/assets/d-4.js",
+                                           "/assets/e-5.js"]
+
+
+@pytest.mark.parametrize("body", [
+    # a foreign URL whose query string holds an /assets path
+    '"https://cdn.example.com/x?u=/assets/retired.js"',
+    '"https://shengji.fly.dev/assets/retired.js?v=2"',
+    '"./retired.js#frag"',
+    # source maps, quoted or as the trailing comment
+    '//# sourceMappingURL=./old.js.map',
+    '"./old.js.map"',
+    '//# sourceMappingURL=old.js',
+    # an unquoted or partial occurrence inside a longer literal
+    'x=/assets/retired.js;',
+    '"see /assets/retired.js here"',
+    '"prefix./old.js"',
+    # resolved against the entry, a base-relative path leaves /assets/<name>.js
+    '"assets/retired.js"',
+    '"./sub/retired.js"',
+])
+def test_imported_chunks_ignores_what_is_not_a_quoted_chunk_reference(env, body):
+    assert _imported_chunks(env, body) == []
+
+
+def test_a_marker_only_in_unreferenced_local_files_is_not_served(tmp_path, env):
+    site = _site(tmp_path, after_marker=False)
+    (site / "after/assets/index-new2.js").write_text(
+        'fetch("https://cdn.example.com/x?u=/assets/retired.js");'
+        '"assets/retired.js";"see /assets/retired.js";\n//# sourceMappingURL=./old.js.map\n'
+        '//# sourceMappingURL=old.js')
+    for name in ("retired.js", "old.js", "old.js.map", "assets/retired.js"):
+        (site / "after/assets" / name).parent.mkdir(parents=True, exist_ok=True)
+        (site / "after/assets" / name).write_text("stale PHONE_MARKER")
+    r, fetched = _marker_served(tmp_path, env, site)
+    assert r.returncode == 1
+    assert not [url for url in fetched if "retired" in url or "old.js" in url]
 
 
 def test_real_mode_accepts_a_marker_only_in_a_lazy_chunk(repo, tmp_path, env):

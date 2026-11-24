@@ -12,21 +12,23 @@ import { useAuth } from "../auth";
 import { attackingTeam, myTeam } from "../tableCopy";
 import { showToast } from "../toast";
 import { useNearbyUi } from "../nearbyGate";
+import { t, useT } from "../i18n";
 
 function TrumpChip({ state }: { state: GameState }) {
+  const t = useT();
   const trump = state.trump;
   if (!trump) {
     return (
       <span className="chip trump-chip none">
-        <span className="trump-none-long">No trump yet</span>
-        <span className="trump-none-short">No trump</span>
+        <span className="trump-none-long">{t("table.noTrumpYet")}</span>
+        <span className="trump-none-short">{t("table.noTrump")}</span>
       </span>
     );
   }
   if (trump.suit === "NT" || trump.suit === null) {
     return (
       <span className="chip trump-chip">
-        <span className="trump-suit nt">NT</span>
+        <span className="trump-suit nt">{t("table.nt")}</span>
         <span className="trump-rank">{trump.rank}</span>
       </span>
     );
@@ -57,11 +59,12 @@ function useTableToasts(state: GameState) {
     if (!notice) { told.notice = ""; return; }
     if (told.notice === noticeKey) return;
     told.notice = noticeKey;
-    const who = notice.seat === state.you
-      ? "You"
-      : state.players.find((p) => p.seat === notice.seat)?.name ?? "A player";
-    showToast(`Throw failed. ${who} threw ${notice.attempted.map(shortLabel).join(" ")} and had to play ${notice.forced.map(shortLabel).join(" ")}.`,
-              { info: true });
+    const name = notice.seat === state.you
+      ? t("common.you")
+      : state.players.find((p) => p.seat === notice.seat)?.name ?? t("table.aPlayer");
+    showToast(t("table.throwFailed", {
+      name, tried: notice.attempted.map(shortLabel).join(" "), forced: notice.forced.map(shortLabel).join(" "),
+    }), { info: true });
     // told on a new notice only; the rest is read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noticeKey]);
@@ -113,6 +116,7 @@ function LevelChip({ team, level, gamesWon, word }: {
   /** "Us" or "Them": the team in words, so it never rests on its colour. */
   word: "Us" | "Them";
 }) {
+  const t = useT();
   const idx = rankIndex(level);
   const shownIdx = Math.round(useCountUp(idx, { snapDown: true }));
   // An unknown level string is shown verbatim rather than rolled.
@@ -130,9 +134,9 @@ function LevelChip({ team, level, gamesWon, word }: {
   return (
     <span className={`chip level-chip team${team}${pulse ? " level-up" : ""}`}
           key={pulse ? `pulse${pulse}` : "idle"}
-          title={word === "Us" ? "Your team's level" : "The other team's level"}>
+          title={word === "Us" ? t("table.ourLevel") : t("table.theirLevel")}>
       <span className={`team-dot t${team}`} aria-hidden="true" />
-      <span className="team-word">{word}</span> <span className="level-value">{shown}</span>
+      <span className="team-word">{word === "Us" ? t("common.us") : t("common.them")}</span> <span className="level-value">{shown}</span>
     </span>
   );
 }
@@ -140,10 +144,11 @@ function LevelChip({ team, level, gamesWon, word }: {
 /** The games score, your team first, once either team has won a game: the
  *  table never ends, so this is the running tally of the session. */
 export function GamesChip({ us, them }: { us: number; them: number }) {
+  const t = useT();
   if (us + them === 0) return null;
   return (
-    <span className="chip games-chip" role="group" aria-label={`Games: Us ${us}, Them ${them}`}>
-      <span aria-hidden="true">Games {us}–{them}</span>
+    <span className="chip games-chip" role="group" aria-label={t("table.gamesAria", { us, them })}>
+      <span aria-hidden="true">{t("table.gamesChip", { us, them })}</span>
     </span>
   );
 }
@@ -214,6 +219,7 @@ function modeWord(mode: Mode, guest: boolean): "Ranked" | "Casual" | undefined {
 
 /** `practice` is offline play on this device; it defaults to the page's mode. */
 export default function Hud({ state, practice = OFFLINE }: { state: GameState; practice?: boolean }) {
+  const t = useT();
   const barRef = useRef<HTMLDivElement | null>(null);
   useStripWidth(barRef);
   useTableToasts(state);
@@ -246,8 +252,8 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
         <div className="hud-group">
           {/* "35/80": the dot's colour says whose points, grey before a banker */}
           <span className={`chip points-chip${attackers === null ? "" : ` team${attackers}${attackers === us ? " attack-us" : " attack-them"}`}`}
-                title={attackers === null ? "Points the attackers have captured"
-                  : attackers === us ? "Points your team has captured" : "Points the other team has captured"}>
+                title={attackers === null ? t("table.pointsAttackers")
+                  : attackers === us ? t("table.pointsOurs") : t("table.pointsTheirs")}>
             <span className={`points-dot${attackers === null ? "" : ` t${attackers}`}`} aria-hidden="true" />
             {/* keyed so a new score is a new box: WebKit would keep the old width */}
             <span className="points-big" key={shownPoints}>{shownPoints}</span>

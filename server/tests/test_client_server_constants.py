@@ -74,9 +74,11 @@ class CopyRule:
 
 COPY_RULES = (
     CopyRule("web/src/components/leaveCopy.ts", r'JOIN_WAIT = "', MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
-    CopyRule("web/src/queue/store.ts", r"No tap for", MATCHMAKING_PY, "TABLE_IDLE_SECS"),
-    CopyRule("web/src/queue/TablePanel.tsx", r"seconds left to join", "web/src/queue/tableText.ts", "OFFER_CLOCK_MS"),
-    CopyRule("web/src/queue/TablePanel.tsx", r"Bots fill the empty seats in", "web/src/queue/store.ts", "BOTS_WARN_MS"),
+    CopyRule("web/src/i18n/messages/queue.ts", r"No tap for", MATCHMAKING_PY, "TABLE_IDLE_SECS"),
+    CopyRule("web/src/i18n/messages/queue.ts", r"seconds left to join", "web/src/queue/tableText.ts", "OFFER_CLOCK_MS"),
+    CopyRule("web/src/i18n/messages/queue.ts", r"Bots fill the empty seats in", "web/src/queue/store.ts", "BOTS_WARN_MS"),
+    CopyRule("web/src/i18n/messages/roundend.ts", r"You can join again in", MATCHMAKING_PY, "JOIN_COOLDOWN_SECS"),
+    CopyRule("web/src/i18n/messages/roundend.ts", r"Start now opens", MATCHMAKING_PY, "START_NOW_SECS"),
 )
 
 WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
@@ -152,6 +154,14 @@ def duration_phrases():
                 yield path.relative_to(REPO).as_posix(), number, line, match
 
 
+# a message table line carries its Chinese beside its English: 10 秒, 2 分钟
+ZH_DURATION = re.compile(r"(\d+)\s*(分钟|秒)")
+
+
+def _zh_seconds(match: re.Match[str]) -> float:
+    return float(match.group(1)) * (60 if match.group(2) == "分钟" else 1)
+
+
 def _seconds(match: re.Match[str]) -> float:
     count = match.group(1).lower()
     value = float(WORDS[count]) if count in WORDS else float(count)
@@ -170,6 +180,10 @@ def test_every_duration_in_ui_copy_is_claimed_and_matches_its_constant():
             if _seconds(match) != expected:
                 wrong.append(f"{rel}:{number} says {match.group(0)!r} but {rule.source} {rule.name} "
                              f"is {expected:g} s: {line.strip()}")
+            for zh in ZH_DURATION.finditer(line):
+                if _zh_seconds(zh) != expected:
+                    wrong.append(f"{rel}:{number} says {zh.group(0)!r} but {rule.source} {rule.name} "
+                                 f"is {expected:g} s: {line.strip()}")
     assert not wrong, "UI copy disagrees with the server:\n" + "\n".join(wrong)
     assert not unclaimed, ("a duration in UI copy names no constant; add a COPY_RULES entry in "
                            "server/tests/test_client_server_constants.py:\n" + "\n".join(unclaimed))

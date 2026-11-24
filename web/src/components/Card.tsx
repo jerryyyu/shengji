@@ -1,4 +1,6 @@
 import { memo } from "react";
+import { t, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 
 export const SUIT_SYMBOL: Record<string, string> = {
   S: "♠",
@@ -15,22 +17,27 @@ export function isRedCode(code: string): boolean {
 
 /** Human label for a card code, e.g. "H10" -> "♥10", "BJ" -> "Big Joker". */
 export function codeLabel(code: string): string {
-  if (code === "BJ") return "Big Joker";
-  if (code === "LJ") return "Little Joker";
+  if (code === "BJ") return t("table.bigJokerTitle");
+  if (code === "LJ") return t("table.littleJokerTitle");
   return (SUIT_SYMBOL[code[0]] ?? code[0]) + code.slice(1);
 }
 
-const SUIT_NAME: Record<string, string> = { S: "spades", H: "hearts", D: "diamonds", C: "clubs" };
-const RANK_NAME: Record<string, string> = { J: "Jack", Q: "Queen", K: "King", A: "Ace" };
+const SUIT_NAME: Record<string, MessageKey> = { S: "table.suitS", H: "table.suitH", D: "table.suitD", C: "table.suitC" };
+const RANK_NAME: Record<string, MessageKey> = { J: "table.rankJ", Q: "table.rankQ", K: "table.rankK", A: "table.rankA" };
 
 /** What a screen reader says for a card code: "H10" -> "10 of hearts",
  *  "SA" -> "Ace of spades", "BJ" -> "Big joker". VoiceOver reads "♠3" as
  *  "black spade suit 3" and "BJ" letter by letter. */
 export function spokenLabel(code: string): string {
-  if (code === "BJ") return "Big joker";
-  if (code === "LJ") return "Little joker";
+  if (code === "BJ") return t("table.bigJoker");
+  if (code === "LJ") return t("table.littleJoker");
   const rank = code.slice(1);
-  return `${RANK_NAME[rank] ?? rank} of ${SUIT_NAME[code[0]] ?? code[0]}`;
+  const rankKey = RANK_NAME[rank];
+  const suitKey = SUIT_NAME[code[0]];
+  return t("table.cardSpoken", {
+    rank: rankKey ? t(rankKey) : rank,
+    suit: suitKey ? t(suitKey) : code[0],
+  });
 }
 
 /** Compact label for a card code, e.g. "H10" -> "♥10"; jokers stay "LJ"/"BJ". */
@@ -48,6 +55,8 @@ interface CardProps {
 }
 
 function Card({ code, selected = false, onClick, className }: CardProps) {
+  // memoized: subscribing redraws the faces' words on a language change
+  useT();
   const Face = onClick ? "button" : "div";
   // a tappable card is a toggle button; any other face is one image, so its
   // corner and pip glyphs are not read out one by one
@@ -68,7 +77,7 @@ function Card({ code, selected = false, onClick, className }: CardProps) {
     const red = code === "BJ";
     return (
       <Face {...accessibility} className={cls(`joker ${red ? "red" : "black"}`)} onClick={onClick} title={codeLabel(code)}>
-        <span className="joker-text" aria-hidden="true">JOKER</span>
+        <span className="joker-text" aria-hidden="true">{t("table.jokerFace")}</span>
         <span className="joker-star" aria-hidden="true">{red ? "★" : "☆"}</span>
       </Face>
     );

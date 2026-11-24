@@ -14,6 +14,7 @@ import type { DroppedSeat } from "../joinSeats";
 import type { ChatMsg, Rank, RoomMsg } from "../protocol";
 import type { NearbyJoin } from "../nearbyJoin";
 import { RANKS } from "../protocol";
+import { isZh, t, useT } from "../i18n";
 import Sheet from "./Sheet";
 import { BOTS_WARN_MS, queue, useNow } from "./store";
 import type { QueueView } from "./store";
@@ -73,9 +74,10 @@ function Seat({ s, team }: { s: SeatItem; team: 0 | 1 }) {
 function TeamColumns({ seats, you, layout = you }: { seats: SeatItem[]; you: number; layout?: number }) {
   const left = [(layout + 2) % 4, layout].map((at) => seats[at]);
   const right = [(layout + 1) % 4, (layout + 3) % 4].map((at) => seats[at]);
+  const t = useT();
   const usLeft = (you - layout + 4) % 2 === 0;
   const label = (us: boolean) => (
-    <span className={`tp-team-label ${us ? "ours" : "theirs"}`} aria-hidden="true">{us ? "Us" : "Them"}</span>
+    <span className={`tp-team-label ${us ? "ours" : "theirs"}`} aria-hidden="true">{t(us ? "queue.us" : "queue.them")}</span>
   );
   return (
     <div className="tp-teams">
@@ -110,7 +112,8 @@ function useEnterIsPrimary(primary: RefObject<HTMLButtonElement | null>, box: Re
 
 /** The small mode tag above a panel's title, set in capitals by CSS. */
 function ModeTag({ tag }: { tag: "Casual" | "Offline" }) {
-  return <p className="tp-tag">{tag}</p>;
+  const t = useT();
+  return <p className="tp-tag">{t(tag === "Casual" ? "queue.tag.casual" : "queue.tag.offline")}</p>;
 }
 
 /** A countdown's ring on a button. */
@@ -119,10 +122,11 @@ const ringOf = (r: Ring | null | undefined): ReactNode => (r ? <TimerRing left={
 /** The leader's switch on your own table: on, your timer never starts a
  *  bot game alone; off, the bot countdown runs. */
 function WaitSwitch({ on, disabled, act }: { on: boolean; disabled: boolean; act: (a: PanelAction) => void }) {
+  const t = useT();
   return (
     <button type="button" role="switch" aria-checked={on} className="q-wait tp-switch"
             disabled={disabled} onClick={() => act({ type: "wait_players", on: !on })}>
-      <span className="q-wait-label">Wait for people</span>
+      <span className="q-wait-label">{t("queue.waitPeople")}</span>
       <span className="q-switch" aria-hidden="true" />
     </button>
   );
@@ -133,6 +137,7 @@ function WaitSwitch({ on, disabled, act }: { on: boolean; disabled: boolean; act
 function PanelView({ m, guarded, sheet, act }: {
   m: TableModel; guarded: boolean; sheet?: ReactNode; act: (a: PanelAction) => void;
 }) {
+  const t = useT();
   const titleId = useId();
   const primaryRef = useRef<HTMLButtonElement | null>(null);
   const box = useRef<HTMLElement | null>(null);
@@ -164,8 +169,8 @@ function PanelView({ m, guarded, sheet, act }: {
                    onToggle={() => act({ type: "nearby_toggle" })} />
       ) : null}
       {m.chat && "disabled" in m.chat ? (
-        <button type="button" className="tp-chat" disabled aria-label="Chat needs a connection">
-          <span className="tp-chat-label" aria-hidden="true">Chat</span>
+        <button type="button" className="tp-chat" disabled aria-label={t("queue.chat.offline")}>
+          <span className="tp-chat-label" aria-hidden="true">{t("queue.chat")}</span>
         </button>
       ) : m.chat ? <ChatRow messages={m.chat.messages} you={m.chat.you} onSend={(text) => act({ type: "chat", text })} /> : null}
       {m.led ? <p className="tp-led">{ringOf(m.primary?.ring)}{m.led}</p> : (
@@ -197,6 +202,7 @@ function PanelView({ m, guarded, sheet, act }: {
  *  shared table (two or three people waiting). Inline and non-modal on
  *  every screen. Leave asks through the leave sheet. */
 export default function TablePanel({ q, guarded }: { q: QueueView; guarded: boolean }) {
+  useT(); // the model's words follow the language
   const kind = panelKind(q);
   const now = useNow(kind !== "play" && kind !== "elsewhere", 250);
   const [asking, setAsking] = useState(false);
@@ -229,6 +235,7 @@ export default function TablePanel({ q, guarded }: { q: QueueView; guarded: bool
 export function JoinCodePanel({ join, busy, onJoin, onCancel, onPick }: {
   join: CodeJoin; busy: boolean; onJoin: () => void; onCancel: () => void; onPick: (seat: number) => void;
 }) {
+  useT();
   const [asking, setAsking] = useState<DroppedSeat | null>(null);
   const m = fromCode(join, busy);
   const act = (a: PanelAction) => {
@@ -279,6 +286,7 @@ export function OfflinePanel({ ready, starting, bots, onBots, onStart, onLeave, 
   onStart: () => void; onLeave: () => void;
   nearby?: NearbySwitch | null;
 } & NearbyActs) {
+  useT();
   return <PanelView m={offlineModel({ ready, starting, bots, nearby })} guarded={false}
                     act={offlineAct({ onStart, onLeave, onBots, ...acts })} />;
 }
@@ -291,6 +299,7 @@ export function NearbyRoomPanel({ room, model, onLeave, ...acts }: {
   room: RoomMsg; onLeave: () => void;
   model: (room: RoomMsg, at: { now: number; botsAt: number | null }) => TableModel;
 } & NearbyActs) {
+  useT();
   // the ring's end, from when this frame arrived: each frame restamps it
   const botsAt = useMemo(() => {
     const botsIn = room.nearby?.bots_in ?? null;
@@ -306,6 +315,7 @@ export function NearbyJoinPanel({ join, model, onJoin, onCancel, onPick, onAgain
   join: NearbyJoin; model: (join: NearbyJoin) => TableModel;
   onJoin: () => void; onCancel: () => void; onPick: (seat: number) => void; onAgain: () => void;
 }) {
+  useT();
   const act = (a: PanelAction) => {
     if (a.type === "code_pick") onPick(a.seat);
     else if (a.type === "code_cancel") onCancel();
@@ -318,8 +328,10 @@ export function NearbyJoinPanel({ join, model, onJoin, onCancel, onPick, onAgain
 /** The confirm before taking a dropped player's seat: one question, then
  *  Cancel and Take seat, on the one confirm sheet. */
 function TakeoverConfirm({ name, onTake, onCancel }: { name: string; onTake: () => void; onCancel: () => void }) {
+  const t = useT();
   return (
-    <ConfirmSheet title={`${shortName(name)} dropped out. Take their seat?`} cancel="Cancel" confirm="Take seat"
+    <ConfirmSheet title={t("queue.takeover.title", { name: shortName(name) })} cancel={t("queue.cancel")}
+                  confirm={t("queue.takeover.confirm")}
                   confirmClass="seat-take-confirm" onConfirm={onTake} onCancel={onCancel} />
   );
 }
@@ -353,8 +365,10 @@ function useOpenerMove(seats: MoverSeat[] | null, send: (from: number, to: numbe
 /** The one confirm before the opener moves someone: "Move Alice here?",
  *  then Cancel and Move, in the panel's gold: moving is not a way out. */
 function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () => void; onCancel: () => void }) {
+  const t = useT();
   return (
-    <ConfirmSheet title={moveQuestion(names)} cancel="Cancel" confirm="Move" confirmClass="tp-move-confirm"
+    <ConfirmSheet title={moveQuestion(names)} cancel={t("queue.cancel")} confirm={t("queue.move.confirm")}
+                  confirmClass="tp-move-confirm"
                   onConfirm={onMove} onCancel={onCancel} />
   );
 }
@@ -365,6 +379,7 @@ function MoveConfirm({ names, onMove, onCancel }: { names: string[]; onMove: () 
 export function ChatRow({ messages, you, onSend }: {
   messages: ChatMsg[]; you: number; onSend: (text: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [seen, setSeen] = useState(() => messages[messages.length - 1]?.id ?? -1);
   const lastId = messages[messages.length - 1]?.id ?? -1;
@@ -374,14 +389,14 @@ export function ChatRow({ messages, you, onSend }: {
   return (
     <>
       <button type="button" className="tp-chat" aria-expanded={open} onClick={() => setOpen((o) => !o)}
-              aria-label={unread ? `Chat, ${unread} new` : "Chat"}>
-        <span className="tp-chat-label" aria-hidden="true">Chat</span>
+              aria-label={unread ? t("queue.chat.unread", { n: unread }) : t("queue.chat")}>
+        <span className="tp-chat-label" aria-hidden="true">{t("queue.chat")}</span>
         <span className="tp-chat-last" aria-hidden="true">{last ? `${shortName(last.name)}: ${last.text}` : ""}</span>
         {unread ? <span className="tp-chat-badge" aria-hidden="true">{unread}</span> : null}
         <Chevron />
       </button>
       {open ? (
-        <Sheet title="Chat" cancel={null} className="chat-sheet" onClose={() => setOpen(false)}>
+        <Sheet title={t("queue.chat")} cancel={null} className="chat-sheet" onClose={() => setOpen(false)}>
           <ChatBody messages={messages} you={you} onSend={onSend} />
         </Sheet>
       ) : null}
@@ -403,6 +418,7 @@ function ShareIcon() {
  *  copies the link. A nearby table's code is the code alone (there is no
  *  URL offline). */
 function CodeRow({ code, invite: withInvite = true }: { code: string; invite?: boolean }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const spelled = code.split("").join(" ");
   const invite = () => {
@@ -415,13 +431,14 @@ function CodeRow({ code, invite: withInvite = true }: { code: string; invite?: b
   if (!withInvite) {
     return (
       <div className="tp-code-row">
-        <span className="tp-code" aria-label={`Table code ${spelled}`}>{code}</span>
+        <span className="tp-code" aria-label={t("queue.code", { code: spelled })}>{code}</span>
       </div>
     );
   }
-  const word = copied ? "Link copied" : "Invite";
+  const word = t(copied ? "queue.invite.copied" : "queue.invite");
   return (
-    <button type="button" className="tp-code-row tp-invite" onClick={invite} aria-label={`${word}, table code ${spelled}`}>
+    <button type="button" className="tp-code-row tp-invite" onClick={invite}
+            aria-label={t(copied ? "queue.invite.copiedLabel" : "queue.invite.label", { code: spelled })}>
       <span className="tp-code" aria-hidden="true">{code}</span>
       <span className="tp-invite-word" aria-hidden="true"><ShareIcon />{word}</span>
     </button>
@@ -441,7 +458,7 @@ function SwitchRow({ label, on, onToggle, disabled = false }: {
   );
 }
 
-const BOT_LEVEL_NAMES: Record<BotLevel, string> = { standard: "Standard", advanced: "Advanced" };
+const botLevelName = (b: BotLevel): string => (b === "advanced" ? t("queue.set.advanced") : t("queue.set.standard"));
 
 /** A setting row: the opener's select, or the value read-only for everyone else. */
 function SetRow<V extends string>({ label, value, values, names, opener, onPick }: {
@@ -455,7 +472,7 @@ function SetRow<V extends string>({ label, value, values, names, opener, onPick 
       </select>
     </label>
   ) : (
-    <div className="tp-set" role="group" aria-label={`${label} ${names(value)}`}>
+    <div className="tp-set" role="group" aria-label={`${label}${isZh() ? "：" : " "}${names(value)}`}>
       <span aria-hidden="true">{label}</span>
       <span className="tp-set-val" aria-hidden="true">{names(value)}</span>
     </div>
@@ -483,24 +500,26 @@ function Chevron() {
 function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, wait, act }: {
   rows: Rows; wait?: { on: boolean; disabled: boolean }; act: (a: PanelAction) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const hasLevel = !ranked && level !== null;
   const settings: ReactNode[] = [];
   if (hasLevel) {
-    settings.push(<SetRow key="level" label="Starting level" value={level as Rank} values={RANKS} names={(r) => r}
+    settings.push(<SetRow key="level" label={t("queue.set.level")} value={level as Rank} values={RANKS} names={(r) => r}
                           opener={opener} onPick={(r) => act({ type: "start_level", level: r })} />);
   }
   if (bots !== undefined) {
-    settings.push(<SetRow key="bots" label="Bots" value={bots} values={BOT_LEVELS} names={(b) => BOT_LEVEL_NAMES[b]}
+    settings.push(<SetRow key="bots" label={t("queue.set.bots")} value={bots} values={BOT_LEVELS} names={botLevelName}
                           opener={opener} onPick={(b) => act({ type: "bot_level", level: b })} />);
   }
   if (joiners !== undefined) {
-    settings.push(<SwitchRow key="joiners" label="Allow joiners" on={joiners}
+    settings.push(<SwitchRow key="joiners" label={t("queue.set.joiners")} on={joiners}
                              onToggle={() => act({ type: "allow_joiners", on: !joiners })} />);
   }
   if (wait) settings.push(<WaitSwitch key="wait" {...wait} act={act} />);
-  const values = [hasLevel ? `Level ${level}` : null, bots !== undefined ? BOT_LEVEL_NAMES[bots] : null]
+  const values = [hasLevel ? t("queue.set.levelValue", { level: level as string }) : null,
+                  bots !== undefined ? botLevelName(bots) : null]
     .filter((v): v is string => v !== null);
   return (
     <>
@@ -508,9 +527,9 @@ function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots 
       {settings.length > 1 ? (
         <>
           <button type="button" className="tp-set tp-settings" aria-expanded={open}
-                  aria-controls={open ? bodyId : undefined} aria-label={["Table settings", ...values].join(", ")}
+                  aria-controls={open ? bodyId : undefined} aria-label={[t("queue.settings"), ...values].join(isZh() ? "，" : ", ")}
                   onClick={() => setOpen((o) => !o)}>
-            <span className="tp-settings-label" aria-hidden="true">Table settings</span>
+            <span className="tp-settings-label" aria-hidden="true">{t("queue.settings")}</span>
             <span className="tp-set-val" aria-hidden="true">{values.join(" · ")}</span>
             <Chevron />
           </button>
@@ -524,12 +543,13 @@ function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots 
 /** The one polite announcement per change of state, and one when ten
  *  seconds are left; the ticking clocks themselves are not read. */
 export function TableAnnouncer({ q }: { q: QueueView }) {
+  const t = useT();
   const kind = panelKind(q);
   const now = useNow(kind === "join" || kind === "own" || kind === "shared", 500);
   const base = announcement(q);
   let soon = "";
-  if (kind === "join" && q.offer && q.offer.expiresAt - now <= OFFER_CLOCK_MS) soon = " 10 seconds left to join.";
+  if (kind === "join" && q.offer && q.offer.expiresAt - now <= OFFER_CLOCK_MS) soon = t("queue.say.offerSoon");
   const botsAt = kind === "shared" || (kind === "own" && !q.waitPlayers) ? q.frame?.timers.bots?.at ?? null : null;
-  if (botsAt !== null && botsAt - now <= BOTS_WARN_MS && botsAt > now) soon = " Bots fill the empty seats in 10 seconds.";
+  if (botsAt !== null && botsAt - now <= BOTS_WARN_MS && botsAt > now) soon = t("queue.say.botsSoon");
   return <div className="sr-only" role="status" aria-live="polite">{base ? base + soon : ""}</div>;
 }

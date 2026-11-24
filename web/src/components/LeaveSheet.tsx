@@ -2,6 +2,7 @@ import { useState } from "react";
 import ConfirmSheet from "./ConfirmSheet";
 import { inJoinedRound, leaveCopy } from "./leaveCopy";
 import type { LeaveContext } from "./leaveCopy";
+import { useT } from "../i18n";
 
 interface LeaveSheetProps {
   /** Where the leave starts; it picks the title and the one line. */
@@ -20,11 +21,12 @@ interface LeaveSheetProps {
  *  room) it rises from the bottom of a phone; at the table it is a centred
  *  card that leaves the cards in view. */
 export default function LeaveSheet({ context, onLeave, onStay, title: ask }: LeaveSheetProps) {
+  const t = useT();
   // read once: the sheet keeps the line it opened with while it is up
   const [joined] = useState(inJoinedRound);
   const copy = leaveCopy(context, joined);
   return (
-    <ConfirmSheet title={ask ?? copy.title} line={copy.line} cancel="Stay" confirm="Leave" danger
+    <ConfirmSheet title={ask ?? copy.title} line={copy.line} cancel={t("roundend.leaveStay")} confirm={t("roundend.leaveLeave")} danger
                   place={context.kind === "game" ? "card" : "bottom"} onConfirm={onLeave} onCancel={onStay} />
   );
 }

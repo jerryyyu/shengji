@@ -3,6 +3,7 @@ import type { ChatMsg, GameState, ServerMsg } from "../protocol";
 import { conn } from "../ws";
 import { isBlocked, useBlocks } from "../chatBlocks";
 import { seatPos } from "./TrickArea";
+import { useT } from "../i18n";
 
 /** How long a chat line stays at its seat. */
 const BUBBLE_MS = 5000;
@@ -250,6 +251,7 @@ export default function ChatBubbles({ state, open }: {
   /** Accepted for the caller's sake; a bubble no longer opens the panel. */
   onOpen?: () => void;
 }) {
+  const t = useT();
   const { bubbles, drop, dropAll } = useChatBubbles(open);
   const swipe = useRef<{ id: number; x: number; dragged: boolean } | null>(null);
   // the click a browser fires after a drag's pointerup is not a tap
@@ -282,11 +284,11 @@ export default function ChatBubbles({ state, open }: {
     <div className="chat-bubbles" ref={layerRef} aria-live="polite"
          onKeyDown={(e) => { if (e.key === "Escape") dropAll(); }}>
       {shown.map((b) => {
-        const who = b.seat === state.you ? "You" : b.name;
+        const who = b.seat === state.you ? t("common.you") : b.name;
         return (
           <button key={`${b.seat}:${b.id}`} type="button" data-seat={b.seat}
                   className={`chat-bubble${b.seat === state.you ? " mine" : ""}`}
-                  aria-label={`Dismiss: ${who}: ${b.text}`}
+                  aria-label={t("table.dismissBubble", { name: who, text: b.text })}
                   style={{ visibility: "hidden" }}
                   onClick={(e) => {
                     // a keyboard activation (detail 0) always dismisses
@@ -319,7 +321,7 @@ export default function ChatBubbles({ state, open }: {
                   onLostPointerCapture={(e) => {
                     if (swipe.current?.id === e.pointerId) endSwipe(e.currentTarget);
                   }}>
-            <span className="chat-bubble-who">{who}: </span>
+            <span className="chat-bubble-who">{t("table.chatWho", { name: who })}</span>
             {b.text}
           </button>
         );

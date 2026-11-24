@@ -20,13 +20,10 @@ import { SavedGames } from "./GamesList";
 import { useScreen } from "../telemetry";
 import { SettingsGroup } from "./SettingsList";
 import RatingSparkline from "./RatingSparkline";
-import { GUEST_LINE, guestName, useGuestName } from "../guestName";
+import { guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
+import { tx, useT } from "../i18n";
 
-const SECTIONS = [
-  { value: "stats", label: "Stats" },
-  { value: "games", label: "Games" },
-] as const;
 
 function pct(value: number | null): string {
   return value === null ? "—" : `${Math.round(value)}%`;
@@ -61,18 +58,16 @@ function Row({ label, value, chevron, onClick, className = "", children }: {
  *  account with no Apple or Google sign-in, the one line that it lives on
  *  this iPhone (or iPad) only. */
 function Identity({ user, stats }: { user: AuthUser; stats: Stats | null }) {
+  // tx reads the locale; subscribing redraws the line on a change
+  useT();
   const where = useOnThisDeviceLine();
   let sub: ReactNode = " ";
   if (isUnlinkedDevice(user)) sub = where;
   else if (stats) {
-    sub = (
-      <>
-        {stats.rating.toLocaleString()}
-        {stats.rank !== null ? ` · #${stats.rank} all time` : " · unranked"}
-        {" · "}
-        <b className={deltaClass(stats.week_delta)}>{deltaText(stats.week_delta)}</b> this week
-      </>
-    );
+    const delta = <b className={deltaClass(stats.week_delta)}>{deltaText(stats.week_delta)}</b>;
+    sub = stats.rank !== null
+      ? tx("me.who.ranked", { delta }, { rating: stats.rating.toLocaleString(), rank: stats.rank })
+      : tx("me.who.unranked", { delta }, { rating: stats.rating.toLocaleString() });
   }
   return (
     <div className="me-who">
@@ -86,28 +81,29 @@ function Identity({ user, stats }: { user: AuthUser; stats: Stats | null }) {
 }
 
 function StatsBody({ stats }: { stats: Stats }) {
+  const t = useT();
   const rounds = stats.rounds;
   return (
     <>
       <RatingSparkline history={stats.history} />
       <div className="me-tiles">
-        <div className="me-tile"><b>{pct(stats.won_pct)}</b><span>rounds won</span></div>
+        <div className="me-tile"><b>{pct(stats.won_pct)}</b><span>{t("me.tile.won")}</span></div>
         <div className="me-tile">
-          <b>{stats.levels_per_round === null ? "—" : signed(stats.levels_per_round)}</b><span>levels / round</span>
+          <b>{stats.levels_per_round === null ? "—" : signed(stats.levels_per_round)}</b><span>{t("me.tile.levels")}</span>
         </div>
-        <div className="me-tile"><b>{stats.best_streak}</b><span>best streak</span></div>
+        <div className="me-tile"><b>{stats.best_streak}</b><span>{t("me.tile.streak")}</span></div>
       </div>
       {rounds === 0 ? (
-        <p className="grp-foot">No ranked rounds yet.</p>
+        <p className="grp-foot">{t("me.noRanked")}</p>
       ) : null}
       <ul className="grp me-counts">
-        <Row label="Games won" value={stats.games_won} />
-        <Row label="Rounds played" value={rounds} />
-        <Row label="Won as defenders" value={pct(stats.defender_won_pct)} />
-        <Row label="Won as attackers" value={pct(stats.attacker_won_pct)} />
+        <Row label={t("me.count.gamesWon")} value={stats.games_won} />
+        <Row label={t("me.count.rounds")} value={rounds} />
+        <Row label={t("me.count.defenders")} value={pct(stats.defender_won_pct)} />
+        <Row label={t("me.count.attackers")} value={pct(stats.attacker_won_pct)} />
       </ul>
       {stats.provisional && rounds > 0 ? (
-        <p className="grp-foot">Your rating is provisional until 20 ranked rounds.</p>
+        <p className="grp-foot">{t("me.provisional")}</p>
       ) : null}
     </>
   );
@@ -117,6 +113,7 @@ function StatsBody({ stats }: { stats: Stats }) {
  *  Delete calls the server. While that call is out the sheet holds still;
  *  a refusal says why inside it. Closing it gives focus back to the row. */
 function DeleteAccount() {
+  const t = useT();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,11 +131,11 @@ function DeleteAccount() {
   return (
     <>
       <ul className="grp">
-        <Row label="Delete account" chevron className="destructive me-delete" onClick={() => setConfirming(true)} />
+        <Row label={t("me.delete.row")} chevron className="destructive me-delete" onClick={() => setConfirming(true)} />
       </ul>
       {confirming ? (
-        <ConfirmSheet title="Delete your account?" line="Your rating and games are deleted." cancel="Cancel"
-                      confirm={busy ? "Deleting…" : "Delete"} danger busy={busy} error={error}
+        <ConfirmSheet title={t("me.delete.title")} line={t("me.delete.line")} cancel={t("common.cancel")}
+                      confirm={busy ? t("me.delete.busy") : t("me.delete.confirm")} danger busy={busy} error={error}
                       className="me-delete-confirm" confirmClass="me-delete-yes"
                       onConfirm={confirm} onCancel={() => { setConfirming(false); setError(null); }} />
       ) : null}
@@ -148,20 +145,21 @@ function DeleteAccount() {
 
 /** The website lists the app's App Store page under Support; the app does not. */
 function InfoRows() {
+  const t = useT();
   return (
     <ul className="grp">
       <li><a className="grp-row" href="/privacy" onClick={(e) => followInfoLink(e, "privacy")}>
-        <span className="grp-label">Privacy policy</span><span className="grp-value chev" />
+        <span className="grp-label">{t("me.info.privacy")}</span><span className="grp-value chev" />
       </a></li>
       <li><a className="grp-row" href="/terms" onClick={(e) => followInfoLink(e, "terms")}>
-        <span className="grp-label">Terms of use</span><span className="grp-value chev" />
+        <span className="grp-label">{t("me.info.terms")}</span><span className="grp-value chev" />
       </a></li>
       <li><a className="grp-row" href="/support" onClick={(e) => followInfoLink(e, "support")}>
-        <span className="grp-label">Support</span><span className="grp-value chev" />
+        <span className="grp-label">{t("me.info.support")}</span><span className="grp-value chev" />
       </a></li>
       {isNative() ? null : (
         <li><a className="grp-row me-app-store" href={APP_STORE_URL}>
-          <span className="grp-label">On iPhone</span><span className="grp-value chev" />
+          <span className="grp-label">{t("me.info.appStore")}</span><span className="grp-value chev" />
         </a></li>
       )}
     </ul>
@@ -173,6 +171,7 @@ function InfoRows() {
  *  moves on the tap and says it is saving; a refused save puts it back and
  *  says why next to it. */
 function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | null; statsKey: string }) {
+  const t = useT();
   const [visible, setVisible] = useState<boolean | null>(stats?.visible ?? null);
   const [saving, setSaving] = useState(false);
   // a stats refresh that lands mid-save does not undo the tap
@@ -216,19 +215,19 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
       <SettingsGroup />
       <ul className="grp me-account">
         {device ? <Row label={effectiveName(user)} chevron className="me-identity" onClick={() => guestName.open("me_row")} /> : null}
-        {device && canSignIn ? <Row label="Sign in" chevron className="me-signin" onClick={() => guestName.open("me_signin")} /> : null}
+        {device && canSignIn ? <Row label={t("me.signIn")} chevron className="me-signin" onClick={() => guestName.open("me_signin")} /> : null}
         <li>
           <button type="button" className="grp-row me-visible" role="switch" aria-checked={visible === true}
                   disabled={visible === null} aria-disabled={saving || undefined} aria-busy={saving || undefined}
                   aria-describedby={saveError ? "me-visible-error" : undefined} onClick={toggle}>
-            <span className="grp-label">Show me on the leaderboard</span>
-            {saving ? <span className="grp-value me-saving">Saving…</span> : null}
+            <span className="grp-label">{t("me.visible")}</span>
+            {saving ? <span className="grp-value me-saving">{t("me.saving")}</span> : null}
             <span className={`ios-switch${visible ? " on" : ""}`} aria-hidden="true" />
           </button>
           {saveError ? <p className="grp-error" id="me-visible-error" role="alert">{saveError}</p> : null}
         </li>
         {device ? null : (
-          <Row label="Edit name" value={effectiveName(user)} chevron className="me-edit"
+          <Row label={t("me.editName")} value={effectiveName(user)} chevron className="me-edit"
                onClick={() => setEditing((v) => !v)}>
             {editing ? <div className="grp-inset"><NameEditForm user={user} onDone={() => setEditing(false)} /></div> : null}
           </Row>
@@ -237,7 +236,7 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
       <InfoRows />
       {device ? null : (
         <ul className="grp">
-          <Row label={signingOut ? "Signing out…" : "Sign out"} className="me-signout" onClick={signOut} />
+          <Row label={signingOut ? t("me.signingOut") : t("me.signOut")} className="me-signout" onClick={signOut} />
         </ul>
       )}
       {error ? <div className="lobby-error" role="alert">{error}</div> : null}
@@ -252,12 +251,13 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
  *  (the name, and Sign in where it works), the three stat tiles empty, so a
  *  guest sees what playing fills in, then the settings and the help rows. */
 function GuestMe() {
+  const t = useT();
   const { name } = useGuestName();
   // a guest who opens Me first gets the same random name Play would give
   useEffect(() => {
     if (!guestName.name.trim()) guestName.fill(randomName());
   }, []);
-  const shown = name.trim() || "Guest";
+  const shown = name.trim() || t("common.guest");
   return (
     <MeColumns
       main={(
@@ -266,14 +266,14 @@ function GuestMe() {
             <Avatar user={null} size="lg" guestName={shown} />
             <span className="me-who-text">
               <span className="me-name">{shown}</span>
-              <span className="me-sub">{GUEST_LINE}</span>
+              <span className="me-sub">{t("common.guest")}</span>
             </span>
             <span className="grp-value chev" />
           </button>
           <div className="me-tiles me-tiles-empty">
-            <div className="me-tile"><b>—</b><span>rounds won</span></div>
-            <div className="me-tile"><b>—</b><span>levels / round</span></div>
-            <div className="me-tile"><b>—</b><span>best streak</span></div>
+            <div className="me-tile"><b>—</b><span>{t("me.tile.won")}</span></div>
+            <div className="me-tile"><b>—</b><span>{t("me.tile.levels")}</span></div>
+            <div className="me-tile"><b>—</b><span>{t("me.tile.streak")}</span></div>
           </div>
         </>
       )}
@@ -306,6 +306,7 @@ function MeColumns({ main, side }: { main: ReactNode; side: ReactNode }) {
  *  a different viewer or session starts from nothing. */
 export default function MePage({ section }: { section: MeSection }) {
   useScreen(section === "games" ? "games" : "me");
+  const t = useT();
   const wide = useMediaQuery(WIDE);
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
@@ -328,8 +329,12 @@ export default function MePage({ section }: { section: MeSection }) {
     : section === "games" ? gamesReady : res !== null;
   const scroller = useTabScroll(`me:${section}`, ready);
 
+  const sections = [
+    { value: "stats", label: t("me.section.stats") },
+    { value: "games", label: t("me.section.games") },
+  ] as const;
   let body: ReactNode;
-  if (account.status === "loading") body = <p className="lb-note" role="status">Loading…</p>;
+  if (account.status === "loading") body = <p className="lb-note" role="status">{t("common.loading")}</p>;
   else if (!user) {
     body = <GuestMe />;
   }
@@ -338,9 +343,9 @@ export default function MePage({ section }: { section: MeSection }) {
     if (section === "games") {
       content = <SavedGames onPlay={() => openTab("play")} cacheKey={`${scope}:games`} onReady={markGamesReady}
                              refreshRef={reloadGames} />;
-    } else if (res === null) content = <p className="lb-note" role="status">Loading…</p>;
+    } else if (res === null) content = <p className="lb-note" role="status">{t("common.loading")}</p>;
     else if (!res.ok) {
-      content = <p className="lobby-error" role="alert">Could not load your stats ({res.status || "no connection"}).</p>;
+      content = <p className="lobby-error" role="alert">{t("me.statsFailed", { status: res.status || t("me.noConnection") })}</p>;
     } else content = <StatsBody stats={res.data} />;
     body = (
       <Fragment key={scope}>
@@ -348,7 +353,7 @@ export default function MePage({ section }: { section: MeSection }) {
           main={(
             <>
               <Identity user={user} stats={stats} />
-              <Segmented label="Show" options={SECTIONS} value={section} onChange={(s) => openTab("me", s)} />
+              <Segmented label={t("me.show")} options={sections} value={section} onChange={(s) => openTab("me", s)} />
               {content}
             </>
           )}
@@ -358,7 +363,7 @@ export default function MePage({ section }: { section: MeSection }) {
     );
   }
   return (
-    <LargeTitlePage className="me-page" scroller={scroller} title="Me"
+    <LargeTitlePage className="me-page" scroller={scroller} title={t("me.title")}
                     phone={!wide} onRefresh={refresh}>
       {body}
     </LargeTitlePage>

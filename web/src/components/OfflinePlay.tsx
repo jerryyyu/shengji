@@ -17,6 +17,7 @@ import { useToast } from "../toast";
 import { NEARBY_SESSION } from "../offlineMode";
 import { offlineGame, useOfflineBotLevel, useOfflineTable } from "./offlineGame";
 import { CodeRow } from "./Lobby";
+import { useT } from "../i18n";
 import "./OfflinePlay.css";
 
 interface OfflineControlsProps {
@@ -38,6 +39,7 @@ interface OfflineControlsProps {
  *  box, or the offline table in their place. The online Play tab shows these
  *  in place of its own, so what surrounds them stays mounted. */
 export function OfflineControls({ local, status, room: roomMsg = null, code = "", onCode, onJoinCode }: OfflineControlsProps) {
+  const t = useT();
   const room = roomMsg?.room ?? null;
   const nbUi = useNearbyUi();
   const nb = local ? nbUi : null;
@@ -139,7 +141,7 @@ export function OfflineControls({ local, status, room: roomMsg = null, code = ""
                       onToggle={toggleNearby} onSettings={() => nb?.openNearbySettings()} />
       ) : (
         <>
-          <PlayRow label="Play" disabled={false} duoDisabled onPlay={() => offlineGame.startFromPlay()} />
+          <PlayRow label={t("nearby.play")} disabled={false} duoDisabled onPlay={() => offlineGame.startFromPlay()} />
           <PresenceLine q={null} online={false} offline />
           <CodeRow disabled code={code} onCode={onCode} onJoin={onJoinCode} nearby={nb}
                    nearbyJoinView={joinView} />

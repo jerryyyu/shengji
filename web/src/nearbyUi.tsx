@@ -9,7 +9,8 @@ import { nearbyGate } from "./nearbyGate";
 import { nearbyJoin } from "./nearbyJoin";
 import type { NearbyJoin } from "./nearbyJoin";
 import { nearbyAllowedBefore, openNearbySettings } from "./nearbySession";
-import { NEARBY_LINK_LABEL, nearbyLinkState } from "./nearbyLink";
+import { nearbyLinkState } from "./nearbyLink";
+import type { NearbyLink } from "./nearbyLink";
 import { isNearbyCode } from "./offline/server/nearby/codes";
 import { NEARBY_COPY } from "./offline/server/nearby/copy";
 import NearbyDebugPaneFull, {
@@ -17,6 +18,8 @@ import NearbyDebugPaneFull, {
   uploadNearbyLogNow, useNearbyDebug, useNearbyKeepalive, useNearbyLogFile, useNearbySoak, useNearbySoakSwitch,
 } from "./nearbyDebug";
 import { tapHandlers } from "./tap";
+import { t, useLocale } from "./i18n";
+import type { MessageKey } from "./i18n";
 import { TEST_TOOLS } from "./testTools";
 import { NearbyJoinPanel as JoinPanel, NearbyRoomPanel as RoomPanel } from "./queue/TablePanel";
 import { fromNearbyJoin, nearbyRoomModel } from "./queue/nearbyModel";
@@ -43,6 +46,8 @@ export function NearbyJoinPanel(props: Omit<ComponentProps<typeof JoinPanel>, "m
  *  (with the link to Settings). The copy rule lists it as its one exception
  *  (FLOWS.md "Play nearby"). */
 export function NearbyCodeLine({ code, join }: { code: string; join: NearbyJoin | null }) {
+  // the copy is read in the current language as it draws
+  useLocale();
   if (join?.step === "denied" && join.code === code) {
     return (
       <p className="join-line">
@@ -57,15 +62,24 @@ export function NearbyCodeLine({ code, join }: { code: string; join: NearbyJoin 
   return null;
 }
 
+/** The dot's accessible name, in the connection pill's own words
+ *  (nearbyLink.ts NEARBY_LINK_LABEL), in the current language. */
+const LINK_LABEL: Record<NearbyLink, MessageKey> = {
+  linked: "nearby.linkLinked",
+  reconnecting: "nearby.linkReconnecting",
+  lost: "nearby.hostLeft",
+};
+
 /** A nearby table's link: a dot, green while linked, amber and pulsing
  *  while a link is being made again, grey once the table is lost. No text;
  *  its name is the connection pill's words. */
 export function NearbyLinkDot({ state }: { state: GameState }) {
+  useLocale();
   const [status, setStatus] = useState<ConnStatus>(conn.status);
   useEffect(() => conn.subscribeStatus(setStatus), []);
   const hostLeft = useSyncExternalStore(nearbyJoin.subscribe, () => nearbyJoin.hostLeft, () => nearbyJoin.hostLeft);
   const link = nearbyLinkState({ host: !nearbyJoin.seated, status, hostLeft, players: state.players });
-  return <span className={`nearby-link-dot ${link}`} role="img" aria-label={NEARBY_LINK_LABEL[link]} />;
+  return <span className={`nearby-link-dot ${link}`} role="img" aria-label={t(LINK_LABEL[link])} />;
 }
 
 /** A tap on the ⋯ menu's table code: the hidden switch's counter, where the

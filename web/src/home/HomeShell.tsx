@@ -14,6 +14,8 @@ import YourTablePill from "../queue/YourTablePill";
 import { SeatedAtContext } from "../queue/seatedAt";
 import type { SeatedAt } from "../queue/seatedAt";
 import AccountChip from "../components/AccountChip";
+import { isZh, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 import GuestChip from "../components/GuestChip";
 
 export { WIDE };
@@ -64,10 +66,10 @@ function PersonIcon() {
   );
 }
 
-const TABS: { tab: Tab; label: string; icon: () => ReactNode }[] = [
-  { tab: "play", label: "Play", icon: PlayIcon },
-  { tab: "leaderboard", label: "Leaderboard", icon: PodiumIcon },
-  { tab: "me", label: "Me", icon: PersonIcon },
+const TABS: { tab: Tab; name: MessageKey; icon: () => ReactNode }[] = [
+  { tab: "play", name: "home.tabPlay", icon: PlayIcon },
+  { tab: "leaderboard", name: "home.tabLeaderboard", icon: PodiumIcon },
+  { tab: "me", name: "home.tabMe", icon: PersonIcon },
 ];
 
 /** Open a tab; the one already showing scrolls back to its top instead. */
@@ -89,19 +91,20 @@ function TabAvatar({ user, guest }: { user: AuthUser | null; guest: string }) {
  *  indicator, with a lighter capsule under the active tab that slides to the
  *  tab tapped. Me shows the player's picture or initial once there is one. */
 export function TabBar({ active }: { active: Tab }) {
+  const t = useT();
   const account = useAuth();
   const { name: guest } = useGuestName();
   const user = account.status === "in" ? account.user : null;
   const known = user !== null || (account.status !== "loading" && guest.trim() !== "");
-  const index = TABS.findIndex((t) => t.tab === active);
+  const index = TABS.findIndex((x) => x.tab === active);
   return (
-    <nav className="tabbar" aria-label="Main" style={{ "--tab-index": index } as CSSProperties}>
+    <nav className="tabbar" aria-label={t("home.navMain")} style={{ "--tab-index": index } as CSSProperties}>
       <span className="tabbar-capsule" aria-hidden="true" />
-      {TABS.map(({ tab, label, icon: Icon }) => (
+      {TABS.map(({ tab, name, icon: Icon }) => (
         <button key={tab} type="button" className={`tabbar-item${tab === active ? " on" : ""}`}
                 aria-current={tab === active ? "page" : undefined} onClick={() => goTab(tab, active)}>
           {tab === "me" && known ? <TabAvatar user={user} guest={guest} /> : <Icon />}
-          <span>{label}</span>
+          <span>{t(name)}</span>
         </button>
       ))}
     </nav>
@@ -113,6 +116,7 @@ export function TabBar({ active }: { active: Tab }) {
  *  at the end (a guest's opens the identity sheet), after the Your table
  *  pill on a tab other than Play. */
 export function TopBar({ active }: { active: Tab }) {
+  const t = useT();
   const account = useAuth();
   const user = account.status === "in" ? account.user : null;
   let end: ReactNode = null;
@@ -125,15 +129,15 @@ export function TopBar({ active }: { active: Tab }) {
     <header className="topbar">
       {/* Play shows the title itself */}
       {active === "play" ? null : (
-        <button type="button" className="topbar-mark" aria-label="Sheng Ji: Play" onClick={() => openTab("play")}>
-          <b>升级</b><span>Sheng Ji</span>
+        <button type="button" className="topbar-mark" aria-label={t("home.markAria")} onClick={() => openTab("play")}>
+          <b>升级</b>{isZh() ? null : <span>Sheng Ji</span>}
         </button>
       )}
-      <nav className="topbar-tabs" aria-label="Main">
-        {TABS.map((t) => (
-          <button key={t.tab} type="button" className={`topbar-tab${t.tab === active ? " on" : ""}`}
-                  aria-current={t.tab === active ? "page" : undefined} onClick={() => goTab(t.tab, active)}>
-            {t.label}
+      <nav className="topbar-tabs" aria-label={t("home.navMain")}>
+        {TABS.map((x) => (
+          <button key={x.tab} type="button" className={`topbar-tab${x.tab === active ? " on" : ""}`}
+                  aria-current={x.tab === active ? "page" : undefined} onClick={() => goTab(x.tab, active)}>
+            {t(x.name)}
           </button>
         ))}
       </nav>

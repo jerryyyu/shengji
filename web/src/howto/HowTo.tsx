@@ -8,6 +8,8 @@ import type { HowtoRoute } from "./route";
 import Picture from "./Picture";
 import type { Frame } from "./useTimeline";
 import { useScreen } from "../telemetry";
+import { t, tx, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 
 const RANK_LADDER = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
@@ -41,28 +43,33 @@ function Group({ label, children, note, className }: {
 }
 
 function Trump({ suit, rank }: { suit: string | null; rank: string }) {
+  const t = useT();
   const sym: Record<string, string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
   const red = suit === "H" || suit === "D";
   return (
     <span className="chip trump-chip">
       {suit ? <span className={`trump-suit ${red ? "red" : "black"}`}>{sym[suit]}</span>
-        : <span className="trump-suit nt">NT</span>}
+        : <span className="trump-suit nt">{t("howto.chip.nt")}</span>}
       <span className="trump-rank">{rank}</span>
     </span>
   );
 }
 
 function Level({ team, level }: { team: 0 | 1; level: string }) {
+  useT();
   return (
     <span className={`chip level-chip team${team}`}>
       <span className={`team-dot t${team}`} />
-      Lv <span className="level-value">{level}</span>
+      {tx("howto.chip.level", { level: <span className="level-value">{level}</span> })}
     </span>
   );
 }
 
 /** The top bar's games score, as the table shows it. */
-const Games = ({ us, them }: { us: number; them: number }) => <span className="chip games-chip">Games {us}–{them}</span>;
+function Games({ us, them }: { us: number; them: number }) {
+  const t = useT();
+  return <span className="chip games-chip">{t("howto.chip.games", { n: us, count: them })}</span>;
+}
 
 /** Class for a part of a picture that appears partway through its timeline:
  *  hidden (keeping its space) until `shown`, then it pops in. */
@@ -71,9 +78,9 @@ const at = (shown: boolean, extra = "") => [shown ? "howto-in" : "howto-out", ex
 /* Climb from 2 to Ace: the four seats take their places by team, then the
    two teams' markers climb the level ladder from 2. */
 interface GoalFrame { seats: number; lv0: string; lv1: string }
-const GOAL_SEATS = [
-  { cls: "team0 you pos-bottom", name: "You" },
-  { cls: "team0 pos-top", name: "Bea · partner" },
+const goalSeats = () => [
+  { cls: "team0 you pos-bottom", name: t("howto.goal.you") },
+  { cls: "team0 pos-top", name: t("howto.goal.partner", { name: "Bea" }) },
   { cls: "team1 pos-left", name: "Ana" },
   { cls: "team1 pos-right", name: "Cal" },
 ];
@@ -88,17 +95,18 @@ const GOAL_FRAMES: Frame<GoalFrame>[] = [
 ];
 
 function GoalPicture({ f }: { f: GoalFrame }) {
+  const t = useT();
   return (
     <>
       <div className="howto-seats">
-        {GOAL_SEATS.map((s, k) => (
+        {goalSeats().map((s, k) => (
           <span key={s.name} className={`replay-seat ${s.cls} ${at(k < f.seats)}`}>
             <span className="replay-seat-name">{s.name}</span>
           </span>
         ))}
         <span className="howto-seats-mark" aria-hidden="true">升级</span>
       </div>
-      <div className="howto-ladder" aria-label="Levels 2 to Ace">
+      <div className="howto-ladder" aria-label={t("howto.goal.ladder")}>
         {RANK_LADDER.map((r) => (
           <span key={r} className={`howto-rung${r === "A" ? " finish" : ""}`}>
             {r}
@@ -123,16 +131,17 @@ const count = (times: number[]): Frame<CountFrame>[] =>
 const TRUMP_FRAMES = count([300, 900, 1500, 2100, 2900]);
 
 function TrumpPicture({ f }: { f: CountFrame }) {
+  const t = useT();
   return (
     <>
-      <div className="howto-row center"><span className="howto-label">Example</span><Trump suit="H" rank="7" /></div>
+      <div className="howto-row center"><span className="howto-label">{t("howto.trump.example")}</span><Trump suit="H" rank="7" /></div>
       <div className="howto-order">
-        <Group className={at(f.shown >= 1)} label={<><b>1</b> Big Joker</>}><Cards codes={["BJ"]} /></Group>
-        <Group className={at(f.shown >= 2)} label={<><b>2</b> Little Joker</>}><Cards codes={["LJ"]} /></Group>
+        <Group className={at(f.shown >= 1)} label={tx("howto.trump.bigJoker", { n: <b>1</b> })}><Cards codes={["BJ"]} /></Group>
+        <Group className={at(f.shown >= 2)} label={tx("howto.trump.littleJoker", { n: <b>2</b> })}><Cards codes={["LJ"]} /></Group>
         <Group className={at(f.shown >= 3)} label={<><b>3</b> ♥7</>}><Cards codes={["H7"]} /></Group>
-        <Group className={at(f.shown >= 4)} label={<><b>4</b> other 7s, equal</>}><Cards codes={["S7", "C7", "D7"]} tight /></Group>
+        <Group className={at(f.shown >= 4)} label={tx("howto.trump.otherLevel", { n: <b>4</b> })}><Cards codes={["S7", "C7", "D7"]} tight /></Group>
       </div>
-      <Group className={at(f.shown >= 5)} label={<><b>5</b> then the rest of ♥, Ace down to 2</>}>
+      <Group className={at(f.shown >= 5)} label={tx("howto.trump.rest", { n: <b>5</b> })}>
         <Cards codes={["HA", "HK", "HQ", "HJ", "H10", "H9", "H8", "H6", "H5", "H4", "H3", "H2"]} size="sm" tight />
       </Group>
     </>
@@ -142,11 +151,11 @@ function TrumpPicture({ f }: { f: CountFrame }) {
 /* Declare to pick trump: one 7 is declared, then each stronger show
    replaces it (the gold outline marks the declaration standing). */
 interface DeclareFrame { shown: number; standing: number | null }
-const DECLARE_ROWS: { cards: string[]; what: string; trump: ReactNode }[] = [
-  { cards: ["BJ", "BJ"], what: "Pair of Big Jokers", trump: <Trump suit={null} rank="7" /> },
-  { cards: ["LJ", "LJ"], what: "Pair of Little Jokers", trump: <Trump suit={null} rank="7" /> },
-  { cards: ["H7", "H7"], what: "Pair of 7s", trump: <Trump suit="H" rank="7" /> },
-  { cards: ["S7"], what: "One 7", trump: <Trump suit="S" rank="7" /> },
+const DECLARE_ROWS: { cards: string[]; what: MessageKey; trump: ReactNode }[] = [
+  { cards: ["BJ", "BJ"], what: "howto.declare.bigJokers", trump: <Trump suit={null} rank="7" /> },
+  { cards: ["LJ", "LJ"], what: "howto.declare.littleJokers", trump: <Trump suit={null} rank="7" /> },
+  { cards: ["H7", "H7"], what: "howto.declare.pair", trump: <Trump suit="H" rank="7" /> },
+  { cards: ["S7"], what: "howto.declare.single", trump: <Trump suit="S" rank="7" /> },
 ];
 const DECLARE_FRAMES: Frame<DeclareFrame>[] = [
   { at: 0, state: { shown: 0, standing: null } },
@@ -158,14 +167,15 @@ const DECLARE_FRAMES: Frame<DeclareFrame>[] = [
 ];
 
 function DeclarePicture({ f }: { f: DeclareFrame }) {
+  const t = useT();
   const n = DECLARE_ROWS.length;
   return (
     <div className="howto-stack">
-      <span className="howto-arrow-up" aria-hidden="true">stronger ↑</span>
+      <span className="howto-arrow-up" aria-hidden="true">{t("howto.declare.stronger")}</span>
       {DECLARE_ROWS.map((r, k) => (
         <div key={r.what} className={`howto-declare-row ${at(k >= n - f.shown)}${f.standing === k ? " standing" : ""}`}>
           <Cards codes={r.cards} size="sm" />
-          <span className="howto-declare-what">{r.what}</span>
+          <span className="howto-declare-what">{t(r.what)}</span>
           {r.trump}
         </div>
       ))}
@@ -186,18 +196,19 @@ const KITTY_FRAMES: Frame<KittyFrame>[] = [
 ];
 
 function KittyPicture({ f }: { f: KittyFrame }) {
+  const t = useT();
   return (
     <>
-      <Group label="The kitty: 8 cards, face down">
+      <Group label={t("howto.kitty.kitty")}>
         <div className={`howto-kitty-cards ${f.kitty}`}><Cards codes={Array(8).fill("")} faceDown size="sm" tight /></div>
       </Group>
-      <span className="howto-arrow" aria-hidden="true">↓ the banker picks it up</span>
-      <Group label="…then picks 8 of their 33 cards to bury">
+      <span className="howto-arrow" aria-hidden="true">{t("howto.kitty.pickUp")}</span>
+      <Group label={t("howto.kitty.bury")}>
         <Cards codes={KITTY_HAND} size="sm" lift={Array.from({ length: f.lifted }, (_, k) => k)} />
       </Group>
       <div className={`howto-row center ${at(f.teams)}`}>
-        <span className="howto-pill def">Banker's team defends</span>
-        <span className="howto-pill att">Other team attacks</span>
+        <span className="howto-pill def">{t("howto.kitty.defends")}</span>
+        <span className="howto-pill att">{t("howto.kitty.attacks")}</span>
       </div>
     </>
   );
@@ -212,6 +223,9 @@ const TRICK_STATE = {
     { seat: 0, name: "You" }, { seat: 1, name: "Ana" }, { seat: 2, name: "Bea" }, { seat: 3, name: "Cal" },
   ],
 } as unknown as GameState;
+
+/** The example players' names, the same in every language. */
+const SEAT_NAMES = { left: "Ana", top: "Bea", right: "Cal" };
 
 const TRICK_PLAYS = [
   { seat: 1, cards: ["SK"] },
@@ -235,16 +249,17 @@ const TRICK_FRAMES: Frame<TrickFrame>[] = [
 ];
 
 function TrickPicture({ f }: { f: TrickFrame }) {
+  const t = useT();
   const trick = { leader: 1, plays: TRICK_PLAYS.slice(0, f.plays) } as unknown as Trick;
   return (
     <>
-      <div className="howto-row center"><span className="howto-label">Trump</span><Trump suit="H" rank="7" /></div>
+      <div className="howto-row center"><span className="howto-label">{t("howto.trick.trump")}</span><Trump suit="H" rank="7" /></div>
       <div className="replay-felt howto-felt" data-leading={f.leading ?? undefined}>
         <TrickArea state={TRICK_STATE} trick={f.plays ? trick : null} winner={f.winner} declaration={null} />
-        <span className="howto-seat-name pos-left">Ana</span>
-        <span className="howto-seat-name pos-top">Bea</span>
-        <span className="howto-seat-name pos-right">Cal</span>
-        <span className="howto-seat-name pos-bottom">You</span>
+        <span className="howto-seat-name pos-left">{SEAT_NAMES.left}</span>
+        <span className="howto-seat-name pos-top">{SEAT_NAMES.top}</span>
+        <span className="howto-seat-name pos-right">{SEAT_NAMES.right}</span>
+        <span className="howto-seat-name pos-bottom">{t("howto.trick.you")}</span>
         {/* Where TrickArea's flights start from. */}
         <span className="opponent pos-left howto-anchor" aria-hidden="true" />
         <span className="opponent pos-top howto-anchor" aria-hidden="true" />
@@ -260,22 +275,23 @@ function TrickPicture({ f }: { f: TrickFrame }) {
 const PAIRS_FRAMES = count([300, 900, 1400, 2000, 2700, 3300, 3900]);
 
 function PairsPicture({ f }: { f: CountFrame }) {
+  const t = useT();
   const s = f.shown;
   return (
     <>
       <div className="howto-order">
-        <Group className={at(s >= 1)} label="Pair"><Cards codes={["S9", "S9"]} tight /></Group>
-        <Group className={at(s >= 2)} label="Tractor">
+        <Group className={at(s >= 1)} label={t("howto.pairs.pair")}><Cards codes={["S9", "S9"]} tight /></Group>
+        <Group className={at(s >= 2)} label={t("howto.pairs.tractor")}>
           <Cards codes={["S9", "S9", "S10", "S10"]} tight hide={s >= 3 ? [] : [2, 3]} />
         </Group>
-        <Group className={at(s >= 4)} label="Tractor at level 7" note="the 7 is trump, so 6 and 8 touch">
+        <Group className={at(s >= 4)} label={t("howto.pairs.levelTractor")} note={t("howto.pairs.levelNote")}>
           <Cards codes={["S6", "S6", "S8", "S8"]} tight />
         </Group>
       </div>
       <div className="howto-follow">
-        <Group className={at(s >= 5)} label="Led"><Cards codes={["DQ", "DQ"]} size="sm" tight /></Group>
+        <Group className={at(s >= 5)} label={t("howto.pairs.led")}><Cards codes={["DQ", "DQ"]} size="sm" tight /></Group>
         <span className={at(s >= 6, "howto-arrow side")} aria-hidden="true">→</span>
-        <Group className={at(s >= 6)} label="Your diamonds" note="you must play the pair">
+        <Group className={at(s >= 6)} label={t("howto.pairs.yours")} note={t("howto.pairs.mustPair")}>
           <Cards codes={["D5", "D5", "D9", "DJ"]} size="sm" tight glow={s >= 7 ? [0, 1] : []} />
         </Group>
       </div>
@@ -288,28 +304,29 @@ function PairsPicture({ f }: { f: CountFrame }) {
 const THROW_FRAMES = count([200, 700, 1300, 2400, 3000, 3600]);
 
 function ThrowPicture({ f }: { f: CountFrame }) {
+  const t = useT();
   const s = f.shown;
   const fails = s >= 4;
   return (
     <>
       <div className="howto-follow">
-        <Group className={at(s >= 1)} label="You throw ♣A and ♣Q♣Q"><Cards codes={["CA", "CQ", "CQ"]} tight /></Group>
-        <span className={at(s >= 2, "howto-arrow side")} aria-hidden="true">vs</span>
+        <Group className={at(s >= 1)} label={t("howto.throw.yours")}><Cards codes={["CA", "CQ", "CQ"]} tight /></Group>
+        <span className={at(s >= 2, "howto-arrow side")} aria-hidden="true">{t("howto.throw.vs")}</span>
         {fails
-          ? <Group key="fails" className="howto-in" label="Someone holds ♣K♣K"><Cards codes={["CK", "CK"]} tight /></Group>
-          : <Group key="stands" className={at(s >= 2)} label="Nobody holds a pair above ♣Q"><Cards codes={["CK", "CJ"]} tight /></Group>}
+          ? <Group key="fails" className="howto-in" label={t("howto.throw.someone")}><Cards codes={["CK", "CK"]} tight /></Group>
+          : <Group key="stands" className={at(s >= 2)} label={t("howto.throw.nobody")}><Cards codes={["CK", "CJ"]} tight /></Group>}
       </div>
       {fails ? (
         <>
-          <span key="fails-arrow" className={at(s >= 5, "howto-arrow")} aria-hidden="true">↓ the throw fails</span>
-          <Group key="fails-play" className={at(s >= 6)} label="You must play only the part that can be beaten">
+          <span key="fails-arrow" className={at(s >= 5, "howto-arrow")} aria-hidden="true">{t("howto.throw.fails")}</span>
+          <Group key="fails-play" className={at(s >= 6)} label={t("howto.throw.failsPlay")}>
             <Cards codes={["CQ", "CQ"]} tight glow={[0, 1]} />
           </Group>
         </>
       ) : (
         <>
-          <span key="stands-arrow" className={at(s >= 3, "howto-arrow")} aria-hidden="true">↓ the throw stands</span>
-          <Group key="stands-play" className={at(s >= 3)} label="All three cards are played together">
+          <span key="stands-arrow" className={at(s >= 3, "howto-arrow")} aria-hidden="true">{t("howto.throw.stands")}</span>
+          <Group key="stands-play" className={at(s >= 3)} label={t("howto.throw.standsPlay")}>
             <Cards codes={["CA", "CQ", "CQ"]} tight glow={[0, 1, 2]} />
           </Group>
         </>
@@ -333,6 +350,7 @@ const POINTS_FRAMES: Frame<PointsFrame>[] = [
 ];
 
 function PointsPicture({ f }: { f: PointsFrame }) {
+  const t = useT();
   const points = POINT_CARDS.slice(0, f.shown).reduce((n, c) => n + c.pts, POINTS_BEFORE);
   return (
     <>
@@ -344,16 +362,16 @@ function PointsPicture({ f }: { f: PointsFrame }) {
         ))}
       </div>
       <div className="howto-row center">
-        <span className="howto-label">Attackers</span>
+        <span className="howto-label">{t("howto.points.attackers")}</span>
         <span className="chip points-chip">
           <span className="points-big howto-count-up" key={points}>{points}</span>
           <span className="points-target">/ 80</span>
         </span>
       </div>
       <div className={`howto-kitty ${at(f.bonus)}`}>
-        <span className="howto-kitty-head">Last trick bonus</span>
-        <span>If attackers win the last trick, they also score the kitty's points, multiplied by twice the cards led:</span>
-        <span className="howto-kitty-mult"><b>×2</b> single · <b>×4</b> pair · <b>×8</b> tractor of 2 pairs</span>
+        <span className="howto-kitty-head">{t("howto.points.bonusHead")}</span>
+        <span>{t("howto.points.bonus")}</span>
+        <span className="howto-kitty-mult">{tx("howto.points.multSingle", { n: <b>×2</b> })} · {tx("howto.points.multPair", { n: <b>×4</b> })} · {tx("howto.points.multTractor", { n: <b>×8</b> })}</span>
       </div>
     </>
   );
@@ -370,8 +388,8 @@ const BANDS: { from: number; to: number; text: string; side: "def" | "att" }[] =
   { from: 120, to: 160, text: "120–155", side: "att" },
   { from: 160, to: 200, text: "160–195", side: "att" },
 ];
-const OUTCOME = ["Defenders +3", "Defenders +2", "Defenders +1",
-  "Attackers take the deal", "Attackers +1", "Attackers +2"];
+const OUTCOME: MessageKey[] = ["howto.score.def3", "howto.score.def2", "howto.score.def1",
+  "howto.score.takeDeal", "howto.score.att1", "howto.score.att2"];
 
 const cardPoints = (c: string) => (c.slice(1) === "5" ? 5 : c.slice(1) === "10" || c.slice(1) === "K" ? 10 : 0);
 /** The attackers' point cards, trick by trick: the earlier tricks (40), then
@@ -393,6 +411,7 @@ const SCORE_FRAMES: Frame<ScoreFrame>[] = (() => {
 })();
 
 function ScoringPicture({ f }: { f: ScoreFrame }) {
+  const t = useT();
   const haulRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef<HTMLSpanElement>(null);
   // Aim each haul's flight at the counter.
@@ -412,10 +431,10 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
           {f.haul !== null
             ? <div className="howto-haul" ref={haulRef} key={f.haul}><Cards codes={HAULS[f.haul]} size="sm" tight /></div>
             : null}
-          {f.result ? <span className={`howto-pill ${won ? "att" : "def"} howto-result`}>{OUTCOME[band]}</span> : null}
+          {f.result ? <span className={`howto-pill ${won ? "att" : "def"} howto-result`}>{t(OUTCOME[band])}</span> : null}
         </div>
         <div className="howto-group">
-          <span className="howto-label">Attackers</span>
+          <span className="howto-label">{t("howto.points.attackers")}</span>
           <span className="chip points-chip" ref={counterRef}>
             <span className="points-big howto-count-up" key={f.points}>{f.points}</span>
             <span className="points-target">/ 80</span>
@@ -431,16 +450,16 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
         <span className={`howto-scale-line${f.points >= 80 ? " crossed" : ""}`} style={{ left: "40%" }}><span>80</span></span>
       </div>
       <div className="howto-ticks" aria-hidden="true">
-        {[0, 40, 80, 120, 160, 200].map((t) => <span key={t} style={{ left: `${t / 2}%` }}>{t}</span>)}
+        {[0, 40, 80, 120, 160, 200].map((v) => <span key={v} style={{ left: `${v / 2}%` }}>{v}</span>)}
       </div>
       <ul className="howto-bands">
         {BANDS.map((b, i) => (
           <li key={b.text} className={`${b.side}${i === band && (f.haul !== null || f.result) ? " on" : ""}${i === band && f.result ? " final" : ""}`}>
             <span className="howto-band-pts">{b.text}</span>
-            <span>{OUTCOME[i]}</span>
+            <span>{t(OUTCOME[i])}</span>
           </li>
         ))}
-        <li className="att"><span className="howto-band-pts">200+</span><span>Attackers +3, and +1 per 40 more</span></li>
+        <li className="att"><span className="howto-band-pts">200+</span><span>{t("howto.score.att3")}</span></li>
       </ul>
     </>
   );
@@ -451,15 +470,16 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
 const WIN_FRAMES = count([300, 1100, 2000, 2700]);
 
 function WinPicture({ f }: { f: CountFrame }) {
+  const t = useT();
   const s = f.shown;
   return (
     <>
       <div className="howto-follow">
-        <Group className={at(s >= 1)} label="Your team defends at Ace…"><Level team={0} level="A" /></Group>
+        <Group className={at(s >= 1)} label={t("howto.win.defendAce")}><Level team={0} level="A" /></Group>
         <span className={at(s >= 2, "howto-arrow side")} aria-hidden="true">→</span>
-        <Group className={at(s >= 2)} label="…and wins a game"><Games us={1} them={0} /></Group>
+        <Group className={at(s >= 2)} label={t("howto.win.wins")}><Games us={1} them={0} /></Group>
       </div>
-      <span className={at(s >= 3, "howto-arrow")} aria-hidden="true">↓ both teams start again</span>
+      <span className={at(s >= 3, "howto-arrow")} aria-hidden="true">{t("howto.win.again")}</span>
       <div className={`howto-row center ${at(s >= 4)}`}>
         <Level team={0} level="2" />
         <Level team={1} level="2" />
@@ -476,89 +496,57 @@ const picture = <S,>(frames: Frame<S>[], render: (f: S) => ReactNode) =>
 
 /** One step: a headline, a line or two of rules, a picture and an optional
  *  caption under it. The text here is the guide's copy. */
-interface Step { title: string; body: ReactNode; visual: ReactNode; caption?: ReactNode }
+interface Step { titleKey: MessageKey; bodyKey: MessageKey; visual: ReactNode; captionKey?: MessageKey }
 
 const STEPS: Step[] = [
+  { titleKey: "howto.goal.title", bodyKey: "howto.goal.body", visual: picture(GOAL_FRAMES, (f) => <GoalPicture f={f} />) },
+  { titleKey: "howto.trump.title", bodyKey: "howto.trump.body", visual: picture(TRUMP_FRAMES, (f) => <TrumpPicture f={f} />) },
+  { titleKey: "howto.declare.title", bodyKey: "howto.declare.body", visual: picture(DECLARE_FRAMES, (f) => <DeclarePicture f={f} />) },
+  { titleKey: "howto.kitty.title", bodyKey: "howto.kitty.body", visual: picture(KITTY_FRAMES, (f) => <KittyPicture f={f} />) },
   {
-    title: "Climb from 2 to Ace",
-    body: <>Four players in two teams: you and the partner across from you. Win rounds to climb levels from 2 up to Ace.</>,
-    visual: picture(GOAL_FRAMES, (f) => <GoalPicture f={f} />),
-  },
-  {
-    title: "Trump beats everything",
-    body: <>The level card's rank and the jokers are always trump. One suit is trump too. Highest trump first:</>,
-    visual: picture(TRUMP_FRAMES, (f) => <TrumpPicture f={f} />),
-  },
-  {
-    title: "Declare to pick trump",
-    body: <>While the cards are dealt, show a card of the level's rank to make its suit trump. A stronger show replaces it; a joker pair means no trump suit.</>,
-    visual: picture(DECLARE_FRAMES, (f) => <DeclarePicture f={f} />),
-  },
-  {
-    title: "Banker and kitty",
-    body: <>The banker picks up the 8 leftover cards, then buries any 8 face down. The banker leads the first trick.</>,
-    visual: picture(KITTY_FRAMES, (f) => <KittyPicture f={f} />),
-  },
-  {
-    title: "Play a trick",
-    body: <>Follow the led suit if you can. The highest card of that suit wins, unless someone out of it plays trump. The winner leads next.</>,
+    titleKey: "howto.trick.title", bodyKey: "howto.trick.body",
     visual: picture(TRICK_FRAMES, (f) => <TrickPicture f={f} />),
-    caption: <>Ana leads ♠K. Bea plays ♠A, but Cal has no spades and plays ♥4: trump wins.</>,
+    captionKey: "howto.trick.caption",
   },
+  { titleKey: "howto.pairs.title", bodyKey: "howto.pairs.body", visual: picture(PAIRS_FRAMES, (f) => <PairsPicture f={f} />) },
+  { titleKey: "howto.throw.title", bodyKey: "howto.throw.body", visual: picture(THROW_FRAMES, (f) => <ThrowPicture f={f} />) },
+  { titleKey: "howto.points.title", bodyKey: "howto.points.body", visual: picture(POINTS_FRAMES, (f) => <PointsPicture f={f} />) },
+  { titleKey: "howto.score.title", bodyKey: "howto.score.body", visual: picture(SCORE_FRAMES, (f) => <ScoringPicture f={f} />) },
   {
-    title: "Pairs and tractors",
-    body: <>Two identical cards are a pair; pairs next to each other are a tractor. When a pair is led, you must answer with a pair of that suit if you have one.</>,
-    visual: picture(PAIRS_FRAMES, (f) => <PairsPicture f={f} />),
-  },
-  {
-    title: "Throws",
-    body: <>You may lead several cards of one suit at once. If another player could beat any part of it, the throw fails.</>,
-    visual: picture(THROW_FRAMES, (f) => <ThrowPicture f={f} />),
-  },
-  {
-    title: "Points",
-    body: <>Only 5s, 10s and Kings score: 200 points in all. Attackers keep the points in the tricks they win.</>,
-    visual: picture(POINTS_FRAMES, (f) => <PointsPicture f={f} />),
-  },
-  {
-    title: "Scoring a round",
-    body: <>Attackers need 80 to win the round. Every 40 points either way moves a level.</>,
-    visual: picture(SCORE_FRAMES, (f) => <ScoringPicture f={f} />),
-  },
-  {
-    title: "Win a game",
-    body: <>Reach Ace, then defend it as the banker's team. Winning as attackers at Ace only takes the deal.</>,
+    titleKey: "howto.win.title", bodyKey: "howto.win.body",
     visual: picture(WIN_FRAMES, (f) => <WinPicture f={f} />),
-    caption: <>The top bar keeps the games score, Us first. The table keeps playing.</>,
+    captionKey: "howto.win.caption",
   },
 ];
 
 function Head({ count }: { count: ReactNode }) {
+  const t = useT();
   return (
     <header className="howto-head">
-      <button className="btn subtle games-back" onClick={closeHowto}>‹ Back</button>
-      <h1 className="howto-page">How to play</h1>
+      <button className="btn subtle games-back" onClick={closeHowto}>{t("howto.back")}</button>
+      <h1 className="howto-page">{t("howto.page")}</h1>
       <span className="howto-count">{count}</span>
     </header>
   );
 }
 
 function Stepper({ step }: { step: number }) {
+  const t = useT();
   const n = STEPS.length;
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
   return (
     <div className="panel games-panel howto-panel">
-      <Head count={`${i + 1} of ${n}`} />
+      <Head count={t("howto.count", { n: i + 1, count: n })} />
       {/* Keyed by step, so a slide's picture starts afresh each time it is entered. */}
       <section key={i} className="howto-step" aria-roledescription="slide">
-        <h2 className="howto-title">{s.title}</h2>
-        <p className="howto-body">{s.body}</p>
+        <h2 className="howto-title">{t(s.titleKey)}</h2>
+        <p className="howto-body">{t(s.bodyKey)}</p>
         {s.visual}
-        <p className="howto-caption">{s.caption}</p>
+        <p className="howto-caption">{s.captionKey ? t(s.captionKey) : undefined}</p>
       </section>
-      <nav className="howto-nav" aria-label="Steps">
+      <nav className="howto-nav" aria-label={t("howto.steps")}>
         {/* Where you are, not a control: ten taps would be under 30px wide on
             a small phone, and Next and the swipe already move a step.
             The header's "n of 10" says the same for a screen reader. */}
@@ -571,8 +559,8 @@ function Stepper({ step }: { step: number }) {
             and the header's ‹ Back is the one way out. */}
         <div className="howto-buttons">
           {i < n - 1
-            ? <button className="btn primary big" onClick={() => go(i + 2)}>Next</button>
-            : <button className="btn gold big" onClick={closeHowto}>Start playing</button>}
+            ? <button className="btn primary big" onClick={() => go(i + 2)}>{t("howto.next")}</button>
+            : <button className="btn gold big" onClick={closeHowto}>{t("howto.startPlaying")}</button>}
         </div>
       </nav>
     </div>

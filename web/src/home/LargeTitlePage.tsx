@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import YourTablePill from "../queue/YourTablePill";
+import { useT } from "../i18n";
 import { useLargeTitle } from "./useLargeTitle";
 import { usePullToRefresh } from "./usePullToRefresh";
 
@@ -24,6 +25,7 @@ export default function LargeTitlePage({ className, scroller, title, phone, onRe
   className: string; scroller: RefObject<HTMLDivElement | null>; title: string; phone: boolean;
   onRefresh: () => Promise<unknown>; children: ReactNode;
 }) {
+  const t = useT();
   const { bar, title: titleRef, collapsed } = useLargeTitle(scroller, phone);
   const { phase, animate } = usePullToRefresh(scroller, onRefresh, phone);
   let cls = `screen home-page ${className}`;
@@ -44,7 +46,7 @@ export default function LargeTitlePage({ className, scroller, title, phone, onRe
       ) : null}
       {phone ? (
         <div className="ptr" role={phase === "refreshing" ? "status" : undefined}
-             aria-label={phase === "refreshing" ? "Refreshing" : undefined} aria-hidden={phase !== "refreshing"}>
+             aria-label={phase === "refreshing" ? t("home.refreshing") : undefined} aria-hidden={phase !== "refreshing"}>
           <Spinner />
         </div>
       ) : null}

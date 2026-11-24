@@ -9,6 +9,7 @@ import { type AuthState, useAuth } from "./auth";
 import type { HandCard, Trump } from "./protocol";
 import { leadSuit } from "./followRules";
 import { type EffSuit, orderingFor } from "./offline/engine";
+import { t } from "./i18n";
 
 export const PLAYS_KEY = "shengji.plays";
 /** Plays of your own after which the coach no longer shows. */
@@ -118,7 +119,8 @@ export function useCoach(): [boolean, () => void] {
   return [on, () => setCoachSetting(on ? "off" : "on")];
 }
 
-const SUIT_WORD: Record<EffSuit, string> = { S: "♠", H: "♥", D: "♦", C: "♣", T: "trump" };
+const SUIT_WORD: Record<Exclude<EffSuit, "T">, string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const suitWord = (eff: EffSuit) => (eff === "T" ? t("table.trumpWord") : SUIT_WORD[eff]);
 
 function effOf(code: string, trump: Trump): EffSuit | null {
   const suit = trump.suit === "NT" || trump.suit === null ? null : trump.suit;
@@ -137,28 +139,26 @@ export interface Coach {
   follow: Set<number> | null;
 }
 
-const cards = (n: number) => `${n} ${n === 1 ? "card" : "cards"}`;
-
 /** What to tell a newcomer on their turn: leading, or following `lead`. */
 export function coachFor(hand: readonly HandCard[], lead: readonly string[] | null, trump: Trump | null): Coach {
   if (!lead || lead.length === 0) {
-    return { text: "Your lead: tap a card, then Play", follow: null };
+    return { text: t("table.coachLead"), follow: null };
   }
   const need = lead.length;
   const eff = leadSuit(lead, trump);
   if (eff === null || trump === null) {
-    return { text: `Tap ${cards(need)}, then Play`, follow: null };
+    return { text: t("table.coachTap", { n: need }), follow: null };
   }
-  const word = SUIT_WORD[eff];
+  const suit = suitWord(eff);
   const inSuit = hand.filter((c) => effOf(c.code, trump) === eff).map((c) => c.id);
   if (inSuit.length >= need) {
-    return { text: `Tap ${need} ${word} ${need === 1 ? "card" : "cards"}, then Play`, follow: new Set(inSuit) };
+    return { text: t("table.coachTapSuit", { n: need, suit }), follow: new Set(inSuit) };
   }
   if (inSuit.length > 0) {
     return {
-      text: `Tap your ${inSuit.length} ${word} and ${cards(need - inSuit.length)} more, then Play`,
+      text: t("table.coachTapShort", { count: inSuit.length, suit, n: need - inSuit.length }),
       follow: null,
     };
   }
-  return { text: `No ${word} left: tap any ${cards(need)}, then Play`, follow: null };
+  return { text: t("table.coachVoid", { suit, n: need }), follow: null };
 }

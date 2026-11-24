@@ -10,9 +10,13 @@ import { useSyncExternalStore } from "react";
 import { NAME_ADJECTIVES, NAME_NOUNS } from "./randomName";
 import { telemetry, type SigninFrom } from "./telemetry";
 import { getSavedName, saveName } from "./ws";
+import { t } from "./i18n";
 
-/** What a guest's identity line says, where an account shows its rating. */
-export const GUEST_LINE = "Guest";
+/** What a guest's identity line says, where an account shows its rating,
+ *  in the current language. */
+export function guestLine(): string {
+  return t("common.guest");
+}
 
 /** Storage key of the chosen-name mark kept beside `shengji.name`. */
 export const NAME_CHOSEN_KEY = "shengji.nameChosen";

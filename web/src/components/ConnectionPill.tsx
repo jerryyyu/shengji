@@ -5,6 +5,7 @@ import { offlineGame, offlineOffered } from "./offlineGame";
 import { lastInputModality } from "../inputModality";
 import { trapTab } from "../queue/Sheet";
 import { isStalled, subscribeStalled } from "../link";
+import { useT } from "../i18n";
 
 /** A short blip reconnects on its own; Retry joins the pill only after this. */
 export const RETRY_AFTER_MS = 10_000;
@@ -57,20 +58,21 @@ interface Props {
  *  screen after LOST_AFTER_MS. While the socket is open the table may show
  *  SeatHeldPill in the same place; this shows nothing. */
 export default function ConnectionPill({ status, inRoom, inGame, pill = true, ended = null }: Props) {
+  const t = useT();
   const [phase, retry] = useConnPhase(status);
   if (ended) return <ConnectionLost inGame={false} onRetry={ended.onLeave} ended={ended.title} />;
   if (phase === "open") return null;
   if (phase === "lost") return <ConnectionLost inGame={inGame} onRetry={retry} />;
   if (!pill) return null;
   // the first connect of a page load is not a drop: no socket has opened yet
-  const label = conn.generation > 0 ? "Reconnecting…" : "Connecting…";
+  const label = conn.generation > 0 ? t("roundend.connReconnecting") : t("roundend.connConnecting");
   return (
     <div className={`reconnect-banner${inRoom ? "" : " at-home"}${phase === "retry" ? " with-retry" : ""}`}
          role="status">
       <span className="conn-dot" />
       <span className="reconnect-text">{label}</span>
       {phase === "retry" ? (
-        <button type="button" className="reconnect-retry" onClick={retry}>Retry</button>
+        <button type="button" className="reconnect-retry" onClick={retry}>{t("roundend.connRetry")}</button>
       ) : null}
     </div>
   );
@@ -79,11 +81,12 @@ export default function ConnectionPill({ status, inRoom, inGame, pill = true, en
 /** The connection pill's other state, in the same place: the socket is
  *  open and a bot plays your seat until you are back. */
 export function SeatHeldPill({ onBack }: { onBack: () => void }) {
+  const t = useT();
   return (
     <div className="reconnect-banner seat-held with-retry" role="status">
       <span className="conn-dot" />
-      <span className="reconnect-text">A bot holds your seat</span>
-      <button type="button" className="reconnect-retry" onClick={onBack}>I’m back</button>
+      <span className="reconnect-text">{t("roundend.connSeatHeld")}</span>
+      <button type="button" className="reconnect-retry" onClick={onBack}>{t("roundend.connBack")}</button>
     </div>
   );
 }
@@ -126,6 +129,7 @@ function restoreFocus(previous: Element | null): void {
  *  inert, and Escape does not dismiss it, since only a connection or Retry
  *  ends it. On closing, focus goes back to where it was. */
 function ConnectionLost({ inGame, onRetry, ended = null }: { inGame: boolean; onRetry: () => void; ended?: string | null }) {
+  const t = useT();
   const ref = useRef<HTMLDialogElement>(null);
   const retryRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -156,12 +160,12 @@ function ConnectionLost({ inGame, onRetry, ended = null }: { inGame: boolean; on
               trapTab(e.nativeEvent, ref.current!);
             }}>
       <div className="conn-lost-mark" aria-hidden="true">!</div>
-      <h1 className="conn-lost-title" id={titleId}>{ended ?? "No connection"}</h1>
-      {inGame ? <p className="conn-lost-body" id={bodyId}>A bot holds your seat.</p> : null}
-      <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>{ended ? "Leave" : "Retry"}</button>
+      <h1 className="conn-lost-title" id={titleId}>{ended ?? t("roundend.connNone")}</h1>
+      {inGame ? <p className="conn-lost-body" id={bodyId}>{t("roundend.connSeatHeldBody")}</p> : null}
+      <button ref={retryRef} type="button" className="btn gold conn-lost-retry" onClick={onRetry}>{ended ? t("roundend.connLeave") : t("roundend.connRetry")}</button>
       {offlineOffered() && !ended ? (
         <button type="button" className="btn conn-lost-bots" onClick={() => offlineGame.startFromPlay()}>
-          Play offline with the bots
+          {t("roundend.connPlayOffline")}
         </button>
       ) : null}
     </dialog>

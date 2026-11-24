@@ -30,6 +30,7 @@ import { chosenGuestName } from "./guestName";
 import { keychainGet } from "./keychain";
 import { telemetry } from "./telemetry";
 import { deviceIdiom } from "./native";
+import { useT } from "./i18n";
 
 /** How long a Play, Duo or Join waits for the device's sign-in. */
 export const INTENT_MS = 6000;
@@ -161,13 +162,14 @@ export function beforeOnlineSetup(action: () => void, stillWanted: () => boolean
 /** The one line saying where the app's own account lives, by the device the
  *  shell reports: "On this iPad only" on an iPad, else "On this iPhone only". */
 export function useOnThisDeviceLine(): string {
+  const t = useT();
   const [pad, setPad] = useState(false);
   useEffect(() => {
     let live = true;
     void deviceIdiom().then((i) => { if (live) setPad(i === "pad"); });
     return () => { live = false; };
   }, []);
-  return `On this ${pad ? "iPad" : "iPhone"} only`;
+  return t(pad ? "me.onDevice.ipad" : "me.onDevice.iphone");
 }
 
 /** Test seam: forget what this page learned. */

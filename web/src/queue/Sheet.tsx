@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
+import { useT } from "../i18n";
 import { prefersReducedMotion } from "../motion";
 import { useSheetDrag } from "./useSheetDrag";
 
@@ -97,11 +98,14 @@ function exitGhost(layer: HTMLElement): HTMLElement | null {
  *  is inert, Tab cycles inside it, and on closing focus goes back to the
  *  control that opened it. A sheet that replaces another in the same render
  *  takes its place without sliding and inherits its opener. */
-export default function Sheet({ title, onClose, children, className = "", cancel = "Cancel",
+export default function Sheet({ title, onClose, children, className = "", cancel: cancelWord,
                                dismissible = true }: {
   title: string; onClose: () => void; children: ReactNode; className?: string;
+  /** Cancel's word; null for none. */
   cancel?: string | null; dismissible?: boolean;
 }) {
+  const t = useT();
+  const cancel = cancelWord === undefined ? t("queue.cancel") : cancelWord;
   const titleId = useId();
   const layer = useRef<HTMLDivElement | null>(null);
   const box = useRef<HTMLDivElement | null>(null);

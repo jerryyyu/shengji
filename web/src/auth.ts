@@ -11,6 +11,7 @@ import { isNative } from "./native";
 import { nativeAppleSignOut, nativeGoogleSignOut } from "./nativeAuth";
 import { telemetry } from "./telemetry";
 import { conn } from "./ws";
+import { t } from "./i18n";
 
 export interface AuthUser {
   /** The profile name: Google's, or the name Apple sent on the first sign-in. */
@@ -114,15 +115,16 @@ export async function fetchMe(): Promise<AuthUser | null> {
 
 export const DISPLAY_NAME_MAX = 20;
 
-/** The server's refusal codes (`PATCH /api/me` → 400) and what to tell the player. */
+/** The server's refusal codes (`PATCH /api/me` → 400) and what to tell the
+ *  player, each read in the current language when it is looked up. */
 export const NAME_MESSAGES: Record<string, string> = {
-  empty: "Enter a name.",
-  too_long: `Up to ${DISPLAY_NAME_MAX} characters.`,
-  control_chars: "No line breaks or control characters.",
-  reserved: "That name is reserved.",
-  not_allowed: "That name is not allowed.",
-  not_a_string: "Enter a name.",
-  taken: "That name is taken.",
+  get empty() { return t("home.nameEmpty"); },
+  get too_long() { return t("home.nameTooLong", { n: DISPLAY_NAME_MAX }); },
+  get control_chars() { return t("home.nameControl"); },
+  get reserved() { return t("home.nameReserved"); },
+  get not_allowed() { return t("home.nameNotAllowed"); },
+  get not_a_string() { return t("home.nameEmpty"); },
+  get taken() { return t("home.nameTaken"); },
 };
 
 const RESERVED = new Set(["bot", "system", "admin", "dealer", "moderator", "server"]);
@@ -150,7 +152,7 @@ export class NameRejected extends Error {
   reason: string;
 
   constructor(reason: string) {
-    super(NAME_MESSAGES[reason] ?? `Could not save the name (${reason}).`);
+    super(NAME_MESSAGES[reason] ?? t("home.nameNotSaved", { code: reason }));
     this.reason = reason;
   }
 }
@@ -164,8 +166,8 @@ export async function updateDisplayName(name: string | null): Promise<AuthUser> 
     body: JSON.stringify({ display_name: name }),
   });
   if (status === 400 && body?.detail) throw new NameRejected(body.detail);
-  if (status === 429) throw new Error("Too many changes; try again in a minute.");
-  if (status !== 200 || !body) throw new Error(`Could not save the name (${status})`);
+  if (status === 429) throw new Error(t("home.tooManyChanges"));
+  if (status !== 200 || !body) throw new Error(t("home.nameNotSavedStatus", { n: status }));
   return toUser(body);
 }
 
@@ -183,7 +185,7 @@ export class AccountExists extends Error {
   holder: string;
 
   constructor(holder: string) {
-    super(`Switch to ${holder}?`);
+    super(t("home.switchTitle", { name: holder }));
     this.holder = holder;
   }
 }
@@ -195,10 +197,10 @@ type SignInBody = AuthUser & { detail?: unknown; device_token?: string };
 async function signInAnswer(status: number, body: SignInBody | null): Promise<AuthUser> {
   const detail = body?.detail as { code?: unknown; name?: unknown } | string | undefined;
   if (status === 409 && typeof detail === "object" && detail?.code === "account_exists") {
-    throw new AccountExists(typeof detail.name === "string" && detail.name ? detail.name : "Player");
+    throw new AccountExists(typeof detail.name === "string" && detail.name ? detail.name : t("home.holderFallback"));
   }
   if (status !== 200 || !body) {
-    throw new Error(typeof detail === "string" ? detail : `Sign-in failed (${status})`);
+    throw new Error(typeof detail === "string" ? detail : t("home.signInFailedStatus", { n: status }));
   }
   if (typeof body.device_token === "string" && body.device_token && deviceAccountsApply()) {
     await keepDeviceSecret(body.device_token);
@@ -253,9 +255,9 @@ export async function logout(deviceToken: string | null = null): Promise<void> {
       ? { method: "POST", headers: { Authorization: `Device ${deviceToken}` } }
       : { method: "POST" }));
   } catch {
-    throw new Error("Sign-out failed: no connection. Try again.");
+    throw new Error(t("home.signOutOffline"));
   }
-  if (status !== 200) throw new Error(`Sign-out failed (${status}). Try again.`);
+  if (status !== 200) throw new Error(t("home.signOutStatus", { n: status }));
 }
 
 /** `DELETE /api/me`: remove the account for good. Resolves once the server
@@ -266,10 +268,10 @@ export async function deleteAccount(): Promise<void> {
   try {
     ({ status } = await api("/api/me", { method: "DELETE" }));
   } catch {
-    throw new Error("Could not delete the account: no connection. Try again.");
+    throw new Error(t("home.deleteOffline"));
   }
-  if (status === 429) throw new Error("Too many changes; try again in a minute.");
-  if (status !== 204) throw new Error(`Could not delete the account (${status}). Try again.`);
+  if (status === 429) throw new Error(t("home.tooManyChanges"));
+  if (status !== 204) throw new Error(t("home.deleteStatus", { n: status }));
 }
 
 /** The display-name default for a signed-in player who typed none. */
@@ -477,7 +479,7 @@ export function settleKeychain(): Promise<boolean> {
  *  does not confirm after the removal, the secret goes back to the
  *  Keychain, or, if it refuses, stays in memory for the retry. */
 async function revokeHere(): Promise<void> {
-  const refused = new Error("Sign-out failed. Try again.");
+  const refused = new Error(t("home.signOutFailed"));
   let device: string | null = unsaved;
   if (device === null) {
     try {
@@ -539,12 +541,12 @@ export function loadGis(): Promise<GoogleAccountsId> {
     script.onload = () => {
       const id = window.google?.accounts?.id;
       if (id) resolve(id);
-      else reject(new Error("Google Identity Services did not initialise"));
+      else reject(new Error(t("home.gisInit")));
     };
     script.onerror = () => {
       gisLoading = null;
       script.remove();
-      reject(new Error("Could not load Google sign-in"));
+      reject(new Error(t("home.gisLoad")));
     };
     document.head.appendChild(script);
   });

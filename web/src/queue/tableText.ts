@@ -1,4 +1,5 @@
 // What the table panel says, as plain functions of the queue's state.
+import { isZh, t } from "../i18n";
 import { clock, namesAt, sharedTable, yourReady } from "./store";
 import type { OfferView, Presence, QueueView, TableFrame } from "./store";
 import type { FirstJoinerMsg, QueueMode } from "./messages";
@@ -32,10 +33,35 @@ export function shortName(name: string): string {
   return n.length > NAME_CHARS ? `${n.slice(0, NAME_CHARS)}…` : n;
 }
 
-/** "Mei", "Mei & Sam", "Mei, Sam & Li". */
+/** "Mei", "Mei & Sam", "Mei, Sam & Li" (zh "Mei、Sam 和 Li"). */
 export function nameList(names: string[]): string {
   if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+  return `${names.slice(0, -1).join(t("queue.list.comma"))}${t("queue.list.amp")}${names[names.length - 1]}`;
+}
+
+/** "Mei and Sam", "Mei, Sam and Li" (zh "Mei、Sam 和 Li"). */
+function andList(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(t("queue.list.comma"))}${t("queue.list.and")}${names[names.length - 1]}`;
+}
+
+/** A seat label's parts, as a screen reader hears them: "Alice, ready, your team". */
+export function labelList(parts: (string | null | false | undefined)[]): string {
+  return parts.filter(Boolean).join(isZh() ? "，" : ", ");
+}
+
+/** A seat's team, as its label says it. */
+export const teamWord = (ours: boolean): string => t(ours ? "queue.seat.yourTeam" : "queue.seat.otherTeam");
+
+/** The seat labels that name the seat's team, one message per team. */
+type Sided = "queue.seat.named" | "queue.seat.playing" | "queue.seat.open" | "queue.seat.openSit"
+  | "queue.seat.openMove" | "queue.seat.openMoveOther" | "queue.seat.bot" | "queue.seat.botSit"
+  | "queue.seat.botN" | "queue.seat.awaySit" | "queue.seat.held" | "queue.seat.openAwaySit";
+
+/** `base`'s label for a seat on your team (`ours`) or the other. */
+export function seatLabel(base: Sided, ours: boolean, params: { name?: string; n?: number } = {}): string {
+  const key: `${Sided}.ours` | `${Sided}.theirs` = ours ? `${base}.ours` : `${base}.theirs`;
+  return t(key, params);
 }
 
 /** The people an offer's Join sits you with: those playing and staying.
@@ -46,7 +72,7 @@ export function offerPeople(o: OfferView): string[] {
 
 export function joinTitle(o: OfferView): string {
   const people = offerPeople(o).map(shortName);
-  return people.length ? `Join ${nameList(people)}` : "Join this table";
+  return people.length ? t("queue.title.join", { name: nameList(people) }) : t("queue.title.joinThis");
 }
 
 /** When your own table's bots sit, as a local time: never while you wait
@@ -65,40 +91,40 @@ function holdsSeat(q: QueueView): boolean {
 /** Your own table's title: "Your table", "Your Duo" while the partner
  *  seat is held, or "You and Alice" once your Duo partner sits. */
 export function ownTitle(q: QueueView, partner: string | null): string {
-  if (partner) return `You and ${shortName(partner)}`;
-  return q.duo && holdsSeat(q) ? "Your Duo" : "Your table";
+  if (partner) return t("queue.title.youAnd", { name: shortName(partner) });
+  return t(q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
 }
 
 /** A Duo's own-table button: Start until you tap it, then who it waits
  *  for, then the search the pair is in. */
 export function duoStartLabel(q: QueueView, partner: string): string {
-  if (!yourReady(q)) return "Start";
-  return (q.duoReady ?? 0) >= 2 ? "Finding a table" : `Waiting for ${shortName(partner)}`;
+  if (!yourReady(q)) return t("queue.btn.start");
+  return (q.duoReady ?? 0) >= 2 ? t("queue.btn.finding") : t("queue.btn.waitingFor", { name: shortName(partner) });
 }
 
 /** A shared table's one status line: who is ready. The bots' countdown is
  *  the ring on the Start button, never a line. */
 export function sharedStatusLine(f: TableFrame): string {
   const taken = f.seats.filter((s) => s.state === "taken");
-  return `${taken.filter((s) => s.ready).length} of ${taken.length} ready`;
+  return t("queue.status.ready", { n: taken.filter((s) => s.ready).length, count: taken.length });
 }
 
 /** "You and Alice", "You, Alice and Li". */
 export function sharedTitle(f: TableFrame): string {
   const others = namesAt(f).map(shortName);
-  if (others.length === 0) return "Your table";
-  if (others.length === 1) return `You and ${others[0]}`;
-  return `You, ${others.slice(0, -1).join(", ")} and ${others[others.length - 1]}`;
+  if (others.length === 0) return t("queue.title.yourTable");
+  if (others.length === 1) return t("queue.title.youAnd", { name: others[0] });
+  return t("queue.title.youAndMany", { name: andList(others) });
 }
 
 /** The Start button's words: Start until you tap it, then who the table is
  *  waiting for. */
 export function startLabel(f: TableFrame): string {
-  if (!f.your_ready) return "Start";
+  if (!f.your_ready) return t("queue.btn.start");
   const w = f.waiting_for ?? [];
-  if (w.length === 0) return "Starting…";
-  if (w.length === 1) return `Waiting for ${shortName(w[0])}`;
-  return `Waiting for ${w.length} players`;
+  if (w.length === 0) return t("queue.btn.starting");
+  if (w.length === 1) return t("queue.btn.waitingFor", { name: shortName(w[0]) });
+  return t("queue.btn.waitingForN", { n: w.length });
 }
 
 /** Where the person at `from` may go: an empty seat that is not held, and
@@ -113,7 +139,7 @@ export function moveTargets(seats: ({ pair?: boolean } | null)[], held: number[]
  *  or a Duo's two names. */
 export function moveQuestion(names: string[]): string {
   const who = names.map(shortName);
-  return `Move ${who.length > 1 ? `${who[0]} and ${who[1]}` : who[0]} here?`;
+  return t("queue.move.title", { name: who.length > 1 ? andList(who.slice(0, 2)) : who[0] });
 }
 
 /** The one sentence the live region speaks when the panel changes state;
@@ -121,25 +147,26 @@ export function moveQuestion(names: string[]): string {
 export function announcement(q: QueueView): string {
   const kind = panelKind(q);
   if (kind === "join" && q.offer) {
-    return `Table with people. ${joinTitle(q.offer)}.`;
+    return t("queue.say.offer", { name: joinTitle(q.offer) });
   }
   if (kind === "own" && q.duoReady !== null && q.partyId) {
     const partner = q.party?.members.find((m) => !m.you)?.name ?? null;
-    return `${ownTitle(q, partner)}. ${q.duoReady} of 2 ready.`;
+    return t("queue.say.duoReady", { name: ownTitle(q, partner), n: q.duoReady });
   }
   if (kind === "own") {
-    const who = q.partyId ? "Your Duo's table" : q.duo && holdsSeat(q) ? "Your Duo" : "Your table";
-    return `${who}. Waiting for players.${q.waitPlayers ? " No timer." : ""}`;
+    const who = t(q.partyId ? "queue.say.duoTable" : q.duo && holdsSeat(q) ? "queue.title.yourDuo" : "queue.title.yourTable");
+    return t(q.waitPlayers ? "queue.say.ownNoTimer" : "queue.say.own", { name: who });
   }
   if (kind === "shared" && q.stillHereUntil !== null) {
-    return "Tap I’m back to stay at the table.";
+    return t("queue.say.stillHere");
   }
   if (kind === "shared" && q.frame) {
     const f = q.frame;
-    const after = f.your_ready ? ` ${startLabel(f)}.` : "";
-    return `Table. ${sharedTitle(f)}. ${sharedStatusLine(f)}.${after}`;
+    const said = t("queue.say.shared", { name: sharedTitle(f), n: f.seats.filter((s) => s.state === "taken" && s.ready).length,
+                                         count: f.seats.filter((s) => s.state === "taken").length });
+    return f.your_ready ? `${said}${isZh() ? "" : " "}${startLabel(f)}${isZh() ? "。" : "."}` : said;
   }
-  if (kind === "elsewhere") return "Your table is open on another device.";
+  if (kind === "elsewhere") return t("queue.title.elsewhere");
   return "";
 }
 
@@ -151,32 +178,32 @@ export interface PresencePart { text: string; hl?: boolean }
  *  and people playing. It is global, so it promises no seat; with no counts
  *  from the server, nobody is about. */
 export function presenceParts(p: Presence | null, mode: QueueMode = "ranked"): PresencePart[] {
-  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-  if (p && p.waiting >= 1) return [{ text: `${n(p.waiting, "person is", "people are")} waiting for a game` }];
+  if (p && p.waiting >= 1) return [{ text: t("queue.presence.waiting", { n: p.waiting }) }];
   if (p && p.tables >= 1) {
     const ranked = p.ranked ?? 0;
     const casual = p.casual ?? 0;
-    const playing = { text: ` · ${p.playing} playing` };
+    const playing = { text: t("queue.presence.playing", { n: p.playing }) };
     if (ranked >= 1 && casual >= 1) {
-      return [{ text: `${n(p.tables, "table has", "tables have")} a seat · ` },
-              { text: `${ranked} ranked`, hl: mode === "ranked" }, { text: ", " },
-              { text: `${casual} casual`, hl: mode === "casual" }, playing];
+      return [{ text: t("queue.presence.tablesSplit", { n: p.tables }) },
+              { text: t("queue.presence.ranked", { n: ranked }), hl: mode === "ranked" },
+              { text: t("queue.presence.comma") },
+              { text: t("queue.presence.casual", { n: casual }), hl: mode === "casual" }, playing];
     }
-    const kind = ranked >= 1 ? "ranked " : casual >= 1 ? "casual " : "";
-    return [{ text: `${p.tables} ${kind}${p.tables === 1 ? "table has" : "tables have"} a seat` }, playing];
+    const key = ranked >= 1 ? "queue.presence.tablesRanked" : casual >= 1 ? "queue.presence.tablesCasual"
+      : "queue.presence.tables";
+    return [{ text: t(key, { n: p.tables }) }, playing];
   }
-  return [{ text: "Nobody is playing right now" }];
+  return [{ text: t("queue.presence.nobody") }];
 }
 
 /** The one toast a game started alone gets when its first newcomer sits. */
 export function firstJoinerText(m: Pick<FirstJoinerMsg, "name" | "move_secs" | "round_end">): string {
-  const who = m.round_end ? `${m.name} joins your table from next round.` : `${m.name} joined your table.`;
-  if (m.move_secs === null) return who;
-  return m.round_end ? `${who} Moves are timed from next round, ${m.move_secs} s each.`
-    : `${who} Moves are now timed, ${m.move_secs} s each.`;
+  if (m.move_secs === null) return t(m.round_end ? "queue.first.joinsNext" : "queue.first.joined", { name: m.name });
+  return t(m.round_end ? "queue.first.joinsNextTimed" : "queue.first.joinedTimed",
+           { name: m.name, seconds: m.move_secs });
 }
 
 /** The idle-seat status, one line: the countdown until the table drops you. */
 export function stillHereLine(until: number, now: number): string {
-  return `You leave the table in ${clock(Math.max(0, until - now), true)}.`;
+  return t("queue.status.stillHere", { seconds: clock(Math.max(0, until - now), true) });
 }

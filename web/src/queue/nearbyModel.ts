@@ -2,14 +2,14 @@
 // nearby code's Join panel (`fromNearbyJoin`) and the offline table's Nearby
 // switch (`nearbySwitch`). Part of the nearby UI, loaded only where the app
 // binary offers nearby play (nearbyGate.ts).
+import { t } from "../i18n";
 import type { NearbyJoin } from "../nearbyJoin";
 import { NEARBY_COPY } from "../offline/server/nearby/copy";
 import { nearbyChoices, nearbyStartSeat } from "../joinSeats";
 import type { RoomMsg } from "../protocol";
 import { BOT_FILL_MS } from "./store";
-import { teamWord } from "./tableModel";
 import type { ModelSeat, NearbySwitch, Ring, TableModel } from "./tableModel";
-import { shortName } from "./tableText";
+import { labelList, seatLabel, shortName, teamWord } from "./tableText";
 
 /** The offline table's Nearby switch: `on` while the table is open to nearby
  *  phones; `line`, why it fell back off (the denied line links to Settings). */
@@ -35,31 +35,34 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
   const seats = [0, 1, 2, 3].map((at): ModelSeat => {
     const p = room.players.find((x) => x.seat === at);
     const ours = (at - room.you + 4) % 2 === 0;
-    if (!p) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    if (!p) return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours) };
     const tick = ready.has(at);
-    const sub = !p.connected ? "Reconnecting" : "";
+    const sub = !p.connected ? t("queue.seat.reconnecting") : "";
     if (at === room.you) {
-      return { at, look: "you", name: "You", sub: "", tick,
-               label: ["You", tick ? "ready" : null].filter(Boolean).join(", ") };
+      return { at, look: "you", name: t("queue.seat.you"), sub: "", tick,
+               label: labelList([t("queue.seat.you"), tick && t("queue.seat.ready")]) };
     }
     return { at, look: "person", name: shortName(p.name), sub, tick,
-             label: [p.name, tick ? "ready" : null, sub || null, teamWord(ours)].filter(Boolean).join(", ") };
+             label: labelList([p.name, tick && t("queue.seat.ready"), sub, teamWord(ours)]) };
   });
   const names = others.map((p) => shortName(p.name));
-  const title = names.length === 0 ? "Your table"
-    : names.length === 1 ? `You and ${names[0]}`
-    : `You, ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const title = names.length === 0 ? t("queue.title.yourTable")
+    : names.length === 1 ? t("queue.title.youAnd", { name: names[0] })
+    : t("queue.title.youAndMany", {
+      name: `${names.slice(0, -1).join(t("queue.list.comma"))}${t("queue.list.and")}${names[names.length - 1]}` });
   const waitingFor = people.filter((p) => p.connected && !ready.has(p.seat)).map((p) => shortName(p.name));
-  const label = !youReady ? "Start"
-    : waitingFor.length === 0 ? "Starting…"
-    : waitingFor.length === 1 ? `Waiting for ${waitingFor[0]}`
-    : `Waiting for ${waitingFor.length} players`;
+  const label = !youReady ? t("queue.btn.start")
+    : waitingFor.length === 0 ? t("queue.btn.starting")
+    : waitingFor.length === 1 ? t("queue.btn.waitingFor", { name: waitingFor[0] })
+    : t("queue.btn.waitingForN", { n: waitingFor.length });
   const ring: Ring | null = botsAt !== null && botsAt > now ? { left: (botsAt - now) / 1000, total: BOT_FILL_MS / 1000 } : null;
   return {
     kind: "offline",
     tag: "Offline",
     title,
-    status: others.length ? { text: `${people.filter((p) => ready.has(p.seat)).length} of ${people.length} ready` } : undefined,
+    status: others.length
+      ? { text: t("queue.status.ready", { n: people.filter((p) => ready.has(p.seat)).length, count: people.length }) }
+      : undefined,
     seats,
     you: room.you,
     // the host picks the Bots, as an online casual table's opener does;
@@ -71,7 +74,7 @@ export function nearbyRoomModel(room: RoomMsg, { now, botsAt }: { now: number; b
     chat: null,
     primary: { label, disabled: youReady && waitingFor.length === 0, ring,
                act: { type: "nearby_ready", on: !youReady }, waiting: youReady },
-    secondary: { label: "Leave", disabled: false, act: { type: "offline_leave" } },
+    secondary: { label: t("queue.btn.leave"), disabled: false, act: { type: "offline_leave" } },
     leave: { kind: "queue", others: [] },
   };
 }
@@ -87,13 +90,13 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
   const seats = peek ? [0, 1, 2, 3].map((at): ModelSeat => {
     const sd = peek.seats.find((s) => s.seat === at);
     const ours = (at - (j.seat ?? 0) + 4) % 2 === 0;
-    if (at === j.seat) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}`,
+    if (at === j.seat) return { at, look: "you", picked: true, name: t("queue.seat.you"), sub: "", label: t("queue.seat.youOurs"),
                                 ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     if (!sd) {
-      return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`,
+      return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours),
                ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
     }
-    return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}`,
+    return { at, look: "person", name: shortName(sd.name), sub: "", label: seatLabel("queue.seat.named", ours, { name: sd.name }),
              ...(choices.has(at) && j.step === "panel" ? { act: { type: "code_pick", seat: at } as const } : {}) };
   }) : null;
   const status = j.step === "looking" ? { text: j.linked ? NEARBY_COPY.connecting : NEARBY_COPY.browsing }
@@ -106,7 +109,7 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
   return {
     kind: "join-code",
     tag: "Offline",
-    title: `Join ${j.code}`,
+    title: t("queue.title.join", { name: j.code }),
     status,
     seats,
     you: j.seat ?? 0,
@@ -116,9 +119,9 @@ export function fromNearbyJoin(j: NearbyJoin): TableModel {
     rows: null, waitSwitch: null, chat: null,
     primary: retry
       ? { label: NEARBY_COPY.tryAgain, disabled: false, act: { type: "nearby_again" } }
-      : { label: j.step === "joining" ? "Joining…" : "Join", disabled: j.step !== "panel" || j.seat === null,
+      : { label: t(j.step === "joining" ? "queue.btn.joining" : "queue.btn.join"), disabled: j.step !== "panel" || j.seat === null,
           busy: j.step === "joining" || j.step === "looking", act: { type: "code_join" } },
-    secondary: { label: "Not now", disabled: false, act: { type: "code_cancel" } },
+    secondary: { label: t("queue.btn.notNow"), disabled: false, act: { type: "code_cancel" } },
     leave: { kind: "queue", others: [] },
   };
 }

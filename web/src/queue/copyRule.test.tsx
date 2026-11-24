@@ -1,13 +1,15 @@
 // The copy rule (docs/design/FLOWS.md, "Copy rule"), held on every kind of the
 // table panel: a switch or setting row is its label only, a panel carries at
 // most one status line, and a countdown is the ring, never clock text.
-// copyCuts.test.ts keeps the strings the rule cut out of the source.
+// copyCuts.test.ts keeps the strings the rule cut out of the source. Every
+// check runs in English and in Simplified Chinese.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
 import { framer } from "./testFrames";
+import { setLanguageChoice } from "../i18n";
 
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -47,6 +49,14 @@ function expectCopyRule(p: Element | null, kind: string) {
     .toBeLessThanOrEqual(1);
   expect(clockText(p!), `${kind}: a countdown is the ring, not clock text`).toBeNull();
 }
+
+// the rule holds in every language the app speaks: zh must not add a line
+describe.each(["en", "zh-Hans"] as const)("in %s", (lang) => {
+beforeEach(() => setLanguageChoice(lang));
+afterEach(() => setLanguageChoice("system"));
+it("runs in its language", () => {
+  expect(document.documentElement.lang).toBe(lang);
+});
 
 describe("online panels", () => {
   class FakeWS {
@@ -312,4 +322,5 @@ describe("nearby panels and the code box's one exception", () => {
     expect(lines(), "no nearby play: no line, and the box stops at four").toEqual([]);
     expect(host.querySelector("input")!.maxLength).toBe(4);
   });
+});
 });

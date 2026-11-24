@@ -6,7 +6,8 @@ import { DUR, EASE, canAnimate, centerDelta, clamp, flightKeyframes, sweepKeyfra
 import Card from "./Card";
 import { winningSeat } from "../followRules";
 import type { HandRects } from "./Hand";
-import { declarationWhat, declaredBy } from "../tableCopy";
+import { declarationTag } from "../tableCopy";
+import { useT } from "../i18n";
 
 type SidePos = "bottom" | "left" | "top" | "right";
 
@@ -89,6 +90,7 @@ function handOrigin(rects: HandRects | undefined, codes: string[], inHand: Set<n
 }
 
 export default function TrickArea({ state, trick, winner, declaration, handRects, sweepAfterMs = null }: TrickAreaProps) {
+  const t = useT();
   const areaRef = useRef<HTMLDivElement>(null);
   // Plays already on the table at the last non-empty render; only a play not
   // in this set flies in. Null until the first render, so a table restored
@@ -173,8 +175,8 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
               ))}
             </div>
             <div className="trick-tag">
-              {isLeader ? <span className="lead-tag">lead</span> : null}
-              {isWinner ? <span className="win-tag">wins</span> : null}
+              {isLeader ? <span className="lead-tag">{t("table.leadTag")}</span> : null}
+              {isWinner ? <span className="win-tag">{t("table.winsTag")}</span> : null}
             </div>
           </div>
         );
@@ -189,7 +191,7 @@ export default function TrickArea({ state, trick, winner, declaration, handRects
             ))}
           </div>
           <div className="trick-tag">
-            <span className="declare-tag">{declaredBy(declaration.seat, state)} {declarationWhat(declaration.cards)}</span>
+            <span className="declare-tag">{declarationTag(declaration.seat, declaration.cards, state)}</span>
           </div>
         </div>
       ) : null}

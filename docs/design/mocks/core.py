@@ -537,7 +537,7 @@ def me_page(u, signed):
     head = (f'<div style="display:flex;align-items:center;gap:12px"><span style="width:56px;height:56px;border-radius:28px;background:#2f3a4d;display:flex;'
             f'align-items:center;justify-content:center;font-size:20px;font-weight:700">{u[2]}</span><div><div style="font-size:20px;font-weight:700">{u[0]}</div>'
             f'<div style="font-size:13px;color:#9aa3b2">{u[1]}</div></div></div>')
-    settings = ghead("Settings") + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("How to play")])
+    settings = ghead("Settings") + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("Language"), chev("How to play")])
     if signed:
         segm = ('<div style="display:flex;padding:3px;border-radius:12px;background:#11141a;border:1px solid #333b49">'
                 '<span style="flex:1;text-align:center;padding:7px 0;border-radius:9px;font-size:14px;font-weight:700;background:#2f3a4d">Stats</span>'
@@ -573,7 +573,7 @@ def f9_me():
     ipad = wide('<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:28px">'
                 '<div style="display:flex;flex-direction:column;gap:14px">' + me_page(SIGNED, True).split(ghead("Settings"))[0] + '</div>'
                 '<div style="display:flex;flex-direction:column;gap:14px">' + ghead("Settings")
-                + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("How to play")]) + grp([chev("Edit name"), chev("Sign out")]) + '</div></div>',
+                + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("Language"), chev("How to play")]) + grp([chev("Edit name"), chev("Sign out")]) + '</div></div>',
                 active="Me", w=1024, h=768)
     return [
         ("Me: three tabs everywhere, one settings list, one name control", [
@@ -783,7 +783,7 @@ def stats_block(tiles=(("58%", "rounds won"), ("+0.31", "levels / round"), ("7",
     return segm + t
 
 
-SETTINGS = ghead("Settings") + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("How to play")])
+SETTINGS = ghead("Settings") + grp([sw("Coach", True), sw("Sound", True), sw("Haptics", True), chev("Language"), chev("How to play")])
 DELETE = grp(['<span style="color:#f08a96">Delete account</span><span style="color:#9aa3b2">›</span>'])
 
 

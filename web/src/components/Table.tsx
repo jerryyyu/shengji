@@ -26,7 +26,9 @@ import { LOW_SECS, MOVE_SECS, useMoveClock } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
-import { BURY_HELP, bankerText, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
+import { bankerText, buryHelp, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
+import { t, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 import LastTrickPanel from "./LastTrickPanel";
 import LeaveSheet from "./LeaveSheet";
 import { SeatHeldPill } from "./ConnectionPill";
@@ -50,10 +52,12 @@ const SWEEP_AFTER_MS = LAST_TRICK_MS - DUR.sweep - 40;
 function declareLabel(ids: number[], hand: HandCard[]): ReactNode {
   const codes = ids.map((id) => hand.find((c) => c.id === id)?.code ?? "?");
   const first = codes[0] ?? "?";
-  const what = first === "LJ" || first === "BJ"
-    ? "NT"
-    : codes.length === 2 ? `${shortLabel(first)} pair` : shortLabel(first);
-  return <><span className="declare-full">{`Declare ${what}`}</span><span className="declare-short">{what}</span></>;
+  const code = shortLabel(first);
+  const nt = first === "LJ" || first === "BJ";
+  const pair = codes.length === 2;
+  const full = nt ? t("table.declareNt") : pair ? t("table.declarePair", { code }) : t("table.declareCard", { code });
+  const short = nt ? t("table.nt") : pair ? t("table.cardPair", { code }) : code;
+  return <><span className="declare-full">{full}</span><span className="declare-short">{short}</span></>;
 }
 
 /** Local countdown: the server sends seconds-remaining with each state, and
@@ -71,12 +75,13 @@ function useCountdown(seconds: number | null): number | null {
   return left;
 }
 
-const BOT_BANTER = {
-  bury: ["Eight cards have to go…", "A little mystery for the kitty.", "Parting with cards is hard.", "New round, new possibilities."],
-  play: ["Hmm… decisions, decisions.", "One trick at a time.", "Trying to keep a trick up my sleeve.", "Jokers aren’t the only surprises."],
-} as const;
+const BOT_BANTER: Record<"bury" | "play", readonly MessageKey[]> = {
+  bury: ["table.banterBury1", "table.banterBury2", "table.banterBury3", "table.banterBury4"],
+  play: ["table.banterPlay1", "table.banterPlay2", "table.banterPlay3", "table.banterPlay4"],
+};
 
 function BotThinking({ phase }: { phase: "bury" | "play" }) {
+  const t = useT();
   const [line, setLine] = useState(() => Math.floor(Math.random() * BOT_BANTER[phase].length));
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -90,11 +95,11 @@ function BotThinking({ phase }: { phase: "bury" | "play" }) {
     <>
       {/* The seat's gold edge shows whose turn it is; this status is for screen readers. */}
       <div className="thinking sr-only" role="status" aria-live="polite">
-        {phase === "bury" ? "Choosing 8 cards to bury…" : "Considering the next play…"}
+        {phase === "bury" ? t("table.choosingBury") : t("table.consideringPlay")}
       </div>
       {/* Cosmetic copy only; no card identities, scores, or search reasoning.
           Keep rotation outside the live region so screen readers are not spammed. */}
-      <div className="bot-banter">{BOT_BANTER[phase][line]}</div>
+      <div className="bot-banter">{t(BOT_BANTER[phase][line])}</div>
     </>
   );
 }
@@ -107,6 +112,7 @@ const FULL_NAME_MS = 2500;
 const LONG_PRESS_MS = 450;
 
 function OpponentPanel({ player, state }: { player: StatePlayer; state: GameState }) {
+  const t = useT();
   const pos = seatPos(player.seat, state.you);
   // a tap or long press shows the whole name; only the phone layout draws it
   const [fullName, setFullName] = useState(false);
@@ -168,7 +174,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
           seat also carries an unseen button that opens the same options */}
       {canAct ? (
         <button type="button" className="sr-only opp-options" ref={optionsButton}
-                aria-label={`${player.name}, player options`} aria-haspopup="dialog" aria-expanded={actions}
+                aria-label={t("table.playerOptions", { name: player.name })} aria-haspopup="dialog" aria-expanded={actions}
                 onClick={(event) => { event.stopPropagation(); openedByButton.current = true; setActions(true); }} />
       ) : null}
       {actions && canAct ? (
@@ -193,9 +199,9 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
         {/* always drawn, so the label's width never changes with the turn */}
         <span className={`turn-dots${onTurn && actionPhase ? " shown" : ""}`} aria-hidden="true">…</span>
         <TimerRing left={moveClock} total={MOVE_SECS} thin />
-        {player.is_bot ? <span className="bot-tag">BOT</span> : null}
-        {hasPassed ? <span className="ready-tag">ready</span> : null}
-        {player.away && player.connected ? <span className="away-tag">Away</span> : null}
+        {player.is_bot ? <span className="bot-tag">{t("table.botTag")}</span> : null}
+        {hasPassed ? <span className="ready-tag">{t("table.readyTag")}</span> : null}
+        {player.away && player.connected ? <span className="away-tag">{t("table.awayTag")}</span> : null}
         {/* the phone pill keeps the count whole and drops the words before it
             (they stay for screen readers) */}
         {status !== null && !player.left ? (
@@ -215,7 +221,7 @@ function OpponentPanel({ player, state }: { player: StatePlayer; state: GameStat
       {onTurn && actionPhase && botControlled ? (
         <BotThinking key={`${state.room}:${state.phase}:${player.cards_left}`} phase={state.phase as "bury" | "play"} />
       ) : null}
-      {onTurn && actionPhase && !botControlled ? <div className="their-turn">their turn</div> : null}
+      {onTurn && actionPhase && !botControlled ? <div className="their-turn">{t("table.theirTurn")}</div> : null}
     </div>
   );
 }
@@ -270,7 +276,7 @@ function useJoinToasts(state: GameState) {
     toldJoins.set(state.room, new Set(keys));
     lines.forEach((j, i) => {
       if (told.has(keys[i])) return;
-      showToast(`${j.name} joins next ${j.when === "round" ? "round" : "trick"}`, { info: true, dot: (j.seat % 2) as 0 | 1 });
+      showToast(t(j.when === "round" ? "table.joinsNextRound" : "table.joinsNextTrick", { name: j.name }), { info: true, dot: (j.seat % 2) as 0 | 1 });
     });
     // told on a new key only; the lines are read with it
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,10 +291,11 @@ let openTurn: { key: string; clock: TurnClock; watched: boolean } | null = null;
  *  but leaving still costs what leaving the joined round costs, so it asks
  *  through the leave sheet like every other leave. */
 function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   return (
     <>
-      <button className="btn join-leave" onClick={() => setAsking(true)}>Leave</button>
+      <button className="btn join-leave" onClick={() => setAsking(true)}>{t("common.leave")}</button>
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest }}
                     onStay={() => setAsking(false)}
@@ -299,6 +306,7 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
 }
 
 export default function Table({ state }: { state: GameState }) {
+  const t = useT();
   // A result seen arriving (after a state without one) is live and may
   // celebrate; a table opened onto a finished round (a reconnect, a resume)
   // draws it settled.
@@ -406,8 +414,8 @@ export default function Table({ state }: { state: GameState }) {
     const timer = window.setTimeout(() => setLate(true), SENDING_AFTER_MS);
     return () => window.clearTimeout(timer);
   }, [pending]);
-  const pendingLabel = pending === null ? null : !online ? "Reconnecting…"
-    : NEARBY_SESSION && !late ? null : "Sending…";
+  const pendingLabel = pending === null ? null : !online ? t("table.reconnecting")
+    : NEARBY_SESSION && !late ? null : t("table.sending");
   const sendAction = (msg: { type: "play" | "bury"; card_ids: number[] }) => {
     if (!conn.send(msg)) return;
     setPending({ kind: msg.type, cardIds: msg.card_ids, handKey, turn: state.turn,
@@ -491,8 +499,8 @@ export default function Table({ state }: { state: GameState }) {
   const newAccount = useAccountNewcomer();
   useEffect(() => subscribeCoach((s) => {
     telemetry.tap(s === "on" ? "coach_on" : "coach_off");
-    showToast(s === "on" ? "Coach on" : "Coach off", { info: true });
-  }), []);
+    showToast(s === "on" ? t("table.coachOn") : t("table.coachOff"), { info: true });
+  }), [t]);
   useJoinToasts(state);
   // One decision for all teaching text at the table: the coach's cues and
   // the declare and bury help. A refused tap's reason is feedback, not
@@ -621,13 +629,13 @@ export default function Table({ state }: { state: GameState }) {
             disabled={iPassed}
             onClick={() => conn.send({ type: "pass_declare" })}
           >
-            {iPassed ? "Passed" : "Pass"}
+            {iPassed ? t("table.passed") : t("table.pass")}
           </button>
         ) : null}
       </>
     );
   } else if (state.phase === "bury" && iAmBanker) {
-    if (coachOn) phaseHelp = BURY_HELP;
+    if (coachOn) phaseHelp = buryHelp();
     actionBar = (
       <>
       <TimerRing left={clock} total={MOVE_SECS} />
@@ -639,7 +647,7 @@ export default function Table({ state }: { state: GameState }) {
         aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}
       >
-        {pendingLabel ?? `Bury (${selectedIds.length}/8)`}
+        {pendingLabel ?? t("table.bury", { n: selectedIds.length })}
       </button>
       {/* the points are teaching, like the phase's help: shown only with the coach */}
       {coachOn ? <span className="bury-points" role="status">{buryPointsText(state.hand, selected)}</span> : null}
@@ -654,13 +662,13 @@ export default function Table({ state }: { state: GameState }) {
     const offSuit = lead !== null && !countWrong
       && followsSuit(state.hand, selectedIds, lead, state.trump) === false;
     const playLabel = selectedIds.length === 0
-      ? "Play"
-      : need !== null && need > 1 ? `Play (${selectedIds.length}/${need})` : `Play (${selectedIds.length})`;
+      ? t("table.play")
+      : need !== null && need > 1 ? t("table.playOf", { n: selectedIds.length, count: need }) : t("table.playN", { n: selectedIds.length });
     const playDisabled = selectedIds.length === 0 || countWrong || offSuit || pending !== null || !online;
     // a disabled button takes no taps, so its wrapper hears them and explains
     const whyNot = () => {
       if (!playDisabled || pending !== null || !online) return;
-      const text = lead ? followHint(lead, state.trump) : "Choose the cards to lead";
+      const text = lead ? followHint(lead, state.trump) : t("table.chooseLead");
       if (turnRef.current) turnRef.current.disabledTaps += 1;
       telemetry.notice(lead ? "follow_hint" : "lead_hint", "table");
       setHint((h) => ({ text, n: (h?.n ?? 0) + 1 }));
@@ -679,7 +687,7 @@ export default function Table({ state }: { state: GameState }) {
           >
             {/* a phone shows "Your turn" on Play until you choose a card */}
             <span className="play-text">{pendingLabel ?? playLabel}</span>
-            <span className="your-turn-text">Your turn</span>
+            <span className="your-turn-text">{t("table.yourTurn")}</span>
           </button>
         </span>
         <button
@@ -687,7 +695,7 @@ export default function Table({ state }: { state: GameState }) {
           disabled={selectedIds.length === 0 || pending !== null}
           onClick={() => setSelected(new Set())}
         >
-          Clear
+          {t("table.clear")}
         </button>
       </>
     );
@@ -704,7 +712,7 @@ export default function Table({ state }: { state: GameState }) {
         {state.phase === "play" && state.last_trick ? (
           <button className="btn subtle last-trick-btn" aria-expanded={lastOpen}
                   onClick={() => setLastOpen((o) => !o)}>
-            Last trick
+            {t("table.lastTrick")}
           </button>
         ) : null}
         {lastOpen && state.last_trick ? (
@@ -727,13 +735,14 @@ export default function Table({ state }: { state: GameState }) {
             {iAmBanker && me ? (
               <span className="banker-crown" role="img" aria-label={bankerText(me, state.you)}>👑</span>
             ) : null}
-            <span className="you-name">{me?.name ?? "You"}</span>
-            {myTurn ? <span className="your-turn-tag">your turn</span> : null}
+            <span className="you-name">{me?.name ?? t("common.you")}</span>
+            {myTurn ? <span className="your-turn-tag">{t("table.yourTurnTag")}</span> : null}
             {state.phase === "declare" && state.passed.includes(state.you) ? (
-              <span className="ready-tag">ready</span>
+              <span className="ready-tag">{t("table.readyTag")}</span>
             ) : null}
           </div>
-          <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}>{actionBar}</div>
+          <div className={`action-bar${clock !== null && clock <= LOW_SECS ? " clock-low" : ""}`}
+               data-declare-label={t("table.declarePill")}>{actionBar}</div>
           </div>
           {/* the one line between the trick and your hand */}
           <HandLine parts={{ reason: hint?.text ?? blocked, help: phaseHelp, coach: coach && nothingChosen ? coach.text : null }}
@@ -754,7 +763,7 @@ export default function Table({ state }: { state: GameState }) {
       ) : null}
       {state.players.filter((p) => !p.is_bot).length > 1 && (
         <button className="chat-launch" onClick={() => setChatOpen((o) => !o)}
-                aria-label="Chat">
+                aria-label={t("table.chat")}>
           💬{unread > 0 && <span className="chat-badge">{unread}</span>}
         </button>
       )}
@@ -764,7 +773,7 @@ export default function Table({ state }: { state: GameState }) {
       {watching ? (
         <div className="away-pill join-pill" role="status">
           <span className="away-pill-text">
-            <b>Joining after this trick</b>
+            <b>{t("table.joiningAfterTrick")}</b>
           </span>
           <JoinPillLeave ranked={!!state.matched} guest={state.guest === true} />
         </div>

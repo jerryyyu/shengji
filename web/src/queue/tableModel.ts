@@ -3,6 +3,7 @@
 // `PanelAction`s; the queue's dispatcher turns a `TableAction` into its
 // frame, with the table's sitting token added there.
 import type { CodeJoin } from "../codeJoin";
+import { t } from "../i18n";
 import type { LeaveContext } from "../components/leaveCopy";
 import { hostName, roomChoices, tableHostName, takeoverSeats } from "../joinSeats";
 import type { ChatMsg, Rank, RoomSeats, TableSeats } from "../protocol";
@@ -10,8 +11,8 @@ import { BOT_FILL_MS, isOpener, namesAt, partnerName, queue, tableDuo, yourReady
 import type { OfferView, QueueView, TableFrame } from "./store";
 import type { BotLevel } from "./messages";
 import {
-  JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, moveTargets, ownBotsAt, ownTitle, panelKind,
-  sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine,
+  JUST_JOINED_MS, OFFER_SECS, duoStartLabel, joinTitle, labelList, moveTargets, ownBotsAt, ownTitle, panelKind,
+  seatLabel, sharedStatusLine, sharedTitle, shortName, startLabel, stillHereLine, teamWord,
 } from "./tableText";
 import type { PanelKind } from "./tableText";
 
@@ -162,32 +163,31 @@ export interface TableModel {
  *  opener tapped to move (null for none). */
 export interface PanelState { now: number; picked: number | null }
 
-export const teamWord = (ours: boolean) => (ours ? "your team" : "other team");
 
 /** The seats of the table an offer would sit you at, you in the picked seat. */
 function offerSeats(o: OfferView, busy: boolean): ModelSeat[] {
   return o.seats.map((s, at): ModelSeat => {
     const ours = (at - o.pick + 4) % 2 === 0;
-    if (at === o.pick) return { at, look: "you", name: "You", sub: "", label: `You, ${teamWord(true)}` };
+    if (at === o.pick) return { at, look: "you", name: t("queue.seat.you"), sub: "", label: t("queue.seat.youOurs") };
     if (o.partner && at === o.partner.seat) {
       return { at, look: "friend", name: shortName(o.partner.name), sub: "",
-               label: `${o.partner.name}, your Duo partner` };
+               label: t("queue.seat.partnerNamed", { name: o.partner.name }) };
     }
     if (s.open && !o.partner) {
       // whose seat it was is the screen reader's only; the seat shows a name alone
-      const away = s.bot ? "" : `, ${s.name} is away`;
       return { at, look: "open", name: "", sub: "", busy,
-               label: `Open seat, ${teamWord(ours)}${away}. Sit here`, act: { type: "offer_pick", seat: at } };
+               label: s.bot ? seatLabel("queue.seat.openSit", ours) : seatLabel("queue.seat.openAwaySit", ours, { name: s.name }),
+               act: { type: "offer_pick", seat: at } };
     }
-    if (s.bot || s.open) return { at, look: "bot", name: "Bot", sub: "", label: `Bot, ${teamWord(ours)}` };
-    return { at, look: "person", name: shortName(s.name), sub: "", label: `${s.name}, playing, ${teamWord(ours)}` };
+    if (s.bot || s.open) return { at, look: "bot", name: t("queue.seat.bot"), sub: "", label: seatLabel("queue.seat.bot", ours) };
+    return { at, look: "person", name: shortName(s.name), sub: "", label: seatLabel("queue.seat.playing", ours, { name: s.name }) };
   });
 }
 
 /** The held seat: "Partner" across from you, the friend a Duo waits for. */
 function heldSeat(at: number, ours: boolean): ModelSeat {
-  return { at, look: "held", name: "Partner", sub: "",
-           label: ours ? "Partner seat, held for your friend" : `Partner seat, held, ${teamWord(false)}` };
+  return { at, look: "held", name: t("queue.seat.partner"), sub: "",
+           label: ours ? t("queue.seat.heldFriend") : seatLabel("queue.seat.held", false) };
 }
 
 /** Whether you may move seats: a single, before your Start, with someone
@@ -216,35 +216,35 @@ function frameSeats(f: TableFrame, now: number, { alone = false, move = false, b
       const name = people[picked!]?.name ?? "";
       return targets.includes(at)
         ? { at, look: "open", name: "", sub: "", busy,
-            label: `Open seat, ${teamWord(ours)}. Move ${name} here`, act: { type: "move_to", at } }
-        : { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
+            label: seatLabel("queue.seat.openMoveOther", ours, { name }), act: { type: "move_to", at } }
+        : { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours) };
     }
     if (!s && move) {
       return { at, look: "open", name: "", sub: "", busy,
-               label: `Open seat, ${teamWord(ours)}. Move here`, act: { type: "move", seat: at } };
+               label: seatLabel("queue.seat.openMove", ours), act: { type: "move", seat: at } };
     }
-    if (!s) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    if (!s) return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours) };
     const name = s.name ?? "";
     const ready = s.ready === true;
     const status = alone ? ""
-      : s.reconnecting ? "Reconnecting"
-      : !s.you && !ready && s.since !== null && now - s.since < JUST_JOINED_MS ? "Just joined"
+      : s.reconnecting ? t("queue.seat.reconnecting")
+      : !s.you && !ready && s.since !== null && now - s.since < JUST_JOINED_MS ? t("queue.seat.justJoined")
       : "";
     if (s.you) {
-      return { at, look: "you", name: "You", sub: status, tick: ready,
-               label: alone && !ready ? "You, your team"
-                 : ["You", ready ? "ready" : null, status || null].filter(Boolean).join(", ") };
+      return { at, look: "you", name: t("queue.seat.you"), sub: status, tick: ready,
+               label: alone && !ready ? t("queue.seat.youOurs")
+                 : labelList([t("queue.seat.you"), ready && t("queue.seat.ready"), status]) };
     }
     const partner = s.pair && ours;
     const item: ModelSeat = {
       at, look: partner ? "friend" : "person", name: shortName(name), sub: status, tick: ready,
-      label: [name, ready ? "ready" : null, status || null, partner ? "your Duo partner" : teamWord(ours)]
-        .filter(Boolean).join(", "),
+      label: labelList([name, ready && t("queue.seat.ready"), status,
+                        partner ? t("queue.seat.duoPartner") : teamWord(ours)]),
     };
     if (!opener || partner) return item;
     const on = picked === at;
     return { ...item, picked: on, busy, act: { type: "pick_person", at },
-             label: `${item.label}. ${on ? "Moving; tap again to cancel" : "Move"}` };
+             label: t(on ? "queue.seat.moving" : "queue.seat.movable", { name: item.label }) };
   });
 }
 
@@ -270,8 +270,9 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   const kind = panelKind(q);
   const partner = q.partyId ? partnerName(q.party) : null;
   // a Duo made at a table has no leader to press for it: each member taps
-  const led = q.leader || tableDuo(q) ? undefined : `${shortName(partner ?? "Your partner")} leads`;
-  const leaveBtn: TableButton = { label: "Leave", disabled: q.pending === "leave", act: { type: "ask_leave" } };
+  const led = q.leader || tableDuo(q) ? undefined
+    : t("queue.led", { name: shortName(partner ?? t("queue.led.partner")) });
+  const leaveBtn: TableButton = { label: t("queue.btn.leave"), disabled: q.pending === "leave", act: { type: "ask_leave" } };
   const ranked = (q.queueMode ?? q.playMode) === "ranked";
   const f = q.frame;
   const opener = isOpener(q);
@@ -285,9 +286,10 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     const busy = q.pending !== null;
     return {
       ...base, kind, title: joinTitle(o), seats: offerSeats(o, busy), you: o.pick,
-      primary: { label: q.pending === "offer" ? "Joining…" : "Join", disabled: busy, act: { type: "offer_join" },
+      primary: { label: t(q.pending === "offer" ? "queue.btn.joining" : "queue.btn.join"), disabled: busy,
+                 act: { type: "offer_join" },
                  ring: q.pending === "offer" ? null : { left: Math.max(0, o.expiresAt - now) / 1000, total: OFFER_SECS } },
-      secondary: { label: "Keep looking", disabled: busy, act: { type: "offer_wait" } },
+      secondary: { label: t("queue.btn.keepLooking"), disabled: busy, act: { type: "offer_wait" } },
     };
   }
   if (kind === "own" && f) {
@@ -303,9 +305,9 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       // the pair's own table: both tap Start, then it searches as one
       return {
         ...base, ...extra, kind,
-        title: ownTitle(q, partner), status: { text: `${q.duoReady ?? 0} of 2 ready` },
+        title: ownTitle(q, partner), status: { text: t("queue.status.ready", { n: q.duoReady ?? 0, count: 2 }) },
         seats, you: f.you,
-        primary: { label: q.pending === "start" ? "Starting…" : duoStartLabel(q, partner),
+        primary: { label: q.pending === "start" ? t("queue.btn.starting") : duoStartLabel(q, partner),
                    disabled: q.pending !== null,
                    act: youReady ? { type: "unready" } : { type: "start" },
                    ring: q.pending === "start" ? null : ring,
@@ -316,7 +318,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
     return {
       ...base, ...extra, kind,
       title: ownTitle(q, partner), seats, you: f.you, led,
-      primary: { label: q.pending === "bots" ? "Starting…" : "Start with bots", disabled: q.pending !== null,
+      primary: { label: t(q.pending === "bots" ? "queue.btn.starting" : "queue.btn.startBots"), disabled: q.pending !== null,
                  act: { type: "start_bots" }, ring: q.pending === "bots" ? null : ring },
       secondary: leaveBtn,
     };
@@ -331,7 +333,7 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
         ...base, kind,
         title: sharedTitle(f), status: { text: stillHereLine(q.stillHereUntil, now), warn: true },
         seats, you: f.you,
-        primary: { label: "I’m back", disabled: false, act: { type: "here" } },
+        primary: { label: t("queue.btn.back"), disabled: false, act: { type: "here" } },
         secondary: leaveBtn,
       };
     }
@@ -346,9 +348,9 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
       title: sharedTitle(f), status: { text: sharedStatusLine(f) },
       seats, you: f.you, led,
       primary: startNow
-        ? { label: q.pending === "start" ? "Starting…" : "Start now", disabled: q.pending !== null,
+        ? { label: t(q.pending === "start" ? "queue.btn.starting" : "queue.btn.startNow"), disabled: q.pending !== null,
             act: { type: "start_now" }, ring }
-        : { label: q.pending === "start" ? "Starting…" : startLabel(f),
+        : { label: q.pending === "start" ? t("queue.btn.starting") : startLabel(f),
             disabled: q.pending !== null || (youReady && (f.waiting_for ?? []).length === 0),
             act: youReady ? { type: "unready" } : { type: "start" }, ring, waiting: youReady },
       secondary: leaveBtn,
@@ -357,8 +359,8 @@ export function fromQueue(q: QueueView, { now, picked }: PanelState): TableModel
   if (kind === "elsewhere") {
     return {
       ...base, kind,
-      title: "Your table is open on another device.", seats: null, you: 0,
-      primary: { label: "I’m back", disabled: q.pending !== null, act: { type: "reclaim" } },
+      title: t("queue.title.elsewhere"), seats: null, you: 0,
+      primary: { label: t("queue.btn.back"), disabled: q.pending !== null, act: { type: "reclaim" } },
       secondary: q.leader ? leaveBtn : null,
     };
   }
@@ -380,18 +382,18 @@ function roomSeats(peek: RoomSeats, you: number | null, busy: boolean): ModelSea
     if (sd && away.has(at)) {
       // a dropped player's seat keeps their name, glowing when chosen: Join asks first
       return at === you
-        ? { at, look: "open", picked: true, name: `${shortName(sd.name)} (away)`, sub: "",
-            label: `${sd.name} is away, ${teamWord(true)}. Your seat` }
-        : { at, look: "open", name: `${shortName(sd.name)} (away)`, sub: "",
-            label: `${sd.name} is away, ${teamWord(ours)}. Sit here`, ...move };
+        ? { at, look: "open", picked: true, name: t("queue.seat.away", { name: shortName(sd.name) }), sub: "",
+            label: t("queue.seat.awayYours", { name: sd.name }) }
+        : { at, look: "open", name: t("queue.seat.away", { name: shortName(sd.name) }), sub: "",
+            label: seatLabel("queue.seat.awaySit", ours, { name: sd.name }), ...move };
     }
-    if (at === you) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
-    if (!sd) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}`, ...move };
+    if (at === you) return { at, look: "you", picked: true, name: t("queue.seat.you"), sub: "", label: t("queue.seat.youOurs") };
+    if (!sd) return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours), ...move };
     if (sd.is_bot) {
-      return { at, look: "bot", name: "Bot", sub: "",
-               label: `Bot, ${teamWord(ours)}${choices.has(at) ? ". Sit here" : ""}`, ...move };
+      return { at, look: "bot", name: t("queue.seat.bot"), sub: "",
+               label: seatLabel(choices.has(at) ? "queue.seat.botSit" : "queue.seat.bot", ours), ...move };
     }
-    return { at, look: "person", name: shortName(sd.name), sub: "", label: `${sd.name}, ${teamWord(ours)}` };
+    return { at, look: "person", name: shortName(sd.name), sub: "", label: seatLabel("queue.seat.named", ours, { name: sd.name }) };
   });
 }
 
@@ -404,11 +406,13 @@ function queuedSeats(peek: TableSeats, you: number | null): ModelSeat[] {
   return [0, 1, 2, 3].map((at): ModelSeat => {
     const sd = peek.seats.find((s) => s.seat === at);
     const ours = (at - from + 4) % 2 === 0;
-    if (at === you) return { at, look: "you", picked: true, name: "You", sub: "", label: `You, ${teamWord(true)}` };
-    if (sd?.state === "held") return { at, look: "held", name: "Partner", sub: "", label: `Partner seat, held, ${teamWord(ours)}` };
-    if (sd?.state !== "taken" || !sd.name) return { at, look: "open", name: "", sub: "", label: `Open seat, ${teamWord(ours)}` };
+    if (at === you) return { at, look: "you", picked: true, name: t("queue.seat.you"), sub: "", label: t("queue.seat.youOurs") };
+    if (sd?.state === "held") {
+      return { at, look: "held", name: t("queue.seat.partner"), sub: "", label: seatLabel("queue.seat.held", ours) };
+    }
+    if (sd?.state !== "taken" || !sd.name) return { at, look: "open", name: "", sub: "", label: seatLabel("queue.seat.open", ours) };
     return { at, look: "person", name: shortName(sd.name), sub: "", tick: sd.ready,
-             label: [sd.name, sd.ready ? "ready" : null, teamWord(ours)].filter(Boolean).join(", ") };
+             label: labelList([sd.name, sd.ready && t("queue.seat.ready"), teamWord(ours)]) };
   });
 }
 
@@ -427,25 +431,24 @@ export function fromCode(j: CodeJoin, busy: boolean): TableModel {
   return {
     kind: "join-code",
     tag: casual ? "Casual" : undefined,
-    title: `Join ${who ? shortName(who) : j.code}`,
-    status: j.full ? { text: "Table is full" } : undefined,
+    title: t("queue.title.join", { name: who ? shortName(who) : j.code }),
+    status: j.full ? { text: t("queue.status.full") } : undefined,
     seats: room ? roomSeats(room, j.seat, busy) : queued ? queuedSeats(queued, j.seat) : null,
     you: j.seat ?? 0,
     rows: null, waitSwitch: null, chat: null,
-    primary: { label: busy ? "Joining…" : "Join", disabled: !canJoin, act: { type: "code_join" } },
-    secondary: { label: "Not now", disabled: false, act: { type: "code_cancel" } },
+    primary: { label: t(busy ? "queue.btn.joining" : "queue.btn.join"), disabled: !canJoin, act: { type: "code_join" } },
+    secondary: { label: t("queue.btn.notNow"), disabled: false, act: { type: "code_cancel" } },
     leave: { kind: "queue", others: [] },
   };
 }
 
 /** You at the bottom, Bot 2 across as your partner, Bots 1 and 3 opposite,
  *  as the offline server seats them. */
-const OFFLINE_SEATS: ModelSeat[] = [
-  { at: 0, look: "you", name: "You", sub: "", label: "You, your team" },
-  { at: 1, look: "bot", name: "Bot 1", sub: "", label: "Bot 1, other team" },
-  { at: 2, look: "bot", name: "Bot 2", sub: "", label: "Bot 2, your team" },
-  { at: 3, look: "bot", name: "Bot 3", sub: "", label: "Bot 3, other team" },
-];
+function offlineSeats(): ModelSeat[] {
+  const bot = (at: number): ModelSeat => ({ at, look: "bot", name: t("queue.seat.botN", { n: at }), sub: "",
+                                            label: seatLabel("queue.seat.botN", at === 2, { n: at }) });
+  return [{ at: 0, look: "you", name: t("queue.seat.you"), sub: "", label: t("queue.seat.youOurs") }, bot(1), bot(2), bot(3)];
+}
 
 /** The offline table's Nearby switch row and its line, as nearbyModel.ts
  *  words them. */
@@ -469,9 +472,9 @@ export function offlineModel({ ready, starting, bots, nearby = null }: {
   return {
     kind: "offline",
     tag: "Offline",
-    title: "You and 3 bots",
+    title: t("queue.title.offline"),
     status,
-    seats: OFFLINE_SEATS,
+    seats: offlineSeats(),
     you: 0,
     // the Bots row only, which you pick until Start; while the table is being
     // opened to nearby phones it shows the level the nearby table takes
@@ -480,9 +483,9 @@ export function offlineModel({ ready, starting, bots, nearby = null }: {
     nearbySwitch: nearby ? { label: nearby.label, on: nearby.on, disabled: nearby.on } : null,
     // nearby tables have no chat
     chat: nearby?.on ? null : { disabled: true },
-    primary: { label: starting ? "Starting…" : "Start", disabled: !ready || starting, busy: starting,
+    primary: { label: t(starting ? "queue.btn.starting" : "queue.btn.start"), disabled: !ready || starting, busy: starting,
                act: { type: "offline_start" } },
-    secondary: { label: "Leave", disabled: false, act: { type: "offline_leave" } },
+    secondary: { label: t("queue.btn.leave"), disabled: false, act: { type: "offline_leave" } },
     leave: { kind: "queue", others: [] },
   };
 }

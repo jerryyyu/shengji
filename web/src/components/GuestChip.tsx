@@ -4,7 +4,8 @@ import { useTopModalHost } from "../modalHosts";
 import { auth, checkDisplayName, deviceAccountPending, effectiveName, isUnlinkedDevice, updateDisplayName, useAuth } from "../auth";
 import { useOnThisDeviceLine } from "../deviceAccount";
 import type { AuthState, AuthUser } from "../auth";
-import { GUEST_LINE, guestName, useGuestName } from "../guestName";
+import { guestLine, guestName, useGuestName } from "../guestName";
+import { tx, useT } from "../i18n";
 import { randomName } from "../randomName";
 import Sheet from "../queue/Sheet";
 import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
@@ -15,16 +16,17 @@ import { followInfoLink } from "../support/route";
  *  opens the identity sheet on every tab. `compact` (the wide top bar) has no
  *  pencil. */
 export default function GuestChip({ compact = false }: { compact?: boolean }) {
+  const t = useT();
   const { name } = useGuestName();
   // in the app, before its first Play makes the account: the name alone
   const pending = deviceAccountPending(useAuth());
-  const shown = name.trim() || "Guest";
+  const shown = name.trim() || t("common.guest");
   return (
     <button type="button" className="account-pill guest-pill" onClick={() => guestName.open("chip")}
-            aria-label={`${shown}${pending ? "" : ", guest"}, edit name`}>
+            aria-label={t(pending ? "home.guestChipAriaPending" : "home.guestChipAria", { name: shown })}>
       <span className="avatar avatar-sm" aria-hidden="true">{shown.slice(0, 1).toUpperCase()}</span>
       <span className="account-pill-name">{shown}</span>
-      {pending ? null : <span className="account-pill-rating">{GUEST_LINE}</span>}
+      {pending ? null : <span className="account-pill-rating">{guestLine()}</span>}
       {compact ? null : <span className="guest-pill-edit" aria-hidden="true">✎</span>}
     </button>
   );
@@ -58,6 +60,7 @@ export function IdentitySheet() {
 function SignInBlock({ account, done, toSignIn = false }: {
   account: AuthState; done: () => void; toSignIn?: boolean;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (toSignIn) ref.current?.scrollIntoView?.({ block: "nearest" });
@@ -71,8 +74,9 @@ function SignInBlock({ account, done, toSignIn = false }: {
       {signIn ? <div className="identity-signin" ref={ref}>{signIn}</div> : null}
       {open ? (
         <p className="identity-terms">
-          By signing in you agree to the{" "}
-          <a href="/terms" onClick={(e) => { done(); followInfoLink(e, "terms"); }}>Terms of use</a>.
+          {tx("home.terms", {
+            terms: <a href="/terms" onClick={(e) => { done(); followInfoLink(e, "terms"); }}>{t("home.termsLink")}</a>,
+          })}
         </p>
       ) : null}
     </>
@@ -82,18 +86,19 @@ function SignInBlock({ account, done, toSignIn = false }: {
 function NameField({ name, onChange, onDone, error, focus = true }: {
   name: string; onChange: (name: string) => void; onDone: () => void; error?: string | null; focus?: boolean;
 }) {
+  const t = useT();
   const id = useId();
   return (
     <div className="field">
       <div className="name-input">
         <input
           id={id}
-          aria-label="Your name"
+          aria-label={t("home.nameAria")}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           value={name}
           maxLength={20}
-          placeholder="e.g. Jerry"
+          placeholder={t("home.namePlaceholder")}
           autoComplete="nickname"
           autoCorrect="off"
           autoCapitalize="words"
@@ -105,8 +110,8 @@ function NameField({ name, onChange, onDone, error, focus = true }: {
             if (e.key === "Enter" && !e.nativeEvent.isComposing) onDone();
           }}
         />
-        <button type="button" className="name-reroll" aria-label="Random name"
-                title="Random name" onClick={() => onChange(randomName(name))}>
+        <button type="button" className="name-reroll" aria-label={t("home.randomName")}
+                title={t("home.randomName")} onClick={() => onChange(randomName(name))}>
           <span aria-hidden="true">🎲</span>
         </button>
       </div>
@@ -116,17 +121,18 @@ function NameField({ name, onChange, onDone, error, focus = true }: {
 }
 
 function GuestSheet({ account }: { account: AuthState }) {
+  const t = useT();
   const { name } = useGuestName();
   const done = () => {
     guestName.keep(name);
     guestName.close();
   };
   return (
-    <Sheet title="Your name" onClose={done} cancel={null} className="identity-sheet">
+    <Sheet title={t("home.nameSheetTitle")} onClose={done} cancel={null} className="identity-sheet">
       <div className="q-sheet-pad guest-name-sheet">
         <NameField name={name} onChange={(n) => guestName.setName(n)} onDone={done} />
         <SignInBlock account={account} done={done} />
-        <button type="button" className="btn gold" onClick={done}>Done</button>
+        <button type="button" className="btn gold" onClick={done}>{t("common.done")}</button>
       </div>
     </Sheet>
   );
@@ -135,6 +141,7 @@ function GuestSheet({ account }: { account: AuthState }) {
 /** The app's own account: the name is the account's, so Done saves it, and a
  *  refusal ("That name is taken.") keeps the sheet up and says why. */
 function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) {
+  const t = useT();
   const [name, setName] = useState(() => effectiveName(user));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -163,13 +170,13 @@ function DeviceSheet({ account, user }: { account: AuthState; user: AuthUser }) 
       .finally(() => setSaving(false));
   };
   return (
-    <Sheet title="Your name" onClose={close} cancel={null} className="identity-sheet">
+    <Sheet title={t("home.nameSheetTitle")} onClose={close} cancel={null} className="identity-sheet">
       <div className="q-sheet-pad guest-name-sheet">
         <NameField name={name} onChange={(n) => { setName(n); setError(null); }} onDone={done} error={error}
                    focus={!toSignIn} />
         <p className="identity-status">{where}</p>
         <SignInBlock account={account} done={close} toSignIn={toSignIn} />
-        <button type="button" className="btn gold" aria-busy={saving || undefined} onClick={done}>Done</button>
+        <button type="button" className="btn gold" aria-busy={saving || undefined} onClick={done}>{t("common.done")}</button>
       </div>
     </Sheet>
   );

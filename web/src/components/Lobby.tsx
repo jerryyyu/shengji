@@ -22,7 +22,11 @@ import { useMediaQuery } from "../phoneLayout";
 import { offlineGame, offlineOffered, useOfflineTable } from "./offlineGame";
 import { isNative } from "../native";
 import { telemetry } from "../telemetry";
-import { APP_STORE_BADGE, APP_STORE_BADGE_ALT, APP_STORE_URL } from "../appStore";
+import { APP_STORE_BADGE, APP_STORE_URL } from "../appStore";
+import { isZh, useT } from "../i18n";
+
+/** Apple's zh-cn badge, beside the English one under public/badges/. */
+const APP_STORE_BADGE_ZH = "/badges/app-store-zh.svg";
 
 interface LobbyProps {
   status: ConnStatus;
@@ -49,13 +53,14 @@ function useStalled(status: ConnStatus): boolean {
 /** The Ranked block while the server cannot say whether sign-in exists:
  *  Play and Duo in their places, unavailable. */
 function RankedUnavailable() {
+  const t = useT();
   const labelId = useId();
   return (
     <section className="play-section" aria-labelledby={labelId} data-testid="ranked-unavailable">
-      <h2 className="play-label ranked" id={labelId}><TrophyIcon />Ranked</h2>
+      <h2 className="play-label ranked" id={labelId}><TrophyIcon />{t("home.ranked")}</h2>
       <div className="play-ranked-row">
-        <button type="button" className="btn gold play-main q-find" disabled>Play</button>
-        <button type="button" className="btn play-duo" disabled>Duo</button>
+        <button type="button" className="btn gold play-main q-find" disabled>{t("home.play")}</button>
+        <button type="button" className="btn play-duo" disabled>{t("home.duo")}</button>
       </div>
     </section>
   );
@@ -71,6 +76,7 @@ export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, 
   disabled: boolean; code?: string; looking?: boolean; onCode?: (code: string) => void; onJoin?: () => void;
   nearby?: NearbyUi | null; nearbyJoinView?: NearbyJoin | null;
 }) {
+  const t = useT();
   const trimmed = code.trim();
   const joinable = nearby?.isNearbyCode(trimmed) ? true : !disabled && trimmed.length === 4;
   return (
@@ -80,8 +86,8 @@ export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, 
         className="room-input"
         value={code}
         maxLength={nearby ? nearby.NEARBY_CODE_LEN : 4}
-        placeholder="CODE"
-        aria-label="Table code"
+        placeholder={t("home.codePlaceholder")}
+        aria-label={t("home.codeAria")}
         disabled={disabled && !nearby}
         autoCapitalize="characters"
         autoCorrect="off"
@@ -98,7 +104,7 @@ export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, 
         onClick={onJoin}
         aria-busy={looking || undefined}
       >
-        {looking ? "Joining…" : "Join"}
+        {looking ? t("home.joining") : t("home.join")}
       </button>
     </div>
     {nearby ? <nearby.NearbyCodeLine code={trimmed.toUpperCase()} join={nearbyJoinView} /> : null}
@@ -107,6 +113,7 @@ export function CodeRow({ disabled, code = "", looking = false, onCode, onJoin, 
 }
 
 export default function Lobby({ status, room = null }: LobbyProps) {
+  const t = useT();
   const stalled = useStalled(status);
   // Offline, the socket talks to the on-device server: Play's controls are
   // the offline ones, and links, peeks and the Join panel wait for the game server.
@@ -226,7 +233,7 @@ export default function Lobby({ status, room = null }: LobbyProps) {
             table panel */}
         <div className="play-art">
           <h1 className="game-title">
-            升级 <span className="game-title-en">Sheng Ji</span>
+            {isZh() ? "升级" : <>升级 <span className="game-title-en">Sheng Ji</span></>}
           </h1>
           {showArt ? <LobbyPreview /> : null}
         </div>
@@ -261,13 +268,13 @@ export default function Lobby({ status, room = null }: LobbyProps) {
         )}
 
         <p className="howto-entry">
-          <button className="howto-link" onClick={() => openHowto()}>How to play</button>
+          <button className="howto-link" onClick={() => openHowto()}>{t("home.howto")}</button>
           {/* the bots on this device, on purpose: a game started here stays
               offline when the network comes back */}
           {stalled || offline || seated || joinUp || !offlineOffered() ? null : (
             <>
               <span className="howto-sep" aria-hidden="true">·</span>
-              <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>Play offline</button>
+              <button className="howto-link" onClick={() => offlineGame.startFromPlay()}>{t("home.playOffline")}</button>
             </>
           )}
         </p>
@@ -281,13 +288,14 @@ export default function Lobby({ status, room = null }: LobbyProps) {
 }
 
 function AppStoreBadge() {
+  const t = useT();
   const tapped = () => {
     telemetry.tap("app_store_badge");
     telemetry.flush();
   };
   return (
     <a className="app-store-badge" href={APP_STORE_URL} onClick={tapped}>
-      <img src={APP_STORE_BADGE} alt={APP_STORE_BADGE_ALT} width={120} height={40} />
+      <img src={isZh() ? APP_STORE_BADGE_ZH : APP_STORE_BADGE} alt={t("home.appStoreAlt")} width={120} height={40} />
     </a>
   );
 }

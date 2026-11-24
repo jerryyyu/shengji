@@ -15,7 +15,7 @@ from shengji import seeds
 from compare_crossover import HEADS, SEEDS, block_order, require_served_workload
 from compare_generator import read, require
 
-LANE = "s151-prefix-throw-crossover"
+LANE = "s151-three-optimization-crossover"
 HOST = "Jerrys-Mac-Studio.local"
 FLEET = Path("/Users/jeryyu/fleet")
 ORDER = [key for block in range(len(SEEDS)) for key in block_order(block)]

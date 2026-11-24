@@ -11,7 +11,7 @@ import sys
 from compare_generator import comparable_config, normalize_row, read, read_store, read_times, require
 
 SEEDS = (4301400, 4301504, 4301608, 4301712)
-HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "3b923441bb87a4c01cdf27828424368f23e68e90")
+HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "5d02deed909899159be75d428024d264a153e87a")
 
 
 def percent(a, b):

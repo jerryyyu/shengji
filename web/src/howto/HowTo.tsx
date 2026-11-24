@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { canAnimate } from "../motion";
 import type { ReactNode, TouchEvent } from "react";
 import type { GameState, Trick } from "../protocol";
 import Card from "../components/Card";
@@ -414,6 +415,9 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
   const t = useT();
   const haulRef = useRef<HTMLDivElement>(null);
   const counterRef = useRef<HTMLSpanElement>(null);
+  const fillRef = useRef<HTMLSpanElement>(null);
+  // -1 until the bar is first drawn, which it is without motion
+  const fillW = useRef(-1);
   // Aim each haul's flight at the counter.
   useLayoutEffect(() => {
     const h = haulRef.current, c = counterRef.current;
@@ -422,6 +426,19 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
     h.style.setProperty("--fx", `${cb.left + cb.width / 2 - (hb.left + hb.width / 2)}px`);
     h.style.setProperty("--fy", `${cb.top + cb.height / 2 - (hb.top + hb.height / 2)}px`);
   }, [f.haul]);
+  // The bar takes its new width at once and grows into it by a scale, so no
+  // frame lays the page out again.
+  useLayoutEffect(() => {
+    const el = fillRef.current;
+    if (!el) return;
+    const was = fillW.current;
+    const now = el.offsetWidth;
+    fillW.current = now;
+    if (was >= 0 && now > 0 && was !== now && canAnimate(el) && !el.closest(".howto-still")) {
+      el.animate([{ transform: `scaleX(${Math.round((was / now) * 1000) / 1000})` }, { transform: "none" }],
+        { duration: 380, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+    }
+  }, [f.points]);
   const band = BANDS.findIndex((b) => f.points >= b.from && f.points < b.to);
   const won = band >= 3;
   return (
@@ -446,7 +463,7 @@ function ScoringPicture({ f }: { f: ScoreFrame }) {
         {BANDS.map((b) => (
           <span key={b.text} className={`howto-band ${b.side}`} style={{ flexGrow: b.to - b.from }} />
         ))}
-        <span className="howto-scale-fill" style={{ width: `${Math.min(f.points, 200) / 2}%` }} />
+        <span className="howto-scale-fill" ref={fillRef} style={{ width: `${Math.min(f.points, 200) / 2}%` }} />
         <span className={`howto-scale-line${f.points >= 80 ? " crossed" : ""}`} style={{ left: "40%" }}><span>80</span></span>
       </div>
       <div className="howto-ticks" aria-hidden="true">

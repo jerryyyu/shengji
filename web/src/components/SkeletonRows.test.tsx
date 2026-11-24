@@ -62,8 +62,8 @@ describe("skeleton rows", () => {
 describe("skeleton CSS", () => {
   const css = readFileSync(`${import.meta.dirname}/../index.css`, "utf8");
   it("shimmers, and stops under Reduce Motion", () => {
-    expect(css).toMatch(/\.skel \{[^}]*animation: skel-shimmer/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.skel \{ animation: none; \}/);
+    expect(css).toMatch(/\.skel::after \{[^}]*animation: skel-shimmer/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.skel::after \{ animation: none; \}/);
   });
   it("keeps the avatar placeholder at the avatar's size", () => {
     expect(css).toMatch(/\.avatar\.skel \{ height: 28px;/);

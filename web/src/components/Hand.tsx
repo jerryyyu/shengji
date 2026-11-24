@@ -93,6 +93,11 @@ function measureLayout(el: HTMLElement | null, translations?: Map<number, number
   return next;
 }
 
+/** A hand card's layout width, without any running transform; 0 with no cards. */
+function drawnCardWidth(el: HTMLElement | null): number {
+  return el?.querySelector<HTMLElement>(".hand-slot .card")?.offsetWidth ?? 0;
+}
+
 /** A finger must travel this far along the hand before a press becomes a
  *  slide; less is a tap on the card it went down on. */
 export const SLIDE_SLOP = 10;
@@ -180,6 +185,11 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
   // Slot x within the hand, without any running reflow transform: the FLIP
   // "first" position for the next commit.
   const layoutX = useRef(new Map<number, number>());
+  // The drawn card width and size class at the last commit: when the hand
+  // narrows for the kitty or widens after the bury, each slot also starts at
+  // its old size and eases to the new one.
+  const cardW = useRef(0);
+  const wasSmall = useRef(false);
   const anims = useRef(new Map<number, Animation>());
   const codes = useRef(new Map<number, string>());
   codes.current = new Map(hand.map((c) => [c.id, c.code]));
@@ -197,6 +207,19 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
     const translations = new Map<number, number>();
     const next = measureLayout(el, translations);
     layoutX.current = next;
+    const wasW = cardW.current;
+    const nowW = drawnCardWidth(el);
+    cardW.current = nowW;
+    const small = hand.length > FULL_SIZE_MAX;
+    const resized = wasSmall.current !== small;
+    wasSmall.current = small;
+    const k = resized && wasW > 0 && nowW > 0 && Math.abs(wasW - nowW) >= 0.5 ? wasW / nowW : 1;
+    // every slot's box is read before any animation starts, so starting one
+    // never forces a layout for the next read
+    const boxes = new Map<number, [number, number]>();
+    if (el && k !== 1) {
+      for (const slot of el.querySelectorAll<HTMLElement>(".hand-slot")) boxes.set(Number(slot.dataset.id), [slot.offsetWidth, slot.offsetHeight]);
+    }
     if (el && prev.size > 0) {
       // FLIP: start each moved slot where it was drawn, then glide to its new
       // place. A slot already gliding starts from its current offset, so a
@@ -207,10 +230,15 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
         const now = next.get(id);
         if (was === undefined || now === undefined || !canAnimate(slot)) continue;
         const dx = was + translations.get(id)! - now;
-        if (Math.abs(dx) < 0.5) continue;
+        if (Math.abs(dx) < 0.5 && k === 1) continue;
         anims.current.get(id)?.cancel();
+        const r2 = (v: number) => Math.round(v * 100) / 100;
+        // scaled about the slot's bottom-left corner, where the card is anchored
+        const [w, h] = boxes.get(id) ?? [0, 0];
+        const size = k === 1 ? ""
+          : ` translate(${r2(-(1 - k) * w / 2)}px, ${r2((1 - k) * h / 2)}px) scale(${Math.round(k * 1000) / 1000})`;
         const a = slot.animate(
-          [{ transform: `translateX(${Math.round(dx * 100) / 100}px)` }, { transform: "none" }],
+          [{ transform: `translateX(${r2(dx)}px)${size}` }, { transform: "none" }],
           { duration: DUR.reflow, easing: EASE.outExpo });
         anims.current.set(id, a);
         a.onfinish = () => { if (anims.current.get(id) === a) anims.current.delete(id); };
@@ -265,6 +293,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
     const el = handRef.current;
     const refresh = () => {
       layoutX.current = measureLayout(el);
+      cardW.current = drawnCardWidth(el);
       recordCards(el, rects?.current, codes.current);
     };
     window.addEventListener("resize", refresh);

@@ -69,6 +69,11 @@ describe("the follow hint floats", () => {
   });
 });
 
+/** A pseudo-element with no background (a glow drawn outside the border box,
+ *  a hit area) paints nothing over the face, so its own opacity cannot fade it. */
+const paintsNothingOnFace = (sel: string, body: string) =>
+  /::(before|after)$/.test(sel) && ["background", "background-color", "background-image"].every((n) => prop(body, n) === null);
+
 describe("hand cards are never dimmed", () => {
   // Every card in your hand keeps full strength: the coach points with the
   // idle pulse, never by darkening the rest. Only a press darkens, briefly.
@@ -81,8 +86,9 @@ describe("hand cards are never dimmed", () => {
   it("finds the hand's card rules", () => {
     expect(handRules.length).toBeGreaterThan(5);
   });
-  it.each(handRules.map((r) => [r.sel, r.body]))("%s neither filters nor fades the card", (_sel, body) => {
+  it.each(handRules.map((r) => [r.sel, r.body]))("%s neither filters nor fades the card", (sel, body) => {
     expect(prop(body, "filter")).toBeNull();
+    if (paintsNothingOnFace(sel, body)) return;
     const opacity = prop(body, "opacity");
     expect(opacity === null || Number(opacity) >= 1).toBe(true);
   });
@@ -103,9 +109,9 @@ describe("hand cards are never dimmed", () => {
   it("finds the card face rules", () => {
     expect(faceRules.length).toBeGreaterThan(10);
   });
-  it.each(faceRules.map((r) => [r.sel, r.body]))("%s keeps the face opaque", (_sel, body) => {
+  it.each(faceRules.map((r) => [r.sel, r.body]))("%s keeps the face opaque", (sel, body) => {
     const opacity = prop(body, "opacity");
-    expect(opacity === null || Number(opacity) >= 1).toBe(true);
+    expect(paintsNothingOnFace(sel, body) || opacity === null || Number(opacity) >= 1).toBe(true);
     for (const name of ["background", "background-color", "background-image"]) {
       expect(prop(body, name) ?? "").not.toMatch(/^(transparent|none)$|rgba\([^)]*,\s*0(\.\d+)?\)\s*$/);
     }

@@ -46,9 +46,55 @@ const tokens: Record<string, number> = Object.fromEntries(
 const drawnHeights = (body: string) =>
   [...body.matchAll(/(?:^|[ ;])(?:min-)?height: (?:(\d+)px|var\((--ctl-[\w-]+)\))/g)].map((m) => (m[1] ? Number(m[1]) : tokens[m[2]]));
 
+/** Splits a declaration value on its top-level commas. */
+const topLevel = (v: string) => {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of v) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+};
+/** Properties whose change lays the page out again on every frame it animates. */
+const LAYOUT = /^(?:(?:min-|max-)?(?:width|height)|margin(?:-\w+)?|padding(?:-\w+)?|top|left|right|bottom|inset(?:-\w+)?|flex(?:-basis|-grow|-shrink)?|gap|font-size|line-height|border(?:-\w+)?-width)$/;
+const keyframes = [...css.matchAll(/@keyframes ([\w-]+) \{((?:[^{}]*\{[^{}]*\})*[^{}]*)\}/g)]
+  .map((m) => ({ name: m[1], props: [...m[2].matchAll(/([a-z-]+)\s*:/g)].map((p) => p[1]) }));
+
 describe("transitions", () => {
   it("never animate every property", () => {
     expect(css).not.toMatch(/transition(-property)?:\s*all\b/);
+  });
+
+  it("never animate a layout property", () => {
+    const moved = [...css.matchAll(/transition(?:-property)?:\s*([^;}]+)/g)]
+      .flatMap((m) => topLevel(m[1]).map((t) => t.split(/\s+/)[0]))
+      .filter((p) => LAYOUT.test(p));
+    expect(moved).toEqual([]);
+  });
+});
+
+describe("keyframes", () => {
+  it("never animate a layout property", () => {
+    expect(keyframes.filter((k) => k.props.some((p) => LAYOUT.test(p))).map((k) => k.name)).toEqual([]);
+  });
+
+  it("loop only on transform and opacity", () => {
+    const loops = [...css.matchAll(/animation:\s*([^;}]+)/g)].flatMap((m) => topLevel(m[1]))
+      .filter((a) => /\binfinite\b/.test(a)).map((a) => a.split(/\s+/)[0]);
+    const cheap = /^(?:transform|translate|rotate|scale|opacity|offset|animation-timing-function)$/;
+    const named = keyframes.filter((k) => loops.includes(k.name));
+    expect(named.length).toBe(new Set(loops).size);
+    expect(named.filter((k) => !k.props.every((p) => cheap.test(p))).map((k) => k.name)).toEqual([]);
+  });
+
+  // a looping pulse fades a layer drawn once; only these one-shot flashes repaint a shadow
+  const SHADOW = ["level-pulse"];
+  it("repaint a shadow only where listed", () => {
+    expect(keyframes.filter((k) => k.props.includes("box-shadow")).map((k) => k.name)).toEqual(SHADOW);
   });
 });
 

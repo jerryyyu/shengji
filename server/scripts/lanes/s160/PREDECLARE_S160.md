@@ -51,8 +51,9 @@ the same decisions as the FULL side. Re-dealing it would reproduce identical byt
 Validity first, per arm, by kit/ut_mix_read.py unchanged (completion, names, fault ceilings, worlds delivered, zero served
 belief fallbacks, declaration shape, bury belief-world fallbacks, the unified prior and readout rules per side mode, outcome
 consistency; the validity.py guards). Every arm's 20-deal pilot passes the same checks before the arm is dealt.
-s160_guard.py adds what the pinned reader does not check: before any outcome, the two mirrors of every deal must put the
-exploiter on opposite teams (pilot and arm); every saved pilot check, seal, read and attribution is re-verified against its
+s160_guard.py adds what the pinned reader does not check: before any outcome, mirror 0 of every deal must carry ex_team 0 and
+mirror 1 must carry ex_team 1, the producer's seating (pilot and arm); a saved read is accepted only through the binding
+written inside its claimed attempt (mirror result, arm seal, saved-read digest), never by re-parsing the rows; every saved pilot check, seal, read and attribution is re-verified against its
 recipe, checker, seal digest and inputs before reuse; each raw read and the attribution run under a noclobber attempt claim,
 and a claimed attempt without a fully verified result stops the chain. A DEV_INVALID arm read stops the chain with every file kept; s160_attrib.py runs once, after U4's read and before D4 is dealt,
 and refuses unless B4 and U4 are VALID reads of this recipe by this reader. D4 is not an input to the label; its own read

@@ -150,8 +150,9 @@ def _stage(tmp_path: Path, *, local_host: bool) -> Path:
         tree.mkdir()
         git = ["git", "-C", str(tree), "-c", "user.name=t", "-c", "user.email=t@t"]
         subprocess.run(["git", "init", "-q", str(tree)], check=True)
-        (tree / "f").write_text("x\n")
-        subprocess.run(git + ["add", "f"], check=True)
+        (tree / "server").mkdir()
+        (tree / "server" / "f").write_text("x\n")
+        subprocess.run(git + ["add", "server/f"], check=True)
         subprocess.run(git + ["commit", "-q", "-m", "t"], check=True)
         head = subprocess.run(["git", "-C", str(tree), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
         cfg = re.sub(r"(?m)^T=.*$", f"T={tree}", cfg)
@@ -237,12 +238,27 @@ def _row(seed, mirror, team):
     return dict(seed=seed, mirror=mirror, arm="identity", ex_team=team, ex_levels=1 if team else -1)
 
 
-def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4"):
+FAKE_READER = """
+import hashlib, json, re
+from pathlib import Path
+sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+def main(argv):
+    recipe, arm, out = argv[1], argv[3], argv[5]
+    rc = json.loads(Path(recipe).read_text()); ra = rc["arms"][arm]; root = Path(ra["out_root"])
+    done = [l for l in Path(ra["status"]).read_text().splitlines() if l.startswith("UTD DONE ")][-1]
+    json.dump(dict(schema="utx-read-r1", arm=arm, duel="UTX", reader_sha256=sha(__file__), validity=dict(verdict="VALID"),
+                   binding=dict(recipe_sha256=sha(recipe), sums_sha256=sha(root / "SHA256SUMS"), duel_jsonl_sha256=sha(root / "duel.jsonl"),
+                                terminal=done), outcome=dict(levels=dict(n=1000, mean=0.0, ci95=[0, 0], lb80=0.0))), open(out, "x"))
+    return 0
+"""
+
+
+def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4", lane=None, garbage=False, reader_src=None):
     """A lane with one sealed output laid out exactly as s160_run.sh seals it, and a recipe naming it."""
-    lane = tmp_path / "glane"
+    lane = lane or tmp_path / "glane"
     reader = lane / "kit" / "ut_mix_read.py"
-    reader.parent.mkdir(parents=True)
-    reader.write_text("raise SystemExit('the pinned reader must not be reached')\n")
+    reader.parent.mkdir(parents=True, exist_ok=True)
+    reader.write_text(reader_src or "raise SystemExit('the pinned reader must not be reached')\n")
     seed0, deals = (2667003000, 20) if kind == "pilot" else (2667000000, 1000)
     ra = dict(seed0=2667000000, deals=1000, pilot_seed0=2667003000, out_root=str(lane / "out" / arm), status=str(lane / f"{arm}.status"))
     recipe = lane / "recipe.json"
@@ -253,7 +269,7 @@ def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4"):
     status = lane / f"{mode}.status"
     out.mkdir(parents=True)
     rows = [_row(seed0 + i, m, teams[m]) for i in range(deals) for m in (0, 1)]
-    (out / "duel.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    (out / "duel.jsonl").write_text("not json: raw rows cannot be parsed\n" if garbage else "".join(json.dumps(r) + "\n" for r in rows))
     for f in ("duel.jsonl.resume.json", "duel.time", "run.log"):
         (out / f).write_text(f"{f}\n")
     rsha = _sha(recipe)
@@ -267,23 +283,85 @@ def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4"):
     return lane, recipe, out, status
 
 
-def test_mirror_teams_refuses_the_same_team_twice():
+def test_mirror_teams_requires_the_producers_ordered_mapping():
     assert GD.mirror_teams([_row(5, 0, 0), _row(5, 1, 1)], 5, 1) == []
-    assert GD.mirror_teams([_row(5, 0, 1), _row(5, 1, 0)], 5, 1) == []
-    assert GD.mirror_teams([_row(5, 0, 0), _row(5, 1, 0)], 5, 1)
+    assert GD.mirror_teams([_row(5, 0, 1), _row(5, 1, 0)], 5, 1)        # reversed: the sign of the pair flips
+    assert GD.mirror_teams([_row(5, 0, 0), _row(5, 1, 0)], 5, 1)        # the same team twice
+    assert GD.mirror_teams([_row(5, 0, False), _row(5, 1, True)], 5, 1)  # not the producer's integers
     assert GD.mirror_teams([_row(5, 0, 0)], 5, 1)
 
 
-def test_pilot_check_refuses_a_same_team_mirror_pair_before_the_reader(tmp_path):
-    _, recipe, _, _ = _guard_lane(tmp_path, teams=(0, 0))
+@pytest.mark.parametrize("teams", [(0, 0), (1, 0), (1, 1)])
+def test_pilot_check_refuses_a_bad_mirror_mapping_before_the_reader(tmp_path, teams):
+    _, recipe, _, _ = _guard_lane(tmp_path, teams=teams)
     code, res = GD.pilot_check(str(recipe), "B4")
     assert code == 3 and res["validity"] == "DEV_INVALID" and res["failing"][0][0] == "mirror_teams"
 
 
-def test_read_refuses_a_same_team_mirror_pair_with_no_outcome(tmp_path):
-    lane, recipe, _, _ = _guard_lane(tmp_path, teams=(0, 0), kind="duel")
+@pytest.mark.parametrize("teams", [(0, 0), (1, 0), (1, 1)])
+def test_read_refuses_a_bad_mirror_mapping_with_no_outcome(tmp_path, teams):
+    lane, recipe, _, _ = _guard_lane(tmp_path, teams=teams, kind="duel")
+    (lane / "readout").mkdir()
     out = lane / "readout" / "B4.read.json"
-    assert GD.main(["read", str(recipe), "B4", str(out)]) == 3 and not out.exists()
+    assert GD.main(["read", str(recipe), "B4", str(out)]) == 3
+    assert not out.exists() and not (lane / "readout" / "B4.read.bind.json").exists()
+
+
+def _bound_read(tmp_path, monkeypatch, lane=None):
+    """A successful read through the guard on a sealed arm whose raw rows cannot be parsed afterwards."""
+    lane, recipe, out, status = _guard_lane(tmp_path, kind="duel", lane=lane, garbage=True, reader_src=FAKE_READER)
+    good = [_row(2667000000 + i, m, m) for i in range(1000) for m in (0, 1)]
+    monkeypatch.setattr(GD, "rows_of", lambda _out: good)     # the rows as the producer wrote them, for the one read
+    (lane / "readout").mkdir(exist_ok=True)
+    rj = lane / "readout" / "B4.read.json"
+    assert GD.main(["read", str(recipe), "B4", str(rj)]) == 0
+    monkeypatch.undo()
+    with pytest.raises(ValueError):                           # raw row parsing now fails
+        GD.rows_of(out)
+    return lane, recipe, rj
+
+
+def test_a_saved_read_is_accepted_only_through_its_binding(tmp_path, monkeypatch):
+    lane, recipe, rj = _bound_read(tmp_path, monkeypatch)
+    bd = rj.with_name("B4.read.bind.json")
+    rec = json.loads(bd.read_text())
+    assert rec["mirror_teams"] == {"verdict": "ok", "deals_checked": 1000} and rec["read_sha256"] == _sha(rj)
+    assert GD.main(["verify-read", str(recipe), "B4", str(rj)]) == 0
+    bd.write_text(json.dumps(dict(rec, read_sha256="0" * 64)))
+    assert GD.main(["verify-read", str(recipe), "B4", str(rj)]) == 1
+    bd.unlink()
+    assert GD.main(["verify-read", str(recipe), "B4", str(rj)]) == 1
+
+
+def _recovery_lane(tmp_path, monkeypatch):
+    z = _stage(tmp_path, local_host=True)
+    lane, recipe, rj = _bound_read(tmp_path, monkeypatch, lane=z)
+    ro = z / "readout"
+    (ro / "B4.read.claim").write_text("claude s160 test claim\n")
+    (ro / "B4.read.rc").write_text("0\n")
+    (ro / "B4.read.out").write_text("{}\n")
+    (ro / "B4.read.err").write_text("")
+    return z, ro
+
+
+def test_recovery_accepts_a_bound_read_without_parsing_rows(tmp_path, monkeypatch):
+    z, _ = _recovery_lane(tmp_path, monkeypatch)
+    assert _run(z, "check").returncode == 0
+    status = (z / "check.status").read_text()
+    assert re.search(r"(?m)^S160 CHECKED claude-s160-check \S+ saved results: none or valid$", status), status
+
+
+@pytest.mark.parametrize("damage", ["missing", "mismatched"])
+def test_recovery_refuses_a_missing_or_mismatched_binding(tmp_path, monkeypatch, damage):
+    z, ro = _recovery_lane(tmp_path, monkeypatch)
+    bd = ro / "B4.read.bind.json"
+    if damage == "missing":
+        bd.unlink()
+    else:
+        bd.write_text(json.dumps(dict(json.loads(bd.read_text()), seal={"sums_sha256": "0" * 64})))
+    assert _run(z, "check").returncode == 0
+    status = (z / "check.status").read_text()
+    assert re.search(r"(?m)^S160 NOTE claude-s160-check \S+ saved results: a claimed attempt .*read binding", status), status
 
 
 def test_seal_is_bound_to_the_done_digest_and_the_output_set(tmp_path):

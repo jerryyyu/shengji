@@ -10,8 +10,12 @@ verification of every saved result before the launcher reuses it.
     s160_guard.py verify-attrib RECIPE ATTRIB.json
 verify-* print "ok" or the reasons and exit 0 / 1.
 
-The mirror-team check: the two mirrors of every deal put the exploiter on opposite teams ({ex_team} == {0, 1}).  The pinned
-reader pairs mirrors by seed only, so a pair with the exploiter on one team twice would read as a valid zero.
+The mirror-team check: the producer seats the exploiter on team = mirror, so mirror 0 must carry ex_team 0 and mirror 1 must
+carry ex_team 1, exactly.  The pinned reader pairs mirrors by seed only, so a pair with the exploiter on one team twice reads
+as a valid zero and a reversed pair flips the sign; both are refused before any outcome.
+The read binding: inside the claimed attempt, after the mirror check passes and the pinned reader exits 0, ``read`` writes
+<ARM>.read.bind.json (noclobber) with the mirror result, the arm seal and the saved read's digest.  verify-read and
+verify-attrib consume that binding with its digests checked; they never parse the raw rows again.
 The seal check: the runner's status ends in its DONE line for this recipe with 2 x deals rows; SHA256SUMS hashes to the DONE
 line's digest, lists exactly the sealed files and nothing else is in the output directory; each file matches; the manifest is
 this recipe's for the mode, seed and count.
@@ -63,8 +67,8 @@ def mirror_teams(rows, seed0: int, deals: int) -> list:
         a, b = by.get((s, 0), []), by.get((s, 1), [])
         if len(a) != 1 or len(b) != 1:
             bad.append(f"deal {s}: {len(a)} mirror-0 and {len(b)} mirror-1 rows")
-        elif sorted((a[0].get("ex_team"), b[0].get("ex_team")), key=str) != [0, 1]:
-            bad.append(f"deal {s}: exploiter teams {a[0].get('ex_team')!r} / {b[0].get('ex_team')!r}")
+        elif a[0].get("ex_team") != 0 or b[0].get("ex_team") != 1 or type(a[0].get("ex_team")) is not int or type(b[0].get("ex_team")) is not int:
+            bad.append(f"deal {s}: exploiter teams {a[0].get('ex_team')!r} / {b[0].get('ex_team')!r} (want mirror 0 -> 0, mirror 1 -> 1)")
     return bad
 
 
@@ -142,13 +146,35 @@ def pilot_check(recipe: str, arm: str) -> tuple[int, dict]:
     return (0 if valid else 3), res
 
 
+def bind_path(read_json) -> Path:
+    p = Path(read_json)
+    if not p.name.endswith(".read.json"):
+        raise Refusal(f"{p} is not a <ARM>.read.json path")
+    return p.with_name(p.name[: -len(".read.json")] + ".read.bind.json")
+
+
+def binding_record(recipe: str, arm: str, s: dict, deals: int, read_json) -> dict:
+    rc, _ = recipe_arm(recipe, arm)
+    return dict(schema="s160-read-bind-r1", arm=arm, recipe_sha256=sha(recipe), guard_sha256=sha(HERE), reader_sha256=rc["reader_sha256"],
+                mirror_teams=dict(verdict="ok", deals_checked=deals), seal=s, read_sha256=sha(read_json))
+
+
 def read(recipe: str, arm: str, out: str) -> int:
     rc, ra = recipe_arm(recipe, arm)
-    seal(recipe, arm, "duel")
+    bp = bind_path(out)
+    if bp.exists():
+        raise Refusal(f"{bp} exists; the read runs once")
+    s = seal(recipe, arm, "duel")
     mt = mirror_teams(rows_of(Path(ra["out_root"])), ra["seed0"], ra["deals"])
     if mt:
         raise Refusal(f"mirror teams: {mt[:5]} ({len(mt)} deals); no outcome computed")
-    return load_reader(rc).main(["--recipe", recipe, "--arm", arm, "--out", out])
+    code = load_reader(rc).main(["--recipe", recipe, "--arm", arm, "--out", out])
+    if code == 0:
+        if seal(recipe, arm, "duel") != s:
+            raise Refusal("the arm seal changed during the read")
+        with open(bp, "x") as fh:
+            json.dump(binding_record(recipe, arm, s, ra["deals"], out), fh, indent=1)
+    return code
 
 
 def verify_pilot(recipe: str, arm: str, check: str) -> None:
@@ -178,8 +204,15 @@ def verify_read(recipe: str, arm: str, path: str) -> None:
     bad = [m for ok, m in checks if not ok]
     if bad:
         raise Refusal(f"saved read differs in {bad}")
-    if mirror_teams(rows_of(Path(ra["out_root"])), ra["seed0"], ra["deals"]):
-        raise Refusal("the sealed arm fails the mirror-team check")
+    bp = bind_path(path)
+    try:
+        bd = json.loads(bp.read_text())
+    except (OSError, ValueError):
+        raise Refusal(f"no readable read binding {bp}") from None
+    want = binding_record(recipe, arm, s, ra["deals"], path)
+    bad = [k for k, v in want.items() if bd.get(k) != v]
+    if bad or set(bd) != set(want):
+        raise Refusal(f"read binding {bp.name} differs in {bad or sorted(set(bd) ^ set(want))}")
 
 
 def verify_attrib(recipe: str, path: str, attrib_py: Path = HERE.with_name("s160_attrib.py")) -> None:

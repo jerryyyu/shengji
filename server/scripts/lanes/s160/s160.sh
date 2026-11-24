@@ -17,7 +17,8 @@
 #   pilot (s160_run.sh pilot<ARM>, 20 deals) -> pilot check (s160_guard.py pilot-check: seal, mirror teams, the pinned
 #   reader's validity; to .tmp, renamed only when VALID, else kept as .invalid.json) -> arm (s160_run.sh <ARM>) -> verify
 #   (s160_guard.py verify-seal) -> read (a noclobber claim readout/<ARM>.read.claim, then s160_guard.py read: the seal and the
-#   mirror-team check, then kit/ut_mix_read.py once; rc kept in readout/<ARM>.read.rc; rc != 0 = ABORT).
+#   mirror-team check, then kit/ut_mix_read.py once, then the binding readout/<ARM>.read.bind.json; rc kept in
+#   readout/<ARM>.read.rc; rc != 0 = ABORT).  A saved read is accepted only through its binding, never by re-parsing rows.
 # A claim without a fully verified read (json, rc 0, verify-read), or any read output without a claim, stops the chain.
 # After U4's read: the attribution (s160_attrib.py once, on the sealed B4 and U4 reads).  After the last arm: the readout seal
 #   -> DONE.
@@ -60,25 +61,26 @@ AJ=$S/readout/ATTRIB.json; AO=$S/readout/ATTRIB.out; AE=$S/readout/ATTRIB.err; A
 
 guard() {   # s160_guard.py SUBCOMMAND ARGS... in the tree's environment; its last output line is in LANE_MSG on failure
   local o
-  o=$(cd "$T/server" && PYTHONPATH="$T/server" "$PY" -B "$GD" "$@" 2>&1) && return 0
+  o=$({ cd "$T/server" && PYTHONPATH="$T/server" "$PY" -B "$GD" "$@"; } 2>&1) && return 0
   LANE_MSG="$(echo "$o" | tail -1 | cut -c1-300)"; return 1
 }
 arm_paths() {   # ARM: sets the per-arm paths
   OUT=$S/out/$1; ST=$S/$1.status; POUT=$S/pilot$1; PST=$S/pilot$1.status
   PCHK=$S/pilot$1.check.json; PINV=$S/pilot$1.check.invalid.json
   RJ=$S/readout/$1.read.json; RO=$S/readout/$1.read.out; RE=$S/readout/$1.read.err; RRC=$S/readout/$1.read.rc
-  RCL=$S/readout/$1.read.claim
+  RCL=$S/readout/$1.read.claim; RBD=$S/readout/$1.read.bind.json
 }
 claim() {   # FILE: a noclobber attempt claim; fails if any claim (or file) is already there
   ( set -C; printf '%s\n' "claude s160 pid=$$ identity=${LANE_ARMED_ID:-none} $(lane_now)" > "$1" ) 2>/dev/null
 }
-read_state() {   # CLAIM JSON RC OUT ERR VERIFY...: 0 = no attempt; 1 = a fully verified saved result; 2 = partial (LANE_MSG)
-  local cl=$1 js=$2 rcf=$3 ou=$4 er=$5; shift 5
+read_state() {   # CLAIM JSON RC OUT ERR BIND VERIFY...: 0 = no attempt; 1 = a fully verified saved result; 2 = partial (LANE_MSG)
+  local cl=$1 js=$2 rcf=$3 ou=$4 er=$5 bd=$6; shift 6
+  LANE_MSG=""
   if [ -e "$cl" ] || [ -L "$cl" ]; then
     [ -f "$js" ] && [ -f "$rcf" ] && [ "$(head -1 "$rcf")" = 0 ] && [ -e "$ou" ] && [ -e "$er" ] && guard "$@" "$js" && return 1
     LANE_MSG="a claimed attempt ($cl) has no fully verified result: ${LANE_MSG:-files missing}"; return 2
   fi
-  for f in "$js" "$rcf" "$ou" "$er"; do
+  for f in "$js" "$rcf" "$ou" "$er" "$bd"; do
     [ -e "$f" ] || [ -L "$f" ] && { LANE_MSG="$f exists without an attempt claim"; return 2; }
   done
   return 0
@@ -91,10 +93,10 @@ preflight() {   # every saved result is verified before anything is dispatched; 
     if [ -e "$PCHK" ] || [ -L "$PCHK" ]; then
       guard verify-pilot "$RECIPE" "$arm" "$PCHK" || { LANE_MSG="saved pilot check $PCHK: $LANE_MSG; kept"; return 1; }
     fi
-    read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" verify-read "$RECIPE" "$arm"; r=$?
+    read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" "$RBD" verify-read "$RECIPE" "$arm"; r=$?
     [ "$r" = 2 ] && return 1
   done
-  read_state "$ACL" "$AJ" "$ARC" "$AO" "$AE" verify-attrib "$RECIPE"; r=$?
+  read_state "$ACL" "$AJ" "$ARC" "$AO" "$AE" "$ACL.none" verify-attrib "$RECIPE"; r=$?
   [ "$r" = 2 ] && return 1
   return 0
 }
@@ -143,7 +145,7 @@ aside() {   # PATH...: an unfinished pilot output is renamed (never deleted) so 
 
 do_attrib() {   # once, on the sealed B4 and U4 reads (D4 is not an input), under a noclobber attempt claim
   local r
-  read_state "$ACL" "$AJ" "$ARC" "$AO" "$AE" verify-attrib "$RECIPE"; r=$?
+  read_state "$ACL" "$AJ" "$ARC" "$AO" "$AE" "$ACL.none" verify-attrib "$RECIPE"; r=$?
   [ "$r" = 2 ] && lane_abort 4 "attribution: $LANE_MSG; kept"
   if [ "$r" = 0 ]; then
     readmit attrib
@@ -195,7 +197,7 @@ for ARM in $ARMS; do
   fi
   lane_say STEP "arm $ARM rows=$((2 * DEALS)) sums=$(lane_sha "$OUT/SHA256SUMS")"
   # read: once, under a noclobber claim made before any raw output is opened; a claimed attempt is never re-run
-  read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" verify-read "$RECIPE" "$ARM"; r=$?
+  read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" "$RBD" verify-read "$RECIPE" "$ARM"; r=$?
   [ "$r" = 2 ] && lane_abort 4 "read $ARM: $LANE_MSG; kept"
   if [ "$r" = 0 ]; then
     readmit "read-$ARM"
@@ -213,6 +215,6 @@ done
 
 LABEL=$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["label"])' "$AJ") || lane_abort 4 "attribution label"
 D4M=$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["outcome"]["levels"]["mean"])' "$S/readout/D4.read.json") || lane_abort 4 "D4 mean"
-(cd "$S/readout" || exit 1; set --; for f in *.read.claim *.read.json *.read.out *.read.err *.read.rc ATTRIB.claim ATTRIB.json ATTRIB.out ATTRIB.err ATTRIB.rc; do
+(cd "$S/readout" || exit 1; set --; for f in *.read.claim *.read.bind.json *.read.json *.read.out *.read.err *.read.rc ATTRIB.claim ATTRIB.json ATTRIB.out ATTRIB.err ATTRIB.rc; do
    [ -e "$f" ] && set -- "$@" "$f"; done; shasum -a 256 "$@" > SHA256SUMS) || lane_abort 4 "readout seal failed"
 lane_done "label=$LABEL d4_mean=$D4M attrib_sha256=$(lane_sha "$AJ") sums_sha256=$(lane_sha "$S/readout/SHA256SUMS") identity=$LANE_ARMED_ID mode=$MODE"

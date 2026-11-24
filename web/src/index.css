@@ -2161,6 +2161,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 .lane-cell.was {
   border-color: var(--lane);
   color: var(--lane);
+  font-weight: 700;
 }
 
 .lane-cell.now {
@@ -2233,6 +2234,56 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+}
+
+/* High contrast (forced colours): the browser would draw every cell, the
+   track, the fill and the 80 mark in one Canvas colour. The ladder draws
+   its own system colours instead: inactive ranks bare, the old rank in a
+   thick dashed CanvasText frame, the new rank in Highlight; the track
+   framed in CanvasText, the fill in Highlight, the 80 mark in CanvasText. */
+@media (forced-colors: active) {
+  .rank-lane,
+  .points-bar {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+
+  .rank-lane .lane-label,
+  .points-bar-n,
+  .points-bar-80 {
+    color: CanvasText;
+  }
+
+  .lane-cell {
+    background: transparent;
+    color: CanvasText;
+    border: 2px solid transparent;
+  }
+
+  .lane-cell.was {
+    border: 3px dashed CanvasText;
+    color: CanvasText;
+  }
+
+  .lane-cell.now {
+    background: Highlight;
+    color: HighlightText;
+    border: 2px solid Highlight;
+  }
+
+  .points-bar-track {
+    background: Canvas;
+    border: 1px solid CanvasText;
+  }
+
+  .points-bar-fill {
+    background: Highlight;
+  }
+
+  .points-bar-mark {
+    background: CanvasText;
+    box-shadow: 0 0 0 1px Canvas;
+  }
 }
 
 /* a landscape browser with its bars showing (about 326px tall): the

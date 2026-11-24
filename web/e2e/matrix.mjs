@@ -121,6 +121,18 @@ async function runDevice(device) {
         if (SHOTS) await shot(page, `${device}_round_end_details`);
       }
     }
+    if (coach === "off" && /^phone-land(-se)?$/.test(device)) {
+      // high contrast: the ladder's marks and the bar's parts stay apart in forced colours
+      await page.emulateMedia({ forcedColors: "active" });
+      for (const id of ["round_end", "round_end_won"]) {
+        const frames = all.find(([i]) => i === id)?.slice(1) ?? [];
+        for (const f of frames) { await push(page, f); await sleep(120); }
+        await sleep(150);
+        await rep.check(`${device}_${id}_forced_colors`, await ladderInForcedColors(page), page);
+        if (SHOTS) await shot(page, `${device}_${id}_forced_colors`);
+      }
+      await page.emulateMedia({ forcedColors: "none" });
+    }
     await page.context().close();
   }
 }
@@ -129,6 +141,31 @@ const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-lan
 // a few devices at a time: each is its own page, and the checks are independent
 const lanes = Number(process.env.LANES ?? 3);
 await Promise.all(Array.from({ length: lanes }, async () => { for (let d; (d = devices.shift()); ) await runDevice(d); }));
+/** In forced colours the round end still tells the levels and the 80 apart: the old, new and
+ *  inactive ranks are three different marks; the track, its fill and the 80 mark three different paints. */
+function ladderInForcedColors(page) {
+  return page.evaluate(() => {
+    const out = [];
+    if (!matchMedia("(forced-colors: active)").matches) return ["forced colours are not active"];
+    const cs = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el) : null; };
+    const track = cs(".points-bar-track"), fill = cs(".points-bar-fill"), mark = cs(".points-bar-mark");
+    if (!track || !fill || !mark) return ["no points bar"];
+    if (fill.backgroundColor === track.backgroundColor) out.push(`fill and track are one colour ${fill.backgroundColor}`);
+    if (parseFloat(track.borderTopWidth) < 1 || track.borderTopColor === track.backgroundColor) out.push("the track has no frame");
+    if (mark.backgroundColor === fill.backgroundColor || mark.backgroundColor === track.backgroundColor) out.push(`the 80 mark ${mark.backgroundColor} melts into the bar`);
+    const lanes = [...document.querySelectorAll(".rank-lane")];
+    const mark_ = (c) => { const s = getComputedStyle(c); return `${s.backgroundColor}|${s.borderTopStyle}|${s.borderTopColor}|${s.borderTopWidth}`; };
+    for (const lane of lanes) {
+      const bare = lane.querySelector(".lane-cell:not(.was):not(.now):not(.lane-crown)");
+      const was = lane.querySelector(".lane-cell.was"), now = lane.querySelector(".lane-cell.now");
+      if (!bare || !now) { out.push(`${lane.className}: no inactive or new rank`); continue; }
+      if (mark_(now) === mark_(bare)) out.push(`${lane.className}: the new rank looks inactive`);
+      if (was && (mark_(was) === mark_(bare) || mark_(was) === mark_(now))) out.push(`${lane.className}: the old rank is not its own mark`);
+    }
+    if (!document.querySelector(".lane-cell.was")) out.push("no old rank drawn");
+    return out;
+  });
+}
 /** The round-end card fits the screen whole, with no scroll: the lanes, the bar and the buttons on an iPhone SE held sideways. */
 function roundEndFits(page) {
   return page.evaluate(() => {

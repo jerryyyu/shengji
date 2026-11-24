@@ -265,8 +265,9 @@ describe("controls", () => {
   });
 
   it("the setting's select keeps the system's indicator in forced colors, where the drawn caret is dropped", () => {
-    const block = /@media \(forced-colors: active\) \{([^{}]*\{[^{}]*\})*[^{}]*\}/.exec(
-      css.slice(css.indexOf("@media (forced-colors: active)")))?.[0] ?? "";
+    // every forced-colors block, in any of the style files: the round end's ladder has its own
+    const block = [...css.matchAll(/@media \(forced-colors: active\) \{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g)]
+      .map((m) => m[0]).join("\n");
     expect(block).toMatch(/\.tp-set select \{[^}]*appearance: auto;/);
     expect(bodies(".tp-set select").join(";")).toContain("appearance: none;");
   });

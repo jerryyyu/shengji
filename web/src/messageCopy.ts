@@ -35,8 +35,10 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
 }
 
 /** The chat's system lines (joins, leaves, seat claims) as the server and
- *  the offline server word them, each in the current language with any bot
- *  named as the table names it. A line of another form passes through. */
+ *  the offline server word them, each in the current language. Only a
+ *  participant the line's `bot_roles` marks as a bot is named as the table
+ *  names bots; every other name is a person's and shows as typed. A line of
+ *  another form passes through. */
 const SYSTEM_LINES: [RegExp, MessageKey][] = [
   [/^bot is playing for (.+) \(disconnected\)$/, "table.sysBotPlaying"],
   [/^(.+?) reconnected — taking over from the bot$/, "table.sysReconnectedFromBot"],
@@ -48,10 +50,12 @@ const SYSTEM_LINES: [RegExp, MessageKey][] = [
   [/^(.+?) disconnected$/, "table.sysDisconnected"],
 ];
 
-export function formatSystemLine(text: string): string {
+export function formatSystemLine(text: string, botRoles: readonly string[] = []): string {
   for (const [re, key] of SYSTEM_LINES) {
     const m = re.exec(text);
-    if (m) return t(key, { name: displayName(m[1]), took: m[2] === undefined ? "" : displayName(m[2]) });
+    if (!m) continue;
+    const took = m[2] ?? "";
+    return t(key, { name: m[1], took: botRoles.includes("took") ? displayName(took, true) : took });
   }
   return text;
 }

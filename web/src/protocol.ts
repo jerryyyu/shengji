@@ -357,6 +357,9 @@ export interface ChatMsg {
   seat: number | null;
   name: string;
   text: string;
+  /** A system line's participants that are bots ("took": the seat's
+   *  previous holder); any other name in the line is a person's. */
+  bot_roles?: "took"[];
   t: number;
 }
 

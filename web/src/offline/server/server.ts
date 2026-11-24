@@ -83,6 +83,8 @@ interface ChatEntry {
   name: string;
   text: string;
   t: number;
+  /** server.py chat_system: the system line's participants that are bots. */
+  bot_roles?: "took"[];
   id: number;
   room: string;
 }
@@ -825,7 +827,7 @@ export class LocalServer {
     });
   }
 
-  chatPost(room: LocalRoom, entry: { seat: number; name: string; text: string; t: number }): void {
+  chatPost(room: LocalRoom, entry: { seat: number; name: string; text: string; t: number; bot_roles?: "took"[] }): void {
     room.chatSeq += 1;
     const full: ChatEntry = { ...entry, id: room.chatSeq, room: room.code };
     room.chat.push(full);
@@ -833,8 +835,8 @@ export class LocalServer {
     for (const sd of room.slots()) if (sd) this.enqueue(sd, { type: "chat", ...full });
   }
 
-  chatSystem(room: LocalRoom, text: string): void {
-    this.chatPost(room, { seat: -1, name: "", text, t: Date.now() / 1000 });
+  chatSystem(room: LocalRoom, text: string, botRoles: "took"[] = []): void {
+    this.chatPost(room, { seat: -1, name: "", text, t: Date.now() / 1000, ...(botRoles.length ? { bot_roles: botRoles } : {}) });
   }
 
   attach(room: LocalRoom, seat: Seat, writer: Writer): number {
@@ -1691,7 +1693,8 @@ export class LocalConnection {
     this.room = room;
     this.me = seat;
     this.attach(room, seat);
-    server.chatSystem(room, fromPerson ? `${seat.name} took over for ${took} (offline)` : `${seat.name} took ${took}'s seat`);
+    server.chatSystem(room, fromPerson ? `${seat.name} took over for ${took} (offline)` : `${seat.name} took ${took}'s seat`,
+                      fromPerson ? [] : ["took"]);
     server.kickBots(room);
     server.broadcast(room);
   }

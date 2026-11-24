@@ -51,6 +51,9 @@ describe("a newcomer whose answer was lost", () => {
     const at = t.clock.now();
     const sock = joinUnheard(t, seat);
     await t.settle(() => !t.room!.seats[seat].isBot, 10_000);
+    // the chat names the bot it replaced as the line's "took" bot
+    const took = t.room!.chat.find((c) => c.text === `Zed took Bot ${seat}'s seat`);
+    expect(took?.bot_roles).toEqual(["took"]);
     // the room seated it; the phone never heard, and gives its link up
     expect(nearbyClaimable(t.room!, t.clock.now())).not.toContain(seat);
     await t.settle(() => sock.readyState === NearbySocket.CLOSED, 100_000);

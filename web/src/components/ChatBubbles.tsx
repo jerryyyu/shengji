@@ -3,7 +3,7 @@ import type { ChatMsg, GameState, ServerMsg } from "../protocol";
 import { conn } from "../ws";
 import { isBlocked, useBlocks } from "../chatBlocks";
 import { seatPos } from "./TrickArea";
-import { displayName, useT } from "../i18n";
+import { useT } from "../i18n";
 
 /** How long a chat line stays at its seat. */
 const BUBBLE_MS = 5000;
@@ -284,7 +284,7 @@ export default function ChatBubbles({ state, open }: {
     <div className="chat-bubbles" ref={layerRef} aria-live="polite"
          onKeyDown={(e) => { if (e.key === "Escape") dropAll(); }}>
       {shown.map((b) => {
-        const who = b.seat === state.you ? t("common.you") : displayName(b.name);
+        const who = b.seat === state.you ? t("common.you") : b.name;
         return (
           <button key={`${b.seat}:${b.id}`} type="button" data-seat={b.seat}
                   className={`chat-bubble${b.seat === state.you ? " mine" : ""}`}

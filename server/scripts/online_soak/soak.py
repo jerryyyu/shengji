@@ -96,6 +96,7 @@ class Soak:
     stale_token_outcomes: dict = {}
     bot_levels: dict = {}
     sessions: list = []
+    skip_faults: frozenset = frozenset()
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -138,6 +139,7 @@ class Soak:
         self.timer_drop_strikes = 0
         self.bot_levels: dict[str, int] = {}
         self.sessions = self._make_accounts(args.accounts, args.high_rating_share)
+        self.skip_faults = frozenset(getattr(args, "skip_faults", None) or ())
         self._hook()
 
     def _make_accounts(self, n: int, high_share: float) -> list[str]:
@@ -439,7 +441,7 @@ class Soak:
             await asyncio.sleep(self.rng.uniform(*self.args.fault_gap) / self.scale)
             if client.room is None or client.state is None or time.monotonic() >= until:
                 continue
-            kind = self.rng.choice(FAULTS)
+            kind = self.rng.choice(tuple(k for k in FAULTS if k not in self.skip_faults))
             if kind == "timer_drop" and client.mode != "ranked":
                 kind = "drop"       # a casual table has no move clock
             client.gen_at_fault = client.gen
@@ -878,6 +880,7 @@ class Soak:
             "stale_token_outcomes": dict(sorted(self.stale_token_outcomes.items())),
             "bot_levels": dict(sorted(self.bot_levels.items())),
             "accounts": len(self.sessions),
+            "fault_kinds": [k for k in FAULTS if k not in self.skip_faults],
         }
         firsts = [r["trace"]["state_since_end"] for r in self.ledger.faults
                   if r["outcome"] == "recovered" and "state_since_end" in (r.get("trace") or {})]
@@ -931,6 +934,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fault-gap", type=float, nargs=2, default=(15.0, 45.0),
                     help="unscaled seconds between one client's faults (uniform range)")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--skip-faults", nargs="*", choices=FAULTS, default=[],
+                    help="fault kinds left out of the run (a control)")
     ap.add_argument("--accounts", type=int, default=6,
                     help="ranked clients that are signed in (temp accounts DB); the rest are guests")
     ap.add_argument("--high-rating-share", type=float, default=0.5,

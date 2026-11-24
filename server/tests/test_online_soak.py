@@ -862,3 +862,10 @@ def test_every_fault_kind_has_a_branch_in_chaos():
     src = inspect.getsource(soak.Soak.chaos)
     for kind in soak.FAULTS:
         assert f'"{kind}"' in src or kind in soak.LEAVE_KINDS, kind
+
+
+def test_a_skipped_fault_kind_is_never_injected(tmp_path, monkeypatch):
+    monkeypatch.setattr(soak, "FAULTS", ("stall", "stale_token"))
+    s = _bare_soak(tmp_path)
+    s.skip_faults = frozenset({"stale_token"})
+    assert s.report(1.0)["fault_kinds"] == ["stall"]

@@ -853,7 +853,8 @@ def mixpolish(args) -> int:
     _status(status, f"MIXPOLISH START mix_shards={len(mix)} calib_shards={len(calib)} cache_shards={len(cache)} epochs={args.epochs} "
                     f"ckpt={us.sha256_file(args.ckpt)} init calib {json.dumps(init)}")
     rng = np.random.default_rng(args.seed)
-    step_i, t0, state = 0, time.time(), None
+    step_i, t0 = 0, time.time()
+    state = saved["model"]
     for epoch in range(args.epochs):
         sums = np.zeros(6)
         for si in rng.permutation(len(mix)):
@@ -885,9 +886,7 @@ def mixpolish(args) -> int:
         if cm["mixture_nll"] < best["score"]:
             best = {"score": cm["mixture_nll"], "epoch": epoch + 1, "calib": cm}
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-    if state is not None:
-        model.load_state_dict(state)
-    torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict(), "config": model.config, "epoch": saved.get("epoch"),
+    torch.save({"schema": CKPT_SCHEMA, "model": state, "config": model.config, "epoch": saved.get("epoch"),
                 "calib": dict(saved.get("calib") or {}, mixpolish=best["calib"], mixpolish_epoch=best["epoch"], mixpolish_init=init),
                 "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, mixpolish=vars(args))}, out / "best.pt")
     _status(status, f"MIXPOLISH DONE best_epoch={best['epoch']} init {json.dumps(init)} calib {json.dumps(best['calib'])} "

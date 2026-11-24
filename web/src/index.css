@@ -2450,7 +2450,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     gap: var(--space-s);
     min-width: 0;
     height: var(--header-h);
-    padding: 0 10px 0 7px;     /* the team dot sits in the label: a little less padding */
+    padding: 0 6px;            /* the team dot or crown sits in the label: the name gets the room */
     border: 0;
     border-radius: 999px;
     background: var(--pill-bg);
@@ -2535,6 +2535,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     filter: none;
   }
 
+  /* a seat's crown stays at the label's start, a size down and tucked to the
+     name, so a short name such as "Bot Wei" fits whole beside it */
+  .opponent .banker-crown {
+    flex-shrink: 0;
+    font-size: var(--fs-11);
+    margin-right: -2px;
+  }
+
   .level-chip.level-up {
     animation: none;
   }
@@ -2592,15 +2600,14 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   /* The top seat's label shares the header row. Its stretch runs from a gap
      past the level strip (the strip's measured width, --hud-strip-w, from
      the safe edge) to a gap before Chat. It is centred over its slot when
-     the stretch allows; otherwise it takes up to 96px of the stretch off
-     centre (136px with a countdown, which stays whole), and the name ends
-     in an ellipsis. */
-  .opponent.pos-top:has(.off-tag.counting) { --top-cap: 136px; }
+     the stretch allows; otherwise it takes up to 150px of the stretch off
+     centre, and the name ends in an ellipsis. */
+
   .opponent.pos-top {
     --top-from: calc(var(--safe-l) + 4px + var(--hud-strip-w, 264px) + var(--space-s));
     --top-to: calc(var(--view-w) - var(--safe-r) - 4px - 36px - var(--space-s) - var(--chat-w));
     --top-w: min(200px, max(calc(2 * min(var(--view-w) / 2 - var(--top-from), var(--top-to) - var(--view-w) / 2)),
-      min(var(--top-cap, 96px), calc(var(--top-to) - var(--top-from)))));
+      min(var(--top-cap, 150px), calc(var(--top-to) - var(--top-from)))));
     top: calc(6px + var(--safe-t));
     left: clamp(calc(var(--top-from) + var(--top-w) / 2), calc(var(--view-w) / 2), calc(var(--top-to) - var(--top-w) / 2));
     height: var(--header-h);
@@ -2612,7 +2619,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   .opponent .opp-name {
     min-width: 0;
     max-width: 100%;
-    gap: var(--space-xs);
+    gap: 3px;
   }
 
   /* A side seat's label stands at its edge of the felt, a gap in from the

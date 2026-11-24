@@ -484,6 +484,33 @@ describe("phone controls", () => {
     expect(rule(css.replace(block, "").replace(blockAt(TABLET_BLOCK), ""), ".opp-fullname").display).toBe("none");
   });
 
+  it("fits a short seat name whole beside the banker's crown, and the top seat's name in its stretch", () => {
+    // a side label at its widest holds, left to right: padding, the crown,
+    // the gaps, the name and the turn's "\u2026" room, then padding
+    const pill = rule(block, ".opponent");
+    const [pv, ph = pv] = pill.padding.split(" ");
+    const pads = 2 * px(ph);
+    const crownRule = { ...rule(block, ".banker-crown"), ...rule(block, ".opponent .banker-crown") };
+    const crownW = 1.25 * px(crownRule["font-size"]) + (crownRule["margin-right"] ? px(crownRule["margin-right"]) : 0);
+    const gap = px(rule(block, ".opponent .opp-name").gap.replace("var(--space-xs)", "4px"));
+    const nameFont = px(rule(block, ".opp-name")["font-size"]);
+    const dots = 1.1 * nameFont;
+    // "Bot Wei" drawn in the system font is 4.1em
+    const shortName = 4.1 * nameFont;
+    for (const [name, vp] of FRAMES) {
+      const pillMax = evalLength(tokens["--pill-max"], vp, tokens);
+      const room = pillMax - pads - crownW - 2 * gap - dots;
+      expect(room, `${name}: name room beside the crown`).toBeGreaterThanOrEqual(shortName);
+    }
+    // the top seat may take up to 150px of its stretch off centre ("Lucky Dragon" is 6.9em)
+    const top = rule(block, ".opponent.pos-top");
+    expect(top["--top-w"]).toContain("var(--top-cap, 150px)");
+    const se = PHONES["iPhone SE 667x375"];
+    const vars = { ...tokens, ...top, "--hud-strip-w": "264px", "--chat-w": "40px" };
+    const topW = evalLength(top["--top-w"], se, vars);
+    expect(topW).toBeGreaterThanOrEqual(6.9 * nameFont + 2 * px(ph) + 8 + 2 * gap + dots);
+  });
+
   it("keeps table text at 11px or more", () => {
     for (const sel of [".lead-tag, .win-tag", ".declare-tag", ".you-tag, .host-tag, .off-tag", ".hand-line", ".chip"]) {
       expect(px(rule(block, sel)["font-size"])).toBeGreaterThanOrEqual(11);

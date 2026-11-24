@@ -5,7 +5,7 @@
 // engine's fixture (__fixtures__/score_cases.json).
 
 import { esc, type Lang } from "./cards.ts";
-import { LEAD_SHAPES, RANKS, type LeadShape } from "./scoreCalc.ts";
+import { MAX_LEAD, RANKS } from "./scoreCalc.ts";
 
 export const CALCULATOR_SLUG = "score-calculator";
 
@@ -24,16 +24,11 @@ const T = {
     attackers: "Attackers",
     defenders: "Defenders",
     kitty: "Points in the kitty",
-    lead: "Last trick led with",
+    leadCards: "Cards led to the last trick",
+    leadLargest: "Largest part of that lead",
     rule: "Kitty rule",
     ruleSite: "This site: twice the cards led",
     ruleLargest: "Largest part: twice the biggest part",
-    shapes: {
-      "single": "A single", "pair": "A pair", "two-singles": "Two singles (throw)",
-      "pair-single": "A pair and a single (throw)", "two-pairs": "Two pairs, not a tractor (throw)",
-      "tractor-2": "Tractor of 2 pairs", "tractor-2-single": "Tractor of 2 pairs and a single (throw)",
-      "tractor-3": "Tractor of 3 pairs", "tractor-4": "Tractor of 4 pairs",
-    } satisfies Record<LeadShape, string>,
     noscript: "The calculator needs JavaScript. The table under “How the result is worked out” gives the same answers by hand.",
     // the script's strings; {n}, {t} and similar are filled in by the script
     out: {
@@ -52,6 +47,8 @@ const T = {
       errTricks: "trick points run from 0 to 200 in fives",
       errKitty: "the kitty holds 0 to 80 points, in fives",
       errBoth: "tricks and kitty together hold at most 200 points",
+      errLead: "a lead is 1 to 25 cards",
+      errLargest: "the largest part is 1, a pair (2) or a tractor (4, 6 …), and no more than the cards led",
     },
   },
   zh: {
@@ -66,16 +63,11 @@ const T = {
     attackers: "闲家",
     defenders: "庄家方",
     kitty: "底牌里的分",
-    lead: "最后一轮首家出的",
+    leadCards: "最后一轮首家出了几张",
+    leadLargest: "其中最大的一部分几张",
     rule: "抠底算法",
     ruleSite: "本站：按首家出牌张数翻倍",
     ruleLargest: "按最大部分：按最大的一部分翻倍",
-    shapes: {
-      "single": "单张", "pair": "对子", "two-singles": "两张单牌（甩）",
-      "pair-single": "一对加一张（甩）", "two-pairs": "两对，不相连（甩）",
-      "tractor-2": "两连对", "tractor-2-single": "两连对加一张（甩）",
-      "tractor-3": "三连对", "tractor-4": "四连对",
-    } satisfies Record<LeadShape, string>,
     noscript: "计算器需要 JavaScript。下面“结果怎么算”里的表，手算也能得到同样的结果。",
     out: {
       teams: ["南北", "东西"],
@@ -93,27 +85,33 @@ const T = {
       errTricks: "牌面得分在 0 到 200 之间，以 5 为单位",
       errKitty: "底牌里最多 80 分，以 5 为单位",
       errBoth: "牌面得分加底分最多 200 分",
+      errLead: "首家出牌在 1 到 25 张之间",
+      errLargest: "最大的一部分是 1 张（单张）、2 张（对子）或 4、6……张（拖拉机），而且不超过出牌张数",
     },
   },
 } as const;
 
 // The defaults are calculator case 7: 70 in tricks, and a 10 buried under a
 // single lead the attackers win, takes them to 90.
-const DEFAULTS = { banker: 0, trickPoints: 70, attackersWonLast: true, kittyPoints: 10, lead: "single" };
+const DEFAULTS = { banker: 0, trickPoints: 70, attackersWonLast: true, kittyPoints: 10, leadCards: 1, leadLargest: 1 };
 
 // The browser copy of scoreCalc.ts's score() plus the form wiring. Plain
 // ES2017, no imports; `shengjiScore` is a global so the tests can call it.
 const SCRIPT = `
 var RANKS = __RANKS__;
-var SHAPES = __SHAPES__;
+var MAX_LEAD = __MAX_LEAD__;
 var L = __TEXT__;
 function shengjiScore(i) {
   var fives = function (n) { return Number.isInteger(n) && n % 5 === 0; };
   if (!fives(i.trickPoints) || i.trickPoints < 0 || i.trickPoints > 200) throw new RangeError("errTricks");
   if (!fives(i.kittyPoints) || i.kittyPoints < 0 || i.kittyPoints > 80) throw new RangeError("errKitty");
   if (i.trickPoints + i.kittyPoints > 200) throw new RangeError("errBoth");
-  var shape = SHAPES[i.lead];
-  var multiplier = i.attackersWonLast ? 2 * (i.variant === "largest-part" ? shape.largest : shape.cards) : 0;
+  if (i.attackersWonLast) {
+    var n = i.leadCards, k = i.leadLargest;
+    if (!Number.isInteger(n) || n < 1 || n > MAX_LEAD) throw new RangeError("errLead");
+    if (!Number.isInteger(k) || k < 1 || k > n || (k > 1 && k % 2 === 1)) throw new RangeError("errLargest");
+  }
+  var multiplier = i.attackersWonLast ? 2 * (i.variant === "largest-part" ? i.leadLargest : i.leadCards) : 0;
   var bonus = i.kittyPoints * multiplier;
   var total = i.trickPoints + bonus;
   var bankerTeam = i.banker % 2;
@@ -154,11 +152,13 @@ if (typeof document !== "undefined") {
     var update = function () {
       var input = {
         trickPoints: Number(val("trickPoints")), attackersWonLast: val("last") === "attackers",
-        kittyPoints: Number(val("kittyPoints")), lead: val("lead"), variant: val("variant"),
+        kittyPoints: Number(val("kittyPoints")), leadCards: Number(val("leadCards")),
+        leadLargest: Number(val("leadLargest")), variant: val("variant"),
         banker: Number(val("banker")), levels: [val("level0"), val("level1")]
       };
-      var lead = form.elements.namedItem("lead");
-      lead.disabled = !input.attackersWonLast;
+      ["leadCards", "leadLargest"].forEach(function (name) {
+        form.elements.namedItem(name).disabled = !input.attackersWonLast;
+      });
       out.textContent = "";
       var head = document.createElement("p");
       head.className = "calc-head";
@@ -190,7 +190,7 @@ const CSS = `
   .calc label { display: grid; gap: 4px; font-size: 15px; color: #d3d8e0; }
   .calc input, .calc select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 10px; font: inherit; color: #e8ecf2;
                               background: #14171e; border: 1px solid #3a4150; border-radius: 10px; }
-  .calc select:disabled { opacity: 0.5; }
+  .calc select:disabled, .calc input:disabled { opacity: 0.5; }
   .calc-out { margin-top: 4px; padding: 12px 14px; border-left: 3px solid #f2c14e; background: #14171e; border-radius: 0 8px 8px 0; }
   .calc-out .calc-head { margin: 0; font-size: 18px; font-weight: 700; color: #f2c14e; }
   .calc-out ul { margin: 6px 0 0; padding-left: 20px; }
@@ -207,15 +207,15 @@ function select(name: string, label: string, options: [string, string][], select
   return `<label>${esc(label)}<select name="${name}">${opts.join("")}</select></label>`;
 }
 
-function number(name: string, label: string, max: number, value: number): string {
-  return `<label>${esc(label)}<input name="${name}" type="number" inputmode="numeric" min="0" max="${max}" step="5" value="${value}" /></label>`;
+function number(name: string, label: string, min: number, max: number, step: number, value: number): string {
+  return `<label>${esc(label)}<input name="${name}" type="number" inputmode="numeric" min="${min}" max="${max}" step="${step}" value="${value}" /></label>`;
 }
 
 /** The script exactly as the page carries it. */
 export function calculatorScript(lang: Lang): string {
   return SCRIPT
     .replace("__RANKS__", jsonText(RANKS))
-    .replace("__SHAPES__", jsonText(LEAD_SHAPES))
+    .replace("__MAX_LEAD__", jsonText(MAX_LEAD))
     .replace("__TEXT__", jsonText(T[lang].out));
 }
 
@@ -224,7 +224,6 @@ export function calculatorHtml(lang: Lang): string {
   const t = T[lang];
   const ranks = RANKS.map((r): [string, string] => [r, r]);
   const seats = SEATS[lang].map((s, i): [string, string] => [String(i), s]);
-  const shapes = (Object.keys(LEAD_SHAPES) as LeadShape[]).map((k): [string, string] => [k, t.shapes[k]]);
   return `<style>${CSS}</style>
 <section class="calc" aria-labelledby="calc-h">
 <h2 id="calc-h">${esc(t.heading)}</h2>
@@ -237,10 +236,11 @@ ${select("level1", t.level1, ranks, "2")}
 </fieldset>
 <fieldset>
 <legend>${esc(t.hand)}</legend>
-${number("trickPoints", t.tricks, 200, DEFAULTS.trickPoints)}
+${number("trickPoints", t.tricks, 0, 200, 5, DEFAULTS.trickPoints)}
 ${select("last", t.last, [["attackers", t.attackers], ["defenders", t.defenders]], DEFAULTS.attackersWonLast ? "attackers" : "defenders")}
-${number("kittyPoints", t.kitty, 80, DEFAULTS.kittyPoints)}
-${select("lead", t.lead, shapes, DEFAULTS.lead)}
+${number("kittyPoints", t.kitty, 0, 80, 5, DEFAULTS.kittyPoints)}
+${number("leadCards", t.leadCards, 1, MAX_LEAD, 1, DEFAULTS.leadCards)}
+${number("leadLargest", t.leadLargest, 1, MAX_LEAD - 1, 1, DEFAULTS.leadLargest)}
 ${select("variant", t.rule, [["site", t.ruleSite], ["largest-part", t.ruleLargest]], "site")}
 </fieldset>
 </form>

@@ -17,20 +17,8 @@ export type Seat = 0 | 1 | 2 | 3;
  *  largest part of the lead (a tractor of k pairs is 2k cards). */
 export type Variant = "site" | "largest-part";
 
-/** Each last-lead shape the calculator offers: the cards led and the size of
- *  the lead's largest part. */
-export const LEAD_SHAPES = {
-  "single": { cards: 1, largest: 1 },
-  "pair": { cards: 2, largest: 2 },
-  "two-singles": { cards: 2, largest: 1 },
-  "pair-single": { cards: 3, largest: 2 },
-  "two-pairs": { cards: 4, largest: 2 },
-  "tractor-2": { cards: 4, largest: 4 },
-  "tractor-2-single": { cards: 5, largest: 4 },
-  "tractor-3": { cards: 6, largest: 6 },
-  "tractor-4": { cards: 8, largest: 8 },
-} as const;
-export type LeadShape = keyof typeof LEAD_SHAPES;
+/** A lead holds at most a whole hand. */
+export const MAX_LEAD = 25;
 
 export interface ScoreInput {
   /** Card points the attackers won in tricks: 0 to 200, a multiple of 5. */
@@ -38,7 +26,11 @@ export interface ScoreInput {
   attackersWonLast: boolean;
   /** Points among the 8 buried cards: 0 to 80, a multiple of 5. */
   kittyPoints: number;
-  lead: LeadShape;
+  /** Cards led to the last trick: 1 to 25. */
+  leadCards: number;
+  /** The lead's largest part: 1 (a single), 2 (a pair) or 2k (a tractor of k
+   *  pairs), never more than the cards led. */
+  leadLargest: number;
   variant: Variant;
   banker: Seat;
   /** Levels of team 0 (North–South) and team 1 (East–West) before the hand. */
@@ -64,9 +56,8 @@ export class ScoreInputError extends Error {}
 
 const A_INDEX = RANKS.length - 1;
 
-export function kittyMultiplier(lead: LeadShape, variant: Variant): number {
-  const shape = LEAD_SHAPES[lead];
-  return 2 * (variant === "largest-part" ? shape.largest : shape.cards);
+export function kittyMultiplier(leadCards: number, leadLargest: number, variant: Variant): number {
+  return 2 * (variant === "largest-part" ? leadLargest : leadCards);
 }
 
 export function checkInput(input: ScoreInput): void {
@@ -80,13 +71,19 @@ export function checkInput(input: ScoreInput): void {
   if (input.trickPoints + input.kittyPoints > 200) {
     throw new ScoreInputError("tricks and kitty together hold at most 200 points");
   }
-  if (!(input.lead in LEAD_SHAPES)) throw new ScoreInputError(`unknown lead ${input.lead}`);
   if (!RANKS.includes(input.levels[0]) || !RANKS.includes(input.levels[1])) throw new ScoreInputError("unknown level");
+  // the lead matters, and is checked, only when the kitty scores
+  if (!input.attackersWonLast) return;
+  const { leadCards: n, leadLargest: k } = input;
+  if (!Number.isInteger(n) || n < 1 || n > MAX_LEAD) throw new ScoreInputError("a lead is 1 to 25 cards");
+  if (!Number.isInteger(k) || k < 1 || k > n || (k > 1 && k % 2 === 1)) {
+    throw new ScoreInputError("the largest part is 1, a pair (2) or a tractor (4, 6 …), and no more than the cards led");
+  }
 }
 
 export function score(input: ScoreInput): ScoreResult {
   checkInput(input);
-  const multiplier = input.attackersWonLast ? kittyMultiplier(input.lead, input.variant) : 0;
+  const multiplier = input.attackersWonLast ? kittyMultiplier(input.leadCards, input.leadLargest, input.variant) : 0;
   const bonus = input.kittyPoints * multiplier;
   const total = input.trickPoints + bonus;
   const bankerTeam = (input.banker % 2) as 0 | 1;

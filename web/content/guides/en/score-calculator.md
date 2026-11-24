@@ -9,7 +9,7 @@ lang: en
 schema: WebApplication
 ---
 
-The calculator scores one hand the way this site's game engine does. Enter the attackers' points from tricks, the points the banker buried, and what was led to the last trick. If your table counts the kitty by the largest part of the last lead, switch the kitty rule.
+The calculator scores one hand the way this site's game engine does. Enter the attackers' points from tricks, the points the banker buried, and the size of the lead to the last trick. If your table counts the kitty by the largest part of the last lead, switch the kitty rule.
 
 ## What to enter
 
@@ -17,7 +17,8 @@ The calculator scores one hand the way this site's game engine does. Enter the a
 - **Attackers' points in tricks.** The 5s, 10s and Kings in the tricks the attackers won, not counting the kitty.
 - **Last trick won by.** The kitty only counts when an attacker wins the last trick.
 - **Points in the kitty.** The points among the 8 cards the banker buried. Eight cards hold at most 80.
-- **Last trick led with.** The kitty is multiplied by the shape of the lead to the last trick, not by what won it.
+- **Cards led to the last trick.** Count the cards in the lead, not in the winning play: 1 for a single, 2 for a pair, 3 for a throw of a pair and a single, 10 for a tractor of five pairs. On this site that number alone sets the multiplier.
+- **Largest part of that lead.** 1 for a single, 2 for a pair, 4 for a tractor of two pairs, 6 for three pairs, and so on. A throw of a two-pair tractor and a single is 5 cards with a largest part of 4. Only the largest-part rule uses it.
 
 ## How the result is worked out
 
@@ -48,6 +49,7 @@ These are calculator cases, scored by the engine. North–South's level comes fi
 | Same throw, largest part | North | 7, 7 | 40 | 20 × 4 = 80 | 120 | East–West up 1, to 8 |
 | Defending A | South | A, Q | 60 | defenders won the last trick | 60 | North–South win the game |
 | Capped at A | North | 10, K | 165 | defenders won the last trick | 165 | East–West up 2, capped at A |
+| Five-pair tractor led | North | 4, 4 | 20 | 5 × 20 = 100, under either rule | 120 | East–West up 1, to 5 |
 
 The pair-lead hand, played out. East is the banker at level 5 with hearts as trump. The attackers have 60 points going into the last trick:
 
@@ -62,7 +64,7 @@ notes: leads a pair | | drops two Kings |
 caption: South's pair of aces wins the last trick with 40 points in it: 100 in tricks. The 25 buried points count four times, for 200 in all.
 ```
 
-> The calculator is checked against the game engine on 94 cases, including every total from 0 to 200 and each lead shape under both kitty rules.
+> The calculator is checked against the game engine on 123 cases, including every total from 0 to 200 and leads from a single to a twelve-pair tractor under both kitty rules.
 
 ## Two rules people argue about
 

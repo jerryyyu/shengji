@@ -74,7 +74,7 @@ def test_the_fixture_covers_the_rules():
     out = [c["output"] for c in cases]
     totals = {o["total"] for o in out}
     assert set(range(0, 205, 5)) <= totals and max(totals) > 200
-    assert {(c["input"]["lead"], c["input"]["variant"]) for c in cases} >= {
+    assert {(c["engine"]["shape"], c["input"]["variant"]) for c in cases} >= {
         (shape, variant) for shape in calc_cases.LEAD_SHAPES for variant in calc_cases.VARIANTS}
     assert any(o["gameWon"] for o in out)
     # a kitty never scores when the defenders win the last trick
@@ -86,12 +86,35 @@ def test_the_fixture_covers_the_rules():
                for c, o in zip(cases, out))
 
 
+def _longest_run(offsets: tuple[int, ...]) -> int:
+    best = run = 0
+    for i, o in enumerate(offsets):
+        run = run + 1 if i and o == offsets[i - 1] + 1 else 1
+        best = max(best, run)
+    return best
+
+
 def test_the_lead_shapes_are_what_they_say():
+    from shengji.engine.cards import Ordering
+    from shengji.engine.combos import decompose
+
     for shape, (pairs, singles) in calc_cases.LEAD_SHAPES.items():
         for level in calc_cases.RANKS:
             cards = calc_cases.lead_cards(shape, level)
             assert len(cards) == 2 * len(pairs) + len(singles)
             assert all(c[1:] != level for c in cards), (shape, level)
+            largest = max(c.size for c in decompose(cards, Ordering(calc_cases.TRUMP_SUIT, level)).components)
+            assert largest == (2 * _longest_run(pairs) if pairs else 1), (shape, level)
+
+
+def test_the_five_pair_tractor():
+    for variant in ("site", "largest-part"):
+        case = calc_cases.score(calc_cases.case("five", 0, ("4", "4"), 20, "attackers", 5, "tractor-5", variant))
+        assert (case["input"]["leadCards"], case["input"]["leadLargest"]) == (10, 10)
+        out = case["output"]
+        assert (out["multiplier"], out["total"], out["winner"], out["levelsGained"]) == (20, 120, "attackers", 1)
+    fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert any(c["engine"]["shape"] == "tractor-5" and c["input"]["trickPoints"] == 20 for c in fixture)
 
 
 TEAMS = {"North–South": 0, "East–West": 1, "南北": 0, "东西": 1}
@@ -102,7 +125,8 @@ SEATS = {"North": 0, "East": 1, "South": 2, "West": 3, "北家": 0, "东家": 1,
 def test_the_published_worked_examples(lang):
     text = _source(lang, "score-calculator")
     rows = _table(text, r"Attackers' tricks|闲家牌面分")
-    assert len(rows) == 8
+    assert len(rows) == 9
+    assert any(re.search(r"Five-pair tractor|五连对", r[0]) for r in rows)
     by_inputs = {}
     for c in calc_cases.build():
         i = c["input"]

@@ -7,12 +7,12 @@ import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { calculatorHtml, calculatorScript } from "./calculator";
-import { LEAD_SHAPES, ScoreInputError, score, type ScoreInput, type ScoreResult } from "./scoreCalc";
+import { ScoreInputError, score, type ScoreInput, type ScoreResult } from "./scoreCalc";
 
 interface Case {
   name: string;
   input: ScoreInput;
-  engine: { leadCards: string[]; leadCardCount: number; leadLargestPart: number; buried: string[] };
+  engine: { shape: string; lead: string[]; buried: string[] };
   output: ScoreResult;
 }
 
@@ -35,11 +35,13 @@ describe("the score calculator", () => {
     expect(CASES.some((c) => c.output.total > 200)).toBe(true);
   });
 
-  it("describes each lead shape as the engine decomposes it", () => {
-    for (const c of CASES) {
-      const shape = LEAD_SHAPES[c.input.lead];
-      expect([shape.cards, shape.largest], c.name).toEqual([c.engine.leadCardCount, c.engine.leadLargestPart]);
-    }
+  it("covers long leads: a five-pair tractor, multi-part throws, a whole-suit tractor", () => {
+    const five = CASES.filter((c) => c.engine.shape === "tractor-5" && c.input.trickPoints === 20);
+    expect(five.map((c) => [c.input.variant, c.output.multiplier, c.output.total, c.output.levelsGained]))
+      .toEqual([["site", 20, 120, 1], ["largest-part", 20, 120, 1]]);
+    const leads = new Set(CASES.map((c) => `${c.input.leadCards}/${c.input.leadLargest}`));
+    for (const lead of ["10/10", "12/10", "9/6", "8/4", "4/1", "24/24"]) expect(leads.has(lead), lead).toBe(true);
+    for (const c of CASES) expect(c.input.leadCards, c.name).toBe(c.engine.lead.length);
   });
 
   it("matches the engine on every case", () => {
@@ -58,10 +60,19 @@ describe("the score calculator", () => {
 
   it("refuses points no hand can have", () => {
     const base = CASES[6].input;
-    for (const bad of [{ trickPoints: 201 }, { trickPoints: 72 }, { kittyPoints: 85 }, { trickPoints: 150, kittyPoints: 60 }]) {
+    const bads: Partial<ScoreInput>[] = [
+      { trickPoints: 201 }, { trickPoints: 72 }, { kittyPoints: 85 }, { trickPoints: 150, kittyPoints: 60 },
+      { leadCards: 0 }, { leadCards: 26 }, { leadCards: 2.5 },
+      { leadCards: 4, leadLargest: 3 }, { leadCards: 4, leadLargest: 6 }, { leadCards: 1, leadLargest: 0 },
+    ];
+    for (const bad of bads) {
       expect(() => score({ ...base, ...bad })).toThrow(ScoreInputError);
       expect(() => pageScore("en").shengjiScore({ ...base, ...bad })).toThrow();
     }
+    // a lead that cannot be is ignored when the kitty does not score
+    const quiet = { ...base, attackersWonLast: false, leadCards: 4, leadLargest: 3 };
+    expect(score(quiet).total).toBe(base.trickPoints);
+    expect(pageScore("en").shengjiScore(quiet).total).toBe(base.trickPoints);
   });
 
   it("says who won, by how much and who deals next", () => {
@@ -91,11 +102,25 @@ describe("the score calculator", () => {
       (form.elements.namedItem(name) as HTMLInputElement).value = value;
       form.dispatchEvent(new Event("input"));
     };
-    set("lead", "tractor-2");
+    set("leadCards", "4");
+    set("leadLargest", "4");
     expect(out.textContent).toContain("Kitty: 10 × 8 = 80");
     expect(out.querySelector(".calc-head")!.textContent).toBe("East–West go up 1, to 3.");
+    set("leadLargest", "3");
+    expect(out.textContent).toContain("Check the numbers: the largest part is 1");
+    set("leadCards", "10");
+    set("leadLargest", "10");
+    set("trickPoints", "20");
+    set("kittyPoints", "5");
+    expect(out.textContent).toContain("Kitty: 5 × 20 = 100");
+    expect(out.querySelector(".calc-head")!.textContent).toBe("East–West go up 1, to 3.");
+    set("trickPoints", "70");
+    set("kittyPoints", "10");
+    set("leadCards", "4");
+    set("leadLargest", "4");
     set("last", "defenders");
-    expect((form.elements.namedItem("lead") as HTMLSelectElement).disabled).toBe(true);
+    expect((form.elements.namedItem("leadCards") as HTMLInputElement).disabled).toBe(true);
+    expect((form.elements.namedItem("leadLargest") as HTMLInputElement).disabled).toBe(true);
     expect(out.querySelector(".calc-head")!.textContent).toBe("North–South go up 1, to 3.");
     set("trickPoints", "195");
     expect(out.textContent).toContain("Check the numbers: tricks and kitty together hold at most 200 points.");

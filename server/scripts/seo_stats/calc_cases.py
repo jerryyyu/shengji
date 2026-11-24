@@ -3,9 +3,11 @@
 The /guides/score-calculator page (web/src/guides/scoreCalc.ts and the page's
 own script) must agree with the engine on each case written here. A case is
 stated in the calculator's terms: the attackers' trick points, who won the
-last trick, the kitty's points, the shape of the last lead and the rules
-variant, the banker's seat and both teams' levels. To score it, this script
-builds real cards for the kitty and the lead and runs
+last trick, the kitty's points, the number of cards led to the last trick
+and the size of that lead's largest part, the rules variant, the banker's
+seat and both teams' levels. To score it, this script builds real cards for
+the kitty and for a lead of a named shape, takes the card count and largest
+part from the engine's ``decompose`` of that lead, and runs
 
 * ``shengji.engine.rules_profile.kitty_multiplier`` on the lead (the default
   profile is ``Round._resolve_trick``'s ``2 x cards led``; ``SHENGJIORG``
@@ -39,17 +41,27 @@ VARIANTS = {"site": DEFAULT, "largest-part": SHENGJIORG}
 
 # shape -> (pairs as offsets into the side suit's ranks, singles likewise).
 # Offset 0 is the highest side rank, 1 the next one down, and so on, skipping
-# the level rank, so consecutive offsets are consecutive in play.
+# the level rank, so consecutive offsets are consecutive in play. A side suit
+# has 12 ranks besides the level rank, so offsets run 0 to 11.
 LEAD_SHAPES: dict[str, tuple[tuple[int, ...], tuple[int, ...]]] = {
     "single": ((), (0,)),
     "pair": ((0,), ()),
     "two-singles": ((), (0, 1)),
+    "four-singles": ((), (0, 2, 4, 6)),
     "pair-single": ((0,), (2,)),
     "two-pairs": ((0, 2), ()),
+    "two-pairs-single": ((0, 2), (4,)),
     "tractor-2": ((0, 1), ()),
     "tractor-2-single": ((0, 1), (3,)),
+    "tractor-2-pair": ((0, 1, 3), ()),
+    "two-tractors-2": ((0, 1, 3, 4), ()),
     "tractor-3": ((0, 1, 2), ()),
+    "tractor-3-pair-single": ((0, 1, 2, 4), (6,)),
     "tractor-4": ((0, 1, 2, 3), ()),
+    "tractor-5": ((0, 1, 2, 3, 4), ()),
+    "tractor-5-singles": ((0, 1, 2, 3, 4), (6, 8)),
+    "tractor-6": ((0, 1, 2, 3, 4, 5), ()),
+    "tractor-12": (tuple(range(12)), ()),
 }
 
 
@@ -81,10 +93,11 @@ def score(case: dict) -> dict:
     game.banker = banker
     rnd = game.start_round()
     ordering = Ordering(TRUMP_SUIT, rnd.trump_rank)
-    lead = lead_cards(inp["lead"], rnd.trump_rank)
+    lead = lead_cards(case["shape"], rnd.trump_rank)
     buried = kitty_cards(inp["kittyPoints"])
     assert total_points(buried) == inp["kittyPoints"]
     largest = max(c.size for c in decompose(list(lead), ordering).components)
+    inp = {**inp, "leadCards": len(lead), "leadLargest": largest}
     mult = kitty_multiplier(lead, ordering, VARIANTS[inp["variant"]]) if inp["attackersWonLast"] else 0
     bonus = total_points(buried) * mult
     rnd.ordering = ordering
@@ -96,7 +109,7 @@ def score(case: dict) -> dict:
     return {
         "name": case["name"],
         "input": inp,
-        "engine": {"leadCards": lead, "leadCardCount": len(lead), "leadLargestPart": largest, "buried": buried},
+        "engine": {"shape": case["shape"], "lead": lead, "buried": buried},
         "output": {
             "multiplier": mult,
             "bonus": bonus,
@@ -111,10 +124,10 @@ def score(case: dict) -> dict:
     }
 
 
-def case(name, banker, levels, tricks, last, kitty=0, lead="single", variant="site") -> dict:
-    return {"name": name, "input": {
+def case(name, banker, levels, tricks, last, kitty=0, shape="single", variant="site") -> dict:
+    return {"name": name, "shape": shape, "input": {
         "trickPoints": tricks, "attackersWonLast": last == "attackers", "kittyPoints": kitty,
-        "lead": lead, "variant": variant, "banker": banker, "levels": list(levels)}}
+        "variant": variant, "banker": banker, "levels": list(levels)}}
 
 
 # The kitty points of cases 1-6 and 11-12 are their buried points; the
@@ -147,6 +160,8 @@ CASES = [
     case("Five points is up 2 for the defenders", 1, ("2", "2"), 5, "defenders"),
     case("Banker West: the deal passes to North", 3, ("2", "2"), 90, "defenders"),
     case("Banker West: the deal stays with East", 3, ("2", "2"), 60, "defenders"),
+    case("Five-pair tractor (x20)", 0, ("4", "4"), 20, "attackers", 5, "tractor-5"),
+    case("Five-pair tractor, largest-part rule (x20)", 0, ("4", "4"), 20, "attackers", 5, "tractor-5", "largest-part"),
 ]
 for _shape in LEAD_SHAPES:
     for _variant in VARIANTS:

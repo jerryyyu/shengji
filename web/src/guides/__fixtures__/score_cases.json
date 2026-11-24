@@ -5,20 +5,20 @@
    "trickPoints": 0,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -51,20 +51,20 @@
    "trickPoints": 35,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "5",
     "3"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -97,20 +97,20 @@
    "trickPoints": 40,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 1,
    "levels": [
     "4",
     "7"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -143,20 +143,20 @@
    "trickPoints": 75,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 2,
    "levels": [
     "9",
     "6"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -189,20 +189,20 @@
    "trickPoints": 80,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "J",
     "8"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -235,20 +235,20 @@
    "trickPoints": 120,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 3,
    "levels": [
     "6",
     "10"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -281,20 +281,20 @@
    "trickPoints": 70,
    "attackersWonLast": true,
    "kittyPoints": 10,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "3",
     "3"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "SK",
     "S3",
@@ -327,21 +327,21 @@
    "trickPoints": 100,
    "attackersWonLast": true,
    "kittyPoints": 25,
-   "lead": "pair",
    "variant": "site",
    "banker": 1,
    "levels": [
     "8",
     "5"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -374,22 +374,22 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 20,
-   "lead": "pair-single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "7",
     "7"
-   ]
+   ],
+   "leadCards": 3,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair-single",
+   "lead": [
     "DA",
     "DA",
     "DQ"
    ],
-   "leadCardCount": 3,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -422,22 +422,22 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 20,
-   "lead": "pair-single",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "7",
     "7"
-   ]
+   ],
+   "leadCards": 3,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair-single",
+   "lead": [
     "DA",
     "DA",
     "DQ"
    ],
-   "leadCardCount": 3,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -470,20 +470,20 @@
    "trickPoints": 60,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 2,
    "levels": [
     "A",
     "Q"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DK"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -516,20 +516,20 @@
    "trickPoints": 165,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "K"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -562,21 +562,21 @@
    "trickPoints": 70,
    "attackersWonLast": false,
    "kittyPoints": 40,
-   "lead": "pair",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -609,21 +609,21 @@
    "trickPoints": 150,
    "attackersWonLast": true,
    "kittyPoints": 25,
-   "lead": "pair",
    "variant": "site",
    "banker": 0,
    "levels": [
     "5",
     "5"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -656,16 +656,18 @@
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "tractor-4",
    "variant": "site",
    "banker": 1,
    "levels": [
     "4",
     "6"
-   ]
+   ],
+   "leadCards": 8,
+   "leadLargest": 8
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-4",
+   "lead": [
     "DA",
     "DA",
     "DK",
@@ -675,8 +677,6 @@
     "DJ",
     "DJ"
    ],
-   "leadCardCount": 8,
-   "leadLargestPart": 8,
    "buried": [
     "SK",
     "S10",
@@ -709,21 +709,21 @@
    "trickPoints": 0,
    "attackersWonLast": true,
    "kittyPoints": 40,
-   "lead": "pair",
    "variant": "site",
    "banker": 2,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -756,20 +756,20 @@
    "trickPoints": 0,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "K",
     "9"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -802,20 +802,20 @@
    "trickPoints": 130,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "8",
     "A"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -848,20 +848,20 @@
    "trickPoints": 0,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 1,
    "levels": [
     "3",
     "A"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DK"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -894,20 +894,20 @@
    "trickPoints": 80,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 3,
    "levels": [
     "5",
     "A"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DK"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -940,20 +940,20 @@
    "trickPoints": 115,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 3,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -986,20 +986,20 @@
    "trickPoints": 155,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 2,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -1032,20 +1032,20 @@
    "trickPoints": 160,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 2,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -1078,20 +1078,20 @@
    "trickPoints": 5,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 1,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -1124,20 +1124,20 @@
    "trickPoints": 90,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 3,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -1170,20 +1170,20 @@
    "trickPoints": 60,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 3,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -1211,25 +1211,135 @@
   }
  },
  {
+  "name": "Five-pair tractor (x20)",
+  "input": {
+   "trickPoints": 20,
+   "attackersWonLast": true,
+   "kittyPoints": 5,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "4",
+    "4"
+   ],
+   "leadCards": 10,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D10",
+    "D10"
+   ],
+   "buried": [
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 20,
+   "bonus": 100,
+   "total": 120,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "4",
+    "5"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Five-pair tractor, largest-part rule (x20)",
+  "input": {
+   "trickPoints": 20,
+   "attackersWonLast": true,
+   "kittyPoints": 5,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "4",
+    "4"
+   ],
+   "leadCards": 10,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D10",
+    "D10"
+   ],
+   "buried": [
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 20,
+   "bonus": 100,
+   "total": 120,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "4",
+    "5"
+   ],
+   "gameWon": false
+  }
+ },
+ {
   "name": "Lead single, site rule",
   "input": {
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "SK",
     "S5",
@@ -1262,20 +1372,20 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "single",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "SK",
     "S5",
@@ -1308,21 +1418,21 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "pair",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S5",
@@ -1355,21 +1465,21 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "pair",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S5",
@@ -1402,21 +1512,21 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "two-singles",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-singles",
+   "lead": [
     "DA",
     "DK"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 1,
    "buried": [
     "SK",
     "S5",
@@ -1449,21 +1559,119 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "two-singles",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-singles",
+   "lead": [
     "DA",
     "DK"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 2,
+   "bonus": 30,
+   "total": 70,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "J",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead four-singles, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 4,
+   "leadLargest": 1
+  },
+  "engine": {
+   "shape": "four-singles",
+   "lead": [
+    "DA",
+    "DQ",
+    "D9",
+    "D7"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead four-singles, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 4,
+   "leadLargest": 1
+  },
+  "engine": {
+   "shape": "four-singles",
+   "lead": [
+    "DA",
+    "DQ",
+    "D9",
+    "D7"
+   ],
    "buried": [
     "SK",
     "S5",
@@ -1496,22 +1704,22 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "pair-single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 3,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair-single",
+   "lead": [
     "DA",
     "DA",
     "DQ"
    ],
-   "leadCardCount": 3,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S5",
@@ -1544,22 +1752,22 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "pair-single",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 3,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair-single",
+   "lead": [
     "DA",
     "DA",
     "DQ"
    ],
-   "leadCardCount": 3,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S5",
@@ -1592,23 +1800,23 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "two-pairs",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 4,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-pairs",
+   "lead": [
     "DA",
     "DA",
     "DQ",
     "DQ"
    ],
-   "leadCardCount": 4,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S5",
@@ -1641,23 +1849,123 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "two-pairs",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 4,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-pairs",
+   "lead": [
     "DA",
     "DA",
     "DQ",
     "DQ"
    ],
-   "leadCardCount": 4,
-   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 60,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-pairs-single, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 5,
+   "leadLargest": 2
+  },
+  "engine": {
+   "shape": "two-pairs-single",
+   "lead": [
+    "DA",
+    "DA",
+    "DQ",
+    "DQ",
+    "D9"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 10,
+   "bonus": 150,
+   "total": 190,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-pairs-single, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 5,
+   "leadLargest": 2
+  },
+  "engine": {
+   "shape": "two-pairs-single",
+   "lead": [
+    "DA",
+    "DA",
+    "DQ",
+    "DQ",
+    "D9"
+   ],
    "buried": [
     "SK",
     "S5",
@@ -1690,23 +1998,23 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-2",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 4,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-2",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK"
    ],
-   "leadCardCount": 4,
-   "leadLargestPart": 4,
    "buried": [
     "SK",
     "S5",
@@ -1739,23 +2047,23 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-2",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 4,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-2",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK"
    ],
-   "leadCardCount": 4,
-   "leadLargestPart": 4,
    "buried": [
     "SK",
     "S5",
@@ -1788,24 +2096,24 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-2-single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 5,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-2-single",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK",
     "DJ"
    ],
-   "leadCardCount": 5,
-   "leadLargestPart": 4,
    "buried": [
     "SK",
     "S5",
@@ -1838,24 +2146,232 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-2-single",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 5,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-2-single",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK",
     "DJ"
    ],
-   "leadCardCount": 5,
-   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-2-pair, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 6,
+   "leadLargest": 4
+  },
+  "engine": {
+   "shape": "tractor-2-pair",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ",
+    "DJ"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 12,
+   "bonus": 180,
+   "total": 220,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 3,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "7"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-2-pair, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 6,
+   "leadLargest": 4
+  },
+  "engine": {
+   "shape": "tractor-2-pair",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ",
+    "DJ"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-tractors-2, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 8,
+   "leadLargest": 4
+  },
+  "engine": {
+   "shape": "two-tractors-2",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 16,
+   "bonus": 240,
+   "total": 280,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 5,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-tractors-2, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 8,
+   "leadLargest": 4
+  },
+  "engine": {
+   "shape": "two-tractors-2",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9"
+   ],
    "buried": [
     "SK",
     "S5",
@@ -1888,16 +2404,18 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-3",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 6,
+   "leadLargest": 6
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-3",
+   "lead": [
     "DA",
     "DA",
     "DK",
@@ -1905,8 +2423,6 @@
     "DQ",
     "DQ"
    ],
-   "leadCardCount": 6,
-   "leadLargestPart": 6,
    "buried": [
     "SK",
     "S5",
@@ -1939,16 +2455,18 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-3",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 6,
+   "leadLargest": 6
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-3",
+   "lead": [
     "DA",
     "DA",
     "DK",
@@ -1956,8 +2474,114 @@
     "DQ",
     "DQ"
    ],
-   "leadCardCount": 6,
-   "leadLargestPart": 6,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 12,
+   "bonus": 180,
+   "total": 220,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 3,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "7"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-3-pair-single, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 9,
+   "leadLargest": 6
+  },
+  "engine": {
+   "shape": "tractor-3-pair-single",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "D9",
+    "D9",
+    "D7"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 18,
+   "bonus": 270,
+   "total": 310,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 5,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-3-pair-single, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 9,
+   "leadLargest": 6
+  },
+  "engine": {
+   "shape": "tractor-3-pair-single",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "D9",
+    "D9",
+    "D7"
+   ],
    "buried": [
     "SK",
     "S5",
@@ -1990,16 +2614,18 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-4",
    "variant": "site",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 8,
+   "leadLargest": 8
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-4",
+   "lead": [
     "DA",
     "DA",
     "DK",
@@ -2009,8 +2635,6 @@
     "DJ",
     "DJ"
    ],
-   "leadCardCount": 8,
-   "leadLargestPart": 8,
    "buried": [
     "SK",
     "S5",
@@ -2043,16 +2667,18 @@
    "trickPoints": 40,
    "attackersWonLast": true,
    "kittyPoints": 15,
-   "lead": "tractor-4",
    "variant": "largest-part",
    "banker": 0,
    "levels": [
     "10",
     "4"
-   ]
+   ],
+   "leadCards": 8,
+   "leadLargest": 8
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-4",
+   "lead": [
     "DA",
     "DA",
     "DK",
@@ -2062,8 +2688,6 @@
     "DJ",
     "DJ"
    ],
-   "leadCardCount": 8,
-   "leadLargestPart": 8,
    "buried": [
     "SK",
     "S5",
@@ -2091,25 +2715,501 @@
   }
  },
  {
+  "name": "Lead tractor-5, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 10,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 20,
+   "bonus": 300,
+   "total": 340,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 6,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "10"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-5, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 10,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 20,
+   "bonus": 300,
+   "total": 340,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 6,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "10"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-5-singles, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 12,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5-singles",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9",
+    "D7",
+    "D5"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 24,
+   "bonus": 360,
+   "total": 400,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 8,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "Q"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-5-singles, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 12,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5-singles",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9",
+    "D7",
+    "D5"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 20,
+   "bonus": 300,
+   "total": 340,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 6,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "10"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-6, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 12,
+   "leadLargest": 12
+  },
+  "engine": {
+   "shape": "tractor-6",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9",
+    "D8",
+    "D8"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 24,
+   "bonus": 360,
+   "total": 400,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 8,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "Q"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-6, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 12,
+   "leadLargest": 12
+  },
+  "engine": {
+   "shape": "tractor-6",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9",
+    "D8",
+    "D8"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 24,
+   "bonus": 360,
+   "total": 400,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 8,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "Q"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-12, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 24,
+   "leadLargest": 24
+  },
+  "engine": {
+   "shape": "tractor-12",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9",
+    "D8",
+    "D8",
+    "D7",
+    "D7",
+    "D6",
+    "D6",
+    "D5",
+    "D5",
+    "D4",
+    "D4",
+    "D3",
+    "D3",
+    "D2",
+    "D2"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 48,
+   "bonus": 720,
+   "total": 760,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 17,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-12, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ],
+   "leadCards": 24,
+   "leadLargest": 24
+  },
+  "engine": {
+   "shape": "tractor-12",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D9",
+    "D9",
+    "D8",
+    "D8",
+    "D7",
+    "D7",
+    "D6",
+    "D6",
+    "D5",
+    "D5",
+    "D4",
+    "D4",
+    "D3",
+    "D3",
+    "D2",
+    "D2"
+   ],
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 48,
+   "bonus": 720,
+   "total": 760,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 17,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
   "name": "Sweep 0",
   "input": {
    "trickPoints": 0,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2142,20 +3242,20 @@
    "trickPoints": 5,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2188,20 +3288,20 @@
    "trickPoints": 10,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2234,20 +3334,20 @@
    "trickPoints": 15,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2280,20 +3380,20 @@
    "trickPoints": 20,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2326,20 +3426,20 @@
    "trickPoints": 25,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2372,20 +3472,20 @@
    "trickPoints": 30,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2418,20 +3518,20 @@
    "trickPoints": 35,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2464,20 +3564,20 @@
    "trickPoints": 40,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2510,20 +3610,20 @@
    "trickPoints": 45,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2556,20 +3656,20 @@
    "trickPoints": 50,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2602,20 +3702,20 @@
    "trickPoints": 55,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2648,20 +3748,20 @@
    "trickPoints": 60,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2694,20 +3794,20 @@
    "trickPoints": 65,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2740,20 +3840,20 @@
    "trickPoints": 70,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2786,20 +3886,20 @@
    "trickPoints": 75,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2832,20 +3932,20 @@
    "trickPoints": 80,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2878,20 +3978,20 @@
    "trickPoints": 85,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2924,20 +4024,20 @@
    "trickPoints": 90,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -2970,20 +4070,20 @@
    "trickPoints": 95,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3016,20 +4116,20 @@
    "trickPoints": 100,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3062,20 +4162,20 @@
    "trickPoints": 105,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3108,20 +4208,20 @@
    "trickPoints": 110,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3154,20 +4254,20 @@
    "trickPoints": 115,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3200,20 +4300,20 @@
    "trickPoints": 120,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3246,20 +4346,20 @@
    "trickPoints": 125,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3292,20 +4392,20 @@
    "trickPoints": 130,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3338,20 +4438,20 @@
    "trickPoints": 135,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3384,20 +4484,20 @@
    "trickPoints": 140,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3430,20 +4530,20 @@
    "trickPoints": 145,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3476,20 +4576,20 @@
    "trickPoints": 150,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3522,20 +4622,20 @@
    "trickPoints": 155,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3568,20 +4668,20 @@
    "trickPoints": 160,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3614,20 +4714,20 @@
    "trickPoints": 165,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3660,20 +4760,20 @@
    "trickPoints": 170,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3706,20 +4806,20 @@
    "trickPoints": 175,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3752,20 +4852,20 @@
    "trickPoints": 180,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3798,20 +4898,20 @@
    "trickPoints": 185,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3844,20 +4944,20 @@
    "trickPoints": 190,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3890,20 +4990,20 @@
    "trickPoints": 195,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3936,20 +5036,20 @@
    "trickPoints": 200,
    "attackersWonLast": false,
    "kittyPoints": 0,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "S3",
     "S3",
@@ -3982,20 +5082,20 @@
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 1,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "single",
+   "lead": [
     "DA"
    ],
-   "leadCardCount": 1,
-   "leadLargestPart": 1,
    "buried": [
     "SK",
     "S10",
@@ -4028,21 +5128,21 @@
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "pair",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "pair",
+   "lead": [
     "DA",
     "DA"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -4075,21 +5175,21 @@
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "two-singles",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 2,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-singles",
+   "lead": [
     "DA",
     "DK"
    ],
-   "leadCardCount": 2,
-   "leadLargestPart": 1,
    "buried": [
     "SK",
     "S10",
@@ -4117,27 +5217,76 @@
   }
  },
  {
-  "name": "Sweep 120 + 80 on a pair-single lead",
+  "name": "Sweep 120 + 80 on a four-singles lead",
   "input": {
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "pair-single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 4,
+   "leadLargest": 1
   },
   "engine": {
-   "leadCards": [
+   "shape": "four-singles",
+   "lead": [
+    "DA",
+    "DQ",
+    "D10",
+    "D8"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 640,
+   "total": 760,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 17,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a pair-single lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 3,
+   "leadLargest": 2
+  },
+  "engine": {
+   "shape": "pair-single",
+   "lead": [
     "DA",
     "DA",
     "DQ"
    ],
-   "leadCardCount": 3,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -4170,23 +5319,23 @@
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "two-pairs",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 4,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-pairs",
+   "lead": [
     "DA",
     "DA",
     "DQ",
     "DQ"
    ],
-   "leadCardCount": 4,
-   "leadLargestPart": 2,
    "buried": [
     "SK",
     "S10",
@@ -4214,28 +5363,78 @@
   }
  },
  {
-  "name": "Sweep 120 + 80 on a tractor-2 lead",
+  "name": "Sweep 120 + 80 on a two-pairs-single lead",
   "input": {
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "tractor-2",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 5,
+   "leadLargest": 2
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-pairs-single",
+   "lead": [
+    "DA",
+    "DA",
+    "DQ",
+    "DQ",
+    "D10"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 10,
+   "bonus": 800,
+   "total": 920,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 21,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-2 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 4,
+   "leadLargest": 4
+  },
+  "engine": {
+   "shape": "tractor-2",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK"
    ],
-   "leadCardCount": 4,
-   "leadLargestPart": 4,
    "buried": [
     "SK",
     "S10",
@@ -4268,24 +5467,24 @@
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "tractor-2-single",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 5,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-2-single",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK",
     "DJ"
    ],
-   "leadCardCount": 5,
-   "leadLargestPart": 4,
    "buried": [
     "SK",
     "S10",
@@ -4313,30 +5512,30 @@
   }
  },
  {
-  "name": "Sweep 120 + 80 on a tractor-3 lead",
+  "name": "Sweep 120 + 80 on a tractor-2-pair lead",
   "input": {
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "tractor-3",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 6,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "tractor-2-pair",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK",
-    "DQ",
-    "DQ"
+    "DJ",
+    "DJ"
    ],
-   "leadCardCount": 6,
-   "leadLargestPart": 6,
    "buried": [
     "SK",
     "S10",
@@ -4364,32 +5563,32 @@
   }
  },
  {
-  "name": "Sweep 120 + 80 on a tractor-4 lead",
+  "name": "Sweep 120 + 80 on a two-tractors-2 lead",
   "input": {
    "trickPoints": 120,
    "attackersWonLast": true,
    "kittyPoints": 80,
-   "lead": "tractor-4",
    "variant": "site",
    "banker": 0,
    "levels": [
     "2",
     "2"
-   ]
+   ],
+   "leadCards": 8,
+   "leadLargest": 4
   },
   "engine": {
-   "leadCards": [
+   "shape": "two-tractors-2",
+   "lead": [
     "DA",
     "DA",
     "DK",
     "DK",
-    "DQ",
-    "DQ",
     "DJ",
-    "DJ"
+    "DJ",
+    "D10",
+    "D10"
    ],
-   "leadCardCount": 8,
-   "leadLargestPart": 8,
    "buried": [
     "SK",
     "S10",
@@ -4408,6 +5607,402 @@
    "winner": "attackers",
    "winnerTeam": 1,
    "levelsGained": 33,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-3 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 6,
+   "leadLargest": 6
+  },
+  "engine": {
+   "shape": "tractor-3",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 12,
+   "bonus": 960,
+   "total": 1080,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 25,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-3-pair-single lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 9,
+   "leadLargest": 6
+  },
+  "engine": {
+   "shape": "tractor-3-pair-single",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "D10",
+    "D10",
+    "D8"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 18,
+   "bonus": 1440,
+   "total": 1560,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 37,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-4 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 8,
+   "leadLargest": 8
+  },
+  "engine": {
+   "shape": "tractor-4",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 16,
+   "bonus": 1280,
+   "total": 1400,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 33,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-5 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 10,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D10",
+    "D10"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 20,
+   "bonus": 1600,
+   "total": 1720,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 41,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-5-singles lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 12,
+   "leadLargest": 10
+  },
+  "engine": {
+   "shape": "tractor-5-singles",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D10",
+    "D10",
+    "D8",
+    "D6"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 24,
+   "bonus": 1920,
+   "total": 2040,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 49,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-6 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 12,
+   "leadLargest": 12
+  },
+  "engine": {
+   "shape": "tractor-6",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D10",
+    "D10",
+    "D9",
+    "D9"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 24,
+   "bonus": 1920,
+   "total": 2040,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 49,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-12 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ],
+   "leadCards": 24,
+   "leadLargest": 24
+  },
+  "engine": {
+   "shape": "tractor-12",
+   "lead": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ",
+    "D10",
+    "D10",
+    "D9",
+    "D9",
+    "D8",
+    "D8",
+    "D7",
+    "D7",
+    "D6",
+    "D6",
+    "D5",
+    "D5",
+    "D4",
+    "D4",
+    "D3",
+    "D3"
+   ],
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 48,
+   "bonus": 3840,
+   "total": 3960,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 97,
    "nextBanker": 1,
    "newLevels": [
     "2",

@@ -41,6 +41,8 @@ One rated round, for each rated account on team ``t``:
   the deal without going up a level (80 to 115 points) score
   ``TAKEOVER_WIN_SCORE`` and the bankers ``1 - TAKEOVER_WIN_SCORE``;
 * ``delta = K * (S - E)`` with one ``K`` for every rated account.
+* a round played out moves the rating by at least ``MIN_MOVE`` either way:
+  a win gains at least that much and a loss costs at least that much.
 
 Partners share ``R_t``, ``E``, ``S`` and ``K``, so they move by the same
 amount, except when one of them is capped: a partner who abandons the round,
@@ -113,6 +115,10 @@ K = 40.0
 TAKEOVER_WIN_SCORE = 0.6
 LEAVER_SCORE_CAP = 0.5
 MAX_SCORED_LEVELS = 3
+# Every rated round a player plays out moves their rating by at least this
+# much: a win never shows +0 or less, a loss never shows less than this.
+# A leave is exempt (it is never positive; see ``LEAVER_SCORE_CAP``).
+MIN_MOVE = 3.0
 
 # What a seat held when the round started: a connected signed-in account, a
 # bot, a guest (a person with no account), or an account not at the table.
@@ -281,6 +287,10 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                 delta = k * (actual - exp)
                 if p.abandoned or p.capped:
                     delta = min(delta, 0.0)
+                elif won:
+                    delta = max(delta, MIN_MOVE)
+                else:
+                    delta = min(delta, -MIN_MOVE)
                 after = before + delta
                 partner = (p.seat + 2) % 4
                 opponents = ((p.seat + 1) % 4, (p.seat + 3) % 4)

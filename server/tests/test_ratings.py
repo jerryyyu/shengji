@@ -1620,3 +1620,44 @@ def test_a_guest_displaced_socket_still_cannot_leave_for_the_seat(client):
             # the deal's queued state frames reach this socket first
             assert _drain(a, "error")["code"] == "stale_connection"
             assert srv.rooms[code].seats[0].connected
+
+
+@pytest.mark.parametrize("attacker_points, won", [(60, True), (130, False)])
+def test_a_round_played_out_moves_the_rating_by_at_least_the_minimum(
+        env, monkeypatch, attacker_points, won):
+    """A strong banker's narrow win would gain under one point (or lose rating)
+    by expectation alone; the floor makes it at least ``MIN_MOVE``. A narrow
+    loss costs at least as much."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "strong")
+    _set(store, uid, 1300.0, rounds=50)
+    _force_outcome(monkeypatch, attacker_points)   # seat 0's team banks
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    table.finish()
+    [event] = _events(store)
+    assert bool(event["won"]) is won
+    raw = event["k"] * (event["actual"] - event["expected"])
+    if won:
+        assert raw < ratings.MIN_MOVE
+        assert event["delta"] == pytest.approx(ratings.MIN_MOVE)
+    else:
+        assert event["delta"] <= -ratings.MIN_MOVE
+    assert event["rating_after"] == pytest.approx(event["rating_before"] + event["delta"])
+
+
+def test_a_leave_is_exempt_from_the_minimum_move(env, monkeypatch):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "leaver")
+    _force_outcome(monkeypatch, 210)
+    table = Table(srv, ["bot", uid, "bot", "bot"])
+    table.start_round(banker=0)
+    ratings.seat_left(table.room, 1)
+    table.room.seats[1].connected = False
+    table.finish()
+    [event] = _events(store)
+    assert event["abandoned"] == 1 and event["delta"] == 0.0

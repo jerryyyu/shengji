@@ -275,10 +275,10 @@ def test_pair_cap_forward_check_prevents_a_rejected_world():
     art = os.path.join(root, "rl_data", "pilot_dev512.v6.json")
     if not os.path.exists(art):
         pytest.skip("v6 gate artifact absent")
-    require_local_data(*(c for _, c, _ in PS.SOURCES))
     st = next(s for s in json.load(open(art))["states"]
               if s["seed"] == 81002046 and s["ply"] == 4)
     corpus = {n: c for n, c, _ in PS.SOURCES}[st["source"]]
+    require_local_data(corpus)
     row = next(json.loads(l) for l in open(corpus)
                if json.loads(l)["seed"] == st["seed"]
                and json.loads(l)["ply"] == st["ply"])

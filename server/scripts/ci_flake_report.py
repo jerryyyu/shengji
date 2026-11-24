@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Markdown report of CI tests that failed and then passed on the same commit.
 
-A failure counts as a flake when a job failed in one workflow run (or run
-attempt) and the job of the same name passed in a later attempt or a later run
-of the same head sha: the code did not change, so the outcome did.  Failed
-tests are read from the failed job's log (pytest's ``FAILED <nodeid>`` summary
-lines); a flaky job whose log names no test is listed as a job-level flake.
+Runs are compared only within one head sha, head branch and workflow.  A job
+that failed and whose job of the same name passed in a later attempt or run of
+that group recovered: the code did not change, so the outcome did.  Failed tests
+are read from the failed job's log (pytest's ``FAILED <nodeid>`` summary lines).
+A failed test is reported as passing on rerun only when the later successful
+job's log names it PASSED; otherwise the recovery is reported for the job, with
+the failed tests listed, because a ``-q`` log cannot show that the test ran.
 
 Failures on a sha that never ran again cannot be classified; they are counted
 in a separate section so a test that fails on one commit and passes on the next
@@ -55,7 +57,7 @@ class Job:
 @dataclass
 class Flake:
     tests: dict = field(default_factory=lambda: defaultdict(list))  # test -> occurrences
-    jobs: list = field(default_factory=list)  # job-level flakes (no test named)
+    jobs: list = field(default_factory=list)  # recovered jobs, with failed tests not shown to rerun
     unrerun: dict = field(default_factory=lambda: defaultdict(list))  # test -> occurrences
 
 
@@ -98,30 +100,55 @@ def failed_tests(log: str) -> list[str]:
     return list(seen)
 
 
+def passed_tests(log: str, nodeids: list[str]) -> set[str]:
+    """The ``nodeids`` a pytest log reports as PASSED (``-v``/``-rA`` output); a ``-q`` log
+    names no passing node, so its job's success says nothing about one test."""
+    out = set()
+    for node in nodeids:
+        name = re.escape(node)
+        if re.search(rf"(?:^|\s)(?:server/)?{name}\s+PASSED\b|PASSED (?:server/)?{name}(?:\s|$)", log, re.M):
+            out.add(node)
+    return out
+
+
 def collect(api: Api, repo: str, runs: list[dict]) -> Flake:
-    by_sha: dict[str, list[dict]] = defaultdict(list)
+    """Failures grouped by (head sha, head branch, workflow): a recovery counts only
+    within one branch's runs of one workflow."""
+    groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for run in runs:
-        by_sha[run["head_sha"]].append(run)
+        groups[(run["head_sha"], run.get("head_branch") or "?", run.get("name") or "?")].append(run)
     report = Flake()
-    for sha, sha_runs in sorted(by_sha.items()):
-        if not any(r.get("conclusion") == "failure" or int(r.get("run_attempt") or 1) > 1 for r in sha_runs):
+    logs: dict[int, str] = {}
+
+    def log_of(job_id: int) -> str:
+        if job_id not in logs:
+            logs[job_id] = api(f"repos/{repo}/actions/jobs/{job_id}/logs")
+        return logs[job_id]
+
+    for (sha, branch, workflow), group in sorted(groups.items()):
+        if not any(r.get("conclusion") == "failure" or int(r.get("run_attempt") or 1) > 1 for r in group):
             continue
-        branch = sha_runs[0].get("head_branch") or "?"
-        jobs = [job for run in sha_runs for job in jobs_of(api, repo, run)]
+        jobs = [job for run in group for job in jobs_of(api, repo, run)]
         jobs.sort(key=lambda j: (j.started, j.run_id, j.attempt))
         for i, job in enumerate(jobs):
             if job.conclusion != "failure":
                 continue
             later = [j for j in jobs[i + 1:] if j.name == job.name and (j.run_id, j.attempt) != (job.run_id, job.attempt)]
-            passed = any(j.conclusion == "success" for j in later)
-            tests = failed_tests(api(f"repos/{repo}/actions/jobs/{job.job_id}/logs"))
-            seen = {"sha": sha, "branch": branch, "job": job.name, "run": job.run_id,
-                    "attempt": job.attempt, "when": job.started}
-            if passed and tests:
+            recovered = [j for j in later if j.conclusion == "success"]
+            tests = failed_tests(log_of(job.job_id))
+            seen = {"sha": sha, "branch": branch, "workflow": workflow, "job": job.name,
+                    "run": job.run_id, "attempt": job.attempt, "when": job.started}
+            if recovered:
+                ran = set()
+                for success in recovered:
+                    if tests and ran != set(tests):
+                        ran |= passed_tests(log_of(success.job_id), tests)
                 for test in tests:
-                    report.tests[test].append(seen)
-            elif passed:
-                report.jobs.append(seen)
+                    if test in ran:
+                        report.tests[test].append(seen)
+                unproven = [t for t in tests if t not in ran]
+                if unproven or not tests:
+                    report.jobs.append({**seen, "tests": unproven})
             elif not later:
                 for test in tests:
                     report.unrerun[test].append(seen)
@@ -130,21 +157,24 @@ def collect(api: Api, repo: str, runs: list[dict]) -> Flake:
 
 def markdown(report: Flake, *, days: int, runs: int, now: datetime, unrerun_rows: int = 25) -> str:
     lines = [f"# CI flake report: {days} days to {now:%Y-%m-%d %H:%M} UTC", "",
-             f"{runs} workflow runs scanned. A flake is a failed job whose job of the same name passed "
-             f"later on the same head sha.", ""]
-    lines += ["## Tests that failed, then passed on the same sha", ""]
+             f"{runs} workflow runs scanned. Runs are compared only within one head sha, head branch "
+             f"and workflow.", ""]
+    lines += ["## Tests that failed, then passed on the same sha, branch and workflow", "",
+              "The later successful job's log names the test as PASSED.", ""]
     if report.tests:
         lines += ["| test | flakes | shas | branches | jobs | last seen |", "|---|---:|---:|---|---|---|"]
         for test, seen in sorted(report.tests.items(), key=lambda kv: (-len(kv[1]), kv[0])):
             lines.append(_row(test, seen))
     else:
         lines.append("None.")
-    lines += ["", "## Jobs that failed with no test named, then passed on the same sha", ""]
+    lines += ["", "## Jobs that failed, then passed on the same sha, branch and workflow", "",
+              "The job recovered; the later log does not show these failed tests running.", ""]
     if report.jobs:
-        lines += ["| job | branch | sha | run | when |", "|---|---|---|---|---|"]
-        for seen in sorted(report.jobs, key=lambda s: s["when"]):
-            lines.append(f"| {seen['job']} | {seen['branch']} | {seen['sha'][:8]} | "
-                         f"{seen['run']}#{seen['attempt']} | {seen['when'][:16]} |")
+        lines += ["| job | workflow | branch | sha | run | when | failed tests |", "|---|---|---|---|---|---|---|"]
+        for seen in sorted(report.jobs, key=lambda s: (s["when"], s["job"])):
+            tests = ", ".join(f"`{t}`" for t in seen["tests"]) or "none named"
+            lines.append(f"| {seen['job']} | {seen['workflow']} | {seen['branch']} | {seen['sha'][:8]} | "
+                         f"{seen['run']}#{seen['attempt']} | {seen['when'][:16]} | {tests} |")
     else:
         lines.append("None.")
     lines += ["", "## Failed on a sha that never ran that job again (not classified)", ""]

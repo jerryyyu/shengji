@@ -39,6 +39,12 @@ const reduced = (() => {
 })();
 const bodies = (sel: string) => rules.filter((r) => r.sels.includes(sel)).map((r) => r.body);
 const px = (v: string) => (v === "0" ? 0 : Number(/^(-?\d+(?:\.\d+)?)px$/.exec(v)?.[1] ?? NaN));
+/** The control tokens on :root, in px. */
+const tokens: Record<string, number> = Object.fromEntries(
+  rules.filter((r) => r.sels.includes(":root")).flatMap((r) => [...r.body.matchAll(/(--ctl-[\w-]+): (\d+)px;/g)]).map((m) => [m[1], Number(m[2])]));
+/** Every drawn height a body declares, in px: a literal, or one of the control tokens. */
+const drawnHeights = (body: string) =>
+  [...body.matchAll(/(?:^|[ ;])(?:min-)?height: (?:(\d+)px|var\((--ctl-[\w-]+)\))/g)].map((m) => (m[1] ? Number(m[1]) : tokens[m[2]]));
 
 describe("transitions", () => {
   it("never animate every property", () => {
@@ -77,11 +83,59 @@ describe("press feedback", () => {
   });
 });
 
+// Play, Duo, Join, the code box, and the table panel's Start and Leave take
+// their height and radius from the control tokens, so a new control or a state
+// override cannot bring a size of its own.
+describe("controls", () => {
+  const CONTROLS = [
+    ".play-tab .btn.play-main", ".play-tab .btn.play-duo", ".play-tab .join-row .btn", ".play-tab .room-input",
+    ".tp-primary", ".tp-secondary",
+  ];
+
+  it("the tokens: actions 52 tall, the mode switch 44, one radius of 14", () => {
+    expect(tokens["--ctl-h"]).toBe(52);
+    expect(tokens["--ctl-h-sm"]).toBe(44);
+    expect(tokens["--ctl-r"]).toBe(14);
+  });
+
+  it.each(CONTROLS)("%s is var(--ctl-h) tall with var(--ctl-r) corners", (sel) => {
+    expect(bodies(sel).some((b) => /(?:^|[ ;])(?:min-)?height: var\(--ctl-h\);/.test(b))).toBe(true);
+    expect(bodies(sel).some((b) => b.includes("border-radius: var(--ctl-r);"))).toBe(true);
+  });
+
+  it.each(CONTROLS)("no rule that ends at %s sets a literal height or radius", (sel) => {
+    const own = rules.filter((r) => r.sels.some((s) => s === sel || s.startsWith(`${sel}:`) || s.endsWith(` ${sel}`)));
+    for (const r of own) {
+      expect(r.body, r.sels.join(", ")).not.toMatch(/(?:^|[ ;])(?:min-)?height: \d/);
+      expect(r.body, r.sels.join(", ")).not.toMatch(/(?:^|[ ;])border-radius: \d/);
+    }
+  });
+
+  it("the primary gold is the gold action's and Start's alone: a dismissal in Play's place is neutral", () => {
+    const gold = rules.filter((r) => r.body.includes("border: 1.5px solid var(--gold);") && r.body.includes("linear-gradient(180deg, #8a6a22, #6b5219)"));
+    expect(gold.length).toBeGreaterThan(0);
+    for (const r of gold) for (const s of r.sels) expect(s === ".tp-primary" || /\.gold\b/.test(s.replace(/:not\([^)]*\)/g, "")), s).toBe(true);
+    const neutral = rules.find((r) => r.sels.includes(".play-tab .btn.play-duo") && r.body.includes("background: var(--ctl-raised);"));
+    expect(neutral?.sels).toContain(".play-tab .btn.play-main:where(:not(.gold))");
+  });
+
+  it("the mode switch's track is a 44px well: a 36px segment, 3px padding and the border", () => {
+    const opt = bodies(".play-mode-opt").flatMap(drawnHeights);
+    const track = bodies(".play-mode").join(";");
+    expect(opt).toContain(36);
+    expect(track).toContain("padding: 3px;");
+    expect(track).toContain("border: 1px solid var(--ctl-well-edge);");
+    expect(track).toContain("border-radius: var(--ctl-r);");
+    expect(36 + 2 * 3 + 2 * 1).toBe(tokens["--ctl-h-sm"]);
+  });
+});
+
 describe("tap targets", () => {
   // controls drawn at 44px or more
-  const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".tp-invite", ".q-link", ".leave-sheet-actions button", ".app-store-badge"];
+  const DRAWN = [".tp-primary", ".tp-secondary", ".tp-seat", ".tp-invite", ".q-link", ".leave-sheet-actions button", ".app-store-badge",
+    ".play-tab .howto-link"];
   it.each(DRAWN)("%s is drawn at least 44px tall", (sel) => {
-    const h = bodies(sel).flatMap((b) => [...b.matchAll(/(?:^|[ ;])(?:min-)?height: (\d+)px/g)].map((m) => Number(m[1])));
+    const h = bodies(sel).flatMap(drawnHeights);
     expect(h.length).toBeGreaterThan(0);
     expect(Math.min(...h)).toBeGreaterThanOrEqual(44);
   });

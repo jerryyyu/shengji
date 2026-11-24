@@ -47,6 +47,18 @@
   --fs-17: clamp(17px, calc(17 * var(--tu)), 22.1px);
   --fs-18: clamp(18px, calc(18 * var(--tu)), 23.4px);
   --fs-20: clamp(20px, calc(20 * var(--tu)), 26px);
+  /* Controls: actions are 52 tall, the mode switch 44; one radius. Raised
+     surfaces are tapped; wells are typed in or switched. */
+  --ctl-h: 52px;
+  --ctl-h-sm: 44px;
+  --ctl-r: 14px;
+  --ctl-gap: 8px;
+  --ctl-raised: #242a35;
+  --ctl-raised-edge: #3a4250;
+  --ctl-well: #10131a;
+  --ctl-well-edge: #2b323e;
+  --ctl-off: #1f242d;
+  --ctl-off-text: #7a8494;
 }
 
 /* WebKit reports Dynamic Type through the system body font; the root takes
@@ -5057,30 +5069,48 @@ body.keyboard-open .tabbar { display: none; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.play-ranked-row { display: flex; gap: 8px; }
+.play-ranked-row { display: flex; }
+/* One size for every action: Play's place, Duo, Join, and the table
+   panel's Start and Leave. */
 .play-tab .btn.play-main,
-.play-tab .btn.play-duo {
-  min-height: 58px;
+.play-tab .btn.play-duo,
+.play-tab .join-row .btn,
+.tp-primary,
+.tp-secondary {
+  min-height: var(--ctl-h);
   padding: 0 16px;
-  border-radius: 16px;
-  border-width: 1.5px;
-  font-size: var(--fs-20);
+  border-radius: var(--ctl-r);
+  font-size: var(--fs-17);
   font-weight: 700;
+  letter-spacing: 0.01em;
 }
 .play-tab .btn.play-main { flex: 1; min-width: 0; }
-.play-tab .btn.play-duo {
-  flex: none;
-  width: 96px;
-  background: transparent;
-  border-color: var(--gold);
-  color: var(--gold);
-  font-size: var(--fs-17);
+/* Primary: the gold action in Play's place (Play, I'm back), and Start.
+   Its light ink holds 4.5:1 on the face's lighter end. :where() keeps the
+   specificity of the Unavailable rule below it. */
+.play-tab .btn.play-main:where(.gold),
+.tp-primary {
+  border: 1.5px solid var(--gold);
+  background: linear-gradient(180deg, #8a6a22, #6b5219);
+  color: #fff3cf;
 }
+/* Secondary: Duo, Join, Leave, and a dismissal in Play's place (a lone OK). */
+.play-tab .btn.play-main:where(:not(.gold)),
+.play-tab .btn.play-duo,
+.play-tab .join-row .btn,
+.tp-secondary {
+  border: 1px solid var(--ctl-raised-edge);
+  background: var(--ctl-raised);
+  color: var(--text);
+}
+/* Duo and Join share a width, so the two rows share their columns. */
+.play-tab .btn.play-duo,
+.play-tab .join-row .btn { flex: none; width: 96px; padding: 0; }
+.play-ranked-row, .join-row, .tp-acts { gap: var(--ctl-gap); }
 /* A pair's other member between games: who the Duo is with, and Leave. */
-.play-pair-row { align-items: center; min-height: 58px; }
+.play-pair-row { align-items: center; min-height: var(--ctl-h); }
 .play-pair-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: var(--fs-17); font-weight: 600; color: #e9ecf2; }
-.play-tab .btn.play-duo.play-pair-leave { border-color: #3a4250; color: #c3cad6; }
 /* A guest's line under Play: unrated, and the way to sign in. */
 .play-guest-line {
   margin: 0;
@@ -5104,14 +5134,40 @@ body.keyboard-open .tabbar { display: none; }
 /* Unavailable controls keep their place and shape, greyed rather than faded. */
 .play-tab .btn:disabled {
   opacity: 1;
-  background: #1f242d;
-  border-color: var(--panel-edge);
-  color: #7a8494;
+  background: var(--ctl-off);
+  border-color: var(--ctl-well-edge);
+  color: var(--ctl-off-text);
 }
+/* The code box is a well, as the mode switch's track is; focus keeps its blue border. */
+.play-tab .room-input {
+  height: var(--ctl-h);
+  padding: 0 14px;
+  border: 1px solid var(--ctl-well-edge);
+  border-radius: var(--ctl-r);
+  background: var(--ctl-well);
+  font-size: var(--fs-17);
+}
+.play-tab .room-input:focus { border-color: var(--team0); }
 .play-tab .room-input:disabled { background: #1a1e26; color: #7a8494; }
-.play-tab .howto-entry { font-size: var(--fs-15); }
-/* How to play and Play offline, two quiet links on one line, each tapped as 44px */
-.play-tab .howto-sep { margin: 0 14px; color: #6b7484; }
+/* Text links: How to play and Play offline. The 44px box is the tap area;
+   the row's negative margin keeps the page's height. */
+.play-tab .howto-entry {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  margin: -12px 0;
+  font-size: var(--fs-15);
+}
+.play-tab .howto-link {
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--gold);
+  font-weight: 600;
+  text-decoration: none;
+}
+.play-tab .howto-link::after { content: none; }
+.play-tab .howto-sep { margin: 0; color: #6b7484; }
 
 /* A phone's Play tab fits its first view at rest: everything from the title
    to How to play sits between the status bar and the tab bar. The panel is
@@ -5131,7 +5187,7 @@ body.keyboard-open .tabbar { display: none; }
 .home-narrow .play-tab .lobby-preview {
   aspect-ratio: auto;
   margin-top: 0;
-  flex: 1 1 200px;
+  flex: 1 1 120px;
   min-height: 120px;
   max-height: 200px;
   container-type: size;
@@ -5850,11 +5906,10 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp .q-switch { width: 51px; height: 31px; border-radius: 16px; }
 .tp .q-switch::after { width: 27px; height: 27px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
 .tp .q-wait[aria-checked="true"] .q-switch::after { transform: translateX(20px); }
-.tp-acts { display: flex; gap: 8px; }
+.tp-acts { display: flex; }
+/* Start's size and gold are Play's (the Primary rule); these are its own. */
 .tp-primary {
-  appearance: none; flex: 1; min-width: 0; min-height: 52px; padding: 0 12px; border-radius: 14px;
-  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
-  font: inherit; font-size: var(--fs-17); font-weight: 700; cursor: pointer;
+  appearance: none; flex: 1; min-width: 0; font-family: inherit; line-height: inherit; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* the offer's clock on Join */
@@ -5870,10 +5925,9 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp-primary:disabled { background: #2a2f38; border-color: #3a4250; color: #8a929f; cursor: default; }
 /* a Duo's search, after both Starts: a quiet button with the bots' ring */
 .tp-primary.searching:disabled { background: transparent; border-color: #3a4250; color: #e9ecf2; }
+/* Leave's size and fill are Duo's (the Secondary rule); these are its own. */
 .tp-secondary {
-  appearance: none; flex: none; min-height: 52px; padding: 0 14px; border-radius: 14px;
-  border: 1px solid #3a4250; background: transparent; color: #c3cad6;
-  font: inherit; font-size: var(--fs-15); font-weight: 600; cursor: pointer; white-space: nowrap;
+  appearance: none; flex: none; font-family: inherit; line-height: inherit; cursor: pointer; white-space: nowrap;
 }
 .tp-secondary:disabled { opacity: 0.45; cursor: default; }
 .tp-led { margin: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; color: #bfe9cf; font-size: var(--fs-15); }

@@ -3,6 +3,7 @@
 // socket dying with cards chosen. These are the three ways the app broke on a
 // real phone while every static screenshot looked fine.
 //   node e2e/client.mjs [scenario-regex]
+import fs from "node:fs";
 import { Report, contained, keyboard, launch, onShow, open, overlaps, scenario, shot, sleep, until } from "./lib.mjs";
 import { HAND25, base, fakeSocketScript, hand, plays, push } from "./fake.mjs";
 
@@ -157,6 +158,116 @@ if (!only || only.test("drop")) {
        (await chosen()) === 1 ? null : "the chosen card is no longer chosen"], page2);
   });
   await page2.context().close();
+}
+
+// ---- the Play tab in the iOS app, signed in on its device account, at the phones' real safe
+// areas: at rest nothing sits under the tab bar (the SE has the least room), Play, Duo, Join and
+// the table panel's Start and Leave are one height and one radius, and the links are 44px boxes
+const PLAY_SIZES = { "phone-port": { t: 47, b: 34 }, "phone-port-se": { t: 20, b: 0 } };
+for (const [device, insets] of Object.entries(PLAY_SIZES)) {
+  const name = `playtab-${device}`;
+  if (only && !only.test(name)) continue;
+  const you = "Swift Crane";
+  const user = { name: you, email: "", picture: null, display_name: you, name_shown: you, rounds_played: 14, linked: false };
+  const stats = { name: you, rating: 1012, rank: null, rounds: 14, provisional: true, levels_per_round: 0.2, won_pct: 50, history: [1000, 1012], recent_games: [], visible: true };
+  const setup = async (page) => {
+    await page.addInitScript(`window.Capacitor = { isNativePlatform: () => true, getPlatform: () => "ios", isPluginAvailable: () => true,
+      registerPlugin: (n) => new Proxy({}, { get: (_, m) => () => Promise.resolve(n === "ShengjiKeychain" && m === "get" ? { value: "e2e-token" } : undefined) }) };`);
+    const json = (body, status = 200) => (r) => r.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    await page.route("**/api/**", json({ detail: "none" }, 404));
+    await page.route("**/api/auth/config", json({ google_client_id: "e2e.apps.googleusercontent.com", device_accounts: true }));
+    await page.route("**/api/me", json({ detail: "no" }, 401));
+    await page.route("**/api/auth/device", json({ user }));
+    await page.route("**/api/me/stats", json(stats));
+    await page.route("**/accounts.google.com/**", (r) => r.fulfill({ status: 200, contentType: "text/javascript", body: "" }));
+  };
+  // the longest presence line: two lines on an SE
+  const presence = { type: "presence", tables: 3, playing: 7, waiting: 0, ranked: 2, casual: 1 };
+  const page = await open(browser, device, { storage: { "shengji.muted": "1", "shengji.name": you, "shengji.nameChosen": "1" },
+    fakeSocket: fakeSocketScript([presence]), insets, setup, still: true });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".play-main");
+    await sleep(1300);
+    const fit = await page.evaluate(() => {
+      const bar = document.querySelector(".tabbar").getBoundingClientRect();
+      const sc = document.querySelector(".lobby-screen");
+      const items = [...document.querySelectorAll(".play-tab button, .play-tab input, .play-tab .play-presence, .play-tab .howto-entry")]
+        .filter((e) => e.offsetParent && !e.closest(".tabbar"));
+      const under = items.map((e) => [e, e.getBoundingClientRect()]).filter(([, r]) => r.bottom > bar.top + 0.5)
+        .map(([e, r]) => `${e.className || e.tagName} ends at ${Math.round(r.bottom)}, the tab bar starts at ${Math.round(bar.top)}`);
+      return { under, scroll: sc.scrollHeight - sc.clientHeight, n: items.length };
+    });
+    await rep.check(`${name}: at rest nothing sits under the tab bar and the page does not scroll`,
+      [...fit.under, fit.n >= 8 ? null : `only ${fit.n} controls found`, fit.scroll <= 0 ? null : `the page scrolls ${fit.scroll}px at rest`], page);
+    const box = (sel) => page.evaluate((s) => {
+      const el = document.querySelector(s); if (!el) return null;
+      const r = el.getBoundingClientRect(), x = r.left + r.width / 2; let top = null, bot = null;
+      for (let y = Math.floor(r.top) - 30; y <= r.bottom + 30; y++) {
+        const e = document.elementFromPoint(x, y); if (e && (e === el || el.contains(e))) { if (top === null) top = y; bot = y; }
+      }
+      return { h: Math.round(r.height), radius: getComputedStyle(el).borderTopLeftRadius, hit: top === null ? 0 : bot - top + 1 };
+    }, sel);
+    const one = (rows) => {
+      const [first] = Object.values(rows);
+      return Object.entries(rows).map(([label, b]) => !b ? `${label}: not in the page`
+        : b.h !== first.h || b.radius !== first.radius ? `${label} is ${b.h}px tall with ${b.radius} corners, ${Object.keys(rows)[0]} ${first.h}px with ${first.radius}` : null);
+    };
+    const lobby = { Play: await box(".play-main"), Duo: await box(".play-duo"), Join: await box(".join-row .btn"), "code box": await box(".room-input") };
+    const links = [];
+    for (const [i, label] of [[0, "How to play"], [1, "Play offline"]]) {
+      const b = await page.evaluate((n) => { const el = document.querySelectorAll(".howto-link")[n]; return el ? Math.round(el.getBoundingClientRect().height) : null; }, i);
+      const hit = await box(`.howto-entry > .howto-link:nth-of-type(${i + 1})`);
+      links.push(b === null ? `${label}: not in the page` : b < 44 ? `${label} is a ${b}px box` : hit.hit < 44 ? `${label} is tapped over ${hit.hit}px` : null);
+    }
+    await shot(page, name);
+    // Play refused because the account already plays: the way back, when this device knows the
+    // room, is the gold action; a lone OK is a dismissal and stays neutral, at Play's size
+    const look = (sel) => page.evaluate((s) => {
+      const el = document.querySelector(s); if (!el) return null;
+      const c = getComputedStyle(el);
+      return { text: el.textContent.trim(), h: Math.round(el.getBoundingClientRect().height), radius: c.borderTopLeftRadius,
+        gold: c.backgroundImage.includes("gradient") || c.borderTopColor === "rgb(242, 193, 78)", bg: c.backgroundColor };
+    }, sel);
+    const inGame = { type: "error", code: "account_in_game", message: "You are already playing a ranked game." };
+    const duoLook = await look(".play-duo");
+    const blocks = [];
+    for (const canReturn of [false, true]) {
+      await page.evaluate((r) => { if (r) localStorage.setItem("shengji.room", "4N5Z"); else localStorage.removeItem("shengji.room"); }, canReturn);
+      await push(page, inGame);
+      await page.waitForSelector(".play-in-game");
+      await sleep(200);
+      const btns = await page.evaluate(() => [...document.querySelectorAll(".play-in-game button")].map((b) => b.textContent.trim()));
+      const back = canReturn ? await look(".play-in-game .play-main") : null;
+      const ok = await look(canReturn ? ".play-in-game .play-duo" : ".play-in-game .play-main");
+      const label = canReturn ? "with the way back" : "without the way back";
+      blocks.push(
+        btns.length === (canReturn ? 2 : 1) ? null : `${label}: buttons ${JSON.stringify(btns)}`,
+        ok && !ok.gold && ok.bg === duoLook.bg ? null : `${label}: OK is not the neutral secondary (${JSON.stringify(ok)})`,
+        ok && ok.h === duoLook.h && ok.radius === duoLook.radius ? null : `${label}: OK is not an action's size (${JSON.stringify(ok)})`,
+        !canReturn || back?.gold ? null : `${label}: the way back is not gold (${JSON.stringify(back)})`);
+      await shot(page, `${name}_ingame_${canReturn ? "return" : "ok"}`);
+      await page.click(".play-in-game button:last-child");
+      await page.waitForSelector(".play-in-game", { state: "detached" });
+    }
+    await page.evaluate(() => localStorage.removeItem("shengji.room"));
+    await rep.check(`${name}: in Play's place, a lone OK stays neutral and the way back is gold`, blocks, page);
+    // Play's table: its Start and Leave
+    await page.click(".play-main");
+    await sleep(300);
+    const frames = JSON.parse(fs.readFileSync(new URL("../src/queue/fixtures/table_frames.json", import.meta.url), "utf8"));
+    const f = frames.find((x) => x.queue_state.table === null && !x.queue_state.duo && !x.party);
+    const t0 = Date.now() / 1000;
+    const fix = (o) => JSON.parse(JSON.stringify(o).replaceAll("<code0>", "4N5Z").replace(/"P\d"/g, `"${you}"`)
+      .replaceAll("10060.0", String(t0 + 55)).replaceAll("10030.0", String(t0 + 25)).replaceAll("10000.0", String(t0 - 5)));
+    for (const frame of [fix(f.queue_state), fix(f.table)]) await push(page, frame);
+    await page.waitForSelector(".tp-primary");
+    await sleep(400);
+    const table = { Start: await box(".tp-primary"), Leave: await box(".tp-secondary") };
+    await rep.check(`${name}: Play, Duo, Join, the code box, Start and Leave share one height and radius; the links are 44px boxes`,
+      [...one({ ...lobby, ...table }), lobby.Play?.h >= 52 ? null : `Play is ${lobby.Play?.h}px tall`, ...links], page);
+    await shot(page, `${name}_table`);
+  });
+  await page.context().close();
 }
 
 await browser.close();

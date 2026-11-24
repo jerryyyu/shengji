@@ -65,8 +65,10 @@ const NATIVE = `window.Capacitor = { isNativePlatform: () => true,
   registerPlugin: () => new Proxy({}, { get: () => () => Promise.resolve(undefined) }) };`;
 
 /** A page at one device size with the taps installed. `storage` seeds localStorage;
- *  `native` makes it the iOS app's page rather than a browser's. */
-export async function open(browser, device, { url = "", storage = {}, base = BASE, fakeSocket = null, still = false, native = false } = {}) {
+ *  `native` makes it the iOS app's page rather than a browser's. `insets` ({ t, b })
+ *  are the device's safe areas as env() reads them; `setup(page)` runs before the load. */
+export async function open(browser, device, { url = "", storage = {}, base = BASE, fakeSocket = null, still = false, native = false,
+  insets = null, setup = null } = {}) {
   const d = DEVICES[device];
   const ctx = await browser.newContext({
     viewport: { width: d.w, height: d.h }, deviceScaleFactor: 2, colorScheme: "dark",
@@ -89,10 +91,24 @@ export async function open(browser, device, { url = "", storage = {}, base = BAS
     await page.addInitScript(`document.addEventListener("DOMContentLoaded", () => { const s = document.createElement("style");
       s.textContent = ":root{--frame-safe-t:${d.safe.t}px;--frame-safe-r:${d.safe.r}px;--frame-safe-b:${d.safe.b}px;--frame-safe-l:${d.safe.l}px}"; document.head.appendChild(s); });`);
   }
+  if (insets) await safeAreas(page, insets);
   if (d.vh) await page.addInitScript(vhAs, d.vh);
   if (fakeSocket) await page.addInitScript(fakeSocket);
+  if (setup) await setup(page);
   await page.goto(base + url);
   return page;
+}
+
+/** The lobby reads its safe areas through env(), which no browser lets a test set:
+ *  every style sheet's env(safe-area-inset-*) is rewritten to a variable set here. */
+async function safeAreas(page, { t = 0, r = 0, b = 0, l = 0 }) {
+  await page.route(/\.css(\?.*)?$/, async (route) => {
+    const resp = await route.fetch();
+    const body = (await resp.text()).replace(/env\(safe-area-inset-(top|bottom|left|right)(\s*,[^)]*)?\)/g, (_, side) => `var(--sim-safe-${side[0]}, 0px)`);
+    await route.fulfill({ response: resp, body });
+  });
+  await page.addInitScript(`document.addEventListener("DOMContentLoaded", () => { const s = document.createElement("style");
+    s.textContent = ":root{--sim-safe-t:${t}px;--sim-safe-r:${r}px;--sim-safe-b:${b}px;--sim-safe-l:${l}px}"; document.head.appendChild(s); });`);
 }
 
 /** Init script: every `vh` length in the page's style sheets becomes `vh`% of

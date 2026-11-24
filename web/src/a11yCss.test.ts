@@ -105,7 +105,11 @@ describe("the panel's controls hold AA without dimming", () => {
   const GOLD_TOP = "#8a6a22";
 
   it("the gold panel button's text and its ring's seconds are at least 4.5:1 on the gold", () => {
-    const button = color(decls(".tp-primary"));
+    // Start's ink is the shared primary rule's, whose selector list names .tp-primary
+    const shared = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .find((m) => m[1].replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).includes(".tp-primary") && color(m[2]));
+    const button = color(shared?.[2] ?? "");
+    expect(shared?.[2]).toContain("linear-gradient(180deg, #8a6a22, #6b5219)");
     expect(contrast(button, GOLD_TOP)).toBeGreaterThanOrEqual(AA);
     expect(contrast(color(decls(".tp-primary .timer-ring-secs")), GOLD_TOP)).toBeGreaterThanOrEqual(AA);
   });

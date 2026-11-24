@@ -792,16 +792,27 @@ def _projected_reply_callbacks(bot, frame, active, planes, index_of, values_fn, 
     if not eligible or (pos == 3 and len(eligible) != len(active)):
         return None
 
+    # Sampled hands can share the same public plays throughout a reply ply.
+    public_prefixes = {}
+
     def children(clone, seat, candidates):
         if id(clone) not in eligible:
             return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
         trick = clone.trick
         lead = trick.plays[0].cards
-        # The compiled follow can call the Python shape picker for throws.
-        if pos < 3 and len(lead) > 1 and len(combos.decompose(lead, clone.ordering).components) != 1:
+        key = (id(clone.ordering), tuple((play.seat, tuple(play.cards)) for play in trick.plays))
+        if key not in public_prefixes:
+            # The compiled follow can call the Python shape picker for throws.
+            if pos < 3 and len(lead) > 1 and len(combos.decompose(lead, clone.ordering).components) != 1:
+                public_prefixes[key] = None
+            else:
+                actual = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
+                points = sum(pts[c] for play in trick.plays for c in play.cards)
+                public_prefixes[key] = (actual, points)
+        prefix = public_prefixes[key]
+        if prefix is None:
             return search._STANDARD_REPLY_CHILDREN(clone, seat, candidates)
-        actual = _winner_fast(trick, clone.ordering, combos, legal, with_level=True)
-        prior_points = sum(pts[c] for play in trick.plays for c in play.cards)
+        actual, prior_points = prefix
         parent = planes[index_of[id(clone)]]
         if pos < 3:
             if actual[1] is None:

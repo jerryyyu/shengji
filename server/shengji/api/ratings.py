@@ -28,7 +28,9 @@ round.
 One rated round, for each rated account on team ``t``:
 
 * team strength ``R_t`` is the mean of the two seats' ratings (a bot seat
-  its level's anchor, ``BOT_ANCHORS``; a guest seat ``GUEST_RATING``; a
+  its level's anchor, ``BOT_ANCHORS``; a guest seat ``GUEST_RATING``; an
+  account's seat that is not rated in the round, such as one disconnected
+  when it started, that account's own rating as the round started; a
   partner bot is always Advanced, so it counts ``ADVANCED_BOT_RATING``), plus
   a banker advantage for the banker's team:
   ``BANKER_ADVANTAGE_DECLARED`` when the round started with no banker and the
@@ -94,9 +96,8 @@ from . import accounts
 log = logging.getLogger(__name__)
 
 START_RATING = accounts.START_RATING
-# The rating scale's fixed point: the leaderboard's bot anchor, and the seat
-# of an account not rated in the round. A bot seat counts its level's anchor
-# (``BOT_ANCHORS``).
+# The rating scale's fixed point, which Standard and Beginner bot seats count.
+# A bot seat counts its level's anchor (``BOT_ANCHORS``).
 BOT_RATING = 1000.0
 # A guest has no rating; in a ranked room their seat counts as a new
 # account's start, for the bots' level (``ranked_bots``), for seating
@@ -118,7 +119,8 @@ BEGINNER_BOT_RATING = BOT_RATING
 # the measured Advanced-vs-Standard gap: 1000 + 0.47 levels/round at 125.5
 # Elo per level/round = 1059.
 ADVANCED_BOT_RATING = 1059.0
-# The anchor of a bot seat by the level it plays; ``seat_anchor`` reads it.
+# The anchor of a bot seat by the level it plays; ``seat_anchor`` reads it,
+# and the leaderboard payload lists it (``leaderboard``).
 BOT_ANCHORS = {"advanced": ADVANCED_BOT_RATING, "standard": STANDARD_BOT_RATING,
                "beginner": BEGINNER_BOT_RATING}
 # Holding the deal (the kitty, the first lead and the defence threshold of
@@ -245,8 +247,13 @@ class RoundRecord:
     banker_declared: bool = False
     # each seat's rating when no rated account held it at the round's start:
     # ``seat_anchor``: a bot's level's ``BOT_ANCHORS``, ``GUEST_RATING`` for a
-    # guest, ``BOT_RATING`` for an account
+    # guest or an account's seat
     seat_anchors: list[float] | None = None
+    # seat -> the account seated there when the round started, connected or
+    # not; an account's seat not rated in this round counts that account's
+    # own rating (``standing``, else its stored one), or its anchor when the
+    # account no longer exists
+    seat_accounts: dict[int, int] = field(default_factory=dict)
 
 
 def read_standing(store: accounts.Store, user_ids: list[int]) -> dict[int, tuple[float, int]]:
@@ -283,7 +290,8 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
 
     Team strengths and the provisional test use each participant's numbers
     from the round's start; a seat whose start account is not rated in this
-    round counts its anchor (``seat_anchors``, from ``seat_anchor``)."""
+    round counts that account's own rating (``seat_accounts``), and any other
+    seat its anchor (``seat_anchors``, from ``seat_anchor``)."""
     t = int(now if now is not None else time.time())
     frozen = _frozen(rec.standing)
     with closing(store._open()) as conn:
@@ -299,8 +307,19 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
             at_start = {uid: frozen.get(uid, (float(row["rating"]), int(row["rated_rounds"])))
                         for uid, row in users.items()}
             anchors = rec.seat_anchors or [BOT_RATING] * 4
-            seat_ratings = [at_start[u][0] if u in at_start else anchors[s]
-                            for s, u in ((s, rec.start_accounts.get(s)) for s in range(4))]
+            seat_ratings = []
+            for s in range(4):
+                u = rec.start_accounts.get(s)
+                if u in at_start:
+                    seat_ratings.append(at_start[u][0])
+                    continue
+                held = rec.seat_accounts.get(s)
+                own = frozen.get(held) if held is not None else None
+                if held is not None and own is None:
+                    row = conn.execute("SELECT rating FROM users WHERE id = ?",
+                                       (held,)).fetchone()
+                    own = (float(row["rating"]), 0) if row is not None else None
+                seat_ratings.append(own[0] if own is not None else anchors[s])
             strengths = team_strengths(seat_ratings, rec.banker_team, rec.banker_declared)
             provisional = {uid for uid, (_, n) in at_start.items() if is_provisional(n)}
             out: dict[int, dict] = {}
@@ -454,8 +473,11 @@ def leaderboard(store: accounts.Store, period: str, viewer: int | None,
         if mine is not None:
             me = _public_row(mine, _rank_of(players, viewer), True, moves)
             me["visible"] = bool(mine["leaderboard_visible"])
+    # ``anchor`` is the served bot, which plays every partner seat; the
+    # relaxed levels' anchors are listed by level
     return {"period": period, "players": top, "me": me,
-            "anchor": {"name": BOT_ANCHOR_NAME, "rating": int(BOT_RATING)}}
+            "anchor": {"name": BOT_ANCHOR_NAME, "rating": int(ADVANCED_BOT_RATING)},
+            "anchors": {level: int(r) for level, r in BOT_ANCHORS.items()}}
 
 
 def _pct(wins: int, n: int) -> float | None:
@@ -551,6 +573,9 @@ class RoomRatings:
     # seat -> the rating it counts when no rated account holds it, read when
     # the round started (``RoundRecord.seat_anchors``)
     anchors: list[float] = field(default_factory=list)
+    # seat -> account seated there when the round started, connected or not
+    # (``RoundRecord.seat_accounts``)
+    seated: dict[int, int] = field(default_factory=dict)
     # the round started with no banker (``round_start`` banker null), so the
     # deal goes to whoever declares; a carried or resumed banker is preset
     banker_declared: bool = False
@@ -616,11 +641,12 @@ def start(room: Any) -> None:
 
 def seat_anchor(seat: Any, level: str = "advanced") -> float:
     """A seat's rating when no rated account holds it: a bot's level's
-    anchor (``BOT_ANCHORS``), ``GUEST_RATING`` for a guest (no account),
-    ``BOT_RATING`` for an account's seat."""
+    anchor (``BOT_ANCHORS``), else ``GUEST_RATING``. That seat is a person,
+    so an account's seat counts the account's own rating instead
+    (``RoundRecord.seat_accounts``) and this only when the account is gone."""
     if seat.is_bot:
         return BOT_ANCHORS[level]
-    return GUEST_RATING if seat.user_id is None else BOT_RATING
+    return GUEST_RATING
 
 
 @_guarded
@@ -631,6 +657,7 @@ def round_started(room: Any) -> None:
     tracker.round_no = room.game.round_no
     tracker.left = {}
     tracker.present = {}
+    tracker.seated = {}
     tracker.kinds = []
     tracker.standing = None
     tracker.banker_declared = room.round is not None and room.round.banker is None
@@ -642,6 +669,8 @@ def round_started(room: Any) -> None:
                        for s, seat in enumerate(room.seats)]
     for s, seat in enumerate(room.seats):
         uid = _signed_in(seat)
+        if uid is not None:
+            tracker.seated[s] = uid
         if uid is not None and seat.connected:
             tracker.present[s] = uid
             tracker.kinds.append(ACCOUNT)
@@ -652,9 +681,9 @@ def round_started(room: Any) -> None:
         else:
             tracker.kinds.append(ABSENT)
     store = accounts.STORE
-    if tracker.present and store is not None:
+    if tracker.seated and store is not None:
         tracker.standing = _EXECUTOR.submit(read_standing, store,
-                                            sorted(set(tracker.present.values())))
+                                            sorted(set(tracker.seated.values())))
 
 
 @_guarded
@@ -755,7 +784,8 @@ def build_record(room: Any, tracker: RoomRatings, result: Any) -> RoundRecord | 
         seat_bots=[bool(seat.is_bot) for seat in room.seats],
         participants=parts, standing=tracker.standing,
         banker_declared=tracker.banker_declared,
-        seat_anchors=list(tracker.anchors) or None)
+        seat_anchors=list(tracker.anchors) or None,
+        seat_accounts=dict(tracker.seated))
 
 
 def _record_outcome(room: Any, tracker: RoomRatings, rec: RoundRecord,

@@ -176,3 +176,40 @@ def test_the_unclassified_section_is_capped():
         flake.unrerun[f"tests/test_{i}.py::t"].append(seen)
     text = report.markdown(flake, days=1, runs=1, now=NOW, unrerun_rows=2)
     assert "1 more tests not shown" in text and "tests/test_2.py::t" not in text
+
+
+def _failing(api, bad, failures):
+    """``api`` with the first ``failures`` calls of each path containing ``bad`` exiting 1."""
+    import subprocess
+
+    left = {}
+
+    def fake(path):
+        if bad in path:
+            left.setdefault(path, failures)
+            if left[path] > 0:
+                left[path] -= 1
+                raise subprocess.CalledProcessError(1, ["gh", "api", path], stderr="HTTP 502: Bad Gateway")
+        return api(path)
+    return fake
+
+
+def test_a_transient_gh_failure_is_retried(api, monkeypatch):
+    pauses = []
+    monkeypatch.setattr(report.time, "sleep", pauses.append)
+    clean = _run(api)
+    flaky = _run(_failing(api, "/attempts/2/jobs", report.API_TRIES - 1))
+    assert flaky == clean
+    assert pauses == [report.BACKOFF * 2 ** n for n in range(report.API_TRIES - 1)]
+
+
+def test_a_run_whose_jobs_never_load_is_skipped_with_a_note(api, monkeypatch):
+    monkeypatch.setattr(report.time, "sleep", lambda _: None)
+    text = _run(_failing(api, "runs/45102283018/attempts/2/jobs", report.API_TRIES))
+    skipped = text.split("## Runs skipped: their jobs could not be read", 1)[1]
+    row = next(line for line in skipped.splitlines() if "45102283018" in line)
+    assert _cells(row)[:4] == ["45102283018", "PR checks", "claude/offline-rt4", "680b47b6"]
+    assert "gh exit 1" in row and "Bad Gateway" in row
+    _, jobs, _ = _sections(text.split("## Runs skipped", 1)[0])
+    assert "45102283018" not in jobs        # nothing from the unread run is compared
+    assert "## Runs skipped" not in _run(api)

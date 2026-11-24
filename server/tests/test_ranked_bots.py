@@ -293,7 +293,7 @@ def test_a_round_against_beginner_starts_with_the_beginner_anchor():
     ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({7: 700.0}), srv.make_beginner_bot)
     room.ratings = ratings.RoomRatings(game_id="g")
     ratings.round_started(room)
-    assert room.ratings.anchors == [ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING,
+    assert room.ratings.anchors == [ratings.GUEST_RATING, ratings.BEGINNER_BOT_RATING,
                                     ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
 
 
@@ -395,7 +395,7 @@ def test_the_queue_game_of_a_1000_account_meets_standard_and_logs_it(env, monkey
             _settled(room)
             assert ranked_bots.standard(room) == {1, 3}
             assert room.bot_level == "advanced"
-            assert room.ratings.anchors == [ratings.BOT_RATING, ratings.STANDARD_BOT_RATING,
+            assert room.ratings.anchors == [ratings.GUEST_RATING, ratings.STANDARD_BOT_RATING,
                                             ratings.ADVANCED_BOT_RATING, ratings.STANDARD_BOT_RATING]
         records = [json.loads(line) for line in (srv.LOG_DIR / f"{code}.jsonl").open()]
         chosen = next(r for r in records if r["e"] == "bot_levels")
@@ -431,7 +431,7 @@ def test_the_queue_game_of_a_new_account_meets_beginner_and_logs_it(env):  # noq
                 "advanced", "beginner", "advanced", "beginner"]
             assert type(room.bot.relaxed) is FakeBeginner
             assert room.bot_level == "advanced"
-            assert room.ratings.anchors == [ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING,
+            assert room.ratings.anchors == [ratings.GUEST_RATING, ratings.BEGINNER_BOT_RATING,
                                             ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
             assert room.ratings.anchors[1] == 1000.0
         records = [json.loads(line) for line in (srv.LOG_DIR / f"{code}.jsonl").open()]
@@ -545,7 +545,7 @@ def test_a_new_game_reads_the_ratings_after_the_last_round_is_settled(env, monke
     assert store.user(uid)["rating"] > 1000
     assert ranked_bots.standard(room) == frozenset()
     assert not isinstance(room.bot, ranked_bots.RankedBots)
-    assert room.ratings.anchors == [ratings.BOT_RATING] + [ratings.ADVANCED_BOT_RATING] * 3
+    assert room.ratings.anchors == [ratings.GUEST_RATING] + [ratings.ADVANCED_BOT_RATING] * 3
     assert [r["level"] for r in _bot_levels_records(srv, room)] == ["advanced"]
 
 
@@ -783,7 +783,7 @@ def test_a_seat_check_from_the_previous_game_leaves_the_next_games_level(monkeyp
     assert [r["level"] for r in records if r["e"] == "bot_levels"] == ["beginner"]
     room.ratings = ratings.RoomRatings(game_id="g")
     ratings.round_started(room)
-    assert room.ratings.anchors == [ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING,
+    assert room.ratings.anchors == [ratings.GUEST_RATING, ratings.BEGINNER_BOT_RATING,
                                     ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
 
 
@@ -882,7 +882,7 @@ def test_a_guest_who_signs_in_during_the_deal_is_rated_beside_as_the_guest_it_op
     table.start_round(banker=0)
     room = table.room
     assert room.ratings.kinds[0] == ratings.GUEST
-    assert room.ratings.anchors == [800.0, 1059.0, ratings.BOT_RATING, 1059.0]
+    assert room.ratings.anchors == [800.0, 1059.0, ratings.GUEST_RATING, 1059.0]
     ranked_bots.begin_game(room)
     room.seats[0].user_id = signer                        # signed in during the deal
 
@@ -890,7 +890,7 @@ def test_a_guest_who_signs_in_during_the_deal_is_rated_beside_as_the_guest_it_op
         return served
     asyncio.run(ranked_bots.settle_game(room, unavailable, unavailable))
     assert ranked_bots.standard(room) == frozenset()
-    assert room.ratings.anchors == [800.0, 1059.0, ratings.BOT_RATING, 1059.0]
+    assert room.ratings.anchors == [800.0, 1059.0, ratings.GUEST_RATING, 1059.0]
     table.finish()
     ratings.flush()
     event, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", partner)

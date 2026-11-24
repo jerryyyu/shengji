@@ -9,6 +9,11 @@ A failed test is reported as passing on rerun only when the later successful
 job's log names it PASSED; otherwise the recovery is reported for the job, with
 the failed tests listed, because a ``-q`` log cannot show that the test ran.
 
+A ``gh api`` call that fails is tried ``API_TRIES`` times with a growing
+pause; a run whose jobs still cannot be read is left out of the comparison
+and listed in the report as skipped, so one transient failure does not end
+the report.
+
 Failures on a sha that never ran again cannot be classified; they are counted
 in a separate section so a test that fails on one commit and passes on the next
 stays visible without being called a flake.
@@ -25,6 +30,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -36,12 +42,34 @@ PER_PAGE = 100
 # possibly behind a timestamp and a session prefix such as `[2.1] `.
 FAILED_LINE = re.compile(r"(?:^|\s)(?:FAILED|ERROR) ((?:server/)?tests/[^\s:]+\.py::\S+)")
 
+# a failing ``gh api`` call is tried this many times, pausing BACKOFF * 2**n
+# seconds after the n-th failure
+API_TRIES = 3
+BACKOFF = 2.0
+
 Api = Callable[[str], str]
 
 
 def gh_api(path: str) -> str:
     """The body of a GET through the authenticated ``gh`` CLI."""
     return subprocess.run(["gh", "api", path], check=True, capture_output=True, text=True).stdout
+
+
+def retrying(api: Api, tries: int = API_TRIES, backoff: float = BACKOFF,
+             sleep: Callable[[float], None] | None = None) -> Api:
+    """``api`` tried up to ``tries`` times; the last failure is raised."""
+    pause = sleep or (lambda seconds: time.sleep(seconds))
+
+    def call(path: str) -> str:
+        for n in range(tries):
+            try:
+                return api(path)
+            except subprocess.CalledProcessError:
+                if n == tries - 1:
+                    raise
+                pause(backoff * 2 ** n)
+        raise AssertionError("unreachable")
+    return call
 
 
 @dataclass
@@ -59,6 +87,7 @@ class Flake:
     tests: dict = field(default_factory=lambda: defaultdict(list))  # test -> occurrences
     jobs: list = field(default_factory=list)  # recovered jobs, with failed tests not shown to rerun
     unrerun: dict = field(default_factory=lambda: defaultdict(list))  # test -> occurrences
+    skipped: list = field(default_factory=list)  # runs whose jobs could not be read
 
 
 def runs_since(api: Api, repo: str, since: datetime, workflow: str | None) -> list[dict]:
@@ -128,7 +157,13 @@ def collect(api: Api, repo: str, runs: list[dict]) -> Flake:
     for (sha, branch, workflow), group in sorted(groups.items()):
         if not any(r.get("conclusion") == "failure" or int(r.get("run_attempt") or 1) > 1 for r in group):
             continue
-        jobs = [job for run in group for job in jobs_of(api, repo, run)]
+        jobs = []
+        for run in group:
+            try:
+                jobs += jobs_of(api, repo, run)
+            except subprocess.CalledProcessError as exc:
+                report.skipped.append({"run": run["id"], "sha": sha, "branch": branch,
+                                       "workflow": workflow, "error": _gh_error(exc)})
         jobs.sort(key=lambda j: (j.started, j.run_id, j.attempt))
         for i, job in enumerate(jobs):
             if job.conclusion != "failure":
@@ -187,7 +222,19 @@ def markdown(report: Flake, *, days: int, runs: int, now: datetime, unrerun_rows
             lines += ["", f"{len(ranked) - unrerun_rows} more tests not shown (--unrerun-rows)."]
     else:
         lines.append("None.")
+    if report.skipped:
+        lines += ["", "## Runs skipped: their jobs could not be read", "",
+                  "These runs are left out of every comparison above.", "",
+                  "| run | workflow | branch | sha | error |", "|---|---|---|---|---|"]
+        for seen in report.skipped:
+            lines.append(f"| {seen['run']} | {seen['workflow']} | {seen['branch']} | {seen['sha'][:8]} | "
+                         f"{seen['error']} |")
     return "\n".join(lines) + "\n"
+
+
+def _gh_error(exc: subprocess.CalledProcessError) -> str:
+    text = " ".join(str(exc.stderr or "").split())[:120].replace("|", "/")
+    return f"gh exit {exc.returncode}" + (f": {text}" if text else "")
 
 
 def _row(test: str, seen: list[dict]) -> str:
@@ -209,6 +256,7 @@ def main(argv: list[str] | None = None, api: Api = gh_api, now: datetime | None 
     parser.add_argument("--unrerun-rows", type=int, default=25, help="rows in the not-classified section")
     args = parser.parse_args(argv)
     now = now or datetime.now(timezone.utc)
+    api = retrying(api)
     runs = runs_since(api, args.repo, now - timedelta(days=args.days), args.workflow or None)
     sys.stdout.write(markdown(collect(api, args.repo, runs), days=args.days, runs=len(runs), now=now,
                               unrerun_rows=args.unrerun_rows))

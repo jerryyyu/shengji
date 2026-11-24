@@ -76,6 +76,21 @@ def pct(xs: list[float], q: float) -> float | None:
     return xs[min(len(xs) - 1, int(round(q * (len(xs) - 1))))]
 
 
+
+# seconds of slack past the longest legitimate gap before a table counts as stuck
+STUCK_SLACK = 15.0
+
+
+def stuck_limit(srv, scale: float) -> float:
+    """The longest gap between two progress events before a table in play
+    counts as stuck, from the server's (already scaled) constants: a seat
+    away from the table holds its clock for ``AWAY_PAUSE_MAX``, then runs
+    out the ``MOVE_TIMER``, is seen on the next ``MOVE_TIMER_POLL`` and the
+    bot plays for it after ``BOT_DELAY``; then ``STUCK_SLACK``."""
+    return (srv.MOVE_TIMER + srv.AWAY_PAUSE_MAX + srv.MOVE_TIMER_POLL + srv.BOT_DELAY
+            + STUCK_SLACK / scale)
+
+
 class Soak:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -504,7 +519,7 @@ class Soak:
 
     async def monitor(self, until: float) -> None:
         srv = self.srv
-        limit = (srv.MOVE_TIMER + srv.MOVE_TIMER_POLL) + 15.0 / self.scale
+        limit = stuck_limit(srv, self.scale)
         flagged: set[str] = set()
         seen: dict = {}
         while time.monotonic() < until:

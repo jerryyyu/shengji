@@ -771,6 +771,42 @@ def test_a_bot_takeover_after_a_disconnect_is_an_abandon(env, monkeypatch):
     assert event["abandoned"] == 1 and event["actual"] == 0.5    # a 2-level win, capped
 
 
+def test_a_partner_disconnected_at_the_start_counts_their_own_rating(env, monkeypatch):
+    """A person, not a bot: the partner's seat counts their 1300, not 1000."""
+    srv, store, _ = env
+    uid, _ = _user(store, "rated", rating=1000.0)
+    partner, _ = _user(store, "away", rating=1300.0)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", partner, "bot"])
+    table.room.seats[2].connected = False
+    table.start_round(banker=0)
+    table.finish()
+    [event] = _events(store)
+    assert event["user_id"] == uid
+    assert event["expected"] == pytest.approx(_e((1000 + 1300) / 2 + 40, ADV))
+
+
+def test_an_unrated_seat_whose_account_is_gone_counts_a_guest(env, monkeypatch):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "rated", rating=1000.0)
+    partner, _ = _user(store, "gone", rating=1300.0)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", partner, "bot"])
+    table.room.seats[2].connected = False
+    table.start_round(banker=0)
+    assert table.room.ratings.anchors[2] == ratings.GUEST_RATING
+    with closing(sqlite3.connect(store.path)) as db:
+        db.execute("PRAGMA foreign_keys = OFF")
+        db.execute("DELETE FROM users WHERE id = ?", (partner,))
+        db.commit()
+    table.room.ratings.standing = None
+    table.finish()
+    [event] = _events(store)
+    assert event["expected"] == pytest.approx(_e((1000 + 800) / 2 + 40, ADV))
+
+
 def test_a_blip_inside_the_takeover_window_is_still_a_normal_round(env, monkeypatch):
     srv, store, _ = env
     uid, _ = _user(store, "blipper")
@@ -1378,7 +1414,8 @@ def test_leaderboard_orders_by_rating_with_top_20_and_the_viewers_own_row(env):
     assert ratings_shown == sorted(ratings_shown, reverse=True)
     assert board["me"]["rank"] == 26 and board["me"]["rating"] == 1100
     assert board["me"]["provisional"] is True and board["me"]["levels_per_round"] == -1.0
-    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1000}
+    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1059}
+    assert board["anchors"] == {"advanced": 1059, "standard": 1000, "beginner": 1000}
     week = ratings.leaderboard(store, "week", None, now=now)
     assert "Stale" not in [r["name"] for r in week["players"]] and week["me"] is None
     # every round is this week, so no one had a place a week ago
@@ -1674,7 +1711,8 @@ def test_a_v4_database_moves_to_the_1000_scale_once(accounts_on, tmp_path):
     newcomer = again.upsert_user(_claims(sub="after-the-move"))
     assert newcomer["rating"] == accounts_on.START_RATING and newcomer["rated_rounds"] == 0
     board = ratings.leaderboard(again, "all", None)
-    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1000}
+    assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1059}
+    assert board["anchors"] == {"advanced": 1059, "standard": 1000, "beginner": 1000}
 
 
 def test_the_scale_move_keeps_every_delta():

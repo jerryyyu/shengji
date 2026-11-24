@@ -249,6 +249,12 @@ def _run(repo, tmp_path, env, site, *extra, deploy_ok=False, build_env=None):
     e = dict(env, FAKE_SITE=str(site), PATH=str(bin_dir) + os.pathsep + env["PATH"])
     if deploy_ok:
         e["FAKE_DEPLOY_OK"] = "1"
+    # safe_rm's own refusals depend on the host's process inventory (test_safe_rm covers them); here the
+    # stub records the target and deletes it, so the test checks which path the script hands over
+    stub = bin_dir / "safe_rm_stub.py"
+    stub.write_text("import shutil, sys\nopen(sys.argv[0] + '.log', 'a').write(sys.argv[1] + '\\n')\n"
+                    "shutil.rmtree(sys.argv[1])\n")
+    e["DEPLOY_WEB_SAFE_RM"] = str(stub)
     e.update(build_env or {})
     receipt = tmp_path / "receipt.json"
     r = subprocess.run(
@@ -365,7 +371,8 @@ def test_the_local_build_exports_the_tree_and_unsets_the_build_switches(repo, tm
     assert (Path(build_dir) / "src/App.tsx").read_text() == "new ui PHONE_MARKER\n"
     assert data["local_build"] == build_dir + "/dist"
     assert not (tmp_path / "wt" / "web" / "dist").exists()
-    assert not (Path(build_dir) / "node_modules").exists()
+    assert not (Path(build_dir) / "node_modules").exists(), r.stderr
+    assert (tmp_path / "bin" / "safe_rm_stub.py.log").read_text().splitlines() == [build_dir + "/node_modules"]
     assert (Path(build_dir) / "dist/index.html").exists()
 
 

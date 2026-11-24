@@ -256,7 +256,7 @@ build_local_web() {
   [ -f "$out/web/dist/index.html" ] || return 1
   # keep the built dist (the receipt names it), not the installed dependencies
   if [ -d "$out/web/node_modules" ]; then
-    python3 "$(dirname "${BASH_SOURCE[0]}")/safe_rm.py" "$out/web/node_modules" >&2 \
+    python3 "${DEPLOY_WEB_SAFE_RM:-$(dirname "${BASH_SOURCE[0]}")/safe_rm.py}" "$out/web/node_modules" >&2 \
       || say "could not remove $out/web/node_modules"
   fi
   printf '%s\n' "$out/web/dist"

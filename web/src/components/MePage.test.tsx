@@ -686,11 +686,12 @@ describe("the Settings group", () => {
     await render();
     const row = () => host.querySelector<HTMLButtonElement>(".me-language")!;
     const choices = () => [...host.querySelectorAll(".me-language-option .grp-label")].map((e) => e.textContent);
-    expect(row().querySelector(".me-language-value")?.textContent).toBe("English");
+    // the website follows the browser too: an English browser reads English
+    expect(row().querySelector(".me-language-value")?.textContent).toBe("Follow system");
+    expect(head()?.textContent).toBe("Settings");
     act(() => row().click());
-    // the website: two languages, no Follow system (it stays English unless asked)
-    expect(choices()).toEqual(["English", "中文"]);
-    act(() => host.querySelectorAll<HTMLButtonElement>(".me-language-option")[1].click());
+    expect(choices()).toEqual(["Follow system", "English", "中文"]);
+    act(() => host.querySelectorAll<HTMLButtonElement>(".me-language-option")[2].click());
     expect(localStorage.getItem("shengji.language")).toBe("zh-Hans");
     expect(document.documentElement.lang).toBe("zh-Hans");
     expect(head()?.textContent).toBe("设置");

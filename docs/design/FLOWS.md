@@ -94,8 +94,9 @@ of its own; the table keeps its landscape layout.
 
 **Section 6, settings.** One settings list (Coach, Sound, Haptics on native only, How to play) in both Me and
 the ⋯ menu. "Kitty 8 cards" moves out of ⋯. Me alone adds a Language row before How to play: its value is
-the choice, and a tap opens the choices in place under it, as Edit name opens its field (the app: Follow
-system, English, 中文; the website, which stays English unless asked: English, 中文). No sheet, no new surface.
+the choice, and a tap opens the choices in place under it, as Edit name opens its field (Follow system,
+English, 中文, in the app and on the website alike). Follow system is the default: a device or browser whose first
+language is any Chinese, Traditional included, reads 中文, every other reads English. No sheet, no new surface.
 
 **Section 7, guest name.** One name control: the chip opens the same edit sheet on every tab. Me shows the
 guest's name and initial with "Guest · not ranked" (cut to "Guest" by the copy rule; the iOS app's own account

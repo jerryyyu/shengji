@@ -70,21 +70,21 @@ describe("the message table", () => {
 describe("locale selection", () => {
   afterEach(() => { localStorage.clear(); reloadLanguage(); });
 
-  it("reads Simplified Chinese for any zh tag but Traditional", () => {
+  it("reads Simplified Chinese for any zh tag, Traditional included", () => {
     expect(localeFor(["zh-CN"])).toBe("zh-Hans");
     expect(localeFor(["zh-Hans-CN"])).toBe("zh-Hans");
     expect(localeFor(["zh"])).toBe("zh-Hans");
     expect(localeFor(["zh-SG"])).toBe("zh-Hans");
-    expect(localeFor(["zh-Hant"])).toBe("en");
-    expect(localeFor(["zh-TW"])).toBe("en");
-    expect(localeFor(["zh-HK"])).toBe("en");
-    expect(localeFor(["zh-Hant-TW"])).toBe("en");
+    expect(localeFor(["zh-Hant"])).toBe("zh-Hans");
+    expect(localeFor(["zh-TW"])).toBe("zh-Hans");
+    expect(localeFor(["zh-HK"])).toBe("zh-Hans");
+    expect(localeFor(["zh-Hant-TW"])).toBe("zh-Hans");
     expect(localeFor(["en-US", "zh-CN"])).toBe("en");
+    expect(localeFor(["fr"])).toBe("en");
     expect(localeFor([])).toBe("en");
   });
 
-  it("keeps the website English until its Language row picks 中文", () => {
-    // jsdom is not the app: Follow system resolves to English
+  it("an English browser gets English until its Language row picks 中文", () => {
     expect(locale()).toBe("en");
     expect(document.documentElement.lang).toBe("en");
     setLanguageChoice("zh-Hans");
@@ -95,6 +95,48 @@ describe("locale selection", () => {
     setLanguageChoice("system");
     expect(locale()).toBe("en");
     expect(localStorage.getItem("shengji.language")).toBeNull();
+  });
+
+  describe("a website visitor follows the browser's languages", () => {
+    const langs = Object.getOwnPropertyDescriptor(Navigator.prototype, "languages");
+    function browser(tags: string[]) {
+      Object.defineProperty(navigator, "languages", { configurable: true, get: () => tags });
+      reloadLanguage();
+    }
+    afterEach(() => {
+      delete (navigator as unknown as { languages?: unknown }).languages;
+      if (langs) Object.defineProperty(Navigator.prototype, "languages", langs);
+      reloadLanguage();
+    });
+
+    it.each([
+      [["zh-CN", "en"], "zh-Hans"],
+      [["zh-TW"], "zh-Hans"],
+      [["en-US"], "en"],
+      [["fr"], "en"],
+    ] as const)("%j gets %s", (tags, want) => {
+      expect((window as unknown as { Capacitor?: unknown }).Capacitor).toBeUndefined();
+      browser([...tags]);
+      expect(locale()).toBe(want);
+      expect(document.documentElement.lang).toBe(want);
+    });
+
+    it("an explicit English choice holds in a Chinese browser", () => {
+      browser(["zh-CN", "en"]);
+      expect(locale()).toBe("zh-Hans");
+      setLanguageChoice("en");
+      expect(locale()).toBe("en");
+      expect(document.documentElement.lang).toBe("en");
+      reloadLanguage();
+      expect(locale()).toBe("en");
+    });
+
+    it("a change of browser language redraws a visitor who follows it", () => {
+      browser(["en-US"]);
+      Object.defineProperty(navigator, "languages", { configurable: true, get: () => ["zh-HK"] });
+      window.dispatchEvent(new Event("languagechange"));
+      expect(locale()).toBe("zh-Hans");
+    });
   });
 
   it("follows the device inside the app", async () => {

@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from "react";
 import { isNative } from "../native";
 
-/** The languages the app speaks. zh-Hans is Simplified Chinese; Traditional
- *  Chinese (zh-Hant, zh-TW, zh-HK, zh-MO) reads English until it has its own
- *  table. */
+/** The languages the app speaks. zh-Hans is Simplified Chinese; a reader of
+ *  Traditional Chinese (zh-Hant, zh-TW, zh-HK, zh-MO) gets it too, since
+ *  Simplified reads better for them than English until Traditional has its
+ *  own table. */
 export type Locale = "en" | "zh-Hans";
 
 /** The Language row's choice: a fixed language, or the device's. */
@@ -28,7 +29,7 @@ interface Bridge {
  *  per app, so an explicit choice made on either holds on both. Null in a
  *  browser and in a shell built without the plugin. */
 function nativeStore(name: "get" | "set" | "remove"): Method | null {
-  if (!followsSystem()) return null;
+  if (!inApp()) return null;
   const cap = (window as unknown as { Capacitor?: Bridge }).Capacitor;
   if (!cap) return null;
   try {
@@ -54,15 +55,13 @@ function storeLocal(c: LanguageChoice): void {
   }
 }
 
-/** The locale a list of BCP 47 tags asks for: zh-Hans for any Simplified
- *  Chinese tag, English for everything else, Traditional Chinese included. */
+/** The locale a list of BCP 47 tags asks for, by its first non-empty tag:
+ *  zh-Hans for any Chinese tag, Traditional included, English for everything
+ *  else. */
 export function localeFor(tags: readonly string[]): Locale {
   for (const raw of tags) {
     const tag = raw.toLowerCase();
-    if (tag === "zh" || tag.startsWith("zh-")) {
-      const traditional = /^zh-(hant|tw|hk|mo)\b/.test(tag) || tag.includes("-hant");
-      return traditional ? "en" : "zh-Hans";
-    }
+    if (tag === "zh" || tag.startsWith("zh-")) return "zh-Hans";
     if (tag) return "en";
   }
   return "en";
@@ -82,9 +81,8 @@ function storedChoice(): LanguageChoice {
   }
 }
 
-/** Follow system is the app's default. The website stays English unless
- *  its Language row picks 中文, so a web guest sees what they saw before. */
-export function followsSystem(): boolean {
+/** Inside the iOS app, where the choice also lives in the native store. */
+function inApp(): boolean {
   try {
     return isNative();
   } catch {
@@ -96,9 +94,10 @@ let choice: LanguageChoice = storedChoice();
 let current: Locale = resolve(choice);
 const listeners = new Set<() => void>();
 
+/** Follow system, the default in the app and in a browser alike, reads the
+ *  device's or the browser's languages. */
 function resolve(c: LanguageChoice): Locale {
-  if (c !== "system") return c;
-  return followsSystem() ? systemLocale() : "en";
+  return c === "system" ? systemLocale() : c;
 }
 
 function apply(): void {

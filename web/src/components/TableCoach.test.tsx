@@ -102,9 +102,37 @@ describe("newcomer coach", () => {
 
   it("tells a newcomer what to tap on their first follow and lights the clubs", () => {
     render(firstFollow());
-    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards (lit up), then Play");
+    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards, then Play");
     expect(lit()).toEqual([4, 5]);
-    expect(dim()).toBe(4);
+    expect(dim()).toBe(0);
+  });
+
+  // a banker leads K♣ K♣; you hold four single clubs among 25 cards, Coach on
+  const fullHand: HandCard[] = ["S3", "S4", "S6", "S7", "S9", "S10", "SA", "H4", "H6", "H10", "HJ", "HQ", "HQ", "HK",
+    "C3", "C8", "C10", "CJ", "D3", "D5", "D7", "D8", "D9", "H2", "BJ"].map((code, i) => ({ id: i + 1, code }));
+  const pairLed = () => state({ turn: 0, banker: 3, trump: { suit: "D", rank: "2", declarer: 3 }, hand: fullHand,
+    trick: { leader: 3, plays: [{ seat: 3, cards: ["CK", "CK"] }] } });
+  const drawn = () => [...host.querySelectorAll<HTMLElement>(".hand .hand-slot")].map((s) => ({
+    id: Number(s.dataset.id), cards: s.querySelectorAll(".card").length,
+    selected: s.querySelector(".card")!.classList.contains("selected") }));
+
+  it("never dims a card, and draws each card once, chosen or not", () => {
+    localStorage.setItem(COACH_KEY, "on");
+    render(pairLed());
+    expect(lit()).toEqual([15, 16, 17, 18]);
+    expect(dim()).toBe(0);
+    expect(host.querySelectorAll(".hand .card")).toHaveLength(25);
+    // the coach hints and chooses nothing: Play counts no cards until you tap
+    expect(drawn().filter((s) => s.selected)).toEqual([]);
+    act(() => host.querySelector<HTMLElement>(".hand-slot[data-id='15'] .card")!.click());
+    act(() => host.querySelector<HTMLElement>(".hand-slot[data-id='16'] .card")!.click());
+    expect(host.querySelector(".play-wrap .btn")?.textContent).toContain("Play (2/2)");
+    expect(dim()).toBe(0);
+    const slots = drawn();
+    expect(slots.map((s) => s.id)).toEqual(fullHand.map((c) => c.id));
+    expect(slots.every((s) => s.cards === 1)).toBe(true);
+    expect(slots.filter((s) => s.selected).map((s) => s.id)).toEqual([15, 16]);
+    expect(host.querySelectorAll(".hand .card")).toHaveLength(25);
   });
 
   it("is quiet when it is not your turn", () => {
@@ -241,7 +269,7 @@ describe("newcomer coach", () => {
     it("coaches a new account's first plays, and the switch reads on", () => {
       signIn(NEWCOMER_ROUNDS - 1);
       render(firstFollow());
-      expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards (lit up), then Play");
+      expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards, then Play");
       openMenu();
       expect(coachRow()!.getAttribute("aria-checked")).toBe("true");
       act(() => root.unmount());
@@ -299,7 +327,7 @@ describe("newcomer coach", () => {
     localStorage.setItem(PLAYS_KEY, String(COACH_PLAYS));
     localStorage.setItem(COACH_KEY, "on");
     render(firstFollow());
-    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards (lit up), then Play");
+    expect(cue()?.textContent).toBe("Your turn: tap 2 ♣ cards, then Play");
     expect(lit()).toEqual([4, 5]);
   });
 

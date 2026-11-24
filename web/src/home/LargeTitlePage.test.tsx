@@ -13,7 +13,7 @@ vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
 
 const BOARD = {
   period: "week",
-  players: [{ rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.3, week_delta: 4,
+  players: [{ rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.3, week_rank_move: 1,
               provisional: false, you: false }],
   me: null,
   anchor: { name: "Sheng Ji bot", rating: 1500 },

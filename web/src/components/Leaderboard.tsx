@@ -17,20 +17,22 @@ export function ratingText(rating: number): string {
   return rating.toLocaleString("en-US");
 }
 
-/** A week's rating change as drawn: ▲18, ▼6, or a dash for none. */
-function weekMove(delta: number): { text: string; spoken: string; dir: "up" | "down" | "flat" } {
-  const n = Math.round(delta);
+/** Places moved this week as drawn: ▲3, ▼1, or a dash for none; nothing for
+ *  a player new this week. */
+function weekMove(places: number | null): { text: string; spoken: string; dir: "up" | "down" | "flat" } | null {
+  if (places === null) return null;
+  const n = Math.round(places);
   if (n > 0) return { text: `\u25B2${n}`, spoken: t("me.board.moveUp", { n }), dir: "up" };
   if (n < 0) return { text: `\u25BC${-n}`, spoken: t("me.board.moveDown", { n: -n }), dir: "down" };
   return { text: "\u2013", spoken: t("me.board.moveFlat"), dir: "flat" };
 }
 
 /** One player. The top three's ranks sit on gold, silver and bronze discs;
- *  on This week (`week`) the row ends in the week's movement. */
+ *  on This week (`week`) the row ends in the places it moved this week. */
 export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
   const t = useT();
   const top = row.rank !== null && row.rank <= 3;
-  const move = week ? weekMove(row.week_delta) : null;
+  const move = week ? weekMove(row.week_rank_move) : null;
   return (
     <li className={`lb-row${row.you ? " me" : ""}`}>
       <span className={`lb-rank${top ? ` top medal-${row.rank}` : ""}`}>{row.rank ?? "—"}</span>

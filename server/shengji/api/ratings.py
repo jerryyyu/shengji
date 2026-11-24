@@ -351,15 +351,43 @@ def _player_rows(conn, since: int) -> list[dict]:
                   u.leaderboard_visible,
                   COALESCE(SUM(CASE WHEN e.created_at >= ? THEN e.delta END), 0) AS week_delta,
                   COUNT(CASE WHEN e.created_at >= ? THEN 1 END) AS week_rounds,
+                  COUNT(CASE WHEN e.created_at < ? THEN 1 END) AS earlier_rounds,
+                  (SELECT p.rating_after FROM rating_events p
+                   WHERE p.user_id = u.id AND p.created_at < ?
+                   ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS rating_then,
                   AVG(e.levels) AS levels_per_round
            FROM users u JOIN rating_events e ON e.user_id = u.id
-           GROUP BY u.id""", (since, since)).fetchall()
+           GROUP BY u.id""", (since, since, since, since)).fetchall()
     players = [dict(r) for r in rows]
     players.sort(key=lambda r: (-r["rating"], -r["rated_rounds"], r["id"]))
     return players
 
 
-def _public_row(row: Mapping[str, Any], rank: int | None, you: bool) -> dict:
+def _week_rank_moves(players: list[dict]) -> dict[int, int]:
+    """Places each player moved on the This week list since the week began:
+    (rank a week ago) - (rank now), positive for up. ``players`` is the week's
+    list in current order. A week ago it held only the players who had a rated
+    round before the week, ordered by the rating they had then with the same
+    tie-break (rounds rated by then, then id); a player new this week has no
+    entry. Ranks count only visible players, as the list does.
+
+    The rating then is the stored ``rating_after`` of the last round before
+    the week, not ``rating - week_delta``: float subtraction of the summed
+    deltas can split two equal stored ratings and skip the tie-break."""
+    def then(r: dict) -> tuple:
+        return (-r["rating_then"], -(r["rated_rounds"] - r["week_rounds"]), r["id"])
+
+    earlier = sorted((r for r in players if r["earlier_rounds"] > 0), key=then)
+    moves = {}
+    for r in earlier:
+        before, now = _rank_of(earlier, r["id"]), _rank_of(players, r["id"])
+        if before is not None and now is not None:
+            moves[r["id"]] = before - now
+    return moves
+
+
+def _public_row(row: Mapping[str, Any], rank: int | None, you: bool,
+                moves: Mapping[int, int] | None = None) -> dict:
     """One leaderboard row: the display name and numbers only, never the
     account id or email."""
     return {
@@ -368,7 +396,7 @@ def _public_row(row: Mapping[str, Any], rank: int | None, you: bool) -> dict:
         "rating": int(round(row["rating"])),
         "rounds": int(row["rated_rounds"]),
         "levels_per_round": round(float(row["levels_per_round"] or 0.0), 2),
-        "week_delta": int(round(row["week_delta"] or 0.0)),
+        "week_rank_move": moves.get(row["id"]) if moves is not None else None,
         "provisional": int(row["rated_rounds"]) < PROVISIONAL_ROUNDS,
         "you": you,
     }
@@ -390,20 +418,24 @@ def leaderboard(store: accounts.Store, period: str, viewer: int | None,
                 now: float | None = None) -> dict:
     """The top ``LEADERBOARD_SIZE`` visible players by current rating, among
     everyone with a rated round ("all") or a rated round in the last seven
-    days ("week"), plus the viewer's own row wherever it ranks."""
+    days ("week"), plus the viewer's own row wherever it ranks. A week row
+    carries ``week_rank_move`` (``_week_rank_moves``); an all-time row's is
+    None."""
     t = int(now if now is not None else time.time())
     with closing(store._open()) as conn:
         players = _player_rows(conn, t - WEEK_SECONDS)
+    moves = None
     if period == "week":
         players = [r for r in players if r["week_rounds"] > 0]
+        moves = _week_rank_moves(players)
     visible = [r for r in players if r["leaderboard_visible"]]
-    top = [_public_row(r, i + 1, r["id"] == viewer)
+    top = [_public_row(r, i + 1, r["id"] == viewer, moves)
            for i, r in enumerate(visible[:LEADERBOARD_SIZE])]
     me = None
     if viewer is not None:
         mine = next((r for r in players if r["id"] == viewer), None)
         if mine is not None:
-            me = _public_row(mine, _rank_of(players, viewer), True)
+            me = _public_row(mine, _rank_of(players, viewer), True, moves)
             me["visible"] = bool(mine["leaderboard_visible"])
     return {"period": period, "players": top, "me": me,
             "anchor": {"name": BOT_ANCHOR_NAME, "rating": int(BOT_RATING)}}

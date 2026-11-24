@@ -9,7 +9,9 @@ export interface LeaderRow {
   rating: number;
   rounds: number;
   levels_per_round: number;
-  week_delta: number;
+  /** This week only: places moved on the week's list since the week began,
+   *  positive for up; null for a player new this week, and on All time. */
+  week_rank_move: number | null;
   provisional: boolean;
   you: boolean;
   /** Only on the viewer's own row: whether they show to others. */

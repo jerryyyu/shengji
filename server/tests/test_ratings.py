@@ -1329,7 +1329,134 @@ def test_leaderboard_orders_by_rating_with_top_20_and_the_viewers_own_row(env):
     assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1000}
     week = ratings.leaderboard(store, "week", None, now=now)
     assert "Stale" not in [r["name"] for r in week["players"]] and week["me"] is None
-    assert week["players"][0]["week_delta"] == 50       # 25 rounds of +2 this week
+    # every round is this week, so no one had a place a week ago
+    assert {r["week_rank_move"] for r in week["players"]} == {None}
+    assert "week_delta" not in week["players"][0]
+    assert {r["week_rank_move"] for r in board["players"]} == {None}   # All time
+
+
+def _history(store, sub, rounds, visible=True):
+    """An account with rated rounds ``rounds``: (age_seconds, delta) pairs,
+    oldest first, from a rating of 1000; ``users.rating`` ends at their sum."""
+    rating = 1000.0
+    with closing(store._open()) as conn:
+        conn.execute(
+            """INSERT INTO users(google_sub, email, name, created_at, last_login_at,
+                                 rating, rated_rounds, leaderboard_visible)
+               VALUES (?, ?, ?, 0, 0, 0, 0, ?)""",
+            (sub, f"{sub}@example.com", sub.title(), 1 if visible else 0))
+        uid = conn.execute("SELECT id FROM users WHERE google_sub = ?", (sub,)).fetchone()[0]
+        now = time.time()
+        for i, (age, delta) in enumerate(rounds):
+            conn.execute(
+                """INSERT INTO rating_events(game_id, round_no, user_id, created_at, team,
+                       banker_team, won, levels, expected, actual, k, rating_before,
+                       rating_after, delta)
+                   VALUES (?, ?, ?, ?, 0, 0, 1, 1, 0.5, 1, 40, ?, ?, ?)""",
+                (f"g-{sub}", i + 1, uid, int(now - age), rating, rating + delta, delta))
+            rating += delta
+        conn.execute("UPDATE users SET rating = ?, rated_rounds = ? WHERE id = ?",
+                     (rating, len(rounds), uid))
+    return uid
+
+
+def _moves(board):
+    return {r["name"]: r["week_rank_move"] for r in board["players"]}
+
+
+OLD, NEW = 10 * 86400, 3600       # before the week began, and this week
+
+
+def test_two_players_who_swap_places_this_week_move_up_one_and_down_one(env):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    _history(store, "ann", [(OLD, 50), (NEW, -40)])     # 1050 -> 1010
+    _history(store, "bea", [(OLD, 20), (NEW, 10)])      # 1020 -> 1030
+    _history(store, "cal", [(OLD, 0), (NEW, 0)])        # 1000 -> 1000, still third
+    board = ratings.leaderboard(store, "week", None)
+    assert [r["name"] for r in board["players"]] == ["Bea", "Ann", "Cal"]
+    assert _moves(board) == {"Bea": 1, "Ann": -1, "Cal": 0}
+
+
+def test_a_player_new_this_week_has_no_move_and_pushes_the_others_down(env):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    ann = _history(store, "ann", [(OLD, 10), (NEW, 5)])
+    _history(store, "dee", [(NEW, 80)])                 # first round this week
+    _history(store, "old", [(OLD, 90)])                 # not on this week's list
+    board = ratings.leaderboard(store, "week", ann)
+    assert [r["name"] for r in board["players"]] == ["Dee", "Ann"]
+    assert _moves(board) == {"Dee": None, "Ann": -1}
+    assert board["me"]["week_rank_move"] == -1
+
+
+def test_a_tie_a_week_ago_breaks_like_the_ranking_does(env):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    # Level at 1020 a week ago; Ann had more rounds then, so she was ahead.
+    _history(store, "ann", [(OLD, 10), (OLD, 10), (NEW, 0)])
+    _history(store, "bea", [(OLD, 20), (NEW, 1)])
+    # Level at 1000 a week ago on rounds too: the lower id (Cal) was ahead.
+    _history(store, "cal", [(OLD, 0), (NEW, -1)])
+    _history(store, "dan", [(OLD, 0), (NEW, 0)])
+    board = ratings.leaderboard(store, "week", None)
+    assert [r["name"] for r in board["players"]] == ["Bea", "Ann", "Dan", "Cal"]
+    assert _moves(board) == {"Bea": 1, "Ann": -1, "Dan": 1, "Cal": -1}
+
+
+def test_a_swap_from_a_tie_at_the_week_s_start_counts_through_real_rounds(env):
+    """Partners level at the week's start, rated by real rounds; Bea then
+    overtakes Ann. Rebuilding Bea's start as rating minus her week's summed
+    deltas comes out above Ann's equal stored rating, which would skip the
+    id tie-break and show both rows flat."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    ann, _ = _user(store, "ann", "Ann", rating=None)
+    bea, _ = _user(store, "bea", "Bea", rating=None)
+    now = time.time()
+
+    def rate(game_id, seats, winner_team, level_change, at):
+        ratings.apply_round(store, ratings.RoundRecord(
+            game_id=game_id, round_no=1, banker_team=0, winner_team=winner_team,
+            level_change=level_change, point_scored=False, start_accounts=dict(seats),
+            seat_names=[f"P{s}" for s in range(4)], seat_bots=[s not in seats for s in range(4)],
+            participants=[ratings.Participant(user_id=u, seat=s) for s, u in seats.items()]),
+            now=at)
+
+    for i, (winner, levels) in enumerate([(1, 2), (0, 2), (1, 1)]):
+        rate(f"pre{i}", {0: ann, 2: bea}, winner, levels, now - OLD)
+    rate("w0", {0: ann}, 0, 1, now - NEW)
+    rate("w1", {0: bea}, 1, 1, now - NEW)
+    rate("w2", {0: bea}, 0, 2, now - NEW)
+
+    start = {r["user_id"]: r["rating_after"] for r in _events(
+        store, "SELECT * FROM rating_events WHERE game_id = 'pre2'")}
+    assert start[ann] == start[bea]
+    week = {u: sum(r["delta"] for r in _events(
+        store, "SELECT * FROM rating_events WHERE user_id = ? AND game_id LIKE 'w%' ORDER BY id", u))
+        for u in (ann, bea)}
+    rebuilt = {u: ratings.current_rating(store, u) - week[u] for u in (ann, bea)}
+    assert rebuilt[bea] != start[bea]           # the drift this guards against
+
+    board = ratings.leaderboard(store, "week", None, now=now)
+    assert [r["name"] for r in board["players"]] == ["Bea", "Ann"]
+    assert _moves(board) == {"Bea": 1, "Ann": -1}
+
+
+def test_a_week_move_counts_only_visible_players(env):
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    _history(store, "hid", [(OLD, 100), (NEW, -100)], visible=False)
+    _history(store, "ann", [(OLD, 50), (NEW, 0)])
+    bea = _history(store, "bea", [(OLD, 20), (NEW, 0)], visible=False)
+    board = ratings.leaderboard(store, "week", bea)
+    assert _moves(board) == {"Ann": 0}
+    assert board["me"]["rank"] == 2 and board["me"]["week_rank_move"] == 0
 
 
 def test_an_opted_out_viewer_still_sees_their_own_row(env):
@@ -1365,7 +1492,7 @@ def test_api_leaderboard_stats_and_visibility(env, monkeypatch):
     assert row["you"] is True and row["rounds"] == 3 and row["provisional"] is True
     assert board["me"]["rank"] == 1
     assert set(row) == {"rank", "name", "rating", "rounds", "levels_per_round",
-                        "week_delta", "provisional", "you"}
+                        "week_rank_move", "provisional", "you"}
 
     stats = client.get("/api/me/stats", headers=headers).json()
     assert stats["rounds"] == 3 and stats["rank"] == 1 and stats["won_pct"] == 100.0

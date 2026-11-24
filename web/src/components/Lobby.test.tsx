@@ -630,7 +630,7 @@ describe("the App Store badge", () => {
       await render();
       const a = badge();
       expect(a).not.toBeNull();
-      expect(a!.getAttribute("href")).toBe("https://apps.apple.com/app/id6833598710");
+      expect(a!.getAttribute("href")).toBe("https://apps.apple.com/app/id6833598710?ct=play-tab-web");
       // the site opens its links in the same tab
       expect(a!.hasAttribute("target")).toBe(false);
       const img = a!.querySelector("img")!;

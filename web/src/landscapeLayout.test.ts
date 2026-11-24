@@ -441,7 +441,8 @@ describe("phone table geometry", () => {
 
 describe("phone controls", () => {
   it("keeps every control's hit area at 44px or more", () => {
-    expect(px(rule(block, ".action-bar .btn")["min-height"])).toBeGreaterThanOrEqual(44);
+    expect(rule(block, ".action-bar .btn")["min-height"]).toBe("var(--ctl-h-sm)");
+    expect(px(/--ctl-h-sm: (\d+px)/.exec(css)![1])).toBeGreaterThanOrEqual(44);
     const more = rule(block, ".hud-bar .hud-more-btn");
     const hit = rule(block, ".hud-bar .hud-more-btn::after").inset.split(" ").map((x) => -px(x));
     const [vertical, horizontal] = hit;

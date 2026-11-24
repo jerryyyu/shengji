@@ -5217,6 +5217,28 @@
    "hi": 0.0712,
    "takeaway": "CONFIRMED +0.0612 [+0.0510, +0.0712], LB95 +0.0527, latency 1.012x; shipped as release 55.",
    "note": "Read once with the strict r2 reader, VALID (read sha fd01adf3...; gate sha 9555078d...; seal sums 31d8b85c...). n 7840, mean 0.0612, CI95 [0.0510, 0.0712], LB80 0.0570, LB95 0.0527; latency ratio RT4 / release 54 1.012 (Ultra). Terminal 'S159 DONE claude-s159-confirm 2026-11-23T01:08:50Z ... stage2=PASS'. No 3,920-deal screen vs release 54 preceded it: RT4 came from the DEV duels rt4h (vs release 53's unified model) and rt4f (vs FT-200k). Lane ultra:/Users/jeryyu/fleet/claude-s159-rt4/; #1525 issuecomment-7088914757. Shipped as release 55 (Fly v132, 2026-11-22 21:08 ET) on Jerry's word."
+  },
+  {
+   "status": "sealed",
+   "box": "ultra",
+   "form": "card play",
+   "instrument_kind": "matched-deals",
+   "confidence": 0.95,
+   "date": "2026-11-24",
+   "id": "sz2a",
+   "title": "S156 SZ2-A: medium vs small model at 500k (DEV)",
+   "candidate": "M2: the medium model trained on the matched 500k-round cut with the same recipe as S2 (unified package 9cdf926415651a2c), evaluated inside the FT500 comparator search; M5 Ultra",
+   "comparator": "S2: the small model trained on the same matched 500k-round cut with the same recipe (unified package 9d7a64a1ffd9f05c), in the same FT500 comparator search, NOT a release; head to head",
+   "vs": 53,
+   "vs_group": "S2 (the small model at the matched 500k cut, FT500 search), NOT release 53: a 1,000-deal seat-swapped model-size DEV duel, not a common-control screen",
+   "instrument": "1,000 seat-swapped r2 deal pairs [2665000000, 2665000999] (2,000 rows), M2 vs S2 head to head inside the FT500 comparator search; one look; host M5 Ultra; predeclared label SIZE-PAYS iff mean >= +0.02 AND one-sided 80% lower bound > 0; tier-i DEV duel",
+   "seeds": "2665000000 (ultra)",
+   "point": 0.028,
+   "lo": 0.0015,
+   "hi": 0.0545,
+   "takeaway": "Medium +0.0280 vs small [+0.0015, +0.0545], LB80 +0.0165: SIZE-PAYS (bar +0.02, LB80 > 0); a DEV size result, not a gain over R55.",
+   "note": "Read once 2026-11-24 ~17:15Z by Codex with the frozen reader (uth-read-r1, reader sha256 f8a72262), VALID on all ten checks over 2,000 rows (63,100 decisions per arm, 0 play/bury/belief fallbacks, 0 declare abandons). SZ2-A n 1000, mean 0.028, CI95 [0.0015, 0.0545], LB80 0.0165, LB95 0.0055; points +1.155 [0.19, 2.14]; reader verdict BEATS; the pinned decision CLI at source 8fe1087fb17ef9d30f239ff29a6b5cc62a9b390b returned SIZE-PAYS, rc 0. In-duel latency on the Ultra: mean decision seconds 0.09845 (M2) vs 0.09424 (S2), ratio M/S 1.0447 (below the plan's 1.10 flag); production latency unmeasured. Claim limits: a DEV model-size result only; comparator is S2, not a release, so no gain over release 55 as served is shown. Next: S156 stage 1b (SZ3), L (about 25M trunk parameters) vs M-scratch, both from scratch on the same 500k cut, then the winning size on RT4's mix (each its own packet, authority and gates). Identity 17befbec921be7ab5e055d15edaeb98e4b8c4857e98380b104c5e002e6aa4506; recipe 115f3e9ec9cf41ab45ae4c5c2d48e42743178c4e6f3dd1a0a42356d4708e30de; seal 460971c948ffa50a6f29dc4c002d16321d9c0ae495baed9339e372e890ad7db0; terminal 'UTD DONE 2026-11-24T16:29:38Z ... rows=2000 ... rc=0'. Read sha256 9516461f8708406a255b961f326674cccc5c498c499ccf93cf102dc31f9c570c; #1799 issuecomment-7138965109. Archive readouts/s156-sz2a/ (SHA256SUMS sha256 aeb888fba3b0aeb18b94eb7ea61c777b2376c106150f8da7825c7cb053955aa1).",
+   "named_comparator": "S2 (the small model at the matched 500k cut, FT500 search)"
   }
  ],
  "context_screens": [

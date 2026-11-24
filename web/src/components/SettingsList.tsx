@@ -6,7 +6,6 @@ import { openHowto } from "../howto/route";
 import { tapHandlers } from "../tap";
 import { languageChoice, setLanguageChoice, useT } from "../i18n";
 import type { LanguageChoice } from "../i18n";
-import { followsSystem } from "../i18n/locale";
 
 function useHaptics(): boolean {
   return useSyncExternalStore(subscribeHaptics, hapticsEnabled);
@@ -20,7 +19,7 @@ interface Setting {
   act: () => void;
 }
 
-/** The player's settings, one list in one order wherever it is shown:
+/** The player's settings, one list in one order wherever it is chosen:
  *  Coach, Sound, Haptics (only inside the app: a browser has no haptics to
  *  turn off) and How to play. Every switch reads the same store as the
  *  table, so a flip in Me is the table's state and the other way round. */
@@ -45,31 +44,29 @@ const LANGUAGE_LABEL = {
 } as const;
 
 /** The Language row: its value is the choice, and a tap opens the choices
- *  inline under it, the way Edit name opens its field. The app offers
- *  Follow system; the website, which stays English unless asked, offers the
- *  two languages. */
+ *  inline under it, the way Edit name opens its field. Follow system,
+ *  the default, reads the device's or the browser's languages. */
 function LanguageRow() {
   const t = useT();
   const [open, setOpen] = useState(false);
   const chosen = languageChoice();
-  const options: LanguageChoice[] = followsSystem() ? ["system", "en", "zh-Hans"] : ["en", "zh-Hans"];
-  const shown: LanguageChoice = chosen === "system" && !followsSystem() ? "en" : chosen;
+  const options: LanguageChoice[] = ["system", "en", "zh-Hans"];
   return (
     <li>
       <button type="button" className="grp-row me-language" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span className="grp-label">{t("language.row")}</span>
-        <span className="grp-value chev me-language-value">{t(LANGUAGE_LABEL[shown])}</span>
+        <span className="grp-value chev me-language-value">{t(LANGUAGE_LABEL[chosen])}</span>
       </button>
       {open ? (
         <div className="grp-inset">
           <ul className="grp me-language-options" role="radiogroup" aria-label={t("language.row")}>
             {options.map((o) => (
               <li key={o}>
-                <button type="button" className="grp-row me-language-option" role="radio" aria-checked={o === shown}
+                <button type="button" className="grp-row me-language-option" role="radio" aria-checked={o === chosen}
                         lang={o === "zh-Hans" ? "zh-Hans" : o === "en" ? "en" : undefined}
                         onClick={() => { setLanguageChoice(o); setOpen(false); }}>
                   <span className="grp-label">{t(LANGUAGE_LABEL[o])}</span>
-                  <span className="grp-value me-language-check" aria-hidden="true">{o === shown ? "✓" : ""}</span>
+                  <span className="grp-value me-language-check" aria-hidden="true">{o === chosen ? "✓" : ""}</span>
                 </button>
               </li>
             ))}

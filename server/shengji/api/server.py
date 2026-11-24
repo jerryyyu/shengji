@@ -134,6 +134,10 @@ BOT_DELAY = 0.7
 # policy name is the served name plus this token. Ranked rooms never play
 # it; an Advanced room builds SHENGJI_BOT.
 RELAXED_BOT = "relax-sf516617b8-t1-d4"
+# The Beginner level (ranked opponents of players at 800 or less,
+# ``ranked_bots``): the same scorer package at wider near-best noise
+# (``relaxed_play.build_beginner``).
+BEGINNER_BOT = "relax-sf516617b8-t3-d8"
 RELAXED_SF_PACKAGE = os.environ.get("SHENGJI_RELAXED_SF_CKPT", "/data/models/sf-s136-516617b8.npz")
 RELAXED_SF_SHA256 = "516617b893689a931977068a1a536735afdb1edff0979f6f2360588291a8d184"
 CHAT_KEEP = 50        # scrollback kept per room (in memory, like game state)
@@ -406,6 +410,20 @@ def make_relaxed_bot(served, seed: int):
     except Exception as exc:                # noqa: BLE001 - a room must open
         logging.getLogger(__name__).warning(
             "standard bots unavailable (%s: %s); the room plays the served bot",
+            type(exc).__name__, exc)
+        return served
+
+
+def make_beginner_bot(served, seed: int):
+    """``served`` wrapped as the Beginner level (BEGINNER_BOT), or ``served``
+    itself when the scorer package is missing or fails its sha256."""
+    from ..train import relaxed_play
+    try:
+        return relaxed_play.build_beginner(served, RELAXED_SF_PACKAGE, seed=seed,
+                                           sha256=RELAXED_SF_SHA256)
+    except Exception as exc:                # noqa: BLE001 - a room must open
+        logging.getLogger(__name__).warning(
+            "beginner bots unavailable (%s: %s); the room plays the served bot",
             type(exc).__name__, exc)
         return served
 
@@ -1569,7 +1587,7 @@ def _log_round_start(room: Room) -> int | None:
     # seats map to accounts through the game_players links instead.
     # ``bot_policy`` names what plays the bot seats, so a relaxed room's
     # rounds (``bot_level`` "standard") stay out of the served bot's tallies;
-    # a ranked room with Standard opponents logs them as "standard" too, and
+    # a ranked room with Beginner or Standard opponents logs that level, and
     # names those seats (``standard_seats``); a game's first round logs its
     # choice in a ``bot_levels`` record once it is read. The log is server-only.
     standard = ranked_bots.standard(room)
@@ -1577,7 +1595,7 @@ def _log_round_start(room: Room) -> int | None:
                    trump_rank=rnd.trump_rank, levels=list(game.levels),
                    players=players, bot_seed=room.bot_seed,
                    bot_policy=getattr(room.bot, "policy_name", type(room.bot).__name__),
-                   bot_level="standard" if standard else room.bot_level,
+                   bot_level=ranked_bots.log_level(room) if standard else room.bot_level,
                    ranked=ratings.ranked(room),
                    **({"standard_seats": sorted(standard)} if standard else {}))
 
@@ -2310,7 +2328,7 @@ async def run_deal(room: Room) -> None:
 
     # a ranked game's bot level, read while the cards were dealt; card play
     # starts only after the declare window this task closes
-    await ranked_bots.settle_game(room, make_relaxed_bot)
+    await ranked_bots.settle_game(room, make_relaxed_bot, make_beginner_bot)
     needs_response = not await _bot_declares(room, list(range(4)), final=True)
     async with room.lock:
         if room.round is not rnd or rnd.phase != "declare":

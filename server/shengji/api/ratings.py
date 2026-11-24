@@ -8,10 +8,11 @@ other room, Play bots and the casual queue's included, is unranked and
 writes no rating at all.
 
 Only signed-in human seats are rated. Bots never move: every bot seat counts
-as ``BOT_RATING``, the anchor of the served release, or as the lower
-``STANDARD_BOT_RATING`` when it played Standard (``ranked_bots``: the
-opposing pair of a table whose people all rate 1000 or less; which seats
-did is read when the round starts), and a guest seat (a
+as ``BOT_RATING``, the anchor of the served release, or as
+``STANDARD_BOT_RATING`` or ``BEGINNER_BOT_RATING`` when it played Standard
+or Beginner (``ranked_bots``: the opposing pair of a table whose people all
+rate 1000 or less, or 800 or less for Beginner; which seats did is read when
+the round starts), and a guest seat (a
 person with no account, in a queue-matched room)
 counts the same and is never rated itself, so solo games against bots, games
 with a partner and mixed tables share one scale. A round with a guest rates
@@ -27,7 +28,8 @@ round.
 One rated round, for each rated account on team ``t``:
 
 * team strength ``R_t`` is the mean of the two seats' ratings (a bot or guest
-  seat is ``BOT_RATING``, a Standard bot ``STANDARD_BOT_RATING``; a partner
+  seat is ``BOT_RATING``, a Standard or Beginner bot its level's anchor
+  (``RELAXED_BOT_RATINGS``); a partner
   bot is always Advanced, so it counts ``BOT_RATING``), plus a banker advantage for the banker's team:
   ``BANKER_ADVANTAGE_DECLARED`` when the round started with no banker and the
   deal went to a declarer (a new game's first round), otherwise
@@ -104,6 +106,12 @@ GUEST_RATING = BOT_RATING
 # (S142: +0.470 levels/round, about 59 Elo in this model) is deliberately
 # not applied.
 STANDARD_BOT_RATING = BOT_RATING
+# A bot seat playing Beginner (``ranked_bots``, players at 800 or less) is
+# rated at the same anchor too, for the same reason; its measured gap below
+# Standard is not applied either.
+BEGINNER_BOT_RATING = BOT_RATING
+# The anchor of a bot seat by the relaxed level it plays.
+RELAXED_BOT_RATINGS = {"standard": STANDARD_BOT_RATING, "beginner": BEGINNER_BOT_RATING}
 # Holding the deal (the kitty, the first lead and the defence threshold of
 # 80) is worth this much team strength: each value is the banker team's mean
 # round score between equal teams in self-play, as an Elo offset. A banker who
@@ -227,7 +235,8 @@ class RoundRecord:
     # the round started with no banker, so a declarer took the deal
     banker_declared: bool = False
     # each seat's rating when no rated account held it at the round's start:
-    # ``GUEST_RATING``, or ``STANDARD_BOT_RATING`` for a Standard bot
+    # ``GUEST_RATING``, or its level's ``RELAXED_BOT_RATINGS`` for a Standard
+    # or Beginner bot
     seat_anchors: list[float] | None = None
 
 
@@ -266,7 +275,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
     Team strengths and the provisional test use each participant's numbers
     from the round's start; a seat whose start account is not rated in this
     round counts ``GUEST_RATING``, as a bot or guest seat does, and a bot
-    that played Standard counts ``STANDARD_BOT_RATING``."""
+    that played Standard or Beginner counts its level's anchor."""
     t = int(now if now is not None else time.time())
     frozen = _frozen(rec.standing)
     with closing(store._open()) as conn:
@@ -576,10 +585,11 @@ def round_started(room: Any) -> None:
     tracker.kinds = []
     tracker.standing = None
     tracker.banker_declared = room.round is not None and room.round.banker is None
-    # the seats playing Standard (``ranked_bots.SeatLevels``), server-only
+    # the seats playing a relaxed level (``ranked_bots.SeatLevels``), server-only
     levels = getattr(room, "bot_levels", None)
     standard = levels.standard if levels is not None else ()
-    tracker.anchors = [STANDARD_BOT_RATING if seat.is_bot and s in standard else GUEST_RATING
+    anchor = RELAXED_BOT_RATINGS[getattr(levels, "level", "standard")]
+    tracker.anchors = [anchor if seat.is_bot and s in standard else GUEST_RATING
                        for s, seat in enumerate(room.seats)]
     for s, seat in enumerate(room.seats):
         uid = _signed_in(seat)

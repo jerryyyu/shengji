@@ -221,10 +221,11 @@ served_bundles() {
 }
 
 # imported_chunks URL ENTRY < BODY: the chunks a bundle body names, one per line.
-# Only a complete quoted string literal counts, resolved relative to the entry
-# bundle's URL ENTRY (a path under URL); it is kept only when it lands on URL's
-# origin at exactly /assets/<name>.js, so a query string, a fragment, a source map,
-# another origin or a substring of a longer string never names a chunk.
+# Only the reference shapes Vite emits count: import("./NAME.js") (either quote),
+# from"./NAME.js" and a quoted "/assets/NAME.js", with NAME in [A-Za-z0-9_.-].
+# Each resolves relative to the entry bundle's URL ENTRY (a path under URL) and is
+# kept only on URL's origin at exactly /assets/<name>.js; other strings in the
+# body are never parsed, so they cannot hide or invent a reference.
 imported_chunks() {
   python3 -c '
 import re, sys
@@ -232,13 +233,23 @@ from urllib.parse import urljoin, urlsplit
 origin = urlsplit(sys.argv[1])
 entry = urljoin(sys.argv[1], sys.argv[2])
 body = sys.stdin.read()
+name = r"[A-Za-z0-9_.-]+\.js"
+shapes = (
+    r"\bimport\(\s*([\x22\x27])(\./" + name + r")\1\s*\)",
+    r"\bfrom\s*([\x22\x27])(\./" + name + r")\1",
+    r"([\x22\x27])(/assets/" + name + r")\1",
+)
 found = set()
-for m in re.finditer(r"([\x22\x27`])([^\x22\x27`\\\s]+)\1", body):
-    ref = urlsplit(urljoin(entry, m.group(2)))
-    if (ref.scheme, ref.netloc) != (origin.scheme, origin.netloc) or ref.query or ref.fragment:
-        continue
-    if re.fullmatch(r"/assets/[A-Za-z0-9._-]+\.js", ref.path):
-        found.add(ref.path)
+for shape in shapes:
+    for m in re.finditer(shape, body):
+        try:
+            ref = urlsplit(urljoin(entry, m.group(2)))
+        except ValueError:
+            continue
+        if (ref.scheme, ref.netloc) != (origin.scheme, origin.netloc) or ref.query or ref.fragment:
+            continue
+        if re.fullmatch(r"/assets/[A-Za-z0-9_.-]+\.js", ref.path):
+            found.add(ref.path)
 for chunk in sorted(found):
     print(chunk)
 ' "$1" "$2"

@@ -461,12 +461,22 @@ def _imported_chunks(env, body, entry="/assets/index-new2.js"):
 
 
 def test_imported_chunks_lists_same_origin_refs_once(env):
-    body = ('import("./a-1.js");import(\'./a-1.js\');`/assets/c-3.js`;'
-            '"https://shengji.fly.dev/assets/d-4.js";"https://cdn.example.com/assets/x-9.js";'
-            '"//cdn.example.com/assets/y-9.js";"https://cdn.example.com/static/assets/z-9.js";'
-            '"http://shengji.fly.dev/assets/w-9.js";"./style-5.css";"../assets/e-5.js"')
-    assert _imported_chunks(env, body) == ["/assets/a-1.js", "/assets/c-3.js", "/assets/d-4.js",
-                                           "/assets/e-5.js"]
+    body = ('import("./a-1.js");import(\'./a-1.js\');import( "./b-2.js" );'
+            'import{x}from"./c-3.js";export*from \'./d-4.js\';"/assets/e-5.js";\'/assets/f_6.js\';'
+            '"https://cdn.example.com/assets/x-9.js";"//cdn.example.com/assets/y-9.js";'
+            'import("https://cdn.example.com/assets/z-9.js");"./style-5.css";import("./g-7.css")')
+    assert _imported_chunks(env, body) == ["/assets/a-1.js", "/assets/b-2.js", "/assets/c-3.js",
+                                           "/assets/d-4.js", "/assets/e-5.js", "/assets/f_6.js"]
+
+
+@pytest.mark.parametrize("body", [
+    # an unrelated literal before the import, with a space, or a malformed URL in it
+    'const title="hello world";import("./live.js")',
+    'const sample="//[";import("./live.js")',
+    'const q=\'it\\\'s\';const t=`a "b" c`;import("./live.js")',
+])
+def test_imported_chunks_finds_an_import_after_unrelated_literals(env, body):
+    assert _imported_chunks(env, body) == ["/assets/live.js"]
 
 
 @pytest.mark.parametrize("body", [
@@ -488,6 +498,18 @@ def test_imported_chunks_lists_same_origin_refs_once(env):
 ])
 def test_imported_chunks_ignores_what_is_not_a_quoted_chunk_reference(env, body):
     assert _imported_chunks(env, body) == []
+
+
+@pytest.mark.parametrize("prefix", ['const title="hello world";', 'const sample="//[";'])
+def test_a_marker_in_a_chunk_imported_after_unrelated_literals_is_served(tmp_path, env, prefix):
+    site = _site(tmp_path, after_marker=False)
+    (site / "after/assets/index-new2.js").write_text(
+        prefix + 'import("./live.js");import("https://cdn.example.com/assets/foreign-ef56.js");'
+        '\n//# sourceMappingURL=./old.js.map\n')
+    (site / "after/assets/live.js").write_text("live PHONE_MARKER")
+    r, fetched = _marker_served(tmp_path, env, site)
+    assert r.returncode == 0, r.stderr
+    assert "https://shengji.fly.dev/assets/live.js" in fetched
 
 
 def test_a_marker_only_in_unreferenced_local_files_is_not_served(tmp_path, env):

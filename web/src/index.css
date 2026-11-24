@@ -3943,7 +3943,8 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   flex: 1; min-width: 0; min-height: var(--ctl-h-sm); padding: 0 14px; border-radius: var(--ctl-r);
   border: 1px solid var(--ctl-well-edge); background: var(--ctl-well); color: var(--text);
 }
-.chat-input input:focus { border-color: var(--team0); outline: none; }
+.chat-input input:focus { border-color: var(--team0); }
+.chat-input input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .chat-input .btn {
   flex: none; min-height: var(--ctl-h-sm); padding: 0 16px; border-radius: var(--ctl-r);
   border-color: var(--ctl-raised-edge); background: var(--ctl-raised);

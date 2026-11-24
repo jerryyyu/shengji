@@ -270,5 +270,62 @@ for (const [device, insets] of Object.entries(PLAY_SIZES)) {
   await page.context().close();
 }
 
+// ---- Windows High Contrast: the table setting's select and the chat field,
+// reached by Tab in forced colors, keep their indicator and a focus ring
+const focusRing = async (page) => page.evaluate(() => {
+  const el = document.activeElement; const c = getComputedStyle(el);
+  return { tag: el.tagName, style: c.outlineStyle, width: parseFloat(c.outlineWidth) };
+});
+const tabTo = async (page, sel) => {
+  for (let i = 0; i < 60; i++) {
+    await page.keyboard.press("Tab");
+    if (await page.evaluate((s) => document.activeElement?.matches(s), sel)) return true;
+  }
+  return false;
+};
+const ringProblems = (what, r) => (r.style !== "none" && r.width >= 2 ? [] : [`${what}: focus ring ${r.style} ${r.width}px`]);
+if (!only || only.test("forced-colors")) {
+  const name = "forced-colors-select";
+  const page = await open(browser, "phone-port", { native: true, storage: { "shengji.coach": "off", "shengji.muted": "1" },
+    fakeSocket: fakeSocketScript([{ type: "presence", tables: 3, playing: 7, waiting: 0, ranked: 2, casual: 1 }]) });
+  await page.emulateMedia({ forcedColors: "active" });
+  await scenario(rep, name, page, async () => {
+    await page.waitForSelector(".play-main");
+    await page.click("text=Play offline");
+    await page.waitForSelector(".tp-set select");
+    await page.mouse.click(5, 5);
+    const reached = await tabTo(page, ".tp-set select");
+    const ring = await focusRing(page);
+    const caret = await page.evaluate(() => {
+      const c = getComputedStyle(document.querySelector(".tp-set select"));
+      return { appearance: c.appearance, image: c.backgroundImage };
+    });
+    await rep.check(`${name}: Tab reaches the Bots select, which keeps its indicator and a focus ring`, [
+      reached ? null : "Tab never reached the select",
+      ...ringProblems("select", ring),
+      caret.appearance !== "none" || /gradient|url/.test(caret.image) ? null : `no indicator: ${JSON.stringify(caret)}`,
+    ], page);
+    await shot(page, `${name}`);
+  });
+  await page.context().close();
+
+  const name2 = "forced-colors-chat";
+  const page2 = await open(browser, "phone-land", { storage: { "shengji.coach": "off", "shengji.muted": "1" }, fakeSocket: fakeSocketScript([game(), chatLog]) });
+  await page2.emulateMedia({ forcedColors: "active" });
+  await scenario(rep, name2, page2, async () => {
+    await page2.waitForSelector(".chat-launch");
+    await page2.click(".chat-launch");
+    await page2.waitForSelector(".chat-panel .chat-input input");
+    await page2.evaluate(() => document.activeElement?.blur());
+    await page2.focus(".chat-panel .chat-close");
+    const reached = await tabTo(page2, ".chat-panel .chat-input input");
+    const ring = await focusRing(page2);
+    await rep.check(`${name2}: Tab reaches the chat field, which shows a focus ring`, [
+      reached ? null : "Tab never reached the chat field", ...ringProblems("chat field", ring)], page2);
+    await shot(page2, `${name2}`);
+  });
+  await page2.context().close();
+}
+
 await browser.close();
 process.exit(rep.done());

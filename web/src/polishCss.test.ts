@@ -257,6 +257,19 @@ describe("controls", () => {
     }
   });
 
+  it.each([".chat-input input", ".tp-set select"])("%s keeps a 2px keyboard focus ring, and no rule takes it away", (sel) => {
+    expect(bodies(`${sel}:focus-visible`).join(";")).toContain("outline: 2px solid var(--gold);");
+    const focus = rules.filter((r) => r.sels.some((x) => x === `${sel}:focus` || x === `${sel}:focus-visible`));
+    for (const r of focus) expect(r.body, r.sels.join(", ")).not.toMatch(/outline: (?:none|0)/);
+  });
+
+  it("the setting's select keeps the system's indicator in forced colors, where the drawn caret is dropped", () => {
+    const block = /@media \(forced-colors: active\) \{([^{}]*\{[^{}]*\})*[^{}]*\}/.exec(
+      css.slice(css.indexOf("@media (forced-colors: active)")))?.[0] ?? "";
+    expect(block).toMatch(/\.tp-set select \{[^}]*appearance: auto;/);
+    expect(bodies(".tp-set select").join(";")).toContain("appearance: none;");
+  });
+
   it("the chat's quick phrases stay pills", () => {
     expect(bodies(".chat-quick-btn").join(";")).toContain("border-radius: 18px;");
   });

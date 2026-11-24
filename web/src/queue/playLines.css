@@ -167,7 +167,12 @@
   font: inherit;
   cursor: pointer;
 }
-.tp-set select:focus { border-color: var(--team0); outline: none; }
+.tp-set select:focus { border-color: var(--team0); }
+.tp-set select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Forced colors drop the drawn caret: the select keeps the system's own */
+@media (forced-colors: active) {
+  .tp-set select { appearance: auto; -webkit-appearance: menulist; background-image: none; padding-right: 14px; }
+}
 .tp-set select option { background: var(--ctl-well); color: var(--text); }
 .tp-set-val { color: #c3cad6; font-weight: 600; }
 /* Table settings: one row, its values dimmed at the end as a select shows

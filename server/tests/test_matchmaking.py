@@ -4005,6 +4005,7 @@ def test_bots_is_the_casual_openers_choice_and_a_ranked_table_refuses_it():
         env.player(1)
         await env.send(1, "queue_join", bot_level="standard")
         assert env.conns[1].last("error")["code"] == "ranked_bots_fixed"
+        assert env.conns[1].last("error")["message"] == mm.RANKED_BOTS == "Ranked bots match your rating."
         await env.send(1, "queue_join", bot_level="advanced")     # what a ranked table is
         assert env.conns[1].last("queue_state")["bot_level"] == "advanced"
         for level in ("standard", "advanced"):

@@ -416,3 +416,153 @@ def test_the_bundle_id_matches_the_capacitor_app_id():
 
     config = (PUBLIC.parent / "capacitor.config.ts").read_text()
     assert f'appId: "{support.APP_BUNDLE_ID}"' in config
+
+
+WWW = {"host": "www.playshengji.com"}
+# What a browser sends for a typed URL, a tapped invite or a reload.
+NAV = {"sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-site": "none",
+       "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+# A client without Fetch Metadata loading a page.
+HTML_ONLY = {"accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+# audio.ts's fetch of a clip, with and without Fetch Metadata.
+SOUND_FETCHES = [
+    {"sec-fetch-mode": "cors", "sec-fetch-dest": "empty", "sec-fetch-site": "same-origin", "accept": "*/*"},
+    {"sec-fetch-mode": "no-cors", "sec-fetch-dest": "audio", "accept": "*/*"},
+    {"accept": "*/*"},
+    {},
+]
+SOUND = "/sounds/bi.mp3?v=1"
+
+
+@pytest.mark.parametrize("path, location", [
+    ("/", "https://playshengji.com/"),
+    ("/?code=ABCD", "https://playshengji.com/?code=ABCD"),
+    ("/rules/zh?x=1&y=two", "https://playshengji.com/rules/zh?x=1&y=two"),
+    ("/guides/a%20b", "https://playshengji.com/guides/a%20b"),
+])
+@pytest.mark.parametrize("host", ["www.playshengji.com", "WWW.PlayShengji.com:443"])
+@pytest.mark.parametrize("load", [NAV, HTML_ONLY, {"sec-fetch-mode": "navigate"}],
+                         ids=["fetch-metadata", "accept-only", "navigate-without-dest"])
+def test_a_www_page_load_moves_to_the_apex_with_its_path_and_query(client, path, location, host, load):
+    for method in ("GET", "HEAD"):
+        r = client.request(method, path, headers={**load, "host": host}, follow_redirects=False)
+        assert r.status_code == 301, (method, path)
+        assert r.headers["location"] == location
+        assert r.headers["strict-transport-security"].startswith("max-age=")
+
+
+@pytest.mark.parametrize("host", ["playshengji.com", "shengji.fly.dev", "testserver"])
+def test_the_apex_and_fly_dev_answer_in_place(client, host):
+    for path in ("/healthz", "/?code=ABCD", SOUND):
+        r = client.get(path, headers={**NAV, "host": host}, follow_redirects=False)
+        assert r.status_code != 301 and "location" not in r.headers, (host, path)
+    assert client.get("/healthz", headers={"host": host}).status_code == 200
+
+
+def test_www_answers_the_app_site_association_and_healthz_in_place(client, monkeypatch):
+    monkeypatch.setenv("APPLE_TEAM_ID", FAKE_TEAM)
+    for load in (NAV, HTML_ONLY, {}):
+        headers = {**load, **WWW}
+        assert client.get("/healthz", headers=headers, follow_redirects=False).status_code == 200
+        for path in ("/.well-known/apple-app-site-association", "/apple-app-site-association"):
+            r = client.get(path, headers=headers, follow_redirects=False)
+            assert r.status_code == 200, path
+            assert r.json()["applinks"]["details"][0]["appIDs"] == [f"{FAKE_TEAM}.com.jerryyu.shengji"]
+
+
+@pytest.mark.parametrize("load", [NAV, HTML_ONLY], ids=["fetch-metadata", "accept-only"])
+def test_a_www_invite_reaches_the_apex_with_its_code(client, load):
+    """Followed end to end through the app: one 301, then the apex answers
+    the invite exactly as it answers it directly."""
+    r = client.get("/?code=ABCD", headers={**load, **WWW}, follow_redirects=True)
+    assert [h.status_code for h in r.history] == [301]
+    assert str(r.url) == "https://playshengji.com/?code=ABCD"
+    assert r.request.headers["host"] == "playshengji.com"
+    direct = client.get("/?code=ABCD", headers={**load, "host": "playshengji.com"})
+    assert r.status_code == direct.status_code and r.content == direct.content
+
+
+@pytest.mark.parametrize("load", [SOUND_FETCHES[0], {"accept": "*/*"}], ids=["cors", "no-metadata"])
+def test_an_open_www_tab_still_submits_a_support_message(client, support_on, load):
+    r = _post(client, VALID, headers={**load, **WWW}, follow_redirects=True)
+    assert r.history == [] and r.request.headers["host"] == "www.playshengji.com"
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    [rec] = _stored(support_on)
+    assert rec["message"] == VALID["message"]
+
+
+def test_the_api_answers_in_place_on_www(client):
+    direct = client.get("/api/auth/config")
+    assert direct.status_code == 200
+    for load in (NAV, HTML_ONLY, {}):
+        r = client.get("/api/auth/config", headers={**load, **WWW}, follow_redirects=True)
+        assert r.history == [] and r.status_code == 200 and r.json() == direct.json()
+        for method in ("GET", "HEAD", "POST"):
+            for path in ("/api", "/api/", "/api/no-such-route"):
+                r = client.request(method, path, headers={**load, **WWW}, follow_redirects=False)
+                assert r.status_code != 301 and "location" not in r.headers, (method, path)
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
+def test_only_a_page_load_moves_off_www(client, method):
+    r = client.request(method, "/?code=ABCD", headers={**NAV, **WWW}, follow_redirects=False)
+    assert r.status_code != 301 and "location" not in r.headers
+
+
+@pytest.mark.parametrize("fetch", SOUND_FETCHES, ids=["cors", "no-cors-audio", "accept-any", "bare"])
+def test_a_www_sound_fetch_is_not_moved_by_the_server_app(client, fetch):
+    r = client.get(SOUND, headers={**fetch, **WWW}, follow_redirects=True)
+    assert r.history == [] and r.status_code != 301
+    direct = client.get(SOUND, headers=fetch)
+    assert r.status_code == direct.status_code
+
+
+@pytest.fixture()
+def www_site(tmp_path):
+    """The server's www middleware in front of a built site: the page, a
+    sound clip, a script and a stylesheet."""
+    from shengji.api import server as srv
+    from shengji.api import support
+
+    (tmp_path / "index.html").write_text("<!doctype html><title>Sheng Ji</title>")
+    (tmp_path / "sounds").mkdir()
+    (tmp_path / "sounds" / "bi.mp3").write_bytes(b"ID3 clip")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "index-abc.js").write_text("console.log(1)")
+    (tmp_path / "assets" / "index-abc.css").write_text("body{}")
+    (tmp_path / "manifest.webmanifest").write_text("{}")
+    app = FastAPI()
+    support.register_support(app, tmp_path)
+    app.mount("/", srv.WebFiles(directory=tmp_path, html=True), name="web")
+    app.add_middleware(srv.WwwRedirect)
+    app.add_middleware(srv.SecurityHeaders)
+    return TestClient(app)
+
+
+@pytest.mark.parametrize("fetch", SOUND_FETCHES, ids=["cors", "no-cors-audio", "accept-any", "bare"])
+def test_a_www_tab_plays_its_sounds_in_place(www_site, fetch):
+    r = www_site.get(SOUND, headers={**fetch, **WWW}, follow_redirects=True)
+    assert r.history == [] and r.request.headers["host"] == "www.playshengji.com"
+    assert r.status_code == 200 and r.content == b"ID3 clip"
+
+
+@pytest.mark.parametrize("path", ["/assets/index-abc.js", "/assets/index-abc.css",
+                                  "/manifest.webmanifest", SOUND, "/sounds/bi.mp3"])
+def test_a_www_file_is_never_moved_even_when_it_asks_for_html(www_site, path):
+    for load in (NAV, {"sec-fetch-mode": "navigate"}, HTML_ONLY,
+                 {**NAV, "sec-fetch-mode": "no-cors", "sec-fetch-dest": "script"},
+                 {**NAV, "sec-fetch-dest": "iframe"}):
+        r = www_site.get(path, headers={**load, **WWW}, follow_redirects=True)
+        assert r.history == [] and r.status_code == 200, (path, load)
+
+
+def test_a_www_page_load_and_its_sounds_together(www_site):
+    page = www_site.get("/?code=ABCD", headers={**NAV, **WWW}, follow_redirects=True)
+    assert [h.status_code for h in page.history] == [301]
+    assert str(page.url) == "https://playshengji.com/?code=ABCD" and page.status_code == 200
+    assert "<title>Sheng Ji</title>" in page.text
+    for fetch in SOUND_FETCHES:
+        r = www_site.get(SOUND, headers={**fetch, **WWW}, follow_redirects=True)
+        assert r.history == [] and r.status_code == 200 and r.content == b"ID3 clip"
+    bare = www_site.get("/?code=ABCD", headers={**HTML_ONLY, **WWW}, follow_redirects=True)
+    assert [h.status_code for h in bare.history] == [301] and bare.status_code == 200

@@ -140,7 +140,7 @@ export const roundend = defineMessages({
   "roundend.srvNoCode": { en: "No table has that code.", zh: "没有这个房间码的牌桌。" },
   "roundend.srvOwnTable": { en: "That is your own table's code.", zh: "这是你自己牌桌的房间码。" },
   "roundend.srvRankedLevel": { en: "A ranked table starts at level 2.", zh: "排位牌桌从 2 打起。" },
-  "roundend.srvRankedBots": { en: "A ranked table plays the full-strength bots.", zh: "排位牌桌用高级机器人。" },
+  "roundend.srvRankedBots": { en: "Ranked bots match your rating.", zh: "排位机器人按你的积分匹配。" },
   "roundend.srvAllowSetting": { en: "Allow joiners is on or off.", zh: "允许中途加入只能开或关。" },
   "roundend.srvBotsSetting": { en: "Bots is Beginner, Standard or Advanced.", zh: "机器人只能选入门、标准或高级。" },
   "roundend.srvTooSoon": { en: "Start now opens 30 seconds after the last person sits.", zh: "最后一人坐下 30 秒后才能马上开始。" },

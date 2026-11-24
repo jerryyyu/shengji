@@ -230,6 +230,72 @@ class SecurityHeaders:
         await self.inner(scope, receive, with_headers)
 
 
+# An invite link carries the host it was shared from, and the app's
+# associated domains name only the apex and shengji.fly.dev, so a page opened
+# on www moves to the apex. Only a top-level page load moves: a 301 turns a
+# POST into a GET, and a moved sound or script fetch lands cross-origin with
+# no CORS header, so an already-open www tab keeps its API calls and files on
+# www. Apple's CDN fetches the association file and Fly checks /healthz on
+# whatever host they use; those answer in place too.
+WWW_HOST = "www.playshengji.com"
+WWW_EXEMPT_PATHS = frozenset((*support.AASA_PATHS, "/healthz"))
+WWW_REDIRECT_METHODS = frozenset(("GET", "HEAD"))
+# These prefixes and any final segment with a file extension are files: never
+# moved, however they are asked for, so no cached 301 can catch a later fetch.
+WWW_FILE_PREFIXES = ("/api/", "/assets/", "/sounds/")
+
+
+def _www_is_file(path: str) -> bool:
+    return (path == "/api" or path.startswith(WWW_FILE_PREFIXES)
+            or "." in path.rsplit("/", 1)[-1])
+
+
+def _www_moves(scope) -> bool:
+    """Whether this request is a top-level page load on ``WWW_HOST`` of a
+    path that is not a file: with Fetch Metadata, ``Sec-Fetch-Mode:
+    navigate`` (and ``Sec-Fetch-Dest: document`` when sent); without it, an
+    ``Accept`` naming ``text/html``."""
+    if scope["type"] != "http" or scope.get("method") not in WWW_REDIRECT_METHODS:
+        return False
+    path = scope["path"]
+    if path in WWW_EXEMPT_PATHS or _www_is_file(path):
+        return False
+    headers = {}
+    for k, v in scope.get("headers", []):
+        headers.setdefault(k, v.decode("latin-1"))
+    if headers.get(b"host", "").split(":", 1)[0].lower().rstrip(".") != WWW_HOST:
+        return False
+    mode = headers.get(b"sec-fetch-mode")
+    if mode is not None:
+        dest = headers.get(b"sec-fetch-dest")
+        return mode.strip().lower() == "navigate" and (
+            dest is None or dest.strip().lower() == "document")
+    accept = headers.get(b"accept", "").lower()
+    return "text/html" in accept
+
+
+class WwwRedirect:
+    """Pure ASGI: a top-level page load on ``WWW_HOST`` (``_www_moves``) gets
+    a 301 to the same path and query on ``support.SITE_ORIGIN``. The API,
+    files, WebSockets and every other host pass through."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send_):
+        if not _www_moves(scope):
+            await self.inner(scope, receive, send_)
+            return
+        target = support.SITE_ORIGIN.encode() + (scope.get("raw_path") or scope["path"].encode())
+        if scope.get("query_string"):
+            target += b"?" + scope["query_string"]
+        await send_({"type": "http.response.start", "status": 301,
+                     "headers": [(b"location", target), (b"content-length", b"0")]})
+        await send_({"type": "http.response.body", "body": b""})
+
+
+# Added first so it sits inside SecurityHeaders: a redirect carries the headers too.
+app.add_middleware(WwwRedirect)
 app.add_middleware(SecurityHeaders)
 
 rooms: dict[str, "Room"] = {}

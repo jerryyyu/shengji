@@ -236,7 +236,7 @@ QUEUE_MESSAGES = frozenset({
 })
 SAME_DEVICE = "Someone on this device is already at that table."
 RANKED_LEVEL = "A ranked table starts at level 2."
-RANKED_BOTS = "A ranked table plays the full-strength bots."
+RANKED_BOTS = "Ranked bots match your rating."
 # A table's Bots, weakest first: Beginner plays ``server.BEGINNER_BOT``,
 # Standard ``server.RELAXED_BOT``, Advanced the served bot. A ranked table
 # has no setting (``ranked_bots`` picks its level); a new casual table starts

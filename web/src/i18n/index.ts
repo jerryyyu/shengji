@@ -6,7 +6,7 @@ import { MESSAGES } from "./messages";
 import type { Message, Params } from "./define";
 
 export type { Locale, LanguageChoice } from "./locale";
-export { languageChoice, locale, localeFor, reloadLanguage, setLanguageChoice, subscribeLocale, systemLocale, useLocale } from "./locale";
+export { languageChoice, languageSaved, loadLanguage, locale, localeFor, reloadLanguage, setLanguageChoice, subscribeLocale, systemLocale, useLocale } from "./locale";
 export type { Params } from "./define";
 
 export type MessageKey = keyof typeof MESSAGES;

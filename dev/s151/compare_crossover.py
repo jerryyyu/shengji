@@ -50,6 +50,16 @@ def count_play_time(counts, row, budget):
     return at_or_over
 
 
+def require_served_workload(store, fast_engine, config):
+    require(fast_engine is True, f"{store}: compiled engine required")
+    require(config["served_budgets"] == {
+        "play_seconds": 3, "bury_seconds": 3, "wall_clock_dependent": True
+    }, f"{store}: resolved play or bury budget differs")
+    runtime = config["served_runtime"]
+    for key in ("SHENGJI_PV_SERVING_BUDGET_SECONDS", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"):
+        require(float(runtime[key]) == 3.0, f"{store}: expected three seconds for {key}")
+
+
 def read_block(root, seed, order, times, args, previous_end, configuration):
     stores = []
     manifests = []
@@ -57,13 +67,7 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
         store = root / f"{i}-{arm}" / "store"
         manifest, host = read_store(store, seed, args, HEADS["bc".index(arm)], times[i, arm])
         require(host[0][0] == args.host, f"{store}: expected host {args.host}")
-        require(host[0][4] is True, f"{store}: compiled engine required")
-        require(manifest["config"]["served_budgets"] == {
-            "play_seconds": 3, "bury_seconds": 3, "wall_clock_dependent": True
-        }, f"{store}: resolved play or bury budget differs")
-        runtime = manifest["config"]["served_runtime"]
-        for key in ("SHENGJI_PV_SERVING_BUDGET_SECONDS", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"):
-            require(float(runtime[key]) == 3.0, f"{store}: expected three seconds for {key}")
+        require_served_workload(store, host[0][4], manifest["config"])
         start, end = cluster_interval(store, args.rounds // 2)
         require(start >= previous_end, f"{store}: cluster execution overlaps or is out of order")
         previous_end = end

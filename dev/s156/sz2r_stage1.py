@@ -23,13 +23,13 @@ def paired_levels(rows, seed0, deals, bootstrap):
     return bootstrap(values)
 
 
-def stage1(recipe, mode, lane):
+def stage1(recipe, mode, lane, *, verified_rows_dir=None):
     if mode not in ("pilot", "screen"):
         raise ValueError("only pilot and screen rows enter stage one")
     seed0, deals, root = run_inputs(recipe, mode, Path(lane))
     if recipe["minimum_mean"] != 0.005 or recipe["minimum_lb80_exclusive"] != 0:
         raise ValueError("stage-one threshold drift")
-    arm = dict(seed0=seed0, deals=deals, out_root=str(root))
+    arm = dict(seed0=seed0, deals=deals, out_root=str(root if verified_rows_dir is None else verified_rows_dir))
     for role, prefix in (("defender", "def"), ("exploiter", "ex")):
         words = dict(word.split("=", 1) for word in recipe[role + "_words"])
         arm[role + "_name"] = recipe[role + "_name"]

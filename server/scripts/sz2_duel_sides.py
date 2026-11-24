@@ -25,11 +25,18 @@ def side_words(template, package):
     return words
 
 
-def build_sides(packages):
+def load_reference():
     data = REFERENCE.read_bytes()
     if hashlib.sha256(data).hexdigest() != REFERENCE_SHA:
         raise ValueError("reference duel recipe changed")
-    reference = json.loads(data)
+    return json.loads(data)
+
+
+def build_sides(packages):
+    return build_sides_from_reference(packages, load_reference())
+
+
+def build_sides_from_reference(packages, reference):
     tree = Path(reference["tree"])
     for command, expected in ((["rev-parse", "HEAD"], reference["tree_head"]), (["status", "--porcelain"], "")):
         actual = subprocess.check_output(["git", "-C", tree, *command], text=True).strip()

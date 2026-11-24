@@ -19,6 +19,24 @@ def packet(tmp_path):
 
 
 def test_saved_synthetic_duel_reaches_the_actual_decision_cli(packet):
+    sys.path.insert(0, str(REPO / "server/scripts"))
+    import sz2_a_recipe as recipes
+
+    lane = packet.root.parent
+    reference = dict(packet.recipe, round_plan="r2", pins={
+        str(recipes.REFERENCE.parent / "kit/ut_read.py"): sha(lane / "kit/ut_read.py"),
+        str(recipes.REFERENCE.parent / "ut_run_h2h.sh"): "historical",
+    })
+    side = {k: v for k, v in packet.arm.items() if k not in ("status", "out_root")}
+    with pytest.raises(ValueError, match="unexpected SZ2-A decision window"):
+        recipes.decision_recipe(reference, dict(side, seed0=SEED0 + 1000), lane)
+    packet.recipe = recipes.decision_recipe(reference, side, lane)
+    packet.root = Path(packet.arm["out_root"])
+    packet.status = Path(packet.arm["status"])
+    packet.root.mkdir()
+    assert set(packet.recipe["arms"]) == {ARM}
+    with pytest.raises(ValueError, match="already exists"):
+        recipes.decision_recipe(reference, side, lane)
     packet.seal()
     read = packet.read()
     assert read.returncode == 0, read.stderr

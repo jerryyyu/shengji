@@ -43,7 +43,7 @@ Invisible: ``room.bot_level`` stays "advanced" at a ranked table, so no frame
 carries the choice. The seats that play a relaxed level, and which level, are
 server-only (``Room.bot_levels``); the round log names them ("beginner" or
 "standard"), and each rated round reads them at its start to rate those seats
-at that level's anchor (``ratings.RELAXED_BOT_RATINGS``).
+at that level's anchor (``ratings.BOT_ANCHORS``).
 """
 from __future__ import annotations
 
@@ -80,6 +80,9 @@ class SeatLevels:
     # seat changes recorded while the game's level is pending: a read made
     # before one is not applied (``settle_game``)
     changes: int = 0
+    # the game these levels belong to, raised by ``begin_game``: a seat check
+    # started in an earlier game changes nothing when it ends
+    game: int = 0
 
     def plays_standard(self, seat: int) -> bool:
         return seat in self.standard and not self.checks and not self.pending_game
@@ -265,6 +268,8 @@ def begin_game(room: Any) -> None:
     room.bot = served_bot(room.bot)
     room.bot_levels.standard = set()
     room.bot_levels.pending_game = True
+    room.bot_levels.game += 1
+    room.bot_levels.checks = 0      # an earlier game's checks no longer hold its seats
 
 
 def _identities(room: Any, levels: SeatLevels) -> tuple:
@@ -344,8 +349,7 @@ def _apply_game(room: Any, levels: SeatLevels, tracker: Any, standing: dict | No
         choose(room, build_relaxed, rating_of, build_beginner)
     chosen = set(levels.standard)
     if tracker is not None:
-        anchor = ratings.RELAXED_BOT_RATINGS[levels.level]
-        tracker.anchors = [ratings.seat_anchor(seat, anchor if s in chosen else ratings.BOT_RATING)
+        tracker.anchors = [ratings.seat_anchor(seat, levels.level if s in chosen else "advanced")
                            for s, seat in enumerate(room.seats)]
     room.log_event("bot_levels", level=levels.level if chosen else "advanced",
                    standard_seats=sorted(chosen))
@@ -372,7 +376,9 @@ def _ordered_read(user_ids: list[int]) -> "asyncio.Future":
     return asyncio.wrap_future(ratings._EXECUTOR.submit(ratings.read_standing, store, list(user_ids)))
 
 
-async def _check(room: Any, levels: SeatLevels, user_id: int, on_change: Callable[[], None]) -> None:
+async def _check(room: Any, levels: SeatLevels, user_id: int, on_change: Callable[[], None],
+                 game: int | None = None) -> None:
+    game = levels.game if game is None else game
     rating: float | None = None
     try:
         standing = await _ordered_read([user_id])
@@ -381,6 +387,8 @@ async def _check(room: Any, levels: SeatLevels, user_id: int, on_change: Callabl
     except Exception:           # noqa: BLE001 - an unread rating plays Advanced
         log.warning("ordered rating read failed; the table plays Advanced")
     async with room.lock:
+        if levels.game != game:
+            return              # a new game began during the read: its level stands
         levels.checks -= 1
         if rating is None or rating > line_of(levels.level):
             levels.standard = set()
@@ -423,7 +431,7 @@ def seat_changed(room: Any, seat: int, before: Any = None,
         levels.standard = set()  # off the loop no read can be awaited: Advanced
         return
     levels.checks += 1
-    task = loop.create_task(_check(room, levels, uid, on_change))
+    task = loop.create_task(_check(room, levels, uid, on_change, levels.game))
     _TASKS.add(task)
     task.add_done_callback(_TASKS.discard)
 

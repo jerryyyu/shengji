@@ -94,7 +94,7 @@ with no move timer, and so is every room made with `create_room` (Play bots,
 a test room and a continued saved game included). A ranked room starts at
 level `"2"`, fixed, so every rated game is the same game: `table_start_level` is
 refused there. Its signed-in seats are rated from the round-start snapshot;
-a guest seat counts at the bot anchor rating and is never rated itself. A
+a guest seat counts 800 (a new account's start) and is never rated itself, and a bot seat counts its level's anchor (Advanced 1059, Standard and Beginner 1000). A
 person who claims a seat mid-round is rated from the next round. An unranked room is never rated: its `round_result` carries no
 `rating`, and the client shows no rating line.
 

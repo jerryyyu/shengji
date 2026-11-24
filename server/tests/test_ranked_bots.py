@@ -8,8 +8,8 @@ everywhere; the level is chosen when the game starts and at a new game's
 first round, never because a rating moved mid-game; a newcomer who takes a
 Standard seat makes that team Advanced; a rated round against Standard
 opponents uses ``ratings.STANDARD_BOT_RATING`` and one against Beginner
-``ratings.BEGINNER_BOT_RATING``, both the same anchor as Advanced, so it is
-rated exactly as the same result against Advanced; a missing scorer package
+``ratings.BEGINNER_BOT_RATING`` (1000 both), and the Advanced partner and
+opponents ``ratings.ADVANCED_BOT_RATING`` (1059); a missing scorer package
 plays the served bot; casual tables are unchanged; no frame differs between
 a Beginner, a Standard and an Advanced ranked table.
 """
@@ -277,9 +277,9 @@ def test_without_a_beginner_builder_a_beginner_table_plays_standard():
     assert type(room.bot.relaxed) is FakeRelaxed and ranked_bots.level_of(room, 1) == "standard"
 
 
-def test_beginner_bots_are_rated_at_the_advanced_anchor():
-    assert ratings.BEGINNER_BOT_RATING == ratings.BOT_RATING == 1000.0
-    assert ratings.RELAXED_BOT_RATINGS == {"standard": 1000.0, "beginner": 1000.0}
+def test_beginner_and_standard_bots_count_1000_and_advanced_1059():
+    assert ratings.BEGINNER_BOT_RATING == ratings.STANDARD_BOT_RATING == 1000.0
+    assert ratings.BOT_ANCHORS == {"advanced": 1059.0, "standard": 1000.0, "beginner": 1000.0}
 
 
 def test_a_round_against_beginner_starts_with_the_beginner_anchor():
@@ -294,7 +294,7 @@ def test_a_round_against_beginner_starts_with_the_beginner_anchor():
     room.ratings = ratings.RoomRatings(game_id="g")
     ratings.round_started(room)
     assert room.ratings.anchors == [ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING,
-                                    ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING]
+                                    ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
 
 
 def test_a_missing_beginner_package_plays_the_served_bot_with_the_warning(monkeypatch, tmp_path, caplog):
@@ -396,7 +396,7 @@ def test_the_queue_game_of_a_1000_account_meets_standard_and_logs_it(env, monkey
             assert ranked_bots.standard(room) == {1, 3}
             assert room.bot_level == "advanced"
             assert room.ratings.anchors == [ratings.BOT_RATING, ratings.STANDARD_BOT_RATING,
-                                            ratings.BOT_RATING, ratings.STANDARD_BOT_RATING]
+                                            ratings.ADVANCED_BOT_RATING, ratings.STANDARD_BOT_RATING]
         records = [json.loads(line) for line in (srv.LOG_DIR / f"{code}.jsonl").open()]
         chosen = next(r for r in records if r["e"] == "bot_levels")
         assert chosen["level"] == "standard" and chosen["standard_seats"] == [1, 3]
@@ -432,7 +432,7 @@ def test_the_queue_game_of_a_new_account_meets_beginner_and_logs_it(env):  # noq
             assert type(room.bot.relaxed) is FakeBeginner
             assert room.bot_level == "advanced"
             assert room.ratings.anchors == [ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING,
-                                            ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING]
+                                            ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
             assert room.ratings.anchors[1] == 1000.0
         records = [json.loads(line) for line in (srv.LOG_DIR / f"{code}.jsonl").open()]
         chosen = next(r for r in records if r["e"] == "bot_levels")
@@ -458,7 +458,7 @@ def test_a_guest_in_the_ranked_queue_meets_beginner(env):  # noqa: F811
             assert ranked_bots.standard(room) == {1, 3}
             assert ranked_bots.level_of(room, 1) == "beginner"
             assert room.ratings.anchors == [ratings.GUEST_RATING, ratings.BEGINNER_BOT_RATING,
-                                            ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING]
+                                            ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
     finally:
         srv.MATCHMAKER.reset()
 
@@ -545,7 +545,7 @@ def test_a_new_game_reads_the_ratings_after_the_last_round_is_settled(env, monke
     assert store.user(uid)["rating"] > 1000
     assert ranked_bots.standard(room) == frozenset()
     assert not isinstance(room.bot, ranked_bots.RankedBots)
-    assert room.ratings.anchors == [ratings.BOT_RATING] * 4
+    assert room.ratings.anchors == [ratings.BOT_RATING] + [ratings.ADVANCED_BOT_RATING] * 3
     assert [r["level"] for r in _bot_levels_records(srv, room)] == ["advanced"]
 
 
@@ -726,15 +726,76 @@ def test_an_account_joining_a_beginner_team_is_checked_against_800(monkeypatch, 
     assert ranked_bots.level_of(room, 1) == ("beginner" if kept else "advanced")
 
 
+def test_a_seat_check_from_the_previous_game_leaves_the_next_games_level(monkeypatch, tmp_path):
+    """A rating read started for a seat change in one game ends after the
+    next game's level is settled: the next game keeps its Beginner seats,
+    plays them through the Beginner bot, logs and rates them as Beginner."""
+    import random
+
+    from shengji.ai import env as play_env
+    from shengji.api import server as srv
+    from shengji.engine.game import Game
+
+    async def scenario():
+        release = asyncio.Event()
+        table = {7: 700.0, 9: 900.0}
+
+        async def read(user_ids):
+            if 9 in user_ids:
+                await release.wait()        # the old game's read lands late
+            return {uid: (table[uid], 5) for uid in user_ids}
+
+        monkeypatch.setattr(ranked_bots, "_ordered_read", read)
+        room = _room(srv, [7, "bot", "bot", "bot"])
+        room.log_dir = tmp_path
+        room.game = Game(random.Random(4))
+        play_env.prepare_round(room.game, [HeuristicBot()] * 4)
+        room.index_round()
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({7: 700.0}), srv.make_beginner_bot)
+        assert ranked_bots.level_of(room, 1) == "beginner"
+        room.seats[2] = srv.Seat(name="P9", user_id=9, connected=True)
+        ranked_bots.seat_changed(room, 2, None)          # its read is in flight
+        await asyncio.sleep(0)
+        # the next game, uid 7 alone again
+        room.seats[2] = srv.Seat(name="Bot 2", is_bot=True)
+        ranked_bots.begin_game(room)
+        await ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot)
+        assert [ranked_bots.level_of(room, s) for s in range(4)] == [
+            "advanced", "beginner", "advanced", "beginner"]
+        release.set()
+        for _ in range(20):
+            await asyncio.sleep(0)
+        return room
+
+    room = asyncio.run(scenario())
+    assert ranked_bots.standard(room) == {1, 3} and room.bot_levels.checks == 0
+    assert [ranked_bots.level_of(room, s) for s in range(4)] == [
+        "advanced", "beginner", "advanced", "beginner"]
+    # the policy that plays seat 1 is the Beginner bot, and it is recorded so
+    rnd = room.round
+    while rnd.turn != 1:
+        rnd.play(rnd.turn, copy.deepcopy(room.bot).decide_play(rnd, rnd.turn))
+    bot = copy.deepcopy(room.bot)
+    rnd.play(1, bot.decide_play(rnd, 1))
+    assert FakeBeginner.played[-1] == 1 and ranked_bots.played_level(bot) == "beginner"
+    records = [json.loads(line) for line in (tmp_path / f"{room.code}.jsonl").open()]
+    assert [r["level"] for r in records if r["e"] == "bot_levels"] == ["beginner"]
+    room.ratings = ratings.RoomRatings(game_id="g")
+    ratings.round_started(room)
+    assert room.ratings.anchors == [ratings.BOT_RATING, ratings.BEGINNER_BOT_RATING,
+                                    ratings.ADVANCED_BOT_RATING, ratings.BEGINNER_BOT_RATING]
+
+
 # ------------------------------------------------------------- rating
-def test_standard_bots_are_rated_at_the_advanced_anchor():
-    assert ratings.STANDARD_BOT_RATING == ratings.BOT_RATING
+def test_standard_bots_are_rated_below_the_advanced_anchor():
+    assert ratings.STANDARD_BOT_RATING == 1000.0 < ratings.ADVANCED_BOT_RATING == 1059.0
 
 
 @pytest.mark.parametrize("attacker_points, won", [(30, True), (200, False)])
-def test_a_round_against_standard_is_rated_as_the_same_round_against_advanced(
+def test_a_round_against_standard_is_rated_at_each_levels_anchor(
         env, monkeypatch, attacker_points, won):  # noqa: F811
-    """The same result moves the rating by the same amount against Standard."""
+    """The same result is rated against Standard opponents at 1000 and
+    against Advanced at 1059; the partner is Advanced (1059) in both."""
     srv, store, _ = env
     a, _ = _user(store, "vsstd")
     b, _ = _user(store, "vsadv")
@@ -747,18 +808,35 @@ def test_a_round_against_standard_is_rated_as_the_same_round_against_advanced(
     adv.play_round(banker=0)
     e_std, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", a)
     e_adv, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", b)
-    assert e_adv["expected"] == pytest.approx(0.557312, abs=1e-6)
-    assert e_std["expected"] == pytest.approx(e_adv["expected"])
+    team = (1000.0 + 1059.0) / 2 + ratings.BANKER_ADVANTAGE_PRESET
+    assert e_adv["expected"] == pytest.approx(ratings.expected_score(team, 1059.0))
+    assert e_std["expected"] == pytest.approx(ratings.expected_score(team, 1000.0))
     assert e_std["actual"] == e_adv["actual"] and bool(e_std["won"]) is won
-    assert e_std["delta"] == pytest.approx(e_adv["delta"])
 
 
 def test_the_partner_counts_the_advanced_anchor_beside_standard_opponents():
     rec_anchors = [ratings.BOT_RATING, ratings.STANDARD_BOT_RATING,
-                   ratings.BOT_RATING, ratings.STANDARD_BOT_RATING]
+                   ratings.ADVANCED_BOT_RATING, ratings.STANDARD_BOT_RATING]
     strengths = ratings.team_strengths(rec_anchors, banker_team=0)
-    assert strengths == (ratings.BOT_RATING + ratings.BANKER_ADVANTAGE_PRESET,
-                         ratings.STANDARD_BOT_RATING)
+    assert strengths == ((1000.0 + 1059.0) / 2 + ratings.BANKER_ADVANTAGE_PRESET, 1000.0)
+
+
+def test_an_800_player_against_beginners_counts_partner_1059_and_opponents_1000(
+        env, monkeypatch):  # noqa: F811
+    from shengji.api import server as srv
+
+    _, store, _ = env
+    a, _ = _user(store, "begin", rating=800.0)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, "bot", "bot", "bot"], code="BEG1")
+    ranked_bots.choose(table.room, srv.make_relaxed_bot, _ratings({a: 800.0}), srv.make_beginner_bot)
+    assert ranked_bots.level_of(table.room, 1) == "beginner"
+    table.start_round(banker=0)
+    assert table.room.ratings.anchors[1:] == [1000.0, 1059.0, 1000.0]
+    table.finish()
+    event, = _events(store, "SELECT * FROM rating_events WHERE user_id = ?", a)
+    team = (800.0 + 1059.0) / 2 + ratings.BANKER_ADVANTAGE_PRESET
+    assert event["expected"] == pytest.approx(ratings.expected_score(team, 1000.0))
 
 
 # ------------------------------------------- an account signs in at the deal
@@ -781,8 +859,8 @@ def test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account(
         assert room.bot_levels.pending_game              # still the opening deal
         _settled(room)
         assert ranked_bots.standard(room) == standard
-        anchor = ratings.STANDARD_BOT_RATING if standard else ratings.BOT_RATING
-        assert room.ratings.anchors == [ratings.BOT_RATING, anchor, ratings.BOT_RATING, anchor]
+        anchor = ratings.STANDARD_BOT_RATING if standard else ratings.ADVANCED_BOT_RATING
+        assert room.ratings.anchors == [ratings.BOT_RATING, anchor, ratings.ADVANCED_BOT_RATING, anchor]
 
 
 def test_a_seat_that_changes_during_the_settling_read_is_read_again(env, monkeypatch):  # noqa: F811

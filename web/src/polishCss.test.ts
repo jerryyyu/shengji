@@ -129,14 +129,20 @@ describe("press feedback", () => {
   });
 });
 
-// Play, Duo, Join, the code box, and the table panel's Start and Leave take
-// their height and radius from the control tokens, so a new control or a state
-// override cannot bring a size of its own.
+// Play, Duo, Join, the code box, the table panel's Start and Leave, the round
+// end's Next round and Leave game, How to play's Next, and the confirm sheet's
+// two buttons take their height and radius from the control tokens, so a new
+// control or a state override cannot bring a size of its own.
 describe("controls", () => {
   const CONTROLS = [
     ".play-tab .btn.play-main", ".play-tab .btn.play-duo", ".play-tab .join-row .btn", ".play-tab .room-input",
-    ".tp-primary", ".tp-secondary",
+    ".tp-primary", ".tp-secondary", ".round-end-actions > .btn.big", ".howto-buttons > .btn", ".leave-sheet-actions button",
   ];
+  // The main actions drawn in the shared gold, and the .primary ones among
+  // them, which the green .btn.primary must not reach.
+  const MAIN_PRIMARY = [".round-end-actions > .btn.primary", ".howto-buttons > .btn.primary", ".btn.primary.name-edit-save"];
+  const MAIN = [".btn.gold", ...MAIN_PRIMARY];
+  const GOLD_FACE = "background: linear-gradient(180deg, #8a6a22, #6b5219);";
 
   it("the tokens: actions 52 tall, the mode switch 44, one radius of 14", () => {
     expect(tokens["--ctl-h"]).toBe(52);
@@ -163,6 +169,38 @@ describe("controls", () => {
     for (const r of gold) for (const s of r.sels) expect(s === ".tp-primary" || /\.gold\b/.test(s.replace(/:not\([^)]*\)/g, "")), s).toBe(true);
     const neutral = rules.find((r) => r.sels.includes(".play-tab .btn.play-duo") && r.body.includes("background: var(--ctl-raised);"));
     expect(neutral?.sels).toContain(".play-tab .btn.play-main:where(:not(.gold))");
+  });
+
+  it("the shared gold rule names main actions only, and the green primary reaches none of them", () => {
+    const shared = rules.find((r) => r.sels.includes(".btn.gold") && r.body.includes(GOLD_FACE));
+    expect(shared?.sels).toEqual(MAIN);
+    expect(shared?.body).toContain("border-color: var(--gold);");
+    expect(shared?.body).toContain("color: #fff3cf;");
+    // the green is .btn.primary's alone; each main .primary outranks it, at rest and on hover
+    const green = rules.filter((r) => r.body.includes("#3f8f63") || r.body.includes("#48a171"));
+    expect(green.flatMap((r) => r.sels).sort()).toEqual([".btn.primary", ".btn.primary:hover:not(:disabled)"]);
+    const hover = rules.find((r) => r.sels.includes(".btn.gold:hover:not(:disabled)"));
+    for (const s of MAIN_PRIMARY) expect(hover?.sels, s).toContain(`${s}:hover:not(:disabled)`);
+    // no other rule paints a gold face on something that is not a main action
+    for (const r of rules.filter((x) => x.body.includes(GOLD_FACE))) {
+      for (const s of r.sels) expect(MAIN.includes(s) || s === ".tp-primary" || /\.gold\b/.test(s), s).toBe(true);
+    }
+  });
+
+  it("the round end's Leave game and the sheet's Stay are the raised neutral", () => {
+    expect(bodies(".round-end-actions > .dialog-leave-btn").join(";")).toContain("background: var(--ctl-raised);");
+    expect(bodies(".leave-sheet-actions .leave-sheet-stay").join(";")).toContain("background: var(--ctl-raised);");
+    expect(bodies(".leave-sheet-actions .leave-sheet-leave.confirm-sheet-go").join(";")).toContain("border: 1.5px solid var(--gold);");
+  });
+
+  it("the Me and Leaderboard switch is the mode switch's 44px well: a 36px segment, 3px padding and the border", () => {
+    const track = bodies(".segmented").join(";");
+    expect(track).toContain("height: var(--ctl-h-sm);");
+    expect(track).toContain("padding: 3px;");
+    expect(track).toContain("border: 1px solid var(--ctl-well-edge);");
+    expect(track).toContain("border-radius: var(--ctl-r);");
+    expect(track).toContain("background: var(--ctl-well);");
+    expect(bodies(".segmented-btn").join(";")).toContain("border-radius: calc(var(--ctl-r) - 4px);");
   });
 
   it("the mode switch's track is a 44px well: a 36px segment, 3px padding and the border", () => {
@@ -218,7 +256,7 @@ describe("tap targets", () => {
 
   const heights = (sel: string) =>
     rules.flatMap((r) => r.sels.filter((s) => s === sel || s.endsWith(` ${sel}`)).flatMap((s) =>
-      [...r.body.matchAll(/(?:^|[ ;])(?:min-)?height: (\d+)px/g)].map((m) => ({ state: s, px: Number(m[1]) }))));
+      drawnHeights(r.body).map((px) => ({ state: s, px }))));
   const box = (v: string) => {
     const n = v.trim().split(" ").map(px);
     return { top: n[0], bottom: n.length >= 3 ? n[2] : n[0] };

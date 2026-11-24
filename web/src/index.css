@@ -217,15 +217,25 @@ textarea:focus-visible {
   opacity: 1;
 }
 
-.btn.gold {
-  background: linear-gradient(180deg, #8a6d2a, #6b531d);
+/* Primary: a screen's main action, in the Play tab's one gold. Its light ink
+   holds 4.5:1 on the face's lighter end. The main actions drawn as .primary
+   (Next round, How to play's Next, the name's Save) take it here too. */
+.btn.gold,
+.round-end-actions > .btn.primary,
+.howto-buttons > .btn.primary,
+.btn.primary.name-edit-save {
+  background: linear-gradient(180deg, #8a6a22, #6b5219);
   border-color: var(--gold);
-  color: #ffe9b0;
+  color: #fff3cf;
 }
 
+/* hover darkens the face, so the light ink only gains contrast */
 @media (hover: hover) and (pointer: fine) {
-.btn.gold:hover:not(:disabled) {
-  background: linear-gradient(180deg, #a17f31, #7d6122);
+.btn.gold:hover:not(:disabled),
+.round-end-actions > .btn.primary:hover:not(:disabled),
+.howto-buttons > .btn.primary:hover:not(:disabled),
+.btn.primary.name-edit-save:hover:not(:disabled) {
+  background: linear-gradient(180deg, #7a5d1e, #5c4615);
 }
 }
 
@@ -2111,9 +2121,22 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   flex: 1;
 }
 
+/* Next round and Leave game: the action size. Leave is the raised neutral
+   with its red label. */
+.round-end-actions > .btn.big {
+  min-height: var(--ctl-h);
+  padding: 0 16px;
+  border-radius: var(--ctl-r);
+  font-size: var(--fs-17);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
 .round-end-actions > .dialog-leave-btn {
   margin: 0;
   flex: none;
+  border-color: var(--ctl-raised-edge);
+  background: var(--ctl-raised);
 }
 
 /* Details: the kitty and the last trick side by side, so the opened card
@@ -3272,11 +3295,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     background: #171b22;
   }
 
-  .round-end-actions > .btn.big {
-    min-height: 44px;
-    padding: 8px 16px;
-  }
-
   .game-won-crown {
     font-size: 30px;
   }
@@ -4300,6 +4318,18 @@ button.games-row { cursor: pointer; }
   margin: -12px -18px 0;
 }
 .howto-head .games-back { margin: 0; justify-self: start; }
+/* How to play's Back is a text link, as How to play is on the Play tab */
+.howto-head .btn.games-back {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  color: var(--gold);
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+@media (hover: hover) and (pointer: fine) {
+  .howto-head .btn.games-back:hover:not(:disabled) { background: transparent; }
+}
 .howto-page {
   margin: 0;
   min-width: 0;
@@ -4496,6 +4526,14 @@ button.games-row { cursor: pointer; }
 }
 .howto-dot.on::before { width: 20px; background: var(--gold); }
 .howto-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.howto-buttons > .btn {
+  min-height: var(--ctl-h);
+  padding: 0 16px;
+  border-radius: var(--ctl-r);
+  font-size: var(--fs-17);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
 
 /* Animated pictures (Picture + useTimeline): quiet play/pause, replay and
    still-image buttons in the picture's corner, then each slide's moving
@@ -4506,7 +4544,7 @@ button.games-row { cursor: pointer; }
    They sit in a strip of their own across the picture's top, 44px tall so
    even the taps end above the picture, which therefore never draws a seat
    name or a card under them, at any width or text size. */
-.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 14px; }
+.howto-anim-controls { position: absolute; top: 4px; right: 6px; z-index: 2; display: flex; gap: 14px; }
 .howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
 .howto-anim-btn {
   appearance: none;
@@ -4514,10 +4552,10 @@ button.games-row { cursor: pointer; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--panel-edge);
   background: rgba(16, 19, 26, 0.55);
   color: var(--text-dim);
@@ -4527,7 +4565,7 @@ button.games-row { cursor: pointer; }
 .howto-anim-btn::after {
   content: "";
   position: absolute;
-  inset: -7px;
+  inset: -4px;
 }
 .howto-anim-btn svg { width: 14px; height: 14px; fill: currentColor; }
 .howto-anim-btn svg[fill="none"] { fill: none; }
@@ -4818,7 +4856,7 @@ button.games-row { cursor: pointer; }
   --grp: #242a35;
   --grp-edge: #333b49;
   --grp-line: rgba(255, 255, 255, 0.12);
-  --seg-on: #3d4556;
+  --seg-on: #2f3a4d;
   --muted: #8a929f;
   --muted-2: #6c7585;
   --destructive: #f08a7e;
@@ -5427,23 +5465,25 @@ body.keyboard-open .tabbar { display: none; }
   .ptr-spinner,
   .has-nav .home-col { transition: none !important; animation: none !important; }
 }
-.segmented { flex: none; display: flex; height: 32px; padding: 2px; border-radius: 9px; background: var(--grp); }
-/* the buttons draw 28px inside the 32px track; ::before stretches each tap
-   area to 44px, 6px past the track, which the 14px column gap leaves clear */
+/* The Play tab's mode switch: a 44px well (36 + 2x3 + the border), and
+   segments of radius 10 (14 less the padding and border) */
+.segmented { flex: none; display: flex; height: var(--ctl-h-sm); padding: 3px; border: 1px solid var(--ctl-well-edge); border-radius: var(--ctl-r); background: var(--ctl-well); }
+/* the buttons draw 36px inside the track; ::before stretches each tap area
+   to 44px, the track's own height */
 .segmented-btn {
   position: relative;
   appearance: none;
   flex: 1;
   border: 0;
-  border-radius: 7px;
+  border-radius: calc(var(--ctl-r) - 4px);
   background: none;
   color: #aab2bf;
-  font-size: var(--fs-13);
-  font-weight: 500;
+  font-size: var(--fs-15);
+  font-weight: 600;
   cursor: pointer;
 }
-.segmented-btn::before { content: ""; position: absolute; inset: -8px 0; }
-.segmented-btn.on { background: var(--seg-on); color: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+.segmented-btn::before { content: ""; position: absolute; inset: -4px 0; }
+.segmented-btn.on { background: var(--seg-on); color: #fff; font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
 
 .grp { flex: none; list-style: none; margin: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--grp); }
 .grp > li + li { border-top: 0.5px solid var(--grp-line); }
@@ -6097,10 +6137,10 @@ dialog.leave-sheet-backdrop {
 }
 .leave-sheet-actions button {
   flex: 1 1 0;
-  height: 46px;
-  border-radius: 12px;
+  height: var(--ctl-h);
+  border-radius: var(--ctl-r);
   font: inherit;
-  font-size: 16px;
+  font-size: var(--fs-17);
   font-weight: 700;
   cursor: pointer;
 }
@@ -6108,9 +6148,9 @@ dialog.leave-sheet-backdrop {
 /* opened from a tap: the first, programmatic focus paints no ring (a key press clears the attribute) */
 .leave-sheet-backdrop[data-pointer-open] .leave-sheet-actions button:focus-visible { outline: none; }
 .leave-sheet-actions .leave-sheet-stay {
-  border: 1px solid #3a4250;
-  background: transparent;
-  color: #c3cad6;
+  border: 1px solid var(--ctl-raised-edge);
+  background: var(--ctl-raised);
+  color: var(--text);
 }
 .leave-sheet-actions .leave-sheet-leave {
   border: 1px solid #a23a48;
@@ -6119,7 +6159,7 @@ dialog.leave-sheet-backdrop {
 }
 /* a confirm that is not a way out (move, take a seat) is the panel's gold */
 .leave-sheet-actions .leave-sheet-leave.confirm-sheet-go {
-  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
+  border: 1.5px solid var(--gold); background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
 }
 .leave-sheet-actions button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
 .leave-sheet-error { margin: 0; font-size: 14px; line-height: 1.4; color: #f0a0aa; text-align: center; }

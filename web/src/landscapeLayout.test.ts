@@ -452,7 +452,9 @@ describe("phone controls", () => {
     // the menu is one for phone and desktop: its rows are drawn outside the phone block
     expect(px(rule(css, ".hud-menu-row")["min-height"])).toBeGreaterThanOrEqual(44);
     expect(rule(block, ".modal > .round-end-actions").position).toBe("sticky");
-    expect(px(rule(block, ".round-end-actions > .btn.big")["min-height"])).toBeGreaterThanOrEqual(44);
+    // Next round and Leave game are the action size everywhere, the phone included
+    expect(rule(css, ".round-end-actions > .btn.big")["min-height"]).toBe("var(--ctl-h)");
+    expect(css).not.toMatch(/\.round-end-actions > \.btn\.big \{[^}]*min-height: \d/);
     // a card's tap area runs the full card height plus 16px above the hand
     expect(rule(block, ".hand .card::after").top).toBe("calc(-1 * var(--lift))");
   });

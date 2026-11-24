@@ -43,15 +43,16 @@ describe("Reduce Motion", () => {
 });
 
 describe("How to play targets", () => {
-  it("gives each 30px picture control a 44px tap, and the controls do not share one", () => {
-    expect(decls(".howto-anim-btn::after")).toMatch(/inset: -7px/);
+  it("gives each 36px picture control a 44px tap, and the controls do not share one", () => {
+    expect(decls(".howto-anim-btn")).toMatch(/height: 36px/);
+    expect(decls(".howto-anim-btn::after")).toMatch(/inset: -4px/);
     expect(decls(".howto-anim-btn")).toMatch(/position: relative/);
     expect(decls(".howto-anim-controls")).toMatch(/gap: 14px/);
   });
 
   it("keeps the picture's content out of the controls' strip, taps included", () => {
-    // top 6px + 30px button + 7px of tap below it ends at 43px
-    expect(decls(".howto-anim-controls")).toMatch(/top: 6px/);
+    // top 4px + 36px button + 4px of tap below it ends at 44px
+    expect(decls(".howto-anim-controls")).toMatch(/top: 4px/);
     expect(decls(".howto-visual:has(> .howto-anim-controls)")).toMatch(/padding-top: 44px/);
     expect(css).toMatch(/\.howto-step > \.howto-visual:has\(> \.howto-anim-controls\) \{ padding-top: 44px; \}/);
   });
@@ -105,11 +106,13 @@ describe("the boot page", () => {
 
 describe("home touch targets", () => {
   const px = (body: string, prop: string) => Number(new RegExp(`(?:^|[;\\s])${prop}:\\s*(-?\\d+)px`).exec(body)?.[1]);
-  it("the segmented buttons draw 28px in a 32px track and reach 44px with ::before", () => {
-    const track = px(decls(".segmented"), "height");
+  it("the segmented buttons draw 36px in the 44px well and reach 44px with ::before", () => {
+    expect(decls(".segmented")).toContain("height: var(--ctl-h-sm)");
+    const track = px(decls(":root"), "--ctl-h-sm");
     const padding = px(decls(".segmented"), "padding");
-    const drawn = track - 2 * padding;
-    expect(drawn).toBe(28);
+    const border = px(decls(".segmented"), "border");
+    const drawn = track - 2 * padding - 2 * border;
+    expect(drawn).toBe(36);
     expect(decls(".segmented-btn")).toContain("position: relative");
     const inset = /inset:\s*-(\d+)px 0/.exec(decls(".segmented-btn::before"))!;
     expect(drawn + 2 * Number(inset[1])).toBeGreaterThanOrEqual(44);

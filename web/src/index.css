@@ -4534,7 +4534,7 @@ button.games-row { cursor: pointer; }
    They sit in a strip of their own across the picture's top, 44px tall so
    even the taps end above the picture, which therefore never draws a seat
    name or a card under them, at any width or text size. */
-.howto-anim-controls { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 14px; }
+.howto-anim-controls { position: absolute; top: 4px; right: 6px; z-index: 2; display: flex; gap: 14px; }
 .howto-visual:has(> .howto-anim-controls) { padding-top: 44px; }
 .howto-anim-btn {
   appearance: none;

@@ -302,12 +302,22 @@ marker_served() {
   if ! cmp -s "$tmp" "$LOCAL_DIST/index.html"; then
     rm -f "$tmp"; MARKER_DETAIL="the served index.html differs from the local build's"; return 1
   fi
-  read -r code type < <(curl -sS --max-time 30 -o "$tmp" -w '%{http_code} %{content_type}\n' "$URL$MARKER_ASSET" || echo "000 none")
+  local meta rc essence
+  meta=$(curl -sS --max-time 30 -o "$tmp" -w '%{http_code} %{content_type}' "$URL$MARKER_ASSET") && rc=0 || rc=$?
+  if [ "$rc" != 0 ]; then
+    rm -f "$tmp"; MARKER_DETAIL="fetching $URL$MARKER_ASSET failed (curl exit $rc)"; return 1
+  fi
+  code=${meta%% *}
+  type=${meta#* }
+  [ "$type" != "$meta" ] || type=
   if [ "$code" != 200 ]; then
     rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET returned HTTP $code"; return 1
   fi
-  case "$type" in
-    text/javascript*|application/javascript*) ;;
+  # the MIME essence: before any parameter, trimmed, lowercased
+  essence=${type%%;*}
+  essence=$(printf '%s' "$essence" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  case "$essence" in
+    text/javascript|application/javascript) ;;
     *) rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET is served as ${type:-no content type}, not JavaScript"; return 1 ;;
   esac
   if ! cmp -s "$tmp" "$LOCAL_DIST$MARKER_ASSET"; then

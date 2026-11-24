@@ -56,7 +56,8 @@ if [ ! -f "$file" ]; then
 fi
 if [ -z "$fmt" ] && [ "$code" != 200 ]; then exit 22; fi
 if [ -n "$out" ]; then cat "$file" > "$out"; else cat "$file"; fi
-[ -z "$fmt" ] || printf '%s %s\n' "$code" "$type"
+[ -z "$fmt" ] || printf '%s %s' "$code" "$type"
+case "$path" in *.js) [ -z "${FAKE_SHORT_BODY:-}" ] || exit 18 ;; esac
 """
 
 FAKE_NPM = r"""#!/usr/bin/env bash
@@ -627,6 +628,31 @@ def test_an_asset_served_with_a_non_javascript_type_is_not_served(tmp_path, env)
                           FAKE_JS_TYPE="text/plain")
     assert r.returncode == 1
     assert "is served as text/plain, not JavaScript" in r.stdout
+
+
+def test_an_asset_shorter_than_its_content_length_is_not_served(tmp_path, env):
+    # the exact local bytes arrive, but curl exits 18 (transfer closed with bytes remaining)
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_SHORT_BODY="1")
+    assert r.returncode == 1
+    assert "/assets/held_seat-ab12.js failed (curl exit 18)" in r.stdout
+
+
+@pytest.mark.parametrize("mime", ["application/javascript-disabled", "text/javascriptx",
+                                  "text/plain; x=text/javascript", "javascript"])
+def test_a_mime_that_only_starts_like_javascript_is_not_served(tmp_path, env, mime):
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_JS_TYPE=mime)
+    assert r.returncode == 1
+    assert f"is served as {mime}, not JavaScript" in r.stdout
+
+
+@pytest.mark.parametrize("mime", ["text/javascript; charset=utf-8", "Application/JavaScript",
+                                  " text/javascript ;charset=UTF-8"])
+def test_a_javascript_mime_with_parameters_or_case_is_served(tmp_path, env, mime):
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_JS_TYPE=mime)
+    assert r.returncode == 0, r.stdout + r.stderr
 
 
 def test_an_asset_whose_served_bytes_differ_is_not_served(tmp_path, env):

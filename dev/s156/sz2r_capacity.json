@@ -1,0 +1,5 @@
+{
+  "workers": 24,
+  "max_seconds": 10800,
+  "max_bytes": 68719476736
+}

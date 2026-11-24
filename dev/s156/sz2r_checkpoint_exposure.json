@@ -1,0 +1,115 @@
+{
+  "archive_comparison": "https://github.com/jerryyyu/shengji/pull/1799#issuecomment-7142619091",
+  "arm": "SZ2-R",
+  "challenger": [
+    "SHENGJI_PV_BELIEF_CKPT=/Users/jeryyu/fleet/codex-sz2-export-v1/M/74015553d61ccfd7d66c75474866c8d49124bf8f02cd3d805011336e71157962-69f181a3a9e838e32c9cbc9b695e7629479ca056e06274d9246abdfbbb139369-encode4/cand-belief.npz",
+    "SHENGJI_PV_BELIEF_SHA256=9e63cd623aefe26b86eadf9f3dc00baee09fd69d8e0ed18dc971e7b66dff860f",
+    "SHENGJI_PV_UNIFIED_CKPT=/Users/jeryyu/fleet/codex-sz2-export-v1/M/74015553d61ccfd7d66c75474866c8d49124bf8f02cd3d805011336e71157962-69f181a3a9e838e32c9cbc9b695e7629479ca056e06274d9246abdfbbb139369-encode4/cand.npz",
+    "SHENGJI_PV_UNIFIED_SHA256=9cdf926415651a2cd298264ea5126f8aa6de989bbc2b3ae157463e2c57afaed1"
+  ],
+  "checkpoints": {
+    "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposures": {
+        "fit": 396800,
+        "selection": 49843
+      },
+      "fit_matches": 0,
+      "parents": [
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ],
+      "path": "/Users/jerryyu/.claude/jobs/d0498cda/tmp/unified/smoke/smv3-best.pt",
+      "selection_matches": 0
+    },
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed": {
+      "control": {
+        "hits": 60,
+        "probed": 64,
+        "seed0": 23260910
+      },
+      "exposures": {
+        "fit": 396800,
+        "selection": 49843
+      },
+      "fit_matches": 0,
+      "parents": [
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ],
+      "path": "/Users/jeryyu/fleet/claude-x2s2/inputs/init/ft1-rebuilt.pt",
+      "selection_matches": 0
+    },
+    "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposures": {
+        "fit": 204800,
+        "selection": 25716
+      },
+      "fit_matches": 0,
+      "parents": [
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38"
+      ],
+      "path": "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/train-out/cwv/JS3-M1-policy-w1.0-soft/best.pt",
+      "selection_matches": 0
+    },
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962": {
+      "control": {
+        "hits": 64,
+        "probed": 64,
+        "seed0": 1000200000
+      },
+      "exposures": {
+        "fit": 489248,
+        "selection": 51769
+      },
+      "fit_matches": 0,
+      "parents": [
+        "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8",
+        "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38",
+        "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01"
+      ],
+      "path": "/Users/jeryyu/fleet/claude-g4/inputs/init/g3A-epoch-04.avg.pt",
+      "selection_matches": 0
+    },
+    "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38": {
+      "control": {
+        "hits": 62,
+        "probed": 64,
+        "seed0": 20260905
+      },
+      "exposures": {
+        "fit": 140800,
+        "selection": 17600
+      },
+      "fit_matches": 0,
+      "parents": [],
+      "path": "/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/fl-pilot/s43t/s43t_exposure/jsm1_perfcopy/JS-M1-policy-w0.2-full/best.pt",
+      "selection_matches": 0
+    }
+  },
+  "corpus_comparison": "https://github.com/jerryyyu/shengji/pull/1799#issuecomment-7143354106",
+  "deals": 3920,
+  "defender": [
+    "SHENGJI_PV_BELIEF_CKPT=/Users/jeryyu/fleet/claude-s159-rt4/inputs/cand/ut-rt4-belief-35e225cf.npz",
+    "SHENGJI_PV_BELIEF_SHA256=35e225cf3afd460d231a44192e60be8595a5d7fce81c860f0bfe3153506f66e3",
+    "SHENGJI_PV_UNIFIED_CKPT=/Users/jeryyu/fleet/claude-s159-rt4/inputs/cand/ut-rt4-e2951d35.npz",
+    "SHENGJI_PV_UNIFIED_SHA256=e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883"
+  ],
+  "exposure_checked_on": "3e00a55a7a38e5a135809f601c9b47fb315fa725",
+  "deployment": "35531daf48fc543dcd6f611d9d63312a5dc11de6",
+  "roots": [
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962",
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed"
+  ],
+  "round_plan": "r2",
+  "seed0": 2668000000
+}

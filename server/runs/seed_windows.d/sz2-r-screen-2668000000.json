@@ -1,0 +1,14 @@
+{
+  "name": "sz2-r-screen-2668000000",
+  "purpose": "screen",
+  "seed0": 2668000000,
+  "clusters": 3920,
+  "span": [
+    2668000000,
+    2668003920
+  ],
+  "created_at": "2026-11-24T14:22:56-0500",
+  "host": "ultra",
+  "git_head": "c9bd86dbf65ab86d672da5a29d76948b4fe3ad74",
+  "note": "S156 SZ2-R paired seat-swapped rank-mixed screen of M2 against deployed R55. Excludes pilots. Deal-key clearance against both lineages is pending."
+}

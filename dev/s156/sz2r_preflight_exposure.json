@@ -1,0 +1,55 @@
+{
+  "archive": {
+    "deals": 26,
+    "indexes": {
+      "M17/live": {
+        "controls": 8,
+        "entries": 128147,
+        "groups": 9,
+        "overlaps": 0
+      },
+      "S17": {
+        "controls": 35,
+        "entries": 285043,
+        "groups": 35,
+        "overlaps": 0
+      },
+      "Y": {
+        "controls": 128,
+        "entries": 96300,
+        "groups": 128,
+        "overlaps": 0
+      },
+      "live decks": {
+        "entries": 268,
+        "groups": 1,
+        "overlaps": 0
+      }
+    },
+    "seed0": 2668003920
+  },
+  "checkpoint_controls_hits_of_64": {
+    "3e89e86f9b8227a49fc6201463c219af56bd1e99cbe762b115e396e1f1919cf8": 62,
+    "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed": 60,
+    "8ecd4feaec480f1e76c1cc0119aed8996472512fa48eaa868415ff3d2318dd01": 62,
+    "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962": 64,
+    "a5248cc5ae97e69687910e892b1905613a1735cb47cbdc5e73a76e41d61e3f38": 62
+  },
+  "checkpoint_fit_and_selection_matches": 0,
+  "corpus": {
+    "deals": 26,
+    "distinct_training_seeds": 498100,
+    "extracts": 80,
+    "matching_training_seeds": 0,
+    "rows": 64685508,
+    "seed0": 2668003920
+  },
+  "pilot": {
+    "deals": 20,
+    "seed0": 2668003920
+  },
+  "timing": {
+    "deals": 6,
+    "seed0": 2668003940
+  }
+}

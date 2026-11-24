@@ -619,6 +619,10 @@ def _train(args, out: Path, status: str) -> int:
         epoch, t0, sums, cur, steps = state["epoch"], time.time(), np.zeros(len(SUM_KEYS)), state["buffer"], 0
         if report_buffer is not None and cur:
             sums[:] = state["epoch_sums"]
+        capture_capacity = getattr(args, "capacity_stats", False)
+        if capture_capacity:
+            train_start = time.monotonic()
+            trained_rows = tensor_bytes = driver_bytes = 0
         for gi, b in stream.batches(args.seed, epoch, state["buffer"]):
             if gi != cur:
                 if pause_at_report and gi > report_buffer:
@@ -639,12 +643,25 @@ def _train(args, out: Path, status: str) -> int:
                 if (out / "STOP").exists() or (args.max_seconds and time.time() - started > args.max_seconds):
                     save()
                     return stopped()
-            sums += step_on(b, epoch * n_buffers + gi)
+            batch_sums = step_on(b, epoch * n_buffers + gi)
+            sums += batch_sums
+            if capture_capacity:
+                trained_rows += int(batch_sums[SUM_KEYS.index("rows")])
+                if device.type == "mps":
+                    tensor_bytes = max(tensor_bytes, torch.mps.current_allocated_memory())
+                    driver_bytes = max(driver_bytes, torch.mps.driver_allocated_memory())
             steps += 1
             if args.max_steps and steps >= args.max_steps:
                 break
         if pause_at_report:
             raise UnifiedReadoutError("training ended before the requested report boundary")
+        if capture_capacity:
+            train_seconds = time.monotonic() - train_start
+            capacity = dict(epoch=epoch + 1, rows=trained_rows, steps=steps, train_seconds=train_seconds,
+                            rows_per_second=trained_rows / train_seconds)
+            if device.type == "mps":
+                capacity.update(post_step_max_tensor_bytes=tensor_bytes, post_step_max_driver_bytes=driver_bytes)
+            _status(status, f"CAPACITY {json.dumps(capacity, allow_nan=False)}")
         cm = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
@@ -1117,6 +1134,8 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--microbatch-rounds", type=int, help="maximum rounds per backward pass within a logical batch")
     t.add_argument("--rounds-per-batch", type=int, default=16)
     t.add_argument("--max-train-rows", type=int, default=None)
+    t.add_argument("--capacity-stats", action="store_true",
+                   help="report completed training throughput and post-step MPS allocation samples")
     t.add_argument("--max-steps", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=180000)
     t.add_argument("--report-buffer", type=int, help="write cumulative epoch losses at this interior buffer boundary")

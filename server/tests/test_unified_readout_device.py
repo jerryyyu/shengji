@@ -206,6 +206,32 @@ def test_the_cpu_path_gives_the_reference_losses(cpu_default):
 mps = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
 
 
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_capacity_sample_counts_actual_training_work(data, tmp_path, device, monkeypatch):
+    args = ["train", "--data", str(data), "--out", str(tmp_path), "--device", device,
+            "--scratch-arch", SCRATCH, "--threads", "1", "--loader-threads", "1",
+            "--rounds-per-batch", "1", "--epochs", "1", "--capacity-stats"]
+    assert ur.main(args) == 0
+    status = (tmp_path / "status.log").read_text().splitlines()
+    sample, = [json.loads(line.split(" CAPACITY ")[1]) for line in status if " CAPACITY " in line]
+    assert sample["steps"] > 1 and sample["rows"] > 0 and sample["train_seconds"] > 0
+    assert sample["rows_per_second"] == pytest.approx(sample["rows"] / sample["train_seconds"])
+    assert " UTR DONE " in status[-1]
+    assert "capacity_stats" not in json.loads((tmp_path / "run.json").read_text())
+    if device == "mps":
+        assert sample["post_step_max_driver_bytes"] >= sample["post_step_max_tensor_bytes"] > 0
+        monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+        from sz3_joint_recipe import smoke_result
+        result = smoke_result(tmp_path)
+        assert result["capacity"] == sample
+        assert result["calibration"]["policy"] >= 0
+        (tmp_path / "status.log").write_text("\n".join(status[:-1]))
+        with pytest.raises(ValueError, match="successful trainer terminal"):
+            smoke_result(tmp_path)
+    else:
+        assert "post_step_max_driver_bytes" not in sample
+
+
 @mps
 def test_an_mps_run_tracks_the_cpu_run_and_its_checkpoints_load_on_the_cpu(data, cpu_default, tmp_path):
     got = run_fixture(data, tmp_path, "mps")

@@ -438,6 +438,25 @@ def test_full_segment_protocol(host, phase, trainer_rc, prepare_rc, expected, ac
     assert (events(log) if log.exists() else []) == actions
 
 
+def test_large_smoke_uses_scratch_emitter_and_preserves_partial_output(host):
+    command, directory, log = host
+    scripts = directory / "server/scripts"
+    (scripts / "sz2_joint_segment.py").rename(scripts / "sz3_joint_recipe.py")
+    (directory / "phase").write_text("L-smoke")
+    (directory / "trainer_rc").write_text("3")
+    args = [*command, "--phase", "L-smoke"]
+    stopped = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    assert stopped.returncode == 1 and "L-smoke trainer exited 3" in stopped.stderr
+    assert events(log) == ["stop", "train", "restart"]
+    partial = directory / "reserved/L-smoke"
+    assert partial.is_dir()
+    (partial / "progress").write_text("partial")
+    refused = subprocess.run(args, capture_output=True, text=True, timeout=10)
+    assert refused.returncode == 1 and "already exists" in refused.stderr
+    assert (partial / "progress").read_text() == "partial"
+    assert events(log) == ["stop", "train", "restart"]
+
+
 @pytest.mark.parametrize("failed", [None, "M 0", "M 1", "M 2", "polish", "export", "disk"])
 def test_serial_post_training_stops_on_first_incomplete_stage(tmp_path, monkeypatch, failed):
     import types

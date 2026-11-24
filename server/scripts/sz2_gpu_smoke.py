@@ -257,11 +257,13 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
 def run_segment(root, phase, check_signal, expected_sha=None):
     expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
-    output = root / "smoke"
-    if phase == "smoke" and os.path.lexists(output):
+    smoke = phase in ("smoke", "L-smoke")
+    output = root / ("L-smoke" if phase == "L-smoke" else "smoke")
+    emitter = "sz3_joint_recipe.py" if phase == "L-smoke" else "sz2_joint_segment.py"
+    if smoke and os.path.lexists(output):
         raise RuntimeError(f"smoke output already exists: {output}")
     try:
-        argv = json.loads(command(sys.executable, "-B", SCRIPTS / "sz2_joint_segment.py", phase,
+        argv = json.loads(command(sys.executable, "-B", SCRIPTS / emitter, phase,
                                   "--root", root, timeout=60))
     except subprocess.CalledProcessError as exc:
         if phase == "medium-finish" and exc.returncode == 8:
@@ -273,7 +275,7 @@ def run_segment(root, phase, check_signal, expected_sha=None):
     if pressure >= 4:
         raise RuntimeError("memory pressure too high to start trainer")
     check_signal()
-    if phase == "smoke":
+    if smoke:
         output.mkdir()
     gpu = phase != "small"
     provider = darkbloom_stopped(check_signal, expected_sha) if gpu else nullcontext(check_signal)
@@ -287,19 +289,22 @@ def run_segment(root, phase, check_signal, expected_sha=None):
                                  stdin=subprocess.DEVNULL)
         rc = monitor(child, baseline, check_signal, verify_stopped)
     check_signal()
-    if phase != "smoke" and rc == 3:
+    if not smoke and rc == 3:
         return 3
     if phase == "medium-prefix" and rc == 7:
         return 7
     if rc or phase == "medium-prefix":
         raise RuntimeError(f"{phase} trainer exited {rc}")
+    if phase == "L-smoke":
+        from sz3_joint_recipe import smoke_result
+        print(json.dumps(smoke_result(output / "train"), allow_nan=False), flush=True)
     return 0
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
-    parser.add_argument("--phase", choices=("smoke", "small", "medium-prefix", "medium-finish"), default="smoke")
+    parser.add_argument("--phase", choices=("smoke", "L-smoke", "small", "medium-prefix", "medium-finish"), default="smoke")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
     args = parser.parse_args()
     received = None

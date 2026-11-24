@@ -363,6 +363,123 @@ def test_matched_scratch_recipe_consumed_by_trainer(segment, cpu_root, tmp_path,
         assert sum(p.numel() for p in model.trunk.parameters()) == expected
     assert medium.out != large.out and not medium.pause_at_report and large.pause_at_report
     assert smoke.out != large.out and smoke.scratch_arch == large.scratch_arch
+    assert smoke.capacity_stats and not medium.capacity_stats and not large.capacity_stats
     assert smoke.max_train_rows == 120000 and smoke.report_buffer is None
     varying = {"out", "scratch_arch", "pause_at_report"}
     assert {k for k in vars(medium) if getattr(medium, k) != getattr(large, k)} == varying
+
+
+def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp_path, monkeypatch, capsys):
+    from unittest.mock import Mock
+
+    import sz3_joint_recipe as sz3
+    from test_unified_readout_device import SCRATCH, extract_dir, synthetic_cluster, write_store
+
+    clusters = [synthetic_cluster(seed) for seed in range(1000, 1008)]
+    store = write_store(tmp_path / "stores/corpus", clusters)
+    data = extract_dir(store, tmp_path / "data", calib=0.25, task_clusters=1)
+
+    recipe_path = tmp_path / "run.json"
+    recipe = dict(
+        data=[str(data)], calib_data=[str(data)], epochs=1, lr=3e-5, head_lr=9e-5, readout_lr=1.5e-4,
+        head_warmup_buffers=0, weight_decay=0.01, belief_weight=1, q_weight=1, policy_weight=1,
+        value_weight=1, reply_weight=1, seed=1, buffer_chunks=1, rounds_per_batch=1, calib_rows=10000,
+        store_map=[], corpus_weight=[f"{data}=policy:2,reply:2"], exclude_seed_window=[],
+    )
+    recipe_path.write_text(json.dumps(recipe))
+    monkeypatch.setattr(sz3, "RECIPE_SHA", hashlib.sha256(recipe_path.read_bytes()).hexdigest())
+    monkeypatch.setattr(sz3, "BOUNDARY", 1)
+    monkeypatch.setattr(sz3, "DEVICE", "cpu")
+    # Give the paired control identical tiny trunks so its true prefix cannot clear either bar.
+    monkeypatch.setattr(sz3, "ARCHITECTURE", {6: SCRATCH, 8: SCRATCH})
+    root = tmp_path / "lane"
+    for phase, expected in (("M", 0), ("L-prefix", 7)):
+        assert ur.main(sz3.command(phase, root, recipe_path)[4:]) == expected
+
+    cli = ["L-finish", "--root", str(root), "--recipe", str(recipe_path)]
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as stopped:
+        sz3.main(cli)
+    assert stopped.value.code == 8
+    result = capsys.readouterr()
+    assert result.out == "" and "FAIL-OFFLINE buffer=1" in result.err
+
+    medium = root / "M/train"
+    large = root / "L/train"
+    m_report = medium / "epoch-1-buffer-1.json"
+    l_report = large / m_report.name
+    m_value, l_value = (json.loads(path.read_text()) for path in (m_report, l_report))
+
+    # Use exact decimal boundaries on the actual reports, without changing their shape.
+    for metric, at_bar in (("leaf_value", 0.502), ("policy", 0.515)):
+        m_value["train"].update(leaf_value=0.5, policy=0.5)
+        l_value["train"].update(leaf_value=0.5, policy=0.5)
+        m_value["train"][metric] = at_bar
+        m_report.write_text(json.dumps(m_value))
+        l_report.write_text(json.dumps(l_value))
+        sz3.main(cli)
+        resume = json.loads(capsys.readouterr().out)
+        assert "--pause-at-report" not in resume
+        assert ur._run_identity(ur.build_parser().parse_args(resume[4:])) == json.loads(
+            (large / "run.json").read_text()
+        )
+
+    run_path = large / "run.json"
+    original_run = run_path.read_text()
+    run_path.write_text(json.dumps({**json.loads(original_run), "corpus_weight": []}))
+    with pytest.raises(ValueError, match="settings differ"):
+        sz3.command("L-finish", root, recipe_path)
+    run_path.write_text(original_run)
+    l_report.write_text(json.dumps({**l_value, "leaves": l_value["leaves"] + 1}))
+    with pytest.raises(ValueError, match="counts differ"):
+        sz3.command("L-finish", root, recipe_path)
+    l_report.write_text(json.dumps(l_value))
+    status = large / "status.log"
+    paused = status.read_bytes()
+    with status.open("a") as fh:
+        fh.write("t STOPPED at epoch 1 buffer 1/2 (STOP file or --max-seconds); checkpoint saved\n")
+    with pytest.raises(ValueError, match="expected trainer terminal"):
+        sz3.command("L-finish", root, recipe_path)
+    status.write_bytes(paused)
+
+    # Expire the real continuation's wall timer after it starts the next buffer.
+    command = sz3.command("L-finish", root, recipe_path)
+    assert command[command.index("--max-seconds") + 1] == "5400"
+    clock = Mock(wraps=ur.time)
+    clock.time.return_value = 0
+    backward_batch = ur._backward_batch
+
+    def backward_then_expire(*args, **kwargs):
+        result = backward_batch(*args, **kwargs)
+        clock.time.return_value = 5401
+        return result
+
+    with monkeypatch.context() as fixture:
+        fixture.setattr(ur, "time", clock)
+        fixture.setattr(ur, "_backward_batch", backward_then_expire)
+        assert ur.main(command[4:]) == 3
+    bounded = status.read_text()
+    assert f" RESUME epoch 0 buffer {sz3.BOUNDARY}\n" in bounded
+    assert f" STOPPED at epoch 1 buffer {sz3.BOUNDARY + 1}/" in bounded.splitlines()[-1]
+
+    wrong_statuses = (
+        bounded.replace(" UTR PAUSED ", " UTR ABORT "),
+        bounded.replace(" RESUME epoch 0 buffer 1", " RESUME epoch 0 buffer 0"),
+        bounded.replace(" STOPPED at epoch 1 buffer 2/", " STOPPED at epoch 1 buffer 1/"),
+        bounded.replace("checkpoint saved", "checkpoint missing"),
+        bounded + "t RESUME epoch 0 buffer 2\n",
+    )
+    for wrong in wrong_statuses:
+        status.write_text(wrong)
+        with pytest.raises(ValueError, match="expected trainer terminal"):
+            sz3.command("L-finish", root, recipe_path)
+    status.write_text(bounded)
+
+    stop = large / "STOP"
+    stop.touch()
+    with pytest.raises(ValueError, match="operator STOP"):
+        sz3.command("L-finish", root, recipe_path)
+    stop.unlink()
+    assert ur.main(sz3.command("L-finish", root, recipe_path)[4:]) == 0
+    assert " RESUME epoch 0 buffer 2\n" in status.read_text()
+    assert (large / "best.pt").is_file()

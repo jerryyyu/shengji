@@ -386,6 +386,11 @@ class Seat:
     # reservation window and every rating and penalty rule stay as for a
     # disconnect. Cleared when any socket takes the seat again.
     left_by_choice: bool = False
+    # The decision (``_decision_key``) whose move clock ran out while this
+    # seat was away. The bot's move for it is no strike, even when the seat
+    # is back before that move commits. Cleared by the player's own move and
+    # when a new decision starts.
+    expired_away: tuple | None = None
     # The last ``table`` frame this seat's socket was sent: a broadcast
     # sends it again only when it changed. Cleared on every attach.
     table_sent: dict | None = field(default=None, repr=False, compare=False)
@@ -785,6 +790,8 @@ def _sync_move_timer(room: Room) -> None:
     for i, sd in enumerate(room.seats):
         if sd is None:
             continue
+        if fresh:
+            sd.expired_away = None
         if i not in owing:
             sd.turn_started = None
         elif fresh or sd.turn_started is None:
@@ -814,6 +821,8 @@ def _resume_move_clock(room: Room, seat: Seat) -> None:
         left = min(MOVE_TIMER, max(RETURN_MIN, MOVE_TIMER - used))
     else:
         left = max(0.0, MOVE_TIMER - used - over)
+        if left <= 0.0:
+            seat.expired_away = _decision_key(room)
     seat.turn_started = now() - (MOVE_TIMER - left)
 
 
@@ -828,7 +837,16 @@ def _away_timed_out(room: Room, seat: int) -> bool:
             or sd.bot_announced or sd.left_by_choice):
         return False
     used, over = _away_clock(sd)
-    return MOVE_TIMER - used - over <= 0.0
+    if MOVE_TIMER - used - over > 0.0:
+        return False
+    sd.expired_away = room.timer_key
+    return True
+
+
+def _expired_away(room: Room, seat: int) -> bool:
+    """Did the current decision's clock run out while this seat was away?"""
+    key = room.seats[seat].expired_away
+    return key is not None and key == _decision_key(room)
 
 
 def _timed(room: Room, seat: int) -> bool:
@@ -873,6 +891,7 @@ def _player_moved(room: Room, seat: int) -> None:
     sd.away = False
     sd.away_since = None
     sd.timeouts_in_row = 0
+    sd.expired_away = None
 
 
 def _round_timeouts_reset(room: Room) -> None:
@@ -1871,6 +1890,8 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
             or _level_changed(room, decision)):
         return False
     ranked_bots.unpin(snapshot.bot_copy)
+    # read before the move below starts a new decision
+    expired_away = _expired_away(room, snapshot.seat)
     if snapshot.closing_bot:
         room.closing_bot = snapshot.bot_copy
     else:
@@ -1897,9 +1918,10 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
         if snapshot.mode == "close":
             # the bot played for an absent player: rated as a takeover
             room.seats[seat].bot_announced = True
-        if snapshot.mode == "timeout" and room.seats[seat].connected:
-            # A dropped seat's run-out clock is not a strike: its absence is
-            # rated by the hold. Counted here, once per committed action and
+        if snapshot.mode == "timeout" and not expired_away:
+            # A clock that ran out while the seat was away is not a strike,
+            # whether or not the seat is back by now: its absence is rated by
+            # the hold. Counted here, once per committed action and
             # before the round end below captures ratings: a final-card
             # timeout that makes the seat away must be rated as away.
             _count_timeout(room, seat)
@@ -2073,7 +2095,8 @@ async def move_timer_tick(room: Room) -> bool:
                     readied = True
                 elif _timed_out(room, s):
                     room.ready.add(s)
-                    _count_timeout(room, s)
+                    if not _expired_away(room, s):
+                        _count_timeout(room, s)
                     readied = True
             if not readied:
                 return False

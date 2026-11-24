@@ -2571,6 +2571,84 @@ def test_a_dropped_seat_whose_clock_runs_out_inside_the_hold_is_played_for(
         assert srv._reserved(room, 0)
 
 
+def _rejoin(client, code, seat):
+    back = client.websocket_connect("/ws")
+    ws = back.__enter__()
+    ws.send_json({"type": "table_join", "expect": "room", "code": code,
+                  "name": "jerry", "token": seat.token})
+    _drain(ws, "state")
+    _wait_for(lambda: seat.connected)
+    return back
+
+
+def test_a_clock_run_out_while_away_is_no_strike_when_the_return_beats_the_poll(
+        client, clock, monkeypatch):
+    """5 s left at the drop (t=55), the clock out while away (t=80), back by
+    token at t=80.25 before any poll: the bot's move for that decision is no
+    strike, though the seat is connected when it commits."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as b:
+        a_ctx = client.websocket_connect("/ws")
+        a = a_ctx.__enter__()
+        code, room = _timer_game(client, a, monkeypatch)
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "seat": 1})
+        _drain(b, "state")
+        assert _tick(client, room) is False          # starts the clock
+        back, ws = _drop_and_return(client, a_ctx, b, code, room, clock, 55.0, 80.25)
+        try:
+            seat = room.seats[0]
+            before = _plays_by(room, 0)
+            assert srv._turn_deadline(room, 0) == 0.0
+            assert _tick(client, room) is True
+            assert _plays_by(room, 0) == before + 1
+            assert (seat.timeouts_in_row, seat.timeouts_in_round, seat.away) == (0, 0, False)
+        finally:
+            back.__exit__(None, None, None)
+
+
+def test_a_clock_run_out_while_away_is_no_strike_when_the_return_beats_the_commit(
+        client, clock, monkeypatch):
+    """The same run-out, with the bot's move snapshotted while the seat is
+    away (t=80) and the return by token (t=80.25) landing before its commit."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as b:
+        a_ctx = client.websocket_connect("/ws")
+        a = a_ctx.__enter__()
+        code, room = _timer_game(client, a, monkeypatch)
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "seat": 1})
+        _drain(b, "state")
+        assert _tick(client, room) is False          # starts the clock
+        seat = room.seats[0]
+        started = seat.turn_started
+        clock["v"] = started + 55.0
+        a_ctx.__exit__(None, None, None)
+        _wait_for(lambda: not seat.connected)
+        clock["v"] = started + 80.0
+        before = _plays_by(room, 0)
+
+        async def snapshot():
+            async with room.lock:
+                return srv._snapshot_bot_turn(room, 0, "timeout")
+
+        snap = client.portal.call(snapshot)
+        assert snap is not None, "the run-out clock did not make the turn the bot's"
+        prepared = srv._PreparedBotTurn(srv._compute_bot_turn(snap), 0.0, 0.0, 0.0)
+        clock["v"] = started + 80.25
+        back = _rejoin(client, code, seat)
+        try:
+            async def commit():
+                async with room.lock:
+                    return srv._commit_bot_turn(room, prepared)
+
+            assert client.portal.call(commit) is True
+            assert _plays_by(room, 0) == before + 1
+            assert (seat.timeouts_in_row, seat.timeouts_in_round, seat.away) == (0, 0, False)
+        finally:
+            back.__exit__(None, None, None)
+
+
 def test_a_drop_past_the_hold_window_is_covered_then_a_return_gets_a_fresh_clock(
         client, clock, monkeypatch):
     """Past TAKEOVER_AFTER the bot plays the dropped seat's turn as before,

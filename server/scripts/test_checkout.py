@@ -9,6 +9,11 @@ An interpreter that cannot import pytest never runs the tests: the script
 re-executes itself under the checkout's ``server/.venv/bin/python`` (once,
 guarded by an environment marker) and refuses with a nonzero status when that
 virtualenv is missing or also lacks pytest.
+
+``--affected [--base REF]`` runs the server test modules that
+``affected_tests.py`` selects for the branch diff against REF (default
+``origin/main``) in the chosen engine; pytest options after ``--`` still apply.
+An empty selection prints a message and exits 0 without running pytest.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import os
 from pathlib import Path
 import sys
 from types import ModuleType
+from typing import NamedTuple
 
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -187,12 +193,42 @@ def _ensure_pytest(words: list[str]) -> int | None:
     return NO_PYTEST  # unreachable: execv replaces the process or raises
 
 
-def _arguments(argv: list[str] | None) -> tuple[str, list[str]]:
+class Arguments(NamedTuple):
+    engine: str
+    pytest_args: list[str]
+    affected: bool = False
+    base: str = "origin/main"
+
+
+def affected_selection(engine: str, base: str, paths: list[str] | None = None) -> list[str]:
+    """Test module names ``affected_tests.py`` selects for ``engine`` on
+    ``paths`` (default: its ``changed_paths`` against ``base``)."""
+    path = Path(__file__).resolve().with_name("affected_tests.py")
+    spec = importlib.util.spec_from_file_location("_test_checkout_affected_tests", path)
+    if spec is None or spec.loader is None:
+        raise CheckoutError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    # Its dataclasses resolve their module through sys.modules.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    if paths is None:
+        paths = module.changed_paths(base, module.REPO)
+    plan = module.plan_for(paths, module.REPO)
+    return list(getattr(plan, engine))
+
+
+def _arguments(argv: list[str] | None) -> Arguments:
     parser = argparse.ArgumentParser(
         description="run pytest using this checkout's source tree",
         allow_abbrev=False,
     )
     parser.add_argument("--engine", choices=("pure", "compiled"), required=True)
+    parser.add_argument("--affected", action="store_true",
+                        help="run the tests affected_tests.py selects for this engine")
+    parser.add_argument("--base", help="diff base for --affected (default origin/main)")
     words = list(sys.argv[1:] if argv is None else argv)
     if "--" in words:
         boundary = words.index("--")
@@ -200,7 +236,10 @@ def _arguments(argv: list[str] | None) -> tuple[str, list[str]]:
     else:
         prefix, pytest_args = words, []
     parsed = parser.parse_args(prefix)
-    return parsed.engine, pytest_args
+    if parsed.base is not None and not parsed.affected:
+        parser.error("--base requires --affected")
+    return Arguments(parsed.engine, pytest_args, parsed.affected,
+                     parsed.base or "origin/main")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -208,9 +247,23 @@ def main(argv: list[str] | None = None) -> int:
     refused = _ensure_pytest(words)
     if refused is not None:
         return refused
-    engine, pytest_args = _arguments(words)
+    args = _arguments(words)
+    engine, pytest_args = args.engine, args.pytest_args
     print(f"checkout source: {SERVER_DIR}", flush=True)
     print(f"engine mode: {engine}", flush=True)
+    if args.affected:
+        try:
+            selected = affected_selection(engine, args.base)
+        except Exception as exc:
+            print(f"test checkout refused: affected test selection failed: {exc}",
+                  file=sys.stderr, flush=True)
+            return 2
+        if not selected:
+            print(f"test_checkout: affected_tests.py selects no {engine} tests for the "
+                  f"diff against {args.base}; nothing to run", flush=True)
+            return 0
+        print(f"affected tests ({engine}, base {args.base}): {' '.join(selected)}", flush=True)
+        pytest_args = [*pytest_args, *(f"tests/{name}.py" for name in selected)]
     try:
         _prepare_imports(engine)
     except CheckoutError as exc:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from pathlib import Path
 import shutil
@@ -209,3 +210,82 @@ def test_real_pytest_collecting_nothing_fails_loudly(tmp_path):
     )
     assert result.returncode == 5, result.stdout + result.stderr
     assert "test_checkout: NO TESTS COLLECTED" in result.stderr
+
+
+def _load(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(name, None)
+    return module
+
+
+def _load_checkout_module():
+    return _load(SCRIPT, "_checkout_under_test")
+
+
+def _affected_main(monkeypatch, words, selected):
+    """main() with the selection, import activation and pytest replaced."""
+    module = _load_checkout_module()
+    calls = {"selection": [], "pytest": []}
+
+    def select(engine, base, paths=None):
+        calls["selection"].append((engine, base))
+        if isinstance(selected, Exception):
+            raise selected
+        return list(selected)
+
+    fake_pytest = type(sys)("pytest")
+    fake_pytest.main = lambda args: calls["pytest"].append(list(args)) or 0
+    monkeypatch.setattr(module, "affected_selection", select)
+    monkeypatch.setattr(module, "_ensure_pytest", lambda words: None)
+    monkeypatch.setattr(module, "_prepare_imports", lambda engine: None)
+    monkeypatch.setitem(sys.modules, "pytest", fake_pytest)
+    return module.main(words), calls
+
+
+@pytest.mark.parametrize("engine", ["pure", "compiled"])
+def test_affected_runs_the_selected_modules_after_pytest_options(monkeypatch, capsys, engine):
+    code, calls = _affected_main(
+        monkeypatch, ["--engine", engine, "--affected", "--base", "origin/x", "--", "-q"],
+        ["test_a", "test_b"])
+    assert code == 0
+    assert calls["selection"] == [(engine, "origin/x")]
+    assert calls["pytest"] == [["-q", "tests/test_a.py", "tests/test_b.py"]]
+    assert f"affected tests ({engine}, base origin/x): test_a test_b" in capsys.readouterr().out
+
+
+def test_affected_with_nothing_selected_exits_zero_without_pytest(monkeypatch, capsys):
+    code, calls = _affected_main(monkeypatch, ["--engine", "compiled", "--affected"], [])
+    assert code == 0
+    assert calls["selection"] == [("compiled", "origin/main")]
+    assert calls["pytest"] == []
+    assert "selects no compiled tests" in capsys.readouterr().out
+
+
+def test_affected_selection_failure_refuses(monkeypatch, capsys):
+    code, calls = _affected_main(monkeypatch, ["--engine", "pure", "--affected"],
+                                 RuntimeError("bad base"))
+    assert code == 2
+    assert calls["pytest"] == []
+    assert "affected test selection failed: bad base" in capsys.readouterr().err
+
+
+def test_base_requires_affected(tmp_path):
+    result = _run(tmp_path, "--engine", "pure", "--base", "origin/main")
+    assert result.returncode == 2
+    assert "--base requires --affected" in result.stderr
+    assert "fake pytest" not in result.stdout
+
+
+def test_affected_selection_reuses_affected_tests_plan():
+    module = _load_checkout_module()
+    ref = _load(SCRIPT.with_name("affected_tests.py"), "_affected_ref")
+    for engine in ("pure", "compiled"):
+        assert module.affected_selection(engine, "unused", ["fly.toml"]) == list(
+            getattr(ref.plan_for(["fly.toml"], ref.REPO), engine))
+    assert "test_deploy_web_only" in module.affected_selection("pure", "unused", ["fly.toml"])
+    assert module.affected_selection("compiled", "unused", ["README.md"]) == []

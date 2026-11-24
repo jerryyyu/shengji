@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 
-def argv(recipe, mode, workers, lane):
+def run_inputs(recipe, mode, lane):
     here = Path(__file__).resolve().parent
     screen = json.loads((here / "sz2r_checkpoint_exposure.json").read_bytes())
     preflight = json.loads((here / "sz2r_preflight_exposure.json").read_bytes())
@@ -14,17 +14,22 @@ def argv(recipe, mode, workers, lane):
                           ("seed0", "seed0"), ("deals", "deals")):
         if recipe[actual] != screen[bound]:
             raise ValueError(f"screen differs from cleared exposure: {actual}")
-    if workers < 1:
-        raise ValueError("expected a positive worker count")
     arm = recipe["arm"]
     if mode == "screen":
         block, dest = screen, lane / "out" / arm
     else:
         block, dest = preflight[mode], lane / (mode + arm)
+    return block["seed0"], block["deals"], dest
+
+
+def argv(recipe, mode, workers, lane):
+    seed0, deals, dest = run_inputs(recipe, mode, lane)
+    if workers < 1:
+        raise ValueError("expected a positive worker count")
     if mode == "timing" and workers != 1:
         raise ValueError("timing uses one worker")
     args = [sys.executable, "-B", recipe["adapter"], "--arm", "identity",
-            "--seed0", str(block["seed0"]), "--deals", str(block["deals"]),
+            "--seed0", str(seed0), "--deals", str(deals),
             "--workers", str(workers), "--round-plan", recipe["round_plan"],
             "--out", str(dest / "duel.jsonl")]
     for side in ("defender", "exploiter"):

@@ -1,0 +1,14 @@
+{
+  "name": "sz2-r-preflight-2668003920",
+  "purpose": "screen",
+  "seed0": 2668003920,
+  "clusters": 26,
+  "span": [
+    2668003920,
+    2668003946
+  ],
+  "created_at": "2026-11-24T16:18:41-0500",
+  "host": "ultra",
+  "git_head": "e66edf33e8659b91e75467445c91a5f7cb7602eb",
+  "note": "SZ2-R validity pilot (first 20) and timing (last 6). Excluded from the 3920-deal strength estimate."
+}

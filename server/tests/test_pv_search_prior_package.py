@@ -256,7 +256,10 @@ def test_budget_smoke_checks_all_draw_belief_count(count):
     assert (result["failures"] == []) == (type(count) is int and count == 0)
 
 
-def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, other_package, tmp_path):
+def _snapshot_and_commit(package, other_package, tmp_path, mutate_direct=None):
+    """The served path's decision (server snapshot, then commit) against a
+    direct bot of the same factory and seed; ``mutate_direct`` alters only the
+    direct arm, and then only the two decisions are returned."""
     import asyncio
     import random
     from shengji.api import server as srv
@@ -286,6 +289,8 @@ def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, oth
         hands = copy.deepcopy(rnd.hands)
         rng = bot.sampler.rng.getstate()
         direct = factory(seed=23)
+        if mutate_direct is not None:
+            mutate_direct(direct)
         expected = direct.decide_play(copy.deepcopy(rnd), seat)
         prepared = await srv._paced_bot_step(room, seat, minimum_turn_seconds=0)
         assert prepared is not None and room.bot is bot
@@ -299,7 +304,10 @@ def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, oth
         assert cloned.serving_budget_seconds == 3.0 and cloned.bury_serving_budget_seconds == 2.0
         assert cloned.last_decision_record['schema'] == pv.RECORD_SCHEMA
         assert cloned.last_decision_record['work_complete']
-        assert list(prepared.decision.cards) == expected
+        served = list(prepared.decision.cards)
+        if mutate_direct is not None:
+            return served, expected
+        assert served == expected
         assert 'model_search' in events
         expected_round = copy.deepcopy(rnd)
         expected_round.play(seat, expected)
@@ -311,7 +319,29 @@ def test_singleton_prior_survives_actual_server_snapshot_and_commit(package, oth
         assert len(rnd.hands[seat]) < len(hands[seat])
         assert not srv._commit_bot_turn(room, prepared)
 
-    asyncio.run(scenario())
+    return asyncio.run(scenario())
+
+
+class _StoppedClock:
+    """``time`` for the search modules with a clock that never advances: the
+    3 s serving budget and the lead confirmation's soft deadline never fire, so
+    a contended runner cannot end one arm's search early and not the other's."""
+
+    @staticmethod
+    def perf_counter():
+        return 0.0
+
+
+def _stop_the_search_clock(monkeypatch):
+    from shengji.train import policy_value_search
+    monkeypatch.setattr(pv, "time", _StoppedClock)
+    monkeypatch.setattr(policy_value_search, "time", _StoppedClock)
+
+
+def test_singleton_prior_survives_actual_server_snapshot_and_commit(
+        package, other_package, tmp_path, monkeypatch):
+    _stop_the_search_clock(monkeypatch)
+    _snapshot_and_commit(package, other_package, tmp_path)
 
 
 @pytest.mark.parametrize("count", [0, 1, None, True, False, 0.0, "0", -1])
@@ -327,3 +357,17 @@ def test_budget_smoke_checks_bury_belief_count(count):
                          {"SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "2"})
     assert result["bury_belief_fallbacks"] == count
     assert (result["failures"] == []) == (type(count) is int and count == 0)
+
+
+
+def test_the_snapshot_comparison_catches_a_direct_arm_whose_budget_is_spent(
+        package, other_package, tmp_path, monkeypatch):
+    """The witness is not vacuous: a direct arm whose serving budget is spent
+    before its search starts, the contended-runner failure, decides otherwise."""
+    _stop_the_search_clock(monkeypatch)
+
+    def spent(direct):
+        direct.serving_budget_seconds = 0.0
+
+    served, expected = _snapshot_and_commit(package, other_package, tmp_path, mutate_direct=spent)
+    assert served != expected

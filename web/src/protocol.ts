@@ -197,6 +197,9 @@ export interface RoundResult {
   level_change: number;
   next_banker: number;
   new_levels: [string, string];
+  /** Each team's level the round was played at (before the climb, and on a
+   *  won game before the restart); absent from an older server. */
+  old_levels?: [string, string];
   games_won: [number, number];
   /** True on the round that took a team past A. */
   point_scored: boolean;

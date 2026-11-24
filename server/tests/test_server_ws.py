@@ -7,10 +7,12 @@ the wire protocol (2026-08-03).
 """
 from __future__ import annotations
 
+import json
 import os
 import random
 import threading
 from contextlib import ExitStack
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -2063,6 +2065,88 @@ def test_round_result_payload_carries_the_scoring_fields(client):
         assert payload["games_won"] == [1, 0]
         assert payload["new_levels"] == ["2", "2"], payload["new_levels"]
         assert payload["game_over"] is False
+        # scored outside _finish_round, the result has no recorded levels to send
+        assert "old_levels" not in payload
+
+
+def _finished_payload(client, levels, banker, attacker_points):
+    """The round_result a seat receives for a round played at `levels`."""
+    from shengji.api import server as srv
+    from shengji.engine.cards import RANKS
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        game = room.game
+        game.level_idx = [RANKS.index(levels[0]), RANKS.index(levels[1])]
+        rnd = game.round
+        rnd.phase = "round_end"
+        rnd.banker = banker
+        rnd.attacker_points = attacker_points
+        srv._finish_round(room)
+        return srv.state_for(room, 0)["round_result"]
+
+
+def test_round_result_carries_the_levels_before_a_normal_round(client):
+    # we bank at J and hold them to 40: we go up one, to Q; they stay at 9
+    payload = _finished_payload(client, ("J", "9"), banker=0, attacker_points=40)
+    assert payload["old_levels"] == ["J", "9"]
+    assert payload["new_levels"] == ["Q", "9"]
+
+
+def test_round_result_carries_the_levels_before_a_takeover(client):
+    # they attack at K and take 125: they take the deal and go up one, to A. The climb
+    # ran into A, so only old_levels says they started at K.
+    payload = _finished_payload(client, ("5", "K"), banker=0, attacker_points=125)
+    assert payload["winner_team"] == 1 and payload["next_banker"] == 1
+    assert payload["old_levels"] == ["5", "K"]
+    assert payload["new_levels"] == ["5", "A"]
+    # a capped climb: from Q, 165 points would be two levels, and lands on A too
+    capped = _finished_payload(client, ("5", "Q"), banker=0, attacker_points=165)
+    assert capped["old_levels"] == ["5", "Q"] and capped["new_levels"] == ["5", "A"]
+
+
+ROUND_END_FIXTURE = (Path(__file__).resolve().parents[2] / "web" / "src" / "components"
+                     / "round-end-levels.fixture.json")
+
+
+def test_the_client_s_round_end_fixture_is_what_state_for_sends(client):
+    """web/src/components/round-end-levels.fixture.json holds the state_for
+    frames the round-end card is tested on, so the card reads what the server
+    really sends. The deal's random kitty is cleared; the rest is verbatim.
+    SHENGJI_REGEN_FIXTURES=1 rewrites it."""
+    from shengji.api import server as srv
+    from shengji.engine.cards import RANKS
+
+    cases = {}
+    for name, levels, attacker_points in (("round", ("J", "9"), 40), ("takeover", ("5", "K"), 125),
+                                          ("won_game", ("A", "Q"), 35)):
+        with client.websocket_connect("/ws") as a:
+            code = _room_with_bots(a)
+            room = srv.rooms[code]
+            game = room.game
+            game.level_idx = [RANKS.index(levels[0]), RANKS.index(levels[1])]
+            rnd = game.round
+            rnd.phase = "round_end"
+            rnd.banker = 0
+            rnd.attacker_points = attacker_points
+            rnd.kitty_bonus = 0
+            rnd.buried = []
+            srv._finish_round(room)
+            st = srv.state_for(room, 0)
+            cases[name] = {key: st[key] for key in ("you", "banker", "levels", "games_won", "round_result")}
+    text = json.dumps(cases, indent=2, sort_keys=True) + "\n"
+    if os.environ.get("SHENGJI_REGEN_FIXTURES") == "1":
+        ROUND_END_FIXTURE.write_text(text)
+    assert ROUND_END_FIXTURE.read_text() == text
+
+
+def test_round_result_carries_the_levels_before_a_won_game_s_restart(client):
+    # we defend at A and hold them to 35: a game won, both teams restart at 2
+    payload = _finished_payload(client, ("A", "Q"), banker=0, attacker_points=35)
+    assert payload["point_scored"] is True
+    assert payload["old_levels"] == ["A", "Q"]
+    assert payload["new_levels"] == ["2", "2"]
 
 
 def test_the_start_level_is_fixed_once_the_game_starts(client):

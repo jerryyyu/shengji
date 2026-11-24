@@ -129,13 +129,16 @@ const rankIdx = (level: string | null | undefined): number | null => {
   return i < 0 ? null : i;
 };
 
-/** Each team's level before the round, as far as the result shows it: the
- *  bankers played at the trump rank; a team that did not win kept its level;
- *  the winners were their new level less the climb, unless the climb ran
- *  into A, which hides where they started. A won game restarts both teams,
- *  so the attackers' old level is unknown there. The table's own record of
- *  the round's levels wins whenever it agrees with all of that. */
+/** Each team's level before the round. The server sends it as old_levels.
+ *  From an older server, as far as the result shows it: the bankers played
+ *  at the trump rank; a team that did not win kept its level; the winners
+ *  were their new level less the climb, unless the climb ran into A, which
+ *  hides where they started. A won game restarts both teams, so the
+ *  attackers' old level is unknown there. The table's own record of the
+ *  round's levels wins whenever it agrees with all of that. */
 function levelsBefore(state: GameState, result: RoundResult, before: [string, string] | null = null): [number | null, number | null] {
+  const sent = result.old_levels?.map(rankIdx);
+  if (sent && sent.length === 2 && sent.every((v) => v !== null)) return [sent[0], sent[1]];
   const known: [number | null, number | null] = [null, null];
   const bank = state.banker === null ? null : ((state.banker % 2) as 0 | 1);
   if (bank !== null) known[bank] = rankIdx(state.trump?.rank);

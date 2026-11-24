@@ -227,6 +227,9 @@ interface GameState {
     level_change: number;         // levels gained by winner
     next_banker: number;
     new_levels: [string, string];
+    old_levels?: [string, string]; // each team's level the round was played at: before the
+                                  // climb, and on a won game before both restart; absent
+                                  // from an older server
     game_over: boolean;           // false in rooms: a table plays on
     games_won: [number, number];
     point_scored: boolean;        // this round won a game (a defence at A); levels restart

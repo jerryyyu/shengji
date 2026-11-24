@@ -1,0 +1,104 @@
+{
+  "round": {
+    "banker": 0,
+    "games_won": [
+      0,
+      0
+    ],
+    "levels": [
+      "Q",
+      "9"
+    ],
+    "round_result": {
+      "attacker_points": 40,
+      "game_over": false,
+      "games_won": [
+        0,
+        0
+      ],
+      "kitty_cards": [],
+      "kitty_points": 0,
+      "level_change": 1,
+      "new_levels": [
+        "Q",
+        "9"
+      ],
+      "next_banker": 2,
+      "old_levels": [
+        "J",
+        "9"
+      ],
+      "point_scored": false,
+      "winner_team": 0
+    },
+    "you": 0
+  },
+  "takeover": {
+    "banker": 0,
+    "games_won": [
+      0,
+      0
+    ],
+    "levels": [
+      "5",
+      "A"
+    ],
+    "round_result": {
+      "attacker_points": 125,
+      "game_over": false,
+      "games_won": [
+        0,
+        0
+      ],
+      "kitty_cards": [],
+      "kitty_points": 0,
+      "level_change": 1,
+      "new_levels": [
+        "5",
+        "A"
+      ],
+      "next_banker": 1,
+      "old_levels": [
+        "5",
+        "K"
+      ],
+      "point_scored": false,
+      "winner_team": 1
+    },
+    "you": 0
+  },
+  "won_game": {
+    "banker": 0,
+    "games_won": [
+      1,
+      0
+    ],
+    "levels": [
+      "2",
+      "2"
+    ],
+    "round_result": {
+      "attacker_points": 35,
+      "game_over": false,
+      "games_won": [
+        1,
+        0
+      ],
+      "kitty_cards": [],
+      "kitty_points": 0,
+      "level_change": 2,
+      "new_levels": [
+        "2",
+        "2"
+      ],
+      "next_banker": 2,
+      "old_levels": [
+        "A",
+        "Q"
+      ],
+      "point_scored": true,
+      "winner_team": 0
+    },
+    "you": 0
+  }
+}

@@ -14,9 +14,11 @@ pytest.importorskip("torch")
 from shengji.rl.model import load_any_net  # noqa: E402
 from shengji.rl.npnet import NpNet  # noqa: E402
 from shengji.rl.encode import ACT_DIM, OBS_DIM  # noqa: E402
+from local_data import require_local_data  # noqa: E402
 
 
 def test_npnet_matches_torch():
+    require_local_data("snapshots_v7w/ep02.pt")
     t = load_any_net("snapshots_v7w/ep02.pt")
     n = NpNet("snapshots_v7w/ep02.npz")   # the served numpy weights (weights_v7w_ep02.npz was the same blob; untracked in #688)
     rng = np.random.default_rng(0)

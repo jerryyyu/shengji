@@ -19,6 +19,9 @@ WORKFLOW = ROOT / ".github" / "workflows" / "pr-checks.yml"
 sys.path.insert(0, str(ROOT / "server" / "scripts" / "ci"))
 import select_tests  # noqa: E402
 
+# The `classify` fixture patches `select_tests.select` onto the live graph for the module.
+SELECT = select_tests.select
+
 
 # Built at run time so no constant in this module names them.
 UNNAMED_DOC = "docs/" + "zz" + "_unnamed.md"
@@ -129,19 +132,98 @@ def test_server_and_search_classification(classify, paths, server, search):
     assert (jobs["server"], jobs["search-regression"]) == (server, search)
 
 
-def test_a_test_module_change_selects_itself_and_its_users(classify):
-    selected = set(classify("server/tests/test_table_frame.py")["selected"])
-    assert "server/tests/test_table_frame.py" in selected
-    assert "server/tests/test_engine.py" not in selected
+def _importers(graph, path):
+    """The test modules whose own imports (not transitive) reach ``path``."""
+    return {p for p, targets in graph.deps.items() if path in targets and select_tests.is_test_module(p)}
+
+
+def test_a_test_module_change_selects_itself_and_its_users(classify, graph):
+    path = "server/tests/test_table_frame.py"
+    selected = set(classify(path)["selected"])
+    assert {path} | _importers(graph, path) <= selected
 
 
 def test_an_api_change_selects_its_importers_and_not_the_whole_suite(classify, graph):
-    out = classify("server/shengji/api/server.py")
-    selected = set(out["selected"])
-    assert "server/tests/test_server_ws.py" in selected
-    assert "server/tests/test_pv_search_serving.py" in selected
-    assert "server/tests/test_engine.py" not in selected
+    path = "server/shengji/api/server.py"
+    selected = set(classify(path)["selected"])
+    importers = _importers(graph, path)
+    assert {"server/tests/test_server_ws.py", "server/tests/test_pv_search_serving.py"} <= importers
+    assert importers <= selected
     assert len(selected) < len([p for p in graph.files if select_tests.is_test_module(p)])
+
+
+def _cone(graph, start):
+    """``start`` and every file it uses, transitively."""
+    seen, todo = {start}, [start]
+    while todo:
+        for target in graph.deps.get(todo.pop(), ()):
+            if target not in seen:
+                seen.add(target)
+                todo.append(target)
+    return seen
+
+
+def test_nothing_the_shared_conftest_imports_lists_every_source_file(graph):
+    # A file whose directory read the selector cannot bound is a reader of every
+    # source file; inside conftest's import cone it makes every change select every
+    # server test module.  The selector bounds a read unless the file names a
+    # tracked directory in a string constant ("web", "server", ...) or `__file__`.
+    probe = "server/shengji/" + "zz" + "_unnamed.py"
+    readers = graph.readers_of_directories(probe) & _cone(graph, "server/tests/conftest.py")
+    assert not readers, (
+        f"{sorted(readers)} are imported by server/tests/conftest.py and read a directory the "
+        "selector treats as the repository, so every change selects the whole server suite; "
+        "keep tracked directory names out of their string constants or bound the read")
+
+
+def _fixture_graph(root, sources):
+    for path, text in sources.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_text(text)
+    return select_tests.Graph(root, files=sorted(sources))
+
+
+FIXTURE_REPO = {
+    "web/src/App.tsx": "",
+    "server/shengji/__init__.py": "",
+    "server/shengji/engine/__init__.py": "",
+    "server/shengji/engine/rules.py": "RANKS = 13\n",
+    "server/shengji/api/__init__.py": "",
+    "server/shengji/api/limits.py": "LIMIT = 1\n",
+    "server/shengji/api/server.py": "from shengji.engine.rules import RANKS\n",
+    "server/tests/conftest.py": "import shengji.api.limits\n",
+    "server/tests/test_engine.py": "from shengji.engine.rules import RANKS\n",
+    "server/tests/test_server_ws.py": "import shengji.api.server\n",
+    "server/tests/test_table_frame.py": "FRAME = 1\n",
+    "server/tests/test_frame_users.py": "from tests.test_table_frame import FRAME\n",
+}
+
+
+def test_the_selection_follows_imports_on_a_fixed_tree(tmp_path):
+    graph = _fixture_graph(tmp_path, FIXTURE_REPO)
+    def selected(*paths):
+        chosen, _ = SELECT(list(paths), tmp_path, graph)
+        return chosen
+    assert selected("server/shengji/api/server.py") == {"server/tests/test_server_ws.py"}
+    assert selected("server/tests/test_table_frame.py") == {
+        "server/tests/test_table_frame.py", "server/tests/test_frame_users.py"}
+    assert selected("server/shengji/engine/rules.py") == {
+        "server/tests/test_engine.py", "server/tests/test_server_ws.py"}
+    # conftest's imports reach every server test module
+    assert selected("server/shengji/api/limits.py") == {
+        p for p in FIXTURE_REPO if select_tests.is_test_module(p)}
+
+
+def test_an_unbounded_read_in_the_conftest_cone_selects_every_test_on_a_fixed_tree(tmp_path):
+    sources = dict(FIXTURE_REPO)
+    sources["server/shengji/api/limits.py"] = (
+        "import os\nPLATFORMS = {\"web\"}\n\ndef prune():\n    directory = min(PLATFORMS)\n    return os.listdir(directory)\n")
+    graph = _fixture_graph(tmp_path, sources)
+    chosen, _ = SELECT(["server/shengji/api/server.py"], tmp_path, graph)
+    assert "server/tests/test_engine.py" in chosen
+    probe = "server/shengji/" + "zz" + "_unnamed.py"
+    assert graph.readers_of_directories(probe) & _cone(graph, "server/tests/conftest.py") == {
+        "server/shengji/api/limits.py"}
 
 
 @pytest.mark.parametrize("paths, web", [

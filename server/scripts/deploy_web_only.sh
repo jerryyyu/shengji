@@ -11,8 +11,10 @@
 # and web/ is identical to the web ref; refuse on a dirty worktree; read /healthz and
 # refuse unless rooms == 0; push the branch; fly deploy --ha=false; re-read /healthz and
 # refuse (printing the rollback command, never running it) if the bot identity changed;
-# require exactly one started machine and the marker text in a served JS bundle or a
-# chunk it imports.
+# require exactly one started machine; with --marker, build web/ of the deploy tree
+# locally, refuse before the push unless the marker is in that build's JS, and after
+# the deploy require the served index.html to name exactly the local build's
+# content-hashed entry script and stylesheet files.
 # --dry-run runs every step except the push and fly deploy.
 # A JSON receipt records the tree, served and web shas, /healthz and the Fly version
 # before and after, and the outcome.
@@ -47,6 +49,9 @@ STARTED_MACHINES=null
 BUNDLES_BEFORE=
 BUNDLES_AFTER=
 MARKER_FOUND=null
+LOCAL_DIST=
+LOCAL_ENTRIES=
+SERVED_ENTRIES=
 ROLLBACK_CMD=
 PUSHED=0
 DEPLOYED=0
@@ -220,61 +225,60 @@ served_bundles() {
   curl -fsS --max-time 20 "$URL/" | grep -o -E '/assets/[A-Za-z0-9._-]+\.js' | sort -u
 }
 
-# imported_chunks URL ENTRY < BODY: the chunks a bundle body names, one per line.
-# Only the reference shapes Vite emits count: import("./NAME.js") (either quote),
-# from"./NAME.js" and a quoted "/assets/NAME.js", with NAME in [A-Za-z0-9_.-].
-# Each resolves relative to the entry bundle's URL ENTRY (a path under URL) and is
-# kept only on URL's origin at exactly /assets/<name>.js; other strings in the
-# body are never parsed, so they cannot hide or invent a reference.
-imported_chunks() {
-  python3 -c '
-import re, sys
-from urllib.parse import urljoin, urlsplit
-origin = urlsplit(sys.argv[1])
-entry = urljoin(sys.argv[1], sys.argv[2])
-body = sys.stdin.read()
-name = r"[A-Za-z0-9_.-]+\.js"
-shapes = (
-    r"\bimport\(\s*([\x22\x27])(\./" + name + r")\1\s*\)",
-    r"\bfrom\s*([\x22\x27])(\./" + name + r")\1",
-    r"([\x22\x27])(/assets/" + name + r")\1",
-)
-found = set()
-for shape in shapes:
-    for m in re.finditer(shape, body):
-        try:
-            ref = urlsplit(urljoin(entry, m.group(2)))
-        except ValueError:
-            continue
-        if (ref.scheme, ref.netloc) != (origin.scheme, origin.netloc) or ref.query or ref.fragment:
-            continue
-        if re.fullmatch(r"/assets/[A-Za-z0-9_.-]+\.js", ref.path):
-            found.add(ref.path)
-for chunk in sorted(found):
-    print(chunk)
-' "$1" "$2"
+# entry_refs < INDEX_HTML: the /assets/*.js and /assets/*.css files an index.html
+# names, sorted, one per line.
+entry_refs() {
+  grep -o -E '/assets/[A-Za-z0-9._-]+\.(js|css)' | sort -u
 }
 
-# marker_served: the marker is in an entry bundle of the served index.html or in a
-# chunk one of those bundles imports (lazily loaded routes and panels).
-marker_served() {
-  local bundle body chunk entries chunks=
-  entries=" $(served_bundles | tr '\n' ' ') " || return 1
-  for bundle in $entries; do
-    body=$(curl -fsS --max-time 30 "$URL$bundle") || continue
-    case "$body" in
-      *"$MARKER"*) return 0 ;;
-    esac
-    chunks="$chunks $(printf '%s' "$body" | imported_chunks "$URL" "$bundle")"
-  done
-  for chunk in $(printf '%s\n' $chunks | sort -u); do
-    case "$entries" in *" $chunk "*) continue ;; esac
-    body=$(curl -fsS --max-time 30 "$URL$chunk") || continue
-    case "$body" in
-      *"$MARKER"*) return 0 ;;
-    esac
+served_entries() {
+  curl -fsS --max-time 20 "$URL/" | entry_refs
+}
+
+# build_local_web WORKTREE: builds web/ of WORKTREE's HEAD the way the Dockerfile does
+# (npm ci, npm run build) in a fresh export, leaving WORKTREE untouched, with the
+# build-switch variables vite.config reads unset as they are in the image build.
+# Prints the dist directory.
+build_local_web() {
+  local out tmp=${TMPDIR:-/tmp}
+  out=$(mktemp -d "${tmp%/}/deploy-web-build.XXXXXX") || return 1
+  git -C "$1" archive HEAD web | tar -x -C "$out" || return 1
+  (
+    cd "$out/web" || exit 1
+    for v in $(compgen -e); do
+      case "$v" in VITE_*|SHENGJI_NEARBY_*|NODE_ENV) unset "$v" ;; esac
+    done
+    npm ci --no-audit --no-fund >&2 && npm run build >&2
+  ) || return 1
+  [ -f "$out/web/dist/index.html" ] || return 1
+  # keep the built dist (the receipt names it), not the installed dependencies
+  if [ -d "$out/web/node_modules" ]; then
+    python3 "$(dirname "${BASH_SOURCE[0]}")/safe_rm.py" "$out/web/node_modules" >&2 \
+      || say "could not remove $out/web/node_modules"
+  fi
+  printf '%s\n' "$out/web/dist"
+}
+
+# marker_in_build DIST: the marker is in a JS file of the local build. Every file in
+# dist/assets is an output of the build's module graph.
+marker_in_build() {
+  local f
+  for f in "$1"/assets/*.js; do
+    [ -f "$f" ] || continue
+    grep -qF -- "$MARKER" "$f" && return 0
   done
   return 1
+}
+
+# marker_served: the marker is in the local build, and the served index.html names
+# exactly the local build's entry files. Vite names each file by a hash of its
+# content, and an entry's content names the hashed chunks it imports, so a served
+# entry with the local entry's name is that build, lazy chunks included.
+marker_served() {
+  [ -n "$LOCAL_DIST" ] && [ -n "$LOCAL_ENTRIES" ] || return 1
+  marker_in_build "$LOCAL_DIST" || return 1
+  SERVED_ENTRIES=$(served_entries | tr '\n' ' ') || return 1
+  [ "$SERVED_ENTRIES" = "$LOCAL_ENTRIES" ]
 }
 
 write_receipt() {
@@ -285,6 +289,7 @@ write_receipt() {
   R_DRY=$DRY_RUN R_HB=$HEALTHZ_BEFORE R_HA=$HEALTHZ_AFTER R_VB=$FLY_VERSION_BEFORE \
   R_VA=$FLY_VERSION_AFTER R_IB=$FLY_IMAGE_BEFORE R_IA=$FLY_IMAGE_AFTER R_SM=$STARTED_MACHINES \
   R_BB=$BUNDLES_BEFORE R_BA=$BUNDLES_AFTER R_MARKER=$MARKER R_MF=$MARKER_FOUND \
+  R_LD=$LOCAL_DIST R_LE=$LOCAL_ENTRIES R_SE=$SERVED_ENTRIES \
   R_ROLLBACK=$ROLLBACK_CMD R_PUSHED=$PUSHED R_DEPLOYED=$DEPLOYED \
   python3 - "$RECEIPT" <<'PY'
 import json, os, sys, datetime
@@ -310,6 +315,8 @@ receipt = {
     "started_machines": js("R_SM"),
     "bundles_before": e["R_BB"].split(), "bundles_after": e["R_BA"].split(),
     "marker": e["R_MARKER"] or None, "marker_found": js("R_MF"),
+    "local_build": e["R_LD"] or None,
+    "local_entries": e["R_LE"].split(), "served_entries": e["R_SE"].split(),
     "rollback_command": e["R_ROLLBACK"] or None,
 }
 with open(sys.argv[1], "w") as f:
@@ -358,6 +365,16 @@ main() {
     || refuse "deploy tree is not served tree + web/ only"
   say "deploy commit $DEPLOY_SHA (tree $TREE_SHA): outside web/ identical to served, web/ identical to $WEB_REF"
   check_clean_worktree "$WORKTREE" || refuse "dirty worktree $WORKTREE"
+
+  if [ -n "$MARKER" ]; then
+    LOCAL_DIST=$(build_local_web "$WORKTREE") || refuse "could not build web/ of the deploy tree locally"
+    LOCAL_ENTRIES=$(entry_refs < "$LOCAL_DIST/index.html" | tr '\n' ' ')
+    [ -n "${LOCAL_ENTRIES// /}" ] || refuse "the local build's index.html names no /assets entry"
+    say "local build $LOCAL_DIST, entries: $LOCAL_ENTRIES"
+    if [ "$DRY_RUN" = 0 ] && ! marker_in_build "$LOCAL_DIST"; then
+      refuse "the local build of the deploy tree lacks the marker; nothing was pushed or deployed"
+    fi
+  fi
 
   HEALTHZ_BEFORE=$(fetch_healthz) || refuse "could not read $URL/healthz"
   local identity_before identity_after
@@ -416,9 +433,9 @@ main() {
   if [ -n "$MARKER" ]; then
     if marker_served; then MARKER_FOUND=true; else MARKER_FOUND=false; fi
     if [ "$DRY_RUN" = 0 ] && [ "$MARKER_FOUND" = false ]; then
-      refuse "served JS bundle lacks the marker; the new web build is not live. Rollback: $ROLLBACK_CMD"
+      refuse "served index.html names [${SERVED_ENTRIES% }], not the local build's [${LOCAL_ENTRIES% }]; the new web build is not live. Rollback: $ROLLBACK_CMD"
     fi
-    say "marker in served bundle: $MARKER_FOUND"
+    say "marker in the local build and its entries served: $MARKER_FOUND"
   fi
 
   if [ "$DRY_RUN" = 1 ]; then STATUS=dry-run-ok; else STATUS=deployed; fi

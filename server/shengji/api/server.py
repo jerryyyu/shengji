@@ -157,10 +157,14 @@ MOVE_TIMER = 60.0
 # coming back never buys a whole new clock (web/src/offline/server RETURN_MIN).
 RETURN_MIN = 15.0
 # A disconnected human keeps their seat this long before the bot plays for
-# them, in every room, timed or casual: stepping away (a backgrounded phone,
-# a dropped network) is never worse than sitting idle at the table. A Leave
-# press does not wait for it; the bot covers at once.
-TAKEOVER_AFTER = MOVE_TIMER
+# them, in every room, timed or casual. A Leave press does not wait for it;
+# the bot covers at once.
+TAKEOVER_AFTER = 30.0
+# A dropped seat's move clock stands still for at most this long away from
+# the decision it owes; after that it runs on from where it stood, so the
+# decision ends by the move clock or by TAKEOVER_AFTER, whichever is first.
+# Back within it, the seat finds its clock as it left it (RETURN_MIN applies).
+AWAY_PAUSE_MAX = 20.0
 # A seat that confirmed the round end keeps its confirmation through an
 # absence up to this long, so a brief network drop does not undo it.
 READY_KEEP_SECONDS = 15.0
@@ -787,22 +791,49 @@ def _sync_move_timer(room: Room) -> None:
             sd.turn_started = now()
 
 
+def _away_clock(seat: Seat) -> tuple[float, float]:
+    """For a dropped seat that owes a decision: the clock it had used when it
+    paused (the drop, or the decision's start if that came later), and how
+    far past AWAY_PAUSE_MAX its time away runs (0 within it)."""
+    paused_at = max(seat.left_at, seat.turn_started)
+    over = max(0.0, now() - paused_at - AWAY_PAUSE_MAX)
+    return paused_at - seat.turn_started, over
+
+
 def _resume_move_clock(room: Room, seat: Seat) -> None:
     """A seat back from a drop while it owes a decision (caller holds the
-    lock): its clock takes up where it stood at the drop, so no time away
-    counts toward a timeout, with at least RETURN_MIN left. A decision that
+    lock). Back within AWAY_PAUSE_MAX, its clock takes up where it stood at
+    the drop, with at least RETURN_MIN left; later, the time away past
+    AWAY_PAUSE_MAX has run on that clock, with no floor. A decision that
     changed while it was away starts a fresh clock in ``_sync_move_timer``."""
     if (not room.move_timer or seat.connected or seat.left_at is None
             or seat.turn_started is None):
         return
-    used = max(0.0, seat.left_at - seat.turn_started)
-    left = min(MOVE_TIMER, max(RETURN_MIN, MOVE_TIMER - used))
+    used, over = _away_clock(seat)
+    if over <= 0.0:
+        left = min(MOVE_TIMER, max(RETURN_MIN, MOVE_TIMER - used))
+    else:
+        left = max(0.0, MOVE_TIMER - used - over)
     seat.turn_started = now() - (MOVE_TIMER - left)
+
+
+def _away_timed_out(room: Room, seat: int) -> bool:
+    """Has a dropped seat's move clock run out inside the hold? Its clock
+    stood still for AWAY_PAUSE_MAX and then ran on; once the hold is over
+    (``bot_announced``) or after a Leave, the takeover path covers it."""
+    _sync_move_timer(room)
+    sd = room.seats[seat]
+    if (not _timer_live(room) or sd.is_bot or sd.connected or sd.away
+            or sd.left_at is None or sd.turn_started is None
+            or sd.bot_announced or sd.left_by_choice):
+        return False
+    used, over = _away_clock(sd)
+    return MOVE_TIMER - used - over <= 0.0
 
 
 def _timed(room: Room, seat: int) -> bool:
     """Is this seat's move clock running? Connected humans only: a
-    disconnected seat is on TAKEOVER_AFTER instead."""
+    disconnected seat's clock is read by ``_away_timed_out``."""
     sd = room.seats[seat]
     return (_timer_live(room) and not sd.is_bot and sd.connected
             and sd.turn_started is not None)
@@ -1663,8 +1694,11 @@ def _turn_eligible(room: Room, seat: int, mode: str, *,
             and (owner.left_by_choice or now() - owner.left_at >= TAKEOVER_AFTER)
         )
     if mode == "timeout":
-        return (room.move_timer and not owner.is_bot and owner.connected
-                and (owner.away or _timed_out(room, seat)))
+        if not room.move_timer or owner.is_bot:
+            return False
+        if not owner.connected:
+            return _away_timed_out(room, seat)
+        return owner.away or _timed_out(room, seat)
     raise ValueError(f"unknown bot-turn mode {mode!r}")
 
 
@@ -1863,10 +1897,11 @@ def _commit_bot_turn(room: Room, prepared: _PreparedBotTurn) -> bool:
         if snapshot.mode == "close":
             # the bot played for an absent player: rated as a takeover
             room.seats[seat].bot_announced = True
-        if snapshot.mode == "timeout":
-            # Counted here, once per committed action and before the round
-            # end below captures ratings: a final-card timeout that makes the
-            # seat away must be rated as away.
+        if snapshot.mode == "timeout" and room.seats[seat].connected:
+            # A dropped seat's run-out clock is not a strike: its absence is
+            # rated by the hold. Counted here, once per committed action and
+            # before the round end below captures ratings: a final-card
+            # timeout that makes the seat away must be rated as away.
             _count_timeout(room, seat)
         if rnd.phase == "round_end" and room.game.result is None:
             room.game.finish_round()

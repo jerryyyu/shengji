@@ -1160,13 +1160,14 @@ def test_bot_does_not_act_before_the_grace_period(client, clock):
         assert room.round.turn == seat, "turn advanced without a play"
 
 
-def test_the_takeover_window_is_the_move_timer():
-    """One clock: a dropped seat waits exactly as long as a present player
-    may think, in every room."""
+def test_the_hold_is_thirty_seconds_and_the_away_pause_twenty():
+    """A dropped seat is held 30 s in every room; its move clock stands still
+    for at most 20 s of that, shorter than both the hold and the clock."""
     from shengji.api import server as srv
 
     assert srv.MOVE_TIMER == 60.0
-    assert srv.TAKEOVER_AFTER == srv.MOVE_TIMER
+    assert srv.TAKEOVER_AFTER == 30.0
+    assert srv.AWAY_PAUSE_MAX == 20.0
 
 
 def _run_once(coro):
@@ -1180,9 +1181,9 @@ def _run_once(coro):
 
 
 @pytest.mark.parametrize("timed", [False, True], ids=["casual", "move-timer"])
-def test_a_dropped_seat_is_held_for_sixty_seconds_then_covered(client, clock, timed):
-    """Disconnect at t=0: at 59 s the seat is still reserved, the countdown
-    reads 1 s and no bot has played; past 60 s the bot plays the turn. The
+def test_a_dropped_seat_is_held_for_thirty_seconds_then_covered(client, clock, timed):
+    """Disconnect at t=0: at 29 s the seat is still reserved, the countdown
+    reads 1 s and no bot has played; at 30 s the bot plays the turn. The
     same in a casual room and in one with the move timer."""
     from shengji.api import server as srv
 
@@ -1194,7 +1195,7 @@ def test_a_dropped_seat_is_held_for_sixty_seconds_then_covered(client, clock, ti
             pytest.skip("could not place a disconnected human on turn")
         assert room.seats[seat].left_at == clock["v"]
         plays_before = _plays_by(room, seat)
-        clock["v"] += 59.0
+        clock["v"] += 29.0
         assert srv._reserved(room, seat)
         assert srv._takeover_in(room, seat) == 1.0
         assert not _run_once(srv.watchdog_tick(room))
@@ -1224,7 +1225,7 @@ def test_a_leave_press_is_covered_at_once_not_after_the_window(clock, monkeypatc
     dropped = room_with(False)
     assert srv._turn_eligible(left, 0, "takeover")
     assert not srv._turn_eligible(dropped, 0, "takeover")
-    clock["v"] += srv.MOVE_TIMER - 1
+    clock["v"] += srv.TAKEOVER_AFTER - 1
     assert not srv._turn_eligible(dropped, 0, "takeover")
     clock["v"] += 1
     assert srv._turn_eligible(dropped, 0, "takeover")
@@ -2464,15 +2465,16 @@ def _drop_and_return(client, a_ctx, b, code, room, clock, drop_at, back_at):
 
 
 @pytest.mark.parametrize("drop_at,back_at,left", [
-    (5.0, 58.0, 55.0),      # the clock stood still while away
+    (5.0, 24.0, 55.0),      # the clock stood still while away
     (50.0, 55.0, 15.0),     # nearly run out at the drop: RETURN_MIN
-    (0.0, 30.0, 60.0),
-], ids=["early-drop", "late-drop", "drop-at-once"])
+    (50.0, 70.0, 15.0),     # back at the end of the pause: RETURN_MIN
+    (0.0, 20.0, 60.0),
+], ids=["early-drop", "late-drop", "late-drop-back-at-20s", "drop-at-once"])
 def test_a_returning_seat_resumes_its_clock_with_at_least_return_min(
         client, clock, monkeypatch, drop_at, back_at, left):
-    """The move clock stands still while the seat is disconnected and takes
-    up where it stood on its return, with at least RETURN_MIN left: no strike
-    comes of the time away."""
+    """Back within AWAY_PAUSE_MAX, the move clock takes up where it stood at
+    the drop, with at least RETURN_MIN left: no strike comes of the time
+    away."""
     from shengji.api import server as srv
 
     with client.websocket_connect("/ws") as b:
@@ -2498,6 +2500,75 @@ def test_a_returning_seat_resumes_its_clock_with_at_least_return_min(
         finally:
             back.__exit__(None, None, None)
     assert srv.RETURN_MIN == 15.0
+
+
+@pytest.mark.parametrize("drop_at,back_at,left", [
+    (50.0, 75.0, 5.0),      # 10 s left at the drop, back 25 s later
+    (5.0, 30.0, 50.0),      # 55 s left at the drop, back 25 s later
+    (55.0, 79.0, 1.0),      # 5 s left, back 24 s later: no RETURN_MIN floor
+], ids=["ten-left-back-after-25s", "early-drop-back-after-25s", "five-left-back-after-24s"])
+def test_a_seat_back_after_the_away_pause_finds_its_clock_run_down(
+        client, clock, monkeypatch, drop_at, back_at, left):
+    """Away longer than AWAY_PAUSE_MAX, the clock ran on from where it stood
+    once the pause was over: the seat is back with that much less, and the
+    decision ends by the move clock as for any present player."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as b:
+        a_ctx = client.websocket_connect("/ws")
+        a = a_ctx.__enter__()
+        code, room = _timer_game(client, a, monkeypatch)
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "seat": 1})
+        _drain(b, "state")
+        assert _tick(client, room) is False          # starts the clock
+        back, ws = _drop_and_return(client, a_ctx, b, code, room, clock, drop_at, back_at)
+        try:
+            seat = room.seats[0]
+            before = _plays_by(room, 0)
+            assert _my_turn(room)
+            assert srv._turn_deadline(room, 0) == left
+            clock["v"] += left - 0.5
+            assert _tick(client, room) is False
+            assert _plays_by(room, 0) == before
+            clock["v"] += 1.0
+            assert _tick(client, room) is True       # the run-down clock runs out
+            assert _plays_by(room, 0) == before + 1
+            assert (seat.timeouts_in_row, seat.timeouts_in_round) == (1, 1)
+        finally:
+            back.__exit__(None, None, None)
+
+
+def test_a_dropped_seat_whose_clock_runs_out_inside_the_hold_is_played_for(
+        client, clock, monkeypatch):
+    """5 s left at the drop: the clock stands still 20 s, runs on for 5 s,
+    and at 25 s away (inside the 30 s hold) the bot makes that decision.
+    No strike and no takeover announcement: the seat is still held."""
+    from shengji.api import server as srv
+
+    with client.websocket_connect("/ws") as b:
+        a_ctx = client.websocket_connect("/ws")
+        a = a_ctx.__enter__()
+        code, room = _timer_game(client, a, monkeypatch)
+        b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bee", "seat": 1})
+        _drain(b, "state")
+        _tick(client, room)
+        seat = room.seats[0]
+        started = seat.turn_started
+        clock["v"] = started + 55.0
+        a_ctx.__exit__(None, None, None)
+        _wait_for(lambda: not seat.connected)
+        before = _plays_by(room, 0)
+        clock["v"] = started + 55.0 + srv.AWAY_PAUSE_MAX + 4.5
+        assert _tick(client, room) is False
+        assert client.portal.call(srv.watchdog_tick, room) is False
+        assert _plays_by(room, 0) == before
+        clock["v"] += 1.0                            # 25.5 s away: clock out
+        assert client.portal.call(srv.watchdog_tick, room) is False
+        assert _tick(client, room) is True
+        assert _plays_by(room, 0) == before + 1
+        assert (seat.timeouts_in_row, seat.timeouts_in_round, seat.away) == (0, 0, False)
+        assert seat.bot_announced is False
+        assert srv._reserved(room, 0)
 
 
 def test_a_drop_past_the_hold_window_is_covered_then_a_return_gets_a_fresh_clock(

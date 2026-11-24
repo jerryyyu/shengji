@@ -249,6 +249,7 @@ jobs:
           tests/test_check_comment_provenance.py
           tests/test_lane_lib.py
           tests/test_ci_path_classifier.py
+          tests/test_ci_flake_report.py
           tests/test_receipt_summary.py
           tests/test_mistake_dashboard.py
           tests/test_paired_window_stats.py

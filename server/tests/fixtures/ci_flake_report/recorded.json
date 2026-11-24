@@ -1,0 +1,615 @@
+{
+ "jobs": {
+  "45102283018/1": [
+   {
+    "conclusion": "success",
+    "id": 137455623801,
+    "name": "test-selection",
+    "started_at": "2026-11-23T02:50:18Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137455624102,
+    "name": "comment-provenance",
+    "started_at": "2026-11-23T02:50:32Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137455624209,
+    "name": "frontend",
+    "started_at": "2026-11-23T02:52:49Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137455624637,
+    "name": "changes",
+    "started_at": "2026-11-23T02:54:13Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457381900,
+    "name": "import-walk",
+    "started_at": "2026-11-23T02:54:57Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457381939,
+    "name": "train-policy (pure)",
+    "started_at": "2026-11-23T02:56:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457381954,
+    "name": "server (compiled, 2)",
+    "started_at": "2026-11-23T02:56:53Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457381958,
+    "name": "train-deadline",
+    "started_at": "2026-11-23T02:58:47Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457381974,
+    "name": "server (pure, 1)",
+    "started_at": "2026-11-23T02:56:12Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457381980,
+    "name": "server (pure, 2)",
+    "started_at": "2026-11-23T03:06:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382014,
+    "name": "e2e",
+    "started_at": "2026-11-23T02:54:44Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382017,
+    "name": "luna-profiles (2)",
+    "started_at": "2026-11-23T03:04:30Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382021,
+    "name": "train-cwv (1)",
+    "started_at": "2026-11-23T03:01:34Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382035,
+    "name": "train-policy (compiled)",
+    "started_at": "2026-11-23T03:04:08Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382039,
+    "name": "luna-profiles (1)",
+    "started_at": "2026-11-23T03:04:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382040,
+    "name": "search-regression (compiled, 3)",
+    "started_at": "2026-11-23T02:57:47Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382041,
+    "name": "train-cwv (2)",
+    "started_at": "2026-11-23T03:03:28Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382054,
+    "name": "search-regression (compiled, 1)",
+    "started_at": "2026-11-23T02:56:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382062,
+    "name": "train-cwv (3)",
+    "started_at": "2026-11-23T03:07:29Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382087,
+    "name": "search-regression (compiled, 2)",
+    "started_at": "2026-11-23T03:01:18Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382097,
+    "name": "search-regression (pure, 1)",
+    "started_at": "2026-11-23T02:58:45Z"
+   },
+   {
+    "conclusion": "failure",
+    "id": 137457382140,
+    "name": "server (compiled, 1)",
+    "started_at": "2026-11-23T03:09:03Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382152,
+    "name": "search-regression (pure, 2)",
+    "started_at": "2026-11-23T03:07:26Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137457382197,
+    "name": "search-regression (pure, 3)",
+    "started_at": "2026-11-23T03:07:35Z"
+   }
+  ],
+  "45102283018/2": [
+   {
+    "conclusion": "failure",
+    "id": 137465493624,
+    "name": "server (compiled, 1)",
+    "started_at": "2026-11-23T03:22:52Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465493792,
+    "name": "comment-provenance",
+    "started_at": "2026-11-23T02:50:32Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494577,
+    "name": "search-regression (pure, 1)",
+    "started_at": "2026-11-23T02:58:45Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494676,
+    "name": "e2e",
+    "started_at": "2026-11-23T02:54:44Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494686,
+    "name": "train-deadline",
+    "started_at": "2026-11-23T02:58:47Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494704,
+    "name": "train-policy (compiled)",
+    "started_at": "2026-11-23T03:04:08Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494742,
+    "name": "frontend",
+    "started_at": "2026-11-23T02:52:49Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494804,
+    "name": "train-cwv (3)",
+    "started_at": "2026-11-23T03:07:29Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494806,
+    "name": "train-policy (pure)",
+    "started_at": "2026-11-23T02:56:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494826,
+    "name": "search-regression (compiled, 1)",
+    "started_at": "2026-11-23T02:56:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494876,
+    "name": "import-walk",
+    "started_at": "2026-11-23T02:54:57Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494903,
+    "name": "search-regression (compiled, 2)",
+    "started_at": "2026-11-23T03:01:18Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465494918,
+    "name": "server (compiled, 2)",
+    "started_at": "2026-11-23T02:56:53Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465495005,
+    "name": "search-regression (compiled, 3)",
+    "started_at": "2026-11-23T02:57:47Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465495101,
+    "name": "server (pure, 2)",
+    "started_at": "2026-11-23T03:06:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465495126,
+    "name": "search-regression (pure, 2)",
+    "started_at": "2026-11-23T03:07:26Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465495531,
+    "name": "search-regression (pure, 3)",
+    "started_at": "2026-11-23T03:07:35Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465522328,
+    "name": "luna-profiles (1)",
+    "started_at": "2026-11-23T03:04:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465525061,
+    "name": "luna-profiles (2)",
+    "started_at": "2026-11-23T03:04:30Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465528681,
+    "name": "test-selection",
+    "started_at": "2026-11-23T02:50:18Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465531734,
+    "name": "train-cwv (1)",
+    "started_at": "2026-11-23T03:01:34Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465532553,
+    "name": "changes",
+    "started_at": "2026-11-23T02:54:13Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465541779,
+    "name": "server (pure, 1)",
+    "started_at": "2026-11-23T02:56:12Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137465546484,
+    "name": "train-cwv (2)",
+    "started_at": "2026-11-23T03:03:28Z"
+   }
+  ],
+  "45102283018/3": [
+   {
+    "conclusion": "success",
+    "id": 137471160093,
+    "name": "server (compiled, 1)",
+    "started_at": "2026-11-23T03:39:04Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471160464,
+    "name": "comment-provenance",
+    "started_at": "2026-11-23T02:50:32Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471160730,
+    "name": "train-cwv (1)",
+    "started_at": "2026-11-23T03:01:34Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161074,
+    "name": "luna-profiles (1)",
+    "started_at": "2026-11-23T03:04:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161276,
+    "name": "luna-profiles (2)",
+    "started_at": "2026-11-23T03:04:30Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161307,
+    "name": "import-walk",
+    "started_at": "2026-11-23T02:54:57Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161325,
+    "name": "server (pure, 1)",
+    "started_at": "2026-11-23T02:56:12Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161338,
+    "name": "search-regression (pure, 1)",
+    "started_at": "2026-11-23T02:58:45Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161341,
+    "name": "search-regression (pure, 2)",
+    "started_at": "2026-11-23T03:07:26Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161365,
+    "name": "train-policy (compiled)",
+    "started_at": "2026-11-23T03:04:08Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161466,
+    "name": "search-regression (pure, 3)",
+    "started_at": "2026-11-23T03:07:35Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161514,
+    "name": "search-regression (compiled, 2)",
+    "started_at": "2026-11-23T03:01:18Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471161519,
+    "name": "train-cwv (3)",
+    "started_at": "2026-11-23T03:07:29Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471162033,
+    "name": "search-regression (compiled, 3)",
+    "started_at": "2026-11-23T02:57:47Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471190401,
+    "name": "server (pure, 2)",
+    "started_at": "2026-11-23T03:06:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471192070,
+    "name": "train-deadline",
+    "started_at": "2026-11-23T02:58:47Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471193487,
+    "name": "train-policy (pure)",
+    "started_at": "2026-11-23T02:56:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471195400,
+    "name": "train-cwv (2)",
+    "started_at": "2026-11-23T03:03:28Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471195743,
+    "name": "e2e",
+    "started_at": "2026-11-23T02:54:44Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471196863,
+    "name": "server (compiled, 2)",
+    "started_at": "2026-11-23T02:56:53Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471197180,
+    "name": "changes",
+    "started_at": "2026-11-23T02:54:13Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471206434,
+    "name": "test-selection",
+    "started_at": "2026-11-23T02:50:18Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471207536,
+    "name": "search-regression (compiled, 1)",
+    "started_at": "2026-11-23T02:56:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137471212563,
+    "name": "frontend",
+    "started_at": "2026-11-23T02:52:49Z"
+   }
+  ],
+  "45108202462/1": [
+   {
+    "conclusion": "success",
+    "id": 137474265304,
+    "name": "test-selection",
+    "started_at": "2026-11-23T03:50:14Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137474265633,
+    "name": "changes",
+    "started_at": "2026-11-23T03:51:36Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137474265637,
+    "name": "frontend",
+    "started_at": "2026-11-23T03:51:46Z"
+   },
+   {
+    "conclusion": "skipped",
+    "id": 137474266845,
+    "name": "comment-provenance",
+    "started_at": "2026-11-23T03:49:21Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016437,
+    "name": "luna-profiles (1)",
+    "started_at": "2026-11-23T03:51:55Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016438,
+    "name": "import-walk",
+    "started_at": "2026-11-23T03:58:02Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016472,
+    "name": "e2e",
+    "started_at": "2026-11-23T03:51:57Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016473,
+    "name": "train-deadline",
+    "started_at": "2026-11-23T03:56:12Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016474,
+    "name": "train-policy (compiled)",
+    "started_at": "2026-11-23T03:55:53Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016483,
+    "name": "server (compiled, 1)",
+    "started_at": "2026-11-23T03:55:48Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016498,
+    "name": "server (pure, 1)",
+    "started_at": "2026-11-23T03:55:04Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016499,
+    "name": "train-cwv (2)",
+    "started_at": "2026-11-23T03:52:31Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016510,
+    "name": "train-policy (pure)",
+    "started_at": "2026-11-23T03:59:09Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016517,
+    "name": "train-cwv (1)",
+    "started_at": "2026-11-23T03:57:14Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016518,
+    "name": "server (pure, 2)",
+    "started_at": "2026-11-23T03:55:24Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016520,
+    "name": "luna-profiles (2)",
+    "started_at": "2026-11-23T03:56:23Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016543,
+    "name": "train-cwv (3)",
+    "started_at": "2026-11-23T04:00:53Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016555,
+    "name": "search-regression (pure, 2)",
+    "started_at": "2026-11-23T04:03:49Z"
+   },
+   {
+    "conclusion": "failure",
+    "id": 137475016591,
+    "name": "server (compiled, 2)",
+    "started_at": "2026-11-23T03:59:51Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016612,
+    "name": "search-regression (compiled, 1)",
+    "started_at": "2026-11-23T04:01:15Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016615,
+    "name": "search-regression (pure, 3)",
+    "started_at": "2026-11-23T03:58:08Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016647,
+    "name": "search-regression (pure, 1)",
+    "started_at": "2026-11-23T03:58:13Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016668,
+    "name": "search-regression (compiled, 2)",
+    "started_at": "2026-11-23T04:04:40Z"
+   },
+   {
+    "conclusion": "success",
+    "id": 137475016810,
+    "name": "search-regression (compiled, 3)",
+    "started_at": "2026-11-23T04:04:04Z"
+   }
+  ]
+ },
+ "logs": {
+  "137457382140": "2026-11-23T03:11:02.4261376Z [1.2] 56 passed in 62.90s (0:01:02)\n2026-11-23T03:11:05.5618057Z [1.1] 12 passed in 66.02s (0:01:06)\n2026-11-23T03:16:54.8686096Z [1.1] FAILED tests/test_pv_reroot_lead.py::test_flag_off_release54_decides_as_main - AssertionError: ('2669920000:1:0', 'decision.record.value_means[0]')\n2026-11-23T03:16:54.8688492Z [1.1] 1 failed, 274 passed, 21 skipped in 344.13s (0:05:44)\n",
+  "137465493624": "2026-11-23T03:24:45.0896441Z [1.2] 56 passed in 61.20s (0:01:01)\n2026-11-23T03:24:48.6436872Z [1.1] 12 passed in 64.74s (0:01:04)\n2026-11-23T03:30:32.2888896Z [1.1] FAILED tests/test_pv_reroot_lead.py::test_flag_off_release54_decides_as_main - AssertionError: ('2669920000:1:0', 'decision.record.value_means[0]')\n2026-11-23T03:30:32.2891223Z [1.1] 1 failed, 274 passed, 21 skipped in 338.65s (0:05:38)\n",
+  "137475016591": "2026-11-23T04:01:35.4322506Z [2.1] 91 passed, 8 skipped in 52.90s\n2026-11-23T04:01:40.4174551Z [2.2] 228 passed in 57.92s\n2026-11-23T04:06:13.3850618Z [2.1] FAILED tests/test_pv_reroot_lead.py::test_flag_off_release54_decides_as_main - AssertionError: ('2669920000:1:0', 'decision.record.value_means[0]')\n2026-11-23T04:06:13.3853544Z [2.1] 1 failed, 172 passed, 14 skipped in 269.55s (0:04:29)\n"
+ },
+ "runs": [
+  {
+   "conclusion": "success",
+   "created_at": "2026-11-23T02:48:25Z",
+   "event": "pull_request",
+   "head_branch": "claude/offline-rt4",
+   "head_sha": "680b47b63f89e7dfbc6fa8bd073780c272c4c261",
+   "id": 45102283018,
+   "name": "PR checks",
+   "run_attempt": 3
+  },
+  {
+   "conclusion": "failure",
+   "created_at": "2026-11-23T03:49:19Z",
+   "event": "push",
+   "head_branch": "main",
+   "head_sha": "d22f5fae405712f83b87f7ee82d072fbf601f546",
+   "id": 45108202462,
+   "name": "PR checks",
+   "run_attempt": 1
+  }
+ ]
+}

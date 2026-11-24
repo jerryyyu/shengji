@@ -5070,33 +5070,38 @@ body.keyboard-open .tabbar { display: none; }
   stroke-linejoin: round;
 }
 .play-ranked-row { display: flex; }
-/* Primary: Play, and the table panel's Start. */
+/* One size for every action: Play's place, Duo, Join, and the table
+   panel's Start and Leave. */
 .play-tab .btn.play-main,
-.tp-primary {
+.play-tab .btn.play-duo,
+.play-tab .join-row .btn,
+.tp-primary,
+.tp-secondary {
   min-height: var(--ctl-h);
   padding: 0 16px;
-  border: 1.5px solid var(--gold);
   border-radius: var(--ctl-r);
-  background: linear-gradient(180deg, #8a6d2a, #6b531d);
-  color: #ffe9b0;
   font-size: var(--fs-17);
   font-weight: 700;
   letter-spacing: 0.01em;
 }
 .play-tab .btn.play-main { flex: 1; min-width: 0; }
-/* Secondary: Duo, Join, and the table panel's Leave. */
+/* Primary: the gold action in Play's place (Play, I'm back), and Start.
+   Its light ink holds 4.5:1 on the face's lighter end. :where() keeps the
+   specificity of the Unavailable rule below it. */
+.play-tab .btn.play-main:where(.gold),
+.tp-primary {
+  border: 1.5px solid var(--gold);
+  background: linear-gradient(180deg, #8a6a22, #6b5219);
+  color: #fff3cf;
+}
+/* Secondary: Duo, Join, Leave, and a dismissal in Play's place (a lone OK). */
+.play-tab .btn.play-main:where(:not(.gold)),
 .play-tab .btn.play-duo,
 .play-tab .join-row .btn,
 .tp-secondary {
-  min-height: var(--ctl-h);
-  padding: 0 16px;
   border: 1px solid var(--ctl-raised-edge);
-  border-radius: var(--ctl-r);
   background: var(--ctl-raised);
   color: var(--text);
-  font-size: var(--fs-17);
-  font-weight: 700;
-  letter-spacing: 0.01em;
 }
 /* Duo and Join share a width, so the two rows share their columns. */
 .play-tab .btn.play-duo,

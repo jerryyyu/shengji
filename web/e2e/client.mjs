@@ -220,6 +220,37 @@ for (const [device, insets] of Object.entries(PLAY_SIZES)) {
       links.push(b === null ? `${label}: not in the page` : b < 44 ? `${label} is a ${b}px box` : hit.hit < 44 ? `${label} is tapped over ${hit.hit}px` : null);
     }
     await shot(page, name);
+    // Play refused because the account already plays: the way back, when this device knows the
+    // room, is the gold action; a lone OK is a dismissal and stays neutral, at Play's size
+    const look = (sel) => page.evaluate((s) => {
+      const el = document.querySelector(s); if (!el) return null;
+      const c = getComputedStyle(el);
+      return { text: el.textContent.trim(), h: Math.round(el.getBoundingClientRect().height), radius: c.borderTopLeftRadius,
+        gold: c.backgroundImage.includes("gradient") || c.borderTopColor === "rgb(242, 193, 78)", bg: c.backgroundColor };
+    }, sel);
+    const inGame = { type: "error", code: "account_in_game", message: "You are already playing a ranked game." };
+    const duoLook = await look(".play-duo");
+    const blocks = [];
+    for (const canReturn of [false, true]) {
+      await page.evaluate((r) => { if (r) localStorage.setItem("shengji.room", "4N5Z"); else localStorage.removeItem("shengji.room"); }, canReturn);
+      await push(page, inGame);
+      await page.waitForSelector(".play-in-game");
+      await sleep(200);
+      const btns = await page.evaluate(() => [...document.querySelectorAll(".play-in-game button")].map((b) => b.textContent.trim()));
+      const back = canReturn ? await look(".play-in-game .play-main") : null;
+      const ok = await look(canReturn ? ".play-in-game .play-duo" : ".play-in-game .play-main");
+      const label = canReturn ? "with the way back" : "without the way back";
+      blocks.push(
+        btns.length === (canReturn ? 2 : 1) ? null : `${label}: buttons ${JSON.stringify(btns)}`,
+        ok && !ok.gold && ok.bg === duoLook.bg ? null : `${label}: OK is not the neutral secondary (${JSON.stringify(ok)})`,
+        ok && ok.h === duoLook.h && ok.radius === duoLook.radius ? null : `${label}: OK is not an action's size (${JSON.stringify(ok)})`,
+        !canReturn || back?.gold ? null : `${label}: the way back is not gold (${JSON.stringify(back)})`);
+      await shot(page, `${name}_ingame_${canReturn ? "return" : "ok"}`);
+      await page.click(".play-in-game button:last-child");
+      await page.waitForSelector(".play-in-game", { state: "detached" });
+    }
+    await page.evaluate(() => localStorage.removeItem("shengji.room"));
+    await rep.check(`${name}: in Play's place, a lone OK stays neutral and the way back is gold`, blocks, page);
     // Play's table: its Start and Leave
     await page.click(".play-main");
     await sleep(300);

@@ -111,6 +111,14 @@ describe("controls", () => {
     }
   });
 
+  it("the primary gold is the gold action's and Start's alone: a dismissal in Play's place is neutral", () => {
+    const gold = rules.filter((r) => r.body.includes("border: 1.5px solid var(--gold);") && r.body.includes("linear-gradient(180deg, #8a6a22, #6b5219)"));
+    expect(gold.length).toBeGreaterThan(0);
+    for (const r of gold) for (const s of r.sels) expect(s === ".tp-primary" || /\.gold\b/.test(s.replace(/:not\([^)]*\)/g, "")), s).toBe(true);
+    const neutral = rules.find((r) => r.sels.includes(".play-tab .btn.play-duo") && r.body.includes("background: var(--ctl-raised);"));
+    expect(neutral?.sels).toContain(".play-tab .btn.play-main:where(:not(.gold))");
+  });
+
   it("the mode switch's track is a 44px well: a 36px segment, 3px padding and the border", () => {
     const opt = bodies(".play-mode-opt").flatMap(drawnHeights);
     const track = bodies(".play-mode").join(";");

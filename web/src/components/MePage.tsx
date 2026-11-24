@@ -19,6 +19,7 @@ import ConfirmSheet from "./ConfirmSheet";
 import { SavedGames } from "./GamesList";
 import { useScreen } from "../telemetry";
 import { SettingsGroup } from "./SettingsList";
+import RatingSparkline from "./RatingSparkline";
 import { GUEST_LINE, guestName, useGuestName } from "../guestName";
 import { randomName } from "../randomName";
 
@@ -88,6 +89,7 @@ function StatsBody({ stats }: { stats: Stats }) {
   const rounds = stats.rounds;
   return (
     <>
+      <RatingSparkline history={stats.history} />
       <div className="me-tiles">
         <div className="me-tile"><b>{pct(stats.won_pct)}</b><span>rounds won</span></div>
         <div className="me-tile">
@@ -246,9 +248,9 @@ function Settings({ user, stats, statsKey }: { user: AuthUser; stats: Stats | nu
 
 /** A guest's Me, the signed-in Me minus what only an account has (a
  *  rating, a leaderboard place, saved games): the name they play under with
- *  its initial, one row with that name which opens the identity sheet the
- *  chip opens (the name, and Sign in where it works), the settings and the
- *  help rows. */
+ *  its initial, as the one row that opens the identity sheet the chip opens
+ *  (the name, and Sign in where it works), the three stat tiles empty, so a
+ *  guest sees what playing fills in, then the settings and the help rows. */
 function GuestMe() {
   const { name } = useGuestName();
   // a guest who opens Me first gets the same random name Play would give
@@ -260,16 +262,19 @@ function GuestMe() {
     <MeColumns
       main={(
         <>
-          <div className="me-who">
+          <button type="button" className="me-who me-identity" onClick={() => guestName.open("me_row")}>
             <Avatar user={null} size="lg" guestName={shown} />
-            <div className="me-who-text">
-              <div className="me-name">{shown}</div>
-              <div className="me-sub">{GUEST_LINE}</div>
-            </div>
+            <span className="me-who-text">
+              <span className="me-name">{shown}</span>
+              <span className="me-sub">{GUEST_LINE}</span>
+            </span>
+            <span className="grp-value chev" />
+          </button>
+          <div className="me-tiles me-tiles-empty">
+            <div className="me-tile"><b>—</b><span>rounds won</span></div>
+            <div className="me-tile"><b>—</b><span>levels / round</span></div>
+            <div className="me-tile"><b>—</b><span>best streak</span></div>
           </div>
-          <ul className="grp me-account">
-            <Row label={shown} chevron className="me-identity" onClick={() => guestName.open("me_row")} />
-          </ul>
         </>
       )}
       side={(

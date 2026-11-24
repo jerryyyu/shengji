@@ -5474,6 +5474,13 @@ button.grp-row:disabled { cursor: default; }
 .identity-status { margin: 0; font-size: var(--fs-13); color: var(--text-dim); text-align: center; text-wrap: balance; }
 .guest-name-sheet .field .grp-error { padding: 6px 4px 0; }
 .me-who { display: flex; align-items: center; gap: 14px; }
+/* a guest's header is their one identity row: the whole of it opens the name sheet */
+button.me-who {
+  appearance: none; width: 100%; min-height: 44px; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+button.me-who .me-who-text { flex: 1; display: flex; flex-direction: column; }
+button.me-who .grp-value.chev { flex: none; }
 .me-who-text { min-width: 0; }
 /* the name stays on one line and ends in an ellipsis, like a seat's */
 .me-name {
@@ -5483,6 +5490,14 @@ button.grp-row:disabled { cursor: default; }
 .me-sub { margin-top: 2px; font-size: var(--fs-15); color: #9aa3b2; font-variant-numeric: tabular-nums; }
 .me-sub b { font-weight: 600; }
 .me-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+/* a guest's tiles before any ranked round: the labels, each with a dash */
+.me-tiles-empty .me-tile b { color: #9aa3b2; }
+/* Me's rating history: one gold line, a faint fill, the latest point */
+.me-spark { position: relative; height: 56px; margin: 0 0 2px; padding: 0; }
+.me-spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.me-spark-fill { fill: rgba(242, 193, 78, 0.16); stroke: none; }
+.me-spark-line { fill: none; stroke: var(--gold); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.me-spark-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--gold); }
 .me-tile { padding: 10px 8px 9px; border-radius: 12px; background: var(--grp); text-align: center; }
 .me-tile b { display: block; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; letter-spacing: -0.3px; color: #fff; font-variant-numeric: tabular-nums; }
 .me-tile span { font-size: var(--fs-12); color: #9aa3b2; }

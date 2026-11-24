@@ -362,6 +362,14 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   (the name, and Sign in where it works); it replaces the separate Edit name and Sign in rows. The settings stay
   where they are (Jerry: "keep settings under game"); a signed-in Me is unchanged. The iOS app's own account
   keeps that one name row in place of Edit name (2026-11-22).
+  Since 2026-11-24 (Jerry, App Screens Review item 13) the header itself is that row: the avatar, the name and
+  "Guest" with the chevron at its end, one tap target that opens the same sheet, so the name shows once (the
+  separate name row under it is gone). Under it the three stat tiles a ranked round fills ("rounds won",
+  "levels / round", "best streak"), each a dash for now; no new words.
+- **Me's rating history (Jerry 2026-11-24, item 5):** above the stat tiles on Stats, a sparkline of the
+  rating after each recent round (the stats call's `history`): one gold line, a faint fill, the latest point
+  marked. No axis or visible text; its accessible name reads "Rating over your last N rounds, from A to B".
+  Fewer than two rounds draw nothing.
 
 ## One account in the iOS app (Jerry 2026-11-22: "it should only be for iOS when it's tied to a device"; "Web guests should stay the same")
 The website is unchanged. In the iOS app (`Capacitor.getPlatform() === "ios"`, with the Keychain plugin), the

@@ -306,7 +306,7 @@ describe("one name control", () => {
       expect(host.querySelector(".me-sub")?.textContent).toBe("Guest");
       expect(host.querySelector(".me-who .avatar")?.textContent).toBe("G");
       const edit = host.querySelector<HTMLButtonElement>(".me-identity")!;
-      expect(edit.textContent).toBe("Gentle Tractor");
+      expect(edit.querySelector(".me-name")?.textContent).toBe("Gentle Tractor");
       act(() => edit.click());
       expect(sheets()).toHaveLength(1);
       expect(document.querySelector<HTMLInputElement>(".guest-name-sheet input")!.value).toBe("Gentle Tractor");
@@ -367,7 +367,8 @@ describe("tab context", () => {
     expect(seg("Stats").getAttribute("aria-pressed")).toBe("true");
     await act(async () => { seg("Games").click(); await new Promise((r) => setTimeout(r, 0)); });
     await go("Leaderboard");
-    expect(seg("This week").getAttribute("aria-pressed")).toBe("true");
+    // this fixture's week is empty, so the board opens on All time
+    expect(seg("All time").getAttribute("aria-pressed")).toBe("true");
     await act(async () => { seg("All time").click(); await new Promise((r) => setTimeout(r, 0)); });
     scrollTo(host.querySelector(".lb-page")!, 240);
     await go("Me");

@@ -74,14 +74,54 @@ describe("applyOriginMove", () => {
     expect(storage.getItem(MOVED_MARK)).toBe("1");
   });
 
-  it("survives storage that refuses a write or every read", () => {
-    const full = memoryStorage();
-    const setItem = full.setItem.bind(full);
-    full.setItem = (k, v) => { if (k === "big") throw new Error("QuotaExceededError"); setItem(k, v); };
-    expect(applyOriginMove(page({ origin: ORIGIN, entries: { big: "x", small: "y" } }, full))).toBe(1);
-    expect(full.getItem("small")).toBe("y");
+  it("survives storage that refuses every read", () => {
     const refused = { ...memoryStorage(), getItem: vi.fn(() => { throw new Error("SecurityError"); }) };
-    expect(applyOriginMove(page({ origin: ORIGIN, entries: { a: "1" } }, refused as Storage))).toBe(0);
+    const p = page({ origin: ORIGIN, entries: { a: "1" } }, refused as Storage);
+    expect(applyOriginMove(p)).toBe(0);
+    expect(p.confirms).toEqual([]);
+  });
+
+  it("a key that cannot be written withholds completion; the retry writes the rest and keeps what is there", () => {
+    const storage = memoryStorage({ "shengji.muted": "1" });     // the new origin's own value
+    const setItem = storage.setItem.bind(storage);
+    let full = true;
+    storage.setItem = (k, v) => {
+      if (full && k === "shengji.room") throw new DOMException("quota", "QuotaExceededError");
+      setItem(k, v);
+    };
+    const handoff = {
+      origin: ORIGIN, session: true,
+      entries: { "shengji.haptics": "0", "shengji.room": "AB12", "shengji.muted": "0" },
+    };
+    const first = page(handoff, storage);
+    expect(applyOriginMove(first)).toBe(1);
+    expect(storage.getItem("shengji.haptics")).toBe("0");
+    expect(storage.getItem("shengji.room")).toBeNull();
+    expect(storage.getItem(MOVED_MARK)).toBeNull();             // not marked
+    expect(first.confirms).toEqual([]);                         // not confirmed: offered again
+    expect(takeMovedSignIn("out")).toBe(false);                 // no ask until the move is done
+
+    full = false;                                               // the next launch has room
+    storage.setItem("shengji.haptics", "1");                    // changed on the new origin meanwhile
+    const retry = page(handoff, storage);
+    expect(applyOriginMove(retry)).toBe(1);                     // only the missing seat
+    expect(storage.getItem("shengji.room")).toBe("AB12");
+    expect(storage.getItem("shengji.haptics")).toBe("1");       // present keys are never overwritten
+    expect(storage.getItem("shengji.muted")).toBe("1");
+    expect(storage.getItem(MOVED_MARK)).toBe("1");
+    expect(retry.confirms).toEqual(["imported"]);
+    expect(takeMovedSignIn("out")).toBe(true);
+  });
+
+  it("a key whose read fails withholds completion too", () => {
+    const storage = memoryStorage();
+    const getItem = storage.getItem.bind(storage);
+    storage.getItem = (k) => { if (k === "b") throw new Error("SecurityError"); return getItem(k); };
+    const p = page({ origin: ORIGIN, entries: { a: "1", b: "2" } }, storage);
+    applyOriginMove(p);
+    expect(storage.getItem("a")).toBe("1");
+    expect(getItem(MOVED_MARK)).toBeNull();
+    expect(p.confirms).toEqual([]);
   });
 });
 

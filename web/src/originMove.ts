@@ -40,7 +40,8 @@ function confirmImport(win: MoveWindow): void {
 let movedSession = false;
 
 /** Write the shell's handoff into this origin's storage, once per install,
- *  and confirm it to the shell once the mark is kept. A handoff offered
+ *  and confirm it to the shell once every key is present and the mark is
+ *  kept. A handoff offered
  *  again after a confirmed write (the shell never heard it) writes nothing
  *  and is confirmed again. Returns how many keys it wrote. */
 export function applyOriginMove(win: MoveWindow): number {
@@ -56,8 +57,8 @@ export function applyOriginMove(win: MoveWindow): number {
   } catch {
     return 0; // storage refused: nothing to write into
   }
-  movedSession = handoff.session === true;
   let wrote = 0;
+  let missed = false;
   const entries = handoff.entries && typeof handoff.entries === "object" ? handoff.entries as Record<string, unknown> : {};
   for (const [key, value] of Object.entries(entries)) {
     if (key === MOVED_MARK || typeof value !== "string") continue;
@@ -65,13 +66,19 @@ export function applyOriginMove(win: MoveWindow): number {
       if (storage.getItem(key) !== null) continue;
       storage.setItem(key, value);
       wrote += 1;
-    } catch { /* storage full or refused: the rest still go */ }
+    } catch {
+      missed = true; // storage full or refused: the rest still go, and the move is not done
+    }
   }
+  // a key not written leaves the move unmarked and unconfirmed, so the next
+  // offer writes what is still missing and keeps every key present
+  if (missed) return wrote;
   try {
     storage.setItem(MOVED_MARK, "1");
   } catch {
     return wrote; // not confirmed: the next launch offers it again, keys present stay
   }
+  movedSession = handoff.session === true;
   confirmImport(win);
   return wrote;
 }

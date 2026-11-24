@@ -37,13 +37,13 @@ const CHROME = "#14171e";
 // capacitor.config.json, so it is read here from the Xcode project at
 // `cap sync` time; a version bump needs a sync before the build, as the
 // bundled page already does. Every configuration must carry the same
-// version, or the sync stops.
+// version, at most four digits a part as the server keeps, or the sync stops.
 export const APP_UA_PRODUCT = "ShengjiApp";
 
 export function marketingVersion(pbxproj: string): string {
   const versions = new Set([...pbxproj.matchAll(/^\s*MARKETING_VERSION = "?([^";]+)"?;$/gm)].map((m) => m[1]));
   const [version] = versions;
-  if (versions.size !== 1 || !/^\d+\.\d+(\.\d+)?$/.test(version)) {
+  if (versions.size !== 1 || !/^\d{1,4}\.\d{1,4}(\.\d{1,4})?$/.test(version)) {
     throw new Error(`capacitor.config.ts: expected one MARKETING_VERSION like 1.0.2, found ${[...versions].join(", ") || "none"}`);
   }
   return version;

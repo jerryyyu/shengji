@@ -11,7 +11,7 @@ describe("the iOS app's User-Agent token", () => {
     expect(new Set(versions).size).toBe(1);
     expect(config.ios?.appendUserAgent).toBe(`${APP_UA_PRODUCT}/${versions[0]}`);
     // the server's app_version pattern (server/shengji/api/telemetry.py)
-    expect(config.ios?.appendUserAgent).toMatch(/^ShengjiApp\/\d+\.\d+(\.\d+)?$/);
+    expect(config.ios?.appendUserAgent).toMatch(/^ShengjiApp\/\d{1,4}\.\d{1,4}(\.\d{1,4})?$/);
     // never the override, which would replace the WebView's own User-Agent
     expect(config.ios?.overrideUserAgent).toBeUndefined();
     expect(config.appendUserAgent).toBeUndefined();
@@ -25,5 +25,8 @@ describe("the iOS app's User-Agent token", () => {
     expect(() => marketingVersion(one("1.0.2") + one("1.0.1"))).toThrow();
     expect(() => marketingVersion(one("1.0.2 beta"))).toThrow();
     expect(() => marketingVersion(one("$(VERSION)"))).toThrow();
+    // the server keeps at most four digits a part
+    expect(marketingVersion(one("2026.11.24"))).toBe("2026.11.24");
+    expect(() => marketingVersion(one("12345.0"))).toThrow();
   });
 });

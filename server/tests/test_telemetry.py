@@ -559,3 +559,16 @@ def test_the_summary_counts_sessions_by_app_version(sink):
     assert summary.count_sessions(sink, since="29990101") == {}
     assert summary.main(["--dir", str(sink)]) == 0
     assert summary.main(["--dir", str(sink), "--since", "2026-11"]) == 2
+
+
+@pytest.mark.parametrize("token,version", [("ShengjiApp/1.0.2", "1.0.2"), ("", "<=1.0.1")])
+def test_a_tap_and_a_queue_join_of_one_socket_count_once(sink, token, version):
+    from scripts import telemetry_app_versions as summary
+    sock = _Sock()
+    telemetry.handshake(sock, IOS_UA.format(token=token))
+    # the join first: its row has the sid (and any version) but no platform
+    assert telemetry.queue_event(sock, "join", who="guest", size=1)
+    telemetry.receive(sock, {"v": 1, "platform": "ios_app", "events": [{"e": "tap", "id": "play"}]}, "guest")
+    join, tap = _records(sink)
+    assert "platform" not in join and tap["platform"] == "ios_app"
+    assert summary.count_sessions(sink) == {("ios_app", version): 1}

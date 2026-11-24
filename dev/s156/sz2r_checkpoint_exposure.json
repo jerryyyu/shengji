@@ -104,7 +104,8 @@
     "SHENGJI_PV_UNIFIED_CKPT=/Users/jeryyu/fleet/claude-s159-rt4/inputs/cand/ut-rt4-e2951d35.npz",
     "SHENGJI_PV_UNIFIED_SHA256=e2951d35eeabd167347c3b5608a8065dffb9bd304b51aa4759eabbba1ce05883"
   ],
-  "deployment": "3e00a55a7a38e5a135809f601c9b47fb315fa725",
+  "exposure_checked_on": "3e00a55a7a38e5a135809f601c9b47fb315fa725",
+  "deployment": "35531daf48fc543dcd6f611d9d63312a5dc11de6",
   "roots": [
     "a09cef7c35793fa12ccadffbb578d110a14b0705778d7e3aaa400268b93ec962",
     "7f028824f60b9e31cb6eebe20a7d87526b4edb4817ce97c5dde487c4c0841aed"

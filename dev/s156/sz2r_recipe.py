@@ -9,8 +9,8 @@ import tomllib
 
 FLEET = Path.home() / "fleet"
 S159 = FLEET / "claude-s159-rt4"
-TREE = Path.home() / "Projects/shengji-wt/codex-sz2r-deploy-3e00a55a"
-HEAD = "3e00a55a7a38e5a135809f601c9b47fb315fa725"
+TREE = Path.home() / "Projects/shengji-wt/codex-sz2r-deploy-35531daf"
+HEAD = "35531daf48fc543dcd6f611d9d63312a5dc11de6"
 M2 = FLEET / "codex-sz2-export-v1/M" / (
     "74015553d61ccfd7d66c75474866c8d49124bf8f02cd3d805011336e71157962-"
     "69f181a3a9e838e32c9cbc9b695e7629479ca056e06274d9246abdfbbb139369-encode4")
@@ -40,7 +40,7 @@ def build():
     if git("rev-parse", "HEAD") != HEAD or git("status", "--porcelain"):
         raise ValueError("expected clean deployed R55 source")
     fly = TREE / "fly.toml"
-    verify(fly, "aa3048fba371132c02704d629f0f2dbf3590458112f89058329b51b7bf4e5f29")
+    verify(fly, "ce87b179953231c812bf9de14d612d7566e12c4504463e1e297226949f774e9b")
     settings = tomllib.loads(fly.read_text())["env"]
     kit = S159 / "kit"
     for name, digest in KIT.items():

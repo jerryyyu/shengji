@@ -11,7 +11,11 @@
 # and web/ is identical to the web ref; refuse on a dirty worktree; read /healthz and
 # refuse unless rooms == 0; push the branch; fly deploy --ha=false; re-read /healthz and
 # refuse (printing the rollback command, never running it) if the bot identity changed;
-# require exactly one started machine and the marker text in the served JS bundle.
+# require exactly one started machine; with --marker, build web/ of the deploy tree
+# locally, refuse before the push unless the marker is in that build's JS, and after
+# the deploy require the served index.html to equal the local build's byte for byte
+# and the local asset carrying the marker to be served at its URL as JavaScript with
+# the local bytes.
 # --dry-run runs every step except the push and fly deploy.
 # A JSON receipt records the tree, served and web shas, /healthz and the Fly version
 # before and after, and the outcome.
@@ -46,6 +50,11 @@ STARTED_MACHINES=null
 BUNDLES_BEFORE=
 BUNDLES_AFTER=
 MARKER_FOUND=null
+MARKER_ASSET=
+MARKER_DETAIL=
+LOCAL_DIST=
+LOCAL_ENTRIES=
+SERVED_ENTRIES=
 ROLLBACK_CMD=
 PUSHED=0
 DEPLOYED=0
@@ -219,15 +228,102 @@ served_bundles() {
   curl -fsS --max-time 20 "$URL/" | grep -o -E '/assets/[A-Za-z0-9._-]+\.js' | sort -u
 }
 
-marker_served() {
-  local bundle body
-  for bundle in $(served_bundles); do
-    body=$(curl -fsS --max-time 30 "$URL$bundle") || continue
-    case "$body" in
-      *"$MARKER"*) return 0 ;;
-    esac
+# entry_refs < INDEX_HTML: the /assets/*.js and /assets/*.css files an index.html
+# names, sorted, one per line.
+entry_refs() {
+  grep -o -E '/assets/[A-Za-z0-9._-]+\.(js|css)' | sort -u
+}
+
+served_entries() {
+  curl -fsS --max-time 20 "$URL/" | entry_refs
+}
+
+# build_local_web WORKTREE: builds web/ of WORKTREE's HEAD the way the Dockerfile does
+# (npm ci, npm run build) in a fresh export, leaving WORKTREE untouched, with the
+# build-switch variables vite.config reads unset as they are in the image build.
+# Prints the dist directory.
+build_local_web() {
+  local out tmp=${TMPDIR:-/tmp}
+  out=$(mktemp -d "${tmp%/}/deploy-web-build.XXXXXX") || return 1
+  git -C "$1" archive HEAD web | tar -x -C "$out" || return 1
+  (
+    cd "$out/web" || exit 1
+    for v in $(compgen -e); do
+      case "$v" in VITE_*|SHENGJI_NEARBY_*|NODE_ENV) unset "$v" ;; esac
+    done
+    npm ci --no-audit --no-fund >&2 && npm run build >&2
+  ) || return 1
+  [ -f "$out/web/dist/index.html" ] || return 1
+  # keep the built dist (the receipt names it), not the installed dependencies
+  if [ -d "$out/web/node_modules" ]; then
+    python3 "$(dirname "${BASH_SOURCE[0]}")/safe_rm.py" "$out/web/node_modules" >&2 \
+      || say "could not remove $out/web/node_modules"
+  fi
+  printf '%s\n' "$out/web/dist"
+}
+
+# marker_asset DIST: the first JS file of the local build (by name) that contains the
+# marker, as /assets/<name>; nothing when none does. Every file in dist/assets is an
+# output of the build's module graph.
+marker_asset() {
+  local f
+  for f in "$1"/assets/*.js; do
+    [ -f "$f" ] || continue
+    if grep -qF -- "$MARKER" "$f"; then
+      printf '/assets/%s\n' "${f##*/}"
+      return 0
+    fi
   done
   return 1
+}
+
+marker_in_build() {
+  marker_asset "$1" >/dev/null
+}
+
+# marker_served: the deploy serves the local build's bytes. The served index.html is
+# byte-identical to the local dist/index.html (Vite's output is deterministic; it
+# names the content-hashed entries and their preloads), and the local asset that
+# carries the marker is served at its exact URL with HTTP 200, a JavaScript content
+# type and the local bytes. Sets MARKER_DETAIL to the reason on failure.
+marker_served() {
+  local tmp code type
+  MARKER_DETAIL=
+  if [ -z "$LOCAL_DIST" ] || [ -z "${LOCAL_ENTRIES// /}" ]; then
+    MARKER_DETAIL="the local build names no /assets entry"; return 1
+  fi
+  MARKER_ASSET=$(marker_asset "$LOCAL_DIST") || { MARKER_DETAIL="no local asset contains the marker"; return 1; }
+  tmp=${TMPDIR:-/tmp}
+  tmp=$(mktemp "${tmp%/}/deploy-web-served.XXXXXX") || return 1
+  if ! curl -fsS --max-time 20 -o "$tmp" "$URL/"; then
+    rm -f "$tmp"; MARKER_DETAIL="could not read $URL/"; return 1
+  fi
+  SERVED_ENTRIES=$(entry_refs < "$tmp" | tr '\n' ' ' || true)
+  if ! cmp -s "$tmp" "$LOCAL_DIST/index.html"; then
+    rm -f "$tmp"; MARKER_DETAIL="the served index.html differs from the local build's"; return 1
+  fi
+  local meta rc essence
+  meta=$(curl -sS --max-time 30 -o "$tmp" -w '%{http_code} %{content_type}' "$URL$MARKER_ASSET") && rc=0 || rc=$?
+  if [ "$rc" != 0 ]; then
+    rm -f "$tmp"; MARKER_DETAIL="fetching $URL$MARKER_ASSET failed (curl exit $rc)"; return 1
+  fi
+  code=${meta%% *}
+  type=${meta#* }
+  [ "$type" != "$meta" ] || type=
+  if [ "$code" != 200 ]; then
+    rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET returned HTTP $code"; return 1
+  fi
+  # the MIME essence: before any parameter, trimmed, lowercased
+  essence=${type%%;*}
+  essence=$(printf '%s' "$essence" | sed -e 's/^[[:blank:]]*//' -e 's/[[:blank:]]*$//' | tr '[:upper:]' '[:lower:]')
+  case "$essence" in
+    text/javascript|application/javascript) ;;
+    *) rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET is served as ${type:-no content type}, not JavaScript"; return 1 ;;
+  esac
+  if ! cmp -s "$tmp" "$LOCAL_DIST$MARKER_ASSET"; then
+    rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET differs from the local build's bytes"; return 1
+  fi
+  rm -f "$tmp"
 }
 
 write_receipt() {
@@ -238,6 +334,8 @@ write_receipt() {
   R_DRY=$DRY_RUN R_HB=$HEALTHZ_BEFORE R_HA=$HEALTHZ_AFTER R_VB=$FLY_VERSION_BEFORE \
   R_VA=$FLY_VERSION_AFTER R_IB=$FLY_IMAGE_BEFORE R_IA=$FLY_IMAGE_AFTER R_SM=$STARTED_MACHINES \
   R_BB=$BUNDLES_BEFORE R_BA=$BUNDLES_AFTER R_MARKER=$MARKER R_MF=$MARKER_FOUND \
+  R_LD=$LOCAL_DIST R_LE=$LOCAL_ENTRIES R_SE=$SERVED_ENTRIES \
+  R_MA=$MARKER_ASSET R_MD=$MARKER_DETAIL \
   R_ROLLBACK=$ROLLBACK_CMD R_PUSHED=$PUSHED R_DEPLOYED=$DEPLOYED \
   python3 - "$RECEIPT" <<'PY'
 import json, os, sys, datetime
@@ -263,6 +361,9 @@ receipt = {
     "started_machines": js("R_SM"),
     "bundles_before": e["R_BB"].split(), "bundles_after": e["R_BA"].split(),
     "marker": e["R_MARKER"] or None, "marker_found": js("R_MF"),
+    "local_build": e["R_LD"] or None,
+    "local_entries": e["R_LE"].split(), "served_entries": e["R_SE"].split(),
+    "marker_asset": e["R_MA"] or None, "marker_detail": e["R_MD"] or None,
     "rollback_command": e["R_ROLLBACK"] or None,
 }
 with open(sys.argv[1], "w") as f:
@@ -311,6 +412,16 @@ main() {
     || refuse "deploy tree is not served tree + web/ only"
   say "deploy commit $DEPLOY_SHA (tree $TREE_SHA): outside web/ identical to served, web/ identical to $WEB_REF"
   check_clean_worktree "$WORKTREE" || refuse "dirty worktree $WORKTREE"
+
+  if [ -n "$MARKER" ]; then
+    LOCAL_DIST=$(build_local_web "$WORKTREE") || refuse "could not build web/ of the deploy tree locally"
+    LOCAL_ENTRIES=$(entry_refs < "$LOCAL_DIST/index.html" | tr '\n' ' ' || true)
+    [ -n "${LOCAL_ENTRIES// /}" ] || refuse "the local build's index.html names no /assets entry"
+    say "local build $LOCAL_DIST, entries: $LOCAL_ENTRIES"
+    if [ "$DRY_RUN" = 0 ] && ! marker_in_build "$LOCAL_DIST"; then
+      refuse "the local build of the deploy tree lacks the marker; nothing was pushed or deployed"
+    fi
+  fi
 
   HEALTHZ_BEFORE=$(fetch_healthz) || refuse "could not read $URL/healthz"
   local identity_before identity_after
@@ -369,9 +480,9 @@ main() {
   if [ -n "$MARKER" ]; then
     if marker_served; then MARKER_FOUND=true; else MARKER_FOUND=false; fi
     if [ "$DRY_RUN" = 0 ] && [ "$MARKER_FOUND" = false ]; then
-      refuse "served JS bundle lacks the marker; the new web build is not live. Rollback: $ROLLBACK_CMD"
+      refuse "$MARKER_DETAIL; the new web build is not served. Rollback: $ROLLBACK_CMD"
     fi
-    say "marker in served bundle: $MARKER_FOUND"
+    say "local build served (index.html and $MARKER_ASSET byte-identical): $MARKER_FOUND${MARKER_DETAIL:+ ($MARKER_DETAIL)}"
   fi
 
   if [ "$DRY_RUN" = 1 ]; then STATUS=dry-run-ok; else STATUS=deployed; fi

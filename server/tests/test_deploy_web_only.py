@@ -33,15 +33,44 @@ esac
 FAKE_CURL = r"""#!/usr/bin/env bash
 set -euo pipefail
 url="${@: -1}"
+out= fmt=
+while [ $# -gt 1 ]; do
+  case "$1" in -o) out=$2; shift 2 ;; -w) fmt=$2; shift 2 ;; *) shift ;; esac
+done
 path="/${url#*://*/}"
 [ "$url" = "${url#*://*/}" ] && path=/
+case "$url" in https://shengji.fly.dev*) ;; *) path=/__foreign__ ;; esac
+code=200
 case "$path" in
-  /) file="$FAKE_SITE/index.html" ;;
-  /healthz) file="$FAKE_SITE/healthz.json" ;;
-  *) file="$FAKE_SITE$path" ;;
+  /) file="$FAKE_SITE/index.html"; type="text/html; charset=utf-8" ;;
+  /healthz) file="$FAKE_SITE/healthz.json"; type="application/json" ;;
+  *.js) file="$FAKE_SITE$path"; type="${FAKE_JS_TYPE:-text/javascript; charset=utf-8}" ;;
+  *) file="$FAKE_SITE$path"; type="application/octet-stream" ;;
 esac
-[ -f "$file" ] || exit 22
-cat "$file"
+if [ ! -f "$file" ]; then
+  if [ -n "${FAKE_HTML_FALLBACK:-}" ]; then
+    file="$FAKE_SITE/index.html"; type="text/html; charset=utf-8"
+  else
+    code=404 file=/dev/null type="application/json"
+  fi
+fi
+if [ -z "$fmt" ] && [ "$code" != 200 ]; then exit 22; fi
+if [ -n "$out" ]; then cat "$file" > "$out"; else cat "$file"; fi
+[ -z "$fmt" ] || printf '%s %s' "$code" "$type"
+case "$path" in *.js) [ -z "${FAKE_SHORT_BODY:-}" ] || exit 18 ;; esac
+"""
+
+FAKE_NPM = r"""#!/usr/bin/env bash
+set -euo pipefail
+echo "$* | $(pwd) | VITE_SHENGJI_APP_STORE=${VITE_SHENGJI_APP_STORE:-} SHENGJI_NEARBY_SPIKE=${SHENGJI_NEARBY_SPIKE:-}" >> "$FAKE_SITE/npm.log"
+case "$1" in
+  ci) mkdir -p node_modules/dep && echo x > node_modules/dep/index.js ;;
+  run)
+    test -z "${FAKE_BUILD_FAIL:-}" || exit 1
+    mkdir -p dist
+    cp -R "$FAKE_SITE/build/." dist/ ;;
+  *) exit 97 ;;
+esac
 """
 
 IDENTITY = {"bot": "pv-search-r51", "fast": True,
@@ -69,7 +98,7 @@ def env(tmp_path):
     e.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1",
              GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.com",
              GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.com",
-             DEPLOY_WEB_HEALTHZ_WAIT="0")
+             DEPLOY_WEB_HEALTHZ_WAIT="0", SAFE_RM_ROOTS=str(tmp_path), TMPDIR=str(tmp_path))
     return e
 
 
@@ -196,18 +225,31 @@ def _site(tmp_path, rooms=0, after_identity=None, after_marker=True):
     (site / "after/releases.json").write_text(json.dumps([
         {"Version": 64, "ImageRef": "registry.fly.io/shengji:new"},
         {"Version": 63, "ImageRef": "registry.fly.io/shengji:old"}]))
+    _local_build(site)
     return site
 
 
-def _run(repo, tmp_path, env, site, *extra, deploy_ok=False):
+def _local_build(site):
+    """What `npm run build` of the deploy tree produces: the deploy's index.html and assets."""
+    build = site / "build"
+    if build.exists():
+        shutil.rmtree(build)
+    (build / "assets").mkdir(parents=True)
+    shutil.copy(site / "after/index.html", build / "index.html")
+    for f in (site / "after/assets").iterdir():
+        shutil.copy(f, build / "assets" / f.name)
+
+
+def _run(repo, tmp_path, env, site, *extra, deploy_ok=False, build_env=None):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
-    for name, body in (("fly", FAKE_FLY), ("curl", FAKE_CURL)):
+    for name, body in (("fly", FAKE_FLY), ("curl", FAKE_CURL), ("npm", FAKE_NPM)):
         (bin_dir / name).write_text(body)
         (bin_dir / name).chmod(0o755)
     e = dict(env, FAKE_SITE=str(site), PATH=str(bin_dir) + os.pathsep + env["PATH"])
     if deploy_ok:
         e["FAKE_DEPLOY_OK"] = "1"
+    e.update(build_env or {})
     receipt = tmp_path / "receipt.json"
     r = subprocess.run(
         [BASH, str(SCRIPT), "--repo", str(repo["work"]), "--served-sha", repo["served"][:10],
@@ -288,12 +330,69 @@ def test_real_mode_with_stub_fly_pushes_deploys_and_records(repo, tmp_path, env)
     assert data["bundles_after"] == ["/assets/index-new2.js"]
 
 
-def test_real_mode_refuses_when_the_marker_is_not_served(repo, tmp_path, env):
+def test_real_mode_refuses_before_the_push_when_the_local_build_lacks_the_marker(repo, tmp_path, env):
     site = _site(tmp_path, after_marker=False)
+    r, data, log = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 1
+    assert "local build of the deploy tree lacks the marker" in r.stderr
+    assert not data["pushed"] and not data["fly_deploy_ran"]
+    assert "deploy" not in log.split()
+    assert "claude/deploy-web-test" not in _remote_branches(repo, env)
+
+
+def test_real_mode_refuses_when_the_served_entry_is_not_the_local_build(repo, tmp_path, env):
+    site = _site(tmp_path)
+    # the deploy leaves the previous index.html live
+    (site / "after/index.html").unlink()
     r, data, _ = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
     assert r.returncode == 1
-    assert "lacks the marker" in r.stderr
+    assert "the served index.html differs from the local build's; the new web build is not served" in r.stderr
     assert data["marker_found"] is False
+    assert data["local_entries"] == ["/assets/index-new2.js"]
+    assert data["served_entries"] == ["/assets/index-old1.js"]
+
+
+def test_the_local_build_exports_the_tree_and_unsets_the_build_switches(repo, tmp_path, env):
+    site = _site(tmp_path)
+    r, data, _ = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True,
+                      build_env={"VITE_SHENGJI_APP_STORE": "1", "SHENGJI_NEARBY_SPIKE": "1"})
+    assert r.returncode == 0, r.stderr
+    calls = (site / "npm.log").read_text().splitlines()
+    assert [c.split(" | ")[0] for c in calls] == ["ci --no-audit --no-fund", "run build"]
+    assert all(c.endswith("VITE_SHENGJI_APP_STORE= SHENGJI_NEARBY_SPIKE=") for c in calls)
+    build_dir = calls[0].split(" | ")[1]
+    assert build_dir != str(tmp_path / "wt" / "web") and build_dir.endswith("/web")
+    assert (Path(build_dir) / "src/App.tsx").read_text() == "new ui PHONE_MARKER\n"
+    assert data["local_build"] == build_dir + "/dist"
+    assert not (tmp_path / "wt" / "web" / "dist").exists()
+    # the real safe_rm gets exactly the build's node_modules; whether it may delete it depends on the host's
+    # process inventory, so either it is gone or the refusal is reported and the directory is kept
+    nm = build_dir + "/node_modules"
+    if f"safe_rm: DELETED {nm}" in r.stderr:
+        assert not Path(nm).exists()
+    else:
+        assert f"safe_rm: REFUSED {nm}" in r.stderr, r.stderr
+        assert f"could not remove {nm}" in r.stderr and Path(nm).is_dir()
+    assert (Path(build_dir) / "dist/index.html").exists()
+
+
+def test_a_local_build_that_names_no_entry_refuses_before_the_push(repo, tmp_path, env):
+    site = _site(tmp_path)
+    (site / "build/index.html").write_text("<html></html>")
+    r, data, log = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 1
+    assert "the local build's index.html names no /assets entry" in r.stderr
+    assert data["status"].startswith("refused") and not data["pushed"]
+    assert "deploy" not in log.split()
+
+
+def test_a_failed_local_build_refuses_before_the_push(repo, tmp_path, env):
+    site = _site(tmp_path)
+    r, data, log = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True,
+                        build_env={"FAKE_BUILD_FAIL": "1"})
+    assert r.returncode == 1
+    assert "could not build web/ of the deploy tree locally" in r.stderr
+    assert not data["pushed"] and "deploy" not in log.split()
 
 
 @pytest.mark.parametrize("phase", ["before", "after"])
@@ -399,3 +498,210 @@ def test_missing_rollback_inputs_refuse_before_push_or_deploy(repo, tmp_path, en
     assert "deploy --ha=false" not in log
     if missing == "existing-snapshot":
         assert (tmp_path / "receipt.json.rollback.fly.toml").read_text() == "do not overwrite\n"
+
+
+def _lazy_site(tmp_path, chunk_has_marker=True):
+    """After the deploy the entry bundle lacks the marker and lazily imports a chunk
+    that carries it; a chunk on another origin also carries it."""
+    site = _site(tmp_path, after_marker=False)
+    (site / "after/assets/index-new2.js").write_text(
+        'const a=()=>import("./held_seat-ab12.js");'
+        'import("https://cdn.example.com/assets/foreign-ef56.js");')
+    (site / "after/assets/held_seat-ab12.js").write_text(
+        "chunk PHONE_MARKER" if chunk_has_marker else "chunk")
+    _local_build(site)
+    # served only, never built: a fetch of a foreign or stale file would read these
+    (site / "after/assets/foreign-ef56.js").write_text("foreign PHONE_MARKER")
+    return site
+
+
+def _logging_curl_env(tmp_path, env, site):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    log = tmp_path / "curl.log"
+    (bin_dir / "curl").write_text(
+        FAKE_CURL.replace('url="${@: -1}"', f'url="${{@: -1}}"; echo "$url" >> "{log}"'))
+    (bin_dir / "curl").chmod(0o755)
+    return dict(env, FAKE_SITE=str(site), PATH=str(bin_dir) + os.pathsep + env["PATH"]), log
+
+
+def _marker_served(tmp_path, env, site, marker="PHONE_MARKER", deployed=True, **site_env):
+    """marker_served after the deploy, against the site's local build; prints MARKER_DETAIL."""
+    if deployed:
+        shutil.copytree(site / "after", site, dirs_exist_ok=True)
+    e, log = _logging_curl_env(tmp_path, env, site)
+    e.update(site_env)
+    r = subprocess.run(
+        [BASH, "-c", f'source "{SCRIPT}"; URL=https://shengji.fly.dev; MARKER="$1"; '
+         'LOCAL_DIST="$2"; LOCAL_ENTRIES=$(entry_refs < "$2/index.html" | tr "\\n" " " || true); '
+         'if marker_served; then rc=0; else rc=$?; fi; echo "detail=$MARKER_DETAIL asset=$MARKER_ASSET"; exit $rc',
+         "_", marker, str(site / "build")], text=True, capture_output=True, env=e)
+    return r, log.read_text().split() if log.exists() else []
+
+
+def test_marker_in_a_lazily_imported_chunk_of_the_build_counts_as_served(tmp_path, env):
+    r, fetched = _marker_served(tmp_path, env, _lazy_site(tmp_path))
+    assert r.returncode == 0, r.stdout + r.stderr
+    # the served index.html, then the marker-bearing asset at its exact URL; no chunk is parsed
+    assert fetched == ["https://shengji.fly.dev/", "https://shengji.fly.dev/assets/held_seat-ab12.js"]
+    assert "asset=/assets/held_seat-ab12.js" in r.stdout
+
+
+def test_marker_absent_from_the_build_is_not_served(tmp_path, env):
+    r, fetched = _marker_served(tmp_path, env, _lazy_site(tmp_path, chunk_has_marker=False))
+    assert r.returncode == 1
+    assert "detail=no local asset contains the marker" in r.stdout
+    assert fetched == []
+
+
+INERT_ENTRIES = [
+    # a string that only mentions an import
+    "const help='Example: import(\"./retired.js\")';",
+    # a preserved comment
+    '/*! import("./retired.js") */',
+    # a printed absolute path
+    'console.log("/assets/retired.js");',
+    # forms that fooled earlier reference scanners
+    'fetch("https://cdn.example.com/x?u=/assets/retired.js");',
+    '"./retired.js#frag";"assets/retired.js";x=/assets/retired.js;',
+    '"see /assets/retired.js here";"prefix./old.js";',
+    '\n//# sourceMappingURL=./old.js.map\n//# sourceMappingURL=old.js',
+]
+
+
+@pytest.mark.parametrize("entry", INERT_ENTRIES)
+def test_a_marker_only_in_files_the_build_does_not_contain_is_not_served(tmp_path, env, entry):
+    site = _site(tmp_path, after_marker=False)
+    (site / "after/assets/index-new2.js").write_text(entry)
+    _local_build(site)
+    for name in ("retired.js", "old.js", "old.js.map"):
+        (site / "after/assets" / name).write_text("stale PHONE_MARKER")
+    r, fetched = _marker_served(tmp_path, env, site)
+    assert r.returncode == 1
+    assert fetched == []  # the build lacks the marker, so nothing is fetched
+
+
+@pytest.mark.parametrize("prefix", ['const title="hello world";', 'const sample="//[";',
+                                    "const q='it\\'s';const t=`a \"b\" c`;"])
+def test_a_marker_in_a_built_chunk_imported_after_unrelated_literals_is_served(tmp_path, env, prefix):
+    site = _site(tmp_path, after_marker=False)
+    (site / "after/assets/index-new2.js").write_text(prefix + 'import("./live-9a8b.js");')
+    (site / "after/assets/live-9a8b.js").write_text("live PHONE_MARKER")
+    _local_build(site)
+    r, _ = _marker_served(tmp_path, env, site)
+    assert r.returncode == 0, r.stderr
+
+
+def test_a_stylesheet_entry_must_match_too(tmp_path, env):
+    site = _site(tmp_path)
+    (site / "after/index.html").write_text(
+        '<script type="module" src="/assets/index-new2.js"></script>'
+        '<link rel="stylesheet" href="/assets/index-c55a.css">')
+    _local_build(site)
+    (site / "build/index.html").write_text(
+        '<script type="module" src="/assets/index-new2.js"></script>'
+        '<link rel="stylesheet" href="/assets/index-d66b.css">')
+    r, _ = _marker_served(tmp_path, env, site)
+    assert r.returncode == 1
+    assert "detail=the served index.html differs from the local build's" in r.stdout
+
+
+def _served_lazy_site(tmp_path):
+    """A lazy-chunk build whose index.html the deploy serves byte for byte."""
+    site = _lazy_site(tmp_path)
+    shutil.copytree(site / "after", site, dirs_exist_ok=True)
+    return site
+
+
+def test_every_asset_404_is_not_served(tmp_path, env):
+    site = _served_lazy_site(tmp_path)
+    shutil.rmtree(site / "assets")
+    r, fetched = _marker_served(tmp_path, env, site, deployed=False)
+    assert r.returncode == 1
+    assert "/assets/held_seat-ab12.js returned HTTP 404" in r.stdout
+    assert fetched[-1] == "https://shengji.fly.dev/assets/held_seat-ab12.js"
+
+
+def test_an_html_fallback_with_http_200_is_not_served(tmp_path, env):
+    site = _served_lazy_site(tmp_path)
+    shutil.rmtree(site / "assets")
+    r, _ = _marker_served(tmp_path, env, site, deployed=False, FAKE_HTML_FALLBACK="1")
+    assert r.returncode == 1
+    assert "is served as text/html; charset=utf-8, not JavaScript" in r.stdout
+
+
+def test_an_asset_served_with_a_non_javascript_type_is_not_served(tmp_path, env):
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_JS_TYPE="text/plain")
+    assert r.returncode == 1
+    assert "is served as text/plain, not JavaScript" in r.stdout
+
+
+def test_an_asset_shorter_than_its_content_length_is_not_served(tmp_path, env):
+    # the exact local bytes arrive, but curl exits 18 (transfer closed with bytes remaining)
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_SHORT_BODY="1")
+    assert r.returncode == 1
+    assert "/assets/held_seat-ab12.js failed (curl exit 18)" in r.stdout
+
+
+@pytest.mark.parametrize("mime", ["application/javascript-disabled", "text/javascriptx", "text/java script",
+                                  "text/plain; x=text/javascript", "javascript"])
+def test_a_mime_that_only_starts_like_javascript_is_not_served(tmp_path, env, mime):
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_JS_TYPE=mime)
+    assert r.returncode == 1
+    assert f"is served as {mime}, not JavaScript" in r.stdout
+
+
+@pytest.mark.parametrize("mime", ["text/javascript; charset=utf-8", "Application/JavaScript",
+                                  " text/javascript ;charset=UTF-8"])
+def test_a_javascript_mime_with_parameters_or_case_is_served(tmp_path, env, mime):
+    r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,
+                          FAKE_JS_TYPE=mime)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_an_asset_whose_served_bytes_differ_is_not_served(tmp_path, env):
+    site = _served_lazy_site(tmp_path)
+    (site / "assets/held_seat-ab12.js").write_text("chunk PHONE_MARKER, rebuilt")
+    r, _ = _marker_served(tmp_path, env, site, deployed=False)
+    assert r.returncode == 1
+    assert "/assets/held_seat-ab12.js differs from the local build's bytes" in r.stdout
+
+
+@pytest.mark.parametrize("index", [
+    # a comment that lists the local entry names
+    '<!-- <script type="module" src="/assets/index-new2.js"></script> -->',
+    # a script on another origin with the same path
+    '<script type="module" src="https://cdn.example.com/assets/index-new2.js"></script>',
+    # the same tag with a query string
+    '<script type="module" src="/assets/index-new2.js?v=1"></script>',
+])
+def test_a_served_index_that_is_not_the_local_bytes_is_not_served(tmp_path, env, index):
+    site = _served_lazy_site(tmp_path)
+    (site / "index.html").write_text(index)
+    r, fetched = _marker_served(tmp_path, env, site, deployed=False)
+    assert r.returncode == 1
+    assert "detail=the served index.html differs from the local build's" in r.stdout
+    assert fetched == ["https://shengji.fly.dev/"]
+
+
+def test_an_empty_local_entry_list_is_not_served(tmp_path, env):
+    site = _served_lazy_site(tmp_path)
+    (site / "build/index.html").write_text("<html></html>")
+    (site / "index.html").write_text("<html></html>")
+    r, fetched = _marker_served(tmp_path, env, site, deployed=False)
+    assert r.returncode == 1
+    assert "detail=the local build names no /assets entry" in r.stdout
+    assert fetched == []
+
+
+def test_real_mode_accepts_a_marker_only_in_a_lazy_chunk(repo, tmp_path, env):
+    site = _lazy_site(tmp_path)
+    r, data, _ = _run(repo, tmp_path, env, site, "--marker", "PHONE_MARKER", deploy_ok=True)
+    assert r.returncode == 0, r.stderr
+    assert data["status"] == "deployed"
+    assert data["marker_found"] is True
+    assert data["local_entries"] == data["served_entries"] == ["/assets/index-new2.js"]
+    assert data["marker_asset"] == "/assets/held_seat-ab12.js" and data["marker_detail"] is None

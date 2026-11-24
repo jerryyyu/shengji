@@ -339,9 +339,12 @@ def _player_rows(conn, since: int) -> list[dict]:
                   COALESCE(SUM(CASE WHEN e.created_at >= ? THEN e.delta END), 0) AS week_delta,
                   COUNT(CASE WHEN e.created_at >= ? THEN 1 END) AS week_rounds,
                   COUNT(CASE WHEN e.created_at < ? THEN 1 END) AS earlier_rounds,
+                  (SELECT p.rating_after FROM rating_events p
+                   WHERE p.user_id = u.id AND p.created_at < ?
+                   ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS rating_then,
                   AVG(e.levels) AS levels_per_round
            FROM users u JOIN rating_events e ON e.user_id = u.id
-           GROUP BY u.id""", (since, since, since)).fetchall()
+           GROUP BY u.id""", (since, since, since, since)).fetchall()
     players = [dict(r) for r in rows]
     players.sort(key=lambda r: (-r["rating"], -r["rated_rounds"], r["id"]))
     return players
@@ -353,9 +356,13 @@ def _week_rank_moves(players: list[dict]) -> dict[int, int]:
     list in current order. A week ago it held only the players who had a rated
     round before the week, ordered by the rating they had then with the same
     tie-break (rounds rated by then, then id); a player new this week has no
-    entry. Ranks count only visible players, as the list does."""
+    entry. Ranks count only visible players, as the list does.
+
+    The rating then is the stored ``rating_after`` of the last round before
+    the week, not ``rating - week_delta``: float subtraction of the summed
+    deltas can split two equal stored ratings and skip the tie-break."""
     def then(r: dict) -> tuple:
-        return (-(r["rating"] - r["week_delta"]), -(r["rated_rounds"] - r["week_rounds"]), r["id"])
+        return (-r["rating_then"], -(r["rated_rounds"] - r["week_rounds"]), r["id"])
 
     earlier = sorted((r for r in players if r["earlier_rounds"] > 0), key=then)
     moves = {}

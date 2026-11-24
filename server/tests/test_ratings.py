@@ -1407,6 +1407,46 @@ def test_a_tie_a_week_ago_breaks_like_the_ranking_does(env):
     assert _moves(board) == {"Bea": 1, "Ann": -1, "Dan": 1, "Cal": -1}
 
 
+def test_a_swap_from_a_tie_at_the_week_s_start_counts_through_real_rounds(env):
+    """Partners level at the week's start, rated by real rounds; Bea then
+    overtakes Ann. Rebuilding Bea's start as rating minus her week's summed
+    deltas comes out above Ann's equal stored rating, which would skip the
+    id tie-break and show both rows flat."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    ann, _ = _user(store, "ann", "Ann", rating=None)
+    bea, _ = _user(store, "bea", "Bea", rating=None)
+    now = time.time()
+
+    def rate(game_id, seats, winner_team, level_change, at):
+        ratings.apply_round(store, ratings.RoundRecord(
+            game_id=game_id, round_no=1, banker_team=0, winner_team=winner_team,
+            level_change=level_change, point_scored=False, start_accounts=dict(seats),
+            seat_names=[f"P{s}" for s in range(4)], seat_bots=[s not in seats for s in range(4)],
+            participants=[ratings.Participant(user_id=u, seat=s) for s, u in seats.items()]),
+            now=at)
+
+    for i, (winner, levels) in enumerate([(1, 2), (0, 2), (1, 1)]):
+        rate(f"pre{i}", {0: ann, 2: bea}, winner, levels, now - OLD)
+    rate("w0", {0: ann}, 0, 1, now - NEW)
+    rate("w1", {0: bea}, 1, 1, now - NEW)
+    rate("w2", {0: bea}, 0, 2, now - NEW)
+
+    start = {r["user_id"]: r["rating_after"] for r in _events(
+        store, "SELECT * FROM rating_events WHERE game_id = 'pre2'")}
+    assert start[ann] == start[bea]
+    week = {u: sum(r["delta"] for r in _events(
+        store, "SELECT * FROM rating_events WHERE user_id = ? AND game_id LIKE 'w%' ORDER BY id", u))
+        for u in (ann, bea)}
+    rebuilt = {u: ratings.current_rating(store, u) - week[u] for u in (ann, bea)}
+    assert rebuilt[bea] != start[bea]           # the drift this guards against
+
+    board = ratings.leaderboard(store, "week", None, now=now)
+    assert [r["name"] for r in board["players"]] == ["Bea", "Ann"]
+    assert _moves(board) == {"Bea": 1, "Ann": -1}
+
+
 def test_a_week_move_counts_only_visible_players(env):
     from shengji.api import ratings
 

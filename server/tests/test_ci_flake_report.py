@@ -233,3 +233,37 @@ def test_a_failure_with_an_unreadable_later_run_is_not_called_never_rerun(monkey
     assert other in flakes                  # the recovery run 2 shows is kept
     row = next(line for line in skipped.splitlines() if NODE in line)
     assert _cells(row)[:5] == ["server (pure, 1)", "PR checks", "claude/a", SHA[:8], "1#1"]
+
+
+def test_an_unreadable_attempt_of_an_earlier_created_run_still_blocks_never_rerun(monkeypatch):
+    """Run A is created at 01:00, B's job fails at 02:05 and A's attempt 2
+    passes it at 03:00: read, that is a recovery; with A's attempt 2
+    unreadable, B's failure is not "never ran again"."""
+    monkeypatch.setattr(report.time, "sleep", lambda _: None)
+    job = "server (pure, 1)"
+    runs = [{"id": 1, "name": "PR checks", "head_sha": SHA, "head_branch": "claude/a", "conclusion": "success",
+             "created_at": "2026-11-23T01:00:00Z", "run_attempt": 2},
+            {"id": 2, "name": "PR checks", "head_sha": SHA, "head_branch": "claude/a", "conclusion": "failure",
+             "created_at": "2026-11-23T02:00:00Z", "run_attempt": 1}]
+    jobs = {"1/1": [{"id": 11, "name": "lint", "conclusion": "success", "started_at": "2026-11-23T01:00:00Z"}],
+            "1/2": [{"id": 12, "name": job, "conclusion": "success", "started_at": "2026-11-23T03:00:00Z"}],
+            "2/1": [{"id": 21, "name": job, "conclusion": "failure", "started_at": "2026-11-23T02:05:00Z"}]}
+    logs = {"21": FAILED_LOG, "12": f"{NODE} PASSED\n"}
+
+    def api(path):
+        rest = path[len(f"repos/{REPO}/actions/"):]
+        if rest.startswith("runs?"):
+            return json.dumps({"workflow_runs": runs if "page=1" in rest else []})
+        if "/attempts/" in rest:
+            run, _, attempt = rest.split("?")[0].split("/")[1:4]
+            return json.dumps({"jobs": jobs[f"{run}/{attempt}"] if "page=1" in rest else []})
+        return logs.get(rest.split("/")[1], "")
+
+    flakes, _, _ = _sections(_run(api))
+    assert NODE in flakes                       # readable: A's later attempt recovered it
+    text = _run(_failing(api, "runs/1/attempts/2/", report.API_TRIES))
+    body, skipped = text.split("## Runs skipped: their jobs could not be read", 1)
+    _, _, unrerun = _sections(body)
+    assert NODE not in unrerun
+    row = next(line for line in skipped.splitlines() if NODE in line)
+    assert _cells(row)[:5] == [job, "PR checks", "claude/a", SHA[:8], "2#1"]

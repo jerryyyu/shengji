@@ -17,7 +17,7 @@ import pytest
 
 from shengji.ai.heuristic import HeuristicBot
 
-from shengji.train import pv_exact_deep, pv_exact_follow
+from shengji.train import policy_value_search, pv_exact_deep, pv_exact_follow
 from shengji.train import pv_search_policy as pv
 from test_pv_admission_rules import names, production_package  # noqa: F401
 from test_pv_doomed_throw_reselect import HashNoiseEvaluator
@@ -52,11 +52,25 @@ def test_a_subset_at_least_the_worlds_is_the_same_recipe(worlds, subset):
     assert bot(worlds, subset)._exact_worlds(list(range(worlds))) == list(range(worlds))
 
 
-@pytest.mark.parametrize("seed", [17, 23])
-def test_at_w64_the_flag_decides_exactly_as_off_on_seeded_endgames(seed):
-    """The heuristic walks the round into the exact stages' range; both bots
-    then play every remaining decision."""
-    off, on = bot(64, seed=seed), bot(64, 64, seed=seed)
+class _StoppedClock:
+    """``time`` for the search modules with a clock that never advances, so no
+    soft deadline or budget check fires: under CPU contention a wall-clock
+    expiry in one arm would otherwise abandon a stage the other arm finished."""
+
+    @staticmethod
+    def perf_counter():
+        return 0.0
+
+
+def _stop_the_search_clock(monkeypatch):
+    monkeypatch.setattr(pv, "time", _StoppedClock)
+    monkeypatch.setattr(policy_value_search, "time", _StoppedClock)
+
+
+def _seeded_endgame_mismatch(off, on, seed):
+    """Walk the seeded round into the exact stages' range with the heuristic,
+    then have both bots play every remaining decision; the first way the two
+    arms differ, or None, with the decisions and exact-stage decisions seen."""
     h = HeuristicBot()
     rnd = _fresh_round(seed)
     while max(map(len, rnd.hands)) > 5:
@@ -66,17 +80,48 @@ def test_at_w64_the_flag_decides_exactly_as_off_on_seeded_endgames(seed):
         seat = rnd.turn
         a = off.decide_play(copy.deepcopy(rnd), seat)
         b = on.decide_play(copy.deepcopy(rnd), seat)
-        assert a == b
-        assert comparable(off.last_decision_record) == comparable(on.last_decision_record)
-        assert off.sampler.rng.getstate() == on.sampler.rng.getstate()
+        if a != b:
+            return "decision", decisions, exact
+        if comparable(off.last_decision_record) != comparable(on.last_decision_record):
+            return "record", decisions, exact
+        if off.sampler.rng.getstate() != on.sampler.rng.getstate():
+            return "sampler", decisions, exact
         record = on.last_decision_record
         exact += bool(record.get("exact_follow_attempted")
                       or record.get("exact_lead_status") == "complete")
-        assert "exact_lead_subset_worlds" not in record
-        assert "exact_follow_subset_worlds" not in record
+        if "exact_lead_subset_worlds" in record or "exact_follow_subset_worlds" in record:
+            return "subset record", decisions, exact
         decisions += 1
         rnd.play(seat, a)
+    return None, decisions, exact
+
+
+@pytest.mark.parametrize("seed", [17, 23])
+def test_at_w64_the_flag_decides_exactly_as_off_on_seeded_endgames(seed, monkeypatch):
+    _stop_the_search_clock(monkeypatch)
+    off, on = bot(64, seed=seed), bot(64, 64, seed=seed)
+    mismatch, decisions, exact = _seeded_endgame_mismatch(off, on, seed)
+    assert mismatch is None
     assert decisions >= 8 and exact >= 3
+
+
+def _solve_eight(b):
+    b._exact_worlds = lambda worlds: worlds[:8]
+
+
+def _no_exact_lead(b):
+    b.exact_lead_endgame = False
+
+
+@pytest.mark.parametrize("mutate", [_solve_eight, _no_exact_lead])
+def test_the_seeded_endgame_comparison_catches_a_search_change(mutate, monkeypatch):
+    """The no-op witness is not vacuous: an ON arm whose exact stages solve
+    only 8 of its 64 worlds, or that skips the exact lead stage, is caught."""
+    _stop_the_search_clock(monkeypatch)
+    off, on = bot(64, seed=23), bot(64, 64, seed=23)
+    mutate(on)
+    mismatch, _decisions, _exact = _seeded_endgame_mismatch(off, on, 23)
+    assert mismatch is not None
 
 
 # ------------------------------------------------- (b) narrower than the worlds

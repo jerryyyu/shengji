@@ -142,7 +142,8 @@
    "server/tests/test_llm_benchmark_policy.py": 0.1,
    "server/tests/test_llm_benchmark_rollouts.py": 4.6,
    "server/tests/test_luna_attempt.py": 188.9,
-   "server/tests/test_luna_cli.py": 428.9,
+   "server/tests/test_luna_cli.py": 222.5,
+   "server/tests/test_luna_cli_reopen.py": 206.4,
    "server/tests/test_luna_supervisor.py": 171.3,
    "server/tests/test_luna_transport.py": 1.6,
    "server/tests/test_m5_population_contract.py": 30.5,
@@ -463,7 +464,8 @@
    "server/tests/test_llm_benchmark_transport.py": 1.4,
    "server/tests/test_local_data.py": 0.0,
    "server/tests/test_luna_attempt.py": 215.7,
-   "server/tests/test_luna_cli.py": 423.1,
+   "server/tests/test_luna_cli.py": 219.5,
+   "server/tests/test_luna_cli_reopen.py": 203.6,
    "server/tests/test_luna_startup_cleanup.py": 0.1,
    "server/tests/test_luna_supervisor.py": 174.1,
    "server/tests/test_luna_transport.py": 1.6,
@@ -700,5 +702,5 @@
    "tools/y_datagen/test_launch.py": 0.0
   }
  },
- "source": "median of runs 45475736642 45467215311 45454285567 45435740284 45418232919 45414038874 45412701241 45412685136 45408429079 45404710115"
+ "source": "median of runs 45475736642 45467215311 45454285567 45435740284 45418232919 45414038874 45412701241 45412685136 45408429079 45404710115 ; test_luna_cli.py split in two by its per-test call times in run 45483041751"
 }

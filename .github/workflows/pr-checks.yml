@@ -888,7 +888,7 @@ jobs:
           - name: Test Luna collector prompt profiles
             env:
               SHENGJI_FAST: "1"
-            run: python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 -- uv run pytest -q -p no:cacheprovider tests/test_luna_attempt.py tests/test_luna_supervisor.py tests/test_luna_cli.py tests/test_luna_transport.py
+            run: python3 scripts/ci/parallel.py --shard ${{ matrix.shard }} --shards 2 -- uv run pytest -q -p no:cacheprovider tests/test_luna_attempt.py tests/test_luna_supervisor.py tests/test_luna_cli.py tests/test_luna_cli_reopen.py tests/test_luna_transport.py
           - name: Test observation evidence and process containment
             run: >-
               python3 scripts/ci/parallel.py --sessions 2 --shard ${{ matrix.shard }} --shards 2 --
@@ -926,6 +926,7 @@ jobs:
               tests/test_observation_admission.py
               tests/test_luna_startup_cleanup.py
               tests/test_luna_cli.py
+              tests/test_luna_cli_reopen.py
               tests/test_luna_transport.py
               tests/test_observation_opportunity_integration.py
               tests/test_ballot_selection.py

@@ -324,10 +324,16 @@ describe("every Play table has a code", () => {
     await settle();
     expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
     expect(invite.getAttribute("aria-label")).toBe("Link copied, table code 4 N 5 Z");
-    // ranked starts at 2: no row; Allow joiners, the one setting, is its own row
+    // ranked starts at 2: no level row; Allow joiners and Wait for people
+    // fold into Table settings, which shows no values (both are switches)
     expect(p.textContent).not.toContain("Starting level");
     expect(p.querySelector("select")).toBeNull();
-    expect(p.querySelector(".tp-settings")).toBeNull();
+    const settings = p.querySelector<HTMLButtonElement>("button.tp-settings")!;
+    expect(settings.textContent).toBe("Table settings");
+    expect(p.querySelectorAll("[role='switch']")).toHaveLength(0);
+    click(settings);
+    expect([...p.querySelectorAll("[role='switch']")].map((b) => [b.textContent, b.getAttribute("aria-checked")]))
+      .toEqual([["Allow joiners", "true"], ["Wait for people", "false"]]);
     const joiners = [...p.querySelectorAll<HTMLButtonElement>("[role='switch']")]
       .find((b) => b.textContent === "Allow joiners")!;
     expect(joiners.getAttribute("aria-checked")).toBe("true");
@@ -335,6 +341,8 @@ describe("every Play table has a code", () => {
     expect(lastSent()).toEqual({ type: "table_allow_joiners", on: false });
     // labels only, no sub-lines
     expect(p.querySelector(".tp-hint, .tp-kicker")).toBeNull();
+    // the chat row is a row that opens, with the list chevron, not a text field
+    expect(p.querySelector("button.tp-chat .tp-chev")).not.toBeNull();
   });
 
   /** The Table settings row of a panel, opened. */
@@ -356,15 +364,15 @@ describe("every Play table has a code", () => {
     // closed: none of the three setting rows
     expect(p.querySelector("select")).toBeNull();
     expect(p.querySelector(".tp-settings-body")).toBeNull();
-    expect(p.textContent).not.toMatch(/Starting level|Allow joiners/);
-    // Wait for people stays its own row beside the ring
-    expect([...p.querySelectorAll("[role='switch']")].map((b) => b.textContent)).toEqual(["Wait for people"]);
+    expect(p.textContent).not.toMatch(/Starting level|Allow joiners|Wait for people/);
+    // every switch is behind the row: none drawn while it is closed
+    expect(p.querySelectorAll("[role='switch']")).toHaveLength(0);
     click(row);
     expect(row.getAttribute("aria-expanded")).toBe("true");
     const body = p.querySelector(".tp-settings-body")!;
     expect(row.getAttribute("aria-controls")).toBe(body.id);
     expect([...body.querySelectorAll("select")].map((s) => s.getAttribute("aria-label"))).toEqual(["Starting level", "Bots"]);
-    expect([...body.querySelectorAll("[role='switch']")].map((b) => b.textContent)).toEqual(["Allow joiners"]);
+    expect([...body.querySelectorAll("[role='switch']")].map((b) => b.textContent)).toEqual(["Allow joiners", "Wait for people"]);
     // a new frame keeps it open
     say(own({ mode: "casual", start_level: "5", bot_level: "standard" }));
     expect(row.getAttribute("aria-expanded")).toBe("true");

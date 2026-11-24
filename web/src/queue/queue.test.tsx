@@ -104,6 +104,11 @@ const button = (text: string | RegExp, scope: ParentNode = document) => buttons(
   const t = words(b);
   return typeof text === "string" ? t === text : text.test(t);
 });
+/** Opens a panel's Table settings row, where its switches are. */
+const openSettings = (p: ParentNode) => {
+  const row = p.querySelector<HTMLButtonElement>("button.tp-settings");
+  if (row && row.getAttribute("aria-expanded") !== "true") click(row);
+};
 const click = (b: HTMLElement | null | undefined) => {
   if (!b) throw new Error("no such button");
   act(() => b.click());
@@ -348,7 +353,11 @@ describe("your own table", () => {
       .toEqual(["Open seat, your team", "You, your team"]);
     expect([...theirs.querySelectorAll(".tp-seat.open")]).toHaveLength(2);
     expect(p.querySelector(".tp-seat.open")?.tagName).toBe("DIV");   // nothing to move to alone
+    // Wait for people is off and Allow joiners on by default, both inside Table settings
+    expect(button("Wait for people", p)).toBeUndefined();
+    openSettings(p);
     expect(button("Wait for people", p)?.getAttribute("aria-checked")).toBe("false");
+    expect(button("Allow joiners", p)?.getAttribute("aria-checked")).toBe("true");
     tick(6000);
     expect(lines()).toEqual([]);
     expect(ringSecs()).toBe("54");
@@ -422,6 +431,7 @@ describe("your own table", () => {
     await renderApp();
     fakeClock();
     say(queued());
+    openSettings(panel()!);
     const sw = () => button("Wait for people", panel()!)!;
     expect(sw().getAttribute("role")).toBe("switch");
     click(sw());
@@ -578,8 +588,10 @@ describe("a Duo is a table", () => {
     expect(p.querySelectorAll(".tp-seat.open")).toHaveLength(2);
     expect(p.querySelector(".tp-code")?.textContent).toBe("4N5Z");
     expect(p.querySelector("button.tp-invite")?.getAttribute("aria-label")).toBe("Invite, table code 4 N 5 Z");
-    // ranked: Allow joiners is the one setting, so it is its own row
-    expect(p.querySelector(".tp-settings")).toBeNull();
+    // ranked: Allow joiners and Wait for people fold into Table settings
+    expect(p.querySelector(".tp-settings")).not.toBeNull();
+    expect(joiners(p)).toHaveLength(0);
+    openSettings(p);
     expect(joiners(p)).toHaveLength(1);
     expect(lines()).toEqual([]);
     expect(words(primary()!)).toBe("Start with bots");
@@ -647,6 +659,7 @@ describe("a Duo is a table", () => {
     expect(p.querySelector(".tp-title")?.textContent).toBe("You and Alice");
     expect(lines()).toEqual(["1 of 2 ready"]);
     expect(p.querySelector(".tp-seat.friend .tp-tick")).not.toBeNull();
+    openSettings(p);
     expect(joiners(p)).toHaveLength(1);
     click(primary());
     expect(lastSent()).toEqual({ type: "table_start" });

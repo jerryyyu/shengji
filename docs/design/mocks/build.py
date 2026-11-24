@@ -485,7 +485,8 @@ def chat_row(last="", unread=0):
     txt = last
     return ('<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(17,20,26,.55);border:1px solid #333b49">'
             '<span style="font-size:15px">💬</span><span style="font-size:13px;font-weight:700">Chat</span>'
-            f'<span style="flex:1;font-size:12px;color:#9aa3b2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{txt}</span>{badge}</div>')
+            f'<span style="flex:1;font-size:12px;color:#9aa3b2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{txt}</span>{badge}'
+            '<span style="color:#9aa3b2">›</span></div>')
 
 
 CODE_NOTE = """<div class="decide codenote"><h3>What changes in code</h3><ul>

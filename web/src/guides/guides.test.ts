@@ -7,6 +7,7 @@ import { APP_STORE_URL, SITE_ORIGIN } from "../siteOrigin";
 import { DiagramError, renderBlock } from "./cards";
 import { inline, render } from "./markdown";
 import { GUIDE_CSS, GUIDE_DIRS, buildSite, type Source } from "./site";
+import { CALCULATOR_SLUG } from "./calculator";
 
 const WEB = new URL("../..", import.meta.url).pathname;
 const CONTENT = join(WEB, "content", "guides");
@@ -147,10 +148,21 @@ describe("each page's metadata", () => {
     }
   });
 
-  it("loads no script or stylesheet from anywhere", () => {
+  it("loads no script or stylesheet from anywhere; only the calculator runs one, inline", () => {
     for (const [p, html] of pages) {
-      expect(html, p).not.toMatch(/<script(?![^>]*application\/ld\+json)/);
+      const scripts = html.match(/<script(?![^>]*application\/ld\+json)[^>]*>/g) ?? [];
+      expect(scripts, p).toEqual(p.includes(`/${CALCULATOR_SLUG}/`) ? ["<script>"] : []);
       expect(html, p).not.toMatch(/<link[^>]+stylesheet/);
+    }
+  });
+
+  it("carries the Smart App Banner once, with the app's id", () => {
+    const id = /id(\d+)$/.exec(APP_STORE_URL)![1];
+    const tag = `<meta name="apple-itunes-app" content="app-id=${id}" />`;
+    expect(readFileSync(join(WEB, "index.html"), "utf8")).toContain(tag.replace(" />", ""));
+    for (const [p, html] of pages) {
+      expect(html.split('name="apple-itunes-app"').length - 1, p).toBe(1);
+      expect(html, p).toContain(tag);
     }
   });
 });

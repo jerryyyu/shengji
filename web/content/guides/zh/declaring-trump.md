@@ -3,7 +3,7 @@ title: 亮主怎么亮：什么时候亮、怎么反、亮哪门
 description: 摸牌时怎么亮主、什么能反什么，怎么数一门值不值得亮，以及什么时候别反对家。
 slug: declaring-trump
 order: 3
-related: [how-to-play, burying-the-kitty, pairs-tractors-throws]
+related: [how-to-play, burying-the-kitty, pairs-tractors-throws, sheng-ji-by-the-numbers]
 updated: 2026-11-23
 lang: zh
 ---

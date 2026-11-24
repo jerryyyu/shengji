@@ -1,0 +1,4419 @@
+[
+ {
+  "name": "Shut-out",
+  "input": {
+   "trickPoints": 0,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 0,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 3,
+   "nextBanker": 2,
+   "newLevels": [
+    "5",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Held under 40",
+  "input": {
+   "trickPoints": 35,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "5",
+    "3"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 35,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "7",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Exactly 40",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 1,
+   "levels": [
+    "4",
+    "7"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 40,
+   "winner": "defenders",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 3,
+   "newLevels": [
+    "4",
+    "8"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Just short at 75",
+  "input": {
+   "trickPoints": 75,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 2,
+   "levels": [
+    "9",
+    "6"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 75,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 0,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Exactly 80: the deal passes, no level",
+  "input": {
+   "trickPoints": 80,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "J",
+    "8"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 80,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "J",
+    "8"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "120: the deal passes, up 1",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 3,
+   "levels": [
+    "6",
+    "10"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 120,
+   "winner": "attackers",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 0,
+   "newLevels": [
+    "7",
+    "10"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "The kitty flips it (single lead, x2)",
+  "input": {
+   "trickPoints": 70,
+   "attackersWonLast": true,
+   "kittyPoints": 10,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "3",
+    "3"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 2,
+   "bonus": 20,
+   "total": 90,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "3",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "The kitty on a pair lead (x4)",
+  "input": {
+   "trickPoints": 100,
+   "attackersWonLast": true,
+   "kittyPoints": 25,
+   "lead": "pair",
+   "variant": "site",
+   "banker": 1,
+   "levels": [
+    "8",
+    "5"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 100,
+   "total": 200,
+   "winner": "attackers",
+   "winnerTeam": 0,
+   "levelsGained": 3,
+   "nextBanker": 2,
+   "newLevels": [
+    "J",
+    "5"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Pair and single throw, this site's rule (x6)",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 20,
+   "lead": "pair-single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "7",
+    "7"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ"
+   ],
+   "leadCardCount": 3,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 6,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "7",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Same throw, largest-part rule (x4)",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 20,
+   "lead": "pair-single",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "7",
+    "7"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ"
+   ],
+   "leadCardCount": 3,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 80,
+   "total": 120,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "7",
+    "8"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Defending A wins the game",
+  "input": {
+   "trickPoints": 60,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 2,
+   "levels": [
+    "A",
+    "Q"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DK"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 60,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 0,
+   "newLevels": [
+    "A",
+    "Q"
+   ],
+   "gameWon": true
+  }
+ },
+ {
+  "name": "Attackers on K go up 2, capped at A",
+  "input": {
+   "trickPoints": 165,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "K"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 165,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Kitty points with the defenders winning the last trick score nothing",
+  "input": {
+   "trickPoints": 70,
+   "attackersWonLast": false,
+   "kittyPoints": 40,
+   "lead": "pair",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 70,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Over 200, only through the kitty",
+  "input": {
+   "trickPoints": 150,
+   "attackersWonLast": true,
+   "kittyPoints": 25,
+   "lead": "pair",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "5",
+    "5"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 100,
+   "total": 250,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 4,
+   "nextBanker": 1,
+   "newLevels": [
+    "5",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "The largest kitty on the largest lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "tractor-4",
+   "variant": "site",
+   "banker": 1,
+   "levels": [
+    "4",
+    "6"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ"
+   ],
+   "leadCardCount": 8,
+   "leadLargestPart": 8,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 16,
+   "bonus": 1280,
+   "total": 1400,
+   "winner": "attackers",
+   "winnerTeam": 0,
+   "levelsGained": 33,
+   "nextBanker": 2,
+   "newLevels": [
+    "A",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Shut out in tricks, saved by the kitty",
+  "input": {
+   "trickPoints": 0,
+   "attackersWonLast": true,
+   "kittyPoints": 40,
+   "lead": "pair",
+   "variant": "site",
+   "banker": 2,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 160,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 3,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Defenders on K go up 3, capped at A, not a win",
+  "input": {
+   "trickPoints": 0,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "K",
+    "9"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 0,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 3,
+   "nextBanker": 2,
+   "newLevels": [
+    "A",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Attackers at A take the deal: no win yet",
+  "input": {
+   "trickPoints": 130,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "8",
+    "A"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 130,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "8",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Defending A with a shut-out still wins only the game",
+  "input": {
+   "trickPoints": 0,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 1,
+   "levels": [
+    "3",
+    "A"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DK"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 0,
+   "winner": "defenders",
+   "winnerTeam": 1,
+   "levelsGained": 3,
+   "nextBanker": 3,
+   "newLevels": [
+    "3",
+    "A"
+   ],
+   "gameWon": true
+  }
+ },
+ {
+  "name": "Losing a defence at A passes the deal",
+  "input": {
+   "trickPoints": 80,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 3,
+   "levels": [
+    "5",
+    "A"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DK"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 80,
+   "winner": "attackers",
+   "winnerTeam": 0,
+   "levelsGained": 0,
+   "nextBanker": 0,
+   "newLevels": [
+    "5",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "115 is still no level",
+  "input": {
+   "trickPoints": 115,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 3,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 115,
+   "winner": "attackers",
+   "winnerTeam": 0,
+   "levelsGained": 0,
+   "nextBanker": 0,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "155 is still up 1",
+  "input": {
+   "trickPoints": 155,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 2,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 155,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 3,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "160 is up 2",
+  "input": {
+   "trickPoints": 160,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 2,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 3,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Five points is up 2 for the defenders",
+  "input": {
+   "trickPoints": 5,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 1,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 5,
+   "winner": "defenders",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 3,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Banker West: the deal passes to North",
+  "input": {
+   "trickPoints": 90,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 3,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 90,
+   "winner": "attackers",
+   "winnerTeam": 0,
+   "levelsGained": 0,
+   "nextBanker": 0,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Banker West: the deal stays with East",
+  "input": {
+   "trickPoints": 60,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 3,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 60,
+   "winner": "defenders",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead single, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 2,
+   "bonus": 30,
+   "total": 70,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "J",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead single, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "single",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 2,
+   "bonus": 30,
+   "total": 70,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "J",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead pair, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "pair",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 60,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead pair, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "pair",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 60,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-singles, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "two-singles",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DK"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 60,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-singles, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "two-singles",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DK"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 2,
+   "bonus": 30,
+   "total": 70,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "J",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead pair-single, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "pair-single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ"
+   ],
+   "leadCardCount": 3,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 6,
+   "bonus": 90,
+   "total": 130,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "5"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead pair-single, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "pair-single",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ"
+   ],
+   "leadCardCount": 3,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 60,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-pairs, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "two-pairs",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ",
+    "DQ"
+   ],
+   "leadCardCount": 4,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead two-pairs, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "two-pairs",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ",
+    "DQ"
+   ],
+   "leadCardCount": 4,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 60,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-2, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-2",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK"
+   ],
+   "leadCardCount": 4,
+   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-2, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-2",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK"
+   ],
+   "leadCardCount": 4,
+   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-2-single, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-2-single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ"
+   ],
+   "leadCardCount": 5,
+   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 10,
+   "bonus": 150,
+   "total": 190,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-2-single, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-2-single",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ"
+   ],
+   "leadCardCount": 5,
+   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 120,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "6"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-3, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-3",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ"
+   ],
+   "leadCardCount": 6,
+   "leadLargestPart": 6,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 12,
+   "bonus": 180,
+   "total": 220,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 3,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "7"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-3, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-3",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ"
+   ],
+   "leadCardCount": 6,
+   "leadLargestPart": 6,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 12,
+   "bonus": 180,
+   "total": 220,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 3,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "7"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-4, site rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-4",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ"
+   ],
+   "leadCardCount": 8,
+   "leadLargestPart": 8,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 16,
+   "bonus": 240,
+   "total": 280,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 5,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Lead tractor-4, largest-part rule",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": true,
+   "kittyPoints": 15,
+   "lead": "tractor-4",
+   "variant": "largest-part",
+   "banker": 0,
+   "levels": [
+    "10",
+    "4"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ"
+   ],
+   "leadCardCount": 8,
+   "leadLargestPart": 8,
+   "buried": [
+    "SK",
+    "S5",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 16,
+   "bonus": 240,
+   "total": 280,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 5,
+   "nextBanker": 1,
+   "newLevels": [
+    "10",
+    "9"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 0",
+  "input": {
+   "trickPoints": 0,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 0,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 3,
+   "nextBanker": 2,
+   "newLevels": [
+    "5",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 5",
+  "input": {
+   "trickPoints": 5,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 5,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 10",
+  "input": {
+   "trickPoints": 10,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 10,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 15",
+  "input": {
+   "trickPoints": 15,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 15,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 20",
+  "input": {
+   "trickPoints": 20,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 20,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 25",
+  "input": {
+   "trickPoints": 25,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 25,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 30",
+  "input": {
+   "trickPoints": 30,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 30,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 35",
+  "input": {
+   "trickPoints": 35,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 35,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 2,
+   "nextBanker": 2,
+   "newLevels": [
+    "4",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 40",
+  "input": {
+   "trickPoints": 40,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 40,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 45",
+  "input": {
+   "trickPoints": 45,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 45,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 50",
+  "input": {
+   "trickPoints": 50,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 50,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 55",
+  "input": {
+   "trickPoints": 55,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 55,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 60",
+  "input": {
+   "trickPoints": 60,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 60,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 65",
+  "input": {
+   "trickPoints": 65,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 65,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 70",
+  "input": {
+   "trickPoints": 70,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 70,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 75",
+  "input": {
+   "trickPoints": 75,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 75,
+   "winner": "defenders",
+   "winnerTeam": 0,
+   "levelsGained": 1,
+   "nextBanker": 2,
+   "newLevels": [
+    "3",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 80",
+  "input": {
+   "trickPoints": 80,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 80,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 85",
+  "input": {
+   "trickPoints": 85,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 85,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 90",
+  "input": {
+   "trickPoints": 90,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 90,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 95",
+  "input": {
+   "trickPoints": 95,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 95,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 100",
+  "input": {
+   "trickPoints": 100,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 100,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 105",
+  "input": {
+   "trickPoints": 105,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 105,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 110",
+  "input": {
+   "trickPoints": 110,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 110,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 115",
+  "input": {
+   "trickPoints": 115,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 115,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 0,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "2"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 120,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 125",
+  "input": {
+   "trickPoints": 125,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 125,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 130",
+  "input": {
+   "trickPoints": 130,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 130,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 135",
+  "input": {
+   "trickPoints": 135,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 135,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 140",
+  "input": {
+   "trickPoints": 140,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 140,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 145",
+  "input": {
+   "trickPoints": 145,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 145,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 150",
+  "input": {
+   "trickPoints": 150,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 150,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 155",
+  "input": {
+   "trickPoints": 155,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 155,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 1,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "3"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 160",
+  "input": {
+   "trickPoints": 160,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 160,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 165",
+  "input": {
+   "trickPoints": 165,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 165,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 170",
+  "input": {
+   "trickPoints": 170,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 170,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 175",
+  "input": {
+   "trickPoints": 175,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 175,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 180",
+  "input": {
+   "trickPoints": 180,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 180,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 185",
+  "input": {
+   "trickPoints": 185,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 185,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 190",
+  "input": {
+   "trickPoints": 190,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 190,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 195",
+  "input": {
+   "trickPoints": 195,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 195,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 2,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "4"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 200",
+  "input": {
+   "trickPoints": 200,
+   "attackersWonLast": false,
+   "kittyPoints": 0,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3",
+    "S3"
+   ]
+  },
+  "output": {
+   "multiplier": 0,
+   "bonus": 0,
+   "total": 200,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 3,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "5"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a single lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA"
+   ],
+   "leadCardCount": 1,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 2,
+   "bonus": 160,
+   "total": 280,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 5,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "7"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a pair lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "pair",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 320,
+   "total": 440,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 9,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "J"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a two-singles lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "two-singles",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DK"
+   ],
+   "leadCardCount": 2,
+   "leadLargestPart": 1,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 4,
+   "bonus": 320,
+   "total": 440,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 9,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "J"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a pair-single lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "pair-single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ"
+   ],
+   "leadCardCount": 3,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 6,
+   "bonus": 480,
+   "total": 600,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 13,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a two-pairs lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "two-pairs",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DQ",
+    "DQ"
+   ],
+   "leadCardCount": 4,
+   "leadLargestPart": 2,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 640,
+   "total": 760,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 17,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-2 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "tractor-2",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK"
+   ],
+   "leadCardCount": 4,
+   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 8,
+   "bonus": 640,
+   "total": 760,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 17,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-2-single lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "tractor-2-single",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DJ"
+   ],
+   "leadCardCount": 5,
+   "leadLargestPart": 4,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 10,
+   "bonus": 800,
+   "total": 920,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 21,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-3 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "tractor-3",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ"
+   ],
+   "leadCardCount": 6,
+   "leadLargestPart": 6,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 12,
+   "bonus": 960,
+   "total": 1080,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 25,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ },
+ {
+  "name": "Sweep 120 + 80 on a tractor-4 lead",
+  "input": {
+   "trickPoints": 120,
+   "attackersWonLast": true,
+   "kittyPoints": 80,
+   "lead": "tractor-4",
+   "variant": "site",
+   "banker": 0,
+   "levels": [
+    "2",
+    "2"
+   ]
+  },
+  "engine": {
+   "leadCards": [
+    "DA",
+    "DA",
+    "DK",
+    "DK",
+    "DQ",
+    "DQ",
+    "DJ",
+    "DJ"
+   ],
+   "leadCardCount": 8,
+   "leadLargestPart": 8,
+   "buried": [
+    "SK",
+    "S10",
+    "CK",
+    "C10",
+    "DK",
+    "D10",
+    "HK",
+    "H10"
+   ]
+  },
+  "output": {
+   "multiplier": 16,
+   "bonus": 1280,
+   "total": 1400,
+   "winner": "attackers",
+   "winnerTeam": 1,
+   "levelsGained": 33,
+   "nextBanker": 1,
+   "newLevels": [
+    "2",
+    "A"
+   ],
+   "gameWon": false
+  }
+ }
+]

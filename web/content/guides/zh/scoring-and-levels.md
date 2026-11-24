@@ -3,7 +3,7 @@ title: 升级怎么算分：分牌、抠底翻倍和升几级
 description: 分怎么数，抠底怎么翻倍，闲家多少分对应升降几级，用实际的数一步步算给你看。
 slug: scoring-and-levels
 order: 6
-related: [burying-the-kitty, how-to-play, names-and-variants]
+related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants]
 updated: 2026-11-23
 lang: zh
 ---
@@ -66,7 +66,7 @@ caption: 梅花做主、打 2，一对小王赢下最后一轮。底里 25 分 �
 
 超过 200 分靠的是抠底。牌面上拿 150 分，底里 25 分、最后一轮首家出对子，就是 150 + 100 = 250 分：升 4 级。
 
-上面那局的 75 分，是庄家方升 1 级。再多 5 分，就换闲家上台了。
+上面那局的 75 分，是庄家方升 1 级。再多 5 分，就换闲家上台了。任何一局都可以用[算分器](/zh/guides/score-calculator)算。
 
 ## 下局谁坐庄
 

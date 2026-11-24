@@ -224,6 +224,7 @@ jobs:
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_guide_examples.py
+          tests/test_seo_calc_cases.py
           tests/test_memory.py
           tests/test_banker_sampler.py
           tests/test_ratings.py
@@ -285,6 +286,7 @@ jobs:
           tests/test_action_semantics.py
           tests/test_game.py
           tests/test_guide_examples.py
+          tests/test_seo_calc_cases.py
           tests/test_banker_sampler.py
           tests/test_bot_scheduler.py
           tests/test_duel_factories_seeded.py

@@ -3,7 +3,7 @@ title: Scoring in Sheng Ji: points, the kitty multiplier and levelling up
 description: How card points are counted, how the kitty is multiplied on the last trick, and exactly how many levels each score is worth, with worked numbers.
 slug: scoring-and-levels
 order: 6
-related: [burying-the-kitty, how-to-play, names-and-variants]
+related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants]
 updated: 2026-11-23
 lang: en
 ---
@@ -66,7 +66,7 @@ The attackers need 80. From there, every 40 points either way is one level.
 
 Scores over 200 happen because of the kitty. 150 in tricks plus 25 buried points under a pair lead is 150 + 100 = 250: up 4.
 
-The 75 in the real hand above is one level for the defenders. Five more points and it would have been a lost deal instead.
+The 75 in the real hand above is one level for the defenders. Five more points and it would have been a lost deal instead. The [score calculator](/guides/score-calculator) works out any hand.
 
 ## Who is banker next
 

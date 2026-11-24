@@ -436,6 +436,7 @@ def test_a_1200_partner_joining_a_998_host_through_the_queue_promotes(wsenv, mon
 def test_a_guest_seat_resumed_as_a_1200_account_promotes(wsenv, monkeypatch):  # noqa: F811
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    monkeypatch.setattr(srv, "ROOM_TTL", 30.0)  # the guest disconnects; keep its room past the sign-in
     code, token = _guest_match(client)
     room = srv.rooms[code]
     _settled(room)
@@ -560,6 +561,7 @@ def test_a_guest_who_signs_in_during_the_opening_deal_is_read_as_the_account(
     the level is read for the account now seated, on both sides of 1000."""
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "DEAL_DELAY", 0.03)          # an opening deal of ~3 s
+    monkeypatch.setattr(srv, "ROOM_TTL", 30.0)  # the guest disconnects; keep its room past the sign-in
     code, token = _guest_match(client)
     room = srv.rooms[code]
     assert room.bot_levels.pending_game and room.round.phase == "deal"

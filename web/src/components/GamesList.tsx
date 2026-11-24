@@ -12,6 +12,7 @@ import { dayLabel } from "../home/dayLabel";
 import { cached, remember } from "../home/session";
 import { deltaText } from "../ratings/api";
 import { useScreen } from "../telemetry";
+import { t, tx, useT } from "../i18n";
 
 function deltaClass(delta: number): string {
   return delta > 0 ? "delta-up" : delta < 0 ? "delta-dn" : "delta-flat";
@@ -31,13 +32,14 @@ function when(unix: number): string {
 }
 
 function nameAt(game: GameRow, seat: number): string {
-  return game.players[seat] ?? `Seat ${seat + 1}`;
+  return game.players[seat] ?? t("me.games.seat", { n: seat + 1 });
 }
 
 /** Placeholder rows while a list loads, built from the real rows' own
  *  classes so each is the height of the row that replaces it. Screen readers
  *  hear "Loading…" once; the bars are hidden from them. */
 export function SkeletonRows({ kind, rows = 3 }: { kind: "games" | "rounds" | "board"; rows?: number }) {
+  const t = useT();
   const keys = Array.from({ length: rows }, (_, k) => k);
   let list;
   if (kind === "board") {
@@ -60,7 +62,7 @@ export function SkeletonRows({ kind, rows = 3 }: { kind: "games" | "rounds" | "b
           <li key={k} className="games-round skel-row">
             <span className="games-round-n"><span className="skel skel-name" /></span>
             <span className="games-round-res"><span className="skel skel-sub" /></span>
-            <span className="btn subtle skel-ghost">Replay</span>
+            <span className="btn subtle skel-ghost">{t("me.games.replay")}</span>
           </li>
         ))}
       </ul>
@@ -83,7 +85,7 @@ export function SkeletonRows({ kind, rows = 3 }: { kind: "games" | "rounds" | "b
   }
   return (
     <div className="skel-wrap" role="status">
-      <span className="skel-sr">Loading…</span>
+      <span className="skel-sr">{t("common.loading")}</span>
       {list}
     </div>
   );
@@ -91,71 +93,75 @@ export function SkeletonRows({ kind, rows = 3 }: { kind: "games" | "rounds" | "b
 
 /** "You & Partner vs A, B", with the viewer's team marked. */
 function Teams({ game }: { game: GameRow }) {
+  const t = useT();
   const me = game.seat;
   const partner = (me + 2) % 4;
   const opp = [(me + 1) % 4, (me + 3) % 4];
   return (
     <span className="games-teams">
-      <span className={`games-team mine team${me % 2}`} title="Your team">
-        {nameAt(game, me)} (you) &amp; {nameAt(game, partner)}
+      <span className={`games-team mine team${me % 2}`} title={t("me.games.yourTeam")}>
+        {t("me.games.mineTeam", { me: nameAt(game, me), partner: nameAt(game, partner) })}
       </span>
-      <span className="games-vs">vs</span>
+      <span className="games-vs">{t("me.games.vs")}</span>
       <span className={`games-team team${(me + 1) % 2}`}>
-        {opp.map((s) => nameAt(game, s)).join(", ")}
+        {t("me.games.pair", { a: nameAt(game, opp[0]), b: nameAt(game, opp[1]) })}
       </span>
     </span>
   );
 }
 
 function Summary({ game }: { game: GameRow }) {
+  const t = useT();
   const mine = game.seat % 2;
   const levels = teamPair(game.final_levels);
   const won = teamPair(game.games_won);
   const n = game.rounds.length;
   return (
     <span className="games-meta">
-      <span>{n} round{n === 1 ? "" : "s"}</span>
-      {levels ? <span>Levels {levels[mine]}–{levels[1 - mine]}</span> : null}
-      {won ? <span>Games won: {won[mine]}–{won[1 - mine]}</span> : null}
+      <span>{t("me.games.rounds", { n })}</span>
+      {levels ? <span>{t("me.games.levels", { a: levels[mine], b: levels[1 - mine] })}</span> : null}
+      {won ? <span>{t("me.games.gamesWon", { a: won[mine], b: won[1 - mine] })}</span> : null}
       {game.rating_change !== undefined ? (
         <span className="games-meta-rating">
-          Rating <RatingDelta delta={game.rating_change} />
+          {tx("me.games.rating", { delta: <RatingDelta delta={game.rating_change} /> })}
           {game.rating_after !== undefined ? <> · {game.rating_after.toLocaleString()}</> : null}
         </span>
       ) : null}
-      {game.incomplete ? <span className="games-tag">incomplete</span> : null}
+      {game.incomplete ? <span className="games-tag">{t("me.games.incomplete")}</span> : null}
     </span>
   );
 }
 
 /** "Level 6 · Defender · Won": the rank played, the viewer's side, the result. */
 function roundLine(row: RoundResult | undefined): string {
-  if (!row) return "Unfinished";
+  if (!row) return t("me.games.unfinished");
   const mine = row.seat % 2;
   const parts: string[] = [];
-  if (row.level !== undefined) parts.push(`Level ${row.level}`);
-  if (row.banker !== undefined) parts.push(row.banker % 2 === mine ? "Defender" : "Attacker");
-  parts.push(Number(row.result.winner_team) === mine ? "Won" : "Lost");
+  if (row.level !== undefined) parts.push(t("me.games.level", { level: row.level }));
+  if (row.banker !== undefined) parts.push(t(row.banker % 2 === mine ? "me.games.defender" : "me.games.attacker"));
+  parts.push(t(Number(row.result.winner_team) === mine ? "me.games.won" : "me.games.lost"));
   return parts.join(" · ");
 }
 
 /** A saved game's Continue: a new table at its last levels, shown only
  *  when the record has them. Replays are per round, in the game's list. */
 function ContinueGame({ game }: { game: GameRow }) {
+  const t = useT();
   const can = useCanContinue();
   if (!hasLevels(game)) return null;
   return (
     <div className="games-actions">
       <button type="button" className="btn gold games-continue" disabled={!can}
-              title={can ? undefined : "Leave the game you are in to continue this one"}
+              title={can ? undefined : t("me.games.continueBlocked")}
               onClick={() => continueGame(game.id)}>
-        Continue
+        {t("me.games.continue")}
       </button>
     </div>
   );
 }
 
 function GameView({ id }: { id: string }) {
+  const t = useT();
   const [res, setRes] = useState<Fetched<GameDetail> | null>(null);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -183,7 +189,7 @@ function GameView({ id }: { id: string }) {
   else if (!res.ok) {
     body = res.reason === "signed_out" ? <SignInPrompt />
       : res.reason === "not_found" ? <GamesUnavailable />
-      : <p className="lobby-error" role="alert">Could not load the game ({res.status || "no connection"}).</p>;
+      : <p className="lobby-error" role="alert">{t("me.games.gameFailed", { status: res.status || t("me.noConnection") })}</p>;
   } else {
     const game = res.data;
     const results = new Map((game.round_results ?? []).map((r) => [r.round, r]));
@@ -196,27 +202,28 @@ function GameView({ id }: { id: string }) {
         </div>
         <ContinueGame game={game} />
         <div className="games-section">
-          <span className="field-label">Rounds</span>
+          <span className="field-label">{t("me.games.roundsHead")}</span>
           <ul className="games-rounds">
             {game.rounds.map((n) => {
               const r = results.get(n);
               return (
                 <li key={n} className="games-round">
-                  <span className="games-round-n">Round {n}</span>
+                  <span className="games-round-n">{t("me.games.round", { n })}</span>
                   <span className="games-round-res">{roundLine(r)}</span>
                   <RatingDelta delta={r?.rating_delta} className="games-round-delta" />
                   <button className="btn subtle" onClick={() => navigate({ page: "replay", id, round: n })}>
-                    Replay
+                    {t("me.games.replay")}
                   </button>
                 </li>
               );
             })}
-            {game.rounds.length === 0 ? <li className="games-round-res">No rounds to replay.</li> : null}
+            {game.rounds.length === 0 ? <li className="games-round-res">{t("me.games.noRounds")}</li> : null}
           </ul>
         </div>
-        <button className="btn danger games-remove" onClick={() => setAsking(true)}>Remove from my games</button>
+        <button className="btn danger games-remove" onClick={() => setAsking(true)}>{t("me.games.remove")}</button>
         {asking ? (
-          <ConfirmSheet title="Remove this game?" cancel="Cancel" confirm={busy ? "Removing…" : "Remove"} danger
+          <ConfirmSheet title={t("me.games.removeTitle")} cancel={t("common.cancel")}
+                        confirm={busy ? t("me.games.removing") : t("me.games.removeConfirm")} danger
                         busy={busy} error={error} className="games-remove-confirm"
                         onConfirm={remove} onCancel={() => { setAsking(false); setError(null); }} />
         ) : null}
@@ -225,7 +232,8 @@ function GameView({ id }: { id: string }) {
   }
   return (
     <div className="panel games-panel">
-      <GamesHead back="Games" onBack={() => navigate({ page: "list" })} title="Game" sub={sub} />
+      <GamesHead back={t("me.section.games")} onBack={() => navigate({ page: "list" })} title={t("me.games.game")}
+                 sub={sub} />
       {body}
     </div>
   );
@@ -261,15 +269,17 @@ function clock(unix: number): string {
 /** "You & Ann vs Bot 1, Bea": the teams, yours first. */
 function gameTitle(game: GameRow): string {
   const me = game.seat;
-  return `You & ${nameAt(game, (me + 2) % 4)} vs ${nameAt(game, (me + 1) % 4)}, ${nameAt(game, (me + 3) % 4)}`;
+  return t("me.games.title", {
+    partner: nameAt(game, (me + 2) % 4), a: nameAt(game, (me + 1) % 4), b: nameAt(game, (me + 3) % 4),
+  });
 }
 
 function gameSub(game: GameRow): string {
   const mine = game.seat % 2;
   const levels = teamPair(game.final_levels);
   const n = game.rounds.length;
-  const parts = [clock(game.started_at), `${n} round${n === 1 ? "" : "s"}`];
-  if (levels) parts.push(`Levels ${levels[mine]}–${levels[1 - mine]}`);
+  const parts = [clock(game.started_at), t("me.games.rounds", { n })];
+  if (levels) parts.push(t("me.games.levels", { a: levels[mine], b: levels[1 - mine] }));
   return parts.join(" · ");
 }
 
@@ -294,6 +304,7 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
   onPlay: () => void; cacheKey?: string; onReady?: () => void;
   refreshRef?: MutableRefObject<(() => Promise<void>) | null>;
 }) {
+  const t = useT();
   const [list, setList] = useState<ListState>(
     () => (cacheKey ? cached<ListState>(cacheKey) : undefined) ?? { status: "loading" });
 
@@ -370,13 +381,13 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
   if (list.status === "loading") return <SkeletonRows kind="games" />;
   if (list.status === "failed") {
     return list.reason === "signed_out" ? <SignInPrompt />
-      : <p className="lobby-error" role="alert">Could not load your games ({list.code || "no connection"}).</p>;
+      : <p className="lobby-error" role="alert">{t("me.games.listFailed", { status: list.code || t("me.noConnection") })}</p>;
   }
   if (list.games.length === 0) {
     return (
-      <GamesNotice title="No saved games yet">
-        <p>Games you play while signed in appear here.</p>
-        <button className="btn gold big games-cta" onClick={onPlay}>Play a game</button>
+      <GamesNotice title={t("me.games.empty")}>
+        <p>{t("me.games.emptyLine")}</p>
+        <button className="btn gold big games-cta" onClick={onPlay}>{t("me.games.play")}</button>
       </GamesNotice>
     );
   }
@@ -393,7 +404,7 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
                     <span className="games-row-title" title={gameTitle(g)}>{gameTitle(g)}</span>
                     <span className="games-row-sub">
                       {gameSub(g)}
-                      {g.incomplete ? <span className="games-tag">incomplete</span> : null}
+                      {g.incomplete ? <span className="games-tag">{t("me.games.incomplete")}</span> : null}
                     </span>
                   </span>
                   {g.rating_change !== undefined ? (
@@ -413,10 +424,10 @@ export function SavedGames({ onPlay, cacheKey, onReady, refreshRef }: {
       ))}
       {list.next !== null ? (
         <button className="btn games-more" disabled={list.more} onClick={loadMore}>
-          {list.more ? "Loading…" : "Load more"}
+          {list.more ? t("common.loading") : t("me.games.loadMore")}
         </button>
       ) : null}
-      {list.moreError ? <div className="lobby-error" role="alert">Could not load more games.</div> : null}
+      {list.moreError ? <div className="lobby-error" role="alert">{t("me.games.moreFailed")}</div> : null}
     </div>
   );
 }

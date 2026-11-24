@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useAuth } from "../auth";
 import { navigate } from "../replay/route";
 import { guestName } from "../guestName";
+import { useT } from "../i18n";
 
 /** The header every My games page shares: a back control above a centred
  *  title and subtitle, on the lobby's type scale. */
@@ -31,10 +32,11 @@ export function GamesNotice({ title, children }: { title?: string; children?: Re
  *  opens the identity sheet. */
 export function SignInPrompt() {
   const account = useAuth();
+  const t = useT();
   return (
-    <GamesNotice title="Sign in to see your saved games.">
+    <GamesNotice title={t("me.games.signInLine")}>
       {account.status === "out" && account.clientId ? (
-        <button type="button" className="btn gold big games-cta" onClick={() => guestName.open("lapsed")}>Sign in</button>
+        <button type="button" className="btn gold big games-cta" onClick={() => guestName.open("lapsed")}>{t("me.signIn")}</button>
       ) : null}
     </GamesNotice>
   );
@@ -42,9 +44,10 @@ export function SignInPrompt() {
 
 /** A 404: not this account's game or round, or it was removed. */
 export function GamesUnavailable() {
+  const t = useT();
   return (
-    <GamesNotice title="This game isn't available.">
-      <button className="btn big games-cta" onClick={() => navigate({ page: "list" })}>My games</button>
+    <GamesNotice title={t("me.games.unavailable")}>
+      <button className="btn big games-cta" onClick={() => navigate({ page: "list" })}>{t("me.games.myGames")}</button>
     </GamesNotice>
   );
 }

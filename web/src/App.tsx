@@ -38,6 +38,9 @@ import { queueLeaveContext } from "./queue/tableModel";
 import { firstJoinerText } from "./queue/tableText";
 import { offlineGame } from "./components/offlineGame";
 import { codes, useCodes } from "./codeJoin";
+import { isZh, t, tIn, useLocale } from "./i18n";
+import type { MessageKey } from "./i18n";
+import { MESSAGES } from "./i18n/messages";
 import { useNearbyHostLeft, useNearbyUi } from "./nearbyGate";
 import { setSeatSafe, startReloadGate } from "./reloadGate";
 
@@ -49,7 +52,28 @@ function linkLeaveContext(game: GameState | null, q: QueueView): LeaveContext {
   return queueLeaveContext(q);
 }
 
+/** The server's fixed refusals and notices by their English: each has a zh
+ *  twin in the table. A text with a name or a number in it has none and
+ *  stays the server's. */
+const SERVER_TEXT = new Map((Object.keys(MESSAGES) as MessageKey[])
+  .filter((k) => k.startsWith("roundend.srv")).map((k) => [tIn("en", k), k]));
+
+/** A server's text in the current language: English is always the
+ *  server's own words. */
+function serverText(message: string): string {
+  const key = isZh() ? SERVER_TEXT.get(message) : undefined;
+  return key ? t(key) : message;
+}
+
+/** A `left` frame's text: a nearby host's own leave by its reason, which
+ *  the joiner says in its own language, else the server's. */
+function leftText(reason: string, message: string): string {
+  return reason === "host_left" ? t("nearby.hostLeft") : serverText(message);
+}
+
 export default function App() {
+  // a language change in Me redraws the whole app in place, game included
+  useLocale();
   const [status, setStatus] = useState<ConnStatus>("closed");
   const [room, setRoom] = useState<RoomMsg | null>(null);
   const [game, setGame] = useState<GameState | null>(null);
@@ -166,7 +190,7 @@ export default function App() {
           if (wasResuming && reaskedRef.current && msg.code !== "ranked_queue_only") {
             reaskedRef.current = false;
             resetToLobby();
-            showToast("You're no longer at a table.");
+            showToast(t("roundend.toastNoTable"));
             break;
           }
           // the queue and Join panels say their own codes: one status, not two
@@ -175,24 +199,24 @@ export default function App() {
           if (msg.code === "no_room") {
             // A move answered "not in a room" while a table is shown: the
             // socket lost its seat. Ask for it back once, else go to Play.
-            if (!seededRef.current) { showToast(msg.message); break; }
+            if (!seededRef.current) { showToast(serverText(msg.message)); break; }
             if (!reaskedRef.current) {
               reaskedRef.current = true;
               if (resumeSaved()) break;
             }
             resetToLobby();
-            showToast("You're no longer at a table.");
+            showToast(t("roundend.toastNoTable"));
           } else if (msg.code === "start_failed") {
             // a queue game with bots that failed to start was unwound on the server
             resetToLobby();
-            showToast(msg.message);
+            showToast(serverText(msg.message));
           } else if (msg.code === "room_not_found") {
             // The room no longer exists (server restart / expiry). Stop
             // retrying it on reconnect and return to the lobby (name kept).
             resetToLobby();
             // A silent resume of a room that expired or was dropped by a restart is not news to the
             // player; only a join they asked for gets told.
-            if (!wasResuming) showToast("That game has ended.");
+            if (!wasResuming) showToast(t("roundend.toastGameEnded"));
             resumingRef.current = false;
           } else if (msg.code === "ranked_queue_only" && wasResuming) {
             // A saved ranked seat belongs to an account; this socket is a guest
@@ -203,9 +227,9 @@ export default function App() {
             seededRef.current = false;
             resetAnnouncer();
             openTab("play");
-            showToast("Sign in again to return to your game.");
+            showToast(t("roundend.toastSignInAgain"));
           } else {
-            showToast(msg.message);
+            showToast(serverText(msg.message));
           }
           break;
         }
@@ -222,11 +246,11 @@ export default function App() {
           resetToLobby();
           if (msg.reason === "removed") {
             openTab("play");
-            showToast(msg.message ?? "The host removed you from the room.");
+            showToast(msg.message !== undefined ? serverText(msg.message) : t("roundend.toastRemoved"));
           } else if (msg.reason && msg.message) {
             // an open-table seat that went back to its owner, or to a newcomer
             openTab("play");
-            showToast(msg.message);
+            showToast(leftText(msg.reason, msg.message));
           }
           break;
         case "event":
@@ -348,7 +372,7 @@ export default function App() {
       <IdentitySheet />
       {linkPrompt && status === "open" && seatedAnywhere ? (
         // a link to another table while seated: the leave sheet, asked about the link
-        <LeaveSheet context={linkLeaveContext(game, q)} title={`Leave to join ${linkPrompt}?`}
+        <LeaveSheet context={linkLeaveContext(game, q)} title={t("roundend.leaveToJoin", { code: linkPrompt })}
                     onLeave={() => {
                       if (room === null && game === null) queue.leave();
                       else conn.send({ type: "table_leave" });

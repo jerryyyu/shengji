@@ -2,6 +2,8 @@
 // characters, the same link. codeJoin.ts peeks a code and opens its Join
 // panel.
 
+import { t } from "./i18n";
+
 export const CODE_LEN = 4;
 
 /** Uppercase letters and digits only, at most four: what the server compares. */
@@ -38,7 +40,7 @@ export const COPIED_MS = 1200;
 export function shareInvite(code: string): Promise<boolean> {
   const url = codeLink(code);
   if (typeof navigator.share === "function") {
-    return navigator.share({ title: "Sheng Ji", text: `Join my table · ${code}`, url })
+    return navigator.share({ title: t("home.shareTitle"), text: t("home.shareText", { code }), url })
       .then(() => false, () => false);   // a dismissed share sheet is not an error
   }
   if (!navigator.clipboard) return Promise.resolve(false);

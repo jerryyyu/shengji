@@ -6,13 +6,15 @@ import { guestName } from "../guestName";
 import type { ReportReason } from "../protocol";
 import { conn } from "../ws";
 import { inertOutside, trapTab } from "../queue/Sheet";
+import { useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 import "./OpponentActions.css";
 
-const REASONS: { value: ReportReason; label: string }[] = [
-  { value: "abuse", label: "Abusive chat" },
-  { value: "spam", label: "Spam" },
-  { value: "cheating", label: "Cheating" },
-  { value: "other", label: "Something else" },
+const REASONS: { value: ReportReason; key: MessageKey }[] = [
+  { value: "abuse", key: "table.reasonAbuse" },
+  { value: "spam", key: "table.reasonSpam" },
+  { value: "cheating", key: "table.reasonCheating" },
+  { value: "other", key: "table.reasonOther" },
 ];
 
 /** What a long press on another player's seat offers: block them, or report
@@ -29,6 +31,7 @@ export default function OpponentActions({ room, seat, name, onClose }: {
   name: string;
   onClose: () => void;
 }) {
+  const t = useT();
   const blocked = useBlocks()(room, seat);
   const [reporting, setReporting] = useState(false);
   const status = useAuth().status;
@@ -58,15 +61,15 @@ export default function OpponentActions({ room, seat, name, onClose }: {
   return createPortal(
     <div className="opp-actions-scrim" ref={scrim} onClick={(e) => { stop(e); onClose(); }} onPointerDown={stop}
          onPointerUp={stop} onContextMenu={stop}>
-      <div className="opp-actions" role="dialog" aria-modal="true" aria-label={`${name}: player options`} ref={box}
+      <div className="opp-actions" role="dialog" aria-modal="true" aria-label={t("table.optionsOf", { name })} ref={box}
            onClick={stop} onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}>
-        <div className="opp-actions-title">{reporting ? `Report ${name}` : name}</div>
+        <div className="opp-actions-title">{reporting ? t("table.reportName", { name }) : name}</div>
         {reporting ? (
           <>
-            <p className="opp-actions-note">Why? The last chat lines go with the report.</p>
+            <p className="opp-actions-note">{t("table.reportWhy")}</p>
             {REASONS.map((r) => (
               <button key={r.value} type="button" className="opp-actions-row" onClick={() => report(r.value)}>
-                {r.label}
+                {t(r.key)}
               </button>
             ))}
           </>
@@ -78,21 +81,21 @@ export default function OpponentActions({ room, seat, name, onClose }: {
                       setBlocked(room, seat, !blocked);
                       onClose();
                     }}>
-              {blocked ? "Unblock player" : "Block player"}
+              {blocked ? t("table.unblock") : t("table.block")}
             </button>
             {mustSignIn ? (
               <button type="button" className="opp-actions-row danger"
                       onClick={() => { onClose(); guestName.open("report"); }}>
-                Sign in to report
+                {t("table.signInToReport")}
               </button>
             ) : (
               <button type="button" className="opp-actions-row danger" onClick={() => setReporting(true)}>
-                Report player
+                {t("table.report")}
               </button>
             )}
           </>
         )}
-        <button type="button" className="opp-actions-row cancel" onClick={onClose}>Cancel</button>
+        <button type="button" className="opp-actions-row cancel" onClick={onClose}>{t("common.cancel")}</button>
       </div>
     </div>,
     document.body,

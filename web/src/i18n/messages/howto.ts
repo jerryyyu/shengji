@@ -1,0 +1,141 @@
+import { defineMessages } from "../define";
+
+export const howto = defineMessages({
+  "howto.page": { en: "How to play", zh: "怎么玩" },
+  "howto.back": { en: "‹ Back", zh: "‹ 返回" },
+  "howto.count": { en: "{n} of {count}", zh: "{n}/{count}" },
+  "howto.steps": { en: "Steps", zh: "步骤" },
+  "howto.next": { en: "Next", zh: "下一步" },
+  "howto.startPlaying": { en: "Start playing", zh: "开始玩" },
+
+  "howto.anim.pause": { en: "Pause animation", zh: "暂停动画" },
+  "howto.anim.play": { en: "Play animation", zh: "播放动画" },
+  "howto.anim.replay": { en: "Replay animation", zh: "重播动画" },
+  "howto.anim.still": { en: "Show still image", zh: "显示静态图" },
+
+  "howto.chip.nt": { en: "NT", zh: "无主" },
+  "howto.chip.level": { en: "Lv {level}", zh: "打 {level}" },
+  "howto.chip.games": { en: "Games {n}–{count}", zh: "盘数 {n}–{count}" },
+
+  "howto.goal.title": { en: "Climb from 2 to Ace", zh: "从 2 打到 A" },
+  "howto.goal.body": {
+    en: "Four players in two teams: you and the partner across from you. Win rounds to climb levels from 2 up to Ace.",
+    zh: "四人分两队：你和坐在对面的队友一队。赢一局就升级，从 2 一直打到 A。",
+  },
+  "howto.goal.you": { en: "You", zh: "我" },
+  "howto.goal.partner": { en: "{name} · partner", zh: "{name} · 队友" },
+  "howto.goal.ladder": { en: "Levels 2 to Ace", zh: "级数 2 到 A" },
+
+  "howto.trump.title": { en: "Trump beats everything", zh: "主牌最大" },
+  "howto.trump.body": {
+    en: "The level card's rank and the jokers are always trump. One suit is trump too. Highest trump first:",
+    zh: "级牌和大小王永远是主牌。还有一门花色也是主。从大到小：",
+  },
+  "howto.trump.example": { en: "Example", zh: "例如" },
+  "howto.trump.bigJoker": { en: "{n} Big Joker", zh: "{n} 大王" },
+  "howto.trump.littleJoker": { en: "{n} Little Joker", zh: "{n} 小王" },
+  "howto.trump.otherLevel": { en: "{n} other 7s, equal", zh: "{n} 其他花色的 7，一样大" },
+  "howto.trump.rest": { en: "{n} then the rest of ♥, Ace down to 2", zh: "{n} 然后是其余的 ♥，从 A 到 2" },
+
+  "howto.declare.title": { en: "Declare to pick trump", zh: "亮主定主" },
+  "howto.declare.body": {
+    en: "While the cards are dealt, show a card of the level's rank to make its suit trump. A stronger show replaces it; a joker pair means no trump suit.",
+    zh: "发牌时亮出一张级牌，它的花色就是主。更强的亮主可以反掉它；亮一对王就是无主。",
+  },
+  "howto.declare.stronger": { en: "stronger ↑", zh: "更大 ↑" },
+  "howto.declare.bigJokers": { en: "Pair of Big Jokers", zh: "一对大王" },
+  "howto.declare.littleJokers": { en: "Pair of Little Jokers", zh: "一对小王" },
+  "howto.declare.pair": { en: "Pair of 7s", zh: "一对 7" },
+  "howto.declare.single": { en: "One 7", zh: "一张 7" },
+
+  "howto.kitty.title": { en: "Banker and kitty", zh: "庄家和底牌" },
+  "howto.kitty.body": {
+    en: "The banker picks up the 8 leftover cards, then buries any 8 face down. The banker leads the first trick.",
+    zh: "庄家拿起剩下的 8 张底牌，再任选 8 张牌面朝下埋底。第一轮由庄家先出。",
+  },
+  "howto.kitty.kitty": { en: "The kitty: 8 cards, face down", zh: "底牌：8 张，牌面朝下" },
+  "howto.kitty.pickUp": { en: "↓ the banker picks it up", zh: "↓ 庄家拿起底牌" },
+  "howto.kitty.bury": { en: "…then picks 8 of their 33 cards to bury", zh: "…再从 33 张里选 8 张埋底" },
+  "howto.kitty.defends": { en: "Banker's team defends", zh: "庄家方守分" },
+  "howto.kitty.attacks": { en: "Other team attacks", zh: "闲家捡分" },
+
+  "howto.trick.title": { en: "Play a trick", zh: "出一轮牌" },
+  "howto.trick.body": {
+    en: "Follow the led suit if you can. The highest card of that suit wins, unless someone out of it plays trump. The winner leads next.",
+    zh: "有首家出的这门就必须跟。这门最大的牌赢，除非有人这门没了，出主毙掉。赢的人下一轮先出。",
+  },
+  "howto.trick.trump": { en: "Trump", zh: "主" },
+  "howto.trick.you": { en: "You", zh: "我" },
+  "howto.trick.caption": {
+    en: "Ana leads ♠K. Bea plays ♠A, but Cal has no spades and plays ♥4: trump wins.",
+    zh: "Ana 首出 ♠K。Bea 出 ♠A，但 Cal 没有黑桃，出了 ♥4：主牌赢。",
+  },
+
+  "howto.pairs.title": { en: "Pairs and tractors", zh: "对子和拖拉机" },
+  "howto.pairs.body": {
+    en: "Two identical cards are a pair; pairs next to each other are a tractor. When a pair is led, you must answer with a pair of that suit if you have one.",
+    zh: "两张完全相同的牌是对子；相连的对子是拖拉机。首家出对子时，你有这门的对子就必须用对子跟。",
+  },
+  "howto.pairs.pair": { en: "Pair", zh: "对子" },
+  "howto.pairs.tractor": { en: "Tractor", zh: "拖拉机" },
+  "howto.pairs.levelTractor": { en: "Tractor at level 7", zh: "打 7 时的拖拉机" },
+  "howto.pairs.levelNote": { en: "the 7 is trump, so 6 and 8 touch", zh: "7 是主，所以 6 和 8 相连" },
+  "howto.pairs.led": { en: "Led", zh: "首家出" },
+  "howto.pairs.yours": { en: "Your diamonds", zh: "你的方块" },
+  "howto.pairs.mustPair": { en: "you must play the pair", zh: "必须出对子" },
+
+  "howto.throw.title": { en: "Throws", zh: "甩牌" },
+  "howto.throw.body": {
+    en: "You may lead several cards of one suit at once. If another player could beat any part of it, the throw fails.",
+    zh: "首家可以把同一门的几张牌一起出。只要有人能管上其中任何一部分，甩牌就失败。",
+  },
+  "howto.throw.yours": { en: "You throw ♣A and ♣Q♣Q", zh: "你甩 ♣A 和 ♣Q♣Q" },
+  "howto.throw.vs": { en: "vs", zh: "vs" },
+  "howto.throw.someone": { en: "Someone holds ♣K♣K", zh: "有人有 ♣K♣K" },
+  "howto.throw.nobody": { en: "Nobody holds a pair above ♣Q", zh: "没人有比 ♣Q 大的对子" },
+  "howto.throw.fails": { en: "↓ the throw fails", zh: "↓ 甩牌失败" },
+  "howto.throw.failsPlay": { en: "You must play only the part that can be beaten", zh: "只能出能被管上的那部分" },
+  "howto.throw.stands": { en: "↓ the throw stands", zh: "↓ 甩牌成立" },
+  "howto.throw.standsPlay": { en: "All three cards are played together", zh: "三张牌一起出" },
+
+  "howto.points.title": { en: "Points", zh: "分数" },
+  "howto.points.body": {
+    en: "Only 5s, 10s and Kings score: 200 points in all. Attackers keep the points in the tricks they win.",
+    zh: "只有 5、10、K 有分：一共 200 分。闲家赢下的每一轮，里面的分都归闲家。",
+  },
+  "howto.points.attackers": { en: "Attackers", zh: "闲家" },
+  "howto.points.bonusHead": { en: "Last trick bonus", zh: "最后一轮抠底" },
+  "howto.points.bonus": {
+    en: "If attackers win the last trick, they also score the kitty's points, multiplied by twice the cards led:",
+    zh: "闲家赢下最后一轮，底牌里的分也归闲家，乘以首家出牌张数的两倍：",
+  },
+  "howto.points.multSingle": { en: "{n} single", zh: "{n} 单张" },
+  "howto.points.multPair": { en: "{n} pair", zh: "{n} 对子" },
+  "howto.points.multTractor": { en: "{n} tractor of 2 pairs", zh: "{n} 两对的拖拉机" },
+
+  "howto.score.title": { en: "Scoring a round", zh: "一局的结算" },
+  "howto.score.body": {
+    en: "Attackers need 80 to win the round. Every 40 points either way moves a level.",
+    zh: "闲家拿到 80 分就赢下这一局。每多或少 40 分，升降一级。",
+  },
+  "howto.score.def3": { en: "Defenders +3", zh: "庄家方升 3 级" },
+  "howto.score.def2": { en: "Defenders +2", zh: "庄家方升 2 级" },
+  "howto.score.def1": { en: "Defenders +1", zh: "庄家方升 1 级" },
+  "howto.score.takeDeal": { en: "Attackers take the deal", zh: "闲家上台" },
+  "howto.score.att1": { en: "Attackers +1", zh: "闲家升 1 级" },
+  "howto.score.att2": { en: "Attackers +2", zh: "闲家升 2 级" },
+  "howto.score.att3": { en: "Attackers +3, and +1 per 40 more", zh: "闲家升 3 级，每多 40 分再升 1 级" },
+
+  "howto.win.title": { en: "Win a game", zh: "赢下一盘" },
+  "howto.win.body": {
+    en: "Reach Ace, then defend it as the banker's team. Winning as attackers at Ace only takes the deal.",
+    zh: "打到 A 后，还要作为庄家方守住 A。闲家就算打到 A，赢了也只是上台。",
+  },
+  "howto.win.defendAce": { en: "Your team defends at Ace…", zh: "你们坐庄打 A…" },
+  "howto.win.wins": { en: "…and wins a game", zh: "…赢下一盘" },
+  "howto.win.again": { en: "↓ both teams start again", zh: "↓ 两队重新开始" },
+  "howto.win.caption": {
+    en: "The top bar keeps the games score, Us first. The table keeps playing.",
+    zh: "顶栏记着盘数，我方在前。牌桌继续打。",
+  },
+});

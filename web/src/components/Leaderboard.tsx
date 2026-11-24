@@ -10,11 +10,7 @@ import { useMediaQuery } from "../phoneLayout";
 import { guestName } from "../guestName";
 import { SkeletonRows } from "./GamesList";
 import { useScreen } from "../telemetry";
-
-const PERIODS = [
-  { value: "week", label: "This week" },
-  { value: "all", label: "All time" },
-] as const;
+import { t, useT } from "../i18n";
 
 /** A rating as read aloud: 1,042, with the thousands separator. */
 export function ratingText(rating: number): string {
@@ -24,14 +20,15 @@ export function ratingText(rating: number): string {
 /** A week's rating change as drawn: ▲18, ▼6, or a dash for none. */
 function weekMove(delta: number): { text: string; spoken: string; dir: "up" | "down" | "flat" } {
   const n = Math.round(delta);
-  if (n > 0) return { text: `\u25B2${n}`, spoken: `up ${n} this week`, dir: "up" };
-  if (n < 0) return { text: `\u25BC${-n}`, spoken: `down ${-n} this week`, dir: "down" };
-  return { text: "\u2013", spoken: "no change this week", dir: "flat" };
+  if (n > 0) return { text: `\u25B2${n}`, spoken: t("me.board.moveUp", { n }), dir: "up" };
+  if (n < 0) return { text: `\u25BC${-n}`, spoken: t("me.board.moveDown", { n: -n }), dir: "down" };
+  return { text: "\u2013", spoken: t("me.board.moveFlat"), dir: "flat" };
 }
 
 /** One player. The top three's ranks sit on gold, silver and bronze discs;
  *  on This week (`week`) the row ends in the week's movement. */
 export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
+  const t = useT();
   const top = row.rank !== null && row.rank <= 3;
   const move = week ? weekMove(row.week_delta) : null;
   return (
@@ -41,14 +38,14 @@ export function Row({ row, week = false }: { row: LeaderRow; week?: boolean }) {
       <span className="lb-name">
         <span className="lb-name-text" title={row.name}>{row.name}</span>
         {/* its own box, so a long name truncates before it */}
-        {row.you ? <span className="lb-you">{" (you)"}</span> : null}
-        {row.provisional ? <span className="lb-new" title="Fewer than 20 ranked rounds">new</span> : null}
+        {row.you ? <span className="lb-you">{t("me.board.you")}</span> : null}
+        {row.provisional ? <span className="lb-new" title={t("me.board.newTitle")}>{t("me.board.new")}</span> : null}
       </span>
       <span className="lb-rating">{ratingText(row.rating)}</span>
       {move ? (
         <span className={`lb-move ${move.dir}`}>
           <span aria-hidden="true">{move.text}</span>
-          <span className="sr-only">{`, ${move.spoken}`}</span>
+          <span className="sr-only">{t("me.board.moveSpoken", { move: move.spoken })}</span>
         </span>
       ) : null}
     </li>
@@ -67,11 +64,12 @@ function Rows({ board }: { board: Board }) {
 /** Under the board for a guest: one row that opens the identity sheet.
  *  What ranked play means is How to play's to say. */
 function SignInToRank() {
+  const t = useT();
   return (
     <ul className="grp lb-rated">
       <li>
         <button type="button" className="grp-row lb-signin" onClick={() => guestName.open("leaderboard_row")}>
-          <span className="grp-label">Sign in to be ranked</span>
+          <span className="grp-label">{t("me.board.signIn")}</span>
           <span className="grp-value chev" />
         </button>
       </li>
@@ -89,6 +87,11 @@ function SignInToRank() {
  *  viewer changes. */
 export default function Leaderboard() {
   useScreen("leaderboard");
+  const t = useT();
+  const periods = [
+    { value: "week", label: t("me.board.week") },
+    { value: "all", label: t("me.board.all") },
+  ] as const;
   const account = useAuth();
   const [period, setPeriodState] = useState<Period>(tabMemory.period);
   const setPeriod = (p: Period) => { tabMemory.period = p; tabMemory.periodChosen = true; setPeriodState(p); };
@@ -109,7 +112,7 @@ export default function Leaderboard() {
   let pinned = null;
   if (res === null) body = <SkeletonRows kind="board" rows={5} />;
   else if (!res.ok) {
-    body = <p className="lobby-error" role="alert">Could not load the leaderboard ({res.status || "no connection"}).</p>;
+    body = <p className="lobby-error" role="alert">{t("me.board.failed", { status: res.status || t("me.noConnection") })}</p>;
   } else {
     const { players, me } = res.data;
     const empty = players.length === 0;
@@ -118,7 +121,7 @@ export default function Leaderboard() {
         <Rows board={res.data} />
         {empty ? (
           <p className="lb-note">
-            {period === "week" ? "Nobody has played a ranked round this week yet." : "No ranked rounds yet."}
+            {period === "week" ? t("me.board.emptyWeek") : t("me.board.emptyAll")}
           </p>
         ) : null}
       </>
@@ -135,8 +138,8 @@ export default function Leaderboard() {
   if (signIn) pinned = null;
 
   return (
-    <LargeTitlePage className="lb-page" scroller={scroller} title="Leaderboard" phone={phone} onRefresh={reload}>
-      <Segmented label="Period" options={PERIODS} value={period} onChange={setPeriod} />
+    <LargeTitlePage className="lb-page" scroller={scroller} title={t("me.board.title")} phone={phone} onRefresh={reload}>
+      <Segmented label={t("me.board.period")} options={periods} value={period} onChange={setPeriod} />
       {body}
       {signIn}
       {pinned ? <div className="lb-pin">{pinned}</div> : null}

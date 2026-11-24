@@ -16,6 +16,7 @@
 // the Google button alone.
 
 import { isNative } from "./native";
+import { t } from "./i18n";
 
 /** The iOS OAuth client of the app. Public by design, like the web one. */
 export const IOS_GOOGLE_CLIENT_ID =
@@ -53,14 +54,14 @@ function method(name: string, provider = "Google"): Method {
   const cap = bridge();
   const proxy = cap?.registerPlugin?.(PLUGIN) ?? cap?.Plugins?.[PLUGIN];
   const fn = proxy?.[name];
-  if (typeof fn !== "function") throw new Error(`${provider} sign-in is not available in this app version.`);
+  if (typeof fn !== "function") throw new Error(t("home.providerUnavailable", { name: provider }));
   return fn;
 }
 
 /** The player closed Google's sheet; nothing to report. */
 export class SignInCancelled extends Error {
   constructor() {
-    super("Sign-in cancelled.");
+    super(t("home.signInCancelled"));
   }
 }
 
@@ -88,10 +89,10 @@ export async function nativeGoogleCredential(webClientId: string, nonce: string)
   } catch (e) {
     const err = e as { code?: string; message?: string };
     if (err?.code === "USER_CANCELLED" || /cancel/i.test(err?.message ?? "")) throw new SignInCancelled();
-    throw new Error(err?.message || "Google sign-in failed.");
+    throw new Error(err?.message || t("home.googleFailed"));
   }
   const token = (resp as { result?: { idToken?: string | null } } | undefined)?.result?.idToken;
-  if (!token) throw new Error("Google sign-in returned no ID token.");
+  if (!token) throw new Error(t("home.googleNoToken"));
   return token;
 }
 
@@ -149,7 +150,7 @@ export interface AppleCredential {
  *  nonce the page keeps) becomes the token's `nonce` claim; the server checks
  *  it against the raw nonce the page posts. */
 export async function nativeAppleCredential(nonceDigest: string): Promise<AppleCredential> {
-  if (!(await nativeAppleReady())) throw new Error("Sign in with Apple is not available in this app version.");
+  if (!(await nativeAppleReady())) throw new Error(t("home.appleUnavailable"));
   let resp: unknown;
   try {
     resp = await method("login", "Apple")({ provider: "apple", options: { nonce: nonceDigest } });
@@ -157,7 +158,7 @@ export async function nativeAppleCredential(nonceDigest: string): Promise<AppleC
     const err = e as { code?: string; message?: string };
     // ASAuthorizationError.canceled is code 1001.
     if (err?.code === "USER_CANCELLED" || /cancel|1001/i.test(err?.message ?? "")) throw new SignInCancelled();
-    throw new Error(err?.message || "Sign in with Apple failed.");
+    throw new Error(err?.message || t("home.appleFailed"));
   }
   const result = (resp as {
     result?: {
@@ -167,7 +168,7 @@ export async function nativeAppleCredential(nonceDigest: string): Promise<AppleC
     };
   } | undefined)?.result;
   const identityToken = result?.idToken;
-  if (!identityToken) throw new Error("Sign in with Apple returned no identity token.");
+  if (!identityToken) throw new Error(t("home.appleNoToken"));
   const orNull = (v: string | null | undefined) => (v ? v : null);
   return {
     identityToken,

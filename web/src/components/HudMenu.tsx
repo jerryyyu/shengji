@@ -8,6 +8,7 @@ import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
 import { useNearbySoakMarker, useNearbyUi } from "../nearbyGate";
 import { tapHandlers } from "../tap";
+import { useT } from "../i18n";
 
 /** The table's one `⋯` menu, the same on a phone and a desktop; the header
  *  beside it holds only the game's state. Its rows, in order: the game's
@@ -37,6 +38,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   /** You opened this table: only the opener sees Allow joiners. */
   opener?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -111,8 +113,8 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
         className="hud-more-btn"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="More"
-        title="Table, settings, leave"
+        aria-label={t("table.more")}
+        title={t("table.moreTitle")}
         {...tapHandlers(() => {
           if (open) { close(); return; }
           focusNext.current = "first";
@@ -130,17 +132,17 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
       </button>
       {presence.mounted ? (
         <div className={`hud-menu${presence.className ? ` ${presence.className}` : ""}`} role="menu"
-             aria-label="More" aria-hidden={!open || undefined} inert={!open || undefined}
+             aria-label={t("table.more")} aria-hidden={!open || undefined} inert={!open || undefined}
              ref={menuRef} onKeyDown={onMenuKey}>
-          {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode}</div> : null}
+          {mode ? <div className={`hud-menu-mode ${mode.toLowerCase()}`} role="none">{mode === "Ranked" ? t("table.modeRanked") : t("table.modeCasual")}</div> : null}
           {showCode ? (
             <div className="hud-menu-code" role="none">
               <span className={`hud-menu-code-text${soakOn ? " soak-on" : ""}`}
-                    aria-label={`Table code ${room.split("").join(" ")}${soakOn ? ", soak tools on" : ""}`}
+                    aria-label={t(soakOn ? "table.codeAriaSoak" : "table.codeAria", { code: room.split("").join(" ") })}
                     {...(nearby && nb ? tapHandlers(nb.nearbyMenuTitleTap) : {})}>{room}</span>
               {offline ? null : (
                 <button className="hud-menu-row hud-menu-invite" role="menuitem" {...tapHandlers(invite)}>
-                  {copied ? "Link copied" : "Invite link"}
+                  {copied ? t("table.linkCopied") : t("table.inviteLink")}
                 </button>
               )}
             </div>
@@ -148,7 +150,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           {joiners === undefined ? null : (
             <button className="hud-menu-row joiners-row" role="menuitemcheckbox" aria-checked={joiners}
                     {...tapHandlers(() => conn.send({ type: "table_allow_joiners", on: !joiners }))}>
-              <span>Allow joiners</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
+              <span>{t("table.allowJoiners")}</span><span className={`ios-switch${joiners ? " on" : ""}`} aria-hidden="true" />
             </button>
           )}
           {nearby && nb ? <nb.NearbyMenuRows close={close} /> : null}
@@ -156,7 +158,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
           <SettingsMenuRows onOpenPage={close} />
           <div className="hud-menu-sep" role="separator" />
           <button className="hud-menu-row leave" role="menuitem" {...tapHandlers(askLeave)}>
-            <span>Leave game</span>
+            <span>{t("table.leaveGame")}</span>
           </button>
         </div>
       ) : null}

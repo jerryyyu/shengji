@@ -3,8 +3,9 @@
 // or a joker leads trump), not the printed one.
 import type { Trump } from "./protocol";
 import { type Card, type EffSuit, orderingFor, trickWinner, uniformSuit } from "./offline/engine";
+import { t } from "./i18n";
 
-const SUIT_NAME: Record<EffSuit, string> = { S: "♠", H: "♥", D: "♦", C: "♣", T: "trump" };
+const SUIT_NAME: Record<Exclude<EffSuit, "T">, string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
 
 /** The lead's effective suit, or null when it cannot be read. */
 export function leadSuit(lead: readonly Card[], trump: Trump | null): EffSuit | null {
@@ -22,8 +23,8 @@ export function leadSuit(lead: readonly Card[], trump: Trump | null): EffSuit | 
 export function followHint(lead: readonly Card[], trump: Trump | null): string {
   const n = lead.length;
   const eff = leadSuit(lead, trump);
-  const count = `play ${n} ${n === 1 ? "card" : "cards"}`;
-  return eff === null ? `Follow the lead: ${count}` : `Follow ${SUIT_NAME[eff]}: ${count}`;
+  if (eff === null) return t("table.followLead", { n });
+  return t("table.followSuit", { n, suit: eff === "T" ? t("table.trumpWord") : SUIT_NAME[eff] });
 }
 
 /** Whether the chosen cards carry as many of the led suit as a follow must:

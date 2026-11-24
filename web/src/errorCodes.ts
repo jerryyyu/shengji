@@ -15,12 +15,15 @@
 // One `name: {` per line: server/tests/test_client_server_constants.py
 // reads the keys from this file and checks them against every code the
 // server raises.
+import type { MessageKey } from "./i18n";
+
 export type Says = "toast" | "queue" | "join" | "app" | "silent";
 
 export interface ErrorRoute {
   says: Says;
-  /** The client's own words (title, then sub-line), when it has them. */
-  text?: readonly [string, string?];
+  /** The client's own words (title, then sub-line), when it has them: the
+   *  message keys, resolved in the language at the time it is said. */
+  text?: readonly [MessageKey, MessageKey?];
 }
 
 /** The answers a queue action can get. On any other error the queue store
@@ -39,12 +42,12 @@ const QUEUE_ROUTES = {
   in_queue: { says: "toast" },
   not_in_party: { says: "silent" },
   cooldown: { says: "toast" },
-  no_offer: { says: "queue", text: ["That table is no longer open."] },
-  bad_seat: { says: "queue", text: ["Pick one of the open seats."] },
-  seat_taken: { says: "queue", text: ["That seat was just taken.", "Pick another."] },
-  table_closed: { says: "queue", text: ["That table is no longer open."] },
-  pair_seats_fixed: { says: "queue", text: ["A Duo's seats stay together."] },
-  already_ready: { says: "queue", text: ["You tapped Start, so your seat is set."] },
+  no_offer: { says: "queue", text: ["queue.err.closed"] },
+  bad_seat: { says: "queue", text: ["queue.err.badSeat"] },
+  seat_taken: { says: "queue", text: ["queue.err.seatTaken", "queue.err.pickAnother"] },
+  table_closed: { says: "queue", text: ["queue.err.closed"] },
+  pair_seats_fixed: { says: "queue", text: ["queue.err.pairFixed"] },
+  already_ready: { says: "queue", text: ["queue.err.alreadyReady"] },
   panel_changed: { says: "silent" },
   bad_mode: { says: "toast" },
   table_not_found: { says: "toast" },

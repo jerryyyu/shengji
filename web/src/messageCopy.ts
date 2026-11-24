@@ -1,5 +1,6 @@
 import type { StatePlayer } from "./protocol";
 import { SUIT_SYMBOL } from "./components/Card";
+import { t } from "./i18n";
 
 /** Readable copy for the engine's table messages. The engine words them in
  *  its own notation ("Seat 1 declared H2 (pair)", "... flipped from the
@@ -17,16 +18,16 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
   const declared = DECLARED.exec(message);
   if (declared) {
     const seat = Number(declared[1]);
-    const who = seat === you ? "You" : players.find((p) => p.seat === seat)?.name ?? `Seat ${seat}`;
-    const what = declared[2] === "NT"
-      ? "no trump"
-      : `${SUIT_SYMBOL[declared[2]]}${declared[3]}`;
-    return `${who} declared ${what}${declared[4] ? " pair" : ""}`;
+    const name = seat === you ? t("common.you") : players.find((p) => p.seat === seat)?.name ?? t("table.seatN", { n: seat });
+    const pair = declared[4] !== undefined;
+    if (declared[2] === "NT") return t(pair ? "table.declaredNtPair" : "table.declaredNt", { name });
+    const code = `${SUIT_SYMBOL[declared[2]]}${declared[3]}`;
+    return t(pair ? "table.declaredPair" : "table.declaredCard", { name, code });
   }
   const flipped = /^No declaration — trump flipped from the kitty: (NT|[SHDC])$/.exec(message);
   if (flipped) {
-    const suit = flipped[1] === "NT" ? "no trump" : SUIT_SYMBOL[flipped[1]];
-    return `No declaration — trump flipped from the kitty: ${suit}`;
+    return flipped[1] === "NT" ? t("table.flippedNt") : t("table.flipped", { suit: SUIT_SYMBOL[flipped[1]] });
   }
+  if (message === "No declaration — played without trump: NT") return t("table.playedNt");
   return message;
 }

@@ -1,3 +1,5 @@
+import { useT } from "../i18n";
+
 /** The rating after each recent round, drawn as one gold line over a faint
  *  fill with the latest point marked. No axis and no visible text: its
  *  accessible name says what it shows. Fewer than two points draw nothing. */
@@ -17,6 +19,7 @@ const W = 300;
 const H = 56;
 
 export default function RatingSparkline({ history }: { history: readonly number[] }) {
+  const t = useT();
   if (history.length < 2) return null;
   const { line, last } = sparkPath(history, W, H);
   const first = Math.round(history[0]);
@@ -24,7 +27,7 @@ export default function RatingSparkline({ history }: { history: readonly number[
   // the history is the rating before the first round, then one value after
   // each round: n values span n - 1 rounds
   const rounds = history.length - 1;
-  const label = `Rating over your last ${rounds} ${rounds === 1 ? "round" : "rounds"}, from ${first.toLocaleString("en-US")} to ${now.toLocaleString("en-US")}`;
+  const label = t("me.spark", { n: rounds, from: first.toLocaleString("en-US"), to: now.toLocaleString("en-US") });
   return (
     <div className="me-spark" role="img" aria-label={label}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">

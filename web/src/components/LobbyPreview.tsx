@@ -15,6 +15,7 @@ import { StillOnError } from "../howto/Picture";
 import { useTimeline } from "../howto/useTimeline";
 import type { Frame } from "../howto/useTimeline";
 import { DUR, prefersReducedMotion } from "../motion";
+import { useT } from "../i18n";
 
 type Seat = "bottom" | "left" | "top" | "right";
 interface Point { x: number; y: number; r: number }
@@ -147,6 +148,7 @@ function PlayedCard({ code, seat, i, n, order, f, winner }: {
 }
 
 function Scene({ f }: { f: PreviewState }) {
+  const t = useT();
   const trick = TRICKS[f.trick];
   // The win tag sits centred just under the winning cards, as on the table,
   // so it never reaches into a neighbouring seat's play.
@@ -162,7 +164,7 @@ function Scene({ f }: { f: PreviewState }) {
                         order={order} f={f} winner={trick.winner} />
           )))}
         <div className="lp-chip" style={{ transform: `translate(${u(chip.x)}, ${u(chip.y)})` }}>
-          <span className={`win-tag${f.phase === "won" ? " shown" : ""}`}>Wins</span>
+          <span className={`win-tag${f.phase === "won" ? " shown" : ""}`}>{t("home.previewWins")}</span>
         </div>
       </div>
     </div>

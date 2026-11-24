@@ -9,6 +9,10 @@ import {
 } from "../nativeAuth";
 import { telemetry, type DeviceStep, type Provider } from "../telemetry";
 import ConfirmSheet from "./ConfirmSheet";
+import { isZh, useT } from "../i18n";
+
+/** GIS's own button wording ("Sign in with Google"), drawn by Google. */
+const GIS_WORDING = "signin_with";
 
 /** The "Sign in with Google" button. Rendered only when the server advertised
  *  a client id. On the website it is the official GIS button, whose script is
@@ -24,10 +28,11 @@ export default function GoogleSignIn({ clientId }: { clientId: string }) {
 /** The sign-in buttons while the server cannot be reached: in place and
  *  greyed, with the reason under them, so the card does not vanish. */
 export function SignInUnavailable() {
+  const t = useT();
   return (
     <div className="google-signin signin-unavailable" data-testid="signin-unavailable">
-      <button type="button" className="btn signin-offline-btn" disabled>Sign in with Google</button>
-      <p className="signin-upsell">Can't reach the server</p>
+      <button type="button" className="btn signin-offline-btn" disabled>{t("home.signInGoogle")}</button>
+      <p className="signin-upsell">{t("home.cantReachServer")}</p>
     </div>
   );
 }
@@ -63,7 +68,9 @@ function WebGoogleSignIn({ clientId }: { clientId: string }) {
         // Full width of the lobby column, as the other buttons are; GIS caps the width at 400px.
         const width = Math.min(400, Math.max(200, Math.round(slot.current.getBoundingClientRect().width)));
         gis.renderButton(slot.current, {
-          theme: "filled_black", size: "large", shape: "pill", text: "signin_with", logo_alignment: "center", width,
+          theme: "filled_black", size: "large", shape: "pill", text: GIS_WORDING, logo_alignment: "center", width,
+          // Google draws the button in the page's language when told; English is left to its default
+          ...(isZh() ? { locale: "zh_CN" } : {}),
         });
       })
       .catch((e: Error) => {
@@ -154,6 +161,7 @@ interface Conflict {
  *  that already has an account, the one confirm asks before that account
  *  replaces this device's, and Switch repeats the sign-in with `confirm`. */
 function NativeGoogleSignIn({ clientId }: { clientId: string }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apple, setApple] = useState(false);
@@ -196,7 +204,7 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
     return (
       <div className="google-signin">
         <p className="signin-upsell" data-testid="google-signin-unavailable">
-          Update the app to sign in.
+          {t("home.updateToSignIn")}
         </p>
       </div>
     );
@@ -257,18 +265,18 @@ function NativeGoogleSignIn({ clientId }: { clientId: string }) {
         <button type="button" className="apple-signin-native" data-testid="apple-signin" style={APPLE_BUTTON}
                 disabled={busy} onClick={() => void signInWithApple()}>
           <AppleMark />
-          <span>Sign in with Apple</span>
+          <span>{t("home.signInApple")}</span>
         </button>
       ) : null}
       <button type="button" className="google-signin-native" data-testid="google-signin" style={NATIVE_BUTTON}
               disabled={busy} onClick={() => void signIn()}>
         <GoogleMark />
-        <span>Sign in with Google</span>
+        <span>{t("home.signInGoogle")}</span>
       </button>
       {error ? <div className="lobby-error">{error}</div> : null}
       {conflict ? (
-        <ConfirmSheet title={`Switch to ${conflict.holder}?`} line="This device's rating is replaced."
-                      cancel="Cancel" confirm="Switch" place="card" busy={switching} error={switchError}
+        <ConfirmSheet title={t("home.switchTitle", { name: conflict.holder })} line={t("home.switchLine")}
+                      cancel={t("common.cancel")} confirm={t("home.switchConfirm")} place="card" busy={switching} error={switchError}
                       className="switch-account-confirm" confirmClass="switch-account-yes"
                       onConfirm={doSwitch} onCancel={() => { setConflict(null); setSwitchError(null); }} />
       ) : null}

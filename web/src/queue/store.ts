@@ -17,6 +17,8 @@ import type {
   TableMovedMsg,
 } from "./messages";
 import { ERROR_ROUTES, QUEUE_ANSWERS } from "../errorCodes";
+import { t } from "../i18n";
+import type { MessageKey } from "../i18n";
 
 /** From this long before the bot fill the bar turns amber. */
 export const BOTS_WARN_MS = 10_000;
@@ -156,10 +158,9 @@ function myName(): string {
 /** The toast for a seat move at your table: the opener's move of you,
  *  someone the opener moved, or someone's own move. */
 export function movedNote(m: TableMovedMsg): string {
-  const team = m.your_team ? "your team" : "the other team";
-  if (m.by && m.you) return m.team_changed ? `${m.by} moved you to the other team.` : `${m.by} moved your seat.`;
-  if (m.by) return `${m.by} moved ${m.name} to ${team}.`;
-  return `${m.name} moved to ${team}.`;
+  if (m.by && m.you) return t(m.team_changed ? "queue.note.movedYouTeam" : "queue.note.movedYou", { name: m.by });
+  if (m.by) return t(m.your_team ? "queue.note.movedOtherOurs" : "queue.note.movedOtherTheirs", { by: m.by, name: m.name });
+  return t(m.your_team ? "queue.note.movedOurs" : "queue.note.movedTheirs", { name: m.name });
 }
 
 /** Queued as the two members of a Duo made at a table: each taps Start. */
@@ -262,7 +263,7 @@ export class QueueStore {
     this.droppedWhileQueued = false;
     this.set({ ...EMPTY, count: this.view.count, presence: this.view.presence, note: null,
                playMode: this.view.playMode });
-    if (searching) this.notify("Signed in. Press Play to find a table.");
+    if (searching) this.notify(t("queue.note.signedIn"));
   }
 
   subscribe = (fn: () => void): (() => void) => {
@@ -321,6 +322,11 @@ export class QueueStore {
     return conn.send({ ...msg, name });
   }
 
+  /** A notice in the client's own words: a title key, then a sub-line key. */
+  private say([title, sub]: readonly [MessageKey, MessageKey?]): void {
+    this.notify(t(title), sub ? t(sub) : undefined);
+  }
+
   notify(title: string, sub?: string): void {
     this.noteId += 1;
     this.set({ note: { id: this.noteId, title, sub } });
@@ -374,7 +380,7 @@ export class QueueStore {
         if (!held && !this.view.pending) return;
         this.joinSentAt = null;
         this.set(NOT_SEATED);
-        if (held) this.notify("You left the table while away.", "No cooldown.");
+        if (held) this.notify(t("queue.note.leftAway"), t("queue.note.noCooldown"));
       }, RESYNC_MS);
     }
   }
@@ -426,10 +432,11 @@ export class QueueStore {
           this.set({ ...NOT_SEATED, count: msg.count, cooldownTold: false,
                      cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : null });
           if (msg.replaced && wasQueued) {
-            const there = msg.by === "window" ? "window" : "device";
-            this.notify(msg.stopped ? `Your table was closed from another ${there}.` : `Your table moved to another ${there}.`);
+            const win = msg.by === "window";
+            this.notify(t(msg.stopped ? (win ? "queue.note.closedWindow" : "queue.note.closedDevice")
+              : win ? "queue.note.movedWindow" : "queue.note.movedDevice"));
           } else if (wasQueued && !leaving && !msg.replaced) {
-            this.notify("You're no longer at a table.", "Press Play to find one.");
+            this.notify(t("queue.note.noTable"), t("queue.note.findOne"));
           }
           break;
         }
@@ -465,7 +472,7 @@ export class QueueStore {
       case "match_cancelled":
         this.set({ pending: null });
         if (msg.reason === "server_error") {
-          this.notify("The game could not start.", "You keep your place.");
+          this.notify(t("queue.note.noStart"), t("queue.note.keepPlace"));
         }
         break;
       case "queue_removed": {
@@ -475,12 +482,12 @@ export class QueueStore {
         this.heldState = null;
         this.set(NOT_SEATED);
         if (msg.reason === "idle") {
-          this.notify("You left the table.", "No tap for 2 minutes. No cooldown.");
+          this.notify(t("queue.note.leftIdle"), t("queue.note.idleWhy"));
         } else if (msg.reason === "away") {
-          this.notify(by ? `${by} left the table while away.` : "You left the table while away.",
-                      "No cooldown.");
+          this.notify(by ? t("queue.note.otherLeftAway", { name: by }) : t("queue.note.leftAway"),
+                      t("queue.note.noCooldown"));
         } else if (msg.reason === "in_room" && by) {
-          this.notify(`${by} joined a room, so you left the table.`);
+          this.notify(t("queue.note.otherInRoom", { name: by }));
         }
         break;
       }
@@ -491,7 +498,7 @@ export class QueueStore {
         this.set({ party: msg });
         if (joined) {
           const other = partnerName(msg);
-          if (other) this.notify(msg.you_lead ? `${other} joined your Duo.` : `You joined ${other}'s Duo.`);
+          if (other) this.notify(t(msg.you_lead ? "queue.note.duoJoinedYours" : "queue.note.duoJoinedTheirs", { name: other }));
         }
         break;
       }
@@ -499,7 +506,7 @@ export class QueueStore {
         if (this.view.party && this.view.party.party_id !== msg.party_id) break;
         this.clearPartyResync();
         this.set({ party: null });
-        if (msg.by && !msg.you) this.notify(`${msg.by} left the Duo.`);
+        if (msg.by && !msg.you) this.notify(t("queue.note.duoLeft", { name: msg.by }));
         break;
       case "error":
         if (msg.code === "account_in_game") {
@@ -531,23 +538,23 @@ export class QueueStore {
                      cooldownUntil: msg.cooldown_until != null ? this.local(msg.cooldown_until) : this.view.cooldownUntil });
         } else if (msg.code === "seat_taken") {
           this.set({ pending: null });
-          this.notify(...ERROR_ROUTES.seat_taken.text);
+          this.say(ERROR_ROUTES.seat_taken.text);
         } else if (msg.code === "table_closed" || msg.code === "no_offer") {
           this.set({ pending: null, offer: null });
-          this.notify(...ERROR_ROUTES[msg.code].text);
+          this.say(ERROR_ROUTES[msg.code].text);
         } else if (msg.code === "panel_changed") {
           // the fresh panel is on its way; the tap was for the old one
           this.set({ pending: null });
           this.askStatus();
         } else if (msg.code === "pair_seats_fixed") {
           this.set({ pending: null });
-          this.notify(...ERROR_ROUTES.pair_seats_fixed.text);
+          this.say(ERROR_ROUTES.pair_seats_fixed.text);
         } else if (msg.code === "already_ready") {
           this.set({ pending: null });
-          this.notify(...ERROR_ROUTES.already_ready.text);
+          this.say(ERROR_ROUTES.already_ready.text);
         } else if (msg.code === "bad_seat") {
           this.set({ pending: null });
-          this.notify(...ERROR_ROUTES.bad_seat.text);
+          this.say(ERROR_ROUTES.bad_seat.text);
         } else if (msg.code === "start_failed") {
           // the entry left the queue before the start was tried
           this.set(NOT_SEATED);
@@ -604,8 +611,7 @@ export class QueueStore {
     if (sharedTable(frame) && !sharedTable(was)) haptic("declare");
     const left = othersAt(was).filter((n) => !othersAt(frame).includes(n));
     this.set({ ...rest, frame });
-    if (left.length === 1) this.notify(`${left[0]} left the table.`);
-    else if (left.length > 1) this.notify(`${left.join(" and ")} left the table.`);
+    if (left.length >= 1) this.notify(t("queue.note.left", { name: left.join(t("queue.note.leftAnd")) }));
   }
 
   // ---- actions
@@ -627,7 +633,7 @@ export class QueueStore {
 
   /** A Play given up while the device signed in: the line a lost Play gets. */
   private notTaken(): void {
-    this.notify("Couldn't open a table.", "Press Play to try again.");
+    this.notify(t("queue.note.noOpen"), t("queue.note.tryPlay"));
   }
 
   /** Whether a Play held back for the device's sign-in still means what it
@@ -647,7 +653,7 @@ export class QueueStore {
       : pair ? { type: "queue_join", party_id: pair.party_id, mode }
       : duo ? { type: "queue_join", mode, duo: true } : { type: "queue_join", mode });
     if (!sent) {
-      this.notify("Not connected.", "Press Play again in a moment.");
+      this.notify(t("queue.note.offline"), t("queue.note.playLater"));
       return;
     }
     this.joinSentAt = Date.now();
@@ -660,7 +666,7 @@ export class QueueStore {
       if (this.view.pending !== "join") return;
       this.joinSentAt = null;
       this.set({ pending: null });
-      this.notify("Couldn't open a table.", "Press Play to try again.");
+      this.notify(t("queue.note.noOpen"), t("queue.note.tryPlay"));
       if (this.status === "open") this.askStatus();
     }, CONFIRM_MS);
   }

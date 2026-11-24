@@ -2,11 +2,13 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { auth, checkDisplayName, DISPLAY_NAME_MAX, effectiveName, updateDisplayName } from "../auth";
 import type { AuthUser } from "../auth";
+import { useT } from "../i18n";
 
 /** One small inline form that changes the account's display name: used by
  *  the lobby chip and the phone's overflow menu. The rules are checked here
  *  first so a refusal reads instantly; the server's answer still wins. */
 export default function NameEditForm({ user, onDone }: { user: AuthUser; onDone: () => void }) {
+  const t = useT();
   const [value, setValue] = useState(effectiveName(user));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -38,7 +40,7 @@ export default function NameEditForm({ user, onDone }: { user: AuthUser; onDone:
     <form className="name-edit" onSubmit={submit} data-testid="name-edit">
       <input
         className="name-edit-input"
-        aria-label="Display name"
+        aria-label={t("home.displayNameAria")}
         value={value}
         maxLength={DISPLAY_NAME_MAX}
         autoFocus
@@ -53,8 +55,8 @@ export default function NameEditForm({ user, onDone }: { user: AuthUser; onDone:
         }}
       />
       <div className="name-edit-actions">
-        <button type="submit" className="btn primary name-edit-save" disabled={busy}>Save</button>
-        <button type="button" className="btn subtle name-edit-cancel" onClick={onDone}>Cancel</button>
+        <button type="submit" className="btn primary name-edit-save" disabled={busy}>{t("home.save")}</button>
+        <button type="button" className="btn subtle name-edit-cancel" onClick={onDone}>{t("common.cancel")}</button>
       </div>
       {error ? <div className="name-edit-error" role="alert">{error}</div> : null}
     </form>

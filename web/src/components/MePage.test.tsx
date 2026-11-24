@@ -26,6 +26,7 @@ import { isMuted, setMuted } from "../audio";
 import { guestName } from "../guestName";
 import { coachSetting, setCoachSetting } from "../firstTurns";
 import HudMenu from "./HudMenu";
+import { setLanguageChoice } from "../i18n";
 
 const JERRY = { name: "Jerry Yu", email: "j@x", picture: null, display_name: null, name_shown: "Jerry" };
 const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional: false, levels_per_round: 0.41,
@@ -69,6 +70,7 @@ beforeEach(() => {
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 afterEach(() => {
+  setLanguageChoice("system");
   act(() => root.unmount());
   host.remove();
   window.history.replaceState(null, "", "/");
@@ -114,7 +116,7 @@ describe("signed in", () => {
     const tiles = [...host.querySelectorAll(".me-tile")].map((t) => t.textContent);
     expect(tiles).toEqual(["58%rounds won", "+0.41levels / round", "7best streak"]);
     expect(rowLabels()).toEqual(["Games won", "Rounds played", "Won as defenders", "Won as attackers",
-      "Coach", "Sound", "How to play", "Show me on the leaderboard", "Edit name", "Privacy policy",
+      "Coach", "Sound", "Language", "How to play", "Show me on the leaderboard", "Edit name", "Privacy policy",
       "Terms of use", "Support", "On iPhone", "Sign out", "Delete account"]);
     expect(host.textContent).not.toContain("With a bot partner");
     expect(host.querySelector(".me-delete")?.className).toContain("destructive");
@@ -139,7 +141,7 @@ describe("signed in", () => {
 
   it("the account's settings and help rows sit under Games too, below the games", async () => {
     await render("games");
-    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Show me on the leaderboard", "Edit name",
+    expect(rowLabels()).toEqual(["Coach", "Sound", "Language", "How to play", "Show me on the leaderboard", "Edit name",
       "Privacy policy", "Terms of use", "Support", "On iPhone", "Sign out", "Delete account"]);
     const list = host.querySelector(".games-day-row")!;
     const settings = host.querySelector(".me-visible")!;
@@ -276,7 +278,7 @@ describe("a guest", () => {
     expect(host.querySelector(".google-signin")).toBeNull();
     expect(host.querySelector(".signin-card")).toBeNull();
     // the header is the identity row: the name is shown once, and the header carries the chevron
-    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
+    expect(rowLabels()).toEqual(["Coach", "Sound", "Language", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
     expect([...host.querySelectorAll(".me-page *")].filter((e) => e.children.length === 0 && e.textContent === "Gentle Tractor"))
       .toHaveLength(1);
     const who = host.querySelector<HTMLButtonElement>("button.me-who")!;
@@ -335,7 +337,7 @@ describe("a guest", () => {
   it("with the server unreachable the name row's sheet shows sign-in unavailable with one line saying why", async () => {
     authState.current = { status: "error", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
+    expect(rowLabels()).toEqual(["Coach", "Sound", "Language", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
     act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     const btn = sheet.querySelector<HTMLButtonElement>("[data-testid=signin-unavailable] button")!;
@@ -348,7 +350,7 @@ describe("a guest", () => {
   it("with sign-in off the name row's sheet is the name only", async () => {
     authState.current = { status: "off", clientId: null, user: null };
     await render();
-    expect(rowLabels()).toEqual(["Coach", "Sound", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
+    expect(rowLabels()).toEqual(["Coach", "Sound", "Language", "How to play", "Privacy policy", "Terms of use", "Support", "On iPhone"]);
     act(() => rowNamed("Gentle Tractor").click());
     const sheet = document.querySelector(".identity-sheet")!;
     expect(sheet.querySelector(".identity-signin")).toBeNull();
@@ -674,9 +676,38 @@ describe("the Settings group", () => {
     await render();
     expect(head()?.textContent).toBe("Settings");
     expect(group().getAttribute("aria-labelledby")).toBe("me-settings-head");
-    expect(groupLabels()).toEqual(["Coach", "Sound", "Haptics", "How to play"]);
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Haptics", "Language", "How to play"]);
     const account = [...host.querySelectorAll("ul.me-account .grp-label")].map((e) => e.textContent);
     expect(account).toEqual(["Show me on the leaderboard", "Edit name"]);
+  });
+
+  it("Language opens its choices in place; 中文 redraws Me in Chinese and is remembered", async () => {
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    const row = () => host.querySelector<HTMLButtonElement>(".me-language")!;
+    const choices = () => [...host.querySelectorAll(".me-language-option .grp-label")].map((e) => e.textContent);
+    expect(row().querySelector(".me-language-value")?.textContent).toBe("English");
+    act(() => row().click());
+    // the website: two languages, no Follow system (it stays English unless asked)
+    expect(choices()).toEqual(["English", "中文"]);
+    act(() => host.querySelectorAll<HTMLButtonElement>(".me-language-option")[1].click());
+    expect(localStorage.getItem("shengji.language")).toBe("zh-Hans");
+    expect(document.documentElement.lang).toBe("zh-Hans");
+    expect(head()?.textContent).toBe("设置");
+    expect(row().querySelector(".me-language-value")?.textContent).toBe("中文");
+    expect(choices()).toEqual([]);
+    act(() => setLanguageChoice("system"));
+    expect(head()?.textContent).toBe("Settings");
+  });
+
+  it("in the app, Language offers Follow system first", async () => {
+    native(true);
+    authState.current = { status: "in", clientId: "cid", user: JERRY };
+    await render();
+    act(() => host.querySelector<HTMLButtonElement>(".me-language")!.click());
+    const choices = [...host.querySelectorAll(".me-language-option .grp-label")].map((e) => e.textContent);
+    expect(choices).toEqual(["Follow system", "English", "中文"]);
+    expect(host.querySelector(".me-language-value")?.textContent).toBe("Follow system");
   });
 
   it("How to play opens the guide", async () => {
@@ -699,7 +730,8 @@ describe("the Settings group", () => {
     // the settings rows: the table's Invite link stands above them
     const menuRows = () => [...menuHost.querySelectorAll<HTMLButtonElement>(".hud-menu-row:not(.hud-menu-invite)")];
     const menuLabels = menuRows().map((r) => r.querySelector("span")?.textContent);
-    expect(menuLabels.slice(0, 4)).toEqual(groupLabels());
+    // the table's menu has every setting but Language, which lives in Me only
+    expect(menuLabels.slice(0, 4)).toEqual(groupLabels().filter((l) => l !== "Language"));
     const coachInMenu = () => menuRows().find((r) => r.textContent?.startsWith("Coach"))!;
     const coachInMe = () => host.querySelector<HTMLButtonElement>(".me-coach")!;
     expect(coachInMe().getAttribute("aria-checked")).toBe("true");
@@ -747,12 +779,12 @@ describe("the Settings group", () => {
   it("a browser has no Haptics row; a guest gets the same settings list as an account", async () => {
     authState.current = { status: "out", clientId: "cid", user: null };
     await render();
-    expect(groupLabels()).toEqual(["Coach", "Sound", "How to play"]);
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Language", "How to play"]);
     native(true);
     act(() => root.unmount());
     host.remove();
     await render();
-    expect(groupLabels()).toEqual(["Coach", "Sound", "Haptics", "How to play"]);
+    expect(groupLabels()).toEqual(["Coach", "Sound", "Haptics", "Language", "How to play"]);
   });
 
 });

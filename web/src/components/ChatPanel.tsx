@@ -5,12 +5,14 @@ import { conn } from "../ws";
 import { usePresence } from "../usePresence";
 import { useBlocks } from "../chatBlocks";
 import { KEYBOARD_COVER_PX, SHORT_VISIBLE_PX, TIGHT_VISIBLE_PX, visibleArea, type VisibleArea } from "../visibleArea";
+import { useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 import "./ChatPanel.css";
 
 /** The chat sheet's quick phrases, above the field: a tap sends one as an
  *  ordinary line, through the same validated, rate-limited path. They stay
  *  one row, which scrolls sideways when the chat is narrower than all five. */
-const QUICK_PHRASES = ["Hi!", "GG", "Nice!", "One more?", "Brb"] as const;
+const QUICK_PHRASES: readonly MessageKey[] = ["table.quickHi", "table.quickGg", "table.quickNice", "table.quickMore", "table.quickBrb"];
 
 interface ChatProps {
   messages: ChatMsg[];
@@ -27,6 +29,7 @@ interface BodyProps extends ChatProps {
 /** What chat holds, wherever it is drawn: the log, the quick phrases and the
  *  field, which takes focus when it opens and gives it back when it closes. */
 export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
+  const t = useT();
   const [draft, setDraft] = useState("");
   // On a touch screen the field's focus means the keyboard is up; the quick
   // phrases then give their row to the field.
@@ -64,7 +67,7 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
 
   return (
     <>
-      <div className="chat-log" role="log" aria-label="Messages" aria-relevant="additions">
+      <div className="chat-log" role="log" aria-label={t("table.chatLog")} aria-relevant="additions">
         {shown.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
             <div key={i} className="chat-msg system">
@@ -80,12 +83,15 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
         <div ref={endRef} />
       </div>
       {typing && touchFirst() ? null : (
-        <div className="chat-quick" role="group" aria-label="Quick phrases">
-          {QUICK_PHRASES.map((phrase) => (
-            <button key={phrase} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
-              {phrase}
-            </button>
-          ))}
+        <div className="chat-quick" role="group" aria-label={t("table.quickPhrases")}>
+          {QUICK_PHRASES.map((key) => {
+            const phrase = t(key);
+            return (
+              <button key={key} type="button" className="chat-quick-btn" onClick={() => say(phrase)}>
+                {phrase}
+              </button>
+            );
+          })}
         </div>
       )}
       <div className="chat-input">
@@ -93,8 +99,8 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
           ref={inputRef}
           value={draft}
           maxLength={300}
-          placeholder="Message…"
-          aria-label="Chat message"
+          placeholder={t("table.chatPlaceholder")}
+          aria-label={t("table.chatField")}
           enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => setTyping(true)}
@@ -106,7 +112,7 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
         {/* Send keeps the field's focus, so the keyboard stays up and the
             row does not move between the press and the click. */}
         <button className="btn" onMouseDown={(e) => e.preventDefault()} onClick={send} disabled={!draft.trim()}>
-          Send
+          {t("table.send")}
         </button>
       </div>
     </>
@@ -147,6 +153,7 @@ export default function ChatPanel({ messages, you, open, onClose, onSend }: Chat
   open: boolean;
   onClose: () => void;
 }) {
+  const t = useT();
   const presence = usePresence(open);
   const area = useVisibleArea(open);
   if (!presence.mounted) return null;
@@ -159,15 +166,15 @@ export default function ChatPanel({ messages, you, open, onClose, onSend }: Chat
   } as CSSProperties);
   return (
     <div className={`chat-panel${short ? " chat-short" : ""}${tight ? " chat-tight" : ""}${presence.className ? ` ${presence.className}` : ""}`}
-         style={style || undefined} role="region" aria-label="Chat" aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
+         style={style || undefined} role="region" aria-label={t("table.chat")} aria-hidden={!open || undefined} inert={!open || undefined} onKeyDown={(event) => {
       if (event.key === "Escape" && !event.nativeEvent.isComposing) onClose();
       event.stopPropagation();
     }}>
       <div className="chat-head">
-        <span>Chat</span>
+        <span>{t("table.chat")}</span>
         {/* pressing × leaves the field's focus alone: a blur would bring the
             quick phrases back and move × from under the finger */}
-        <button className="chat-close" onMouseDown={(e) => e.preventDefault()} onClick={onClose} aria-label="Close chat">
+        <button className="chat-close" onMouseDown={(e) => e.preventDefault()} onClick={onClose} aria-label={t("table.closeChat")}>
           ×
         </button>
       </div>

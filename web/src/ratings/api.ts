@@ -1,6 +1,7 @@
 // Ratings: the leaderboard, the account's own stats and its leaderboard
 // opt-out. Same-origin requests, so the session cookie goes along; a 401
 // means signed out.
+import { t } from "../i18n";
 
 export interface LeaderRow {
   rank: number | null;
@@ -93,9 +94,9 @@ export async function setVisibility(visible: boolean): Promise<boolean> {
       body: JSON.stringify({ visible }),
     });
   } catch {
-    throw new Error("Could not save: no connection.");
+    throw new Error(t("me.saveOffline"));
   }
-  if (resp.status !== 200) throw new Error(`Could not save (${resp.status}).`);
+  if (resp.status !== 200) throw new Error(t("me.saveFailed", { status: resp.status }));
   const body = (await resp.json()) as { visible: boolean };
   return body.visible;
 }

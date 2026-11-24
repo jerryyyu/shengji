@@ -1,16 +1,29 @@
 import type { GameState, LastTrick } from "../protocol";
 import Card from "./Card";
+import { t, useT } from "../i18n";
+
+/** A seat's name as the round end shows it: a bot seat's "Bot 2" in the
+ *  current language, any other name as it is. */
+export function seatName(name: string): string {
+  const bot = /^Bot (\d+)$/.exec(name);
+  return bot ? t("roundend.bot", { n: bot[1] }) : name;
+}
 
 /** The round's final trick inside the round-end Details: each play's cards
  *  in play order with the player's name under them, the winner's outlined. */
 export default function RoundEndLastTrick({ state, trick }: { state: GameState; trick: LastTrick }) {
-  const nameOf = (seat: number) => seat === state.you
-    ? "You"
-    : state.players.find((p) => p.seat === seat)?.name ?? `Seat ${seat}`;
+  const t = useT();
+  const nameOf = (seat: number) => {
+    if (seat === state.you) return t("roundend.you");
+    const name = state.players.find((p) => p.seat === seat)?.name;
+    return name === undefined ? t("roundend.seat", { n: seat }) : seatName(name);
+  };
   return (
     <div className="round-end-col round-end-last-trick">
       <div className="round-end-col-label">
-        Last trick · {nameOf(trick.winner)}{trick.points > 0 ? `, ${trick.points} points` : ""}
+        {trick.points > 0
+          ? t("roundend.lastTrickPoints", { name: nameOf(trick.winner), points: trick.points })
+          : t("roundend.lastTrick", { name: nameOf(trick.winner) })}
       </div>
       <ol className="round-end-plays">
         {trick.plays.map((play) => (

@@ -4,6 +4,7 @@ import type { HandCard } from "../protocol";
 import type { Box } from "../motion";
 import { DUR, EASE, canAnimate, currentTranslate } from "../motion";
 import Card from "./Card";
+import { useT } from "../i18n";
 
 /** At most this many new cards in one commit fly in; more (a reconnect) just appear. */
 const MAX_ARRIVALS = 8;
@@ -115,6 +116,7 @@ interface Drag {
 }
 
 export default function Hand({ hand, selected, selectable, onToggle, rects, lit = null }: HandProps) {
+  const t = useT();
   const handRef = useRef<HTMLDivElement>(null);
   // The card under a finger that is down lifts at once, before the tap's
   // click commits the choice on release; a slide carries the lift along.
@@ -281,7 +283,7 @@ export default function Hand({ hand, selected, selectable, onToggle, rects, lit 
   return (
     <div className={`hand${selectable ? " selectable" : ""}${small ? " small-cards" : ""}`}
          ref={handRef} style={style} role="group"
-         aria-label={`Your hand, ${hand.length} ${hand.length === 1 ? "card" : "cards"}`}
+         aria-label={t("table.handAria", { n: hand.length })}
          onPointerDown={onPointerDown} onPointerMove={onPointerMove}
          onPointerUp={endDrag} onPointerCancel={endDrag} onClickCapture={onClickCapture}>
       {hand.map((c) => (

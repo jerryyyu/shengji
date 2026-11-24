@@ -5,6 +5,7 @@ import { BOTS_WARN_MS, BOT_FILL_MS, sharedTable, useNow, useQueue } from "./stor
 import type { QueueView } from "./store";
 import { SeatedAtContext } from "./seatedAt";
 import type { SeatedAt } from "./seatedAt";
+import { t, useT } from "../i18n";
 
 interface PillText { label: string; left: number | null; warn: boolean }
 
@@ -18,11 +19,11 @@ function botsAt(q: QueueView): number | null {
 }
 
 function pillText(at: SeatedAt, q: QueueView, now: number): PillText | null {
-  if (at === "game") return { label: "Your game", left: null, warn: false };
+  if (at === "game") return { label: t("home.pillGame"), left: null, warn: false };
   if (!q.queued) return null;
   const fill = botsAt(q);
   const left = fill === null ? null : Math.max(0, fill - now);
-  return { label: "Your table", left, warn: left !== null && left <= BOTS_WARN_MS };
+  return { label: t("home.pillTable"), left, warn: left !== null && left <= BOTS_WARN_MS };
 }
 
 /** The one way back to your table or game from another tab, on phone and
@@ -30,6 +31,7 @@ function pillText(at: SeatedAt, q: QueueView, now: number): PillText | null {
  *  while it runs, amber in its last ten seconds. A tap opens Play, which
  *  holds the panel or the game. Nothing shows when you sit nowhere. */
 export default function YourTablePill() {
+  useT();
   const at = useContext(SeatedAtContext);
   const q = useQueue();
   const now = useNow(at === null && q.queued, 250);
@@ -37,7 +39,7 @@ export default function YourTablePill() {
   if (!text) return null;
   return (
     <button type="button" className={`table-pill${text.warn ? " warn" : ""}`}
-            aria-label={`${text.label}, back to Play`} onClick={() => openTab("play")}>
+            aria-label={t("home.pillAria", { name: text.label })} onClick={() => openTab("play")}>
       <span className="table-pill-dot" aria-hidden="true" />
       <span className="table-pill-label">{text.label}</span>
       {text.left !== null ? <TimerRing left={text.left / 1000} total={BOT_FILL_MS / 1000} /> : null}

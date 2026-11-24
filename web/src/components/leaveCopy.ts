@@ -4,6 +4,7 @@
 import { conn } from "../ws";
 import type { ServerMsg } from "../protocol";
 import { nameList, shortName } from "../queue/tableText";
+import { t } from "../i18n";
 
 /** The wait after leaving a round you joined from an open table, as words.
  *  The server's JOIN_COOLDOWN_SECS is 60 and no frame sends it ahead of a
@@ -59,8 +60,6 @@ export function inJoinedRound(): boolean {
   return joinedRoom !== null;
 }
 
-const stays = (names: string[]) => (names.length === 1 ? "stays" : "stay");
-
 /** The sheet's title and its one line, or no line when leaving costs
  *  nothing and changes nothing for anyone else. `joined`: the round in play
  *  was joined from an open table. Only a ranked table charges the join wait;
@@ -69,18 +68,23 @@ const stays = (names: string[]) => (names.length === 1 ? "stays" : "stay");
 export function leaveCopy(ctx: LeaveContext, joined = false): { title: string; line: string | null } {
   if (ctx.kind === "queue") {
     const names = ctx.others.map(shortName);
-    return { title: "Leave the table?", line: names.length ? `${nameList(names)} ${stays(names)} at the table.` : null };
+    return {
+      title: t("roundend.leaveTableTitle"),
+      line: names.length ? t("roundend.leaveOthers", { names: nameList(names), count: names.length }) : null,
+    };
   }
   if (ctx.kind === "duo") {
     const who = shortName(ctx.partner);
-    return { title: "Leave the Duo?", line: ctx.opener ? `${who} keeps the table and its code.` : `${who} keeps the table.` };
+    return {
+      title: t("roundend.leaveDuoTitle"),
+      line: t(ctx.opener ? "roundend.leavePartnerKeepsCode" : "roundend.leavePartnerKeeps", { name: who }),
+    };
   }
-  if (ctx.practice) return { title: "Leave the game?", line: "This offline game ends." };
-  if (ctx.betweenRounds) return { title: "Leave the game?", line: "This round's result is kept." };
-  if (joined && ctx.ranked) {
-    return { title: "Leave the game?", line: `Stay until this round ends, or wait ${JOIN_WAIT} to play again.` };
-  }
-  if (ctx.ranked && !ctx.guest) return { title: "Leave the game?", line: "This round counts as at best a draw." };
+  const title = t("roundend.leaveGameTitle");
+  if (ctx.practice) return { title, line: t("roundend.leavePractice") };
+  if (ctx.betweenRounds) return { title, line: t("roundend.leaveBetweenRounds") };
+  if (joined && ctx.ranked) return { title, line: t("roundend.leaveJoinWait", { wait: JOIN_WAIT }) };
+  if (ctx.ranked && !ctx.guest) return { title, line: t("roundend.leaveAtBestDraw") };
   // a casual round, and a guest's ranked one, cost nothing
-  return { title: "Leave the game?", line: null };
+  return { title, line: null };
 }

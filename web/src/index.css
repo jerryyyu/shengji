@@ -3068,7 +3068,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   .action-bar:has(.btn.gold)::before {
-    content: "Declare";
+    content: attr(data-declare-label);
     align-self: center;
     padding: 6px 10px;
     border-radius: 999px;
@@ -6488,5 +6488,30 @@ dialog.leave-sheet-backdrop {
 
 .result-next-banker {
   font-size: var(--fs-14);
+  font-weight: 600;
+}
+
+/* Simplified Chinese: PingFang SC (or the platform's SC face) for the CJK
+   glyphs; no tracking, which pulls characters apart (a code's Latin letters
+   keep theirs); no strikethrough, which crosses out the strokes. */
+:root:lang(zh-Hans) {
+  font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC",
+    "Microsoft YaHei", sans-serif;
+}
+
+:root:lang(zh-Hans) body :not(input, [class*="code"], [class*="code"] *) {
+  letter-spacing: normal !important;
+}
+
+:root:lang(zh-Hans) input::placeholder {
+  letter-spacing: normal;
+}
+
+:root:lang(zh-Hans) .play-mode-opt:disabled {
+  text-decoration: none;
+}
+
+.me-language-check {
+  color: var(--gold);
   font-weight: 600;
 }

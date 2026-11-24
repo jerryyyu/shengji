@@ -9,6 +9,8 @@ import { useKindGuard } from "./useKindGuard";
 import { panelKind, presenceParts, shortName } from "./tableText";
 import "./playLines.css";
 import { clock, queue, useNow, useQueue } from "./store";
+import { tx, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 
 /** The ranked mark: a trophy. */
 export function TrophyIcon() {
@@ -25,18 +27,16 @@ export function TrophyIcon() {
  *  says only that they play as a guest. */
 function GuestLine({ online }: { online: boolean }) {
   const account = useAuth();
+  const t = useT();
   const clientId = account.status === "out" ? account.clientId : null;
   return (
     <p className="play-guest-line">
-      Playing as a guest
-      {clientId ? (
-        <>
-          {" · "}
+      {clientId ? tx("home.guestLineSignIn", {
+        signIn: (
           <button type="button" className="play-guest-signin" disabled={!online}
-                  onClick={() => guestName.open("play_line")}>Sign in</button>
-          {" to be ranked"}
-        </>
-      ) : null}
+                  onClick={() => guestName.open("play_line")}>{t("home.signIn")}</button>
+        ),
+      }) : t("home.guestLine")}
     </p>
   );
 }
@@ -48,11 +48,12 @@ function GuestLine({ online }: { online: boolean }) {
 export function PresenceLine({ q, online, offline = false }: {
   q: ReturnType<typeof useQueue> | null; online: boolean; offline?: boolean;
 }) {
+  const t = useT();
   if (offline || !online || !q) {
     return (
       <p className={`play-presence ${offline ? "offline" : "connecting"}`} role="status">
         <span className="play-presence-dot" aria-hidden="true" />
-        <span>{offline ? "Offline" : "Connecting…"}</span>
+        <span>{offline ? t("home.offline") : t("home.connecting")}</span>
       </p>
     );
   }
@@ -68,7 +69,7 @@ export function PresenceLine({ q, online, offline = false }: {
   );
 }
 
-const MODES: { mode: QueueMode; label: string }[] = [{ mode: "ranked", label: "Ranked" }, { mode: "casual", label: "Casual" }];
+const MODES: { mode: QueueMode; name: MessageKey }[] = [{ mode: "ranked", name: "home.ranked" }, { mode: "casual", name: "home.casual" }];
 
 /** Ranked / Casual above Play, remembered on this device. At a table it
  *  shows that table's mode and holds still. With `rankedOff` (no game
@@ -76,13 +77,14 @@ const MODES: { mode: QueueMode; label: string }[] = [{ mode: "ranked", label: "R
 export function ModeSwitch({ value, disabled, rankedOff = false }: {
   value: QueueMode; disabled: boolean; rankedOff?: boolean;
 }) {
+  const t = useT();
   return (
-    <div className="play-mode" role="group" aria-label="Mode">
-      {MODES.map(({ mode, label }) => (
+    <div className="play-mode" role="group" aria-label={t("home.modeAria")}>
+      {MODES.map(({ mode, name }) => (
         <button key={mode} type="button" className={`play-mode-opt${value === mode ? " on" : ""}`}
                 aria-pressed={value === mode} disabled={disabled || (rankedOff && mode === "ranked")}
                 onClick={rankedOff ? undefined : () => queue.setPlayMode(mode)}>
-          {label}
+          {t(name)}
         </button>
       ))}
     </div>
@@ -93,6 +95,7 @@ export function ModeSwitch({ value, disabled, rankedOff = false }: {
 export function PlayRow({ label, disabled, busy = false, onPlay, onDuo, duoDisabled }: {
   label: string; disabled: boolean; busy?: boolean; onPlay: () => void; onDuo?: () => void; duoDisabled: boolean;
 }) {
+  const t = useT();
   return (
     <div className="play-ranked-row">
       <button type="button" className={`btn gold play-main q-find${busy ? " searching" : ""}`}
@@ -100,27 +103,36 @@ export function PlayRow({ label, disabled, busy = false, onPlay, onDuo, duoDisab
         {label}
       </button>
       <button type="button" className="btn play-duo" disabled={duoDisabled} onClick={onDuo}>
-        Duo
+        {t("home.duo")}
       </button>
     </div>
   );
 }
 
+/** The server's two account_in_game sentences, which share one code: each
+ *  is read in the player's language; any other text shows as sent. */
+const IN_GAME_LINES: Record<string, MessageKey> = {
+  "Sign in again to return to your game.": "home.inGameSignIn",
+  "You are already in a game on another device.": "home.inGameElsewhere",
+};
+
 /** Play refused because this account already plays a ranked game: the
  *  server's words in Play's place, with the way back when there is one. */
 function InGameBlock({ message, canReturn, online }: { message: string; canReturn: boolean; online: boolean }) {
+  const t = useT();
+  const known = IN_GAME_LINES[message];
   return (
     <div className="play-in-game">
-      <p className="play-in-game-line" role="status">{message}</p>
+      <p className="play-in-game-line" role="status">{known ? t(known) : message}</p>
       <div className="play-ranked-row">
         {canReturn ? (
           <button type="button" className="btn gold play-main" disabled={!online} onClick={() => queue.returnToGame()}>
-            I’m back
+            {t("home.imBack")}
           </button>
         ) : null}
         <button type="button" className={canReturn ? "btn play-duo" : "btn play-main"}
                 onClick={() => queue.dismissInGame()}>
-          OK
+          {t("home.ok")}
         </button>
       </div>
     </div>
@@ -131,12 +143,13 @@ function InGameBlock({ message, canReturn, online }: { message: string; canRetur
  *  a Leave that ends it (party_leave, never a search). Leave waits for the
  *  socket, and a send that fails keeps the sheet up. */
 function PairRow({ partner, online }: { partner: string; online: boolean }) {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   return (
     <div className="play-ranked-row play-pair-row">
-      <span className="play-pair-label">Duo with {shortName(partner)}</span>
+      <span className="play-pair-label">{t("home.duoWith", { name: shortName(partner) })}</span>
       <button type="button" className="btn play-duo play-pair-leave" disabled={!online}
-              onClick={() => setAsking(true)}>Leave</button>
+              onClick={() => setAsking(true)}>{t("home.pairLeave")}</button>
       {asking ? (
         <LeaveSheet context={{ kind: "duo", partner, opener: false }}
                     onStay={() => setAsking(false)}
@@ -161,6 +174,7 @@ export function RankedSection({ online, room = null }: {
   /** The room this socket sits in before its game's first state, if any. */
   room?: RoomMsg | null;
 }) {
+  const t = useT();
   const q = useQueue();
   const account = useAuth();
   const kind = panelKind(q);
@@ -171,12 +185,12 @@ export function RankedSection({ online, room = null }: {
   const pair = q.party && q.party.members.length === 2 ? q.party : null;
   const joining = q.pending === "join";
   const cooling = q.cooldownUntil !== null && q.cooldownUntil > now;
-  let label = "Play";
+  let label = t("home.play");
   let disabled = !online || guarded || room !== null;
   if (joining) disabled = true;
   else if (cooling) {
     // a table you joined and left: Play counts the queue cooldown down
-    label = `Play in ${clock(q.cooldownUntil! - now, true)}`;
+    label = t("home.playIn", { time: clock(q.cooldownUntil! - now, true) });
     disabled = true;
   } else if (pair && !pair.you_lead) disabled = true;
   // the switch shows the mode of the table you sit at, else your choice
@@ -208,7 +222,7 @@ export function RankedSection({ online, room = null }: {
   ) : pairRow && !pair!.you_lead ? pairRow : (
     <>
       {pairRow}
-      {cooling && !q.cooldownTold ? <p className="play-cool-line">You left a table you joined.</p> : null}
+      {cooling && !q.cooldownTold ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
       <PlayRow label={label} disabled={disabled} busy={joining} duoDisabled={disabled}
                onPlay={() => queue.join()} onDuo={() => queue.joinDuo()} />
       {cooling ? null : <PresenceLine q={q} online={online} />}
@@ -217,7 +231,7 @@ export function RankedSection({ online, room = null }: {
   return (
     <>
       {announcer}
-      <section className={`play-section${guest ? " play-guest" : ""}`} aria-label="Play">
+      <section className={`play-section${guest ? " play-guest" : ""}`} aria-label={t("home.playSectionAria")}>
         {modes}
         {body}
         {guest && !deviceAccountPending(account) ? <GuestLine online={online} /> : null}

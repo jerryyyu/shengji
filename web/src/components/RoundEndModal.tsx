@@ -8,16 +8,19 @@ import { OFFLINE } from "../offlineMode";
 import { TimerRing } from "./MoveClock";
 import { LOW_SECS, MOVE_SECS } from "../useMoveClock";
 import { telemetry, useScreen } from "../telemetry";
-import { attackingTeam, myTeam, nextBankerText, pointsOf, teamMembers, teamWord } from "../tableCopy";
-import RoundEndLastTrick from "./RoundEndLastTrick";
+import { attackingTeam, myTeam, pointsOf, teamWord } from "../tableCopy";
+import RoundEndLastTrick, { seatName } from "./RoundEndLastTrick";
 import { useAuth } from "../auth";
 import { guestName } from "../guestName";
+import { t, useT } from "../i18n";
+import type { MessageKey } from "../i18n";
 
 /** Leave beside Next round (Next game), the same in every room. It asks through the one
  *  leave sheet, like every other leave: the round is over and recorded, so
  *  the sheet says it is free; an offline game on this device ends with it.
  *  The modal dialog makes the HUD's own Leave control unreachable here. */
 function RoundEndLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
+  const t = useT();
   const [asking, setAsking] = useState(false);
   return (
     <>
@@ -29,7 +32,7 @@ function RoundEndLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
           setAsking(true);
         }}
       >
-        Leave game
+        {t("roundend.leaveGame")}
       </button>
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest, practice: OFFLINE, betweenRounds: true }}
@@ -50,14 +53,26 @@ interface RoundEndModalProps {
   live?: boolean;
 }
 
+type Outcome = "WinRound" | "LoseRound" | "WinGame" | "LoseGame";
+
 /** "You & Bot 2 win the round"; the members take a plural verb. A team
- *  with no one seated is "We" or "They". */
-function TeamTitle({ team, state, what, verb = "win" }: {
-  team: 0 | 1; state: GameState; what: string; verb?: "win" | "lose";
-}) {
-  const members = teamMembers(team, state);
-  if (!members) return <>{teamSubject(team, state)} {verb} {what}</>;
-  return <>{members} {verb} {what}</>;
+ *  with no one seated is "We" or "They". One sentence per outcome, since
+ *  Chinese puts the verb and the round in another order. */
+function teamTitle(team: 0 | 1, state: GameState, outcome: Outcome): string {
+  const seated = state.players
+    .filter((p) => p.team === team)
+    .sort((a, b) => Number(b.seat === state.you) - Number(a.seat === state.you) || a.seat - b.seat);
+  if (seated.length === 0) {
+    return t(`roundend.${teamSubject(team, state) === "We" ? "we" : "they"}${outcome}` as MessageKey);
+  }
+  const names = seated.filter((p) => p.seat !== state.you).map((p) => seatName(p.name));
+  const listed = names.length === 0 ? "" : names.reduce((a, b) => t("roundend.pair", { first: a, second: b }));
+  if (seated[0].seat === state.you) {
+    return names.length === 0
+      ? t(`roundend.you${outcome}` as MessageKey)
+      : t(`roundend.youAnd${outcome}` as MessageKey, { name: listed });
+  }
+  return t(`roundend.names${outcome}` as MessageKey, { name: listed });
 }
 
 /** The viewer's team when it lost the round, else null (a win, or a viewer
@@ -75,17 +90,18 @@ export function losingViewerTeam(state: GameState, winner: 0 | 1): 0 | 1 | null 
  *  An account (one signed in on this round end too) and an account whose
  *  rating is still on its way get no note; an unranked room shows none. */
 export function RatingLine({ result, ranked, guest }: { result: RoundResult; ranked: boolean; guest: boolean }) {
+  const t = useT();
   const account = useAuth();
   if (!ranked) return null;
-  if (result.unranked === "joined") return <p className="rating-unranked">Unranked · joined mid-round</p>;
+  if (result.unranked === "joined") return <p className="rating-unranked">{t("roundend.unrankedJoined")}</p>;
   if (!guest && result.unranked !== "guest") return null;
   if (account.status === "in") return null;
   const canOpen = (account.status === "out" && account.clientId) || account.status === "error";
   return (
     <p className="rating-unranked">
       {canOpen ? (
-        <button type="button" className="rating-signin" onClick={() => guestName.open("round_end")}>Sign in to be ranked</button>
-      ) : "Sign in to be ranked"}
+        <button type="button" className="rating-signin" onClick={() => guestName.open("round_end")}>{t("roundend.signInRanked")}</button>
+      ) : t("roundend.signInRanked")}
     </p>
   );
 }
@@ -107,15 +123,24 @@ function teamSubject(team: 0 | 1, state: GameState): "We" | "They" {
  *  attackers' total already includes any kitty bonus. */
 function resultSentences(state: GameState, result: RoundResult): { took: string; climb: string } {
   const attack = attackingTeam(state);
-  const attackers = attack === null ? "Attackers" : teamSubject(attack, state);
-  const winner = teamSubject(result.winner_team, state);
+  const attackers = attack === null ? "attackers" : teamSubject(attack, state) === "We" ? "we" : "they";
+  const winner = teamSubject(result.winner_team, state) === "We" ? "we" : "they";
   const n = result.level_change;
   return {
-    took: `${attackers} took ${result.attacker_points} of 80.`,
+    took: t(`roundend.${attackers}Took` as MessageKey, { n: result.attacker_points }),
     climb: n > 0
-      ? `${winner} go up ${n}, to ${result.new_levels[result.winner_team]}`
-      : `${winner} take the deal, no level change`,
+      ? t(`roundend.${winner}GoUp` as MessageKey, { n, level: result.new_levels[result.winner_team] })
+      : t(`roundend.${winner}TakeDeal` as MessageKey),
   };
+}
+
+/** "Next banker: Bot 1.", or "Next banker: you." */
+function nextBankerLine(state: GameState, result: RoundResult): string {
+  if (result.next_banker === state.you) return t("roundend.nextBankerYou");
+  const name = state.players.find((p) => p.seat === result.next_banker)?.name;
+  return t("roundend.nextBanker", {
+    name: name === undefined ? t("roundend.seat", { n: result.next_banker }) : seatName(name),
+  });
 }
 
 /** "They won the last trick: ×2, +30" when the attackers took the last
@@ -130,11 +155,13 @@ function kittyBonusText(state: GameState, result: RoundResult): string | null {
   const mult = result.kitty_points > 0 && buried > 0 && result.kitty_points % buried === 0
     ? result.kitty_points / buried
     : buried === 0 ? 2 * (last.plays[0]?.cards.length ?? 1) : null;
-  const times = mult !== null ? `×${mult}, ` : "";
-  return `${teamSubject(attack, state)} won the last trick: ${times}+${result.kitty_points}`;
+  const times = mult !== null ? t("roundend.times", { n: mult }) : "";
+  return t(teamSubject(attack, state) === "We" ? "roundend.weBonus" : "roundend.theyBonus",
+           { times, points: result.kitty_points });
 }
 
 export default function RoundEndModal({ state, result, clock = null, live = false }: RoundEndModalProps) {
+  const t = useT();
   const titleId = useId();
   useScreen("round_end");
   const [open, setOpen] = useState(false);
@@ -146,7 +173,6 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
   // A team that defends at Ace wins a game: a point on the games score, and
   // both teams' levels restart. The table goes on, so this is Next game.
   const gameWon = result.point_scored;
-  const what = gameWon ? "the game" : "the round";
   const us = myTeam(state);
   const them = (1 - us) as 0 | 1;
   // A rated round's change rides on the result line; the guest and
@@ -154,7 +180,7 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
   const rating = ranked ? result.rating : undefined;
   const shownDelta = rating ? (gameWon && rating.game_delta !== undefined ? rating.game_delta : rating.delta) : null;
   const ratingBit = shownDelta !== null
-    ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}> · rating {rating!.rating} ({shortDelta(shownDelta)})</span>
+    ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}>{t("roundend.rating", { rating: rating!.rating, delta: shortDelta(shownDelta) })}</span>
     : null;
   const { took, climb } = resultSentences(state, result);
   const bonus = kittyBonusText(state, result);
@@ -172,28 +198,31 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
         {gameWon ? <div className={`game-won-crown${live ? " flash" : ""}`} aria-hidden="true">👑</div> : null}
         <h2 id={titleId} tabIndex={-1} className={`modal-title team${lostTeam ?? result.winner_team}`}>
           {lostTeam !== null
-            ? <TeamTitle team={lostTeam} state={state} what={what} verb="lose" />
-            : <TeamTitle team={result.winner_team} state={state} what={what} />}
+            ? teamTitle(lostTeam, state, gameWon ? "LoseGame" : "LoseRound")
+            : teamTitle(result.winner_team, state, gameWon ? "WinGame" : "WinRound")}
         </h2>
 
         {/* one result line, the same on every round end; a won game says the
             levels restart where another round says the climb */}
         <p className="result-headline result-line">
-          <span>{took} {gameWon ? `Levels restart at ${result.new_levels[us]}` : climb}{ratingBit}.</span>
-          <span className="result-next-banker">{nextBankerText(state, result)}.</span>
+          <span>
+            {t("roundend.line", { took, climb: gameWon ? t("roundend.levelsRestart", { level: result.new_levels[us] }) : climb })}
+            {ratingBit}{t("roundend.stop")}
+          </span>
+          <span className="result-next-banker">{nextBankerLine(state, result)}</span>
         </p>
         {gameWon ? (
-          <p className="result-games">Games: Us {result.games_won[us]} · Them {result.games_won[them]}</p>
+          <p className="result-games">{t("roundend.games", { us: result.games_won[us], them: result.games_won[them] })}</p>
         ) : null}
         {rating ? null : <RatingLine result={result} ranked={ranked} guest={state.guest === true} />}
 
         {hasDetails ? (
           <details className="result-details" onToggle={(e) => setOpen(e.currentTarget.open)}>
-            <summary>Details</summary>
+            <summary>{t("roundend.details")}</summary>
             <div className="round-end-details">
               {result.kitty_cards.length > 0 ? (
                 <div className="round-end-col round-end-kitty">
-                  <div className="round-end-col-label">Kitty · {buriedPoints} points</div>
+                  <div className="round-end-col-label">{t("roundend.kitty", { points: buriedPoints })}</div>
                   <div className="round-end-kitty-cards">
                     {result.kitty_cards.map((code, i) => <Card key={i} code={code} />)}
                   </div>
@@ -216,7 +245,7 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
             }}
           >
             {iAmReady ? null : <TimerRing left={clock} total={MOVE_SECS} />}
-            {iAmReady ? "Waiting for others…" : gameWon ? "Next game" : "Next round"}
+            {iAmReady ? t("roundend.waiting") : gameWon ? t("roundend.nextGame") : t("roundend.nextRound")}
           </button>
           <RoundEndLeave ranked={ranked} guest={state.guest === true} />
         </div>

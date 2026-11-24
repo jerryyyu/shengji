@@ -2360,7 +2360,7 @@ def _guest(env, uid, device, name=None):
     return conn
 
 
-def test_a_guest_queues_at_1000_and_one_device_never_sits_twice_at_a_table():
+def test_a_guest_queues_at_the_guest_rating_and_one_device_never_sits_twice_at_a_table():
     async def go():
         env = Env()
         env.player(1, rating=1600).device = DEVICE_A

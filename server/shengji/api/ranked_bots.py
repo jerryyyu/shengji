@@ -6,8 +6,8 @@ every person at the table rates at most ``BEGINNER_UP_TO``; Standard (the
 casual table's relaxed bot, ``server.make_relaxed_bot``) when every person
 rates at most ``STANDARD_UP_TO`` and not all of them at most
 ``BEGINNER_UP_TO``; and Advanced (the served bot) otherwise. A new account
-starts at ``accounts.START_RATING`` and so meets Beginner first; a guest counts
-as ``ratings.GUEST_RATING`` and meets Standard. A bot that is a person's
+starts at ``accounts.START_RATING`` and a guest counts as
+``ratings.GUEST_RATING`` (800 both), so both meet Beginner first. A bot that is a person's
 partner always plays Advanced, so Beginner or Standard is possible only when
 every person sits on one team (one person, or two partners): with people on
 both teams every bot partners someone. Beginner and Standard are the relaxed
@@ -345,8 +345,8 @@ def _apply_game(room: Any, levels: SeatLevels, tracker: Any, standing: dict | No
     chosen = set(levels.standard)
     if tracker is not None:
         anchor = ratings.RELAXED_BOT_RATINGS[levels.level]
-        tracker.anchors = [anchor if s in chosen and seat.is_bot
-                           else ratings.GUEST_RATING for s, seat in enumerate(room.seats)]
+        tracker.anchors = [ratings.seat_anchor(seat, anchor if s in chosen else ratings.BOT_RATING)
+                           for s, seat in enumerate(room.seats)]
     room.log_event("bot_levels", level=levels.level if chosen else "advanced",
                    standard_seats=sorted(chosen))
 
@@ -411,8 +411,7 @@ def seat_changed(room: Any, seat: int, before: Any = None,
         levels.standard = set()
         return
     if uid is None:
-        # a guest counts ``ratings.GUEST_RATING``, above Beginner's line, so
-        # a Beginner table seated no guest when its level was chosen
+        # a guest counts ``ratings.GUEST_RATING``
         if ratings.GUEST_RATING > line_of(levels.level):
             levels.standard = set()
         return

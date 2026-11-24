@@ -139,11 +139,11 @@ def test_team_strength_is_the_seat_mean_plus_the_banker_side():
     assert r.team_strengths([1100, 1000, 1000, 1000], banker_team=1) == (1050.0, 1040.0)
 
 
-def test_new_accounts_start_at_800_while_bots_and_guests_stay_at_1000():
+def test_new_accounts_and_guests_count_800_while_bots_stay_at_1000():
     from shengji.api import accounts, ratings as r
 
-    assert r.START_RATING == accounts.START_RATING == 800.0
-    assert r.BOT_RATING == r.GUEST_RATING == accounts.RATING_SCALE == 1000.0
+    assert r.START_RATING == accounts.START_RATING == r.GUEST_RATING == 800.0
+    assert r.BOT_RATING == accounts.RATING_SCALE == 1000.0
 
 
 def test_a_new_account_starts_at_start_rating(env):
@@ -310,6 +310,8 @@ def test_guest_and_bot_seats_do_not_change_the_banker_flag(env, others):
 
 
 def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monkeypatch):
+    from shengji.api import ratings
+
     srv, store, _ = env
     a, _ = _user(store, "alice")
     b, _ = _user(store, "bob")
@@ -323,21 +325,23 @@ def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monk
     assert sorted(e["user_id"] for e in events) == [a, b]
     da, db = (e["delta"] for e in sorted(events, key=lambda e: e["user_id"]))
     assert da == pytest.approx(db)
-    # team 0 = (1100 + 1000) / 2 = 1050; team 1 = guest 1000 + bot 1000, banker +40
-    exp = 1 / (1 + 10 ** ((1040 - 1050) / 400))
+    # team 0 = (1100 + 1000) / 2 = 1050; team 1 = (guest 800 + bot 1000) / 2, banker +40
+    exp = 1 / (1 + 10 ** ((940 - 1050) / 400))
     assert events[0]["expected"] == pytest.approx(exp)
-    assert da == pytest.approx(40 * (2 / 3 - exp))
+    # the raw move is under MIN_MOVE, so the win moves by MIN_MOVE
+    assert da == pytest.approx(ratings.bounded_delta(40 * (2 / 3 - exp), True, False))
     with closing(sqlite3.connect(store.path)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 2
 
 
-def test_a_guest_seat_counts_1000_whatever_the_guest_is_called(env, monkeypatch):
+def test_a_guest_seat_counts_800_whatever_the_guest_is_called(env, monkeypatch):
     srv, store, _ = env
     uid, _ = _user(store, "host")
     _force_outcome(monkeypatch, 30)
     Table(srv, [uid, None, None, None]).play_round(banker=0)
     [event] = _events(store)
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # team 0 = (1000 + guest 800) / 2 + banker 40 = 940; team 1 = two guests, 800
+    assert event["expected"] == pytest.approx(1 / (1 + 10 ** ((800 - 940) / 400)))
     assert event["partner_bot"] == 0 and event["partner"] == "P2" and event["opponents_bots"] == 0
 
 
@@ -436,9 +440,8 @@ def test_an_unranked_created_room_rates_nobody(env, monkeypatch):
     assert "rating" not in srv.state_for(table.room, 0)["round_result"]
 
 
-def test_a_queue_room_rates_beside_a_guest_at_the_bot_anchor(env, monkeypatch):
-    """A guest's seat counts as the bot anchor and the round is kept: the
-    worked expectation is the one it has always had."""
+def test_a_queue_room_rates_beside_guests_at_the_guest_rating(env, monkeypatch):
+    """A guest's seat counts ``GUEST_RATING`` (800) and the round is kept."""
     srv, store, _ = env
     a, _ = _user(store, "alice")
     _force_outcome(monkeypatch, 30)
@@ -447,7 +450,22 @@ def test_a_queue_room_rates_beside_a_guest_at_the_bot_anchor(env, monkeypatch):
     table.play_round(banker=0)
     [event] = _events(store)
     assert event["user_id"] == a
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # team 0 = (1000 + bot 1000) / 2 + banker 40; team 1 = two guests, 800
+    assert event["expected"] == pytest.approx(1 / (1 + 10 ** ((800 - 1040) / 400)))
+
+
+def test_a_guest_partner_counts_800_in_the_rated_players_expected_score(env, monkeypatch):
+    srv, store, _ = env
+    a, _ = _user(store, "alice")
+    _set(store, a, 1000, rounds=30)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, "bot", None, "bot"])
+    table.room.matched = True
+    table.play_round(banker=0)
+    [event] = _events(store)
+    assert event["user_id"] == a
+    # team 0 = (1000 + guest partner 800) / 2 + banker 40 = 940; team 1 = two bots, 1000
+    assert event["expected"] == pytest.approx(1 / (1 + 10 ** ((1000 - 940) / 400)))
 
 
 def test_play_bots_is_unrated_and_the_queue_rates_its_bot_game(queue_env):
@@ -519,7 +537,7 @@ def test_a_mid_round_claimant_does_not_change_the_round_for_the_others(env, monk
 
 
 def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, monkeypatch):
-    """A guest at a queue-matched table counts 1000 and is never rated; the
+    """A guest at a queue-matched table counts 800 and is never rated; the
     account beside it is rated on the round with its full K."""
     srv, store, _ = env
     a, _ = _user(store, "alice")
@@ -532,8 +550,10 @@ def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, m
     [event] = _events(store)
     assert event["user_id"] == a
     assert event["k"] == 40
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # the guest is 1000
-    assert event["delta"] == pytest.approx(11.04, abs=0.005)
+    # team 0 = (1000 + bot 1000) / 2 + banker 40; team 1 = (guest 800 + bot 1000) / 2
+    exp = 1 / (1 + 10 ** ((900 - 1040) / 400))
+    assert event["expected"] == pytest.approx(exp)
+    assert event["delta"] == pytest.approx(40 * (5 / 6 - exp), abs=0.005)
     assert store.user(a)["rated_rounds"] == 31
 
 

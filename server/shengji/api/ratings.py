@@ -12,9 +12,9 @@ as ``BOT_RATING``, the anchor of the served release, or as
 ``STANDARD_BOT_RATING`` or ``BEGINNER_BOT_RATING`` when it played Standard
 or Beginner (``ranked_bots``: the opposing pair of a table whose people all
 rate 1000 or less, or 800 or less for Beginner; which seats did is read when
-the round starts), and a guest seat (a
-person with no account, in a queue-matched room)
-counts the same and is never rated itself, so solo games against bots, games
+the round starts). A guest seat (a person with no account, in a
+queue-matched room) counts ``GUEST_RATING`` (800, a new account's start) and
+is never rated itself, so solo games against bots, games
 with a partner and mixed tables share one scale. A round with a guest rates
 every signed-in player in it in full. Nothing here reads or changes a game decision;
 the hooks only observe the room at a round's start, at an explicit leave and
@@ -27,8 +27,8 @@ round.
 
 One rated round, for each rated account on team ``t``:
 
-* team strength ``R_t`` is the mean of the two seats' ratings (a bot or guest
-  seat is ``BOT_RATING``, a Standard or Beginner bot its level's anchor
+* team strength ``R_t`` is the mean of the two seats' ratings (a bot seat is
+  ``BOT_RATING``, a guest seat ``GUEST_RATING``, a Standard or Beginner bot its level's anchor
   (``RELAXED_BOT_RATINGS``); a partner
   bot is always Advanced, so it counts ``BOT_RATING``), plus a banker advantage for the banker's team:
   ``BANKER_ADVANTAGE_DECLARED`` when the round started with no banker and the
@@ -97,8 +97,10 @@ START_RATING = accounts.START_RATING
 # The served release's fixed rating. Every bot seat is rated this, so a
 # stronger release gets a higher constant from its measured duel margin.
 BOT_RATING = 1000.0
-# A guest has no rating; in a ranked room their seat counts like a bot's.
-GUEST_RATING = BOT_RATING
+# A guest has no rating; in a ranked room their seat counts as a new
+# account's start, for the bots' level (``ranked_bots``), for seating
+# (``matchmaking``) and in the team strength of the rated players at the table.
+GUEST_RATING = 800.0
 # A bot seat playing Standard at a ranked table (``ranked_bots``) is rated
 # at the same anchor as Advanced: wins and losses against Standard
 # opponents count as much as against Advanced, so a player below the line is
@@ -235,8 +237,8 @@ class RoundRecord:
     # the round started with no banker, so a declarer took the deal
     banker_declared: bool = False
     # each seat's rating when no rated account held it at the round's start:
-    # ``GUEST_RATING``, or its level's ``RELAXED_BOT_RATINGS`` for a Standard
-    # or Beginner bot
+    # ``GUEST_RATING`` for a guest, ``BOT_RATING`` for a bot or an account,
+    # or its level's ``RELAXED_BOT_RATINGS`` for a Standard or Beginner bot
     seat_anchors: list[float] | None = None
 
 
@@ -274,8 +276,9 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
 
     Team strengths and the provisional test use each participant's numbers
     from the round's start; a seat whose start account is not rated in this
-    round counts ``GUEST_RATING``, as a bot or guest seat does, and a bot
-    that played Standard or Beginner counts its level's anchor."""
+    round counts its anchor (``seat_anchors``): ``BOT_RATING`` as a bot seat
+    does, ``GUEST_RATING`` for a guest, and a bot that played Standard or
+    Beginner its level's anchor."""
     t = int(now if now is not None else time.time())
     frozen = _frozen(rec.standing)
     with closing(store._open()) as conn:
@@ -290,7 +293,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                     users[uid] = row
             at_start = {uid: frozen.get(uid, (float(row["rating"]), int(row["rated_rounds"])))
                         for uid, row in users.items()}
-            anchors = rec.seat_anchors or [GUEST_RATING] * 4
+            anchors = rec.seat_anchors or [BOT_RATING] * 4
             seat_ratings = [at_start[u][0] if u in at_start else anchors[s]
                             for s, u in ((s, rec.start_accounts.get(s)) for s in range(4))]
             strengths = team_strengths(seat_ratings, rec.banker_team, rec.banker_declared)
@@ -574,6 +577,15 @@ def start(room: Any) -> None:
     round_started(room)
 
 
+def seat_anchor(seat: Any, bot_anchor: float = BOT_RATING) -> float:
+    """A seat's rating when no rated account holds it: ``bot_anchor`` for a
+    bot, ``GUEST_RATING`` for a guest (no account), ``BOT_RATING`` for an
+    account's seat."""
+    if seat.is_bot:
+        return bot_anchor
+    return GUEST_RATING if seat.user_id is None else BOT_RATING
+
+
 @_guarded
 def round_started(room: Any) -> None:
     tracker: RoomRatings | None = getattr(room, "ratings", None)
@@ -589,7 +601,7 @@ def round_started(room: Any) -> None:
     levels = getattr(room, "bot_levels", None)
     standard = levels.standard if levels is not None else ()
     anchor = RELAXED_BOT_RATINGS[getattr(levels, "level", "standard")]
-    tracker.anchors = [anchor if seat.is_bot and s in standard else GUEST_RATING
+    tracker.anchors = [seat_anchor(seat, anchor if s in standard else BOT_RATING)
                        for s, seat in enumerate(room.seats)]
     for s, seat in enumerate(room.seats):
         uid = _signed_in(seat)

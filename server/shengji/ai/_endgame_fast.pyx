@@ -50,6 +50,7 @@ cdef enum:
     NONE_EFF = -1
     TRUMP_EFF = 4
     MAXMOVES = 256
+    NO_WINNER = 4
 
 cdef enum:
     NEG = -1000000000
@@ -1256,7 +1257,8 @@ cdef class FastWorld:
         return raw_points + self.kitty_bonus * most
 
     cdef int _lorder(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
-                     int nplays, uint8_t* played, int n, int hint, TState* pre) except -1:
+                     int nplays, uint8_t* played, int n, int hint, TState* pre,
+                     uint8_t* fourth_winners) except -1:
         """Move ordering (values never depend on it): the table's best move;
         then in a trick, plays after which our side holds the trick (most
         points first) before the others (fewest points first), and with
@@ -1276,12 +1278,16 @@ cdef class FastWorld:
         for i in range(n):
             if hint and played[i] == hint:
                 score[i] = 1 << 30
+                if fourth_winners != NULL:
+                    fourth_winners[played[i]] = NO_WINNER
                 continue
             sc = self.hist[turn][played[i]]
             if nplays:
                 st = pre[0]
                 self._tstep(lead, turn, played[i], &st)
                 winner = st.winner
+                if fourth_winners != NULL:
+                    fourth_winners[played[i]] = winner
                 pi = &self.pinfo[turn][played[i]]       # filled by _tstep
                 tpts = st.pts if nplays == 3 else pi.pts
                 if order:
@@ -1313,25 +1319,35 @@ cdef class FastWorld:
             score[j + 1] = sc
         return 0
 
+    cdef inline int _lfinish(self, int turn, int leader, uint8_t first_play, int played,
+                             TState* pre, uint8_t* fourth_winners, int* tpts) except -1:
+        cdef int winner
+        cdef TState st
+        if fourth_winners != NULL:
+            winner = fourth_winners[played]
+            if winner != NO_WINNER:
+                tpts[0] = pre.pts + self.pinfo[turn][played].pts
+                return winner
+        st = pre[0]
+        self._tstep(self._ms(leader, first_play), turn, played, &st)
+        tpts[0] = st.pts
+        return st.winner
+
     cdef int _lchild(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
                      int nplays, int played, int alpha, int beta,
-                     int raw_points, TState* pre) except? RAISED:
+                     int raw_points, TState* pre, uint8_t* fourth_winners) except? RAISED:
         """Attacker points from playing ``played`` on, relative to now
         (``pre``: the trick state before this play, when it is the fourth)."""
         cdef uint8_t ch[4]
         cdef uint8_t cp[4]
         cdef int winner, tpts, gain = 0
-        cdef TState st
         ch[0] = hands[0]; ch[1] = hands[1]; ch[2] = hands[2]; ch[3] = hands[3]
         cp[0] = plays[0]; cp[1] = plays[1]; cp[2] = plays[2]; cp[3] = 0
         ch[turn] = hands[turn] & ~played
         cp[nplays] = played
         if nplays < 3:
             return self.lval(ch, (turn + 1) % 4, leader, cp, nplays + 1, alpha, beta, raw_points)
-        st = pre[0]
-        self._tstep(self._ms(leader, cp[0]), turn, played, &st)
-        winner = st.winner
-        tpts = st.pts
+        winner = self._lfinish(turn, leader, cp[0], played, pre, fourth_winners, &tpts)
         if winner % 2 != self.banker_parity:
             gain = tpts
         if (ch[0] | ch[1] | ch[2] | ch[3]) == 0:
@@ -1353,6 +1369,7 @@ cdef class FastWorld:
         cdef uint8_t actions[MAXMOVES]
         cdef uint8_t played[MAXMOVES]
         cdef TState pre
+        cdef uint8_t* fourth_winners = NULL
         if self.check_budget is not None:
             if self.calls % self.budget_every == 0:
                 self.check_budget()
@@ -1403,16 +1420,22 @@ cdef class FastWorld:
         if nplays:
             self._tprefix(leader, plays, nplays, &pre)
         if n > 1:
-            self._lorder(hands, turn, leader, plays, nplays, played, n, hint, &pre)
+            # The action scratch is dead after move reduction. Key the fourth-play
+            # winner by the played mask so sorting leaves it attached to its move.
+            if nplays == 3:
+                fourth_winners = actions
+            self._lorder(hands, turn, leader, plays, nplays, played, n, hint, &pre,
+                         fourth_winners)
         maximize = (turn % 2) != self.banker_parity
         if n > 1 and self.opts & L_ETC:
             v = self._etc(hands, turn, leader, plays, nplays, played, n, maximize,
-                          alpha, beta, &pre)
+                          alpha, beta, &pre, fourth_winners)
             if v != RAISED:
                 return v
         answer = NEG if maximize else POS
         for i in range(n):
-            v = self._lchild(hands, turn, leader, plays, nplays, played[i], alpha, beta, raw_points, &pre)
+            v = self._lchild(hands, turn, leader, plays, nplays, played[i],
+                             alpha, beta, raw_points, &pre, fourth_winners)
             if maximize:
                 if v > answer:
                     answer = v
@@ -1746,7 +1769,7 @@ cdef class FastWorld:
 
     cdef int _etc(self, uint8_t* hands, int turn, int leader, uint8_t* plays,
                   int nplays, uint8_t* played, int n, bint maximize,
-                  int alpha, int beta, TState* pre) except? -2147483646:
+                  int alpha, int beta, TState* pre, uint8_t* fourth_winners) except? -2147483646:
         """Enhanced transposition cutoff: a child whose stored bound already
         decides this node's window returns that bound (fail-soft); else RAISED."""
         cdef int i, gain, winner, tpts, h
@@ -1754,7 +1777,6 @@ cdef class FastWorld:
         cdef uint8_t cp[4]
         cdef uint64_t key
         cdef LEnt* e
-        cdef TState st
         for i in range(n):
             ch[0] = hands[0]; ch[1] = hands[1]; ch[2] = hands[2]; ch[3] = hands[3]
             ch[turn] = hands[turn] & ~played[i]
@@ -1766,10 +1788,7 @@ cdef class FastWorld:
             else:
                 if (ch[0] | ch[1] | ch[2] | ch[3]) == 0:
                     continue
-                st = pre[0]
-                self._tstep(self._ms(leader, plays[0]), turn, played[i], &st)
-                winner = st.winner
-                tpts = st.pts
+                winner = self._lfinish(turn, leader, plays[0], played[i], pre, fourth_winners, &tpts)
                 if winner % 2 != self.banker_parity:
                     gain = tpts
                 if self.opts & L_CANON:

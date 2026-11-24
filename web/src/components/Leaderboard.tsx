@@ -22,7 +22,7 @@ export function ratingText(rating: number): string {
 }
 
 /** A week's rating change as drawn: ▲18, ▼6, or a dash for none. */
-export function weekMove(delta: number): { text: string; spoken: string; dir: "up" | "down" | "flat" } {
+function weekMove(delta: number): { text: string; spoken: string; dir: "up" | "down" | "flat" } {
   const n = Math.round(delta);
   if (n > 0) return { text: `\u25B2${n}`, spoken: `up ${n} this week`, dir: "up" };
   if (n < 0) return { text: `\u25BC${-n}`, spoken: `down ${-n} this week`, dir: "down" };

@@ -940,11 +940,6 @@ describe("Bury shows its count as a fill", () => {
   const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
   const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
   const label = () => (primary().querySelector(".play-text") ?? primary()).textContent;
-  const handIds = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")].map((slot) => Number(slot.dataset.id));
-  const selected = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")]
-    .filter((slot) => slot.querySelector(".card.selected")).map((slot) => Number(slot.dataset.id));
-  const setStatus = (s: string) => act(() => { link.status = s; for (const fn of link.statusListeners) fn(s); });
-  const playing = (over: Partial<GameState> = {}) => state({ turn: 0, trick: { leader: 0, plays: [] }, ...over });
   const burying = (over: Partial<GameState> = {}) => state({
     phase: "bury", turn: 0, hand: cards(33), banker: 0,
     players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });

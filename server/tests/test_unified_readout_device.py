@@ -198,6 +198,23 @@ def test_the_cpu_path_gives_the_reference_losses(cpu_default):
     _close(cpu_default["polish"], CPU_REFERENCE["polish"], CPU_REL_TOL["polish"])
 
 
+def test_polish_exports_input_weights_when_pass_zero_wins(cpu_root, tmp_path):
+    root, _ = cpu_root
+    source = root / "train" / "best.pt"
+    polished = tmp_path / "polished"
+    assert ur.main(["polish", "--ckpt", str(source), "--cache", str(root / "cache"),
+                    "--out", str(polished), "--epochs", "1", "--batch", "32", "--lr", "3e-4", "--threads", "1"]) == 0
+    _, saved = ur.load_checkpoint(polished / "best.pt")
+    assert saved["calib"]["polish_epoch"] == 0
+    for checkpoint, package in ((source, "input.npz"), (polished / "best.pt", "selected.npz")):
+        assert ur.main(["export", "--ckpt", str(checkpoint), "--out", str(tmp_path / package), "--temperature", "1"]) == 0
+    with np.load(tmp_path / "input.npz") as expected, np.load(tmp_path / "selected.npz") as selected:
+        assert expected.files == selected.files
+        for key in expected.files:
+            if key != "metadata":
+                np.testing.assert_array_equal(selected[key], expected[key], err_msg=key)
+
+
 mps = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is not available")
 
 

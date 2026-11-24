@@ -743,7 +743,7 @@ def polish(args) -> int:
                     + ("" if device.type == "cpu" else f" device={args.device}"))
     rng = np.random.default_rng(args.seed)
     step_i, t0 = 0, time.time()
-    state = None
+    state = saved["model"]
     for epoch in range(args.epochs):
         sums = np.zeros(6)
         for si in rng.permutation(len(shards)):
@@ -772,10 +772,8 @@ def polish(args) -> int:
         if cm["leaf_value_end"] < best["score"]:
             best = {"score": cm["leaf_value_end"], "epoch": epoch + 1, "calib": cm}
             state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-    if state is not None:
-        model.load_state_dict(state)
     polish_args = {k: v for k, v in vars(args).items() if not (k == "device" and v == "cpu")}
-    torch.save({"schema": CKPT_SCHEMA, "model": model.state_dict() if device.type == "cpu" else _on_cpu(model.state_dict()),
+    torch.save({"schema": CKPT_SCHEMA, "model": state if device.type == "cpu" else _on_cpu(state),
                 "config": model.config, "epoch": saved.get("epoch"),
                 "calib": dict(saved.get("calib") or {}, polish=best["calib"], polish_epoch=best["epoch"]),
                 "init_calib": saved.get("init_calib"), "run": dict(saved.get("run") or {}, polish=polish_args)}, out / "best.pt")

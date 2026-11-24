@@ -100,6 +100,7 @@ export const queue = defineMessages({
   "queue.set.level": { en: "Starting level", zh: "从几打起" },
   "queue.set.levelValue": { en: "Level {level}", zh: "打 {level}" },
   "queue.set.bots": { en: "Bots", zh: "机器人" },
+  "queue.set.beginner": { en: "Beginner", zh: "入门" },
   "queue.set.standard": { en: "Standard", zh: "标准" },
   "queue.set.advanced": { en: "Advanced", zh: "高级" },
   "queue.set.joiners": { en: "Allow joiners", zh: "允许中途加入" },

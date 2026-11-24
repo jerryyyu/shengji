@@ -4492,6 +4492,7 @@ exports[`the table panel, fixture by fixture > own: casual, level 4 1`] = `
           "<label class="tp-set">",
           "<span>Bots</span>",
           "<select aria-label="Bots">",
+          "<option value="beginner">Beginner</option>",
           "<option value="standard">Standard</option>",
           "<option value="advanced">Advanced</option>",
           "</select>",

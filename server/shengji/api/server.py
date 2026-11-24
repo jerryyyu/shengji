@@ -550,11 +550,12 @@ class Room:
             if self.bot_seed is None:
                 self.bot_seed = secrets.randbits(31)
             served = make_bot(os.environ.get("SHENGJI_BOT", "mc"), seed=self.bot_seed)
-            standard = self.bot_level == "standard"
-            self.bot = make_relaxed_bot(served, self.bot_seed) if standard else served
+            build = {"beginner": make_beginner_bot, "standard": make_relaxed_bot}.get(self.bot_level)
+            self.bot = build(served, self.bot_seed) if build is not None else served
             # a missing or wrong package plays the served bot, and the room's
             # rounds are then logged as Advanced
-            self.bot_level = "standard" if self.bot is not served else "advanced"
+            if self.bot is served:
+                self.bot_level = "advanced"
         if self.log_dir is None:
             self.log_dir = LOG_DIR
         else:

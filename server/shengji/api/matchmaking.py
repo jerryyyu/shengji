@@ -237,10 +237,11 @@ QUEUE_MESSAGES = frozenset({
 SAME_DEVICE = "Someone on this device is already at that table."
 RANKED_LEVEL = "A ranked table starts at level 2."
 RANKED_BOTS = "A ranked table plays the full-strength bots."
-# A table's Bots: Standard plays ``server.RELAXED_BOT``, Advanced the served
-# bot. A ranked table has no setting (``ranked_bots`` picks its level); a
-# new casual table starts at CASUAL_BOT_LEVEL.
-BOT_LEVELS = ("standard", "advanced")
+# A table's Bots, weakest first: Beginner plays ``server.BEGINNER_BOT``,
+# Standard ``server.RELAXED_BOT``, Advanced the served bot. A ranked table
+# has no setting (``ranked_bots`` picks its level); a new casual table starts
+# at CASUAL_BOT_LEVEL.
+BOT_LEVELS = ("beginner", "standard", "advanced")
 CASUAL_BOT_LEVEL = "standard"
 # The only queue messages a seated socket may send: leaving a pair, and
 # asking what the queue holds for it.
@@ -1319,7 +1320,7 @@ class Matchmaker:
                 raise QueueError("ranked_level_fixed", RANKED_LEVEL)
             bots = msg.get("bot_level", CASUAL_BOT_LEVEL if mode == "casual" else "advanced")
             if bots not in BOT_LEVELS:
-                raise QueueError("bad_setting", "Bots is Standard or Advanced.")
+                raise QueueError("bad_setting", "Bots is Beginner, Standard or Advanced.")
             if mode == "ranked" and bots != "advanced":
                 raise QueueError("ranked_bots_fixed", RANKED_BOTS)
         # ``duo``: open your own table with the partner seat held. A code
@@ -1538,7 +1539,7 @@ class Matchmaker:
                 raise QueueError("ranked_bots_fixed", RANKED_BOTS)
             bots = msg.get("level")
             if bots not in BOT_LEVELS:
-                raise QueueError("bad_setting", "Bots is Standard or Advanced.")
+                raise QueueError("bad_setting", "Bots is Beginner, Standard or Advanced.")
             if bots != t.bot_level and t.waiting:
                 t.ready.clear()         # a Start agreed to the other bots
                 for o in t.entries:

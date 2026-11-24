@@ -445,7 +445,7 @@ describe("every Play table has a code", () => {
     const select = bots(q(".tp-own")!)!;
     expect(select.value).toBe("standard");
     expect([...select.options].map((o) => [o.value, o.textContent])).toEqual(
-      [["standard", "Standard"], ["advanced", "Advanced"]]);
+      [["beginner", "Beginner"], ["standard", "Standard"], ["advanced", "Advanced"]]);
     act(() => {
       select.value = "advanced";
       select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -460,6 +460,10 @@ describe("every Play table has a code", () => {
     const row = theirs.querySelector("[role='group'][aria-label^='Bots']");
     expect(row?.getAttribute("aria-label")).toBe("Bots Standard");
     expect(row?.querySelector(".tp-set-val")?.textContent).toBe("Standard");
+    say(shared({ mode: "casual", bot_level: "beginner" }));
+    openSettings(q(".tp-shared")!);
+    expect(q(".tp-shared")!.querySelector("[role='group'][aria-label^='Bots']")?.getAttribute("aria-label"))
+      .toBe("Bots Beginner");
     say(shared({ bot_level: "advanced" }));
     expect(q(".tp-shared")!.textContent).not.toContain("Bots");
   });

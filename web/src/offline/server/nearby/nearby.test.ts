@@ -490,7 +490,7 @@ describe("a nearby table's Bots", () => {
 
   it("refuses an unknown level before making a table", async () => {
     const { server, frames } = await create({ bot_level: "expert" });
-    expect(frames).toEqual([{ type: "error", code: "bad_setting", message: "Bots is Standard or Advanced." }]);
+    expect(frames).toEqual([{ type: "error", code: "bad_setting", message: "Bots is Beginner, Standard or Advanced." }]);
     expect(server.rooms.size).toBe(0);
   });
 });

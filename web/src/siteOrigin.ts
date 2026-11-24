@@ -1,7 +1,7 @@
-// The public site's canonical origin, for search engines and link previews.
-// The same site also answers at the Fly host the iOS app loads and its invite
-// links name; the files that keep that host are APP_HOST_FILES in
-// siteOrigin.test.ts, until the app ships on this origin.
+// The public site's canonical origin, for search engines, link previews and
+// the iOS app. The same site also answers at the Fly host that builds up to
+// 1.0.1 load and whose invite links they share; the files that still name that
+// host are OLD_HOST_FILES in siteOrigin.test.ts.
 export const SITE_ORIGIN = "https://playshengji.com";
 
 /** The iOS app's App Store page; the website lists it under Support and in the

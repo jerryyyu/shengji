@@ -7,7 +7,7 @@ import { isNative } from "../native";
 import type { BotLevel } from "../queue/messages";
 
 /** The live site, for the app's bundled page to load when back online. */
-export const ONLINE_URL = "https://shengji.fly.dev/";
+export const ONLINE_URL = "https://playshengji.com/";
 
 /** True for the app's bundled page, which has no game server of its own: it
  *  goes online only by loading the live site. */

@@ -24,6 +24,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A1B0C0012FF0000100000301 /* InviteLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000302 /* InviteLink.swift */; };
+		A1B0C0012FF0000100000701 /* OriginMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B0C0012FF0000100000702 /* OriginMove.swift */; };
 		9582B6852FE993A70072D4E8 /* ShellViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6842FE993A70072D4E8 /* ShellViewController.swift */; };
 /* End PBXBuildFile section */
 
@@ -61,6 +62,7 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		A1B0C0012FF0000100000302 /* InviteLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InviteLink.swift; sourceTree = "<group>"; };
+		A1B0C0012FF0000100000702 /* OriginMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OriginMove.swift; sourceTree = "<group>"; };
 		9582B6842FE993A70072D4E8 /* ShellViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellViewController.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -102,6 +104,7 @@
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				9582B6842FE993A70072D4E8 /* ShellViewController.swift */,
 				A1B0C0012FF0000100000302 /* InviteLink.swift */,
+				A1B0C0012FF0000100000702 /* OriginMove.swift */,
 				A1B0C0012FF0000100000101 /* PyBotPlugin.swift */,
 				A1B0C0012FF0000100000402 /* NearbyPlugin.swift */,
 				A1B0C0012FF0000100000602 /* KeychainPlugin.swift */,
@@ -245,6 +248,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				9582B6852FE993A70072D4E8 /* ShellViewController.swift in Sources */,
 				A1B0C0012FF0000100000301 /* InviteLink.swift in Sources */,
+				A1B0C0012FF0000100000701 /* OriginMove.swift in Sources */,
 				A1B0C0012FF0000100000001 /* PyBotPlugin.swift in Sources */,
 				A1B0C0012FF0000100000401 /* NearbyPlugin.swift in Sources */,
 				A1B0C0012FF0000100000601 /* KeychainPlugin.swift in Sources */,

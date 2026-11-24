@@ -255,7 +255,7 @@ it("leaving the offline game in the app with the network up goes back to the onl
   await startGame();
   await leaveGame();
   await until(() => assign.mock.calls.length > 0);
-  expect(assign).toHaveBeenCalledWith("https://shengji.fly.dev/");
+  expect(assign).toHaveBeenCalledWith("https://playshengji.com/");
   expect(assign).toHaveBeenCalledTimes(1);
 });
 
@@ -273,7 +273,7 @@ it("with no network, leaving keeps the offline Play tab until the network is bac
   expect(assign).not.toHaveBeenCalled();
   netUp = true;
   await act(async () => { window.dispatchEvent(new Event("online")); });
-  expect(assign).toHaveBeenCalledWith("https://shengji.fly.dev/");
+  expect(assign).toHaveBeenCalledWith("https://playshengji.com/");
 });
 
 /** An online page's Play tab, its socket to the game server open. */

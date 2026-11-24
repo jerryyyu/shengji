@@ -22,10 +22,16 @@ import WebKit
 /// when the app is already running and, on a cold launch, once the first view
 /// has appeared, so one observer serves both; the load replaces the start
 /// page, and the cancelled start load is not a network failure.
+///
+/// The first launch on the app's own domain moves this install's cookies and
+/// localStorage from the host it loaded before (OriginMove) before the first
+/// page loads; an invite link that arrives meanwhile loads after it.
 class ShellViewController: CAPBridgeViewController {
     private var navigationGate: OfflineFallbackGate?
     private var statusTapObserver: NSObjectProtocol?
     private var inviteLinkObserver: NSObjectProtocol?
+    private var originMove: OriginMoveRunner?
+    private var inviteAfterMove: URL?
 
     var inGame = false {
         didSet {
@@ -72,7 +78,33 @@ class ShellViewController: CAPBridgeViewController {
                   let link = (note.object as? [String: Any])?["url"] as? URL,
                   let server = self.bridge?.config.serverURL,
                   let target = InviteLink.target(for: link, server: server) else { return }
-            _ = self.webView?.load(URLRequest(url: target))
+            if self.originMove != nil {
+                self.inviteAfterMove = target
+            } else {
+                _ = self.webView?.load(URLRequest(url: target))
+            }
+        }
+    }
+
+    /// Capacitor's viewDidLoad loads the start page; on the launch that moves
+    /// this install to the app's own domain it runs once the move is done.
+    override open func viewDidLoad() {
+        guard let webView = webView, let server = bridge?.config.serverURL, OriginMove.applies(to: server),
+              !UserDefaults.standard.bool(forKey: OriginMove.doneKey) else {
+            super.viewDidLoad()
+            return
+        }
+        let runner = OriginMoveRunner(webView: webView, server: server)
+        originMove = runner
+        runner.run { [weak self] in
+            guard let self = self else { return }
+            UserDefaults.standard.set(true, forKey: OriginMove.doneKey)
+            self.originMove = nil
+            super.viewDidLoad()
+            if let target = self.inviteAfterMove {
+                self.inviteAfterMove = nil
+                _ = self.webView?.load(URLRequest(url: target))
+            }
         }
     }
 
@@ -102,6 +134,85 @@ class ShellViewController: CAPBridgeViewController {
         for observer in [statusTapObserver, inviteLinkObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+}
+
+/// The one-time move (OriginMove), on the bridge's own data store: the old
+/// host's cookies are copied onto the server's host, then a page with the old
+/// host's origin is made from a string (no network) in a hidden WebView to read
+/// its localStorage, and what was read is handed to the first page as a
+/// document-start script. `run`'s completion is called once, on the main
+/// queue, after the move or after `timeout` seconds, whichever is first; a
+/// part that fails moves nothing and never stops the launch.
+final class OriginMoveRunner: NSObject, WKNavigationDelegate {
+    private let webView: WKWebView
+    private let host: String
+    private let timeout: TimeInterval
+    private var reader: WKWebView?
+    private var hadSession = false
+    private var done: (() -> Void)?
+
+    init(webView: WKWebView, server: URL, timeout: TimeInterval = 3) {
+        self.webView = webView
+        self.host = server.host?.lowercased() ?? ""
+        self.timeout = timeout
+    }
+
+    func run(_ completion: @escaping () -> Void) {
+        done = completion
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
+            self?.finish(entries: [:])
+        }
+        let cookies = webView.configuration.websiteDataStore.httpCookieStore
+        cookies.getAllCookies { [weak self] all in
+            guard let self = self, self.done != nil else { return }
+            self.hadSession = OriginMove.hadSession(all)
+            let group = DispatchGroup()
+            for cookie in OriginMove.movedCookies(all, to: self.host) {
+                group.enter()
+                cookies.setCookie(cookie) { group.leave() }
+            }
+            group.notify(queue: .main) { self.readStorage() }
+        }
+    }
+
+    private func readStorage() {
+        guard done != nil, let base = URL(string: "https://\(OriginMove.previousHost)/") else { return }
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = webView.configuration.websiteDataStore
+        config.processPool = webView.configuration.processPool
+        let reader = WKWebView(frame: .zero, configuration: config)
+        reader.navigationDelegate = self
+        self.reader = reader
+        reader.loadHTMLString("<!doctype html><title></title>", baseURL: base)
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        webView.evaluateJavaScript(OriginMove.readStorageScript) { [weak self] result, _ in
+            self?.finish(entries: OriginMove.storageEntries(result))
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        finish(entries: [:])
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        finish(entries: [:])
+    }
+
+    private func finish(entries: [String: String]) {
+        guard let completion = done else { return }
+        done = nil
+        reader?.navigationDelegate = nil
+        reader?.stopLoading()
+        reader = nil
+        if hadSession || !entries.isEmpty,
+           let source = OriginMove.handoffScript(origin: "https://\(host)", entries: entries, session: hadSession) {
+            webView.configuration.userContentController.addUserScript(WKUserScript(
+                source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
+        completion()
     }
 }
 

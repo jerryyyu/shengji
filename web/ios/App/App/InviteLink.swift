@@ -2,14 +2,17 @@ import Foundation
 
 /// Where an invite link opens in the app. The server's apple-app-site-association
 /// file sends only invite links here: `/?code=<code>` (and the older
-/// `/?room=<code>`) on the server's host. The page reads the code from its own
+/// `/?room=<code>`) on the server's host, or on the host the app loaded
+/// before it moved (`OriginMove.previousHost`), whose links are still shared
+/// by older builds and still open this one. The page reads the code from its own
 /// query on load, as it does for the same link in a browser, so the app loads
 /// that address in the WebView: the server's root with the link's query.
 /// Anything else is not an invite and returns nil, leaving the page alone.
 enum InviteLink {
     static func target(for link: URL, server: URL) -> URL? {
         guard link.scheme?.lowercased() == "https",
-              let host = link.host?.lowercased(), host == server.host?.lowercased(),
+              let host = link.host?.lowercased(),
+              host == server.host?.lowercased() || host == OriginMove.previousHost,
               link.port == server.port,
               let parts = URLComponents(url: link, resolvingAgainstBaseURL: false),
               parts.path.isEmpty || parts.path == "/",

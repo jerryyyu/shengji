@@ -4,8 +4,11 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // cannot serve bundled assets from an https origin (Capacitor's iosScheme may
 // not be http/https), so a bundled page would be cross-origin to the game
 // server and its session cookie would be a blocked third-party cookie. Loading
-// https://shengji.fly.dev keeps fetch, the WebSocket and cookies same-origin,
-// exactly as in a browser. webDir is still required by `cap sync`.
+// https://playshengji.com keeps fetch, the WebSocket and cookies same-origin,
+// exactly as in a browser. webDir is still required by `cap sync`. Builds up
+// to 1.0.1 loaded the Fly host (OriginMove.previousHost), which the server
+// still answers; the shell moves an upgraded install's cookies and
+// localStorage from that origin once (ios/App/App/OriginMove.swift).
 //
 // CAP_SERVER_URL points a local build at a test server instead, for example
 // `CAP_SERVER_URL=http://192.168.1.20:8765 npx cap sync ios`. Cleartext is
@@ -16,7 +19,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // (Capacitor's WebViewDelegationHandler does so on a failed or failed
 // provisional navigation, also with a remote server.url). That origin puts
 // the client in offline mode: a local game against bots, no server.
-const serverUrl = process.env.CAP_SERVER_URL || "https://shengji.fly.dev";
+const serverUrl = process.env.CAP_SERVER_URL || "https://playshengji.com";
 
 // The lobby's chrome colour (--chrome in src/index.css): the launch screen, the
 // splash and the WebView behind the first paint all match the lobby the app

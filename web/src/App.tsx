@@ -8,6 +8,8 @@ import { OFFLINE, useOffline } from "./offlineMode";
 import { clearSavedRoom, conn, getResumeToken, getSavedName, getSavedRoom, saveRoom } from "./ws";
 import { announceState, prewarmAudio, resetAnnouncer } from "./audio";
 import { auth, useAuth } from "./auth";
+import { guestName } from "./guestName";
+import { takeMovedSignIn } from "./originMove";
 import Lobby from "./components/Lobby";
 import LeaveSheet from "./components/LeaveSheet";
 import type { LeaveContext } from "./components/leaveCopy";
@@ -270,6 +272,13 @@ export default function App() {
   // one config + me round trip, once the page is online; a server without
   // sign-in answers "off"
   useEffect(() => { if (!offline) void auth.init(); }, [offline]);
+  // a session the app's move to its own domain did not carry asks for sign-in once
+  useEffect(() => {
+    if (offline) return;
+    void auth.init().then(() => auth.settled()).then(() => {
+      if (takeMovedSignIn(auth.state?.status)) guestName.open("moved");
+    });
+  }, [offline]);
 
   const inRoom = room !== null || game !== null;
   const q = useQueue();

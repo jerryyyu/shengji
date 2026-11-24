@@ -400,6 +400,12 @@ switch between accounts included, and goes once as whoever that leaves signed in
 - **Linked:** an account with Apple or Google is a signed-in account as before (Edit name, Sign out). Its
   Sign out also sends and clears the device secret, so the next launch does not sign it back in.
 - **Reinstall:** the Keychain keeps the secret, so the same account comes back; no message.
+- **The app's own domain (build 11, Jerry 2026-11-24 "a gentle re-sign-in"):** the app loads playshengji.com;
+  shengji.fly.dev keeps serving older builds, and invite links on either host open the app. On the first launch
+  the shell copies the old origin's cookies (the session among them) and hands the page its localStorage, written
+  where a key is unset (`OriginMove.swift`, `originMove.ts`), so the name, settings and seats stay; no message.
+  If the old origin was signed in and the app still settles signed out, the one identity sheet opens once at
+  Sign in; no new surface or copy.
 
 ## Polish checklist (UI review)
 A UI review ask walks this list after the copy rule and the flow-map row. This file, `COPY_CUTS.md` and the felt (the hand and the table, where reading a card beats a uniform press) win over any item here. Adapted from `jakubkrehel/make-interfaces-feel-better` at `6d9f2f1df10e8ce2ae1708598a73b0506fb98794` (MIT, copyright Jakub Krehel); its framework snippets, image outlines, RTL rules and shadow-for-border swap do not apply here.

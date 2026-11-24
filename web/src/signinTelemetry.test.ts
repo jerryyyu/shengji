@@ -76,6 +76,7 @@ describe("the identity sheet's entry points", () => {
 
   // Every place that opens the sheet names itself; a new one is added here.
   const EXPECTED: Record<string, string[]> = {
+    "App.tsx": ["moved"],
     "components/AccountChip.tsx": ["chip"],
     "components/GuestChip.tsx": ["chip"],
     "components/MePage.tsx": ["me_row", "me_signin", "me_row"],

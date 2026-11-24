@@ -28,7 +28,7 @@ export default function PrivacyPage() {
         <InfoHead title="Privacy" />
         <p className="info-small">Last updated {PRIVACY_UPDATED}</p>
         <p className="info-text">
-          Sheng Ji is a card game you play in a browser at shengji.fly.dev or in the iOS app, which
+          Sheng Ji is a card game you play in a browser at playshengji.com or in the iOS app, which
           shows the same site. This page says what the game keeps and why. We don’t show ads, we don’t
           sell or share your data, and we use no third-party analytics or tracking services. The game
           keeps anonymous usage events of its own, described below. The <TermsLink /> are the rules

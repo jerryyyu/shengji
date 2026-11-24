@@ -14,7 +14,7 @@
 // handler: every tick is a timer, a visibility event or a menu tap.
 import { flushNearbyLogFile, nearbyLog, onNearbyLogFileReset, readNearbyLogFile, type LogFileReset } from "./nearbyLog";
 
-export const UPLOAD_URL = "https://shengji.fly.dev/api/nearby-log";
+export const UPLOAD_URL = "https://playshengji.com/api/nearby-log";
 export const CHUNK_MAX = 1_000_000;
 export const TICK_MAX = 5_000_000;
 export const TICK_MS = 10 * 60 * 1000;

@@ -70,8 +70,8 @@ LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 # A new account's rating; ``ratings.START_RATING`` reads it from here. It sits
 # below the bots' 1000 so a new player meets Beginner opponents and climbs
 # visibly from the start. A guest counts the same (``ratings.GUEST_RATING``);
-# bots stay at 1000. The ``users.rating``
-# column default predates the 1000 scale, so every insert sets the rating.
+# a bot seat counts its level's anchor (``ratings.BOT_ANCHORS``). The
+# ``users.rating`` column default predates the 1000 scale, so every insert sets the rating.
 START_RATING = 800.0
 # The scale the v5 migration moved to (bots are anchored here).
 RATING_SCALE = 1000.0

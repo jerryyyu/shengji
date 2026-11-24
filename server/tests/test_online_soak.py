@@ -797,3 +797,39 @@ def test_recovery_after_the_last_cut_uses_the_current_socket(tmp_path, monkeypat
     assert result[0] == outcome
     if outcome == "recovered":
         assert trace["via"] == "new_socket"
+
+
+# the stuck-table rule
+
+def test_the_stuck_limit_is_the_server_s_paused_turn_tail_plus_slack():
+    from shengji.api import server as srv
+
+    tail = srv.MOVE_TIMER + srv.AWAY_PAUSE_MAX + srv.MOVE_TIMER_POLL + srv.BOT_DELAY
+    assert soak.stuck_limit(srv, 1.0) == pytest.approx(tail + soak.STUCK_SLACK)
+    scaled = SimpleNamespace(**{n: getattr(srv, n) / 4.0 for n in
+                                ("MOVE_TIMER", "AWAY_PAUSE_MAX", "MOVE_TIMER_POLL", "BOT_DELAY")})
+    assert soak.stuck_limit(scaled, 4.0) == pytest.approx((tail + soak.STUCK_SLACK) / 4.0)
+
+
+def test_a_paused_turn_s_tail_is_not_stuck_and_a_longer_gap_is(tmp_path):
+    """At scale 50: an 85 s gap (an away seat's 20 s pause, then its 60 s
+    clock) passes; a 115 s gap is flagged."""
+    import time
+
+    from shengji.api import server as srv
+
+    s = _bare_soak(tmp_path)
+    s.scale = 50.0
+    s.srv = SimpleNamespace(rooms={}, **{n: getattr(srv, n) / s.scale for n in
+                                         ("MOVE_TIMER", "AWAY_PAUSE_MAX", "MOVE_TIMER_POLL", "BOT_DELAY")})
+
+    def room():
+        return SimpleNamespace(task_exits={}, seats=[], game=SimpleNamespace(game_over=False),
+                               round=SimpleNamespace(phase="play"))
+
+    s.srv.rooms = {"PAUSED": room(), "STUCK": room()}
+    now = time.monotonic()
+    wait = 0.5          # the monitor sleeps this long before its check
+    s.progress = {"PAUSED": now + wait - 85.0 / s.scale, "STUCK": now + wait - 115.0 / s.scale}
+    asyncio.run(s.monitor(now + 0.1))      # one pass: the loop checks once, then ends
+    assert [e["room"] for e in s.stuck] == ["STUCK"]

@@ -1655,15 +1655,11 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   from { opacity: 0; }
 }
 
-/* a newcomer's first turns: the coach line in gold, the cards that follow
-   the lead at full strength and the rest dimmed; an idle turn pulses both */
+/* a newcomer's first turns: the coach line in gold; an idle turn pulses it
+   and the cards that follow the lead. No card is dimmed, legal or not. */
 .hand-line.coach {
   border-color: var(--gold);
   color: var(--gold);
-}
-
-.hand-slot.dim .card {
-  filter: brightness(0.55) saturate(0.7);
 }
 
 .hand-line.coach.nudge {
@@ -1798,7 +1794,9 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   position: relative;
   width: var(--cw, 70px);
   aspect-ratio: 5 / 7;
-  background: linear-gradient(160deg, #fdfdf7 0%, #f1f0e6 100%);
+  /* the solid colour paints the face even where the gradient does not, so a
+     card is never see-through to the cards and felt under it */
+  background: linear-gradient(160deg, #fdfdf7 0%, #f1f0e6 100%) #f7f6ee;
   border: 1px solid rgba(0, 0, 0, 0.22);
   border-radius: calc(var(--cw, 70px) * 0.11);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);

@@ -68,3 +68,46 @@ describe("the follow hint floats", () => {
     expect(prop(bodies[0], "position")).toBe("absolute");
   });
 });
+
+describe("hand cards are never dimmed", () => {
+  // Every card in your hand keeps full strength: the coach points with the
+  // idle pulse, never by darkening the rest. Only a press darkens, briefly.
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  const handRules: { sel: string; body: string }[] = [];
+  for (let m = re.exec(css); m; m = re.exec(css)) {
+    const sel = m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ");
+    if (/\.hand(-slot)?\b/.test(sel) && /\.card\b/.test(sel) && !sel.includes(":active")) handRules.push({ sel, body: m[2] });
+  }
+  it("finds the hand's card rules", () => {
+    expect(handRules.length).toBeGreaterThan(5);
+  });
+  it.each(handRules.map((r) => [r.sel, r.body]))("%s neither filters nor fades the card", (_sel, body) => {
+    expect(prop(body, "filter")).toBeNull();
+    const opacity = prop(body, "opacity");
+    expect(opacity === null || Number(opacity) >= 1).toBe(true);
+  });
+  it("a card face is opaque under its gradient", () => {
+    expect(prop(decls(".card"), "background")).toMatch(/linear-gradient\([^)]*\)\s+#[0-9a-f]{6}$/i);
+  });
+  // A face's white is never thinned or taken away in any state (chosen, the
+  // coach's, a follow): no rule on a face, anywhere, makes it see-through.
+  const faceRules: { sel: string; body: string }[] = [];
+  const all = /([^{}]+)\{([^{}]*)\}/g;
+  for (let m = all.exec(css); m; m = all.exec(css)) {
+    for (const one of m[1].replace(/\/\*[\s\S]*?\*\//g, "").split(",")) {
+      const sel = one.trim().replace(/\s+/g, " ");
+      const last = sel.split(" ").pop() ?? "";
+      if (/\.card(?![-\w])/.test(last) && !/\.back\b/.test(last)) faceRules.push({ sel, body: m[2] });
+    }
+  }
+  it("finds the card face rules", () => {
+    expect(faceRules.length).toBeGreaterThan(10);
+  });
+  it.each(faceRules.map((r) => [r.sel, r.body]))("%s keeps the face opaque", (_sel, body) => {
+    const opacity = prop(body, "opacity");
+    expect(opacity === null || Number(opacity) >= 1).toBe(true);
+    for (const name of ["background", "background-color", "background-image"]) {
+      expect(prop(body, name) ?? "").not.toMatch(/^(transparent|none)$|rgba\([^)]*,\s*0(\.\d+)?\)\s*$/);
+    }
+  });
+});

@@ -331,3 +331,38 @@ def test_duel_refuses_stale_failed_or_wrong_post_terminal_before_artifacts(segme
     monkeypatch.setattr(duel, "arm_inputs", unexpected_artifact_read)
     with pytest.raises(ValueError, match="M post lane did not complete successfully"):
         duel.verified_exports()
+
+
+def test_matched_scratch_recipe_consumed_by_trainer(segment, cpu_root, tmp_path, monkeypatch):
+    import sz3_joint_recipe as sz3
+
+    recipe_path = cpu_root[0] / "train/run.json"
+    recipe = json.loads(recipe_path.read_text())
+    recipe.update(calib_data=recipe["data"], corpus_weight=[f"{recipe['data'][0]}=policy:2,reply:2"])
+    recipe_path = tmp_path / "recipe.json"
+    recipe_path.write_text(json.dumps(recipe))
+    with pytest.raises(ValueError, match="SHA mismatch"):
+        sz3.command("M", tmp_path, recipe_path)
+    monkeypatch.setattr(sz3, "RECIPE_SHA", hashlib.sha256(recipe_path.read_bytes()).hexdigest())
+
+    def parsed(phase):
+        cmd = sz3.command(phase, tmp_path, recipe_path)
+        return ur.build_parser().parse_args(cmd[4:])
+
+    medium, large, smoke = map(parsed, ("M", "L-prefix", "L-smoke"))
+    for args, expected in ((medium, 9303324), (large, 20874972)):
+        assert args.init_readout_ckpt is None and args.init is None and args.init_ckpt is None
+        assert args.max_train_rows is None and args.report_buffer == 400
+        assert args.rounds_per_batch == recipe["rounds_per_batch"] and args.microbatch_rounds == 4
+        arch = dict(ur.bs.DEFAULT_ARCH)
+        for setting in args.scratch_arch.split(","):
+            name, value = setting.split("=")
+            arch[name] = int(value)
+        with torch.device("meta"):
+            model = ur.build(arch)
+        assert sum(p.numel() for p in model.trunk.parameters()) == expected
+    assert medium.out != large.out and not medium.pause_at_report and large.pause_at_report
+    assert smoke.out != large.out and smoke.scratch_arch == large.scratch_arch
+    assert smoke.max_train_rows == 120000 and smoke.report_buffer is None
+    varying = {"out", "scratch_arch", "pause_at_report"}
+    assert {k for k in vars(medium) if getattr(medium, k) != getattr(large, k)} == varying

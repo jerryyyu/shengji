@@ -34,9 +34,9 @@ def predecessor_done(run):
                    for line in processes.stdout.splitlines())
 
 
-def train_args(recipe, init, out, device, boundary, pause):
+def joint_args(recipe, initialization, out, device, boundary, pause):
     threads = "4" if device == "mps" else "16"
-    args = ["train", "--out", str(out), "--init-readout-ckpt", str(init), "--device", device,
+    args = ["train", "--out", str(out), *initialization, "--device", device,
             "--threads", threads, "--loader-threads", "4",
             "--max-seconds", "5400", "--data", *recipe["data"], "--calib-data", *recipe["calib_data"]]
     for key in ("epochs", "lr", "head_lr", "readout_lr", "head_warmup_buffers", "weight_decay",
@@ -53,6 +53,10 @@ def train_args(recipe, init, out, device, boundary, pause):
     if pause:
         args.append("--pause-at-report")
     return args
+
+
+def train_args(recipe, init, out, device, boundary, pause):
+    return joint_args(recipe, ["--init-readout-ckpt", str(init)], out, device, boundary, pause)
 
 
 def prepare(phase, root, fleet, recipe, hashes, boundary, init_belief_ll):

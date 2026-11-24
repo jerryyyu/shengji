@@ -11,19 +11,19 @@ import type { Leaderboard as Board, LeaderRow } from "../ratings/api";
 vi.mock("../ws", () => ({ conn: { send: () => {}, reconnect: () => {} } }));
 
 function row(over: Partial<LeaderRow>): LeaderRow {
-  return { rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.31, week_delta: 24,
+  return { rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.31, week_rank_move: 2,
            provisional: false, you: false, ...over };
 }
 
 const week: Board = {
   period: "week",
   players: [
-    row({ rank: 1, name: "Shrewd", rating: 1712, week_delta: 24 }),
-    row({ rank: 2, name: "sk", rating: 1694, week_delta: 0 }),
-    row({ rank: 3, name: "Bold", rating: 1540, rounds: 14, provisional: true, week_delta: 40 }),
-    row({ rank: 4, name: "Quiet", rating: 1480, levels_per_round: -0.04, week_delta: -8 }),
+    row({ rank: 1, name: "Shrewd", rating: 1712, week_rank_move: 2 }),
+    row({ rank: 2, name: "sk", rating: 1694, week_rank_move: 0 }),
+    row({ rank: 3, name: "Bold", rating: 1540, rounds: 14, provisional: true, week_rank_move: null }),
+    row({ rank: 4, name: "Quiet", rating: 1480, levels_per_round: -0.04, week_rank_move: -3 }),
   ],
-  me: row({ rank: 26, name: "Jerry", rating: 1210, rounds: 58, levels_per_round: -0.2, week_delta: -12, you: true }),
+  me: row({ rank: 26, name: "Jerry", rating: 1210, rounds: 58, levels_per_round: -0.2, week_rank_move: -1, you: true }),
   anchor: { name: "Sheng Ji bot", rating: 1500 },
 };
 const guestWeek: Board = { ...week, me: null };
@@ -338,15 +338,19 @@ describe("viewer changes", () => {
 });
 
 describe("this week's movement and the top three", () => {
-  it("ends each This week row in its movement: up, down, or a dash", async () => {
+  it("ends each This week row in the places it moved: up, down, a dash, or nothing when new", async () => {
     await render();
     const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row")];
-    expect(listed.map((r) => r.querySelector(".lb-move [aria-hidden]")?.textContent)).toEqual(["▲24", "–", "▲40", "▼8"]);
-    expect(listed.map((r) => r.querySelector(".lb-move")!.className)).toEqual(
-      ["lb-move up", "lb-move flat", "lb-move up", "lb-move down"]);
-    expect(listed[3].querySelector(".lb-move .sr-only")?.textContent).toBe(", down 8 this week");
+    expect(listed.map((r) => r.querySelector(".lb-move [aria-hidden]")?.textContent ?? null))
+      .toEqual(["▲2", "–", null, "▼3"]);
+    expect(listed.map((r) => r.querySelector(".lb-move")?.className ?? null)).toEqual(
+      ["lb-move up", "lb-move flat", null, "lb-move down"]);
+    expect(listed[0].querySelector(".lb-move .sr-only")?.textContent).toBe(", up 2 places this week");
+    expect(listed[3].querySelector(".lb-move .sr-only")?.textContent).toBe(", down 3 places this week");
+    // no rating-points movement: each row's figures are its rank, rating and places moved only
+    expect(listed[0].textContent).toBe("1SShrewd1,712▲2, up 2 places this week");
     // the pinned own row too
-    expect(host.querySelector(".lb-pin .lb-move [aria-hidden]")?.textContent).toBe("▼12");
+    expect(host.querySelector(".lb-pin .lb-move [aria-hidden]")?.textContent).toBe("▼1");
   });
 
   it("puts the top three's ranks on gold, silver and bronze discs", async () => {

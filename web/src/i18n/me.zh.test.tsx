@@ -31,7 +31,7 @@ const GAME = { id: "g1", room_code: "KQ4X", started_at: Math.floor(Date.now() / 
                games_won: [0, 0], incomplete: true };
 const DETAIL = { ...GAME, round_results: [{ round: 1, seat: 0, level: "2", banker: 0, result: { winner_team: 0 } }] };
 const row = (over: object) => ({ rank: 1, name: "Ann", rating: 1700, rounds: 120, levels_per_round: 0.31,
-                                 week_delta: 24, provisional: false, you: false, ...over });
+                                 week_rank_move: 3, provisional: false, you: false, ...over });
 const BOARD = { period: "week", players: [row({ rank: 1, name: "Bold", provisional: true })],
                 me: row({ rank: 26, name: "Jerry", rating: 1210, you: true }), anchor: { name: "bot", rating: 1500 } };
 
@@ -138,6 +138,6 @@ describe("the leaderboard in Simplified Chinese", () => {
     expect(bold.getAttribute("title")).toBe("排位不到 20 局");
     expect(host.querySelector(".lb-pin .lb-name")?.textContent).toBe("Jerry（我）");
     // This week's movement is read out in Chinese
-    expect([...host.querySelectorAll(".lb-move .sr-only")].map((s) => s.textContent)).toContain("，本周升 24");
+    expect([...host.querySelectorAll(".lb-move .sr-only")].map((s) => s.textContent)).toContain("，本周上升 3 名");
   });
 });

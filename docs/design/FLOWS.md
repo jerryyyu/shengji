@@ -81,8 +81,9 @@ Games become a switch inside Me. The Leaderboard is the phone's column at every 
 Me; your own row keeps "(you)" in view when a long name truncates (Jerry 11-15).
 It opens on This week, or on All time when nobody has played a ranked round this week yet, until the viewer
 picks a period (Jerry 2026-11-24: "default to global when it's empty"; no extra Play button). On This week each
-row ends in the week's movement (▲18 green, ▼6 red, a dash for none; figures only, read as "up 18 this week"),
-and the top three's ranks sit on gold, silver and bronze discs on both periods (Jerry 2026-11-24).
+row ends in the places it moved on the week's list (▲3 green, ▼1 red, a dash for none, nothing for a player new
+this week; figures only, read as "up 3 places this week"), not its rating points (Jerry 2026-11-24: "we can show
+ranking moved"), and the top three's ranks sit on gold, silver and bronze discs on both periods (Jerry 2026-11-24).
 A page is one layer on the page background at every width: no raised card behind How to play (which keeps its
 two columns from 900px, a sideways phone excepted), Support, Privacy or Terms of use. Real surfaces keep theirs: the table panel, sheets and dialogs,
 grouped list rows, Me's stat tiles and How to play's diagrams (Jerry 11-15).

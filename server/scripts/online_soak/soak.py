@@ -55,7 +55,18 @@ EXPECTED_REFUSALS = frozenset({"stale_connection", "not_your_turn", "illegal_pla
                                "room_not_found", "wrong_phase", "none", "resumed_after_leave"})
 # the messages the server counts against limits.QUEUE_STARTS
 QUEUE_STARTS = ("queue_join", "queue_start_bots", "open_table_join")
-FAULTS = ("drop", "stall", "oneway_down", "oneway_up", "delay", "storm", "relaunch", "dup")
+FAULTS = ("drop", "stall", "oneway_down", "oneway_up", "delay", "storm", "relaunch", "dup",
+          "background", "leave_mid", "leave_offline", "dup_socket", "stale_token", "timer_drop", "slow_think")
+# faults that end in a deliberate Leave: their outcome is the seat going to
+# a bot, timed separately from a seat's recovery
+LEAVE_KINDS = ("leave_mid", "leave_offline")
+# faults that cut the socket, so a socket opened after the cut can recover the seat
+CUT_KINDS = ("drop", "storm", "relaunch", "dup_socket", "stale_token", "timer_drop")
+# unscaled seconds a backgrounded app stays suspended: past the server's 20 s
+# ping timeout, past the 60 s hold, and longer
+BACKGROUND_SECS = (25.0, 65.0, 90.0)
+# unscaled seconds after a Leave by which the seat must be a bot's: longer is a ghost seat
+GHOST_SECS = 15.0
 # unscaled seconds a stall or one-way fault lasts: a blip, a lost pong, past
 # the server's 20 s, past the 60 s hold
 STALL_SECS = (1.0, 4.0, 12.0, 25.0, 65.0)
@@ -77,6 +88,15 @@ def pct(xs: list[float], q: float) -> float | None:
 
 
 class Soak:
+    # the run's own records, as class defaults for a Soak built in a test
+    stale_sends = 0
+    stale_applied: list = []
+    ghosts: list = []
+    leave_takeover: list = []
+    stale_token_outcomes: dict = {}
+    bot_levels: dict = {}
+    sessions: list = []
+
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.scale = args.scale
@@ -110,7 +130,32 @@ class Soak:
         self.rooms_seen: set[str] = set()
         self.presence: dict[tuple[str, int], list[tuple[float, str]]] = {}
         self.decision_at: dict[tuple[str, int], tuple[float, bool]] = {}
+        self.stale_sends = 0
+        self.stale_applied: list[dict] = []
+        self.ghosts: list[dict] = []
+        self.leave_takeover: list[float] = []
+        self.stale_token_outcomes: dict[str, int] = {}
+        self.timer_drop_strikes = 0
+        self.bot_levels: dict[str, int] = {}
+        self.sessions = self._make_accounts(args.accounts, args.high_rating_share)
         self._hook()
+
+    def _make_accounts(self, n: int, high_share: float) -> list[str]:
+        """``n`` signed-in players in the run's temp accounts DB, each with a
+        session token; ``high_share`` of them rated above the Standard bots'
+        bound (``ranked_bots.STANDARD_UP_TO``) so both bot levels are met."""
+        import sqlite3
+        from shengji.api import accounts, ranked_bots
+        out = []
+        for i in range(n):
+            user = accounts.STORE.upsert_user({"sub": f"soak-acct-{i}", "name": f"Soak Acct {i}"})
+            if i < round(n * high_share):
+                with contextlib.closing(sqlite3.connect(accounts.STORE.path)) as conn:
+                    conn.execute("UPDATE users SET rating = ? WHERE id = ?",
+                                 (ranked_bots.STANDARD_UP_TO + 150.0, user["id"]))
+                    conn.commit()
+            out.append(accounts.STORE.create_session(user["id"]))
+        return out
 
     # observation of the unmodified server
     def _hook(self) -> None:
@@ -123,6 +168,10 @@ class Soak:
         async def handle_action(room, seat, msg):
             kind = msg.get("type")
             if kind not in ("play", "bury") or room.round is None:
+                return await real_action(room, seat, msg)
+            if (msg.get("_soak") or {}).get("did") == -1:
+                # a send on a displaced socket: the server must refuse it before here
+                soak.stale_applied.append({"room": room.code, "seat": seat, "kind": kind})
                 return await real_action(room, seat, msg)
             key = soak._server_key(room, seat)
             try:
@@ -146,6 +195,10 @@ class Soak:
             return real_strike(room, seat)
 
         def log_event(room, kind, **data):
+            if kind == "bot_levels" or (kind == "round_start" and room.matched):
+                std = data.get("standard_seats")
+                key = f"{kind}:{'standard' if std else 'advanced'}"
+                soak.bot_levels[key] = soak.bot_levels.get(key, 0) + 1
             if kind in PROGRESS:
                 soak.progress[room.code] = time.monotonic()
             soak._presence(room, kind, data)
@@ -254,7 +307,7 @@ class Soak:
         while it is neither seated nor queued (a send lost with its socket)."""
         await asyncio.sleep(self.rng.uniform(0.5, 3.0) / self.scale)
         while not client.stop and client.room is None:
-            if not client.queued:
+            if not client.queued and not self._leaving(client):
                 await self._queue_start(client, {"type": "queue_join", "mode": client.mode, "name": client.name})
             await asyncio.sleep(RETRY_SECS)
 
@@ -271,6 +324,12 @@ class Soak:
             return
         sent.append(time.monotonic())
         await client._send(msg)
+
+    @staticmethod
+    def _leaving(client) -> bool:
+        """An owed Leave not yet answered: the page queues after its left."""
+        return client.owed_leave is not None or (client.leaving_gen is not None
+                                                 and client.leaving_gen == client.gen)
 
     async def casual_host(self, host, mates: list) -> None:
         """A casual table opened by ``host`` with its mates joining by code, then bots."""
@@ -296,9 +355,12 @@ class Soak:
             nonlocal n
             n += 1
             ip = None if self.args.shared_client_ip else client_ip(n)
+            session = None
+            if mode == "ranked" and n <= len(self.sessions):
+                session = self.sessions[n - 1]
             c = SoakClient(f"Soak-{n}", f"soak{n:019d}", port_for(n), self.scale,
                            random.Random(self.rng.random()), self.brain, self._lobby_for(mode),
-                           host=self.args.host, client_ip=ip)
+                           host=self.args.host, client_ip=ip, session=session)
             c.mode = mode
             c.table_code = c.panel_seq = None
             c.table_humans = 0
@@ -330,14 +392,15 @@ class Soak:
                 client.table_code = None
                 client.table_since = time.monotonic()
                 while not client.stop and client.room is None:
-                    if not client.queued:
+                    if not client.queued and not self._leaving(client):
                         await self._queue_start(client, {"type": "queue_join", "mode": "casual",
                                                          "name": client.name, "allow_joiners": False})
                     await asyncio.sleep(RETRY_SECS)
             else:
                 while not client.stop and client.room is None:
                     code = group[0].table_code
-                    if code is not None and group[0].room is None and not client.queued:
+                    if code is not None and group[0].room is None and not client.queued \
+                            and not self._leaving(client):
                         await client._send({"type": "table_join", "code": code, "name": client.name})
                     await asyncio.sleep(RETRY_SECS)
         return go
@@ -374,10 +437,15 @@ class Soak:
             if client.room is None or client.state is None or time.monotonic() >= until:
                 continue
             kind = self.rng.choice(FAULTS)
+            if kind == "timer_drop" and client.mode != "ranked":
+                kind = "drop"       # a casual table has no move clock
             client.gen_at_fault = client.gen
             rec = self.ledger.open(kind, client.name, time.monotonic())
             origin = rec["origin"] = self._origin(client)
             secs = self.rng.choice(STALL_SECS) / self.scale
+            if kind in LEAVE_KINDS:
+                await self._leave_fault(client, proxy, rec, origin, kind, until)
+                continue
             if kind == "drop":
                 proxy.cut()
                 origin["fresh_after"] = time.monotonic()
@@ -402,6 +470,38 @@ class Soak:
                 client.state = None
                 client.pending = None
                 await asyncio.sleep(secs)
+            elif kind == "background":
+                # the app suspended: the link silent both ways, no timers, no moves;
+                # back in view, ws.ts probes the socket it kept
+                secs = self.rng.choice(BACKGROUND_SECS) / self.scale
+                client.frozen_until = time.monotonic() + secs
+                proxy.pause(UP, DOWN)
+                await asyncio.sleep(secs)
+                proxy.resume()
+            elif kind == "dup_socket":
+                if not await self._dup_socket(client, origin):
+                    audit.FaultLedger.close(rec, "censored", reason="no_socket")
+                    continue
+            elif kind == "stale_token":
+                # the next resume carries a token this seat no longer holds
+                client.last_error = None
+                old = [t for t in client.tokens if t != client.token]
+                client.token = old[-1] if old else "stale" + "0" * 27
+                proxy.cut()
+                origin["fresh_after"] = time.monotonic()
+            elif kind == "timer_drop":
+                if not await self._timer_drop(client, proxy, origin, until):
+                    audit.FaultLedger.close(rec, "censored", reason="no_turn")
+                    continue
+            elif kind == "slow_think":
+                # the next decision takes most of the move clock
+                client.think_extra = self.rng.uniform(0.4, 0.85) * self.srv.MOVE_TIMER
+                t_end = time.monotonic() + self.srv.MOVE_TIMER * 2 + 30 / self.scale
+                while client.think_extra and time.monotonic() < min(until, t_end) and not client.stop:
+                    await asyncio.sleep(0.05)
+                await asyncio.sleep(0.9 * self.srv.MOVE_TIMER)
+                if client.think_extra:
+                    client.think_extra = 0.0
             elif kind == "dup":
                 # the fault is the client's next play sent twice; it ends when that goes out
                 client.dup_sent_at = None
@@ -418,9 +518,114 @@ class Soak:
             end = client.dup_sent_at if kind == "dup" else time.monotonic()
             client.rec.faults.append({"kind": kind, "secs": secs * self.scale})
             rec["trace"] = {}
-            outcome, took, reason = await self._recovered(client, end, until, kind in ("drop", "storm", "relaunch"),
+            outcome, took, reason = await self._recovered(client, end, until, kind in CUT_KINDS,
                                                           rec["trace"], origin)
+            if kind == "stale_token":
+                self.stale_token_outcomes[f"{outcome}:{reason or rec['trace'].get('via')}"] = \
+                    self.stale_token_outcomes.get(f"{outcome}:{reason or rec['trace'].get('via')}", 0) + 1
+                if outcome == "failed" and reason == "seat_lost" and client.room is None:
+                    # refused cleanly: the page is back in the lobby and the seat is held for a bot
+                    outcome, reason = "censored", "stale_token_refused"
+                elif outcome == "failed" and client.last_error == "seat_reserved":
+                    # refused: App.tsx shows a toast and keeps the table, with no seat
+                    outcome, reason = "censored", "stale_token_seat_reserved"
             audit.FaultLedger.close(rec, outcome, secs=None if took is None else took * self.scale, reason=reason)
+
+    async def _leave_fault(self, client, proxy, rec: dict, origin: dict, kind: str, until: float) -> None:
+        """A Leave mid-round, on an open socket or with the link down (the
+        page goes to the lobby and the next socket delivers it). The outcome
+        is the seat going to a bot within ``GHOST_SECS``; longer is a ghost seat."""
+        room = self.srv.rooms.get(origin["room"] or "")
+        t_end = time.monotonic() + 60 / self.scale
+        while (room is not None and self.srv.rooms.get(room.code) is room and time.monotonic() < min(until, t_end)
+               and not (room.round is not None and room.round.phase == "play" and not (room.game and room.game.game_over))):
+            await asyncio.sleep(0.05)
+        if room is None or self.srv.rooms.get(room.code) is not room or client.room != room.code \
+                or room.round is None or room.round.phase != "play" or time.monotonic() >= until:
+            audit.FaultLedger.close(rec, "censored", reason="no_round")
+            return
+        origin.update(self._origin(client))
+        seat, owner = origin["seat"], origin["owner"]
+        t0 = time.monotonic()
+        if kind == "leave_offline":
+            proxy.cut()
+            client.leave_offline()
+        else:
+            await client._send({"type": "table_leave"})
+        client.rec.faults.append({"kind": kind, "secs": 0.0})
+        deadline = t0 + GHOST_SECS / self.scale
+        while True:
+            await asyncio.sleep(0.02)
+            if self.srv.rooms.get(room.code) is not room:
+                audit.FaultLedger.close(rec, "censored", reason="table_ended")
+                return
+            sd = room.seats[seat]
+            if audit.seat_owner(sd) != owner:
+                took = (time.monotonic() - t0) * self.scale
+                self.leave_takeover.append(took)
+                audit.FaultLedger.close(rec, "recovered", secs=took, reason="seat_to_bot")
+                return
+            if time.monotonic() >= deadline:
+                self.ghosts.append({"room": room.code, "seat": seat, "kind": kind,
+                                    "connected": sd.connected, "left_by_choice": sd.left_by_choice})
+                audit.FaultLedger.close(rec, "failed", reason="ghost_seat")
+                return
+            if time.monotonic() >= until:
+                audit.FaultLedger.close(rec, "censored", reason="shutdown")
+                return
+
+    async def _dup_socket(self, client, origin: dict) -> bool:
+        """ws.ts replace() leaves the old socket open at the server while a
+        new one resumes the seat; the old one then sends a play, which the
+        server must refuse (``stale_connection``)."""
+        gen0 = client.gen
+        client.keep_old = True
+        client.replace_now = True
+        origin["fresh_after"] = time.monotonic()
+        t_end = time.monotonic() + 10 / self.scale
+        while (client.gen == gen0 or client.ws is None) and time.monotonic() < t_end and not client.stop:
+            await asyncio.sleep(0.02)
+        old = next((ws for g, ws in client.lingering if g == gen0), None)
+        if old is None:
+            client.keep_old = client.replace_now = False
+            return False
+        client.lingering = [(g, ws) for g, ws in client.lingering if g != gen0]
+        await asyncio.sleep(0.5 / self.scale)
+        st = client.state or {}
+        hand = st.get("hand") or []
+        ids = (self.brain(client, st) if st else None) or [c["id"] for c in hand[:1]]
+        if ids:
+            with contextlib.suppress(Exception):
+                await old.send(json.dumps({"type": st.get("phase") if st.get("phase") in ("play", "bury") else "play",
+                                           "card_ids": ids, "_soak": {"did": -1, "gen": gen0, "seq": -1}}))
+                self.stale_sends += 1
+        await asyncio.sleep(1.0 / self.scale)
+        with contextlib.suppress(Exception):
+            old.transport.abort()
+        return True
+
+    async def _timer_drop(self, client, proxy, origin: dict, until: float) -> bool:
+        """A drop late in the seat's own ranked turn, back after the move
+        clock would have run out: the turn must not be charged as time away."""
+        t_end = time.monotonic() + 60 / self.scale
+        while time.monotonic() < min(until, t_end) and not client.stop:
+            st = client.state or {}
+            if st.get("phase") == "play" and st.get("turn") == st.get("you") and client.pending is None:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            return False
+        mt = self.srv.MOVE_TIMER
+        into = self.rng.uniform(0.5, 0.95) * mt
+        away = self.rng.uniform(0.1, 0.6) * mt
+        client.frozen_until = time.monotonic() + into + away
+        await asyncio.sleep(into)
+        client.offline_until = time.monotonic() + away
+        proxy.cut()
+        origin.update(self._origin(client))
+        origin["fresh_after"] = time.monotonic()
+        await asyncio.sleep(away)
+        return True
 
     def _origin(self, client) -> dict:
         """The seat a fault hits, fixed when it is injected: the outcome is
@@ -517,9 +722,19 @@ class Soak:
                 if g is None or rnd is None or g.game_over or rnd.phase in ("round_end", "deal"):
                     continue
                 last = self.progress.get(code)
+                for entry in self.stuck:
+                    # how long the gap lasted in the end, for reading a flag
+                    if entry["room"] == code and entry.get("resumed_after_secs") is None and last is not None and last > entry["_last"]:
+                        entry["resumed_after_secs"] = round((last - entry["_last"]) * self.scale, 1)
                 if last is not None and now - last > limit and code not in flagged:
                     flagged.add(code)
+                    turn = rnd.turn
+                    sd = room.seats[turn] if turn is not None else None
                     self.stuck.append({"room": code, "phase": rnd.phase, "gap_secs": round((now - last) * self.scale, 1),
+                                       "matched": room.matched, "_last": last,
+                                       "turn_seat": {"bot": sd.is_bot, "connected": sd.connected,
+                                                     "left_by_choice": sd.left_by_choice} if sd else None,
+                                       "resumed_after_secs": None,
                                        "humans_connected": sum(1 for s in room.seats if not s.is_bot and s.connected)})
             self._check_seats(seen)
 
@@ -622,7 +837,7 @@ class Soak:
 
     def report(self, elapsed: float, brief: bool = False) -> dict:
         rec = [c.rec for c in self.clients]
-        pairs = self.ledger.recovery_secs()
+        pairs = [(k, x) for k, x in self.ledger.recovery_secs() if k not in LEAVE_KINDS]
         recov = [x for _, x in pairs]
         by_kind: dict[str, list[float]] = {}
         for k, x in pairs:
@@ -653,6 +868,13 @@ class Soak:
                                     default=0),
             "client_refusals": refusals,
             "unexpected_refusals": sorted(k for k in refusals if k not in EXPECTED_REFUSALS),
+            "ghost_seats": len(self.ghosts), "stale_socket_sends": self.stale_sends,
+            "stale_socket_applied": len(self.stale_applied),
+            "leave_takeover_s": {"n": len(self.leave_takeover), "p95": pct(self.leave_takeover, 0.95),
+                                 "worst": max(self.leave_takeover) if self.leave_takeover else None},
+            "stale_token_outcomes": dict(sorted(self.stale_token_outcomes.items())),
+            "bot_levels": dict(sorted(self.bot_levels.items())),
+            "accounts": len(self.sessions),
         }
         firsts = [r["trace"]["state_since_end"] for r in self.ledger.faults
                   if r["outcome"] == "recovered" and "state_since_end" in (r.get("trace") or {})]
@@ -674,8 +896,26 @@ class Soak:
                     "slowest_recoveries": slow,
                     "per_client": {c.name: {"mode": getattr(c, "mode", None), "sent": c.rec.sent_types,
                                             "refused_after": c.rec.refused_after} for c in self.clients}, "server_refusals": self.refused, "tmp": str(self.tmp)})
+        out["ratings"] = self.rating_audit()
+        out["ghost_list"] = self.ghosts[:20]
+        out["stale_applied_list"] = self.stale_applied[:20]
         out["verdict"] = audit.verdict(out, self.floors())
         return out
+
+    def rating_audit(self) -> dict:
+        """The temp DB's rated rounds: one row per (game, round, account) is
+        the table's own constraint; a leaver's round (abandoned) never gains."""
+        import sqlite3
+        from shengji.api import accounts
+        if not self.sessions:
+            return {}
+        with contextlib.closing(sqlite3.connect(accounts.STORE.path)) as conn:
+            rows = conn.execute("SELECT abandoned, delta, opponents_bots, partner_bot FROM rating_events").fetchall()
+            dup = conn.execute("""SELECT COUNT(*) FROM (SELECT game_id, round_no, user_id, COUNT(*) n
+                                  FROM rating_events GROUP BY 1, 2, 3 HAVING n > 1)""").fetchone()[0]
+        return {"rated_rows": len(rows), "abandoned_rows": sum(1 for r in rows if r[0]),
+                "abandoned_positive_delta": sum(1 for r in rows if r[0] and r[1] > 0),
+                "rows_vs_bots": sum(1 for r in rows if r[2]), "duplicate_rows": dup}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -688,6 +928,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fault-gap", type=float, nargs=2, default=(15.0, 45.0),
                     help="unscaled seconds between one client's faults (uniform range)")
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--accounts", type=int, default=6,
+                    help="ranked clients that are signed in (temp accounts DB); the rest are guests")
+    ap.add_argument("--high-rating-share", type=float, default=0.5,
+                    help="share of the accounts rated above the Standard bots' bound")
     ap.add_argument("--bot", default="heuristic", help="SHENGJI_BOT for the run's server")
     ap.add_argument("--host", default="127.0.0.1",
                     help="loopback address for the server, the proxies and the clients: 127.0.0.1 or ::1")

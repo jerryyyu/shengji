@@ -42,7 +42,8 @@ One rated round, for each rated account on team ``t``:
   ``TAKEOVER_WIN_SCORE`` and the bankers ``1 - TAKEOVER_WIN_SCORE``;
 * ``delta = K * (S - E)`` with one ``K`` for every rated account.
 * a round played out moves the rating by at least ``MIN_MOVE`` either way:
-  a win gains at least that much and a loss costs at least that much.
+  a win gains at least that much and a loss costs at least that much; a
+  loss costs at most ``MAX_LOSS``. A win has no upper cap.
 
 Partners share ``R_t``, ``E``, ``S`` and ``K``, so they move by the same
 amount, except when one of them is capped: a partner who abandons the round,
@@ -119,6 +120,9 @@ MAX_SCORED_LEVELS = 3
 # much: a win never shows +0 or less, a loss never shows less than this.
 # A leave is exempt (it is never positive; see ``LEAVER_SCORE_CAP``).
 MIN_MOVE = 3.0
+# A round played out costs at most this much. A leave is exempt (no cap), so
+# leaving is never cheaper than losing the round at the table.
+MAX_LOSS = 12.0
 
 # What a seat held when the round started: a connected signed-in account, a
 # bot, a guest (a person with no account), or an account not at the table.
@@ -161,6 +165,17 @@ def k_factor(rated_rounds: int = 0, provisional_opponent: bool = False) -> float
     """One ``K`` for every rated account. The arguments are kept so callers
     and stored events stay as they are."""
     return K
+
+
+def bounded_delta(raw: float, won: bool, leaver: bool) -> float:
+    """A round's rating change from its raw ``K * (S - E)``: a leaver's is
+    never positive and has no loss cap; a round played out moves at least
+    ``MIN_MOVE`` either way and a loss costs at most ``MAX_LOSS``."""
+    if leaver:
+        return min(raw, 0.0)
+    if won:
+        return max(raw, MIN_MOVE)
+    return max(min(raw, -MIN_MOVE), -MAX_LOSS)
 
 
 def banker_advantage(banker_declared: bool) -> float:
@@ -284,13 +299,7 @@ def apply_round(store: accounts.Store, rec: RoundRecord,
                     actual = min(actual, LEAVER_SCORE_CAP)
                 k = k_factor(at_start[p.user_id][1], bool(provisional - {p.user_id}))
                 before = float(row["rating"])
-                delta = k * (actual - exp)
-                if p.abandoned or p.capped:
-                    delta = min(delta, 0.0)
-                elif won:
-                    delta = max(delta, MIN_MOVE)
-                else:
-                    delta = min(delta, -MIN_MOVE)
+                delta = bounded_delta(k * (actual - exp), won, p.abandoned or p.capped)
                 after = before + delta
                 partner = (p.seat + 2) % 4
                 opponents = ((p.seat + 1) % 4, (p.seat + 3) % 4)

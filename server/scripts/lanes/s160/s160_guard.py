@@ -15,7 +15,8 @@ carry ex_team 1, exactly.  The pinned reader pairs mirrors by seed only, so a pa
 as a valid zero and a reversed pair flips the sign; both are refused before any outcome.
 The read binding: inside the claimed attempt, after the mirror check passes and the pinned reader exits 0, ``read`` writes
 <ARM>.read.bind.json (noclobber) with the mirror result, the arm seal and the saved read's digest.  verify-read and
-verify-attrib consume that binding with its digests checked; they never parse the raw rows again.
+verify-attrib consume that binding with its digests checked from metadata only (the DONE digest, the SHA256SUMS file itself,
+the bound read, reader and recipe digests); on reuse no sealed payload is opened, neither parsed nor re-hashed.
 The seal check: the runner's status ends in its DONE line for this recipe with 2 x deals rows; SHA256SUMS hashes to the DONE
 line's digest, lists exactly the sealed files and nothing else is in the output directory; each file matches; the manifest is
 this recipe's for the mode, seed and count.
@@ -72,8 +73,10 @@ def mirror_teams(rows, seed0: int, deals: int) -> list:
     return bad
 
 
-def seal(recipe: str, arm: str, kind: str) -> dict:
-    """The verified seal of an arm's pilot or duel output; raises Refusal on any mismatch."""
+def seal(recipe: str, arm: str, kind: str, payloads: bool = True) -> dict:
+    """The verified seal of an arm's pilot or duel output; raises Refusal on any mismatch.  With payloads=False (reuse of a
+    bound result) only metadata is read: the status, the DONE digest, the SHA256SUMS file itself and the directory listing;
+    no sealed payload file is opened.  First consumption uses payloads=True: every file re-hashed and the manifest checked."""
     rc, ra = recipe_arm(recipe, arm)
     mode, out, status, seed0, deals = span(ra, arm, kind)
     rsha = sha(recipe)
@@ -103,13 +106,16 @@ def seal(recipe: str, arm: str, kind: str) -> dict:
     on_disk = sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file() or p.is_symlink())
     if on_disk != sorted(SEALED + ("SHA256SUMS",)):
         raise Refusal(f"{out} holds {on_disk}")
-    bad = [f for f in SEALED if (out / f).is_symlink() or sha(out / f) != entries[f]]
-    if bad:
-        raise Refusal(f"sealed files differ: {bad}")
-    man = json.loads((out / "manifest.json").read_text())
-    want = dict(schema="utd-manifest-r1", mode=mode, arm=arm, recipe_sha256=rsha, seed0=seed0, deals=deals, tree_head=rc["tree_head"], rc=0)
-    if man != want:
-        raise Refusal(f"manifest {man} is not {want}")
+    if any((out / f).is_symlink() for f in SEALED):
+        raise Refusal("a sealed file is a symlink")
+    if payloads:
+        bad = [f for f in SEALED if sha(out / f) != entries[f]]
+        if bad:
+            raise Refusal(f"sealed files differ: {bad}")
+        man = json.loads((out / "manifest.json").read_text())
+        want = dict(schema="utd-manifest-r1", mode=mode, arm=arm, recipe_sha256=rsha, seed0=seed0, deals=deals, tree_head=rc["tree_head"], rc=0)
+        if man != want:
+            raise Refusal(f"manifest {man} is not {want}")
     return dict(mode=mode, terminal=body[-1], sums_sha256=m[1], duel_jsonl_sha256=entries["duel.jsonl"], seed0=seed0, deals=deals)
 
 
@@ -180,7 +186,7 @@ def read(recipe: str, arm: str, out: str) -> int:
 def verify_pilot(recipe: str, arm: str, check: str) -> None:
     d = json.loads(Path(check).read_text())
     rc, _ = recipe_arm(recipe, arm)
-    s = seal(recipe, arm, "pilot")
+    s = seal(recipe, arm, "pilot", payloads=False)
     want = dict(schema="s160-pilot-check-r1", arm=arm, recipe_sha256=sha(recipe), checker_sha256=sha(HERE),
                 reader_sha256=rc["reader_sha256"], seal=s, validity="VALID", failing=[], mirror_teams="ok")
     bad = [k for k, v in want.items() if d.get(k) != v]
@@ -191,7 +197,7 @@ def verify_pilot(recipe: str, arm: str, check: str) -> None:
 def verify_read(recipe: str, arm: str, path: str) -> None:
     d = json.loads(Path(path).read_text())
     rc, ra = recipe_arm(recipe, arm)
-    s = seal(recipe, arm, "duel")
+    s = seal(recipe, arm, "duel", payloads=False)
     if sha(rc["reader"]) != rc["reader_sha256"]:
         raise Refusal("the reader is not the recipe's")
     b = d.get("binding") if isinstance(d.get("binding"), dict) else {}

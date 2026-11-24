@@ -253,34 +253,42 @@ def main(argv):
 """
 
 
-def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4", lane=None, garbage=False, reader_src=None):
-    """A lane with one sealed output laid out exactly as s160_run.sh seals it, and a recipe naming it."""
+ARM_SEEDS = {"B4": (2667000000, 2667003000), "U4": (2667001000, 2667003020), "D4": (2667002000, 2667003040)}
+
+
+def _guard_lane(tmp_path: Path, teams=(0, 1), kind="pilot", arm="B4", lane=None, garbage=False, reader_src=None, arms=None):
+    """A lane with sealed outputs laid out exactly as s160_run.sh seals them, and a recipe naming every arm."""
     lane = lane or tmp_path / "glane"
+    arms = arms or (arm,)
     reader = lane / "kit" / "ut_mix_read.py"
     reader.parent.mkdir(parents=True, exist_ok=True)
     reader.write_text(reader_src or "raise SystemExit('the pinned reader must not be reached')\n")
-    seed0, deals = (2667003000, 20) if kind == "pilot" else (2667000000, 1000)
-    ra = dict(seed0=2667000000, deals=1000, pilot_seed0=2667003000, out_root=str(lane / "out" / arm), status=str(lane / f"{arm}.status"))
+    ras = {a: dict(seed0=ARM_SEEDS[a][0], deals=1000, pilot_seed0=ARM_SEEDS[a][1], out_root=str(lane / "out" / a), status=str(lane / f"{a}.status"))
+           for a in arms}
     recipe = lane / "recipe.json"
     recipe.write_text(json.dumps(dict(schema="utd-mix-recipe-r1", lane="S160", tree=str(tmp_path), tree_head="h" * 40,
-                                      reader=str(reader), reader_sha256=_sha(reader), arms={arm: ra})))
-    mode = f"pilot{arm}" if kind == "pilot" else arm
-    out = lane / mode if kind == "pilot" else lane / "out" / arm
-    status = lane / f"{mode}.status"
-    out.mkdir(parents=True)
-    rows = [_row(seed0 + i, m, teams[m]) for i in range(deals) for m in (0, 1)]
-    (out / "duel.jsonl").write_text("not json: raw rows cannot be parsed\n" if garbage else "".join(json.dumps(r) + "\n" for r in rows))
-    for f in ("duel.jsonl.resume.json", "duel.time", "run.log"):
-        (out / f).write_text(f"{f}\n")
+                                      reader=str(reader), reader_sha256=_sha(reader), arms=ras)))
     rsha = _sha(recipe)
-    (out / "manifest.json").write_text(json.dumps(dict(schema="utd-manifest-r1", mode=mode, arm=arm, recipe_sha256=rsha, seed0=seed0,
-                                                       deals=deals, tree_head="h" * 40, rc=0)))
-    (out / "SHA256SUMS").write_text("".join(f"{_sha(out / f)}  ./{f}\n" for f in SEALED))
-    ts = "2026-11-24T00:00:00Z"
-    status.write_text(f"UTD START {ts} mode={mode} arm={arm} pid=1 seed0={seed0} deals={deals} workers=24 recipe={rsha}\n"
-                      f"UTD LOCKED {ts} after 0s (co-run)\nUTD NAMES {ts} ok\nUTD PRODUCER {ts} load=x\n"
-                      f"UTD DONE {ts} recipe={rsha} rows={2 * deals} sums={_sha(out / 'SHA256SUMS')} rc=0\nUTD UNLOCKED {ts} (lock not held by this run)\n")
-    return lane, recipe, out, status
+    first = None
+    for a in arms:
+        seed0, deals = (ARM_SEEDS[a][1], 20) if kind == "pilot" else (ARM_SEEDS[a][0], 1000)
+        mode = f"pilot{a}" if kind == "pilot" else a
+        out = lane / mode if kind == "pilot" else lane / "out" / a
+        status = lane / f"{mode}.status"
+        out.mkdir(parents=True)
+        rows = [_row(seed0 + i, m, teams[m]) for i in range(deals) for m in (0, 1)]
+        (out / "duel.jsonl").write_text("not json: raw rows cannot be parsed\n" if garbage else "".join(json.dumps(r) + "\n" for r in rows))
+        for f in ("duel.jsonl.resume.json", "duel.time", "run.log"):
+            (out / f).write_text(f"{f}\n")
+        (out / "manifest.json").write_text(json.dumps(dict(schema="utd-manifest-r1", mode=mode, arm=a, recipe_sha256=rsha, seed0=seed0,
+                                                           deals=deals, tree_head="h" * 40, rc=0)))
+        (out / "SHA256SUMS").write_text("".join(f"{_sha(out / f)}  ./{f}\n" for f in SEALED))
+        ts = "2026-11-24T00:00:00Z"
+        status.write_text(f"UTD START {ts} mode={mode} arm={a} pid=1 seed0={seed0} deals={deals} workers=24 recipe={rsha}\n"
+                          f"UTD LOCKED {ts} after 0s (co-run)\nUTD NAMES {ts} ok\nUTD PRODUCER {ts} load=x\n"
+                          f"UTD DONE {ts} recipe={rsha} rows={2 * deals} sums={_sha(out / 'SHA256SUMS')} rc=0\nUTD UNLOCKED {ts} (lock not held by this run)\n")
+        first = first or (out, status)
+    return lane, recipe, first[0], first[1]
 
 
 def test_mirror_teams_requires_the_producers_ordered_mapping():
@@ -307,14 +315,15 @@ def test_read_refuses_a_bad_mirror_mapping_with_no_outcome(tmp_path, teams):
     assert not out.exists() and not (lane / "readout" / "B4.read.bind.json").exists()
 
 
-def _bound_read(tmp_path, monkeypatch, lane=None):
-    """A successful read through the guard on a sealed arm whose raw rows cannot be parsed afterwards."""
-    lane, recipe, out, status = _guard_lane(tmp_path, kind="duel", lane=lane, garbage=True, reader_src=FAKE_READER)
-    good = [_row(2667000000 + i, m, m) for i in range(1000) for m in (0, 1)]
-    monkeypatch.setattr(GD, "rows_of", lambda _out: good)     # the rows as the producer wrote them, for the one read
+def _bound_read(tmp_path, monkeypatch, lane=None, arms=("B4",)):
+    """A successful read through the guard on each sealed arm whose raw rows cannot be parsed afterwards."""
+    lane, recipe, out, status = _guard_lane(tmp_path, kind="duel", lane=lane, garbage=True, reader_src=FAKE_READER, arms=arms)
     (lane / "readout").mkdir(exist_ok=True)
-    rj = lane / "readout" / "B4.read.json"
-    assert GD.main(["read", str(recipe), "B4", str(rj)]) == 0
+    for a in arms:
+        good = [_row(ARM_SEEDS[a][0] + i, m, m) for i in range(1000) for m in (0, 1)]
+        monkeypatch.setattr(GD, "rows_of", lambda _out, good=good: good)   # the rows as the producer wrote them, for the one read
+        assert GD.main(["read", str(recipe), a, str(lane / "readout" / f"{a}.read.json")]) == 0
+    rj = lane / "readout" / f"{arms[0]}.read.json"
     monkeypatch.undo()
     with pytest.raises(ValueError):                           # raw row parsing now fails
         GD.rows_of(out)
@@ -333,15 +342,32 @@ def test_a_saved_read_is_accepted_only_through_its_binding(tmp_path, monkeypatch
     assert GD.main(["verify-read", str(recipe), "B4", str(rj)]) == 1
 
 
-def _recovery_lane(tmp_path, monkeypatch):
+def _recovery_lane(tmp_path, monkeypatch, arms=("B4",)):
     z = _stage(tmp_path, local_host=True)
-    lane, recipe, rj = _bound_read(tmp_path, monkeypatch, lane=z)
+    _bound_read(tmp_path, monkeypatch, lane=z, arms=arms)
     ro = z / "readout"
-    (ro / "B4.read.claim").write_text("claude s160 test claim\n")
-    (ro / "B4.read.rc").write_text("0\n")
-    (ro / "B4.read.out").write_text("{}\n")
-    (ro / "B4.read.err").write_text("")
+    for a in arms:
+        (ro / f"{a}.read.claim").write_text("claude s160 test claim\n")
+        (ro / f"{a}.read.rc").write_text("0\n")
+        (ro / f"{a}.read.out").write_text("{}\n")
+        (ro / f"{a}.read.err").write_text("")
     return z, ro
+
+
+def _lock_payloads(z: Path, arms):
+    """Raw opens disallowed: every sealed payload of the arms is made unreadable (the directory listing stays)."""
+    for a in arms:
+        for f in SEALED:
+            (z / "out" / a / f).chmod(0)
+
+
+def _bound_attrib(z: Path, ro: Path):
+    at = z / "s160_attrib.py"
+    d = dict(schema="s160-attrib-r1", attrib_sha256=_sha(at), recipe_sha256=_sha(z / "recipe.json"), label="NEITHER-CARRIES",
+             reads={a: _sha(ro / f"{a}.read.json") for a in ("B4", "U4")})
+    (ro / "ATTRIB.json").write_text(json.dumps(d))
+    for f, t in (("ATTRIB.claim", "claim\n"), ("ATTRIB.rc", "0\n"), ("ATTRIB.out", "{}\n"), ("ATTRIB.err", "")):
+        (ro / f).write_text(t)
 
 
 def test_recovery_accepts_a_bound_read_without_parsing_rows(tmp_path, monkeypatch):
@@ -451,3 +477,46 @@ def test_dispatch_hands_over_only_to_the_queued_identity():
     assert 'next=$(env -u FLEET_QUEUE python3 "$tools/fleet_queue.py" next ultra)' in text
     assert '[ "$next" = "$name:released sha=${identity:0:8}" ]' in text
     assert "name=s160-rt4attrib-v1" in text and "run $identity" in text
+
+
+needs_unreadable = pytest.mark.skipif(hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() == 0, reason="root reads mode-0 files")
+
+
+@needs_unreadable
+def test_reuse_reads_only_metadata_with_raw_opens_disallowed(tmp_path, monkeypatch):
+    z, ro = _recovery_lane(tmp_path, monkeypatch, arms=("B4", "U4"))
+    _bound_attrib(z, ro)
+    _lock_payloads(z, ("B4", "U4"))
+    with pytest.raises(PermissionError):
+        (z / "out" / "B4" / "duel.jsonl").read_bytes()
+    recipe = str(z / "recipe.json")
+    assert GD.main(["verify-read", recipe, "B4", str(ro / "B4.read.json")]) == 0
+    assert GD.main(["verify-attrib", recipe, str(ro / "ATTRIB.json")]) == 0
+    p = _run(z, "check")                                     # the launcher's preflight and its arm / attribution reuse decision
+    assert p.returncode == 0, p.stderr
+    status = (z / "check.status").read_text()
+    for line in ("saved results: none or valid", "arm B4: bound read reused from metadata", "arm U4: bound read reused from metadata",
+                 "attribution: bound result reused from metadata"):
+        assert re.search(rf"(?m)^S160 CHECKED claude-s160-check \S+ {line}$", status), (line, status)
+
+
+@needs_unreadable
+@pytest.mark.parametrize("damage", ["sums", "done-digest", "read", "binding-reader"])
+def test_reuse_refuses_corrupt_metadata_or_a_changed_result(tmp_path, monkeypatch, damage):
+    z, ro = _recovery_lane(tmp_path, monkeypatch)
+    _lock_payloads(z, ("B4",))
+    out, st = z / "out" / "B4", z / "B4.status"
+    if damage == "sums":
+        out.joinpath("SHA256SUMS").write_text(out.joinpath("SHA256SUMS").read_text().replace("./run.log", "./run.lg"))
+    elif damage == "done-digest":
+        st.write_text(re.sub(r"sums=[0-9a-f]{64}", "sums=" + "0" * 64, st.read_text()))
+    elif damage == "read":
+        d = json.loads((ro / "B4.read.json").read_text())
+        d["outcome"]["levels"]["mean"] = 0.5
+        (ro / "B4.read.json").write_text(json.dumps(d))
+    else:
+        b = json.loads((ro / "B4.read.bind.json").read_text())
+        (ro / "B4.read.bind.json").write_text(json.dumps(dict(b, reader_sha256="0" * 64)))
+    assert GD.main(["verify-read", str(z / "recipe.json"), "B4", str(ro / "B4.read.json")]) == 1
+    assert _run(z, "check").returncode == 0
+    assert re.search(r"(?m)^S160 NOTE claude-s160-check \S+ saved results: a claimed attempt", (z / "check.status").read_text())

@@ -20,6 +20,8 @@
 #   mirror-team check, then kit/ut_mix_read.py once, then the binding readout/<ARM>.read.bind.json; rc kept in
 #   readout/<ARM>.read.rc; rc != 0 = ABORT).  A saved read is accepted only through its binding, never by re-parsing rows.
 # A claim without a fully verified read (json, rc 0, verify-read), or any read output without a claim, stops the chain.
+# A completed, bound arm is reused before any payload check: verify-read reads only metadata (DONE digest, SHA256SUMS,
+# the binding's read, reader and recipe digests) and never opens a sealed payload; fresh arms keep the full seal check.
 # After U4's read: the attribution (s160_attrib.py once, on the sealed B4 and U4 reads).  After the last arm: the readout seal
 #   -> DONE.
 # Completion: DONE only when every arm's reader exited 0 with a VALID read and the attribution exited 0.  Anything else is ABORT
@@ -110,7 +112,15 @@ if [ "$MODE" = check ]; then
   lane_say CHECKED "identity=$id pins ok"
   if lane_require_registered_seeds "$BLOCK_SEED0" "$BLOCK_CLUSTERS"; then lane_say CHECKED "block: $LANE_MSG"
   else lane_say NOTE "not yet admissible for run: $LANE_MSG"; fi
-  if preflight; then lane_say CHECKED "saved results: none or valid"; else lane_say NOTE "saved results: $LANE_MSG"; fi
+  if preflight; then
+    lane_say CHECKED "saved results: none or valid"
+    for arm in $ARMS; do   # the run loop's reuse decision, by the same read_state call
+      arm_paths "$arm"; read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" "$RBD" verify-read "$RECIPE" "$arm"; r=$?
+      [ "$r" = 1 ] && lane_say CHECKED "arm $arm: bound read reused from metadata"
+    done
+    read_state "$ACL" "$AJ" "$ARC" "$AO" "$AE" "$ACL.none" verify-attrib "$RECIPE"; r=$?
+    [ "$r" = 1 ] && lane_say CHECKED "attribution: bound result reused from metadata"
+  else lane_say NOTE "saved results: $LANE_MSG"; fi
   lane_done "identity=$id mode=check"
   exit 0
 fi
@@ -165,6 +175,14 @@ for ARM in $ARMS; do
   DEALS=$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["arms"][sys.argv[2]]["deals"])' "$RECIPE" "$ARM") \
     || lane_abort 6 "recipe has no arm $ARM"
   [ "$DEALS" = "$ARM_DEALS" ] || lane_abort 6 "recipe arm $ARM has $DEALS deals, the cfg $ARM_DEALS"
+  # a completed, bound arm is reused from metadata only, before any fresh-arm payload check
+  read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" "$RBD" verify-read "$RECIPE" "$ARM"; r=$?
+  [ "$r" = 2 ] && lane_abort 4 "read $ARM: $LANE_MSG; kept"
+  if [ "$r" = 1 ]; then
+    lane_say STEP "arm $ARM reused: bound read verified from metadata ($(lane_sha "$RBD"))"
+    [ "$ARM" = U4 ] && do_attrib
+    continue
+  fi
   # pilot: 20 deals + the validity check (no outcome computed)
   if [ ! -e "$PCHK" ]; then
     if ! guard verify-seal "$RECIPE" "$ARM" pilot; then
@@ -196,10 +214,8 @@ for ARM in $ARMS; do
     guard verify-seal "$RECIPE" "$ARM" duel || lane_abort 4 "arm output does not verify ($LANE_MSG)"
   fi
   lane_say STEP "arm $ARM rows=$((2 * DEALS)) sums=$(lane_sha "$OUT/SHA256SUMS")"
-  # read: once, under a noclobber claim made before any raw output is opened; a claimed attempt is never re-run
-  read_state "$RCL" "$RJ" "$RRC" "$RO" "$RE" "$RBD" verify-read "$RECIPE" "$ARM"; r=$?
-  [ "$r" = 2 ] && lane_abort 4 "read $ARM: $LANE_MSG; kept"
-  if [ "$r" = 0 ]; then
+  # read: once, under a noclobber claim made before any raw output is opened (no attempt exists here: checked above)
+  if true; then
     readmit "read-$ARM"
     claim "$RCL" || lane_abort 4 "read $ARM: cannot claim $RCL (an attempt exists)"
     LANE_LOG=$S/logs/$ARM.read.log; LANE_MAX_SECONDS=$READ_MAX; LANE_PAUSE_NOTE="step read $ARM"

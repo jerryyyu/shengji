@@ -15,6 +15,7 @@ import random
 from collections import Counter
 
 import pytest
+from local_data import require_local_data
 
 from shengji.ai.env import play_round
 from shengji.ai.memory import Memory
@@ -274,6 +275,7 @@ def test_pair_cap_forward_check_prevents_a_rejected_world():
     art = os.path.join(root, "rl_data", "pilot_dev512.v6.json")
     if not os.path.exists(art):
         pytest.skip("v6 gate artifact absent")
+    require_local_data(*(c for _, c, _ in PS.SOURCES))
     st = next(s for s in json.load(open(art))["states"]
               if s["seed"] == 81002046 and s["ply"] == 4)
     corpus = {n: c for n, c, _ in PS.SOURCES}[st["source"]]
@@ -679,6 +681,7 @@ def test_adaptive_allocation_respects_the_fixed_budget():
         pytest.skip("gate artifact absent")
     import pilot_states as PS
     from shengji.ai.registry import make_bot
+    require_local_data(*(c for _, c, _ in PS.SOURCES))
     src = {n: c for n, c, _ in PS.SOURCES}
     want = json.load(open(art))["states"][:6]
     rows = {}

@@ -16,6 +16,7 @@ import sys
 from collections import Counter
 
 import pytest
+from local_data import absent_local_data, require_local_data
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import pilot_states as PS  # noqa: E402
@@ -112,6 +113,7 @@ def test_dev_and_calib_are_deal_disjoint():
 
 def test_source_and_split_digests_are_recorded_and_current():
     """A frozen set whose inputs cannot be identified is not reproducible."""
+    untracked = set()
     for name in ("pilot_dev512.v6.json", "pilot_calib512.v6.json"):
         d = _load(name)
         for src, meta in d["sources"].items():
@@ -123,9 +125,15 @@ def test_source_and_split_digests_are_recorded_and_current():
             for kind, key in (("corpus", "corpus_sha256_16"),
                               ("split", "split_sha256_16")):
                 path = os.path.join(ART, os.path.basename(meta[kind]))
+                local = "rl_data/" + os.path.basename(meta[kind])
+                if absent_local_data(local):
+                    untracked.add(local)
+                    continue
                 assert os.path.exists(path), f"{name}/{src}: {kind} missing"
                 assert PS.digest(path)[:16] == meta[key], \
                     f"{name}/{src}: {kind} changed since the freeze"
+    # every tracked input was compared above; the absent untracked corpora were not
+    require_local_data(*sorted(untracked))
 
 
 def test_freezer_refuses_a_dirty_tree_and_an_existing_path():

@@ -785,6 +785,8 @@ def test_acting_team_sign_is_correct_for_both_roles():
     import pilot_states as PS
     from shengji.ai.registry import make_bot
     from shengji.ai.memory import Memory
+    from local_data import require_local_data
+    require_local_data(*(c for _, c, _ in PS.SOURCES))
 
     src = {n: c for n, c, _ in PS.SOURCES}
     rows = {}

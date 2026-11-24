@@ -474,3 +474,101 @@ def test_two_simultaneous_first_sign_ins_make_one_new_account(tmp_path, provider
     else:
         assert store.upsert_apple_user("apple-race", None, None)["id"] == results[0][0]["id"]
         assert store.upsert_apple_user_outcome("apple-race", None, None)[1] is False
+
+
+# the iOS app's version, from the handshake User-Agent
+
+IOS_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 "
+          "(KHTML, like Gecko) Mobile/15E148 {token}")
+
+
+@pytest.mark.parametrize("token,version", [
+    ("ShengjiApp/1.0.2", "1.0.2"),
+    ("ShengjiApp/1.1", "1.1"),
+    ("ShengjiApp/1.0.2 Extra/9", "1.0.2"),
+    ("", None),
+    ("ShengjiApp/", None),
+    ("ShengjiApp/1", None),
+    ("ShengjiApp/1.0.2-beta", None),
+    ("ShengjiApp/1.0.2.4", None),
+    ("ShengjiApp/v1.0.2", None),
+    ("ShengjiApp/12345.0", None),
+    ("ShengjiApp/Jerry's-phone", None),
+    ("NotShengjiApp/1.0.2", None),
+    ("ShengjiApp/1.0.2" + "0" * 40, None),
+])
+def test_app_version_keeps_only_a_bare_version(token, version):
+    assert telemetry.app_version(IOS_UA.format(token=token)) == version
+
+
+def test_app_version_refuses_a_missing_or_oversize_user_agent():
+    assert telemetry.app_version(None) is None
+    assert telemetry.app_version(b"ShengjiApp/1.0.2") is None
+    assert telemetry.app_version("x" * 600 + " ShengjiApp/1.0.2") is None
+
+
+def _app_version_over_the_socket(client, sink, user_agent):
+    headers = {"user-agent": user_agent} if user_agent is not None else {}
+    with client.websocket_connect("/ws", headers=headers) as ws:
+        ws.send_json({"type": "client_event", "v": 1, "platform": "ios_app",
+                      "events": [{"e": "tap", "id": "play"}]})
+        ws.send_json({"type": "ping", "nonce": 1})
+        _drain(ws, "pong")
+    return [r for r in _records(sink) if r["e"] == "tap"][-1]
+
+
+def test_the_handshake_user_agent_stamps_the_app_version(client, sink):  # noqa: F811
+    rec = _app_version_over_the_socket(client, sink, IOS_UA.format(token="ShengjiApp/1.0.2"))
+    assert rec["app_version"] == "1.0.2"
+    assert rec["platform"] == "ios_app"
+    # a malformed token is dropped, and nothing of the User-Agent is kept
+    rec = _app_version_over_the_socket(client, sink, IOS_UA.format(token="ShengjiApp/1.0.2<script>"))
+    assert "app_version" not in rec
+    assert not any("Mozilla" in str(v) or "iPhone" in str(v) for v in rec.values())
+    # an app up to 1.0.1 sends no token: the field is absent
+    rec = _app_version_over_the_socket(client, sink, IOS_UA.format(token=""))
+    assert set(rec) == {"e", "id", "platform", "sid", "who", "build", "ts"}
+
+
+def test_queue_events_carry_the_sockets_app_version(sink):
+    sock = _Sock()
+    telemetry.handshake(sock, IOS_UA.format(token="ShengjiApp/1.0.2"))
+    telemetry.receive(sock, {"v": 1, "platform": "ios_app", "events": [{"e": "tap", "id": "play"}]}, "guest")
+    assert telemetry.queue_event(sock, "join", who="guest", size=1)
+    assert telemetry.queue_event(None, "start", size=4)
+    tap, q, start = _records(sink)
+    assert tap["app_version"] == q["app_version"] == "1.0.2"
+    assert "app_version" not in start
+
+
+def test_the_summary_counts_sessions_by_app_version(sink):
+    from scripts import telemetry_app_versions as summary
+    socks = [_Sock() for _ in range(4)]
+    for sock, ua in zip(socks, ["ShengjiApp/1.0.2", "ShengjiApp/1.0.2", "", "ShengjiApp/x"]):
+        telemetry.handshake(sock, IOS_UA.format(token=ua))
+    for sock in socks:
+        for _ in range(2):   # two batches, one session
+            telemetry.receive(sock, {"v": 1, "platform": "ios_app",
+                                     "events": [{"e": "tap", "id": "play"}]}, "guest")
+    web = _Sock()
+    telemetry.receive(web, {"v": 1, "platform": "web", "events": [{"e": "tap", "id": "play"}]}, "guest")
+    assert telemetry.signin_count("google", True)          # no sid: not a session
+    (sink / "ui-20200101.jsonl").write_text("not json\n[1]\n" + "{}" * 3000 + "\n")
+    assert summary.count_sessions(sink) == {
+        ("ios_app", "1.0.2"): 2, ("ios_app", summary.LEGACY_APP): 2, ("web", summary.NONE): 1}
+    assert summary.count_sessions(sink, since="29990101") == {}
+    assert summary.main(["--dir", str(sink)]) == 0
+    assert summary.main(["--dir", str(sink), "--since", "2026-11"]) == 2
+
+
+@pytest.mark.parametrize("token,version", [("ShengjiApp/1.0.2", "1.0.2"), ("", "<=1.0.1")])
+def test_a_tap_and_a_queue_join_of_one_socket_count_once(sink, token, version):
+    from scripts import telemetry_app_versions as summary
+    sock = _Sock()
+    telemetry.handshake(sock, IOS_UA.format(token=token))
+    # the join first: its row has the sid (and any version) but no platform
+    assert telemetry.queue_event(sock, "join", who="guest", size=1)
+    telemetry.receive(sock, {"v": 1, "platform": "ios_app", "events": [{"e": "tap", "id": "play"}]}, "guest")
+    join, tap = _records(sink)
+    assert "platform" not in join and tap["platform"] == "ios_app"
+    assert summary.count_sessions(sink) == {("ios_app", version): 1}

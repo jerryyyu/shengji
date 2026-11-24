@@ -3219,6 +3219,10 @@ async def _ws_session(ws: WebSocket, ip: str) -> None:
     conn = matchmaking.Conn(ws, user_id, default_name,
                             queue_id=user_id if user_id is not None else guest_id,
                             device=device)
+    # the iOS app's version, kept only as a bare number for telemetry; a
+    # socket stand-in without headers (the offline fixtures) has none
+    headers = getattr(ws, "headers", None)
+    telemetry.handshake(conn, headers.get("user-agent") if headers is not None else None)
     LIVE_CONNS.add(conn)
     # The same device's guest id, when this socket is signed in: the guest
     # signed in here. Its queue, waiting-table seat, pair and pending Join

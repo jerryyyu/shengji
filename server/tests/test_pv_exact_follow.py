@@ -419,10 +419,50 @@ def test_exact_follow_publication_checks_deadline_even_if_action_unchanged(monke
     assert actual == baseline
     record = bot.last_decision_record
     assert record['exact_follow_abandoned'] == 'hard_budget'
+    assert record['exact_follow_aborted_worlds_completed'] == record['exact_follow_aborted_worlds_requested'] == 2
     assert record['exact_follow_error'] == 'PVSearchBudgetExceeded'
     assert not record['exact_follow_applied']
     assert 'exact_follow_scores' not in record
     assert 'exact_follow_worlds' not in record
+
+
+@pytest.mark.parametrize("completed", [0, 1])
+def test_aborted_follow_counts_only_complete_worlds_through_consumers(monkeypatch, completed):
+    from shengji.harvest.trajectory import pv_fields_from_record
+    from shengji.train import pv_exact_follow
+    from shengji.train.search_screen import exact_follow_summary, trace_fields
+
+    _, baseline = search_case(on=False)
+    solve = pv_exact_follow._world_scores
+    calls = 0
+
+    def interrupt(*args, **kwargs):
+        nonlocal calls
+        if calls == completed:
+            raise pv.PVSearchBudgetExceeded('deadline during world solve')
+        calls += 1
+        return solve(*args, **kwargs)
+
+    monkeypatch.setattr(pv_exact_follow, '_world_scores', interrupt)
+    bot, actual = search_case()
+    assert actual == baseline
+    from types import SimpleNamespace
+    from shengji.api.server import _log_play
+
+    events = []
+    room = SimpleNamespace(bot=bot, round=None, log_event=lambda kind, **event: events.append(event))
+    _log_play(room, 1, actual[0], True, None)
+    record = events[0]['decision']
+    assert 'exact_follow_scores' not in record and 'exact_follow_worlds' not in record
+    _, _, values = pv_fields_from_record(record, record['admitted'], capture_served_budget=True)
+    assert values['exact_search']['exact_follow_aborted_worlds_completed'] == completed
+    assert values['exact_search']['exact_follow_aborted_worlds_requested'] == 2
+    summary = exact_follow_summary([{'decision_traces': [
+        {'side': 'arm', 'decisions': [trace_fields(record)]}]}])
+    assert summary['valid']
+    arm = summary['sides']['arm']
+    assert arm['abort_progress_known'] == 1
+    assert (arm['aborted_worlds_completed'], arm['aborted_worlds_requested']) == (completed, 2)
 
 
 @pytest.mark.parametrize("solver", ["reference", "compact-level"])

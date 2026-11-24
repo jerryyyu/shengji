@@ -187,10 +187,26 @@ def test_exact_follow_summary_counts_both_sides_and_rejects_malformed_receipts()
         'total_traces': 10, 'missing': 1, 'invalid': 4, 'attempted': 9,
         'complete': 1, 'soft_budget': 1, 'hard_budget': 1, 'refusal': 1,
         'other_error': 1, 'applied': 1, 'score_unavailable': 0,
+        'abort_progress_known': 0, 'aborted_worlds_completed': 0, 'aborted_worlds_requested': 0,
     }
     assert result['sides']['baseline']['complete'] == 1
     assert result['sides']['baseline']['score_unavailable'] == 1
     assert result['sides']['baseline']['applied'] == 0
+
+
+@pytest.mark.parametrize('update', [
+    {'exact_follow_aborted_worlds_completed': 1},
+    {'exact_follow_aborted_worlds_requested': 64},
+    {'exact_follow_aborted_worlds_completed': True, 'exact_follow_aborted_worlds_requested': 2},
+    {'exact_follow_aborted_worlds_completed': 3, 'exact_follow_aborted_worlds_requested': 2},
+    {'exact_follow_aborted_worlds_completed': 1, 'exact_follow_aborted_worlds_requested': 1},
+])
+def test_exact_follow_summary_rejects_invalid_abort_progress(update):
+    row = dict(worlds=2, exact_follow_attempted=True, exact_follow_abandoned='soft_budget',
+               exact_follow_error='PVSearchBudgetExceeded', exact_follow_applied=False, **update)
+    result = S.exact_follow_summary([{'decision_traces': [{'side': 'arm', 'decisions': [row]}]}])
+    assert not result['valid']
+    assert result['sides']['arm']['abort_progress_known'] == 0
 
 
 def test_exact_follow_summary_missing_attempt_is_not_ineligible():

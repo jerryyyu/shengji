@@ -29,6 +29,12 @@ class ExactFollowRefusal(RuntimeError):
     """The root or one of its worlds is outside the exact follow boundary."""
 
 
+@dataclass
+class ExactFollowProgress:
+    """Solver work only. A world counts once every admitted action has a score."""
+    completed_worlds: int = 0
+
+
 @dataclass(frozen=True)
 class ExactFollowResult:
     winner: int
@@ -51,7 +57,8 @@ class PointsTieBreakResult:
 def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
                   max_hand_cards: int = 4, max_nodes: int = 250_000,
                   check_budget=None, solver: str = "reference",
-                  retain_world_scores: bool = False) -> ExactFollowResult:
+                  retain_world_scores: bool = False,
+                  progress: ExactFollowProgress | None = None) -> ExactFollowResult:
     """Return a complete exact reranking, or raise without a partial result.
 
     Scores are the value head's signed-level category utility from the acting
@@ -83,6 +90,8 @@ def rerank_follow(rnd, seat: int, admitted, worlds, *, baseline_index: int = 0,
         if retain_world_scores:
             world_rows.append(tuple(row))
         nodes += solved
+        if progress is not None:
+            progress.completed_worlds += 1
     means = tuple(score / len(worlds) for score in scores)
     baseline = means[baseline_index]
     winner = max(range(len(means)), key=lambda i: (means[i], -i))

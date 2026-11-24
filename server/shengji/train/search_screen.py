@@ -349,7 +349,8 @@ def exact_follow_summary(shards):
     sides = {
         side: dict(total_traces=0, missing=0, invalid=0, attempted=0,
                    complete=0, soft_budget=0, hard_budget=0, refusal=0,
-                   other_error=0, applied=0, score_unavailable=0)
+                   other_error=0, applied=0, score_unavailable=0,
+                   abort_progress_known=0, aborted_worlds_completed=0, aborted_worlds_requested=0)
         for side in ('arm', 'baseline')
     }
     reasons = {None, 'soft_budget', 'hard_budget', 'error'}
@@ -387,6 +388,14 @@ def exact_follow_summary(shards):
                     abandoned is None
                     or (type(abandoned) is str and abandoned in reasons)
                 )
+                done_key = 'exact_follow_aborted_worlds_completed'
+                target_key = 'exact_follow_aborted_worlds_requested'
+                progress_known = done_key in row or target_key in row
+                if progress_known:
+                    done, target = row.get(done_key), row.get(target_key)
+                    valid = (valid and abandoned is not None and type(done) is int
+                             and type(target) is int and 0 <= done <= target and target > 0
+                             and target == row.get('exact_follow_subset_worlds', row.get('worlds', target)))
                 if not valid:
                     counts['invalid'] += 1
                     continue
@@ -404,6 +413,10 @@ def exact_follow_summary(shards):
                     if not valid:
                         counts['invalid'] += 1
                         continue
+                    if progress_known:
+                        counts['abort_progress_known'] += 1
+                        counts['aborted_worlds_completed'] += done
+                        counts['aborted_worlds_requested'] += target
                     if abandoned in ('soft_budget', 'hard_budget'):
                         counts[abandoned] += 1
                     else:

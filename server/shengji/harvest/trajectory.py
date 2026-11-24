@@ -1566,6 +1566,7 @@ def pv_fields_from_record(rec: dict, ballot: list[list[str]], *,
     }
     exact = {key: rec[key] for key in (
         "exact_lead_status", "exact_follow_attempted", "exact_follow_applied",
+        "exact_follow_aborted_worlds_completed", "exact_follow_aborted_worlds_requested",
         "exact_follow_abandoned", "exact_follow_error", "exact_lead_subset_worlds",
         "exact_follow_subset_worlds") if key in rec}
     if exact:

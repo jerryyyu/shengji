@@ -121,6 +121,38 @@ describe("the panel's controls hold AA without dimming", () => {
     expect(contrast(color(shared?.[2] ?? ""), GOLD_TOP)).toBeGreaterThanOrEqual(AA);
   });
 
+  // The shared primary's light ink against the lightest stop of every state
+  // it is drawn in: at rest, hovered, pressed and focused, on every selector
+  // that takes the gold face.
+  it("every state of every shared primary keeps its light ink at 4.5:1 on its worst stop", () => {
+    const all = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+      sels: m[1].replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((x) => x.trim().replace(/\s+/g, " ")).filter(Boolean),
+      body: m[2],
+    }));
+    const STATE = /:(?:hover|active|focus-visible|focus)\b|:not\((?::disabled|:focus-visible|\[aria-disabled="true"\])\)/g;
+    const primaries = new Set(all.filter((r) => r.body.includes("linear-gradient(180deg, #8a6a22, #6b5219)")).flatMap((r) => r.sels));
+    expect(primaries).toContain(".btn.gold");
+    expect(primaries).toContain(".tp-primary");
+    const inkOf = (sel: string) => color(all.find((r) => r.sels.includes(sel) && color(r.body))?.body ?? "");
+    const checked: string[] = [];
+    for (const r of all) {
+      const stops = [...(/background(?:-image)?:\s*([^;]+)/.exec(r.body)?.[1] ?? "").matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0]);
+      if (!stops.length) continue;
+      for (const sel of r.sels) {
+        const base = sel.replace(STATE, "");
+        if (!primaries.has(base)) continue;
+        const ink = color(r.body) || inkOf(base);
+        expect(ink, sel).not.toBe("");
+        const worst = Math.min(...stops.map((s) => contrast(ink, s)));
+        expect(worst, `${sel}: ${ink} on ${stops.join(", ")}`).toBeGreaterThanOrEqual(AA);
+        checked.push(sel);
+      }
+    }
+    // the hover is among the states read, not only the face at rest
+    expect(checked.some((s) => s.includes(":hover"))).toBe(true);
+    expect(checked).toContain(".round-end-actions > .btn.primary:hover:not(:disabled)");
+  });
+
   it("the mode a seated player cannot switch to is drawn whole, in AA text, with a lock", () => {
     const held = ruleIn(playLines, ".play-section .play-mode-opt:disabled:not(.on)");
     expect(held).toContain("opacity: 1");

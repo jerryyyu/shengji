@@ -229,12 +229,13 @@ textarea:focus-visible {
   color: #fff3cf;
 }
 
+/* hover darkens the face, so the light ink only gains contrast */
 @media (hover: hover) and (pointer: fine) {
 .btn.gold:hover:not(:disabled),
 .round-end-actions > .btn.primary:hover:not(:disabled),
 .howto-buttons > .btn.primary:hover:not(:disabled),
 .btn.primary.name-edit-save:hover:not(:disabled) {
-  background: linear-gradient(180deg, #a17f31, #7d6122);
+  background: linear-gradient(180deg, #7a5d1e, #5c4615);
 }
 }
 

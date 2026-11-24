@@ -256,3 +256,42 @@ def test_both_bot_levels_are_open_tables_by_allow_joiners(tmp_path):
     finally:
         for code in codes:
             server.rooms.pop(code, None)
+
+
+def test_a_beginner_room_wraps_the_served_bot_with_the_beginner_builder(monkeypatch, tmp_path):
+    from shengji.api import matchmaking
+
+    assert matchmaking.BOT_LEVELS == ("beginner", "standard", "advanced")
+    assert matchmaking.CASUAL_BOT_LEVEL == "standard"
+    calls = []
+    monkeypatch.setattr(server, "make_bot", lambda name, **kw: HeuristicBot())
+    monkeypatch.setattr(server, "make_relaxed_bot", lambda served, seed: calls.append(("standard", seed)) or object())
+    monkeypatch.setattr(server, "make_beginner_bot", lambda served, seed: calls.append(("beginner", seed)) or object())
+    monkeypatch.setenv("SHENGJI_BOT", "heuristic")
+    room = server.Room(code="BEGN", log_dir=tmp_path, bot_seed=4, bot_level="beginner")
+    assert calls == [("beginner", 4)] and room.bot_level == "beginner"
+    with pytest.raises(ValueError):
+        server.Room(code="BEGR", log_dir=tmp_path, matched=True, bot_level="beginner")
+
+
+def test_a_beginner_room_on_the_scorer_logs_beginner_and_a_missing_package_logs_advanced(
+        relaxed_env, package, monkeypatch, tmp_path):
+    room = server.Room(code="BEGL", log_dir=tmp_path, bot_seed=1, bot_level="beginner")
+    start = _round_start(room, tmp_path)
+    assert start["bot_level"] == "beginner"
+    assert start["bot_policy"] == "smart-" + rp.casual_suffix(package[1], rp.BEGINNER_TAU, rp.BEGINNER_DELTA)
+    assert (room.bot.tau, room.bot.delta) == (rp.BEGINNER_TAU, rp.BEGINNER_DELTA)
+    monkeypatch.setattr(server, "RELAXED_SF_PACKAGE", str(tmp_path / "absent.npz"))
+    missing = server.Room(code="BEGM", log_dir=tmp_path, bot_seed=1, bot_level="beginner")
+    assert missing.bot.policy_name == "smart" and missing.bot_level == "advanced"
+
+
+def test_the_mistake_dashboard_excludes_beginner_rounds(tmp_path):
+    from scripts import mistake_dashboard as md
+    src = md.__file__.replace("scripts/mistake_dashboard.py", "tests/fixtures/mistake_dashboard/prod_rounds.jsonl")
+    lines = [json.loads(line) for line in open(src)]
+    marked = [dict(rec, bot_level="beginner") if rec.get("e") == "round_start" else rec for rec in lines]
+    path = tmp_path / "beginner.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in marked))
+    rounds, notes = md.load_prod([str(path)])
+    assert rounds == [] and notes["rounds excluded: standard bots"] > 0

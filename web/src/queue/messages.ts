@@ -1,9 +1,10 @@
 // The matchmaking queue's messages (PROTOCOL.md "Matchmaking queue"). Times
 // named `*_at` and `since` are Unix seconds on the server's clock.
 
-/** A table's Bots (matchmaking.py BOT_LEVELS): Standard plays the relaxed
- *  level, Advanced the served bot. A ranked table is always Advanced. */
-export const BOT_LEVELS = ["standard", "advanced"] as const;
+/** A table's Bots (matchmaking.py BOT_LEVELS), weakest first: Beginner and
+ *  Standard play the relaxed levels, Advanced the served bot. A ranked table
+ *  has no setting. */
+export const BOT_LEVELS = ["beginner", "standard", "advanced"] as const;
 export type BotLevel = (typeof BOT_LEVELS)[number];
 
 /** A queue message; a guest adds the name it plays under (the server keeps

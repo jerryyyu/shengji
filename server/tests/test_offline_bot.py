@@ -21,7 +21,9 @@ are Standard (``bot_level`` "standard", built by the server's own
 ``make_relaxed_bot``): MCBot stands in for the served bot it wraps, and the
 S136 scorer package plays the cards (``SHENGJI_RELAXED_SF_PACKAGE_PATH``, or
 the built payload's copy).  Every choice must match, the near-best softmax
-draws included.
+draws included.  Beginner (``bot_level`` "beginner", the server's
+``make_beginner_bot``: the same package at wider noise) is checked the same
+way.
 """
 
 import copy
@@ -62,6 +64,13 @@ needs_sf = pytest.mark.skipif(_sf_package() is None,
 def _standard(served, seed=BOT_SEED):
     bot, error = offline_bot.standard_bot(served, str(_sf_package()), seed)
     assert error is None and isinstance(bot, relaxed_play.RelaxedBot)
+    return bot
+
+
+def _beginner(served, seed=BOT_SEED):
+    bot, error = offline_bot.beginner_bot(served, str(_sf_package()), seed)
+    assert error is None and isinstance(bot, relaxed_play.RelaxedBot)
+    assert bot.tau == relaxed_play.BEGINNER_TAU and bot.delta == relaxed_play.BEGINNER_DELTA
     return bot
 
 
@@ -228,6 +237,8 @@ def test_the_offline_levels_are_the_servers():
     assert Path(server.RELAXED_SF_PACKAGE).name == relaxed_play.CASUAL_PACKAGE
     assert server.RELAXED_SF_SHA256 == relaxed_play.CASUAL_SHA256
     assert server.RELAXED_BOT == relaxed_play.casual_suffix()
+    assert server.BEGINNER_BOT == relaxed_play.casual_suffix(
+        tau=relaxed_play.BEGINNER_TAU, delta=relaxed_play.BEGINNER_DELTA)
     # the payload bundles the package, pinned like the release weights
     manifest = (PYBOT / "MANIFEST.sha256").read_text().split("\n")
     assert f"{relaxed_play.CASUAL_SHA256}  {relaxed_play.CASUAL_PACKAGE}" in manifest
@@ -257,6 +268,8 @@ def test_the_manifest_pins_the_weights_fly_toml_serves():
 def test_a_missing_scorer_package_plays_the_served_bot_as_the_server_does(tmp_path):
     served = make_bot("mc", seed=BOT_SEED)
     bot, error = offline_bot.standard_bot(served, str(tmp_path / relaxed_play.CASUAL_PACKAGE), BOT_SEED)
+    assert bot is served and error
+    bot, error = offline_bot.beginner_bot(served, str(tmp_path / relaxed_play.CASUAL_PACKAGE), BOT_SEED)
     assert bot is served and error
 
 
@@ -290,6 +303,33 @@ def test_standard_offline_chooses_what_a_standard_room_chose(mc_standard_games):
             kinds[r["request"]["kind"]] = kinds.get(r["request"]["kind"], 0) + 1
         n += len(records)
     assert n >= 600 and kinds["play"] >= 300 and kinds["bury"] >= 3 and kinds["declare"] >= 200
+
+
+@pytest.fixture(scope="module")
+def mc_beginner_games():
+    package = str(_sf_package())
+    return [bridge_harness.record_session(seed, 2, config, lambda: make_bot("mc", seed=BOT_SEED),
+                                          standard=(package, BOT_SEED), level="beginner")[0]
+            for seed, config in GAMES]
+
+
+@needs_sf
+def test_beginner_offline_chooses_what_a_beginner_room_chose(mc_beginner_games, mc_standard_games):
+    """Every level in the session, as ``init`` builds them; Beginner decides,
+    and its cards are not Standard's."""
+    n = 0
+    for records in mc_beginner_games:
+        bots = {"advanced": make_bot("mc", seed=BOT_SEED),
+                "standard": _standard(make_bot("mc", seed=BOT_SEED)),
+                "beginner": _beginner(make_bot("mc", seed=BOT_SEED))}
+        got = _replay_level(records, bots, "beginner")
+        assert got == [r["cards"] for r in records]
+        n += len(records)
+    assert n >= 600
+    records = mc_beginner_games[0]
+    plays = [i for i, r in enumerate(records) if r["request"]["kind"] == "play"]
+    as_standard = _replay_level(records, {"standard": _standard(make_bot("mc", seed=BOT_SEED))}, "standard")
+    assert sum(as_standard[i] != records[i]["cards"] for i in plays) > 0
 
 
 @needs_sf
@@ -362,6 +402,36 @@ def test_served_standard_offline_matches_a_standard_room(tmp_path):
             ident = json.loads(offline_bot.init(payload, str(tmp_path / "out"), 13))
         for i, r in enumerate(game):
             out = _ask({**r["request"], "level": "standard"}, f"g{g}t{i}")
+            _settle(f"g{g}t{i}", True)
+            kind = r["request"]["kind"]
+            plays += kind == "play"
+            clock = {k: out[k] for k in ("fallback", "exact_lead", "leaf_deadline") if k in out}
+            if out["cards"] != r["cards"] and (kind == "play" or (not clock and not r["clock"])):
+                unexplained.append((g, i, kind, out["cards"], r["cards"]))
+    assert sum(len(g) for g in records) >= 200 and plays >= 100 and unexplained == []
+
+
+@pytest.mark.skipif(not os.environ.get("SHENGJI_OFFLINE_BOT_PAYLOAD"),
+                    reason="needs a built payload with the release weights")
+def test_served_beginner_offline_matches_a_beginner_room(tmp_path):
+    """Beginner on release weights, through ``init``, as Standard is checked
+    above: the scorer plays every card exactly."""
+    payload = os.environ["SHENGJI_OFFLINE_BOT_PAYLOAD"]
+    make = bridge_harness.served_bot_factory(payload, str(tmp_path / "rec"), seed=13)
+    package = offline_bot.standard_package(payload)
+    records = []
+    for seed, config in GAMES:
+        records.append(bridge_harness.record_session(seed, 1, config, make, standard=(package, 13),
+                                                     level="beginner")[0])
+    ident = json.loads(offline_bot.init(payload, str(tmp_path / "out"), 13))
+    assert ident["matches_fly_toml"] and ident["beginner_error"] is None
+    assert ident["levels"]["beginner"] == f"{ident['bot']}-{relaxed_play.casual_suffix(tau=3.0, delta=8.0)}"
+    unexplained, plays = [], 0
+    for g, game in enumerate(records):
+        if g:
+            ident = json.loads(offline_bot.init(payload, str(tmp_path / "out"), 13))
+        for i, r in enumerate(game):
+            out = _ask({**r["request"], "level": "beginner"}, f"g{g}t{i}")
             _settle(f"g{g}t{i}", True)
             kind = r["request"]["kind"]
             plays += kind == "play"

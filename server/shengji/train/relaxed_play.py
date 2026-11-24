@@ -286,3 +286,15 @@ def build_casual(served, path, *, seed: int, sha256: str = CASUAL_SHA256,
     player = SF.SearchFreeBot(served, casual_model(path, sha256))
     name = f"{getattr(served, 'policy_name', type(served).__name__)}-{casual_suffix(sha256, tau, delta)}"
     return RelaxedBot(served, player, mode="search_free", tau=tau, delta=delta, seed=seed, policy_name=name)
+
+
+#: the Beginner level: the casual level's package, declare and bury, with wider card-play noise
+#: (tau 3.0 within delta 8.0 logits). Its team loses 0.58 levels/round to a Standard team on
+#: paired seat-swapped rank-mixed deals; every play still comes from the scorer's legal proposals.
+BEGINNER_TAU = 3.0
+BEGINNER_DELTA = 8.0
+
+
+def build_beginner(served, path, *, seed: int, sha256: str = CASUAL_SHA256) -> RelaxedBot:
+    """``build_casual`` at the Beginner noise (``BEGINNER_TAU``, ``BEGINNER_DELTA``)."""
+    return build_casual(served, path, seed=seed, sha256=sha256, tau=BEGINNER_TAU, delta=BEGINNER_DELTA)

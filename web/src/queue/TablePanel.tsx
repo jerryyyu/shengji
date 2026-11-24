@@ -458,7 +458,8 @@ function SwitchRow({ label, on, onToggle, disabled = false }: {
   );
 }
 
-const botLevelName = (b: BotLevel): string => (b === "advanced" ? t("queue.set.advanced") : t("queue.set.standard"));
+const BOT_LEVEL_NAMES = { beginner: "queue.set.beginner", standard: "queue.set.standard", advanced: "queue.set.advanced" } as const;
+const botLevelName = (b: BotLevel): string => t(BOT_LEVEL_NAMES[b]);
 
 /** A setting row: the opener's select, or the value read-only for everyone else. */
 function SetRow<V extends string>({ label, value, values, names, opener, onPick }: {

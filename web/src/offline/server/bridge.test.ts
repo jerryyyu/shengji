@@ -232,7 +232,7 @@ describe("the table's Bots level", () => {
 
   it("refuses an unknown level before making a table", async () => {
     const { frames, server } = await playSession(seed, 1, { startLevel: null, throws: false, botLevel: "expert" }, () => null);
-    expect(frames).toEqual([{ type: "error", code: "bad_setting", message: "Bots is Standard or Advanced." }]);
+    expect(frames).toEqual([{ type: "error", code: "bad_setting", message: "Bots is Beginner, Standard or Advanced." }]);
     expect(server.rooms.size).toBe(0);
   });
 

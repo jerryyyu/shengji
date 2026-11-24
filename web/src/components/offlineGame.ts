@@ -51,7 +51,7 @@ export const offlineGame = {
   tableOpen: arrivedForTable(),
   /** A game started at this page's offline table, until the player is back on the Play tab. */
   played: false,
-  /** The offline table's Bots, kept for the next table: Standard until you pick Advanced. */
+  /** The offline table's Bots, kept for the next table: Standard until you pick another. */
   botLevel: "standard" as BotLevel,
 
   subscribe(listener: () => void): () => void {

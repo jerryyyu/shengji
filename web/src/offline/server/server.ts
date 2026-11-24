@@ -1291,7 +1291,7 @@ export class LocalServer {
     } else if (t === "table_bot_level") {
       if (seat !== room.host) throw new IllegalPlay("Only the table's opener sets the bots.");
       const level = msg.level ?? msg.bot_level;
-      if (typeof level !== "string" || !(BOT_LEVELS as readonly string[]).includes(level)) throw new IllegalPlay("Bots is Standard or Advanced.");
+      if (typeof level !== "string" || !(BOT_LEVELS as readonly string[]).includes(level)) throw new IllegalPlay("Bots is Beginner, Standard or Advanced.");
       room.botLevel = level as BotLevel;
     } else if (t === "table_move") {
       const to = msg.seat;
@@ -1508,7 +1508,7 @@ export class LocalConnection {
         // unless it names Advanced, a nearby table's as a solo one's
         const bots = msg.bot_level ?? DEFAULT_BOT_LEVEL;
         if (typeof bots !== "string" || !(BOT_LEVELS as readonly string[]).includes(bots)) {
-          this.sendDirect({ type: "error", code: "bad_setting", message: "Bots is Standard or Advanced." });
+          this.sendDirect({ type: "error", code: "bad_setting", message: "Bots is Beginner, Standard or Advanced." });
           return;
         }
         const nearby = msg.nearby === true;

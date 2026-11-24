@@ -1,4 +1,4 @@
-"""The app's offline bot: the served bot at either Bots level, deciding for the offline game.
+"""The app's offline bot: the served bot at each Bots level, deciding for the offline game.
 
 The iOS app bundles this module with the unmodified ``shengji`` package, the
 ``fly.toml`` the release was cut from and the weight files it names.  The offline
@@ -24,16 +24,18 @@ handed the same ``Round`` the server hands it:
 * ``token``: the page's name for this decision, and ``settle``: the page's
   verdicts on earlier decisions, ``[token, committed]`` in the order it
   reached them, applied before this decision (``settle``);
-* ``level``: the table's Bots, ``standard`` (the default when absent) or
-  ``advanced``, as a casual room's ``bot_level``.
+* ``level``: the table's Bots, ``beginner``, ``standard`` (the default when
+  absent) or ``advanced``, as a casual room's ``bot_level``.
 
-The two levels are the server's two room bots.  Advanced is the served bot
+The three levels are the server's three room bots.  Advanced is the served bot
 built from fly.toml.  Standard is ``server.make_relaxed_bot`` of a served bot
 seeded the same: ``relaxed_play.build_casual``, the served declare and bury
 with the S136 search-free scorer's card play under the near-best softmax, its
 package (``models/<relaxed_play.CASUAL_PACKAGE>``) checked against
-``relaxed_play.CASUAL_SHA256``.  As on the server, a package that is missing
-or fails its sha256 leaves Standard playing the served bot.
+``relaxed_play.CASUAL_SHA256``.  Beginner is ``server.make_beginner_bot``,
+``relaxed_play.build_beginner`` from the same package at wider noise.  As on
+the server, a package that is missing or fails its sha256 leaves Beginner and
+Standard playing the served bot.
 
 Each level's bot object lives for the whole session, as the server's room bot lives for
 the room: its RNG and its public-notice ledger carry over between decisions and
@@ -46,7 +48,7 @@ by replaying the log, and replay is incremental: a request whose log extends
 the previous one applies only the new actions.
 
 Calls from the native plugin (JSON strings in and out): ``call(name, args)``
-with ``init(payload_dir, out_dir, seed)`` (which builds both levels), ``decide(request_json)`` and
+with ``init(payload_dir, out_dir, seed)`` (which builds every level), ``decide(request_json)`` and
 ``settle(token, accepted)``.
 """
 from __future__ import annotations
@@ -63,7 +65,7 @@ MODEL_PREFIX = "/data/models/"
 NATIVE_MODULES = ("shengji.engine._fast", "shengji.ai._cwv_math",
                   "shengji.ai._endgame_fast", "shengji.train._pv_fast", "shengji.train._reply_fast")
 LOG_KINDS = ("deal", "declare", "pass", "finalize", "bury", "play")
-LEVELS = ("standard", "advanced")
+LEVELS = ("beginner", "standard", "advanced")
 DEFAULT_LEVEL = "standard"
 
 # One session per level; _STATE is the one the current request decides in.
@@ -132,10 +134,11 @@ def init(payload_dir: str, out_dir: str, seed: int = 13) -> str:
     # a copy of the bot before its first decision is the served bot freshly
     # built with this seed, which the server wraps for a Standard room
     standard, standard_error = standard_bot(copy.deepcopy(bot), standard_package(payload_dir), int(seed))
+    beginner, beginner_error = beginner_bot(copy.deepcopy(bot), standard_package(payload_dir), int(seed))
     t_standard = time.perf_counter()
     if "torch" in sys.modules:
         raise RuntimeError("torch was imported on the served bot path")
-    start_sessions({"advanced": bot, "standard": standard})
+    start_sessions({"advanced": bot, "standard": standard, "beginner": beginner})
     inputs_file = os.path.join(payload_dir, "BUNDLE_INPUTS")
     bundle_inputs = open(inputs_file).read().strip() if os.path.exists(inputs_file) else None
     ident = {
@@ -143,8 +146,10 @@ def init(payload_dir: str, out_dir: str, seed: int = 13) -> str:
         # the digest the build phase printed over the sources this bundle was built from
         "bundle_inputs": bundle_inputs,
         "matches_fly_toml": name == fly["SHENGJI_BOT"],
-        "levels": {"advanced": name, "standard": getattr(standard, "policy_name", name)},
+        "levels": {"advanced": name, "standard": getattr(standard, "policy_name", name),
+                   "beginner": getattr(beginner, "policy_name", name)},
         "standard_error": standard_error,
+        "beginner_error": beginner_error,
         "seed": int(seed),
         "worlds": int(env["SHENGJI_PV_WORLDS"]),
         "fast_engine": engine_fast.HAVE_FAST,
@@ -179,6 +184,20 @@ def standard_bot(served, path: str, seed: int):
     except Exception as exc:  # noqa: BLE001 - as the server, the table still plays
         print(f"[pybot] standard bots unavailable ({type(exc).__name__}: {exc}); "
               "Standard plays the served bot", flush=True)
+        return served, f"{type(exc).__name__}: {exc}"[:200]
+
+
+def beginner_bot(served, path: str, seed: int):
+    """``(bot, error)``: ``served`` wrapped as the Beginner level, as
+    ``server.make_beginner_bot`` wraps a Beginner room's served bot, with the
+    same scorer package as Standard; or ``served`` itself and the reason when
+    that package cannot be used."""
+    from shengji.train import relaxed_play
+    try:
+        return relaxed_play.build_beginner(served, path, seed=seed, sha256=relaxed_play.CASUAL_SHA256), None
+    except Exception as exc:  # noqa: BLE001 - as the server, the table still plays
+        print(f"[pybot] beginner bots unavailable ({type(exc).__name__}: {exc}); "
+              "Beginner plays the served bot", flush=True)
         return served, f"{type(exc).__name__}: {exc}"[:200]
 
 

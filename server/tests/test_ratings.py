@@ -33,6 +33,15 @@ def _events(store, sql="SELECT * FROM rating_events ORDER BY id", *args):
         return [dict(r) for r in db.execute(sql, args)]
 
 
+# an Advanced bot seat's anchor (``ratings.ADVANCED_BOT_RATING``)
+ADV = 1059.0
+
+
+def _e(us, them):
+    """The expected score of a team of strength ``us`` against ``them``."""
+    return 1 / (1 + 10 ** ((them - us) / 400))
+
+
 def _set(store, user_id, rating, rounds=0):
     with closing(sqlite3.connect(store.path)) as db:
         db.execute("UPDATE users SET rating = ?, rated_rounds = ? WHERE id = ?",
@@ -139,11 +148,30 @@ def test_team_strength_is_the_seat_mean_plus_the_banker_side():
     assert r.team_strengths([1100, 1000, 1000, 1000], banker_team=1) == (1050.0, 1040.0)
 
 
-def test_new_accounts_start_at_800_while_bots_and_guests_stay_at_1000():
+def test_new_accounts_and_guests_count_800_and_an_advanced_bot_1059():
     from shengji.api import accounts, ratings as r
 
-    assert r.START_RATING == accounts.START_RATING == 800.0
-    assert r.BOT_RATING == r.GUEST_RATING == accounts.RATING_SCALE == 1000.0
+    assert r.START_RATING == accounts.START_RATING == r.GUEST_RATING == 800.0
+    assert r.BOT_RATING == accounts.RATING_SCALE == 1000.0
+    assert r.ADVANCED_BOT_RATING == ADV
+    assert r.BOT_ANCHORS == {"advanced": ADV, "standard": 1000.0, "beginner": 1000.0}
+
+
+def test_a_1059_player_with_an_advanced_partner_meets_two_advanced_bots_at_even(env, monkeypatch):
+    """Before the banker head start the two teams are equal: expected 0.5."""
+    from shengji.api import ratings
+
+    srv, store, _ = env
+    uid, _ = _user(store, "even", rating=ADV)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [uid, "bot", "bot", "bot"])
+    table.start_round(banker=0)
+    assert table.room.ratings.anchors[1:] == [ADV, ADV, ADV]
+    table.finish()
+    [event] = _events(store)
+    head_start = ratings.BANKER_ADVANTAGE_PRESET
+    assert event["expected"] == pytest.approx(_e(ADV + head_start, ADV))
+    assert ratings.expected_score(ADV, ADV) == 0.5
 
 
 def test_a_new_account_starts_at_start_rating(env):
@@ -178,11 +206,12 @@ def test_a_signed_in_player_vs_bots_gets_the_worked_delta(env, monkeypatch):
     assert result.winner_team == 0 and result.level_change == 2
     [event] = _events(store)
     assert event["user_id"] == uid and event["team"] == 0 and event["banker_team"] == 1
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # team 0 = (1000 + Advanced partner 1059) / 2 + banker 40 = 1069.5; team 1 = 1059
+    assert event["expected"] == pytest.approx(_e(1069.5, ADV))
     assert event["actual"] == pytest.approx(5 / 6)
     assert event["k"] == 40
-    assert event["delta"] == pytest.approx(40 * (5 / 6 - 0.557312), abs=1e-4)   # +11.04
-    assert event["delta"] == pytest.approx(11.04, abs=0.005)
+    assert event["delta"] == pytest.approx(40 * (5 / 6 - _e(1069.5, ADV)))   # +12.73
+    assert event["delta"] == pytest.approx(12.73, abs=0.005)
     assert event["rating_before"] == 1000
     assert event["rating_after"] == pytest.approx(1000 + event["delta"])
     assert store.user(uid)["rating"] == pytest.approx(event["rating_after"])
@@ -199,7 +228,8 @@ def test_banker_adjustment_goes_to_the_banker_side(env, monkeypatch):
     table.play_round(banker=1)                 # the bots defend
     [event] = _events(store)
     assert event["banker_team"] == 0 and event["won"] == 0
-    assert event["expected"] == pytest.approx(1 - 0.557312, abs=1e-6)
+    # team 0 = (1000 + 1059) / 2 = 1029.5; team 1 = 1059 + banker 40
+    assert event["expected"] == pytest.approx(_e(1029.5, ADV + 40))
     assert event["actual"] == pytest.approx(1 / 6)
     assert event["levels"] == -2
 
@@ -226,8 +256,9 @@ def test_a_new_games_first_round_rates_the_banker_as_declared(env, monkeypatch):
     table.finish()
     [event] = _events(store)
     assert event["banker_team"] == 1
-    assert event["expected"] == pytest.approx(0.613137, abs=1e-6)
-    assert event["delta"] == pytest.approx(40 * (5 / 6 - 0.613137), abs=1e-4)   # +8.81
+    # team 0 = (1000 + 1059) / 2 + declared banker 80; team 1 = 1059
+    assert event["expected"] == pytest.approx(_e(1029.5 + 80, ADV))
+    assert event["delta"] == pytest.approx(40 * (5 / 6 - _e(1029.5 + 80, ADV)))   # +10.47
 
 
 def test_the_round_after_a_declared_one_is_preset(env, monkeypatch):
@@ -241,10 +272,10 @@ def test_the_round_after_a_declared_one_is_preset(env, monkeypatch):
     assert table.room.ratings.banker_declared is False
     table.finish()
     first, second = _events(store)
-    assert first["expected"] == pytest.approx(0.613137, abs=1e-6)
-    team = (first["rating_after"] + 1000) / 2 + 40
+    assert first["expected"] == pytest.approx(_e(1029.5 + 80, ADV))
+    team = (first["rating_after"] + ADV) / 2 + 40
     assert second["round_no"] == 2
-    assert second["expected"] == pytest.approx(1 / (1 + 10 ** ((1000 - team) / 400)))
+    assert second["expected"] == pytest.approx(_e(team, ADV))
 
 
 def test_a_resumed_games_first_round_has_a_preset_banker(env, monkeypatch):
@@ -291,9 +322,9 @@ def test_a_new_game_at_the_same_table_keeps_the_carried_banker(env, monkeypatch)
     assert table.room.ratings.banker_declared is False
     table.finish()
     first, second = _events(store)
-    assert first["expected"] == pytest.approx(0.557312, abs=1e-6)
-    team = (first["rating_after"] + 1000) / 2 + 40
-    assert second["expected"] == pytest.approx(1 / (1 + 10 ** ((1000 - team) / 400)))
+    assert first["expected"] == pytest.approx(_e(1069.5, ADV))
+    team = (first["rating_after"] + ADV) / 2 + 40
+    assert second["expected"] == pytest.approx(_e(team, ADV))
 
 
 @pytest.mark.parametrize("others", [["bot", "bot", "bot"], [None, None, None],
@@ -310,6 +341,8 @@ def test_guest_and_bot_seats_do_not_change_the_banker_flag(env, others):
 
 
 def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monkeypatch):
+    from shengji.api import ratings
+
     srv, store, _ = env
     a, _ = _user(store, "alice")
     b, _ = _user(store, "bob")
@@ -323,21 +356,23 @@ def test_partners_move_in_lockstep_and_bots_and_guests_are_never_rated(env, monk
     assert sorted(e["user_id"] for e in events) == [a, b]
     da, db = (e["delta"] for e in sorted(events, key=lambda e: e["user_id"]))
     assert da == pytest.approx(db)
-    # team 0 = (1100 + 1000) / 2 = 1050; team 1 = guest 1000 + bot 1000, banker +40
-    exp = 1 / (1 + 10 ** ((1040 - 1050) / 400))
+    # team 0 = (1100 + 1000) / 2 = 1050; team 1 = (guest 800 + bot 1059) / 2, banker +40
+    exp = _e(1050, 969.5)
     assert events[0]["expected"] == pytest.approx(exp)
-    assert da == pytest.approx(40 * (2 / 3 - exp))
+    # the raw move is under MIN_MOVE, so the win moves by MIN_MOVE
+    assert da == pytest.approx(ratings.bounded_delta(40 * (2 / 3 - exp), True, False))
     with closing(sqlite3.connect(store.path)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 2
 
 
-def test_a_guest_seat_counts_1000_whatever_the_guest_is_called(env, monkeypatch):
+def test_a_guest_seat_counts_800_whatever_the_guest_is_called(env, monkeypatch):
     srv, store, _ = env
     uid, _ = _user(store, "host")
     _force_outcome(monkeypatch, 30)
     Table(srv, [uid, None, None, None]).play_round(banker=0)
     [event] = _events(store)
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # team 0 = (1000 + guest 800) / 2 + banker 40 = 940; team 1 = two guests, 800
+    assert event["expected"] == pytest.approx(_e(940, 800))
     assert event["partner_bot"] == 0 and event["partner"] == "P2" and event["opponents_bots"] == 0
 
 
@@ -436,9 +471,8 @@ def test_an_unranked_created_room_rates_nobody(env, monkeypatch):
     assert "rating" not in srv.state_for(table.room, 0)["round_result"]
 
 
-def test_a_queue_room_rates_beside_a_guest_at_the_bot_anchor(env, monkeypatch):
-    """A guest's seat counts as the bot anchor and the round is kept: the
-    worked expectation is the one it has always had."""
+def test_a_queue_room_rates_beside_guests_at_the_guest_rating(env, monkeypatch):
+    """A guest's seat counts ``GUEST_RATING`` (800) and the round is kept."""
     srv, store, _ = env
     a, _ = _user(store, "alice")
     _force_outcome(monkeypatch, 30)
@@ -447,7 +481,22 @@ def test_a_queue_room_rates_beside_a_guest_at_the_bot_anchor(env, monkeypatch):
     table.play_round(banker=0)
     [event] = _events(store)
     assert event["user_id"] == a
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # team 0 = (1000 + bot 1059) / 2 + banker 40; team 1 = two guests, 800
+    assert event["expected"] == pytest.approx(_e(1069.5, 800))
+
+
+def test_a_guest_partner_counts_800_in_the_rated_players_expected_score(env, monkeypatch):
+    srv, store, _ = env
+    a, _ = _user(store, "alice")
+    _set(store, a, 1000, rounds=30)
+    _force_outcome(monkeypatch, 30)
+    table = Table(srv, [a, "bot", None, "bot"])
+    table.room.matched = True
+    table.play_round(banker=0)
+    [event] = _events(store)
+    assert event["user_id"] == a
+    # team 0 = (1000 + guest partner 800) / 2 + banker 40 = 940; team 1 = two bots, 1059
+    assert event["expected"] == pytest.approx(_e(940, ADV))
 
 
 def test_play_bots_is_unrated_and_the_queue_rates_its_bot_game(queue_env):
@@ -495,8 +544,9 @@ def test_seat_ratings_are_read_when_the_round_starts(env, monkeypatch):
     _set(store, b, 1400, rounds=31)
     table.finish()
     by = {e["user_id"]: e for e in _events(store)}
-    assert by[a]["expected"] == pytest.approx(0.557312, abs=1e-6)
-    assert by[b]["expected"] == pytest.approx(0.557312, abs=1e-6)
+    # team 0 = (1000 + 1000) / 2 + banker 40; team 1 = two bots, 1059
+    assert by[a]["expected"] == pytest.approx(_e(1040, ADV))
+    assert by[b]["expected"] == pytest.approx(_e(1040, ADV))
     # each account's own rating moves from where it stands now
     assert by[b]["rating_before"] == 1400
 
@@ -514,12 +564,12 @@ def test_a_mid_round_claimant_does_not_change_the_round_for_the_others(env, monk
     table.finish()
     [event] = _events(store)
     assert event["user_id"] == host
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # seat 1 was a bot
+    assert event["expected"] == pytest.approx(_e(1069.5, ADV))   # seat 1 was a bot
     assert event["k"] == 40
 
 
 def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, monkeypatch):
-    """A guest at a queue-matched table counts 1000 and is never rated; the
+    """A guest at a queue-matched table counts 800 and is never rated; the
     account beside it is rated on the round with its full K."""
     srv, store, _ = env
     a, _ = _user(store, "alice")
@@ -532,8 +582,10 @@ def test_a_round_with_a_guest_at_a_queue_table_rates_each_account_in_full(env, m
     [event] = _events(store)
     assert event["user_id"] == a
     assert event["k"] == 40
-    assert event["expected"] == pytest.approx(0.557312, abs=1e-6)   # the guest is 1000
-    assert event["delta"] == pytest.approx(11.04, abs=0.005)
+    # team 0 = (1000 + bot 1059) / 2 + banker 40; team 1 = (guest 800 + bot 1059) / 2
+    exp = _e(1069.5, 929.5)
+    assert event["expected"] == pytest.approx(exp)
+    assert event["delta"] == pytest.approx(40 * (5 / 6 - exp), abs=0.005)
     assert store.user(a)["rated_rounds"] == 31
 
 
@@ -545,7 +597,7 @@ def test_a_ranked_table_of_signed_in_players_is_rated_as_before(env, monkeypatch
     table.room.matched = True
     table.play_round(banker=0)
     [event] = _events(store)
-    assert event["delta"] == pytest.approx(11.04, abs=0.005)
+    assert event["delta"] == pytest.approx(40 * (5 / 6 - _e(1069.5, ADV)))
 
 
 # -------------------------------------------------------- ranked join
@@ -1808,7 +1860,7 @@ def test_bounded_delta_caps_a_loss_and_leaves_wins_and_leaves_alone():
 
 def test_a_heavy_loss_played_out_costs_exactly_the_cap(env, monkeypatch):
     """A 1300 player on the attackers, beaten by three levels (0 points):
-    team 1150 against the preset banker's 1040, ``E`` 0.652, raw -26.1; the
+    team 1179.5 against the preset banker's 1099, ``E`` 0.614, raw -24.6; the
     loss is held at ``MAX_LOSS``."""
     from shengji.api import ratings
 
@@ -1822,13 +1874,13 @@ def test_a_heavy_loss_played_out_costs_exactly_the_cap(env, monkeypatch):
     [event] = _events(store)
     assert event["won"] == 0 and event["levels"] == -3
     raw = event["k"] * (event["actual"] - event["expected"])
-    assert raw == pytest.approx(-26.1, abs=0.1)
+    assert raw == pytest.approx(-24.6, abs=0.1)
     assert event["delta"] == pytest.approx(-ratings.MAX_LOSS)
     assert event["rating_after"] == pytest.approx(1300.0 - 12.0)
 
 
 def test_a_leavers_heavy_loss_is_capped_above_the_played_out_cap(env, monkeypatch):
-    """The same round left mid-play: raw -26.1 is held at ``MAX_LEAVE_LOSS``
+    """The same round left mid-play: raw -24.6 is held at ``MAX_LEAVE_LOSS``
     (15), more than the 12 a played-out loss costs."""
     from shengji.api import ratings
 
@@ -1844,14 +1896,14 @@ def test_a_leavers_heavy_loss_is_capped_above_the_played_out_cap(env, monkeypatc
     [event] = _events(store)
     assert event["abandoned"] == 1
     raw = event["k"] * (event["actual"] - event["expected"])
-    assert raw == pytest.approx(-26.1, abs=0.1)
+    assert raw == pytest.approx(-24.6, abs=0.1)
     assert event["delta"] == pytest.approx(-ratings.MAX_LEAVE_LOSS)
     assert event["delta"] < -ratings.MAX_LOSS
 
 
 def test_a_big_win_is_not_capped(env, monkeypatch):
-    """A 700 player banking with bots wins by three levels: team 890 against
-    1000, ``E`` 0.348, gain +26.1 in full."""
+    """A 700 player banking with bots wins by three levels: team 919.5
+    against 1059, ``E`` 0.309, gain +27.6 in full."""
     from shengji.api import ratings
 
     srv, store, _ = env
@@ -1866,7 +1918,7 @@ def test_a_big_win_is_not_capped(env, monkeypatch):
     raw = event["k"] * (event["actual"] - event["expected"])
     assert event["delta"] == pytest.approx(raw)
     assert event["delta"] > ratings.MAX_LOSS
-    assert event["delta"] == pytest.approx(26.1, abs=0.1)
+    assert event["delta"] == pytest.approx(27.6, abs=0.1)
 
 
 def test_a_leave_is_exempt_from_the_minimum_move(env, monkeypatch):

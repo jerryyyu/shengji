@@ -894,7 +894,7 @@ def account_frames():
          None, phone(me_head(DEVICE_BACK, "On this iPhone only") + stats_block() + SETTINGS
                      + grp([chev(DEVICE_BACK[0]), chev("Sign in"), sw("Show me on the leaderboard", True)]) + DELETE,
                      active="Me", title="Me", user="G", overlay=del_sheet), 390, 844, IOS),
-        (13, "Mixed table", "A web guest's round end, unchanged. The iOS device account at the same table is rated normally; the web guest still counts as a fixed 1000.",
+        (13, "Mixed table", "A web guest's round end, unchanged. The iOS device account at the same table is rated normally; the web guest still counts as a fixed 800.",
          None, round_end(rating=False, signin=True, partner="Gentle Tractor"), 844, 390, WEB),
     ]
 

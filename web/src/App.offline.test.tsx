@@ -203,7 +203,7 @@ it("the table's Bots row starts at Standard, and Start takes the level you pick"
   await until(() => panel() !== null);
   const bots = panel()!.querySelector<HTMLSelectElement>("select[aria-label='Bots']")!;
   expect(bots.value).toBe("standard");
-  expect([...bots.options].map((o) => o.textContent)).toEqual(["Standard", "Advanced"]);
+  expect([...bots.options].map((o) => o.textContent)).toEqual(["Beginner", "Standard", "Advanced"]);
   // the only setting row: an offline table has no Starting level
   expect(panel()!.querySelectorAll(".tp-set").length).toBe(1);
   const { conn } = await import("./ws");

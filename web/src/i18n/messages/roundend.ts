@@ -142,7 +142,7 @@ export const roundend = defineMessages({
   "roundend.srvRankedLevel": { en: "A ranked table starts at level 2.", zh: "排位牌桌从 2 打起。" },
   "roundend.srvRankedBots": { en: "A ranked table plays the full-strength bots.", zh: "排位牌桌用高级机器人。" },
   "roundend.srvAllowSetting": { en: "Allow joiners is on or off.", zh: "允许中途加入只能开或关。" },
-  "roundend.srvBotsSetting": { en: "Bots is Standard or Advanced.", zh: "机器人只能选标准或高级。" },
+  "roundend.srvBotsSetting": { en: "Bots is Beginner, Standard or Advanced.", zh: "机器人只能选入门、标准或高级。" },
   "roundend.srvTooSoon": { en: "Start now opens 30 seconds after the last person sits.", zh: "最后一人坐下 30 秒后才能马上开始。" },
   "roundend.srvRoomFull": { en: "Room is full — every seat is taken by a human.", zh: "牌桌满了，每个座位都是真人。" },
   "roundend.srvChooseSeat": { en: "Every seat is taken, but a player is offline — pick their seat to take over.", zh: "座位都满了，但有玩家掉线，选他的座位来接替。" },

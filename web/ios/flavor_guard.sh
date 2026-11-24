@@ -12,9 +12,13 @@
 # the spike's test page or bundle. The Beta configuration (TestFlight
 # internal testing only) must carry nearby and its plist keys. Debug passes:
 # a device test may define the flags on the xcodebuild command line.
+# Release and Beta also stop when the synced capacitor.config.json's
+# User-Agent token (ios.appendUserAgent, ShengjiApp/<version>) is not this
+# build's MARKETING_VERSION, a command-line override included: the server
+# would stamp the wrong app_version on the app's telemetry.
 # Reads Xcode's CONFIGURATION, SWIFT_ACTIVE_COMPILATION_CONDITIONS,
-# OTHER_SWIFT_FLAGS, GCC_PREPROCESSOR_DEFINITIONS, PROJECT_DIR and
-# INFOPLIST_FILE, and the processed TARGET_BUILD_DIR/INFOPLIST_PATH when it is
+# OTHER_SWIFT_FLAGS, GCC_PREPROCESSOR_DEFINITIONS, PROJECT_DIR,
+# INFOPLIST_FILE and MARKETING_VERSION, and the processed TARGET_BUILD_DIR/INFOPLIST_PATH when it is
 # already there (declaring it as an input would make a dependency cycle).
 set -euo pipefail
 NEARBY_KEYS="NSLocalNetworkUsageDescription NSBonjourServices"
@@ -47,6 +51,21 @@ plist_has() {  # plist_has KEY FILE: the top-level KEY is in the plist (FILE alr
   fi
 }
 
+app_ua_ok() {  # the synced config's User-Agent token names this build's version
+  local cfg="$PROJECT_DIR/App/capacitor.config.json" ua
+  [ -n "${MARKETING_VERSION:-}" ] || { echo "error: $CONFIGURATION has no MARKETING_VERSION"; exit 1; }
+  [ -f "$cfg" ] || { echo "error: no synced config at $cfg (npm run ios:sync:appstore)"; exit 1; }
+  if [ -x /usr/bin/plutil ]; then
+    ua=$(/usr/bin/plutil -extract ios.appendUserAgent raw -o - "$cfg" 2>/dev/null) || ua=""
+  else
+    ua=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["ios"]["appendUserAgent"])' "$cfg" 2>/dev/null) || ua=""
+  fi
+  if [ "$ua" != "ShengjiApp/$MARKETING_VERSION" ]; then
+    echo "error: $cfg carries the User-Agent token '${ua}', not ShengjiApp/$MARKETING_VERSION (npm run ios:sync:appstore after the version bump)"
+    exit 1
+  fi
+}
+
 PLISTS=("$PROJECT_DIR/$INFOPLIST_FILE")
 BUILT="${TARGET_BUILD_DIR:-}/${INFOPLIST_PATH:-}"
 [ -z "${INFOPLIST_PATH:-}" ] || [ ! -f "$BUILT" ] || PLISTS+=("$BUILT")
@@ -67,6 +86,7 @@ case "${CONFIGURATION:?}" in
         plist_has "$k" "$f" || { echo "error: Beta Info.plist $f has no $k"; exit 1; }
       done
     done
+    app_ua_ok
     echo "flavor: Beta (TestFlight internal testing only), nearby on" ;;
   *)
     # every defined name, from "-D" "X", -DX, X=1 or a bare condition
@@ -103,5 +123,6 @@ case "${CONFIGURATION:?}" in
       printf '%s\n' "$found" | sed 's/^/  /'
       exit 1
     fi
+    app_ua_ok
     echo "flavor: $CONFIGURATION (App Store), nearby on, no test tools" ;;
 esac

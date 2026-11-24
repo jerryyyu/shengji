@@ -158,8 +158,8 @@ async def post_support(body: SupportPost, request: Request) -> dict:
 # Static rules pages built from web/public/rules/: each URL answers with its
 # own index.html, with or without the trailing slash, so the canonical
 # address (no slash) is a 200 rather than the static mount's redirect.
-# The canonical origin search engines and link previews are pointed at; the
-# app's own host and its invite links stay on shengji.fly.dev (web/src/siteOrigin.ts).
+# The canonical origin search engines, link previews and the iOS app are
+# pointed at; shengji.fly.dev answers the same pages for older app builds.
 SITE_ORIGIN = "https://playshengji.com"
 # The info pages the web app draws from its path (web/src/support/route.ts).
 INFO_PAGES = ("support", "privacy", "terms")

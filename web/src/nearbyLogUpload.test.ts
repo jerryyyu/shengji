@@ -11,7 +11,7 @@ import {
   nearbyLogLines, type LogFile,
 } from "./nearbyLog";
 import {
-  FIRST_TICK_MS, loadUploadState, startNearbyLogUpload, stopNearbyLogUploadForTests, TICK_MS, UPLOAD_URL, uploadChunkForTests,
+  FIRST_TICK_MS, loadUploadState, startNearbyLogUpload, stopNearbyLogUploadForTests, TICK_MS, RELEASE_UPLOAD_URL, UPLOAD_PATH, uploadChunkForTests, uploadUrl,
   uploadDeviceId, uploadNearbyLogNow,
 } from "./nearbyLogUpload";
 
@@ -54,7 +54,7 @@ type Reply = number | "network";
 function mockFetch(replies: Reply[], fallback: Reply = 204) {
   const calls: { body: string; headers: Record<string, string> }[] = [];
   const fn = vi.fn(async (url: string, init: RequestInit) => {
-    expect(url).toBe(UPLOAD_URL);
+    expect(url).toBe(uploadUrl());
     expect(init.method).toBe("POST");
     calls.push({ body: String(init.body), headers: init.headers as Record<string, string> });
     if (!serverTakes(String(init.body))) return new Response("bad_content", { status: 400 });
@@ -308,5 +308,21 @@ describe("the log upload outside the device test and the Beta", () => {
     for (const f of ["src/components/HudMenu.tsx", "src/nearbyUi.tsx"]) {
       expect(readFileSync(join(process.cwd(), f), "utf8")).not.toContain("nearbyLogUpload");
     }
+  });
+});
+
+describe("the upload endpoint", () => {
+  it("is same-origin on a hosted page, the old live host and the new one alike", () => {
+    expect(uploadUrl({ protocol: "https:" })).toBe("/api/nearby-log");
+    for (const href of ["https://shengji.fly.dev/", "https://playshengji.com/"]) {
+      expect(new URL(uploadUrl(new URL(href)), href).href).toBe(`${new URL(href).origin}/api/nearby-log`);
+    }
+    expect(UPLOAD_PATH).toBe("/api/nearby-log");
+  });
+
+  it("is the release host on the app's bundled page", () => {
+    expect(uploadUrl(new URL("capacitor://localhost/index.html"))).toBe("https://playshengji.com/api/nearby-log");
+    expect(RELEASE_UPLOAD_URL).toBe("https://playshengji.com/api/nearby-log");
+    expect(uploadUrl(undefined)).toBe(RELEASE_UPLOAD_URL);
   });
 });

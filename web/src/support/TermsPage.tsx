@@ -28,7 +28,7 @@ export default function TermsPage() {
         <InfoHead title="Terms of use" />
         <p className="info-small">Last updated {TERMS_UPDATED}</p>
         <p className="info-text">
-          These terms are the rules for using Sheng Ji, in a browser at shengji.fly.dev or in the iOS
+          These terms are the rules for using Sheng Ji, in a browser at playshengji.com or in the iOS
           app. The game is run by its developer (“we”). By playing or signing in, you agree to them.
         </p>
 

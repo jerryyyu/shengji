@@ -1,3 +1,5 @@
+// first: the app's one-time handoff is written before any module reads storage
+import './originMove'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

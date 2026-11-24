@@ -446,6 +446,6 @@ The reviewer judges:
 - **Icons.** One stroke weight per control strip, matched to the adjacent text; one `currentColor` SVG recoloured per state; SVG, not emoji, on controls.
 - **Text wrap.** `text-wrap: balance` on short centred titles, sheet lines and toasts; `pretty` on short body text; neither on long text.
 - **One value per effect.** Press feedback reuses `.btn`'s scale or the existing dim list; durations come from the motion tokens.
-- **Control sizes.** Actions are 52 tall and switches 44, radius 14, from the `--ctl-*` tokens; a new control uses them (`polishCss.test.ts`).
+- **Control sizes.** Actions are 52 tall and switches 44, radius 14, from the `--ctl-*` tokens; a new control uses them (`polishCss.test.ts`). A screen's main action is the one gold (`.btn.gold`, or a listed `.primary` main action); a second action is the raised neutral.
 
 Findings use Severity / Location / Before / After / Why; the review also lists candidates it rejected, with the reason, and what it did not check on a device.

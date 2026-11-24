@@ -114,6 +114,13 @@ describe("the panel's controls hold AA without dimming", () => {
     expect(contrast(color(decls(".tp-primary .timer-ring-secs")), GOLD_TOP)).toBeGreaterThanOrEqual(AA);
   });
 
+  it("the shared gold of every other main action (.btn.gold, Next round, Next, Save) holds 4.5:1 on its face", () => {
+    const shared = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .find((m) => m[1].replace(/\/\*[\s\S]*?\*\//g, "").split(",").map((s) => s.trim()).includes(".btn.gold") && color(m[2]));
+    expect(shared?.[2]).toContain("linear-gradient(180deg, #8a6a22, #6b5219)");
+    expect(contrast(color(shared?.[2] ?? ""), GOLD_TOP)).toBeGreaterThanOrEqual(AA);
+  });
+
   it("the mode a seated player cannot switch to is drawn whole, in AA text, with a lock", () => {
     const held = ruleIn(playLines, ".play-section .play-mode-opt:disabled:not(.on)");
     expect(held).toContain("opacity: 1");

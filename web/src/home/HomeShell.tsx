@@ -197,7 +197,7 @@ export default function HomeShell({ active, section, seatedAt = null, children }
   );
 }
 
-/** An iOS segmented control: one choice of a few, 32 pt tall. */
+/** An iOS segmented control: one choice of a few, 44 pt tall. */
 export function Segmented<T extends string>({ label, options, value, onChange }: {
   label: string; options: readonly { value: T; label: string }[]; value: T; onChange: (v: T) => void;
 }) {

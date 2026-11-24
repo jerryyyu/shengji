@@ -18,8 +18,12 @@ from tests.test_accounts import _claims, _session_cookie, accounts_on, keypair  
 from tests.test_server_ws import _drain, client  # noqa: F401
 
 
-def _user(store, sub, name=None):
+def _user(store, sub, name=None, rating=1000.0):
+    """A signed-in account at ``rating``: the worked examples here are set at
+    the bot anchor (1000), not at a new account's start (``START_RATING``)."""
     user = store.upsert_user(_claims(sub=sub, email=f"{sub}@example.com", name=name or sub.title()))
+    if rating is not None:
+        _set(store, user["id"], rating)
     return user["id"], {"cookie": f"sj_session={store.create_session(user['id'])}"}
 
 
@@ -135,10 +139,19 @@ def test_team_strength_is_the_seat_mean_plus_the_banker_side():
     assert r.team_strengths([1100, 1000, 1000, 1000], banker_team=1) == (1050.0, 1040.0)
 
 
-def test_new_accounts_bots_and_guests_all_start_at_1000():
+def test_new_accounts_start_at_800_while_bots_and_guests_stay_at_1000():
     from shengji.api import accounts, ratings as r
 
-    assert r.START_RATING == r.BOT_RATING == r.GUEST_RATING == accounts.START_RATING == 1000.0
+    assert r.START_RATING == accounts.START_RATING == 800.0
+    assert r.BOT_RATING == r.GUEST_RATING == accounts.RATING_SCALE == 1000.0
+
+
+def test_a_new_account_starts_at_start_rating(env):
+    from shengji.api import ratings as r
+
+    _, store, _ = env
+    uid, _ = _user(store, "brandnew", rating=None)
+    assert store.user(uid)["rating"] == r.START_RATING == 800.0
 
 
 def test_engine_level_change_is_zero_for_an_attacker_takeover(monkeypatch):
@@ -1480,7 +1493,7 @@ def test_a_v4_database_moves_to_the_1000_scale_once(accounts_on, tmp_path):
         uid: e["rating_after"] for uid, e in after.items()}
 
     newcomer = again.upsert_user(_claims(sub="after-the-move"))
-    assert newcomer["rating"] == 1000 and newcomer["rated_rounds"] == 0
+    assert newcomer["rating"] == accounts_on.START_RATING and newcomer["rated_rounds"] == 0
     board = ratings.leaderboard(again, "all", None)
     assert board["anchor"] == {"name": "Sheng Ji bot", "rating": 1000}
 
@@ -1501,10 +1514,10 @@ def test_the_scale_move_keeps_every_delta():
                 assert deltas[1] == pytest.approx(deltas[0], abs=1e-12)
 
 
-def test_a_fresh_database_starts_new_accounts_at_1000(accounts_on):
+def test_a_fresh_database_starts_new_accounts_at_start_rating(accounts_on):
     store = accounts_on.STORE
     assert store.schema_version() == len(accounts_on.SCHEMA)
-    assert store.upsert_user(_claims(sub="fresh"))["rating"] == 1000
+    assert store.upsert_user(_claims(sub="fresh"))["rating"] == accounts_on.START_RATING == 800.0
     # A returning login never resets a moved rating.
     uid = store.upsert_user(_claims(sub="fresh"))["id"]
     _set(store, uid, 1044)

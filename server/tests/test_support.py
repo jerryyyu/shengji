@@ -416,3 +416,36 @@ def test_the_bundle_id_matches_the_capacitor_app_id():
 
     config = (PUBLIC.parent / "capacitor.config.ts").read_text()
     assert f'appId: "{support.APP_BUNDLE_ID}"' in config
+
+
+@pytest.mark.parametrize("path, location", [
+    ("/", "https://playshengji.com/"),
+    ("/?code=ABCD", "https://playshengji.com/?code=ABCD"),
+    ("/rules/zh?x=1&y=two", "https://playshengji.com/rules/zh?x=1&y=two"),
+    ("/guides/a%20b", "https://playshengji.com/guides/a%20b"),
+])
+@pytest.mark.parametrize("host", ["www.playshengji.com", "WWW.PlayShengji.com:443"])
+def test_www_moves_to_the_apex_with_its_path_and_query(client, path, location, host):
+    for method in ("GET", "HEAD", "POST"):
+        r = client.request(method, path, headers={"host": host}, follow_redirects=False)
+        assert r.status_code == 301, (method, path)
+        assert r.headers["location"] == location
+        assert r.headers["strict-transport-security"].startswith("max-age=")
+
+
+@pytest.mark.parametrize("host", ["playshengji.com", "shengji.fly.dev", "testserver"])
+def test_the_apex_and_fly_dev_answer_in_place(client, host):
+    for path in ("/healthz", "/?code=ABCD"):
+        r = client.get(path, headers={"host": host}, follow_redirects=False)
+        assert r.status_code != 301 and "location" not in r.headers, (host, path)
+    assert client.get("/healthz", headers={"host": host}).status_code == 200
+
+
+def test_www_answers_the_app_site_association_and_healthz_in_place(client, monkeypatch):
+    monkeypatch.setenv("APPLE_TEAM_ID", FAKE_TEAM)
+    www = {"host": "www.playshengji.com"}
+    assert client.get("/healthz", headers=www, follow_redirects=False).status_code == 200
+    for path in ("/.well-known/apple-app-site-association", "/apple-app-site-association"):
+        r = client.get(path, headers=www, follow_redirects=False)
+        assert r.status_code == 200, path
+        assert r.json()["applinks"]["details"][0]["appIDs"] == [f"{FAKE_TEAM}.com.jerryyu.shengji"]

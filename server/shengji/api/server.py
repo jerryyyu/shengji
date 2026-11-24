@@ -230,6 +230,44 @@ class SecurityHeaders:
         await self.inner(scope, receive, with_headers)
 
 
+# An invite link carries the host it was shared from, and the app's
+# associated domains name only the apex and shengji.fly.dev, so a page on www
+# moves to the apex. Apple's CDN fetches the association file and Fly checks
+# /healthz on whatever host they use; those answer in place.
+WWW_HOST = "www.playshengji.com"
+WWW_EXEMPT_PATHS = frozenset((*support.AASA_PATHS, "/healthz"))
+
+
+class WwwRedirect:
+    """Pure ASGI: an HTTP request to ``WWW_HOST`` gets a 301 to the same path
+    and query on ``support.SITE_ORIGIN``. WebSockets and every other host pass
+    through."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send_):
+        if scope["type"] != "http" or scope["path"] in WWW_EXEMPT_PATHS:
+            await self.inner(scope, receive, send_)
+            return
+        host = b""
+        for k, v in scope.get("headers", []):
+            if k == b"host":
+                host = v
+                break
+        if host.decode("latin-1").split(":", 1)[0].lower().rstrip(".") != WWW_HOST:
+            await self.inner(scope, receive, send_)
+            return
+        target = support.SITE_ORIGIN.encode() + (scope.get("raw_path") or scope["path"].encode())
+        if scope.get("query_string"):
+            target += b"?" + scope["query_string"]
+        await send_({"type": "http.response.start", "status": 301,
+                     "headers": [(b"location", target), (b"content-length", b"0")]})
+        await send_({"type": "http.response.body", "body": b""})
+
+
+# Added first so it sits inside SecurityHeaders: a redirect carries the headers too.
+app.add_middleware(WwwRedirect)
 app.add_middleware(SecurityHeaders)
 
 rooms: dict[str, "Room"] = {}

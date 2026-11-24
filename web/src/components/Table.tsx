@@ -624,8 +624,10 @@ export default function Table({ state }: { state: GameState }) {
     actionBar = (
       <>
       <TimerRing left={clock} total={MOVE_SECS} />
+      {/* drawn at full contrast, its fill the count's share of 8 */}
       <button
-        className="btn primary"
+        className="btn primary bury-btn"
+        style={{ "--bury-fill": `${(Math.min(selectedIds.length, 8) / 8) * 100}%` } as CSSProperties}
         disabled={selectedIds.length !== 8 || pending !== null || !online}
         aria-busy={pending !== null || undefined}
         onClick={() => sendAction({ type: "bury", card_ids: selectedIds })}

@@ -190,6 +190,20 @@ textarea:focus-visible {
 }
 }
 
+/* Bury: never dimmed. Gold edge and text at full contrast, and the button
+   fills from the left as cards are picked, so its own face reads 3 of 8. */
+.btn.primary.bury-btn,
+.btn.primary.bury-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  background: linear-gradient(90deg, rgba(242, 193, 78, 0.42) var(--bury-fill, 0%), rgba(8, 20, 14, 0.85) var(--bury-fill, 0%));
+  color: #ffe9b0;
+  font-weight: 700;
+}
+
+.btn.primary.bury-btn:disabled {
+  opacity: 1;
+}
+
 .btn.gold {
   background: linear-gradient(180deg, #8a6d2a, #6b531d);
   border-color: var(--gold);
@@ -5788,12 +5802,14 @@ button.tp-seat:focus-visible { outline: 2px solid var(--gold); outline-offset: 2
 .tp-acts { display: flex; gap: 8px; }
 .tp-primary {
   appearance: none; flex: 1; min-width: 0; min-height: 52px; padding: 0 12px; border-radius: 14px;
-  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
   font: inherit; font-size: var(--fs-17); font-weight: 700; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 /* the offer's clock on Join */
 .tp-primary .timer-ring { --size: 32px; --band: 2.5px; margin: -6px 10px -6px 0; vertical-align: middle; }
+/* its seconds in the button's light ink: gold on the gold face fell under 4.5:1 */
+.tp-primary .timer-ring-secs { color: #fff3cf; }
 /* Join never squeezes its ring over its word: in a narrow column (a sideways
    phone) Keep looking takes the next line instead; on one line Join keeps
    most of the room */
@@ -5978,7 +5994,7 @@ dialog.leave-sheet-backdrop {
 }
 /* a confirm that is not a way out (move, take a seat) is the panel's gold */
 .leave-sheet-actions .leave-sheet-leave.confirm-sheet-go {
-  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #ffd77a;
+  border: 1.5px solid #d6a22c; background: linear-gradient(#8a6a22, #6b5219); color: #fff3cf;
 }
 .leave-sheet-actions button[aria-disabled="true"] { opacity: 0.6; cursor: default; }
 .leave-sheet-error { margin: 0; font-size: 14px; line-height: 1.4; color: #f0a0aa; text-align: center; }

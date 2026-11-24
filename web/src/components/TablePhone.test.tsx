@@ -490,6 +490,20 @@ describe("Play and Bury say they are sending", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("Bury fills with the count, 0 to 8, and is never dimmed while short", () => {
+    render(burying());
+    expect(label()).toBe("Bury (0/8)");
+    expect(primary().classList.contains("bury-btn")).toBe(true);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
+    for (let i = 0; i < 3; i++) pick(i);
+    expect(label()).toBe("Bury (3/8)");
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("37.5%");
+    expect(primary().disabled).toBe(true);
+    for (let i = 3; i < 8; i++) pick(i);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("100%");
+    expect(primary().disabled).toBe(false);
+  });
+
   it("a delayed bury: Sending… and aria-busy, the eight stay, one send", () => {
     render(burying());
     for (let i = 0; i < 8; i++) pick(i);

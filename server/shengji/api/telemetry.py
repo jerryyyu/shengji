@@ -8,11 +8,20 @@ free-form survives: no names, chat, room codes or card codes.
 
 Each socket gets a random ``sid`` minted here and kept only on the socket
 object, so no table maps it to an account, device or address. The server
-stamps ``sid``, ``who``, ``form``, ``platform``, ``build`` and
-``first_visit`` onto each kept event. ``who`` is the socket's own kind as
+stamps ``sid``, ``who``, ``form``, ``platform``, ``build``, ``first_visit``
+and ``app_version`` onto each kept event. ``who`` is the socket's own kind as
 the server read it at the handshake: ``guest``, ``device`` (an account with
 no Google or Apple identity, the iOS app's own) or ``linked`` (an account
 with one); never the account itself.
+
+``app_version`` is the iOS app's own version, from the ``ShengjiApp/<version>``
+token its WebView appends to the handshake's User-Agent (``appendUserAgent``
+in web/capacitor.config.ts). The app loads the live site, so the page cannot
+know which shell runs it. Only a bare ``1.2`` or ``1.2.3`` (at most four
+digits a part) is kept; any other token, and the rest of the User-Agent, is
+dropped, and the socket's ``app_version`` and queue events carry the same
+value. Apps up to 1.0.1 send no token: a ``platform`` ``ios_app`` row with no
+``app_version`` is from 1.0.1 or earlier.
 
 A batch holding any event sent at a sign-in or identity change
 (``signin``, ``device_account`` or the ``signin_open`` tap) is an identity
@@ -117,6 +126,9 @@ SIGNIN_STEPS = frozenset({"provider_tap", "done", "error", "closed"})
 DEVICE_STEPS = frozenset({"created", "restored", "fell_back_guest", "linked",
                           "conflict_shown", "switched"})
 QUEUE_EVENTS = frozenset({"join", "leave", "start", "start_failed"})
+APP_UA_TOKEN = re.compile(r"(?:^|\s)ShengjiApp/(\S{1,32})(?=\s|$)")
+APP_VERSION = re.compile(r"\d{1,4}\.\d{1,4}(?:\.\d{1,4})?")
+MAX_USER_AGENT = 512
 
 
 def _enum(values: frozenset[str]):
@@ -193,13 +205,26 @@ def build_id() -> str:
     return clean or "dev"
 
 
-class SocketTelemetry:
-    """Per-socket state: the random sid and the hourly event budget."""
+def app_version(user_agent: Any) -> str | None:
+    """The iOS app's version from a User-Agent's ``ShengjiApp/<version>``
+    token, or None when there is none or it is not a bare version."""
+    if not isinstance(user_agent, str) or len(user_agent) > MAX_USER_AGENT:
+        return None
+    m = APP_UA_TOKEN.search(user_agent)
+    if m is None or not APP_VERSION.fullmatch(m.group(1)):
+        return None
+    return m.group(1)
 
-    __slots__ = ("sid", "window_start", "count")
+
+class SocketTelemetry:
+    """Per-socket state: the random sid, the hourly event budget and the
+    app version read at the handshake."""
+
+    __slots__ = ("sid", "window_start", "count", "app_version")
 
     def __init__(self) -> None:
         self.sid = secrets.token_hex(8)
+        self.app_version: str | None = None
         self.window_start = time.monotonic()
         self.count = 0
 
@@ -224,6 +249,18 @@ def state_for(conn: Any) -> SocketTelemetry:
         except Exception:      # noqa: BLE001 - a socket object without attributes
             pass
     return st
+
+
+def handshake(conn: Any, user_agent: Any) -> None:
+    """Record the socket's app version from its handshake User-Agent."""
+    try:
+        state_for(conn).app_version = app_version(user_agent)
+    except Exception:          # noqa: BLE001
+        pass
+
+
+def _app_stamp(st: SocketTelemetry) -> dict[str, str]:
+    return {"app_version": st.app_version} if st.app_version is not None else {}
 
 
 def clean_event(raw: Any) -> dict[str, Any] | None:
@@ -377,7 +414,7 @@ def receive(conn: Any, msg: Any, kind: str) -> int:
         identity = any(_identity_moment(ev) for ev in events)
         events = events[:st.take(len(events))]
         ts = round(time.time())
-        records = [{**_stamped(ev, ts, identity), **stamps, "sid": st.sid,
+        records = [{**_stamped(ev, ts, identity), **stamps, **_app_stamp(st), "sid": st.sid,
                     "who": kind, "build": build_id()} for ev in events]
         return len(records) if write(records, identity=identity) else 0
     except Exception:          # noqa: BLE001
@@ -403,6 +440,7 @@ def queue_event(conn: Any, event: str, **fields: Any) -> bool:
             if not st.take(1):
                 return False
             rec["sid"] = st.sid
+            rec.update(_app_stamp(st))
         rec["build"] = build_id()
         rec["ts"] = round(time.time())
         return write([rec])

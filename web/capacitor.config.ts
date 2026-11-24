@@ -1,4 +1,6 @@
 import type { CapacitorConfig } from "@capacitor/cli";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // The iOS shell loads the live site rather than the bundled build. WKWebView
 // cannot serve bundled assets from an https origin (Capacitor's iosScheme may
@@ -27,6 +29,30 @@ const serverUrl = process.env.CAP_SERVER_URL || "https://playshengji.com";
 // storyboard and the Splash image asset carry the same colour.
 const CHROME = "#14171e";
 
+// The app's version (MARKETING_VERSION, the bundle's CFBundleShortVersionString)
+// rides in the WebView's User-Agent as `ShengjiApp/<version>`, so the server
+// can stamp it on telemetry (server/shengji/api/telemetry.py, app_version).
+// The page itself cannot know it: it is the live site, the same for every
+// app version. Capacitor's appendUserAgent is a fixed string in the synced
+// capacitor.config.json, so it is read here from the Xcode project at
+// `cap sync` time; a version bump needs a sync before the build, as the
+// bundled page already does. Every configuration must carry the same
+// version, or the sync stops.
+export const APP_UA_PRODUCT = "ShengjiApp";
+
+export function marketingVersion(pbxproj: string): string {
+  const versions = new Set([...pbxproj.matchAll(/^\s*MARKETING_VERSION = "?([^";]+)"?;$/gm)].map((m) => m[1]));
+  const [version] = versions;
+  if (versions.size !== 1 || !/^\d+\.\d+(\.\d+)?$/.test(version)) {
+    throw new Error(`capacitor.config.ts: expected one MARKETING_VERSION like 1.0.2, found ${[...versions].join(", ") || "none"}`);
+  }
+  return version;
+}
+
+const here = typeof __dirname === "string" ? __dirname : process.cwd();
+const appVersion = marketingVersion(
+  readFileSync(join(here, "ios", "App", "App.xcodeproj", "project.pbxproj"), "utf8"));
+
 const config: CapacitorConfig = {
   appId: "com.jerryyu.shengji",
   appName: "Sheng Ji",
@@ -42,6 +68,7 @@ const config: CapacitorConfig = {
     errorPath: "index.html",
   },
   ios: {
+    appendUserAgent: `${APP_UA_PRODUCT}/${appVersion}`,
     contentInset: "never",
     backgroundColor: CHROME,
     limitsNavigationsToAppBoundDomains: false,

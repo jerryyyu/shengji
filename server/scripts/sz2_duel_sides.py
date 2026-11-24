@@ -36,12 +36,29 @@ def build_sides(packages):
     return build_sides_from_reference(packages, load_reference())
 
 
-def build_sides_from_reference(packages, reference):
-    tree = Path(reference["tree"])
-    for command, expected in ((["rev-parse", "HEAD"], reference["tree_head"]), (["status", "--porcelain"], "")):
+def verify_tree(tree, head):
+    for command, expected in ((["rev-parse", "HEAD"], head), (["status", "--porcelain"], "")):
         actual = subprocess.check_output(["git", "-C", tree, *command], text=True).strip()
         if actual != expected:
             raise ValueError("duel source tree differs from the reference")
+
+
+def adapter_environment(tree):
+    inputs = FLEET / "claude-ut-inside1/inputs"
+    env = {"HOME": str(Path.home()), "PATH": os.defpath, "PYTHONPATH": str(tree / "server"),
+           "SHENGJI_FAST": "1", "FIND_GAPS_SERVER": str(tree / "server"),
+           "FIND_GAPS_PKG": str(inputs / "g3a-e04-f4f4127e.npz"),
+           "FIND_GAPS_PATH_MAP": ";".join(f"/data/models/{name}={inputs / name}"
+                                          for name in ("b1a-028131a0.npz", "p0-ft1-1fa201b2.npz"))}
+    for threads in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                    "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        env[threads] = "1"
+    return env
+
+
+def build_sides_from_reference(packages, reference):
+    tree = Path(reference["tree"])
+    verify_tree(tree, reference["tree_head"])
     kit = REFERENCE.parent / "kit"
     for name, digest in reference["pins"].items():
         path = Path(name)
@@ -55,15 +72,7 @@ def build_sides_from_reference(packages, reference):
         raise ValueError("duel challengers and controls must have distinct readouts")
     template = reference["arms"]["FXR"]["exploiter_words"]
     words = {label: side_words(template, packages[label]) for label in labels}
-    inputs = FLEET / "claude-ut-inside1/inputs"
-    env = {"HOME": str(Path.home()), "PATH": os.defpath, "PYTHONPATH": str(tree / "server"),
-           "SHENGJI_FAST": "1", "FIND_GAPS_SERVER": str(tree / "server"),
-           "FIND_GAPS_PKG": str(inputs / "g3a-e04-f4f4127e.npz"),
-           "FIND_GAPS_PATH_MAP": ";".join(f"/data/models/{name}={inputs / name}"
-                                          for name in ("b1a-028131a0.npz", "p0-ft1-1fa201b2.npz"))}
-    for threads in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-                    "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
-        env[threads] = "1"
+    env = adapter_environment(tree)
     result = subprocess.run([sys.executable, "-B", kit / "probe_names.ut.py", kit / "ut_h2h_adapter.py",
                              *[",".join(words[label]) for label in labels]], env=env, cwd=tree / "server",
                             capture_output=True, text=True, timeout=120)

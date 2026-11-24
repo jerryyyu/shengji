@@ -11,6 +11,16 @@ LANE = FLEET / "codex-sz2-duel-a-v1"
 PREDECLARE_SHA = "0fcdc84b552a71d725def528a080d7aafa012f455e1f7086f5513670f32f20b8"
 
 
+def producer_arguments(adapter, root, side):
+    # The supervisor supplies the interpreter and admitted worker count.
+    argv = [adapter, "--arm", "identity", "--seed0", str(SEED0), "--deals", str(DEALS),
+            "--round-plan", "r2", "--out", str(root / "duel.jsonl")]
+    for role in ("defender", "exploiter"):
+        for word in side[f"{role}_words"]:
+            argv.extend((f"--{role}-env", word))
+    return argv
+
+
 def decision_recipe(reference, side, lane):
     if (side["seed0"], side["deals"]) != (SEED0, DEALS):
         raise ValueError("unexpected SZ2-A decision window")
@@ -37,12 +47,7 @@ def decision_recipe(reference, side, lane):
     adapter = str(REFERENCE.parent / "kit" / "ut_h2h_adapter.py")
     if adapter not in pins or reference["round_plan"] != "r2":
         raise ValueError("expected the pinned paired adapter and rank-mixed r2 plan")
-    # The supervisor supplies the interpreter and admitted worker count.
-    argv = [adapter, "--arm", "identity", "--seed0", str(SEED0), "--deals", str(DEALS),
-            "--round-plan", "r2", "--out", str(root / "duel.jsonl")]
-    for role in ("defender", "exploiter"):
-        for word in side[f"{role}_words"]:
-            argv.extend((f"--{role}-env", word))
+    argv = producer_arguments(adapter, root, side)
     recipe = {k: reference[k] for k in ("schema", "duel", "round_plan", "r52_words", "tree", "tree_head")}
     return dict(recipe, reader=str(reader), reader_sha256=READER_SHA, pins=pins,
                 producer_argv=argv, predeclare_sha256=PREDECLARE_SHA, arms={ARM: arm})

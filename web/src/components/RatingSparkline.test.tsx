@@ -22,3 +22,14 @@ it("draws nothing for fewer than two rounds", () => {
   expect(host.innerHTML).toBe("");
   act(() => root.unmount());
 });
+
+it("counts rounds as the history's steps: the server sends the rating before the first round, then one per round", () => {
+  const host = document.createElement("div");
+  const root = createRoot(host);
+  const label = () => host.querySelector(".me-spark")!.getAttribute("aria-label");
+  act(() => root.render(<RatingSparkline history={[1000, 1020]} />));
+  expect(label()).toBe("Rating over your last 1 round, from 1,000 to 1,020");
+  act(() => root.render(<RatingSparkline history={[1000, 1020, 1012]} />));
+  expect(label()).toBe("Rating over your last 2 rounds, from 1,000 to 1,012");
+  act(() => root.unmount());
+});

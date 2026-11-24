@@ -21,7 +21,10 @@ export default function RatingSparkline({ history }: { history: readonly number[
   const { line, last } = sparkPath(history, W, H);
   const first = Math.round(history[0]);
   const now = Math.round(history[history.length - 1]);
-  const label = `Rating over your last ${history.length} rounds, from ${first.toLocaleString("en-US")} to ${now.toLocaleString("en-US")}`;
+  // the history is the rating before the first round, then one value after
+  // each round: n values span n - 1 rounds
+  const rounds = history.length - 1;
+  const label = `Rating over your last ${rounds} ${rounds === 1 ? "round" : "rounds"}, from ${first.toLocaleString("en-US")} to ${now.toLocaleString("en-US")}`;
   return (
     <div className="me-spark" role="img" aria-label={label}>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">

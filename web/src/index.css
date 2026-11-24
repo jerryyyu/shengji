@@ -190,12 +190,13 @@ textarea:focus-visible {
 }
 }
 
-/* Bury: never dimmed. Gold edge and text at full contrast, and the button
-   fills from the left as cards are picked, so its own face reads 3 of 8. */
+/* Bury: never dimmed. Gold edge and light text at full contrast, and the
+   button fills from the left as cards are picked, so its own face reads 3 of
+   8. Both stops are opaque, so the felt never shows through the face. */
 .btn.primary.bury-btn,
 .btn.primary.bury-btn:hover:not(:disabled) {
   border-color: var(--gold);
-  background: linear-gradient(90deg, rgba(242, 193, 78, 0.42) var(--bury-fill, 0%), rgba(8, 20, 14, 0.85) var(--bury-fill, 0%));
+  background: linear-gradient(90deg, #6b5520 var(--bury-fill, 0%), #0b1a12 var(--bury-fill, 0%));
   color: #ffe9b0;
   font-weight: 700;
 }
@@ -2033,7 +2034,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-size: 44px;
   line-height: 1;
   filter: drop-shadow(0 0 18px rgba(242, 193, 78, 0.8));
-  /* a won game's crown arrives once, with the game's haptic; it then stays */
+}
+
+/* a won game's crown arrives once, with the game's haptic, only when the
+   result comes in live; it then stays */
+.game-won-crown.flash {
   animation: crown-flash var(--dur-count) var(--ease-back) both;
 }
 
@@ -2044,7 +2049,7 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .game-won-crown { animation: none; }
+  .game-won-crown.flash { animation: none; }
 }
 
 .result-games {

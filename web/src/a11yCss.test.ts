@@ -118,16 +118,17 @@ describe("the panel's controls hold AA without dimming", () => {
     expect(ruleIn(playLines, ".play-section .play-mode-opt:disabled:not(.on)::before")).toMatch(/mask: url\(/);
   });
 
-  it("Bury is drawn at full opacity with light text on both its filled and empty parts", () => {
+  it("Bury is drawn at full opacity with light text on opaque filled and empty parts", () => {
     expect(decls(".btn.primary.bury-btn:disabled")).toContain("opacity: 1");
     const bury = decls(".btn.primary.bury-btn, .btn.primary.bury-btn:hover:not(:disabled)");
-    expect(bury).toContain("var(--bury-fill, 0%)");
     const text = color(bury);
-    // the fill: 42% gold over the felt's darkest ground; the empty part: the dark track
-    const mix = (a: string, b: string, t: number) => "#" + [1, 3, 5].map((i) =>
-      Math.round(parseInt(a.slice(i, i + 2), 16) * t + parseInt(b.slice(i, i + 2), 16) * (1 - t)).toString(16).padStart(2, "0")).join("");
-    expect(contrast(text, mix("#f2c14e", "#08140e", 0.42))).toBeGreaterThanOrEqual(AA);
-    expect(contrast(text, "#08140e")).toBeGreaterThanOrEqual(AA);
+    // both stops are opaque colours, so the face is what is drawn whatever the felt under it
+    const stops = /linear-gradient\(90deg, (#[0-9a-fA-F]{6}) var\(--bury-fill, 0%\), (#[0-9a-fA-F]{6}) var\(--bury-fill, 0%\)\)/.exec(bury);
+    expect(stops, "two opaque hex stops at --bury-fill").not.toBeNull();
+    const [, filled, empty] = stops!;
+    // a full face (8 of 8) is all `filled`; a partial one has the text over both
+    expect(contrast(text, filled)).toBeGreaterThanOrEqual(AA);
+    expect(contrast(text, empty)).toBeGreaterThanOrEqual(AA);
   });
 });
 

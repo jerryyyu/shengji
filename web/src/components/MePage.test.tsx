@@ -96,7 +96,7 @@ describe("signed in", () => {
     await render();
     const spark = host.querySelector(".me-spark")!;
     expect(spark.getAttribute("role")).toBe("img");
-    expect(spark.getAttribute("aria-label")).toBe("Rating over your last 2 rounds, from 1,491 to 1,532");
+    expect(spark.getAttribute("aria-label")).toBe("Rating over your last 1 round, from 1,491 to 1,532");
     expect(spark.textContent).toBe("");
     // rising: the line ends at the top right, where the latest point is marked
     expect(spark.querySelector(".me-spark-line")!.getAttribute("d")).toBe("M0.0 50.0 L300.0 6.0");

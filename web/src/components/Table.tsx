@@ -299,6 +299,11 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
 }
 
 export default function Table({ state }: { state: GameState }) {
+  // A result seen arriving (after a state without one) is live and may
+  // celebrate; a table opened onto a finished round (a reconnect, a resume)
+  // draws it settled.
+  const sawNoResult = useRef(state.round_result === null);
+  if (state.round_result === null) sawNoResult.current = true;
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -739,7 +744,7 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} />
+        <RoundEndModal state={state} result={state.round_result} clock={clock} live={sawNoResult.current} />
       ) : null}
 
       {xrayOpen ? (

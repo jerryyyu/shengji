@@ -41,6 +41,7 @@ const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) 
 
 const { default: Table, SENDING_AFTER_MS } = await import("./Table");
 const { default: Hand } = await import("./Hand");
+const { telemetry } = await import("../telemetry");
 
 function player(seat: number, over: Partial<StatePlayer> = {}): StatePlayer {
   return { seat, name: seat ? `Bot ${seat}` : "You", is_bot: seat !== 0, connected: true,
@@ -68,8 +69,11 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   haptics.length = 0;
-  sent.length = 0;
   link.status = "open";
+  // telemetry rides the stand-in connection: start each test with its
+  // buffer sent, so a batch from earlier tests never lands in this one's `sent`
+  telemetry.flush();
+  sent.length = 0;
   // these tests are about the table, not the newcomer coach
   localStorage.setItem("shengji.coach", "off");
   host = document.createElement("div");
@@ -163,6 +167,28 @@ describe("phone turn cue and haptics", () => {
     render(state({ phase: "play", turn: 1 }));
     render(state({ phase: "round_end", turn: null, round_result: result(0, false) }));
     expect(haptics).toEqual(["won"]);
+  });
+
+  it("flashes a won game's crown only when the result arrives live; a table opened onto it draws it still", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    const won: GameState["round_result"] = {
+      attacker_points: 40, kitty_points: 0, kitty_cards: [], winner_team: 0, level_change: 2, next_banker: 1,
+      new_levels: ["2", "2"], games_won: [1, 0], point_scored: true, game_over: true };
+    // a reconnect: the first state the table sees is the finished game
+    render(state({ phase: "round_end", turn: null, round_result: won }));
+    expect(host.querySelector(".game-won-crown")!.className).toBe("game-won-crown");
+    expect(haptics).toEqual([]);
+    act(() => root.unmount());
+    root = createRoot(host);
+    // live: play, then the result
+    render(state({ phase: "play", turn: 1 }));
+    render(state({ phase: "round_end", turn: null, round_result: won }));
+    expect(host.querySelector(".game-won-crown")!.className).toBe("game-won-crown flash");
+    expect(haptics).toEqual(["game"]);
   });
 
   it("labels the trick's cards for VoiceOver and the hand as one group", () => {
@@ -536,8 +562,7 @@ describe("Play and Bury say they are sending", () => {
     expect(primary().getAttribute("aria-busy")).toBeNull();
     expect(primary().disabled).toBe(false);
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    // one bury; a telemetry batch may flush on the same stand-in connection
-    expect(sent.filter((m) => (m as { type: string }).type !== "client_event")).toHaveLength(1);
+    expect(sent).toHaveLength(1);
   });
 
   // telemetry rides the same stand-in connection

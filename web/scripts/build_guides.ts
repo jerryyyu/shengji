@@ -41,7 +41,8 @@ function existingPages(): string[] {
 function main(): number {
   const check = process.argv.includes("--check");
   const sitemap = readFileSync(join(PUBLIC, "sitemap.xml"), "utf8");
-  const files = buildSite(readSources(), sitemap);
+  const llms = readFileSync(join(PUBLIC, "llms.txt"), "utf8");
+  const files = buildSite(readSources(), sitemap, llms);
   const stale = existingPages().filter((p) => !files.has(p));
   const changed = [...files].filter(([p, text]) => {
     const file = join(PUBLIC, p);

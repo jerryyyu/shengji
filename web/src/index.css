@@ -5420,7 +5420,19 @@ button.grp-row:disabled { cursor: default; }
 
 .lb-list .lb-row { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; font-size: var(--fs-17); }
 .lb-rank { width: 26px; flex: none; text-align: right; color: #9aa3b2; font-size: var(--fs-15); font-weight: 600; font-variant-numeric: tabular-nums; }
-.lb-rank.top { color: var(--gold); }
+/* the top three's ranks on filled discs: gold, silver, bronze, dark digits */
+.lb-rank.top {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 999px;
+  color: #14171e; font-weight: 800; text-align: center;
+}
+.lb-rank.medal-1 { background: var(--gold); }
+.lb-rank.medal-2 { background: #c9d1dc; }
+.lb-rank.medal-3 { background: #d08a4e; }
+/* This week's movement at the row's end: up green, down red, a dash for none */
+.lb-move { flex: none; min-width: 36px; text-align: right; font-size: var(--fs-13); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lb-move.up { color: #5ccf8a; }
+.lb-move.down { color: #ff8a8a; }
+.lb-move.flat { color: #9aa3b2; }
 .lb-name { flex: 1; min-width: 0; display: flex; align-items: center; }
 .lb-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lb-you { flex: none; white-space: pre; }

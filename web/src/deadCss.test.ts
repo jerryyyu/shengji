@@ -24,6 +24,7 @@ const words = new Set(source.match(/[A-Za-z0-9_-]+/g));
 const PREFIXES: Record<string, string> = {
   "avatar-": "HomeShell: `avatar-${size}`",
   "leave-sheet-": "ConfirmSheet: `leave-sheet-${place}`",
+  "medal-": "Leaderboard: `medal-${row.rank}` on the top three",
   "phase-": "Table: `phase-${state.phase}`, the server's phase name",
 };
 

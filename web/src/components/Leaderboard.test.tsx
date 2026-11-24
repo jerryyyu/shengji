@@ -336,3 +336,65 @@ describe("viewer changes", () => {
     expect(host.textContent).not.toContain("(you)");
   });
 });
+
+describe("this week's movement and the top three", () => {
+  it("ends each This week row in its movement: up, down, or a dash", async () => {
+    await render();
+    const listed = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-row")];
+    expect(listed.map((r) => r.querySelector(".lb-move [aria-hidden]")?.textContent)).toEqual(["▲24", "–", "▲40", "▼8"]);
+    expect(listed.map((r) => r.querySelector(".lb-move")!.className)).toEqual(
+      ["lb-move up", "lb-move flat", "lb-move up", "lb-move down"]);
+    expect(listed[3].querySelector(".lb-move .sr-only")?.textContent).toBe(", down 8 this week");
+    // the pinned own row too
+    expect(host.querySelector(".lb-pin .lb-move [aria-hidden]")?.textContent).toBe("▼12");
+  });
+
+  it("puts the top three's ranks on gold, silver and bronze discs", async () => {
+    await render();
+    const ranks = [...host.querySelectorAll(".lb-list")[0].querySelectorAll(".lb-rank")];
+    expect(ranks.map((r) => r.className)).toEqual(
+      ["lb-rank top medal-1", "lb-rank top medal-2", "lb-rank top medal-3", "lb-rank"]);
+  });
+
+  it("All time shows no movement", async () => {
+    await render();
+    const all = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "All time")!;
+    await act(async () => { all.click(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(host.querySelector(".lb-move")).toBeNull();
+  });
+});
+
+describe("an empty week", () => {
+  const emptyWeek = () => {
+    const base = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("period=week")) {
+        calls.push(url);
+        return { status: 200, json: async () => ({ ...week, players: [], me: null }) } as Response;
+      }
+      return base(input);
+    }) as typeof fetch;
+  };
+
+  it("opens on All time when nobody has played this week", async () => {
+    emptyWeek();
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(lbCalls()).toEqual(["/api/leaderboard?period=week", "/api/leaderboard?period=all"]);
+    const pressed = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.getAttribute("aria-pressed") === "true");
+    expect(pressed?.textContent).toBe("All time");
+    expect(host.querySelector(".lb-note")).toBeNull();
+    expect(host.querySelectorAll(".lb-row").length).toBeGreaterThan(0);
+  });
+
+  it("stays on This week once the viewer picks it, and says so in its one line", async () => {
+    emptyWeek();
+    await render();
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    const thisWeek = [...host.querySelectorAll<HTMLButtonElement>(".segmented-btn")].find((b) => b.textContent === "This week")!;
+    await act(async () => { thisWeek.click(); await new Promise((r) => setTimeout(r, 0)); });
+    expect(thisWeek.getAttribute("aria-pressed")).toBe("true");
+    expect(host.querySelector(".lb-note")?.textContent).toBe("Nobody has played a ranked round this week yet.");
+  });
+});

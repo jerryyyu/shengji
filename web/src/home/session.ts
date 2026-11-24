@@ -9,7 +9,11 @@ import type { AuthState } from "../auth";
 import type { Period } from "../ratings/api";
 import type { MeSection } from "./route";
 
-export const tabMemory: { meSection: MeSection; period: Period } = { meSection: "stats", period: "week" };
+/** What each tab last showed this session. `periodChosen`: the viewer picked
+ *  the Leaderboard's period, so an empty week no longer moves it. */
+export const tabMemory: { meSection: MeSection; period: Period; periodChosen: boolean } = {
+  meSection: "stats", period: "week", periodChosen: false,
+};
 
 const data = new Map<string, unknown>();
 const scrolls = new Map<string, number>();
@@ -120,6 +124,7 @@ export function useCachedResource<T extends { ok: boolean }>(
 export function forgetHomeSession(): void {
   tabMemory.meSection = "stats";
   tabMemory.period = "week";
+  tabMemory.periodChosen = false;
   data.clear();
   scrolls.clear();
 }

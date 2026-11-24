@@ -130,3 +130,19 @@ describe("the panel's controls hold AA without dimming", () => {
     expect(contrast(text, "#08140e")).toBeGreaterThanOrEqual(AA);
   });
 });
+
+describe("the leaderboard's marks hold AA on their rows", () => {
+  it("the week's movement colours and the medal discs' digits", () => {
+    const grp = /--grp:\s*(#[0-9a-fA-F]{6})/.exec(css)![1];
+    for (const dir of ["up", "down", "flat"]) {
+      const c = /color:\s*(#[0-9a-fA-F]{6})/.exec(decls(`.lb-move.${dir}`))![1];
+      expect(contrast(c, grp), dir).toBeGreaterThanOrEqual(AA);
+      expect(contrast(c, "#2d3a2f"), `${dir} on your own row`).toBeGreaterThanOrEqual(AA);
+    }
+    for (const n of [2, 3]) {
+      const disc = /background:\s*(#[0-9a-fA-F]{6})/.exec(decls(`.lb-rank.medal-${n}`))![1];
+      expect(contrast("#14171e", disc)).toBeGreaterThanOrEqual(AA);
+    }
+    expect(contrast("#14171e", token("gold"))).toBeGreaterThanOrEqual(AA);
+  });
+});

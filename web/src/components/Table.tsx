@@ -312,6 +312,11 @@ export default function Table({ state }: { state: GameState }) {
   // draws it settled.
   const sawNoResult = useRef(state.round_result === null);
   if (state.round_result === null) sawNoResult.current = true;
+  // The levels the round was played at: the result carries only the new
+  // ones, and a won game restarts both, so the round end's lanes read the
+  // old levels from the last state before the result.
+  const roundLevels = useRef<[string, string] | null>(state.round_result === null ? state.levels : null);
+  if (state.round_result === null) roundLevels.current = state.levels;
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -753,7 +758,8 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} live={sawNoResult.current} />
+        <RoundEndModal state={state} result={state.round_result} clock={clock} live={sawNoResult.current}
+                       before={roundLevels.current} />
       ) : null}
 
       {xrayOpen ? (

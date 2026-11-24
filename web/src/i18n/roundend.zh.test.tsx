@@ -1,6 +1,6 @@
 // The round end, the leave sheet and the connection pill in Simplified
-// Chinese, and the round-end result line in both languages on both sides of
-// 80: the score sentence must read true whether or not the attackers got there.
+// Chinese, and the round end's lanes, points bar and status line in both
+// languages on both sides of 80.
 import { act } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -76,58 +76,70 @@ afterEach(() => {
   host?.remove();
 });
 
-// banker 0 (we defend): they took 45 and we go up 1; they took 120 and go up 1.
-// banker 1 (we attack): we took 45 and they go up 1; we took 120 and go up 1.
+const lanes = () => [...host.querySelectorAll(".rank-lane")].map((l) => l.getAttribute("aria-label"));
+const laneLabels = () => [...host.querySelectorAll(".lane-label")].map((l) => l.textContent);
+
+// banker 0 (we defend at 2): they took 45 and we go up 1; they took 120 and go up 1.
+// banker 1 (we attack, they defend at 2): we took 45 and they go up 1; we took 120 and go up 1.
 const CASES = [
   { banker: 0 as const, points: 45, winner: 0 as const, levels: ["3", "2"] as [string, string],
-    en: "They took 45 of 80. We go up 1, to 3.Next banker: Sam.",
-    zh: "闲家得 45 分（满 80 上台）。我们升 1 级，打 3。下局庄家：Sam。" },
+    en: ["Us: 2 to 3", "Them: 2"], zh: ["我方：2 升到 3", "对方：2"] },
   { banker: 0 as const, points: 120, winner: 1 as const, levels: ["2", "3"] as [string, string],
-    en: "They took 120 of 80. They go up 1, to 3.Next banker: Sam.",
-    zh: "闲家得 120 分（满 80 上台）。对方升 1 级，打 3。下局庄家：Sam。" },
+    en: ["Us: 2", "Them: 2 to 3"], zh: ["我方：2", "对方：2 升到 3"] },
   { banker: 1 as const, points: 45, winner: 1 as const, levels: ["2", "3"] as [string, string],
-    en: "We took 45 of 80. They go up 1, to 3.Next banker: Sam.",
-    zh: "我们得 45 分（满 80 上台）。对方升 1 级，打 3。下局庄家：Sam。" },
+    en: ["Us: 2", "Them: 2 to 3"], zh: ["我方：2", "对方：2 升到 3"] },
   { banker: 1 as const, points: 120, winner: 0 as const, levels: ["3", "2"] as [string, string],
-    en: "We took 120 of 80. We go up 1, to 3.Next banker: Sam.",
-    zh: "我们得 120 分（满 80 上台）。我们升 1 级，打 3。下局庄家：Sam。" },
+    en: ["Us: 2 to 3", "Them: 2"], zh: ["我方：2 升到 3", "对方：2"] },
 ];
+const trump2 = { suit: "S", rank: "2", declarer: null };
 
-describe("the round-end score line, both languages, both sides of 80", () => {
+describe("the round end's pictures and status line, both languages, both sides of 80", () => {
   for (const c of CASES) {
     const who = c.banker === 0 ? "They" : "We";
-    it(`${who} took ${c.points}: English unchanged, Chinese true on its side of 80`, () => {
+    it(`${who} took ${c.points}: the lanes, the bar and the one status line, no sentence`, () => {
       const r = result({ attacker_points: c.points, winner_team: c.winner, new_levels: c.levels });
-      render(<RoundEndModal state={table(c.banker)} result={r} />);
-      expect(line()).toBe(c.en);
+      render(<RoundEndModal state={table(c.banker, { trump: trump2 })} result={r} />);
+      expect(lanes()).toEqual(c.en);
+      expect(laneLabels()).toEqual(["Us", "Them"]);
+      expect(host.querySelector(".points-bar-n")!.textContent).toBe(String(c.points));
+      expect(line()).toBe("Next banker: Sam.");
       act(() => setLanguageChoice("zh-Hans"));
-      expect(line()).toBe(c.zh);
+      expect(lanes()).toEqual(c.zh);
+      expect(laneLabels()).toEqual(["我方", "对方"]);
+      expect(host.querySelector(".points-bar")!.getAttribute("aria-label")).toBe(`闲家得分：${c.points}，80 分上台`);
+      expect(line()).toBe("下局庄家：Sam。");
+      expect(host.textContent).not.toMatch(/闲家得 \d+ 分|升 \d 级|上台，不升级/);
       act(() => setLanguageChoice("en"));
-      expect(line()).toBe(c.en);
+      expect(line()).toBe("Next banker: Sam.");
     });
   }
 
-  it("no level change: the winners take the deal", () => {
+  it("no level change: the winners' lane shows one level, no sentence", () => {
     setLanguageChoice("zh-Hans");
-    render(<RoundEndModal state={table(0)} result={result({ attacker_points: 90, winner_team: 1, level_change: 0, next_banker: 1 })} />);
-    expect(line()).toBe("闲家得 90 分（满 80 上台）。对方上台，不升级。下局庄家：Robin。");
+    render(<RoundEndModal state={table(0, { trump: trump2 })}
+                          result={result({ attacker_points: 90, winner_team: 1, level_change: 0, next_banker: 1 })} />);
+    expect(lanes()).toEqual(["我方：2", "对方：2"]);
+    expect(line()).toBe("下局庄家：Robin。");
   });
 
-  it("a won game restarts the levels, keeps the games score, and says next banker: me", () => {
+  it("a won game: the crown past A, the games score, Next game, and no restart line", () => {
     setLanguageChoice("zh-Hans");
-    render(<RoundEndModal state={table(0)}
+    render(<RoundEndModal state={table(0, { trump: { suit: "S", rank: "A", declarer: null } })}
+                          before={["A", "Q"]}
                           result={result({ attacker_points: 35, point_scored: true, games_won: [1, 0], next_banker: 0 })} />);
     expect(title()).toBe("我和 Sam 赢了这一盘");
-    expect(line()).toBe("闲家得 35 分（满 80 上台）。双方从 2 重新打起。下局庄家：我。");
+    expect(lanes()).toEqual(["我方：A，赢了这一盘", "对方：Q"]);
+    expect(line()).toBe("下局庄家：我。");
     expect(host.querySelector(".result-games")!.textContent).toBe("盘数：我方 1 · 对方 0");
+    expect(host.textContent).not.toContain("重新打起");
     expect([...host.querySelectorAll(".round-end-actions button")].map((b) => b.textContent)).toEqual(["下一盘", "离开牌桌"]);
   });
 
-  it("the rating rides on the line in Chinese punctuation", () => {
+  it("the rating rides on the status line in Chinese punctuation", () => {
     setLanguageChoice("zh-Hans");
     render(<RoundEndModal state={table(0, { matched: true })}
                           result={result({ attacker_points: 45, new_levels: ["3", "2"] as [string, string], rating: { rating: 1712, delta: -4 } })} />);
-    expect(line()).toBe("闲家得 45 分（满 80 上台）。我们升 1 级，打 3 · 积分 1712（−4）。下局庄家：Sam。");
+    expect(line()).toBe("下局庄家：Sam · 积分 1712（−4）。");
   });
 });
 

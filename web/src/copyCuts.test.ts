@@ -44,6 +44,12 @@ const CUT = [
   "· away",
   "Leave the room?",
   "Your turn: tap",
+  "They took",
+  "We took",
+  "Attackers took",
+  "Levels restart at",
+  "重新打起",
+  "满 80 上台",
 ];
 
 const SRC = fileURLToPath(new URL(".", import.meta.url));

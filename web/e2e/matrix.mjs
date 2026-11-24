@@ -64,6 +64,17 @@ function states() {
   const result = { attacker_points: 50, kitty_points: 15, kitty_cards: ["S5", "H10", "D3", "D4", "C6", "C7", "S8", "H9"], winner_team: 1, level_change: 1, next_banker: 3, new_levels: ["2", "3"], games_won: [0, 0], point_scored: false, game_over: false };
   out.push(["round_end", base({ phase: "round_end", turn: null, trick: null, attacker_points: 50, hand: [], last_trick: last(0, 1, 0), round_result: result }, { banker: 1 })]);
   out.push(["round_end_long", base({ phase: "round_end", turn: null, trick: null, attacker_points: 50, hand: [], last_trick: last(0, 6, 0), round_result: result }, { banker: 1, names: LONG_NAMES })]);
+  // a won game: we defend at A and hold them to 35; the lane ends on the crown, the games score counts it
+  const ace = { trump: { suit: "C", rank: "A", declarer: 0 }, levels: ["A", "Q"] };
+  const won = { ...result, attacker_points: 35, winner_team: 0, level_change: 1, next_banker: 2, new_levels: ["2", "2"], games_won: [1, 0], point_scored: true };
+  // the tallest card: a ranked won game, its rating change on the status line, the longest names
+  const rated = { matched: true, ranked: true, guest: false };
+  for (const [id, names, extra, res] of [["round_end_won", undefined, {}, won], ["round_end_won_long", LONG_NAMES, {}, won],
+                                         ["round_end_won_ranked_long", LONG_NAMES, rated, { ...won, rating: { rating: 1712, delta: 9, game_delta: 31 } }]]) {
+    out.push([id,
+      base({ ...ace, ...extra, trick: { leader: 1, plays: plays(1, 3, 1) }, turn: 0 }, { banker: 0, names }),
+      base({ ...ace, ...extra, phase: "round_end", levels: ["2", "2"], games_won: [1, 0], turn: null, trick: null, attacker_points: 35, hand: [], last_trick: last(0, 1, 0), round_result: res }, { banker: 0, names })]);
+  }
   return out;
 }
 
@@ -84,7 +95,7 @@ async function runDevice(device) {
       for (const f of frames) { await push(page, f); await sleep(frames.length > 1 ? 120 : 0); }
       await sleep(110);
       const name = `${device}_${coach === "on" ? "coach_" : ""}${id}`;
-      await rep.check(name, [...await lint(page), ...await tagsInPills(page), ...await trickCardsReadable(page)], page);
+      await rep.check(name, [...await lint(page), ...await tagsInPills(page), ...await trickCardsReadable(page), ...await roundEndFits(page)], page);
       if (SHOTS && SHOTS.test(name)) await shot(page, name);
       if (page.qa.errors.length) { await rep.check(`${name}_pageerror`, page.qa.errors.splice(0)); }
     }
@@ -118,6 +129,18 @@ const devices = ["phone-land", "phone-land-app", "phone-land-safari", "phone-lan
 // a few devices at a time: each is its own page, and the checks are independent
 const lanes = Number(process.env.LANES ?? 3);
 await Promise.all(Array.from({ length: lanes }, async () => { for (let d; (d = devices.shift()); ) await runDevice(d); }));
+/** The round-end card fits the screen whole, with no scroll: the lanes, the bar and the buttons on an iPhone SE held sideways. */
+function roundEndFits(page) {
+  return page.evaluate(() => {
+    const card = document.querySelector(".modal.round-end");
+    if (!card) return [];
+    const r = card.getBoundingClientRect();
+    const out = [];
+    if (card.scrollHeight > card.clientHeight + 1) out.push(`round-end card scrolls: ${card.scrollHeight}px of content in ${card.clientHeight}px`);
+    if (r.top < -1 || r.bottom > innerHeight + 1) out.push(`round-end card ${Math.round(r.height)}px tall leaves the ${innerHeight}px screen`);
+    return out;
+  });
+}
 /** A seat pill's status tag stays inside the pill (the pill clips nothing, so a tag pushed out shows past its edge). */
 function tagsInPills(page) {
   return page.evaluate(() => [...document.querySelectorAll(".opponent .opp-name > [class*='-tag']")].flatMap((t) => {

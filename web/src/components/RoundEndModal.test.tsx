@@ -31,6 +31,15 @@ const state: GameState = {
 /** A queue room: its rounds are rated. */
 const ranked: GameState = { ...state, matched: true };
 
+/** We bank at A: holding them under 80 wins a game. */
+const aceDefence: GameState = { ...state, trump: { suit: "S", rank: "A", declarer: null } };
+
+/** A team's lane: the outlined old level and the filled new one. */
+function lane(team: 0 | 1): { was: string | null; now: string | null } {
+  const el = host.querySelector(`.rank-lane.team${team}`)!;
+  return { was: el.querySelector(".lane-cell.was")?.textContent ?? null, now: el.querySelector(".lane-cell.now")?.textContent ?? null };
+}
+
 function makeResult(overrides: Partial<RoundResult> = {}): RoundResult {
   return {
     attacker_points: 0, kitty_points: 0, kitty_cards: [], winner_team: 0,
@@ -61,7 +70,8 @@ afterEach(() => {
     else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
   }
 });
-function renderModal(result: RoundResult, shown: GameState = state, clock: number | null = null): string {
+function renderModal(result: RoundResult, shown: GameState = state, clock: number | null = null,
+                     extra: { before?: [string, string] | null; live?: boolean } = {}): string {
   sent.length = 0;
   // one round end at a time: an earlier one still mounted would stay an open dialog
   if (host?.isConnected) {
@@ -71,7 +81,7 @@ function renderModal(result: RoundResult, shown: GameState = state, clock: numbe
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  act(() => { root.render(<RoundEndModal state={shown} result={result} clock={clock} />); });
+  act(() => { root.render(<RoundEndModal state={shown} result={result} clock={clock} {...extra} />); });
   return host.textContent ?? "";
 }
 
@@ -86,19 +96,23 @@ describe("round end modal", () => {
     dialog.dispatchEvent(cancel);
     expect(cancel.defaultPrevented).toBe(true);
   });
-  it("shows a level change on an ordinary round", () => {
+  it("shows a level change on an ordinary round as the lanes, not a sentence", () => {
     const text = renderModal(makeResult({ new_levels: ["5", "2"] }));
-    expect(text).toContain("We go up 3, to 5.");
+    expect(lane(0)).toEqual({ was: "2", now: "5" });
+    expect(text).not.toContain("go up");
     expect(text).not.toContain("win the game");
   });
 
-  it("says a GAME was won, not '+levels', when a team holds Ace", () => {
+  it("says a GAME was won, not '+levels', when a team holds Ace, and never that the levels restart", () => {
     // The bug this guards: the levels reset to 2 while the modal still
     // announced "+3 levels", which reads as the game losing your progress.
-    const text = renderModal(makeResult({ point_scored: true, games_won: [1, 0] }));
+    const text = renderModal(makeResult({ point_scored: true, games_won: [1, 0] }), aceDefence, null, { before: ["A", "Q"] });
     expect(text).toContain("win the game");
-    expect(text).toContain("Levels restart at 2.");
+    expect(text).not.toMatch(/restart/i);
     expect(text).not.toContain("go up");
+    // the winners' lane ends past A on the crown; the other lane keeps Q
+    expect(lane(0)).toEqual({ was: "A", now: "👑" });
+    expect(lane(1)).toEqual({ was: null, now: "Q" });
   });
 
   it("shows the running games-won tally once a game has been won", () => {
@@ -415,7 +429,7 @@ describe("a minimal top: the title, one result line, the button row", () => {
     expect(host.querySelector("h2")!.textContent).toBe("You & Sam win the round");
     const lines = host.querySelectorAll(".modal > p");
     expect(lines.length).toBe(1);
-    expect(lines[0].textContent).toBe("They took 35 of 80. We go up 1, to 3.Next banker: Sam.");
+    expect(lines[0].textContent).toBe("Next banker: Sam.");
     const row = host.querySelector(".modal > .round-end-actions")!;
     expect([...row.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["18Next round", "Leave game"]);
     expect(row.querySelector(".timer-ring")).not.toBeNull();
@@ -427,12 +441,15 @@ describe("a minimal top: the title, one result line, the button row", () => {
 
   it("names the attackers' win and a deal taken with no level change", () => {
     renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 100, next_banker: 1, new_levels: ["2", "4"] }));
-    expect(host.querySelector(".result-line")!.textContent).toBe("They took 100 of 80. They go up 1, to 4.Next banker: Robin.");
+    expect(host.querySelector(".result-line")!.textContent).toBe("Next banker: Robin.");
     expect(host.querySelector("h2")!.textContent).toBe("You & Sam lose the round");
+    expect(lane(1)).toEqual({ was: "3", now: "4" });
+    expect(lane(0)).toEqual({ was: null, now: "2" });
     act(() => root.unmount());
     host.remove();
     renderModal(makeResult({ winner_team: 1, level_change: 0, attacker_points: 85, next_banker: 1 }));
-    expect(host.querySelector(".result-line")!.textContent).toContain("They take the deal, no level change.");
+    expect(lane(1)).toEqual({ was: null, now: "2" });
+    expect(host.textContent).not.toContain("take the deal");
     expect(host.textContent).not.toContain("+0");
   });
 
@@ -443,7 +460,7 @@ describe("a minimal top: the title, one result line, the button row", () => {
 
   it("a ranked round's rating change fits on the result line", () => {
     renderModal(makeResult({ new_levels: ["5", "2"], rating: { rating: 1712, delta: 12 } }), ranked);
-    expect(host.querySelector(".result-line")!.textContent).toContain("We go up 3, to 5 · rating 1712 (+12).");
+    expect(host.querySelector(".result-line")!.textContent).toBe("Next banker: Sam · rating 1712 (+12).");
     expect(host.querySelector(".result-rating")!.className).toContain("delta-up");
     act(() => root.unmount());
     host.remove();
@@ -525,7 +542,9 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     renderModal(makeResult({ winner_team: 1, level_change: 2, attacker_points: 40, kitty_points: 10, new_levels: ["2", "4"], next_banker: 3,
                              kitty_cards: ["S5", "C3", "C4", "C6", "C7", "C8", "C9", "CJ"] }),
                 { ...state, banker: 1, last_trick: { ...lastTrick, winner: 2 } });
-    expect(host.querySelector(".result-line")!.textContent).toBe("We took 40 of 80. They go up 2, to 4.Next banker: Ada.");
+    expect(host.querySelector(".result-line")!.textContent).toBe("Next banker: Ada.");
+    // the bar is ours: we attacked
+    expect(host.querySelector(".points-bar")!.className).toContain("team0");
     expect(host.querySelector(".kitty-bonus")!.textContent).toBe("We won the last trick: ×2, +10");
     // labels keep Us / Them
     expect(host.textContent).not.toMatch(/\b(Us|Them) (took|go|take|won)\b/);
@@ -564,10 +583,10 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     renderModal(makeResult({ point_scored: true, games_won: [1, 0], attacker_points: 35, kitty_cards: kitty }));
     const card = host.querySelector(".modal.round-end")!;
     const order = [...card.children].map((c) => c.className.split(" ")[0] || c.tagName);
-    expect(order).toEqual(["game-won-crown", "modal-title", "result-headline", "result-games", "result-details",
-                           "round-end-actions"]);
+    expect(order).toEqual(["game-won-crown", "modal-title", "round-end-ladder", "result-headline", "result-games",
+                           "result-details", "round-end-actions"]);
     expect(host.querySelectorAll(".result-headline")).toHaveLength(1);
-    expect(host.querySelector(".result-line > span")!.textContent).toBe("They took 35 of 80. Levels restart at 2.");
+    expect(host.querySelector(".result-line")!.textContent).toBe("Next banker: Sam.");
     expect(host.querySelector(".result-games")!.textContent).toBe("Games: Us 1 · Them 0");
   });
 
@@ -582,5 +601,93 @@ describe("Details: the kitty and the last trick, closed by default", () => {
     host.remove();
     renderModal(makeResult(), ranked, 20);
     expect(host.querySelector(".round-end-actions .btn.primary .timer-ring")?.outerHTML).toBe(gameRing);
+  });
+});
+
+describe("the ladder: a rank lane per team and the attackers' points", () => {
+  it("draws both lanes 2 to A, labelled Us / Them, each in its team's colour, old outlined and new filled", () => {
+    // we defend at J and hold them to 40: we go up one, to Q; they stay at 9
+    renderModal(makeResult({ winner_team: 0, level_change: 1, attacker_points: 40, new_levels: ["Q", "9"] }),
+                { ...state, trump: { suit: "H", rank: "J", declarer: 0 } }, null, { before: ["J", "9"] });
+    const lanes = [...host.querySelectorAll(".rank-lane")];
+    expect(lanes.map((l) => l.className)).toEqual(["rank-lane team0", "rank-lane team1"]);
+    expect(lanes.map((l) => l.querySelector(".lane-label")!.textContent)).toEqual(["Us", "Them"]);
+    for (const l of lanes) {
+      expect([...l.querySelectorAll(".lane-cell")].map((c) => c.textContent))
+        .toEqual(["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]);
+    }
+    expect(lane(0)).toEqual({ was: "J", now: "Q" });
+    expect(lane(1)).toEqual({ was: null, now: "9" });
+    expect(lanes.map((l) => l.getAttribute("aria-label"))).toEqual(["Us: J to Q", "Them: 9"]);
+  });
+
+  it("the attackers' lane climbs when they cross 80, read from the result alone after a reconnect", () => {
+    // they attack at K and take 125: they go up one, to A; we bank at 5
+    renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 125, new_levels: ["5", "A"], next_banker: 1 }),
+                { ...state, trump: { suit: "H", rank: "5", declarer: 0 } });
+    expect(lane(0)).toEqual({ was: null, now: "5" });
+    // A reached by the climb hides where they started; the lane still shows A
+    expect(lane(1)).toEqual({ was: null, now: "A" });
+    renderModal(makeResult({ winner_team: 1, level_change: 1, attacker_points: 125, new_levels: ["5", "A"], next_banker: 1 }),
+                { ...state, trump: { suit: "H", rank: "5", declarer: 0 } }, null, { before: ["5", "K"] });
+    expect(lane(1)).toEqual({ was: "K", now: "A" });
+  });
+
+  it("ignores a remembered level that disagrees with the result (a round missed while away)", () => {
+    renderModal(makeResult({ winner_team: 0, level_change: 1, new_levels: ["4", "2"] }),
+                { ...state, trump: { suit: "H", rank: "3", declarer: 0 } }, null, { before: ["7", "2"] });
+    expect(lane(0)).toEqual({ was: "3", now: "4" });
+  });
+
+  it("puts the attackers' points on a bar with the 80 mark, in the attackers' colour", () => {
+    renderModal(makeResult({ attacker_points: 40 }));
+    const bar = host.querySelector(".points-bar")!;
+    expect(bar.className).toBe("points-bar team1");
+    expect(bar.querySelector(".points-bar-n")!.textContent).toBe("40");
+    expect(bar.querySelector(".points-bar-80")!.textContent).toBe("80");
+    expect(bar.querySelector(".points-bar-mark")).not.toBeNull();
+    expect(bar.querySelector<HTMLElement>(".points-bar-fill")!.style.transform).toBe("scaleX(0.25)");
+    expect(bar.getAttribute("aria-label")).toBe("Attackers' points: 40 of 80");
+    // past 80 the bar runs past the mark, and stops at the track's end
+    renderModal(makeResult({ attacker_points: 125, winner_team: 1 }));
+    expect(host.querySelector<HTMLElement>(".points-bar-fill")!.style.transform).toBe("scaleX(0.78125)");
+    renderModal(makeResult({ attacker_points: 205, winner_team: 1 }));
+    expect(host.querySelector<HTMLElement>(".points-bar-fill")!.style.transform).toBe("scaleX(1)");
+    expect(host.querySelector(".points-bar-n")!.textContent).toBe("205");
+  });
+
+  it("shows no result sentence: no points sentence, no climb, no deal taken", () => {
+    for (const r of [makeResult({ attacker_points: 35, level_change: 1, new_levels: ["3", "2"] }),
+                     makeResult({ attacker_points: 100, winner_team: 1, level_change: 1, new_levels: ["2", "3"] }),
+                     makeResult({ attacker_points: 85, winner_team: 1, level_change: 0 })]) {
+      const text = renderModal(r);
+      expect(text).not.toMatch(/took \d+ of 80|go up|take the deal|no level change/);
+      expect(host.querySelectorAll(".modal > p")).toHaveLength(1);
+    }
+  });
+
+  it("a won game: the crown at the lane's end, Next game, no restart line, and the tally up by one game", () => {
+    const before: GameState = { ...aceDefence, games_won: [0, 0] };
+    renderModal(makeResult({ point_scored: true, attacker_points: 35, games_won: [1, 0], new_levels: ["2", "2"] }),
+                before, null, { before: ["A", "Q"] });
+    const crown = host.querySelector(".rank-lane.team0 .lane-crown")!;
+    expect(crown.textContent).toBe("👑");
+    expect(crown.classList.contains("now")).toBe(true);
+    // the other lane keeps its column, empty, so the two lanes stay aligned
+    expect(host.querySelector(".rank-lane.team1 .lane-crown")!.textContent).toBe("");
+    expect(host.querySelector(".rank-lane.team0")!.getAttribute("aria-label")).toBe("Us: A, game won");
+    expect([...host.querySelectorAll(".round-end-actions button")].map((b) => b.textContent)).toContain("Next game");
+    expect(host.textContent).not.toMatch(/restart|Levels/i);
+    // the tally counts games, one more than before the round, and no level
+    const games = host.querySelector(".result-games")!.textContent!;
+    expect(games).toBe(`Games: Us ${before.games_won[0] + 1} · Them ${before.games_won[1]}`);
+    expect(games).not.toMatch(/level|\bA\b|\b2\b/);
+  });
+
+  it("fills the new level in only when the result arrives at an open table", () => {
+    renderModal(makeResult({ new_levels: ["3", "2"], level_change: 1 }), state, null, { live: true });
+    expect(host.querySelector(".rank-lane.team0 .lane-cell.now")!.classList.contains("fill")).toBe(true);
+    renderModal(makeResult({ new_levels: ["3", "2"], level_change: 1 }), state, null, { live: false });
+    expect(host.querySelector(".lane-cell.fill")).toBeNull();
   });
 });

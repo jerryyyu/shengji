@@ -85,6 +85,34 @@ def card_box(title, line, buttons, w=380, gold=False):
             f'<div style="font-size:18px;font-weight:700">{title}</div>{ln}<div style="display:flex;gap:10px;margin-top:6px">{buttons}</div></div></div>')
 
 
+RANKS_2A = ("2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A")
+
+
+def ladder(lanes, points, bar):
+    """The round end's pictures: a lane per team, 2 to A (the old level outlined, the new filled), then the
+    attackers' points on a bar with the 80 mark. `lanes` is [(label, colour, old, new)]; new "crown" ends past A."""
+    crowned = any(new == "crown" for _, _, _, new in lanes)
+    rows = []
+    for label, col, old, new in lanes:
+        cells = []
+        for r in RANKS_2A + (("crown",) if crowned else ()):
+            st = "color:#8b93a3;border:1.5px solid transparent"
+            if r == new:
+                st = f"background:{col};color:#11141a;font-weight:800;border:1.5px solid {col}"
+            elif r == old and old != new:
+                st = f"color:{col};border:1.5px solid {col}"
+            txt = "👑" if r == "crown" and r == new else ("" if r == "crown" else r)
+            cells.append(f'<span style="flex:1;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;{st}">{txt}</span>')
+        rows.append(f'<div style="display:flex;align-items:center;gap:6px"><span style="width:44px;text-align:left;font-size:11px;font-weight:800;letter-spacing:.08em;color:{col}">{label}</span>'
+                    f'<div style="flex:1;display:flex;gap:2px">{"".join(cells)}</div></div>')
+    share = max(0, min(1, points / 160)) * 100
+    rows.append(f'<div style="display:flex;align-items:center;gap:6px;padding-bottom:12px"><span style="width:44px;text-align:left;font-weight:800;color:{bar}">{points}</span>'
+                f'<div style="flex:1;position:relative;height:8px;border-radius:4px;background:#2a303b"><div style="position:absolute;left:0;top:0;bottom:0;width:{share:.0f}%;border-radius:4px;background:{bar}"></div>'
+                '<div style="position:absolute;left:50%;top:-5px;width:2px;height:18px;background:#e9ecf2"></div>'
+                '<div style="position:absolute;left:50%;top:13px;transform:translateX(-50%);font-size:10px;color:#9aa3b2">80</div></div></div>')
+    return '<div style="display:flex;flex-direction:column;gap:4px">' + "".join(rows) + "</div>"
+
+
 STAYLEAVE = btn("Stay", "ghost", h=46) + btn("Leave", "dangerfill", h=46)
 
 
@@ -363,7 +391,7 @@ def f5_game():
     rend_buttons = rbtn("Next round", 18, .6, "green") + btn("Leave game", "danger", grow=False, h=48)
     details_closed = '<div style="font-size:13px;font-weight:700;color:#9aa3b2;margin-top:2px">Details ▾</div>'
     rend = felt(overlay=card_box("You &amp; Alice win the round",
-                                 "They took 35 of 80. We go up 1, to 3.<br>Next banker: Alice." + details_closed, rend_buttons))
+                                 ladder([("US", B, "2", "3"), ("THEM", O, None, "2")], 35, O) + "Next banker: Alice." + details_closed, rend_buttons))
     mini = lambda r, s_: card(r, s_, w=34, h=50)
     lbl = lambda t: f'<div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6b7484;text-align:left">{t}</div>'
     def trick_card(name, cards, win=False):
@@ -398,10 +426,10 @@ def f5_game():
                    '<div style="display:flex;gap:14px;padding:10px;border-radius:12px;background:#11141a;border:1px solid #2b323e;text-align:left">'
                    + big_kitty + big_trick + '</div>')
     rend_big = felt(overlay=card_box("Li &amp; Bob win the round",
-                                     "They took 205 of 80. They go up 3, to 5.<br>Next banker: Li." + details_big,
+                                     ladder([("US", B, None, "2"), ("THEM", O, "2", "5")], 205, O) + "Next banker: Li." + details_big,
                                      rend_buttons, w=760))
     rend_open = felt(overlay=card_box("You &amp; Alice win the round",
-                                      "They took 35 of 80. We go up 1, to 3.<br>Next banker: Alice." + details_open, rend_buttons, w=560))
+                                      ladder([("US", B, "2", "3"), ("THEM", O, None, "2")], 35, O) + "Next banker: Alice." + details_open, rend_buttons, w=560))
     deal = felt(levels=("3", "No trump", "2"), points="ATTACKERS 0 / 80", last_trick=False,
                 center='<div style="width:46px;height:66px;border-radius:6px;background:repeating-linear-gradient(45deg,#3b5ba5 0 4px,#4a6cc0 4px 8px);border:2px solid #dfe6f5"></div>',
                 hand_html=hand())
@@ -412,7 +440,7 @@ def f5_game():
             shot(dec, 844, 390, "Declare window", "'You declared ♥2' and the 5 s ring on Pass (live)."),
             shot(bury, 844, 390, "Bury", "Gold marks on the kitty cards; the count and the points on the button row (live)."),
             shot(last, 844, 390, "Tap Last trick", "Who played what, who won (live)."),
-            shot(rend, 844, 390, "Round ends", "The result in one line, Us / Them; Next round with its ring and Leave game in one row; Details closed."),
+            shot(rend, 844, 390, "Round ends", "A rank lane per team (old level outlined, new filled) and the attackers' points against 80; Next banker as the one status line; Next round with its ring and Leave game in one row; Details closed."),
             shot(rend_open, 844, 390, "Tap Details", "The kitty (cards, points, the bonus if the attackers won the last trick) and the last trick played. Closed by default."),
             shot(rend_big, 844, 390, "Details when the last trick was a 5-card throw", "Each player's cards overlap like a hand (every rank still readable), so 4 × 5 cards fit in one row; the winner's group is outlined."),
             shot(deal, 844, 390, "Tap Next round", "The next deal."),

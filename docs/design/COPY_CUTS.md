@@ -91,6 +91,8 @@ Code sources for the live strings: `web/src/queue/tableText.ts` (join lines :59-
 | table_declutter | hand edit | 'Open seat' on each open seat | + (the seat's label keeps 'Open seat, your team') |
 | table_declutter | hand edit | Invite link (a button beside the code) | Invite (the code is the one control) |
 | coach_cue | hand edit | Your turn: tap 2 ♣ cards, then Play (the coach line beside the Your turn button) | Tap 2 ♣ cards, then Play (the button already says Your turn; Jerry 2026-11-24) |
+| round_end_ladder | hand edit | They took 35 of 80. We go up 1, to 3. (the round end's result sentence; zh 闲家得 35 分（满 80 上台）。我们升 1 级，打 3。) | cut (a rank lane per team and the attackers' points bar show it; the status line keeps Next banker; Jerry 2026-11-24, design B) |
+| round_end_ladder | hand edit | Levels restart at 2. (a won game's result line; zh 双方从 2 重新打起。) | cut (the winners' lane ends past A on the crown and the button says Next game; Jerry 2026-11-24: "We don't need level restart at 2") |
 
 ## Kept, and why
 

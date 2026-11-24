@@ -102,6 +102,7 @@ describe("live numbers", () => {
   const LIVE = [
     ".off-tag.counting", ".card-count", ".chat-badge", ".tp-chat-badge", ".play-presence",
     ".bury-points", ".table-pill", ".account-pill-rating", ".tp", ".me-spark-chip",
+    ".lane-cell", ".points-bar-n", ".points-bar-80",
   ];
   it.each(LIVE)("%s keeps fixed-width digits", (sel) => {
     expect(bodies(sel).some((b) => b.includes("font-variant-numeric: tabular-nums"))).toBe(true);

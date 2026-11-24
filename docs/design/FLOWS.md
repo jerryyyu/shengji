@@ -152,6 +152,9 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
 
 ## Final decisions (Jerry 2026-11-14)
 - **Game over:** keep games endless. When a team wins a game, the round end says so ("You & Alice win the game"), with Next game / Leave; the HUD shows the games score (e.g. "Games 1–0") after the first game won; delete the unreachable game-over card (`RoundEndModal.tsx:131-150`).
+  Since 2026-11-24 (Jerry, App Screens Review item 14) a game your team wins is felt apart from a won round: the
+  success tap, then a medium impact (`haptic("game")`, off with the Haptics setting), and the round end's crown
+  arrives once with a short flash (a still crown under Reduce Motion). No new text.
 - **Join panel:** drop the leave-cost line entirely. The cost appears only in the Leave sheet.
 - **Create room:** dropped entirely. Every table Play opens has a code with Invite link and Allow joiners; the Create room row and flow are removed.
 - **Ranked tables:** start at level 2, fixed, with no starting-level row. Casual tables keep the opener's Starting level.

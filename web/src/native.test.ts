@@ -1,9 +1,9 @@
 /// <reference types="node" />
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { TAB_TOP_EVENT } from "./home/session";
 import {
-  KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hapticsEnabled, hideSplash, isNative, isPhone,
+  GAME_WON_FOLLOW, KEYBOARD_OPEN_CLASS, STATUS_TAP_EVENT, haptic, hapticCall, hapticsEnabled, hideSplash, isNative, isPhone,
   lockFor, resetNativeForTests, setHapticsEnabled, subscribeHaptics, setBackGesture, setGameMode, startShell,
 } from "./native";
 
@@ -237,6 +237,31 @@ describe("native bridge", () => {
     expect(calls.map(([n, m]) => `${n}.${m}`)).toEqual([
       "Haptics.selectionStart", "Haptics.selectionChanged", "Haptics.selectionChanged", "Haptics.notification",
     ]);
+  });
+
+  it("plays a won game as its own pattern: success, then a medium impact; a won round is the success alone", async () => {
+    vi.useFakeTimers();
+    try {
+      const calls = fakeShell("phone");
+      haptic("won");
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+      expect(calls).toEqual([["Haptics", "notification", { type: "SUCCESS" }]]);
+      calls.length = 0;
+      haptic("game");
+      expect(calls).toEqual([["Haptics", "notification", { type: "SUCCESS" }]]);
+      vi.advanceTimersByTime(GAME_WON_FOLLOW.afterMs);
+      expect(calls).toEqual([["Haptics", "notification", { type: "SUCCESS" }], ["Haptics", "impact", { style: "MEDIUM" }]]);
+      // the Haptics setting silences both beats
+      calls.length = 0;
+      setHapticsEnabled(false);
+      haptic("game");
+      vi.advanceTimersByTime(1000);
+      expect(calls).toEqual([]);
+      setHapticsEnabled(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("plays no haptic while the Haptics setting is off, and remembers the setting", async () => {

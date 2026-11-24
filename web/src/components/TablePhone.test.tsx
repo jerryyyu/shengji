@@ -141,6 +141,30 @@ describe("phone turn cue and haptics", () => {
     expect(haptics).toEqual([]);
   });
 
+  it("plays the game's own pattern when your team wins the whole game, and the round's for a round", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    const result = (winner_team: 0 | 1, point_scored: boolean): GameState["round_result"] => ({
+      attacker_points: 40, kitty_points: 0, kitty_cards: [], winner_team, level_change: 2, next_banker: 1,
+      new_levels: ["A", "K"], games_won: [point_scored ? 1 : 0, 0], point_scored, game_over: point_scored });
+    render(state({ phase: "play", turn: 1 }));
+    haptics.length = 0;
+    render(state({ phase: "round_end", turn: null, round_result: result(0, true) }));
+    expect(haptics).toEqual(["game"]);
+    // the other team's game: nothing
+    render(state({ phase: "play", turn: 1 }));
+    haptics.length = 0;
+    render(state({ phase: "round_end", turn: null, round_result: result(1, true) }));
+    expect(haptics).toEqual([]);
+    // an ordinary won round keeps the round's success
+    render(state({ phase: "play", turn: 1 }));
+    render(state({ phase: "round_end", turn: null, round_result: result(0, false) }));
+    expect(haptics).toEqual(["won"]);
+  });
+
   it("labels the trick's cards for VoiceOver and the hand as one group", () => {
     render(state({ turn: 0, hand: cards(3), trick: { leader: 1, plays: [{ seat: 1, cards: ["H3", "BJ"] }] } }));
     const played = [...host.querySelectorAll<HTMLElement>(".trick-cards .card")];
@@ -490,20 +514,6 @@ describe("Play and Bury say they are sending", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("Bury fills with the count, 0 to 8, and is never dimmed while short", () => {
-    render(burying());
-    expect(label()).toBe("Bury (0/8)");
-    expect(primary().classList.contains("bury-btn")).toBe(true);
-    expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
-    for (let i = 0; i < 3; i++) pick(i);
-    expect(label()).toBe("Bury (3/8)");
-    expect(primary().style.getPropertyValue("--bury-fill")).toBe("37.5%");
-    expect(primary().disabled).toBe(true);
-    for (let i = 3; i < 8; i++) pick(i);
-    expect(primary().style.getPropertyValue("--bury-fill")).toBe("100%");
-    expect(primary().disabled).toBe(false);
-  });
-
   it("a delayed bury: Sending… and aria-busy, the eight stay, one send", () => {
     render(burying());
     for (let i = 0; i < 8; i++) pick(i);
@@ -526,7 +536,8 @@ describe("Play and Bury say they are sending", () => {
     expect(primary().getAttribute("aria-busy")).toBeNull();
     expect(primary().disabled).toBe(false);
     expect(selected()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    expect(sent).toHaveLength(1);
+    // one bury; a telemetry batch may flush on the same stand-in connection
+    expect(sent.filter((m) => (m as { type: string }).type !== "client_event")).toHaveLength(1);
   });
 
   // telemetry rides the same stand-in connection
@@ -922,5 +933,36 @@ describe("Play waits on an off-suit follow", () => {
       expect(done).toHaveBeenCalledTimes(1);
       expect(done.mock.calls[0][0]).toMatchObject({ disabled_play_taps: 1 });
     } finally { done.mockRestore(); notice.mockRestore(); }
+  });
+});
+
+describe("Bury shows its count as a fill", () => {
+  const pick = (n: number) => act(() => host.querySelectorAll<HTMLButtonElement>(".hand .card.clickable")[n].click());
+  const primary = () => host.querySelector<HTMLButtonElement>(".action-bar .btn.primary")!;
+  const label = () => (primary().querySelector(".play-text") ?? primary()).textContent;
+  const handIds = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")].map((slot) => Number(slot.dataset.id));
+  const selected = () => [...host.querySelectorAll<HTMLElement>(".hand-slot")]
+    .filter((slot) => slot.querySelector(".card.selected")).map((slot) => Number(slot.dataset.id));
+  const setStatus = (s: string) => act(() => { link.status = s; for (const fn of link.statusListeners) fn(s); });
+  const playing = (over: Partial<GameState> = {}) => state({ turn: 0, trick: { leader: 0, plays: [] }, ...over });
+  const burying = (over: Partial<GameState> = {}) => state({
+    phase: "bury", turn: 0, hand: cards(33), banker: 0,
+    players: [player(0, { is_banker: true, cards_left: 33 }), player(1), player(2), player(3)], ...over });
+
+  it("Bury fills with the count, 0 to 8, and is never dimmed while short", () => {
+    render(burying());
+    expect(label()).toBe("Bury (0/8)");
+    expect(primary().classList.contains("bury-btn")).toBe(true);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
+    for (let i = 0; i < 3; i++) pick(i);
+    expect(label()).toBe("Bury (3/8)");
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("37.5%");
+    expect(primary().disabled).toBe(true);
+    for (let i = 3; i < 8; i++) pick(i);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("100%");
+    expect(primary().disabled).toBe(false);
+    // unpicking empties it again
+    for (let i = 0; i < 8; i++) pick(i);
+    expect(primary().style.getPropertyValue("--bury-fill")).toBe("0%");
   });
 });

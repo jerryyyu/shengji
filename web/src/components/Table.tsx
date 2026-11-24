@@ -229,7 +229,8 @@ function isYourTurnCue(state: GameState): boolean {
 
 /** Haptic ticks on the moments that matter (no-ops outside the iOS app):
  *  your turn arriving, a declare option appearing and your team taking the
- *  round. Each fires on the transition, never on a repeat state; a won trick
+ *  round, or the whole game (a heavier pattern of its own). Each fires on the
+ *  transition, never on a repeat state; a won trick
  *  is shown, not felt, since it comes about 25 times a round. */
 function useTableHaptics(state: GameState) {
   const turn = isYourTurnCue(state);
@@ -245,11 +246,12 @@ function useTableHaptics(state: GameState) {
   // transition from no result to one, not a change of identity
   const wonRound = state.round_result !== null && myTeam !== null && state.round_result.winner_team === myTeam;
   const hadResult = state.round_result !== null;
+  const wonGame = wonRound && state.round_result?.point_scored === true;
   const prevResult = useRef(hadResult);
   useEffect(() => {
-    if (hadResult && !prevResult.current && wonRound) haptic("won");
+    if (hadResult && !prevResult.current && wonRound) haptic(wonGame ? "game" : "won");
     prevResult.current = hadResult;
-  }, [hadResult, wonRound]);
+  }, [hadResult, wonRound, wonGame]);
 }
 
 /** The joins still outstanding at each room, once told, so a remount of the

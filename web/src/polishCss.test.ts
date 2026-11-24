@@ -146,3 +146,13 @@ describe("tap targets", () => {
     expect(EXTENDED.some((sel) => heights(sel).some((h) => h.state === state))).toBe(true);
   });
 });
+
+describe("the won game's crown", () => {
+  it("arrives once with a flash, and stays still under Reduce Motion", () => {
+    const raw = readFileSync(new URL("./index.css", import.meta.url), "utf8");
+    const crown = /\n\.game-won-crown \{([^}]*)\}/.exec(raw)![1];
+    expect(crown).toContain("animation: crown-flash var(--dur-count) var(--ease-back) both");
+    expect(raw).toContain("@keyframes crown-flash");
+    expect(raw).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.game-won-crown \{ animation: none; \}/);
+  });
+});

@@ -1968,7 +1968,11 @@ def test_ws_a_joined_opener_passing_then_leaving_passes_controls_again(wsenv, mo
     round; Bob then leaves the round he joined (his seat is a bot's again), and
     the controls pass on to Cara, who can then switch Allow joiners."""
     srv, store, client, clock = wsenv
-    monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    # Every seat is the bot's until Bob and then Cara are seated; at no delay
+    # it plays the round out in tens of milliseconds, and a newcomer seated at
+    # the round end plays from the next round (joined_round None). The pace
+    # keeps the round going for seconds while they join.
+    monkeypatch.setattr(srv, "BOT_DELAY", 0.05)
     ratings.CARRIED_CAPS.clear()
     host, host_headers = _user(store, "host", "Host")
     bob, bob_headers = _user(store, "bob", "Bob")
@@ -2598,6 +2602,7 @@ def _guest_match(client, device=DEVICE_A):
 def test_ws_a_guest_who_signs_in_takes_its_matched_seat_back_as_the_account(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    monkeypatch.setattr(srv, "ROOM_TTL", 30.0)  # the guest disconnects; keep its room past the sign-in
     code, token = _guest_match(client)
     room = srv.rooms[code]
     assert room.ratings.kinds[0] == ratings.GUEST and room.ratings.present == {}
@@ -2619,6 +2624,7 @@ def test_ws_a_guest_who_signs_in_takes_its_matched_seat_back_as_the_account(wsen
 def test_ws_a_guest_seat_moves_only_to_an_account_signed_in_on_that_device(wsenv, monkeypatch):
     srv, store, client, clock = wsenv
     monkeypatch.setattr(srv, "BOT_DELAY", 0.0)
+    monkeypatch.setattr(srv, "ROOM_TTL", 30.0)  # the guest disconnects; keep its room past the sign-in
     code, token = _guest_match(client)
     room = srv.rooms[code]
     _, headers = _user(store, "elsewhere", "Else Where")

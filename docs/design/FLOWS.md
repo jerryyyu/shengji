@@ -377,6 +377,13 @@ Behind the nearby flag (`offline/server/nearby/flag.ts`), decided at run time by
   rating after each recent round (the stats call's `history`): one gold line, a faint fill, the latest point
   marked. No axis or visible text; its accessible name reads "Rating over your last N rounds, from A to B".
   Fewer than two rounds draw nothing.
+  Since 2026-11-24 (Jerry: "make it click and draggable to see it over time") a press and a horizontal drag
+  scrub it: a guide and the dot follow the finger and one readout floats just above the chart with that
+  round's rating, its change (▲/▼) and its short date ("Today" for today). Letting go, Escape or leaving
+  focus returns it to rest; at rest the readout is empty, so the panel keeps no status line. A vertical drag
+  still scrolls (`touch-action: pan-y`). Focused, the arrow keys, Home and End step through the points and
+  the readout is announced politely. The stats call sends the last 200 rounds (`history`) with one unix
+  time per point (`history_at`). No range switch yet: the window is those 200 rounds.
 
 ## One account in the iOS app (Jerry 2026-11-22: "it should only be for iOS when it's tied to a device"; "Web guests should stay the same")
 The website is unchanged. In the iOS app (`Capacitor.getPlatform() === "ios"`, with the Keychain plugin), the

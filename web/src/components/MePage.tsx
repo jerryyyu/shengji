@@ -85,7 +85,7 @@ function StatsBody({ stats }: { stats: Stats }) {
   const rounds = stats.rounds;
   return (
     <>
-      <RatingSparkline history={stats.history} />
+      <RatingSparkline history={stats.history} at={stats.history_at} />
       <div className="me-tiles">
         <div className="me-tile"><b>{pct(stats.won_pct)}</b><span>{t("me.tile.won")}</span></div>
         <div className="me-tile">

@@ -5570,7 +5570,18 @@ button.me-who .grp-value.chev { flex: none; }
 .me-spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .me-spark-fill { fill: rgba(242, 193, 78, 0.16); stroke: none; }
 .me-spark-line { fill: none; stroke: var(--gold); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.me-spark-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--gold); }
+.me-spark-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--gold); pointer-events: none; }
+/* the chart scrubs on a horizontal drag; a vertical one still scrolls the page */
+.me-spark { touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; outline: none; }
+.me-spark:focus-visible { box-shadow: 0 0 0 2px var(--gold-soft); border-radius: 6px; }
+.me-spark-guide { position: absolute; top: 0; bottom: 0; width: 1px; margin-left: -0.5px; background: var(--gold-soft); pointer-events: none; }
+.me-spark.scrubbing .me-spark-dot { width: 10px; height: 10px; margin: -5px 0 0 -5px; box-shadow: 0 0 0 3px var(--gold-soft); }
+/* the readout floats just over the chart's top edge while a round is picked,
+   so the page does not shift; at rest it is empty and takes no room */
+.me-spark-read { position: relative; height: 0; z-index: 2; }
+.me-spark-chip { position: absolute; bottom: 2px; white-space: nowrap; padding: 3px 8px; border-radius: 8px; background: var(--grp); box-shadow: 0 0 0 1px var(--grp-edge); color: var(--text); font-size: var(--fs-12); font-variant-numeric: tabular-nums; pointer-events: none; }
+.me-spark-chip b { font-weight: 700; }
+.me-spark-when { color: var(--text-dim); }
 .me-tile { padding: 10px 8px 9px; border-radius: 12px; background: var(--grp); text-align: center; }
 .me-tile b { display: block; font-size: clamp(22px, calc(22 * var(--tu)), 28px); font-weight: 700; letter-spacing: -0.3px; color: #fff; font-variant-numeric: tabular-nums; }
 .me-tile span { font-size: var(--fs-12); color: #9aa3b2; }

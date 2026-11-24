@@ -1755,3 +1755,56 @@ def test_a_leave_is_exempt_from_the_minimum_move(env, monkeypatch):
     table.finish()
     [event] = _events(store)
     assert event["abandoned"] == 1 and event["delta"] == 0.0
+
+
+def _rounds_at(store, uid, times, start=1000.0, step=3.0):
+    """One rated round per time in ``times``, each gaining ``step``."""
+    with closing(store._open()) as conn:
+        r = start
+        for i, at in enumerate(times):
+            conn.execute(
+                """INSERT INTO rating_events(game_id, round_no, user_id, created_at, team,
+                       banker_team, won, levels, expected, actual, k, rating_before,
+                       rating_after, delta)
+                   VALUES ('g-hist', ?, ?, ?, 0, 1, 1, 1, 0.5, 1, 20, ?, ?, ?)""",
+                (i + 1, uid, at, r, r + step, step))
+            r += step
+
+
+def test_stats_sends_one_time_per_history_point(env):
+    from shengji.api import ratings
+
+    _, store, _ = env
+    uid, _ = _user(store, "hist")
+    _rounds_at(store, uid, [1_700_000_000, 1_700_000_600, 1_700_090_000])
+    s = ratings.stats(store, uid, now=1_700_100_000)
+    assert s["history"] == [1000, 1003, 1006, 1009]
+    # the starting point has no round of its own: it takes the first round's time
+    assert s["history_at"] == [1_700_000_000, 1_700_000_000, 1_700_000_600, 1_700_090_000]
+
+
+def test_stats_history_is_bounded_and_starts_at_the_round_before(env):
+    from shengji.api import ratings
+
+    _, store, _ = env
+    uid, _ = _user(store, "long")
+    n = ratings.HISTORY_POINTS + 25
+    times = [1_700_000_000 + 60 * i for i in range(n)]
+    _rounds_at(store, uid, times)
+    s = ratings.stats(store, uid, now=times[-1] + 1)
+    assert len(s["history"]) == len(s["history_at"]) == ratings.HISTORY_POINTS + 1 == 201
+    # the first point is the rating before the oldest round shown, timed at
+    # the round before that one
+    assert s["history_at"][0] == times[-ratings.HISTORY_POINTS - 1]
+    assert s["history_at"][1:] == times[-ratings.HISTORY_POINTS:]
+    assert s["history"][-1] == 1000 + 3 * n
+    assert all(isinstance(t, int) for t in s["history_at"])
+
+
+def test_stats_with_no_rounds_sends_empty_history(env):
+    from shengji.api import ratings
+
+    _, store, _ = env
+    uid, _ = _user(store, "fresh")
+    s = ratings.stats(store, uid)
+    assert s["history"] == [] and s["history_at"] == []

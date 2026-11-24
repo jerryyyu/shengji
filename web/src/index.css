@@ -1690,16 +1690,25 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
 }
 
 .hand-line.coach.nudge {
-  animation: hand-line-in 160ms var(--ease-out) both, coach-pulse 1.6s ease-in-out infinite;
+  animation: hand-line-in 160ms var(--ease-out) both;
 }
 
-.hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
+/* The glow is drawn once on a layer over the border box and only its
+   opacity pulses, so the pulse never repaints the card or the line. */
+.hand-line.coach.nudge::before,
+.hand-line.coach.nudge ~ .hand .hand-slot.lit .card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px var(--gold), 0 0 14px 2px var(--gold-soft);
+  pointer-events: none;
+  opacity: 0;
   animation: coach-pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes coach-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--gold-soft); }
-  50% { box-shadow: 0 0 0 2px var(--gold), 0 0 14px 2px var(--gold-soft); }
+  50% { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1707,6 +1716,11 @@ h2[tabindex="-1"]:focus { outline: none; }  /* focused for screen readers, not a
   .hand-line.coach.nudge ~ .hand .hand-slot.lit .card {
     animation: none;
     box-shadow: 0 0 0 2px var(--gold);
+  }
+
+  .hand-line.coach.nudge::before,
+  .hand-line.coach.nudge ~ .hand .hand-slot.lit .card::before {
+    display: none;
   }
 }
 
@@ -2917,9 +2931,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
     left: 0;
     bottom: 0;
     height: 2px;
-    width: calc(var(--dealt, 0) * 100%);
+    width: 100%;
     background: var(--gold);
-    transition: width 0.2s ease;
+    transform: scaleX(var(--dealt, 0));
+    transform-origin: left;
+    transition: transform 0.2s ease;
   }
 
   /* --- Your area: spans the felt; only its controls and the hand take taps --- */
@@ -3153,14 +3169,11 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   }
 
   /* Over 25 cards (the banker with the kitty) the cards are smaller, so all
-     of them fit one row; a short slide in and out of that size */
+     of them fit one row; the hand's glide (Hand.tsx) eases them in and out of
+     that size by a transform, so no frame lays the hand out again */
   .hand.small-cards {
     --pitch: min(calc(var(--hand-cw) * 0.8),
       calc((var(--safe-w) - 16px - var(--hand-cw)) / max(1, calc(var(--n, 25) - 1))));
-  }
-
-  .hand .card {
-    transition: transform var(--dur-fast) ease-out, box-shadow var(--dur-fast), width 150ms ease-out;
   }
 
   /* the index stays readable on the smaller cards */
@@ -3170,10 +3183,6 @@ dialog.modal-backdrop::backdrop { background: transparent; }
 
   .hand.small-cards .card .corner-suit {
     font-size: 10px;
-  }
-
-  .hand-slot {
-    transition: flex-basis 150ms ease-out, width 150ms ease-out;
   }
 
   /* a refused Play's hint stands just above your row, over the hand */
@@ -4590,7 +4599,7 @@ button.games-row { cursor: pointer; }
   border-radius: 999px;
   background: #eef2f7;
   box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
-  transition: width 380ms var(--ease-out);
+  transform-origin: left;
 }
 .howto-scale-line { z-index: 1; transition: box-shadow 250ms ease; }
 .howto-scale-line.crossed { box-shadow: 0 0 10px 2px var(--gold); }
@@ -5383,7 +5392,7 @@ body.keyboard-open .tabbar { display: none; }
   position: relative;
   width: 28px;
   height: 28px;
-  margin-top: calc(var(--ptr, 0px) / 2 - 14px);
+  translate: 0 calc(var(--ptr, 0px) / 2 - 14px);
   opacity: var(--ptr-p, 0);
 }
 .has-nav:not(.ptr-on) .ptr-spinner { visibility: hidden; }
@@ -5409,7 +5418,7 @@ body.keyboard-open .tabbar { display: none; }
 .ptr-refreshing .ptr-spinner { opacity: 1; }
 .has-nav.ptr-on .home-col { transform: translateY(var(--ptr, 0px)); }
 .nav-animate.ptr-on:not(.ptr-drag) .home-col { transition: transform 300ms var(--ease-out); }
-.nav-animate.ptr-on:not(.ptr-drag) .ptr-spinner { transition: margin-top 300ms var(--ease-out), opacity 300ms ease; }
+.nav-animate.ptr-on:not(.ptr-drag) .ptr-spinner { transition: translate 300ms var(--ease-out), opacity 300ms ease; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 .nav-animate.ptr-refreshing .ptr-spinner { animation: ptr-spin 800ms steps(8) infinite; }
 @media (prefers-reduced-motion: reduce) {
@@ -6161,12 +6170,23 @@ dialog.leave-sheet-backdrop {
 }
 .skel-row { pointer-events: none; }
 .skel {
+  position: relative;
   display: inline-block;
   vertical-align: middle;
   height: 0.8em;
+  overflow: hidden;
   border-radius: 6px;
+}
+/* the shimmer is a band three times the bone's width, slid across it by a
+   transform: a loop that never repaints */
+.skel::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 300%;
+  height: 100%;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.07) 30%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.07) 70%);
-  background-size: 300% 100%;
   animation: skel-shimmer 1.4s ease-in-out infinite;
 }
 .avatar.skel { height: 28px; border-radius: 50%; }
@@ -6177,11 +6197,11 @@ dialog.leave-sheet-backdrop {
 .skel-num { width: 2.6em; }
 .skel-ghost { visibility: hidden; }
 @keyframes skel-shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: 0 0; }
+  from { transform: translateX(-66.6667%); }
+  to { transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .skel { animation: none; }
+  .skel::after { animation: none; }
   dialog.leave-sheet-backdrop, .leave-sheet { animation: none; }
 }
 

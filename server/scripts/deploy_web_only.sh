@@ -315,7 +315,7 @@ marker_served() {
   fi
   # the MIME essence: before any parameter, trimmed, lowercased
   essence=${type%%;*}
-  essence=$(printf '%s' "$essence" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+  essence=$(printf '%s' "$essence" | sed -e 's/^[[:blank:]]*//' -e 's/[[:blank:]]*$//' | tr '[:upper:]' '[:lower:]')
   case "$essence" in
     text/javascript|application/javascript) ;;
     *) rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET is served as ${type:-no content type}, not JavaScript"; return 1 ;;

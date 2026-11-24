@@ -638,7 +638,7 @@ def test_an_asset_shorter_than_its_content_length_is_not_served(tmp_path, env):
     assert "/assets/held_seat-ab12.js failed (curl exit 18)" in r.stdout
 
 
-@pytest.mark.parametrize("mime", ["application/javascript-disabled", "text/javascriptx",
+@pytest.mark.parametrize("mime", ["application/javascript-disabled", "text/javascriptx", "text/java script",
                                   "text/plain; x=text/javascript", "javascript"])
 def test_a_mime_that_only_starts_like_javascript_is_not_served(tmp_path, env, mime):
     r, _ = _marker_served(tmp_path, env, _served_lazy_site(tmp_path), deployed=False,

@@ -13,8 +13,9 @@
 # refuse (printing the rollback command, never running it) if the bot identity changed;
 # require exactly one started machine; with --marker, build web/ of the deploy tree
 # locally, refuse before the push unless the marker is in that build's JS, and after
-# the deploy require the served index.html to name exactly the local build's
-# content-hashed entry script and stylesheet files.
+# the deploy require the served index.html to equal the local build's byte for byte
+# and the local asset carrying the marker to be served at its URL as JavaScript with
+# the local bytes.
 # --dry-run runs every step except the push and fly deploy.
 # A JSON receipt records the tree, served and web shas, /healthz and the Fly version
 # before and after, and the outcome.
@@ -49,6 +50,8 @@ STARTED_MACHINES=null
 BUNDLES_BEFORE=
 BUNDLES_AFTER=
 MARKER_FOUND=null
+MARKER_ASSET=
+MARKER_DETAIL=
 LOCAL_DIST=
 LOCAL_ENTRIES=
 SERVED_ENTRIES=
@@ -259,26 +262,58 @@ build_local_web() {
   printf '%s\n' "$out/web/dist"
 }
 
-# marker_in_build DIST: the marker is in a JS file of the local build. Every file in
-# dist/assets is an output of the build's module graph.
-marker_in_build() {
+# marker_asset DIST: the first JS file of the local build (by name) that contains the
+# marker, as /assets/<name>; nothing when none does. Every file in dist/assets is an
+# output of the build's module graph.
+marker_asset() {
   local f
   for f in "$1"/assets/*.js; do
     [ -f "$f" ] || continue
-    grep -qF -- "$MARKER" "$f" && return 0
+    if grep -qF -- "$MARKER" "$f"; then
+      printf '/assets/%s\n' "${f##*/}"
+      return 0
+    fi
   done
   return 1
 }
 
-# marker_served: the marker is in the local build, and the served index.html names
-# exactly the local build's entry files. Vite names each file by a hash of its
-# content, and an entry's content names the hashed chunks it imports, so a served
-# entry with the local entry's name is that build, lazy chunks included.
+marker_in_build() {
+  marker_asset "$1" >/dev/null
+}
+
+# marker_served: the deploy serves the local build's bytes. The served index.html is
+# byte-identical to the local dist/index.html (Vite's output is deterministic; it
+# names the content-hashed entries and their preloads), and the local asset that
+# carries the marker is served at its exact URL with HTTP 200, a JavaScript content
+# type and the local bytes. Sets MARKER_DETAIL to the reason on failure.
 marker_served() {
-  [ -n "$LOCAL_DIST" ] && [ -n "$LOCAL_ENTRIES" ] || return 1
-  marker_in_build "$LOCAL_DIST" || return 1
-  SERVED_ENTRIES=$(served_entries | tr '\n' ' ') || return 1
-  [ "$SERVED_ENTRIES" = "$LOCAL_ENTRIES" ]
+  local tmp code type
+  MARKER_DETAIL=
+  if [ -z "$LOCAL_DIST" ] || [ -z "${LOCAL_ENTRIES// /}" ]; then
+    MARKER_DETAIL="the local build names no /assets entry"; return 1
+  fi
+  MARKER_ASSET=$(marker_asset "$LOCAL_DIST") || { MARKER_DETAIL="no local asset contains the marker"; return 1; }
+  tmp=${TMPDIR:-/tmp}
+  tmp=$(mktemp "${tmp%/}/deploy-web-served.XXXXXX") || return 1
+  if ! curl -fsS --max-time 20 -o "$tmp" "$URL/"; then
+    rm -f "$tmp"; MARKER_DETAIL="could not read $URL/"; return 1
+  fi
+  SERVED_ENTRIES=$(entry_refs < "$tmp" | tr '\n' ' ' || true)
+  if ! cmp -s "$tmp" "$LOCAL_DIST/index.html"; then
+    rm -f "$tmp"; MARKER_DETAIL="the served index.html differs from the local build's"; return 1
+  fi
+  read -r code type < <(curl -sS --max-time 30 -o "$tmp" -w '%{http_code} %{content_type}\n' "$URL$MARKER_ASSET" || echo "000 none")
+  if [ "$code" != 200 ]; then
+    rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET returned HTTP $code"; return 1
+  fi
+  case "$type" in
+    text/javascript*|application/javascript*) ;;
+    *) rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET is served as ${type:-no content type}, not JavaScript"; return 1 ;;
+  esac
+  if ! cmp -s "$tmp" "$LOCAL_DIST$MARKER_ASSET"; then
+    rm -f "$tmp"; MARKER_DETAIL="$URL$MARKER_ASSET differs from the local build's bytes"; return 1
+  fi
+  rm -f "$tmp"
 }
 
 write_receipt() {
@@ -290,6 +325,7 @@ write_receipt() {
   R_VA=$FLY_VERSION_AFTER R_IB=$FLY_IMAGE_BEFORE R_IA=$FLY_IMAGE_AFTER R_SM=$STARTED_MACHINES \
   R_BB=$BUNDLES_BEFORE R_BA=$BUNDLES_AFTER R_MARKER=$MARKER R_MF=$MARKER_FOUND \
   R_LD=$LOCAL_DIST R_LE=$LOCAL_ENTRIES R_SE=$SERVED_ENTRIES \
+  R_MA=$MARKER_ASSET R_MD=$MARKER_DETAIL \
   R_ROLLBACK=$ROLLBACK_CMD R_PUSHED=$PUSHED R_DEPLOYED=$DEPLOYED \
   python3 - "$RECEIPT" <<'PY'
 import json, os, sys, datetime
@@ -317,6 +353,7 @@ receipt = {
     "marker": e["R_MARKER"] or None, "marker_found": js("R_MF"),
     "local_build": e["R_LD"] or None,
     "local_entries": e["R_LE"].split(), "served_entries": e["R_SE"].split(),
+    "marker_asset": e["R_MA"] or None, "marker_detail": e["R_MD"] or None,
     "rollback_command": e["R_ROLLBACK"] or None,
 }
 with open(sys.argv[1], "w") as f:
@@ -368,7 +405,7 @@ main() {
 
   if [ -n "$MARKER" ]; then
     LOCAL_DIST=$(build_local_web "$WORKTREE") || refuse "could not build web/ of the deploy tree locally"
-    LOCAL_ENTRIES=$(entry_refs < "$LOCAL_DIST/index.html" | tr '\n' ' ')
+    LOCAL_ENTRIES=$(entry_refs < "$LOCAL_DIST/index.html" | tr '\n' ' ' || true)
     [ -n "${LOCAL_ENTRIES// /}" ] || refuse "the local build's index.html names no /assets entry"
     say "local build $LOCAL_DIST, entries: $LOCAL_ENTRIES"
     if [ "$DRY_RUN" = 0 ] && ! marker_in_build "$LOCAL_DIST"; then
@@ -433,9 +470,9 @@ main() {
   if [ -n "$MARKER" ]; then
     if marker_served; then MARKER_FOUND=true; else MARKER_FOUND=false; fi
     if [ "$DRY_RUN" = 0 ] && [ "$MARKER_FOUND" = false ]; then
-      refuse "served index.html names [${SERVED_ENTRIES% }], not the local build's [${LOCAL_ENTRIES% }]; the new web build is not live. Rollback: $ROLLBACK_CMD"
+      refuse "$MARKER_DETAIL; the new web build is not served. Rollback: $ROLLBACK_CMD"
     fi
-    say "marker in the local build and its entries served: $MARKER_FOUND"
+    say "local build served (index.html and $MARKER_ASSET byte-identical): $MARKER_FOUND${MARKER_DETAIL:+ ($MARKER_DETAIL)}"
   fi
 
   if [ "$DRY_RUN" = 1 ]; then STATUS=dry-run-ok; else STATUS=deployed; fi

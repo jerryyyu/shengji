@@ -147,16 +147,33 @@
   font-size: var(--fs-16, 16px);
   color: #fff;
 }
+/* A setting's select is a dark well, as the code box is; native chrome
+   ignores the dark panel, so it draws its own caret. */
 .tp-set select {
+  appearance: none;
+  -webkit-appearance: none;
   min-width: 64px;
-  min-height: 36px;
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 1px solid #333b49;
-  background: #11141a;
+  min-height: var(--ctl-h-sm);
+  padding: 0 34px 0 14px;
+  border-radius: var(--ctl-r);
+  border: 1px solid var(--ctl-well-edge);
+  background-color: var(--ctl-well);
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+                    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
   color: #fff;
   font: inherit;
+  cursor: pointer;
 }
+.tp-set select:focus { border-color: var(--team0); }
+.tp-set select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* Forced colors drop the drawn caret: the select keeps the system's own */
+@media (forced-colors: active) {
+  .tp-set select { appearance: auto; -webkit-appearance: menulist; background-image: none; padding-right: 14px; }
+}
+.tp-set select option { background: var(--ctl-well); color: var(--text); }
 .tp-set-val { color: #c3cad6; font-weight: 600; }
 /* Table settings: one row, its values dimmed at the end as a select shows
    its value; a tap opens the setting rows under it */

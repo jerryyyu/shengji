@@ -38,7 +38,7 @@
 .chat-panel.chat-tight .chat-head > span { display: none; }
 .chat-panel.chat-tight .chat-head { order: 2; padding: 0 6px 0 0; border-bottom: 0; }
 .chat-panel.chat-tight .chat-input { flex: 1; min-width: 0; padding: 1px 4px 1px 1px; border-top: 0; }
-.chat-panel.chat-tight .chat-input input { padding-top: 4px; padding-bottom: 4px; outline-offset: -2px; }
+.chat-panel.chat-tight .chat-input input { min-height: 34px; padding-top: 4px; padding-bottom: 4px; outline-offset: -2px; }
 .chat-panel.chat-tight .chat-input .btn { min-height: 34px; padding-top: 0; padding-bottom: 0; }
 
 /* The chat's quick phrases: one row of chips above the field. The chips

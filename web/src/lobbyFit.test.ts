@@ -118,7 +118,7 @@ describe("the Play tab on a phone", () => {
                 + ".home-narrow .play-tab:not(.play-table-up) .play-art > :not(.lobby-preview), "
                 + ".home-narrow .play-tab:not(.play-table-up) .play-side > *")["flex-shrink"]).toBe("0");
     const art = rule(".home-narrow .play-tab .lobby-preview");
-    expect(art.flex).toBe("1 1 200px");
+    expect(art.flex).toBe("1 1 120px");
     expect(art["min-height"]).toBe("120px");
     expect(art["max-height"]).toBe("200px");
     // the whole stage is drawn inside whatever height is left

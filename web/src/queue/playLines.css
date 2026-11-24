@@ -46,10 +46,10 @@
    play is struck through. */
 .play-mode {
   display: flex;
-  padding: 3px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(17, 20, 26, 0.6);
+  padding: 3px;            /* 36 + 2x3 + the border = var(--ctl-h-sm) */
+  border: 1px solid var(--ctl-well-edge);
+  border-radius: var(--ctl-r);
+  background: var(--ctl-well);
 }
 .play-mode-opt {
   appearance: none;
@@ -57,15 +57,15 @@
   min-height: 36px;
   padding: 0;
   border: 0;
-  border-radius: 9px;
+  border-radius: calc(var(--ctl-r) - 4px);
   background: transparent;
   color: var(--text-dim);
   font: inherit;
-  font-size: var(--fs-14, 14px);
-  font-weight: 700;
+  font-size: var(--fs-15);
+  font-weight: 600;
   cursor: pointer;
 }
-.play-mode-opt.on { background: #2f3a4d; color: #fff; }
+.play-mode-opt.on { background: #2f3a4d; color: #fff; font-weight: 700; }
 .play-mode-opt:disabled { color: #5a6270; text-decoration: line-through; cursor: default; }
 .play-mode-opt:disabled:not(.on) { opacity: 0.5; }
 /* held at a table's mode: not unavailable, so not struck through as the

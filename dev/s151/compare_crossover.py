@@ -11,7 +11,7 @@ import sys
 from compare_generator import comparable_config, normalize_row, read, read_store, read_times, require
 
 SEEDS = (4301400, 4301504, 4301608, 4301712)
-HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "af44bd2f9069b164c3c23fbdefadf015571d7043")
+HEADS = ("fd968f7fc28955ba651756d4ea7590e87f099e40", "3b923441bb87a4c01cdf27828424368f23e68e90")
 
 
 def percent(a, b):
@@ -57,6 +57,13 @@ def read_block(root, seed, order, times, args, previous_end, configuration):
         store = root / f"{i}-{arm}" / "store"
         manifest, host = read_store(store, seed, args, HEADS["bc".index(arm)], times[i, arm])
         require(host[0][0] == args.host, f"{store}: expected host {args.host}")
+        require(host[0][4] is True, f"{store}: compiled engine required")
+        require(manifest["config"]["served_budgets"] == {
+            "play_seconds": 3, "bury_seconds": 3, "wall_clock_dependent": True
+        }, f"{store}: resolved play or bury budget differs")
+        runtime = manifest["config"]["served_runtime"]
+        for key in ("SHENGJI_PV_SERVING_BUDGET_SECONDS", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"):
+            require(float(runtime[key]) == 3.0, f"{store}: expected three seconds for {key}")
         start, end = cluster_interval(store, args.rounds // 2)
         require(start >= previous_end, f"{store}: cluster execution overlaps or is out of order")
         previous_end = end

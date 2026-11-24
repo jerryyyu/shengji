@@ -50,7 +50,14 @@ class CrossoverTest(unittest.TestCase):
     def test_missing_clocks_in_every_arm_cannot_pass(self):
         self.check_clock_rows("play", None, None, "INCONCLUSIVE")
 
-    def check_clock_rows(self, record_schema, baseline, candidate, expected):
+    def test_equal_but_nonrepresentative_arms_are_refused(self):
+        with self.assertRaisesRegex(ValueError, "compiled engine required"):
+            self.check_clock_rows("play", 1, 1, "PASS", compiled=False)
+        for key in ("SHENGJI_PV_SERVING_BUDGET_SECONDS", "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS"):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
+                self.check_clock_rows("play", 1, 1, "PASS", lifted=key)
+
+    def check_clock_rows(self, record_schema, baseline, candidate, expected, compiled=True, lifted=None):
         with TemporaryDirectory() as temp:
             root = Path(temp)
             order = crossover.block_order(0)
@@ -70,7 +77,11 @@ class CrossoverTest(unittest.TestCase):
                      ("elapsed_seconds" if record_schema == "pv-search-fallback-v1" else "seconds"):
                          candidate if drift else baseline}}, outcome=None))
                 config = dict(run_id=run_id, seed0=7, round_mix="first", capture_served_budget=True,
-                              served_runtime={"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3"})
+                              served_budgets=dict(play_seconds=3, bury_seconds=3, wall_clock_dependent=True),
+                              served_runtime={"SHENGJI_PV_SERVING_BUDGET_SECONDS": "3",
+                                              "SHENGJI_PV_BURY_SERVING_BUDGET_SECONDS": "3"})
+                if lifted:
+                    config["served_runtime"][lifted] = "30"
                 for key in ("PV", "PV_PRIOR", "PV_UNIFIED", "PV_BELIEF"):
                     config["served_runtime"][f"SHENGJI_{key}_CKPT"] = "model"
                     config["served_runtime"][f"SHENGJI_{key}_SHA256"] = "hash"
@@ -82,7 +93,7 @@ class CrossoverTest(unittest.TestCase):
                     sidecars={0: side}, merged=None, out_dir=store)
                 runtime = dict(workers=1, resume=False, merge=False, wall_secs=1,
                     host="fixture", platform="fixture", logical_cpus=1, python="fixture",
-                    fast_engine=False, require_voids=True, clusters=dict(requested=1,
+                    fast_engine=compiled, require_voids=True, clusters=dict(requested=1,
                     generated=[0], reused=[], failed=[]), per_cluster={"0":
                     dict(started_at=2*i+1, finished_at=2*i+2)})
                 for name, data in (("runtime", runtime), ("manifest", manifest),

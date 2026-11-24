@@ -97,14 +97,17 @@ class ShellViewController: CAPBridgeViewController {
         let runner = OriginMoveRunner(webView: webView, server: server)
         originMove = runner
         runner.run { [weak self] in
-            guard let self = self else { return }
             UserDefaults.standard.set(true, forKey: OriginMove.doneKey)
-            self.originMove = nil
-            super.viewDidLoad()
-            if let target = self.inviteAfterMove {
-                self.inviteAfterMove = nil
-                _ = self.webView?.load(URLRequest(url: target))
-            }
+            self?.loadAfterMove()
+        }
+    }
+
+    private func loadAfterMove() {
+        originMove = nil
+        super.viewDidLoad()
+        if let target = inviteAfterMove {
+            inviteAfterMove = nil
+            _ = webView?.load(URLRequest(url: target))
         }
     }
 

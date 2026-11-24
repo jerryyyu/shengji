@@ -40,6 +40,7 @@ vi.mock("../ws", () => ({
 const serverSays = (m: unknown) => act(() => { for (const fn of link.listeners) fn(m); });
 
 const { default: Table, SENDING_AFTER_MS } = await import("./Table");
+const { noteReceipt } = await import("../stateReceipt");
 const { default: Hand } = await import("./Hand");
 const { telemetry } = await import("../telemetry");
 
@@ -86,6 +87,8 @@ afterEach(() => {
   localStorage.removeItem("shengji.coach");
 });
 const render = (s: GameState) => act(() => root.render(<Table state={s} />));
+/** A frame as App hands it over: noted against the socket that delivered it, then rendered. */
+const deliver = (s: GameState) => { noteReceipt(s, link.generation); render(s); };
 
 describe("phone turn cue and haptics", () => {
   it("marks the table my-turn and ticks once when your play comes round", () => {
@@ -184,11 +187,63 @@ describe("phone turn cue and haptics", () => {
     expect(haptics).toEqual([]);
     act(() => root.unmount());
     root = createRoot(host);
-    // live: play, then the result
-    render(state({ phase: "play", turn: 1 }));
-    render(state({ phase: "round_end", turn: null, round_result: won }));
+    // live: play, then the result, on one socket
+    deliver(state({ phase: "play", turn: 1 }));
+    deliver(state({ phase: "round_end", turn: null, round_result: won }));
     expect(host.querySelector(".game-won-crown")!.className).toBe("game-won-crown flash");
     expect(haptics).toEqual(["game"]);
+  });
+
+  it("the round end is live only for a result the same socket delivered after play, even with a status render between sockets", () => {
+    const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>;
+    const saved = { showModal: proto.showModal, close: proto.close };
+    proto.showModal = function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
+    proto.close = function (this: HTMLDialogElement) { this.removeAttribute("open"); };
+    onTestFinished(() => { proto.showModal = saved.showModal; proto.close = saved.close; });
+    // we bank at 5; they attack and climb to A (an older server: no old_levels)
+    const trump = { suit: "H", rank: "5", declarer: 0 };
+    const banked = { banker: 0, trump, players: [player(0, { is_banker: true }), player(1), player(2), player(3)] };
+    const playing = (theirs: string) => state({ ...banked, levels: ["5", theirs] });
+    const climbed = (level_change: number) => state({ ...banked, levels: ["5", "A"], phase: "round_end", turn: null,
+      round_result: { attacker_points: 80 + 40 * level_change, kitty_points: 0, kitty_cards: [], winner_team: 1, level_change,
+                      next_banker: 1, new_levels: ["5", "A"], games_won: [0, 0], point_scored: false, game_over: false } });
+    const theirs = () => {
+      const lane = host.querySelector(".rank-lane.team1")!;
+      return { was: lane.querySelector(".lane-cell.was")?.textContent ?? null,
+               now: lane.querySelector(".lane-cell.now")?.textContent ?? null,
+               fill: lane.querySelector(".lane-cell.fill") !== null };
+    };
+    // the socket drops and a new one opens; the table re-renders on the open status, still
+    // showing the old socket's frame, before the new socket's first frame arrives
+    const newSocket = () => {
+      for (const status of ["closed", "connecting", "open"]) {
+        act(() => { link.status = status; for (const fn of link.statusListeners) fn(status); });
+      }
+    };
+    const fresh = () => { act(() => root.unmount()); root = createRoot(host); };
+
+    // one socket: play at K, then K +1 = A arrives live
+    deliver(playing("K"));
+    deliver(climbed(1));
+    expect(theirs()).toEqual({ was: "K", now: "A", fill: true });
+    fresh();
+
+    // play at Q on the old socket; the new socket delivers the result: settled, and Q is not
+    // drawn (Q +1 cannot be A)
+    deliver(playing("Q"));
+    const generation = link.generation;
+    newSocket();
+    expect(link.generation).toBe(generation + 1);
+    deliver(climbed(1));
+    expect(theirs()).toEqual({ was: null, now: "A", fill: false });
+    fresh();
+
+    // play at K on the old socket, +2 on the new: K would replay (K +2 stops at A), but the
+    // round may have been played at Q, so the old socket's K is not read
+    deliver(playing("K"));
+    newSocket();
+    deliver(climbed(2));
+    expect(theirs()).toEqual({ was: null, now: "A", fill: false });
   });
 
   it("labels the trick's cards for VoiceOver and the hand as one group", () => {

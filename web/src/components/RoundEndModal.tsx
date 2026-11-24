@@ -1,3 +1,4 @@
+import { RANKS } from "../protocol";
 import type { GameState, RoundResult } from "../protocol";
 import { conn } from "../ws";
 import Card from "./Card";
@@ -51,6 +52,9 @@ interface RoundEndModalProps {
   /** The result arrived while the table was open: a won game's crown may
    *  flash. False when the table opened onto it, which draws it settled. */
   live?: boolean;
+  /** The levels the round was played at, from the last state before the
+   *  result; null when the table opened onto the result. */
+  before?: [string, string] | null;
 }
 
 type Outcome = "WinRound" | "LoseRound" | "WinGame" | "LoseGame";
@@ -119,19 +123,92 @@ function teamSubject(team: 0 | 1, state: GameState): "We" | "They" {
   return teamWord(team, state) === "Us" ? "We" : "They";
 }
 
-/** The round in one line: "They took 35 of 80. We go up 1, to 3". The
- *  attackers' total already includes any kitty bonus. */
-function resultSentences(state: GameState, result: RoundResult): { took: string; climb: string } {
-  const attack = attackingTeam(state);
-  const attackers = attack === null ? "attackers" : teamSubject(attack, state) === "We" ? "we" : "they";
-  const winner = teamSubject(result.winner_team, state) === "We" ? "we" : "they";
-  const n = result.level_change;
-  return {
-    took: t(`roundend.${attackers}Took` as MessageKey, { n: result.attacker_points }),
-    climb: n > 0
-      ? t(`roundend.${winner}GoUp` as MessageKey, { n, level: result.new_levels[result.winner_team] })
-      : t(`roundend.${winner}TakeDeal` as MessageKey),
-  };
+const ACE = RANKS.length - 1;
+const rankIdx = (level: string | null | undefined): number | null => {
+  const i = (RANKS as readonly string[]).indexOf(level ?? "");
+  return i < 0 ? null : i;
+};
+
+/** Each team's level before the round, as far as the result shows it: the
+ *  bankers played at the trump rank; a team that did not win kept its level;
+ *  the winners were their new level less the climb, unless the climb ran
+ *  into A, which hides where they started. A won game restarts both teams,
+ *  so the attackers' old level is unknown there. The table's own record of
+ *  the round's levels wins whenever it agrees with all of that. */
+function levelsBefore(state: GameState, result: RoundResult, before: [string, string] | null = null): [number | null, number | null] {
+  const known: [number | null, number | null] = [null, null];
+  const bank = state.banker === null ? null : ((state.banker % 2) as 0 | 1);
+  if (bank !== null) known[bank] = rankIdx(state.trump?.rank);
+  for (const team of [0, 1] as const) {
+    if (known[team] !== null) continue;
+    const now = rankIdx(result.new_levels[team]);
+    if (result.point_scored || now === null) continue;
+    if (team !== result.winner_team) known[team] = now;
+    else if (now < ACE || result.level_change === 0) known[team] = now - result.level_change;
+  }
+  if (before) {
+    const seen: [number | null, number | null] = [rankIdx(before[0]), rankIdx(before[1])];
+    // the record must replay to this result: the winners' climb stops at A,
+    // a won game was held at A, and the other team kept its level
+    const replays = (v: number, team: 0 | 1, now: number | null): boolean => {
+      if (result.point_scored) return team !== result.winner_team || v === ACE;
+      if (now === null) return false;
+      return team === result.winner_team ? Math.min(ACE, v + result.level_change) === now : v === now;
+    };
+    if (seen.every((v, i) => v !== null && (known[i] === null || known[i] === v)
+                             && replays(v, i as 0 | 1, rankIdx(result.new_levels[i])))) return seen;
+  }
+  return known;
+}
+
+/** One team's lane, 2 to A: the old level outlined, the new one filled. A
+ *  won game's winners end past A, on the crown; the other team's lane keeps
+ *  the level it held, since both teams restart for the next game. */
+function RankLane({ team, label, from, to, crown, live }: {
+  team: 0 | 1; label: string; from: number | null; to: number | null; crown: "won" | "space" | null; live: boolean;
+}) {
+  const t = useT();
+  const cells = RANKS.map((rank, i) => {
+    const now = i === to;
+    const was = i === from && from !== to;
+    return (
+      <span key={rank} className={`lane-cell${now ? " now" : ""}${was ? " was" : ""}${now && live && from !== to ? " fill" : ""}`}>{rank}</span>
+    );
+  });
+  const ranked = to !== null && to <= ACE ? RANKS[to] : null;
+  const spoken = crown === "won"
+    ? t("roundend.laneWon", { team: label, from: from === null ? RANKS[ACE] : RANKS[from] })
+    : ranked === null ? label
+    : from === null || from === to ? t("roundend.laneAt", { team: label, level: ranked })
+    : t("roundend.laneUp", { team: label, from: RANKS[from], to: ranked });
+  return (
+    <div className={`rank-lane team${team}`} role="img" aria-label={spoken}>
+      <span className="lane-label" aria-hidden="true">{label}</span>
+      <span className="lane-cells" aria-hidden="true">
+        {cells}
+        {crown === "won" ? <span className={`lane-cell lane-crown now${live ? " fill" : ""}`}>👑</span>
+          : crown === "space" ? <span className="lane-cell lane-crown" /> : null}
+      </span>
+    </div>
+  );
+}
+
+/** The attackers' points on a bar to 160, the 80 that takes the deal
+ *  marked at its middle, in the attackers' colour. */
+function PointsBar({ team, points }: { team: 0 | 1 | null; points: number }) {
+  const t = useT();
+  const share = Math.max(0, Math.min(1, points / 160));
+  return (
+    <div className={`points-bar${team === null ? "" : ` team${team}`}`} role="img"
+         aria-label={t("roundend.pointsLabel", { n: points })}>
+      <span className="points-bar-n" aria-hidden="true">{points}</span>
+      <span className="points-bar-track" aria-hidden="true">
+        <span className="points-bar-fill" style={{ transform: `scaleX(${share})` }} />
+        <span className="points-bar-mark" />
+        <span className="points-bar-80">80</span>
+      </span>
+    </div>
+  );
 }
 
 /** "Next banker: Bot 1.", or "Next banker: you." */
@@ -160,7 +237,7 @@ function kittyBonusText(state: GameState, result: RoundResult): string | null {
            { times, points: result.kitty_points });
 }
 
-export default function RoundEndModal({ state, result, clock = null, live = false }: RoundEndModalProps) {
+export default function RoundEndModal({ state, result, clock = null, live = false, before = null }: RoundEndModalProps) {
   const t = useT();
   const titleId = useId();
   useScreen("round_end");
@@ -182,7 +259,18 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
   const ratingBit = shownDelta !== null
     ? <span className={`result-rating ${shownDelta > 0 ? "delta-up" : shownDelta < 0 ? "delta-dn" : "delta-flat"}`}>{t("roundend.rating", { rating: rating!.rating, delta: shortDelta(shownDelta) })}</span>
     : null;
-  const { took, climb } = resultSentences(state, result);
+  const from = levelsBefore(state, result, before);
+  const attack = attackingTeam(state);
+  const lane = (team: 0 | 1) => {
+    const wonGame = gameWon && team === result.winner_team;
+    return (
+      <RankLane team={team} label={team === us ? t("common.us") : t("common.them")} live={live}
+                from={wonGame ? ACE : from[team]}
+                // a won game restarts both teams: the lanes keep where they stood
+                to={wonGame ? null : gameWon ? from[team] : rankIdx(result.new_levels[team])}
+                crown={wonGame ? "won" : gameWon ? "space" : null} />
+    );
+  };
   const bonus = kittyBonusText(state, result);
   const hasDetails = result.kitty_cards.length > 0 || state.last_trick !== null;
   // Everyone reviews the round at their own pace: the server only advances
@@ -202,14 +290,16 @@ export default function RoundEndModal({ state, result, clock = null, live = fals
             : teamTitle(result.winner_team, state, gameWon ? "WinGame" : "WinRound")}
         </h2>
 
-        {/* one result line, the same on every round end; a won game says the
-            levels restart where another round says the climb */}
+        {/* the pictures say the round: each team's lane, then the attackers' points */}
+        <div className="round-end-ladder">
+          {lane(us)}
+          {lane(them)}
+          <PointsBar team={attack} points={result.attacker_points} />
+        </div>
+
+        {/* the one status line: the next banker, and a rated round's change */}
         <p className="result-headline result-line">
-          <span>
-            {t("roundend.line", { took, climb: gameWon ? t("roundend.levelsRestart", { level: result.new_levels[us] }) : climb })}
-            {ratingBit}{t("roundend.stop")}
-          </span>
-          <span className="result-next-banker">{nextBankerLine(state, result)}</span>
+          <span className="result-next-banker">{nextBankerLine(state, result)}{ratingBit}{t("roundend.stop")}</span>
         </p>
         {gameWon ? (
           <p className="result-games">{t("roundend.games", { us: result.games_won[us], them: result.games_won[them] })}</p>

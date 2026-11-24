@@ -33,27 +33,20 @@ export const roundend = defineMessages({
   "roundend.seat": { en: "Seat {n}", zh: "{n} 号座" },
   "roundend.you": { en: "You", zh: "我" },
 
-  // the result line: the points, then the climb, then the rating
-  "roundend.theyTook": { en: "They took {n} of 80.", zh: "闲家得 {n} 分（满 80 上台）。" },
-  "roundend.weTook": { en: "We took {n} of 80.", zh: "我们得 {n} 分（满 80 上台）。" },
-  "roundend.attackersTook": { en: "Attackers took {n} of 80.", zh: "闲家得 {n} 分（满 80 上台）。" },
-  "roundend.weGoUp": { en: "We go up {n}, to {level}", zh: "我们升 {n} 级，打 {level}" },
-  "roundend.theyGoUp": { en: "They go up {n}, to {level}", zh: "对方升 {n} 级，打 {level}" },
-  "roundend.weTakeDeal": { en: "We take the deal, no level change", zh: "我们上台，不升级" },
-  "roundend.theyTakeDeal": { en: "They take the deal, no level change", zh: "对方上台，不升级" },
-  "roundend.levelsRestart": { en: "Levels restart at {level}", zh: "双方从 {level} 重新打起" },
-  /** The points sentence and the climb, as one run of text. */
-  "roundend.line": {
-    en: (p) => `${p.took} ${p.climb}`,
-    zh: (p) => `${p.took}${p.climb}`,
-  },
+  // the lanes and the points bar: what a screen reader says for each picture
+  "roundend.laneUp": { en: "{team}: {from} to {to}", zh: "{team}：{from} 升到 {to}" },
+  "roundend.laneAt": { en: "{team}: {level}", zh: "{team}：{level}" },
+  "roundend.laneWon": { en: "{team}: {from}, game won", zh: "{team}：{from}，赢了这一盘" },
+  "roundend.pointsLabel": { en: "Attackers' points: {n} of 80", zh: "闲家得分：{n}，80 分上台" },
+
+  // the status line: the next banker, then a rated round's change
   "roundend.stop": { en: ".", zh: "。" },
   "roundend.rating": {
     en: (p) => ` · rating ${p.rating} (${p.delta})`,
     zh: (p) => ` · 积分 ${p.rating}（${p.delta}）`,
   },
-  "roundend.nextBanker": { en: "Next banker: {name}.", zh: "下局庄家：{name}。" },
-  "roundend.nextBankerYou": { en: "Next banker: you.", zh: "下局庄家：我。" },
+  "roundend.nextBanker": { en: "Next banker: {name}", zh: "下局庄家：{name}" },
+  "roundend.nextBankerYou": { en: "Next banker: you", zh: "下局庄家：我" },
   "roundend.games": {
     en: (p) => `Games: Us ${p.us} · Them ${p.them}`,
     zh: (p) => `盘数：我方 ${p.us} · 对方 ${p.them}`,

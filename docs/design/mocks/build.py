@@ -1190,7 +1190,11 @@ MANUAL_CUTS = [('s1_seats', 'You held A. Games: Us 1 · Them 0. Levels back to 2
                ('table_declutter', "CASUAL tag above a queue panel's title (Jerry 2026-11-22, option B)", "cut (the Ranked / Casual switch above says it)"),
                ('table_declutter', "VS between the team columns", "cut (the gap divides them)"),
                ('table_declutter', "'Open seat' on each open seat", "+ (the seat's label keeps 'Open seat, your team')"),
-               ('table_declutter', "Invite link (a button beside the code)", "Invite (the code is the one control)")]
+               ('table_declutter', "Invite link (a button beside the code)", "Invite (the code is the one control)"),
+               ('round_end_ladder', "They took 35 of 80. We go up 1, to 3. (the round end's result sentence; zh 闲家得 35 分（满 80 上台）。我们升 1 级，打 3。)",
+                "cut (a rank lane per team and the attackers' points bar show it; the status line keeps Next banker; Jerry 2026-11-24, design B)"),
+               ('round_end_ladder', "Levels restart at 2. (a won game's result line; zh 双方从 2 重新打起。)",
+                "cut (the winners' lane ends past A on the crown and the button says Next game; Jerry 2026-11-24: \"We don't need level restart at 2\")")]
 
 KEPT = [
     ("presence line", "'2 tables have a seat · 3 people playing' (+ split by mode); core.html shortens it to '2 tables · 1 ranked, 1 casual · 3 playing' so it fits one phone line", "Approved; Jerry: keep today's counts. One line."),

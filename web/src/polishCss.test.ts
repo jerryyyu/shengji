@@ -102,6 +102,7 @@ describe("live numbers", () => {
   const LIVE = [
     ".off-tag.counting", ".card-count", ".chat-badge", ".tp-chat-badge", ".play-presence",
     ".bury-points", ".table-pill", ".account-pill-rating", ".tp", ".me-spark-chip",
+    ".lane-cell", ".points-bar-n", ".points-bar-80",
   ];
   it.each(LIVE)("%s keeps fixed-width digits", (sel) => {
     expect(bodies(sel).some((b) => b.includes("font-variant-numeric: tabular-nums"))).toBe(true);
@@ -264,8 +265,9 @@ describe("controls", () => {
   });
 
   it("the setting's select keeps the system's indicator in forced colors, where the drawn caret is dropped", () => {
-    const block = /@media \(forced-colors: active\) \{([^{}]*\{[^{}]*\})*[^{}]*\}/.exec(
-      css.slice(css.indexOf("@media (forced-colors: active)")))?.[0] ?? "";
+    // every forced-colors block, in any of the style files: the round end's ladder has its own
+    const block = [...css.matchAll(/@media \(forced-colors: active\) \{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g)]
+      .map((m) => m[0]).join("\n");
     expect(block).toMatch(/\.tp-set select \{[^}]*appearance: auto;/);
     expect(bodies(".tp-set select").join(";")).toContain("appearance: none;");
   });

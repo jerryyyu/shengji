@@ -2107,6 +2107,193 @@ dialog.modal-backdrop::backdrop { background: transparent; }
   font-variant-numeric: tabular-nums;
 }
 
+/* round end: a rank lane per team, 2 to A (the old level outlined, the new
+   one filled, in the team's colour), then the attackers' points on a bar
+   with the 80 mark. Labels only: the pictures replace the result sentence. */
+.round-end-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.rank-lane,
+.points-bar {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.lane-label {
+  font-size: var(--fs-12, 12px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.rank-lane.team0 { --lane: var(--team0); }
+.rank-lane.team1 { --lane: var(--team1); }
+.rank-lane .lane-label { color: var(--lane); }
+
+.lane-cells {
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  gap: 2px;
+}
+
+.lane-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  border-radius: 7px;
+  border: 1.5px solid transparent;
+  color: #8b93a3;
+  font-size: var(--fs-13, 13px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.lane-cell.was {
+  border-color: var(--lane);
+  color: var(--lane);
+  font-weight: 700;
+}
+
+.lane-cell.now {
+  background: var(--lane);
+  color: #11141a;
+  font-weight: 800;
+}
+
+.lane-crown { font-size: 15px; }
+
+/* the new level fills in once, when the result arrives at an open table */
+.lane-cell.fill {
+  animation: lane-fill var(--dur-fast) var(--ease-out) both;
+}
+
+@keyframes lane-fill {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lane-cell.fill { animation: none; }
+}
+
+.points-bar { padding-bottom: 14px; }
+.points-bar.team0 { --bar: var(--team0); }
+.points-bar.team1 { --bar: var(--team1); }
+
+.points-bar-n {
+  color: var(--bar, #c4ccd8);
+  font-size: var(--fs-15);
+  font-weight: 800;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+
+.points-bar-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: #2a303b;
+}
+
+.points-bar-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: var(--bar, #c4ccd8);
+  transform-origin: left center;
+}
+
+.points-bar-mark {
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  width: 2px;
+  height: 18px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #e9ecf2;
+}
+
+.points-bar-80 {
+  position: absolute;
+  left: 50%;
+  top: 13px;
+  transform: translateX(-50%);
+  color: #9aa3b2;
+  font-size: var(--fs-11, 11px);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* High contrast (forced colours): the browser would draw every cell, the
+   track, the fill and the 80 mark in one Canvas colour. The ladder draws
+   its own system colours instead: inactive ranks bare, the old rank in a
+   thick dashed CanvasText frame, the new rank in Highlight; the track
+   framed in CanvasText, the fill in Highlight, the 80 mark in CanvasText. */
+@media (forced-colors: active) {
+  .rank-lane,
+  .points-bar {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+
+  .rank-lane .lane-label,
+  .points-bar-n,
+  .points-bar-80 {
+    color: CanvasText;
+  }
+
+  .lane-cell {
+    background: transparent;
+    color: CanvasText;
+    border: 2px solid transparent;
+  }
+
+  .lane-cell.was {
+    border: 3px dashed CanvasText;
+    color: CanvasText;
+  }
+
+  .lane-cell.now {
+    background: Highlight;
+    color: HighlightText;
+    border: 2px solid Highlight;
+  }
+
+  .points-bar-track {
+    background: Canvas;
+    border: 1px solid CanvasText;
+  }
+
+  .points-bar-fill {
+    background: Highlight;
+  }
+
+  .points-bar-mark {
+    background: CanvasText;
+    box-shadow: 0 0 0 1px Canvas;
+  }
+}
+
+/* a landscape browser with its bars showing (about 326px tall): the
+   ladder tightens and a won game's crown is the one at the lane's end */
+@media (max-height: 340px) {
+  .modal.round-end { gap: 6px; }
+  .modal.round-end .lane-cell { height: 20px; }
+  .modal.round-end.game-won > .game-won-crown { display: none; }
+}
+
 /* round end: the result in one line, then Next round and Leave in one row */
 .result-headline.result-line,
 .result-games {

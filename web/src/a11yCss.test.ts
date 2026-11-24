@@ -190,3 +190,50 @@ describe("the leaderboard's marks hold AA on their rows", () => {
     expect(contrast("#14171e", token("gold"))).toBeGreaterThanOrEqual(AA);
   });
 });
+
+describe("the round-end ladder does not rest on colour alone", () => {
+  /** The rules inside `@media (forced-colors: active)`, by exact selector list. */
+  function forced(selector: string): string {
+    const at = css.indexOf("@media (forced-colors: active) {");
+    if (at < 0) throw new Error("no forced-colors block");
+    let depth = 0, end = at;
+    for (let i = css.indexOf("{", at); i < css.length; i++) {
+      if (css[i] === "{") depth++;
+      else if (css[i] === "}" && --depth === 0) { end = i; break; }
+    }
+    const block = css.slice(css.indexOf("{", at) + 1, end);
+    const re = /([^{}]+)\{([^{}]*)\}/g;
+    for (let m = re.exec(block); m; m = re.exec(block)) {
+      if (m[1].replace(/\/\*[\s\S]*?\*\//g, "").trim().replace(/\s+/g, " ") === selector) return m[2];
+    }
+    throw new Error(`no forced-colors rule ${selector}`);
+  }
+
+  it("the old level is outlined and the new one filled, so the two differ in shape, not only in colour", () => {
+    expect(decls(".lane-cell")).toContain("border: 1.5px solid transparent");
+    expect(decls(".lane-cell.was")).toContain("border-color: var(--lane)");
+    expect(decls(".lane-cell.was")).not.toContain("background");
+    expect(decls(".lane-cell.now")).toContain("background: var(--lane)");
+    expect(decls(".lane-cell.now")).toContain("font-weight: 800");
+  });
+
+  it("in forced colours the ladder draws its own system colours rather than one Canvas", () => {
+    expect(forced(".rank-lane, .points-bar")).toContain("forced-color-adjust: none");
+  });
+
+  it("in forced colours inactive, old and new ranks are three different marks", () => {
+    const bare = forced(".lane-cell"), was = forced(".lane-cell.was"), now = forced(".lane-cell.now");
+    expect(bare).toContain("border: 2px solid transparent");
+    expect(bare).toContain("background: transparent");
+    expect(was).toContain("border: 3px dashed CanvasText");
+    expect(now).toContain("background: Highlight");
+    expect(now).toContain("color: HighlightText");
+  });
+
+  it("in forced colours the track is framed, the fill is Highlight and the 80 mark is CanvasText", () => {
+    expect(forced(".points-bar-track")).toContain("border: 1px solid CanvasText");
+    expect(forced(".points-bar-fill")).toContain("background: Highlight");
+    expect(forced(".points-bar-mark")).toContain("background: CanvasText");
+    expect(forced(".rank-lane .lane-label, .points-bar-n, .points-bar-80")).toContain("color: CanvasText");
+  });
+});

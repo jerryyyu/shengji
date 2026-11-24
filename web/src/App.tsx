@@ -28,6 +28,7 @@ import MePage from "./components/MePage";
 import HomeShell from "./home/HomeShell";
 import { IdentitySheet } from "./components/GuestChip";
 import { openTab, useHomeRoute } from "./home/route";
+import { noteReceipt } from "./stateReceipt";
 import { haptic, hideSplash, lockFor, setBackGesture, setGameMode, startShell } from "./native";
 import { usePhoneLayout } from "./phoneLayout";
 import { showToast as toastShow } from "./toast";
@@ -177,6 +178,8 @@ export default function App() {
           if (!OFFLINE && !msg.joining_you && msg.room && getSavedRoom() !== msg.room) saveRoom(msg.room);
           announceState(msg, !seededRef.current);
           seededRef.current = true;
+          // the socket that sent it, for the round end's live check
+          noteReceipt(msg, conn.generation);
           setGame(msg);
           break;
         case "error": {

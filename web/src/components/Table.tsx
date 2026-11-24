@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import type { CSSProperties, ReactNode } from "react";
 import type { GameState, HandCard, LastTrick, ServerMsg, StatePlayer } from "../protocol";
 import { conn } from "../ws";
+import { type Receipt, receiptOf, sameSocket } from "../stateReceipt";
 import type { ConnStatus } from "../ws";
 import { NEARBY_SESSION, useOffline } from "../offlineMode";
 import Card, { shortLabel } from "./Card";
@@ -307,11 +308,16 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
 
 export default function Table({ state }: { state: GameState }) {
   const t = useT();
-  // A result seen arriving (after a state without one) is live and may
-  // celebrate; a table opened onto a finished round (a reconnect, a resume)
-  // draws it settled.
-  const sawNoResult = useRef(state.round_result === null);
-  if (state.round_result === null) sawNoResult.current = true;
+  // The last state without a result, and the socket that delivered it (as
+  // App noted on arrival, never the socket open at render time). A result
+  // delivered by that same socket arrived live and may celebrate, and the
+  // round end reads the levels the round was played at from it. A table
+  // opened onto a finished round, or a reconnect onto one (a new socket),
+  // draws it settled from the result alone.
+  const receipt = receiptOf(state);
+  const lastLive = useRef<{ receipt: Receipt; levels: [string, string] } | null>(null);
+  if (state.round_result === null) lastLive.current = receipt ? { receipt, levels: state.levels } : null;
+  const liveHere = lastLive.current !== null && sameSocket(lastLive.current.receipt, receipt);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [shownLastTrick, setShownLastTrick] = useState<LastTrick | null>(null);
   // Hidden debug overlay — only reachable when localStorage["shengji.debug"]
@@ -753,7 +759,8 @@ export default function Table({ state }: { state: GameState }) {
       </div>
 
       {state.phase === "round_end" && state.round_result ? (
-        <RoundEndModal state={state} result={state.round_result} clock={clock} live={sawNoResult.current} />
+        <RoundEndModal state={state} result={state.round_result} clock={clock} live={liveHere}
+                       before={liveHere ? lastLive.current!.levels : null} />
       ) : null}
 
       {xrayOpen ? (

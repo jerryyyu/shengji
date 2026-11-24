@@ -26,11 +26,22 @@ def test_saved_synthetic_duel_reaches_the_actual_decision_cli(packet):
     reference = dict(packet.recipe, round_plan="r2", pins={
         str(recipes.REFERENCE.parent / "kit/ut_read.py"): sha(lane / "kit/ut_read.py"),
         str(recipes.REFERENCE.parent / "ut_run_h2h.sh"): "historical",
+        str(recipes.REFERENCE.parent / "kit/ut_h2h_adapter.py"): "fixture",
     })
     side = {k: v for k, v in packet.arm.items() if k not in ("status", "out_root")}
     with pytest.raises(ValueError, match="unexpected SZ2-A decision window"):
         recipes.decision_recipe(reference, dict(side, seed0=SEED0 + 1000), lane)
     packet.recipe = recipes.decision_recipe(reference, side, lane)
+    adapter, *args = packet.recipe["producer_argv"]
+    assert adapter in packet.recipe["pins"]
+    assert args[:10] == [
+        "--arm", "identity", "--seed0", str(SEED0), "--deals", str(DEALS), "--round-plan", "r2",
+        "--out", str(Path(packet.arm["out_root"]) / "duel.jsonl"),
+    ]
+    assert list(zip(args[10::2], args[11::2], strict=True)) == [
+        *(("--defender-env", word) for word in side["defender_words"]),
+        *(("--exploiter-env", word) for word in side["exploiter_words"]),
+    ]
     packet.root = Path(packet.arm["out_root"])
     packet.status = Path(packet.arm["status"])
     packet.root.mkdir()

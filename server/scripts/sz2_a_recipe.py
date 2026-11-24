@@ -34,9 +34,18 @@ def decision_recipe(reference, side, lane):
     pins = dict(reference["pins"])
     del pins[str(REFERENCE.parent / "ut_run_h2h.sh")]
     pins.update({str(reader): READER_SHA, str(helper): pins[legacy_helper], str(PREDECLARE): PREDECLARE_SHA})
+    adapter = str(REFERENCE.parent / "kit" / "ut_h2h_adapter.py")
+    if adapter not in pins or reference["round_plan"] != "r2":
+        raise ValueError("expected the pinned paired adapter and rank-mixed r2 plan")
+    # The supervisor supplies the interpreter and admitted worker count.
+    argv = [adapter, "--arm", "identity", "--seed0", str(SEED0), "--deals", str(DEALS),
+            "--round-plan", "r2", "--out", str(root / "duel.jsonl")]
+    for role in ("defender", "exploiter"):
+        for word in side[f"{role}_words"]:
+            argv.extend((f"--{role}-env", word))
     recipe = {k: reference[k] for k in ("schema", "duel", "round_plan", "r52_words", "tree", "tree_head")}
     return dict(recipe, reader=str(reader), reader_sha256=READER_SHA, pins=pins,
-                predeclare_sha256=PREDECLARE_SHA, arms={ARM: arm})
+                producer_argv=argv, predeclare_sha256=PREDECLARE_SHA, arms={ARM: arm})
 
 
 if __name__ == "__main__":

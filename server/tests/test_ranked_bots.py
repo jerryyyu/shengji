@@ -1122,6 +1122,77 @@ def test_a_seat_that_changes_during_the_settling_read_is_read_again(env, monkeyp
     assert ranked_bots.standard(room) == frozenset()
 
 
+def _next_round(room):
+    """The table's next round of the same game starts, as ``advance_if_all_ready``
+    starts it, without its deal."""
+    room.game.start_round()
+    room.index_round()
+    ranked_bots.begin_round(room)
+    ratings.round_started(room)
+
+
+def test_a_round_replaced_during_the_rise_read_changes_nothing(env, monkeypatch):  # noqa: F811
+    import concurrent.futures
+
+    from shengji.api import server as srv
+
+    _, store, _ = env
+    _force_outcome(monkeypatch, 30)
+    room, uids = _rising_table(srv, store, {0: 800.0}, "REPL")
+
+    async def scenario():
+        _play_out(srv, room)
+        await _written()
+        _next_round(room)
+        assert room.bot_levels.pending_rise
+        held = concurrent.futures.Future()
+        room.ratings.standing = held
+        task = asyncio.create_task(
+            ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot))
+        await asyncio.sleep(0)
+        room.game.start_round()                   # another round replaced it during the read
+        room.index_round()
+        held.set_result({uids[0]: (900.0, 1)})
+        await task
+    asyncio.run(scenario())
+    assert ranked_bots.level_of(room, 1) == "beginner"
+    assert _bot_levels_records(srv, room) == []
+
+
+def test_a_seat_that_changes_during_the_rise_read_is_read_again(env, monkeypatch):  # noqa: F811
+    from shengji.api import server as srv
+
+    _, store, _ = env
+    low, _ = _user(store, "lowr", rating=780.0)
+    high, _ = _user(store, "highr", rating=900.0)
+    table = Table(srv, [None, "bot", "bot", "bot"], code="RRTR")
+    room = table.room
+    reads = []
+    real = ranked_bots._ordered_read
+
+    def read(uids):
+        reads.append(list(uids))
+        if len(reads) == 1:
+            room.seats[0].user_id = high          # the seat changed hands during the read
+        return real(uids)
+
+    async def scenario():
+        room.game.start_round()
+        room.index_round()
+        room.saved_game = None
+        ranked_bots.choose(room, srv.make_relaxed_bot, _ratings({}), srv.make_beginner_bot)
+        ratings.start(room)
+        assert ranked_bots.level_of(room, 1) == "beginner"     # a guest counts 800
+        _play_out(srv, room)
+        _next_round(room)
+        monkeypatch.setattr(ranked_bots, "_ordered_read", read)
+        room.seats[0].user_id = low               # signed in after the round's read
+        await ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot)
+    asyncio.run(scenario())
+    assert reads == [[low], [high]]
+    assert ranked_bots.level_of(room, 1) == "standard"
+
+
 # ------------------------------------------ the policy the search played
 @pytest.mark.parametrize("partner_rating, commits", [(1000.0, True), (1200.0, False)])
 def test_a_search_plays_the_level_of_its_snapshot_through_a_pending_check(

@@ -402,9 +402,9 @@ export async function runGame(opts: GameOpts): Promise<GameResult> {
     // S3: the room's chat lines, and each seat's outage as the room sees it
     const chatAt: { t: number; text: string }[] = [];
     const chatSystem = server.chatSystem.bind(server);
-    server.chatSystem = (r, text) => {
+    server.chatSystem = (r, text, event) => {
       chatAt.push({ t: vc.now(), text });
-      chatSystem(r, text);
+      chatSystem(r, text, event);
     };
     const downAt = new Map<Seat, number>();
     const seen = new Set<Seat>();

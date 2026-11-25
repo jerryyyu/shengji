@@ -78,17 +78,20 @@ export const NEARBY_BOT_FILL = 60.0;
 
 type Json = Record<string, unknown>;
 
-/** server.py seat_event: `actor` took `target`'s seat ("took_seat") or took
- *  over for a dropped `target` ("took_over"). */
-interface SeatEvent { event: "took_seat" | "took_over"; actor: string; target: string; target_is_bot: boolean }
+/** server.py system_event: a system line's kind and participants. `actor`
+ *  is always a person; a seat claim also names `target`, the seat's
+ *  previous holder, and whether it was a bot. */
+type SystemEvent =
+  | { event: "joined" | "left" | "disconnected" | "reconnected" | "reconnected_from_bot" | "bot_playing_for"; actor: string }
+  | { event: "took_seat" | "took_over"; actor: string; target: string; target_is_bot: boolean };
 
 interface ChatEntry {
   seat: number;
   name: string;
   text: string;
   t: number;
-  /** server.py seat_event: a seat claim's participants. */
-  event?: SeatEvent["event"];
+  /** server.py system_event: a system line's kind and participants. */
+  event?: SystemEvent["event"];
   actor?: string;
   target?: string;
   target_is_bot?: boolean;
@@ -834,7 +837,7 @@ export class LocalServer {
     });
   }
 
-  chatPost(room: LocalRoom, entry: { seat: number; name: string; text: string; t: number } & Partial<SeatEvent>): void {
+  chatPost(room: LocalRoom, entry: { seat: number; name: string; text: string; t: number } & Partial<Omit<ChatEntry, "id" | "room">>): void {
     room.chatSeq += 1;
     const full: ChatEntry = { ...entry, id: room.chatSeq, room: room.code };
     room.chat.push(full);
@@ -842,7 +845,7 @@ export class LocalServer {
     for (const sd of room.slots()) if (sd) this.enqueue(sd, { type: "chat", ...full });
   }
 
-  chatSystem(room: LocalRoom, text: string, event?: SeatEvent): void {
+  chatSystem(room: LocalRoom, text: string, event: SystemEvent): void {
     this.chatPost(room, { seat: -1, name: "", text, t: Date.now() / 1000, ...event });
   }
 
@@ -890,7 +893,7 @@ export class LocalServer {
       if (sd && !sd.isBot && !sd.connected && !sd.botAnnounced && !sd.leftByChoice
           && sd.leftAt !== null && now - sd.leftAt >= TAKEOVER_AFTER) {
         sd.botAnnounced = true;
-        this.chatSystem(room, `bot is playing for ${sd.name} (disconnected)`);
+        this.chatSystem(room, `bot is playing for ${sd.name} (disconnected)`, { event: "bot_playing_for", actor: sd.name });
         this.broadcast(room);
         this.kickBots(room);
       }
@@ -1361,7 +1364,7 @@ export class LocalServer {
       if (i < 0 || i === room.host) return;
       room.lobby[i] = null;
       room.lobbyReady.delete(i);
-      this.chatSystem(room, `${seat.name} left`);
+      this.chatSystem(room, `${seat.name} left`, { event: "left", actor: seat.name });
       this.syncBotsTimer(room);
       this.startIfReady(room);
       this.broadcast(room);
@@ -1377,7 +1380,7 @@ export class LocalServer {
   giveUpNearbySeat(room: LocalRoom, seat: Seat): void {
     const idx = room.seatIndex(seat);
     if (room.closed || idx < 0 || idx === room.host || seat.connected) return;
-    this.chatSystem(room, `${seat.name} left`);
+    this.chatSystem(room, `${seat.name} left`, { event: "left", actor: seat.name });
     if (room.lobby) {
       room.lobby[idx] = null;
       room.lobbyReady.delete(idx);
@@ -1397,7 +1400,7 @@ export class LocalServer {
       if (room.closed || seat.connected || seat.gen !== gen || seat.goneAnnounced || seat.leftByChoice) return;
       if (room.seatIndex(seat) < 0) return;
       seat.goneAnnounced = true;
-      this.chatSystem(room, `${seat.name} disconnected`);
+      this.chatSystem(room, `${seat.name} disconnected`, { event: "disconnected", actor: seat.name });
     }, DISCONNECT_NOTICE);
   }
 
@@ -1585,7 +1588,7 @@ export class LocalConnection {
           this.me = seat;
           this.attach(room, seat);
           server.syncBotsTimer(room);
-          server.chatSystem(room, `${seat.name} joined`);
+          server.chatSystem(room, `${seat.name} joined`, { event: "joined", actor: seat.name });
           server.broadcast(room);
           return;
         }
@@ -1596,7 +1599,7 @@ export class LocalConnection {
         this.room = room;
         this.me = seat;
         this.attach(room, seat);
-        if (!room.nearby || seat.goneAnnounced) server.chatSystem(room, `${seat.name} reconnected`);
+        if (!room.nearby || seat.goneAnnounced) server.chatSystem(room, `${seat.name} reconnected`, { event: "reconnected", actor: seat.name });
         seat.goneAnnounced = false;
         server.kickBots(room);
         server.broadcast(room);
@@ -1618,7 +1621,7 @@ export class LocalConnection {
       return;
     }
     if (t === "leave_room") {
-      server.chatSystem(room, `${me.name} left`);
+      server.chatSystem(room, `${me.name} left`, { event: "left", actor: me.name });
       server.detach(me, room, this.myGen);
       if (!room.seats.some((s) => !s.isBot && s.connected)) {
         // nobody is left to play the human seat: the game ends here
@@ -1733,7 +1736,7 @@ export class LocalConnection {
   private leaveNearby(room: LocalRoom, me: Seat): void {
     const server = this.server;
     const idx = room.seatIndex(me);
-    server.chatSystem(room, `${me.name} left`);
+    server.chatSystem(room, `${me.name} left`, { event: "left", actor: me.name });
     server.detach(me, room, this.myGen);
     if (idx === room.host) {
       server.endNearbyRoom(room, me);

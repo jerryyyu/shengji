@@ -7,7 +7,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ChatMsg, GameState, RoundResult, StatePlayer } from "../protocol";
+import type { ChatMsg, GameState, RoundResult, StatePlayer, SystemEventKind } from "../protocol";
 
 const link = vi.hoisted(() => ({ listeners: new Set<(m: unknown) => void>(), history: [] as unknown[] }));
 vi.mock("../ws", () => ({
@@ -55,6 +55,8 @@ const chat = (id: number, seat: number, name: string, text: string, extra: Parti
 /** A seat claim as both servers post it: the text, and its participants. */
 const tookSeat = (id: number, actor: string, target: string, isBot: boolean): ChatMsg =>
   chat(id, -1, "", `${actor} took ${target}'s seat`, { event: "took_seat", actor, target, target_is_bot: isBot });
+const said = (id: number, event: SystemEventKind, actor: string, text: string): ChatMsg =>
+  chat(id, -1, "", text, { event, actor });
 const tookOver = (id: number, actor: string, target: string): ChatMsg =>
   chat(id, -1, "", `${actor} took over for ${target} (offline)`, { event: "took_over", actor, target, target_is_bot: false });
 
@@ -145,9 +147,6 @@ describe("bot names in zh-Hans", () => {
       tookOver(3, "Sam took Lee", "Ann"),
       tookOver(4, "Ann", "Sam took Lee"),
       tookSeat(5, "Mei", "Sam took Lee", false),
-      chat(6, -1, "", "Bot 2 left"),
-      chat(7, -1, "", "bot is playing for Bot 2 (disconnected)"),
-      chat(8, -1, "", "Sam took Lee joined"),
     ]} you={0} open onClose={() => {}} />);
     const system = [...host.querySelectorAll(".chat-msg.system")].map((e) => e.textContent?.trim());
     expect(system).toEqual([
@@ -156,14 +155,32 @@ describe("bot names in zh-Hans", () => {
       "Sam took Lee 替掉线的 Ann 接手",
       "Ann 替掉线的 Sam took Lee 接手",
       "Mei 坐了 Sam took Lee 的位置",
-      "Bot 2 离开了",
-      "Bot 2 掉线，机器人代打",
-      "Sam took Lee 加入了",
     ]);
-    // an older server's seat claim, without its participants, stays as sent
-    expect(formatSystemLine(chat(9, -1, "", "Sam took Lee took Bot 1's seat"))).toBe("Sam took Lee took Bot 1's seat");
-    expect(formatSystemLine(chat(10, -1, "", "Mei took over for Ann (offline)"))).toBe("Mei took over for Ann (offline)");
-    expect(formatSystemLine(chat(11, -1, "", "something new"))).toBe("something new");
+  });
+
+  it("the one-person system lines, from their fields, keep the name verbatim", () => {
+    render(<ChatPanel messages={[
+      said(1, "joined", "Bot 2 joined", "Bot 2 joined joined"),
+      said(2, "left", "Bot 2", "Bot 2 left"),
+      said(3, "disconnected", "Sam left", "Sam left disconnected"),
+      said(4, "reconnected", "Bot 1", "Bot 1 reconnected"),
+      said(5, "reconnected_from_bot", "Mei", "Mei reconnected — taking over from the bot"),
+      said(6, "bot_playing_for", "Bot 2", "bot is playing for Bot 2 (disconnected)"),
+    ]} you={0} open onClose={() => {}} />);
+    const system = [...host.querySelectorAll(".chat-msg.system")].map((e) => e.textContent?.trim());
+    expect(system).toEqual(["Bot 2 joined 加入了", "Bot 2 离开了", "Sam left 掉线了", "Bot 1 回来了",
+      "Mei 回来了，从机器人手里接回", "Bot 2 掉线，机器人代打"]);
+  });
+
+  it("a system line without its fields, from an older server, is shown as sent", () => {
+    for (const text of ["Sam took Lee took Bot 1's seat", "Mei took over for Ann (offline)", "Bot 2 joined",
+      "Sam left", "bot is playing for Sam (disconnected)", "something new"]) {
+      expect(formatSystemLine(chat(1, -1, "", text))).toBe(text);
+    }
+    // a kind this client does not know falls back to the text too
+    expect(formatSystemLine(chat(1, -1, "", "Sam waved", { event: "waved" as SystemEventKind, actor: "Sam" }))).toBe("Sam waved");
+    // a seat claim missing its target is not guessed at
+    expect(formatSystemLine(chat(1, -1, "", "Sam took Bot 1's seat", { event: "took_seat", actor: "Sam" }))).toBe("Sam took Bot 1's seat");
   });
 
   it("a guest's chat named Bot 2 keeps its name in the log and the bubble", () => {
@@ -229,6 +246,9 @@ describe("bot names in English", () => {
     expect(formatSystemLine(tookSeat(1, "Sam took Lee", "Bot 1", true))).toBe("Sam took Lee took Bot 1's seat");
     expect(formatSystemLine(tookOver(2, "Ann", "Sam took Lee"))).toBe("Ann took over for Sam took Lee (offline)");
     expect(formatSystemLine(chat(3, -1, "", "Sam took Lee took Bot 1's seat"))).toBe("Sam took Lee took Bot 1's seat");
+    expect(formatSystemLine(said(4, "joined", "Bot 2 joined", "Bot 2 joined joined"))).toBe("Bot 2 joined joined");
+    expect(formatSystemLine(said(5, "bot_playing_for", "Bot 2", "bot is playing for Bot 2 (disconnected)")))
+      .toBe("bot is playing for Bot 2 (disconnected)");
     expect(teamMembers(0, state())).toBe("You & Bot 2");
   });
 

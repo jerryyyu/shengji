@@ -300,6 +300,40 @@ def test_seat_claim_chat_names_the_bot(client):
         "took_seat", "jerry mbp", botname, True)
 
 
+def test_system_lines_carry_their_kind_and_actor(client):
+    """Each system line names its kind and its person as fields, so a client
+    words it without reading the name out of the English text."""
+    from shengji.api import server as srv
+
+    def fields(room, kind):
+        line = next(m for m in reversed(room.chat) if m.get("event") == kind)
+        return line["text"], line["actor"], "target" in line
+
+    with client.websocket_connect("/ws") as a:
+        code = _room_with_bots(a)
+        room = srv.rooms[code]
+        with ExitStack() as sockets:
+            first = ExitStack()
+            sockets.callback(first.close)
+            b = first.enter_context(client.websocket_connect("/ws"))
+            b.send_json({"type": "table_join", "expect": "room", "code": code, "name": "bob", "seat": 2})
+            tok = _drain(b, "resume")["token"]
+            _drain(b, "state")
+            first.close()
+            _wait_for(lambda: any(m.get("event") == "disconnected" for m in room.chat))
+            assert fields(room, "disconnected") == ("bob disconnected", "bob", False)
+            back = sockets.enter_context(client.websocket_connect("/ws"))
+            back.send_json({"type": "table_join", "expect": "room", "code": code,
+                            "name": "bob", "token": tok})
+            _drain(back, "state")
+            _wait_for(lambda: any(m.get("event") == "reconnected" for m in room.chat))
+            assert fields(room, "reconnected") == ("bob reconnected", "bob", False)
+            back.send_json({"type": "table_leave"})
+            _drain(back, "left")
+            _wait_for(lambda: any(m.get("event") == "left" for m in room.chat))
+            assert fields(room, "left") == ("bob left", "bob", False)
+
+
 def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
     """A late/rejoining socket gets one bounded, contiguous snapshot.
 

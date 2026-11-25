@@ -1,4 +1,4 @@
-import type { ChatMsg, StatePlayer } from "./protocol";
+import type { ChatMsg, StatePlayer, SystemEventKind } from "./protocol";
 import { SUIT_SYMBOL } from "./components/Card";
 import { displayName, t } from "./i18n";
 import type { MessageKey } from "./i18n";
@@ -34,33 +34,30 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
   return message;
 }
 
-/** The chat's one-person system lines (joins, leaves, reconnects) as the
- *  server and the offline server word them, in the current language. The
- *  name is everything before the line's fixed ending, so it is unambiguous,
- *  and a person's: it shows as typed. */
-const SYSTEM_LINES: [RegExp, MessageKey][] = [
-  [/^bot is playing for (.+) \(disconnected\)$/, "table.sysBotPlaying"],
-  [/^(.+) reconnected — taking over from the bot$/, "table.sysReconnectedFromBot"],
-  [/^(.+) reconnected$/, "table.sysReconnected"],
-  [/^(.+) joined$/, "table.sysJoined"],
-  [/^(.+) left$/, "table.sysLeft"],
-  [/^(.+) disconnected$/, "table.sysDisconnected"],
-];
+/** Each system line kind's sentence; `{name}` is the actor, `{took}` a seat
+ *  claim's target. */
+const SYSTEM_LINE: Record<SystemEventKind, MessageKey> = {
+  joined: "table.sysJoined",
+  left: "table.sysLeft",
+  disconnected: "table.sysDisconnected",
+  reconnected: "table.sysReconnected",
+  reconnected_from_bot: "table.sysReconnectedFromBot",
+  bot_playing_for: "table.sysBotPlaying",
+  took_seat: "table.sysTookSeat",
+  took_over: "table.sysTookOver",
+};
 
-/** A system line in the current language. A seat claim is worded from its
- *  participants (`actor` a person, `target` named as the table names bots
- *  when `target_is_bot`), never from its text; one without them, from an
- *  older server, keeps its text as sent. A line of another form passes
- *  through. */
+/** A system line in the current language, worded from its kind and
+ *  participants alone: the actor is a person and shows as typed; a seat
+ *  claim's target is named as the table names bots only when
+ *  `target_is_bot`. A line without them, from an older server, or of a kind
+ *  this client does not know, is shown exactly as sent. Names are never
+ *  read out of `text`. */
 export function formatSystemLine(m: Pick<ChatMsg, "text" | "event" | "actor" | "target" | "target_is_bot">): string {
-  if (m.event && m.actor !== undefined && m.target !== undefined) {
-    const took = m.target_is_bot === true ? displayName(m.target, true) : m.target;
-    return t(m.event === "took_over" ? "table.sysTookOver" : "table.sysTookSeat", { name: m.actor, took });
-  }
-  if (/^.+ took .+'s seat$/.test(m.text) || /^.+ took over for .+ \(offline\)$/.test(m.text)) return m.text;
-  for (const [re, key] of SYSTEM_LINES) {
-    const match = re.exec(m.text);
-    if (match) return t(key, { name: match[1] });
-  }
-  return m.text;
+  const key = m.event === undefined ? undefined : SYSTEM_LINE[m.event];
+  if (key === undefined || m.actor === undefined) return m.text;
+  const twoPerson = m.event === "took_seat" || m.event === "took_over";
+  if (twoPerson && m.target === undefined) return m.text;
+  const target = m.target ?? "";
+  return t(key, { name: m.actor, took: m.target_is_bot === true ? displayName(target, true) : target });
 }

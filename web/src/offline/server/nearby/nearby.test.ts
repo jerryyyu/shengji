@@ -163,6 +163,9 @@ describe("the nearby lobby", () => {
     await t.settle(() => t.joiners[0].left);
     await t.settle(() => (lastRoom(t.host).players as PlayerJson[]).length === 2);
     expect((lastRoom(t.host).players as PlayerJson[]).map((p) => p.seat)).toEqual([0, 2]);
+    // each system line names its kind and its person as fields
+    expect(t.room!.chat.map((c) => [c.text, c.event, c.actor])).toEqual([
+      ["P1 joined", "joined", "P1"], ["P2 joined", "joined", "P2"], ["P1 left", "left", "P1"]]);
     const again = await t.join("P9");
     expect(lastRoom(again).you).toBe(1);
   });
@@ -301,7 +304,7 @@ describe("drops, resume and bot cover", () => {
     await t.advance(TAKEOVER_AFTER + 1);
     await t.join("Sam took Lee", { seat });
     await t.settle(() => t.room!.seats[seat].name === "Sam took Lee", 100_000);
-    const line = t.room!.chat.find((c) => c.event !== undefined);
+    const line = t.room!.chat.find((c) => c.event === "took_over");
     expect(line && [line.text, line.event, line.actor, line.target, line.target_is_bot])
       .toEqual([`Sam took Lee took over for ${j.name} (offline)`, "took_over", "Sam took Lee", j.name, false]);
   });
@@ -330,6 +333,9 @@ describe("drops, resume and bot cover", () => {
     await t.settle(() => (t.room!.round?.history.length ?? 0) > history + 1, 2_000_000);
     await t.join("P1", { token, player: j, drive: true });
     expect(t.room!.seats[seat].botAnnounced).toBe(false);
+    const lines = t.room!.chat.filter((c) => c.actor === "P1").map((c) => [c.text, c.event]);
+    expect(lines).toContainEqual(["bot is playing for P1 (disconnected)", "bot_playing_for"]);
+    expect(lines).toContainEqual(["P1 reconnected", "reconnected"]);
     expect((t.lastState(t.host)!.players as PlayerJson[])[seat].controller).toBe("human");
     expect(WATCHDOG_POLL).toBe(5);
   }, 60_000);

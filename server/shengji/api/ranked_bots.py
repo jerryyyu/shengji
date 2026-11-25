@@ -34,7 +34,11 @@ applies from that round's first card for the rest of the game, and a lower
 one changes nothing. So a rating that crosses its line in a round takes
 effect at the next round, never mid-round, and a rating that falls back
 under it does not lower the level before the next game. While that re-check
-is read the table keeps its level; a failed read plays Advanced. A person who takes a relaxed seat
+is read the table keeps its level; a failed read plays Advanced. That
+settle is authoritative for its round, as the game's is: a seat check still
+in flight when the round starts is dropped, and a seat change before the
+settle applies is only recorded, since the settle reads every seat's holder
+as they are then (a newcomer meets the rule, not the check's line). A person who takes a relaxed seat
 makes that team a person's team, so both its bots play Advanced at once. A
 new person or a different account at a seat of the people's team
 (``seat_changed``: an open-table handover, a claim, a resume that brings
@@ -93,11 +97,12 @@ class SeatLevels:
     pending_rise: bool = False
     # seat checks in flight (``seat_changed``): relaxed seats play Advanced
     checks: int = 0
-    # seat changes recorded while the game's level is pending: a read made
-    # before one is not applied (``settle_game``)
+    # seat changes recorded while a settle read is pending (the game's level
+    # or a rise check): a read made before one is not applied (``settle_game``)
     changes: int = 0
-    # the game these levels belong to, raised by ``begin_game``: a seat check
-    # started in an earlier game changes nothing when it ends
+    # the settle these levels belong to, raised by ``begin_game`` and by
+    # ``begin_round`` when it sets a rise check: a seat check started before
+    # it changes nothing when it ends, since the settle reads that seat itself
     game: int = 0
 
     def plays_standard(self, seat: int) -> bool:
@@ -293,11 +298,17 @@ def begin_round(room: Any) -> None:
     """A later round of a ranked game starts (the caller holds the lock, with
     the round in place and before its deal): when its opponents play a
     relaxed level, ``settle_game`` re-reads the people's ratings for it and
-    raises the level if they have crossed its line."""
+    raises the level if they have crossed its line. That settle is
+    authoritative for the round: seat checks still in flight are dropped and
+    seat changes until it applies are only recorded, because it reads every
+    seat's holder as they are then."""
     levels = getattr(room, "bot_levels", None)
     if levels is None or levels.pending_game or not ratings.ranked(room):
         return
     levels.pending_rise = bool(levels.standard)
+    if levels.pending_rise:
+        levels.game += 1
+        levels.checks = 0
 
 
 def _identities(room: Any, levels: SeatLevels) -> tuple:
@@ -389,8 +400,10 @@ def _apply_game(room: Any, levels: SeatLevels, tracker: Any, standing: dict | No
 def _apply_rise(room: Any, levels: SeatLevels, tracker: Any, standing: dict | None,
                 present: set, extra: dict, build_relaxed: Callable[[Any, int], Any],
                 build_beginner: Callable[[Any, int], Any] | None = None) -> None:
-    """A later round's rise check: the level the rule gives now applies only
-    when it is above the table's; an unread rating plays Advanced."""
+    """A later round's rise check: the level the rule gives for the seats'
+    holders now applies only when it is above the table's; an unread rating
+    plays Advanced. The round's anchors follow the level either way; only a
+    rise is logged."""
     levels.pending_rise = False
     before = levels.level if levels.standard else "advanced"
     if standing is None:
@@ -401,6 +414,7 @@ def _apply_rise(room: Any, levels: SeatLevels, tracker: Any, standing: dict | No
         if level == "beginner" and build_beginner is None:
             level = "standard"
     if LEVEL_ORDER.index(level) <= LEVEL_ORDER.index(before):
+        _record_level(room, levels, tracker, log=False)
         return
     if standing is None:
         room.bot = served_bot(room.bot)
@@ -411,9 +425,10 @@ def _apply_rise(room: Any, levels: SeatLevels, tracker: Any, standing: dict | No
     _record_level(room, levels, tracker, rose_from=before)
 
 
-def _record_level(room: Any, levels: SeatLevels, tracker: Any, **fields: Any) -> None:
+def _record_level(room: Any, levels: SeatLevels, tracker: Any, log: bool = True,
+                  **fields: Any) -> None:
     """The round's level is settled before its first card: its rated anchors
-    follow it, and the room log records it."""
+    follow it, and the room log records it (``log``)."""
     chosen = set(levels.standard)
     if tracker is not None:
         # only the seats that were bots when the round started (``round_started``)
@@ -423,8 +438,9 @@ def _record_level(room: Any, levels: SeatLevels, tracker: Any, **fields: Any) ->
         kinds = list(tracker.kinds) or [ratings.BOT if seat.is_bot else None for seat in room.seats]
         tracker.anchors = [ratings.BOT_ANCHORS[levels.level if s in chosen else "advanced"]
                            if kinds[s] == ratings.BOT else opening[s] for s in range(len(room.seats))]
-    room.log_event("bot_levels", level=levels.level if chosen else "advanced",
-                   standard_seats=sorted(chosen), **fields)
+    if log:
+        room.log_event("bot_levels", level=levels.level if chosen else "advanced",
+                       standard_seats=sorted(chosen), **fields)
 
 
 def level_of(room: Any, seat: int) -> str:
@@ -476,11 +492,13 @@ def seat_changed(room: Any, seat: int, before: Any = None,
     newcomer on the people's team is checked against the line of the
     table's level (``line_of``) by an ordered read, while the relaxed seats
     play Advanced; above it the table is Advanced for the rest of the game.
-    ``on_change`` runs (under the lock) when a check ends."""
+    ``on_change`` runs (under the lock) when a check ends. While a settle
+    read is pending (the game's level or a round's rise check) the change is
+    only recorded: the settle reads the seat as it is then."""
     levels = getattr(room, "bot_levels", None)
     if levels is None:
         return
-    if levels.pending_game:
+    if levels.pending_game or levels.pending_rise:
         levels.changes += 1     # ``settle_game`` reads the seat as it is now
         return
     if not levels.standard:

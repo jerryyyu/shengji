@@ -1193,6 +1193,97 @@ def test_a_seat_that_changes_during_the_rise_read_is_read_again(env, monkeypatch
     assert ranked_bots.level_of(room, 1) == "standard"
 
 
+@pytest.mark.parametrize("started", ["previous_round", "deal"])
+@pytest.mark.parametrize("order", ["check_first", "settle_first"])
+def test_the_rise_settle_is_authoritative_over_an_overlapping_seat_check(
+        env, monkeypatch, started, order):  # noqa: F811
+    """Partners at 700 and 800 meet Beginner and win, which takes the second
+    above 800. That partner signs out and resumes their seat (during the
+    previous round, or during the next round's deal), so a holder check
+    overlaps the next round's rise read. Whichever read completes first, the
+    round plays Standard, is rated at Standard's anchor, logs one rise, and
+    the game's last round is attributed the same way."""
+    import concurrent.futures
+
+    from shengji.api import server as srv
+    from shengji.engine.game import A_INDEX
+
+    _, store, _ = env
+    _force_outcome(monkeypatch, 30)
+    room, uids = _rising_table(srv, store, {0: 700.0, 2: 800.0}, "OVRL")
+    gate = asyncio.Event()
+    real_read = ranked_bots._ordered_read
+
+    async def gated(user_ids):
+        await gate.wait()
+        return await real_read(user_ids)
+    monkeypatch.setattr(ranked_bots, "_ordered_read", gated)
+
+    def sign_out_and_resume():
+        seat = room.seats[2]
+        seat.user_id = None
+        ranked_bots.seat_changed(room, 2, uids[2])
+        seat.user_id = uids[2]
+        ranked_bots.seat_changed(room, 2, None)
+
+    async def scenario():
+        assert _levels(room) == ["advanced", "beginner", "advanced", "beginner"]
+        if started == "previous_round":
+            sign_out_and_resume()
+            assert room.bot_levels.checks == 1
+        result = _play_out(srv, room)
+        assert result.winner_team == 0 and not result.point_scored
+        await _written()
+        _next_round(room)
+        if started == "deal":
+            sign_out_and_resume()
+        assert room.bot_levels.pending_rise and room.bot_levels.checks == 0
+        real = room.ratings.standing
+        held = concurrent.futures.Future()
+        room.ratings.standing = held
+
+        async def checks_done():
+            gate.set()
+            await asyncio.gather(*list(ranked_bots._TASKS))
+
+        async def settled():
+            held.set_result(await asyncio.wrap_future(real))
+            await ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot)
+        if order == "check_first":
+            await checks_done()
+            await settled()
+        else:
+            await settled()
+            await checks_done()
+        assert _levels(room) == ["advanced", "standard", "advanced", "standard"]
+        assert room.ratings.anchors[1] == room.ratings.anchors[3] == ratings.STANDARD_BOT_RATING
+        FakeRelaxed.played, FakeBeginner.played = [], []
+        _play_out(srv, room)                      # the round, played at Standard
+        assert set(FakeRelaxed.played) == {1, 3} and FakeBeginner.played == []
+        await _written()
+        _next_round(room)
+        await ranked_bots.settle_game(room, srv.make_relaxed_bot, srv.make_beginner_bot)
+        assert room.ratings.anchors[1] == ratings.STANDARD_BOT_RATING
+        result = _play_out(srv, room, [A_INDEX, A_INDEX])
+        assert result.point_scored                # the game's last round
+        await _written()
+    asyncio.run(scenario())
+    ratings.flush()
+    assert store.user(uids[2])["rating"] > ranked_bots.BEGINNER_UP_TO
+    assert [(r["level"], r["standard_seats"], r.get("rose_from"))
+            for r in _bot_levels_records(srv, room)] == [("standard", [1, 3], "beginner")]
+    events = _events(store, "SELECT * FROM rating_events WHERE user_id = ? ORDER BY round_no", uids[2])
+    assert len(events) == 3 and events[-1]["game_won"]
+    for event, opponents in zip(events, [ratings.BEGINNER_BOT_RATING, ratings.STANDARD_BOT_RATING,
+                                         ratings.STANDARD_BOT_RATING]):
+        first = _events(store, "SELECT * FROM rating_events WHERE user_id = ? AND round_no = ?",
+                        uids[0], event["round_no"])[0]
+        us, them = ratings.team_strengths(
+            [first["rating_before"], opponents, event["rating_before"], opponents],
+            banker_team=0 if event["banker_team"] else 1, banker_declared=event["round_no"] == 1)
+        assert event["expected"] == pytest.approx(ratings.expected_score(us, them))
+
+
 # ------------------------------------------ the policy the search played
 @pytest.mark.parametrize("partner_rating, commits", [(1000.0, True), (1200.0, False)])
 def test_a_search_plays_the_level_of_its_snapshot_through_a_pending_check(

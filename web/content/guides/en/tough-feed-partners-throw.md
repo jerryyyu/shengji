@@ -40,9 +40,9 @@ You're out of clubs, so any five cards will do.
 | D: 30 points | −0.87 ± 0.06 | 41.4 | 31% |
 | B: no points | −1.52 ± 0.04 | 11.4 | 7% |
 
-Your side won this trick in all 256 deals, whatever you played, and in all 24 deals of the run with our main bot. A beat B by 1.65 ± 0.05. With our main bot playing out the hand, A scored −0.17 and B −1.71.
+Your side won this trick in all 256 deals, whatever you played. A beat B by 1.65 ± 0.05. Our main bot also played out the first 24 of those deals, for A and B only: A scored −0.17 and B −1.71, and your side won the trick in all 24 with both.
 
-Why the trick is safe: a throw is checked when it's led, and it stands only if nobody can beat any part of it in clubs. This one stood, so the banker has no club play that beats it. The banker can take it only by being out of clubs and trumping with the same shape: two trump pairs and a trump. That last step is the rule, not something the test counted deal by deal. What the test did count is the result: no deal in 280 saw the trick taken from your side.
+Why the trick is safe: a throw is checked when it's led, and it stands only if nobody can beat any part of it in clubs. This one stood, so the banker has no club play that beats it. The banker can take it only by being out of clubs and trumping with the same shape: two trump pairs and a trump. That last step is the rule, not something the test counted deal by deal. What the test did count is the result: in none of the 256 deals was the trick taken from your side, including the 24 our main bot also played out.
 
 A trick your side is sure to win is where your points belong. Points kept in your hand still have to be won on a later trick.
 
@@ -53,8 +53,9 @@ plays: C3 C3 CJ CJ CA | C5 CA H3 H4 HJ | D10 H10 H10 HK S5
 trump: S
 rank: 8
 winner: 1
+winlabel: winning so far
 notes: two pairs + a single | | 45 points
-caption: The banker plays last. To take this trick the banker needs to be out of clubs with two trump pairs and a trump.
+caption: The banker is still to play. Your partner's throw is winning so far; the banker takes the trick only by being out of clubs and trumping with two trump pairs and a trump.
 ```
 
 ## What happened

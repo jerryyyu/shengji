@@ -37,7 +37,7 @@ caption: Three diamond pairs, not in a row, so not a tractor.
 | B: a pair | −1.04 ± 0.10 | 88% | 36% |
 | A: a single ♦8 | −2.32 ± 0.03 | 24% | 0.4% |
 
-With our main bot playing out the hand, on 48 deals each, the throw scored +0.15 and the single ♦8 −2.35.
+Our main bot also played out the first 48 of those deals, for C and A only; it didn't play the pair. The throw scored +0.15 and the single ♦8 −2.35.
 
 Count the diamonds. A throw fails only if another player can beat one of its parts in the suit led, so the danger is a diamond pair higher than ♦3♦3. The eight diamonds played were all different ranks, and you hold both 3s, both 6s and both 8s. Of every other rank at most one diamond is left, except the jacks: neither ♦J has been seen. So only ♦J♦J beats your pairs, and only if one player holds both. In the 256 deals an opponent held both jacks 30 times, 11.7%. Your side won the trick in the other 88.3%.
 

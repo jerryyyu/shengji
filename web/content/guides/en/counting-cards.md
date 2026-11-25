@@ -60,8 +60,9 @@ plays: S10 | S10 | D10
 trump: D
 rank: 9
 winner: 3
+winlabel: winning so far
 notes: | | trumps
-caption: Count, then trump. Only the last player is left to play, and the ♠Q no longer helps them.
+caption: Count, then trump. ♦10 is winning so far: the ♠Q can no longer beat it, and only a higher trump from the last player can.
 ```
 
 ## A checklist for each trick

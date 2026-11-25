@@ -210,7 +210,12 @@ function trick(f: Record<string, string>, lang: Lang): Rendered {
   const notes = splitBars(f.notes);
   const winner = Number(f.winner ?? "0") - 1;
   if (!(winner >= 0 && winner < plays.length)) throw new DiagramError("trick winner must name a play (1-based)");
-  const winLabel = f.winlabel ?? (lang === "zh" ? "这一轮最大" : "wins the trick");
+  const doneLabel = lang === "zh" ? "这一轮最大" : "wins the trick";
+  // With fewer than four plays someone is still to play, so the trick is not won yet.
+  if (plays.length < 4 && (f.winlabel === undefined || f.winlabel === doneLabel)) {
+    throw new DiagramError("an unfinished trick needs a provisional winlabel");
+  }
+  const winLabel = f.winlabel ?? doneLabel;
   const widest = Math.max(...plays.map((p) => groupWidth(p.length)), ...names.map((n) => textWidth(n, 12)),
     ...notes.map((n) => textWidth(n, 11)), textWidth(winLabel, 12));
   const colW = widest + 18;
@@ -233,7 +238,7 @@ function trick(f: Record<string, string>, lang: Lang): Rendered {
   const width = PAD * 2 + colW * plays.length;
   const height = top + H + (notes.some(Boolean) ? 46 : 30) + PAD - 6;
   const alt = plays.map((p, i) => `${names[i]}: ${spokenList(p, lang)}`).join(lang === "zh" ? "；" : "; ")
-    + (lang === "zh" ? `。${names[winner]}${winLabel}。` : `. ${names[winner]} ${winLabel}.`);
+    + (lang === "zh" ? `。${names[winner]}${winLabel}。` : `. ${names[winner]}: ${winLabel}.`);
   return { svg: parts.join(""), width, height, alt };
 }
 

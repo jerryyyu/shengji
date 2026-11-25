@@ -60,8 +60,9 @@ plays: S10 | S10 | D10
 trump: D
 rank: 9
 winner: 3
+winlabel: 目前最大
 notes: | | 毙
-caption: 先数，再毙。只剩最后一家没出，那张 ♠Q 已经管不上了。
+caption: 先数，再毙。♦10 目前最大：那张 ♠Q 已经管不上了，只有最后一家用更大的主盖毙才行。
 ```
 
 ## 口诀

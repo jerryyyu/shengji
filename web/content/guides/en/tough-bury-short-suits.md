@@ -41,7 +41,7 @@ B is what the site's rule-based bot buried. A is our bot's choice.
 | A: diamonds and spades | 20 | +1.34 ± 0.05 | 14% | 2.0% |
 | B: no points | 0 | +0.31 ± 0.07 | 57% | 0.8% |
 
-A came out 1.03 ± 0.08 ahead. With our main bot playing out the hand, on 12 deals per bury, A scored +1.17 and B +0.17.
+A came out 1.03 ± 0.08 ahead. Our main bot also played out the first 12 of those deals for each bury: A scored +1.17 and B +0.17.
 
 ```cards
 cards: D10 D8 D6 D5 S9 S8 S5 S3 | C6 D8 D6 H6 H4 H3 S8 S3

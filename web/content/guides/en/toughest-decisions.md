@@ -18,9 +18,9 @@ caption: From position 5. Lead one diamond, a pair, or all six at once?
 
 ## How each position was tested
 
-- For every option we dealt 256 versions of the cards the player couldn't see, each one consistent with the cards already seen.
+- For every option we dealt 256 versions of the cards the player couldn't see, each one consistent with the cards already played. One exception: in position 1, the bury, the deals ignored a ♥2 an opponent had shown while declaring.
 - Each deal was played to the end of the hand with the rule-based bot in all four seats.
-- A smaller run with our main bot playing out the hand, 12 to 48 deals per option, picked the same winner every time.
+- Our main bot also played out the first 12 to 48 of those deals, for two options per position: its own choice and the rule-based bot's. In all five it preferred the same one of the two as the 256-deal test. It did not play the other options.
 
 Each option gets a score for the player's side: the levels it goes up, or minus the levels the other side goes up, plus half a point for winning the hand or minus half for losing it. A hand you win by one level scores +1.5, and one you lose by one level scores −1.5. The ± after a score is one standard error.
 

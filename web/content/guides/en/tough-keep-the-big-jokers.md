@@ -42,7 +42,7 @@ You're out of hearts, so any two cards will do.
 | C: ♠4 ♠9 | +1.26 ± 0.06 | 15% | 3.1 |
 | D: ♠8 ♠9 | +1.26 ± 0.06 | 15% | 3.1 |
 
-With our main bot playing out the hand, on 40 deals each, the jokers scored −1.13 and ♣K ♠J +0.45. The attackers won the last trick in 78% of those deals after the jokers, and 20% after ♣K ♠J.
+Our main bot also played out the first 40 of those deals, for A and B only; it didn't play C or D. The jokers scored −1.13 and ♣K ♠J +0.45. The attackers won the last trick in 78% of those deals after the jokers, and 20% after ♣K ♠J.
 
 ```cards
 kind: trick

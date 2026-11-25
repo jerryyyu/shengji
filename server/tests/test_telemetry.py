@@ -71,6 +71,23 @@ def test_every_client_tap_id_is_on_the_server_allow_list():
     assert set(re.findall(r'"([a-z_]+)"', union.group(1))) == set(telemetry.TAPS)
 
 
+def test_a_review_prompt_keeps_its_trigger_and_a_bare_version_only():
+    ev = telemetry.clean_event({"e": "review_prompt", "t": 400, "trigger": "ranked2", "version": "1.0.3",
+                                "sid": "x", "account": "a1", "wins": 2})
+    assert ev == {"e": "review_prompt", "t": 400, "trigger": "ranked2", "version": "1.0.3"}
+    assert telemetry.clean_event({"e": "review_prompt", "trigger": "casual5", "version": "1.0.3 beta"}) == {
+        "e": "review_prompt", "trigger": "casual5"}
+    assert telemetry.clean_event({"e": "review_prompt", "trigger": "casual3", "version": "1.0.3"}) is None
+    assert telemetry.clean_event({"e": "review_prompt", "version": "1.0.3"}) is None
+
+
+def test_every_client_review_trigger_is_on_the_server_allow_list():
+    src = (Path(__file__).resolve().parents[2] / "web/src/reviewPrompt.ts").read_text()
+    union = re.search(r"export type Trigger =(.*?);", src, re.DOTALL)
+    assert union is not None
+    assert set(re.findall(r'"([a-z0-9_]+)"', union.group(1))) == set(telemetry.REVIEW_TRIGGERS)
+
+
 def test_bounded_ints_refuse_bools_and_out_of_range():
     ev = telemetry.clean_event({"e": "turn_done", "phase": "play", "need": True,
                                 "nth_turn": 31, "ms_total": -1, "sel_changes": 3,

@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { conn } from "./ws";
 import { NEARBY_SESSION, OFFLINE, subscribeOffline } from "./offlineMode";
 import { subscribeLink, type DropCause } from "./link";
+import { setReviewReporter, type Trigger as ReviewTrigger } from "./reviewPrompt";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
@@ -59,7 +60,8 @@ type Event =
   | { e: "tap"; t: number; id: TapId; from?: SigninFrom }
   | { e: "signin"; t: number; step: SigninStep; provider?: Provider }
   | { e: "device_account"; t: number; step: DeviceStep }
-  | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number };
+  | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number }
+  | { e: "review_prompt"; t: number; trigger: ReviewTrigger; version: string };
 
 export const FLUSH_MS = 10_000;
 export const FLUSH_AT = 20;
@@ -251,6 +253,12 @@ export class Telemetry {
                 ms: Math.max(0, Math.round(ms)) });
   }
 
+  /** The iOS app asked for Apple's rating sheet (reviewPrompt.ts): which
+   *  bar it crossed, and the app version asked for. */
+  reviewPrompt(trigger: ReviewTrigger, version: string): void {
+    this.push({ e: "review_prompt", t: now(), trigger, version });
+  }
+
   turnDone(turn: TurnDone): void {
     this.push({ e: "turn_done", t: now(), ...turn, nth_turn: Math.min(30, Math.max(1, turn.nth_turn)) });
   }
@@ -268,6 +276,14 @@ function liveSend(msg: unknown): boolean {
 }
 
 export const telemetry = new Telemetry(liveSend, () => !OFFLINE && !NEARBY_SESSION);
+
+// A rating ask goes out while the page collects; one made offline waits in
+// the native store for the next online page.
+setReviewReporter((trigger, version) => {
+  if (OFFLINE || NEARBY_SESSION) return false;
+  telemetry.reviewPrompt(trigger, version);
+  return true;
+});
 
 // The socket manager's drops and recoveries; they wait in the buffer while
 // the socket is down and go with the next flush.

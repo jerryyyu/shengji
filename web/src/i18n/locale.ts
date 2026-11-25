@@ -28,7 +28,7 @@ interface Bridge {
  *  offline page are two origins with two localStorages; UserDefaults is one
  *  per app, so an explicit choice made on either holds on both. Null in a
  *  browser and in a shell built without the plugin. */
-function nativeStore(name: "get" | "set" | "remove"): Method | null {
+export function nativeStore(name: "get" | "set" | "remove"): Method | null {
   if (!inApp()) return null;
   const cap = (window as unknown as { Capacitor?: Bridge }).Capacitor;
   if (!cap) return null;

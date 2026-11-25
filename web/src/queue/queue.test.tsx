@@ -1328,6 +1328,26 @@ describe("one code for rooms and tables", () => {
     expect(panel()!.querySelector("button.tp-invite")?.textContent).toBe("4N5ZLink copied");
   });
 
+  it("a stranger at a Duo table invites to the open seat, not the held partner seat", async () => {
+    const shared: { text: string }[] = [];
+    Object.defineProperty(navigator, "share", { configurable: true,
+      value: (d: { text: string }) => { shared.push(d); return Promise.resolve(); } });
+    await renderApp();
+    // Bob at Alice's Duo table: her partner seat (2) held, seat 3 open beside him
+    say(atTable([seat("Alice"), seat("Bob", { you: true }), null, null], { you: 1, held_seat: 2, held_seats: [2] },
+                { opener: false, code: "7Q3M" }));
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
+    await settle();
+    // and with no open seat left, only the plain ask
+    say(atTable([seat("Alice"), seat("Bob", { you: true }), null, seat("Li")], { you: 1, held_seat: 2, held_seats: [2] },
+                { opener: false, code: "7Q3M" }));
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
+    await settle();
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    expect(shared.map((d) => d.text)).toEqual(["We need a 4th for Tractor. Code 7Q3M",
+                                               "Play Tractor with me? Code 7Q3M"]);
+  });
+
   it("a Duo opener's Invite asks for a partner, the link after the message", async () => {
     const shared: unknown[] = [];
     Object.defineProperty(navigator, "share", { configurable: true,

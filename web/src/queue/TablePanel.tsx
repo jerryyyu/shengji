@@ -163,7 +163,7 @@ function PanelView({ m, guarded, sheet, act }: {
       ) : null}
       {seats ? <TeamColumns seats={seats} you={m.you} layout={m.layout} /> : null}
       {m.rows ? <TableRows rows={m.rows} wait={m.waitSwitch ?? undefined} act={act}
-                           ask={seats ? inviteAskOf(seats.map((s) => s.look)) : undefined} /> : null}
+                           ask={seats ? inviteAskOf(seats, m.you) : undefined} /> : null}
       {m.waitSwitch && !m.rows ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
       {m.nearbySwitch ? (
         <SwitchRow label={m.nearbySwitch.label} on={m.nearbySwitch.on} disabled={m.nearbySwitch.disabled}

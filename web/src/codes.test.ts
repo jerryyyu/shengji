@@ -1,7 +1,7 @@
 // The invite's message: what the table still needs, in the app's language,
 // with the code in the text and the link after it in the share sheet.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { inviteAsk, inviteAskOf, inviteText, shareInvite } from "./codes";
+import { inviteAskOf, inviteText, shareInvite } from "./codes";
 import { reloadLanguage, setLanguageChoice } from "./i18n";
 
 afterEach(() => {
@@ -11,19 +11,22 @@ afterEach(() => {
 });
 
 describe("the invite's ask", () => {
-  it("counts the people seated, and a held seat asks for a partner", () => {
-    expect(inviteAsk(3)).toBe("one");
-    expect(inviteAsk(2)).toBe("two");
-    expect(inviteAsk(1)).toBe("three");
-    expect(inviteAsk(4)).toBe("three");
-    expect(inviteAsk(1, true)).toBe("partner");
+  const at = (...looks: string[]) => looks.map((look, i) => ({ at: i, look }));
+
+  it("counts the open seats a join by your code takes, bots and people not", () => {
+    expect(inviteAskOf(at("you", "person", "friend", "open"), 0)).toBe("one");
+    expect(inviteAskOf(at("you", "bot", "person", "open"), 0)).toBe("one");
+    expect(inviteAskOf(at("you", "open", "person", "open"), 0)).toBe("two");
+    expect(inviteAskOf(at("you", "open", "open", "open"), 0)).toBe("three");
+    expect(inviteAskOf(at("you", "bot", "person", "bot"), 0)).toBe("three");
   });
 
-  it("reads the panel's seats, bots and open seats not counted", () => {
-    expect(inviteAskOf(["you", "person", "friend", "open"])).toBe("one");
-    expect(inviteAskOf(["you", "bot", "person", "open"])).toBe("two");
-    expect(inviteAskOf(["you", "open", "open", "open"])).toBe("three");
-    expect(inviteAskOf(["you", "open", "held", "open"])).toBe("partner");
+  it("asks for a partner only from the Duo opener whose seat is held", () => {
+    // Alice (seat 0) holds seat 2 for her partner; Bob sits at 1
+    const table = at("you", "person", "held", "open");
+    expect(inviteAskOf(table, 0)).toBe("partner");
+    expect(inviteAskOf(at("person", "you", "held", "open"), 1)).toBe("one");
+    expect(inviteAskOf(at("person", "you", "held", "person"), 1)).toBe("three");
   });
 });
 

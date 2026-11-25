@@ -7,8 +7,9 @@ and never a full name, an account or a rating. ``page_tags`` rewrites the
 built page's preview tags for that view, and ``render_png`` draws its
 1200 x 630 card: the felt, the 升级 wordmark, the code, four seats (the
 opener's team first, in blue) and one line for the seat count. An unknown or
-ended code gets the site's own tags and ``default_png``, which carries
-nothing about any table.
+ended code, a table a join by that code cannot enter, and an image URL made
+for an earlier state of the table get the site's own tags and
+``default_png``, which carries nothing about any table.
 
 The card is composed from baked coverage masks (``invite_atlas.npz``, made
 by web/scripts/og-table/bake.mjs), tinted and blended with numpy, and
@@ -40,8 +41,8 @@ CODE_RE = re.compile(rf"^[{matchmaking.CODE_ALPHABET}]{{{matchmaking.CODE_LEN}}}
 CACHE_SECS = 60.0
 CACHE_MAX = 256
 
-# What one seat shows: a person's initials, a bot, an empty seat anyone may
-# take, or a Duo opener's seat held for their partner.
+# What one seat shows: a person's initials, a bot, an empty seat, or a Duo
+# opener's seat held for their partner.
 PERSON, BOT, OPEN, HELD = "person", "bot", "open", "held"
 
 
@@ -50,28 +51,35 @@ class Seat:
     kind: str
     initials: str = ""    # PERSON only: one or two of A-Z 0-9, or "" for the person mark
     us: bool = True       # on the opener's team
+    free: bool = False    # a join by this code may take it
 
 
 @dataclass(frozen=True)
 class TableView:
     code: str
     seats: tuple[Seat, ...]   # display order: the opener's team first
+    table: str = ""           # which table holds the code now, so a reused code is a new card
 
     @property
-    def people(self) -> int:
-        return sum(s.kind == PERSON for s in self.seats)
+    def free(self) -> int:
+        return sum(s.free for s in self.seats)
 
     @property
     def ask(self) -> str:
-        """Which invite this is: ``partner`` with a seat held, else by the
-        people seated, ``one``/``two``/``three`` seats wanted or ``full``."""
-        if any(s.kind == HELD for s in self.seats):
+        """Which invite this is: ``partner`` when the code's join takes a
+        held seat, else ``one``/``two``/``three`` by the seats it may take."""
+        if any(s.free and s.kind == HELD for s in self.seats):
             return "partner"
-        return {4: "full", 3: "one", 2: "two"}.get(self.people, "three")
+        return {1: "one", 2: "two"}.get(self.free, "three")
 
     def key(self) -> str:
-        """The state the card draws, for its cache and its URL."""
-        return "".join(f"{s.kind[0]}{s.initials}{int(s.us)}" for s in self.seats) + self.ask
+        """The state the card draws and the table it is of, for the card's
+        cache and its URL."""
+        seats = "".join(f"{s.kind[0]}{s.initials}{int(s.us)}{int(s.free)}" for s in self.seats)
+        return f"{self.table}:{seats}{self.ask}"
+
+    def state(self) -> str:
+        return f"{zlib.crc32(self.key().encode()) & 0xFFFFFFFF:08x}"
 
 
 def valid_code(raw: object) -> str | None:
@@ -91,33 +99,36 @@ def initials(name: str | None) -> str:
     return picked.upper()
 
 
-def table_view(code: str, opener: int, seats: list[tuple[str, str | None]]) -> TableView:
-    """The view of four seats ``(kind, name)`` by seat number, seen from the
-    opener's seat: the opener and their partner, then the other team. Names
-    become initials here and go no further."""
+def table_view(code: str, opener: int, seats: list[tuple[str, str | None, bool]],
+               table: str = "") -> TableView | None:
+    """The view of four seats ``(kind, name, free)`` by seat number, seen
+    from the opener's seat: the opener and their partner, then the other
+    team. ``free`` is what a join by ``code`` may take (the Join panel's own
+    projection). None when it may take nothing: a full or closed table has
+    no preview of its own. Names become initials here and go no further."""
     order = [opener % 4, (opener + 2) % 4, (opener + 1) % 4, (opener + 3) % 4]
     view = []
     for n, i in enumerate(order):
-        kind, name = seats[i] if i < len(seats) else (OPEN, None)
-        view.append(Seat(kind, initials(name) if kind == PERSON else "", n < 2))
-    return TableView(code, tuple(view))
+        kind, name, free = seats[i] if i < len(seats) else (OPEN, None, False)
+        view.append(Seat(kind, initials(name) if kind == PERSON else "", n < 2, bool(free)))
+    if not any(s.free for s in view):
+        return None
+    return TableView(code, tuple(view), table)
 
 
 # The words, per ask. The message text matches the web's share text
 # (web/src/i18n/messages/home.ts "home.invite.*").
 TITLE_EN = {"one": "1 open seat", "two": "2 open seats", "three": "3 open seats",
-            "partner": "partner seat open", "full": "table full"}
-TITLE_ZH = {"one": "三缺一", "two": "二缺二", "three": "一缺三", "partner": "等搭档", "full": "满座"}
+            "partner": "partner seat open"}
+TITLE_ZH = {"one": "三缺一", "two": "二缺二", "three": "一缺三", "partner": "等搭档"}
 MESSAGE_EN = {"one": "We need a 4th for Tractor. Code {code}",
               "two": "Two seats open for Tractor. Code {code}",
               "three": "Play Tractor with me? Code {code}",
-              "partner": "Be my partner for Tractor? Code {code}",
-              "full": "Play Tractor with me? Code {code}"}
+              "partner": "Be my partner for Tractor? Code {code}"}
 MESSAGE_ZH = {"one": "三缺一，来打升级！房间码 {code}",
               "two": "还差两个人，来打升级！房间码 {code}",
               "three": "来打升级吗？房间码 {code}",
-              "partner": "来跟我搭档打升级！房间码 {code}",
-              "full": "来打升级吗？房间码 {code}"}
+              "partner": "来跟我搭档打升级！房间码 {code}"}
 
 
 def prefers_zh(accept_language: str | None) -> bool:
@@ -148,9 +159,17 @@ def texts(view: TableView, zh: bool) -> tuple[str, str]:
 
 
 def image_url(view: TableView) -> str:
-    # the state in the query, so an app that keeps images by URL fetches anew once a seat fills
-    state = zlib.crc32(view.key().encode()) & 0xFFFFFFFF
-    return f"{SITE_ORIGIN}/og/table/{view.code}.png?s={state:08x}"
+    # The state in the query: the image route draws this table only while its
+    # state still matches, so an old URL never shows a newer roster.
+    return f"{SITE_ORIGIN}/og/table/{view.code}.png?s={view.state()}"
+
+
+def card_for(view: TableView | None, state: object) -> TableView | None:
+    """The view an image request with ``state`` may draw: the live view
+    only when the URL was made for exactly this table and seats."""
+    if view is None or not isinstance(state, str) or state != view.state():
+        return None
+    return view
 
 
 def _set_meta(page: str, attr: str, key: str, value: str) -> str:
@@ -272,9 +291,11 @@ def _seat(img, seat: Seat, left: float, top: float) -> None:
     d = spec["seat"]
     cx, cy = left + d / 2, top + d / 2
     if seat.kind in (OPEN, HELD):
+        # an empty seat this code's join cannot take (held for someone else) has no +
         _blend(img, "dash_ring", left, top, OPEN_LINE)
-        mask, (x0, y0, adv) = _load()["masks"]["plus"]
-        _blend(img, "plus", cx - mask.shape[1] / 2, cy - mask.shape[0] / 2, OPEN_LINE)
+        if seat.free:
+            mask = _load()["masks"]["plus"][0]
+            _blend(img, "plus", cx - mask.shape[1] / 2, cy - mask.shape[0] / 2, OPEN_LINE)
         return
     fill, ring = TEAM[seat.us]
     _blend(img, "disc", left, top, fill)

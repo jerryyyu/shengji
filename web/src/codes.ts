@@ -36,23 +36,21 @@ export function codeLink(code: string): string {
 export const COPIED_MS = 1200;
 
 /** What an invite asks for: one, two or three more people, or the partner
- *  for a Duo opener's held seat. The server's link preview uses the same
- *  words (server/shengji/api/invite_preview.py). */
+ *  for the sender's own held seat. The server's link preview uses the same
+ *  words (server/shengji/api/invite_preview.py). "three" is also the plain
+ *  ask, for a table whose open seats the sender cannot know. */
 export type InviteAsk = "one" | "two" | "three" | "partner";
 
-/** The ask for a table with `people` seated (bots are not people) and
- *  whether a seat is held for a partner. A full table asks as one alone. */
-export function inviteAsk(people: number, held = false): InviteAsk {
-  if (held) return "partner";
-  if (people === 3) return "one";
-  if (people === 2) return "two";
+/** The ask for your own table's seats, from what a join by your code takes:
+ *  your Duo's held seat (opposite you) when you hold one, else the open
+ *  seats. A seat held for someone else's partner, a bot and a person are
+ *  not offered, so the message never promises more than Join finds. */
+export function inviteAskOf(seats: readonly { at: number; look: string }[], you: number): InviteAsk {
+  if (seats.some((s) => s.look === "held" && s.at === (you + 2) % 4)) return "partner";
+  const open = seats.filter((s) => s.look === "open").length;
+  if (open === 1) return "one";
+  if (open === 2) return "two";
   return "three";
-}
-
-/** The ask for a table's seats, by each seat's look in the panel. */
-export function inviteAskOf(looks: readonly string[]): InviteAsk {
-  const people = looks.filter((l) => l === "you" || l === "friend" || l === "person").length;
-  return inviteAsk(people, looks.includes("held"));
 }
 
 /** The invite's message in the app's language, the code in it so someone

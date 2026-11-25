@@ -4896,17 +4896,51 @@ def test_peek_a_duo_table_shows_its_held_seat_until_the_friend_takes_it():
     run(go())
 
 
-def test_a_tables_invite_seats_are_its_peek_by_kind_with_the_opener_seat():
+def test_a_tables_invite_seats_are_what_a_join_by_that_code_takes():
+    """Alice's Duo table with Bob seated from Play: her code's join takes the
+    held partner seat, and its preview asks for her partner; Bob's code
+    never takes it, so his preview counts only the open seat, opposite Alice,
+    and with none open his code shows no table. Team order is always the
+    table opener's."""
+    from shengji.api import invite_preview as ip
+
     async def go():
         env = Env()
-        await env.join(1, duo=True)
-        code = env.conns[1].last("queue_state")["code"]
-        opener, seats = env.mm.invite_seats(code)
-        assert seats == [("person", "P1"), ("open", None), ("held", None), ("open", None)]
-        assert opener == 0
-        env.player(2)
-        await env.send(2, "queue_join", code=code)
-        assert env.mm.invite_seats(code)[1][2] == ("person", "P2")
+        await env.join(2)                                  # Bob, waiting
+        alice = await _duo_table(env, 1)                    # Alice opens; Bob sits
+        (t,) = env.mm.tables.values()
+        assert t.seats == [1, 2, None, None] and t.held_seat() == 2
+        bob = env.mm._entry(2).code
+        assert bob != alice
+
+        opener, seats, table_id = env.mm.invite_seats(alice)
+        assert opener == 0 and table_id == t.id
+        assert seats == [("person", "P1", False), ("person", "P2", False),
+                         ("held", None, True), ("open", None, False)]
+        assert ip.table_view(alice, opener, seats).ask == "partner"
+
+        opener, seats, _ = env.mm.invite_seats(bob)
+        assert opener == 0                                 # Alice's team first, not Bob's
+        assert seats == [("person", "P1", False), ("person", "P2", False),
+                         ("held", None, False), ("open", None, True)]
+        view = ip.table_view(bob, opener, seats)
+        assert view.ask == "one"
+        assert [(s.initials, s.us, s.free) for s in view.seats] == [
+            ("P", True, False), ("", True, False), ("P", False, False), ("", False, True)]
+        # the seat Bob's preview offers is the one his code's join takes: Bob's team, opposite Alice
+        env.player(7)
+        await env.send(7, "queue_join", code=bob)
+        assert t.seats[3] == 7 and t.seats[2] is None
+        # now Bob's code has nothing to take, as the matchmaker says
+        assert all(not free for _, _, free in env.mm.invite_seats(bob)[1])
+        assert ip.table_view(bob, *env.mm.invite_seats(bob)[:2]) is None
+        env.player(8)
+        await env.send(8, "queue_join", code=bob)
+        assert env.conns[8].last("error")["code"] == "table_full"
+        # Alice's code still seats her partner in the held seat
+        env.player(9)
+        await env.send(9, "queue_join", code=alice)
+        assert t.seats[2] == 9
         assert env.mm.invite_seats("ZZZZ") is None
     run(go())
 

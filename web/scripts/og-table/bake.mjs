@@ -24,7 +24,6 @@ const SPEC = {
     two: "二缺二 · 2 open seats",
     three: "一缺三 · 3 open seats",
     partner: "等搭档 · partner seat open",
-    full: "满座 · table full",
   },
   seat: 200,          // circle diameter
   seatBorder: 7,

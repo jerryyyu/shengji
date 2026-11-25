@@ -27,6 +27,19 @@ const btn = (host: HTMLElement) => host.querySelector<HTMLButtonElement>(".hud-m
 const rows = (host: HTMLElement) => Array.from(host.querySelectorAll<HTMLElement>(".hud-menu-row"));
 
 describe("the table's ⋯ menu", () => {
+  it("shares the plain ask mid-game, whatever the seats, since a bot's seat may not be open", async () => {
+    const shared: unknown[] = [];
+    Object.defineProperty(navigator, "share", { configurable: true,
+      value: (d: unknown) => { shared.push(d); return Promise.resolve(); } });
+    const v = render({ ranked: true });
+    act(() => btn(v.host).click());
+    await act(async () => { rows(v.host).find((r) => r.textContent === "Invite link")!.click(); });
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    expect(shared).toEqual([{ title: "Sheng Ji", text: "Play Tractor with me? Code ABCD",
+                              url: `${window.location.origin}/?code=ABCD` }]);
+    v.unmount();
+  });
+
   it("is closed until tapped, then lists the table's rows, the settings, then Leave game", () => {
     const v = render({ ranked: true, allowJoiners: true });
     expect(v.host.querySelector(".hud-menu")).toBeNull();

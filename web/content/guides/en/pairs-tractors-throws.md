@@ -80,7 +80,7 @@ Here's one from a real hand, with hearts trump. The banker led ♦J♦J♦A. The
 
 ## When a throw fails
 
-If anyone could beat a part, the throw fails. You play only the lowest part that could be beaten and take the rest back. Everyone sees what you tried.
+If anyone could beat a part with cards of the suit led, the throw fails. You play only the lowest part that could be beaten and take the rest back. Everyone sees what you tried.
 
 ```cards
 kind: throw

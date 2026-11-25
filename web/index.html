@@ -65,7 +65,9 @@
     </script>
     <!-- Static first paint: shown until React mounts (and replaces #root's
          contents), so a slow phone network gets the title instead of a blank
-         page while the script downloads. Plain inline CSS, no script. -->
+         page while the script downloads. The intro under it is the page's
+         text for readers and crawlers that do not run the app's script; the
+         same text every visitor sees while the app loads. Plain inline CSS. -->
     <style>
       html, body { margin: 0; height: 100%; background: #14171e; }
       .boot { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; align-items: center;
@@ -76,14 +78,23 @@
       .boot-title { margin: 0; font-size: 52px; letter-spacing: 0.05em; color: #f2c14e; }
       .boot-title span { display: block; margin-top: 6px; font-size: 18px; letter-spacing: 0.35em; color: #9aa3b2; }
       .boot-status { font-size: 13px; }
+      .boot-intro { max-width: 34em; font-size: 13px; line-height: 1.5; }
+      .boot-intro p { margin: 0 0 8px; }
+      .boot-intro a { color: #f2c14e; }
       .boot-retry { min-width: 96px; min-height: 44px; padding: 0 20px; border-radius: 10px;
                     border: 1px solid #3a4150; background: #232833; color: #e8ecf2;
                     font: 600 15px system-ui, -apple-system, sans-serif; }
     </style>
   </head>
   <body>
-    <div id="root"><div class="boot"><h1 class="boot-title">升级 <span>SHENG JI</span></h1><div class="boot-status" role="status">Loading…</div></div></div>
+    <div id="root"><div class="boot"><h1 class="boot-title">升级 <span>SHENG JI</span></h1><div class="boot-status" role="status">Loading…</div><div class="boot-intro"><p>Sheng Ji (升级), also called Tractor (拖拉机) or 80 Points (八十分), is a Chinese trick-taking card game for four players in two teams, played with two decks and jokers. Play it here in your browser or in the iPhone and iPad app, against bots or with friends.</p><p><a href="/rules">Rules</a> · <a href="/guides">Guides</a> · <a href="https://apps.apple.com/app/id6833598710?ct=home-intro">iPhone app</a> · <a href="/rules/zh" hreflang="zh-Hans" lang="zh-Hans">中文规则</a></p></div></div></div>
     <script>
+      // The iOS app's WebView loads this same page. Its launch screen shows
+      // no store or web links, so the app drops the intro before it paints.
+      if (/ShengjiApp\//.test(navigator.userAgent)) {
+        var intro = document.querySelector(".boot-intro");
+        if (intro) intro.remove();
+      }
       // The app replaces this page once its script runs. If that has not
       // happened by now the network is slow or down: say so, and offer a reload.
       setTimeout(function () {
@@ -95,7 +106,7 @@
         retry.className = "boot-retry";
         retry.textContent = "Retry";
         retry.onclick = function () { location.reload(); };
-        status.parentNode.appendChild(retry);
+        status.parentNode.insertBefore(retry, status.nextSibling);
       }, 4000);
     </script>
     <script type="module" src="/src/main.tsx"></script>

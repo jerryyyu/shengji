@@ -4,7 +4,7 @@ description: What 升级, 拖拉机, 八十分 and 找朋友 mean, which parts o
 slug: names-and-variants
 order: 2
 related: [how-to-play, scoring-and-levels, declaring-trump]
-updated: 2026-11-23
+updated: 2026-11-25
 lang: en
 ---
 
@@ -39,9 +39,9 @@ caption: ♠7♠7♠8♠8♠9♠9 is led as one play. To beat it in spades you n
 
 [Pairs, tractors and throws](/guides/pairs-tractors-throws) explains how they're followed and beaten.
 
-## 八十分 (bāshí fēn): "eighty points"
+## 八十分 (bāshí fēn): 80 Points
 
-Named after the target. The two decks hold 200 points in 5s, 10s and Kings, and the attackers need 80 to win the hand.
+Named after the target, and called 80 Points in English. The two decks hold 200 points in 5s, 10s and Kings, and the attackers need 80 to win the hand.
 
 ```cards
 cards: S5 S5 | S10 S10 | SK SK
@@ -75,6 +75,12 @@ The core is the same everywhere: two teams, trump set by the level, pairs and tr
 | Winning at Ace | Win a hand at Ace as the defenders | Some tables send a team back to 2 after failing at Ace three times |
 
 When you sit down somewhere new, the questions worth asking are the kitty multiplier, the failed-throw penalty and the rules at Ace. They change the score more than the others.
+
+## Sheng Ji and Guandan (掼蛋): what's the difference?
+
+They share a lot: four players in two teams, partners opposite, two decks with jokers, and levels from 2 to Ace.
+
+They're won differently. Guandan is a race to get rid of your cards: each player has 27, there's no kitty and no point cards. Sheng Ji is played in tricks, and the attackers collect the 5s, 10s and Kings to reach 80. This site plays Sheng Ji.
 
 ## Which name to search for
 

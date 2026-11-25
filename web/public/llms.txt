@@ -34,11 +34,11 @@ Reading, summarising and linking to the public pages below is fine. If someone w
 ## 攻略（中文）
 
 - [升级（拖拉机）怎么打：完整打一局给你看](https://playshengji.com/zh/guides/how-to-play): 用一局真实的牌，从发牌、亮主、埋底，一直讲到最后一轮抠底和算分升级。
-- [升级、拖拉机、八十分、找朋友：一个游戏，四个名字](https://playshengji.com/zh/guides/names-and-variants): 升级、拖拉机、八十分、找朋友各指什么，各自说的是游戏的哪一部分，以及各地规矩不一样的地方。
+- [升级、拖拉机、双升、八十分（80分）、找朋友：一个游戏，几种叫法](https://playshengji.com/zh/guides/names-and-variants): 升级、拖拉机、双升、八十分、找朋友各指什么，升级扑克英文怎么说，升级和掼蛋有什么区别，以及各地规矩不一样的地方。
 - [亮主怎么亮：什么时候亮、怎么反、亮哪门](https://playshengji.com/zh/guides/declaring-trump): 摸牌时怎么亮主、什么能反什么，怎么数一门值不值得亮，以及什么时候别反对家。
-- [埋底怎么埋：该埋什么、为什么](https://playshengji.com/zh/guides/burying-the-kitty): 庄家拿底后怎么挑 8 张埋下去：用一手真实的 33 张牌，讲抠底的风险、做绝门和该留的牌。
+- [扣底（埋底）怎么埋：该埋什么、为什么](https://playshengji.com/zh/guides/burying-the-kitty): 庄家拿底后怎么扣底、挑哪 8 张埋下去：用一手真实的 33 张牌，讲抠底的风险、做绝门和该留的牌。
 - [对子、拖拉机和甩牌：怎么出、怎么跟、甩失败怎么办](https://playshengji.com/zh/guides/pairs-tractors-throws): 什么算对子、什么算拖拉机、什么算甩牌，跟牌时必须怎么跟，甩牌失败会怎样。
-- [升级怎么算分：分牌、抠底翻倍和升几级](https://playshengji.com/zh/guides/scoring-and-levels): 分怎么数，抠底怎么翻倍，闲家多少分对应升降几级，用实际的数一步步算给你看。
+- [升级怎么算分：分牌、扣底抠底翻倍和升几级](https://playshengji.com/zh/guides/scoring-and-levels): 分怎么数，扣底的分怎么算、抠底怎么翻倍，闲家多少分对应升降几级，用实际的数一步步算给你看。
 - [升级算分器：谁升级、升几级、下局谁坐庄](https://playshengji.com/zh/guides/score-calculator): 填上闲家得分、底牌分数和最后一轮的出牌，马上算出这一局的结果：哪方赢、升几级、下局谁坐庄、这一盘是不是赢了。
 - [升级的数字：对子、拖拉机、大小王和底牌的概率](https://playshengji.com/zh/guides/sheng-ji-by-the-numbers): 升级（拖拉机）一手牌有多大机会拿到对子、拖拉机或一对大王，底牌平均几分，一盘要打多少局。每个数都写明样本和算法。
 

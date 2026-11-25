@@ -379,11 +379,14 @@ def trunk_forward(m, b):
     return logits, enc, q, g
 
 
-def build_unified(arch: Mapping[str, Any], *, policy_detach: bool = False):
+def build_unified(arch: Mapping[str, Any], *, policy_detach: bool = False, outcome_history_width=None):
     import torch
     from torch import nn
     trunk = bs.build_model(**arch)
     d, xh = int(arch["d"]), int(arch["x_hidden"])
+    history = d if outcome_history_width is None else outcome_history_width
+    if type(history) is not int or not 0 < history <= d:
+        raise ValueError("outcome history width outside trunk width")
     qh, ph = HEAD_ARCH["q_hidden"], HEAD_ARCH["policy_hidden"]
 
     class Unified(nn.Module):
@@ -392,7 +395,9 @@ def build_unified(arch: Mapping[str, Any], *, policy_detach: bool = False):
             self.trunk = trunk
             self.config = {"trunk": dict(trunk.config), "heads": dict(HEAD_ARCH)}
             self.policy_detach = bool(policy_detach)
-            self.q_head = nn.Sequential(nn.LayerNorm(d + xh), nn.Linear(d + xh, qh), nn.GELU(),
+            if history != d:
+                self.config["heads"]["outcome_history_width"] = history
+            self.q_head = nn.Sequential(nn.LayerNorm(history + xh), nn.Linear(history + xh, qh), nn.GELU(),
                                         nn.Linear(qh, qh), nn.GELU(), nn.Linear(qh, OUTCOME_CLASSES))
             self.p_head = nn.Sequential(nn.LayerNorm(d), nn.Linear(d, ph), nn.GELU(), nn.Linear(ph, 1))
 
@@ -400,7 +405,7 @@ def build_unified(arch: Mapping[str, Any], *, policy_detach: bool = False):
             logits, enc, q, g = trunk_forward(self.trunk, b)
             frame = b["rr"] * 4 + b["seat"]
             at = enc[frame, b["ply"]]                                    # B,d: the actor's own play token
-            ql = self.q_head(torch.cat([at, g], -1).float())
+            ql = self.q_head(torch.cat([at[..., :history], g], -1).float())
             pq = q.detach() if self.policy_detach else q
             pl = self.p_head(pq.float()).squeeze(-1)                     # B,54
             return {"belief": logits, "q": ql, "policy": pl}
@@ -735,7 +740,8 @@ def load_checkpoint(path: str):
     saved = torch.load(path, weights_only=False, map_location="cpu")
     if saved.get("schema") != CKPT_SCHEMA:
         raise UnifiedSeqError(f"{path}: not a {CKPT_SCHEMA} checkpoint")
-    model = build_unified(saved["config"]["trunk"], policy_detach=bool(saved["run"].get("policy_detach")))
+    model = build_unified(saved["config"]["trunk"], policy_detach=bool(saved["run"].get("policy_detach")),
+                          outcome_history_width=saved["config"].get("heads", {}).get("outcome_history_width"))
     model.load_state_dict(saved["model"])
     model.eval()
     return model, saved

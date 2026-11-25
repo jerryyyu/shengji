@@ -3,8 +3,8 @@ title: 升级（拖拉机）怎么打：完整打一局给你看
 description: 用一局真实的牌，从发牌、亮主、埋底，一直讲到最后一轮抠底和算分升级。
 slug: how-to-play
 order: 1
-related: [declaring-trump, pairs-tractors-throws, scoring-and-levels]
-updated: 2026-11-23
+related: [declaring-trump, pairs-tractors-throws, scoring-and-levels, counting-cards]
+updated: 2026-11-25
 lang: zh
 schema: HowTo
 ---

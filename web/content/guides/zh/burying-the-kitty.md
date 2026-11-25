@@ -3,7 +3,7 @@ title: 扣底（埋底）怎么埋：该埋什么、为什么
 description: 庄家拿底后怎么扣底、挑哪 8 张埋下去：用一手真实的 33 张牌，讲抠底的风险、做绝门和该留的牌。
 slug: burying-the-kitty
 order: 4
-related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers]
+related: [scoring-and-levels, declaring-trump, how-to-play, sheng-ji-by-the-numbers, tough-bury-short-suits]
 updated: 2026-11-25
 lang: zh
 schema: HowTo
@@ -104,3 +104,5 @@ caption: 13 张主，大王算在里面。一手 25 张的牌，平均只有 8 �
 ## 闲家能做什么
 
 闲家看不到底牌，但知道底牌要紧。底里可能有分时，留一对主到最后，就有机会翻四倍。庄家要是像北家那样早早把大主都打光，最后就可能拦不住。
+
+带 20 分埋绝两门短门，和一分不埋，两种埋法都模拟检验过的实例，见[难题精选 1](/zh/guides/tough-bury-short-suits)。

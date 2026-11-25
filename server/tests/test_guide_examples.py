@@ -695,3 +695,202 @@ def test_the_kitty_multiplier_counts_the_cards_led():
     assert rnd.kitty_bonus == 100 and rnd.attacker_points == 100 + 20
     # a throw of a pair and a single: three cards led, x6
     assert KITTY_MULTIPLIER * len(["SA", "SA", "SK"]) == 6
+
+
+# The toughest-decisions pages and the counting guide. Their positions come
+# from the bot's self-play, and the simulated scores and percentages they
+# quote come from play-outs that are not rerun here. The counts, the card
+# points, the rules and the scoring each page states are checked below.
+
+# (winner seat, plays in order) for every trick before the position.
+DONT_FEED_HISTORY = [
+    (0, "C10 C10 C8 C8 CA | C6 CJ CQ HJ S2 | C2 C5 C7 C7 CK | C2 C3 C3 C4 CA"),
+    (0, "HK | H7 | H10 | H4"),
+    (1, "S9 S9 | BJ BJ | H9 H9 | D2 D2"),
+    (0, "H5 H5 | H2 H2 | H3 H7 | HA HA"),
+    (3, "HQ | H3 | HK | DK"),
+    (1, "CK | C5 | DK | C4"),
+    (2, "SJ SJ | SA SA | S8 S8 | S3 S3"),
+    (2, "SK | S6 | S5 | S6"),
+    (0, "SQ | S5 | SK | S7"),
+    (2, "DQ | D4 | DA | D8"),
+]
+DONT_FEED_HAND = "C9 D10 D3 D7 D8 DJ H10 LJ".split()
+DONT_FEED_KITTY = "C6 CJ H4 H6 H8 S2 S4 S7".split()
+
+LAST_THROW_HISTORY = [
+    (2, "HJ | S2 | LJ | HJ"),
+    (2, "CK CK | C8 C8 | D10 S5 | C6 C9"),
+    (0, "CQ | CA | H9 | C4"),
+    (2, "HA | D2 | H2 | H3"),
+    (2, "CA CJ | C3 C7 | D5 SQ | C10 C3"),
+    (0, "HA | C2 | H2 | H3"),
+    (0, "HK HK | H10 H10 | H4 H5 | H9 S2"),
+    (0, "H6 H6 | H5 H8 | H7 HQ | D2 H4"),
+    (3, "H8 | D4 | C2 | BJ"),
+    (1, "S10 | S6 | SA | S3"),
+    (2, "DK | DA | D9 | D7"),
+    (0, "C5 | C10 | HQ | DQ"),
+    (2, "S9 S9 | S7 S7 | SJ SJ | S3 S8"),
+    (1, "SQ | SK | S6 | SA"),
+]
+# Seats 0 to 3 at the last trick; seat 0 is the banker, seat 1 is you.
+LAST_THROW_HANDS = ["D4 D9 DA DJ H7 LJ", "D3 D3 D6 D6 D8 D8", "BJ DJ DK S10 S8 SK", "D10 D5 D7 DQ S4 S5"]
+LAST_THROW_KITTY = "C4 C5 C6 C7 C9 CJ CQ S4".split()
+
+
+def _played(history) -> list[str]:
+    return [c for _, plays in history for g in _groups(plays) for c in g]
+
+
+def _matches(lang: str, slug: str, pattern: str) -> list[tuple[int, ...]]:
+    found = [tuple(int(g) for g in m.groups()) for m in re.finditer(pattern, _source(lang, slug))]
+    assert found, f"{lang}/{slug}.md no longer says {pattern!r}: update the claim with the text"
+    return found
+
+
+def test_the_last_trick_throw_page():
+    o = Ordering("H", "2")
+    played = _played(LAST_THROW_HISTORY)
+    hand = LAST_THROW_HANDS[1].split()
+    plain_diamonds = [c for c in played if o.eff_suit(c) == "D"]
+    assert len(plain_diamonds) == 8 and len(set(plain_diamonds)) == 8
+    unseen = Counter(c for c in make_deck() if o.eff_suit(c) == "D") - Counter(plain_diamonds) - Counter(hand)
+    assert [c for c, n in unseen.items() if n == 2] == ["DJ"]
+    assert [c.kind for c in decompose(hand, o).components] == ["pair", "pair", "pair"]
+    attackers = sum(total_points(_groups(p)[0] + sum(_groups(p)[1:], [])) for w, p in LAST_THROW_HISTORY if w in (1, 3))
+    still_out = 200 - total_points(played) - total_points(hand)
+    assert (attackers, still_out) == (20, 55)
+    # a void player trumps the six only with three trump pairs
+    top = decompose(hand, o).top_level()
+    assert beats("H3 H3 H5 H5 H9 H9".split(), hand, "D", top, o)[0]
+    assert not beats("H3 H3 H5 H5 H9 HK".split(), hand, "D", top, o)[0]
+    # the throw stands against the real hands, and the last trick plays out
+    others = [LAST_THROW_HANDS[s].split() for s in (2, 3, 0)]
+    assert validate_lead(hand, list(hand), others, o) == (hand, None)
+    rnd = Round("2", 0)
+    rnd.ordering, rnd.trump_suit = o, "H"
+    rnd.hands = [h.split() for h in LAST_THROW_HANDS]
+    rnd.buried = list(LAST_THROW_KITTY)
+    rnd.attacker_points = attackers
+    rnd.phase, rnd.turn, rnd.trick = "play", 1, Trick(leader=1)
+    for seat in (1, 2, 3, 0):
+        rnd.play(seat, list(rnd.hands[seat]))
+    trick = rnd.last_trick.points
+    kitty = total_points(LAST_THROW_KITTY)
+    assert rnd.last_trick_winner == 1 and (trick, kitty, rnd.kitty_bonus) == (50, 5, 60)
+    assert rnd.attacker_points == 130 and kitty * KITTY_MULTIPLIER * len(hand) == 60
+    assert _finish(130, "2") == (1, 1)
+    for lang in ("en", "zh"):
+        slug = "tough-last-trick-throw"
+        assert _matches(lang, slug, r"(\d+) × 2 × 6 = (\d+)") == [(kitty, 60)]
+        assert _matches(lang, slug, r"(\d+) \+ (\d+) \+ (\d+) = (\d+)") == [(20, trick, 60, 130)]
+        out = r"\*\*Still out:\*\* (\d+) points" if lang == "en" else r"\*\*还剩：\*\*(\d+) 分"
+        assert _matches(lang, slug, out) == [(still_out,)]
+        seen = r"\*\*Diamonds played:\*\* (\d+)" if lang == "en" else r"\*\*已出方块：\*\*(\d+) 张"
+        assert _matches(lang, slug, seen) == [(8,)]
+        body = re.search(r"kind: levels\nfrom: (\w+)\nto: (\w+)", _source(lang, slug))
+        assert body.groups() == ("2", "3")
+
+
+def test_the_dont_feed_page_and_the_counting_example():
+    o = Ordering("D", "9")
+    played = _played(DONT_FEED_HISTORY)
+    higher = [c for c in make_deck() if c[0] == "S" and o.eff_suit(c) == "S" and card_rank(c) in ("J", "Q", "K", "A")]
+    out = Counter(higher) - Counter(played) - Counter(DONT_FEED_HAND) - Counter(DONT_FEED_KITTY)
+    assert len(higher) == 8 and list(out.elements()) == ["SQ"]
+    assert not any(o.eff_suit(c) == "S" for c in DONT_FEED_HAND)
+    assert sum(o.is_trump(c) for c in DONT_FEED_HAND) == 7
+    attackers = sum(total_points(_groups(p)[0] + sum(_groups(p)[1:], [])) for w, p in DONT_FEED_HISTORY if w in (1, 3))
+    trick = total_points(["S10", "S10", "H10"])
+    assert (attackers, trick) == (45, 30)
+    for lang in ("en", "zh"):
+        feed = r"takes the attackers from (\d+) to (\d+)" if lang == "en" else r"闲家从 (\d+) 分到 (\d+) 分"
+        assert _matches(lang, "tough-dont-feed-the-trick", feed) == [(attackers, attackers + trick)]
+        for slug in ("tough-dont-feed-the-trick", "counting-cards"):
+            label = r"labels: Played \((\d+)\) \| Still out \((\d+)\)" if lang == "en" else r"labels: 已出（(\d+) 张） \| 还在外面（(\d+) 张）"
+            assert _matches(lang, slug, label) == [(7, 1)]
+    assert _finish(70, "9") == (0, 1)
+
+
+def test_the_bury_page():
+    o = Ordering(None, "2")
+    hand = ("BJ BJ C10 C2 C4 C4 C6 C7 CA CQ D10 D2 D2 D5 D6 D8 H2 H3 H4 H6 H7 H8 H9 HA HK HQ LJ "
+            "S2 S3 S5 S8 S9 SJ").split()
+    trumps = sum(o.is_trump(c) for c in hand)
+    deck_trumps = sum(o.is_trump(c) for c in make_deck())
+    assert (len(hand), trumps, deck_trumps) == (33, 8, 12)
+    for lang in ("en", "zh"):
+        text = _source(lang, "tough-bury-short-suits")
+        situation = text[:text.index("- **A.**")]
+        shown = [c for line in re.findall(r"^cards: ([^\n]+)", situation, re.M) for c in line.split() if c != "|"]
+        assert sorted(shown) == sorted(hand)
+        options = dict(re.findall(r"^- \*\*([AB])\.\*\* ([^:：]+)", text, re.M))
+        a, b = (_cards_in(options[k]) for k in "AB")
+        assert len(a) == len(b) == 8 and not Counter(a) - Counter(hand) and not Counter(b) - Counter(hand)
+        assert (total_points(a), total_points(b)) == (20, 0)
+        kept = Counter(hand) - Counter(a)
+        assert [c for c in kept.elements() if not o.is_trump(c) and c[0] in "DS"] == ["SJ"]
+        mine = r"\*\*Your trumps:\*\* (\d+) of the (\d+)" if lang == "en" else r"\*\*你的主：\*\*(\d+) 张里你有 (\d+) 张"
+        want = (trumps, deck_trumps) if lang == "en" else (deck_trumps, trumps)
+        assert _matches(lang, "tough-bury-short-suits", mine) == [want]
+        body = re.search(r"kind: levels\nfrom: (\w+)\nto: (\w+)", text)
+        assert body.groups() == ("2", "3")
+    assert _finish(45, "2") == (0, 1)
+
+
+def test_the_feed_page():
+    o = Ordering("S", "8")
+    lead = "C3 C3 CJ CJ CA".split()
+    assert sorted(c.kind for c in decompose(lead, o).components) == ["pair", "pair", "single"]
+    top = decompose(lead, o).top_level()
+    assert beats("S3 S3 S6 S6 S9".split(), lead, "C", top, o)[0]          # two trump pairs and a trump
+    assert not beats("S3 S3 S6 S9 SK".split(), lead, "C", top, o)[0]      # one pair is not the shape
+    for lang in ("en", "zh"):
+        text = _source(lang, "tough-feed-partners-throw")
+        options = re.findall(r"^- \*\*[A-D]\.\*\* ([^:：]+)[:：] ?(\d+ points|\d+ 分|no points|没有分)", text, re.M)
+        assert len(options) == 4, lang
+        for cards, points in options:
+            stated = 0 if re.match(r"no points|没有分", points) else _int(points)
+            assert total_points(_cards_in(cards)) == stated, (lang, cards)
+        body = re.search(r"kind: levels\nfrom: (\w+)\nto: (\w+)", text)
+        assert body.groups() == ("8", "9")
+    assert _finish(75, "8") == (0, 1)
+
+
+def test_the_keep_the_jokers_page():
+    kitty_cards = "C4 C6 D3 H10 H6 H6 H8 H9".split()
+    kitty = total_points(kitty_cards)
+    assert kitty == 10
+    assert total_points("H5 H5 H4 HQ H7 H7".split()) == 10 and total_points(["CK", "SJ"]) == 10
+    for lang in ("en", "zh"):
+        slug = "tough-keep-the-big-jokers"
+        line = re.search(r"\*\*(?:Your kitty:|你埋的底：)\*\* ?([^\n]+)", _source(lang, slug)).group(1)
+        assert sorted(_cards_in(line)) == sorted(kitty_cards) and _int(line.split(",")[-1].split("，")[-1]) == kitty
+        mult = r"(\d+) for a single, (\d+) for a pair" if lang == "en" else r"单张是 (\d+) 分，对子是 (\d+) 分"
+        assert _matches(lang, slug, mult) == [(kitty * KITTY_MULTIPLIER, kitty * KITTY_MULTIPLIER * 2)]
+        body = re.search(r"kind: levels\nfrom: (\w+)\nto: (\w+)", _source(lang, slug))
+        assert body.groups() == ("2", "3")
+    assert _finish(40, "2") == (0, 1) and _finish(35, "2") == (0, 2)
+
+
+def test_the_counting_guide_numbers():
+    deck = make_deck()
+    suit = Ordering("H", "2")
+    in_suit = sum(1 for c in deck if c[0] == "H" and card_rank(c) != "2")
+    expected = {
+        "suit": sum(suit.is_trump(c) for c in deck),
+        "nt": sum(Ordering(None, "2").is_trump(c) for c in deck),
+        "rest": in_suit,
+        "total": total_points(deck),
+    }
+    assert (expected["suit"], expected["nt"], expected["rest"]) == (36, 12, 24)
+    patterns = {
+        "en": {"suit": r"there are (\d+) trumps in the deck", "nt": r"there are (\d+), the jokers",
+               "rest": r"the other (\d+) cards of the trump suit", "total": r"(\d+) points in all"},
+        "zh": {"suit": r"一共 (\d+) 张主", "nt": r"无主时只有 (\d+) 张", "rest": r"主花色的另外 (\d+) 张",
+               "total": r"算分，一共 (\d+) 分"},
+    }
+    for lang, pats in patterns.items():
+        for key, pattern in pats.items():
+            assert _matches(lang, "counting-cards", pattern) == [(expected[key],)], (lang, key)

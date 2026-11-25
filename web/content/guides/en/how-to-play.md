@@ -3,8 +3,8 @@ title: How to play Sheng Ji (Tractor): one full hand, start to finish
 description: A beginner's walkthrough of one real hand of Sheng Ji, from the deal and the trump call to the last trick and the score.
 slug: how-to-play
 order: 1
-related: [declaring-trump, pairs-tractors-throws, scoring-and-levels]
-updated: 2026-11-23
+related: [declaring-trump, pairs-tractors-throws, scoring-and-levels, counting-cards]
+updated: 2026-11-25
 lang: en
 schema: HowTo
 ---

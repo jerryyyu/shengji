@@ -3,7 +3,7 @@ title: 升级怎么算分：分牌、扣底抠底翻倍和升几级
 description: 分怎么数，扣底的分怎么算、抠底怎么翻倍，闲家多少分对应升降几级，用实际的数一步步算给你看。
 slug: scoring-and-levels
 order: 6
-related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants]
+related: [score-calculator, burying-the-kitty, how-to-play, names-and-variants, toughest-decisions]
 updated: 2026-11-25
 lang: zh
 ---

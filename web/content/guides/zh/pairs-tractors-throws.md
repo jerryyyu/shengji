@@ -3,7 +3,7 @@ title: 对子、拖拉机和甩牌：怎么出、怎么跟、甩失败怎么办
 description: 什么算对子、什么算拖拉机、什么算甩牌，跟牌时必须怎么跟，甩牌失败会怎样。
 slug: pairs-tractors-throws
 order: 5
-related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers]
+related: [how-to-play, declaring-trump, scoring-and-levels, sheng-ji-by-the-numbers, tough-last-trick-throw]
 updated: 2026-11-25
 lang: zh
 ---
@@ -77,6 +77,8 @@ caption: 副 7 都在同一档，两对副 7 是并排，不是相连。
 这一手一定成立：能管 ♠K 的只有 A，两张 A 都在你手里。
 
 再看一个实战的例子，红桃做主。庄家第一手甩出 ♦J♦J♦A。♦A 最多被别人的 ♦A 打平，管不上。那对 J 要被管，得有人手里有 ♦Q♦Q、♦K♦K 或 ♦A♦A，结果谁都没有。甩牌成立，一手拿了 20 分。
+
+最后一轮甩牌，底牌还要乘以首家出牌张数的两倍。[难题精选 5](/zh/guides/tough-last-trick-throw) 是一手六张的甩牌，把底里的 5 分变成了 60 分。
 
 ## 甩牌失败
 

@@ -213,6 +213,23 @@ describe("the guide visuals", () => {
     expect(() => renderBlock("kind: trick\nnames: A | B\nplays: SK | SA\nwinner: 3", "en", inline)).toThrow(DiagramError);
   });
 
+  it("refuse the completed-trick label on a trick with a player still to play", () => {
+    const three = "kind: trick\nnames: A | B | You\nplays: S10 | S10 | D10\nwinner: 3";
+    for (const lang of ["en", "zh"] as const) {
+      expect(() => renderBlock(three, lang, inline)).toThrow(DiagramError);
+      expect(() => renderBlock(`${three}\nwinlabel: ${lang === "zh" ? "这一轮最大" : "wins the trick"}`, lang, inline))
+        .toThrow(DiagramError);
+    }
+    expect(renderBlock(`${three}\nwinlabel: winning so far`, "en", inline)).toContain("You: winning so far.");
+    expect(renderBlock("kind: trick\nnames: A | B | C | You\nplays: S2 | S3 | S4 | SA\nwinner: 4", "en", inline))
+      .toContain("You: wins the trick.");
+    for (const [path, html] of guidePages) {
+      for (const [, title] of html.matchAll(/<title id="gv\d+">([^<]*)<\/title>/g)) {
+        expect(title, path).not.toMatch(/\bYou wins\b/);
+      }
+    }
+  });
+
   it("describe cards in words", () => {
     const html = renderBlock("cards: SK H10 | BJ", "en", inline);
     expect(html).toContain("King of spades, 10 of hearts; big joker");

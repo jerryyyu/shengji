@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import {
   CASUAL_WINS, FRESH, PROMPT_DELAY_MS, RANKED_WINS, REVIEW_KEY, SESSION_GAP_MS, ReviewPrompt, appVersion,
-  nativeKv, nativeRequest, parseState, recordWin, touch, type Kv, type ReviewDeps, type Trigger,
+  leave, nativeKv, nativeRequest, parseState, recordWin, touch, type Kv, type ReviewDeps, type Trigger,
 } from "./reviewPrompt";
 import { useReviewPrompt } from "./useReviewPrompt";
 import type { GameState } from "./protocol";
@@ -29,14 +29,17 @@ interface Harness {
 }
 
 function harness(opts: { kv?: ReturnType<typeof memoryKv>; version?: string | null; plugin?: boolean;
-                         clock?: { now: number } } = {}): Harness {
+                         clock?: { now: number }; result?: () => Promise<unknown> } = {}): Harness {
   const kv = opts.kv ?? memoryKv();
   const clock = opts.clock ?? { now: 1_000_000 };
   const online = { on: true };
   const h: Harness = { prompt: null as unknown as ReviewPrompt, kv, asked: 0, reports: [], clock, online };
   const deps: ReviewDeps = {
     kv: () => kv,
-    request: () => (opts.plugin === false ? null : async () => { h.asked += 1; }),
+    request: () => (opts.plugin === false ? null : async () => {
+      h.asked += 1;
+      return opts.result ? opts.result() : { requested: true };
+    }),
     version: () => (opts.version === undefined ? "1.0.3" : opts.version),
     report: (trigger, version) => {
       if (!online.on) return false;
@@ -64,23 +67,31 @@ async function state(h: Harness) {
 describe("review prompt rules", () => {
   it("a session starts at first open and again after 30 minutes away, not before", () => {
     let s = touch(FRESH, 100);
-    expect(s).toMatchObject({ first: 100, last: 100, session: 1 });
-    s = touch(s, 100 + SESSION_GAP_MS - 1);
+    expect(s).toMatchObject({ first: 100, away: 0, session: 1 });
+    s = touch(leave(s, 200), 200 + SESSION_GAP_MS - 1);
     expect(s.session).toBe(1);
-    s = touch(s, s.last + SESSION_GAP_MS);
+    s = touch(leave(s, 300), 300 + SESSION_GAP_MS);
     expect(s.session).toBe(2);
     expect(s.first).toBe(100);
   });
 
+  it("time in the foreground starts no session, however long", () => {
+    let s = touch(FRESH, 100);
+    s = touch(s, 100 + 5 * SESSION_GAP_MS);
+    expect(s.session).toBe(1);
+    s = recordWin(s, "ranked", "1.0.3", 100 + 10 * SESSION_GAP_MS).state;
+    expect(s.session).toBe(1);
+  });
+
   it("asks at the 2nd ranked win or the 5th casual win, whichever comes first", () => {
-    let s = touch(touch(FRESH, 1), 1 + SESSION_GAP_MS);
+    let s = touch(leave(touch(FRESH, 1), 1), 1 + SESSION_GAP_MS);
     let r = recordWin(s, "ranked", "1.0.3", 2 + SESSION_GAP_MS);
     expect(r.trigger).toBeNull();
     r = recordWin(r.state, "ranked", "1.0.3", 3 + SESSION_GAP_MS);
     expect(r.trigger).toBe("ranked2");
     expect(r.state.ranked).toBe(RANKED_WINS);
 
-    s = touch(touch(FRESH, 1), 1 + SESSION_GAP_MS);
+    s = touch(leave(touch(FRESH, 1), 1), 1 + SESSION_GAP_MS);
     for (let i = 1; i < CASUAL_WINS; i++) {
       r = recordWin(s, "casual", "1.0.3", 2 + SESSION_GAP_MS);
       expect(r.trigger).toBeNull();
@@ -112,7 +123,7 @@ describe("review prompt rules", () => {
     let version = "1.0.3";
     const h = harness();
     const prompt = new ReviewPrompt({
-      kv: () => h.kv, request: () => async () => { h.asked += 1; }, version: () => version,
+      kv: () => h.kv, request: () => async () => { h.asked += 1; return { requested: true }; }, version: () => version,
       report: (t, v) => { h.reports.push([t, v]); return true; }, now: () => h.clock.now,
     });
     h.prompt = prompt;
@@ -131,6 +142,58 @@ describe("review prompt rules", () => {
     expect(await prompt.ask("ranked2")).toBe(true);
     expect(h.asked).toBe(2);
     expect(h.reports).toEqual([["ranked2", "1.0.3"], ["ranked2", "1.0.4"]]);
+  });
+
+  it("a first session kept in the foreground for 30 minutes between ranked wins never asks", async () => {
+    const h = harness();
+    await h.prompt.touch();
+    expect(await h.prompt.roundWon("ranked")).toBeNull();
+    h.clock.now += SESSION_GAP_MS + 60_000;
+    await h.prompt.touch();
+    expect(await h.prompt.roundWon("ranked")).toBeNull();
+    h.clock.now += SESSION_GAP_MS;
+    expect(await h.prompt.roundWon("ranked")).toBeNull();
+    expect((await state(h)).session).toBe(1);
+    expect(h.asked).toBe(0);
+  });
+
+  it("a request the shell did not make (no foreground scene) marks nothing and reports nothing", async () => {
+    let result: unknown = { requested: false };
+    const h = harness({ result: async () => result });
+    await secondSession(h);
+    await h.prompt.roundWon("ranked");
+    expect(await h.prompt.roundWon("ranked")).toBe("ranked2");
+    expect(await h.prompt.ask("ranked2")).toBe(false);
+    expect(h.asked).toBe(1);
+    expect(await state(h)).toMatchObject({ prompted: null, trigger: null });
+    expect(h.reports).toEqual([]);
+    // a failed call, or an older answer without the field, is no request either
+    result = undefined;
+    expect(await h.prompt.ask("ranked2")).toBe(false);
+    const failing = harness({ kv: h.kv, clock: h.clock, result: async () => { throw new Error("no bridge"); } });
+    expect(await failing.prompt.ask("ranked2")).toBe(false);
+    expect((await state(h)).prompted).toBeNull();
+    // the next won round asks again, and this time the shell makes it
+    result = { requested: true };
+    expect(await h.prompt.roundWon("casual")).toBe("ranked2");
+    expect(await h.prompt.ask("ranked2")).toBe(true);
+    expect(await state(h)).toMatchObject({ prompted: "1.0.3", trigger: "ranked2", reported: true });
+    expect(h.reports).toEqual([["ranked2", "1.0.3"]]);
+  });
+
+  it("two asks at once make one request", async () => {
+    let release: (v: unknown) => void = () => undefined;
+    const h = harness({ result: () => new Promise((r) => { release = r; }) });
+    await secondSession(h);
+    const first = h.prompt.ask("casual5");
+    const second = h.prompt.ask("casual5");
+    expect(await second).toBe(false);
+    await vi.waitFor(() => expect(h.asked).toBe(1));
+    release({ requested: true });
+    expect(await first).toBe(true);
+    expect(await h.prompt.ask("casual5")).toBe(false);
+    expect(h.asked).toBe(1);
+    expect(h.reports).toEqual([["casual5", "1.0.3"]]);
   });
 
   it("an ask made offline is reported from the next online page, once", async () => {

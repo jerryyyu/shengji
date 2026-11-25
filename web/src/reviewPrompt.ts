@@ -10,8 +10,10 @@
 // origins with two localStorages, and both count toward the same wins. In a
 // browser, or a shell without the plugins, nothing is kept or asked.
 //
-// A session is one stretch of use: a new one starts when the app comes back
-// after SESSION_GAP_MS or more away. An ask is reported as one
+// A session is one stretch of use: a new one starts only after an observed
+// absence of SESSION_GAP_MS or more, the app going to the background (or its
+// page unloading, as when the app is closed) and then coming back or being
+// launched again. Time in the foreground never starts one. An ask is reported as one
 // `review_prompt` telemetry event (its trigger and the app version, no ids);
 // one made offline, where telemetry is off, goes from the next online page.
 import { isNative } from "./native";
@@ -33,8 +35,9 @@ export type Trigger = "ranked2" | "casual5";
 export interface ReviewState {
   /** When the app was first opened (ms since the epoch); 0 before. */
   first: number;
-  /** The last moment the app was seen in use. */
-  last: number;
+  /** When the app was last seen going away (background, or its page
+   *  unloading); 0 while it is in use. */
+  away: number;
   /** 1 for the first session, then 2, 3, … */
   session: number;
   ranked: number;
@@ -47,7 +50,7 @@ export interface ReviewState {
 }
 
 export const FRESH: ReviewState = {
-  first: 0, last: 0, session: 0, ranked: 0, casual: 0, prompted: null, trigger: null, reported: true,
+  first: 0, away: 0, session: 0, ranked: 0, casual: 0, prompted: null, trigger: null, reported: true,
 };
 
 export interface Kv {
@@ -74,7 +77,7 @@ export function parseState(raw: string | null): ReviewState {
   }
   const trigger = o.trigger === "ranked2" || o.trigger === "casual5" ? o.trigger : null;
   return {
-    first: time(o.first), last: time(o.last),
+    first: time(o.first), away: time(o.away),
     session: Math.max(0, Math.min(1_000_000, Math.floor(Number(o.session) || 0))),
     ranked: count(o.ranked), casual: count(o.casual),
     prompted: typeof o.prompted === "string" && o.prompted.length <= 32 ? o.prompted : null,
@@ -83,19 +86,27 @@ export function parseState(raw: string | null): ReviewState {
   };
 }
 
-/** The app is in use at `now`: the first open starts session 1, and a
- *  return after SESSION_GAP_MS away starts the next. */
+/** The app is in use at `now` (a launch, a page load, a return from the
+ *  background): the first open starts session 1, and a return after an
+ *  observed absence of SESSION_GAP_MS or more starts the next. */
 export function touch(s: ReviewState, now: number): ReviewState {
-  if (s.first === 0 || s.session === 0) return { ...s, first: s.first || now, last: now, session: Math.max(1, s.session) };
-  const session = now - s.last >= SESSION_GAP_MS ? s.session + 1 : s.session;
-  return { ...s, last: Math.max(s.last, now), session };
+  if (s.first === 0 || s.session === 0) return { ...s, first: s.first || now, away: 0, session: Math.max(1, s.session) };
+  if (s.away === 0) return s;
+  const session = now - s.away >= SESSION_GAP_MS ? s.session + 1 : s.session;
+  return { ...s, away: 0, session };
+}
+
+/** The app goes to the background, or its page unloads, at `now`. */
+export function leave(s: ReviewState, now: number): ReviewState {
+  return s.first === 0 || s.away !== 0 ? s : { ...s, away: now };
 }
 
 /** A round your team won, counted; and the ask it earns, if any: a later
  *  session than the first, a count at its bar, and no ask yet for `version`. */
 export function recordWin(s: ReviewState, kind: WinKind, version: string | null, now: number):
     { state: ReviewState; trigger: Trigger | null } {
-  const t = touch(s, now);
+  // a win is played in the foreground: it starts no session itself
+  const t = s.first === 0 ? touch(s, now) : s;
   const state = kind === "ranked" ? { ...t, ranked: count(t.ranked + 1) } : { ...t, casual: count(t.casual + 1) };
   if (version === null || state.session < 2 || state.prompted === version) return { state, trigger: null };
   const trigger: Trigger | null = state.ranked >= RANKED_WINS ? "ranked2" : state.casual >= CASUAL_WINS ? "casual5" : null;
@@ -122,6 +133,7 @@ export interface ReviewDeps {
 
 export class ReviewPrompt {
   private chain: Promise<unknown> = Promise.resolve();
+  private asking = false;
   private readonly deps: ReviewDeps;
 
   constructor(deps: ReviewDeps) {
@@ -148,8 +160,10 @@ export class ReviewPrompt {
 
   /** The app is going to the background: the gap is counted from here. */
   away(): Promise<void> {
-    return this.run((s) => ({ state: s.first === 0 ? null : { ...s, last: Math.max(s.last, this.deps.now()) },
-                              out: undefined }), undefined);
+    return this.run((s) => {
+      const next = leave(s, this.deps.now());
+      return { state: next === s ? null : next, out: undefined };
+    }, undefined);
   }
 
   /** Your team won a round you finished seated. Resolves the ask it earned,
@@ -163,23 +177,32 @@ export class ReviewPrompt {
     }, null);
   }
 
-  /** Asks for the sheet, marks this version asked, and reports it. */
-  ask(trigger: Trigger): Promise<boolean> {
+  /** Asks the shell for the sheet when this version has not been asked;
+   *  only a request the shell made (`{requested: true}`) marks the version
+   *  asked and is reported. One ask at a time: a call while one is in flight
+   *  does nothing. */
+  async ask(trigger: Trigger): Promise<boolean> {
+    if (this.asking) return false;
     const version = this.deps.version();
     const request = this.deps.request();
-    if (version === null || request === null) return Promise.resolve(false);
-    return this.run((s) => {
-      if (s.prompted === version) return { state: null, out: false };
-      return { state: this.flushed({ ...s, prompted: version, trigger, reported: false }), out: true };
-    }, false).then(async (asked) => {
-      if (!asked) return false;
+    if (version === null || request === null) return false;
+    this.asking = true;
+    try {
+      const asked = await this.run((s) => ({ state: null, out: s.prompted === version }), true);
+      if (asked) return false;
+      let made = false;
       try {
-        await request();
+        made = (await request() as { requested?: unknown } | undefined)?.requested === true;
       } catch {
-        /* Apple's sheet is best effort; the version stays asked */
+        made = false;
       }
-      return true;
-    });
+      if (!made) return false;
+      return await this.run((s) => (s.prompted === version
+        ? { state: null, out: false }
+        : { state: this.flushed({ ...s, prompted: version, trigger, reported: false }), out: true }), false);
+    } finally {
+      this.asking = false;
+    }
   }
 
   /** The state with an unreported ask sent, when telemetry can take it. */

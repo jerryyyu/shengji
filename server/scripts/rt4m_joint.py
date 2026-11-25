@@ -34,7 +34,7 @@ def recipe_inputs(root, recipe_path, *, phase="RT4-M-A"):
     if smoke:
         args.extend(["--max-train-rows", "120000", "--report-buffer", "1", "--capacity-stats"])
         expected.update(max_train_rows=120000, report_buffer=1)
-    if phase == MICROBATCH_SMOKE:
+    if phase in ("RT4-M-A", MICROBATCH_SMOKE):
         args.extend(["--microbatch-rounds", "4"])
         expected["microbatch_rounds"] = 4
     if _run_identity(build_parser().parse_args(args)) != expected:

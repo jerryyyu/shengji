@@ -509,6 +509,9 @@ def mps_worker_recipe(host):
 @pytest.mark.parametrize("interrupt", [False, True], ids=["clean-stop", "trainer-abort"])
 def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_recipe, monkeypatch, interrupt, capsys):
     supervisor, directory, log, recipe, scratch = mps_worker_recipe
+    settings = json.loads(recipe.read_bytes())
+    settings["rounds_per_batch"] = 16
+    recipe.write_text(json.dumps(settings))
     fault_script = directory / "fail_training.py"
     fault_script.write_text(
         "from shengji.train import unified_readout as trainer\n"
@@ -544,6 +547,7 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     assert "STOPPED at epoch 1 buffer 1/" in (out / "status.log").read_text()
     actual = json.loads((out / "run.json").read_bytes())
     assert (actual["lr"], actual["head_lr"], actual["readout_lr"]) == (3e-4, 1e-3, 1e-3)
+    assert actual["microbatch_rounds"] == 4 and actual["rounds_per_batch"] == 16
     recovery = []
     if interrupt:
         root = directory / "reserved"
@@ -576,6 +580,13 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
 
     monkeypatch.setattr(rt4m_joint, "RECIPE_SHA256", hashlib.sha256(recipe.read_bytes()).hexdigest())
     monkeypatch.setitem(rt4m_joint.ARCHITECTURE, 6, scratch)
+    run_path = out / "run.json"
+    old_identity = dict(actual)
+    del old_identity["microbatch_rounds"]
+    run_path.write_text(json.dumps(old_identity))
+    with pytest.raises(ValueError, match="different trainer settings"):
+        rt4m_joint.completed_inputs(directory / "reserved", recipe)
+    run_path.write_text(json.dumps(actual))
     cache_root = directory / "cache"
     cache_options = {"encode_rounds": 4} if interrupt else {}
     for worker_id in range(rt4m_cache.WORKERS):

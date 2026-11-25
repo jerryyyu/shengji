@@ -2854,7 +2854,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready 1`] =
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -3022,7 +3032,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready 1`] =
     {
       "change": {
         "at": 64,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -3036,7 +3046,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready 1`] =
     },
     {
       "change": {
-        "at": 70,
+        "at": 80,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",
@@ -3127,7 +3137,17 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready, casu
     "</button>",
     "<div class="tp-acts">",
     "<button type="button" class="tp-primary">",
-    "<span class="timer-ring" role="timer" aria-label="60 seconds left" style="--ring-deg: 357deg;">",
+    "<span class="timer-ring" role="timer" aria-label="60 seconds left">",
+    "<span class="timer-ring-band" style="--ring-total: 60s; --ring-at: 0s; --ring-steps: 30;" aria-hidden="true">",
+    "<span class="timer-ring-half l">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "<span class="timer-ring-half r">",
+    "<span>",
+    "</span>",
+    "</span>",
+    "</span>",
     "<span class="timer-ring-secs">60</span>",
     "</span>Start with bots</button>",
     "<button type="button" class="tp-secondary">Leave</button>",
@@ -3319,7 +3339,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready, casu
     {
       "change": {
         "at": 63,
-        "cut": 4,
+        "cut": 14,
         "put": [
           "<button type="button" class="tp-primary" disabled="">Starting…</button>",
         ],
@@ -3333,7 +3353,7 @@ exports[`the table panel, fixture by fixture > own: Duo opener, both ready, casu
     },
     {
       "change": {
-        "at": 69,
+        "at": 79,
         "cut": 0,
         "put": [
           "<dialog class="modal-backdrop leave-sheet-backdrop leave-sheet-bottom" role="alertdialog" aria-modal="true" aria-labelledby="«id1»" aria-describedby="«id2»" open="">",

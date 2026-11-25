@@ -350,3 +350,69 @@ def test_unreadable_consumer_refuses_before_delete(world, monkeypatch, capsys):
     assert target.is_dir()
     out = capsys.readouterr().out
     assert "inventory unavailable" in out and "DELETED" not in out
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main",
+                    "-c", "commit.gpgsign=false", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def _pinned_checkout(world, push=True):
+    """A clone under root/ whose tracked models/m.npz is pinned by sha256 in an archived packet."""
+    _git(world, "init", "-q", "--bare", "origin.git")
+    co = world / "root/co"
+    _git(world, "clone", "-q", str(world / "origin.git"), str(co))
+    h = big_file(co / "models/m.npz")
+    (co / ".gitignore").write_text("payload/\n")
+    _git(co, "add", "models/m.npz", ".gitignore")
+    _git(co, "commit", "-q", "-m", "m")
+    if push:
+        _git(co, "push", "-q", "origin", "HEAD:main")
+        _git(co, "fetch", "-q", "origin")
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
+    return co, h
+
+
+def test_tracked_unmodified_pushed_pin_is_exempt(world):
+    co, _ = _pinned_checkout(world)
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 0 and "WOULD DELETE" in out
+    assert "EXEMPT pin" in out and "models/m.npz" in out and " on refs/remotes/origin/" in out
+
+
+def test_modified_tracked_pin_refuses(world):
+    co, h = _pinned_checkout(world)
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{big_file(co / "models/m.npz")}"}}\n')
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_untracked_pin_in_a_checkout_refuses(world):
+    co, _ = _pinned_checkout(world)
+    h = big_file(co / "models/new.npz")
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 1 and "models/new.npz" in out and "EXEMPT" not in out
+
+
+def test_ignored_pin_in_a_checkout_refuses(world):
+    co, _ = _pinned_checkout(world)
+    h = big_file(co / "payload/models/p.npz")
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 1 and "payload/models/p.npz" in out and "EXEMPT" not in out
+
+
+def test_tracked_pin_on_no_remote_ref_refuses(world):
+    # the clone's own .git, and so its local main, goes with the target: only a remote ref could restore the blob
+    co, _ = _pinned_checkout(world, push=False)
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_tracked_pin_reached_by_a_shared_local_main_is_exempt(world):
+    co, _ = _pinned_checkout(world, push=False)
+    wt = world / "root/wt"
+    _git(co, "worktree", "add", "-q", "--detach", str(wt), "main")
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 0 and "EXEMPT pin" in out and "refs/heads/main" in out

@@ -20,6 +20,10 @@ A path is REFUSED, with the reason printed, when any of these holds for it or it
               .safetensors .bin .npy .jsonl .tar) under R.  Pin files are SAFE_RM_PINS globs (default ~/shengji-archive/*/
               {commands.json,slots*.json,source-pins.json,SHA256SUMS,stage_*.sh,launch.py,*.sh} and the same names under
               ~/fleet/*/), skipping pin files inside R itself.  INC-23: ~/mrt-b0 held FT1 best.pt, pinned by G5 and X2.
+              A sha256 match is exempt (printed as EXEMPT) when git can restore the file after R is gone: it is
+              tracked at its worktree's HEAD, byte-identical to HEAD's blob, and that blob is at the same path on a
+              remote-tracking main/HEAD ref (or local main, unless the repository's object store is under R), or
+              HEAD itself is on a remote-tracking ref.  Untracked, ignored and modified files stay pinned.
 Checks run per path immediately before its delete, so a queued list is re-validated at delete time.
 Every decision is appended to ~/.safe_rm.log.
 """
@@ -56,48 +60,52 @@ def kept(r):
     return hits
 
 
+def _links_into(top, r, max_depth, hits, cap=None):
+    """Append symlinks under top (not under r) that resolve into r; top is a realpath, links are never followed.
+    DirEntry type bits come from the directory read, so only the links themselves cost a stat."""
+    stack = [(top, 0)]
+    while stack:
+        d, depth = stack.pop()
+        if under(d, r):
+            continue
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_symlink():
+                    if e.name in SKIP and os.path.isdir(e.path):
+                        continue
+                    if not under(e.path, r) and under(os.path.realpath(e.path), r):
+                        hits.append(e.path)
+                        if cap and len(hits) >= cap:
+                            return True
+                elif e.is_dir() and e.name not in SKIP and (max_depth is None or depth < max_depth):
+                    stack.append((e.path, depth + 1))
+            except OSError:
+                continue
+    return False
+
+
 def live_links(r):
     roots = os.environ.get("SAFE_RM_ROOTS", f"{home()}:/root").split(":")
     hits = []
     for root in roots:
         if not os.path.isdir(root):
             continue
-        base = root.rstrip("/").count("/")
-        for d, dirs, files in os.walk(root, followlinks=False):
-            if under(os.path.realpath(d), r):
-                dirs[:] = []
-                continue
-            depth = d.rstrip("/").count("/") - base
-            dirs[:] = [x for x in dirs if x not in SKIP and depth < 4]
-            for n in dirs + files:
-                p = os.path.join(d, n)
-                if os.path.islink(p) and not under(p, r) and under(os.path.realpath(p), r):
-                    hits.append(p)
-            for n in list(dirs):
-                if os.path.islink(os.path.join(d, n)):
-                    dirs.remove(n)
+        rroot = os.path.realpath(root)
+        _links_into(rroot, r, 4, hits)
         # the shallow scan above stops at depth 4; links from a sibling tree inside the same packet
         # (e.g. ~/shengji-archive/<packet>/views/*/shards/* -> <packet>/data/...) sit deeper, so the
         # target's own neighbourhood (root + its first two path components) is scanned without a depth cap
-        rroot = os.path.realpath(root)
         if under(r, rroot) and r != rroot:
             parts = os.path.relpath(r, rroot).split(os.sep)
             hood = os.path.join(rroot, *parts[:2]) if len(parts) > 2 else None
             if hood and os.path.isdir(hood):
-                for d, dirs, files in os.walk(hood, followlinks=False):
-                    if under(os.path.realpath(d), r):
-                        dirs[:] = []
-                        continue
-                    dirs[:] = [x for x in dirs if x not in SKIP]
-                    for n in dirs + files:
-                        p = os.path.join(d, n)
-                        if os.path.islink(p) and not under(p, r) and under(os.path.realpath(p), r):
-                            hits.append(p)
-                            if len(hits) >= 50:
-                                return list(dict.fromkeys(hits))
-                    for n in list(dirs):
-                        if os.path.islink(os.path.join(d, n)):
-                            dirs.remove(n)
+                found = []
+                _links_into(hood, r, None, found, cap=50)
+                hits += found
     return list(dict.fromkeys(hits))
 
 
@@ -230,21 +238,95 @@ def pinned(r, typed):
         for d, dirs, files in os.walk(r):
             dirs[:] = [x for x in dirs if x not in SKIP]
             walk += [os.path.join(d, x) for x in files]
+    matched = []
     for fp in walk:
         if not fp.endswith(PIN_EXT) or os.path.islink(fp):
             continue
         try:
-            if os.path.getsize(fp) < 1 << 20:
+            size = os.path.getsize(fp)
+            if size < 1 << 20:
                 continue
             h = hashlib.sha256()
+            # git's raw blob ids, so a match can be compared with HEAD's tree without reading the file again
+            b1, b256 = hashlib.sha1(b"blob %d\0" % size), hashlib.sha256(b"blob %d\0" % size)
             with open(fp, "rb") as fh:
                 for b in iter(lambda: fh.read(1 << 22), b""):
-                    h.update(b)
+                    h.update(b); b1.update(b); b256.update(b)
         except OSError:
             continue
         if h.hexdigest() in hexes:
-            hits.append(f"{fp} sha256 {h.hexdigest()[:12]} pinned by {hexes[h.hexdigest()]}")
-    return hits
+            matched.append((fp, h.hexdigest(), {b1.hexdigest(), b256.hexdigest()}))
+    recoverable = git_recoverable(r, matched)
+    exempt = []
+    for fp, digest, _ in matched:
+        line = f"{fp} sha256 {digest[:12]} pinned by {hexes[digest]}"
+        if fp in recoverable:
+            exempt.append(f"{line}: {recoverable[fp]}")
+        else:
+            hits.append(line)
+    return hits, exempt
+
+
+def git(top, *args):
+    try:
+        p = subprocess.run(["git", "--literal-pathspecs", "-C", top, *args], capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return p.stdout if p.returncode == 0 else None
+
+
+def git_recoverable(r, matched):
+    """{path: reason} for hash-pinned files that git can restore after R is gone: tracked at their worktree's
+    HEAD, byte-identical to HEAD's blob, and that blob is on a remote-tracking ref (or local main while the
+    repository's own object store lies outside R).  Untracked, ignored or modified files never qualify, and any
+    git failure leaves the pin in force.  Git calls are batched per worktree."""
+    tops = {}
+    for fp, _, blob_ids in matched:
+        out = git(os.path.dirname(fp), "rev-parse", "--show-toplevel", "--git-common-dir")
+        if out is None:
+            continue
+        lines = out.decode(errors="replace").splitlines()
+        if len(lines) != 2:
+            continue
+        top = os.path.realpath(lines[0])
+        common = os.path.realpath(os.path.join(os.path.dirname(fp), lines[1]))
+        tops.setdefault((top, common), []).append((fp, blob_ids))
+    found = {}
+    for (top, common), files in tops.items():
+        rel = {os.path.relpath(fp, top): (fp, ids) for fp, ids in files}
+
+        def tree(ref):
+            out = git(top, "ls-tree", "-z", ref, "--", *rel)
+            blobs = {}
+            for rec in (out or b"").split(b"\0"):
+                meta, _, path = rec.partition(b"\t")
+                f = meta.split()
+                if len(f) == 3 and f[1] == b"blob":
+                    blobs[path.decode(errors="surrogateescape")] = f[2].decode()
+            return blobs
+
+        head = tree("HEAD")
+        clean = {p: head[p] for p, (_, ids) in rel.items() if head.get(p) in ids}
+        if not clean:
+            continue
+        refs = (git(top, "for-each-ref", "--format=%(refname)", "refs/remotes/") or b"").decode().split()
+        mains = [x for x in refs if x.rsplit("/", 1)[-1] in ("main", "HEAD")]
+        if not under(common, r):
+            mains.append("refs/heads/main")
+        where = {}
+        for ref in mains:
+            for p, blob in tree(ref).items():
+                if clean.get(p) == blob:
+                    where.setdefault(p, ref)
+        if len(where) < len(clean):
+            on = git(top, "for-each-ref", "--count=1", "--contains", "HEAD", "--format=%(refname)", "refs/remotes/")
+            on = (on or b"").decode().strip()
+            if on:
+                for p in clean:
+                    where.setdefault(p, f"{on} (contains HEAD)")
+        for p, ref in where.items():
+            found[rel[p][0]] = f"tracked at HEAD, unmodified, blob {clean[p][:12]} on {ref}"
+    return found
 
 
 def main(argv):
@@ -267,8 +349,12 @@ def main(argv):
             reasons += [f"live-link {l} -> {os.path.realpath(l)}" for l in links]
             reasons += [f"in-use {h}" for h in in_use(r, typed)]
             reasons += [f"referenced {h}" for h in referenced(r, typed, links)]
-            reasons += [f"pinned {h}" for h in pinned(r, typed)]
+            pins, exempt = pinned(r, typed)
+            reasons += [f"pinned {h}" for h in pins]
             reasons = list(dict.fromkeys(reasons))
+            for x in exempt:
+                print(f"safe_rm: EXEMPT pin {x}")
+                log.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} EXEMPT {typed} {x}\n")
         stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         if reasons:
             refused += 1

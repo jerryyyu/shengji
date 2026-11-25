@@ -642,8 +642,14 @@ def _train(args, out: Path, status: str) -> int:
     last_save = time.time()
     while state["epoch"] < args.epochs:
         epoch, t0, sums, cur, steps = state["epoch"], time.time(), np.zeros(len(SUM_KEYS)), state["buffer"], 0
-        if report_buffer is not None and cur:
-            sums[:] = state["epoch_sums"]
+        if cur:
+            if "epoch_sums" in state:
+                sums[:] = state["epoch_sums"]
+            elif report_buffer is not None:
+                raise UnifiedReadoutError("resume: checkpoint lacks the sums for the requested buffer report")
+            else:
+                state["train_start_buffer"] = cur
+                _status(status, f"epoch {epoch + 1} train metrics start at buffer {cur}: checkpoint lacks earlier sums")
         if capture_capacity:
             train_start = time.monotonic()
             trained_rows = tensor_bytes = driver_bytes = 0
@@ -652,17 +658,16 @@ def _train(args, out: Path, status: str) -> int:
                 if pause_at_report and gi > report_buffer:
                     raise UnifiedReadoutError("the stream skipped the requested report boundary")
                 state["buffer"] = cur = gi
-                if report_buffer is not None:
-                    state["epoch_sums"] = sums.tolist()
-                    if gi == report_buffer:
-                        if pause_at_report:
-                            capacity = (
-                                capacity_sample(epoch, trained_rows, steps, train_start, tensor_bytes, driver_bytes)
-                                if capture_capacity and steps else None
-                            )
-                            save()
-                            return pause(capacity)
-                        write_report(epoch, gi, sums)
+                state["epoch_sums"] = sums.tolist()
+                if gi == report_buffer:
+                    if pause_at_report:
+                        capacity = (
+                            capacity_sample(epoch, trained_rows, steps, train_start, tensor_bytes, driver_bytes)
+                            if capture_capacity and steps else None
+                        )
+                        save()
+                        return pause(capacity)
+                    write_report(epoch, gi, sums)
                 if time.time() - last_save > args.save_every:
                     save()
                     last_save = time.time()
@@ -688,8 +693,14 @@ def _train(args, out: Path, status: str) -> int:
             _status(status, f"CAPACITY {json.dumps(capacity, allow_nan=False)}")
         cm = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
+        coverage = ""
+        if "train_start_buffer" in state:
+            start_buffer = state.pop("train_start_buffer")
+            state["history"][-1]["train_start_buffer"] = start_buffer
+            coverage = f" train_start_buffer={start_buffer}"
+        state.pop("epoch_sums", None)
         _status(status, f"EPOCH {epoch + 1} train {json.dumps({k: round(v, 5) for k, v in means(sums).items()})} "
-                        f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s)")
+                        f"calib {json.dumps(cm)} steps={steps} ({time.time() - t0:.0f}s){coverage}")
         state["epoch"] += 1
         state["buffer"] = 0
         score = cm["belief_ll"] + cm["leaf_value_end"]

@@ -672,6 +672,28 @@ def test_buffer_report_matches_the_full_prefix_after_resume(tmp_path, device):
             torch.testing.assert_close(finished[key], expected[key], rtol=0, atol=0)
 
 
+def test_timed_resume_preserves_epoch_training_metrics_without_a_report(data, tmp_path):
+    args = ["train", "--data", str(data), "--scratch-arch", SCRATCH, "--threads", "1",
+            "--loader-threads", "1", "--rounds-per-batch", "1", "--buffer-chunks", "1", "--epochs", "1"]
+    full, split, legacy = (tmp_path / name for name in ("full", "split", "legacy"))
+    assert ur.main(args + ["--out", str(full)]) == 0
+    assert ur.main(args + ["--out", str(split), "--max-seconds", "0.0001"]) == 3
+    saved = torch.load(split / "checkpoint.pt", weights_only=False)
+    assert saved["state"]["buffer"] == 1
+    saved["state"].pop("epoch_sums", None)
+    legacy.mkdir()
+    torch.save(saved, legacy / "checkpoint.pt")
+    assert ur.main(args + ["--out", str(split)]) == 0
+    baseline = torch.load(full / "checkpoint.pt", weights_only=False)
+    resumed = torch.load(split / "checkpoint.pt", weights_only=False)
+    assert resumed["state"]["history"][0]["train"] == baseline["state"]["history"][0]["train"]
+    torch.testing.assert_close(resumed["model"], baseline["model"], rtol=0, atol=0)
+    assert ur.main(args + ["--out", str(legacy)]) == 0
+    old = torch.load(legacy / "checkpoint.pt", weights_only=False)
+    assert old["state"]["history"][0]["train_start_buffer"] == 1
+    torch.testing.assert_close(old["model"], baseline["model"], rtol=0, atol=0)
+
+
 @pytest.mark.parametrize("medium_device", ["cpu", "mps"])
 def test_size_stop_rule_consumes_warm_trainer_reports(cpu_root, data, tmp_path, medium_device):
     if medium_device == "mps" and not torch.backends.mps.is_available():

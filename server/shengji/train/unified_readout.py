@@ -177,10 +177,10 @@ def make_batch(part, round_ids, rows, *, perm=None) -> dict[str, np.ndarray]:
 
 # ------------------------------------------------------------------ model
 
-def build(arch: Mapping[str, Any], readout_arch: Mapping[str, Any] = READOUT_ARCH):
+def build(arch: Mapping[str, Any], readout_arch: Mapping[str, Any] = READOUT_ARCH, *, outcome_history_width=None):
     import torch
     from torch import nn
-    base = us.build_unified(arch)
+    base = us.build_unified(arch, outcome_history_width=outcome_history_width)
     d, xh = int(arch["d"]), int(arch["x_hidden"])
     ra = {k: int(readout_arch[k]) for k in READOUT_ARCH}
     dp, dc, width, hidden = ra["dp"], ra["dc"], ra["width"], ra["hidden"]
@@ -225,12 +225,12 @@ def build(arch: Mapping[str, Any], readout_arch: Mapping[str, Any] = READOUT_ARC
             self.q_head = base.q_head
             self.p_head = base.p_head
             self.readout = Readout()
-            self.config = {"trunk": dict(base.trunk.config), "heads": dict(us.HEAD_ARCH), "readout": ra}
+            self.config = {"trunk": dict(base.trunk.config), "heads": dict(base.config["heads"]), "readout": ra}
 
         def forward(self, b):
             logits, enc, q, g = us.trunk_forward(self.trunk, b)
             frame = b["rr"] * 4 + b["seat"]
-            ql = self.q_head(torch.cat([enc[frame, b["ply"]], g], -1).float())
+            ql = self.q_head(torch.cat([enc[frame, b["ply"], :outcome_history_width], g], -1).float())
             pl = self.p_head(q.float()).squeeze(-1)
             rv, rp = self.readout(q, g, b["leaf_row"], b["leaf_planes"], b["leaf_scalars"])
             return {"belief": logits, "q": ql, "policy": pl, "leaf_value": rv, "leaf_reply": rp}
@@ -727,7 +727,8 @@ def load_checkpoint(path: str):
     saved = torch.load(path, weights_only=False, map_location="cpu")
     if saved.get("schema") != CKPT_SCHEMA:
         raise UnifiedReadoutError(f"{path}: not a {CKPT_SCHEMA} checkpoint")
-    model = build(saved["config"]["trunk"], saved["config"]["readout"])
+    model = build(saved["config"]["trunk"], saved["config"]["readout"],
+                  outcome_history_width=saved["config"].get("heads", {}).get("outcome_history_width"))
     model.load_state_dict(saved["model"])
     model.eval()
     return model, saved

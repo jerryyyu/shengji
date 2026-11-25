@@ -478,7 +478,8 @@ def test_four_round_calibration_matches_full_calibration(world):
         assert actual[key] == pytest.approx(ref[key], abs=5e-6), key
 
 
-def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp_path):
+@pytest.mark.parametrize("medium", [False, True])
+def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp_path, medium):
     import hashlib
     from scripts.rt4m_deepen import deepen
     from tests.test_unified_seq import _loaded
@@ -490,11 +491,11 @@ def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp
     torch.save(dict(schema=ur.CKPT_SCHEMA, model=original.state_dict(), config=original.config), source)
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
     with pytest.raises(ValueError, match="SHA256 mismatch"):
-        deepen(source, "0" * 64, target, seed=19)
+        deepen(source, "0" * 64, target, seed=19, medium_keep_outcome_history=medium)
     assert not target.exists()
-    deepen(source, digest, target, seed=19)
+    deepen(source, digest, target, seed=19, medium_keep_outcome_history=medium)
     with pytest.raises(FileExistsError):
-        deepen(source, digest, target, seed=19)
+        deepen(source, digest, target, seed=19, medium_keep_outcome_history=medium)
     deepened, saved = ur.load_checkpoint(target)
     assert saved["initialization"] == dict(source_sha256=digest, depth_seed=19)
     part, _ = _loaded(world)
@@ -506,7 +507,7 @@ def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp
         actual = deepened(batch)
     assert expected.keys() == actual.keys() == {"belief", "q", "policy", "leaf_value", "leaf_reply"}
     for name in expected:
-        torch.testing.assert_close(actual[name], expected[name], atol=0, rtol=0)
+        torch.testing.assert_close(actual[name], expected[name], atol=1e-5 if medium else 0, rtol=0)
 
     out = tmp_path / "train"
     assert ur.main(["train", "--init-readout-ckpt", str(target), "--data", str(world["data"]),
@@ -517,6 +518,14 @@ def test_warm_depth_growth_preserves_all_logits_and_trains_new_blocks(world, tmp
         enc = trained.trunk.encoder.layers[i]
         for projection in (enc.self_attn.out_proj, enc.linear2, trained.trunk.xattn[i].o, trained.trunk.ff[i][-1]):
             assert torch.count_nonzero(projection.weight) > 0
+
+    if medium:
+        from scripts.sz2_export_parity import measure_parity
+        assert trained.config["heads"]["outcome_history_width"] == 192
+        package = tmp_path / "warm.npz"
+        assert ur.main(["export", "--ckpt", str(out / "best.pt"), "--out", str(package), "--temperature", "1.0189738579997958"]) == 0
+        result = measure_parity(out / "best.pt", package, str(world["data"]), 12, root_heads=True)
+        assert result["parity"] == "OK" and result["rows"] == 12
 
 
 def _history_width_errors(original, batch):

@@ -40,8 +40,11 @@ class UnifiedNumpyError(ValueError):
 def head_shapes(config: Mapping[str, Any]) -> dict[str, tuple[int, ...]]:
     d, xh = int(config["trunk"]["d"]), int(config["trunk"]["x_hidden"])
     qh, ph = int(config["heads"]["q_hidden"]), int(config["heads"]["policy_hidden"])
-    return {"q_head.0.weight": (d + xh,), "q_head.0.bias": (d + xh,),
-            "q_head.1.weight": (qh, d + xh), "q_head.1.bias": (qh,),
+    history = config["heads"].get("outcome_history_width", d)
+    if type(history) is not int or not 0 < history <= d:
+        raise UnifiedNumpyError("outcome history width outside trunk width")
+    return {"q_head.0.weight": (history + xh,), "q_head.0.bias": (history + xh,),
+            "q_head.1.weight": (qh, history + xh), "q_head.1.bias": (qh,),
             "q_head.3.weight": (qh, qh), "q_head.3.bias": (qh,),
             "q_head.5.weight": (OUTCOME_CLASSES, qh), "q_head.5.bias": (OUTCOME_CLASSES,),
             "p_head.0.weight": (d,), "p_head.0.bias": (d,),
@@ -139,7 +142,8 @@ class UnifiedNumpy:
         if not len(enc):
             raise UnifiedNumpyError("the token list must end with the actor's play")
         g = self.row_context(inp_with_play)
-        x = np.concatenate([enc[-1], g])
+        history = self.config["heads"].get("outcome_history_width")
+        x = np.concatenate([enc[-1, :history], g])
         x = _ln(x, h["q_head.0.weight"], h["q_head.0.bias"])
         x = _gelu(x @ h["q_head.1.weight"].T + h["q_head.1.bias"])
         x = _gelu(x @ h["q_head.3.weight"].T + h["q_head.3.bias"])

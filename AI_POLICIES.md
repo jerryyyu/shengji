@@ -150,19 +150,19 @@ fixes. Row numbers are stable; other documents cite them.
     in completed games, 203 rounds, by round +0.50 [+0.35, +0.66], by game +0.65 [+0.35, +0.95]; as banker +0.96
     (133 rounds), as defender −0.37 (70 rounds). Five games that did not finish (adapter or site stops) are not
     counted; at their stop our team led in three and trailed in two. Source
-    `~/.claude/jobs/d0498cda/tmp/sjorg_1123full/results_final.txt` and `results.json` (not yet archived).
+    `~/shengji-archive/2026-09-13/readouts/shengji-org/rt4-full-1123/results_final.txt` and `results.json` (not yet archived).
     5-round games, 11-22 to 11-23: 9 games, 45 rounds, by round +0.18 [−0.15, +0.50], by game [−0.25, +0.60]
     ([#1263 issuecomment-7093521135](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7093521135);
     archive `~/shengji-archive/2026-11-23-sjorg-rt4/`).
   - Row 21: release 52 as served (bot name matched `/healthz`), 11-13 to 11-16: 8–3 in games, 233 rounds, by round
     +0.20 [+0.05, +0.35], by game [−0.09, +0.50]. The first three games are the pilot
     ([#1263 issuecomment-6869869578](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6869869578), 2–1,
-    +0.110 [−0.154, +0.373] over 73 rounds); the pooled 11 are `~/.claude/jobs/d0498cda/tmp/shengjiorg/pooled11.json`.
+    +0.110 [−0.154, +0.373] over 73 rounds); the pooled 11 are `~/shengji-archive/2026-09-13/readouts/shengji-org/r52-pooled/pooled11.json`.
   - Row 19: release 50 as served, 11-06: 2–1 in games, 70 rounds, +0.057 [−0.203, +0.317] by round, by game about
-    [−1.00, +1.08] (`~/.claude/jobs/d0498cda/tmp/shengjiorg/pilot106/REPORT.md`).
+    [−1.00, +1.08] (`~/shengji-archive/2026-09-13/readouts/shengji-org/pilot106-r50/REPORT.md`).
   - Row 1: `mc-s0-report-lcb` (today's code for that registry name, not the August server byte for byte), 11-06:
     one completed game, lost, 25 rounds, −0.400 [−0.761, −0.039] by round, no by-game interval
-    (`~/.claude/jobs/d0498cda/tmp/shengjiorg/pilot107/REPORT.md`).
+    (`~/shengji-archive/2026-09-13/readouts/shengji-org/pilot107-mclcb/REPORT.md`).
 
 - **46.** Components alone, never pooled: belief v86bw45 +0.1165 [+0.0914, +0.1416]; D7 + X7 v89dx7 +0.0439
   [+0.0307, +0.0570]; `vdef` v85vdef45 +0.0220, confirmed by v85c +0.0421 [+0.0252, +0.0590]. Banker share 71.4% vs

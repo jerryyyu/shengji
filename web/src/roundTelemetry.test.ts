@@ -99,6 +99,15 @@ describe("rounds as the page sees them", () => {
     expect(events()[1]).not.toHaveProperty("won");
   });
 
+  it("a table taken away mid-round ends nothing: no finish now, and no closed later", () => {
+    const r = tracker();
+    r.observe(state("deal"));
+    r.observe(null);
+    r.closed();
+    expect(events().map((e) => e.e)).toEqual(["round_start"]);
+    expect(store.data[OPEN_ROUND_KEY]).toBeUndefined();
+  });
+
   it("a round first seen mid-play is not tracked", () => {
     const r = tracker();
     r.observe(afterTrick());

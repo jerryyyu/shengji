@@ -81,10 +81,16 @@ export class RoundTracker {
     return this.entry === "friend" ? "friend" : "casual";
   }
 
-  /** Each game state the page receives (null off the table). */
+  /** Each game state the page receives (null off the table). The table
+   *  going with a round open and no Leave of yours (the room closed, the
+   *  seat was lost) ends nothing the page saw: that round stays a start. */
   observe(state: GameState | null): void {
     try {
-      if (state === null || state.joining_you) return;
+      if (state === null) {
+        if (this.open) this.drop();
+        return;
+      }
+      if (state.joining_you) return;
       if (this.open && this.open.room !== state.room) this.drop();
       if (this.open === null) {
         if (state.phase === "deal" || state.phase === "declare") this.start(state);

@@ -371,7 +371,8 @@ def test_matched_scratch_recipe_consumed_by_trainer(segment, cpu_root, tmp_path,
     assert {k for k in vars(medium) if getattr(medium, k) != getattr(large, k)} == varying
 
 
-def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("operator_stop", [False, True])
+def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp_path, monkeypatch, capsys, operator_stop):
     from unittest.mock import Mock
 
     import sz3_joint_recipe as sz3
@@ -395,8 +396,34 @@ def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp
     # Give the paired control identical tiny trunks so its true prefix cannot clear either bar.
     monkeypatch.setattr(sz3, "ARCHITECTURE", {6: SCRATCH, 8: SCRATCH})
     root = tmp_path / "lane"
-    for phase, expected in (("M", 0), ("L-prefix", 7)):
-        assert ur.main(sz3.command(phase, root, recipe_path)[4:]) == expected
+    assert ur.main(sz3.command("M", root, recipe_path)[4:]) == 0
+    large = root / "L/train"
+    stop = large / "STOP"
+    backward_batch = ur._backward_batch
+
+    def stop_at_first_boundary(*args, **kwargs):
+        stop.touch()
+        return backward_batch(*args, **kwargs)
+
+    if operator_stop:
+        with monkeypatch.context() as fixture:
+            fixture.setattr(ur, "_backward_batch", stop_at_first_boundary)
+            assert ur.main(sz3.command("L-prefix", root, recipe_path)[4:]) == 3
+        assert "STOPPED at epoch 1 buffer 1/" in (large / "status.log").read_text().splitlines()[-1]
+        checkpoint = (large / "checkpoint.pt").read_bytes()
+        report = (large / "epoch-1-buffer-1.json").read_bytes()
+        with pytest.raises(ValueError, match="operator STOP"):
+            sz3.command("L-prefix", root, recipe_path)
+        stop.unlink()
+        with pytest.raises(ValueError, match="expected trainer terminal"):
+            sz3.command("L-finish", root, recipe_path)
+        with monkeypatch.context() as fixture:
+            fixture.setattr(ur, "_backward_batch", lambda *a, **kw: pytest.fail("retrained a saved prefix"))
+            assert ur.main(sz3.command("L-prefix", root, recipe_path)[4:]) == 7
+        assert (large / "checkpoint.pt").read_bytes() == checkpoint
+        assert (large / "epoch-1-buffer-1.json").read_bytes() == report
+    else:
+        assert ur.main(sz3.command("L-prefix", root, recipe_path)[4:]) == 7
 
     cli = ["L-finish", "--root", str(root), "--recipe", str(recipe_path)]
     capsys.readouterr()
@@ -407,7 +434,6 @@ def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp
     assert result.out == "" and "FAIL-OFFLINE buffer=1" in result.err
 
     medium = root / "M/train"
-    large = root / "L/train"
     m_report = medium / "epoch-1-buffer-1.json"
     l_report = large / m_report.name
     m_value, l_value = (json.loads(path.read_text()) for path in (m_report, l_report))
@@ -449,7 +475,6 @@ def test_large_finish_consumes_the_matched_scratch_trainer_prefixes(segment, tmp
     assert command[command.index("--max-seconds") + 1] == "5400"
     clock = Mock(wraps=ur.time)
     clock.time.return_value = 0
-    backward_batch = ur._backward_batch
 
     def backward_then_expire(*args, **kwargs):
         result = backward_batch(*args, **kwargs)

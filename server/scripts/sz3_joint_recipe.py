@@ -223,7 +223,7 @@ def command(phase, root, recipe_path):
                 or (terminal[1], terminal[4]) not in {("STOPPED", "STOP file or --max-seconds"),
                                                        ("UTR PAUSED", "report boundary")}
                 or (terminal[1] == "UTR PAUSED" and phase != "L-finish")
-                or (phase == "L-prefix" and int(terminal[2]) >= BOUNDARY)):
+                or (phase == "L-prefix" and int(terminal[2]) > BOUNDARY)):
             raise ValueError("expected a clean checkpointed segment before resuming")
         args.extend(["--expect-resume-buffer", terminal[2]])
     return [sys.executable, "-B", "-m", "shengji.train.unified_readout", *args]

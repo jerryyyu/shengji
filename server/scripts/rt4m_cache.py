@@ -1,7 +1,5 @@
 """Build one RT4-M scratch cache partition from its completed joint checkpoint."""
 import argparse
-import hashlib
-import json
 from pathlib import Path
 import sys
 
@@ -14,13 +12,7 @@ RT4_SAMPLE = dict(cap_rows=50_000_000, seed=1, chunks=43_454, rows=49_999_996,
 
 
 def inputs(root, output, recipe_path):
-    recipe, _, expected = rt4m_joint.recipe_inputs(root, recipe_path)
-    checkpoint, digest = rt4m_joint.verify_completion(root)
-    if json.loads((checkpoint.parent / "run.json").read_bytes()) != expected:
-        raise ValueError("RT4-M-A completed with different trainer settings")
-    with checkpoint.open("rb") as stream:
-        if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
-            raise ValueError("RT4-M-A best checkpoint differs from the trainer terminal")
+    checkpoint, digest, recipe = rt4m_joint.completed_inputs(root, recipe_path)
     cache = output / "A" / f"{digest}-{rt4m_joint.RECIPE_SHA256}"
     return checkpoint, cache, recipe
 

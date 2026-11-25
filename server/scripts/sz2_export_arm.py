@@ -26,11 +26,11 @@ def file_sha(path):
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
-def selected_checkpoint(polish, checkpoint, joint_sha):
+def selected_checkpoint(polish, checkpoint, joint_sha, *, epochs=2):
     status = (polish / "status.log").read_text().splitlines()
-    done = re.fullmatch(r"\S+ POLISH DONE best_epoch=([012]) calib .+ sha256=([0-9a-f]{64})",
+    done = re.fullmatch(r"\S+ POLISH DONE best_epoch=([0-9]+) calib .+ sha256=([0-9a-f]{64})",
                         status[-1]) if status else None
-    if not done:
+    if not done or int(done[1]) > epochs:
         raise ValueError("missing polish terminal")
     epoch = int(done[1])
     selected = polish / "selected.pt"
@@ -43,13 +43,16 @@ def selected_checkpoint(polish, checkpoint, joint_sha):
     return selected, expected, epoch
 
 
-def check_parity(report, package_sha, rows):
+def check_parity(report, package_sha, rows, *, root_heads=False):
     if (not isinstance(report, dict) or report.get("parity") != "OK"
             or report.get("package") != package_sha
             or type(report.get("rows")) is not int or report["rows"] != rows):
         raise ValueError("parity does not identify the exported package and full sample")
     metrics = report.get("max_abs_diff")
-    if (not isinstance(metrics, dict) or set(metrics) != {"belief", "value", "reply"}
+    heads = {"belief", "value", "reply"}
+    if root_heads:
+        heads.update(("outcome", "policy"))
+    if (not isinstance(metrics, dict) or set(metrics) != heads
             or any(type(delta) not in (int, float) or not math.isfinite(delta)
                    or not 0 <= delta < TOLERANCE for delta in metrics.values())):
         raise ValueError("parity errors exceed tolerance or are missing")
@@ -57,19 +60,23 @@ def check_parity(report, package_sha, rows):
 
 def export_arm(joint, arm, polish_root, output, recipe_path, recipe_sha,
                parity_data, parity_rows):
+    checkpoint, identity, _ = arm_inputs(joint, arm, polish_root, recipe_path, recipe_sha)
+    selected, selected_sha, epoch = selected_checkpoint(identity, checkpoint, identity.name.split("-", 1)[0])
+    return export_selected(selected, selected_sha, epoch, output / arm / identity.name,
+                           f"SZ2 {arm}", parity_data, parity_rows)
+
+
+def export_selected(selected, selected_sha, epoch, out, note, parity_data, parity_rows, *, root_heads=False):
     from shengji.ai import unified_readout_numpy as rn
     from shengji.train import unified_readout
 
-    checkpoint, identity, _ = arm_inputs(joint, arm, polish_root, recipe_path, recipe_sha)
-    selected, selected_sha, epoch = selected_checkpoint(identity, checkpoint, identity.name.split("-", 1)[0])
     if not parity_data.is_dir():
         raise ValueError("missing parity data")
 
-    out = output / arm / identity.name
     out.mkdir(parents=True, exist_ok=False)
     package = out / "cand.npz"
     rc = unified_readout.main(["export", "--ckpt", str(selected), "--out", str(package),
-                               "--temperature", str(TEMPERATURE), "--note", f"SZ2 {arm}"])
+                               "--temperature", str(TEMPERATURE), "--note", note])
     if rc:
         return rc
     model = rn.load_unified_readout_numpy(package)
@@ -79,11 +86,11 @@ def export_arm(joint, arm, polish_root, output, recipe_path, recipe_sha,
     env = {**os.environ, "OMP_NUM_THREADS": "2"}
     with (out / "parity.err").open("wb") as stderr:
         result = subprocess.run([sys.executable, "-B", str(PARITY_SCRIPT), str(selected), str(package),
-                                 str(parity_data), str(PARITY_REQUEST)],
+                                 str(parity_data), str(PARITY_REQUEST), *(["--root-heads"] if root_heads else [])],
                                 cwd=out, env=env, check=True, stdout=subprocess.PIPE, stderr=stderr,
                                 timeout=600)
     parity = json.loads(result.stdout)
-    check_parity(parity, model.package_sha256, parity_rows)
+    check_parity(parity, model.package_sha256, parity_rows, root_heads=root_heads)
     parity.update(belief_sha256=belief_sha, selected_checkpoint_sha256=selected_sha, best_epoch=epoch)
     pending = out / "parity.json.tmp"
     pending.write_text(json.dumps(parity, allow_nan=False) + "\n")

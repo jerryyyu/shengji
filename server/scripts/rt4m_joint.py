@@ -60,6 +60,17 @@ def verify_completion(root):
     return best, match[1]
 
 
+def completed_inputs(root, recipe_path):
+    recipe, _, expected = recipe_inputs(root, recipe_path)
+    checkpoint, digest = verify_completion(root)
+    if json.loads((checkpoint.parent / "run.json").read_bytes()) != expected:
+        raise ValueError("RT4-M-A completed with different trainer settings")
+    with checkpoint.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
+            raise ValueError("RT4-M-A best checkpoint differs from the trainer terminal")
+    return checkpoint, digest, recipe
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("phase", choices=("RT4-M-A",))

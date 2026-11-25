@@ -15,7 +15,7 @@ _STORE_MAP = [
 ]
 
 
-def measure_parity(checkpoint, package, data, requested):
+def measure_parity(checkpoint, package, data, requested, *, root_heads=False):
     import numpy as np
     import torch
 
@@ -43,6 +43,8 @@ def measure_parity(checkpoint, package, data, requested):
     value = out["leaf_value"].numpy()
     reply = out["leaf_reply"].numpy()
     worst = {"belief": 0.0, "value": 0.0, "reply": 0.0}
+    if root_heads:
+        worst.update(outcome=0.0, policy=0.0)
     sample = np.random.default_rng(0).choice(len(rows), size=min(requested, len(rows)), replace=False)
     for index in sample:
         i = int(index)
@@ -57,6 +59,10 @@ def measure_parity(checkpoint, package, data, requested):
             "value": (numpy_model.leaf_value_logits(cache, planes, scalars), value[leaves]),
             "reply": (numpy_model.leaf_reply_logits(cache, planes, scalars), reply[leaves]),
         }
+        if root_heads:
+            played = un.batch_inputs(batch, i, with_play=True)
+            comparisons["outcome"] = numpy_model.q_logits_at(played), out["q"][i].numpy()
+            comparisons["policy"] = numpy_model.policy_logits(inp, enc), out["policy"][i].numpy()
         for name, (actual, expected) in comparisons.items():
             if actual.shape != expected.shape or not actual.size:
                 raise ValueError(f"row {i}: {name} parity shape mismatch or empty outputs")
@@ -75,9 +81,10 @@ def main(argv=None):
     parser.add_argument("package")
     parser.add_argument("data")
     parser.add_argument("rows", type=int)
+    parser.add_argument("--root-heads", action="store_true")
     args = parser.parse_args(argv)
     try:
-        report = measure_parity(args.checkpoint, args.package, args.data, args.rows)
+        report = measure_parity(args.checkpoint, args.package, args.data, args.rows, root_heads=args.root_heads)
     except (ValueError, OSError, RuntimeError) as exc:
         print(f"parity refused: {exc}", file=sys.stderr)
         return 3

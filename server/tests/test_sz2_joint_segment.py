@@ -220,9 +220,13 @@ def test_export_checks_the_hardlinked_polish_winner(segment, tmp_path):
     selected.unlink()
     selected.hardlink_to(polished)
     assert selected_checkpoint(tmp_path, joint, joint_sha) == (selected, polished_sha, 1)
+    terminal.write_text(f"t POLISH DONE best_epoch=8 calib {{}} sha256={polished_sha}\n")
+    assert selected_checkpoint(tmp_path, joint, joint_sha, epochs=8) == (selected, polished_sha, 8)
+    with pytest.raises(ValueError, match="missing polish terminal"):
+        selected_checkpoint(tmp_path, joint, joint_sha)
     polished.write_bytes(b"changed")
     with pytest.raises(ValueError, match="differs from the polish terminal"):
-        selected_checkpoint(tmp_path, joint, joint_sha)
+        selected_checkpoint(tmp_path, joint, joint_sha, epochs=8)
 
 
 @pytest.mark.parametrize("override", [
@@ -240,6 +244,18 @@ def test_export_rejects_incomplete_or_invalid_parity(segment, override):
               "max_abs_diff": {"belief": 1e-5, "value": 2e-5, "reply": 3e-5}}
     with pytest.raises(ValueError, match="parity"):
         check_parity({**report, **override}, "digest", 124)
+
+
+def test_full_mix_export_requires_both_root_heads(segment):
+    from sz2_export_arm import check_parity
+
+    metrics = dict(belief=0., value=0., reply=0.)
+    report = dict(package="digest", parity="OK", rows=124, max_abs_diff=metrics)
+    with pytest.raises(ValueError, match="parity errors"):
+        check_parity(report, "digest", 124, root_heads=True)
+    metrics.update(outcome=0., policy=.01)
+    with pytest.raises(ValueError, match="parity errors"):
+        check_parity(report, "digest", 124, root_heads=True)
 
 
 def test_duel_consumes_both_completed_exports_and_refuses_swapped_packages(segment, cpu_root, data,

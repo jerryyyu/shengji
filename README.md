@@ -78,30 +78,41 @@ Rule tokens used in the figures and tables:
 
 **Served results** (signed levels per round, 95% CI; each row names its method: indirect contrasts through a common MC-LCB control unless the row says paired duels):
 
-| change | against | result | reading | vs Sol, actor-only | vs PT-Sol |
-|---|---|---|---|---|---|
-| the RT4 unified model, the 500k-round retrain (release 55; paired head-to-head duels) | release 54 | confirmation +0.0612 [+0.0510, +0.0712] (S159, 7,840 fresh deals); no screen vs release 54 (DEV: R4H +0.0689 [+0.0546, +0.0834] vs release 53's unified model) | CONFIRMED, M5 Ultra; Fly timing 0.993× release 54 with one game; Fly strength not measured | — | — |
-| bury budget 3 s (release 54) | release 53 | not measured | configuration change, no strength claim; on a Mac mini no bury reached the old 2 s deadline (#1605) | — | — |
-| the all-data unified model in four play slots (release 53; paired head-to-head duels) | release 52 | screen +0.0573 [+0.0422, +0.0728]; confirmation +0.0521 [+0.0410, +0.0633] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (UT-alldata-screen, UT-alldata-confirm), M5 Ultra; Fly timing 0.992× release 52 with one game; Fly strength not measured | — | — |
-| combo51: elt + elm + els1600 + wht + rcec (release 52; paired head-to-head duels) | release 51 | screen +0.0418 [+0.0332, +0.0506]; confirmation +0.0438 [+0.0381, +0.0497] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (combo51, combo51C), M5 Ultra; Fly strength not measured | — | — |
-| lead confirmation off (release 51; paired head-to-head duels, lcc off − on inside release 50) | release 50 | lccC −0.0133 [−0.0232, −0.0033] (confirmation, cloud); loo +0.0079 [−0.0069, +0.0221] (M5 Ultra) | KEEP_LCC (lccC) and DROP_SAFE (loo): the reads disagree; shipped for CPU (Fly ×0.552 per play, S91) on Jerry's word; Fly strength not measured | — | — |
-| G3 Stage A value + FT1 prior + B1a belief + bbw (release 50; paired head-to-head duels) | release 49 | screen +0.0695 (one-sided 80% lower bound +0.0631); confirmation +0.0618 [+0.0507, +0.0729] | SCREEN_PASS and CONFIRMED (cbaf arm a, cbaC); four changes at once; AI_POLICIES ladder row 19 has the one within-run attribution | — | — |
-| sc8 + lcc32 (release 49; paired head-to-head duels, not the MC-LCB scale) | release 48 | +0.0270 [+0.0135, +0.0408]; confirmation +0.0306 [+0.0167, +0.0441] | DEV_PASS and CONFIRMED (combo3y, combo3yc) | — | — |
-| S58 belief + dtrx + guarded greedy finish (release 48) | release 46 | +0.0765 [+0.0571, +0.0958]; confirmation +0.0843 [+0.0575, +0.1111] | POSITIVE and CONFIRMED (r48cloud, r48confirm) | — | — |
-| the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | +0.55 [+0.25, +0.90] (S47) | pending (S47-PT) |
-| wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) | — | — |
-| value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) | — | — |
-| doomed-throw swap / re-select (releases 42, 43) | release 38 / 42 | interval spans zero | correctness fixes, no strength claim | — | — |
-| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | CONFIRMED, ten fresh windows (#676) | — | — |
-| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | POSITIVE incremental (not a confirmation): small, ten windows, lower bound near zero (#676) | — | — |
-| SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) | +0.45 [0.00, +0.80] (#355); 0.00 [−0.40, +0.35] (S47) | +0.30 [−0.20, +0.80] (#355) |
-| policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] | +0.50 [+0.15, +0.90] (#355) | +0.45 [−0.10, +0.95] (#355) |
+| change | against | result | reading | External benchmarks |
+|---|---|---|---|---|
+| the RT4 unified model, the 500k-round retrain (release 55; paired head-to-head duels) | release 54 | confirmation +0.0612 [+0.0510, +0.0712] (S159, 7,840 fresh deals); no screen vs release 54 (DEV: R4H +0.0689 [+0.0546, +0.0834] vs release 53's unified model) | CONFIRMED, M5 Ultra; Fly timing 0.993× release 54 with one game; Fly strength not measured | shengji.org (RT4 with the adapter's pair+singles safeguards): full games to A 11–0 in completed games (5 unfinished games not counted), +0.50 [+0.35, +0.66] by round (203 rounds), +0.65 [+0.35, +0.95] by game (11 games), 11-23 to 11-24 (S106); 5-round games +0.18 [−0.15, +0.50] by round (45 rounds, 9 games), 11-22 to 11-23 ([S106](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7093521135)) |
+| bury budget 3 s (release 54) | release 53 | not measured | configuration change, no strength claim; on a Mac mini no bury reached the old 2 s deadline (#1605) | — |
+| the all-data unified model in four play slots (release 53; paired head-to-head duels) | release 52 | screen +0.0573 [+0.0422, +0.0728]; confirmation +0.0521 [+0.0410, +0.0633] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (UT-alldata-screen, UT-alldata-confirm), M5 Ultra; Fly timing 0.992× release 52 with one game; Fly strength not measured | — |
+| combo51: elt + elm + els1600 + wht + rcec (release 52; paired head-to-head duels) | release 51 | screen +0.0418 [+0.0332, +0.0506]; confirmation +0.0438 [+0.0381, +0.0497] (7,840 fresh deals) | SCREEN_PASS and CONFIRMED (combo51, combo51C), M5 Ultra; Fly strength not measured | shengji.org: 8–3 in games, +0.20 [+0.05, +0.35] by round (233 rounds), [−0.09, +0.50] by game (11 games), 11-13 to 11-16 ([S106 pilot](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-6869869578), [pooled](https://github.com/jerryyyu/shengji/issues/1263#issuecomment-7093521135)) |
+| lead confirmation off (release 51; paired head-to-head duels, lcc off − on inside release 50) | release 50 | lccC −0.0133 [−0.0232, −0.0033] (confirmation, cloud); loo +0.0079 [−0.0069, +0.0221] (M5 Ultra) | KEEP_LCC (lccC) and DROP_SAFE (loo): the reads disagree; shipped for CPU (Fly ×0.552 per play, S91) on Jerry's word; Fly strength not measured | — |
+| G3 Stage A value + FT1 prior + B1a belief + bbw (release 50; paired head-to-head duels) | release 49 | screen +0.0695 (one-sided 80% lower bound +0.0631); confirmation +0.0618 [+0.0507, +0.0729] | SCREEN_PASS and CONFIRMED (cbaf arm a, cbaC); four changes at once; AI_POLICIES ladder row 19 has the one within-run attribution | shengji.org: 2–1 in games, +0.057 [−0.203, +0.317] by round (70 rounds); by game about [−1.00, +1.08] (3 games), 11-06 (S106 pilot106) |
+| sc8 + lcc32 (release 49; paired head-to-head duels, not the MC-LCB scale) | release 48 | +0.0270 [+0.0135, +0.0408]; confirmation +0.0306 [+0.0167, +0.0441] | DEV_PASS and CONFIRMED (combo3y, combo3yc) | — |
+| S58 belief + dtrx + guarded greedy finish (release 48) | release 46 | +0.0765 [+0.0571, +0.0958]; confirmation +0.0843 [+0.0575, +0.1111] | POSITIVE and CONFIRMED (r48cloud, r48confirm) | — |
+| the combo (belief worlds + D7/X7 exact endgame + vdef) | release 45 | +0.2167 [+0.1923, +0.2412]; confirmation +0.2284 [+0.2046, +0.2521] | POSITIVE and CONFIRMED (v92combo45, v92c) | Sol (actor-only) +0.55 [+0.25, +0.90] (S47)<br>PT-Sol pending (S47-PT) |
+| wide value-only bury K=64 (release 45) | release 44 | +0.0488 [+0.0286, +0.0690] | POSITIVE, one ten-window screen on first-round deals, not confirmed (v76bwv44) | — |
+| value-guided declaration (release 44) | release 43 | +0.0497 [+0.0379, +0.0615] first-round; +0.0352 [+0.0233, +0.0471] later-round | POSITIVE in both populations, ten windows each (v70vd43, v71vd43lr) | — |
+| doomed-throw swap / re-select (releases 42, 43) | release 38 / 42 | interval spans zero | correctness fixes, no strength claim | — |
+| div + rc + tb | release 36 | +0.0461 [+0.0242, +0.0681] | CONFIRMED, ten fresh windows (#676) | — |
+| + la | div + rc + tb | +0.0106 [+0.0006, +0.0205] | POSITIVE incremental (not a confirmation): small, ten windows, lower bound near zero (#676) | — |
+| SMV3 outcome head (release 36) | release 30 | +0.0393 [+0.0033, +0.0752] | predeclared confirmation (#663) | Sol (actor-only) +0.45 [0.00, +0.80] (#355); 0.00 [−0.40, +0.35] (S47)<br>PT-Sol +0.30 [−0.20, +0.80] (#355) |
+| policy/value search (release 29) | release 28 | +0.049 [+0.003, +0.095] | five windows; card play +0.086 [+0.042, +0.131] | Sol (actor-only) +0.50 [+0.15, +0.90] (#355)<br>PT-Sol +0.45 [−0.10, +0.95] (#355) |
 
-The two Sol columns come from a separate instrument. The release's recipe plays card play only against the GPT-5.6
-Sol LLM opponent, on 10 deals × 2 mirrored roles. Actor-only Sol sees one seat's hand; PT-Sol sees every hand. Each
-cell is bot minus Sol in signed levels per round, with a deal-cluster 95% CI. These numbers are not on the screen
-scale and do not rank the releases
+The External benchmarks column collects reads from instruments outside the screen, each labelled in its cell.
+None of them is on the screen scale, and none of them ranks the releases
 ([details](AI_POLICIES.md#the-ladder-every-production-change-and-what-it-measured)).
+
+- **Sol (actor-only) and PT-Sol.** The release's recipe plays card play only against the GPT-5.6 Sol LLM opponent,
+  on 10 deals × 2 mirrored roles. Actor-only Sol sees one seat's hand; PT-Sol sees every hand. Each entry is bot
+  minus Sol in signed levels per round, with a deal-cluster 95% CI.
+- **shengji.org.** Our bot holds seats 0 and 2 of a private room on shengji.org against two of the site's own 高级
+  bots, under the shengji.org rules profile (kitty bonus 2 × the largest component of the last lead, a no-bid round
+  plays no-trump). Each of our seats sees only its own hand and the public play, never the site's hidden-card
+  fields; plays and burials wait at least 2 s. Entries are our levels gained minus theirs per round, with a
+  t-interval 95% CI over rounds; rounds within a game are correlated, so the by-game interval is the more honest
+  one. Samples are small (3 to 11 games), the opponent is one bot type, and the deals are not paired, so the
+  entries are descriptive. The RT4 games ran with an adapter safeguard that replaces any pair+singles play by
+  the bot's next-best legal play (the site went down twice after such plays), so they do not measure release 55
+  exactly as served. MC-LCB's single game, −0.400 [−0.761, −0.039] over 25 rounds, is on the ladder's row 1.
 
 The exact contract, the caveats on these reads, what was tried and not taken, and every earlier release:
 [AI_POLICIES.md](AI_POLICIES.md#production-contract) and its

@@ -350,3 +350,168 @@ def test_unreadable_consumer_refuses_before_delete(world, monkeypatch, capsys):
     assert target.is_dir()
     out = capsys.readouterr().out
     assert "inventory unavailable" in out and "DELETED" not in out
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main",
+                    "-c", "commit.gpgsign=false", *args], cwd=cwd, check=True, capture_output=True)
+
+
+def _pin(world, h):
+    (world / "archive/pk/commands.json").write_text(f'{{"init_sha256": "{h}"}}\n')
+
+
+def _clone(world, at, push=True):
+    """A clone at `at` (with its bare origin beside it) tracking models/m.npz; returns (clone, sha256)."""
+    origin = at.parent / (at.name + "-origin.git")
+    _git(at.parent, "init", "-q", "--bare", str(origin))
+    _git(at.parent, "clone", "-q", str(origin), str(at))
+    h = big_file(at / "models/m.npz")
+    (at / ".gitignore").write_text("payload/\n")
+    _git(at, "add", "models/m.npz", ".gitignore")
+    _git(at, "commit", "-q", "-m", "m")
+    if push:
+        _git(at, "push", "-q", "origin", "HEAD:main")
+        _git(at, "fetch", "-q", "origin")
+    return at, h
+
+
+def _linked_worktree(world, push=True):
+    """A linked worktree under root/ whose common dir (the clone at world/main) is outside the target."""
+    co, h = _clone(world, world / "main", push=push)
+    wt = world / "root/wt"
+    _git(co, "worktree", "add", "-q", "--detach", str(wt), "main")
+    _pin(world, h)
+    return co, wt, h
+
+
+def test_healthy_linked_worktree_pin_is_exempt(world):
+    _, wt, _ = _linked_worktree(world)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 0 and "WOULD DELETE" in out
+    assert "EXEMPT pin" in out and "models/m.npz" in out and "linked worktree" in out
+
+
+def test_linked_worktree_on_an_unpushed_local_main_is_exempt(world):
+    _, wt, _ = _linked_worktree(world, push=False)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 0 and "EXEMPT pin" in out and "refs/heads/main" in out
+
+
+def test_standalone_clone_with_its_only_origin_inside_the_target_refuses(world):
+    box = world / "root/box"
+    box.mkdir()
+    co, h = _clone(world, box / "co")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", box)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_standalone_clone_whose_origin_dropped_its_refs_refuses(world):
+    co, h = _clone(world, world / "root/co")
+    _git(world / "root/co-origin.git", "update-ref", "-d", "refs/heads/main")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", co)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_the_blob_missing_from_the_store_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    blob = subprocess.run(["git", "rev-parse", "HEAD:models/m.npz"], cwd=co, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    (co / ".git/objects" / blob[:2] / blob[2:]).unlink()
+    assert subprocess.run(["git", "cat-file", "-e", blob], cwd=co).returncode != 0
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_an_alternate_inside_the_target_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    (wt / "store").mkdir()
+    (co / ".git/objects/info/alternates").write_text(f"{wt / 'store'}\n")
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_modified_tracked_pin_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _pin(world, big_file(wt / "models/m.npz"))
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_untracked_pin_in_a_worktree_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _pin(world, big_file(wt / "models/new.npz"))
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "models/new.npz" in out and "EXEMPT" not in out
+
+
+def test_ignored_pin_in_a_worktree_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _pin(world, big_file(wt / "payload/models/p.npz"))
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "payload/models/p.npz" in out and "EXEMPT" not in out
+
+
+def test_tracked_pin_whose_commit_is_on_no_retained_ref_refuses(world):
+    _, wt, _ = _linked_worktree(world)
+    _git(wt, "switch", "-q", "-c", "topic")
+    _pin(world, big_file(wt / "models/m.npz"))
+    _git(wt, "commit", "-q", "-am", "local only")
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_standalone_clone_subdirectory_keeps_its_pin(world):
+    # the clone's .git survives this target, but its remote-tracking refs outlive the origin's own refs
+    co, h = _clone(world, world / "root/co")
+    _git(world / "root/co-origin.git", "update-ref", "-d", "refs/heads/main")
+    _pin(world, h)
+    rc, out = run(world, "--dry-run", co / "models")
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def _loose_blob(co):
+    blob = subprocess.run(["git", "rev-parse", "HEAD:models/m.npz"], cwd=co, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    path = co / ".git/objects" / blob[:2] / blob[2:]
+    path.chmod(0o644)
+    return blob, path
+
+
+def _exists(co, blob):
+    return subprocess.run(["git", "cat-file", "-e", blob], cwd=co).returncode == 0
+
+
+def test_linked_worktree_with_a_corrupt_compressed_blob_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    blob, path = _loose_blob(co)
+    raw = path.read_bytes()
+    path.write_bytes(raw[: len(raw) // 2])
+    assert _exists(co, blob)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_substituted_blob_bytes_refuses(world):
+    import zlib
+    co, wt, _ = _linked_worktree(world)
+    blob, path = _loose_blob(co)
+    size = (wt / "models/m.npz").stat().st_size
+    path.write_bytes(zlib.compress(b"blob %d\0" % size + os.urandom(size)))
+    assert _exists(co, blob)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out
+
+
+def test_linked_worktree_with_a_loose_object_linked_into_the_target_refuses(world):
+    co, wt, _ = _linked_worktree(world)
+    blob, path = _loose_blob(co)
+    moved = wt / "stash/obj"
+    moved.parent.mkdir()
+    path.rename(moved)
+    path.symlink_to(moved)
+    assert _exists(co, blob)
+    rc, out = run(world, "--dry-run", wt)
+    assert rc == 1 and "pinned" in out and "EXEMPT" not in out

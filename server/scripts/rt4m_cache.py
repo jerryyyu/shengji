@@ -29,10 +29,11 @@ def partition(root, output, worker, recipe_path, *, encode_rounds=CACHE_DEFAULT_
                            sample_rows=RT4_SAMPLE["cap_rows"])
 
 
-def polish(root, output, recipe_path, *, encode_rounds=CACHE_DEFAULT_ENCODE_ROUNDS):
+def polish(root, output, recipe_path, *, encode_rounds=CACHE_DEFAULT_ENCODE_ROUNDS, finish_selection=False):
     checkpoint, cache, recipe = inputs(root, output, recipe_path, encode_rounds)
     return polish_checkpoint(checkpoint, cache, recipe, root / "A/polish", epochs=8, lr=1e-3,
-                             expected_sample=RT4_SAMPLE, expected_encode_rounds=encode_rounds)
+                             expected_sample=RT4_SAMPLE, expected_encode_rounds=encode_rounds,
+                             finish_selection=finish_selection)
 
 
 def main():
@@ -44,11 +45,13 @@ def main():
     stage = parser.add_mutually_exclusive_group(required=True)
     stage.add_argument("--worker", type=int, choices=range(WORKERS))
     stage.add_argument("--polish", action="store_true")
+    stage.add_argument("--finish-selection", action="store_true",
+                       help="publish the missing winner link from a completed polish")
     args = parser.parse_args()
     try:
-        if args.polish:
+        if args.polish or args.finish_selection:
             return polish(args.root.resolve(), args.cache_root.resolve(), rt4m_joint.RECIPE,
-                          encode_rounds=args.encode_rounds_per_batch)
+                          encode_rounds=args.encode_rounds_per_batch, finish_selection=args.finish_selection)
         return partition(args.root.resolve(), args.cache_root.resolve(), args.worker, rt4m_joint.RECIPE,
                          encode_rounds=args.encode_rounds_per_batch)
     except (OSError, ValueError) as exc:

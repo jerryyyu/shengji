@@ -16,13 +16,20 @@ def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
     return polish_checkpoint(checkpoint, cache, recipe, output / arm / cache.name, epochs=2, lr=3e-4)
 
 
-def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None, expected_encode_rounds=None):
+def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None, expected_encode_rounds=None,
+                      finish_selection=False):
     from shengji.train import unified_readout
 
     with ExitStack() as leases:
         for worker in range(WORKERS):
             lock = leases.enter_context((cache / f"worker-{worker}.lock").open("rb"))
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        argv = ["polish", "--ckpt", str(checkpoint), "--cache", str(cache),
+                "--out", str(out), "--epochs", str(epochs), "--lr", str(lr),
+                "--weight-decay", "0.01", "--reply-weight", "0.2", "--batch", "4096",
+                "--threads", "16", "--seed", "1", "--device", "cpu"]
+        if finish_selection:
+            return finish_polish_selection(out, checkpoint, argv, epochs)
         if json.loads((cache / unified_readout.CACHE_DEVICE).read_text()) != {"device": "cpu"}:
             raise ValueError("expected a CPU cache")
         if expected_encode_rounds is not None:
@@ -46,10 +53,7 @@ def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sa
                 if "leaf_w.npy" not in shard.namelist():
                     raise ValueError(f"missing corpus weights in {name}")
         out.mkdir(parents=True, exist_ok=False)
-        rc = unified_readout.main(["polish", "--ckpt", str(checkpoint), "--cache", str(cache),
-                                   "--out", str(out), "--epochs", str(epochs), "--lr", str(lr),
-                                   "--weight-decay", "0.01", "--reply-weight", "0.2", "--batch", "4096",
-                                   "--threads", "16", "--seed", "1", "--device", "cpu"])
+        rc = unified_readout.main(argv)
         if rc:
             return rc
         terminal = (out / "status.log").read_text().splitlines()[-1]
@@ -59,6 +63,33 @@ def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sa
         # The joint checkpoint is the selected model when no polish epoch improved it.
         os.link(checkpoint if result[1] == "0" else out / "best.pt", out / "selected.pt")
         return 0
+
+
+def finish_polish_selection(out, checkpoint, argv, epochs):
+    from shengji.train import unified_readout
+    from sz2_export_arm import file_sha
+
+    status = (out / "status.log").read_text().splitlines()
+    done = re.fullmatch(r"\S+ POLISH DONE best_epoch=([0-9]+) calib .+ sha256=([0-9a-f]{64})",
+                        status[-1]) if status else None
+    if not done or int(done[1]) > epochs or (out / "STOP").exists():
+        raise ValueError("expected a completed polish before selection recovery")
+    digest = file_sha(checkpoint)
+    starts = [line for line in status if " POLISH START " in line]
+    if len(starts) != 1 or f" ckpt={digest} " not in starts[0]:
+        raise ValueError("polish started from a different joint checkpoint")
+    best = out / "best.pt"
+    if best.is_symlink() or file_sha(best) != done[2]:
+        raise ValueError("best checkpoint differs from the polish terminal")
+    _, saved = unified_readout.load_checkpoint(best)
+    settings = vars(unified_readout.build_parser().parse_args(argv))
+    del settings["device"]  # CPU polish omits its default device from saved settings.
+    epoch = int(done[1])
+    if saved["run"]["polish"] != settings or saved["calib"]["polish_epoch"] != epoch:
+        raise ValueError("completed polish settings or winning epoch differ")
+    winner = best if epoch else checkpoint
+    os.link(winner, out / "selected.pt")
+    return 0
 
 
 if __name__ == "__main__":

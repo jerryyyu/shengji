@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMenuKeys } from "../useMenuKeys";
 import { usePresence } from "../usePresence";
 import { OFFLINE } from "../offlineMode";
-import { COPIED_MS, shareInvite } from "../codes";
+import { COPIED_MS, inviteAsk, shareInvite } from "../codes";
 import LeaveSheet from "./LeaveSheet";
 import { conn } from "../ws";
 import { SettingsMenuRows } from "./SettingsList";
@@ -25,8 +25,10 @@ import { useT } from "../i18n";
  *  Keyboard: Enter or Space on `⋯` opens it with focus on the first row,
  *  ArrowUp and ArrowDown move between rows (wrapping), Home and End go to
  *  the ends, and Escape closes it and returns focus to `⋯`. */
-export default function HudMenu({ room, mode, ranked = false, guest = false, offline = OFFLINE, nearby = false, allowJoiners, opener = true }: {
+export default function HudMenu({ room, mode, ranked = false, guest = false, offline = OFFLINE, nearby = false, allowJoiners, opener = true, people = 1 }: {
   room: string; ranked?: boolean; offline?: boolean;
+  /** The people seated, bots not counted: what the invite asks for. */
+  people?: number;
   /** A nearby table: offline, with its code and Allow joiners. */
   nearby?: boolean;
   /** The game's mode, a plain label at the top of the menu; the header carries none. */
@@ -85,7 +87,7 @@ export default function HudMenu({ room, mode, ranked = false, guest = false, off
   const close = () => setOpen(false);
 
   const invite = () => {
-    void shareInvite(room).then((didCopy) => {
+    void shareInvite(room, inviteAsk(people)).then((didCopy) => {
       if (!didCopy) return;
       setCopied(true);
       window.setTimeout(() => setCopied(false), COPIED_MS);

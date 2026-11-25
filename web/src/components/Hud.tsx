@@ -265,7 +265,7 @@ export default function Hud({ state, practice = OFFLINE }: { state: GameState; p
               Allow joiners is at every table that takes joiners (the frame carries it), ranked or casual */}
           <HudMenu room={state.room} mode={modeWord(mode, guest)} ranked={mode === "ranked"} guest={guest} offline={practice} nearby={nearby}
                    allowJoiners={!state.joining_you ? state.allow_joiners : undefined}
-                   opener={state.opener === state.you} />
+                   opener={state.opener === state.you} people={state.players.filter((p) => !p.is_bot).length} />
         </div>
       </div>
     </div>

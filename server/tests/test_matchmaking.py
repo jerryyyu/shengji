@@ -4896,6 +4896,21 @@ def test_peek_a_duo_table_shows_its_held_seat_until_the_friend_takes_it():
     run(go())
 
 
+def test_a_tables_invite_seats_are_its_peek_by_kind_with_the_opener_seat():
+    async def go():
+        env = Env()
+        await env.join(1, duo=True)
+        code = env.conns[1].last("queue_state")["code"]
+        opener, seats = env.mm.invite_seats(code)
+        assert seats == [("person", "P1"), ("open", None), ("held", None), ("open", None)]
+        assert opener == 0
+        env.player(2)
+        await env.send(2, "queue_join", code=code)
+        assert env.mm.invite_seats(code)[1][2] == ("person", "P2")
+        assert env.mm.invite_seats("ZZZZ") is None
+    run(go())
+
+
 def test_peek_a_waiting_table_shows_its_seats_starts_and_a_full_table():
     async def go():
         env = Env()

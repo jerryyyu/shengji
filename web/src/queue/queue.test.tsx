@@ -1327,6 +1327,20 @@ describe("one code for rooms and tables", () => {
     expect(clipboard).toEqual([`${window.location.origin}/?code=4N5Z`]);
     expect(panel()!.querySelector("button.tp-invite")?.textContent).toBe("4N5ZLink copied");
   });
+
+  it("a Duo opener's Invite asks for a partner, the link after the message", async () => {
+    const shared: unknown[] = [];
+    Object.defineProperty(navigator, "share", { configurable: true,
+      value: (d: unknown) => { shared.push(d); return Promise.resolve(); } });
+    await renderApp();
+    click(button("Duo"));
+    say(queued({ duo: true, held_seat: 2, code: "4N5Z", opener: true }));
+    click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
+    await settle();
+    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    expect(shared).toEqual([{ title: "Sheng Ji", text: "Be my partner for Tractor? Code 4N5Z",
+                              url: `${window.location.origin}/?code=4N5Z` }]);
+  });
 });
 
 describe("a code peek that is interrupted or refused", () => {

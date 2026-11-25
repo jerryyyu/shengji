@@ -43,7 +43,11 @@ export const home = defineMessages({
   "home.coolLine": { en: "You left a table you joined.", zh: "你离开了加入的牌桌。" },
   "home.previewWins": { en: "Wins", zh: "最大" },
   "home.shareTitle": { en: "Sheng Ji", zh: "升级" },
-  "home.shareText": { en: "Join my table · {code}", zh: "加入我的牌桌 · {code}" },
+  // the invite's message, by who the table still needs (codes.ts inviteAsk)
+  "home.invite.one": { en: "We need a 4th for Tractor. Code {code}", zh: "三缺一，来打升级！房间码 {code}" },
+  "home.invite.two": { en: "Two seats open for Tractor. Code {code}", zh: "还差两个人，来打升级！房间码 {code}" },
+  "home.invite.three": { en: "Play Tractor with me? Code {code}", zh: "来打升级吗？房间码 {code}" },
+  "home.invite.partner": { en: "Be my partner for Tractor? Code {code}", zh: "来跟我搭档打升级！房间码 {code}" },
 
   // the player's chip and the identity sheet
   "home.guestChipAria": { en: "{name}, guest, edit name", zh: "{name}，游客，改昵称" },

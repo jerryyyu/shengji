@@ -7,7 +7,7 @@ import { TimerRing } from "../components/MoveClock";
 import LeaveSheet from "../components/LeaveSheet";
 import ConfirmSheet from "../components/ConfirmSheet";
 import { useAnyTapIsBack } from "../components/seatHeld";
-import { COPIED_MS, shareInvite } from "../codes";
+import { COPIED_MS, inviteAskOf, shareInvite, type InviteAsk } from "../codes";
 import type { CodeJoin } from "../codeJoin";
 import { takeoverSeats } from "../joinSeats";
 import type { DroppedSeat } from "../joinSeats";
@@ -162,7 +162,8 @@ function PanelView({ m, guarded, sheet, act }: {
         </p>
       ) : null}
       {seats ? <TeamColumns seats={seats} you={m.you} layout={m.layout} /> : null}
-      {m.rows ? <TableRows rows={m.rows} wait={m.waitSwitch ?? undefined} act={act} /> : null}
+      {m.rows ? <TableRows rows={m.rows} wait={m.waitSwitch ?? undefined} act={act}
+                           ask={seats ? inviteAskOf(seats.map((s) => s.look)) : undefined} /> : null}
       {m.waitSwitch && !m.rows ? <WaitSwitch {...m.waitSwitch} act={act} /> : null}
       {m.nearbySwitch ? (
         <SwitchRow label={m.nearbySwitch.label} on={m.nearbySwitch.on} disabled={m.nearbySwitch.disabled}
@@ -417,12 +418,12 @@ function ShareIcon() {
 /** The code and its Invite as one control: a tap opens the share sheet, or
  *  copies the link. A nearby table's code is the code alone (there is no
  *  URL offline). */
-function CodeRow({ code, invite: withInvite = true }: { code: string; invite?: boolean }) {
+function CodeRow({ code, invite: withInvite = true, ask = "three" }: { code: string; invite?: boolean; ask?: InviteAsk }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const spelled = code.split("").join(" ");
   const invite = () => {
-    void shareInvite(code).then((didCopy) => {
+    void shareInvite(code, ask).then((didCopy) => {
       if (!didCopy) return;
       setCopied(true);
       window.setTimeout(() => setCopied(false), COPIED_MS);
@@ -498,8 +499,8 @@ function Chevron() {
  *  values beside the label as a select shows its value; one setting (Bots
  *  offline and at a nearby table) is its own row. A nearby table's code has
  *  no Invite (``invite`` false). */
-function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, wait, act }: {
-  rows: Rows; wait?: { on: boolean; disabled: boolean }; act: (a: PanelAction) => void;
+function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots }, wait, ask, act }: {
+  rows: Rows; wait?: { on: boolean; disabled: boolean }; ask?: InviteAsk; act: (a: PanelAction) => void;
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -524,7 +525,7 @@ function TableRows({ rows: { code, invite, ranked, opener, level, joiners, bots 
     .filter((v): v is string => v !== null);
   return (
     <>
-      {code ? <CodeRow code={code} invite={invite !== false} /> : null}
+      {code ? <CodeRow code={code} invite={invite !== false} ask={ask} /> : null}
       {settings.length > 1 ? (
         <>
           <button type="button" className="tp-set tp-settings" aria-expanded={open}

@@ -2452,6 +2452,22 @@ class Matchmaker:
                 "in_game": False, "allow_joiners": t.allow_joiners,
                 "full": not (free or host.hold), "closed": host.claiming, "seats": seats}
 
+    def invite_seats(self, code: str) -> tuple[int, list[tuple[str, str | None]]] | None:
+        """The queued table ``code`` names, for its link preview: the
+        opener's seat and each seat as ``(kind, name)``, a kind being
+        ``person`` (with the name its table shows), ``held`` or ``open``.
+        The seats ``peek`` shows; None when no queued table has the code."""
+        host = self._code_entry(code)
+        if host is None or host.table is None:
+            return None
+        t = host.table
+        held = set(t.held_seats())
+        seats: list[tuple[str, str | None]] = [
+            ("person", self._name(u)) if u is not None else ("held", None) if i in held else ("open", None)
+            for i, u in enumerate(t.seats)]
+        opener = next((i for i, u in enumerate(t.seats) if u is not None and u in host.members), 0)
+        return opener, seats
+
     def _party_payload(self, p: Party, uid: int) -> dict:
         """A Duo's ``code`` is its table's while queued (else empty);
         ``table`` is always true, every Duo being made at a table."""

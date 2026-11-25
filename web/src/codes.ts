@@ -35,12 +35,39 @@ export function codeLink(code: string): string {
 /** How long an Invite button reads "Link copied" after a copy. */
 export const COPIED_MS = 1200;
 
-/** A table's invite: the system share sheet where there is one, else the
- *  link on the clipboard. Resolves true when the link was copied. */
-export function shareInvite(code: string): Promise<boolean> {
+/** What an invite asks for: one, two or three more people, or the partner
+ *  for a Duo opener's held seat. The server's link preview uses the same
+ *  words (server/shengji/api/invite_preview.py). */
+export type InviteAsk = "one" | "two" | "three" | "partner";
+
+/** The ask for a table with `people` seated (bots are not people) and
+ *  whether a seat is held for a partner. A full table asks as one alone. */
+export function inviteAsk(people: number, held = false): InviteAsk {
+  if (held) return "partner";
+  if (people === 3) return "one";
+  if (people === 2) return "two";
+  return "three";
+}
+
+/** The ask for a table's seats, by each seat's look in the panel. */
+export function inviteAskOf(looks: readonly string[]): InviteAsk {
+  const people = looks.filter((l) => l === "you" || l === "friend" || l === "person").length;
+  return inviteAsk(people, looks.includes("held"));
+}
+
+/** The invite's message in the app's language, the code in it so someone
+ *  without the link can type it. */
+export function inviteText(code: string, ask: InviteAsk): string {
+  return t(`home.invite.${ask}`, { code });
+}
+
+/** A table's invite: the system share sheet where there is one, its text the
+ *  message and the link after it, else the link on the clipboard. Resolves
+ *  true when the link was copied. */
+export function shareInvite(code: string, ask: InviteAsk): Promise<boolean> {
   const url = codeLink(code);
   if (typeof navigator.share === "function") {
-    return navigator.share({ title: t("home.shareTitle"), text: t("home.shareText", { code }), url })
+    return navigator.share({ title: t("home.shareTitle"), text: inviteText(code, ask), url })
       .then(() => false, () => false);   // a dismissed share sheet is not an error
   }
   if (!navigator.clipboard) return Promise.resolve(false);

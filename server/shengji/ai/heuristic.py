@@ -254,10 +254,18 @@ class HeuristicBot:
 
     def _trump_shape_match(self, trumps: list[str], lead_dec,
                            o: Ordering, incumbent_trump_top: int | None = None) -> list[str] | None:
-        """Fill the throw shape with trumps, reserving a winning single when required."""
+        """Fill the throw shape with trumps, clearing the incumbent when possible."""
         runs = sorted((c.pair_len for c in lead_dec.components if c.pair_len),
                       reverse=True)
         n_singles = sum(1 for c in lead_dec.components if not c.pair_len)
+        if incumbent_trump_top is not None and len(runs) == 1 and n_singles == 1:
+            # The pair or tractor decides the trick regardless of the single's rank.
+            for run in find_tractor_runs(trumps, o, runs[0]):
+                if o.level(run[-1]) > incumbent_trump_top:
+                    remaining = list(trumps)
+                    self._take(remaining, run)
+                    return run + [self._lowest(remaining, o, avoid_points=True)]
+            return None
         pool = list(trumps)
         picked: list[str] = []
         for k in runs:

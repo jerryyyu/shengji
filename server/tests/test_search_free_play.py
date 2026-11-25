@@ -322,3 +322,34 @@ def test_all_single_throw_overruff_reaches_the_search_free_ballot(trusted, extra
     assert rnd.last_trick.points == 10
     if winner == 3:
         assert Counter(anchor) == Counter(["H2", "H9"])
+
+
+@pytest.mark.parametrize("trusted", [False, True])
+@pytest.mark.parametrize("lead, ruff, low, high", [
+    (["CA", "CA", "CK"], ["H6", "H6", "HA"], ["H2", "H2"], ["H8", "H8"]),
+    (["CQ", "CQ", "CK", "CK", "CA"], ["H4", "H4", "H5", "H5", "HA"],
+     ["H2", "H2", "H3", "H3"], ["H8", "H8", "H9", "H9"]),
+])
+def test_mixed_throw_overruff_reaches_ballot_and_wins(trusted, lead, ruff, low, high):
+    from shengji.engine.cards import Ordering
+    from shengji.engine.round import Round, Trick
+
+    rnd = Round("7", 0, random.Random(11))
+    rnd.phase, rnd.turn, rnd.trump_suit = "play", 0, "H"
+    rnd.ordering = Ordering("H", "7")
+    rnd.trick = Trick(leader=0)
+    discard = ["D2", "D3", "D4", "D5", "D6"][:len(lead)]
+    follow_hand = low + high + ["S6"]
+    fillers = len(follow_hand) - len(lead)
+    rnd.hands = [lead + ["S2", "S3", "S4", "S5"][:fillers],
+                 discard + ["S8", "S9", "S10", "SJ"][:fillers],
+                 ruff + ["SQ", "SK", "SA", "D8"][:fillers], follow_hand]
+    rnd._trusted_rollout = trusted
+    for seat, cards in enumerate((lead, discard, ruff)):
+        rnd.play(seat, cards)
+    anchor = HeuristicBot().decide_play(rnd, 3)
+    assert Counter(anchor) == Counter(high + ["H2"])
+    proposal = sf.propose(rnd, 3, anchor, np.zeros(54))
+    assert Counter(proposal["actions"][0]) == Counter(anchor)
+    rnd.play(3, proposal["actions"][0])
+    assert rnd.last_trick.winner == 3

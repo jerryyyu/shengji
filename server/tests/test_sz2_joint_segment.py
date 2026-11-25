@@ -364,7 +364,7 @@ def test_matched_scratch_recipe_consumed_by_trainer(segment, cpu_root, tmp_path,
     assert medium.out != large.out and not medium.pause_at_report and large.pause_at_report
     assert smoke.out != large.out and smoke.scratch_arch == large.scratch_arch
     assert smoke.capacity_stats and not medium.capacity_stats and not large.capacity_stats
-    assert smoke.max_train_rows == 120000 and smoke.report_buffer is None
+    assert smoke.max_train_rows == 120000 and smoke.report_buffer == 1 and not smoke.pause_at_report
     varying = {"out", "scratch_arch", "pause_at_report"}
     assert {k for k in vars(medium) if getattr(medium, k) != getattr(large, k)} == varying
 

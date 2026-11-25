@@ -207,7 +207,7 @@ mps = pytest.mark.skipif(not torch.backends.mps.is_available(), reason="MPS is n
 
 
 @pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
-def test_capacity_sample_counts_actual_training_work(data, tmp_path, device, monkeypatch):
+def test_capacity_sample_counts_actual_training_work(data, tmp_path, device):
     args = ["train", "--data", str(data), "--out", str(tmp_path), "--device", device,
             "--scratch-arch", SCRATCH, "--threads", "1", "--loader-threads", "1",
             "--rounds-per-batch", "1", "--epochs", "1", "--capacity-stats"]
@@ -220,16 +220,69 @@ def test_capacity_sample_counts_actual_training_work(data, tmp_path, device, mon
     assert "capacity_stats" not in json.loads((tmp_path / "run.json").read_text())
     if device == "mps":
         assert sample["post_step_max_driver_bytes"] >= sample["post_step_max_tensor_bytes"] > 0
-        monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
-        from sz3_joint_recipe import smoke_result
-        result = smoke_result(tmp_path)
-        assert result["capacity"] == sample
-        assert result["calibration"]["policy"] >= 0
-        (tmp_path / "status.log").write_text("\n".join(status[:-1]))
-        with pytest.raises(ValueError, match="successful trainer terminal"):
-            smoke_result(tmp_path)
     else:
         assert "post_step_max_driver_bytes" not in sample
+
+
+@pytest.mark.parametrize("device", ["cpu", pytest.param("mps", marks=mps)])
+def test_split_capacity_reads_real_pause_and_resume(data, tmp_path, device, monkeypatch):
+    args = ["train", "--data", str(data), "--device", device, "--scratch-arch", SCRATCH,
+            "--threads", "1", "--loader-threads", "1", "--rounds-per-batch", "1",
+            "--epochs", "1", "--buffer-chunks", "1", "--report-buffer", "1", "--capacity-stats"]
+    out = tmp_path / "smoke"
+    assert ur.main([*args, "--out", str(out), "--pause-at-report"]) == 7
+    prefix = json.loads((out / "epoch-1-buffer-1.json").read_text())
+
+    wrong = tmp_path / "wrong"
+    assert ur.main([*args, "--out", str(wrong), "--expect-resume-buffer", "1"]) == 1
+    status = (wrong / "status.log").read_text()
+    assert "existing checkpoint" in status and " UTR START " not in status
+    shutil.copyfile(out / "checkpoint.pt", wrong / "checkpoint.pt")
+    assert ur.main([*args, "--out", str(wrong), "--expect-resume-buffer", "0"]) == 1
+    status = (wrong / "status.log").read_text()
+    assert "expected epoch 0 buffer 0, found epoch 0 buffer 1" in status
+    assert " UTR START " not in status and " CAPACITY " not in status and " RESUME " not in status
+
+    assert ur.main([*args, "--out", str(out), "--expect-resume-buffer", "1"]) == 0
+    status_path = out / "status.log"
+    status = status_path.read_text()
+    first, second = (json.loads(line.split(" CAPACITY ", 1)[1])
+                     for line in status.splitlines() if " CAPACITY " in line)
+    assert prefix["completed_buffers"] == 1 and prefix["epoch"] == 1
+    assert prefix["rows"] == first["rows"] > 0 and prefix["steps"] == first["steps"] > 0
+    assert second["rows"] > 0 and second["steps"] > 0
+    identity = json.loads((out / "run.json").read_text())
+    assert "capacity_stats" not in identity and "expect_resume_buffer" not in identity
+    if device == "cpu":
+        assert "post_step_max_driver_bytes" not in first and "post_step_max_driver_bytes" not in second
+        return
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
+    from sz3_joint_recipe import smoke_result
+    result = smoke_result(out)
+    capacity = result["capacity"]
+    assert capacity["steps"] == first["steps"] + second["steps"]
+    assert capacity["rows"] == first["rows"] + second["rows"]
+    assert capacity["train_seconds"] == first["train_seconds"] + second["train_seconds"]
+    assert capacity["rows_per_second"] == pytest.approx(capacity["rows"] / capacity["train_seconds"])
+    for field in ("post_step_max_tensor_bytes", "post_step_max_driver_bytes"):
+        assert capacity[field] == max(first[field], second[field]) > 0
+    assert result["calibration"]["policy"] >= 0
+
+    status_path.write_text(status.replace("RESUME epoch 0 buffer 1", "RESUME epoch 0 buffer 0"))
+    with pytest.raises(ValueError, match="wrong buffer"):
+        smoke_result(out)
+    status_path.write_text("\n".join(status.splitlines()[:-1]))
+    with pytest.raises(ValueError, match="successful trainer terminal"):
+        smoke_result(out)
+    status_path.write_text(status.replace(f" steps={second['steps']} ", f" steps={second['steps'] + 1} "))
+    with pytest.raises(ValueError, match="optimizer progress"):
+        smoke_result(out)
+    status_path.write_text(status)
+    prefix["steps"] += 1
+    (out / "epoch-1-buffer-1.json").write_text(json.dumps(prefix))
+    with pytest.raises(ValueError, match="prefix report"):
+        smoke_result(out)
 
 
 @mps

@@ -13,6 +13,7 @@ from sz2_joint_segment import RECIPE, RECIPE_SHA, joint_args
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BOUNDARY = 400
+SMOKE_BOUNDARY = 1
 DEVICE = "mps"
 ARCHITECTURE = {
     depth: f"d={48 * depth},heads={depth},enc_layers={depth},xattn_layers={depth},x_hidden=256"
@@ -29,7 +30,7 @@ def _train_args(phase, root, recipe):
     depth = 6 if phase == "M" else 8
     directory = "L" if phase in ("L-prefix", "L-finish") else phase
     args = joint_args(recipe, ["--scratch-arch", ARCHITECTURE[depth]], root / directory / "train", DEVICE,
-                      None if smoke else BOUNDARY, phase == "L-prefix")
+                      SMOKE_BOUNDARY if smoke else BOUNDARY, phase == "L-prefix")
     args.extend(["--microbatch-rounds", "4"])
     if smoke:
         args.extend(["--max-train-rows", "120000", "--capacity-stats"])
@@ -37,31 +38,71 @@ def _train_args(phase, root, recipe):
 
 
 def smoke_result(directory):
-    """Read the trainer's completed capacity measurement and final calibration."""
+    """Read both completed training legs and the final calibration."""
     lines = (directory / "status.log").read_text().splitlines()
     best = directory / "best.pt"
     if not lines or not re.fullmatch(rf"\S+ UTR DONE best={re.escape(str(best))} sha256=[0-9a-f]{{64}}", lines[-1]):
         raise ValueError("large smoke has no successful trainer terminal")
     if not all(path.is_file() and path.stat().st_size for path in (best, directory / "checkpoint.pt")):
         raise ValueError("large smoke did not save the best and resumable checkpoints")
-    sample, = [json.loads(line.split(" CAPACITY ", 1)[1]) for line in lines if " CAPACITY " in line]
-    for field in ("rows", "steps", "post_step_max_tensor_bytes", "post_step_max_driver_bytes"):
-        if type(sample.get(field)) is not int or sample[field] <= 0:
-            raise ValueError(f"large smoke lacks a positive {field}")
-    for field in ("train_seconds", "rows_per_second"):
-        if not math.isfinite(sample[field]) or sample[field] <= 0:
-            raise ValueError(f"large smoke lacks a finite positive {field}")
-    start, = [line for line in lines if " UTR START " in line]
-    selected = re.search(r" rows=([1-9][0-9]*) ", start)
-    if not selected or sample["epoch"] != 1 or sample["rows"] != int(selected[1]):
+
+    events = []
+    for line in lines:
+        event = re.fullmatch(r"\S+ (UTR START|CAPACITY|UTR PAUSED|RESUME|EPOCH|UTR DONE|UTR ABORT|STOPPED) (.*)", line)
+        if event:
+            events.append(event.groups())
+    if [name for name, _ in events] != ["UTR START", "CAPACITY", "UTR PAUSED", "RESUME", "CAPACITY", "EPOCH", "UTR DONE"]:
+        raise ValueError("large smoke lacks the split training terminals and two capacity samples")
+    start, first, pause, resume, second, epoch, _ = (text for _, text in events)
+    started = re.fullmatch(r".* rows=([1-9][0-9]*) chunks=[1-9][0-9]* buffers=([1-9][0-9]*) .* device=mps", start)
+    if not started:
+        raise ValueError("large smoke lacks the selected rows and buffer count")
+    selected_rows, buffers = map(int, started.groups())
+    if (buffers <= SMOKE_BOUNDARY or
+            pause != f"at epoch 1 buffer {SMOKE_BOUNDARY}/{buffers} (report boundary); checkpoint saved" or
+            resume != f"epoch 0 buffer {SMOKE_BOUNDARY} device=mps"):
+        raise ValueError("large smoke paused or resumed at the wrong buffer")
+
+    samples = [json.loads(first), json.loads(second)]
+    memory_fields = ("post_step_max_tensor_bytes", "post_step_max_driver_bytes")
+    for sample in samples:
+        if not isinstance(sample, dict):
+            raise ValueError("large smoke capacity sample is not a JSON object")
+        for field in ("rows", "steps", *memory_fields):
+            if type(sample.get(field)) is not int or sample[field] <= 0:
+                raise ValueError(f"large smoke lacks a positive {field}")
+        for field in ("train_seconds", "rows_per_second"):
+            if type(sample.get(field)) not in (int, float) or not math.isfinite(sample[field]) or sample[field] <= 0:
+                raise ValueError(f"large smoke lacks a finite positive {field}")
+        if (type(sample.get("epoch")) is not int or sample["epoch"] != 1 or sample["steps"] > sample["rows"] or
+                sample["post_step_max_driver_bytes"] < sample["post_step_max_tensor_bytes"] or
+                not math.isclose(sample["rows_per_second"], sample["rows"] / sample["train_seconds"])):
+            raise ValueError("large smoke has an inconsistent capacity sample")
+
+    report = json.loads((directory / f"epoch-1-buffer-{SMOKE_BOUNDARY}.json").read_text())
+    prefix = dict(epoch=1, completed_buffers=SMOKE_BOUNDARY, rows=samples[0]["rows"], steps=samples[0]["steps"])
+    if (not isinstance(report, dict) or
+            any(type(report.get(field)) is not int or report[field] != expected for field, expected in prefix.items()) or
+            type(report.get("leaves")) is not int or report["leaves"] <= 0):
+        raise ValueError("large smoke prefix report does not match its capacity sample")
+
+    rows = sum(sample["rows"] for sample in samples)
+    train_seconds = sum(sample["train_seconds"] for sample in samples)
+    if rows != selected_rows or not math.isfinite(train_seconds):
         raise ValueError("large smoke did not cover its selected rows")
-    epoch, = [line for line in lines if " EPOCH 1 train " in line]
-    calibration = epoch.split(" calib ", 1)[1]
+    epoch_parts = epoch.split(" calib ", 1)
+    if len(epoch_parts) != 2 or not epoch_parts[0].startswith("1 train "):
+        raise ValueError("large smoke has no first-epoch calibration")
+    calibration = epoch_parts[1]
     calib, end = json.JSONDecoder().raw_decode(calibration)
-    if not calibration[end:].startswith(f" steps={sample['steps']} ") or not all(
-            math.isfinite(calib[name]) for name in ("belief_ll", "leaf_value_end", "policy")):
+    if (not isinstance(calib, dict) or not re.fullmatch(rf" steps={samples[1]['steps']} \(\d+s\)", calibration[end:]) or
+            not all(type(calib.get(name)) in (int, float) and math.isfinite(calib[name])
+                    for name in ("belief_ll", "leaf_value_end", "policy"))):
         raise ValueError("large smoke calibration or optimizer progress is invalid")
-    return dict(capacity=sample, calibration=calib)
+    capacity = dict(epoch=1, rows=rows, steps=sum(sample["steps"] for sample in samples),
+                    train_seconds=train_seconds, rows_per_second=rows / train_seconds)
+    capacity.update((field, max(sample[field] for sample in samples)) for field in memory_fields)
+    return dict(capacity=capacity, calibration=calib)
 
 
 def _large_can_resume(status, device):

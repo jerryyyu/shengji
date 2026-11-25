@@ -456,6 +456,11 @@ def _train(args, out: Path, status: str) -> int:
     calib_rounds = min(getattr(args, "microbatch_rounds", None) or 32, 32)
     report_buffer = getattr(args, "report_buffer", None)
     pause_at_report = getattr(args, "pause_at_report", False)
+    expect_resume_buffer = getattr(args, "expect_resume_buffer", None)
+    capture_capacity = getattr(args, "capacity_stats", False)
+    ck = out / "checkpoint.pt"
+    if expect_resume_buffer is not None and (expect_resume_buffer < 0 or not ck.is_file()):
+        raise UnifiedReadoutError("--expect-resume-buffer requires a nonnegative cursor and an existing checkpoint")
     if pause_at_report and report_buffer is None:
         raise UnifiedReadoutError("--pause-at-report requires --report-buffer")
     import torch
@@ -519,6 +524,8 @@ def _train(args, out: Path, status: str) -> int:
     n_buffers = math.ceil(len(stream.entries) / args.buffer_chunks)
     if report_buffer is not None and not 0 < report_buffer < n_buffers:
         raise UnifiedReadoutError("--report-buffer must be an interior buffer boundary")
+    if expect_resume_buffer is not None and expect_resume_buffer >= n_buffers:
+        raise UnifiedReadoutError("--expect-resume-buffer must be within the selected epoch")
     total = args.epochs * n_buffers
 
     def lr_scale(step):
@@ -547,18 +554,20 @@ def _train(args, out: Path, status: str) -> int:
             return np.asarray([float(loss[k].detach()) for k in SUM_KEYS])
         return stats
 
-    ck = out / "checkpoint.pt"
     state = {"epoch": 0, "buffer": 0, "history": [], "best": float("inf")}
-    if ck.exists():
+    if ck.exists() or expect_resume_buffer is not None:
         saved = torch.load(ck, weights_only=False, map_location="cpu")
         was = (saved.get("run") or {}).get("device", "cpu")
         if was != args.device:
             raise UnifiedReadoutError(f"resume: the checkpoint was trained with --device {was}, not --device {args.device}")
         if saved.get("run") != _run_identity(args):
             raise UnifiedReadoutError("resume: the run's settings differ from the checkpoint's")
+        state = saved["state"]
+        if expect_resume_buffer is not None and (state["epoch"] != 0 or state["buffer"] != expect_resume_buffer):
+            raise UnifiedReadoutError(f"resume: expected epoch 0 buffer {expect_resume_buffer}, "
+                                      f"found epoch {state['epoch']} buffer {state['buffer']}")
         model.load_state_dict(saved["model"])
         opt.load_state_dict(saved["opt"])
-        state = saved["state"]
         _status(status, f"RESUME epoch {state['epoch']} buffer {state['buffer']}"
                         + ("" if device.type == "cpu" else f" device={args.device}"))
     else:
@@ -586,10 +595,12 @@ def _train(args, out: Path, status: str) -> int:
         torch.save({"schema": CKPT_SCHEMA, "model": weights(), "config": model.config, "epoch": epoch,
                     "calib": cm, "init_calib": state.get("init_calib"), "run": _run_identity(args)}, out / "best.pt")
 
-    def write_report(epoch, buffer, sums):
+    def write_report(epoch, buffer, sums, *, steps=None):
         totals = dict(zip(SUM_KEYS, sums))
         report = {"epoch": epoch + 1, "completed_buffers": buffer, "rows": int(totals["rows"]),
                   "leaves": int(totals["leaves"]), "train": means(sums)}
+        if steps is not None:
+            report["steps"] = steps
         path = out / f"epoch-{epoch + 1}-buffer-{buffer}.json"
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(report, allow_nan=False) + "\n")
@@ -600,10 +611,23 @@ def _train(args, out: Path, status: str) -> int:
                         "(STOP file or --max-seconds); checkpoint saved")
         return 3
 
-    def pause():
-        write_report(0, report_buffer, state["epoch_sums"])
+    def capacity_sample(epoch, rows, steps, train_start, tensor_bytes, driver_bytes):
+        train_seconds = time.monotonic() - train_start
+        sample = dict(epoch=epoch + 1, rows=rows, steps=steps, train_seconds=train_seconds,
+                      rows_per_second=rows / train_seconds)
+        if device.type == "mps":
+            sample.update(post_step_max_tensor_bytes=tensor_bytes, post_step_max_driver_bytes=driver_bytes)
+        return sample
+
+    def pause(capacity=None):
+        if capacity is not None:
+            write_report(0, report_buffer, state["epoch_sums"], steps=capacity["steps"])
+        elif not capture_capacity or not (out / f"epoch-1-buffer-{report_buffer}.json").is_file():
+            write_report(0, report_buffer, state["epoch_sums"])
         if (out / "STOP").exists():
             return stopped()
+        if capacity is not None:
+            _status(status, f"CAPACITY {json.dumps(capacity, allow_nan=False)}")
         _status(status, f"{LANE} PAUSED at epoch 1 buffer {report_buffer}/{n_buffers} "
                         "(report boundary); checkpoint saved")
         return 7
@@ -619,7 +643,6 @@ def _train(args, out: Path, status: str) -> int:
         epoch, t0, sums, cur, steps = state["epoch"], time.time(), np.zeros(len(SUM_KEYS)), state["buffer"], 0
         if report_buffer is not None and cur:
             sums[:] = state["epoch_sums"]
-        capture_capacity = getattr(args, "capacity_stats", False)
         if capture_capacity:
             train_start = time.monotonic()
             trained_rows = tensor_bytes = driver_bytes = 0
@@ -632,8 +655,12 @@ def _train(args, out: Path, status: str) -> int:
                     state["epoch_sums"] = sums.tolist()
                     if gi == report_buffer:
                         if pause_at_report:
+                            capacity = (
+                                capacity_sample(epoch, trained_rows, steps, train_start, tensor_bytes, driver_bytes)
+                                if capture_capacity and steps else None
+                            )
                             save()
-                            return pause()
+                            return pause(capacity)
                         write_report(epoch, gi, sums)
                 if time.time() - last_save > args.save_every:
                     save()
@@ -656,11 +683,7 @@ def _train(args, out: Path, status: str) -> int:
         if pause_at_report:
             raise UnifiedReadoutError("training ended before the requested report boundary")
         if capture_capacity:
-            train_seconds = time.monotonic() - train_start
-            capacity = dict(epoch=epoch + 1, rows=trained_rows, steps=steps, train_seconds=train_seconds,
-                            rows_per_second=trained_rows / train_seconds)
-            if device.type == "mps":
-                capacity.update(post_step_max_tensor_bytes=tensor_bytes, post_step_max_driver_bytes=driver_bytes)
+            capacity = capacity_sample(epoch, trained_rows, steps, train_start, tensor_bytes, driver_bytes)
             _status(status, f"CAPACITY {json.dumps(capacity, allow_nan=False)}")
         cm = evaluate(model, calib, rounds_per_batch=calib_rounds, device=device)
         state["history"].append({"epoch": epoch + 1, "train": means(sums), "calib": cm, "seconds": time.time() - t0})
@@ -1135,12 +1158,14 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--rounds-per-batch", type=int, default=16)
     t.add_argument("--max-train-rows", type=int, default=None)
     t.add_argument("--capacity-stats", action="store_true",
-                   help="report completed training throughput and post-step MPS allocation samples")
+                   help="report throughput and post-step MPS allocations for each completed training leg")
     t.add_argument("--max-steps", type=int, default=None)
     t.add_argument("--calib-rows", type=int, default=180000)
     t.add_argument("--report-buffer", type=int, help="write cumulative epoch losses at this interior buffer boundary")
     t.add_argument("--pause-at-report", action="store_true",
                    help="checkpoint and exit 7 at the first epoch's report boundary; omit to continue")
+    t.add_argument("--expect-resume-buffer", type=int,
+                   help="require a matching first-epoch checkpoint at this buffer before training")
     t.add_argument("--save-every", type=float, default=600.0)
     t.add_argument("--exclude-seed-window", type=bs.seed_window, action="append", default=[])
     t.add_argument("--corpus-weight", action="append", default=[],

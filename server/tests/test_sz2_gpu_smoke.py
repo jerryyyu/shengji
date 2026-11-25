@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -444,7 +445,12 @@ def test_large_smoke_uses_scratch_emitter_and_preserves_partial_output(host):
     (scripts / "sz2_joint_segment.py").rename(scripts / "sz3_joint_recipe.py")
     (directory / "phase").write_text("L-smoke")
     (directory / "trainer_rc").write_text("3")
-    args = [*command, "--phase", "L-smoke"]
+    refused = invoke(host, "--phase", "L-smoke")
+    assert refused.returncode == 1 and "positive --min-free-gib" in refused.stderr
+    refused = invoke(host, "--phase", "L-smoke", "--min-free-gib", "999999999")
+    assert refused.returncode == 1 and "disk guard:" in refused.stderr
+    assert not log.exists() and not (directory / "reserved/L-smoke").exists()
+    args = [*command, "--phase", "L-smoke", "--min-free-gib", "1"]
     stopped = subprocess.run(args, capture_output=True, text=True, timeout=10)
     assert stopped.returncode == 1 and "L-smoke trainer exited 3" in stopped.stderr
     assert events(log) == ["stop", "train", "restart"]
@@ -455,6 +461,65 @@ def test_large_smoke_uses_scratch_emitter_and_preserves_partial_output(host):
     assert refused.returncode == 1 and "already exists" in refused.stderr
     assert (partial / "progress").read_text() == "partial"
     assert events(log) == ["stop", "train", "restart"]
+
+
+def test_large_smoke_losing_disk_headroom_restores_provider(host):
+    supervisor, directory, log = host
+    scripts = directory / "server/scripts"
+    (scripts / "sz2_joint_segment.py").rename(scripts / "sz3_joint_recipe.py")
+    (directory / "phase").write_text("L-smoke")
+    (directory / "slow_trainer").touch()
+    bootstrap = supervisor.index("-c") + 1
+    supervisor[bootstrap] = supervisor[bootstrap].replace("sys.exit(w.main())", """
+from types import SimpleNamespace
+w.shutil.disk_usage = lambda path: SimpleNamespace(
+    free=0 if (d / "events").exists() and "train " in (d / "events").read_text() else 2**32)
+sys.exit(w.main())
+""")
+    cp = invoke(host, "--phase", "L-smoke", "--min-free-gib", "1")
+    assert cp.returncode == 1 and "disk guard: 0 bytes" in cp.stderr
+    assert events(log) == ["stop", "train", "restart"]
+    assert (directory / "reserved/L-smoke").is_dir()
+
+
+def test_large_smoke_resumes_the_real_trainer_and_consumes_its_capacity(host):
+    torch = pytest.importorskip("torch")
+    if not torch.backends.mps.is_available():
+        pytest.skip("the smoke measures MPS allocations")
+    from test_unified_readout_device import SCRATCH, make_data
+
+    supervisor, directory, log = host
+    data = make_data(directory / "data")
+    recipe = directory / "recipe.json"
+    recipe.write_text(json.dumps(dict(
+        data=[str(data)], calib_data=[str(data)], epochs=1, lr=3e-5, head_lr=9e-5,
+        readout_lr=1.5e-4, head_warmup_buffers=0, weight_decay=0.01, belief_weight=1,
+        q_weight=1, policy_weight=1, value_weight=1, reply_weight=1, seed=1,
+        buffer_chunks=1, rounds_per_batch=1, calib_rows=10000, store_map=[],
+        corpus_weight=[], exclude_seed_window=[],
+    )))
+    emitter = directory / "server/scripts/sz3_joint_recipe.py"
+    emitter.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(WORKER.parent)!r})\n"
+        "import sz3_joint_recipe as sz3\n"
+        f"sz3.RECIPE_SHA = {hashlib.sha256(recipe.read_bytes()).hexdigest()!r}\n"
+        f"sz3.ARCHITECTURE[8] = {SCRATCH!r}\n"
+        f"sz3.main([*sys.argv[1:], '--recipe', {str(recipe)!r}])\n"
+    )
+    cp = subprocess.run([*supervisor, "--phase", "L-smoke", "--min-free-gib", "1"],
+                        env={**os.environ, "PYTHONPATH": str(WORKER.parents[1])},
+                        capture_output=True, text=True, timeout=60)
+    assert cp.returncode == 0, (cp.stdout, cp.stderr)
+    result = json.loads(cp.stdout.splitlines()[-1])
+    assert result["capacity"]["rows"] == 344 and result["capacity"]["steps"] == 4
+    assert result["capacity"]["post_step_max_driver_bytes"] > 0
+    training = directory / "reserved/L-smoke/train"
+    status = (training / "status.log").read_text()
+    assert " UTR PAUSED at epoch 1 buffer 1/" in status
+    assert " RESUME epoch 0 buffer 1 device=mps" in status
+    assert " UTR DONE " in status.splitlines()[-1]
+    assert events(log) == ["stop", "restart"]
 
 
 @pytest.mark.parametrize("failed", [None, "M 0", "M 1", "M 2", "polish", "export", "disk"])

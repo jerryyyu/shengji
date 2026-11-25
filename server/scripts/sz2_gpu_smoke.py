@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -254,7 +255,7 @@ def monitor(child, baseline, check_signal, verify_stopped, *, pressure_limit=4, 
                 child.wait(timeout=5)
 
 
-def run_segment(root, phase, check_signal, expected_sha=None):
+def run_segment(root, phase, check_signal, expected_sha=None, min_free_gib=None):
     expected_sha = provider_digest(expected_sha)
     root = root.resolve(strict=True)
     smoke = phase in ("smoke", "L-smoke")
@@ -262,6 +263,18 @@ def run_segment(root, phase, check_signal, expected_sha=None):
     emitter = "sz3_joint_recipe.py" if phase == "L-smoke" else "sz2_joint_segment.py"
     if smoke and os.path.lexists(output):
         raise RuntimeError(f"smoke output already exists: {output}")
+    if phase == "L-smoke" and (min_free_gib is None or min_free_gib <= 0):
+        raise ValueError("L-smoke requires a positive --min-free-gib")
+
+    def guard():
+        check_signal()
+        if min_free_gib is not None:
+            free = shutil.disk_usage(root).free
+            print(f"disk free_bytes={free} floor_gib={min_free_gib} path={root}", flush=True)
+            if free < min_free_gib * 1024 ** 3:
+                raise RuntimeError(f"disk guard: {free} bytes free at {root}, floor {min_free_gib} GiB")
+
+    guard()
     try:
         argv = json.loads(command(sys.executable, "-B", SCRIPTS / emitter, phase,
                                   "--root", root, timeout=60))
@@ -274,21 +287,38 @@ def run_segment(root, phase, check_signal, expected_sha=None):
     _, pressure = memory_sample()
     if pressure >= 4:
         raise RuntimeError("memory pressure too high to start trainer")
-    check_signal()
+    guard()
     if smoke:
         output.mkdir()
     gpu = phase != "small"
-    provider = darkbloom_stopped(check_signal, expected_sha) if gpu else nullcontext(check_signal)
+    provider = darkbloom_stopped(guard, expected_sha) if gpu else nullcontext(check_signal)
     with provider as verify_stopped:
         baseline, pressure = memory_sample()
         if pressure >= 4:
             raise RuntimeError("memory pressure too high to start trainer")
-        verify_stopped()
-        check_signal()
-        child = subprocess.Popen(argv, cwd=SCRIPTS.parent, env={**os.environ, "OMP_NUM_THREADS": "4" if gpu else "16"},
-                                 stdin=subprocess.DEVNULL)
-        rc = monitor(child, baseline, check_signal, verify_stopped)
-    check_signal()
+
+        def train(command_line):
+            verify_stopped()
+            guard()
+            child = subprocess.Popen(command_line, cwd=SCRIPTS.parent,
+                                     env={**os.environ, "OMP_NUM_THREADS": "4" if gpu else "16"},
+                                     stdin=subprocess.DEVNULL)
+            return monitor(child, baseline, guard, verify_stopped)
+
+        if phase == "L-smoke":
+            rc = train([*argv, "--pause-at-report"])
+            if rc != 7:
+                raise RuntimeError(f"L-smoke trainer exited {rc} before its checkpoint pause")
+            directory = output / "train"
+            last = (directory / "status.log").read_text().splitlines()
+            if not last or not re.fullmatch(
+                    r"\S+ UTR PAUSED at epoch 1 buffer 1/[1-9][0-9]* \(report boundary\); checkpoint saved", last[-1]):
+                raise RuntimeError("L-smoke lacks the expected trainer pause")
+            if os.path.lexists(directory / "STOP"):
+                raise RuntimeError("L-smoke operator STOP present before continuation")
+            argv = [*argv, "--expect-resume-buffer", "1"]
+        rc = train(argv)
+    guard()
     if not smoke and rc == 3:
         return 3
     if phase == "medium-prefix" and rc == 7:
@@ -305,8 +335,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("--phase", choices=("smoke", "L-smoke", "small", "medium-prefix", "medium-finish"), default="smoke")
+    parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
     args = parser.parse_args()
+    if args.min_free_gib is not None and args.min_free_gib <= 0:
+        parser.error("--min-free-gib must be positive")
     received = None
 
     def mark_signal(signum, _frame):
@@ -320,7 +353,7 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, mark_signal)
     try:
-        return run_segment(args.root, args.phase, check_signal, args.provider_sha256)
+        return run_segment(args.root, args.phase, check_signal, args.provider_sha256, args.min_free_gib)
     except RestoreUnverified as exc:
         print(exc, file=sys.stderr, flush=True)
         return 9

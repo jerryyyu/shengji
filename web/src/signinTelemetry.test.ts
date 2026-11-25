@@ -59,7 +59,8 @@ describe("platform", () => {
     t.tap("play");
     t.flush();
     expect(sent[0]).toMatchObject({ type: "client_event", v: 1, platform: "ios_app" });
-    expect(Object.keys(sent[0]).sort()).toEqual(["events", "first_visit", "form", "platform", "type", "v"]);
+    expect(Object.keys(sent[0]).sort()).toEqual(["days_since_first", "events", "first_visit", "form", "lang",
+                                                 "platform", "session_n", "type", "v"]);
   });
 });
 
@@ -122,6 +123,11 @@ describe("no identifier in any payload", () => {
     for (const step of ["created", "restored", "fell_back_guest", "linked", "conflict_shown", "switched"] as const) {
       t.deviceAccount(step);
     }
+    t.appOpen(true, 900);
+    t.roundStart("friend", 2, 3);
+    t.roundFinish("friend", "closed", 4);
+    t.offlineDigest({ rounds_started: 2, rounds_finished: 1, nearby_rounds: 0 });
+    t.howtoStep(4, false);
     t.flush();
     const text = JSON.stringify(sent);
     // nothing shaped like a JWT, an email, a hex secret, or free text
@@ -129,7 +135,8 @@ describe("no identifier in any payload", () => {
     const walk = (v: unknown): void => {
       if (Array.isArray(v)) v.forEach(walk);
       else if (v && typeof v === "object") Object.values(v).forEach(walk);
-      else if (typeof v === "string") expect(v).toMatch(/^[a-z_-]{1,24}$/);
+      // enum words, or a bucket such as "2-7" or "31+"
+      else if (typeof v === "string") expect(v).toMatch(/^(?:[a-z_-]{1,24}|\d{1,2}(?:-\d{1,2}|\+)?)$/);
       else expect(["number", "boolean"]).toContain(typeof v);
     };
     walk(sent);

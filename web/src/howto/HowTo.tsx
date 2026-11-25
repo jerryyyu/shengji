@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { canAnimate } from "../motion";
 import type { ReactNode, TouchEvent } from "react";
 import type { GameState, Trick } from "../protocol";
@@ -8,7 +8,7 @@ import { closeHowto, openHowto } from "./route";
 import type { HowtoRoute } from "./route";
 import Picture from "./Picture";
 import type { Frame } from "./useTimeline";
-import { useScreen } from "../telemetry";
+import { telemetry, useScreen } from "../telemetry";
 import { t, tx, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
 
@@ -553,6 +553,11 @@ function Stepper({ step }: { step: number }) {
   const i = Math.min(Math.max(step, 1), n) - 1;
   const s = STEPS[i];
   const go = (to: number) => openHowto(Math.min(Math.max(to, 1), n));
+  useEffect(() => { telemetry.howtoStep(i + 1, false); }, [i]);
+  const startPlaying = () => {
+    telemetry.howtoStep(n, true);
+    closeHowto();
+  };
   return (
     <div className="panel games-panel howto-panel">
       <Head count={t("howto.count", { n: i + 1, count: n })} />
@@ -577,7 +582,7 @@ function Stepper({ step }: { step: number }) {
         <div className="howto-buttons">
           {i < n - 1
             ? <button className="btn primary big" onClick={() => go(i + 2)}>{t("howto.next")}</button>
-            : <button className="btn gold big" onClick={closeHowto}>{t("howto.startPlaying")}</button>}
+            : <button className="btn gold big" onClick={startPlaying}>{t("howto.startPlaying")}</button>}
         </div>
       </nav>
     </div>

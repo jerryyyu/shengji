@@ -28,6 +28,7 @@ import { LOW_SECS, MOVE_SECS, useMoveClockSample } from "../useMoveClock";
 import { NUDGE_MS, coachFor, coachShows, isNewcomer, playsMade, recordPlay, subscribeCoach, useAccountNewcomer, useCoachSetting } from "../firstTurns";
 import { showToast } from "../toast";
 import { TurnClock, leadKind, nextTurnNumber, telemetry, useScreen } from "../telemetry";
+import { rounds } from "../roundTelemetry";
 import { bankerText, buryHelp, buryPointsText, declareHelp, seatStatus, seatStatusParts } from "../tableCopy";
 import { displayName, t, useT } from "../i18n";
 import type { MessageKey } from "../i18n";
@@ -302,7 +303,7 @@ function JoinPillLeave({ ranked, guest }: { ranked: boolean; guest: boolean }) {
       {asking ? (
         <LeaveSheet context={{ kind: "game", ranked, guest }}
                     onStay={() => setAsking(false)}
-                    onLeave={() => { conn.send({ type: "table_leave" }); setAsking(false); }} />
+                    onLeave={() => { rounds.left(); conn.send({ type: "table_leave" }); setAsking(false); }} />
       ) : null}
     </>
   );

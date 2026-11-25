@@ -4,6 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import HudMenu from "./HudMenu";
 import { isMuted, setMuted } from "../audio";
 import { auth } from "../auth";
+import { rounds } from "../roundTelemetry";
 
 const sent: unknown[] = [];
 vi.mock("../ws", () => ({ conn: { send: (m: unknown) => { sent.push(m); }, reconnect: () => {} } }));
@@ -69,8 +70,11 @@ describe("the table's ⋯ menu", () => {
     const alert = v.host.querySelector("[role='alertdialog']")!;
     expect(alert.textContent).toContain("Leave the game?");
     expect(alert.querySelector("p")).toBeNull();   // a casual round costs nothing
+    const left = vi.spyOn(rounds, "left");
     act(() => alert.querySelector<HTMLButtonElement>(".leave-sheet-leave")!.click());
     expect(sent).toEqual([{ type: "table_leave" }]);
+    expect(left).toHaveBeenCalledTimes(1);     // the round's telemetry says you left it
+    left.mockRestore();
     expect(v.host.querySelector("[role='alertdialog']")).toBeNull();
     v.unmount();
   });

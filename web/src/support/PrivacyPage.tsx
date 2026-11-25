@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import InfoHead from "./InfoHead";
 import { followInfoLink } from "./route";
 
-export const PRIVACY_UPDATED = "2026-11-22";
+export const PRIVACY_UPDATED = "2026-11-25";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -164,12 +164,20 @@ export default function PrivacyPage() {
             To find where the app is confusing or slow, it sends our server short usage events: which
             screen you opened and how long you stayed on the one before, which of a fixed set of
             buttons you tapped, how long a turn took and how often you changed your selection, which
-            notices you saw, the steps of a sign-in (which button, and whether it went through), and
-            when you joined or left the queue and how long you waited. Each event also says whether you
+            notices you saw, the steps of a sign-in (which button, and whether it went through), when
+            you joined or left the queue (ranked or casual) and how long you waited, when the app opened,
+            which How to play steps you saw, and when a round started and how it ended (the kind of
+            table, how many bots, how many tricks, whether your side won, or whether you left). Rounds
+            played on your device, offline or nearby, are only counted, and the counts are sent the next
+            time you are online. Each event also says whether you
             were a guest, signed in only on this device, or signed in with Apple or Google (not who),
             whether you were in the iPhone app, a browser or the site added to your home screen, whether
             the screen is a phone, a phone on its side or wide, whether this is the first visit on this
-            device, the app version, and a random id that lasts for one connection. Each sign-in is also
+            device, roughly how long ago this device first opened the game (the same day, the next day,
+            within a week, a month, or longer) and how many visits it has made (one, two, a few, or
+            more), the app's language, the app version, and a random id that lasts for one connection.
+            To tell those, your device keeps the day it first opened the game and a count of its
+            visits; only the rough ranges are sent. Each sign-in is also
             counted, by Apple or Google and whether it made a new account, with no id at all.
           </p>
           <p>

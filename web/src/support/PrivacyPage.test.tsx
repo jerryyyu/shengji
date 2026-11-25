@@ -21,7 +21,7 @@ describe("the privacy page", () => {
                               "IP addresses and server logs", "Where it is kept", "Deleting your account",
                               "Children", "Automated play", "Contact"]);
     const text = host.textContent ?? "";
-    expect(text).toContain("Last updated 2026-11-22");
+    expect(text).toContain("Last updated 2026-11-25");
     expect(text).toContain("From version 1.0.1, the iOS app makes you an account");
     expect(text).toContain("It is not synced to iCloud");
     expect(text).toContain("deleted after 30 days unused");

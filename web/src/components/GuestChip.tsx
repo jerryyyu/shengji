@@ -10,6 +10,7 @@ import { randomName } from "../randomName";
 import Sheet from "../queue/Sheet";
 import GoogleSignIn, { SignInUnavailable } from "./GoogleSignIn";
 import { followInfoLink } from "../support/route";
+import { useScreen } from "../telemetry";
 
 /** A guest's chip, in the signed-in chip's place: the name's initial, the
  *  name, the guest line where a rating would be, and a pencil, since a tap
@@ -51,6 +52,7 @@ export function IdentitySheet() {
   useEffect(() => {
     if (signedIn && editing) guestName.close();
   }, [signedIn, editing]);
+  useScreen("name_sheet", editing && !signedIn);
   if (!editing || signedIn) return null;
   const sheet = device ? <DeviceSheet account={account} user={device} /> : <GuestSheet account={account} />;
   return host ? createPortal(sheet, host) : sheet;

@@ -10,6 +10,8 @@ import { panelKind, presenceParts, shortName } from "./tableText";
 import "./playLines.css";
 import { clock, queue, useNow, useQueue } from "./store";
 import { tx, useT } from "../i18n";
+import { telemetry } from "../telemetry";
+import { rounds } from "../roundTelemetry";
 import type { MessageKey } from "../i18n";
 
 /** The ranked mark: a trophy. */
@@ -224,7 +226,8 @@ export function RankedSection({ online, room = null }: {
       {pairRow}
       {cooling && !q.cooldownTold ? <p className="play-cool-line">{t("home.coolLine")}</p> : null}
       <PlayRow label={label} disabled={disabled} busy={joining} duoDisabled={disabled}
-               onPlay={() => queue.join()} onDuo={() => queue.joinDuo()} />
+               onPlay={() => { telemetry.tap("play"); rounds.noteEntry("queue"); queue.join(); }}
+               onDuo={() => { telemetry.tap("duo"); rounds.noteEntry("friend"); queue.joinDuo(); }} />
       {cooling ? null : <PresenceLine q={q} online={online} />}
     </>
   );

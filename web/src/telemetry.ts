@@ -1,14 +1,18 @@
 // UI flow telemetry: a few allow-listed events about how people move through
 // the app, batched to the server as `client_event`. Nothing here carries a
-// name, chat, room code or card: only enum ids and bounded counts, and the
-// server drops anything else. Practice games (no server) send nothing: while
-// the page is offline or in a nearby game nothing is collected, and what was buffered on either
-// side of a switch is dropped there. No call here ever throws into the UI.
+// name, chat, room code or card: only enum ids, buckets and bounded counts,
+// and the server drops anything else. Practice games (no server) send no
+// events: while the page is offline or in a nearby game nothing is
+// collected, and what was buffered on either side of a switch is dropped
+// there; only the counts of offlineDigest.ts reach the next online socket.
+// No call here ever throws into the UI.
 import { useEffect } from "react";
 import { conn } from "./ws";
 import { NEARBY_SESSION, OFFLINE, subscribeOffline } from "./offlineMode";
 import { subscribeLink, type DropCause } from "./link";
 import { setReviewReporter, type Trigger as ReviewTrigger } from "./reviewPrompt";
+import { isZh } from "./i18n";
+import { DeviceStamps, playedBefore, type Lang } from "./telemetryStamps";
 
 export type Screen =
   | "play" | "howto" | "name_sheet" | "duo_sheet" | "room" | "waiting_table"
@@ -40,6 +44,26 @@ export type Platform = "ios_app" | "pwa" | "web";
 
 export type LeadKind = "single" | "pair" | "tractor" | "throw";
 
+/** The client's view of a round's table: a ranked (matched) one, a casual
+ *  queue table, a friends' table (a code, a Duo, a saved game's Continue),
+ *  a tutorial, or the device's own server. Offline and nearby rounds are
+ *  never sent as rounds, only counted in the offline digest. */
+export type RoundMode = "ranked" | "casual" | "friend" | "tutorial" | "offline" | "nearby";
+/** What ended a round as the page saw it: its round end, your Leave, or
+ *  the page closing mid-round (said on the next load). */
+export type RoundBy = "end" | "left" | "closed";
+
+export interface OfflineCounts {
+  rounds_started: number;
+  rounds_finished: number;
+  nearby_rounds: number;
+}
+
+/** app_open's time to the first open socket is capped here. */
+export const MAX_SOCKET_MS = 120_000;
+/** round_start's count of rounds since the page loaded stops here. */
+export const MAX_ROUNDS_PER_LOAD = 50;
+
 export interface TurnDone {
   phase: "play" | "bury";
   lead?: LeadKind;
@@ -59,7 +83,12 @@ type Event =
   | ({ e: "turn_done"; t: number } & TurnDone)
   | { e: "tap"; t: number; id: TapId; from?: SigninFrom }
   | { e: "signin"; t: number; step: SigninStep; provider?: Provider }
-  | { e: "device_account"; t: number; step: DeviceStep }
+  | { e: "device_account"; t: number; step: DeviceStep; first_round_before: boolean }
+  | { e: "app_open"; t: number; cold: boolean; ms_to_socket?: number }
+  | { e: "round_start"; t: number; mode: RoundMode; bots: number; nth_round_this_load: number }
+  | { e: "round_finish"; t: number; mode: RoundMode; by: RoundBy; won?: boolean; tricks_played: number }
+  | ({ e: "offline_digest"; t: number } & OfflineCounts)
+  | { e: "howto_step"; t: number; step: number; done: boolean }
   | { e: "notice"; t: number; code: string; where: Screen | "toast" | "other"; cause?: DropCause; ms?: number }
   | { e: "review_prompt"; t: number; trigger: ReviewTrigger; version: string };
 
@@ -116,6 +145,16 @@ export function platform(): Platform {
   }
 }
 
+function lang(): Lang {
+  try {
+    return isZh() ? "zh" : "en";
+  } catch {
+    return "en";
+  }
+}
+
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)));
+
 export class Telemetry {
   private buf: Event[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -124,16 +163,28 @@ export class Telemetry {
   private seen: boolean | null = null;
   private readonly send: Send;
   private readonly on: () => boolean;
+  /** The device's first-seen and session buckets, stamped on each batch. */
+  readonly stamps: DeviceStamps;
 
   /** `enabled` is read at each event and flush, so a page whose mode
    *  changes collects only while it is on. */
-  constructor(send: Send, enabled: boolean | (() => boolean)) {
+  constructor(send: Send, enabled: boolean | (() => boolean), stamps: DeviceStamps = new DeviceStamps()) {
     this.send = send;
     this.on = typeof enabled === "function" ? enabled : () => enabled;
+    this.stamps = stamps;
   }
 
   private get enabled(): boolean {
     return this.on();
+  }
+
+  /** Whether events are collected now (online, no nearby game). */
+  enabledNow(): boolean {
+    try {
+      return this.on();
+    } catch {
+      return false;
+    }
   }
 
   /** Whether this is the device's first visit, read once collection is on. */
@@ -164,6 +215,7 @@ export class Telemetry {
   private push(ev: Event): void {
     if (!this.enabled) return;
     try {
+      this.stamps.touch();
       this.buf.push(ev);
       if (this.buf.length > MAX_BUFFER) this.buf.splice(0, this.buf.length - MAX_BUFFER);
       if (this.buf.length >= FLUSH_AT) this.flush();
@@ -185,8 +237,9 @@ export class Telemetry {
     try {
       while (this.buf.length > 0) {
         const batch: Event[] = [];
+        const buckets = this.bucketStamps();
         const base = { type: "client_event", v: 1, form: formFactor(), platform: platform(),
-                       first_visit: this.firstVisit };
+                       first_visit: this.firstVisit, ...buckets };
         let size = JSON.stringify({ ...base, events: [] }).length;
         while (batch.length < FLUSH_AT && batch.length < this.buf.length) {
           const add = JSON.stringify(this.buf[batch.length]).length + 1;
@@ -200,6 +253,20 @@ export class Telemetry {
     } catch {
       /* the buffer stays for the next try */
     }
+  }
+
+  /** The batch's bucket stamps; a bucket the device cannot tell is left out. */
+  private bucketStamps(): { days_since_first?: string; session_n?: string; lang: Lang } {
+    const out: { days_since_first?: string; session_n?: string; lang: Lang } = { lang: lang() };
+    try {
+      const days = this.stamps.days();
+      const session = this.stamps.sessionN();
+      if (days !== null) out.days_since_first = days;
+      if (session !== null) out.session_n = session;
+    } catch {
+      /* the stamps are best effort */
+    }
+    return out;
   }
 
   /** The screen in view changed; the same screen again is no event. */
@@ -233,9 +300,41 @@ export class Telemetry {
     this.push(provider ? { e: "signin", t: now(), step, provider } : { e: "signin", t: now(), step });
   }
 
-  /** A step of the iOS app's own account. */
+  /** A step of the iOS app's own account, and whether this device had
+   *  started a round before it. */
   deviceAccount(step: DeviceStep): void {
-    this.push({ e: "device_account", t: now(), step });
+    this.push({ e: "device_account", t: now(), step, first_round_before: playedBefore() });
+  }
+
+  /** The page loaded (`cold`) with its first socket open `ms` after the
+   *  navigation began, or a page already loaded came back into view after
+   *  a session's idle gap. */
+  appOpen(cold: boolean, ms?: number): void {
+    this.push(ms === undefined ? { e: "app_open", t: now(), cold }
+      : { e: "app_open", t: now(), cold, ms_to_socket: clamp(ms, 0, MAX_SOCKET_MS) });
+  }
+
+  roundStart(mode: RoundMode, bots: number, nth: number): void {
+    this.push({ e: "round_start", t: now(), mode, bots: clamp(bots, 0, 3),
+                nth_round_this_load: clamp(nth, 1, MAX_ROUNDS_PER_LOAD) });
+  }
+
+  /** A round ended as the page saw it; `won` only at its round end. */
+  roundFinish(mode: RoundMode, by: RoundBy, tricks: number, won?: boolean): void {
+    const ev: Event = { e: "round_finish", t: now(), mode, by, tricks_played: clamp(tricks, 0, 25) };
+    if (won !== undefined && by === "end") ev.won = won;
+    this.push(ev);
+  }
+
+  /** The rounds played on the device since the last digest. */
+  offlineDigest(c: OfflineCounts): void {
+    this.push({ e: "offline_digest", t: now(), rounds_started: clamp(c.rounds_started, 0, 99),
+                rounds_finished: clamp(c.rounds_finished, 0, 99), nearby_rounds: clamp(c.nearby_rounds, 0, 99) });
+  }
+
+  /** A How to play step in view, or its last step's Start playing (`done`). */
+  howtoStep(step: number, done: boolean): void {
+    this.push({ e: "howto_step", t: now(), step: clamp(step, 1, 20), done });
   }
 
   notice(code: string, where: Screen | "toast" | "other" = this.screen ?? "other"): void {
@@ -299,11 +398,59 @@ subscribeOffline(() => {
   telemetry.reset();
 });
 
+/** What runs just before the page goes, ahead of the last flush (the
+ *  round tracker's mid-round close). */
+const beforeHide = new Set<() => void>();
+
+export function onPageHide(fn: () => void): () => void {
+  beforeHide.add(fn);
+  return () => { beforeHide.delete(fn); };
+}
+
 if (typeof window !== "undefined") {
   try {
-    window.addEventListener("pagehide", () => telemetry.flush());
+    window.addEventListener("pagehide", () => {
+      for (const fn of [...beforeHide]) {
+        try { fn(); } catch { /* telemetry never breaks the page */ }
+      }
+      telemetry.flush();
+    });
   } catch {
     /* no window events */
+  }
+}
+
+/** The milliseconds since this page's navigation began. */
+function sinceNavigation(): number {
+  try {
+    return performance.now();
+  } catch {
+    return 0;
+  }
+}
+
+// app_open: once per page load, when its first socket opens (an offline
+// page has none to send it on), and again when a loaded page comes back
+// into view after a session's idle gap (the app brought back from the
+// background with no reload).
+let opened = false;
+try {
+  (conn as { subscribeStatus?: (fn: (s: string) => void) => () => void }).subscribeStatus?.((s) => {
+    if (opened || s !== "open" || !telemetry.enabledNow()) return;
+    opened = true;
+    telemetry.appOpen(true, sinceNavigation());
+  });
+} catch {
+  /* a socket stand-in without status */
+}
+if (typeof document !== "undefined") {
+  try {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible" || !opened || !telemetry.enabledNow()) return;
+      if (telemetry.stamps.touch()) telemetry.appOpen(false);
+    });
+  } catch {
+    /* no document events */
   }
 }
 

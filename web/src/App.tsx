@@ -46,6 +46,7 @@ import type { MessageKey } from "./i18n";
 import { MESSAGES } from "./i18n/messages";
 import { useNearbyHostLeft, useNearbyUi } from "./nearbyGate";
 import { setSeatSafe, startReloadGate } from "./reloadGate";
+import { rounds } from "./roundTelemetry";
 
 /** What leaving the seat you hold costs, for the sheet a link to another
  *  table opens: the game in play, else the Play table as its panel says it. */
@@ -308,6 +309,9 @@ export default function App() {
   }, [offline]);
 
   const inRoom = room !== null || game !== null;
+  // every state and room frame, shown or not, for the round telemetry
+  useEffect(() => { rounds.noteRoom(room); }, [room]);
+  useEffect(() => { rounds.observe(game); }, [game]);
   const q = useQueue();
   const account = useAuth();
   const seatedAnywhere = inRoom || q.queued;
@@ -327,6 +331,7 @@ export default function App() {
   // progress is left by a tap.
   useEffect(() => {
     setContinueHandler((gameId) => {
+      rounds.noteEntry("friend");
       conn.send({ type: "create_room", name: getSavedName(), resume_from: gameId, start: true });
       openTab("play");
     }, status === "open" && !inRoom && !offline);
@@ -387,7 +392,10 @@ export default function App() {
         <LeaveSheet context={linkLeaveContext(game, q)} title={t("roundend.leaveToJoin", { code: linkPrompt })}
                     onLeave={() => {
                       if (room === null && game === null) queue.leave();
-                      else conn.send({ type: "table_leave" });
+                      else {
+                        if (game) rounds.left();
+                        conn.send({ type: "table_leave" });
+                      }
                       codes.leaving();
                     }}
                     onStay={() => codes.cancel()} />

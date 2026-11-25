@@ -357,9 +357,14 @@ export interface ChatMsg {
   seat: number | null;
   name: string;
   text: string;
-  /** A system line's participants that are bots ("took": the seat's
-   *  previous holder); any other name in the line is a person's. */
-  bot_roles?: "took"[];
+  /** A seat claim's system line, as names: `actor` took `target`'s seat
+   *  ("took_seat") or took over for a dropped `target` ("took_over").
+   *  Absent from older servers and every other system line. */
+  event?: "took_seat" | "took_over";
+  actor?: string;
+  target?: string;
+  /** Whether `target` was a bot; the actor is always a person. */
+  target_is_bot?: boolean;
   t: number;
 }
 

@@ -1,4 +1,4 @@
-import type { StatePlayer } from "./protocol";
+import type { ChatMsg, StatePlayer } from "./protocol";
 import { SUIT_SYMBOL } from "./components/Card";
 import { displayName, t } from "./i18n";
 import type { MessageKey } from "./i18n";
@@ -34,28 +34,33 @@ export function formatTableMessage(message: string, players: StatePlayer[], you:
   return message;
 }
 
-/** The chat's system lines (joins, leaves, seat claims) as the server and
- *  the offline server word them, each in the current language. Only a
- *  participant the line's `bot_roles` marks as a bot is named as the table
- *  names bots; every other name is a person's and shows as typed. A line of
- *  another form passes through. */
+/** The chat's one-person system lines (joins, leaves, reconnects) as the
+ *  server and the offline server word them, in the current language. The
+ *  name is everything before the line's fixed ending, so it is unambiguous,
+ *  and a person's: it shows as typed. */
 const SYSTEM_LINES: [RegExp, MessageKey][] = [
   [/^bot is playing for (.+) \(disconnected\)$/, "table.sysBotPlaying"],
-  [/^(.+?) reconnected — taking over from the bot$/, "table.sysReconnectedFromBot"],
-  [/^(.+?) reconnected$/, "table.sysReconnected"],
-  [/^(.+?) took over for (.+) \(offline\)$/, "table.sysTookOver"],
-  [/^(.+?) took (.+)'s seat$/, "table.sysTookSeat"],
-  [/^(.+?) joined$/, "table.sysJoined"],
-  [/^(.+?) left$/, "table.sysLeft"],
-  [/^(.+?) disconnected$/, "table.sysDisconnected"],
+  [/^(.+) reconnected — taking over from the bot$/, "table.sysReconnectedFromBot"],
+  [/^(.+) reconnected$/, "table.sysReconnected"],
+  [/^(.+) joined$/, "table.sysJoined"],
+  [/^(.+) left$/, "table.sysLeft"],
+  [/^(.+) disconnected$/, "table.sysDisconnected"],
 ];
 
-export function formatSystemLine(text: string, botRoles: readonly string[] = []): string {
-  for (const [re, key] of SYSTEM_LINES) {
-    const m = re.exec(text);
-    if (!m) continue;
-    const took = m[2] ?? "";
-    return t(key, { name: m[1], took: botRoles.includes("took") ? displayName(took, true) : took });
+/** A system line in the current language. A seat claim is worded from its
+ *  participants (`actor` a person, `target` named as the table names bots
+ *  when `target_is_bot`), never from its text; one without them, from an
+ *  older server, keeps its text as sent. A line of another form passes
+ *  through. */
+export function formatSystemLine(m: Pick<ChatMsg, "text" | "event" | "actor" | "target" | "target_is_bot">): string {
+  if (m.event && m.actor !== undefined && m.target !== undefined) {
+    const took = m.target_is_bot === true ? displayName(m.target, true) : m.target;
+    return t(m.event === "took_over" ? "table.sysTookOver" : "table.sysTookSeat", { name: m.actor, took });
   }
-  return text;
+  if (/^.+ took .+'s seat$/.test(m.text) || /^.+ took over for .+ \(offline\)$/.test(m.text)) return m.text;
+  for (const [re, key] of SYSTEM_LINES) {
+    const match = re.exec(m.text);
+    if (match) return t(key, { name: match[1] });
+  }
+  return m.text;
 }

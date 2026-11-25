@@ -78,13 +78,20 @@ export const NEARBY_BOT_FILL = 60.0;
 
 type Json = Record<string, unknown>;
 
+/** server.py seat_event: `actor` took `target`'s seat ("took_seat") or took
+ *  over for a dropped `target` ("took_over"). */
+interface SeatEvent { event: "took_seat" | "took_over"; actor: string; target: string; target_is_bot: boolean }
+
 interface ChatEntry {
   seat: number;
   name: string;
   text: string;
   t: number;
-  /** server.py chat_system: the system line's participants that are bots. */
-  bot_roles?: "took"[];
+  /** server.py seat_event: a seat claim's participants. */
+  event?: SeatEvent["event"];
+  actor?: string;
+  target?: string;
+  target_is_bot?: boolean;
   id: number;
   room: string;
 }
@@ -827,7 +834,7 @@ export class LocalServer {
     });
   }
 
-  chatPost(room: LocalRoom, entry: { seat: number; name: string; text: string; t: number; bot_roles?: "took"[] }): void {
+  chatPost(room: LocalRoom, entry: { seat: number; name: string; text: string; t: number } & Partial<SeatEvent>): void {
     room.chatSeq += 1;
     const full: ChatEntry = { ...entry, id: room.chatSeq, room: room.code };
     room.chat.push(full);
@@ -835,8 +842,8 @@ export class LocalServer {
     for (const sd of room.slots()) if (sd) this.enqueue(sd, { type: "chat", ...full });
   }
 
-  chatSystem(room: LocalRoom, text: string, botRoles: "took"[] = []): void {
-    this.chatPost(room, { seat: -1, name: "", text, t: Date.now() / 1000, ...(botRoles.length ? { bot_roles: botRoles } : {}) });
+  chatSystem(room: LocalRoom, text: string, event?: SeatEvent): void {
+    this.chatPost(room, { seat: -1, name: "", text, t: Date.now() / 1000, ...event });
   }
 
   attach(room: LocalRoom, seat: Seat, writer: Writer): number {
@@ -1694,7 +1701,7 @@ export class LocalConnection {
     this.me = seat;
     this.attach(room, seat);
     server.chatSystem(room, fromPerson ? `${seat.name} took over for ${took} (offline)` : `${seat.name} took ${took}'s seat`,
-                      fromPerson ? [] : ["took"]);
+                      { event: fromPerson ? "took_over" : "took_seat", actor: seat.name, target: took, target_is_bot: !fromPerson });
     server.kickBots(room);
     server.broadcast(room);
   }

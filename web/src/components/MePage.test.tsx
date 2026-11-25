@@ -34,7 +34,10 @@ const STATS = { name: "Jerry", rating: 1532, rank: 12, rounds: 412, provisional:
                 week_delta: 8, history: [1491, 1532], visible: true,
                 recent_games: [{ started_at: 1, ended_at: 2, rounds: 6, delta: 14, games_won: 1, partner: null,
                                  partner_bot: true, opponents_bots: 2 }] };
-const GAME = { id: "g1", room_code: "KQ4X", started_at: Math.floor(Date.now() / 1000) - 60, ended_at: null, seat: 0,
+// the clock is a local midday, so a game a minute old is "Today" whatever the
+// hour the suite runs; only Date is faked, timers stay real
+const NOW = new Date(2026, 5, 15, 12, 0, 0);
+const GAME = { id: "g1", room_code: "KQ4X", started_at: Math.floor(NOW.getTime() / 1000) - 60, ended_at: null, seat: 0,
                players: ["Jerry", "Sam", "Mei", "Wen"], rounds: [1, 2], final_levels: ["4", "3"],
                games_won: [0, 0], incomplete: false };
 
@@ -47,6 +50,8 @@ beforeAll(() => {
 let calls: { url: string; method: string }[];
 let deleteStatus = 204;
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
   forgetHomeSession();
   guestName.reset();
   calls = [];
@@ -70,6 +75,7 @@ beforeEach(() => {
 let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 afterEach(() => {
+  vi.useRealTimers();
   setLanguageChoice("system");
   act(() => root.unmount());
   host.remove();

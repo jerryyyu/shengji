@@ -1318,19 +1318,24 @@ def chat_snapshot(room: Room, viewer: Seat) -> dict:
             "messages": [line for line in room.chat if not _hidden(room, viewer, line)]}
 
 
-def chat_system(room: Room, text: str, bot_roles: tuple[str, ...] = ()) -> None:
+def chat_system(room: Room, text: str, event: dict | None = None) -> None:
     """Post a system line into the room chat (joins, leaves, seat claims).
 
     Uses seat -1 so clients can style it apart from player messages; kept
     in the same scrollback so late joiners see who arrived before them.
-    ``bot_roles`` names the line's participants that are bots ("took": the
-    seat's previous holder), so a client words only those as bots; every
-    other name in the line is a person's and shows as typed.
+    ``event`` carries a two-person line's participants (``seat_event``), so
+    a client words it from the names themselves and never splits the text.
     """
     entry: dict = {"seat": -1, "name": "", "text": text, "t": time.time()}
-    if bot_roles:
-        entry["bot_roles"] = list(bot_roles)
+    if event:
+        entry.update(event)
     chat_post(room, entry)
+
+
+def seat_event(kind: str, actor: str, target: str, target_is_bot: bool) -> dict:
+    """A seat claim's participants: ``actor`` took ``target``'s seat
+    ("took_seat") or took over for a dropped ``target`` ("took_over")."""
+    return {"event": kind, "actor": actor, "target": target, "target_is_bot": target_is_bot}
 
 
 def enqueue(seat: Seat, payload: dict) -> None:
@@ -3169,7 +3174,8 @@ async def _join_room(caller: _Caller, msg: dict) -> tuple[Room, Seat, int] | Non
                 f"{name} took over for {took_from} (offline)"
                 if took_over_human
                 else f"{name} took {took_from}'s seat",
-                () if took_over_human else ("took",))
+                seat_event("took_over" if took_over_human else "took_seat",
+                           name, took_from, not took_over_human))
         else:
             chat_system(room, f"{name} joined")
         kick_bots(room)      # remaining bot seats keep playing
@@ -4145,7 +4151,8 @@ def _seat_newcomer(room: Room, seat: int, pj: PendingJoin) -> None:
     gen = _attach(room, me, pj.conn.ws)
     pj.conn.adopted = (room, me, gen)
     MATCHMAKER.join_seated(pj.uid)
-    chat_system(room, f"{pj.name} took {took}'s seat", ("took",) if took_bot else ())
+    chat_system(room, f"{pj.name} took {took}'s seat",
+                seat_event("took_seat", pj.name, took, took_bot))
 
 
 def _revert_to_bot(room: Room, seat: int) -> None:

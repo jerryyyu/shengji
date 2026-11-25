@@ -295,8 +295,9 @@ def test_seat_claim_chat_names_the_bot(client):
             line = _drain(b, "chat")
     assert line["text"] == f"jerry mbp took {botname}'s seat"
     assert line["seat"] == -1
-    # the bot is the line's "took" participant; the newcomer is a person
-    assert line["bot_roles"] == ["took"]
+    # the line's participants, as names: the newcomer, and the bot it replaced
+    assert (line["event"], line["actor"], line["target"], line["target_is_bot"]) == (
+        "took_seat", "jerry mbp", botname, True)
 
 
 def test_chat_snapshot_rolls_over_after_more_than_fifty_messages(client):
@@ -880,8 +881,9 @@ def test_takeover_of_dropped_human_is_announced_as_such(client, clock):
                              "name": "newbie", "seat": 1})
                 line = _drain(r, "chat")
             assert "took over for amy" in line["text"], line
-            # amy is a person: the line names no bot
-            assert "bot_roles" not in line, line
+            # amy is a person the newcomer took over for
+            assert (line["event"], line["actor"], line["target"], line["target_is_bot"]) == (
+                "took_over", "newbie", "amy", False), line
 
 
 # ---------------------------------------------------------------- ship gate

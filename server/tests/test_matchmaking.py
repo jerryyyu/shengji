@@ -1735,6 +1735,7 @@ def test_the_bot_plays_on_until_the_trick_ends_then_the_newcomer_holds_the_seat(
         await t.until(lambda r: r.phase == "play" and r.trick.plays
                       and all(p.seat != 2 for p in r.trick.plays))
         before = _plays(t.room.round, 2)
+        bot_name = t.room.seats[2].name
         conn = await _newcomer_joins(env, new, 2, "Alice")
         room = t.room
         started = conn.last("match_started")
@@ -1759,6 +1760,11 @@ def test_the_bot_plays_on_until_the_trick_ends_then_the_newcomer_holds_the_seat(
         assert room.pending_joins == {} and new not in env.mm.joining
         assert srv.state_for(room, 2)["hand"]     # the seat's cards once it is theirs
         assert srv.state_for(room, 0)["joining"] == []
+        # the chat line carries its two participants, the bot marked
+        line = [m for m in room.chat if m["seat"] == -1][-1]
+        assert {k: line[k] for k in ("text", "event", "actor", "target", "target_is_bot")} == {
+            "text": f"Alice took {bot_name}'s seat", "event": "took_seat",
+            "actor": "Alice", "target": bot_name, "target_is_bot": True}
     run(go())
 
 

@@ -72,7 +72,7 @@ export function ChatBody({ messages, you, onSend, open = true }: BodyProps) {
         {shown.map((m, i) =>
           m.seat === -1 ? (            // system line: joins, leaves, seat claims
             <div key={i} className="chat-msg system">
-              {formatSystemLine(m.text, m.bot_roles)}
+              {formatSystemLine(m)}
             </div>
           ) : (
             <div key={i} className={"chat-msg" + (m.seat === you ? " mine" : "")}>

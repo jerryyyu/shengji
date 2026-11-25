@@ -287,6 +287,25 @@ describe("drops, resume and bot cover", () => {
     expect(j.frames.length).toBe(count);
   });
 
+  it("a newcomer taking a dropped person's seat names both in the chat line", async () => {
+    const t = await lobby(2, true);
+    t.rounds = 50;
+    t.send(t.host, { type: "table_start_bots" });
+    await t.settle(() => t.players().every((p) => t.lastState(p) !== undefined));
+    const j = t.joiners[0];
+    const seat = j.seat!;
+    j.driver = null;
+    await t.advance(LIMITS.pingSeconds + 1);
+    t.fake.drop(t.code, t.fake.peersOf(t.code)[0]);
+    await t.settle(() => t.room!.seats[seat].botAnnounced, 2_000_000);
+    await t.advance(TAKEOVER_AFTER + 1);
+    await t.join("Sam took Lee", { seat });
+    await t.settle(() => t.room!.seats[seat].name === "Sam took Lee", 100_000);
+    const line = t.room!.chat.find((c) => c.event !== undefined);
+    expect(line && [line.text, line.event, line.actor, line.target, line.target_is_bot])
+      .toEqual([`Sam took Lee took over for ${j.name} (offline)`, "took_over", "Sam took Lee", j.name, false]);
+  });
+
   it("the bot covers a dropped seat after the takeover window, then the owner reclaims it", async () => {
     const t = await lobby(2, true);
     t.rounds = 50;

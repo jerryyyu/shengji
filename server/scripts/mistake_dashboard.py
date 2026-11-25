@@ -30,8 +30,9 @@ hands or an event has no controller flag is excluded and counted), and the
 level line uses rounds where exactly one team is bot-controlled throughout and
 the other has a human-controlled seat.  A round whose bots played the Standard
 or Beginner level (``round_start.bot_level``, a casual table's Bots, or a ranked game's
-first round's ``bot_levels`` record) is not the served bot's play and is
-excluded and counted.  Output names seats and teams only,
+settled ``bot_levels`` record) is not the served bot's play and is
+excluded and counted. A ranked rise to Advanced before play supersedes the opening level.
+Output names seats and teams only,
 never players.
 
 The engine is imported inside the run so the module imports with the standard
@@ -172,6 +173,13 @@ def load_prod(paths, since=None, until=None):
                 elif cur is None:
                     continue
                 elif e == "bot_levels":
+                    start = cur["start"]
+                    cur["rose_to_advanced"] = (
+                        start.get("ranked") is True and start.get("bot_level") in ("standard", "beginner")
+                        and o.get("rose_from") == start["bot_level"] and o.get("level") == "advanced"
+                        and o.get("standard_seats") == [] and "levels" not in cur
+                        and not cur["plays"] and not cur["tricks"]
+                    )
                     cur["levels"] = o
                 elif e == "trump":
                     cur["trump"] = o
@@ -196,7 +204,8 @@ def load_prod(paths, since=None, until=None):
                 continue
             seen.add(key)
             relaxed = ("standard", "beginner")
-            if st.get("bot_level") in relaxed or rec.get("levels", {}).get("level") in relaxed:
+            opening_relaxed = st.get("bot_level") in relaxed and not rec.get("rose_to_advanced")
+            if opening_relaxed or rec.get("levels", {}).get("level") in relaxed:
                 notes["rounds excluded: standard bots"] += 1
                 continue
             if "end" not in rec or "trump" not in rec or "bury" not in rec:

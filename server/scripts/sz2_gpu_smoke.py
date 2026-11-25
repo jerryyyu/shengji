@@ -17,6 +17,7 @@ DARKBLOOM = Path.home() / ".darkbloom/bin/darkbloom"
 PAUSE = Path.home() / "darkbloom-dash/keepalive.pause"
 PROVIDER_CONFIG = Path.home() / ".config/darkbloom/provider.toml"
 PROVIDER_SHA256 = "72f6b444134b379709afe8c08b816d4e974d538669183702b96f5e4c90e0b2fe"
+INKLING_CONFIG_SHA256 = "adaf4e2f5b1d126e4618879876b0cff9925f189376dbff3a9740057956161afa"
 SERVING_MODE = "Darkbloom network only — this Mac has no local API"
 MODEL_FILTER = {
     "gemma-4-26b-qat-4bit", "gpt-oss-20b", "qwen3.5-35b-a3b", "Qwen3.5-9B", "qwen3.6-35b-a3b-vl-mtp-mxfp8",
@@ -57,11 +58,15 @@ def verify_darkbloom_identity(status, expected_sha=None):
     if fields["Serving"] != SERVING_MODE:
         raise RuntimeError("Darkbloom serving mode differs from the reviewed mode")
     model_ids = [model.strip() for model in fields["Enabled model filter"].split(",")]
-    if len(model_ids) != len(MODEL_FILTER) or set(model_ids) != MODEL_FILTER:
+    expected_sha = provider_digest(expected_sha)
+    expected_models = MODEL_FILTER
+    if expected_sha == INKLING_CONFIG_SHA256:
+        expected_models = MODEL_FILTER | {"thinkingmachines/Inkling-2-Mini"}
+    if len(model_ids) != len(expected_models) or set(model_ids) != expected_models:
         raise RuntimeError("Darkbloom model filter differs from the reviewed filter")
     with PROVIDER_CONFIG.open("rb") as config:
         digest = hashlib.file_digest(config, "sha256").hexdigest()
-    if digest != provider_digest(expected_sha):
+    if digest != expected_sha:
         raise RuntimeError(f"Darkbloom provider.toml SHA differs from the reviewed SHA: {digest}")
 
 
@@ -338,6 +343,7 @@ def main():
     parser.add_argument("--phase", choices=("smoke", "L-smoke", "M", "L-prefix", "L-finish", "small", "medium-prefix", "medium-finish"), default="smoke")
     parser.add_argument("--min-free-gib", type=int, help="minimum free space on the training volume")
     parser.add_argument("--provider-sha256", help="reviewed SHA256 of the provider configuration")
+    parser.add_argument("--check-provider", action="store_true", help="verify provider readiness and exit before admission")
     args = parser.parse_args()
     if args.min_free_gib is not None and args.min_free_gib <= 0:
         parser.error("--min-free-gib must be positive")
@@ -354,6 +360,10 @@ def main():
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, mark_signal)
     try:
+        if args.check_provider:
+            if not darkbloom_ready(command(DARKBLOOM, "status"), args.provider_sha256):
+                raise RuntimeError("Darkbloom initial state is not ready")
+            return 0
         return run_segment(args.root, args.phase, check_signal, args.provider_sha256, args.min_free_gib)
     except RestoreUnverified as exc:
         print(exc, file=sys.stderr, flush=True)

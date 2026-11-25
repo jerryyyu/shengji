@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WIDE } from "../home/HomeShell";
 import { SHORT_VIEWPORT } from "../phoneLayout";
 import { GUARD_MS } from "./useKindGuard";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { framer, tableFrameFor } from "./testFrames";
+import type { TableFrameMsg } from "./messages";
 
 class FakeWS {
   static OPEN = 1;
@@ -32,6 +35,8 @@ const sentTypes = () => FakeWS.all.flatMap((w) => w.sent).map((m) => m.type);
 const lastSent = () => { const all = FakeWS.all.flatMap((w) => w.sent); return all[all.length - 1]; };
 const sentCount = () => FakeWS.all.flatMap((w) => w.sent).length;
 const nowSecs = () => Date.now() / 1000;
+const SERVER_FRAMES = JSON.parse(readFileSync(join(__dirname, "fixtures", "table_frames.json"), "utf8")) as
+  { scenario: string; queue_state: Record<string, unknown>; table: TableFrameMsg }[];
 
 let signedIn = true;
 let host: HTMLDivElement;
@@ -1328,26 +1333,6 @@ describe("one code for rooms and tables", () => {
     expect(panel()!.querySelector("button.tp-invite")?.textContent).toBe("4N5ZLink copied");
   });
 
-  it("a stranger at a Duo table invites to the open seat, not the held partner seat", async () => {
-    const shared: { text: string }[] = [];
-    Object.defineProperty(navigator, "share", { configurable: true,
-      value: (d: { text: string }) => { shared.push(d); return Promise.resolve(); } });
-    await renderApp();
-    // Bob at Alice's Duo table: her partner seat (2) held, seat 3 open beside him
-    say(atTable([seat("Alice"), seat("Bob", { you: true }), null, null], { you: 1, held_seat: 2, held_seats: [2] },
-                { opener: false, code: "7Q3M" }));
-    click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
-    await settle();
-    // and with no open seat left, only the plain ask
-    say(atTable([seat("Alice"), seat("Bob", { you: true }), null, seat("Li")], { you: 1, held_seat: 2, held_seats: [2] },
-                { opener: false, code: "7Q3M" }));
-    click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
-    await settle();
-    Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
-    expect(shared.map((d) => d.text)).toEqual(["We need a 4th for Tractor. Code 7Q3M",
-                                               "Play Tractor with me? Code 7Q3M"]);
-  });
-
   it("a Duo opener's Invite asks for a partner, the link after the message", async () => {
     const shared: unknown[] = [];
     Object.defineProperty(navigator, "share", { configurable: true,
@@ -2482,6 +2467,41 @@ describe("the table frame is the table", () => {
   /** One frame as the socket sends it, with no table frame added. */
   const raw = (msg: unknown) => act(() => ws().onmessage?.({ data: JSON.stringify(msg) }));
   const title = () => panel()?.querySelector(".tp-title")?.textContent ?? null;
+
+  /** The share sheet's text after a tap on Invite, for frames as the server sent them. */
+  async function shareFrom(...frames: unknown[]): Promise<string[]> {
+    const shared: { text: string }[] = [];
+    Object.defineProperty(navigator, "share", { configurable: true,
+      value: (d: { text: string }) => { shared.push(d); return Promise.resolve(); } });
+    try {
+      await renderApp();
+      for (const f of frames) raw(f);
+      click(panel()!.querySelector<HTMLButtonElement>("button.tp-invite"));
+      await settle();
+    } finally {
+      Object.defineProperty(navigator, "share", { configurable: true, value: undefined });
+    }
+    return shared.map((d) => d.text);
+  }
+
+  // The server's own frames (server/tests/test_table_frame.py): a Duo table, its
+  // partner seat (2) held, with the opener at seat 0 and a stranger at seat 1.
+  const duoPair = (you: number) => SERVER_FRAMES.find((p) =>
+    p.scenario === "a_duo_partner_leaving_holds_the_seat_again" && p.table.you === you
+    && p.table.seats.map((s) => s.state).join() === "taken,taken,held,open")!;
+
+  it("a stranger at a Duo table shares the table's code with the plain ask: that code takes the held seat", async () => {
+    const p = duoPair(1);
+    expect(p.table.opener).toBe(0);
+    const code = p.table.code;
+    expect(await shareFrom(p.queue_state, p.table)).toEqual([`Play Tractor with me? Code ${code}`]);
+  });
+
+  it("the Duo opener shares the same code asking for a partner", async () => {
+    const p = duoPair(0);
+    expect(p.table.code).toBe(duoPair(1).table.code);
+    expect(await shareFrom(p.queue_state, p.table)).toEqual([`Be my partner for Tractor? Code ${p.table.code}`]);
+  });
 
   it("the panel draws the table frame, never queue_state's own copy of the table", async () => {
     await renderApp();

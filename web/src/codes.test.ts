@@ -21,11 +21,10 @@ describe("the invite's ask", () => {
     expect(inviteAskOf(at("you", "bot", "person", "bot"), 0)).toBe("three");
   });
 
-  it("asks for a partner only from the Duo opener whose seat is held", () => {
+  it("with a seat held, the table's code takes it: its holder asks for a partner, anyone else asks plainly", () => {
     // Alice (seat 0) holds seat 2 for her partner; Bob sits at 1
-    const table = at("you", "person", "held", "open");
-    expect(inviteAskOf(table, 0)).toBe("partner");
-    expect(inviteAskOf(at("person", "you", "held", "open"), 1)).toBe("one");
+    expect(inviteAskOf(at("you", "person", "held", "open"), 0)).toBe("partner");
+    expect(inviteAskOf(at("person", "you", "held", "open"), 1)).toBe("three");
     expect(inviteAskOf(at("person", "you", "held", "person"), 1)).toBe("three");
   });
 });

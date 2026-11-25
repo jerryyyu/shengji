@@ -41,12 +41,16 @@ export const COPIED_MS = 1200;
  *  ask, for a table whose open seats the sender cannot know. */
 export type InviteAsk = "one" | "two" | "three" | "partner";
 
-/** The ask for your own table's seats, from what a join by your code takes:
- *  your Duo's held seat (opposite you) when you hold one, else the open
- *  seats. A seat held for someone else's partner, a bot and a person are
- *  not offered, so the message never promises more than Join finds. */
+/** The ask for your own table's seats, from what a join by the code you
+ *  share takes. Every seat is sent the table's one code, its opener's,
+ *  whose join takes a held partner seat before any open one: so with a seat
+ *  held, its holder (the opener, seated opposite it) asks for a partner and
+ *  anyone else sends the plain ask; without one, the open seats count. A
+ *  bot and a person are not offered, so the message never promises more
+ *  than Join finds. */
 export function inviteAskOf(seats: readonly { at: number; look: string }[], you: number): InviteAsk {
-  if (seats.some((s) => s.look === "held" && s.at === (you + 2) % 4)) return "partner";
+  const held = seats.find((s) => s.look === "held");
+  if (held) return held.at === (you + 2) % 4 ? "partner" : "three";
   const open = seats.filter((s) => s.look === "open").length;
   if (open === 1) return "one";
   if (open === 2) return "two";

@@ -164,6 +164,7 @@ function head(opts: {
 <title>${esc(opts.title)}</title>
 <meta name="description" content="${esc(opts.description)}" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="canonical" href="${opts.url}" />
 <link rel="alternate" hreflang="en" href="${opts.enUrl}" />
 <link rel="alternate" hreflang="zh-Hans" href="${opts.zhUrl}" />

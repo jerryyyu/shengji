@@ -16,7 +16,7 @@ def polish_arm(joint, arm, cache_root, output, recipe_path, recipe_sha):
     return polish_checkpoint(checkpoint, cache, recipe, output / arm / cache.name, epochs=2, lr=3e-4)
 
 
-def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None):
+def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sample=None, expected_encode_rounds=None):
     from shengji.train import unified_readout
 
     with ExitStack() as leases:
@@ -25,6 +25,10 @@ def polish_checkpoint(checkpoint, cache, recipe, out, *, epochs, lr, expected_sa
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if json.loads((cache / unified_readout.CACHE_DEVICE).read_text()) != {"device": "cpu"}:
             raise ValueError("expected a CPU cache")
+        if expected_encode_rounds is not None:
+            binding = json.loads((cache / unified_readout.CACHE_ENCODE).read_text())
+            if binding.get("rounds_per_batch") != expected_encode_rounds:
+                raise ValueError("cache encoder batch size differs from the requested polish input")
         records = [json.loads((cache / f"DONE.{i}").read_text()) for i in range(WORKERS)]
         groups, chunks = records[0]["groups"], records[0]["chunks"]
         if (type(chunks) is not int or chunks <= 0 or type(groups) is not int

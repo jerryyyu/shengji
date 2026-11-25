@@ -572,16 +572,25 @@ def test_full_mix_scratch_worker_resumes_and_feeds_the_polish_cache(mps_worker_r
     monkeypatch.setattr(rt4m_joint, "RECIPE_SHA256", hashlib.sha256(recipe.read_bytes()).hexdigest())
     monkeypatch.setitem(rt4m_joint.ARCHITECTURE, 6, scratch)
     cache_root = directory / "cache"
+    cache_options = {"encode_rounds": 4} if interrupt else {}
     for worker_id in range(rt4m_cache.WORKERS):
-        assert rt4m_cache.partition(directory / "reserved", cache_root, worker_id, recipe) == 0
+        assert rt4m_cache.partition(directory / "reserved", cache_root, worker_id, recipe, **cache_options) == 0
     cache, = (cache_root / "A").iterdir()
+    assert cache.name.endswith("-encode4") == interrupt
+    marker = cache / "cache_encode.json"
+    binding = json.loads(marker.read_text())
+    assert binding["rounds_per_batch"] == (4 if interrupt else 32)
+    marker.write_text(json.dumps(dict(binding, rounds_per_batch=32 if interrupt else 4)))
+    with pytest.raises(ValueError, match="encoder batch size"):
+        rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options)
+    marker.write_text(json.dumps(binding))
     assert (cache / "train-0000.npz").is_file()
     with pytest.raises(ValueError, match="expected sampled training set"):
-        rt4m_cache.polish(directory / "reserved", cache_root, recipe)
+        rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options)
     sample = json.loads((cache / "DONE.0").read_text())["sample"]
     assert sample["rows"] == 344 and sample["chunks"] == 2
     monkeypatch.setattr(rt4m_cache, "RT4_SAMPLE", sample)
-    assert rt4m_cache.polish(directory / "reserved", cache_root, recipe) == 0
+    assert rt4m_cache.polish(directory / "reserved", cache_root, recipe, **cache_options) == 0
     assert (directory / "reserved/A/polish/selected.pt").is_file()
     import rt4m_export
     from sz2_duel_exports import _load_pair

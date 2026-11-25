@@ -495,7 +495,8 @@ def test_sampled_cache_workers_resume_and_feed_the_real_polisher(cpu_root, tmp_p
     assert " POLISH DONE " in (polish / "status.log").read_text().splitlines()[-1]
 
 
-def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root, tmp_path, monkeypatch):
+@pytest.mark.parametrize("arm", ["M", "RT4-M-A"])
+def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root, tmp_path, monkeypatch, arm):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "scripts"))
     from sz2_cache_arm import cache_partition
 
@@ -516,7 +517,19 @@ def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root
                                   "exclude_seed_window": [], "corpus_weight": weights}))
     recipe_sha = hashlib.sha256(recipe.read_bytes()).hexdigest()
     output = tmp_path / "cache"
-    legacy = output / "M" / f"{sha}-{recipe_sha}"
+    if arm == "RT4-M-A":
+        import rt4m_cache
+        monkeypatch.setattr(rt4m_cache.rt4m_joint, "RECIPE_SHA256", recipe_sha)
+        monkeypatch.setattr(rt4m_cache.rt4m_joint, "completed_inputs",
+                            lambda root, source: (checkpoint, sha, json.loads(source.read_text())))
+
+        def produce():
+            return rt4m_cache.partition(joint, output, 0, recipe, encode_rounds=4)
+    else:
+        def produce():
+            return cache_partition(joint, "M", 0, output, recipe, recipe_sha)
+
+    legacy = output / ("A" if arm == "RT4-M-A" else "M") / f"{sha}-{recipe_sha}"
     baseline_args = _cache_argv(data, cpu_root, legacy, "--group-chunks", "24", "--corpus-weight", weights[0])
 
     batches = []
@@ -533,7 +546,7 @@ def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root
     before = _shard_bytes(legacy)
     batches.clear()
 
-    assert cache_partition(joint, "M", 0, output, recipe, recipe_sha) == 0
+    assert produce() == 0
     cache = legacy.with_name(f"{legacy.name}-encode4")
     expected = [min(4, total - start) for total in full for start in range(0, total, 4)]
     assert batches == expected
@@ -549,7 +562,7 @@ def test_medium_cache_bounds_encode_rounds_for_calibration_and_training(cpu_root
                     np.testing.assert_array_equal(got[key], want[key])
 
     batches.clear()
-    assert cache_partition(joint, "M", 0, output, recipe, recipe_sha) == 0
+    assert produce() == 0
     assert not batches
     with pytest.raises(ur.UnifiedReadoutError, match="use --encode-rounds-per-batch 4"):
         ur.main(_cache_argv(data, cpu_root, cache))

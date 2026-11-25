@@ -1,6 +1,6 @@
 ---
 title: Toughest decisions 1: bury your short suits, even with points in them
-description: You're the banker with 33 cards and no trump suit. Bury 20 points to empty your short suits, or bury nothing? Tested on 256 simulated deals, the short-suit bury won by a full level.
+description: You're the banker with 33 cards and no trump suit. Bury 20 points to empty your short suits, or bury nothing? Tested on 256 simulated deals, the short-suit bury came out 0.6 levels a hand better on average.
 slug: tough-bury-short-suits
 order: 11
 related: [toughest-decisions, burying-the-kitty, counting-cards, scoring-and-levels]
@@ -36,12 +36,12 @@ B is what the site's rule-based bot buried. A is our bot's choice.
 
 ## The answer: A, empty the short suits
 
-| Bury | Points buried | Score, 256 deals | Attackers reach 80 | Attackers win the last trick |
+| Bury | Points buried | Average levels, 256 deals | Attackers reach 80 | Attackers win the last trick |
 | --- | --- | --- | --- | --- |
-| A: diamonds and spades | 20 | +1.34 ± 0.05 | 14% | 2.0% |
-| B: no points | 0 | +0.31 ± 0.07 | 57% | 0.8% |
+| A: diamonds and spades | 20 | +0.98 | 14% | 2.0% |
+| B: no points | 0 | +0.38 | 57% | 0.8% |
 
-A came out 1.03 ± 0.08 ahead. Our main bot also played out the first 12 of those deals for each bury: A scored +1.17 and B +0.17.
+A came out 0.60 levels ahead. Our main bot also played out the first 12 of those deals for each bury: A averaged +0.92 levels and B +0.33.
 
 ```cards
 cards: D10 D8 D6 D5 S9 S8 S5 S3 | C6 D8 D6 H6 H4 H3 S8 S3
@@ -54,7 +54,7 @@ After A, your side suits are hearts, all nine, and clubs, all seven, plus a lone
 
 The 20 points are at risk only if the attackers win the last trick. After A, holding 8 of the 12 trumps, including both big jokers, the banker lost the last trick in 2% of the deals. On average the kitty added less than 1 point to the attackers' score. The difference came in the rest of the hand: with A, the attackers reached 80 in 14% of the deals, against 57% with B.
 
-> Not shown: the usual reason for emptying a suit is that you can then trump it. The test didn't count trumping, so it can't say that's where the level came from.
+> Not shown: the usual reason for emptying a suit is that you can then trump it. The test didn't count trumping, so it can't say that's where the difference came from.
 
 > How the deals were made: the other three hands were dealt at random from the cards you couldn't see. That ignores one thing you knew. An opponent had shown a ♥2 while declaring, and the deals didn't keep that card in their hand.
 

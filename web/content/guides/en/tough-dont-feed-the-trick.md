@@ -32,14 +32,14 @@ caption: Your hand. The raised card is our bot's play.
 
 ## The answer: A, trump with ♦10
 
-| Play | Score, 256 deals | Your side wins the trick | Attackers reach 80 |
+| Play | Average levels, 256 deals | Your side wins the trick | Attackers reach 80 |
 | --- | --- | --- | --- |
-| A: ♦10 | +1.44 ± 0.02 | 96.9% | 3.1% |
-| C: ♦8 | +0.53 ± 0.06 | 96.9% | 48% |
-| D: ♦7 | +0.52 ± 0.06 | 96.9% | 49% |
-| B: ♥10 | −0.38 ± 0.03 | 2.7% | 94% |
+| A: ♦10 | +0.97 | 96.9% | 3.1% |
+| C: ♦8 | +0.52 | 96.9% | 48% |
+| D: ♦7 | +0.51 | 96.9% | 49% |
+| B: ♥10 | +0.06 | 2.7% | 94% |
 
-Our main bot also played out the first 40 of those deals, for ♦10 and ♥10 only: ♦10 scored +1.45 and ♥10 −0.45.
+Our main bot also played out the first 40 of those deals, for ♦10 and ♥10 only: ♦10 averaged +0.975 levels and ♥10 +0.025.
 
 Count the spades above ♠10. There are eight: two each of ♠J, ♠Q, ♠K and ♠A. Seven have been played: both ♠As and both ♠Js on trick 7, a ♠K on trick 8, and a ♠K and a ♠Q on trick 9. None is in your kitty. That leaves one ♠Q, somewhere in the other three hands. Only the last player can still use it on this trick.
 
@@ -63,7 +63,7 @@ notes: | | feeds 10 | the last ♠Q
 caption: The risk with ♥10. The last ♠Q takes all 30 points.
 ```
 
-So trump, and trump with ♦10. The last player can still overtrump, but your side won the trick in 96.9% of the deals either way, and ♦10 adds 10 points to it instead of nothing. In the test that was worth 0.91 ± 0.06 more than trumping with ♦7.
+So trump, and trump with ♦10. The last player can still overtrump, but your side won the trick in 96.9% of the deals either way, and ♦10 adds 10 points to it instead of nothing. In the test that came out 0.46 levels ahead of trumping with ♦7, and the attackers reached 80 in 3% of the deals against 49%.
 
 > Not shown: why ten points made that much difference here. The test measured the gap; it didn't trace where the ♦10 would have gone otherwise.
 

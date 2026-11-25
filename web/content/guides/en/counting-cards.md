@@ -12,9 +12,9 @@ You don't need to remember every card. With two decks there are two of everythin
 
 ## Trumps out
 
-With a trump suit there are 36 trumps in the deck: the four jokers, the eight level cards and the other 24 cards of the trump suit. With no trump suit there are 12, the jokers and the level cards.
+With a trump suit there are 36 trumps in the deck, both decks together: the four jokers, the eight level cards and the other 24 cards of the trump suit. With no trump suit there are 12, the jokers and the level cards.
 
-Start with how many you hold, and count down as they fall. What's left is in the other three hands, or in the kitty if you didn't bury it. Watch the top trumps in particular: once both big jokers have gone, a little joker is the highest card left.
+To count the trumps outside your hand, start from 36 (or 12), take off the trumps you hold and any you buried, then take off each trump the other three players play. What's left is in their hands, or in the kitty if you're not the banker. Watch the top trumps in particular: once both big jokers have gone, a little joker is the highest card left.
 
 Count trump pairs too. A pair, a tractor or a throw can only be trumped by a play of the same shape, so a player with no trump pair can't trump a pair, however many trumps they hold.
 

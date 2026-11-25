@@ -1,6 +1,6 @@
 ---
 title: Toughest decisions 4: keep the big jokers for the last trick
-description: You're the banker, last to play, and your big joker pair wins this 10-point trick for sure. Spend it, or let the trick go? Tested on 256 simulated deals, keeping the jokers was worth more than a level.
+description: You're the banker, last to play, and your big joker pair wins this 10-point trick for sure. Spend it, or let the trick go? Tested on 256 simulated deals, keeping the jokers came out about two-thirds of a level a hand better on average.
 slug: tough-keep-the-big-jokers
 order: 14
 related: [toughest-decisions, scoring-and-levels, burying-the-kitty, counting-cards]
@@ -35,14 +35,14 @@ You're out of hearts, so any two cards will do.
 
 ## The answer: keep the jokers
 
-| Play | Score, 256 deals | Attackers win the last trick | Kitty points to the attackers, average |
+| Play | Average levels, 256 deals | Attackers win the last trick | Kitty points to the attackers, average |
 | --- | --- | --- | --- |
-| A: big jokers | −0.04 ± 0.07 | 65% | 13.5 |
-| B: ♣K ♠J | +1.11 ± 0.06 | 17% | 3.5 |
-| C: ♠4 ♠9 | +1.26 ± 0.06 | 15% | 3.1 |
-| D: ♠8 ♠9 | +1.26 ± 0.06 | 15% | 3.1 |
+| A: big jokers | +0.16 | 65% | 13.5 |
+| B: ♣K ♠J | +0.81 | 17% | 3.5 |
+| C: ♠4 ♠9 | +0.90 | 15% | 3.1 |
+| D: ♠8 ♠9 | +0.90 | 15% | 3.1 |
 
-Our main bot also played out the first 40 of those deals, for A and B only; it didn't play C or D. The jokers scored −1.13 and ♣K ♠J +0.45. The attackers won the last trick in 78% of those deals after the jokers, and 20% after ♣K ♠J.
+Our main bot also played out the first 40 of those deals, for A and B only; it didn't play C or D. The jokers averaged −0.80 levels and ♣K ♠J +0.375. The attackers won the last trick in 78% of those deals after the jokers, and 20% after ♣K ♠J.
 
 ```cards
 kind: trick
@@ -68,7 +68,7 @@ notes: | | takes 20 points | keeps the jokers
 caption: Option B, our bot's play. The attackers take 20 points, and you still hold both big jokers.
 ```
 
-> Not settled: which two cards to give up. ♣K hands the attackers 10 more points. In the play-outs ♠4 ♠9 scored 0.16 ± 0.05 better than ♣K ♠J, while our bot's own estimate put ♣K ♠J ahead by 0.04. The lesson is "not the jokers", not the exact discard.
+> Not settled: which two cards to give up. ♣K hands the attackers 10 more points. In the play-outs ♠4 ♠9 came out 0.09 levels ahead of ♣K ♠J, while our bot's own estimate put ♣K ♠J slightly ahead. The lesson is "not the jokers", not the exact discard.
 
 ## What happened
 

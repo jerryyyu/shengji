@@ -22,7 +22,7 @@ caption: From position 5. Lead one diamond, a pair, or all six at once?
 - Each deal was played to the end of the hand with the rule-based bot in all four seats.
 - Our main bot also played out the first 12 to 48 of those deals, for two options per position: its own choice and the rule-based bot's. In all five it preferred the same one of the two as the 256-deal test. It did not play the other options.
 
-Each option gets a score for the player's side: the levels it goes up, or minus the levels the other side goes up, plus half a point for winning the hand or minus half for losing it. A hand you win by one level scores +1.5, and one you lose by one level scores −1.5. The ± after a score is one standard error.
+Each option gets its average in levels for the player's side: the levels your side goes up in the hand, or minus the levels the other side goes up, averaged over the deals. +1 means your side went up one level a hand on average. The bots' own score adds half a point for winning the hand; we took that half point out of every deal, so the numbers here are levels only.
 
 These are single positions. A test shows which option did best in that spot; it isn't a rule for every hand. Where the test couldn't settle something, the page says so.
 
@@ -42,7 +42,7 @@ trump: NT
 rank: 2
 winner: 4
 notes: | | | big jokers
-caption: From position 4. The big jokers win this trick for sure. Spending them on it cost more than a level.
+caption: From position 4. The big jokers win this trick for sure. Spending them on it cost about two-thirds of a level on average.
 ```
 
 Want to face positions like these yourself? [Play a hand](/) against the bots.

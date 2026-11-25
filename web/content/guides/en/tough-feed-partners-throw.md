@@ -1,6 +1,6 @@
 ---
 title: Toughest decisions 2: partner's throw stands, so pile your points on it
-description: Your partner threw five clubs and you have none. Put 45 points on the trick, or five blanks? Tested on 256 simulated deals, your side won the trick every time and feeding was worth over a level and a half.
+description: Your partner threw five clubs and you have none. Put 45 points on the trick, or five blanks? Tested on 256 simulated deals, your side won the trick every time and feeding came out 0.9 levels a hand better on average.
 slug: tough-feed-partners-throw
 order: 12
 related: [toughest-decisions, pairs-tractors-throws, counting-cards, scoring-and-levels]
@@ -33,14 +33,14 @@ You're out of clubs, so any five cards will do.
 
 ## The answer: A, all 45 points
 
-| Play | Score, 256 deals | Points in the trick, average | Your side reaches 80 |
+| Play | Average levels, 256 deals | Points in the trick, average | Your side reaches 80 |
 | --- | --- | --- | --- |
-| A: 45 points | +0.13 ± 0.05 | 56.4 | 81% |
-| C: 30 points | −0.88 ± 0.06 | 41.4 | 31% |
-| D: 30 points | −0.87 ± 0.06 | 41.4 | 31% |
-| B: no points | −1.52 ± 0.04 | 11.4 | 7% |
+| A: 45 points | −0.18 | 56.4 | 81% |
+| C: 30 points | −0.69 | 41.4 | 31% |
+| D: 30 points | −0.68 | 41.4 | 31% |
+| B: no points | −1.09 | 11.4 | 7% |
 
-Your side won this trick in all 256 deals, whatever you played. A beat B by 1.65 ± 0.05. Our main bot also played out the first 24 of those deals, for A and B only: A scored −0.17 and B −1.71, and your side won the trick in all 24 with both.
+Your side won this trick in all 256 deals, whatever you played. A came out 0.91 levels ahead of B. Every average is below zero because a win for your side here is often worth no levels: 80 to 115 points takes the deal without going up, while the banker's side goes up whenever it holds you under 80. Our main bot also played out the first 24 of those deals, for A and B only: A averaged −0.33 levels and B −1.25, and your side won the trick in all 24 with both.
 
 Why the trick is safe: a throw is checked when it's led, and it stands only if nobody can beat any part of it in clubs. This one stood, so the banker has no club play that beats it. The banker can take it only by being out of clubs and trumping with the same shape: two trump pairs and a trump. That last step is the rule, not something the test counted deal by deal. What the test did count is the result: in none of the 256 deals was the trick taken from your side, including the 24 our main bot also played out.
 
